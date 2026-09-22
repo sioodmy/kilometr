@@ -30,6 +30,7 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
+      "./plugins/with-kilometr-widgets",
       [
         "expo-notifications",
         {

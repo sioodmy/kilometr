@@ -8,7 +8,17 @@ import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService } from '../src/services';
 import { pingBackend } from '../src/services/offlineCache';
 import { getSettingsSync } from '../src/services/settings';
-import type { SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
+import { getPinnedQuerySync } from '../src/services/pinnedConnection';
+import {
+  buildRoutesLink,
+  connectionToWidgetNext,
+  mergeWidgetSnapshot,
+  pickNextConnection,
+  writeWidgetSnapshot,
+  type WidgetPinned,
+  type WidgetQuickItem,
+} from '../src/services/widgetSnapshot';
+import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
 import { SavedPlacesRow } from '../src/components/SavedPlacesRow';
 import { SearchBar } from '../src/components/SearchBar';
 import { SearchSheet } from '../src/components/SearchSheet';
@@ -34,6 +44,7 @@ export default function HomeScreen() {
     lon: DEFAULT_LOCATION.lon,
   });
   const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
+  const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [offline, setOffline] = useState(false);
 
   // Status sieci: ping przy starcie, powrocie na foreground i co 30 s.
@@ -74,6 +85,7 @@ export default function HomeScreen() {
   useEffect(() => {
     if (smart.length === 0) {
       setNextDepart({});
+      setFirstConns({});
       return;
     }
     let cancelled = false;
@@ -93,21 +105,120 @@ export default function HomeScreen() {
           maxWalkM: s.maxWalkM,
           walkSpeedMps: s.walkSpeedMps,
         })
-          .then((conns) => ({ id: d.id, departInMin: conns.length ? conns[0].departInMin : undefined }))
-          .catch(() => ({ id: d.id, departInMin: undefined as number | undefined })),
+          .then((conns) => ({ id: d.id, first: conns.length ? conns[0] : undefined }))
+          .catch(() => ({ id: d.id, first: undefined as Connection | undefined })),
       ),
     ).then((rows) => {
       if (cancelled) return;
       const map: Record<string, number> = {};
+      const conns: Record<string, Connection> = {};
       for (const r of rows) {
-        if (r.departInMin !== undefined) map[r.id] = r.departInMin;
+        if (r.first !== undefined) {
+          map[r.id] = r.first.departInMin;
+          conns[r.id] = r.first;
+        }
       }
       setNextDepart(map);
+      setFirstConns(conns);
     });
     return () => {
       cancelled = true;
     };
   }, [smart, currentCoords, locTitle]);
+
+  // Snapshot dla widgetów z ekranu głównego (next / szybkie cele / przypięte).
+  useEffect(() => {
+    let cancelled = false;
+    const from = { title: locTitle, lat: currentCoords.lat, lon: currentCoords.lon };
+    const withConns = smart.filter((d) => firstConns[d.id]);
+    const ranked = [...withConns].sort(
+      (a, b) => (firstConns[a.id].departureSec - firstConns[b.id].departureSec),
+    );
+    const best = ranked.length ? firstConns[ranked[0].id] : null;
+    const bestDest = ranked[0];
+    const quick: WidgetQuickItem[] = ranked.slice(0, 3).map((d) => ({
+      id: d.id,
+      title: d.title,
+      departInMin: firstConns[d.id].departInMin,
+      deepLink: buildRoutesLink({
+        fromTitle: from.title,
+        fromLat: from.lat,
+        fromLon: from.lon,
+        toId: d.id,
+        toTitle: d.title,
+        toLat: d.lat,
+        toLon: d.lon,
+      }),
+    }));
+
+    const pinnedQuery = getPinnedQuerySync();
+    const basePinned: WidgetPinned | null = pinnedQuery
+      ? {
+          fromTitle: pinnedQuery.fromTitle,
+          toTitle: pinnedQuery.toTitle,
+          deepLink: buildRoutesLink({
+            fromTitle: pinnedQuery.fromTitle,
+            fromLat: pinnedQuery.fromLat,
+            fromLon: pinnedQuery.fromLon,
+            toId: pinnedQuery.toId,
+            toTitle: pinnedQuery.toTitle,
+            toLat: pinnedQuery.toLat,
+            toLon: pinnedQuery.toLon,
+          }),
+        }
+      : null;
+
+    // Bez przypięcia i bez połączeń nie ma czego zapisywać.
+    if (!best && !basePinned && quick.length === 0) return;
+
+    const next =
+      best && bestDest ? connectionToWidgetNext(best, from, bestDest) : null;
+
+    // Dociągnij godziny dla przypiętego (1 zapytanie, tylko gdy jest pin).
+    const finish = (pinned: WidgetPinned | null) => {
+      if (cancelled) return;
+      void writeWidgetSnapshot({ updatedAt: Date.now(), next, pinned, quick });
+    };
+    if (basePinned && pinnedQuery) {
+      const s = getSettingsSync();
+      RoutingService.getConnections({
+        fromTitle: pinnedQuery.fromTitle,
+        fromLat: pinnedQuery.fromLat,
+        fromLon: pinnedQuery.fromLon,
+        toId: pinnedQuery.toId,
+        toTitle: pinnedQuery.toTitle,
+        toLat: pinnedQuery.toLat,
+        toLon: pinnedQuery.toLon,
+        maxTransfers: s.maxTransfers,
+        minTransferSec: s.minTransferSec,
+        maxWalkM: s.maxWalkM,
+        walkSpeedMps: s.walkSpeedMps,
+      })
+        .then((conns) => {
+          const first = pickNextConnection(conns);
+          finish(
+            first
+              ? {
+                  ...basePinned,
+                  departAt: first.departAt,
+                  arriveAt: first.arriveAt,
+                  durationMin: first.durationMin,
+                  delayMin: first.delayMin,
+                  live: first.live,
+                }
+              : basePinned,
+          );
+        })
+        .catch(() => finish(basePinned));
+    } else {
+      finish(basePinned);
+    }
+    return () => {
+      cancelled = true;
+    };
+    // firstConns zmienia referencję razem z nextDepart — snapshot po świeżych danych.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstConns, locTitle]);
 
   // Debounced search
   useEffect(() => {

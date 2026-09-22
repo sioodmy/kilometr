@@ -22,8 +22,11 @@
       sdkFor = pkgs: (pkgs.androidenv.composeAndroidPackages {
         cmdLineToolsVersion = "latest";
         platformToolsVersion = "latest";
-        platformVersions = [ "36" ];
-        buildToolsVersions = [ "36.0.0" ];
+        # 36: aktualny toolchain; 35: wymagany przez template Expo SDK 57
+        # (compileSdk 35 + build-tools 35.0.0) — bez tego Gradle próbuje
+        # dociągać komponenty do read-only nix store i build pada.
+        platformVersions = [ "35" "36" ];
+        buildToolsVersions = [ "35.0.0" "36.0.0" ];
         includeEmulator = false;
         includeCmake = true;
         cmakeVersions = [ "3.22.1" ];
@@ -45,6 +48,16 @@
           cp -L ${cross.zlib}/lib/libz.so.1 $out/lib64/
           cp -L ${cross.gcc.cc.lib}/lib/libstdc++.so.6 $out/lib64/libstdc++.so.6.0
           mv $out/lib64/libstdc++.so.6.0 $out/lib64/libstdc++.so.6
+          # qemu-user szuka bibliotek gościa w /lib i /usr/lib (z prefixem
+          # QEMU_LD_PREFIX), a NIE w /lib64 — bez tych dowiązań clang z NDK
+          # pada z "libz.so.1: cannot open shared object file".
+          # Dowiązania względne (nie absolutne — te qemu podwójnie prefixuje).
+          mkdir -p $out/lib $out/usr/lib
+          for f in $out/lib64/*; do
+            b=$(basename "$f")
+            ln -s ../lib64/$b $out/lib/$b
+            ln -s ../../lib64/$b $out/usr/lib/$b
+          done
         '';
 
       # Shadow-tree: PRAWDZIWE katalogi + symlinkowane pliki, plus jeden
@@ -122,6 +135,7 @@
             curl
           ];
             inherit (env) ANDROID_HOME ANDROID_SDK_ROOT JAVA_HOME QEMU_LD_PREFIX;
+            LD_LIBRARY_PATH = "${env.QEMU_LD_PREFIX}/lib64";
             shellHook = ''
               echo "kilometr dev-shell: ANDROID_HOME=$ANDROID_HOME"
               echo "  sysroot: $QEMU_LD_PREFIX | $(QEMU_LD_PREFIX=$QEMU_LD_PREFIX ${env.ANDROID_HOME}/cmake/3.22.1/bin/cmake --version 2>/dev/null | head -1 || echo 'cmake check skipped')"
@@ -149,6 +163,12 @@
                 export JAVA_HOME="${env.JAVA_HOME}"
                 export QEMU_LD_PREFIX="${env.QEMU_LD_PREFIX}"
                 export PATH="$ANDROID_HOME/platform-tools:$PATH"
+                # qemu-user honoruje LD_LIBRARY_PATH przy szukaniu bibliotek
+                # gościa (x86_64 clang z NDK); sam QEMU_LD_PREFIX nie wystarcza,
+                # bo loader nie szuka w $prefix/lib64. Niekompatybilne ELF-y
+                # są przez loader pomijane, więc natywne (aarch64) narzędzia
+                # działają dalej normalnie.
+                export LD_LIBRARY_PATH="${env.QEMU_LD_PREFIX}/lib64''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
                 if [ ! -f package.json ] || [ ! -d node_modules/.bin/expo ]; then
                   echo "== npm ci =="

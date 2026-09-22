@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { RoutingService } from './api';
 import { getSettingsSync } from './settings';
 import { inferTransitMode } from '../components/LineBadge';
+import { buildRoutesLink, mergeWidgetSnapshot, type WidgetPinned } from './widgetSnapshot';
 import type { Connection, RouteQuery } from '../types/models';
 
 // Persistent notification (a'la Uber Eats) z najbliższym połączeniem:
@@ -205,6 +206,24 @@ export async function refreshPinnedNotification(): Promise<void> {
   }
 }
 
+/** Natychmiastowy wpis przypięcia do snapshotu widgetów (bez godzin). */
+function mergeWidgetPinnedFromQuery(query: RouteQuery): Promise<void> {
+  const pinnedSection: WidgetPinned = {
+    fromTitle: query.fromTitle,
+    toTitle: query.toTitle,
+    deepLink: buildRoutesLink({
+      fromTitle: query.fromTitle,
+      fromLat: query.fromLat,
+      fromLon: query.fromLon,
+      toId: query.toId,
+      toTitle: query.toTitle,
+      toLat: query.toLat,
+      toLon: query.toLon,
+    }),
+  };
+  return mergeWidgetSnapshot({ pinned: pinnedSection });
+}
+
 export async function pinConnection(query: RouteQuery): Promise<void> {
   pinned = { ...query };
   try {
@@ -213,6 +232,8 @@ export async function pinConnection(query: RouteQuery): Promise<void> {
     // persist opcjonalny
   }
   notify();
+  // Widget z przypięciem od razu (godziny dociągnie ekran główny).
+  void mergeWidgetPinnedFromQuery(pinned);
   await refreshPinnedNotification();
 }
 
@@ -237,6 +258,8 @@ export async function unpinConnection(): Promise<void> {
     }
   }
   notify();
+  // Wyczyść też sekcję przypięcia w snapshocie widgetów.
+  void mergeWidgetSnapshot({ pinned: null });
 }
 
 /** Wznawia pinezkę po starcie apki (np. po restarcie telefonu znika sticky). */
