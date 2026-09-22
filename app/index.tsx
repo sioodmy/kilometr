@@ -203,7 +203,7 @@ export default function HomeScreen() {
           <View style={styles.topBar}>
             <View style={styles.loc}>
               <LocateFixed size={15} color={scheme.onSecondaryContainer} />
-              <Text style={styles.locText} numberOfLines={1}>{locTitle}</Text>
+              <Text style={styles.locText} numberOfLines={1} ellipsizeMode="tail">{locTitle}</Text>
             </View>
             {offline && (
               <View style={styles.offlinePill}>
@@ -326,10 +326,10 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingRight: 12,
     height: 40,
-    flexShrink: 1,
-    maxWidth: '62%',
+    flex: 1,
+    minWidth: 0,
   },
-  locText: { ...type.labelLarge, color: scheme.onSecondaryContainer },
+  locText: { ...type.labelLarge, color: scheme.onSecondaryContainer, flexShrink: 1, minWidth: 0 },
   offlinePill: {
     flexDirection: 'row',
     alignItems: 'center',
