@@ -1,5 +1,4 @@
-// Single import surface for screens. Swap mocks → real clients here later.
-// Example:
-//   export { NominatimSearchService as SearchService } from './SearchService.nominatim';
-export { SearchService, RoutingService, LocationService, FavoritesService } from './mock';
-export { normalize } from './mock';
+// Single import surface for screens — tylko prawdziwe klienty API (MPK/GTFS/Overpass).
+// Single import surface for screens — tylko prawdziwe klienty API (MPK/GTFS/Overpass).
+export { SearchService, RoutingService, LocationService, FavoritesService, fetchNearestStops, type NearestStop } from './api';
+export { findAnchorForLocation, distanceMeters, type ActiveAnchor } from './anchorService';

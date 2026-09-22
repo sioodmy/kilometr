@@ -17,6 +17,7 @@ export interface Suggestion extends LatLon {
   title: string;
   address: string;
   kind: SuggestionKind;
+  category?: string;
   /** metres from current location, if known */
   distanceM?: number;
 }
@@ -28,6 +29,10 @@ export type SavedPlaceIcon =
   | 'gym'
   | 'star'
   | 'heart'
+  | 'coffee'
+  | 'shopping'
+  | 'train'
+  | 'mapPin'
   | 'plus';
 
 export interface SavedPlace {
@@ -39,6 +44,11 @@ export interface SavedPlace {
   address: string;
   lat: number;
   lon: number;
+  /** Zakotwiczony przystanek odjazdu dla tej lokalizacji */
+  anchorStopId?: string;
+  anchorStopName?: string;
+  anchorStopLat?: number;
+  anchorStopLon?: number;
 }
 
 export interface SmartDestination extends LatLon {
@@ -52,6 +62,31 @@ export interface SmartDestination extends LatLon {
 }
 
 export type LegMode = 'tram' | 'bus' | 'walk';
+
+export interface LegStop {
+  stopId: string;
+  name: string;
+  lat?: number;
+  lon?: number;
+  /** kolejność w kursie (stop_sequence) */
+  seq: number;
+  /** sekundy od północy, jeśli znane z GTFS */
+  arriveSec?: number;
+  departSec?: number;
+}
+
+export interface VehiclePosition {
+  vehicleId: string;
+  line: string;
+  lat: number;
+  lon: number;
+  delaySec: number;
+  currentStopName?: string;
+  nextStopName?: string;
+  updatedAt: number;
+  /** GTFS trip_id dopasowany przez backend (matcher) — do matchowania z Leg.tripId */
+  matchedTripId?: string;
+}
 
 export interface Leg {
   id: string;
@@ -69,6 +104,19 @@ export interface Leg {
   walkM?: number;
   /** GTFS-RT trip present? */
   live: boolean;
+  fromStopId?: string;
+  toStopId?: string;
+  fromLat?: number;
+  fromLon?: number;
+  toLat?: number;
+  toLon?: number;
+  /** GTFS stop_code / numer słupka (np. 10121) */
+  platformCode?: string;
+  /** GTFS trip_id kursu — klucz do /trips/:id/stops i matchowania pojazdu */
+  tripId?: string;
+  routeId?: string;
+  /** pełna sekwencja przystanków kursu (cała linia); nasz odcinek to podzbiór */
+  intermediateStops?: LegStop[];
 }
 
 export interface Connection {
@@ -77,6 +125,7 @@ export interface Connection {
   toTitle: string;
   /** minutes until departure, from "now" */
   departInMin: number;
+  departureSec: number;
   departAt: string;
   arriveAt: string;
   durationMin: number;
@@ -98,4 +147,13 @@ export interface RouteQuery {
   toTitle: string;
   toLat: number;
   toLon: number;
+  departureTimeSec?: number;
+  /** 0–3, default 2 */
+  maxTransfers?: number;
+  /** sekundy, default 120 */
+  minTransferSec?: number;
+  /** metry, default 800 */
+  maxWalkM?: number;
+  /** m/s, default 1.3. Tempo chodzenia. */
+  walkSpeedMps?: number;
 }

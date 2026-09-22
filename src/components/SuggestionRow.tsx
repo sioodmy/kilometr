@@ -1,18 +1,49 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Clock3, MapPin, ShoppingBag, Signpost } from 'lucide-react-native';
-import { scheme, shape, type } from '../theme/tokens';
-import type { Suggestion } from '../types/models';
+import {
+  Church,
+  Clock3,
+  Dumbbell,
+  Film,
+  Fuel,
+  GraduationCap,
+  Hotel,
+  Landmark,
+  MapPin,
+  Pill,
+  ShoppingBag,
+  BusFront,
+  Store,
+  Train,
+  TreePine,
+  Utensils,
+} from 'lucide-react-native';
+import { elev, scheme, shape, type } from '../theme/tokens';
+import type { Suggestion, SuggestionKind } from '../types/models';
+import { formatWalkTime } from '../services/settings';
 
-// M3 list item: two-line, tonal leading container, chevron-free (tap = go).
-const KIND_META = {
-  stop: { Icon: Signpost, bg: scheme.secondaryContainer, fg: scheme.onSecondaryContainer },
-  address: { Icon: MapPin, bg: scheme.tertiaryContainer, fg: scheme.onTertiaryContainer },
-  place: { Icon: ShoppingBag, bg: scheme.primaryContainer, fg: scheme.onPrimaryContainer },
-  history: { Icon: Clock3, bg: scheme.surfaceContainerHighest, fg: scheme.onSurfaceVariant },
-} as const;
+const KIND_META: Record<string, { Icon: any; bg: string; fg: string }> = {
+  stop:          { Icon: BusFront,      bg: scheme.secondaryContainer,       fg: scheme.onSecondaryContainer },
+  address:       { Icon: MapPin,        bg: scheme.tertiaryContainer,        fg: scheme.onTertiaryContainer },
+  history:       { Icon: Clock3,        bg: scheme.surfaceContainerHighest,  fg: scheme.onSurfaceVariant },
+  // Nominatim category icons (M3 dark tonal containers):
+  shop:          { Icon: Store,         bg: scheme.primaryContainer,         fg: scheme.onPrimaryContainer },
+  restaurant:    { Icon: Utensils,      bg: '#4E2600',                       fg: '#FFB68F' },
+  medical:       { Icon: Pill,          bg: '#0F381E',                       fg: '#81C784' },
+  school:        { Icon: GraduationCap, bg: '#0D3559',                       fg: '#90CAF9' },
+  entertainment: { Icon: Film,          bg: '#381A4C',                       fg: '#CE93D8' },
+  fuel:          { Icon: Fuel,          bg: '#422C00',                       fg: '#FFD54F' },
+  train:         { Icon: Train,         bg: '#00363A',                       fg: '#80DEEA' },
+  tourism:       { Icon: Hotel,         bg: '#3E1C14',                       fg: '#FF8A65' },
+  sport:         { Icon: Dumbbell,      bg: '#1A237E',                       fg: '#9FA8DA' },
+  bank:          { Icon: Landmark,      bg: '#263238',                       fg: '#B0BEC5' },
+  church:        { Icon: Church,        bg: '#333816',                       fg: '#DCE775' },
+  place:         { Icon: ShoppingBag,   bg: scheme.primaryContainer,         fg: scheme.onPrimaryContainer },
+};
 
 export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: () => void }) {
-  const meta = KIND_META[item.kind];
+  // Use category if available, otherwise fall back to kind
+  const key = item.category || item.kind;
+  const meta = KIND_META[key] || KIND_META['place'];
   const Icon = meta.Icon;
   return (
     <Pressable
@@ -26,7 +57,9 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.sub} numberOfLines={1}>
           {item.address}
-          {item.distanceM != null ? ` • ${item.distanceM >= 1000 ? `${(item.distanceM / 1000).toFixed(1)} km` : `${item.distanceM} m`}` : ''}
+          {item.distanceM != null
+            ? ` • ${formatWalkTime(Math.max(1, Math.round(item.distanceM / 80)))}`
+            : ''}
         </Text>
       </View>
     </Pressable>

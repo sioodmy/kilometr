@@ -1,60 +1,74 @@
-// Material 3 (Material You) light scheme — seed: MPK teal.
-// Hand-built tonal palette in the M3 baseline style. When real dynamic-color
-// lands (Android 12+ wallpaper extraction), replace `scheme` generation only.
+// Material 3 (Material You) Dark scheme — seed: Wrocław MPK teal (#006A60).
+// Hand-built M3 Dark tonal palette with deep surfaces and vibrant tonal containers.
 export const scheme = {
-  primary: '#006A60',
-  onPrimary: '#FFFFFF',
-  primaryContainer: '#70F7DC',
-  onPrimaryContainer: '#00201B',
-  secondary: '#4A6360',
-  onSecondary: '#FFFFFF',
-  secondaryContainer: '#CCE8E2',
-  onSecondaryContainer: '#06201C',
-  tertiary: '#446179',
-  onTertiary: '#FFFFFF',
-  tertiaryContainer: '#CDE5FF',
-  onTertiaryContainer: '#001E31',
-  error: '#BA1A1A',
-  onError: '#FFFFFF',
-  errorContainer: '#FFDAD6',
-  onErrorContainer: '#410002',
-  surface: '#F4FBF8',
-  onSurface: '#161D1C',
-  onSurfaceVariant: '#3F4947',
-  surfaceDim: '#D8E2DF',
-  surfaceBright: '#F4FBF8',
-  surfaceContainerLowest: '#FFFFFF',
-  surfaceContainerLow: '#EDF5F2',
-  surfaceContainer: '#E7EFEC',
-  surfaceContainerHigh: '#E1E9E6',
-  surfaceContainerHighest: '#DBE4E1',
-  outline: '#6F7976',
-  outlineVariant: '#BEC9C5',
-  inverseSurface: '#2B3231',
-  inverseOnSurface: '#ECF2F0',
-  inversePrimary: '#5CDBBE',
+  // Primary (vibrant teal in dark mode for high accessibility and contrast)
+  primary: '#5CDBBE',
+  onPrimary: '#003831',
+  primaryContainer: '#005047',
+  onPrimaryContainer: '#7DF8DE',
+
+  // Secondary (teal-tinted slate for secondary containers & chips)
+  secondary: '#B1CCC5',
+  onSecondary: '#1C3530',
+  secondaryContainer: '#334B46',
+  onSecondaryContainer: '#CDE8E1',
+
+  // Tertiary (atmospheric blue tone for transit links and waypoints)
+  tertiary: '#A5CCE8',
+  onTertiary: '#07354B',
+  tertiaryContainer: '#244C63',
+  onTertiaryContainer: '#C4E7FF',
+
+  // Error (M3 standard dark)
+  error: '#FFB4AB',
+  onError: '#690005',
+  errorContainer: '#93000A',
+  onErrorContainer: '#FFDAD6',
+
+  // Surface scale (M3 dark elevation surfaces: deep obsidian with subtle cool undertones)
+  surface: '#111414',
+  onSurface: '#E0E3E1',
+  onSurfaceVariant: '#BFC9C5',
+  surfaceDim: '#0E1513',
+  surfaceBright: '#373A39',
+  surfaceContainerLowest: '#0C0F0E',
+  surfaceContainerLow: '#171D1C',
+  surfaceContainer: '#1B2120',
+  surfaceContainerHigh: '#252B2A',
+  surfaceContainerHighest: '#303635',
+
+  // Outline & borders
+  outline: '#899390',
+  outlineVariant: '#3F4946',
+
+  // Inverse
+  inverseSurface: '#DEE4E1',
+  inverseOnSurface: '#2B3230',
+  inversePrimary: '#006A5F',
   scrim: '#000000',
-  // M3 has no semantic success/warning — transit needs them, tonal style:
-  success: '#146C2E',
-  onSuccess: '#FFFFFF',
-  successContainer: '#B7F0C0',
-  onSuccessContainer: '#00210B',
-  warning: '#7C4D00',
-  onWarning: '#FFFFFF',
-  warningContainer: '#FFDFA6',
-  onWarningContainer: '#2A1800',
+
+  // Semantic transit statuses (tonal dark mode)
+  success: '#7DD895',
+  onSuccess: '#003914',
+  successContainer: '#005321',
+  onSuccessContainer: '#98F5AF',
+
+  warning: '#FFB957',
+  onWarning: '#452B00',
+  warningContainer: '#633F00',
+  onWarningContainer: '#FFDDB5',
 } as const;
 
-// ─── Back-compat aliases (existing components keep compiling) ────────────────
+// ─── Back-compat aliases ─────────────────────────────────────────────────────
 export const colors = {
   bg: scheme.surface,
-  card: scheme.surfaceContainerLow,
+  card: scheme.surfaceContainer,
   ink: scheme.onSurface,
   muted: scheme.onSurfaceVariant,
-  faint: '#727876',
+  faint: '#6E7875',
   line: scheme.outlineVariant,
   primary: scheme.primary,
-  primaryDark: '#005049',
+  primaryDark: '#005047',
   primarySoft: scheme.secondaryContainer,
   accent: scheme.tertiary,
   accentSoft: scheme.tertiaryContainer,
@@ -64,10 +78,10 @@ export const colors = {
   dangerSoft: scheme.errorContainer,
   warning: scheme.warning,
   warningSoft: scheme.warningContainer,
-  // Functional transit line coding (Google Maps-style saturated pills)
-  lineTram: '#006A60',
-  lineBus: '#0B57D0',
-  lineNight: '#301878',
+  // Functional transit line coding (high legibility on dark surfaces)
+  lineTram: '#00A896',
+  lineBus: '#2979FF',
+  lineNight: '#B39DDB',
   walk: scheme.onSurfaceVariant,
 } as const;
 

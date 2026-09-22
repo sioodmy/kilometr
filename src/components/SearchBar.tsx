@@ -1,14 +1,14 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { LocateFixed, Mic, Search } from 'lucide-react-native';
+import { Search } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 
 // M3 SearchBar: surfaceContainerHigh, extraLarge shape, leading icon,
-// trailing icon buttons, level1 when idle.
+// level1 elevation.
 export function SearchBar({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.box, pressed && { opacity: 0.9 }]}
+      style={({ pressed }) => [styles.box, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}
       accessibilityRole="search"
     >
       <View style={styles.leading}>
@@ -17,12 +17,6 @@ export function SearchBar({ onPress }: { onPress: () => void }) {
       <Text style={styles.placeholder} numberOfLines={1}>
         Szukaj adresu lub miejsca…
       </Text>
-      <View style={styles.trailing}>
-        <Mic size={20} color={scheme.onSurfaceVariant} />
-      </View>
-      <View style={styles.avatar}>
-        <LocateFixed size={19} color={scheme.onPrimaryContainer} />
-      </View>
     </Pressable>
   );
 }
@@ -32,23 +26,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.extraLarge,
-    height: 60,
+    borderRadius: shape.full,
+    height: 56,
     paddingLeft: 6,
-    paddingRight: 6,
-    gap: 2,
+    paddingRight: 8,
+    gap: 4,
     ...elev.level1,
   },
-  leading: { width: 46, alignItems: 'center', justifyContent: 'center' },
+  leading: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   placeholder: { flex: 1, ...type.bodyLarge, color: scheme.onSurfaceVariant },
-  trailing: { width: 44, alignItems: 'center', justifyContent: 'center' },
-  // M3 tonal avatar action (replaces bordered locate button)
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
-import { ArrowLeft, Check, Mic, X } from 'lucide-react-native';
+import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import BottomSheet, { BottomSheetFlatList, TouchableOpacity } from '@gorhom/bottom-sheet';
+import { ArrowLeft, Check, X } from 'lucide-react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Suggestion } from '../types/models';
@@ -14,7 +14,7 @@ export function SearchSheetHost({ children }: { children: React.ReactNode }) {
 const FILTERS = ['Wszystko', 'Przystanki', 'Adresy', 'Miejsca'] as const;
 
 export function SearchSheet({
-  open,
+  open = true,
   query,
   loading,
   results,
@@ -24,7 +24,7 @@ export function SearchSheet({
   onSelect,
   onClose,
 }: {
-  open: boolean;
+  open?: boolean;
   query: string;
   loading: boolean;
   results: Suggestion[];
@@ -38,14 +38,27 @@ export function SearchSheet({
   const inputRef = useRef<TextInput>(null);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('Wszystko');
 
+  // Stabilny ref do onClose (unikamy prze-subskrypcji przy każdym renderze)
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  // Android back / gest wstecz zamyka wyszukiwarkę zamiast wyjścia z apki
   useEffect(() => {
-    if (open) {
-      ref.current?.expand();
-      setTimeout(() => inputRef.current?.focus(), 250);
-    } else {
-      ref.current?.close();
-    }
-  }, [open ]);
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      closeRef.current();
+      return true;
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 250);
+  }, []);
+
+  const handleClose = () => {
+    inputRef.current?.blur();
+    ref.current?.close();
+  };
 
   const filtered = useMemo(() => {
     if (filter === 'Wszystko') return results;
@@ -55,22 +68,33 @@ export function SearchSheet({
 
   const showRecent = query.trim().length === 0;
 
+  const handleSelect = (item: Suggestion) => {
+    onSelect(item);
+    inputRef.current?.blur();
+    ref.current?.close();
+  };
+
   return (
     <BottomSheet
       ref={ref}
-      index={-1}
-      snapPoints={['12%', '62%', '92%']}
+      index={0}
+      snapPoints={['92%']}
+      enableDynamicSizing={false}
       enablePanDownToClose
-      onClose={onClose}
+      onChange={(idx) => {
+        if (idx === -1) {
+          onClose();
+        }
+      }}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
       <View style={styles.head}>
         {/* M3 search field */}
         <View style={styles.inputBox}>
-          <Pressable onPress={onClose} hitSlop={10} style={styles.leadingBtn}>
+          <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.leadingBtn} activeOpacity={0.7}>
             <ArrowLeft size={21} color={scheme.onSurface} />
-          </Pressable>
+          </TouchableOpacity>
           <TextInput
             ref={inputRef}
             value={query}
@@ -81,36 +105,38 @@ export function SearchSheet({
             returnKeyType="search"
           />
           {loading ? (
-            <ActivityIndicator size="small" color={scheme.primary} />
+            <View style={styles.trailingBtn}>
+              <ActivityIndicator size="small" color={scheme.primary} />
+            </View>
           ) : query ? (
-            <Pressable onPress={() => onQuery('')} hitSlop={10} style={styles.leadingBtn}>
+            <TouchableOpacity onPress={() => onQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.trailingBtn} activeOpacity={0.7}>
               <X size={19} color={scheme.onSurfaceVariant} />
-            </Pressable>
-          ) : (
-            <Mic size={19} color={scheme.onSurfaceVariant} />
-          )}
+            </TouchableOpacity>
+          ) : null}
         </View>
-        {/* M3 filter chips: outlined, checkmark when selected */}
-        <View style={styles.chips}>
+        {/* M3 filter chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} overScrollMode="never" contentContainerStyle={styles.chips}>
           {FILTERS.map((f) => {
             const active = filter === f;
             return (
-              <Pressable
+              <TouchableOpacity
                 key={f}
                 onPress={() => setFilter(f)}
+                activeOpacity={0.8}
                 style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}
               >
                 {active && <Check size={15} color={scheme.onSecondaryContainer} />}
                 <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextIdle]}>{f}</Text>
-              </Pressable>
+              </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
       </View>
 
       <BottomSheetFlatList
         data={showRecent ? recent : filtered}
-        keyExtractor={(i: Suggestion) => i.id}
+        keyExtractor={(i: Suggestion, idx: number) => `${i.id}-${idx}`}
+        overScrollMode="never"
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
@@ -128,7 +154,7 @@ export function SearchSheet({
           </View>
         }
         renderItem={({ item }: { item: Suggestion }) => (
-          <SuggestionRow item={item} onPress={() => onSelect(item)} />
+          <SuggestionRow item={item} onPress={() => handleSelect(item)} />
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -142,23 +168,24 @@ export function SearchSheet({
 }
 
 const styles = StyleSheet.create({
-  sheet: { borderTopLeftRadius: shape.extraLarge, borderTopRightRadius: shape.extraLarge, backgroundColor: scheme.surfaceContainerLow, ...elev.level3 },
+  sheet: { borderTopLeftRadius: shape.extraLarge, borderTopRightRadius: shape.extraLarge, backgroundColor: scheme.surfaceContainer, ...elev.level3 },
   handle: { backgroundColor: scheme.outlineVariant, width: 44 },
-  head: { paddingHorizontal: 16, paddingTop: 8, gap: 10 },
+  head: { paddingHorizontal: 16, paddingTop: 8, gap: 12 },
   // M3 search view field: surfaceContainerHighest, full-width, no border
   inputBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
     backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.full,
-    paddingHorizontal: 6,
+    paddingLeft: 4,
+    paddingRight: 6,
     height: 56,
     ...elev.level1,
   },
   leadingBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: shape.full },
-  input: { flex: 1, ...type.bodyLarge, color: scheme.onSurface },
-  chips: { flexDirection: 'row', gap: 8 },
+  trailingBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: shape.full },
+  input: { flex: 1, ...type.bodyLarge, color: scheme.onSurface, paddingVertical: 0, paddingHorizontal: 4 },
+  chips: { gap: 8, paddingVertical: 2 },
   // M3 filter chip: 8dp radius, 32dp height, checkmark when selected
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 14, borderRadius: shape.small, borderWidth: 1 },
   chipIdle: { borderColor: scheme.outlineVariant, backgroundColor: 'transparent' },

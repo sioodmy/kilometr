@@ -1,34 +1,61 @@
 import type {
   Connection,
+  LegStop,
   RouteQuery,
   SavedPlace,
   SmartDestination,
   Suggestion,
+  VehiclePosition,
 } from '../types/models';
 
-// ─── Service contracts. UI imports ONLY these + `services/index.ts` ─────────
-// Mock implementations live in `*.mock.ts`. To wire the backend later:
-//  1. create `SearchService.nominatim.ts` implementing ISearchService
-//  2. swap the export in `index.ts` — zero UI changes needed.
-
 export interface ISearchService {
-  /** Full-text + fuzzy search. Later: Nominatim + Photon + GTFS stops. */
-  search(query: string): Promise<Suggestion[]>;
+  search(query: string, coords?: { lat: number; lon: number }): Promise<Suggestion[]>;
   recent(): Promise<Suggestion[]>;
 }
 
 export interface IRoutingService {
-  /** Later: POST /otp/plan or Navitia journeys. Must stay sorted by departure. */
   getConnections(query: RouteQuery): Promise<Connection[]>;
   getConnectionById(id: string): Promise<Connection | undefined>;
+  saveRoute(connection: Connection): Promise<void>;
+  deleteSavedRoute(id: string): Promise<void>;
+  isRouteSaved(id: string): Promise<boolean>;
+  /** Pełna sekwencja przystanków kursu (cała linia). Zwraca [] gdy brak danych. */
+  getTripStops(tripId: string): Promise<LegStop[]>;
+  /** Live pojazdy danej linii (GTFS-RT match). Zwraca [] gdy brak. */
+  getVehicles(line: string): Promise<VehiclePosition[]>;
 }
 
 export interface ILocationService {
-  /** Later: expo-location getCurrentPositionAsync + reverse-geocode. */
-  getCurrentLocation(): Promise<{ title: string; address: string; lat: number; lon: number }>;
+  getCurrentLocation(): Promise<{ title: string; address: string; lat: number; lon: number; stopId?: string }>;
 }
 
 export interface IFavoritesService {
   list(): Promise<SavedPlace[]>;
-  smartFromOrigin(originId: string): Promise<SmartDestination[]>;
+  smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]>;
+  addPlace(place: {
+    name: string;
+    icon: SavedPlace['icon'];
+    address: string;
+    lat: number;
+    lon: number;
+    anchorStopId?: string | null;
+    anchorStopName?: string | null;
+    anchorStopLat?: number | null;
+    anchorStopLon?: number | null;
+  }): Promise<SavedPlace>;
+  updatePlace(
+    id: string,
+    place: Partial<{
+      name: string;
+      icon: SavedPlace['icon'];
+      address: string;
+      lat: number;
+      lon: number;
+      anchorStopId?: string | null;
+      anchorStopName?: string | null;
+      anchorStopLat?: number | null;
+      anchorStopLon?: number | null;
+    }>
+  ): Promise<SavedPlace | null>;
+  deletePlace(id: string): Promise<boolean>;
 }
