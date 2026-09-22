@@ -1,16 +1,28 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
+  Bike,
   Briefcase,
+  CarFront,
+  Church,
+  Clapperboard,
   Coffee,
   Dumbbell,
   GraduationCap,
   Heart,
   Home,
+  Landmark,
+  Library,
   MapPin,
+  Pill,
+  Plane,
   Plus,
   ShoppingBag,
   Star,
+  Store,
   Train,
+  Trees,
+  Users,
+  UtensilsCrossed,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon } from '../types/models';
@@ -27,6 +39,18 @@ export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, any> = {
   train: Train,
   mapPin: MapPin,
   plus: Plus,
+  restaurant: UtensilsCrossed,
+  pharmacy: Pill,
+  park: Trees,
+  cinema: Clapperboard,
+  culture: Landmark,
+  library: Library,
+  friends: Users,
+  church: Church,
+  car: CarFront,
+  bike: Bike,
+  plane: Plane,
+  market: Store,
 };
 
 // M3 filled cards: tonal icon container, no borders, shape large.

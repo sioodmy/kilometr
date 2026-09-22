@@ -33,7 +33,19 @@ export type SavedPlaceIcon =
   | 'shopping'
   | 'train'
   | 'mapPin'
-  | 'plus';
+  | 'plus'
+  | 'restaurant'
+  | 'pharmacy'
+  | 'park'
+  | 'cinema'
+  | 'culture'
+  | 'library'
+  | 'friends'
+  | 'church'
+  | 'car'
+  | 'bike'
+  | 'plane'
+  | 'market';
 
 export interface SavedPlace {
   id: string;
