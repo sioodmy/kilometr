@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# generowane dane backendu (pobierane automatycznie: `npm run setup`
+# lub hooki predev/prestart w server/) — nigdy nie commitować
+server/data/

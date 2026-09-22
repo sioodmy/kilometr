@@ -33,6 +33,7 @@
     "web": "expo start --web",
     "server": "npm --prefix server start",
     "server:dev": "npm --prefix server run dev",
+    "setup": "npm --prefix server run setup",
     "phone": "bash scripts/launch-phone.sh"
   },
   "private": true,

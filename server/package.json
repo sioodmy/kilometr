@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "setup": "tsx scripts/setup-data.ts",
+    "predev": "npm run setup --silent",
+    "prestart": "npm run setup --silent"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
