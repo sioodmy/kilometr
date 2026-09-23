@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { kvGet, kvSet } from './storage';
 
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
@@ -14,7 +14,7 @@ export async function pingBackend(timeoutMs = 2500): Promise<boolean> {
   }
 }
 
-// Offline-first cache (AsyncStorage): trasy, podpowiedzi, recent.
+// Offline-first cache (kv-store): trasy, podpowiedzi, recent.
 // Gdy backend nie odpowiada, ekrany serwują ostatnie prawdziwe dane
 // zamiast pustki — a po powrocie sieci cicho podmieniają na świeże.
 
@@ -37,7 +37,7 @@ interface Stamped<T> {
 
 async function readJSON<T>(key: string): Promise<T | null> {
   try {
-    const raw = await AsyncStorage.getItem(key);
+    const raw = await kvGet(key);
     if (!raw) return null;
     return JSON.parse(raw) as T;
   } catch {
@@ -77,7 +77,7 @@ export async function saveConnections(query: RouteQuery, list: Connection[]): Pr
         .slice(0, keys.length - MAX_CACHED_QUERIES)
         .forEach((k) => delete all[k]);
     }
-    await AsyncStorage.setItem(KEYS.connections, JSON.stringify(all));
+    await kvSet(KEYS.connections, JSON.stringify(all));
   } catch {
     // cache best-effort
   }
@@ -136,7 +136,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
         .slice(0, keys.length - MAX_SUGGESTION_ENTRIES)
         .forEach((k) => delete all[k]);
     }
-    await AsyncStorage.setItem(KEYS.suggestions, JSON.stringify(all));
+    await kvSet(KEYS.suggestions, JSON.stringify(all));
   } catch {
     // best-effort
   }
@@ -173,7 +173,7 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
 
 export async function saveRecent(items: Suggestion[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(KEYS.recent, JSON.stringify({ savedAt: Date.now(), data: items }));
+    await kvSet(KEYS.recent, JSON.stringify({ savedAt: Date.now(), data: items }));
   } catch {
     // best-effort
   }
@@ -204,7 +204,7 @@ export async function saveLastLocation(loc: {
   stopId?: string;
 }): Promise<void> {
   try {
-    await AsyncStorage.setItem(
+    await kvSet(
       KEYS.location,
       JSON.stringify({ ...loc, savedAt: Date.now() }),
     );

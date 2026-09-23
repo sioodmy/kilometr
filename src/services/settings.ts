@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { kvGet, kvSet } from './storage';
 
 export interface RoutingSettings {
   /** 0–3, default 2 */
@@ -69,7 +69,7 @@ function notify() {
 export async function loadSettings(): Promise<RoutingSettings> {
   if (loaded) return { ...cached };
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await kvGet(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<RoutingSettings>;
       cached = clampSettings(parsed);
@@ -86,7 +86,7 @@ export async function saveSettings(next: Partial<RoutingSettings>): Promise<Rout
   cached = clampSettings({ ...cached, ...next });
   notify();
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cached));
+    await kvSet(STORAGE_KEY, JSON.stringify(cached));
   } catch {
     // ignoruj błąd zapisu
   }
@@ -97,7 +97,7 @@ export function getSettingsSync(): RoutingSettings {
   return { ...cached };
 }
 
-/** Hook do ekranów: ładuje z AsyncStorage i subskrybuje zmiany. */
+/** Hook do ekranów: ładuje z kv-store i subskrybuje zmiany. */
 export function useRoutingSettings() {
   const [settings, setSettings] = useState<RoutingSettings>({ ...cached });
 

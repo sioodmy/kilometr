@@ -1,5 +1,5 @@
 import { AppState, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { kvGet, kvRemove, kvSet } from './storage';
 import Constants from 'expo-constants';
 import { RoutingService } from './api';
 import { getSettingsSync } from './settings';
@@ -227,7 +227,7 @@ function mergeWidgetPinnedFromQuery(query: RouteQuery): Promise<void> {
 export async function pinConnection(query: RouteQuery): Promise<void> {
   pinned = { ...query };
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(pinned));
+    await kvSet(STORAGE_KEY, JSON.stringify(pinned));
   } catch {
     // persist opcjonalny
   }
@@ -240,7 +240,7 @@ export async function pinConnection(query: RouteQuery): Promise<void> {
 export async function unpinConnection(): Promise<void> {
   pinned = null;
   try {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await kvRemove(STORAGE_KEY);
   } catch {
     // ignoruj
   }
@@ -265,7 +265,7 @@ export async function unpinConnection(): Promise<void> {
 /** Wznawia pinezkę po starcie apki (np. po restarcie telefonu znika sticky). */
 export async function restorePinnedQuery(): Promise<PinnedQuery | null> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await kvGet(STORAGE_KEY);
     if (raw) {
       pinned = JSON.parse(raw) as PinnedQuery;
       notify();

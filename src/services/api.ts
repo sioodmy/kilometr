@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { kvGet, kvSet } from './storage';
 import { DEFAULT_LOCATION } from '../config';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService } from './types';
@@ -186,7 +186,7 @@ export const RoutingService: IRoutingService = {
     try {
       const all = await getSavedRoutes();
       all.push({ id: connection.id, savedAt: Date.now(), connection });
-      await AsyncStorage.setItem('kilometr.saved_routes', JSON.stringify(all));
+      await kvSet('kilometr.saved_routes', JSON.stringify(all));
     } catch (err) {
       console.warn('[RoutingService] Failed to save route:', err);
     }
@@ -196,7 +196,7 @@ export const RoutingService: IRoutingService = {
     try {
       const all = await getSavedRoutes();
       const filtered = all.filter(r => r.id !== id);
-      await AsyncStorage.setItem('kilometr.saved_routes', JSON.stringify(filtered));
+      await kvSet('kilometr.saved_routes', JSON.stringify(filtered));
     } catch (err) {
       console.warn('[RoutingService] Failed to delete saved route:', err);
     }
@@ -226,7 +226,7 @@ export const RoutingService: IRoutingService = {
 
 async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
   try {
-    const raw = await AsyncStorage.getItem('kilometr.saved_routes');
+    const raw = await kvGet('kilometr.saved_routes');
     if (raw) return JSON.parse(raw);
   } catch {}
   return [];
@@ -235,7 +235,7 @@ async function getSavedRoutes(): Promise<{id: string, savedAt: number, connectio
 export const FavoritesService: IFavoritesService = {
   async list(): Promise<SavedPlace[]> {
     try {
-      const raw = await AsyncStorage.getItem('kilometr.places');
+      const raw = await kvGet('kilometr.places');
       if (raw) return JSON.parse(raw);
     } catch {}
     return [];
@@ -271,7 +271,7 @@ export const FavoritesService: IFavoritesService = {
       anchorStopLon: place.anchorStopLon || undefined,
     };
     places.push(newPlace);
-    await AsyncStorage.setItem('kilometr.places', JSON.stringify(places));
+    await kvSet('kilometr.places', JSON.stringify(places));
     return newPlace;
   },
 
@@ -280,14 +280,14 @@ export const FavoritesService: IFavoritesService = {
     const idx = places.findIndex(p => p.id === id);
     if (idx === -1) return null;
     places[idx] = { ...places[idx], ...updates };
-    await AsyncStorage.setItem('kilometr.places', JSON.stringify(places));
+    await kvSet('kilometr.places', JSON.stringify(places));
     return places[idx];
   },
 
   async deletePlace(id: string): Promise<boolean> {
     const places = await this.list();
     const filtered = places.filter(p => p.id !== id);
-    await AsyncStorage.setItem('kilometr.places', JSON.stringify(filtered));
+    await kvSet('kilometr.places', JSON.stringify(filtered));
     return true;
   },
 };
