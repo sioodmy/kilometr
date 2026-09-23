@@ -1,18 +1,14 @@
 {
-  description = "kilometr — transport publiczny Wrocławia bez czekania";
+  description = "kilometr — headless dev-build APK (Expo, Android, Nix)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    android-nixpkgs = {
-      url = "github:tadfisher/android-nixpkgs/stable";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, android-nixpkgs }:
+  outputs = { self, nixpkgs }:
     let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
-      forEachSystem = nixpkgs.lib.genAttrs supportedSystems;
+      systems = [ "aarch64-linux" "x86_64-linux" ];
+      forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f system);
 
       pkgsFor = system: import nixpkgs {
         inherit system;
@@ -22,101 +18,127 @@
         };
       };
 
-      # Expo 53 wymaga Android SDK 35 (compileSdk=35, targetSdk=35).
-      # NDK r27c (27.2.12479018) jest standardem dla RN 0.76+ i Expo 53.
-      # Dodatkowo dołączamy platform-36 i build-tools-36.0.0 pod nowsze projekty.
-      androidSdkFor = pkgs:
-        android-nixpkgs.sdk.${pkgs.system} (sdkPkgs: with sdkPkgs; [
-          build-tools-35-0-0
-          build-tools-36-0-0
-          cmdline-tools-latest
-          platform-tools
-          platforms-android-35
-          platforms-android-36
-          ndk-27-2-12479018
-          cmake-3-22-1
-        ]);
+      # Wersje przypięte do tych, na których zweryfikowano działający build.
+      sdkFor = pkgs: (pkgs.androidenv.composeAndroidPackages {
+        cmdLineToolsVersion = "latest";
+        platformToolsVersion = "latest";
+        # 36: aktualny toolchain; 35: wymagany przez template Expo SDK 57
+        # (compileSdk 35 + build-tools 35.0.0) — bez tego Gradle próbuje
+        # dociągać komponenty do read-only nix store i build pada.
+        platformVersions = [ "35" "36" ];
+        buildToolsVersions = [ "35.0.0" "36.0.0" ];
+        includeEmulator = false;
+        includeCmake = true;
+        cmakeVersions = [ "3.22.1" ];
+        includeNDK = true;
+        ndkVersions = [ "27.1.12297006" ];
+      }).androidsdk;
 
-      # NDK dostarcza x86_64 ELF-y dla clang/llvm. Na maszynie aarch64 (np. Ampere)
-      # gradle odpala te binarki i bez emulatora dostaje ENOEXEC / Exec format error.
-      # Budujemy czyste środowisko bsd-user/qemu-x86_64 z glibc-em gościa:
-      # loader qemu dostaje prefix do bibliotek x86_64, a binfmt_misc w kernelu
-      # (lub wrapper w PATH) kieruje wywołania do emulatora.
-      qemuGuestEnvFor = pkgs:
-        if pkgs.stdenv.hostPlatform.isAarch64 then
-          let
-            x86Pkgs = pkgsFor "x86_64-linux";
-          in pkgs.buildEnv {
-            name = "qemu-x86_64-guest-env";
-            paths = [
-              x86Pkgs.glibc
-              x86Pkgs.stdenv.cc.cc.lib
-              x86Pkgs.zlib
-              x86Pkgs.ncurses5
-            ];
-          }
-        else null;
+      # Sysroot x86_64 dla qemu-user (host ARM nie ma /lib64):
+      # PRAWDZIWE pliki (nie symlinki — qemu podwójnie prefixuje absolutne
+      # symlinki i loader ich wtedy nie widzi).
+      sysrootFor = pkgs:
+        let cross = pkgs.pkgsCross.gnu64; in
+        pkgs.runCommand "x86-sysroot" { } ''
+          mkdir -p $out/lib64
+          cp -L ${cross.glibc}/lib/ld-linux-x86-64.so.2 $out/lib64/
+          for lib in libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1; do
+            cp -L ${cross.glibc}/lib/$lib $out/lib64/
+          done
+          cp -L ${cross.zlib}/lib/libz.so.1 $out/lib64/
+          cp -L ${cross.gcc.cc.lib}/lib/libstdc++.so.6 $out/lib64/libstdc++.so.6.0
+          mv $out/lib64/libstdc++.so.6.0 $out/lib64/libstdc++.so.6
+          # qemu-user szuka bibliotek gościa w /lib i /usr/lib (z prefixem
+          # QEMU_LD_PREFIX), a NIE w /lib64 — bez tych dowiązań clang z NDK
+          # pada z "libz.so.1: cannot open shared object file".
+          # Dowiązania względne (nie absolutne — te qemu podwójnie prefixuje).
+          mkdir -p $out/lib $out/usr/lib
+          for f in $out/lib64/*; do
+            b=$(basename "$f")
+            ln -s ../lib64/$b $out/lib/$b
+            ln -s ../../lib64/$b $out/usr/lib/$b
+          done
+        '';
+
+      # Shadow-tree: PRAWDZIWE katalogi + symlinkowane pliki, plus jeden
+      # katalog z PRAWDZIWYMI brakującymi libami NDK clanga.
+      # (cp -as kopiuje też bity read-only ze store — chmod MUSI być zaraz
+      # po kopii, inaczej każde rm/mkdir pada z EACCES. qemu podwójnie
+      # prefixuje absolutne symlinki, więc symlinkowane KATALOGI
+      # materializujemy w pętli.)
+      sdkInjectedFor = pkgs: sdk:
+        pkgs.runCommand "android-sdk-injected" { } ''
+          set -euo pipefail
+          mkdir -p $out
+          cp -as ${sdk}/libexec/android-sdk/. $out/
+          chmod -R u+w $out
+          for _ in $(seq 1 12); do
+            changed=0
+            while IFS= read -r -d ''' l; do
+              if [ -d "$l" ]; then
+                target=$(readlink "$l")
+                case "$target" in
+                  /*) ;;
+                  *) target="$(dirname "$l")/$target" ;;
+                esac
+                rm "$l" && mkdir -p "$l" && cp -as "$target/." "$l/"
+                changed=1
+              fi
+            done < <(find "$out" -type l -print0)
+            [ "$changed" -eq 0 ] && break
+          done
+          chmod -R u+w $out
+          for toolLib in $out/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/lib/x86_64-unknown-linux-gnu; do
+            [ -d "$toolLib" ] || continue
+            rm -rf "$toolLib"
+            mkdir -p "$toolLib"
+            srcLib=${sdk}/libexec/android-sdk/''${toolLib#$out/}
+            for f in "$srcLib"/*; do
+              ln -s "$f" "$toolLib/$(basename "$f")"
+            done
+          done
+          for toolLib in $out/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/lib/x86_64-unknown-linux-gnu; do
+            cp -L --remove-destination \
+              ${pkgs.pkgsCross.gnu64.zlib}/lib/libz.so.1 \
+              "$toolLib/libz.so.1"
+            cp -L --remove-destination \
+              ${pkgs.pkgsCross.gnu64.gcc.cc.lib}/lib/libstdc++.so.6 \
+              "$toolLib/libstdc++.so.6"
+          done
+        '';
 
       envFor = pkgs:
         let
-          androidSdk = androidSdkFor pkgs;
-          qemuGuest = qemuGuestEnvFor pkgs;
+          sdk = sdkFor pkgs;
+          sdkW = sdkInjectedFor pkgs sdk;
+          sysroot = sysrootFor pkgs;
         in {
-          inherit androidSdk;
-          ANDROID_HOME = "${androidSdk}/share/android-sdk";
-          ANDROID_SDK_ROOT = "${androidSdk}/share/android-sdk";
+          # sdkW to shadow-tree, którego rootem jest już katalog android-sdk
+          ANDROID_HOME = "${sdkW}";
+          ANDROID_SDK_ROOT = "${sdkW}";
           JAVA_HOME = "${pkgs.jdk17}";
-          GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidSdk}/share/android-sdk/build-tools/35.0.0/aapt2";
-          QEMU_LD_PREFIX = if qemuGuest != null then "${qemuGuest}" else "";
+          QEMU_LD_PREFIX = "${sysroot}";
         };
-    in {
+    in
+    {
       devShells = forEachSystem (system:
         let
           pkgs = pkgsFor system;
           env = envFor pkgs;
         in {
           default = pkgs.mkShell {
-            packages = with pkgs; [
-              # Runtime JS / tooling
-              nodejs_22
-              nodePackages.npm
-
-              # Android build toolchain
-              env.androidSdk
-              jdk17
-              gradle
-
-              # Natywne narzędzia i zależności Expo
-              git
-              curl
-              unzip
-              which
-              file
-
-              # Emulacja x86_64 dla NDK na maszynach ARM64 (np. Ampere / Apple Silicon VM)
-            ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isAarch64 [
-              pkgs.qemu-user
-            ];
-
-            inherit (env) ANDROID_HOME ANDROID_SDK_ROOT JAVA_HOME GRADLE_OPTS;
-
+          packages = with pkgs; [
+            jdk17
+            nodejs_22
+            qemu-user
+            git
+            curl
+          ];
+            inherit (env) ANDROID_HOME ANDROID_SDK_ROOT JAVA_HOME QEMU_LD_PREFIX;
+            LD_LIBRARY_PATH = "${env.QEMU_LD_PREFIX}/lib64";
             shellHook = ''
-              export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-              ${pkgs.lib.optionalString (env.QEMU_LD_PREFIX != "") ''
-                export QEMU_LD_PREFIX="${env.QEMU_LD_PREFIX}"
-                export LD_LIBRARY_PATH="${env.QEMU_LD_PREFIX}/lib64''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-              ''}
-
-              # Utwórz lokalny android/local.properties jeśli nie istnieje
-              if [ -d android ] && [ ! -f android/local.properties ]; then
-                echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-                echo "ndk.dir=$ANDROID_HOME/ndk/27.2.12479018" >> android/local.properties
-              fi
-
-              echo "Kilometr dev shell gotowy."
-              echo "  Node:    $(node -v)"
-              echo "  Java:    $(java -version 2>&1 | head -n 1)"
-              echo "  Android: $ANDROID_HOME"
+              echo "kilometr dev-shell: ANDROID_HOME=$ANDROID_HOME"
+              echo "  sysroot: $QEMU_LD_PREFIX | $(QEMU_LD_PREFIX=$QEMU_LD_PREFIX ${env.ANDROID_HOME}/cmake/3.22.1/bin/cmake --version 2>/dev/null | head -1 || echo 'cmake check skipped')"
             '';
           };
         });
@@ -191,12 +213,10 @@
             '';
           });
         in {
-          # Headless build: nix run .#build-apk [--release] [--install]
           build-apk = {
             type = "app";
             program = buildScript { defaultRelease = false; };
           };
-          # Headless release build: nix run .#build-release-apk [--install]
           build-release-apk = {
             type = "app";
             program = buildScript { defaultRelease = true; };
