@@ -20,8 +20,7 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
       const db = await SQLite.openDatabaseAsync(GTFS_DB_NAME);
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
-        CREATE TABLE IF NOT EXISTS stops (
-          stop_id TEXT PRIMARY KEY NOT NULL,
+        CREATE TABLE IF NOT EXISTS stops (\n          stop_id TEXT PRIMARY KEY NOT NULL,
           code TEXT NOT NULL DEFAULT '',
           name TEXT NOT NULL,
           lat REAL NOT NULL,
@@ -93,19 +92,39 @@ export async function getMeta(key: string): Promise<string | null> {
   return row?.value ?? null;
 }
 
+export async function prepareForBulkImport(): Promise<void> {
+  const db = await getGtfsDb();
+  await db.execAsync(`
+    PRAGMA synchronous = OFF;
+    DROP INDEX IF EXISTS idx_stoptimes_trip;
+    DROP INDEX IF EXISTS idx_stoptimes_stop;
+  `);
+}
+
+export async function finishBulkImport(): Promise<void> {
+  const db = await getGtfsDb();
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_stoptimes_stop ON stop_times (stop_id, dep_sec);
+    PRAGMA synchronous = NORMAL;
+  `);
+}
+
 export async function importStops(stops: GtfsStop[]): Promise<void> {
   if (stops.length === 0) return;
   const db = await getGtfsDb();
+  const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
-    for (const s of stops) {
+    for (let i = 0; i < stops.length; i += CHUNK_SIZE) {
+      const chunk = stops.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+      const params: (string | number)[] = [];
+      for (const s of chunk) {
+        params.push(s.stop_id, s.stop_code, s.stop_name, s.stop_lat, s.stop_lon, s.normalized_name);
+      }
       await db.runAsync(
-        'INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)',
-        s.stop_id,
-        s.stop_code,
-        s.stop_name,
-        s.stop_lat,
-        s.stop_lon,
-        s.normalized_name,
+        `INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES ${placeholders}`,
+        ...params,
       );
     }
   });
@@ -114,14 +133,18 @@ export async function importStops(stops: GtfsStop[]): Promise<void> {
 export async function importRoutes(routes: GtfsRoute[]): Promise<void> {
   if (routes.length === 0) return;
   const db = await getGtfsDb();
+  const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
-    for (const r of routes) {
+    for (let i = 0; i < routes.length; i += CHUNK_SIZE) {
+      const chunk = routes.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '(?, ?, ?, ?)').join(', ');
+      const params: (string | number)[] = [];
+      for (const r of chunk) {
+        params.push(r.route_id, r.route_short_name, r.route_long_name, r.route_type);
+      }
       await db.runAsync(
-        'INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)',
-        r.route_id,
-        r.route_short_name,
-        r.route_long_name,
-        r.route_type,
+        `INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES ${placeholders}`,
+        ...params,
       );
     }
   });
@@ -130,16 +153,18 @@ export async function importRoutes(routes: GtfsRoute[]): Promise<void> {
 export async function importTrips(trips: GtfsTrip[]): Promise<void> {
   if (trips.length === 0) return;
   const db = await getGtfsDb();
+  const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
-    for (const t of trips) {
+    for (let i = 0; i < trips.length; i += CHUNK_SIZE) {
+      const chunk = trips.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+      const params: (string | number)[] = [];
+      for (const t of chunk) {
+        params.push(t.trip_id, t.route_id, t.service_id, t.trip_headsign, t.direction_id, t.shape_id);
+      }
       await db.runAsync(
-        'INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)',
-        t.trip_id,
-        t.route_id,
-        t.service_id,
-        t.trip_headsign,
-        t.direction_id,
-        t.shape_id,
+        `INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES ${placeholders}`,
+        ...params,
       );
     }
   });
@@ -148,53 +173,71 @@ export async function importTrips(trips: GtfsTrip[]): Promise<void> {
 export async function importCalendar(cals: GtfsCalendar[]): Promise<void> {
   if (cals.length === 0) return;
   const db = await getGtfsDb();
+  const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
-    for (const c of cals) {
+    for (let i = 0; i < cals.length; i += CHUNK_SIZE) {
+      const chunk = cals.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+      const params: (string | number)[] = [];
+      for (const c of chunk) {
+        params.push(
+          c.service_id,
+          c.monday,
+          c.tuesday,
+          c.wednesday,
+          c.thursday,
+          c.friday,
+          c.saturday,
+          c.sunday,
+          c.start_date,
+          c.end_date,
+        );
+      }
       await db.runAsync(
-        'INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        c.service_id,
-        c.monday,
-        c.tuesday,
-        c.wednesday,
-        c.thursday,
-        c.friday,
-        c.saturday,
-        c.sunday,
-        c.start_date,
-        c.end_date,
+        `INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES ${placeholders}`,
+        ...params,
       );
     }
   });
 }
 
 export async function importCalendarDates(rows: { service_id: string; date: string; exception_type: number }[]): Promise<void> {
+  if (rows.length === 0) return;
   const db = await getGtfsDb();
+  const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM calendar_dates');
-    for (const r of rows) {
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
+      const params: (string | number)[] = [];
+      for (const r of chunk) {
+        params.push(r.service_id, r.date, r.exception_type);
+      }
       await db.runAsync(
-        'INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)',
-        r.service_id,
-        r.date,
-        r.exception_type,
+        `INSERT INTO calendar_dates (service_id, date, exc) VALUES ${placeholders}`,
+        ...params,
       );
     }
   });
 }
 
-/** Wrzuca porcję stop_times (z parseStopTimesBatched) w jednej transakcji. */
+/** Wrzuca porcję stop_times (z parseStopTimesBatched) w wielowierszowych INSERT-ach. */
 export async function importStopTimesBatch(batch: GtfsStopTime[]): Promise<void> {
   if (batch.length === 0) return;
   const db = await getGtfsDb();
+  const CHUNK_SIZE = 100;
   await db.withTransactionAsync(async () => {
-    for (const st of batch) {
+    for (let i = 0; i < batch.length; i += CHUNK_SIZE) {
+      const chunk = batch.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
+      const params: (string | number)[] = [];
+      for (const st of chunk) {
+        params.push(st.trip_id, st.stop_id, st.arrival_sec, st.departure_sec, st.stop_sequence);
+      }
       await db.runAsync(
-        'INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)',
-        st.trip_id,
-        st.stop_id,
-        st.arrival_sec,
-        st.departure_sec,
-        st.stop_sequence,
+        `INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES ${placeholders}`,
+        ...params,
       );
     }
   });

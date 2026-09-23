@@ -10,7 +10,7 @@
 // Nie trzymamy całego rozkładu w Mapach jak serwer — telefon pyta SQLite.
 
 import * as FileSystem from 'expo-file-system/legacy';
-import { unzipSync } from 'fflate';
+import { strFromU8, unzipSync } from 'fflate';
 import { GTFS } from './gtfsConfig';
 
 export interface GtfsArchiveCandidate {
@@ -143,10 +143,19 @@ export async function hasExtractedGtfs(): Promise<boolean> {
   }
 }
 
+const NEEDED_GTFS_FILES = new Set([
+  'stops.txt',
+  'routes.txt',
+  'calendar.txt',
+  'calendar_dates.txt',
+  'trips.txt',
+  'stop_times.txt',
+]);
+
 /**
  * Rozpakowuje gtfs.zip (fflate, w JS) do plików documentDirectory.
  * Pliki GTFS Wrocławia po rozpakowaniu: stops/routes/trips/calendar/
- * calendar_dates/stop_times/shapes. Zwraca listę wypakowanych nazw.
+ * calendar_dates/stop_times. Zwraca listę wypakowanych nazw.
  */
 export async function unzipGtfs(zipUri: string): Promise<string[]> {
   const dir = gtfsDir();
@@ -165,13 +174,8 @@ export async function unzipGtfs(zipUri: string): Promise<string[]> {
   for (const [name, data] of Object.entries(entries)) {
     if (name.endsWith('/')) continue;
     const short = name.split('/').pop() || name;
-    if (!short.endsWith('.txt')) continue;
-    let text = '';
-    // Dekodowanie chunkami, żeby nie przekroczyć limitu stosu apply().
-    const CHUNK = 0x8000;
-    for (let i = 0; i < data.length; i += CHUNK) {
-      text += String.fromCharCode.apply(null, Array.from(data.subarray(i, i + CHUNK)) as number[]);
-    }
+    if (!NEEDED_GTFS_FILES.has(short)) continue;
+    const text = strFromU8(data);
     await FileSystem.writeAsStringAsync(`${dir}${short}`, text);
     names.push(short);
   }

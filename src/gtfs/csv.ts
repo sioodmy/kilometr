@@ -215,7 +215,8 @@ export async function parseStopTimesBatched(
   for (let i = 1; i < lines.length; i++) {
     const trimmed = lines[i].trim();
     if (!trimmed) continue;
-    const cols = parseCsvLine(trimmed);
+    // stop_times.txt nie zawiera cudzysłowów ani przecinków w wartościach — szybki split
+    const cols = trimmed.split(',');
     const trip_id = cols[tripIdx]?.trim();
     if (!trip_id) continue;
     if (activeTripIds && !activeTripIds.has(trip_id)) continue;
