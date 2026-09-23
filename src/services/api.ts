@@ -48,6 +48,32 @@ export const LocationService: ILocationService = {
           // Backend reverse geocode fallback
         }
 
+        // Offline: najpierw lokalny GTFS (przystanek obok GPS), potem Nominatim direct.
+        try {
+          const { findNearestStops } = await import('./gtfsDatabase');
+          const nearest = await findNearestStops(lat, lon, 500, 1);
+          if (nearest.length > 0) {
+            const n = nearest[0];
+            cachedLocation = {
+              title: n.name,
+              address: n.code ? `Przystanek • słup ${n.code}` : 'Wrocław',
+              lat,
+              lon,
+              stopId: n.stop_id,
+            };
+            void saveLastLocation(cachedLocation);
+            return cachedLocation;
+          }
+          const { reverseNominatimDirect } = await import('./nominatimDirect');
+          const rev = await reverseNominatimDirect(lat, lon);
+          if (rev) {
+            cachedLocation = { title: rev.title, address: rev.address, lat, lon };
+            return cachedLocation;
+          }
+        } catch {
+          // lokalne źródła niedostępne — lecimy do ostatniej znanej niżej
+        }
+
         // Offline: ostatnia znana ulica, ale tylko gdy blisko bieżącej pozycji.
         const last = await loadLastLocation();
         if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
@@ -118,6 +144,39 @@ export const SearchService: ISearchService = {
     }
 
     if (searchAbort !== ctrl) return []; // przestarzałe — nie nadpisuj nowszych wyników
+    // Backend offline — najpierw lokalny GTFS + Nominatim prosto z telefonu,
+    // dopiero potem ostatnie wyniki z cache.
+    try {
+      const { searchStops } = await import('./gtfsDatabase');
+      const { searchNominatimDirect } = await import('./nominatimDirect');
+      const [localHits, remoteHits] = await Promise.all([
+        searchStops(q, 6).catch(() => []),
+        searchNominatimDirect(q, coords?.lat, coords?.lon).catch(() => []),
+      ]);
+      const merged: Suggestion[] = [
+        ...localHits.map((h) => ({
+          id: `stop-${h.stop_id}`,
+          title: h.name,
+          address: h.code ? `Przystanek • słup. ${h.code}` : 'Wrocław',
+          kind: 'stop' as const,
+          lat: h.lat,
+          lon: h.lon,
+          distanceM:
+            coords !== undefined
+              ? Math.round(
+                  Math.sqrt((h.lat - coords.lat) ** 2 + (h.lon - coords.lon) ** 2) * 111000,
+                )
+              : undefined,
+        })),
+        ...remoteHits,
+      ];
+      if (merged.length > 0) {
+        void saveSuggestions(q, merged);
+        return merged;
+      }
+    } catch {
+      // lokalne źródła niedostępne — spada do cache niżej
+    }
     return loadSuggestions(q);
   },
 
@@ -375,6 +434,22 @@ export async function fetchNearestStops(lat: number, lon: number, limit = 6, max
     );
     if (res.ok) {
       return (await res.json()) as NearestStop[];
+    }
+  } catch {
+    // ignore — próbujemy lokalny GTFS niżej
+  }
+  try {
+    const { findNearestStops } = await import('./gtfsDatabase');
+    const local = await findNearestStops(lat, lon, maxDistance, limit);
+    if (local.length > 0) {
+      return local.map((n) => ({
+        id: n.stop_id,
+        name: n.name,
+        code: n.code,
+        lat: n.lat,
+        lon: n.lon,
+        distanceM: n.distanceM,
+      }));
     }
   } catch {
     // ignore

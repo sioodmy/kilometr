@@ -1,7 +1,8 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeftRight, ChevronLeft, Clock3, Footprints, Minus, Plus, RotateCcw, Activity, Anchor } from 'lucide-react-native';
+import { ArrowLeftRight, ChevronLeft, Clock3, Database, Download, Footprints, Minus, Plus, RotateCcw, Activity, Anchor } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import {
@@ -12,7 +13,29 @@ import {
   walkSpeedLabel,
   useRoutingSettings,
 } from '../src/services/settings';
+import {
+  getDataStatus,
+  importGtfsFromNetwork,
+  refreshDataStatus,
+  subscribeDataStatus,
+  type DataStatus,
+} from '../src/services/dataManager';
 import { transfersLabel } from '../src/components/ConnectionCard';
+
+function dataStatusLabel(s: DataStatus): string {
+  switch (s.state) {
+    case 'empty':
+      return 'Brak danych — pobierz rozkład MPK';
+    case 'downloading':
+      return `Pobieranie… ${Math.round(s.progress * 100)}%`;
+    case 'importing':
+      return `${s.step} ${Math.round(s.progress * 100)}%`;
+    case 'ready':
+      return `Gotowe: ${s.stops} przystanków, ${s.trips} kursów`;
+    case 'error':
+      return `Błąd: ${s.message}`;
+  }
+}
 
 function Stepper({
   value,
@@ -72,6 +95,30 @@ export default function SettingsScreen() {
   const walk = SETTINGS_LIMITS.maxWalkM;
   const speed = SETTINGS_LIMITS.walkSpeedMps;
   const anchor = SETTINGS_LIMITS.anchorRadiusM;
+  const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    refreshDataStatus().then(setDataStatus);
+    return subscribeDataStatus(setDataStatus);
+  }, []);
+
+  const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+
+  const handleDownload = async () => {
+    if (busy) return;
+    setImporting(true);
+    try {
+      await importGtfsFromNetwork();
+    } catch {
+      Alert.alert(
+        'Nie udało się pobrać rozkładu',
+        'Sprawdź połączenie z internetem i spróbuj ponownie. Aplikacja pobiera dane prosto z Open Data Wrocław.',
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -87,6 +134,33 @@ export default function SettingsScreen() {
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
         <Animated.View entering={FadeInDown.duration(180)} style={styles.card}>
+          <View style={styles.cardTop}>
+            <Database size={18} color={scheme.primary} />
+            <Text style={styles.cardTitle}>Dane offline (MPK Wrocław)</Text>
+          </View>
+          <Text style={styles.cardHint}>
+            Telefon pobiera rozkład prosto z Open Data Wrocław — bez pośredniego serwera. Po pobraniu wyszukiwanie
+            przystanków i adresów działa także bez serwera.
+          </Text>
+          <Text style={styles.stepValueText}>{dataStatusLabel(dataStatus)}</Text>
+          <Pressable
+            onPress={handleDownload}
+            disabled={busy}
+            style={({ pressed }) => [
+              styles.downloadBtn,
+              busy && styles.stepBtnDisabled,
+              pressed && !busy && { opacity: 0.7 },
+            ]}
+            accessibilityLabel="Pobierz rozkład MPK"
+          >
+            <Download size={18} color={scheme.onSecondaryContainer} />
+            <Text style={styles.downloadText}>
+              {dataStatus.state === 'ready' ? 'Odśwież rozkład' : 'Pobierz rozkład'}
+            </Text>
+          </Pressable>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(20).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <ArrowLeftRight size={18} color={scheme.primary} />
             <Text style={styles.cardTitle}>Maks. liczba przesiadek</Text>
@@ -201,5 +275,7 @@ const styles = StyleSheet.create({
   stepValue: { alignItems: 'center' },
   stepValueText: { ...type.titleMedium, color: scheme.onSurface },
   stepValueSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: scheme.secondaryContainer, borderRadius: shape.full, paddingVertical: 12 },
+  downloadText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
   foot: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 16 },
 });

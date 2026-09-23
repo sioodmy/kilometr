@@ -7,6 +7,7 @@ import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService } from '../src/services';
 import { pingBackend } from '../src/services/offlineCache';
+import { refreshDataStatus } from '../src/services/dataManager';
 import { getSettingsSync } from '../src/services/settings';
 import { getPinnedQuerySync } from '../src/services/pinnedConnection';
 import {
@@ -48,9 +49,12 @@ export default function HomeScreen() {
   const [offline, setOffline] = useState(false);
 
   // Status sieci: ping przy starcie, powrocie na foreground i co 30 s.
+  // refreshDataStatus ładuje status lokalnego GTFS — pingBackend zwraca true
+  // także gdy dane lokalne są gotowe (release bez serwera).
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
+      await refreshDataStatus().catch(() => {});
       const online = await pingBackend();
       if (!cancelled) setOffline(!online);
     };

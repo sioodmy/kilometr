@@ -8,11 +8,20 @@ export async function pingBackend(timeoutMs = 2500): Promise<boolean> {
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(`${API_URL}/api/health`, { signal: ctrl.signal });
-    return res.ok;
+    if (res.ok) return true;
   } catch {
-    return false;
+    // brak serwera — sprawdzamy lokalne dane niżej
   } finally {
     clearTimeout(timer);
+  }
+  // Tryb offline-first: lokalny GTFS w SQLite też znaczy "działa".
+  // Dzięki temu release bez serwera nie wisi na "Offline", tylko szuka lokalnie.
+  try {
+    const { getGtfsStats } = await import('./gtfsDatabase');
+    const stats = await getGtfsStats();
+    return stats.stops > 0;
+  } catch {
+    return false;
   }
 }
 
