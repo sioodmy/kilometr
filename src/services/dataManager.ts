@@ -27,6 +27,8 @@ import {
   importStops,
   importTrips,
   clearGtfsTables,
+  prepareForBulkImport,
+  finishBulkImport,
   setMeta,
 } from './gtfsDatabase';
 
@@ -78,8 +80,12 @@ export async function refreshDataStatus(): Promise<DataStatus> {
   return status;
 }
 
+let importInProgress = false;
+
 /** Pełny import: katalog → zip → unzip → SQLite. Długie, z progresem. */
 export async function importGtfsFromNetwork(): Promise<void> {
+  if (importInProgress) return;
+  importInProgress = true;
   try {
     emit({ state: 'downloading', progress: 0 });
     const url = await discoverBestArchiveUrl();
@@ -97,6 +103,7 @@ export async function importGtfsFromNetwork(): Promise<void> {
     }
 
     await clearGtfsTables();
+    await prepareForBulkImport();
 
     emit({ state: 'importing', step: 'Przystanki…', progress: 0.05 });
     const stopsTxt = await readGtfsText('stops.txt');
@@ -134,6 +141,9 @@ export async function importGtfsFromNetwork(): Promise<void> {
       { batchSize: 5000 },
     );
 
+    emit({ state: 'importing', step: 'Budowanie indeksów…', progress: 0.97 });
+    await finishBulkImport();
+
     await setMeta('gtfs_imported_at', new Date().toISOString());
     await setMeta('gtfs_dir', gtfsDir());
     await cleanupRawGtfs();
@@ -142,7 +152,12 @@ export async function importGtfsFromNetwork(): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     console.warn('[DataManager] import failed:', message);
     emit({ state: 'error', message });
+    try {
+      await finishBulkImport();
+    } catch {}
     throw err;
+  } finally {
+    importInProgress = false;
   }
 }
 

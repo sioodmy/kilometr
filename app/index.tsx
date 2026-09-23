@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LocateFixed, Pencil, Settings2 } from 'lucide-react-native';
@@ -7,7 +7,13 @@ import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService } from '../src/services';
 import { pingBackend } from '../src/services/offlineCache';
-import { refreshDataStatus } from '../src/services/dataManager';
+import {
+  type DataStatus,
+  getDataStatus,
+  importGtfsFromNetwork,
+  refreshDataStatus,
+  subscribeDataStatus,
+} from '../src/services/dataManager';
 import { getSettingsSync } from '../src/services/settings';
 import { getPinnedQuerySync } from '../src/services/pinnedConnection';
 import {
@@ -47,14 +53,22 @@ export default function HomeScreen() {
   const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [offline, setOffline] = useState(false);
+  const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
+
+  useEffect(() => {
+    return subscribeDataStatus(setDataStatus);
+  }, []);
 
   // Status sieci: ping przy starcie, powrocie na foreground i co 30 s.
-  // refreshDataStatus ładuje status lokalnego GTFS — pingBackend zwraca true
-  // także gdy dane lokalne są gotowe (release bez serwera).
+  // refreshDataStatus ładuje status lokalnego GTFS — jeśli pusty, automatycznie
+  // uruchamiamy pobieranie rozkładu, aby aplikacja działała bez serwera dev.
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
-      await refreshDataStatus().catch(() => {});
+      const st = await refreshDataStatus().catch(() => ({ state: 'empty' } as const));
+      if (st.state === 'empty') {
+        void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
+      }
       const online = await pingBackend();
       if (!cancelled) setOffline(!online);
     };
@@ -69,6 +83,7 @@ export default function HomeScreen() {
       clearInterval(timer);
     };
   }, []);
+
   const refreshPlaces = () => {
     FavoritesService.list().then(setSaved);
   };
@@ -84,6 +99,18 @@ export default function HomeScreen() {
       FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(setSmart);
     });
   }, []);
+
+  // Po zakończeniu importu GTFS aktualizujemy odjazdy i zdejmujemy badge offline
+  useEffect(() => {
+    if (dataStatus.state === 'ready') {
+      setOffline(false);
+      refreshPlaces();
+      LocationService.getCurrentLocation().then((l) => {
+        const coords = { lat: l.lat, lon: l.lon };
+        FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(setSmart);
+      });
+    }
+  }, [dataStatus.state]);
 
   // Najszybszy odjazd do każdej częstej destynacji (z ustawieniami trasy użytkownika)
   useEffect(() => {
@@ -294,8 +321,8 @@ export default function HomeScreen() {
     } catch (err) {
       console.error('[handleSavePlace error]', err);
       Alert.alert(
-        'Brak połączenia z serwerem',
-        'Nie udało się zapisać miejsca. Sprawdź połączenie i spróbuj ponownie.',
+        'Brak połączenia z bazą',
+        'Nie udało się zapisać miejsca. Spróbuj ponownie.',
       );
       return;
     }
@@ -308,8 +335,6 @@ export default function HomeScreen() {
     refreshPlaces();
     FavoritesService.smartFromOrigin(locTitle, currentCoords).then(setSmart);
   };
-
-  console.log('[index.tsx] render: manageSheetOpen =', manageSheetOpen, 'addPlaceOpen =', addPlaceOpen, 'sheetOpen =', sheetOpen);
 
   return (
     <View style={styles.root}>
@@ -334,6 +359,33 @@ export default function HomeScreen() {
           </View>
 
           <Text style={styles.hero}>Gdzie jedziemy?</Text>
+
+          {dataStatus.state === 'downloading' && (
+            <View style={styles.importCard}>
+              <ActivityIndicator size="small" color={scheme.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.importTitle}>Pobieranie rozkładu Wrocławia…</Text>
+                <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
+              </View>
+            </View>
+          )}
+
+          {dataStatus.state === 'importing' && (
+            <View style={styles.importCard}>
+              <ActivityIndicator size="small" color={scheme.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.importTitle}>{dataStatus.step}</Text>
+                <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
+              </View>
+            </View>
+          )}
+
+          {dataStatus.state === 'error' && (
+            <Pressable style={styles.importCardError} onPress={() => void importGtfsFromNetwork()}>
+              <Text style={styles.importTitleError}>Błąd pobierania rozkładu</Text>
+              <Text style={styles.importSubError}>{dataStatus.message}. Dotknij, aby ponowić.</Text>
+            </Pressable>
+          )}
 
           <View style={{ height: 24 }} />
           <SearchBar onPress={() => setSheetOpen(true)} />
@@ -396,14 +448,12 @@ export default function HomeScreen() {
             goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon });
           }}
           onEditPlace={(p) => {
-            console.log('[index.tsx] onEditPlace:', p.name);
             setManageSheetOpen(false);
             setEditingPlace(p);
             setAddPlaceOpen(true);
           }}
           onDeletePlace={handleDeletePlace}
           onAddNew={() => {
-            console.log('[index.tsx] onAddNew from manage sheet');
             setManageSheetOpen(false);
             setEditingPlace(null);
             setAddPlaceOpen(true);
@@ -415,7 +465,6 @@ export default function HomeScreen() {
         <AddPlaceSheet
           initialPlace={editingPlace}
           onClose={() => {
-            console.log('[index.tsx] AddPlaceSheet onClose triggered');
             setAddPlaceOpen(false);
             setEditingPlace(null);
           }}
@@ -472,6 +521,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   hero: { ...type.displaySmall, color: scheme.onSurface, marginTop: 16 },
+  importCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.medium,
+    ...elev.level1,
+  },
+  importTitle: {
+    ...type.bodyMedium,
+    color: scheme.onSurface,
+    fontWeight: '600',
+  },
+  importSub: {
+    ...type.labelSmall,
+    color: scheme.primary,
+    fontWeight: '700',
+  },
+  importCardError: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: scheme.errorContainer,
+    borderRadius: shape.medium,
+  },
+  importTitleError: {
+    ...type.bodyMedium,
+    color: scheme.onErrorContainer,
+    fontWeight: '700',
+  },
+  importSubError: {
+    ...type.labelSmall,
+    color: scheme.onErrorContainer,
+    marginTop: 2,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
