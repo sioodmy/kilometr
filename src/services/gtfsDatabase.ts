@@ -20,7 +20,8 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
       const db = await SQLite.openDatabaseAsync(GTFS_DB_NAME);
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
-        CREATE TABLE IF NOT EXISTS stops (\n          stop_id TEXT PRIMARY KEY NOT NULL,
+        CREATE TABLE IF NOT EXISTS stops (
+          stop_id TEXT PRIMARY KEY NOT NULL,
           code TEXT NOT NULL DEFAULT '',
           name TEXT NOT NULL,
           lat REAL NOT NULL,
