@@ -1,8 +1,11 @@
 import * as Location from 'expo-location';
-import { API_URL, DEFAULT_LOCATION } from '../config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEFAULT_LOCATION } from '../config';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService } from './types';
-import { loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveRecent, saveSuggestions } from './offlineCache';
+import { loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
+import { planConnections, buildTripStops } from './routing/engine';
+import { fetchVehiclesDirect } from './realtimeClient';
 
 let cachedLocation: { title: string; address: string; lat: number; lon: number; stopId?: string } | null = null;
 
@@ -27,28 +30,6 @@ export const LocationService: ILocationService = {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
-        // Call backend reverse geocode / snap to stop
-        try {
-          const res = await fetch(`${API_URL}/api/location/reverse?lat=${lat}&lon=${lon}`, {
-            signal: AbortSignal.timeout(3000),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            cachedLocation = {
-              title: data.title,
-              address: data.address,
-              lat: data.lat,
-              lon: data.lon,
-              stopId: data.stopId,
-            };
-            void saveLastLocation(cachedLocation);
-            return cachedLocation;
-          }
-        } catch {
-          // Backend reverse geocode fallback
-        }
-
-        // Offline: najpierw lokalny GTFS (przystanek obok GPS), potem Nominatim direct.
         try {
           const { findNearestStops } = await import('./gtfsDatabase');
           const nearest = await findNearestStops(lat, lon, 500, 1);
@@ -70,11 +51,8 @@ export const LocationService: ILocationService = {
             cachedLocation = { title: rev.title, address: rev.address, lat, lon };
             return cachedLocation;
           }
-        } catch {
-          // lokalne źródła niedostępne — lecimy do ostatniej znanej niżej
-        }
+        } catch {}
 
-        // Offline: ostatnia znana ulica, ale tylko gdy blisko bieżącej pozycji.
         const last = await loadLastLocation();
         if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
           cachedLocation = {
@@ -99,7 +77,6 @@ export const LocationService: ILocationService = {
       console.warn('[LocationService] Failed to acquire device location:', err);
     }
 
-    // Brak GPS i backendu: neutralny środek Wrocławia (ŻADEN mock danych).
     return { ...DEFAULT_LOCATION };
   },
 };
@@ -111,41 +88,10 @@ export const SearchService: ISearchService = {
     const q = query.trim();
     if (!q) return [];
 
-    // Nowe pociągnięcie klawiatury anuluje poprzednie — brak podmiany wyników
-    // na przestarzałe i brak kolejek na wolnym łączu.
     searchAbort?.abort();
     const ctrl = new AbortController();
     searchAbort = ctrl;
-    const timer = setTimeout(() => ctrl.abort(), 6500);
 
-    try {
-      let url = `${API_URL}/api/search?q=${encodeURIComponent(q)}`;
-      if (coords) {
-        url += `&lat=${coords.lat}&lon=${coords.lon}`;
-      } else if (cachedLocation) {
-        url += `&lat=${cachedLocation.lat}&lon=${cachedLocation.lon}`;
-      }
-
-      const res = await fetch(url, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (searchAbort !== ctrl) return []; // w międzyczasie przyszło nowsze zapytanie
-      if (res.ok) {
-        const items = (await res.json()) as Suggestion[];
-        if (searchAbort === ctrl && Array.isArray(items)) {
-          void saveSuggestions(q, items);
-          return items;
-        }
-        return [];
-      }
-    } catch {
-      // Backend offline — wyniki z cache (ostatnie prawdziwe dane).
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (searchAbort !== ctrl) return []; // przestarzałe — nie nadpisuj nowszych wyników
-    // Backend offline — najpierw lokalny GTFS + Nominatim prosto z telefonu,
-    // dopiero potem ostatnie wyniki z cache.
     try {
       const { searchStops } = await import('./gtfsDatabase');
       const { searchNominatimDirect } = await import('./nominatimDirect');
@@ -171,91 +117,76 @@ export const SearchService: ISearchService = {
         ...remoteHits,
       ];
       if (merged.length > 0) {
-        void saveSuggestions(q, merged);
+        if (searchAbort === ctrl) void saveSuggestions(q, merged);
         return merged;
       }
-    } catch {
-      // lokalne źródła niedostępne — spada do cache niżej
-    }
+    } catch {}
+    
+    if (searchAbort !== ctrl) return [];
     return loadSuggestions(q);
   },
 
   async recent(): Promise<Suggestion[]> {
-    try {
-      const res = await fetch(`${API_URL}/api/history`, { signal: AbortSignal.timeout(2000) });
-      if (res.ok) {
-        const items = await res.json();
-        if (Array.isArray(items)) {
-          void saveRecent(items);
-          return items;
-        }
-      }
-    } catch {
-      // offline — recent z cache
-    }
     return loadRecent();
   },
 };
 
+// In-memory recent connections for getConnectionById
+const recentPlannedConnections = new Map<string, Connection>();
+
 export const RoutingService: IRoutingService = {
   async getConnections(query: RouteQuery): Promise<Connection[]> {
     try {
-      const url = new URL(`${API_URL}/api/routes`);
-      url.searchParams.set('fromTitle', query.fromTitle);
-      url.searchParams.set('fromLat', String(query.fromLat));
-      url.searchParams.set('fromLon', String(query.fromLon));
-      url.searchParams.set('toTitle', query.toTitle);
-      url.searchParams.set('toLat', String(query.toLat));
-      url.searchParams.set('toLon', String(query.toLon));
-      if (query.toId) url.searchParams.set('toId', query.toId);
-      if (query.departureTimeSec) url.searchParams.set('departureTimeSec', String(query.departureTimeSec));
-      if (query.maxTransfers !== undefined) url.searchParams.set('maxTransfers', String(query.maxTransfers));
-      if (query.minTransferSec !== undefined) url.searchParams.set('minTransferSec', String(query.minTransferSec));
-      if (query.maxWalkM !== undefined) url.searchParams.set('maxWalkM', String(query.maxWalkM));
-      if (query.walkSpeedMps !== undefined) url.searchParams.set('walkSpeedMps', String(query.walkSpeedMps));
-
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
-      if (res.ok) {
-        const connections = (await res.json()) as Connection[];
-        if (Array.isArray(connections)) {
-          // Tylko bazowe zapytanie (bez przesunięcia czasu) cachujemy —
-          // paginacja dokłada do tej samej listy na ekranie.
-          if (!query.departureTimeSec) {
-            void saveConnections(query, connections);
-          }
-          return connections;
-        }
-        throw new Error('Bad routing response');
+      const connections = await planConnections({
+        fromTitle: query.fromTitle,
+        fromLat: query.fromLat,
+        fromLon: query.fromLon,
+        toTitle: query.toTitle,
+        toLat: query.toLat,
+        toLon: query.toLon,
+        toId: query.toId,
+        departureTimeSec: query.departureTimeSec,
+        maxTransfers: query.maxTransfers,
+        minTransferSec: query.minTransferSec,
+        maxWalkM: query.maxWalkM,
+        walkSpeedMps: query.walkSpeedMps
+      });
+      
+      for (const c of connections) {
+        recentPlannedConnections.set(c.id, c);
       }
-      throw new Error(`Routing failed: HTTP ${res.status}`);
+
+      if (!query.departureTimeSec) {
+        void saveConnections(query, connections);
+      }
+      return connections;
     } catch (err) {
-      // Brak fałszywych połączeń — ekrany pokazują błąd z przyciskiem ponów.
-      console.warn('[RoutingService] API routing unavailable:', err);
+      console.warn('[RoutingService] Local routing failed:', err);
       throw err instanceof Error ? err : new Error('Routing unavailable');
     }
   },
 
   async getConnectionById(id: string): Promise<Connection | undefined> {
-    try {
-      const res = await fetch(`${API_URL}/api/routes/${encodeURIComponent(id)}`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      if (res.ok) {
-        return (await res.json()) as Connection;
-      }
-    } catch {
-      // offline — undefined, ekran pokaże błąd
+    const found = recentPlannedConnections.get(id);
+    if (found) return found;
+
+    const saved = await this.isRouteSaved(id);
+    if (saved) {
+      const allSaved = await getSavedRoutes();
+      return allSaved.find(r => r.id === id)?.connection;
     }
+    
+    const cached = await findCachedConnection(id);
+    if (cached) return cached;
+    
     return undefined;
   },
 
   async saveRoute(connection: Connection): Promise<void> {
     try {
-      await fetch(`${API_URL}/api/routes/saved`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(connection),
-      });
+      const all = await getSavedRoutes();
+      all.push({ id: connection.id, savedAt: Date.now(), connection });
+      await AsyncStorage.setItem('kilometr.saved_routes', JSON.stringify(all));
     } catch (err) {
       console.warn('[RoutingService] Failed to save route:', err);
     }
@@ -263,9 +194,9 @@ export const RoutingService: IRoutingService = {
 
   async deleteSavedRoute(id: string): Promise<void> {
     try {
-      await fetch(`${API_URL}/api/routes/saved/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
+      const all = await getSavedRoutes();
+      const filtered = all.filter(r => r.id !== id);
+      await AsyncStorage.setItem('kilometr.saved_routes', JSON.stringify(filtered));
     } catch (err) {
       console.warn('[RoutingService] Failed to delete saved route:', err);
     }
@@ -273,85 +204,44 @@ export const RoutingService: IRoutingService = {
 
   async isRouteSaved(id: string): Promise<boolean> {
     try {
-      const res = await fetch(`${API_URL}/api/routes/saved/${encodeURIComponent(id)}/status`);
-      if (res.ok) {
-        const data = await res.json();
-        return !!data.isSaved;
-      }
+      const all = await getSavedRoutes();
+      return all.some(r => r.id === id);
     } catch {
-      // fallback
+      return false;
     }
-    return false;
   },
 
   async getTripStops(tripId: string): Promise<LegStop[]> {
     try {
-      const res = await fetch(`${API_URL}/api/trips/${encodeURIComponent(tripId)}/stops`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) return data as LegStop[];
-        if (Array.isArray(data?.stops)) return data.stops as LegStop[];
-      }
+      return buildTripStops(tripId);
     } catch {
-      // brak danych — caller użyje fallbacku (intermediateStops lub estymacja)
+      return [];
     }
-    return [];
   },
 
   async getVehicles(line: string): Promise<VehiclePosition[]> {
-    try {
-      const res = await fetch(`${API_URL}/api/vehicles?line=${encodeURIComponent(line)}`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) return data as VehiclePosition[];
-      }
-    } catch {
-      // offline — estymacja czasowa po stronie UI
-    }
-    return [];
+    return fetchVehiclesDirect(line);
   },
 };
+
+async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
+  try {
+    const raw = await AsyncStorage.getItem('kilometr.saved_routes');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
 
 export const FavoritesService: IFavoritesService = {
   async list(): Promise<SavedPlace[]> {
     try {
-      const res = await fetch(`${API_URL}/api/places`, { signal: AbortSignal.timeout(3000) });
-      if (res.ok) {
-        const items = await res.json();
-        if (Array.isArray(items)) {
-          return items;
-        }
-      }
-    } catch {
-      // offline — pusta lista (żadnych fałszywych miejsc)
-    }
+      const raw = await AsyncStorage.getItem('kilometr.places');
+      if (raw) return JSON.parse(raw);
+    } catch {}
     return [];
   },
 
   async smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]> {
-    try {
-      let url = `${API_URL}/api/destinations/smart`;
-      if (coords) {
-        url += `?lat=${coords.lat}&lon=${coords.lon}`;
-      } else if (cachedLocation) {
-        url += `?lat=${cachedLocation.lat}&lon=${cachedLocation.lon}`;
-      }
-
-      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-      if (res.ok) {
-        const items = await res.json();
-        if (Array.isArray(items)) {
-          return items;
-        }
-      }
-    } catch {
-      // offline — pusta lista
-    }
-
     return [];
   },
 
@@ -366,54 +256,39 @@ export const FavoritesService: IFavoritesService = {
     anchorStopLat?: number | null;
     anchorStopLon?: number | null;
   }): Promise<SavedPlace> {
-    const res = await fetch(`${API_URL}/api/places`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(place),
-    });
-    if (!res.ok) {
-      throw new Error(`Add place failed: HTTP ${res.status}`);
-    }
-    return (await res.json()) as SavedPlace;
+    const places = await this.list();
+    const newPlace: SavedPlace = {
+      id: Math.random().toString(36).substring(7),
+      placeId: Math.random().toString(36).substring(7),
+      name: place.name,
+      icon: place.icon,
+      address: place.address,
+      lat: place.lat,
+      lon: place.lon,
+      anchorStopId: place.anchorStopId || undefined,
+      anchorStopName: place.anchorStopName || undefined,
+      anchorStopLat: place.anchorStopLat || undefined,
+      anchorStopLon: place.anchorStopLon || undefined,
+    };
+    places.push(newPlace);
+    await AsyncStorage.setItem('kilometr.places', JSON.stringify(places));
+    return newPlace;
   },
 
-  async updatePlace(
-    id: string,
-    place: Partial<{
-      name: string;
-      icon: SavedPlace['icon'];
-      address: string;
-      lat: number;
-      lon: number;
-      anchorStopId?: string | null;
-      anchorStopName?: string | null;
-      anchorStopLat?: number | null;
-      anchorStopLon?: number | null;
-    }>
-  ): Promise<SavedPlace | null> {
-    const res = await fetch(`${API_URL}/api/places/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(place),
-    });
-    if (!res.ok) {
-      if (res.status === 404) return null;
-      const text = await res.text().catch(() => '');
-      throw new Error(`Update place failed: HTTP ${res.status} ${text}`);
-    }
-    return (await res.json()) as SavedPlace;
+  async updatePlace(id: string, updates: Partial<SavedPlace>): Promise<SavedPlace | null> {
+    const places = await this.list();
+    const idx = places.findIndex(p => p.id === id);
+    if (idx === -1) return null;
+    places[idx] = { ...places[idx], ...updates };
+    await AsyncStorage.setItem('kilometr.places', JSON.stringify(places));
+    return places[idx];
   },
 
   async deletePlace(id: string): Promise<boolean> {
-    try {
-      const res = await fetch(`${API_URL}/api/places/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) return true;
-    } catch {
-      // fallback
-    }
-    return false;
+    const places = await this.list();
+    const filtered = places.filter(p => p.id !== id);
+    await AsyncStorage.setItem('kilometr.places', JSON.stringify(filtered));
+    return true;
   },
 };
 
@@ -428,17 +303,6 @@ export interface NearestStop {
 
 export async function fetchNearestStops(lat: number, lon: number, limit = 6, maxDistance = 1200): Promise<NearestStop[]> {
   try {
-    const res = await fetch(
-      `${API_URL}/api/stops/nearest?lat=${lat}&lon=${lon}&limit=${limit}&maxDistance=${maxDistance}`,
-      { signal: AbortSignal.timeout(3000) }
-    );
-    if (res.ok) {
-      return (await res.json()) as NearestStop[];
-    }
-  } catch {
-    // ignore — próbujemy lokalny GTFS niżej
-  }
-  try {
     const { findNearestStops } = await import('./gtfsDatabase');
     const local = await findNearestStops(lat, lon, maxDistance, limit);
     if (local.length > 0) {
@@ -451,9 +315,6 @@ export async function fetchNearestStops(lat: number, lon: number, limit = 6, max
         distanceM: n.distanceM,
       }));
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
   return [];
 }
-

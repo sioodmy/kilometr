@@ -1,0 +1,281 @@
+import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
+import { distanceMeters } from '../../gtfs/geo';
+
+const WALK_SPEED_MPS = 1.3;
+const WALK_DETOUR_FACTOR = 1.3;
+const MAX_TRANSFER_METERS = 400;
+const MIN_FOOTPATH_SEC = 45;
+
+export interface DayIndex {
+  stopRoutes: Map<string, Set<string>>;
+  routeStops: Map<string, string[]>;
+  routeTrips: Map<string, any[]>;
+  patterns: Map<string, any>;
+}
+
+export class LocalGtfsStore {
+  stops = new Map<string, any>();
+  routes = new Map<string, any>();
+  trips = new Map<string, any>();
+  stopTimes = new Map<string, any[]>();
+  footpaths = new Map<string, any[]>();
+
+  private dayIndexes = new Map<string, DayIndex>();
+  isLoaded = false;
+
+  async load() {
+    if (this.isLoaded) return;
+    console.log('[LocalGtfsStore] Initializing...');
+
+    const db = await getGtfsDb();
+
+    // 1. Load stops
+    const stopsRows = await db.getAllAsync<{stop_id: string, code: string, name: string, lat: number, lon: number, norm: string}>('SELECT * FROM stops');
+    for (const r of stopsRows) {
+      this.stops.set(r.stop_id, {
+        stop_id: r.stop_id,
+        stop_code: r.code,
+        stop_name: r.name,
+        stop_lat: r.lat,
+        stop_lon: r.lon,
+        normalized_name: r.norm
+      });
+    }
+
+    // 2. Load routes
+    const routesRows = await db.getAllAsync<{route_id: string, short: string, long_name: string, type: number}>('SELECT * FROM routes');
+    for (const r of routesRows) {
+      this.routes.set(r.route_id, {
+        route_id: r.route_id,
+        route_short_name: r.short,
+        route_long_name: r.long_name,
+        route_type: r.type
+      });
+    }
+
+    // 3. Build footpaths
+    this.buildFootpaths();
+
+    this.isLoaded = true;
+    console.log(`[LocalGtfsStore] Loaded ${this.stops.size} stops, ${this.routes.size} routes.`);
+  }
+
+  private buildFootpaths() {
+    const GRID_DEG_LAT = 0.001;
+    const GRID_DEG_LON = 0.0015;
+
+    const grid = new Map<string, any[]>();
+    const stopArray = Array.from(this.stops.values());
+
+    for (const s of stopArray) {
+      const gx = Math.floor(s.stop_lon / GRID_DEG_LON);
+      const gy = Math.floor(s.stop_lat / GRID_DEG_LAT);
+      const key = `${gx},${gy}`;
+      let cell = grid.get(key);
+      if (!cell) {
+        cell = [];
+        grid.set(key, cell);
+      }
+      cell.push(s);
+    }
+
+    const SEARCH_RADIUS = 4;
+
+    for (const s1 of stopArray) {
+      const paths: any[] = [];
+      const gx = Math.floor(s1.stop_lon / GRID_DEG_LON);
+      const gy = Math.floor(s1.stop_lat / GRID_DEG_LAT);
+
+      for (let dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+        for (let dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
+          const cell = grid.get(`${gx + dx},${gy + dy}`);
+          if (!cell) continue;
+
+          for (const s2 of cell) {
+            if (s1.stop_id === s2.stop_id) continue;
+            const dist = distanceMeters(s1.stop_lat, s1.stop_lon, s2.stop_lat, s2.stop_lon);
+            if (dist <= MAX_TRANSFER_METERS) {
+              const effectiveDist = dist * WALK_DETOUR_FACTOR;
+              paths.push({
+                from_stop_id: s1.stop_id,
+                to_stop_id: s2.stop_id,
+                distance_m: Math.round(dist),
+                duration_sec: Math.max(MIN_FOOTPATH_SEC, Math.round(effectiveDist / WALK_SPEED_MPS)),
+              });
+            }
+          }
+        }
+      }
+
+      if (paths.length > 0) {
+        this.footpaths.set(s1.stop_id, paths);
+      }
+    }
+  }
+
+  async getDayIndex(weekday: number, dateStr?: string): Promise<DayIndex> {
+    const day = ((weekday % 7) + 7) % 7;
+    const cacheKey = dateStr ? `${day}-${dateStr}` : `${day}`;
+    if (this.dayIndexes.has(cacheKey)) return this.dayIndexes.get(cacheKey)!;
+
+    console.log(`[LocalGtfsStore] Building DayIndex for ${cacheKey}...`);
+    const activeServices = await getActiveServices(weekday, dateStr);
+    
+    // Pusty kalendarz (często wrocław ma bug w GTFS, obsługiwane przez getActiveServices, które wrzuca wszystkie serwisy)
+    const db = await getGtfsDb();
+    
+    const serviceList = Array.from(activeServices).map(s => `'${s.replace(/'/g, "''")}'`).join(',');
+    if (!serviceList) {
+       console.warn('[LocalGtfsStore] No active services found for the day.');
+       const emptyIdx = {
+         stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map()
+       };
+       this.dayIndexes.set(cacheKey, emptyIdx);
+       return emptyIdx;
+    }
+
+    const t0 = performance.now();
+
+    // Fetch active trips
+    const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
+      `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE service_id IN (${serviceList})`
+    );
+
+    const activeTripsById = new Map<string, any>();
+    const tripsByRouteId = new Map<string, any[]>();
+
+    for (const r of tripsRows) {
+      const t = {
+        trip_id: r.trip_id,
+        route_id: r.route_id,
+        service_id: r.service_id,
+        trip_headsign: r.headsign,
+        direction_id: r.direction,
+        shape_id: r.shape
+      };
+      this.trips.set(r.trip_id, t);
+      activeTripsById.set(r.trip_id, t);
+      let group = tripsByRouteId.get(r.route_id);
+      if (!group) {
+        group = [];
+        tripsByRouteId.set(r.route_id, group);
+      }
+      group.push(t);
+    }
+
+    // Fetch active stop times
+    const stRows = await db.getAllAsync<{trip_id: string, stop_id: string, arr_sec: number, dep_sec: number, seq: number}>(
+      `SELECT st.trip_id, st.stop_id, st.arr_sec, st.dep_sec, st.seq 
+       FROM stop_times st
+       JOIN trips t ON st.trip_id = t.trip_id
+       WHERE t.service_id IN (${serviceList})
+       ORDER BY st.trip_id, st.seq`
+    );
+
+    for (const r of stRows) {
+      let group = this.stopTimes.get(r.trip_id);
+      if (!group) {
+        group = [];
+        this.stopTimes.set(r.trip_id, group);
+      }
+      group.push({
+        trip_id: r.trip_id,
+        stop_id: r.stop_id,
+        arrival_sec: r.arr_sec,
+        departure_sec: r.dep_sec,
+        stop_sequence: r.seq
+      });
+    }
+
+    const stopRoutes = new Map<string, Set<string>>();
+    const routeStops = new Map<string, string[]>();
+    const routeTrips = new Map<string, any[]>();
+    const patterns = new Map<string, any>();
+
+    for (const [routeId, trips] of tripsByRouteId.entries()) {
+      const patternGroups = new Map<string, any[]>();
+      for (const trip of trips) {
+        const times = this.stopTimes.get(trip.trip_id);
+        if (!times || times.length === 0) continue;
+        const key = times.map((t) => t.stop_id).join(',');
+        let group = patternGroups.get(key);
+        if (!group) {
+          group = [];
+          patternGroups.set(key, group);
+        }
+        group.push(trip);
+      }
+
+      let patIdx = 0;
+      for (const [stopKey, patTrips] of patternGroups.entries()) {
+        const patternId = `${routeId}_p${patIdx++}`;
+        const stopSequence = stopKey.split(',');
+
+        patTrips.sort((a, b) => {
+          const depA = this.stopTimes.get(a.trip_id)![0].departure_sec;
+          const depB = this.stopTimes.get(b.trip_id)![0].departure_sec;
+          return depA - depB;
+        });
+
+        const departures: number[][] = Array.from({ length: stopSequence.length }, () => []);
+        const tripIndicesArr: number[][] = Array.from({ length: stopSequence.length }, () => []);
+
+        for (let tIdx = 0; tIdx < patTrips.length; tIdx++) {
+          const times = this.stopTimes.get(patTrips[tIdx].trip_id)!;
+          for (let sIdx = 0; sIdx < stopSequence.length && sIdx < times.length; sIdx++) {
+            departures[sIdx].push(times[sIdx].departure_sec);
+            tripIndicesArr[sIdx].push(tIdx);
+          }
+        }
+
+        const pattern = {
+          patternId,
+          routeId,
+          stopSequence,
+          trips: patTrips,
+          departures,
+          tripIndices: tripIndicesArr,
+        };
+
+        patterns.set(patternId, pattern);
+        routeStops.set(patternId, stopSequence);
+        routeTrips.set(patternId, patTrips);
+
+        for (const stopId of stopSequence) {
+          let routesSet = stopRoutes.get(stopId);
+          if (!routesSet) {
+            routesSet = new Set();
+            stopRoutes.set(stopId, routesSet);
+          }
+          routesSet.add(patternId);
+        }
+      }
+    }
+
+    const idx = { stopRoutes, routeStops, routeTrips, patterns };
+    this.dayIndexes.set(cacheKey, idx);
+    console.log(`[LocalGtfsStore] DayIndex built in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${activeTripsById.size}`);
+    return idx;
+  }
+
+  findNearestStops(lat: number, lon: number, maxDistanceMeters = 800, limit = 12) {
+    const results: any[] = [];
+    const latRange = maxDistanceMeters / 111000;
+    const lonRange = maxDistanceMeters / (111000 * Math.cos(lat * Math.PI / 180));
+
+    for (const stop of this.stops.values()) {
+      if (Math.abs(stop.stop_lat - lat) > latRange) continue;
+      if (Math.abs(stop.stop_lon - lon) > lonRange) continue;
+
+      const dist = distanceMeters(lat, lon, stop.stop_lat, stop.stop_lon);
+      if (dist <= maxDistanceMeters) {
+        results.push({ stop, distanceM: Math.round(dist) });
+      }
+    }
+
+    results.sort((a, b) => a.distanceM - b.distanceM);
+    return results.slice(0, limit);
+  }
+}
+
+export const gtfsStore = new LocalGtfsStore();
