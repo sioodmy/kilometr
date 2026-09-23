@@ -1,0 +1,152 @@
+// Czyste funkcje geo — bez zależności natywnych, działają w Hermes.
+// Port server/src/gtfs/geo.ts (bez zmian logiki).
+
+const EARTH_RADIUS_METERS = 6371000;
+
+export function toRadians(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+export function toDegrees(rad: number): number {
+  return (rad * 180) / Math.PI;
+}
+
+/** Haversine: dystans w metrach między dwoma punktami lat/lon. */
+export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return EARTH_RADIUS_METERS * c;
+}
+
+/** Początkowy azymut w stopniach (0..360) z punktu 1 do 2. */
+export function bearingDegrees(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const phi1 = toRadians(lat1);
+  const phi2 = toRadians(lat2);
+  const lambda = toRadians(lon2 - lon1);
+  const y = Math.sin(lambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(lambda);
+  const theta = Math.atan2(y, x);
+  return (toDegrees(theta) + 360) % 360;
+}
+
+/** Normalizacja polskich znaków: minuskuły + bez diakrytyków. */
+export function normalizePolish(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ł/g, 'l')
+    .replace(/Ł/g, 'l')
+    .trim();
+}
+
+/** Parsuje "HH:MM:SS" lub "HH:MM" na sekundy od północy (obsługuje >24h w GTFS). */
+export function timeStringToSeconds(timeStr: string): number {
+  const parts = timeStr.trim().split(':');
+  const h = Number(parts[0]) || 0;
+  const m = Number(parts[1]) || 0;
+  const s = Number(parts[2]) || 0;
+  return h * 3600 + m * 60 + s;
+}
+
+/** Formatuje sekundy od północy do "HH:MM". */
+export function secondsToTimeString(totalSec: number): string {
+  let sec = totalSec % 86400;
+  if (sec < 0) sec += 86400;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Rzutuje punkt na polyline {lat, lon} — do dopasowania GPS do kształtu kursu. */
+export function projectPointToPolyline(
+  lat: number,
+  lon: number,
+  polyline: { lat: number; lon: number }[],
+): {
+  distanceMeters: number;
+  closestLat: number;
+  closestLon: number;
+  segmentIndex: number;
+  fractionAlongShape: number;
+} {
+  if (polyline.length === 0) {
+    return {
+      distanceMeters: Infinity,
+      closestLat: lat,
+      closestLon: lon,
+      segmentIndex: -1,
+      fractionAlongShape: 0,
+    };
+  }
+
+  if (polyline.length === 1) {
+    const d = distanceMeters(lat, lon, polyline[0].lat, polyline[0].lon);
+    return {
+      distanceMeters: d,
+      closestLat: polyline[0].lat,
+      closestLon: polyline[0].lon,
+      segmentIndex: 0,
+      fractionAlongShape: 0,
+    };
+  }
+
+  let minDistance = Infinity;
+  let bestLat = polyline[0].lat;
+  let bestLon = polyline[0].lon;
+  let bestSegment = 0;
+  let cumulativeDistanceBeforeBest = 0;
+  let totalPolylineDistance = 0;
+
+  const segmentLengths: number[] = [];
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const d = distanceMeters(polyline[i].lat, polyline[i].lon, polyline[i + 1].lat, polyline[i + 1].lon);
+    segmentLengths.push(d);
+    totalPolylineDistance += d;
+  }
+
+  let runningDistance = 0;
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const p1 = polyline[i];
+    const p2 = polyline[i + 1];
+
+    const x = toRadians(lon - p1.lon) * Math.cos(toRadians((p1.lat + p2.lat) / 2));
+    const y = toRadians(lat - p1.lat);
+    const dx = toRadians(p2.lon - p1.lon) * Math.cos(toRadians((p1.lat + p2.lat) / 2));
+    const dy = toRadians(p2.lat - p1.lat);
+
+    const segLenSq = dx * dx + dy * dy;
+    let t = 0;
+    if (segLenSq > 0) {
+      t = Math.max(0, Math.min(1, (x * dx + y * dy) / segLenSq));
+    }
+
+    const projLat = p1.lat + t * (p2.lat - p1.lat);
+    const projLon = p1.lon + t * (p2.lon - p1.lon);
+    const dist = distanceMeters(lat, lon, projLat, projLon);
+
+    if (dist < minDistance) {
+      minDistance = dist;
+      bestLat = projLat;
+      bestLon = projLon;
+      bestSegment = i;
+      cumulativeDistanceBeforeBest = runningDistance + t * segmentLengths[i];
+    }
+
+    runningDistance += segmentLengths[i];
+  }
+
+  const fractionAlongShape = totalPolylineDistance > 0 ? cumulativeDistanceBeforeBest / totalPolylineDistance : 0;
+
+  return {
+    distanceMeters: minDistance,
+    closestLat: bestLat,
+    closestLon: bestLon,
+    segmentIndex: bestSegment,
+    fractionAlongShape,
+  };
+}

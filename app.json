@@ -30,6 +30,7 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
+      "expo-sqlite",
       "./plugins/with-kilometr-widgets",
       [
         "expo-notifications",
