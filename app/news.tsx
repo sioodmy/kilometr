@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Linking,
   Pressable,
   RefreshControl,
@@ -11,31 +12,89 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BellRing, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react-native';
-import { scheme, shape, type } from '../src/theme/tokens';
+import {
+  ArrowUpRight,
+  ChevronLeft,
+  Clock3,
+  Newspaper,
+  RefreshCw,
+  TramFront,
+  TriangleAlert,
+} from 'lucide-react-native';
+import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { fetchMpkNews, type MpkNewsItem } from '../src/services/mpkNews';
 
-function NewsRow({ item, onOpen }: { item: MpkNewsItem; onOpen: (item: MpkNewsItem) => void }) {
+const FRESH_MS = 24 * 3600 * 1000;
+
+function isFresh(item: MpkNewsItem): boolean {
+  return item.pubDate != null && Date.now() - item.pubDate < FRESH_MS;
+}
+
+function NewsCard({ item, onOpen }: { item: MpkNewsItem; onOpen: (item: MpkNewsItem) => void }) {
+  const urgent = item.urgent;
+  const fresh = isFresh(item);
   return (
     <Pressable
       onPress={() => onOpen(item)}
       accessibilityRole="link"
       accessibilityLabel={item.title}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+      android_ripple={{ color: scheme.outlineVariant, borderless: false }}
+      style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
     >
-      <View style={styles.rowText}>
-        <Text style={styles.rowTitle} numberOfLines={2} ellipsizeMode="tail">
+      <View
+        style={[styles.media, urgent ? styles.mediaUrgent : styles.mediaCalm]}
+        accessibilityIgnoresInvertColors
+      >
+        {item.imageUrl ? (
+          <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
+        ) : urgent ? (
+          <TriangleAlert size={26} color={scheme.error} />
+        ) : (
+          <TramFront size={26} color={scheme.primary} />
+        )}
+      </View>
+
+      <View style={styles.cardBody}>
+        <View style={styles.chipRow}>
+          {fresh && <View style={styles.freshDot} />}
+          {item.dateLabel ? (
+            <View style={styles.timeChip}>
+              <Clock3 size={11} color={scheme.onSurfaceVariant} />
+              <Text style={styles.timeText}>{item.dateLabel}</Text>
+            </View>
+          ) : null}
+          {urgent ? (
+            <View style={styles.urgentChip}>
+              <TriangleAlert size={11} color={scheme.onErrorContainer} />
+              <Text style={styles.urgentText}>Utrudnienia</Text>
+            </View>
+          ) : null}
+          <View style={styles.spacer} />
+          <ArrowUpRight size={15} color={scheme.outline} />
+        </View>
+        <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
           {item.title}
         </Text>
         {item.description ? (
-          <Text style={styles.rowDesc} numberOfLines={2} ellipsizeMode="tail">
+          <Text style={styles.cardDesc} numberOfLines={2} ellipsizeMode="tail">
             {item.description}
           </Text>
         ) : null}
-        {item.dateLabel ? <Text style={styles.rowDate}>{item.dateLabel}</Text> : null}
       </View>
-      <ChevronRight size={16} color={scheme.outline} style={styles.chev} />
     </Pressable>
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <View style={styles.card}>
+      <View style={[styles.media, styles.skelBox]} />
+      <View style={styles.cardBody}>
+        <View style={[styles.skelLine, { width: 90 }]} />
+        <View style={[styles.skelLine, { width: '95%' }]} />
+        <View style={[styles.skelLine, { width: '80%' }]} />
+      </View>
+    </View>
   );
 }
 
@@ -70,13 +129,24 @@ export default function NewsScreen() {
     void Linking.openURL(item.link).catch(() => {});
   }, []);
 
+  const urgentCount = items.filter((i) => i.urgent).length;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>Aktualności MPK</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.headerTitle}>Aktualności</Text>
+          <Text style={styles.headerSub}>
+            {loading
+              ? 'MPK Wrocław'
+              : items.length === 0
+                ? 'MPK Wrocław • wroclaw.pl'
+                : `${items.length} wiadomości${urgentCount ? ` • ${urgentCount} pilne` : ''}`}
+          </Text>
+        </View>
         <Pressable
           onPress={() => void load(true)}
           style={styles.iconBtn}
@@ -88,15 +158,27 @@ export default function NewsScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="small" color={scheme.primary} />
-          <Text style={styles.centerText}>Pobieranie komunikatów…</Text>
+        <View style={styles.list}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color={scheme.primary} />
+            <Text style={styles.loadingText}>Pobieranie komunikatów…</Text>
+          </View>
         </View>
       ) : error && items.length === 0 ? (
         <View style={styles.center}>
-          <BellRing size={28} color={scheme.outline} />
-          <Text style={styles.centerText}>{error}</Text>
-          <Pressable onPress={() => void load(false)} style={styles.retryBtn}>
+          <View style={styles.stateIcon}>
+            <Newspaper size={28} color={scheme.primary} />
+          </View>
+          <Text style={styles.stateTitle}>Brak połączenia</Text>
+          <Text style={styles.stateText}>{error}</Text>
+          <Pressable
+            onPress={() => void load(false)}
+            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+          >
             <Text style={styles.retryText}>Spróbuj ponownie</Text>
           </Pressable>
         </View>
@@ -112,10 +194,10 @@ export default function NewsScreen() {
               refreshing={refreshing}
               onRefresh={() => void load(true)}
               tintColor={scheme.primary}
+              colors={[scheme.primary]}
             />
           }
-          renderItem={({ item }) => <NewsRow item={item} onOpen={openItem} />}
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
+          renderItem={({ item }) => <NewsCard item={item} onOpen={openItem} />}
         />
       )}
     </SafeAreaView>
@@ -127,7 +209,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
@@ -147,28 +229,81 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
-  list: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 40 },
-  row: {
+  headerText: { flex: 1, minWidth: 0 },
+  headerTitle: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
+  headerSub: { ...type.labelSmall, color: scheme.onSurfaceVariant, marginTop: 1 },
+  list: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 40, gap: 12 },
+  // M3 elevated card
+  card: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: 20,
+    padding: 12,
+    overflow: 'hidden',
+    ...elev.level1,
+  },
+  media: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  mediaCalm: { backgroundColor: scheme.secondaryContainer },
+  mediaUrgent: { backgroundColor: scheme.errorContainer },
+  thumb: { width: '100%', height: '100%' },
+  cardBody: { flex: 1, minWidth: 0, gap: 4 },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  spacer: { flex: 1 },
+  freshDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: scheme.primary },
+  timeChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 2,
-  },
-  rowText: { flex: 1, gap: 3, minWidth: 0 },
-  rowTitle: { ...type.titleSmall, color: scheme.onSurface, lineHeight: 18 },
-  rowDesc: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 16 },
-  rowDate: { ...type.labelSmall, color: scheme.outline, marginTop: 1 },
-  chev: { flexShrink: 0 },
-  sep: { height: 1, backgroundColor: scheme.outlineVariant, opacity: 0.5 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
-  centerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
-  retryBtn: {
-    backgroundColor: scheme.secondaryContainer,
+    gap: 4,
+    backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.full,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  retryText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
+  timeText: { ...type.labelSmall, color: scheme.onSurfaceVariant },
+  urgentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: scheme.errorContainer,
+    borderRadius: shape.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  urgentText: { ...type.labelSmall, fontWeight: '700', color: scheme.onErrorContainer },
+  cardTitle: { ...type.titleSmall, fontWeight: '600', color: scheme.onSurface, lineHeight: 18 },
+  cardDesc: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 17 },
+  // loading / empty / error (M3 tonal)
+  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  loadingText: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  skelBox: { backgroundColor: scheme.surfaceContainerHighest },
+  skelLine: { height: 10, borderRadius: 5, backgroundColor: scheme.surfaceContainerHighest },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
+  stateIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  stateTitle: { ...type.titleMedium, color: scheme.onSurface },
+  stateText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  retryBtn: {
+    backgroundColor: scheme.primary,
+    borderRadius: shape.full,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 8,
+  },
+  retryText: { ...type.titleSmall, fontWeight: '700', color: scheme.onPrimary },
 });

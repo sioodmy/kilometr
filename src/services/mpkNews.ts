@@ -5,6 +5,8 @@ export type MpkNewsItem = {
   title: string;
   link: string;
   description: string;
+  imageUrl: string | null;
+  urgent: boolean;
   pubDate: number | null;
   dateLabel: string;
 };
@@ -46,6 +48,20 @@ function decodeEntities(s: string): string {
   return out;
 }
 
+function extractImage(html: string): string | null {
+  const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (!m) return null;
+  return decodeEntities(m[1]).replace(/&amp;/g, '&').trim() || null;
+}
+
+// Pilne = utrudnienia / wypadki / wykolejenia — to user chce sprawdzać najszybciej.
+const URGENT_RE =
+  /(wykolej|wypadek|kolizj|zderzenie|utrudnien|objazd|awari|przerwa w ruchu|wstrzyman|zablokowan|korek|zamknię)/i;
+
+export function isUrgentNews(title: string, description: string): boolean {
+  return URGENT_RE.test(`${title} ${description}`);
+}
+
 function htmlToText(html: string): string {
   // wytnij <img ...>, potem resztę tagów
   const noImg = html.replace(/<img[^>]*>/gi, ' ');
@@ -77,6 +93,7 @@ export function parseMpkRss(xml: string): MpkNewsItem[] {
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
     const description = htmlToText(rawDesc);
+    const imageUrl = extractImage(rawDesc);
     const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
     const ts = pubRaw ? Date.parse(pubRaw) : NaN;
     const pubDate = Number.isFinite(ts) ? ts : null;
@@ -86,6 +103,8 @@ export function parseMpkRss(xml: string): MpkNewsItem[] {
       title: title || '(bez tytułu)',
       link,
       description,
+      imageUrl,
+      urgent: isUrgentNews(title, description),
       pubDate,
       dateLabel: formatNewsDate(pubDate),
     });
