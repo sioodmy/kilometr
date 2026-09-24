@@ -81,11 +81,9 @@ export default function RoutesScreen() {
   const handleDismissAnchor = () => {
     if (!activeAnchor) return;
     dismissedAnchorsRef.current.add(activeAnchor.placeId);
-    const raw = activeAnchor.rawGps;
+    // Pozycja już jest prawdziwym GPS (kotwica to tylko preferencja
+    // w zapytaniu) — dismiss czyści samą preferencję i odświeża listę.
     setActiveAnchor(null);
-    setFromTitle(raw.title);
-    setFromLat(raw.lat);
-    setFromLon(raw.lon);
   };
 
   const [items, setItems] = useState<Connection[]>([]);
@@ -124,8 +122,11 @@ export default function RoutesScreen() {
       toTitle,
       toLat,
       toLon,
+      anchorStopId: activeAnchor?.stopId,
+      anchorStopLat: activeAnchor?.lat,
+      anchorStopLon: activeAnchor?.lon,
     }),
-    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon],
+    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
   );
   const isPinned = pinnedQuery != null && isSameQuery(pinnedQuery, currentQuery);
 
@@ -175,6 +176,11 @@ export default function RoutesScreen() {
       toTitle,
       toLat,
       toLon,
+      // Kotwica to preferencja startowa — pozycja zostaje prawdziwym GPS,
+      // silnik liczy realny spacer do kotwicy (ułatwienie, nie sztywna zasada).
+      anchorStopId: activeAnchor?.stopId,
+      anchorStopLat: activeAnchor?.lat,
+      anchorStopLon: activeAnchor?.lon,
       departureTimeSec: depSec,
       maxTransfers: s.maxTransfers,
       minTransferSec: s.minTransferSec,
@@ -223,10 +229,13 @@ export default function RoutesScreen() {
           dismissedAnchorsRef.current
         );
         if (anchor) {
+          // Kotwica NIE przepisuje pozycji na przystanek (to generowało
+          // absurdalne "wsiądź i od razu wysiądź" z zerowym dojściem).
+          // from* zostaje prawdziwym GPS, kotwica idzie jako preferencja.
           setActiveAnchor(anchor);
-          setFromTitle(anchor.stopName);
-          setFromLat(anchor.lat);
-          setFromLon(anchor.lon);
+          setFromTitle(startTitle);
+          setFromLat(startLat);
+          setFromLon(startLon);
         }
       }
     });
@@ -273,9 +282,9 @@ export default function RoutesScreen() {
       );
       if (anchor) {
         setActiveAnchor(anchor);
-        setFromTitle(anchor.stopName);
-        setFromLat(anchor.lat);
-        setFromLon(anchor.lon);
+        setFromTitle(l.title);
+        setFromLat(l.lat);
+        setFromLon(l.lon);
       } else {
         setActiveAnchor(null);
         setFromTitle(l.title);
@@ -466,7 +475,7 @@ export default function RoutesScreen() {
       fetchRoutes(departureTimeSec);
     });
     return () => task.cancel();
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle]);
+  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor]);
 
   const handleSwap = () => {
     setActiveAnchor(null);

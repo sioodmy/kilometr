@@ -60,6 +60,37 @@ export interface PlanOptions {
   maxWalkM?: number;
   /** m/s, default 1.3. Tempo chodzenia użytkownika. */
   walkSpeedMps?: number;
+  /**
+   * Preferowany przystanek startowy (kotwica). fromLat/fromLon to PRAWDZIWA
+   * pozycja (GPS) — silnik liczy realny spacer do kotwicy i daje jej tylko
+   * mały bonus rozstrzygający remisy, zamiast zerować koszt dojścia.
+   */
+  anchorStopId?: string;
+  anchorStopLat?: number;
+  anchorStopLon?: number;
+}
+
+/**
+ * Odrzuca podróże, w których tramwaj/bus jest tylko ozdobnikiem:
+ * jazda 0–1 przystanek, a potem długi spacer z buta. Taki wariant wygląda
+ * absurdalnie ("wsiądź i od razu wysiądź") i przegrywa z samym spacerem
+ * albo z dłuższą jazdą — więc w ogóle go nie proponujemy.
+ */
+function isPointlessShortRide(rj: RawJourney): boolean {
+  const transitSegs = rj.segments.filter((s) => s.type === 'transit');
+  for (const t of transitSegs) {
+    if (t.stopsCount <= 0) return true;
+  }
+  if (transitSegs.length === 1 && transitSegs[0].stopsCount <= 1) {
+    let totalWalkM = 0;
+    for (const s of rj.segments) {
+      if (s.type === 'walk') totalWalkM += s.walkMeters ?? 0;
+    }
+    const last = rj.segments[rj.segments.length - 1];
+    const egressWalkM = last && last.type === 'walk' ? (last.walkMeters ?? 0) : 0;
+    if (totalWalkM > 500 || egressWalkM > 350) return true;
+  }
+  return false;
 }
 
 /** Formatuj datę do YYYYMMDD (dla calendar_dates.txt). */
@@ -96,6 +127,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // 1. Resolve candidate boarding stops near origin.
   // Celowo szerzej (do maxWalkM, do 12 słupków): dalszy przystanek z bezpośrednim
   // odjazdem wygrywa z najbliższym słupkiem wymagającym 3 przesiadek.
+  // fromLat/fromLon to PRAWDZIWA pozycja (GPS/home) — NIE współrzędne kotwicy.
   const originNearby = gtfsStore.findNearestStops(options.fromLat, options.fromLon, maxWalkM, 12);
   const origins = originNearby.map((n) => {
     const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
@@ -105,6 +137,42 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       walkSec: Math.max(30, Math.round(effectiveDist / userWalkSpeed)),
     };
   });
+
+  // Kotwica jako UŁATWIENIE, nie żelazna zasada: upewniamy się, że preferowany
+  // przystanek jest w kandydatach (nawet tuż za limitem), z PRAWDZIWYM dystansem
+  // liczonym od fromLat/fromLon. Mały bonus -30 s rozstrzyga remisy przy
+  // chybotaniu GPS, ale nie zeruje kosztu dojścia (stary błąd: origin
+  // przepisywany na współrzędne przystanku dawał walkSec ~30 s i premiował
+  // absurdalne "wsiądź na 1 przystanek, resztę idź z buta").
+  if (
+    (options.anchorStopId || (options.anchorStopLat !== undefined && options.anchorStopLon !== undefined)) &&
+    Number.isFinite(options.fromLat) && Number.isFinite(options.fromLon)
+  ) {
+    let anchorStop: { stop_id: string; stop_lat: number; stop_lon: number } | undefined;
+    if (options.anchorStopId) {
+      const byId = gtfsStore.stops.get(options.anchorStopId);
+      if (byId) anchorStop = { stop_id: byId.stop_id, stop_lat: byId.stop_lat, stop_lon: byId.stop_lon };
+    }
+    if (!anchorStop && options.anchorStopLat !== undefined && options.anchorStopLon !== undefined) {
+      const near = gtfsStore.findNearestStops(options.anchorStopLat, options.anchorStopLon, 400, 1);
+      if (near.length > 0) {
+        anchorStop = { stop_id: near[0].stop.stop_id, stop_lat: near[0].stop.stop_lat, stop_lon: near[0].stop.stop_lon };
+      }
+    }
+    if (anchorStop) {
+      const trueDistM = Math.round(
+        distanceMeters(options.fromLat, options.fromLon, anchorStop.stop_lat, anchorStop.stop_lon)
+      );
+      const trueWalkSec = Math.max(30, Math.round((trueDistM * WALK_DETOUR_FACTOR) / userWalkSpeed));
+      const bonusWalkSec = Math.max(30, trueWalkSec - 30);
+      const existing = origins.find((o) => o.stopId === anchorStop!.stop_id);
+      if (existing) {
+        existing.walkSec = Math.min(existing.walkSec, bonusWalkSec);
+      } else {
+        origins.push({ stopId: anchorStop.stop_id, walkM: trueDistM, walkSec: bonusWalkSec });
+      }
+    }
+  }
 
   // 2. Resolve candidate alighting stops near destination
   const destNearby = gtfsStore.findNearestStops(options.toLat, options.toLon, maxWalkM, 12);
@@ -151,6 +219,9 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   for (let idx = 0; idx < filtered.length; idx++) {
     const rj = filtered[idx];
+    // Kotwica nie może wymuszać bezsensu: "wsiądź i wysiądź po 1 przystanku,
+    // resztę idź z buta" odrzucamy niezależnie od preferencji startu.
+    if (isPointlessShortRide(rj)) continue;
     const legs: Leg[] = [];
     let overallLive = false;
     let maxDelayMin = 0;

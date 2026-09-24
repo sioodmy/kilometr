@@ -168,4 +168,12 @@ export interface RouteQuery {
   maxWalkM?: number;
   /** m/s, default 1.3. Tempo chodzenia. */
   walkSpeedMps?: number;
+  /**
+   * Preferowany przystanek startowy (kotwica miejsca).
+   * Ułatwienie, NIE sztywne nadpisanie pozycji: routing liczy prawdziwy
+   * spacer z fromLat/fromLon do kotwicy i dopuszcza też sąsiednie słupki.
+   */
+  anchorStopId?: string;
+  anchorStopLat?: number;
+  anchorStopLon?: number;
 }

@@ -149,7 +149,10 @@ export const RoutingService: IRoutingService = {
         maxTransfers: query.maxTransfers,
         minTransferSec: query.minTransferSec,
         maxWalkM: query.maxWalkM,
-        walkSpeedMps: query.walkSpeedMps
+        walkSpeedMps: query.walkSpeedMps,
+        anchorStopId: query.anchorStopId,
+        anchorStopLat: query.anchorStopLat,
+        anchorStopLon: query.anchorStopLon,
       });
       
       for (const c of connections) {

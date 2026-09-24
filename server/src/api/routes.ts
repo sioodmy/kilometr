@@ -82,6 +82,9 @@ apiRouter.get('/routes', async (req, res) => {
   const minTransferSec = req.query.minTransferSec !== undefined ? Number(req.query.minTransferSec) : undefined;
   const maxWalkM = req.query.maxWalkM !== undefined ? Number(req.query.maxWalkM) : undefined;
   const walkSpeedMps = req.query.walkSpeedMps !== undefined ? Number(req.query.walkSpeedMps) : undefined;
+  const anchorStopId = req.query.anchorStopId ? String(req.query.anchorStopId) : undefined;
+  const anchorStopLat = req.query.anchorStopLat !== undefined ? Number(req.query.anchorStopLat) : undefined;
+  const anchorStopLon = req.query.anchorStopLon !== undefined ? Number(req.query.anchorStopLon) : undefined;
 
   if (!toLat || !toLon) {
     res.status(400).json({ error: 'Missing destination coordinates (toLat, toLon)' });
@@ -102,6 +105,9 @@ apiRouter.get('/routes', async (req, res) => {
       minTransferSec: Number.isFinite(minTransferSec) ? minTransferSec : undefined,
       maxWalkM: Number.isFinite(maxWalkM) ? maxWalkM : undefined,
       walkSpeedMps: Number.isFinite(walkSpeedMps) ? walkSpeedMps : undefined,
+      anchorStopId,
+      anchorStopLat: anchorStopLat !== undefined && Number.isFinite(anchorStopLat) ? anchorStopLat : undefined,
+      anchorStopLon: anchorStopLon !== undefined && Number.isFinite(anchorStopLon) ? anchorStopLon : undefined,
     });
 
     // Cache connections in memory so /api/routes/:id can retrieve them
