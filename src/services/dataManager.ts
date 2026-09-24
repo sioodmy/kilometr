@@ -84,6 +84,8 @@ async function resetRoutingStore(): Promise<void> {
   try {
     const { gtfsStore } = await import('./routing/store');
     gtfsStore.reset();
+    const { liveTracker } = await import('./liveTracker');
+    liveTracker.reset();
   } catch (err) {
     console.warn('[DataManager] store reset failed:', err);
   }

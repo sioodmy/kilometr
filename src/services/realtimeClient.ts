@@ -7,19 +7,10 @@
 // (najbliższy przystanek linii w oknie ±30 min); tutaj tylko dopinamy jego
 // snapshot do świeżych pozycji per linia.
 
-import { MPK } from './gtfsConfig';
+import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
 import type { VehiclePosition } from '../types/models';
 
-const TRAM_LINES = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23'];
-const BUS_LINES = [
-  'A', 'C', 'D', 'K', 'N',
-  '100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '110',
-  '111', '112', '113', '114', '115', '116', '118', '119', '120', '121', '122',
-  '124', '125', '126', '127', '128', '129', '130', '131', '132', '133', '134',
-  '136', '140', '142', '143', '144', '145', '146', '147', '148', '149', '150', '151', '152',
-];
-
-interface RawVehicleRow {
+export interface RawVehicleRow {
   name: string;
   type: string;
   x: number;
@@ -30,17 +21,21 @@ interface RawVehicleRow {
 function buildBody(lines?: string[]): string {
   const body = new URLSearchParams();
   const wanted = lines && lines.length > 0 ? lines.map((l) => l.trim().toUpperCase()) : null;
-  const trams = wanted ? TRAM_LINES.filter((t) => wanted.includes(t)) : TRAM_LINES;
-  const buses = wanted ? BUS_LINES.filter((b) => wanted.includes(b)) : BUS_LINES;
-  // Gdy użytkownik pyta o linię spoza sztywnej listy (np. nowa linia),
-  // dopytujemy ją wprost — MPK ignoruje nieznane, a my nic nie tracimy.
   if (wanted) {
     for (const w of wanted) {
-      if (!TRAM_LINES.includes(w) && !BUS_LINES.includes(w)) body.append('busList[bus][]', w);
+      const isTram = (WROCLAW_TRAM_LINES as readonly string[]).includes(w);
+      const isBus = (WROCLAW_BUS_LINES as readonly string[]).includes(w);
+      if (isTram) body.append('busList[tram][]', w);
+      if (isBus) body.append('busList[bus][]', w);
+      if (!isTram && !isBus) {
+        body.append('busList[tram][]', w);
+        body.append('busList[bus][]', w);
+      }
     }
+    return body.toString();
   }
-  for (const t of trams) body.append('busList[tram][]', t);
-  for (const b of buses) body.append('busList[bus][]', b);
+  for (const t of WROCLAW_TRAM_LINES) body.append('busList[tram][]', t);
+  for (const b of WROCLAW_BUS_LINES) body.append('busList[bus][]', b);
   return body.toString();
 }
 
@@ -71,9 +66,13 @@ export async function fetchVehiclesDirect(line?: string): Promise<VehiclePositio
       if (!row.x || !row.y || !row.name) continue;
       const lineName = row.name.trim().toUpperCase();
       if (want && lineName !== want) continue;
-      const snap = liveTracker.lookup(`${lineName}-${row.k}`);
+      const vehicleId = `${lineName}-${row.k}`;
+      let snap = liveTracker.lookup(vehicleId);
+      if (!snap) {
+        snap = (await liveTracker.matchSingle(row)) ?? undefined;
+      }
       out.push({
-        vehicleId: `${lineName}-${row.k}`,
+        vehicleId,
         line: lineName,
         lat: row.x,
         lon: row.y,

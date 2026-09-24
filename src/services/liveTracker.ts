@@ -2,22 +2,22 @@
 // rozkładu (opóźnienia). Zasilanie RAPTOR-a (tripDelays) i flag live w UI.
 // Działa w całości na telefonie — bez serwera pośredniczącego.
 //
-// Matcher celowo bez kształtów (shapes nie importujemy na urządzenie):
-// pojazd dopasowujemy do najbliższego przystanku jego linii w oknie ±30 min.
-// Dokładność ±1–2 min wystarcza do "opóźniony / na czas".
+// Matcher rzutuje pozycję GPS na geometrię trasy kursu (odcinki między
+// kolejnymi przystankami) oraz sprawdza oczekiwany czas w rozkładzie.
+// Eliminuje to błędy pojazdów w ruchu między przystankami i fałszywe dopasowania.
 
-import { MPK } from './gtfsConfig';
-import { gtfsStore } from './routing/store';
-import { distanceMeters } from '../gtfs/geo';
+import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
+import { DayIndex, gtfsStore } from './routing/store';
+import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import type { VehiclePosition } from '../types/models';
 
 const POLL_MS = 30000;
 const FRESH_MS = 30000;
 const WINDOW_SEC = 1800;
-const MATCH_RADIUS_M = 150;
+const MAX_CORRIDOR_DIST_M = 350;
 const DELAY_CAP_SEC = 1800;
 
-interface RawVehicleRow {
+export interface RawVehicleRow {
   name: string;
   type: string;
   x: number;
@@ -27,6 +27,13 @@ interface RawVehicleRow {
 
 export interface TrackedVehicle extends VehiclePosition {
   type: 'bus' | 'tram';
+}
+
+interface PatternPolylineNode {
+  lat: number;
+  lon: number;
+  stopId: string;
+  name: string;
 }
 
 function toDateStr(date: Date): string {
@@ -43,6 +50,14 @@ class LiveTracker {
   private lastOk = 0;
   private inFlight = false;
   private timer: ReturnType<typeof setInterval> | null = null;
+
+  /** Czyści stan trackera (np. po resecie bazy lub nowym imporcie). */
+  reset(): void {
+    this.byId.clear();
+    this.byLine.clear();
+    this.tripDelays.clear();
+    this.lastOk = 0;
+  }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
   start(): void {
@@ -84,8 +99,8 @@ class LiveTracker {
     this.inFlight = true;
     try {
       const rows = await this.fetchAll();
-      if (rows) {
-        this.matchAll(rows);
+      if (rows && rows.length > 0) {
+        await this.matchAll(rows);
         this.lastOk = Date.now();
       }
     } catch (err) {
@@ -95,18 +110,58 @@ class LiveTracker {
     }
   }
 
+  /** Dopasowanie pojedynczego pojazdu na żądanie (np. przy wejściu w kartę przejazdu). */
+  async matchSingle(row: RawVehicleRow): Promise<TrackedVehicle | null> {
+    if (!row.x || !row.y || !row.name) return null;
+    const line = row.name.trim().toUpperCase();
+    const vehicleId = `${line}-${row.k}`;
+
+    const existing = this.byId.get(vehicleId);
+    if (existing && Date.now() - existing.updatedAt < 10000) {
+      return existing;
+    }
+
+    try {
+      if (!gtfsStore.isLoaded) await gtfsStore.load();
+      const now = new Date();
+      const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      const dayIndex = await gtfsStore.getDayIndexSlice(
+        now.getDay(),
+        toDateStr(now),
+        nowSec - WINDOW_SEC,
+        nowSec + 3600,
+      );
+
+      const patternPolylines = new Map<string, PatternPolylineNode[]>();
+      const tracked = this.matchRow(row, dayIndex, nowSec, patternPolylines);
+
+      this.byId.set(vehicleId, tracked);
+      if (tracked.matchedTripId) {
+        this.tripDelays.set(tracked.matchedTripId, tracked.delaySec);
+      }
+      let list = this.byLine.get(line);
+      if (!list) {
+        list = [];
+        this.byLine.set(line, list);
+      }
+      const idx = list.findIndex((v) => v.vehicleId === vehicleId);
+      if (idx >= 0) list[idx] = tracked;
+      else list.push(tracked);
+
+      return tracked;
+    } catch (err) {
+      console.warn('[LiveTracker] matchSingle error:', err);
+      return null;
+    }
+  }
+
   private async fetchAll(): Promise<RawVehicleRow[] | null> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), MPK.timeoutMs);
     try {
-      // Jeden POST po wszystkie linie (jak serwer) — mniej requestów niż per linia.
       const body = new URLSearchParams();
-      const TRAMS = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
-      const BUSES = ['A','C','D','K','N',
-        '100','101','102','103','104','105','106','107','108','109','110','111','112','113','114','115','116','118','119','120','121','122',
-        '124','125','126','127','128','129','130','131','132','133','134','136','140','142','143','144','145','146','147','148','149','150','151','152'];
-      for (const t of TRAMS) body.append('busList[tram][]', t);
-      for (const b of BUSES) body.append('busList[bus][]', b);
+      for (const t of WROCLAW_TRAM_LINES) body.append('busList[tram][]', t);
+      for (const b of WROCLAW_BUS_LINES) body.append('busList[bus][]', b);
       const res = await fetch(MPK.busPositionUrl, {
         method: 'POST',
         headers: {
@@ -127,118 +182,177 @@ class LiveTracker {
     }
   }
 
+  private matchRow(
+    row: RawVehicleRow,
+    dayIndex: DayIndex,
+    nowSec: number,
+    patternPolylines: Map<string, PatternPolylineNode[]>,
+  ): TrackedVehicle {
+    const line = row.name.trim().toUpperCase();
+    const vehicleId = `${line}-${row.k}`;
+    const lat = row.x;
+    const lon = row.y;
+    const type: 'bus' | 'tram' = row.type === 'tram' ? 'tram' : 'bus';
+
+    let routeIds = gtfsStore.getRouteIdsByShortName(line);
+    if (routeIds.length === 0) routeIds = [line];
+
+    let bestTripId: string | undefined;
+    let bestDelay = 0;
+    let bestScore = Infinity;
+    let bestCurrentStop: string | undefined;
+    let bestNextStop: string | undefined;
+
+    for (const [patternId, pattern] of dayIndex.patterns.entries()) {
+      if (!routeIds.includes(pattern.routeId)) continue;
+      const trips = pattern.trips as any[];
+      if (!trips || trips.length === 0) continue;
+
+      let polyline = patternPolylines.get(patternId);
+      if (!polyline) {
+        polyline = [];
+        for (const stopId of pattern.stopSequence as string[]) {
+          const s = gtfsStore.stops.get(stopId);
+          if (s && s.stop_lat != null && s.stop_lon != null) {
+            polyline.push({
+              lat: s.stop_lat,
+              lon: s.stop_lon,
+              stopId,
+              name: s.stop_name || stopId,
+            });
+          }
+        }
+        patternPolylines.set(patternId, polyline);
+      }
+
+      if (polyline.length < 2) continue;
+
+      const proj = projectPointToPolyline(lat, lon, polyline);
+      if (proj.distanceMeters > MAX_CORRIDOR_DIST_M) continue;
+
+      const segIdx = Math.max(0, Math.min(polyline.length - 2, proj.segmentIndex));
+      const p1 = polyline[segIdx];
+      const p2 = polyline[segIdx + 1];
+      const d1 = distanceMeters(p1.lat, p1.lon, proj.closestLat, proj.closestLon);
+      const dSeg = distanceMeters(p1.lat, p1.lon, p2.lat, p2.lon);
+      const t = dSeg > 0 ? Math.min(1, Math.max(0, d1 / dSeg)) : 0;
+
+      for (const trip of trips) {
+        const times = gtfsStore.stopTimes.get(trip.trip_id);
+        if (!times || times.length <= segIdx + 1) continue;
+
+        const dep1 = times[segIdx].departure_sec;
+        const arr2 = times[segIdx + 1].arrival_sec;
+        const expectedSec = Math.round(dep1 + t * (arr2 - dep1));
+        const delay = nowSec - expectedSec;
+
+        // Odfiltruj kursy spoza realistycznego okna opóźnienia (-5 min do +35 min)
+        if (delay < -300 || delay > 2100) continue;
+
+        const score = Math.abs(delay) + proj.distanceMeters * 2;
+        if (score < bestScore) {
+          bestScore = score;
+          bestTripId = trip.trip_id;
+          bestDelay = delay;
+          bestCurrentStop = p1.name;
+          bestNextStop = p2.name;
+        }
+      }
+    }
+
+    // Fallback: dopasowanie do pojedynczych przystanków (np. pętla końcowa lub ostre zakręty)
+    if (!bestTripId) {
+      for (const [patternId, pattern] of dayIndex.patterns.entries()) {
+        void patternId;
+        if (!routeIds.includes(pattern.routeId)) continue;
+        const trips = pattern.trips as any[];
+        if (!trips) continue;
+
+        for (const trip of trips) {
+          const times = gtfsStore.stopTimes.get(trip.trip_id);
+          if (!times) continue;
+
+          for (let i = 0; i < times.length; i++) {
+            const stop = gtfsStore.stops.get(times[i].stop_id);
+            if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
+
+            const d = distanceMeters(lat, lon, stop.stop_lat, stop.stop_lon);
+            if (d > 200) continue;
+
+            const expectedSec = times[i].departure_sec ?? times[i].arrival_sec ?? nowSec;
+            const delay = nowSec - expectedSec;
+            if (delay < -300 || delay > 2100) continue;
+
+            const score = Math.abs(delay) + d * 2;
+            if (score < bestScore) {
+              bestScore = score;
+              bestTripId = trip.trip_id;
+              bestDelay = delay;
+              bestCurrentStop = stop.stop_name;
+              bestNextStop = times[i + 1] ? gtfsStore.stops.get(times[i + 1].stop_id)?.stop_name : undefined;
+            }
+          }
+        }
+      }
+    }
+
+    if (bestDelay !== 0 && Math.abs(bestDelay) > DELAY_CAP_SEC) {
+      bestDelay = 0;
+    }
+
+    return {
+      vehicleId,
+      line,
+      lat,
+      lon,
+      type,
+      delaySec: bestTripId ? bestDelay : 0,
+      matchedTripId: bestTripId,
+      currentStopName: bestCurrentStop,
+      nextStopName: bestNextStop,
+      updatedAt: Date.now(),
+    };
+  }
+
   private async matchAll(rows: RawVehicleRow[]): Promise<void> {
     try {
-      await gtfsStore.load();
+      if (!gtfsStore.isLoaded) await gtfsStore.load();
     } catch {
       return;
     }
     const now = new Date();
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
-    let dayIndex = null;
+    let dayIndex: DayIndex | null = null;
     try {
-      dayIndex = await gtfsStore.getDayIndexSlice(now.getDay(), toDateStr(now), nowSec - WINDOW_SEC, nowSec + 3600);
+      dayIndex = await gtfsStore.getDayIndexSlice(
+        now.getDay(),
+        toDateStr(now),
+        nowSec - WINDOW_SEC,
+        nowSec + 3600,
+      );
     } catch {
       return;
     }
 
-    // Kursy w oknie per linia — raz na poll, nie per pojazd.
-    const tripsByLine = new Map<string, any[]>();
-    const routeIdsByLine = new Map<string, string[]>();
-
-    const windowTripsFor = (line: string): any[] => {
-      const hit = tripsByLine.get(line);
-      if (hit) return hit;
-      let routeIds = routeIdsByLine.get(line);
-      if (!routeIds) {
-        routeIds = gtfsStore.getRouteIdsByShortName(line);
-        routeIdsByLine.set(line, routeIds);
-      }
-      const out: any[] = [];
-      for (const [patternId, pattern] of dayIndex!.patterns.entries()) {
-        void patternId;
-        if (!routeIds.includes(pattern.routeId)) continue;
-        for (const trip of pattern.trips as any[]) {
-          const times = gtfsStore.stopTimes.get(trip.trip_id);
-          if (!times || times.length === 0) continue;
-          const firstDep = times[0].departure_sec;
-          const lastArr = times[times.length - 1].arrival_sec;
-          if (nowSec >= firstDep - WINDOW_SEC && nowSec <= lastArr + WINDOW_SEC) {
-            out.push(trip);
-          }
-        }
-      }
-      tripsByLine.set(line, out);
-      return out;
-    };
-
+    const patternPolylines = new Map<string, PatternPolylineNode[]>();
     const newById = new Map<string, TrackedVehicle>();
     const newByLine = new Map<string, TrackedVehicle[]>();
     const newDelays = new Map<string, number>();
-    const stamp = Date.now();
 
     for (const row of rows) {
       if (!row.x || !row.y || !row.name) continue;
-      const line = row.name.trim().toUpperCase();
-      const vehicleId = `${line}-${row.k}`;
-      const candidates = windowTripsFor(line);
-
-      let bestTripId: string | undefined;
-      let bestDelay = 0;
-      let bestDist = MATCH_RADIUS_M;
-      let bestIdx = -1;
-      let bestTimes: any[] | null = null;
-
-      for (const trip of candidates) {
-        const times = gtfsStore.stopTimes.get(trip.trip_id);
-        if (!times) continue;
-        for (let i = 0; i < times.length; i++) {
-          const stop = gtfsStore.stops.get(times[i].stop_id);
-          if (!stop) continue;
-          const d = distanceMeters(row.x, row.y, stop.stop_lat, stop.stop_lon);
-          if (d < bestDist) {
-            bestDist = d;
-            bestTripId = trip.trip_id;
-            bestTimes = times;
-            bestIdx = i;
-            // Pojazd "jest" przy tym przystanku o czasie z rozkładu.
-            const expected = times[i].departure_sec ?? times[i].arrival_sec ?? nowSec;
-            bestDelay = Math.round(nowSec - expected);
-          }
-        }
+      const tracked = this.matchRow(row, dayIndex, nowSec, patternPolylines);
+      newById.set(tracked.vehicleId, tracked);
+      if (tracked.matchedTripId) {
+        newDelays.set(tracked.matchedTripId, tracked.delaySec);
       }
-
-      if (bestDelay !== 0 && Math.abs(bestDelay) > DELAY_CAP_SEC) bestDelay = 0;
-
-      let currentStopName: string | undefined;
-      let nextStopName: string | undefined;
-      if (bestTripId && bestTimes && bestIdx >= 0) {
-        currentStopName = gtfsStore.stops.get(bestTimes[bestIdx].stop_id)?.stop_name;
-        const next = bestTimes[Math.min(bestTimes.length - 1, bestIdx + 1)];
-        nextStopName = gtfsStore.stops.get(next.stop_id)?.stop_name;
-        newDelays.set(bestTripId, bestDelay);
-      }
-
-      const v: TrackedVehicle = {
-        vehicleId,
-        line,
-        lat: row.x,
-        lon: row.y,
-        type: row.type === 'tram' ? 'tram' : 'bus',
-        delaySec: bestDelay,
-        matchedTripId: bestTripId,
-        currentStopName,
-        nextStopName,
-        updatedAt: stamp,
-      };
-      newById.set(vehicleId, v);
-      let list = newByLine.get(line);
+      let list = newByLine.get(tracked.line);
       if (!list) {
         list = [];
-        newByLine.set(line, list);
+        newByLine.set(tracked.line, list);
       }
-      list.push(v);
+      list.push(tracked);
     }
 
     this.byId = newById;
