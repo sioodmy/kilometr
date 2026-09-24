@@ -1383,17 +1383,21 @@ const styles = StyleSheet.create({
   },
   // Icon Picker Browser styles
   categoryScroll: {
-    maxHeight: 44,
-    marginVertical: 8,
+    flexGrow: 0,
+    marginVertical: 10,
   },
   categoryRow: {
     gap: 8,
-    paddingVertical: 2,
-    paddingHorizontal: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    alignItems: 'center',
   },
   categoryPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    minHeight: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     borderWidth: 1,
@@ -1404,12 +1408,15 @@ const styles = StyleSheet.create({
     borderColor: scheme.primary,
   },
   categoryPillText: {
-    ...type.labelSmall,
+    ...type.labelMedium,
+    fontSize: 13,
+    lineHeight: 18,
+    includeFontPadding: false,
     color: scheme.onSurfaceVariant,
   },
   categoryPillTextSelected: {
     color: scheme.onPrimaryContainer,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   iconGridContent: {
     paddingBottom: 28,
