@@ -6,6 +6,7 @@ import { LocateFixed, Pencil, Settings2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService } from '../src/services';
+import { liveTracker } from '../src/services/liveTracker';
 import { pingBackend } from '../src/services/offlineCache';
 import {
   type DataStatus,
@@ -91,6 +92,8 @@ export default function HomeScreen() {
   useEffect(() => {
     refreshPlaces();
     SearchService.recent().then(setRecent);
+    // Live GPS od startu (ticker w tle) — opóźnienia gotowe zanim user wyszuka trasę.
+    liveTracker.start();
 
     LocationService.getCurrentLocation().then((l) => {
       setLocTitle(l.title);

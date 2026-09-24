@@ -3,10 +3,9 @@
 // Body: busList[tram][]=4&busList[bus][]=K ... (form-urlencoded)
 // Odpowiedź: [{ name, type, x (lat), y (lon), k (nr wozu) }]
 //
-// Dopasowanie do rozkładu (opóźnienia) dzieje się lokalnie w etapie 2
-// (matcher na SQLite: kształt kursu + interpolacja czasu). Na razie zwracamy
-// surowe pozycje z delaySec=0, żeby mapa/pojazdy działały od razu po
-// imporcie przystanków — RAPTOR podmieni delaye gdy stop_times będą gotowe.
+// Dopasowanie do rozkładu (opóźnienia) robi liveTracker na lokalnym indeksie
+// (najbliższy przystanek linii w oknie ±30 min); tutaj tylko dopinamy jego
+// snapshot do świeżych pozycji per linia.
 
 import { MPK } from './gtfsConfig';
 import type { VehiclePosition } from '../types/models';
@@ -64,17 +63,24 @@ export async function fetchVehiclesDirect(line?: string): Promise<VehiclePositio
     if (!Array.isArray(rows)) return [];
     const now = Date.now();
     const want = line?.trim().toUpperCase();
+    // Dopnij dopasowania z globalnego snapshotu live (tripId/delay/stops),
+    // żeby karta przejazdu od razu wiedziała KTÓRY to kurs.
+    const { liveTracker } = await import('./liveTracker');
     const out: VehiclePosition[] = [];
     for (const row of rows) {
       if (!row.x || !row.y || !row.name) continue;
       const lineName = row.name.trim().toUpperCase();
       if (want && lineName !== want) continue;
+      const snap = liveTracker.lookup(`${lineName}-${row.k}`);
       out.push({
         vehicleId: `${lineName}-${row.k}`,
         line: lineName,
         lat: row.x,
         lon: row.y,
-        delaySec: 0, // matcher (etap 2) nadpisze po imporcie stop_times
+        delaySec: snap?.delaySec ?? 0,
+        matchedTripId: snap?.matchedTripId,
+        currentStopName: snap?.currentStopName,
+        nextStopName: snap?.nextStopName,
         updatedAt: now,
       });
     }
