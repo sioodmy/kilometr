@@ -135,17 +135,17 @@ export default function RoutesScreen() {
 
   // Animacja płynnego chowania/pokazywania filtrów przy scrollowaniu
   const filterProgress = useSharedValue(1);
+  const measuredFiltersHeight = useSharedValue(200);
 
   const animatedFilterStyle = useAnimatedStyle(() => {
+    const p = filterProgress.value;
+    const h = measuredFiltersHeight.value;
     return {
-      opacity: filterProgress.value,
-      maxHeight: interpolate(filterProgress.value, [0, 1], [0, 220]),
+      opacity: p,
+      maxHeight: interpolate(p, [0, 1], [0, h]),
       transform: [
         {
-          translateY: interpolate(filterProgress.value, [0, 1], [-12, 0]),
-        },
-        {
-          scale: interpolate(filterProgress.value, [0, 1], [0.96, 1]),
+          translateY: interpolate(p, [0, 1], [-8, 0]),
         },
       ],
       overflow: 'hidden',
@@ -491,34 +491,57 @@ export default function RoutesScreen() {
   };
 
   const lastScrollY = useRef(0);
+  const isFiltersVisible = useRef(true);
+  const accumulatedDelta = useRef(0);
 
-  // Góra listy: przytrzymaj chwilę na samej górze → dładuj wcześniejsze; detekcja kierunku dla filtrów
+  const HIDE_THRESHOLD = 45;
+  const SHOW_THRESHOLD = 30;
+
+  // Góra listy: przytrzymaj chwilę na samej górze → dładuj wcześniejsze; detekcja kierunku dla filtrów z histerezą
   const handleScroll = (e: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = e.nativeEvent.contentOffset.y;
     const dy = y - lastScrollY.current;
     lastScrollY.current = y;
     scrollY.current = y;
 
-    // Gdy użytkownik scrolluje w dół, filtry chowają się; w górę lub na samej górze — płynnie wracają
-    if (y <= 15) {
-      if (filterProgress.value !== 1) {
+    // 1. Na samej górze listy (y <= 12) — zawsze natychmiast pokazuj filtry
+    if (y <= 12) {
+      accumulatedDelta.current = 0;
+      if (!isFiltersVisible.current) {
+        isFiltersVisible.current = true;
         filterProgress.value = withTiming(1, {
           duration: 250,
-          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+          easing: Easing.out(Easing.cubic),
         });
       }
-    } else if (dy > 6 && y > 35) {
-      if (filterProgress.value !== 0) {
+    } else if (dy > 0) {
+      // Scrollowanie W DÓŁ
+      if (accumulatedDelta.current < 0) {
+        accumulatedDelta.current = 0;
+      }
+      accumulatedDelta.current += dy;
+
+      // Schowaj filtry dopiero po przewinięciu co najmniej HIDE_THRESHOLD w dół
+      if (accumulatedDelta.current >= HIDE_THRESHOLD && isFiltersVisible.current && y > 30) {
+        isFiltersVisible.current = false;
         filterProgress.value = withTiming(0, {
           duration: 220,
-          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+          easing: Easing.out(Easing.cubic),
         });
       }
-    } else if (dy < -6) {
-      if (filterProgress.value !== 1) {
+    } else if (dy < 0) {
+      // Scrollowanie W GÓRĘ
+      if (accumulatedDelta.current > 0) {
+        accumulatedDelta.current = 0;
+      }
+      accumulatedDelta.current += dy;
+
+      // Pokaż filtry dopiero po przewinięciu co najmniej SHOW_THRESHOLD w górę
+      if (accumulatedDelta.current <= -SHOW_THRESHOLD && !isFiltersVisible.current) {
+        isFiltersVisible.current = true;
         filterProgress.value = withTiming(1, {
           duration: 250,
-          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+          easing: Easing.out(Easing.cubic),
         });
       }
     }
@@ -722,43 +745,52 @@ export default function RoutesScreen() {
 
       {/* 3 i 4. Płynnie zwijane filtry i sortowanie przy scrollowaniu */}
       <Animated.View style={[styles.collapsibleFiltersWrap, animatedFilterStyle]}>
-        {/* 3. Jednorazowe filtry: bezpośrednie + pojazdy (nie ruszają ustawień) */}
-        <View style={styles.filtersWrap}>
-          <RouteFiltersCard
-            directOnly={directOnly}
-            onDirectChange={setDirectOnly}
-            mode={modeFilter}
-            onModeChange={setModeFilter}
-          />
-        </View>
+        <View
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 60 && Math.abs(measuredFiltersHeight.value - h) > 2) {
+              measuredFiltersHeight.value = h;
+            }
+          }}
+        >
+          {/* 3. Jednorazowe filtry: bezpośrednie + pojazdy (nie ruszają ustawień) */}
+          <View style={styles.filtersWrap}>
+            <RouteFiltersCard
+              directOnly={directOnly}
+              onDirectChange={setDirectOnly}
+              mode={modeFilter}
+              onModeChange={setModeFilter}
+            />
+          </View>
 
-        {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
-        <View style={styles.sortRow}>
-          {(
-            [
-              { key: 'fastest', label: 'Najszybciej' },
-              { key: 'earliest', label: 'Najwcześniej' },
-            ] as const
-          ).map((opt) => {
-            const active = sortMode === opt.key;
-            return (
-              <Pressable
-                key={opt.key}
-                onPress={() => setSortMode(opt.key)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                style={({ pressed }) => [
-                  styles.sortPill,
-                  active && styles.sortPillActive,
-                  pressed && { opacity: 0.8 },
-                ]}
-              >
-                <Text style={[styles.sortText, active && styles.sortTextActive]}>
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
+          <View style={styles.sortRow}>
+            {(
+              [
+                { key: 'fastest', label: 'Najszybciej' },
+                { key: 'earliest', label: 'Najwcześniej' },
+              ] as const
+            ).map((opt) => {
+              const active = sortMode === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => setSortMode(opt.key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.sortPill,
+                    active && styles.sortPillActive,
+                    pressed && { opacity: 0.8 },
+                  ]}
+                >
+                  <Text style={[styles.sortText, active && styles.sortTextActive]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       </Animated.View>
 
