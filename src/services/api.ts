@@ -293,13 +293,27 @@ export const FavoritesService: IFavoritesService = {
   async list(): Promise<SavedPlace[]> {
     try {
       const raw = await kvGet('kilometr.places');
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      const { INITIAL_SAVED_PLACES } = await import('./smartRanker');
+      await kvSet('kilometr.places', JSON.stringify(INITIAL_SAVED_PLACES));
+      return INITIAL_SAVED_PLACES;
     } catch {}
     return [];
   },
 
   async smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]> {
-    return [];
+    try {
+      const { getSmartDestinationsForLocation } = await import('./smartRanker');
+      const lat = coords?.lat ?? DEFAULT_LOCATION.lat;
+      const lon = coords?.lon ?? DEFAULT_LOCATION.lon;
+      return await getSmartDestinationsForLocation(lat, lon);
+    } catch (err) {
+      console.warn('[FavoritesService] smartFromOrigin failed:', err);
+      return [];
+    }
   },
 
   async addPlace(place: {

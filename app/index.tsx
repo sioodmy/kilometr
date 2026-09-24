@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronDown, LocateFixed, MapPin, Pencil, Bell, Settings2, X } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
-import { FavoritesService, LocationService, RoutingService, SearchService } from '../src/services';
+import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
 import { pingBackend } from '../src/services/offlineCache';
 import {
@@ -295,7 +295,27 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstConns, locTitle]);
 
-  const recentWithGps = useMemo(() => [GPS_ITEM, ...recent], [recent]);
+  // Ostatnie przejazdy w identycznej kolejności co na ekranie głównym (smart history)
+  const recentFromSmart: Suggestion[] = useMemo(() => {
+    const list: Suggestion[] = smart.map((s) => ({
+      id: s.id,
+      title: s.title,
+      address: s.address,
+      kind: 'history',
+      lat: s.lat,
+      lon: s.lon,
+    }));
+    const seen = new Set(list.map((i) => i.id));
+    for (const r of recent) {
+      if (!seen.has(r.id)) {
+        list.push(r);
+        seen.add(r.id);
+      }
+    }
+    return list;
+  }, [smart, recent]);
+
+  const recentWithGps = useMemo(() => [GPS_ITEM, ...recentFromSmart], [recentFromSmart]);
 
   const resetToGps = async () => {
     setIsCustomStart(false);
@@ -365,7 +385,8 @@ export default function HomeScreen() {
 
   const quick = useMemo(() => saved.slice(0, 3).map((s) => ({ id: s.id, title: s.name })), [saved]);
 
-  const goToRoutes = (to: { id: string; title: string; lat: number; lon: number }) => {
+  const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number }) => {
+    void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
     router.push({
       pathname: '/routes',
       params: {
@@ -585,7 +606,7 @@ export default function HomeScreen() {
           query={query}
           loading={loading}
           results={results}
-          recent={recent}
+          recent={recentFromSmart}
           savedQuick={quick}
           placeholder="Dokąd jedziesz?"
           originTitle={locTitle}
@@ -597,7 +618,7 @@ export default function HomeScreen() {
           onQuery={setQuery}
           onSelect={(s) => {
             setSheetMode(null);
-            goToRoutes({ id: s.id, title: s.title, lat: s.lat, lon: s.lon });
+            goToRoutes({ id: s.id, title: s.title, address: s.address, lat: s.lat, lon: s.lon });
           }}
           onClose={() => {
             setSheetMode(null);
@@ -630,7 +651,7 @@ export default function HomeScreen() {
           onClose={() => setManageSheetOpen(false)}
           onSelectPlace={(p) => {
             setManageSheetOpen(false);
-            goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon });
+            goToRoutes({ id: p.placeId, title: p.name, address: p.address, lat: p.lat, lon: p.lon });
           }}
           onEditPlace={(p) => {
             setManageSheetOpen(false);

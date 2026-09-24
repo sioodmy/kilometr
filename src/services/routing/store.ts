@@ -46,7 +46,7 @@ export class LocalGtfsStore {
   async load() {
     if (this.isLoaded) return;
     console.log('[LocalGtfsStore] Initializing...');
-    if (importInProgress) { this.initPromise = null; return; }
+    if (importInProgress) return;
     const db = await getGtfsDb();
 
     // 1. Load stops
@@ -188,13 +188,13 @@ export class LocalGtfsStore {
     const bTo = (qTo + 1) * 3600 + 1800;
     const t0 = performance.now();
 
-    const activeServices = await getActiveServices(day, dateStr);
-    if (importInProgress) return emptyIdx;
-    const db = await getGtfsDb();
-    const serviceList = Array.from(activeServices).map((s) => `'${s.replace(/'/g, "''")}'`).join(',');
     const emptyIdx: DayIndex = {
       stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map(),
     };
+    if (importInProgress) return emptyIdx;
+    const activeServices = await getActiveServices(day, dateStr);
+    const db = await getGtfsDb();
+    const serviceList = Array.from(activeServices).map((s) => `'${s.replace(/'/g, "''")}'`).join(',');
     if (!serviceList) {
       this.rememberSlice(cacheKey, emptyIdx);
       return emptyIdx;
@@ -354,16 +354,15 @@ export class LocalGtfsStore {
     console.log(`[LocalGtfsStore] Building DayIndex for ${cacheKey}...`);
     const activeServices = await getActiveServices(weekday, dateStr);
     
-    // Pusty kalendarz (często wrocław ma bug w GTFS, obsługiwane przez getActiveServices, które wrzuca wszystkie serwisy)
-    if (importInProgress) return;
+    const emptyIdx: DayIndex = {
+      stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map()
+    };
+    if (importInProgress) return emptyIdx;
     const db = await getGtfsDb();
     
     const serviceList = Array.from(activeServices).map(s => `'${s.replace(/'/g, "''")}'`).join(',');
     if (!serviceList) {
        console.warn('[LocalGtfsStore] No active services found for the day.');
-       const emptyIdx = {
-         stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map()
-       };
        this.dayIndexes.set(cacheKey, emptyIdx);
        return emptyIdx;
     }

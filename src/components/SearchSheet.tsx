@@ -72,7 +72,20 @@ export function SearchSheet({
     return results.filter((r) => r.kind === want || r.kind === 'history');
   }, [results, filter]);
 
-  const showRecent = query.trim().length === 0;
+  const hasResults = filtered.length > 0;
+  const showRecent = query.trim().length === 0 || (!hasResults && !loading);
+
+  const displayData = useMemo(() => {
+    if (hasResults) return filtered;
+    if (query.trim().length > 0) {
+      const q = query.trim().toLowerCase();
+      const matched = recent.filter(
+        (r) => r.title.toLowerCase().includes(q) || (r.address && r.address.toLowerCase().includes(q))
+      );
+      if (matched.length > 0) return matched;
+    }
+    return recent;
+  }, [hasResults, filtered, query, recent]);
 
   const handleSelect = (item: Suggestion) => {
     onSelect(item);
@@ -157,15 +170,19 @@ export function SearchSheet({
       </View>
 
       <BottomSheetFlatList
-        data={showRecent ? recent : filtered}
+        data={displayData}
         keyExtractor={(i: Suggestion, idx: number) => `${i.id}-${idx}`}
         overScrollMode="never"
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={{ gap: 4 }}>
-            <Text style={styles.section}>{showRecent ? 'Ostatnie i zapisane' : `Wyniki dla „${query.trim()}” (${filtered.length})`}</Text>
-            {showRecent && (
+            <Text style={styles.section}>
+              {hasResults
+                ? `Wyniki dla „${query.trim()}” (${filtered.length})`
+                : 'Ostatnie przejazdy'}
+            </Text>
+            {!hasResults && query.trim().length === 0 && (
               <View style={styles.quickRow}>
                 {savedQuick.map((q) => (
                   <View key={q.id} style={styles.quick}>

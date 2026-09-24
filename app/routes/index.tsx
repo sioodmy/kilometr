@@ -20,6 +20,7 @@ import {
   RoutingService,
   SearchService,
   findAnchorForLocation,
+  recordTripSearch,
   type ActiveAnchor,
 } from '../../src/services';
 import { getSettingsSync, loadSettings } from '../../src/services/settings';
@@ -343,8 +344,15 @@ export default function RoutesScreen() {
     setNoMoreLater(false);
     const depSec = targetDepSec !== undefined ? targetDepSec : departureTimeSec;
     try {
-      const c = await RoutingService.getConnections(queryAt(depSec));
+      const q = queryAt(depSec);
+      const c = await RoutingService.getConnections(q);
       setItems(applyLiveList(c, depSec));
+      void recordTripSearch(q.fromLat, q.fromLon, q.fromTitle, {
+        id: q.toId || q.toTitle,
+        title: q.toTitle,
+        lat: q.toLat,
+        lon: q.toLon,
+      });
     } catch {
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
       // W trybie seamless nie czyścimy listy ani nie migoczemy spinnerem.
