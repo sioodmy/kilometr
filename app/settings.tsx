@@ -31,7 +31,9 @@ function dataStatusLabel(s: DataStatus): string {
     case 'importing':
       return `${s.step} ${Math.round(s.progress * 100)}%`;
     case 'ready':
-      return `Gotowe: ${s.stops} przystanków, ${s.trips} kursów`;
+      return s.source === 'seed'
+        ? `Dane startowe z aplikacji: ${s.stops} przystanków, ${s.trips} kursów`
+        : `Pełny rozkład: ${s.stops} przystanków, ${s.trips} kursów`;
     case 'error':
       return `Błąd: ${s.message}`;
   }
@@ -139,8 +141,8 @@ export default function SettingsScreen() {
             <Text style={styles.cardTitle}>Dane offline (MPK Wrocław)</Text>
           </View>
           <Text style={styles.cardHint}>
-            Telefon pobiera rozkład prosto z Open Data Wrocław — bez pośredniego serwera. Po pobraniu wyszukiwanie
-            przystanków i adresów działa także bez serwera.
+            Startujesz na danych wbudowanych w aplikację (szybki podgląd dwóch linii). Przycisk niżej nadpisuje je
+            pełnym rozkładem prosto z Open Data Wrocław — bez pośredniego serwera.
           </Text>
           <Text style={styles.stepValueText}>{dataStatusLabel(dataStatus)}</Text>
           <Pressable
@@ -155,7 +157,9 @@ export default function SettingsScreen() {
           >
             <Download size={18} color={scheme.onSecondaryContainer} />
             <Text style={styles.downloadText}>
-              {dataStatus.state === 'ready' ? 'Odśwież rozkład' : 'Pobierz rozkład'}
+              {dataStatus.state === 'ready' && dataStatus.source === 'network'
+                ? 'Odśwież rozkład'
+                : 'Pobierz pełny rozkład'}
             </Text>
           </Pressable>
         </Animated.View>
