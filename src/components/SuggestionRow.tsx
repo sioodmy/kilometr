@@ -20,7 +20,7 @@ import {
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Suggestion, SuggestionKind } from '../types/models';
-import { formatWalkTime } from '../services/settings';
+import { formatDistance } from '../services/settings';
 
 const KIND_META: Record<string, { Icon: any; bg: string; fg: string }> = {
   stop:          { Icon: BusFront,      bg: scheme.secondaryContainer,       fg: scheme.onSecondaryContainer },
@@ -50,6 +50,19 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
   const iconBg = isGps ? scheme.primaryContainer : meta.bg;
   const iconFg = isGps ? scheme.onPrimaryContainer : meta.fg;
 
+  // Oczyszczenie adresu z ewentualnych pozostałości numeru słupka (np. z pamięci podręcznej)
+  let cleanAddress = (item.address || '')
+    .replace(/\s*•\s*słup[a-ząćęłńóśźż.]*\s*\d+/gi, '')
+    .replace(/\s*słup[a-ząćęłńóśźż.]*\s*\d+/gi, '')
+    .trim();
+
+  if (!cleanAddress && item.kind === 'stop') {
+    cleanAddress = 'Przystanek';
+  }
+
+  const distanceText = item.distanceM != null ? formatDistance(item.distanceM) : '';
+  const subtitle = [cleanAddress, distanceText].filter(Boolean).join(' • ');
+
   return (
     <Pressable
       onPress={onPress}
@@ -60,12 +73,11 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
       </View>
       <View style={styles.mid}>
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.sub} numberOfLines={1}>
-          {item.address}
-          {item.distanceM != null
-            ? ` • ${formatWalkTime(Math.max(1, Math.round(item.distanceM / 80)))}`
-            : ''}
-        </Text>
+        {subtitle ? (
+          <Text style={styles.sub} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );

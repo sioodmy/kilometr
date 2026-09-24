@@ -136,6 +136,21 @@ export function formatWalkDistance(m: number, speedMps = 1.3): string {
   return `${dist} (~${min} min)`;
 }
 
+/**
+ * Czytelne formatowanie odległości w metrach lub kilometrach (np. < 10 m, 45 m, 250 m, 1.2 km).
+ */
+export function formatDistance(meters: number): string {
+  if (meters == null || isNaN(meters) || meters < 0) return '';
+  if (meters < 10) return '< 10 m';
+  if (meters < 100) return `${Math.round(meters / 5) * 5} m`;
+  if (meters < 950) return `${Math.round(meters / 10) * 10} m`;
+  if (meters < 9950) {
+    const km = (meters / 1000).toFixed(1);
+    return `${km} km`;
+  }
+  return `${Math.round(meters / 1000)} km`;
+}
+
 export function formatWalkSpeed(mps: number): string {
   const kmh = mps * 3.6;
   return `${kmh.toFixed(1)} km/h`;

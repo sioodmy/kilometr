@@ -37,7 +37,7 @@ export const LocationService: ILocationService = {
             const n = nearest[0];
             cachedLocation = {
               title: n.name,
-              address: n.code ? `Przystanek • słup ${n.code}` : 'Wrocław',
+              address: 'Przystanek',
               lat,
               lon,
               stopId: n.stop_id,
@@ -140,7 +140,7 @@ export const SearchService: ISearchService = {
       const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
         id: `stop-${h.stop_id}`,
         title: h.name,
-        address: h.code ? `Przystanek • słup. ${h.code}` : 'Wrocław',
+        address: 'Przystanek',
         kind: 'stop' as const,
         lat: h.lat,
         lon: h.lon,
