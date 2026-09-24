@@ -201,9 +201,12 @@ export async function parseStopTimesBatched(
 ): Promise<number> {
   const batchSize = opts?.batchSize ?? 5000;
   const activeTripIds = opts?.activeTripIds;
-  const lines = splitLines(content);
-  if (lines.length < 2) return 0;
-  const header = parseCsvLine(lines[0]);
+  const firstLf = content.indexOf('\n');
+  if (firstLf === -1) return 0;
+  let headerLine = content.slice(0, firstLf);
+  if (headerLine.charCodeAt(0) === 0xfeff) headerLine = headerLine.slice(1);
+  if (headerLine.endsWith('\r')) headerLine = headerLine.slice(0, -1);
+  const header = parseCsvLine(headerLine);
   const tripIdx = header.indexOf('trip_id');
   const arrIdx = header.indexOf('arrival_time');
   const depIdx = header.indexOf('departure_time');
@@ -212,8 +215,17 @@ export async function parseStopTimesBatched(
 
   let batch: GtfsStopTime[] = [];
   let total = 0;
-  for (let i = 1; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
+  let pos = firstLf + 1;
+  const len = content.length;
+
+  while (pos < len) {
+    let nextLf = content.indexOf('\n', pos);
+    if (nextLf === -1) nextLf = len;
+    let line = content.slice(pos, nextLf);
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    pos = nextLf + 1;
+
+    const trimmed = line.trim();
     if (!trimmed) continue;
     // stop_times.txt nie zawiera cudzysłowów ani przecinków w wartościach — szybki split
     const cols = trimmed.split(',');

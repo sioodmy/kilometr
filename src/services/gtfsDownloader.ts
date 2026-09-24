@@ -117,6 +117,8 @@ export async function downloadGtfsZip(
 ): Promise<string> {
   await ensureBaseDir();
   const dest = gtfsZipUri();
+  // Wyczyść ewentualny stary/niekompletny plik zip przed startem pobierania
+  await FileSystem.deleteAsync(dest, { idempotent: true });
   const task = FileSystem.createDownloadResumable(
     url,
     dest,
@@ -133,11 +135,12 @@ export async function downloadGtfsZip(
   return result.uri;
 }
 
-/** Sprawdza czy rozpakowany GTFS już istnieje na telefonie. */
+/** Sprawdza czy kompletny rozpakowany GTFS już istnieje na telefonie. */
 export async function hasExtractedGtfs(): Promise<boolean> {
   try {
-    const info = await FileSystem.getInfoAsync(`${gtfsDir()}stops.txt`);
-    return info.exists;
+    const stopsInfo = await FileSystem.getInfoAsync(`${gtfsDir()}stops.txt`);
+    const timesInfo = await FileSystem.getInfoAsync(`${gtfsDir()}stop_times.txt`);
+    return stopsInfo.exists && timesInfo.exists;
   } catch {
     return false;
   }
@@ -163,13 +166,25 @@ export async function unzipGtfs(zipUri: string): Promise<string[]> {
   if (!dirInfo.exists) {
     await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
   }
-  // base64 w pamięci (~16 MB dla 12 MB zip) — akceptowalne jednorazowo przy
-  // pierwszym imporcie; kolejne starty używają już SQLite, nie zipa.
+  // Szybka konwersja base64 na Uint8Array w jednej pętli indeksowanej (bez 12M alokacji closure)
   const base64 = await FileSystem.readAsStringAsync(zipUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  const entries = unzipSync(binary);
+  const binStr = atob(base64);
+  const len = binStr.length;
+  const binary = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    binary[i] = binStr.charCodeAt(i);
+  }
+
+  // Filtr w unzipSync zapobiega dekompresji niepotrzebnych shapes.txt (~15 MB) i innych do RAM
+  const entries = unzipSync(binary, {
+    filter(file) {
+      const short = file.name.split('/').pop() || file.name;
+      return NEEDED_GTFS_FILES.has(short);
+    },
+  });
+
   const names: string[] = [];
   for (const [name, data] of Object.entries(entries)) {
     if (name.endsWith('/')) continue;
@@ -199,9 +214,7 @@ export async function cleanupRawGtfs(): Promise<void> {
     // best-effort
   }
   try {
-    // stop_times.txt i shapes.txt są największe — kasujemy po imporcie.
-    await FileSystem.deleteAsync(`${gtfsDir()}stop_times.txt`, { idempotent: true });
-    await FileSystem.deleteAsync(`${gtfsDir()}shapes.txt`, { idempotent: true });
+    await FileSystem.deleteAsync(gtfsDir(), { idempotent: true });
   } catch {
     // best-effort
   }

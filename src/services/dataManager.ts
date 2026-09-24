@@ -194,18 +194,13 @@ export async function importGtfsFromNetwork(): Promise<void> {
   try {
     emit({ state: 'downloading', progress: 0 });
     const url = await discoverBestArchiveUrl();
-    await downloadGtfsZip(url, (p) => {
+    const zipUri = await downloadGtfsZip(url, (p) => {
       const progress = p.totalBytes > 0 ? p.bytesWritten / p.totalBytes : 0;
       emit({ state: 'downloading', progress });
     });
 
     emit({ state: 'importing', step: 'Rozpakowywanie…', progress: 0 });
-    // Jeśli zip już był rozpakowany (retry), nie rozpakowuj drugi raz.
-    const already = await hasExtractedGtfs();
-    if (!already) {
-      const { gtfsZipUri } = await import('./gtfsDownloader');
-      await unzipGtfs(gtfsZipUri());
-    }
+    await unzipGtfs(zipUri);
 
     await clearGtfsTables();
     await prepareForBulkImport();

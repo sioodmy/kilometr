@@ -89,19 +89,16 @@ async function initDb(): Promise<SQLite.SQLiteDatabase> {
         CREATE INDEX IF NOT EXISTS idx_pois_norm ON pois (norm_name);
       `);
       // Migracje istniejących baz (CREATE TABLE IF NOT EXISTS ich nie rusza).
-      // WAŻNE: indeks na weight dopiero PO migracji — na starych bazach bez
-      // kolumny CREATE INDEX w batchu init wywalał całe openDatabase
-      // ("no such column: weight") i store nigdy się nie ładował.
-      const hasWeight = async (): Promise<boolean> => {
-        const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(stops)');
-        return cols.some((c) => c.name === 'weight');
-      };
-      if (!(await hasWeight())) {
+      // Upewnij się, że kolumna weight istnieje w tabeli stops:
+      try {
         await db.execAsync('ALTER TABLE stops ADD COLUMN weight INTEGER NOT NULL DEFAULT 0');
+      } catch {
+        // Ignoruj jeśli kolumna już istnieje
       }
-      if (!(await hasWeight())) {
-        // Awaryjnie: ubity schemat (np. przerwany ALTER) — tabela stops to
-        // cache, stawiamy ją od zera; reseed/reimport uzupełni dane.
+      try {
+        await db.execAsync('CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC)');
+      } catch (err) {
+        console.warn('idx_stops_weight failed, rebuilding stops table:', err);
         await db.execAsync(`
           DROP TABLE IF EXISTS stops;
           CREATE TABLE stops (
@@ -115,9 +112,9 @@ async function initDb(): Promise<SQLite.SQLiteDatabase> {
           );
           CREATE INDEX IF NOT EXISTS idx_stops_latlon ON stops (lat, lon);
           CREATE INDEX IF NOT EXISTS idx_stops_norm ON stops (norm);
+          CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC);
         `);
       }
-      await db.execAsync('CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC)');
       return db;
 }
 
@@ -391,12 +388,17 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
  * Jednorazowo po imporcie; idx_stoptimes_stop robi to szybko natywnie.
  */
 export async function computeStopWeights(): Promise<number> {
-  const db = await getGtfsDb();
-  await db.execAsync(
-    'UPDATE stops SET weight = (SELECT COUNT(*) FROM stop_times WHERE stop_times.stop_id = stops.stop_id)'
-  );
-  const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
-  return row?.n ?? 0;
+  try {
+    const db = await getGtfsDb();
+    await db.execAsync(
+      'UPDATE stops SET weight = (SELECT COUNT(*) FROM stop_times WHERE stop_times.stop_id = stops.stop_id)'
+    );
+    const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
+    return row?.n ?? 0;
+  } catch (err) {
+    console.warn('[GtfsDatabase] computeStopWeights failed:', err);
+    return 0;
+  }
 }
 
 /** Czy wagi są już policzone (false po imporcie / na starych bazach). */
