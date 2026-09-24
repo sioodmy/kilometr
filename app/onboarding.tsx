@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -171,8 +173,8 @@ function StatusPill({ v }: { v: 'unknown' | 'granted' | 'denied' }) {
   if (v === 'granted')
     return (
       <View style={[s.pill, s.pillOk]}>
-        <Check size={12} color={scheme.onSuccess} />
-        <Text style={[s.pillText, { color: scheme.onSuccess }]}>Włączone</Text>
+        <Check size={12} color={scheme.onSuccessContainer} />
+        <Text style={[s.pillText, { color: scheme.onSuccessContainer }]}>Włączone</Text>
       </View>
     );
   if (v === 'denied')
@@ -291,6 +293,16 @@ export default function OnboardingScreen() {
   const [downloading, setDownloading] = useState(false);
   const slots = useOnboardingPlaces();
   const startedDownload = useRef(false);
+  // Krok 3: przewijanie otwartego slotu nad klawiaturę.
+  const step3Scroll = useRef<ScrollView>(null);
+  const slotY = useRef<Record<string, number>>({});
+  const scrollSlotIntoView = useCallback((key: string) => {
+    const y = slotY.current[key] ?? 0;
+    // Czekamy na animację klawiatury, inaczej scroll policzy się bez niej.
+    setTimeout(() => {
+      step3Scroll.current?.scrollTo({ y: Math.max(0, y - 70), animated: true });
+    }, 150);
+  }, []);
 
   useEffect(() => {
     void refreshDataStatus().catch(() => {});
@@ -365,7 +377,7 @@ export default function OnboardingScreen() {
           >
             <View style={s.heroMark}>
               <View style={s.heroGlow} />
-              <TramFront size={44} color={scheme.onPrimary} />
+              <TramFront size={44} color={scheme.onPrimaryContainer} />
             </View>
             <Text style={s.hero}>Kilometr</Text>
             <Text style={s.lead}>Tym razem dojedziesz.</Text>
@@ -488,7 +500,7 @@ export default function OnboardingScreen() {
             overScrollMode="never"
           >
             <View style={s.heroMarkSmall}>
-              <Database size={30} color={scheme.onPrimary} />
+              <Database size={30} color={scheme.onPrimaryContainer} />
             </View>
             <Text style={s.title}>Pobierz rozkład{'\n'}Wrocławia</Text>
             <Text style={s.leadSmall}>
@@ -534,7 +546,7 @@ export default function OnboardingScreen() {
                 <>
                   <View style={s.successRow}>
                     <View style={s.successBadge}>
-                      <Check size={22} color={scheme.onSuccess} />
+                      <Check size={22} color={scheme.onSuccessContainer} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.cardTitle}>Rozkład gotowy.</Text>
@@ -566,11 +578,18 @@ export default function OnboardingScreen() {
 
         {/* ── 3 · Miejsca (pomijalne) ───────────────────────────────── */}
         {step === 3 && (
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={80}
+          >
           <ScrollView
-            contentContainerStyle={s.body}
+            ref={step3Scroll}
+            contentContainerStyle={[s.body, { paddingBottom: 240 }]}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
             <Text style={s.title}>Gdzie bywasz{'\n'}najczęściej?</Text>
             <Text style={s.leadSmall}>
@@ -582,7 +601,13 @@ export default function OnboardingScreen() {
               const saved = slots.bySlot[slot.key];
               const open = slots.activeSlot === slot.key;
               return (
-                <View key={slot.key} style={s.card}>
+                <View
+                  key={slot.key}
+                  style={s.card}
+                  onLayout={(e) => {
+                    slotY.current[slot.key] = e.nativeEvent.layout.y;
+                  }}
+                >
                   <View style={s.slotRow}>
                     <View style={s.cardIcon}>
                       <Icon size={20} color={scheme.primary} />
@@ -596,8 +621,8 @@ export default function OnboardingScreen() {
                     {saved ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <View style={[s.pill, s.pillOk]}>
-                          <Check size={12} color={scheme.onSuccess} />
-                          <Text style={[s.pillText, { color: scheme.onSuccess }]}>Dodane</Text>
+                          <Check size={12} color={scheme.onSuccessContainer} />
+                          <Text style={[s.pillText, { color: scheme.onSuccessContainer }]}>Dodane</Text>
                         </View>
                         <Pressable
                           onPress={() => void slots.remove(saved.id)}
@@ -628,6 +653,7 @@ export default function OnboardingScreen() {
                         <TextInput
                           value={slots.query}
                           onChangeText={slots.setQuery}
+                          onFocus={() => scrollSlotIntoView(slot.key)}
                           placeholder={`Adres dla: ${slot.name}…`}
                           placeholderTextColor={scheme.onSurfaceVariant}
                           style={s.searchInput}
@@ -665,6 +691,7 @@ export default function OnboardingScreen() {
               );
             })}
           </ScrollView>
+          </KeyboardAvoidingView>
         )}
       </Animated.View>
 
@@ -686,13 +713,19 @@ export default function OnboardingScreen() {
         {step === 2 && (
           <>
             <PrimaryBtn
-              label={gtfsReady ? 'Dalej' : busyGtfs ? 'Pobieranie…' : 'Pobierz i dalej'}
+              label={
+                gtfsReady
+                  ? 'Dalej'
+                  : dataStatus.state === 'error'
+                    ? 'Spróbuj ponownie'
+                    : busyGtfs
+                      ? 'Pobieranie…'
+                      : 'Pobierz rozkład'
+              }
               disabled={busyGtfs && !gtfsReady}
               onPress={() => {
                 if (gtfsReady) next();
-                else void startDownload().then(() => {
-                  // po starcie użytkownik czeka na tym ekranie; dalej po gotowości
-                });
+                else void startDownload();
               }}
               icon={
                 busyGtfs && !gtfsReady ? (
@@ -702,8 +735,9 @@ export default function OnboardingScreen() {
                 )
               }
             />
-            {!gtfsReady && !busyGtfs && <GhostBtn label="Kontynuuj bez pobierania" onPress={next} />}
-            {gtfsReady && <GhostBtn label="Odśwież rozkład" onPress={() => void startDownload()} />}
+            {!gtfsReady && (
+              <Text style={s.lockNote}>Bez rozkładu nie da się wyszukać połączeń.</Text>
+            )}
           </>
         )}
         {step === 3 && (
@@ -896,4 +930,5 @@ const s = StyleSheet.create({
   primaryTextDisabled: { color: scheme.onSurfaceVariant },
   ghost: { alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
   ghostText: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '600' },
+  lockNote: { ...type.labelSmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingTop: 2 },
 });

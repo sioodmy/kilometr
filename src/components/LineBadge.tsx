@@ -73,7 +73,7 @@ export function getLineColors(line?: string, mode?: LegMode): { bg: string; fg: 
   return { bg, fg, isTram };
 }
 
-export function LineBadge({ mode, line }: { mode?: LegMode; line?: string }) {
+export function LineBadge({ mode, line, compact }: { mode?: LegMode; line?: string; compact?: boolean }) {
   const resolved = inferTransitMode(mode, line);
   if (resolved === 'walk') {
     return (
@@ -87,8 +87,8 @@ export function LineBadge({ mode, line }: { mode?: LegMode; line?: string }) {
   const Icon = isTram ? TramFront : BusFront;
 
   return (
-    <View style={[styles.badge, { backgroundColor: bg }]}>
-      <Icon size={13} color={fg} />
+    <View style={[styles.badge, compact && styles.compact, { backgroundColor: bg }]}>
+      <Icon size={compact ? 12 : 13} color={fg} />
       <Text style={[styles.text, { color: fg }]}>{line}</Text>
     </View>
   );
@@ -107,5 +107,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   walk: { backgroundColor: scheme.surfaceContainerHighest, minWidth: 32 },
+  compact: { paddingHorizontal: 6, minWidth: 36, gap: 4 },
   text: { ...type.labelLarge, fontWeight: '700' },
 });

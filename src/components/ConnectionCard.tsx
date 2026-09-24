@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ArrowRight, Footprints } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
-import { LineBadge, inferTransitMode } from './LineBadge';
+import { LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { formatWalkTime } from '../services/settings';
 
@@ -110,6 +110,26 @@ function buildLegSegments(legs: Leg[]): SegmentItem[] {
   return items;
 }
 
+// Rząd odcinków ma być zawsze w jednej linii (bez zawijania). Szerokości
+// szacujemy z góry — jednoprzebiegowo, bez pomiarów i flickeru:
+// badge 50, strzałka 16, pill pieszy 46, gap 6.
+const W_BADGE = 50;
+const W_BADGE_COMPACT = 42;
+const W_ARROW = 16;
+const W_WALK = 46;
+const W_GAP = 6;
+const W_DIR_PER_CHAR = 6.5;
+const W_DIR_MAX = 110;
+
+function rowWidth(segs: SegmentItem[], badgeW: number): number {
+  const badges = segs.filter((s) => s.type === 'transit').length;
+  const arrows = segs.filter((s) => s.type === 'arrow').length;
+  const walks = segs.filter((s) => s.type === 'walk').length;
+  return (
+    badges * badgeW + arrows * W_ARROW + walks * W_WALK + Math.max(0, segs.length - 1) * W_GAP
+  );
+}
+
 export function ConnectionCard({
   item,
   onPress,
@@ -123,6 +143,37 @@ export function ConnectionCard({
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
   const segments = useMemo(() => buildLegSegments(item.legs), [item.legs]);
+  const { width: winWidth } = useWindowDimensions();
+  // Miejsce na rząd: ekran minus paddingi (lista 14 + karta 14 + wiersz 8, ×2).
+  const avail = winWidth - 72;
+  const compact = boarding.length > 2;
+  const badgeW = compact ? W_BADGE_COMPACT : W_BADGE;
+
+  // Co widać w jednej linii:
+  // - kierunek tylko przy pojedynczej linii i tylko gdy na pewno się mieści,
+  // - przy kilku liniach kierunków nie ma wcale; gdy ciasno, wypadają najpierw
+  //   piesze transfery, potem końcowy i początkowy spacer. Badge linii i strzałki
+  //   zostają zawsze. Pełne dane są na ekranie szczegółów.
+  const visible = useMemo(() => {
+    if (walkOnly) return { segments, dirWidth: 0 };
+    if (boarding.length === 1) {
+      const dir = boarding[0]?.direction ?? '';
+      const dirW = Math.min(dir.length * W_DIR_PER_CHAR, W_DIR_MAX);
+      const base = rowWidth(segments, badgeW);
+      if (dir && base + W_GAP + dirW <= avail) {
+        return { segments, dirWidth: Math.min(dirW, avail - base - W_GAP) };
+      }
+      return { segments, dirWidth: 0 };
+    }
+    if (rowWidth(segments, badgeW) <= avail) return { segments, dirWidth: 0 };
+    const noTransfer = segments.filter(
+      (s) => !(s.type === 'walk' && s.key.startsWith('walk-transfer')),
+    );
+    if (rowWidth(noTransfer, badgeW) <= avail) return { segments: noTransfer, dirWidth: 0 };
+    const noFinal = noTransfer.filter((s) => s.key !== 'walk-final');
+    if (rowWidth(noFinal, badgeW) <= avail) return { segments: noFinal, dirWidth: 0 };
+    return { segments: noFinal.filter((s) => s.key !== 'walk-initial'), dirWidth: 0 };
+  }, [segments, boarding, walkOnly, avail, badgeW]);
 
   // Historyczne: odjechało ≥1 min temu — szary badge zamiast czasu odjazdu
   const minsAgo =
@@ -211,7 +262,7 @@ export function ConnectionCard({
             <Text style={styles.walkOnlyText}>Pieszo do celu</Text>
           </View>
         ) : (
-          segments.map((seg) => {
+          visible.segments.map((seg) => {
             if (seg.type === 'walk') {
               return (
                 <View
@@ -235,14 +286,13 @@ export function ConnectionCard({
                 />
               );
             }
-            const isBus = inferTransitMode(seg.leg.mode, seg.leg.line) === 'bus';
-            const showDirection = Boolean(seg.leg.direction) && (!isBus || boarding.length === 1);
+            const showDirection = boarding.length === 1 && visible.dirWidth > 0;
             return (
               <View key={seg.key} style={styles.transitGroup}>
-                <LineBadge mode={seg.leg.mode} line={seg.leg.line} />
+                <LineBadge mode={seg.leg.mode} line={seg.leg.line} compact={compact} />
                 {showDirection ? (
                   <Text
-                    style={[styles.dir, boarding.length > 1 && styles.dirCompact]}
+                    style={[styles.dir, { maxWidth: visible.dirWidth }]}
                     numberOfLines={1}
                     ellipsizeMode="tail"
                   >
@@ -314,7 +364,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
+    overflow: 'hidden',
     backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.medium,
     padding: 8,
@@ -323,16 +374,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    flexShrink: 1,
+    flexShrink: 0,
   },
   dir: {
     ...type.labelMedium,
     color: scheme.onSurface,
-    maxWidth: 120,
     flexShrink: 1,
-  },
-  dirCompact: {
-    maxWidth: 80,
   },
   walkPill: {
     flexDirection: 'row',
