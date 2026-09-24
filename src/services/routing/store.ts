@@ -21,6 +21,9 @@ export class LocalGtfsStore {
   footpaths = new Map<string, any[]>();
 
   private dayIndexes = new Map<string, DayIndex>();
+  /** Wycinki horyzontu (szybkie): klucz dzien+kubelki godzin, max 4 w pamięci. */
+  private sliceIndexes = new Map<string, DayIndex>();
+  private slicePromises = new Map<string, Promise<DayIndex>>();
   isLoaded = false;
 
   async load() {
@@ -113,6 +116,218 @@ export class LocalGtfsStore {
     }
   }
 
+  /** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */
+  getRouteIdsByShortName(shortName: string): string[] {
+    const key = shortName.trim().toUpperCase();
+    const out: string[] = [];
+    for (const [id, r] of this.routes.entries()) {
+      if (String(r.route_short_name ?? '').trim().toUpperCase() === key) out.push(id);
+    }
+    return out;
+  }
+
+  /**
+   * Wycinkowy indeks na horyzont [fromSec, toSec] (sekundy, mogą >86400).
+   * Ładuje tylko kursy nachodzące na horyzont — ~6× mniej wierszy przez mostek
+   * JS niż pełny indeks dobowy. Cache kubelkowany po godzinach (max 4).
+   */
+  async getDayIndexSlice(
+    weekday: number,
+    dateStr: string | undefined,
+    fromSec: number,
+    toSec: number,
+  ): Promise<DayIndex> {
+    const day = ((weekday % 7) + 7) % 7;
+    const qFrom = Math.floor(fromSec / 3600);
+    const qTo = Math.floor(toSec / 3600);
+    const cacheKey = `${day}|${dateStr ?? ''}|${qFrom}|${qTo}`;
+    const hit = this.sliceIndexes.get(cacheKey);
+    if (hit) {
+      // LRU: odśwież kolejność
+      this.sliceIndexes.delete(cacheKey);
+      this.sliceIndexes.set(cacheKey, hit);
+      return hit;
+    }
+    const inFlight = this.slicePromises.get(cacheKey);
+    if (inFlight) return inFlight;
+
+    const promise = this.buildSlice(day, dateStr, qFrom, qTo).finally(() => {
+      this.slicePromises.delete(cacheKey);
+    });
+    this.slicePromises.set(cacheKey, promise);
+    return promise;
+  }
+
+  private async buildSlice(
+    day: number,
+    dateStr: string | undefined,
+    qFrom: number,
+    qTo: number,
+  ): Promise<DayIndex> {
+    const cacheKey = `${day}|${dateStr ?? ''}|${qFrom}|${qTo}`;
+    // Wycinek budujemy z marginesem całego kubła — zapytania z tej samej
+    // godziny (i ticker co minutę) trafiają w ten sam klucz.
+    const bFrom = qFrom * 3600 - 1800;
+    const bTo = (qTo + 1) * 3600 + 1800;
+    const t0 = performance.now();
+
+    const activeServices = await getActiveServices(day, dateStr);
+    const db = await getGtfsDb();
+    const serviceList = Array.from(activeServices).map((s) => `'${s.replace(/'/g, "''")}'`).join(',');
+    const emptyIdx: DayIndex = {
+      stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map(),
+    };
+    if (!serviceList) {
+      this.rememberSlice(cacheKey, emptyIdx);
+      return emptyIdx;
+    }
+
+    // 1. Kursy nachodzące na horyzont (agregacja natywnie w SQL — lecą tylko id).
+    const overlapping = await db.getAllAsync<{ trip_id: string }>(
+      `SELECT st.trip_id AS trip_id
+       FROM stop_times st
+       JOIN trips t ON st.trip_id = t.trip_id
+       WHERE t.service_id IN (${serviceList})
+       GROUP BY st.trip_id
+       HAVING MIN(st.dep_sec) <= ? AND MAX(st.arr_sec) >= ?`,
+      bTo,
+      bFrom,
+    );
+    if (overlapping.length === 0) {
+      this.rememberSlice(cacheKey, emptyIdx);
+      return emptyIdx;
+    }
+    const tripIds = overlapping.map((r) => r.trip_id);
+
+    // 2. Szczegóły kursów + czasy — porcjami (IN z tysiącami id na raz dławi mostek).
+    const tripsByRouteId = new Map<string, any[]>();
+    const CHUNK = 400;
+    for (let i = 0; i < tripIds.length; i += CHUNK) {
+      const chunk = tripIds.slice(i, i + CHUNK);
+      const list = chunk.map((id) => `'${id.replace(/'/g, "''")}'`).join(',');
+      const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
+        `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${list})`
+      );
+      for (const r of tripsRows) {
+        const t = {
+          trip_id: r.trip_id,
+          route_id: r.route_id,
+          service_id: r.service_id,
+          trip_headsign: r.headsign,
+          direction_id: r.direction,
+          shape_id: r.shape,
+        };
+        this.trips.set(r.trip_id, t);
+        let group = tripsByRouteId.get(r.route_id);
+        if (!group) {
+          group = [];
+          tripsByRouteId.set(r.route_id, group);
+        }
+        group.push(t);
+      }
+      const stRows = await db.getAllAsync<{trip_id: string, stop_id: string, arr_sec: number, dep_sec: number, seq: number}>(
+        `SELECT trip_id, stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id IN (${list}) ORDER BY trip_id, seq`
+      );
+      for (const r of stRows) {
+        let group = this.stopTimes.get(r.trip_id);
+        if (!group) {
+          group = [];
+          this.stopTimes.set(r.trip_id, group);
+        }
+        group.push({
+          trip_id: r.trip_id,
+          stop_id: r.stop_id,
+          arrival_sec: r.arr_sec,
+          departure_sec: r.dep_sec,
+          stop_sequence: r.seq,
+        });
+      }
+    }
+
+    const idx = this.buildPatterns(tripsByRouteId);
+    this.rememberSlice(cacheKey, idx);
+    console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length}`);
+    return idx;
+  }
+
+  private rememberSlice(key: string, idx: DayIndex): void {
+    this.sliceIndexes.set(key, idx);
+    if (this.sliceIndexes.size > 4) {
+      const oldest = this.sliceIndexes.keys().next().value;
+      if (oldest) this.sliceIndexes.delete(oldest);
+    }
+  }
+
+  /** Buduje patterns/stopRoutes z mapy kursów (wspólne dla indeksu i wycinków). */
+  private buildPatterns(tripsByRouteId: Map<string, any[]>): DayIndex {
+    const stopRoutes = new Map<string, Set<string>>();
+    const routeStops = new Map<string, string[]>();
+    const routeTrips = new Map<string, any[]>();
+    const patterns = new Map<string, any>();
+
+    for (const [routeId, trips] of tripsByRouteId.entries()) {
+      const patternGroups = new Map<string, any[]>();
+      for (const trip of trips) {
+        const times = this.stopTimes.get(trip.trip_id);
+        if (!times || times.length === 0) continue;
+        const key = times.map((t) => t.stop_id).join(',');
+        let group = patternGroups.get(key);
+        if (!group) {
+          group = [];
+          patternGroups.set(key, group);
+        }
+        group.push(trip);
+      }
+
+      let patIdx = 0;
+      for (const [stopKey, patTrips] of patternGroups.entries()) {
+        const patternId = `${routeId}_p${patIdx++}`;
+        const stopSequence = stopKey.split(',');
+
+        patTrips.sort((a, b) => {
+          const depA = this.stopTimes.get(a.trip_id)![0].departure_sec;
+          const depB = this.stopTimes.get(b.trip_id)![0].departure_sec;
+          return depA - depB;
+        });
+
+        const departures: number[][] = Array.from({ length: stopSequence.length }, () => []);
+        const tripIndicesArr: number[][] = Array.from({ length: stopSequence.length }, () => []);
+
+        for (let tIdx = 0; tIdx < patTrips.length; tIdx++) {
+          const times = this.stopTimes.get(patTrips[tIdx].trip_id)!;
+          for (let sIdx = 0; sIdx < stopSequence.length && sIdx < times.length; sIdx++) {
+            departures[sIdx].push(times[sIdx].departure_sec);
+            tripIndicesArr[sIdx].push(tIdx);
+          }
+        }
+
+        const pattern = {
+          patternId,
+          routeId,
+          stopSequence,
+          trips: patTrips,
+          departures,
+          tripIndices: tripIndicesArr,
+        };
+
+        patterns.set(patternId, pattern);
+        routeStops.set(patternId, stopSequence);
+        routeTrips.set(patternId, patTrips);
+
+        for (const stopId of stopSequence) {
+          let routesSet = stopRoutes.get(stopId);
+          if (!routesSet) {
+            routesSet = new Set();
+            stopRoutes.set(stopId, routesSet);
+          }
+          routesSet.add(patternId);
+        }
+      }
+    }
+
+    return { stopRoutes, routeStops, routeTrips, patterns };
+  }
+
   async getDayIndex(weekday: number, dateStr?: string): Promise<DayIndex> {
     const day = ((weekday % 7) + 7) % 7;
     const cacheKey = dateStr ? `${day}-${dateStr}` : `${day}`;
@@ -187,72 +402,7 @@ export class LocalGtfsStore {
       });
     }
 
-    const stopRoutes = new Map<string, Set<string>>();
-    const routeStops = new Map<string, string[]>();
-    const routeTrips = new Map<string, any[]>();
-    const patterns = new Map<string, any>();
-
-    for (const [routeId, trips] of tripsByRouteId.entries()) {
-      const patternGroups = new Map<string, any[]>();
-      for (const trip of trips) {
-        const times = this.stopTimes.get(trip.trip_id);
-        if (!times || times.length === 0) continue;
-        const key = times.map((t) => t.stop_id).join(',');
-        let group = patternGroups.get(key);
-        if (!group) {
-          group = [];
-          patternGroups.set(key, group);
-        }
-        group.push(trip);
-      }
-
-      let patIdx = 0;
-      for (const [stopKey, patTrips] of patternGroups.entries()) {
-        const patternId = `${routeId}_p${patIdx++}`;
-        const stopSequence = stopKey.split(',');
-
-        patTrips.sort((a, b) => {
-          const depA = this.stopTimes.get(a.trip_id)![0].departure_sec;
-          const depB = this.stopTimes.get(b.trip_id)![0].departure_sec;
-          return depA - depB;
-        });
-
-        const departures: number[][] = Array.from({ length: stopSequence.length }, () => []);
-        const tripIndicesArr: number[][] = Array.from({ length: stopSequence.length }, () => []);
-
-        for (let tIdx = 0; tIdx < patTrips.length; tIdx++) {
-          const times = this.stopTimes.get(patTrips[tIdx].trip_id)!;
-          for (let sIdx = 0; sIdx < stopSequence.length && sIdx < times.length; sIdx++) {
-            departures[sIdx].push(times[sIdx].departure_sec);
-            tripIndicesArr[sIdx].push(tIdx);
-          }
-        }
-
-        const pattern = {
-          patternId,
-          routeId,
-          stopSequence,
-          trips: patTrips,
-          departures,
-          tripIndices: tripIndicesArr,
-        };
-
-        patterns.set(patternId, pattern);
-        routeStops.set(patternId, stopSequence);
-        routeTrips.set(patternId, patTrips);
-
-        for (const stopId of stopSequence) {
-          let routesSet = stopRoutes.get(stopId);
-          if (!routesSet) {
-            routesSet = new Set();
-            stopRoutes.set(stopId, routesSet);
-          }
-          routesSet.add(patternId);
-        }
-      }
-    }
-
-    const idx = { stopRoutes, routeStops, routeTrips, patterns };
+    const idx = this.buildPatterns(tripsByRouteId);
     this.dayIndexes.set(cacheKey, idx);
     console.log(`[LocalGtfsStore] DayIndex built in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${activeTripsById.size}`);
     return idx;

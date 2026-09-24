@@ -2,7 +2,7 @@ import { gtfsStore } from './store';
 import { filterParetoJourneys, runRaptor } from './raptor';
 import { Connection, Leg, LegStop, RawJourney } from './types';
 import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
-import { vehicleTracker } from './mockTracker';
+import { liveTracker } from '../liveTracker';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z raptor.ts i store.ts)
@@ -12,10 +12,67 @@ const WALK_DETOUR_FACTOR = 1.3;
 const MIN_WALK_LEG_METERS = 50;
 
 /** Pełna sekwencja przystanków kursu (cała linia) z GTFS stop_times + stops. */
-export function buildTripStops(tripId: string): LegStop[] {
+export async function buildTripStops(tripId: string): Promise<LegStop[]> {
+  const mem = gtfsStore.stopTimes.get(tripId);
+  const toLegStops = (times: { stop_id: string; arrival_sec: number; departure_sec: number; stop_sequence: number }[]) =>
+    times.map((t) => {
+      const s = gtfsStore.stops.get(t.stop_id);
+      return {
+        stopId: t.stop_id,
+        name: s?.stop_name || t.stop_id,
+        lat: s?.stop_lat,
+        lon: s?.stop_lon,
+        seq: t.stop_sequence,
+        arriveSec: t.arrival_sec,
+        departSec: t.departure_sec,
+      };
+    });
+  if (mem && mem.length > 0) return toLegStops(mem);
+  // Kurs spoza aktywnego wycinka (np. rozwinięcie starszego połączenia):
+  // dociągnij z SQLite zamiast zwracać pustkę.
+  try {
+    const { getTripStopTimes } = await import('../gtfsDatabase');
+    const rows = await getTripStopTimes(tripId);
+    if (rows.length > 0) {
+      return toLegStops(
+        rows.map((r) => ({
+          stop_id: r.stop_id,
+          arrival_sec: r.arr_sec,
+          departure_sec: r.dep_sec,
+          stop_sequence: r.seq,
+        })),
+      );
+    }
+  } catch {
+    // ignoruj — fallback niżej
+  }
+  return [];
+}
+
+/**
+ * Rozgrzewka po starcie / imporcie: buduje wycinek na bieżącą porę w tle,
+ * żeby pierwsze wyszukiwanie nie płaciło pełnego kosztu budowy indeksu.
+ */
+export async function warmupRouting(): Promise<void> {
+  try {
+    await gtfsStore.load();
+    const now = new Date();
+    const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    await gtfsStore.getDayIndexSlice(now.getDay(), `${y}${m}${d}`, currentSec - 1800, currentSec + 10800);
+  } catch (err) {
+    console.warn('[Routing] warmup failed:', err);
+  }
+}
+
+/** Przystanki kursu TYLKO od boardStop do alightStop (to co użytkownik widzi). */
+function buildLegStops(tripId: string, boardStopId: string, alightStopId: string): LegStop[] {
+  // Legi pochodzą z aktywnego wycinka, więc kurs jest w pamięci (sync, bez IO).
   const times = gtfsStore.stopTimes.get(tripId);
   if (!times || times.length === 0) return [];
-  return times.map((t) => {
+  const allStops: LegStop[] = times.map((t) => {
     const s = gtfsStore.stops.get(t.stop_id);
     return {
       stopId: t.stop_id,
@@ -27,12 +84,6 @@ export function buildTripStops(tripId: string): LegStop[] {
       departSec: t.departure_sec,
     };
   });
-}
-
-/** Przystanki kursu TYLKO od boardStop do alightStop (to co użytkownik widzi). */
-function buildLegStops(tripId: string, boardStopId: string, alightStopId: string): LegStop[] {
-  const allStops = buildTripStops(tripId);
-  if (allStops.length === 0) return [];
 
   const boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
   const alightIdx = allStops.findIndex((s) => s.stopId === alightStopId);
@@ -117,7 +168,9 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   targetDate.setDate(targetDate.getDate() + dayOffsetDays);
   const weekday = targetDate.getDay();
   const dateStr = toDateStr(targetDate);
-  const dayIndex = await gtfsStore.getDayIndex(weekday, dateStr);
+  // Wycinek horyzontu zamiast pełnej doby: okna RAPTOR-a sięgają +3600 s,
+  // a przesiadkowe nogi jeszcze dalej — bierzemy zapas do +3 h.
+  const dayIndex = await gtfsStore.getDayIndexSlice(weekday, dateStr, departureSec - 1800, departureSec + 10800);
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));
   const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 90)));
@@ -194,7 +247,9 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // (jak Jakdojade). Gęstsze okna blisko „teraz", rzadsze dalej.
   // tripDelays: RAPTOR wsiada wg czasów efektywnych (rozkład + GPS), więc
   // opóźniony kurs da się jeszcze złapać — czasy w segmentach są już finalne.
-  const tripDelays = vehicleTracker.getTripDelays();
+  // Tracker odświeża się w tle (cache ≤30 s); planowanie nigdy nie czeka na sieć.
+  await liveTracker.ensureFresh();
+  const tripDelays = liveTracker.getTripDelays();
   const rawJourneys: RawJourney[] = [];
   const timeWindows = [0, 300, 600, 900, 1200, 1800, 2700, 3600];
 
