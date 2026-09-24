@@ -41,6 +41,7 @@ import {
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
+import { DirectOnlyFilter } from '../../src/components/DirectOnlyFilter';
 import { SearchSheet } from '../../src/components/SearchSheet';
 
 const GPS_ITEM: Suggestion = {
@@ -62,6 +63,7 @@ export default function RoutesScreen() {
     toTitle: string;
     toLat: string;
     toLon: string;
+    directOnly?: string;
   }>();
 
   const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
@@ -99,6 +101,10 @@ export default function RoutesScreen() {
   // Jakdojade, od najwcześniejszego odjazdu. Magazyn (items) zawsze
   // posortowany po odjeździe — paginacja i hold-to-load na tym bazują.
   const [sortMode, setSortMode] = useState<'fastest' | 'earliest'>('fastest');
+  // Jednorazowy filtr "tylko bezpośrednie" — NIE jest to ustawienie systemowe
+  // (maxTransfers w /settings zostaje nietknięte). Toggle wymusza
+  // maxTransfers=0 wyłącznie dla bieżącego ekranu wyników.
+  const [directOnly, setDirectOnly] = useState(params.directOnly === '1');
 
   const displayed = useMemo(() => {
     if (sortMode === 'earliest') return items;
@@ -182,7 +188,8 @@ export default function RoutesScreen() {
       anchorStopLat: activeAnchor?.lat,
       anchorStopLon: activeAnchor?.lon,
       departureTimeSec: depSec,
-      maxTransfers: s.maxTransfers,
+      // Jednorazowy filtr directOnly nadpisuje systemowe maxTransfers.
+      maxTransfers: directOnly ? 0 : s.maxTransfers,
       minTransferSec: s.minTransferSec,
       maxWalkM: s.maxWalkM,
       walkSpeedMps: s.walkSpeedMps,
@@ -475,7 +482,7 @@ export default function RoutesScreen() {
       fetchRoutes(departureTimeSec);
     });
     return () => task.cancel();
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor]);
+  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly]);
 
   const handleSwap = () => {
     setActiveAnchor(null);
@@ -639,7 +646,12 @@ export default function RoutesScreen() {
         </Pressable>
       </View>
 
-      {/* 3. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
+      {/* 3. Jednorazowy filtr: tylko bezpośrednie (nie rusza ustawień systemowych) */}
+      <View style={styles.directWrap}>
+        <DirectOnlyFilter value={directOnly} onChange={setDirectOnly} />
+      </View>
+
+      {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
       <View style={styles.sortRow}>
         {(
           [
@@ -668,7 +680,7 @@ export default function RoutesScreen() {
         })}
       </View>
 
-      {/* 4. Lista połączeń */}
+      {/* 5. Lista połączeń */}
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={scheme.primary} />
@@ -723,6 +735,7 @@ export default function RoutesScreen() {
               <View style={styles.countRow}>
                 <Text style={styles.count} numberOfLines={1}>
                   {items.length} połączenia • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
+                  {directOnly ? ' • tylko bezpośrednie' : ''}
                 </Text>
                 {offline && (
                   <Pressable
@@ -746,16 +759,30 @@ export default function RoutesScreen() {
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>Nie znaleziono bezpośrednich połączeń</Text>
-              <Text style={styles.emptySub}>
-                Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.
+              <Text style={styles.emptyTitle}>
+                {directOnly ? 'Brak bezpośrednich połączeń' : 'Nie znaleziono połączeń'}
               </Text>
+              <Text style={styles.emptySub}>
+                {directOnly
+                  ? 'Na tej trasie nie ma teraz kursu bez przesiadek. Wyłącz filtr „Tylko bezpośrednie”, aby zobaczyć połączenia z przesiadkami, albo sprawdź inną godzinę.'
+                  : 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.'}
+              </Text>
+              {directOnly && (
+                <Pressable
+                  onPress={() => setDirectOnly(false)}
+                  style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pokaż połączenia z przesiadkami"
+                >
+                  <Text style={styles.retryText}>Pokaż z przesiadkami</Text>
+                </Pressable>
+              )}
             </View>
           }
         />
       )}
 
-      {/* 4. Bottom sheet wyboru daty i godziny */}
+      {/* 6. Bottom sheet wyboru daty i godziny */}
       {timeSheetOpen && (
         <DepartureTimeSheet
           initialTimeSec={departureTimeSec}
@@ -765,7 +792,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 5. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
+      {/* 7. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
           placeholder={sheetFor === 'from' ? 'Skąd wyruszasz?' : 'Dokąd jedziesz?'}
@@ -941,6 +968,10 @@ const styles = StyleSheet.create({
   sortRow: {
     flexDirection: 'row',
     gap: 8,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+  },
+  directWrap: {
     paddingHorizontal: 14,
     marginBottom: 10,
   },
