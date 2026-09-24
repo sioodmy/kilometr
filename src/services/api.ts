@@ -295,11 +295,8 @@ export const FavoritesService: IFavoritesService = {
       const raw = await kvGet('kilometr.places');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
-      const { INITIAL_SAVED_PLACES } = await import('./smartRanker');
-      await kvSet('kilometr.places', JSON.stringify(INITIAL_SAVED_PLACES));
-      return INITIAL_SAVED_PLACES;
     } catch {}
     return [];
   },

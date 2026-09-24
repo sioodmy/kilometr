@@ -7,7 +7,6 @@
 // stop_times jest ~46 MB — importujemy batched po 5000 rekordów w transakcjach.
 
 import { parseCalendarContent, parseCalendarDatesContent, parseRoutesContent, parseStopsContent, parseTripsContent, parseStopTimesBatched } from '../gtfs/csv';
-import { GTFS_SEED_VERSION, SEED_CALENDAR, SEED_ROUTES, SEED_STOPS, buildSeedStopTimes, buildSeedTrips } from '../gtfs/seed';
 import { GTFS } from './gtfsConfig';
 import {
   cleanupRawGtfs,
@@ -35,7 +34,7 @@ import {
   setMeta,
 } from './gtfsDatabase';
 
-export type GtfsSource = 'seed' | 'network';
+export type GtfsSource = 'network';
 
 export type DataStatus =
   | { state: 'empty' }
@@ -69,11 +68,11 @@ function emit(next: DataStatus): void {
   }
 }
 
-/** Skąd pochodzą dane w SQLite: seed z APK albo pełny rozkład z sieci. */
+/** Skąd pochodzą dane w SQLite: pełny rozkład z sieci. */
 export async function getGtfsSource(): Promise<GtfsSource | null> {
   try {
     const v = await getMeta('gtfs_source');
-    return v === 'seed' || v === 'network' ? v : null;
+    return v === 'network' ? v : null;
   } catch {
     return null;
   }
@@ -98,10 +97,8 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     if (stats.stops > 0) {
       const updatedAt = await getMeta('gtfs_imported_at');
       emit({ state: 'ready', stops: stats.stops, trips: stats.trips, updatedAt, source: await getGtfsSource() });
-      // Migracja starych baz / dokończenie przerwanego importu: wagi + warmup w tle.
+      // Dokończenie przerwanego importu: wagi + warmup w tle.
       void ensureSearchReady();
-    } else if (await importGtfsSeed()) {
-      // Pusta baza → pierwowzór z APK (szybki, offline). Status ustawia seed.
     } else {
       emit({ state: 'empty' });
     }
@@ -133,61 +130,6 @@ async function ensureSearchReady(): Promise<void> {
 }
 
 export let importInProgress = false;
-
-/**
- * Pierwowzór z APK (src/gtfs/seed.ts): 8 przystanków, 2 linie, kursy co
- * 10 min przez cały dzień. Wchodzi w <2 s bez sieci. Nadpisywany pełnym
- * importem z sieci — nigdy odwrotnie (seed nie rusza danych 'network').
- * Zwraca true, gdy po wywołaniu baza ma dane (świeży seed albo już były).
- */
-export async function importGtfsSeed(force = false): Promise<boolean> {
-  if (importInProgress) return false;
-  try {
-    const stats = await getGtfsStats();
-    const source = await getGtfsSource();
-    const seedVer = await getMeta('gtfs_seed_version');
-    if (stats.stops > 0) {
-      // Pełny rozkład użytkownika jest święty; seed odświeżamy tylko gdy
-      // zmienił się jego kształt (wersja) albo wymuszono z zewnątrz.
-      if (source === 'network' && !force) return true;
-      if (source === 'seed' && seedVer === String(GTFS_SEED_VERSION) && !force) return true;
-      if (source !== 'seed' && source !== null && !force) return true;
-    }
-    importInProgress = true;
-    emit({ state: 'importing', step: 'Dane startowe…', progress: 0.1 });
-    await clearGtfsTables();
-    await prepareForBulkImport();
-    await importStops(SEED_STOPS);
-    await importRoutes(SEED_ROUTES);
-    await importCalendar(SEED_CALENDAR);
-    await importCalendarDates([]);
-    const trips = buildSeedTrips();
-    emit({ state: 'importing', step: 'Dane startowe…', progress: 0.4 });
-    await importTrips(trips);
-    const stopTimes = buildSeedStopTimes();
-    const BATCH = 500;
-    for (let i = 0; i < stopTimes.length; i += BATCH) {
-      await importStopTimesBatch(stopTimes.slice(i, i + BATCH));
-      emit({ state: 'importing', step: 'Dane startowe…', progress: 0.4 + (0.5 * i) / stopTimes.length });
-    }
-    await finishBulkImport();
-    await computeStopWeights();
-    await setMeta('gtfs_source', 'seed');
-    await setMeta('gtfs_seed_version', String(GTFS_SEED_VERSION));
-    await setMeta('gtfs_imported_at', new Date().toISOString());
-    await resetRoutingStore();
-    await refreshDataStatus();
-    return true;
-  } catch (err) {
-    console.warn('[DataManager] seed import failed:', err instanceof Error ? err.message : String(err));
-    try {
-      await finishBulkImport();
-    } catch {}
-    return false;
-  } finally {
-    importInProgress = false;
-  }
-}
 
 /** Pełny import: katalog → zip → unzip → SQLite. Długie, z progresem. */
 export async function importGtfsFromNetwork(): Promise<void> {
@@ -251,7 +193,6 @@ export async function importGtfsFromNetwork(): Promise<void> {
 
     await setMeta('gtfs_imported_at', new Date().toISOString());
     await setMeta('gtfs_dir', gtfsDir());
-    // Pełny rozkład nadpisuje seed z APK (i każdy poprzedni import).
     await setMeta('gtfs_source', 'network');
     await cleanupRawGtfs();
     await resetRoutingStore();

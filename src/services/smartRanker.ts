@@ -174,9 +174,7 @@ export async function loadTripHistory(): Promise<TripHistoryItem[]> {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch {}
-  // Seed trips przy pierwszym uruchomieniu
-  await saveTripHistory(SEED_TRIPS);
-  return SEED_TRIPS;
+  return [];
 }
 
 export async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
@@ -231,8 +229,7 @@ export async function getSmartDestinationsForLocation(
     }
   } catch {}
   if (!savedPlaces || savedPlaces.length === 0) {
-    savedPlaces = INITIAL_SAVED_PLACES;
-    await kvSet(STORAGE_KEYS.SAVED_PLACES, JSON.stringify(savedPlaces));
+    savedPlaces = [];
   }
 
   // 2. Wykryj, czy użytkownik jest blisko któregoś z zapisanych miejsc
