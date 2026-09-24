@@ -41,7 +41,7 @@ import {
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
-import { DirectOnlyFilter } from '../../src/components/DirectOnlyFilter';
+import { RouteFiltersCard, type ModePreference } from '../../src/components/RouteFiltersCard';
 import { SearchSheet } from '../../src/components/SearchSheet';
 
 const GPS_ITEM: Suggestion = {
@@ -64,6 +64,7 @@ export default function RoutesScreen() {
     toLat: string;
     toLon: string;
     directOnly?: string;
+    modes?: string;
   }>();
 
   const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
@@ -101,10 +102,14 @@ export default function RoutesScreen() {
   // Jakdojade, od najwcześniejszego odjazdu. Magazyn (items) zawsze
   // posortowany po odjeździe — paginacja i hold-to-load na tym bazują.
   const [sortMode, setSortMode] = useState<'fastest' | 'earliest'>('fastest');
-  // Jednorazowy filtr "tylko bezpośrednie" — NIE jest to ustawienie systemowe
-  // (maxTransfers w /settings zostaje nietknięte). Toggle wymusza
-  // maxTransfers=0 wyłącznie dla bieżącego ekranu wyników.
+  // Jednorazowe filtry — NIE są to ustawienia systemowe (maxTransfers
+  // w /settings zostaje nietknięte). Toggle wymusza maxTransfers=0, a segmenty
+  // pojazdów ograniczają RAPTOR-a do kursów danego typu. Tylko dla bieżącego
+  // ekranu wyników, stan nie jest persistowany.
   const [directOnly, setDirectOnly] = useState(params.directOnly === '1');
+  const [modeFilter, setModeFilter] = useState<ModePreference>(
+    params.modes === 'tram' || params.modes === 'bus' ? params.modes : 'all',
+  );
 
   const displayed = useMemo(() => {
     if (sortMode === 'earliest') return items;
@@ -188,8 +193,9 @@ export default function RoutesScreen() {
       anchorStopLat: activeAnchor?.lat,
       anchorStopLon: activeAnchor?.lon,
       departureTimeSec: depSec,
-      // Jednorazowy filtr directOnly nadpisuje systemowe maxTransfers.
+      // Jednorazowe filtry nadpisują systemowe maxTransfers / typ pojazdów.
       maxTransfers: directOnly ? 0 : s.maxTransfers,
+      modes: modeFilter,
       minTransferSec: s.minTransferSec,
       maxWalkM: s.maxWalkM,
       walkSpeedMps: s.walkSpeedMps,
@@ -482,7 +488,7 @@ export default function RoutesScreen() {
       fetchRoutes(departureTimeSec);
     });
     return () => task.cancel();
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly]);
+  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter]);
 
   const handleSwap = () => {
     setActiveAnchor(null);
@@ -646,9 +652,14 @@ export default function RoutesScreen() {
         </Pressable>
       </View>
 
-      {/* 3. Jednorazowy filtr: tylko bezpośrednie (nie rusza ustawień systemowych) */}
-      <View style={styles.directWrap}>
-        <DirectOnlyFilter value={directOnly} onChange={setDirectOnly} />
+      {/* 3. Jednorazowe filtry: bezpośrednie + pojazdy (nie ruszają ustawień) */}
+      <View style={styles.filtersWrap}>
+        <RouteFiltersCard
+          directOnly={directOnly}
+          onDirectChange={setDirectOnly}
+          mode={modeFilter}
+          onModeChange={setModeFilter}
+        />
       </View>
 
       {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
@@ -736,6 +747,7 @@ export default function RoutesScreen() {
                 <Text style={styles.count} numberOfLines={1}>
                   {items.length} połączenia • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
                   {directOnly ? ' • tylko bezpośrednie' : ''}
+                  {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
                 </Text>
                 {offline && (
                   <Pressable
@@ -760,12 +772,18 @@ export default function RoutesScreen() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyTitle}>
-                {directOnly ? 'Brak bezpośrednich połączeń' : 'Nie znaleziono połączeń'}
+                {directOnly || modeFilter !== 'all'
+                  ? 'Brak połączeń dla wybranych filtrów'
+                  : 'Nie znaleziono połączeń'}
               </Text>
               <Text style={styles.emptySub}>
-                {directOnly
-                  ? 'Na tej trasie nie ma teraz kursu bez przesiadek. Wyłącz filtr „Tylko bezpośrednie”, aby zobaczyć połączenia z przesiadkami, albo sprawdź inną godzinę.'
-                  : 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.'}
+                {directOnly && modeFilter !== 'all'
+                  ? `Na tej trasie nie ma teraz kursu ${modeFilter === 'tram' ? 'tramwajem' : 'autobusem'} bez przesiadek. Poluzuj filtry albo sprawdź inną godzinę.`
+                  : directOnly
+                    ? 'Na tej trasie nie ma teraz kursu bez przesiadek. Wyłącz filtr „Tylko bezpośrednie”, aby zobaczyć połączenia z przesiadkami, albo sprawdź inną godzinę.'
+                    : modeFilter !== 'all'
+                      ? `Na tej trasie nie ma teraz kursu ${modeFilter === 'tram' ? 'tramwajem' : 'autobusem'}. Przełącz na „Wszystkie”, aby zobaczyć resztę połączeń.`
+                      : 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.'}
               </Text>
               {directOnly && (
                 <Pressable
@@ -775,6 +793,16 @@ export default function RoutesScreen() {
                   accessibilityLabel="Pokaż połączenia z przesiadkami"
                 >
                   <Text style={styles.retryText}>Pokaż z przesiadkami</Text>
+                </Pressable>
+              )}
+              {modeFilter !== 'all' && (
+                <Pressable
+                  onPress={() => setModeFilter('all')}
+                  style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pokaż wszystkie pojazdy"
+                >
+                  <Text style={styles.retryText}>Pokaż wszystkie pojazdy</Text>
                 </Pressable>
               )}
             </View>
@@ -971,7 +999,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 10,
   },
-  directWrap: {
+  filtersWrap: {
     paddingHorizontal: 14,
     marginBottom: 10,
   },

@@ -193,6 +193,9 @@ export interface RouteQuery {
   departureTimeSec?: number;
   /** 0–3, default 2 */
   maxTransfers?: number;
+  /** Jednorazowy filtr pojazdów ('all' = tramwaje + autobusy, default).
+      Trzymaj w sync z TransitModePreference w services/routing/types. */
+  modes?: 'all' | 'tram' | 'bus';
   /** sekundy, default 120 */
   minTransferSec?: number;
   /** metry, default 800 */

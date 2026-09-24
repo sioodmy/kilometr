@@ -1,6 +1,6 @@
 import { gtfsStore } from '../gtfs/store';
 import { filterParetoJourneys, runRaptor } from './raptor';
-import { Connection, Leg, LegStop, RawJourney } from './types';
+import { Connection, Leg, LegStop, RawJourney, TransitModePreference } from './types';
 import { distanceMeters, secondsToTimeString } from '../gtfs/geo';
 import { vehicleTracker } from '../realtime/tracker';
 
@@ -54,6 +54,8 @@ export interface PlanOptions {
   departureTimeSec?: number;
   /** 0–3, default 2. 0 = tylko bezpośrednie. */
   maxTransfers?: number;
+  /** Jednorazowy filtr pojazdów, default 'all'. Wpuszczane tylko kursy danego typu. */
+  modes?: TransitModePreference;
   /** sekundy, default 90. Minimalny czas na przesiadkę. */
   minTransferSec?: number;
   /** metry, default 800. Jak daleko wolno iść na przystanek / z przystanku. */
@@ -120,6 +122,8 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const dayIndex = gtfsStore.getDayIndex(weekday, dateStr);
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));
+  const modes: TransitModePreference =
+    options.modes === 'tram' || options.modes === 'bus' ? options.modes : 'all';
   const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 90)));
   const maxWalkM = Math.max(100, Math.min(2000, Math.round(options.maxWalkM ?? 800)));
   const userWalkSpeed = Math.max(0.8, Math.min(2.0, options.walkSpeedMps ?? WALK_SPEED_MPS));
@@ -202,15 +206,27 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       minTransferSec,
       dayIndex,
       tripDelays,
+      allowedModes: modes,
     });
     for (const j of batch) {
       if (j.transfers <= maxTransfers) rawJourneys.push(j);
     }
   }
 
+  // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
+  // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
+  const modeJourneys =
+    modes === 'all'
+      ? rawJourneys
+      : rawJourneys.filter((j) =>
+          j.segments
+            .filter((s) => s.type === 'transit')
+            .every((s) => s.mode === modes),
+        );
+
   // Jedna wspólna selekcja Pareto + różnorodność na CAŁYM zbiorze
   // (osobno na okno dublowałyby się te same kursy).
-  const filtered = filterParetoJourneys(rawJourneys, departureSec);
+  const filtered = filterParetoJourneys(modeJourneys, departureSec);
 
   // 4. Map into Connection model
   const connections: Connection[] = [];

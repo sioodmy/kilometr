@@ -79,6 +79,8 @@ apiRouter.get('/routes', async (req, res) => {
   const toId = req.query.toId ? String(req.query.toId) : undefined;
   const departureTimeSec = req.query.departureTimeSec ? Number(req.query.departureTimeSec) : undefined;
   const maxTransfers = req.query.maxTransfers !== undefined ? Number(req.query.maxTransfers) : undefined;
+  const modesRaw = req.query.modes ? String(req.query.modes) : undefined;
+  const modes = modesRaw === 'tram' || modesRaw === 'bus' ? modesRaw : undefined;
   const minTransferSec = req.query.minTransferSec !== undefined ? Number(req.query.minTransferSec) : undefined;
   const maxWalkM = req.query.maxWalkM !== undefined ? Number(req.query.maxWalkM) : undefined;
   const walkSpeedMps = req.query.walkSpeedMps !== undefined ? Number(req.query.walkSpeedMps) : undefined;
@@ -102,6 +104,7 @@ apiRouter.get('/routes', async (req, res) => {
       toId,
       departureTimeSec,
       maxTransfers: Number.isFinite(maxTransfers) ? maxTransfers : undefined,
+      modes,
       minTransferSec: Number.isFinite(minTransferSec) ? minTransferSec : undefined,
       maxWalkM: Number.isFinite(maxWalkM) ? maxWalkM : undefined,
       walkSpeedMps: Number.isFinite(walkSpeedMps) ? walkSpeedMps : undefined,

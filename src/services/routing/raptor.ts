@@ -1,5 +1,5 @@
 import { DayIndex, LocalGtfsStore as GtfsStore } from './store';
-import { JourneySegment, RawJourney } from './types';
+import { JourneySegment, RawJourney, TransitModePreference } from './types';
 
 const INF = 1e9;
 
@@ -31,6 +31,24 @@ interface RaptorOptions {
   /** znane opóźnienia kursów (GTFS-RT): tripId -> sekundy. RAPTOR wsiada
       wg czasów EFEKTYWNYCH, więc da się złapać opóźniony kurs. */
   tripDelays?: Map<string, number>;
+  /** dozwolone pojazdy. Default 'all'. Filtr działa W silniku (nie post-filtr):
+      RAPTOR w ogóle nie skanuje wzorców niedozwolonych linii, więc pruning
+      globalBestArrival nie wycina dozwolonych alternatyw. */
+  allowedModes?: TransitModePreference;
+}
+
+/**
+ * Klasyfikacja linii na tramwaj/autobus — ta sama heurystyka co w backtrack
+ * i LineBadge (Wrocław: route_type 0 albo numer 1–33 to tramwaj).
+ */
+export function classifyTransitMode(
+  routeType: number | undefined,
+  shortName: string | undefined,
+): 'tram' | 'bus' {
+  if (routeType === 0) return 'tram';
+  const lineNum = parseInt((shortName || '').trim(), 10);
+  if (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33) return 'tram';
+  return 'bus';
 }
 
 const TRANSFER_PENALTY_SEC = 600; // 10 min kary za każdą przesiadkę — spacer 300 m się opłaca
@@ -147,6 +165,15 @@ export function runRaptor(
     for (const patternId of patternsToScan) {
       const pattern = idx.patterns.get(patternId);
       if (!pattern) continue;
+
+      // Jednorazowy filtr pojazdów: wzorzec niedozwolonej linii pomijamy
+      // w całości (brak wsiadania = brak przesiadek przez ten pojazd).
+      if (opts.allowedModes && opts.allowedModes !== 'all') {
+        const route = store.routes.get(pattern.routeId);
+        if (classifyTransitMode(route?.route_type, route?.route_short_name) !== opts.allowedModes) {
+          continue;
+        }
+      }
 
       const stopSeq = pattern.stopSequence;
       const trips = pattern.trips;
