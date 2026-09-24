@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
 import { loadSettings } from '../src/services/settings';
+import { hasSeenOnboarding } from '../src/services/onboarding';
 import {
   addPinTapListener,
   getPinTapData,
@@ -27,6 +28,10 @@ export default function RootLayout() {
   // Ustawienia trasy z AsyncStorage dostępne globalnie od startu
   useEffect(() => {
     loadSettings();
+    // Pierwsze uruchomienie → onboarding (dostępy, rozkład offline, miejsca).
+    hasSeenOnboarding().then((seen) => {
+      if (!seen) router.replace('/onboarding');
+    });
     // Powiadomienia ładowane leniwie w serwisie (guard na Expo Go)
     setupNotificationHandler();
     setupPinnedChannel();
@@ -57,6 +62,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
+          <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
           <Stack.Screen name="routes" options={{ headerShown: false }} />
           <Stack.Screen
             name="news"
