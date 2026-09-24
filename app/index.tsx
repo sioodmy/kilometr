@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronDown, LocateFixed, MapPin, Pencil, Bell, Settings2, X } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
@@ -79,9 +79,10 @@ export default function HomeScreen() {
     let cancelled = false;
     const checkNews = async () => {
       try {
-        const { fetchMpkNews, hasUrgentNewsToday } = await import('../src/services/mpkNews');
+        const { fetchMpkNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
         const news = await fetchMpkNews();
-        if (!cancelled) setNewsAlert(hasUrgentNewsToday(news));
+        const alert = await shouldShowNewsAlert(news);
+        if (!cancelled) setNewsAlert(alert);
       } catch {
         // brak internetu / błąd RSS — badge po prostu znika, bez krzykliwego błędu
       }
@@ -95,6 +96,27 @@ export default function HomeScreen() {
       sub.remove();
     };
   }, []);
+
+  // Weryfikacja badge'a przy powrocie na ekran główny (np. po wyjściu z sekcji newsów)
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const verify = async () => {
+        try {
+          const { getCachedNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
+          const cached = getCachedNews();
+          if (cached) {
+            const alert = await shouldShowNewsAlert(cached);
+            if (!cancelled) setNewsAlert(alert);
+          }
+        } catch {}
+      };
+      void verify();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   // Status sieci: ping przy starcie, powrocie na foreground i co 30 s.
   // refreshDataStatus ładuje status lokalnego GTFS — jeśli pusty, automatycznie
@@ -512,7 +534,11 @@ export default function HomeScreen() {
               <Pressable
                 style={styles.iconBtn}
                 hitSlop={10}
-                onPress={() => router.push('/news')}
+                onPress={() => {
+                  setNewsAlert(false);
+                  void import('../src/services/mpkNews').then(({ markNewsSeen }) => markNewsSeen());
+                  router.push('/news');
+                }}
                 accessibilityLabel={newsAlert ? 'Aktualności MPK — nowe utrudnienia' : 'Aktualności MPK'}
                 accessibilityRole="button"
               >

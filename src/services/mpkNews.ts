@@ -112,6 +112,28 @@ export function parseMpkRss(xml: string): MpkNewsItem[] {
   return items;
 }
 
+import { kvGet, kvSet } from './storage';
+
+const KEY_NEWS_LAST_SEEN_DATE = 'mpk_news_last_seen_date';
+const KEY_NEWS_LAST_SEEN_TS = 'mpk_news_last_seen_ts';
+const KEY_NEWS_SEEN_URGENT_IDS = 'mpk_news_seen_urgent_ids';
+
+let cachedNewsItems: MpkNewsItem[] | null = null;
+let inMemoryLastSeenDate: string | null = null;
+let inMemoryLastSeenTs: number | null = null;
+let inMemorySeenUrgentIds: Set<string> | null = null;
+
+export function getTodayDateString(d: Date = new Date()): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function getCachedNews(): MpkNewsItem[] | null {
+  return cachedNewsItems;
+}
+
 export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const res = await fetch(MPK_NEWS_URL, {
     headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
@@ -119,7 +141,9 @@ export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]>
   });
   if (!res.ok) throw new Error(`RSS ${res.status}`);
   const xml = await res.text();
-  return parseMpkRss(xml);
+  const items = parseMpkRss(xml);
+  cachedNewsItems = items;
+  return items;
 }
 
 // Czy dziś pojawiło się pilne utrudnienie? → czerwony badge na dzwonku.
@@ -136,4 +160,91 @@ export function isToday(ts: number | null): boolean {
 
 export function hasUrgentNewsToday(items: MpkNewsItem[]): boolean {
   return items.some((i) => i.urgent && isToday(i.pubDate));
+}
+
+/**
+ * Oznacza aktualności jako przeczytane (użytkownik wszedł do sekcji aktualności).
+ * Zapisuje datę dzisiejszą, timestamp oraz identyfikatory dzisiejszych pilnych komunikatów.
+ */
+export async function markNewsSeen(items?: MpkNewsItem[]): Promise<void> {
+  const today = getTodayDateString();
+  const now = Date.now();
+  inMemoryLastSeenDate = today;
+  inMemoryLastSeenTs = now;
+
+  const currentItems = items || cachedNewsItems || [];
+  const urgentIds = currentItems
+    .filter((i) => i.urgent && isToday(i.pubDate))
+    .map((i) => i.id);
+
+  inMemorySeenUrgentIds = new Set(urgentIds);
+
+  await Promise.all([
+    kvSet(KEY_NEWS_LAST_SEEN_DATE, today),
+    kvSet(KEY_NEWS_LAST_SEEN_TS, String(now)),
+    kvSet(KEY_NEWS_SEEN_URGENT_IDS, JSON.stringify(urgentIds)),
+  ]);
+}
+
+/**
+ * Sprawdza czy należy pokazać wykrzyknik przy dzwonku powiadomień.
+ * Jeśli użytkownik wszedł już dzisiaj do sekcji aktualności i widział bieżące utrudnienia,
+ * wykrzyknik nie jest pokazywany (znika).
+ * Pojawia się ponownie tylko w nowym dniu lub gdy pojawi się nowy pilny komunikat
+ * opublikowany po wizycie użytkownika.
+ */
+export async function shouldShowNewsAlert(items: MpkNewsItem[]): Promise<boolean> {
+  const todayUrgent = items.filter((i) => i.urgent && isToday(i.pubDate));
+  if (todayUrgent.length === 0) return false;
+
+  const today = getTodayDateString();
+
+  // Sprawdź pamięć podręczną lub KV store
+  let lastSeenDate = inMemoryLastSeenDate;
+  if (!lastSeenDate) {
+    lastSeenDate = await kvGet(KEY_NEWS_LAST_SEEN_DATE);
+    inMemoryLastSeenDate = lastSeenDate;
+  }
+
+  // Jeśli użytkownik w ogóle nie wchodził dzisiaj w sekcję aktualności -> pokaż wykrzyknik
+  if (lastSeenDate !== today) {
+    return true;
+  }
+
+  // Użytkownik wszedł dzisiaj w tę sekcję. Sprawdź, czy są jakieś NOWE utrudnienia,
+  // których wcześniej nie widział.
+  let seenIds = inMemorySeenUrgentIds;
+  if (!seenIds) {
+    const rawSeen = await kvGet(KEY_NEWS_SEEN_URGENT_IDS);
+    if (rawSeen) {
+      try {
+        seenIds = new Set<string>(JSON.parse(rawSeen));
+      } catch {
+        seenIds = new Set<string>();
+      }
+    } else {
+      seenIds = new Set<string>();
+    }
+    inMemorySeenUrgentIds = seenIds;
+  }
+
+  let lastSeenTs = inMemoryLastSeenTs;
+  if (lastSeenTs == null) {
+    const rawTs = await kvGet(KEY_NEWS_LAST_SEEN_TS);
+    lastSeenTs = rawTs ? Number(rawTs) : 0;
+    inMemoryLastSeenTs = lastSeenTs;
+  }
+
+  // Czy pojawił się nowy komunikat, którego nie było na liście i ma pubDate po wizycie?
+  const hasUnseenNewUrgent = todayUrgent.some((item) => {
+    if (seenIds.has(item.id)) return false;
+    // Jeśli nie ma w seenIds, ale pubDate jest starszy niż wizyta (np. zmiana linku/ID lub brak pubDate),
+    // nie spamujemy wykrzyknikiem jeśli użytkownik był już dzisiaj.
+    if (item.pubDate != null && lastSeenTs > 0 && item.pubDate <= lastSeenTs + 60000) {
+      return false;
+    }
+    return true;
+  });
+
+  return hasUnseenNewUrgent;
 }

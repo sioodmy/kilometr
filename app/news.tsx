@@ -20,7 +20,7 @@ import {
   TriangleAlert,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
-import { fetchMpkNews, type MpkNewsItem } from '../src/services/mpkNews';
+import { fetchMpkNews, markNewsSeen, type MpkNewsItem } from '../src/services/mpkNews';
 
 function NewsCard({ item, onOpen }: { item: MpkNewsItem; onOpen: (item: MpkNewsItem) => void }) {
   const urgent = item.urgent;
@@ -88,6 +88,7 @@ export default function NewsScreen() {
     try {
       const news = await fetchMpkNews();
       setItems(news);
+      void markNewsSeen(news);
     } catch {
       setError('Nie udało się pobrać aktualności. Sprawdź internet i spróbuj ponownie.');
     } finally {
@@ -97,6 +98,7 @@ export default function NewsScreen() {
   }, []);
 
   useEffect(() => {
+    void markNewsSeen();
     void load(false);
   }, [load]);
 
