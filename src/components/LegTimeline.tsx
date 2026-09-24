@@ -394,12 +394,14 @@ function TransitLegCard({
           </Animated.View>
         </View>
         <Text style={s.stopBig}>
+          <Text style={s.stopPrefix}>z </Text>
           {leg.fromStop} <Text style={s.hour}>{leg.departAt}</Text>
         </Text>
         <Text style={s.meta}>
           {leg.stopsCount} przystanki • ~{leg.stopsCount * 2} min • {expanded ? 'zwiń' : 'rozwiń przystanki'}
         </Text>
         <Text style={s.stopBig}>
+          <Text style={s.stopPrefix}>do </Text>
           {leg.toStop} <Text style={s.hour}>{leg.arriveAt}</Text>
         </Text>
         {hasOpened && (
@@ -517,6 +519,7 @@ const s = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dir: { flex: 1, ...type.labelLarge, color: scheme.onSurface },
   stopBig: { ...type.titleSmall, color: scheme.onSurface },
+  stopPrefix: { fontWeight: '400', color: scheme.onSurfaceVariant },
   hour: { color: scheme.onSurfaceVariant, fontWeight: '400' },
   meta: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   walkText: { ...type.titleSmall, color: scheme.onSurface },
