@@ -90,16 +90,25 @@ async function resetRoutingStore(): Promise<void> {
   }
 }
 
-/** Szybki start: jeśli SQLite ma przystanki, uznajemy dane za gotowe. */
+/** Szybki start: pełny rozkład w SQLite uznajemy za gotowy. */
 export async function refreshDataStatus(): Promise<DataStatus> {
+  // Trwający import sam emituje postęp — nie nadpisuj go fałszywym statusem.
+  // Bez tego każde odświeżenie w połowie importu (przystanki już są, kursów
+  // jeszcze nie) pokazywałoby "gotowe", a UI wracałoby potem do pobierania.
+  if (importInProgress) return status;
   try {
     const stats = await getGtfsStats();
-    if (stats.stops > 0) {
+    if (stats.stops > 0 && stats.trips > 0 && stats.stopTimes > 0) {
       const updatedAt = await getMeta('gtfs_imported_at');
       emit({ state: 'ready', stops: stats.stops, trips: stats.trips, updatedAt, source: await getGtfsSource() });
       // Dokończenie przerwanego importu: wagi + warmup w tle.
       void ensureSearchReady();
     } else {
+      // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
+      // To nie jest działający rozkład — czyścimy, żeby UI wymusił pobieranie.
+      if (stats.stops > 0 || stats.trips > 0 || stats.stopTimes > 0) {
+        await clearGtfsTables().catch(() => {});
+      }
       emit({ state: 'empty' });
     }
   } catch (err) {
@@ -196,6 +205,9 @@ export async function importGtfsFromNetwork(): Promise<void> {
     await setMeta('gtfs_source', 'network');
     await cleanupRawGtfs();
     await resetRoutingStore();
+    // Flaga w dół przed końcowym odświeżeniem — inaczej refresh uzna, że
+    // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
+    importInProgress = false;
     await refreshDataStatus();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
