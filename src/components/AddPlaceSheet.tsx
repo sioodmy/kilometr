@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -12,33 +12,62 @@ import {
 import BottomSheet, { BottomSheetFlatList, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import {
   Anchor,
+  Baby,
+  Beer,
   Bike,
   Briefcase,
+  BusFront,
   CarFront,
   Check,
   ChevronLeft,
   Church,
   Clapperboard,
   Coffee,
+  Compass,
+  CreditCard,
   Dumbbell,
+  Fuel,
+  Gamepad2,
   GraduationCap,
   Heart,
   Home,
+  Hospital,
   Landmark,
+  Laptop,
   Library,
   MapPin,
+  Mountain,
+  Music,
+  Package,
+  PawPrint,
   Pencil,
   Pill,
+  Pizza,
   Plane,
+  Plus,
+  Sandwich,
+  Scissors,
   Search,
+  Ship,
   ShoppingBag,
+  ShoppingCart,
+  Sparkles,
   Star,
+  Stethoscope,
   Store,
+  Tent,
+  Theater,
+  Ticket,
   Train,
+  TramFront,
   Trash2,
   Trees,
+  Trophy,
+  University,
   Users,
   UtensilsCrossed,
+  Waves,
+  Wine,
   X,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
@@ -46,29 +75,100 @@ import type { SavedPlace, SavedPlaceIcon, Suggestion } from '../types/models';
 import { SearchService, fetchNearestStops, type NearestStop } from '../services';
 import { SuggestionRow } from './SuggestionRow';
 
-export const PLACE_ICON_OPTIONS: { key: SavedPlaceIcon; label: string; icon: any }[] = [
-  { key: 'home', label: 'Dom', icon: Home },
-  { key: 'work', label: 'Praca', icon: Briefcase },
-  { key: 'school', label: 'Szkoła', icon: GraduationCap },
-  { key: 'gym', label: 'Siłownia', icon: Dumbbell },
-  { key: 'coffee', label: 'Kawiarnia', icon: Coffee },
-  { key: 'shopping', label: 'Sklep', icon: ShoppingBag },
-  { key: 'train', label: 'Dworzec', icon: Train },
-  { key: 'restaurant', label: 'Restauracja', icon: UtensilsCrossed },
-  { key: 'pharmacy', label: 'Apteka', icon: Pill },
-  { key: 'market', label: 'Market', icon: Store },
-  { key: 'park', label: 'Park', icon: Trees },
-  { key: 'cinema', label: 'Kino', icon: Clapperboard },
-  { key: 'culture', label: 'Muzeum', icon: Landmark },
-  { key: 'library', label: 'Biblioteka', icon: Library },
-  { key: 'friends', label: 'Znajomi', icon: Users },
-  { key: 'church', label: 'Kościół', icon: Church },
-  { key: 'car', label: 'Samochód', icon: CarFront },
-  { key: 'bike', label: 'Rower', icon: Bike },
-  { key: 'plane', label: 'Lotnisko', icon: Plane },
-  { key: 'star', label: 'Ulubione', icon: Star },
-  { key: 'heart', label: 'Ważne', icon: Heart },
-  { key: 'mapPin', label: 'Inne', icon: MapPin },
+export type PlaceIconCategory =
+  | 'all'
+  | 'frequent'
+  | 'transit'
+  | 'food'
+  | 'health'
+  | 'culture'
+  | 'sport'
+  | 'services';
+
+export interface PlaceIconItem {
+  key: SavedPlaceIcon;
+  label: string;
+  icon: any;
+  category: Exclude<PlaceIconCategory, 'all'>;
+  keywords: string[];
+}
+
+export const PLACE_ICON_CATEGORIES: { key: PlaceIconCategory; label: string }[] = [
+  { key: 'all', label: 'Wszystkie' },
+  { key: 'frequent', label: 'Częste' },
+  { key: 'transit', label: 'Podróż' },
+  { key: 'food', label: 'Jedzenie' },
+  { key: 'health', label: 'Zdrowie' },
+  { key: 'culture', label: 'Kultura' },
+  { key: 'sport', label: 'Sport' },
+  { key: 'services', label: 'Usługi' },
+];
+
+export const PLACE_ICON_OPTIONS: PlaceIconItem[] = [
+  // Codzienne / Częste
+  { key: 'home', label: 'Dom', icon: Home, category: 'frequent', keywords: ['dom', 'mieszkanie', 'pokój', 'chata', 'house'] },
+  { key: 'work', label: 'Praca', icon: Briefcase, category: 'frequent', keywords: ['praca', 'biuro', 'firma', 'robota', 'office', 'job'] },
+  { key: 'school', label: 'Szkoła', icon: GraduationCap, category: 'frequent', keywords: ['szkoła', 'liceum', 'technikum', 'podstawówka', 'edukacja'] },
+  { key: 'university', label: 'Uczelnia', icon: University, category: 'frequent', keywords: ['uczelnia', 'studia', 'uniwersytet', 'politechnika', 'akademia', 'wydział', 'kampus'] },
+  { key: 'gym', label: 'Siłownia', icon: Dumbbell, category: 'sport', keywords: ['siłownia', 'fitness', 'trening', 'sport', 'crossfit', 'siłka'] },
+  { key: 'coffee', label: 'Kawiarnia', icon: Coffee, category: 'food', keywords: ['kawiarnia', 'kawa', 'cafe', 'espresso', 'herbata', 'ciastko'] },
+  { key: 'shopping', label: 'Sklep', icon: ShoppingBag, category: 'frequent', keywords: ['sklep', 'zakupy', 'galeria', 'mall', 'butik'] },
+  { key: 'star', label: 'Ulubione', icon: Star, category: 'frequent', keywords: ['ulubione', 'gwiazdka', 'top', 'ważne'] },
+  { key: 'heart', label: 'Ważne', icon: Heart, category: 'frequent', keywords: ['ważne', 'serce', 'rodzina', 'partner', 'miłość'] },
+  { key: 'friends', label: 'Znajomi', icon: Users, category: 'frequent', keywords: ['znajomi', 'przyjaciele', 'ekipa', 'ludzie'] },
+
+  // Podróż i transport
+  { key: 'train', label: 'Dworzec PKP', icon: Train, category: 'transit', keywords: ['pociąg', 'dworzec', 'pkp', 'kolej', 'stacja', 'intercity', 'polregio'] },
+  { key: 'tram', label: 'Tramwaj', icon: TramFront, category: 'transit', keywords: ['tramwaj', 'mpk', 'przystanek', 'szyny', 'pętla'] },
+  { key: 'bus', label: 'Autobus', icon: BusFront, category: 'transit', keywords: ['autobus', 'mpk', 'przystanek', 'dworzec', 'pks'] },
+  { key: 'plane', label: 'Lotnisko', icon: Plane, category: 'transit', keywords: ['lotnisko', 'samolot', 'terminal', 'airport'] },
+  { key: 'bike', label: 'Rower', icon: Bike, category: 'transit', keywords: ['rower', 'ścieżka', 'stacja rowerowa', 'wr'] },
+  { key: 'car', label: 'Samochód', icon: CarFront, category: 'transit', keywords: ['samochód', 'auto', 'parking', 'garaż'] },
+  { key: 'fuel', label: 'Stacja paliw', icon: Fuel, category: 'transit', keywords: ['stacja', 'paliwo', 'orlen', 'shell', 'benzyna', 'diesel'] },
+  { key: 'ship', label: 'Prom / Port', icon: Ship, category: 'transit', keywords: ['prom', 'statek', 'odra', 'port', 'przystań', 'kajaki'] },
+  { key: 'compass', label: 'Orientacja', icon: Compass, category: 'transit', keywords: ['orientacja', 'punkt', 'kompas', 'cel'] },
+
+  // Jedzenie i napoje
+  { key: 'restaurant', label: 'Restauracja', icon: UtensilsCrossed, category: 'food', keywords: ['restauracja', 'jedzenie', 'obiad', 'lunch', 'kolacja'] },
+  { key: 'pizza', label: 'Pizzeria', icon: Pizza, category: 'food', keywords: ['pizza', 'włoska', 'pizzeria', 'jedzenie'] },
+  { key: 'sandwich', label: 'Bistro', icon: Sandwich, category: 'food', keywords: ['bistro', 'kanapka', 'piekarnia', 'śniadanie', 'fastfood'] },
+  { key: 'beer', label: 'Pub / Piwo', icon: Beer, category: 'food', keywords: ['pub', 'piwo', 'bar', 'browar', 'kraft'] },
+  { key: 'wine', label: 'Bar / Wino', icon: Wine, category: 'food', keywords: ['wino', 'bar', 'drinki', 'klub', 'cocktail'] },
+  { key: 'market', label: 'Rynek / Targ', icon: Store, category: 'food', keywords: ['rynek', 'targ', 'hala', 'bazar', 'warzywniak', 'market'] },
+  { key: 'cart', label: 'Supermarket', icon: ShoppingCart, category: 'food', keywords: ['supermarket', 'market', 'biedronka', 'lidl', 'dino', 'auchan', 'koszyk'] },
+
+  // Zdrowie i uroda
+  { key: 'pharmacy', label: 'Apteka', icon: Pill, category: 'health', keywords: ['apteka', 'leki', 'farmacja', 'zdrowie', 'recepta'] },
+  { key: 'hospital', label: 'Szpital', icon: Hospital, category: 'health', keywords: ['szpital', 'sor', 'klinika', 'zdrowie', 'pogotowie'] },
+  { key: 'doctor', label: 'Przychodnia', icon: Stethoscope, category: 'health', keywords: ['lekarz', 'przychodnia', 'doktor', 'badania', 'medycyna', 'nfz'] },
+  { key: 'scissors', label: 'Fryzjer', icon: Scissors, category: 'health', keywords: ['fryzjer', 'barber', 'salon', 'włosy', 'strzyżenie'] },
+  { key: 'sparkles', label: 'Uroda / Spa', icon: Sparkles, category: 'health', keywords: ['uroda', 'spa', 'kosmetyczka', 'paznokcie', 'relaks', 'masaż'] },
+
+  // Kultura i rozrywka
+  { key: 'cinema', label: 'Kino', icon: Clapperboard, category: 'culture', keywords: ['kino', 'film', 'seans', 'cinema', 'multikino', 'helios'] },
+  { key: 'theater', label: 'Teatr', icon: Theater, category: 'culture', keywords: ['teatr', 'spektakl', 'opera', 'filharmonia', 'sztuka'] },
+  { key: 'culture', label: 'Muzeum', icon: Landmark, category: 'culture', keywords: ['muzeum', 'galeria', 'wystawa', 'sztuka', 'zabytek'] },
+  { key: 'library', label: 'Biblioteka', icon: Library, category: 'culture', keywords: ['biblioteka', 'książki', 'czytelnia', 'nauka'] },
+  { key: 'music', label: 'Muzyka', icon: Music, category: 'culture', keywords: ['muzyka', 'koncert', 'klub', 'festiwal', 'zespół'] },
+  { key: 'ticket', label: 'Wydarzenie', icon: Ticket, category: 'culture', keywords: ['wydarzenie', 'bilet', 'impreza', 'targi', 'koncert'] },
+  { key: 'gamepad', label: 'Rozrywka', icon: Gamepad2, category: 'culture', keywords: ['gry', 'vr', 'arcade', 'kręgle', 'bilard', 'planszówki'] },
+
+  // Sport i rekreacja
+  { key: 'park', label: 'Park', icon: Trees, category: 'sport', keywords: ['park', 'las', 'drzewa', 'spacer', 'zieleń', 'ogród'] },
+  { key: 'mountain', label: 'Góry', icon: Mountain, category: 'sport', keywords: ['góry', 'szlak', 'wspinaczka', 'wycieczka', 'tatry', 'karkonosze'] },
+  { key: 'tent', label: 'Kemping', icon: Tent, category: 'sport', keywords: ['kemping', 'namiot', 'biwak', 'las', 'ognisko'] },
+  { key: 'trophy', label: 'Stadion', icon: Trophy, category: 'sport', keywords: ['stadion', 'mecz', 'zawody', 'hala', 'boisko', 'turniej'] },
+  { key: 'swimming', label: 'Basen / Plaża', icon: Waves, category: 'sport', keywords: ['basen', 'aquapark', 'plaża', 'pływanie', 'woda'] },
+
+  // Społeczność i usługi
+  { key: 'church', label: 'Kościół', icon: Church, category: 'services', keywords: ['kościół', 'parafia', 'msza', 'kaplica', 'katedra'] },
+  { key: 'baby', label: 'Przedszkole', icon: Baby, category: 'services', keywords: ['przedszkole', 'żłobek', 'dzieci', 'dziecko', 'maluch'] },
+  { key: 'pet', label: 'Zwierzak', icon: PawPrint, category: 'services', keywords: ['zwierzak', 'pies', 'kot', 'pupil', 'weterynarz'] },
+  { key: 'hotel', label: 'Hotel', icon: Landmark, category: 'services', keywords: ['hotel', 'hostel', 'nocleg', 'apartament', 'pokoje'] },
+  { key: 'bank', label: 'Bank / Bankomat', icon: CreditCard, category: 'services', keywords: ['bank', 'bankomat', 'pieniądze', 'karta', 'finanse', 'wpłatomat'] },
+  { key: 'post', label: 'Poczta / Paczka', icon: Package, category: 'services', keywords: ['poczta', 'inpost', 'paczkomat', 'kurier', 'paczka', 'list'] },
+  { key: 'laptop', label: 'Coworking', icon: Laptop, category: 'services', keywords: ['coworking', 'biuro', 'komputer', 'praca zdalna', 'desk'] },
+  { key: 'mapPin', label: 'Inne', icon: MapPin, category: 'services', keywords: ['inne', 'punkt', 'adres', 'miejsce', 'cel'] },
 ];
 
 export function AddPlaceSheet({
@@ -98,16 +198,6 @@ export function AddPlaceSheet({
   const sheetRef = useRef<BottomSheet>(null);
   const isEditing = Boolean(initialPlace);
 
-  // Android back / gest wstecz zamyka sheet zamiast wyjścia z apki
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      closeRef.current();
-      return true;
-    });
-    return () => sub.remove();
-  }, []);
   const [name, setName] = useState(initialPlace?.name || '');
   const [selectedIcon, setSelectedIcon] = useState<SavedPlaceIcon>(initialPlace?.icon || 'home');
   const [query, setQuery] = useState('');
@@ -127,6 +217,11 @@ export function AddPlaceSheet({
   );
   const [isChangingLoc, setIsChangingLoc] = useState(!initialPlace);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Expanded icon browser state
+  const [isPickingIcon, setIsPickingIcon] = useState(false);
+  const [iconQuery, setIconQuery] = useState('');
+  const [selectedIconCategory, setSelectedIconCategory] = useState<PlaceIconCategory>('all');
 
   const [anchorStop, setAnchorStop] = useState<{
     id?: string;
@@ -149,13 +244,33 @@ export function AddPlaceSheet({
   const [nearestStops, setNearestStops] = useState<NearestStop[]>([]);
   const [searchingAnchor, setSearchingAnchor] = useState(false);
 
+  // Android back / gest wstecz
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isPickingIcon) {
+        setIsPickingIcon(false);
+        setIconQuery('');
+        return true;
+      }
+      if (isPickingAnchor) {
+        setIsPickingAnchor(false);
+        setAnchorQuery('');
+        return true;
+      }
+      closeRef.current();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isPickingIcon, isPickingAnchor]);
+
   // Gdy zmienia się lokalizacja miejsca, pobierz najbliższe przystanki
   useEffect(() => {
     if (selectedLoc) {
       fetchNearestStops(selectedLoc.lat, selectedLoc.lon, 6).then((stops) => {
         setNearestStops(stops);
       });
-      // Jeśli użytkownik wybrał bezpośrednio przystanek MPK i nie ma jeszcze przypisanego kotwiczenia
       if (selectedLoc.kind === 'stop' && !anchorStop) {
         setAnchorStop({
           id: selectedLoc.id,
@@ -229,6 +344,52 @@ export function AddPlaceSheet({
     }
   };
 
+  // Curated quick icons for horizontal row
+  const quickIconOptions = useMemo(() => {
+    const primaryKeys: SavedPlaceIcon[] = [
+      'home',
+      'work',
+      'school',
+      'university',
+      'gym',
+      'coffee',
+      'restaurant',
+      'shopping',
+      'train',
+      'tram',
+      'bus',
+      'star',
+    ];
+    const items = primaryKeys
+      .map((k) => PLACE_ICON_OPTIONS.find((opt) => opt.key === k))
+      .filter(Boolean) as PlaceIconItem[];
+
+    // If currently selected icon is outside the top 12, prepend it so user sees it highlighted
+    if (selectedIcon && !primaryKeys.includes(selectedIcon)) {
+      const custom = PLACE_ICON_OPTIONS.find((opt) => opt.key === selectedIcon);
+      if (custom) {
+        return [custom, ...items];
+      }
+    }
+    return items;
+  }, [selectedIcon]);
+
+  // Filtered icons for full picker
+  const filteredCatalogIcons = useMemo(() => {
+    const q = iconQuery.trim().toLowerCase();
+    return PLACE_ICON_OPTIONS.filter((item) => {
+      if (selectedIconCategory !== 'all' && item.category !== selectedIconCategory) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        item.label.toLowerCase().includes(q) ||
+        item.key.toLowerCase().includes(q) ||
+        item.keywords.some((k) => k.toLowerCase().includes(q))
+      );
+    });
+  }, [iconQuery, selectedIconCategory]);
+
   return (
     <BottomSheet
       ref={sheetRef}
@@ -237,15 +398,145 @@ export function AddPlaceSheet({
       enableDynamicSizing={false}
       enablePanDownToClose
       onChange={(idx) => {
-        console.log('[AddPlaceSheet] onChange idx:', idx);
         if (idx === -1) onClose();
       }}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
       <View style={styles.container}>
-        {isPickingAnchor ? (
-          /* Widok wyboru / wyszukiwania przystanku kotwiczenia */
+        {/* VIEW 1: EXPANDED ICON PICKER */}
+        {isPickingIcon ? (
+          <View style={{ flex: 1 }}>
+            <View style={styles.header}>
+              <Pressable
+                onPress={() => {
+                  setIsPickingIcon(false);
+                  setIconQuery('');
+                }}
+                hitSlop={10}
+                style={styles.backBtn}
+              >
+                <ChevronLeft size={22} color={scheme.onSurface} />
+              </Pressable>
+              <View style={styles.headerLeft}>
+                <Text style={styles.title}>Wybierz ikonę</Text>
+                <Text style={styles.subtitle}>
+                  Symbol dla: {name.trim() || 'tego miejsca'}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setIsPickingIcon(false);
+                  setIconQuery('');
+                }}
+                hitSlop={10}
+                style={styles.closeBtn}
+              >
+                <X size={20} color={scheme.onSurfaceVariant} />
+              </Pressable>
+            </View>
+
+            {/* Icon Search Box */}
+            <View style={styles.searchBox}>
+              <Search size={18} color={scheme.onSurfaceVariant} />
+              <TextInput
+                value={iconQuery}
+                onChangeText={setIconQuery}
+                placeholder="Szukaj ikony (np. pociąg, kawa, lekarz)…"
+                placeholderTextColor={scheme.onSurfaceVariant}
+                style={styles.searchInput}
+                autoFocus
+              />
+              {iconQuery ? (
+                <Pressable onPress={() => setIconQuery('')} hitSlop={10}>
+                  <X size={17} color={scheme.onSurfaceVariant} />
+                </Pressable>
+              ) : null}
+            </View>
+
+            {/* Category Filter Pills */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              nestedScrollEnabled
+              style={styles.categoryScroll}
+              contentContainerStyle={styles.categoryRow}
+            >
+              {PLACE_ICON_CATEGORIES.map((cat) => {
+                const isSelected = selectedIconCategory === cat.key;
+                return (
+                  <Pressable
+                    key={cat.key}
+                    onPress={() => setSelectedIconCategory(cat.key)}
+                    style={({ pressed }) => [
+                      styles.categoryPill,
+                      isSelected && styles.categoryPillSelected,
+                      pressed && { opacity: 0.8 },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryPillText,
+                        isSelected && styles.categoryPillTextSelected,
+                      ]}
+                    >
+                      {cat.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* Grid of Icons */}
+            <BottomSheetFlatList
+              data={filteredCatalogIcons}
+              numColumns={4}
+              keyExtractor={(item: PlaceIconItem) => item.key}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.iconGridContent}
+              renderItem={({ item }: { item: PlaceIconItem }) => {
+                const IconComp = item.icon;
+                const isSelected = selectedIcon === item.key;
+                return (
+                  <Pressable
+                    onPress={() => {
+                      setSelectedIcon(item.key);
+                      setIsPickingIcon(false);
+                      setIconQuery('');
+                    }}
+                    style={({ pressed }) => [
+                      styles.gridItem,
+                      isSelected && styles.gridItemSelected,
+                      pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.gridIconWrap,
+                        isSelected && styles.gridIconWrapSelected,
+                      ]}
+                    >
+                      <IconComp
+                        size={20}
+                        color={isSelected ? scheme.onPrimaryContainer : scheme.onSurface}
+                      />
+                    </View>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.gridItemLabel,
+                        isSelected && styles.gridItemLabelSelected,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        ) : isPickingAnchor ? (
+          /* VIEW 2: PICK ANCHOR STOP */
           <View style={{ flex: 1 }}>
             <View style={styles.header}>
               <Pressable
@@ -374,9 +665,71 @@ export function AddPlaceSheet({
               </BottomSheetScrollView>
             )}
           </View>
+        ) : isChangingLoc && suggestions.length > 0 ? (
+          /* VIEW 3: LOCATION SEARCH RESULTS */
+          <View style={{ flex: 1 }}>
+            <View style={styles.header}>
+              <View style={styles.headerLeft}>
+                <Text style={styles.title}>
+                  {isEditing ? 'Edytuj miejsce' : 'Nowe zapisane miejsce'}
+                </Text>
+                <Text style={styles.subtitle}>
+                  Wybierz adres lub przystanek docelowy
+                </Text>
+              </View>
+              <Pressable
+                onPress={handleClose}
+                hitSlop={10}
+                style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.7 }]}
+              >
+                <X size={20} color={scheme.onSurfaceVariant} />
+              </Pressable>
+            </View>
+
+            <View style={styles.searchBox}>
+              <Search size={18} color={scheme.onSurfaceVariant} />
+              <TextInput
+                value={query}
+                onChangeText={handleQueryChange}
+                placeholder="Wpisz ulicę, przystanek lub obiekt…"
+                placeholderTextColor={scheme.onSurfaceVariant}
+                style={styles.searchInput}
+                autoFocus
+              />
+              {searching && <ActivityIndicator size="small" color={scheme.primary} />}
+              {query ? (
+                <Pressable onPress={() => setQuery('')} hitSlop={10}>
+                  <X size={17} color={scheme.onSurfaceVariant} />
+                </Pressable>
+              ) : null}
+            </View>
+
+            <BottomSheetFlatList
+              data={suggestions}
+              keyExtractor={(i: Suggestion) => i.id}
+              overScrollMode="never"
+              keyboardShouldPersistTaps="handled"
+              style={{ flex: 1, marginTop: 10 }}
+              contentContainerStyle={styles.suggestionsList}
+              renderItem={({ item }: { item: Suggestion }) => (
+                <SuggestionRow
+                  item={item}
+                  onPress={() => {
+                    setSelectedLoc(item);
+                    setIsChangingLoc(false);
+                    if (!name.trim()) setName(item.title);
+                  }}
+                />
+              )}
+            />
+          </View>
         ) : (
-          /* Główny formularz lub wyszukiwanie lokalizacji */
-          <>
+          /* VIEW 4: MAIN FORM WRAPPED IN BottomSheetScrollView FOR COMPLETE SCROLLABILITY */
+          <BottomSheetScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.formScrollContent}
+          >
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
@@ -409,16 +762,33 @@ export function AddPlaceSheet({
               />
             </View>
 
-            {/* Icon Picker */}
+            {/* Icon Picker Row */}
             <View style={styles.iconSection}>
-              <Text style={styles.fieldLabel}>Wybierz ikonę</Text>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.fieldLabel}>Wybierz ikonę</Text>
+                <Pressable
+                  onPress={() => {
+                    setIsPickingIcon(true);
+                    sheetRef.current?.snapToIndex(1);
+                  }}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.moreIconsLink, pressed && { opacity: 0.7 }]}
+                >
+                  <Sparkles size={13} color={scheme.primary} />
+                  <Text style={styles.moreIconsLinkText}>
+                    Więcej ikon ({PLACE_ICON_OPTIONS.length}) ›
+                  </Text>
+                </Pressable>
+              </View>
+
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
                 overScrollMode="never"
                 contentContainerStyle={styles.iconRow}
               >
-                {PLACE_ICON_OPTIONS.map((item) => {
+                {quickIconOptions.map((item) => {
                   const IconComp = item.icon;
                   const isSelected = selectedIcon === item.key;
                   return (
@@ -428,17 +798,17 @@ export function AddPlaceSheet({
                       style={({ pressed }) => [
                         styles.iconChip,
                         isSelected && styles.iconChipSelected,
-                        pressed && { opacity: 0.8 },
+                        pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
                       ]}
                     >
                       <IconComp
-                        size={20}
+                        size={17}
                         color={isSelected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
                       />
                       <Text
                         style={[
                           styles.iconLabel,
-                          isSelected && { color: scheme.onPrimaryContainer, fontWeight: '600' },
+                          isSelected && styles.iconLabelSelected,
                         ]}
                       >
                         {item.label}
@@ -446,12 +816,27 @@ export function AddPlaceSheet({
                     </Pressable>
                   );
                 })}
+
+                {/* More Icons Pill Button */}
+                <Pressable
+                  onPress={() => {
+                    setIsPickingIcon(true);
+                    sheetRef.current?.snapToIndex(1);
+                  }}
+                  style={({ pressed }) => [
+                    styles.moreIconChip,
+                    pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] },
+                  ]}
+                >
+                  <Sparkles size={15} color={scheme.primary} />
+                  <Text style={styles.moreIconChipText}>+ Więcej...</Text>
+                </Pressable>
               </ScrollView>
             </View>
 
             {/* Location Section */}
             <View style={styles.locSection}>
-              <Text style={styles.fieldLabel}>Adres lub przystanek</Text>
+              <Text style={styles.fieldLabel}>Adres lub przystanek docelowy</Text>
               {selectedLoc && !isChangingLoc ? (
                 <View style={styles.selectedCard}>
                   <View style={styles.selectedIconWrap}>
@@ -501,28 +886,8 @@ export function AddPlaceSheet({
               )}
             </View>
 
-            {/* Search suggestions list if searching for location */}
-            {isChangingLoc && suggestions.length > 0 ? (
-              <BottomSheetFlatList
-                data={suggestions}
-                keyExtractor={(i: Suggestion) => i.id}
-                overScrollMode="never"
-                keyboardShouldPersistTaps="handled"
-                style={{ flex: 1 }}
-                contentContainerStyle={styles.suggestionsList}
-                renderItem={({ item }: { item: Suggestion }) => (
-                  <SuggestionRow
-                    item={item}
-                    onPress={() => {
-                      setSelectedLoc(item);
-                      setIsChangingLoc(false);
-                      if (!name.trim()) setName(item.title);
-                    }}
-                  />
-                )}
-              />
-            ) : !isChangingLoc ? (
-              /* Zakotwiczony przystanek odjazdu */
+            {/* Anchor Stop Section */}
+            {!isChangingLoc && selectedLoc && (
               <View style={styles.anchorSection}>
                 <View style={styles.anchorSectionHeader}>
                   <Text style={styles.fieldLabel}>Przystanek kotwiczenia (opcjonalnie)</Text>
@@ -575,13 +940,12 @@ export function AddPlaceSheet({
                   </Pressable>
                 )}
               </View>
-            ) : null}
+            )}
 
             {/* Action Buttons */}
             {!isChangingLoc && (
               <View style={styles.bottomActions}>
                 {isEditing && confirmDelete ? (
-                  /* Inline Delete Confirmation */
                   <View style={styles.confirmDeleteBox}>
                     <View style={styles.confirmDeleteTextGroup}>
                       <Trash2 size={18} color={scheme.error} />
@@ -623,7 +987,7 @@ export function AddPlaceSheet({
                     >
                       <Check
                         size={19}
-                        color={(!name.trim() || !selectedLoc) ? scheme.onSurfaceVariant : scheme.onPrimary}
+                        color={!name.trim() || !selectedLoc ? scheme.onSurfaceVariant : scheme.onPrimary}
                       />
                       <Text
                         style={[
@@ -638,7 +1002,7 @@ export function AddPlaceSheet({
                 )}
               </View>
             )}
-          </>
+          </BottomSheetScrollView>
         )}
       </View>
     </BottomSheet>
@@ -660,6 +1024,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 4,
+  },
+  formScrollContent: {
+    paddingBottom: 40,
   },
   header: {
     flexDirection: 'row',
@@ -693,14 +1060,34 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     marginBottom: 6,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  moreIconsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  moreIconsLinkText: {
+    ...type.labelSmall,
+    color: scheme.primary,
+    fontWeight: '600',
+  },
   inputWrap: {
     marginBottom: 14,
   },
   nameInput: {
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.large,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
     paddingHorizontal: 14,
-    height: 50,
+    height: 48,
     ...type.bodyLarge,
     color: scheme.onSurface,
   },
@@ -709,26 +1096,50 @@ const styles = StyleSheet.create({
   },
   iconRow: {
     gap: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 1,
   },
+  // Modernized pill chip
   iconChip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: shape.large,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    minWidth: 72,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
   },
   iconChipSelected: {
     backgroundColor: scheme.primaryContainer,
-    borderWidth: 1.5,
     borderColor: scheme.primary,
+    borderWidth: 1.5,
   },
   iconLabel: {
     ...type.labelSmall,
     color: scheme.onSurfaceVariant,
+  },
+  iconLabelSelected: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '600',
+  },
+  moreIconChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.primary,
+    borderStyle: 'dashed',
+  },
+  moreIconChipText: {
+    ...type.labelSmall,
+    color: scheme.primary,
+    fontWeight: '600',
   },
   locSection: {
     marginBottom: 14,
@@ -738,6 +1149,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.large,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
     padding: 12,
     gap: 10,
   },
@@ -781,8 +1194,10 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.large,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
     paddingHorizontal: 14,
-    height: 50,
+    height: 48,
   },
   searchInput: {
     flex: 1,
@@ -790,13 +1205,13 @@ const styles = StyleSheet.create({
     color: scheme.onSurface,
   },
   suggestionsList: {
-    paddingBottom: 20,
+    paddingBottom: 24,
   },
   bottomActions: {
     width: '100%',
-    marginTop: 16,
+    marginTop: 8,
     paddingTop: 8,
-    paddingBottom: 24,
+    paddingBottom: 16,
   },
   mainActionRow: {
     width: '100%',
@@ -805,9 +1220,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   deleteActionBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: shape.large,
+    width: 50,
+    height: 50,
+    borderRadius: shape.full,
     backgroundColor: scheme.errorContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -819,7 +1234,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: scheme.primary,
-    height: 52,
+    height: 50,
     borderRadius: shape.full,
     ...elev.level2,
   },
@@ -897,9 +1312,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.large,
-    paddingVertical: 13,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
     borderStyle: 'dashed',
@@ -966,5 +1381,78 @@ const styles = StyleSheet.create({
     color: scheme.onPrimaryContainer,
     fontWeight: '600',
   },
+  // Icon Picker Browser styles
+  categoryScroll: {
+    maxHeight: 44,
+    marginVertical: 8,
+  },
+  categoryRow: {
+    gap: 8,
+    paddingVertical: 2,
+    paddingHorizontal: 1,
+  },
+  categoryPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+  },
+  categoryPillSelected: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+  },
+  categoryPillText: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+  },
+  categoryPillTextSelected: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '600',
+  },
+  iconGridContent: {
+    paddingBottom: 28,
+    paddingTop: 4,
+    gap: 10,
+  },
+  gridItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+  },
+  gridItemSelected: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+    borderWidth: 1.5,
+  },
+  gridIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  gridIconWrapSelected: {
+    backgroundColor: scheme.secondaryContainer,
+  },
+  gridItemLabel: {
+    ...type.labelSmall,
+    fontSize: 11,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+  },
+  gridItemLabelSelected: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '600',
+  },
 });
-
