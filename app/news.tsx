@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Linking,
   Pressable,
   RefreshControl,
@@ -18,21 +17,13 @@ import {
   Clock3,
   Newspaper,
   RefreshCw,
-  TramFront,
   TriangleAlert,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { fetchMpkNews, type MpkNewsItem } from '../src/services/mpkNews';
 
-const FRESH_MS = 24 * 3600 * 1000;
-
-function isFresh(item: MpkNewsItem): boolean {
-  return item.pubDate != null && Date.now() - item.pubDate < FRESH_MS;
-}
-
 function NewsCard({ item, onOpen }: { item: MpkNewsItem; onOpen: (item: MpkNewsItem) => void }) {
   const urgent = item.urgent;
-  const fresh = isFresh(item);
   return (
     <Pressable
       onPress={() => onOpen(item)}
@@ -41,22 +32,8 @@ function NewsCard({ item, onOpen }: { item: MpkNewsItem; onOpen: (item: MpkNewsI
       android_ripple={{ color: scheme.outlineVariant, borderless: false }}
       style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
     >
-      <View
-        style={[styles.media, urgent ? styles.mediaUrgent : styles.mediaCalm]}
-        accessibilityIgnoresInvertColors
-      >
-        {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
-        ) : urgent ? (
-          <TriangleAlert size={26} color={scheme.error} />
-        ) : (
-          <TramFront size={26} color={scheme.primary} />
-        )}
-      </View>
-
       <View style={styles.cardBody}>
         <View style={styles.chipRow}>
-          {fresh && <View style={styles.freshDot} />}
           {item.dateLabel ? (
             <View style={styles.timeChip}>
               <Clock3 size={11} color={scheme.onSurfaceVariant} />
@@ -88,7 +65,6 @@ function NewsCard({ item, onOpen }: { item: MpkNewsItem; onOpen: (item: MpkNewsI
 function SkeletonCard() {
   return (
     <View style={styles.card}>
-      <View style={[styles.media, styles.skelBox]} />
       <View style={styles.cardBody}>
         <View style={[styles.skelLine, { width: 90 }]} />
         <View style={[styles.skelLine, { width: '95%' }]} />
@@ -235,30 +211,15 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 40, gap: 12 },
   // M3 elevated card
   card: {
-    flexDirection: 'row',
-    gap: 12,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: 20,
-    padding: 12,
+    padding: 14,
     overflow: 'hidden',
     ...elev.level1,
   },
-  media: {
-    width: 72,
-    height: 72,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
-  mediaCalm: { backgroundColor: scheme.secondaryContainer },
-  mediaUrgent: { backgroundColor: scheme.errorContainer },
-  thumb: { width: '100%', height: '100%' },
   cardBody: { flex: 1, minWidth: 0, gap: 4 },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   spacer: { flex: 1 },
-  freshDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: scheme.primary },
   timeChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -284,7 +245,6 @@ const styles = StyleSheet.create({
   // loading / empty / error (M3 tonal)
   loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingText: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  skelBox: { backgroundColor: scheme.surfaceContainerHighest },
   skelLine: { height: 10, borderRadius: 5, backgroundColor: scheme.surfaceContainerHighest },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
   stateIcon: {

@@ -121,3 +121,19 @@ export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]>
   const xml = await res.text();
   return parseMpkRss(xml);
 }
+
+// Czy dziś pojawiło się pilne utrudnienie? → czerwony badge na dzwonku.
+export function isToday(ts: number | null): boolean {
+  if (!ts) return false;
+  const d = new Date(ts);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
+export function hasUrgentNewsToday(items: MpkNewsItem[]): boolean {
+  return items.some((i) => i.urgent && isToday(i.pubDate));
+}

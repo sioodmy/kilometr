@@ -67,9 +67,33 @@ export default function HomeScreen() {
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [offline, setOffline] = useState(false);
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
+  const [newsAlert, setNewsAlert] = useState(false);
 
   useEffect(() => {
     return subscribeDataStatus(setDataStatus);
+  }, []);
+
+  // Badge na dzwonku: dzisiejsze pilne utrudnienie MPK (RSS wroclaw.pl).
+  // Sprawdzamy przy starcie i powrocie na foreground — bez interwału, żeby nie spamować feedu.
+  useEffect(() => {
+    let cancelled = false;
+    const checkNews = async () => {
+      try {
+        const { fetchMpkNews, hasUrgentNewsToday } = await import('../src/services/mpkNews');
+        const news = await fetchMpkNews();
+        if (!cancelled) setNewsAlert(hasUrgentNewsToday(news));
+      } catch {
+        // brak internetu / błąd RSS — badge po prostu znika, bez krzykliwego błędu
+      }
+    };
+    void checkNews();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void checkNews();
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, []);
 
   // Status sieci: ping przy starcie, powrocie na foreground i co 30 s.
@@ -464,8 +488,19 @@ export default function HomeScreen() {
               </View>
             )}
             <View style={styles.topActions}>
-              <Pressable style={styles.iconBtn} hitSlop={10} onPress={() => router.push('/news')} accessibilityLabel="Aktualności MPK" accessibilityRole="button">
+              <Pressable
+                style={styles.iconBtn}
+                hitSlop={10}
+                onPress={() => router.push('/news')}
+                accessibilityLabel={newsAlert ? 'Aktualności MPK — nowe utrudnienia' : 'Aktualności MPK'}
+                accessibilityRole="button"
+              >
                 <Bell size={20} color={scheme.onSurfaceVariant} />
+                {newsAlert && (
+                  <View style={styles.alertBadge}>
+                    <Text style={styles.alertMark}>!</Text>
+                  </View>
+                )}
               </Pressable>
               <Pressable style={styles.iconBtn} hitSlop={10} onPress={() => router.push('/settings')}>
                 <Settings2 size={20} color={scheme.onSurfaceVariant} />
@@ -692,6 +727,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  alertBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: scheme.error,
+    borderWidth: 2,
+    borderColor: scheme.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
   hero: { ...type.displaySmall, color: scheme.onSurface, marginTop: 16 },
   importCard: {
     flexDirection: 'row',
