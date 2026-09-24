@@ -71,7 +71,7 @@ else
   echo "🟡 Backend nie działa — uruchamiam 'npm run server:dev' w tle..."
   echo "   (pierwszy start może pobierać rozkład GTFS ~12 MB; log: $SERVER_LOG)"
   mkdir -p "$ROOT/.expo"
-  (cd "$ROOT" && nohup npm run server:dev >"$SERVER_LOG" 2>&1 &)
+  (cd "$ROOT" && TMPDIR=/tmp nohup npm run server:dev >"$SERVER_LOG" 2>&1 &)
   wait_for "$API_HEALTH" 180 "Backend API" \
     || fail "Backend nie wstał w 180 s. Sprawdź log: $SERVER_LOG"
 fi

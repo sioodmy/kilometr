@@ -759,6 +759,7 @@ export default function RoutesScreen() {
       {/* 5. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
+          placeholder={sheetFor === 'from' ? 'Skąd wyruszasz?' : 'Dokąd jedziesz?'}
           query={query}
           loading={searchLoading}
           results={results}
