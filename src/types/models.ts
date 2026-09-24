@@ -20,6 +20,8 @@ export interface Suggestion extends LatLon {
   category?: string;
   /** metres from current location, if known */
   distanceM?: number;
+  /** stop popularity: departures served (drives stop ranking) */
+  weight?: number;
 }
 
 export type SavedPlaceIcon =

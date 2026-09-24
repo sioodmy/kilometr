@@ -3,8 +3,8 @@
 // Cache: AsyncStorageowy recent + memory (jak serwerowy memCache).
 
 import { NOMINATIM } from './gtfsConfig';
-import { distanceMeters } from '../gtfs/geo';
 import type { Suggestion } from '../types/models';
+import { inWroclaw, withDistances } from './searchRank';
 
 const memCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MEM_TTL_MS = 10 * 60 * 1000;
@@ -38,11 +38,13 @@ interface NominatimRow {
   address?: Record<string, string>;
 }
 
-/** Zamienia display_name na krótki tytuł + adres w stylu serwera. */
-function toSuggestion(row: NominatimRow, userLat?: number, userLon?: number): Suggestion | null {
+/** Zamienia display_name na krótki tytuł + adres w stylu serwera. Bez pozycji usera. */
+function toSuggestion(row: NominatimRow): Suggestion | null {
   const lat = Number(row.lat);
   const lon = Number(row.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  // Ścisły filtr: obsługujemy tylko Wrocław (viewbox/bounded nie wystarczają).
+  if (!inWroclaw(lat, lon)) return null;
   const parts = row.display_name.split(',').map((p) => p.trim()).filter(Boolean);
   const title = parts[0] || row.display_name;
   const address = parts.slice(1, 3).join(', ') || 'Wrocław';
@@ -54,10 +56,6 @@ function toSuggestion(row: NominatimRow, userLat?: number, userLon?: number): Su
     kind: kind as Suggestion['kind'],
     lat,
     lon,
-    distanceM:
-      userLat !== undefined && userLon !== undefined
-        ? Math.round(distanceMeters(userLat, userLon, lat, lon))
-        : undefined,
   };
 }
 
@@ -69,22 +67,23 @@ export async function searchNominatimDirect(
   signal?: AbortSignal,
 ): Promise<Suggestion[]> {
   const q = query.trim();
-  if (!q) return [];
-  const cacheKey = `nominatim:${q.toLowerCase()}${userLat?.toFixed(2) ?? ''}`;
+  if (!q || q.length < 2) return [];
+  // Cache BEZ pozycji (dystanse dokładamy przy zwrocie — trafienia niezależne od GPS).
+  const cacheKey = `nominatim:${q.toLowerCase()}`;
   const cached = memGet(cacheKey);
-  if (cached) return cached;
+  if (cached) return withDistances(cached, userLat, userLon);
 
   const params = new URLSearchParams({
     q,
     format: 'jsonv2',
-    limit: '8',
+    limit: '12',
     countrycodes: 'pl',
     viewbox: NOMINATIM.wroclawBbox,
     bounded: '1',
     addressdetails: '1',
   });
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
+  const timer = setTimeout(() => ctrl.abort(), 5000);
   try {
     const res = await fetch(`${NOMINATIM.baseUrl}?${params.toString()}`, {
       headers: { 'User-Agent': NOMINATIM.userAgent, Accept: 'application/json' },
@@ -95,11 +94,16 @@ export async function searchNominatimDirect(
     if (!Array.isArray(rows)) return [];
     const out: Suggestion[] = [];
     for (const row of rows) {
-      const s = toSuggestion(row, userLat, userLon);
+      const s = toSuggestion(row);
       if (s) out.push(s);
     }
     memSet(cacheKey, out);
-    return out;
+    const withDist = withDistances(out, userLat, userLon);
+    // Bliższe punkty wyżej (jak w Jakdojade).
+    if (userLat !== undefined && userLon !== undefined) {
+      withDist.sort((a, b) => (a.distanceM ?? Infinity) - (b.distanceM ?? Infinity));
+    }
+    return withDist;
   } catch {
     return [];
   } finally {

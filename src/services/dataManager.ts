@@ -27,8 +27,10 @@ import {
   importStops,
   importTrips,
   clearGtfsTables,
+  computeStopWeights,
   prepareForBulkImport,
   finishBulkImport,
+  needsStopWeights,
   setMeta,
 } from './gtfsDatabase';
 
@@ -71,6 +73,8 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     if (stats.stops > 0) {
       const updatedAt = await getMeta('gtfs_imported_at');
       emit({ state: 'ready', stops: stats.stops, trips: stats.trips, updatedAt });
+      // Migracja starych baz / dokończenie przerwanego importu: wagi + warmup w tle.
+      void ensureSearchReady();
     } else {
       emit({ state: 'empty' });
     }
@@ -78,6 +82,27 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     emit({ state: 'error', message: err instanceof Error ? err.message : String(err) });
   }
   return status;
+}
+
+/**
+ * Tło po starcie: wagi przystanków (ranking podpowiedzi) i rozgrzany indeks
+ * RAPTOR-a na bieżącą porę — żeby pierwsze wyszukiwanie tras nie płaciło
+ * pełnego kosztu budowy indeksu.
+ */
+async function ensureSearchReady(): Promise<void> {
+  try {
+    if (await needsStopWeights()) {
+      await computeStopWeights();
+    }
+  } catch (err) {
+    console.warn('[DataManager] stop weights failed:', err);
+  }
+  try {
+    const { warmupRouting } = await import('./routing/engine');
+    await warmupRouting();
+  } catch (err) {
+    console.warn('[DataManager] routing warmup failed:', err);
+  }
 }
 
 let importInProgress = false;
@@ -143,6 +168,9 @@ export async function importGtfsFromNetwork(): Promise<void> {
 
     emit({ state: 'importing', step: 'Budowanie indeksów…', progress: 0.97 });
     await finishBulkImport();
+
+    emit({ state: 'importing', step: 'Wagi przystanków…', progress: 0.98 });
+    await computeStopWeights();
 
     await setMeta('gtfs_imported_at', new Date().toISOString());
     await setMeta('gtfs_dir', gtfsDir());

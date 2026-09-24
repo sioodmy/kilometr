@@ -26,10 +26,12 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
           name TEXT NOT NULL,
           lat REAL NOT NULL,
           lon REAL NOT NULL,
-          norm TEXT NOT NULL
+          norm TEXT NOT NULL,
+          weight INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_stops_latlon ON stops (lat, lon);
         CREATE INDEX IF NOT EXISTS idx_stops_norm ON stops (norm);
+        CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC);
         CREATE TABLE IF NOT EXISTS routes (
           route_id TEXT PRIMARY KEY NOT NULL,
           short TEXT NOT NULL,
@@ -75,7 +77,26 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_caldate_date ON calendar_dates (date);
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS pois (
+          osm_id TEXT PRIMARY KEY NOT NULL,
+          kind TEXT NOT NULL DEFAULT 'place',
+          category TEXT NOT NULL DEFAULT 'place',
+          name TEXT NOT NULL,
+          norm_name TEXT NOT NULL,
+          address TEXT NOT NULL DEFAULT '',
+          lat REAL NOT NULL,
+          lon REAL NOT NULL,
+          street TEXT,
+          district TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_pois_norm ON pois (norm_name);
       `);
+      // Migracje istniejących baz (CREATE TABLE IF NOT EXISTS ich nie rusza).
+      const stopCols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(stops)');
+      if (!stopCols.some((c) => c.name === 'weight')) {
+        await db.execAsync('ALTER TABLE stops ADD COLUMN weight INTEGER NOT NULL DEFAULT 0');
+        await db.execAsync('CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC)');
+      }
       return db;
     })();
   }
@@ -297,19 +318,23 @@ export interface StopSearchHit {
   lat: number;
   lon: number;
   score: number;
+  /** liczba obsłużonych odjazdów — przystanki z większą wagą wyżej */
+  weight: number;
 }
 
 /**
  * Wyszukiwanie przystanków: tani LIKE w SQLite zawęża kandydatów,
- * a ranking robi fuzzyMatch w JS (jak serwer).
+ * a ranking robi fuzzyMatch w JS (jak serwer). Znacząca różnica
+ * w dopasowaniu tekstu wygrywa, w przeciwnym razie popularność
+ * przystanku (waga = liczba odjazdów).
  */
 export async function searchStops(query: string, limit = 8): Promise<StopSearchHit[]> {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const db = await getGtfsDb();
   const like = `%${q.replace(/[%_]/g, '')}%`;
-  const rows = await db.getAllAsync<{ stop_id: string; code: string; name: string; lat: number; lon: number }>(
-    'SELECT stop_id, code, name, lat, lon FROM stops WHERE norm LIKE ? LIMIT 120',
+  const rows = await db.getAllAsync<{ stop_id: string; code: string; name: string; lat: number; lon: number; weight: number }>(
+    'SELECT stop_id, code, name, lat, lon, weight FROM stops WHERE norm LIKE ? LIMIT 120',
     like,
   );
   const scored: StopSearchHit[] = [];
@@ -319,15 +344,102 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
     const m = fuzzyMatch(q, r.name);
     if (m.matches) {
       seen.add(r.name);
-      scored.push({ stop_id: r.stop_id, code: r.code, name: r.name, lat: r.lat, lon: r.lon, score: m.score });
+      scored.push({ stop_id: r.stop_id, code: r.code, name: r.name, lat: r.lat, lon: r.lon, score: m.score, weight: r.weight ?? 0 });
     }
   }
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((a, b) => {
+    if (Math.abs(a.score - b.score) > 12) return b.score - a.score;
+    return b.weight - a.weight;
+  });
   return scored.slice(0, limit);
 }
 
-/** Serwisy kursujące w dany dzień (0 = niedziela), z wyjątkami calendar_dates. */
-export async function getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
+/**
+ * Waga przystanku = liczba obsłużonych odjazdów (stop_times).
+ * Jednorazowo po imporcie; idx_stoptimes_stop robi to szybko natywnie.
+ */
+export async function computeStopWeights(): Promise<number> {
+  const db = await getGtfsDb();
+  await db.execAsync(
+    'UPDATE stops SET weight = (SELECT COUNT(*) FROM stop_times WHERE stop_times.stop_id = stops.stop_id)'
+  );
+  const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
+  return row?.n ?? 0;
+}
+
+/** Czy wagi są już policzone (false po imporcie / na starych bazach). */
+export async function needsStopWeights(): Promise<boolean> {
+  try {
+    const db = await getGtfsDb();
+    const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
+    if (!s || s.n === 0) return false;
+    const w = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
+    return (w?.n ?? 0) === 0;
+  } catch {
+    return false;
+  }
+}
+
+export interface PoiRow {
+  osm_id: string;
+  kind: string;
+  category: string;
+  name: string;
+  norm_name: string;
+  address: string;
+  lat: number;
+  lon: number;
+  street: string | null;
+  district: string | null;
+}
+
+/** Atomowa podmiana indeksu POI (Overpass → SQLite). */
+export async function replacePois(rows: PoiRow[]): Promise<void> {
+  const db = await getGtfsDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM pois');
+    const CHUNK = 100;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const chunk = rows.slice(i, i + CHUNK);
+      const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+      const params: (string | number | null)[] = [];
+      for (const r of chunk) {
+        params.push(r.osm_id, r.kind, r.category, r.name, r.norm_name, r.address, r.lat, r.lon, r.street, r.district);
+      }
+      await db.runAsync(
+        'INSERT OR REPLACE INTO pois (osm_id, kind, category, name, norm_name, address, lat, lon, street, district) VALUES ' + placeholders,
+        ...params,
+      );
+    }
+  });
+}
+
+export async function poiCount(): Promise<number> {
+  try {
+    const db = await getGtfsDb();
+    const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM pois');
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Kandydaci POI po tanim LIKE (ranking robi JS: fuzzy + kara za dystans).
+ * Samo zawężenie — szybko nawet na tysiącach wierszy.
+ */
+export async function findPoiCandidates(query: string, limit = 60): Promise<PoiRow[]> {
+  const q = query.trim().toLowerCase();
+  if (!q || q.length < 2) return [];
+  const db = await getGtfsDb();
+  const like = `%${q.replace(/[%_]/g, '')}%`;
+  return db.getAllAsync<PoiRow>(
+    'SELECT osm_id, kind, category, name, norm_name, address, lat, lon, street, district FROM pois WHERE norm_name LIKE ? LIMIT 60',
+    like,
+  );
+}
+
+/** Serwisy kursujące w dany dzień (0 = niedziela), z wyjątkami calendar_dates. */export async function getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
   const db = await getGtfsDb();
   const day = ((weekday % 7) + 7) % 7;
   const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];

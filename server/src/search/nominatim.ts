@@ -78,6 +78,15 @@ export async function searchNominatim(query: string, isFresh: () => boolean = ()
       const lat = Number(item.lat);
       const lon = Number(item.lon);
       if (isNaN(lat) || isNaN(lon)) continue;
+      // Ścisły filtr: obsługujemy tylko Wrocław (viewbox/bounded nie wystarczają).
+      if (
+        lat < config.bounds.minLat ||
+        lat > config.bounds.maxLat ||
+        lon < config.bounds.minLon ||
+        lon > config.bounds.maxLon
+      ) {
+        continue;
+      }
 
       const c = item.category || item.class;
       const t = item.type;

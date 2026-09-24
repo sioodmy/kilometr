@@ -83,6 +83,29 @@ export const LocationService: ILocationService = {
 
 let searchAbort: AbortController | null = null;
 
+// Cache scalonych podpowiedzi (query + zaokrąglona pozycja) — powtórki migają.
+const mergedCache = new Map<string, { data: Suggestion[]; expires: number }>();
+const MERGED_TTL_MS = 120 * 1000;
+const MERGED_MAX = 60;
+
+function mergedGet(key: string): Suggestion[] | null {
+  const e = mergedCache.get(key);
+  if (!e) return null;
+  if (e.expires < Date.now()) {
+    mergedCache.delete(key);
+    return null;
+  }
+  return e.data;
+}
+
+function mergedSet(key: string, data: Suggestion[]): void {
+  if (mergedCache.size >= MERGED_MAX) {
+    const oldest = mergedCache.keys().next().value;
+    if (oldest) mergedCache.delete(oldest);
+  }
+  mergedCache.set(key, { data, expires: Date.now() + MERGED_TTL_MS });
+}
+
 export const SearchService: ISearchService = {
   async search(query: string, coords?: { lat: number; lon: number }): Promise<Suggestion[]> {
     const q = query.trim();
@@ -92,36 +115,66 @@ export const SearchService: ISearchService = {
     const ctrl = new AbortController();
     searchAbort = ctrl;
 
+    const hasPos = coords !== undefined;
+    const cacheKey = `v2:${q.toLowerCase()}|${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : '-'}`;
+    const cachedMerged = mergedGet(cacheKey);
+    if (cachedMerged) return cachedMerged;
+
     try {
       const { searchStops } = await import('./gtfsDatabase');
+      const { searchPois, ensurePoiIndex } = await import('./poiIndex');
       const { searchNominatimDirect } = await import('./nominatimDirect');
-      const [localHits, remoteHits] = await Promise.all([
-        searchStops(q, 6).catch(() => []),
-        searchNominatimDirect(q, coords?.lat, coords?.lon).catch(() => []),
+      const { dedupeAndSort } = await import('./searchRank');
+      const { distanceMeters } = await import('../gtfs/geo');
+      const { normalizePolish } = await import('../gtfs/geo');
+
+      // Lokalny indeks POI odświeża się w tle, nigdy nie blokuje.
+      ensurePoiIndex();
+
+      // 1. Lokalne źródła (szybkie, offline): przystanki GTFS + indeks POI.
+      const [stopHits, poiHits] = await Promise.all([
+        searchStops(q, 12).catch(() => []),
+        searchPois(q, coords?.lat, coords?.lon, 8).catch(() => []),
       ]);
-      const merged: Suggestion[] = [
-        ...localHits.map((h) => ({
-          id: `stop-${h.stop_id}`,
-          title: h.name,
-          address: h.code ? `Przystanek • słup. ${h.code}` : 'Wrocław',
-          kind: 'stop' as const,
-          lat: h.lat,
-          lon: h.lon,
-          distanceM:
-            coords !== undefined
-              ? Math.round(
-                  Math.sqrt((h.lat - coords.lat) ** 2 + (h.lon - coords.lon) ** 2) * 111000,
-                )
-              : undefined,
-        })),
-        ...remoteHits,
-      ];
+      if (searchAbort !== ctrl) return [];
+      const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
+        id: `stop-${h.stop_id}`,
+        title: h.name,
+        address: h.code ? `Przystanek • słup. ${h.code}` : 'Wrocław',
+        kind: 'stop' as const,
+        lat: h.lat,
+        lon: h.lon,
+        distanceM:
+          coords !== undefined
+            ? Math.round(distanceMeters(coords.lat, coords.lon, h.lat, h.lon))
+            : undefined,
+        weight: h.weight,
+      }));
+      const localSuggestions = [...stopSuggestions, ...poiHits];
+
+      // 2. Sieć (Nominatim) tylko gdy lokalnie za mało albo to adres z numerem.
+      // Adresy z numerami są domeną Nominatim — lokalny indeks ich nie ma.
+      const normQ = normalizePolish(q);
+      const looksLikeAddress = /\d/.test(normQ);
+      const needNetwork = q.length >= 2 && (looksLikeAddress || localSuggestions.length < 5);
+      let remoteHits: Suggestion[] = [];
+      if (needNetwork) {
+        remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(() => []);
+        if (searchAbort !== ctrl) return [];
+      }
+
+      // 3. Merge: przystanki absolutnie pierwsze (w kolejności trafienie+waga),
+      // reszta wg nazwy z karą za dystans — bliższe wyżej.
+      const merged = dedupeAndSort(localSuggestions, remoteHits, hasPos, normQ).slice(0, 15);
       if (merged.length > 0) {
+        mergedSet(cacheKey, merged);
         if (searchAbort === ctrl) void saveSuggestions(q, merged);
         return merged;
       }
-    } catch {}
-    
+    } catch {
+      // offline / błąd — fallback niżej
+    }
+
     if (searchAbort !== ctrl) return [];
     return loadSuggestions(q);
   },
