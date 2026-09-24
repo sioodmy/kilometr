@@ -45,7 +45,7 @@ import {
 } from '../src/services/dataManager';
 import type { SavedPlace, Suggestion } from '../src/types/models';
 
-const STEPS = ['Witaj', 'Dostępy', 'Rozkład', 'Miejsca'];
+const STEPS = ['Witaj', 'Uprawnienia', 'Rozkład', 'Miejsca'];
 
 // ─── Małe klocki ─────────────────────────────────────────────────────────────
 
@@ -114,7 +114,7 @@ function usePermissionStates() {
       setLoc('unknown');
     }
     try {
-      // Leniwie — bezpośredni import expo-notifications potrafi wywalić Expo Go.
+      // Leniwie. Bezpośredni import expo-notifications potrafi wywalić Expo Go.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const N = require('expo-notifications');
       const n = await N.getPermissionsAsync();
@@ -297,7 +297,7 @@ export default function OnboardingScreen() {
     return subscribeDataStatus(setDataStatus);
   }, []);
 
-  // Gdy wchodzimy na krok rozkładu z pustą bazą — od razu odśwież status.
+  // Na kroku rozkładu od razu odśwież status.
   useEffect(() => {
     if (step === 2) void refreshDataStatus().catch(() => {});
   }, [step ]);
@@ -367,11 +367,8 @@ export default function OnboardingScreen() {
               <View style={s.heroGlow} />
               <TramFront size={44} color={scheme.onPrimary} />
             </View>
-            <Text style={s.heroKicker}>WROCŁAW • MPK OFFLINE</Text>
             <Text style={s.hero}>Kilometr</Text>
-            <Text style={s.lead}>
-              Twoje tramwaje i autobusy — z Twojej kieszeni. Bez zgadywania, bez internetu na przystanku.
-            </Text>
+            <Text style={s.lead}>Tym razem dojedziesz.</Text>
 
             <View style={s.featList}>
               <View style={s.feat}>
@@ -379,26 +376,23 @@ export default function OnboardingScreen() {
                   <Zap size={18} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.featTitle}>Trasy w sekundę</Text>
-                  <Text style={s.featSub}>Planer RAPTOR liczy wszystko na telefonie, offline.</Text>
+                  <Text style={s.featTitle}>Szybko</Text>
                 </View>
               </View>
               <View style={s.feat}>
                 <View style={s.featIcon}>
-                  <LocateFixed size={18} color={scheme.primary} />
+                  <X size={18} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.featTitle}>Od Twojego przystanku</Text>
-                  <Text style={s.featSub}>Wykryjemy najbliższy słupek i pokażemy najszybszy odjazd.</Text>
+                  <Text style={s.featTitle}>Bez reklam</Text>
                 </View>
               </View>
               <View style={s.feat}>
                 <View style={s.featIcon}>
-                  <Bell size={18} color={scheme.primary} />
+                  <Check size={18} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.featTitle}>Powiadomienie jak z Uber Eats</Text>
-                  <Text style={s.featSub}>Przypnij połączenie — tramwaj czeka w powiadomieniach.</Text>
+                  <Text style={s.featTitle}>Bez mikropłatności</Text>
                 </View>
               </View>
             </View>
@@ -412,10 +406,8 @@ export default function OnboardingScreen() {
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
           >
-            <Text style={s.title}>Dwie zgody,{'\n'}zero spamu</Text>
-            <Text style={s.leadSmall}>
-              Bez nich apka działa — ale z nimi jest magiczna. Wszystko zostaje na Twoim telefonie.
-            </Text>
+            <Text style={s.title}>Uprawnienia</Text>
+            <Text style={s.leadSmall}>Lokalizacja i powiadomienia. Oba opcjonalne.</Text>
 
             <View style={s.card}>
               <View style={s.cardHead}>
@@ -424,18 +416,17 @@ export default function OnboardingScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.cardTitle}>Lokalizacja</Text>
-                  <Text style={s.cardWhy}>Po co? Żeby trasa zaczynała się tam, gdzie stoisz.</Text>
                 </View>
                 <StatusPill v={perms.loc} />
               </View>
               <Text style={s.cardBody}>
-                Znajdujemy najbliższy przystanek, liczymy spacer i podpowiadamy odjazdy „stąd”. Pozycja nigdy
-                nie opuszcza telefonu.
+                Służy do ustawienia punktu startowego i sortowania przystanków według odległości.
+                Przetwarzana lokalnie na urządzeniu.
               </Text>
               {perms.loc === 'granted' ? (
                 <View style={s.doneRow}>
                   <Check size={16} color={scheme.success} />
-                  <Text style={s.doneText}>Lokalizacja działa — świetnie!</Text>
+                  <Text style={s.doneText}>Lokalizacja włączona.</Text>
                 </View>
               ) : (
                 <Pressable
@@ -460,18 +451,16 @@ export default function OnboardingScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.cardTitle}>Powiadomienia</Text>
-                  <Text style={s.cardWhy}>Po co? Żeby przypięty tramwaj nie uciekł.</Text>
                 </View>
                 <StatusPill v={perms.notif} />
               </View>
               <Text style={s.cardBody}>
-                Tylko to, o co poprosisz: przypięte połączenie w trayu i alert o pilnych utrudnieniach MPK.
-                Zero reklam, zero spamu.
+                Służą do wyświetlania przypiętego połączenia i alertów o utrudnieniach.
               </Text>
               {perms.notif === 'granted' ? (
                 <View style={s.doneRow}>
                   <Check size={16} color={scheme.success} />
-                  <Text style={s.doneText}>Powiadomienia działają — super!</Text>
+                  <Text style={s.doneText}>Powiadomienia włączone.</Text>
                 </View>
               ) : (
                 <Pressable
@@ -503,8 +492,7 @@ export default function OnboardingScreen() {
             </View>
             <Text style={s.title}>Pobierz rozkład{'\n'}Wrocławia</Text>
             <Text style={s.leadSmall}>
-              Jednorazowo ściągamy pełny rozkład MPK z Open Data Wrocław. Potem wszystko działa offline —
-              nawet w tunelu i bez pakietu.
+              Pełny rozkład MPK z Open Data Wrocław. Pobierany raz. Działa offline.
             </Text>
 
             <View style={s.card}>
@@ -512,7 +500,7 @@ export default function OnboardingScreen() {
                 <>
                   <View style={s.statRow}>
                     <WifiOff size={18} color={scheme.onSurfaceVariant} />
-                    <Text style={s.statText}>Brak danych offline — pobierz je teraz.</Text>
+                    <Text style={s.statText}>Brak danych offline.</Text>
                   </View>
                   <Pressable
                     onPress={() => void startDownload()}
@@ -538,7 +526,7 @@ export default function OnboardingScreen() {
                   <View style={s.bar}>
                     <View style={[s.barFill, { width: `${Math.round(dataStatus.progress * 100)}%` }]} />
                   </View>
-                  <Text style={s.fine}>Nie zamykaj apki — budujemy indeks przystanków i kursów.</Text>
+                  <Text style={s.fine}>Nie zamykaj aplikacji w trakcie pobierania.</Text>
                 </>
               )}
 
@@ -549,9 +537,9 @@ export default function OnboardingScreen() {
                       <Check size={22} color={scheme.onSuccess} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.cardTitle}>Rozkład gotowy!</Text>
+                      <Text style={s.cardTitle}>Rozkład gotowy.</Text>
                       <Text style={s.cardBody}>
-                        {dataStatus.stops} przystanków • {dataStatus.trips} kursów — wszystko offline.
+                        {dataStatus.stops} przystanków • {dataStatus.trips} kursów.
                       </Text>
                     </View>
                   </View>
@@ -586,7 +574,7 @@ export default function OnboardingScreen() {
           >
             <Text style={s.title}>Gdzie bywasz{'\n'}najczęściej?</Text>
             <Text style={s.leadSmall}>
-              Dodaj Dom, Pracę czy Uczelnię — trasy w jeden tap. Możesz pominąć, uzupełnisz później.
+              Zapisane miejsca przyspieszają wyszukiwanie. Ten krok można pominąć.
             </Text>
 
             {PLACE_SLOTS.map((slot) => {
@@ -721,7 +709,7 @@ export default function OnboardingScreen() {
         {step === 3 && (
           <>
             <PrimaryBtn
-              label={savedCount > 0 ? `Gotowe — jedziemy! (${savedCount})` : 'Gotowe — jedziemy!'}
+              label={savedCount > 0 ? `Gotowe (${savedCount})` : 'Gotowe'}
               onPress={() => void finish()}
               icon={<Check size={18} color={scheme.onPrimary} />}
             />
@@ -773,7 +761,6 @@ const s = StyleSheet.create({
     marginTop: 8,
     ...elev.level1,
   },
-  heroKicker: { ...type.labelSmall, color: scheme.primary, fontWeight: '700', letterSpacing: 2, textAlign: 'center', marginTop: 14 },
   hero: { fontSize: 52, fontWeight: '700', color: scheme.onSurface, textAlign: 'center', letterSpacing: -1 },
   title: { fontSize: 34, fontWeight: '700', color: scheme.onSurface, letterSpacing: -0.5, lineHeight: 40 },
   lead: { ...type.bodyLarge, color: scheme.onSurfaceVariant, textAlign: 'center', lineHeight: 24, paddingHorizontal: 8 },
@@ -797,7 +784,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   featTitle: { ...type.titleSmall, color: scheme.onSurface },
-  featSub: { ...type.bodySmall, color: scheme.onSurfaceVariant, marginTop: 2, lineHeight: 17 },
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.large,

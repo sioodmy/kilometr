@@ -25,7 +25,7 @@ import { transfersLabel } from '../src/components/ConnectionCard';
 function dataStatusLabel(s: DataStatus): string {
   switch (s.state) {
     case 'empty':
-      return 'Brak danych — pobierz rozkład MPK';
+      return 'Brak danych offline.';
     case 'downloading':
       return `Pobieranie… ${Math.round(s.progress * 100)}%`;
     case 'importing':
@@ -139,7 +139,7 @@ export default function SettingsScreen() {
             <Text style={styles.cardTitle}>Dane offline (MPK Wrocław)</Text>
           </View>
           <Text style={styles.cardHint}>
-            Pełny rozkład prosto z Open Data Wrocław — pobierany raz, działa offline bez pośredniego serwera.
+            Pełny rozkład z Open Data Wrocław. Pobierany raz. Działa offline.
           </Text>
           <Text style={styles.stepValueText}>{dataStatusLabel(dataStatus)}</Text>
           <Pressable
