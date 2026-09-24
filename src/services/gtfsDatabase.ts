@@ -14,9 +14,7 @@ export const GTFS_DB_NAME = 'kilometr-gtfs.db';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
-  if (!dbPromise) {
-    dbPromise = (async () => {
+async function initDb(): Promise<SQLite.SQLiteDatabase> {
       const db = await SQLite.openDatabaseAsync(GTFS_DB_NAME);
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
@@ -31,7 +29,6 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_stops_latlon ON stops (lat, lon);
         CREATE INDEX IF NOT EXISTS idx_stops_norm ON stops (norm);
-        CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC);
         CREATE TABLE IF NOT EXISTS routes (
           route_id TEXT PRIMARY KEY NOT NULL,
           short TEXT NOT NULL,
@@ -92,13 +89,48 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
         CREATE INDEX IF NOT EXISTS idx_pois_norm ON pois (norm_name);
       `);
       // Migracje istniejących baz (CREATE TABLE IF NOT EXISTS ich nie rusza).
-      const stopCols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(stops)');
-      if (!stopCols.some((c) => c.name === 'weight')) {
+      // WAŻNE: indeks na weight dopiero PO migracji — na starych bazach bez
+      // kolumny CREATE INDEX w batchu init wywalał całe openDatabase
+      // ("no such column: weight") i store nigdy się nie ładował.
+      const hasWeight = async (): Promise<boolean> => {
+        const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(stops)');
+        return cols.some((c) => c.name === 'weight');
+      };
+      if (!(await hasWeight())) {
         await db.execAsync('ALTER TABLE stops ADD COLUMN weight INTEGER NOT NULL DEFAULT 0');
-        await db.execAsync('CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC)');
       }
+      if (!(await hasWeight())) {
+        // Awaryjnie: ubity schemat (np. przerwany ALTER) — tabela stops to
+        // cache, stawiamy ją od zera; reseed/reimport uzupełni dane.
+        await db.execAsync(`
+          DROP TABLE IF EXISTS stops;
+          CREATE TABLE stops (
+            stop_id TEXT PRIMARY KEY NOT NULL,
+            code TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL,
+            lat REAL NOT NULL,
+            lon REAL NOT NULL,
+            norm TEXT NOT NULL,
+            weight INTEGER NOT NULL DEFAULT 0
+          );
+          CREATE INDEX IF NOT EXISTS idx_stops_latlon ON stops (lat, lon);
+          CREATE INDEX IF NOT EXISTS idx_stops_norm ON stops (norm);
+        `);
+      }
+      await db.execAsync('CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC)');
       return db;
-    })();
+}
+
+export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
+  if (!dbPromise) {
+    const p = initDb();
+    dbPromise = p;
+    // Nie trzymaj odrzuconego promise'a — następne wywołanie próbuje od nowa
+    // zamiast zwracać w kółko ten sam błąd (widoczne w logach jako wieczne
+    // "[LocalGtfsStore] Initializing..." bez "Loaded").
+    p.catch(() => {
+      if (dbPromise === p) dbPromise = null;
+    });
   }
   return dbPromise;
 }

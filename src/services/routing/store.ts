@@ -26,6 +26,22 @@ export class LocalGtfsStore {
   private slicePromises = new Map<string, Promise<DayIndex>>();
   isLoaded = false;
 
+  /**
+   * Czyści pamięć podręczną po imporcie (seed / sieć): bez tego store
+   * załadowany na pustej bazie zostaje pusty aż do restartu apki.
+   */
+  reset(): void {
+    this.stops.clear();
+    this.routes.clear();
+    this.trips.clear();
+    this.stopTimes.clear();
+    this.footpaths.clear();
+    this.dayIndexes.clear();
+    this.sliceIndexes.clear();
+    this.slicePromises.clear();
+    this.isLoaded = false;
+  }
+
   async load() {
     if (this.isLoaded) return;
     console.log('[LocalGtfsStore] Initializing...');
