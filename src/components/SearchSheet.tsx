@@ -23,6 +23,9 @@ export function SearchSheet({
   onQuery,
   onSelect,
   onClose,
+  placeholder = 'Szukaj we Wrocławiu…',
+  originTitle,
+  onChangeOrigin,
 }: {
   open?: boolean;
   query: string;
@@ -33,6 +36,9 @@ export function SearchSheet({
   onQuery: (q: string) => void;
   onSelect: (s: Suggestion) => void;
   onClose: () => void;
+  placeholder?: string;
+  originTitle?: string;
+  onChangeOrigin?: () => void;
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
@@ -90,6 +96,23 @@ export function SearchSheet({
       handleIndicatorStyle={styles.handle}
     >
       <View style={styles.head}>
+        {originTitle && onChangeOrigin && (
+          <TouchableOpacity
+            onPress={onChangeOrigin}
+            style={styles.originHintRow}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Punkt startowy: ${originTitle}. Dotknij, aby zmienić.`}
+          >
+            <View style={styles.originHintDot} />
+            <Text style={styles.originHintLabel}>Z:</Text>
+            <Text style={styles.originHintTitle} numberOfLines={1}>
+              {originTitle}
+            </Text>
+            <Text style={styles.originHintChange}>Zmień</Text>
+          </TouchableOpacity>
+        )}
+
         {/* M3 search field */}
         <View style={styles.inputBox}>
           <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.leadingBtn} activeOpacity={0.7}>
@@ -99,7 +122,7 @@ export function SearchSheet({
             ref={inputRef}
             value={query}
             onChangeText={onQuery}
-            placeholder="Szukaj we Wrocławiu…"
+            placeholder={placeholder}
             placeholderTextColor={scheme.onSurfaceVariant}
             style={styles.input}
             returnKeyType="search"
@@ -171,6 +194,40 @@ const styles = StyleSheet.create({
   sheet: { borderTopLeftRadius: shape.extraLarge, borderTopRightRadius: shape.extraLarge, backgroundColor: scheme.surfaceContainer, ...elev.level3 },
   handle: { backgroundColor: scheme.outlineVariant, width: 44 },
   head: { paddingHorizontal: 16, paddingTop: 8, gap: 12 },
+  originHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.full,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  originHintDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: scheme.primary,
+  },
+  originHintLabel: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '700',
+  },
+  originHintTitle: {
+    ...type.labelSmall,
+    color: scheme.onSurface,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  originHintChange: {
+    ...type.labelSmall,
+    color: scheme.primary,
+    fontWeight: '700',
+    marginLeft: 2,
+  },
   // M3 search view field: surfaceContainerHighest, full-width, no border
   inputBox: {
     flexDirection: 'row',

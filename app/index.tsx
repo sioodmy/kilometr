@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LocateFixed, Pencil, Settings2 } from 'lucide-react-native';
+import { ChevronDown, LocateFixed, MapPin, Pencil, Settings2, X } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService } from '../src/services';
@@ -34,11 +34,23 @@ import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 
+const GPS_ITEM: Suggestion = {
+  id: '__gps',
+  title: 'Moja lokalizacja (GPS)',
+  address: 'Bieżąca pozycja urządzenia',
+  kind: 'history',
+  lat: 0,
+  lon: 0,
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const [saved, setSaved] = useState<SavedPlace[]>([]);
   const [smart, setSmart] = useState<SmartDestination[]>([]);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
+  const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
+  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string } | null>(null);
+  const [isCustomStart, setIsCustomStart] = useState(false);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [manageSheetOpen, setManageSheetOpen] = useState(false);
   const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
@@ -96,6 +108,7 @@ export default function HomeScreen() {
     liveTracker.start();
 
     LocationService.getCurrentLocation().then((l) => {
+      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title });
       setLocTitle(l.title);
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
@@ -108,12 +121,16 @@ export default function HomeScreen() {
     if (dataStatus.state === 'ready') {
       setOffline(false);
       refreshPlaces();
-      LocationService.getCurrentLocation().then((l) => {
-        const coords = { lat: l.lat, lon: l.lon };
-        FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(setSmart);
-      });
+      if (!isCustomStart) {
+        LocationService.getCurrentLocation().then((l) => {
+          const coords = { lat: l.lat, lon: l.lon };
+          FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(setSmart);
+        });
+      } else {
+        FavoritesService.smartFromOrigin(locTitle, currentCoords).then(setSmart);
+      }
     }
-  }, [dataStatus.state]);
+  }, [dataStatus.state, isCustomStart, locTitle, currentCoords]);
 
   // Najszybszy odjazd do każdej częstej destynacji (z ustawieniami trasy użytkownika)
   useEffect(() => {
@@ -254,9 +271,58 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstConns, locTitle]);
 
+  const recentWithGps = useMemo(() => [GPS_ITEM, ...recent], [recent]);
+
+  const resetToGps = async () => {
+    setIsCustomStart(false);
+    if (gpsLocation) {
+      setLocTitle(gpsLocation.title);
+      const coords = { lat: gpsLocation.lat, lon: gpsLocation.lon };
+      setCurrentCoords(coords);
+      FavoritesService.smartFromOrigin(gpsLocation.title, coords).then(setSmart);
+    }
+    try {
+      const l = await LocationService.getCurrentLocation();
+      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title });
+      setLocTitle(l.title);
+      const coords = { lat: l.lat, lon: l.lon };
+      setCurrentCoords(coords);
+      FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(setSmart);
+    } catch (err) {
+      console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
+    }
+  };
+
+  const handleStartSelect = async (s: Suggestion) => {
+    setQuery('');
+    if (s.id === GPS_ITEM.id) {
+      await resetToGps();
+      if (returnToDestinationAfterStart) {
+        setReturnToDestinationAfterStart(false);
+        setSheetMode('destination');
+      } else {
+        setSheetMode(null);
+      }
+      return;
+    }
+
+    setIsCustomStart(true);
+    setLocTitle(s.title);
+    const coords = { lat: s.lat, lon: s.lon };
+    setCurrentCoords(coords);
+    FavoritesService.smartFromOrigin(s.id || s.title, coords).then(setSmart);
+
+    if (returnToDestinationAfterStart) {
+      setReturnToDestinationAfterStart(false);
+      setSheetMode('destination');
+    } else {
+      setSheetMode(null);
+    }
+  };
+
   // Debounced search
   useEffect(() => {
-    if (!sheetOpen) return;
+    if (!sheetMode) return;
     const q = query.trim();
     if (!q) {
       setResults([]);
@@ -271,7 +337,7 @@ export default function HomeScreen() {
       });
     }, 220);
     return () => clearTimeout(t);
-  }, [query, sheetOpen, currentCoords]);
+  }, [query, sheetMode, currentCoords]);
 
   const quick = useMemo(() => saved.slice(0, 3).map((s) => ({ id: s.id, title: s.name })), [saved]);
 
@@ -344,9 +410,52 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.safe} edges={['top']}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} overScrollMode="never">
           <View style={styles.topBar}>
-            <View style={styles.loc}>
-              <LocateFixed size={15} color={scheme.onSecondaryContainer} />
-              <Text style={styles.locText} numberOfLines={1} ellipsizeMode="tail">{locTitle}</Text>
+            <View style={[styles.loc, isCustomStart && styles.locCustom]}>
+              <Pressable
+                onPress={() => {
+                  setReturnToDestinationAfterStart(false);
+                  setQuery('');
+                  setSheetMode('start');
+                }}
+                style={styles.locPressable}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isCustomStart
+                    ? `Początek trasy: ${locTitle}. Dotknij, aby zmienić.`
+                    : `Lokalizacja: ${locTitle}. Dotknij, aby zmienić miejsce początkowe.`
+                }
+              >
+                {isCustomStart ? (
+                  <MapPin size={15} color={scheme.primary} />
+                ) : (
+                  <LocateFixed size={15} color={scheme.onSecondaryContainer} />
+                )}
+                <Text
+                  style={[styles.locText, isCustomStart && styles.locTextCustom]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {locTitle}
+                </Text>
+                {!isCustomStart && (
+                  <ChevronDown
+                    size={14}
+                    color={scheme.onSecondaryContainer}
+                    style={{ opacity: 0.6, marginLeft: 2 }}
+                  />
+                )}
+              </Pressable>
+              {isCustomStart && (
+                <Pressable
+                  hitSlop={8}
+                  onPress={resetToGps}
+                  accessibilityRole="button"
+                  accessibilityLabel="Przywróć bieżącą lokalizację GPS"
+                  style={styles.locResetBtn}
+                >
+                  <X size={14} color={scheme.onSurfaceVariant} />
+                </Pressable>
+              )}
             </View>
             {offline && (
               <View style={styles.offlinePill}>
@@ -391,7 +500,13 @@ export default function HomeScreen() {
           )}
 
           <View style={{ height: 24 }} />
-          <SearchBar onPress={() => setSheetOpen(true)} />
+          <SearchBar
+            onPress={() => {
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+              setSheetMode('destination');
+            }}
+          />
 
           <View style={{ height: 20 }} />
           <View style={styles.sectionHeader}>
@@ -427,18 +542,47 @@ export default function HomeScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      {sheetOpen && (
+      {sheetMode === 'destination' && (
         <SearchSheet
           query={query}
           loading={loading}
           results={results}
           recent={recent}
           savedQuick={quick}
+          placeholder="Dokąd jedziesz?"
+          originTitle={locTitle}
+          onChangeOrigin={() => {
+            setReturnToDestinationAfterStart(true);
+            setQuery('');
+            setSheetMode('start');
+          }}
           onQuery={setQuery}
           onSelect={(s) => {
+            setSheetMode(null);
             goToRoutes({ id: s.id, title: s.title, lat: s.lat, lon: s.lon });
           }}
-          onClose={() => setSheetOpen(false)}
+          onClose={() => {
+            setSheetMode(null);
+            setQuery('');
+          }}
+        />
+      )}
+
+      {sheetMode === 'start' && (
+        <SearchSheet
+          query={query}
+          loading={loading}
+          results={results}
+          recent={recentWithGps}
+          savedQuick={quick}
+          placeholder="Skąd wyruszasz?"
+          onQuery={setQuery}
+          onSelect={handleStartSelect}
+          onClose={() => {
+            setSheetMode(null);
+            setReturnToDestinationAfterStart(false);
+            setQuery('');
+          }}
         />
       )}
 
@@ -487,16 +631,38 @@ const styles = StyleSheet.create({
   loc: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     backgroundColor: scheme.secondaryContainer,
     borderRadius: shape.full,
     paddingLeft: 12,
-    paddingRight: 12,
+    paddingRight: 10,
     height: 40,
     flex: 1,
     minWidth: 0,
   },
+  locCustom: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: scheme.primary,
+  },
+  locPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+    height: '100%',
+  },
   locText: { ...type.labelLarge, color: scheme.onSecondaryContainer, flexShrink: 1, minWidth: 0 },
+  locTextCustom: { color: scheme.onSurface, fontWeight: '600' },
+  locResetBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
   offlinePill: {
     flexDirection: 'row',
     alignItems: 'center',

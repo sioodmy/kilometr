@@ -8,6 +8,7 @@ import {
   GraduationCap,
   Hotel,
   Landmark,
+  LocateFixed,
   MapPin,
   Pill,
   ShoppingBag,
@@ -41,17 +42,21 @@ const KIND_META: Record<string, { Icon: any; bg: string; fg: string }> = {
 };
 
 export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: () => void }) {
+  const isGps = item.id === '__gps';
   // Use category if available, otherwise fall back to kind
   const key = item.category || item.kind;
   const meta = KIND_META[key] || KIND_META['place'];
-  const Icon = meta.Icon;
+  const Icon = isGps ? LocateFixed : meta.Icon;
+  const iconBg = isGps ? scheme.primaryContainer : meta.bg;
+  const iconFg = isGps ? scheme.onPrimaryContainer : meta.fg;
+
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}
     >
-      <View style={[styles.icon, { backgroundColor: meta.bg }]}>
-        <Icon size={19} color={meta.fg} />
+      <View style={[styles.icon, { backgroundColor: iconBg }]}>
+        <Icon size={19} color={iconFg} />
       </View>
       <View style={styles.mid}>
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
