@@ -1,3 +1,4 @@
+import { importInProgress } from '../dataManager';
 import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
 
@@ -45,7 +46,7 @@ export class LocalGtfsStore {
   async load() {
     if (this.isLoaded) return;
     console.log('[LocalGtfsStore] Initializing...');
-
+    if (importInProgress) { this.initPromise = null; return; }
     const db = await getGtfsDb();
 
     // 1. Load stops
@@ -188,6 +189,7 @@ export class LocalGtfsStore {
     const t0 = performance.now();
 
     const activeServices = await getActiveServices(day, dateStr);
+    if (importInProgress) return emptyIdx;
     const db = await getGtfsDb();
     const serviceList = Array.from(activeServices).map((s) => `'${s.replace(/'/g, "''")}'`).join(',');
     const emptyIdx: DayIndex = {
@@ -353,6 +355,7 @@ export class LocalGtfsStore {
     const activeServices = await getActiveServices(weekday, dateStr);
     
     // Pusty kalendarz (często wrocław ma bug w GTFS, obsługiwane przez getActiveServices, które wrzuca wszystkie serwisy)
+    if (importInProgress) return;
     const db = await getGtfsDb();
     
     const serviceList = Array.from(activeServices).map(s => `'${s.replace(/'/g, "''")}'`).join(',');

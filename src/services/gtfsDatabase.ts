@@ -18,6 +18,7 @@ async function initDb(): Promise<SQLite.SQLiteDatabase> {
       const db = await SQLite.openDatabaseAsync(GTFS_DB_NAME);
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
+        PRAGMA busy_timeout = 15000;
         CREATE TABLE IF NOT EXISTS stops (
           stop_id TEXT PRIMARY KEY NOT NULL,
           code TEXT NOT NULL DEFAULT '',

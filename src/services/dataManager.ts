@@ -132,7 +132,7 @@ async function ensureSearchReady(): Promise<void> {
   }
 }
 
-let importInProgress = false;
+export let importInProgress = false;
 
 /**
  * Pierwowzór z APK (src/gtfs/seed.ts): 8 przystanków, 2 linie, kursy co
