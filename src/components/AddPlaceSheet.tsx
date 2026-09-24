@@ -1388,14 +1388,14 @@ const styles = StyleSheet.create({
   },
   categoryRow: {
     gap: 8,
-    paddingVertical: 4,
+    paddingVertical: 6,
     paddingHorizontal: 2,
     alignItems: 'center',
   },
   categoryPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    minHeight: 38,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    minHeight: 46,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: shape.full,

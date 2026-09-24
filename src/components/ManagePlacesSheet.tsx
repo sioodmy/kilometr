@@ -432,6 +432,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primary,
     height: 52,
     borderRadius: shape.full,
+    paddingHorizontal: 28,
     marginTop: 8,
     ...elev.level2,
   },
