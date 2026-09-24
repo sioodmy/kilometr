@@ -11,7 +11,15 @@ import {
   Pin,
   X,
 } from 'lucide-react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
 import {
@@ -113,13 +121,36 @@ export default function RoutesScreen() {
   );
 
   const displayed = useMemo(() => {
-    if (sortMode === 'earliest') return items;
-    return [...items].sort(
+    let list = items;
+    if (directOnly) {
+      list = list.filter((c) => c.transfers === 0);
+    }
+    if (sortMode === 'earliest') return list;
+    return [...list].sort(
       (a, b) =>
         a.departureSec + a.durationMin * 60 - (b.departureSec + b.durationMin * 60) ||
         a.departureSec - b.departureSec,
     );
-  }, [items, sortMode]);
+  }, [items, sortMode, directOnly]);
+
+  // Animacja płynnego chowania/pokazywania filtrów przy scrollowaniu
+  const filterProgress = useSharedValue(1);
+
+  const animatedFilterStyle = useAnimatedStyle(() => {
+    return {
+      opacity: filterProgress.value,
+      maxHeight: interpolate(filterProgress.value, [0, 1], [0, 220]),
+      transform: [
+        {
+          translateY: interpolate(filterProgress.value, [0, 1], [-12, 0]),
+        },
+        {
+          scale: interpolate(filterProgress.value, [0, 1], [0.96, 1]),
+        },
+      ],
+      overflow: 'hidden',
+    };
+  });
 
   // Przypięte połączenie (persistent notification)
   const [pinnedQuery, setPinnedQuery] = useState<PinnedQuery | null>(() => getPinnedQuerySync());
@@ -459,10 +490,39 @@ export default function RoutesScreen() {
     }
   };
 
-  // Góra listy: przytrzymaj chwilę na samej górze → dładuj wcześniejsze
+  const lastScrollY = useRef(0);
+
+  // Góra listy: przytrzymaj chwilę na samej górze → dładuj wcześniejsze; detekcja kierunku dla filtrów
   const handleScroll = (e: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = e.nativeEvent.contentOffset.y;
+    const dy = y - lastScrollY.current;
+    lastScrollY.current = y;
     scrollY.current = y;
+
+    // Gdy użytkownik scrolluje w dół, filtry chowają się; w górę lub na samej górze — płynnie wracają
+    if (y <= 15) {
+      if (filterProgress.value !== 1) {
+        filterProgress.value = withTiming(1, {
+          duration: 250,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        });
+      }
+    } else if (dy > 6 && y > 35) {
+      if (filterProgress.value !== 0) {
+        filterProgress.value = withTiming(0, {
+          duration: 220,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        });
+      }
+    } else if (dy < -6) {
+      if (filterProgress.value !== 1) {
+        filterProgress.value = withTiming(1, {
+          duration: 250,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        });
+      }
+    }
+
     if (topHoldTimer.current) {
       clearTimeout(topHoldTimer.current);
       topHoldTimer.current = null;
@@ -493,7 +553,7 @@ export default function RoutesScreen() {
   useEffect(() => {
     // Wait for the screen transition animation to finish before blocking JS thread with fetch
     const task = InteractionManager.runAfterInteractions(() => {
-      fetchRoutes(departureTimeSec);
+      fetchRoutes(departureTimeSec, items.length > 0);
     });
     return () => task.cancel();
   }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter]);
@@ -660,44 +720,47 @@ export default function RoutesScreen() {
         </Pressable>
       </View>
 
-      {/* 3. Jednorazowe filtry: bezpośrednie + pojazdy (nie ruszają ustawień) */}
-      <View style={styles.filtersWrap}>
-        <RouteFiltersCard
-          directOnly={directOnly}
-          onDirectChange={setDirectOnly}
-          mode={modeFilter}
-          onModeChange={setModeFilter}
-        />
-      </View>
+      {/* 3 i 4. Płynnie zwijane filtry i sortowanie przy scrollowaniu */}
+      <Animated.View style={[styles.collapsibleFiltersWrap, animatedFilterStyle]}>
+        {/* 3. Jednorazowe filtry: bezpośrednie + pojazdy (nie ruszają ustawień) */}
+        <View style={styles.filtersWrap}>
+          <RouteFiltersCard
+            directOnly={directOnly}
+            onDirectChange={setDirectOnly}
+            mode={modeFilter}
+            onModeChange={setModeFilter}
+          />
+        </View>
 
-      {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
-      <View style={styles.sortRow}>
-        {(
-          [
-            { key: 'fastest', label: 'Najszybciej' },
-            { key: 'earliest', label: 'Najwcześniej' },
-          ] as const
-        ).map((opt) => {
-          const active = sortMode === opt.key;
-          return (
-            <Pressable
-              key={opt.key}
-              onPress={() => setSortMode(opt.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={({ pressed }) => [
-                styles.sortPill,
-                active && styles.sortPillActive,
-                pressed && { opacity: 0.8 },
-              ]}
-            >
-              <Text style={[styles.sortText, active && styles.sortTextActive]}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+        {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
+        <View style={styles.sortRow}>
+          {(
+            [
+              { key: 'fastest', label: 'Najszybciej' },
+              { key: 'earliest', label: 'Najwcześniej' },
+            ] as const
+          ).map((opt) => {
+            const active = sortMode === opt.key;
+            return (
+              <Pressable
+                key={opt.key}
+                onPress={() => setSortMode(opt.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.sortPill,
+                  active && styles.sortPillActive,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Text style={[styles.sortText, active && styles.sortTextActive]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Animated.View>
 
       {/* 5. Lista połączeń */}
       {loading ? (
@@ -729,7 +792,7 @@ export default function RoutesScreen() {
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           onScroll={handleScroll}
-          scrollEventThrottle={100}
+          scrollEventThrottle={16}
           onContentSizeChange={handleContentSizeChange}
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           renderItem={({ item }) => {
@@ -999,6 +1062,9 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerHighest,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  collapsibleFiltersWrap: {
+    overflow: 'hidden',
   },
   // Segmented: Najszybciej / Najwcześniej
   sortRow: {

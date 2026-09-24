@@ -1,4 +1,12 @@
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  interpolate,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import {
   ArrowLeftRight,
   BusFront,
@@ -35,6 +43,25 @@ export function RouteFiltersCard({
   mode: ModePreference;
   onModeChange: (next: ModePreference) => void;
 }) {
+  const directProgress = useSharedValue(directOnly ? 1 : 0);
+
+  useEffect(() => {
+    directProgress.value = withTiming(directOnly ? 1 : 0, { duration: 220 });
+  }, [directOnly, directProgress]);
+
+  const animatedIconCircle = useAnimatedStyle(() => {
+    const bg = interpolateColor(
+      directProgress.value,
+      [0, 1],
+      [scheme.surfaceContainerHighest, scheme.primary],
+    );
+    const scale = interpolate(directProgress.value, [0, 0.5, 1], [1, 1.07, 1]);
+    return {
+      backgroundColor: bg,
+      transform: [{ scale }],
+    };
+  });
+
   return (
     <View style={styles.card}>
       {/* Rząd 1: przełącznik bezpośrednich */}
@@ -49,9 +76,9 @@ export function RouteFiltersCard({
         }
         style={({ pressed }) => [styles.directRow, pressed && { opacity: 0.85 }]}
       >
-        <View style={[styles.iconCircle, directOnly && styles.iconCircleActive]}>
+        <Animated.View style={[styles.iconCircle, animatedIconCircle]}>
           <ArrowLeftRight size={18} color={directOnly ? scheme.onPrimary : scheme.onSurfaceVariant} />
-        </View>
+        </Animated.View>
         <View style={styles.texts}>
           <Text style={[styles.title, directOnly && styles.titleActive]} numberOfLines={1}>
             Tylko bezpośrednie
