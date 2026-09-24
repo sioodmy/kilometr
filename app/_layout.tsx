@@ -59,6 +59,16 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="routes" options={{ headerShown: false }} />
           <Stack.Screen
+            name="news"
+            options={{
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+              animationDuration: 300,
+              animationMatchesGesture: true,
+              gestureDirection: 'vertical',
+            }}
+          />
+          <Stack.Screen
             name="settings"
             options={{
               presentation: 'modal',

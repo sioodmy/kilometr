@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronDown, LocateFixed, MapPin, Pencil, Settings2, X } from 'lucide-react-native';
+import { ChevronDown, LocateFixed, MapPin, Pencil, Bell, Settings2, X } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService } from '../src/services';
@@ -464,6 +464,9 @@ export default function HomeScreen() {
               </View>
             )}
             <View style={styles.topActions}>
+              <Pressable style={styles.iconBtn} hitSlop={10} onPress={() => router.push('/news')} accessibilityLabel="Aktualności MPK" accessibilityRole="button">
+                <Bell size={20} color={scheme.onSurfaceVariant} />
+              </Pressable>
               <Pressable style={styles.iconBtn} hitSlop={10} onPress={() => router.push('/settings')}>
                 <Settings2 size={20} color={scheme.onSurfaceVariant} />
               </Pressable>
