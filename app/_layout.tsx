@@ -1,5 +1,5 @@
 import { LogBox } from 'react-native';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -25,12 +25,15 @@ function navigateFromNotification(data: PinTapData) {
 }
 
 export default function RootLayout() {
+  const [ready, setReady] = useState(false);
+
   // Ustawienia trasy z AsyncStorage dostępne globalnie od startu
   useEffect(() => {
     loadSettings();
     // Pierwsze uruchomienie → onboarding (dostępy, rozkład offline, miejsca).
     hasSeenOnboarding().then((seen) => {
       if (!seen) router.replace('/onboarding');
+      setReady(true);
     });
     // Powiadomienia ładowane leniwie w serwisie (guard na Expo Go)
     setupNotificationHandler();
@@ -43,6 +46,10 @@ export default function RootLayout() {
     const remove = addPinTapListener(navigateFromNotification);
     return remove;
   }, []);
+  if (!ready) {
+    return <GestureHandlerRootView style={{ flex: 1, backgroundColor: scheme.surface }} />;
+  }
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: scheme.surface }}>
       <SafeAreaProvider>

@@ -24,6 +24,7 @@ export function SearchSheet({
   placeholder = 'Szukaj we Wrocławiu…',
   originTitle,
   onChangeOrigin,
+  closeOnSelect = true,
 }: {
   open?: boolean;
   query: string;
@@ -37,6 +38,7 @@ export function SearchSheet({
   placeholder?: string;
   originTitle?: string;
   onChangeOrigin?: () => void;
+  closeOnSelect?: boolean;
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
@@ -55,8 +57,9 @@ export function SearchSheet({
   }, []);
 
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 250);
-  }, []);
+    const t = setTimeout(() => inputRef.current?.focus(), 250);
+    return () => clearTimeout(t);
+  }, [placeholder]);
 
   const handleClose = () => {
     inputRef.current?.blur();
@@ -80,8 +83,10 @@ export function SearchSheet({
 
   const handleSelect = (item: Suggestion) => {
     onSelect(item);
-    inputRef.current?.blur();
-    ref.current?.close();
+    if (closeOnSelect) {
+      inputRef.current?.blur();
+      ref.current?.close();
+    }
   };
 
   return (

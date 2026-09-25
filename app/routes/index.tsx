@@ -88,6 +88,7 @@ export default function RoutesScreen() {
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [activeAnchor, setActiveAnchor] = useState<ActiveAnchor | null>(null);
   const dismissedAnchorsRef = useRef<Set<string>>(new Set());
+  const fetchSeq = useRef(0);
   const initialAnchorCheckedRef = useRef(false);
 
   const handleDismissAnchor = () => {
@@ -311,34 +312,47 @@ export default function RoutesScreen() {
   );
 
   const handleSuggestionSelect = async (s: Suggestion) => {
+    setQuery('');
+    setSheetFor(null);
     if (s.id === GPS_ITEM.id) {
       // Start = aktualna pozycja GPS (nie zapisana wcześniej)
-      setQuery('');
-      const l = await LocationService.getCurrentLocation();
-      const currentSettings = getSettingsSync();
-      dismissedAnchorsRef.current.clear();
-      const anchor = findAnchorForLocation(
-        l.lat,
-        l.lon,
-        l.title,
-        savedPlaces,
-        currentSettings.anchorRadiusM,
-        dismissedAnchorsRef.current
-      );
-      if (anchor) {
-        setActiveAnchor(anchor);
-        setFromTitle(l.title);
-        setFromLat(l.lat);
-        setFromLon(l.lon);
-      } else {
-        setActiveAnchor(null);
-        setFromTitle(l.title);
-        setFromLat(l.lat);
-        setFromLon(l.lon);
+      try {
+        const l = await LocationService.getCurrentLocation();
+        const currentSettings = getSettingsSync();
+        dismissedAnchorsRef.current.clear();
+        const anchor = findAnchorForLocation(
+          l.lat,
+          l.lon,
+          l.title,
+          savedPlaces,
+          currentSettings.anchorRadiusM,
+          dismissedAnchorsRef.current
+        );
+        if (anchor) {
+          setActiveAnchor(anchor);
+          setFromTitle(l.title);
+          setFromLat(l.lat);
+          setFromLon(l.lon);
+        } else {
+          setActiveAnchor(null);
+          setFromTitle(l.title);
+          setFromLat(l.lat);
+          setFromLon(l.lon);
+        }
+      } catch (err) {
+        console.warn('[handleSuggestionSelect] GPS error:', err);
+        Alert.alert(
+          'Błąd lokalizacji',
+          'Nie udało się pobrać aktualnej pozycji GPS. Upewnij się, że lokalizacja w telefonie jest włączona.'
+        );
       }
       return;
     }
-    setQuery('');
+
+    void SearchService.recordRecent(s).then(() => {
+      SearchService.recent().then(setRecent);
+    });
+
     if (sheetFor === 'from') {
       setActiveAnchor(null);
       setFromTitle(s.title);
@@ -366,6 +380,7 @@ export default function RoutesScreen() {
   };
 
   const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
+    const seq = ++fetchSeq.current;
     if (!seamless) {
       setLoading(true);
     }
@@ -377,6 +392,7 @@ export default function RoutesScreen() {
     try {
       const q = queryAt(depSec);
       const c = await RoutingService.getConnections(q);
+      if (seq !== fetchSeq.current) return;
       setItems(applyLiveList(c, depSec));
       void recordTripSearch(q.fromLat, q.fromLon, q.fromTitle, {
         id: q.toId || q.toTitle,
@@ -385,9 +401,11 @@ export default function RoutesScreen() {
         lon: q.toLon,
       });
     } catch {
+      if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
       // W trybie seamless nie czyścimy listy ani nie migoczemy spinnerem.
       const cached = await loadConnections(queryAt(depSec));
+      if (seq !== fetchSeq.current) return;
       if (cached) {
         setItems(applyLiveList(rehydrateConnections(cached), depSec));
         setOffline(true);
@@ -399,7 +417,9 @@ export default function RoutesScreen() {
         setOffline(true);
       }
     } finally {
-      setLoading(false);
+      if (seq === fetchSeq.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -409,9 +429,11 @@ export default function RoutesScreen() {
    * Używany przy powrocie sieci i zmianie czasu w trybie offline.
    */
   const quietRefresh = async (targetDepSec?: number) => {
+    const seq = ++fetchSeq.current;
     const depSec = targetDepSec !== undefined ? targetDepSec : departureTimeSec;
     try {
       const c = await RoutingService.getConnections(queryAt(depSec));
+      if (seq !== fetchSeq.current) return false;
       setItems(applyLiveList(c, depSec));
       setOffline(false);
       setLoadError(false);
@@ -448,9 +470,11 @@ export default function RoutesScreen() {
     setLoadingMore(true);
     const lastDeparture = items[items.length - 1].departureSec;
     const nextDeparture = lastDeparture + 60;
+    const seq = ++fetchSeq.current;
 
     try {
       const c = await RoutingService.getConnections(queryAt(nextDeparture));
+      if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
         if (added === 0) setNoMoreLater(true);
@@ -459,7 +483,9 @@ export default function RoutesScreen() {
     } catch {
       // po cichu — lista zostaje, spinner znika
     } finally {
-      setLoadingMore(false);
+      if (seq === fetchSeq.current) {
+        setLoadingMore(false);
+      }
     }
   };
 
@@ -472,9 +498,14 @@ export default function RoutesScreen() {
     setLoadingEarlier(true);
     // Zapamiętaj wysokość kontentu, żeby po prependzie cofnąć offset (brak skoku)
     pendingAdjust.current = contentH.current;
+    const seq = ++fetchSeq.current;
 
     try {
       const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
+      if (seq !== fetchSeq.current) {
+        pendingAdjust.current = null;
+        return;
+      }
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
         if (added === 0) {
@@ -486,7 +517,9 @@ export default function RoutesScreen() {
     } catch {
       pendingAdjust.current = null;
     } finally {
-      setLoadingEarlier(false);
+      if (seq === fetchSeq.current) {
+        setLoadingEarlier(false);
+      }
     }
   };
 
@@ -930,7 +963,7 @@ export default function RoutesScreen() {
           query={query}
           loading={searchLoading}
           results={results}
-          recent={recentWithGps}
+          recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}
           onQuery={setQuery}
           onSelect={handleSuggestionSelect}
