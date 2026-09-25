@@ -3,7 +3,7 @@ import { kvGet, kvSet } from './storage';
 import { DEFAULT_LOCATION } from '../config';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService } from './types';
-import { loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
+import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
 import { planConnections, buildTripStops } from './routing/engine';
 import { fetchVehiclesDirect } from './realtimeClient';
 
@@ -181,6 +181,10 @@ export const SearchService: ISearchService = {
 
   async recent(): Promise<Suggestion[]> {
     return loadRecent();
+  },
+
+  async recordRecent(item: Suggestion): Promise<void> {
+    await addRecentSuggestion(item);
   },
 };
 

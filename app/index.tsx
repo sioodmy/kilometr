@@ -225,6 +225,7 @@ export default function HomeScreen() {
 
   // Snapshot dla widgetów z ekranu głównego (next / szybkie cele / przypięte).
   useEffect(() => {
+    if (isCustomStart) return;
     let cancelled = false;
     const from = { title: locTitle, lat: currentCoords.lat, lon: currentCoords.lon };
     const withConns = smart.filter((d) => firstConns[d.id]);
@@ -377,6 +378,9 @@ export default function HomeScreen() {
     const coords = { lat: s.lat, lon: s.lon };
     setCurrentCoords(coords);
     FavoritesService.smartFromOrigin(s.id || s.title, coords).then(setSmart);
+    void SearchService.recordRecent(s).then(() => {
+      SearchService.recent().then(setRecent);
+    });
 
     if (returnToDestinationAfterStart) {
       setReturnToDestinationAfterStart(false);
@@ -409,6 +413,9 @@ export default function HomeScreen() {
 
   const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number }) => {
     void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
+    void SearchService.recordRecent(to as Suggestion).then(() => {
+      SearchService.recent().then(setRecent);
+    });
     router.push({
       pathname: '/routes',
       params: {
@@ -627,42 +634,35 @@ export default function HomeScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      {sheetMode === 'destination' && (
+      {sheetMode && (
         <SearchSheet
           query={query}
           loading={loading}
           results={results}
-          recent={recentFromSmart}
+          recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
           savedQuick={quick}
-          placeholder="Dokąd jedziesz?"
-          originTitle={locTitle}
-          onChangeOrigin={() => {
-            setReturnToDestinationAfterStart(true);
-            setQuery('');
-            setSheetMode('start');
-          }}
+          placeholder={sheetMode === 'start' ? 'Skąd wyruszasz?' : 'Dokąd jedziesz?'}
+          originTitle={sheetMode === 'destination' ? locTitle : undefined}
+          closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
+          onChangeOrigin={
+            sheetMode === 'destination'
+              ? () => {
+                  setReturnToDestinationAfterStart(true);
+                  setQuery('');
+                  setSheetMode('start');
+                }
+              : undefined
+          }
           onQuery={setQuery}
           onSelect={(s) => {
-            setSheetMode(null);
-            goToRoutes({ id: s.id, title: s.title, address: s.address, lat: s.lat, lon: s.lon });
+            if (sheetMode === 'start') {
+              handleStartSelect(s);
+            } else {
+              setSheetMode(null);
+              setQuery('');
+              goToRoutes({ id: s.id, title: s.title, address: s.address, lat: s.lat, lon: s.lon });
+            }
           }}
-          onClose={() => {
-            setSheetMode(null);
-            setQuery('');
-          }}
-        />
-      )}
-
-      {sheetMode === 'start' && (
-        <SearchSheet
-          query={query}
-          loading={loading}
-          results={results}
-          recent={recentWithGps}
-          savedQuick={quick}
-          placeholder="Skąd wyruszasz?"
-          onQuery={setQuery}
-          onSelect={handleStartSelect}
           onClose={() => {
             setSheetMode(null);
             setReturnToDestinationAfterStart(false);

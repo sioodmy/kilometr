@@ -11,6 +11,7 @@ import type {
 export interface ISearchService {
   search(query: string, coords?: { lat: number; lon: number }): Promise<Suggestion[]>;
   recent(): Promise<Suggestion[]>;
+  recordRecent(item: Suggestion): Promise<void>;
 }
 
 export interface IRoutingService {

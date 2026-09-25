@@ -187,6 +187,21 @@ export async function loadRecent(): Promise<Suggestion[]> {
   return Array.isArray(entry.data) ? entry.data : [];
 }
 
+export async function addRecentSuggestion(item: Suggestion): Promise<Suggestion[]> {
+  if (!item || !item.id || item.id === '__gps') return loadRecent();
+  try {
+    const current = await loadRecent();
+    const updated = [
+      item,
+      ...current.filter((x) => x.id !== item.id && (x.title !== item.title || x.lat !== item.lat || x.lon !== item.lon)),
+    ].slice(0, 10);
+    await saveRecent(updated);
+    return updated;
+  } catch {
+    return [];
+  }
+}
+
 // ─── Ostatnia znana lokalizacja (ulica z reverse-geocode) ────────────────────
 
 export interface LastLocation {
