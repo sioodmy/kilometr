@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, InteractionManager } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -58,6 +58,7 @@ import type { Connection, SavedPlace, Suggestion } from '../../src/types/models'
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import { RouteFiltersCard, type ModePreference } from '../../src/components/RouteFiltersCard';
+import { RoutesThumbBar } from '../../src/components/RoutesThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 
 const GPS_ITEM: Suggestion = {
@@ -668,6 +669,23 @@ export default function RoutesScreen() {
     return () => task.cancel();
   }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter]);
 
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    try {
+      await fetchRoutes(departureTimeSec, true);
+    } finally {
+      setPullRefreshing(false);
+    }
+  };
+
+  const handleCycleMode = () => {
+    if (modeFilter === 'all') setModeFilter('tram');
+    else if (modeFilter === 'tram') setModeFilter('bus');
+    else setModeFilter('all');
+  };
+
   const handleSwap = () => {
     setActiveAnchor(null);
     const tempTitle = fromTitle;
@@ -934,6 +952,15 @@ export default function RoutesScreen() {
       ) : (
         <FlatList
           ref={listRef}
+          refreshControl={
+            <RefreshControl
+              refreshing={pullRefreshing}
+              onRefresh={handlePullRefresh}
+              tintColor={scheme.primary}
+              colors={[scheme.primary]}
+              progressBackgroundColor={scheme.surfaceContainerHigh}
+            />
+          }
           data={displayed}
           // wymusza przeliczenie etykiet „za X min” bez refetchu
           extraData={nowTick}
@@ -1066,6 +1093,21 @@ export default function RoutesScreen() {
             setSheetFor(null);
             setQuery('');
           }}
+        />
+      )}
+
+      {/* 8. Pływający dolny pasek kciuka w tramwaju */}
+      {!sheetFor && !timeSheetOpen && (
+        <RoutesThumbBar
+          onSwap={handleSwap}
+          directOnly={directOnly}
+          onToggleDirect={() => setDirectOnly(!directOnly)}
+          timeLabel={timeLabel}
+          isCustomTime={isCustomTime}
+          onOpenTimeSheet={() => setTimeSheetOpen(true)}
+          modeFilter={modeFilter}
+          onCycleMode={handleCycleMode}
+          onRefresh={() => void quietRefresh()}
         />
       )}
     </SafeAreaView>
@@ -1269,7 +1311,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 14,
-    paddingBottom: 36,
+    paddingBottom: 96,
     gap: 10,
   },
   loading: {
