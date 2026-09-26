@@ -2,9 +2,11 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
+  Easing,
   FadeInUp,
+  FadeOut,
+  Keyframe,
   LinearTransition,
-  ZoomIn,
   type AnimatedStyle,
 } from 'react-native-reanimated';
 import {
@@ -18,6 +20,33 @@ import {
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { ModePreference } from './RouteFiltersCard';
+
+// ─── Swipe ikon zamiast popu ─────────────────────────────────────────────────
+// Krótki (170 ms) pionowy wjazd z fade: włączenie / następny pojazd = swipe up,
+// wyłączenie / powrót = swipe down. Własny Keyframe zamiast gotowego SlideIn*,
+// żeby dystans był mały (10 px, nie pół ekranu).
+const SWIPE_MS = 170;
+const SWIPE_EASING = Easing.out(Easing.cubic);
+
+const slideUpIn = new Keyframe({
+  0: { opacity: 0, transform: [{ translateY: 10 }] },
+  100: {
+    opacity: 1,
+    transform: [{ translateY: 0 }],
+    easing: SWIPE_EASING,
+  },
+}).duration(SWIPE_MS);
+
+const slideDownIn = new Keyframe({
+  0: { opacity: 0, transform: [{ translateY: -10 }] },
+  100: {
+    opacity: 1,
+    transform: [{ translateY: 0 }],
+    easing: SWIPE_EASING,
+  },
+}).duration(SWIPE_MS);
+
+const iconOut = FadeOut.duration(90);
 
 export interface RoutesThumbBarProps {
   onSwap: () => void;
@@ -115,7 +144,8 @@ export function RoutesThumbBar({
         >
           <Animated.View
             key={directOnly ? 'direct-on' : 'direct-off'}
-            entering={ZoomIn.springify().damping(18).stiffness(500)}
+            entering={directOnly ? slideUpIn : slideDownIn}
+            exiting={iconOut}
           >
             <Zap
               size={15}
@@ -144,7 +174,8 @@ export function RoutesThumbBar({
         >
           <Animated.View
             key={isCustomTime ? 'time-custom' : 'time-now'}
-            entering={ZoomIn.springify().damping(18).stiffness(500)}
+            entering={isCustomTime ? slideUpIn : slideDownIn}
+            exiting={iconOut}
           >
             <Clock3
               size={15}
@@ -175,7 +206,8 @@ export function RoutesThumbBar({
         >
           <Animated.View
             key={modeFilter}
-            entering={ZoomIn.springify().damping(18).stiffness(500)}
+            entering={slideUpIn}
+            exiting={iconOut}
           >
             {renderModeIcon()}
           </Animated.View>
@@ -226,8 +258,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    gap: 2,
     minHeight: 52,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
@@ -243,7 +276,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 5,
     paddingVertical: 8,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     borderRadius: shape.full,
     minHeight: 42,
   },
