@@ -10,7 +10,10 @@ import {
 } from 'lucide-react-native';
 import Animated, {
   FadeIn,
+  FadeInUp,
   FadeOut,
+  FadeOutUp,
+  FlipInEasyX,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
@@ -475,7 +478,16 @@ export default function RoutesScreen() {
         return;
       }
       const q = queryAt(depSec);
-      const c = await RoutingService.getConnections(q);
+      // Progresywne ładowanie "po kolei": pierwsze okno RAPTOR-a wpada szybko,
+      // podmieniamy listę i gasimy pełny spinner od razu — reszta dociąga się
+      // w tle bez migotania (stabilne klucze FlatList).
+      const c = await RoutingService.getConnections(q, (partial) => {
+        if (seq !== fetchSeq.current) return;
+        const live = applyLiveList(partial, depSec);
+        if (live.length === 0) return;
+        setItems(live);
+        setLoading(false);
+      });
       if (seq !== fetchSeq.current) return;
       if (noTimetable()) {
         setItems([]);
@@ -815,7 +827,15 @@ export default function RoutesScreen() {
     setSortMode((prev) => (prev === 'fastest' ? 'earliest' : 'fastest'));
   };
 
+  // Znacznik odwrócenia trasy: wiersze zamontowane tuż po swapie wjeżdżają
+  // pionowym flipem karty (FlipInEasyX) zamiast zwykłego fade-up. Ref, nie stan —
+  // nie wymusza dodatkowego rendera, odczyt w renderItem wystarczy.
+  const swapAtRef = useRef(0);
+
   const handleSwap = () => {
+    swapAtRef.current = Date.now();
+    // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
     setActiveAnchor(null);
     const tempTitle = fromTitle;
     const tempLat = fromLat;
@@ -843,6 +863,10 @@ export default function RoutesScreen() {
   // Stabilne referencje dla FlatList: bez nich każdy render rodzica tworzył
   // nowe closures, przez co wiersze (pamiętane przez React.memo) przeliczały
   // się od nowa i lista „przybliżała” zamiast płynnie się toczyć.
+  // Karty wskakują kaskadą (stagger po indeksie, max ~440 ms), żeby progresywne
+  // dokładanie wyglądało płynnie; tuż po swapie — flipem karty.
+  // UWAGA: świeża instancja buildera na wiersz — .delay() mutuje współdzielony
+  // obiekt, więc współdzielenie jednego FlipInEasyX/FadeInUp rozwaliłoby delaya.
   const openConnection = useCallback(
     (item: Connection) => {
       router.push({ pathname: '/routes/[id]', params: { id: item.id } });
@@ -851,9 +875,21 @@ export default function RoutesScreen() {
   );
 
   const renderConnection = useCallback(
-    ({ item }: { item: Connection }) => {
+    ({ item, index }: { item: Connection; index: number }) => {
       const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
-      return <ConnectionCard item={item} dimmed={past} onPress={openConnection} />;
+      const stagger = Math.min(index * 55, 440);
+      const freshSwap = Date.now() - swapAtRef.current < 2500;
+      return (
+        <Animated.View
+          entering={
+            freshSwap
+              ? new FlipInEasyX().duration(320).delay(stagger)
+              : new FadeInUp().duration(280).delay(stagger)
+          }
+        >
+          <ConnectionCard item={item} dimmed={past} onPress={openConnection} />
+        </Animated.View>
+      );
     },
     [openConnection],
   );
@@ -861,7 +897,7 @@ export default function RoutesScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* 1. Górny pasek: tylko Wstecz, tytuł i przypięcie. Czas odjazdu,
-          filtry i sortowanie żyją w dolnym menu pod kciukiem. */}
+          filtry, sortowanie i zamiana trasy żyją w dolnym menu pod kciukiem. */}
       <View style={styles.topBar}>
         <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
           <ChevronLeft size={23} color={scheme.onSurface} />
@@ -871,27 +907,38 @@ export default function RoutesScreen() {
           Połączenia MPK
         </Text>
 
-        <Pressable
-          onPress={togglePin}
-          accessibilityRole="button"
-          accessibilityLabel={isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'}
-          style={({ pressed }) => [
-            styles.pinBtn,
-            isPinned && styles.pinBtnActive,
-            pressed && { opacity: 0.8 },
-          ]}
-          hitSlop={8}
-        >
-          <Pin
-            size={17}
-            color={isPinned ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-            fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
-          />
-        </Pressable>
+        {/* Pinezka z podpisem „Pin” (z main): przycisk w slocie + niewidoczny
+            odstępnik, żeby górna krawędź zgrywała się z resztą paska. */}
+        <View style={styles.pinWrap}>
+          <View style={styles.pinSlot}>
+            <Pressable
+              onPress={togglePin}
+              accessibilityRole="button"
+              accessibilityLabel={isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'}
+              style={({ pressed }) => [
+                styles.pinBtn,
+                isPinned && styles.pinBtnActive,
+                pressed && { opacity: 0.8 },
+              ]}
+              hitSlop={8}
+            >
+              <Pin
+                size={17}
+                color={isPinned ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
+                fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
+              />
+            </Pressable>
+          </View>
+          <Text style={styles.pinLabel} numberOfLines={1}>
+            Pin
+          </Text>
+        </View>
       </View>
 
-      {/* 2. Karta trasy: klikalny Start / Cel. Zamiana miejsc i wybór
-          godziny są w dolnym menu, więc nic tu się nie powtarza. */}
+      {/* 2. Karta trasy: klikalny Start / Cel. Zamiana miejsc, czas odjazdu
+          i sortowanie żyją w dolnym menu, więc nic tu się nie powtarza.
+          Tytuł startu i celu rolkuje się przy zmianie (z main), żeby zamiana
+          trasy była czytelna bez dodatkowego miejsca. */}
       <View style={styles.routeCard}>
         <View style={styles.endpoints}>
           {/* Start */}
@@ -935,9 +982,16 @@ export default function RoutesScreen() {
                 </Pressable>
               </Animated.View>
             ) : (
-              <Text style={styles.fromText} numberOfLines={1}>
-                {fromTitle}
-              </Text>
+              <Animated.View
+                key={`from-${fromTitle}`}
+                entering={new FadeInUp().duration(220)}
+                exiting={new FadeOutUp().duration(180)}
+                style={styles.routeSlide}
+              >
+                <Text style={styles.fromText} numberOfLines={1}>
+                  {fromTitle}
+                </Text>
+              </Animated.View>
             )}
           </Pressable>
 
@@ -953,9 +1007,16 @@ export default function RoutesScreen() {
             hitSlop={6}
           >
             <View style={[styles.indicatorDot, { backgroundColor: scheme.error }]} />
-            <Text style={styles.toText} numberOfLines={1}>
-              {toTitle}
-            </Text>
+            <Animated.View
+              key={`to-${toTitle}`}
+              entering={new FadeInUp().duration(220)}
+              exiting={new FadeOutUp().duration(180)}
+              style={styles.routeSlide}
+            >
+              <Text style={styles.toText} numberOfLines={1}>
+                {toTitle}
+              </Text>
+            </Animated.View>
           </Pressable>
         </View>
       </View>
@@ -1173,7 +1234,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -1191,10 +1252,31 @@ const styles = StyleSheet.create({
     ...type.titleMedium,
     fontWeight: '700',
     color: scheme.onSurface,
+    // Optyczne wycentrowanie względem toru toggla / pinezki (38 px):
+    // sam tekst ma ~22 px, więc doklejamy górę, żeby środki się zgrywały.
+    paddingTop: 8,
+  },
+  pinWrap: {
+    width: 34,
+    alignItems: 'center',
+  },
+  pinSlot: {
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinLabel: {
+    marginTop: 2,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '500',
+    color: scheme.onSurfaceVariant,
+    opacity: 0.65,
+    textAlign: 'center',
   },
   pinBtn: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
@@ -1203,7 +1285,29 @@ const styles = StyleSheet.create({
   pinBtnActive: {
     backgroundColor: scheme.primaryContainer,
   },
-  // Karta trasy z dedykowanymi kolumnami
+  // Nagłówek trasy w stylu One UI: bez tła, jedna linia.
+  // Wysokość jak dawny box (~64), większy font, luźny oddech z boków.
+  // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
+  // nazwy dalej ucinały się z elipsą w jednej linii.
+  anchorCloseBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
+  },
+  toText: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
+  // nazwy dalej ucinały się z elipsą w jednej linii.
+  routeSlide: {
+    flexShrink: 1,
+  },
   routeCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1241,7 +1345,6 @@ const styles = StyleSheet.create({
   fromText: {
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
-    flex: 1,
   },
   anchorBadge: {
     flexDirection: 'row',
@@ -1274,21 +1377,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 11,
     maxWidth: 60,
-  },
-  anchorCloseBtn: {
-    width: 20,
-    height: 20,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-  },
-  toText: {
-    ...type.titleSmall,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    flex: 1,
   },
   countRow: {
     flexDirection: 'row',
