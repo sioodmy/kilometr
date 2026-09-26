@@ -1,11 +1,18 @@
-import { Linking } from 'react-native';
 import { getNotifications } from './module';
-import { ACTION_OPEN_ROUTES, ACTION_STOP, isStopAction } from './categories';
+import { isStopAction } from './categories';
 
-// Reakcja na tapnięcie powiadomienia i na przyciski akcji. Trzy zdarzenia:
-// otwarcie trasy (domyślne), „zakończ śledzenie” oraz powiadomienie
-// przyszłe (po restarcie procesu), którego tap musi jeszcze zrobić własne
-// zapytanie o `getLastNotificationResponseAsync`.
+// Reakcja na tapnięcie powiadomienia i na przyciski akcji.
+//
+// `getLastNotificationResponseAsync` zwraca ostatnią odpowiedź w CAŁEJ
+// historii procesu, nie „ostatnią w ciągu minuty" — a proces po restarcie
+// telefonu bywa żywy godzinami. Dlatego każde powiadomienie podróży nosi
+// znacznik czasu i starsze odpowiedzi ignorujemy, zamiast otwierać ekran
+// połączeń na starcie aplikacji.
+
+/** Po tym czasie odpowiedź uznajemy za nieaktualną. */
+const RESPONSE_TTL_MS = 5 * 60 * 1000;
+
+const LINK_KEYS = ['fromTitle', 'fromLat', 'fromLon', 'toId', 'toTitle', 'toLat', 'toLon'];
 
 export interface TripResponse {
   /** Dane do nawigacji — null, gdy to nie powiadomienie podróży. */
@@ -19,20 +26,22 @@ export interface TripResponse {
 const EMPTY: TripResponse = { link: null, stop: false, alert: null };
 
 function parseData(data: unknown, actionIdentifier: string | undefined): TripResponse {
-  if (!data || typeof data !== 'object') {
-    return { ...EMPTY, stop: isStopAction(actionIdentifier) };
-  }
+  const stop = isStopAction(actionIdentifier);
+  if (!data || typeof data !== 'object') return { ...EMPTY, stop };
   const d = data as Record<string, unknown>;
-  if (d.kind !== 'trip') return { ...EMPTY, stop: isStopAction(actionIdentifier) };
+  if (d.kind !== 'trip') return { ...EMPTY, stop };
+
+  const at = typeof d.at === 'number' ? d.at : 0;
+  if (!at || Date.now() - at > RESPONSE_TTL_MS) return { ...EMPTY, stop };
 
   const link: Record<string, string> = {};
-  for (const k of ['fromTitle', 'fromLat', 'fromLon', 'toId', 'toTitle', 'toLat', 'toLon']) {
+  for (const k of LINK_KEYS) {
     const v = d[k];
     if (typeof v === 'string') link[k] = v;
   }
   return {
     link: link.toLat && link.toLon ? link : null,
-    stop: isStopAction(actionIdentifier),
+    stop,
     alert: typeof d.alert === 'string' ? d.alert : null,
   };
 }
@@ -63,17 +72,3 @@ export function addTripResponseListener(cb: (res: TripResponse) => void): () => 
     return () => {};
   }
 }
-
-/** Otwiera deep link z powiadomienia (Live Activity też raportuje się tak). */
-export async function openTripLink(link: Record<string, string> | null): Promise<boolean> {
-  if (!link) return false;
-  const q = new URLSearchParams(link).toString();
-  try {
-    await Linking.openURL(`kilometr://routes?${q}`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export { ACTION_OPEN_ROUTES, ACTION_STOP };

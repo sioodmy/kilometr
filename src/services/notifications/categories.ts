@@ -10,15 +10,12 @@ export const ALERT_CATEGORY = 'kilometr.alert';
 export const ACTION_STOP = 'kilometr.action.stop';
 export const ACTION_OPEN_ROUTES = 'kilometr.action.routes';
 
-export const DEFAULT_ACTION = 'default';
+/** Domyślne „tapnięcie" powiadomienia — bez przycisku akcji. */
+const DEFAULT_ACTION = 'default';
 
-/** Czy akcja pochodzi z powiadomienia (a nie zwykłego tapnięcia). */
+/** Czy użytkownik wcisnął „Zakończ śledzenie”, a nie po prostu tapnął. */
 export function isStopAction(actionIdentifier: string | undefined): boolean {
   return actionIdentifier === ACTION_STOP;
-}
-
-export function isOpenRoutesAction(actionIdentifier: string | undefined): boolean {
-  return actionIdentifier === ACTION_OPEN_ROUTES || actionIdentifier === DEFAULT_ACTION;
 }
 
 export async function setupNotificationCategories(): Promise<void> {

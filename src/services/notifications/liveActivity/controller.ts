@@ -115,9 +115,4 @@ export function adoptOrphanActivity(): LiveActivity<TripActivityProps> | null {
   }
 }
 
-/** Czy mamy aktywność, którą aktualizujemy. Używane przez testy i diagnostykę. */
-export function hasActiveTripActivity(): boolean {
-  return current != null;
-}
-
 export { TRIP_ACTIVITY_NAME };

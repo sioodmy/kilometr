@@ -3,7 +3,7 @@ import { kvGet, kvRemove, kvSet } from '../storage';
 import { getNotifications, warnUnsupportedOnce } from './module';
 import { ALERT_CATEGORY } from './categories';
 import { ALERTS_CHANNEL_ID } from './channels';
-import { buildTripLink, buildTripCopy } from './content';
+import { buildTripCopy, tripNotificationData } from './content';
 import { delayText, minutesText, plural } from './format';import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 
 // Alerty odjazdu — odpowiednik tego, co Mapy Google robią przed trasą:
@@ -98,11 +98,7 @@ function leaveContent(p: TripProgress, trip: TrackedTrip, imminent: boolean, lea
     body: [p.leg ? `przystanek ${p.leg.fromStop}` : null, walk, copy.subtitle]
       .filter(Boolean)
       .join(' • '),
-    data: {
-      kind: 'trip',
-      alert: imminent ? 'imminent' : 'lead',
-      link: buildTripLink(trip),
-    },
+    data: tripNotificationData(trip, imminent ? 'imminent' : 'lead'),
   };
 }
 
@@ -201,7 +197,7 @@ export async function sendDisruptionAlert(
       content: {
         title: `Opóźnienie • ${p.line} ${minutesText(Math.max(1, p.departInSec / 60))}`,
         body,
-        data: { kind: 'trip', alert: 'disruption', link: buildTripLink(trip) },
+        data: tripNotificationData(trip, 'disruption'),
         sound: 'default',
         categoryIdentifier: ALERT_CATEGORY,
         ...(Platform.OS === 'ios' ? { interruptionLevel: 'timeSensitive' as const } : {}),
@@ -230,7 +226,7 @@ export async function sendArrivedNotification(
       content: {
         title: copy.title,
         body: `${copy.subtitle} • ${copy.body}`,
-        data: { kind: 'trip', alert: 'arrived', link: buildTripLink(trip) },
+        data: tripNotificationData(trip, 'arrived'),
         sound: 'default',
         categoryIdentifier: ALERT_CATEGORY,
         ...(Platform.OS === 'ios' ? { interruptionLevel: 'active' as const } : {}),

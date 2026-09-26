@@ -47,12 +47,7 @@ export {
   dismissTracking,
   presentTrip,
 } from './presenter';
-export {
-  addTripResponseListener,
-  getLastTripResponse,
-  openTripLink,
-  type TripResponse,
-} from './response';
+export { addTripResponseListener, getLastTripResponse, type TripResponse } from './response';
 export { computeTripProgress } from './tripProgress';
 export { matchTrackedConnection } from './planMatch';
 export { buildActivityProps, buildTripCopy, buildTripLink, type TripCopy } from './content';
@@ -78,9 +73,6 @@ export {
   transfersText,
   untilText,
 } from './format';
-export {
-  hasActiveTripActivity,
-  isLiveActivitySupported,
-} from './liveActivity/controller';
+export { isLiveActivitySupported } from './liveActivity/controller';
 export { useTrackedTrip } from './useTrackedTrip';
 export { TRIP_ACTIVITY_NAME } from './liveActivity/KilometrTripActivity';

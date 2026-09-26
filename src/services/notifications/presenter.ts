@@ -7,7 +7,13 @@ import {
 } from './module';
 import { TRACKING_CHANNEL_ID } from './channels';
 import { TRIP_CATEGORY } from './categories';
-import { buildActivityProps, buildNativeState, buildTripCopy, buildTripLink } from './content';
+import {
+  buildActivityProps,
+  buildNativeState,
+  buildTripCopy,
+  buildTripLink,
+  tripNotificationData,
+} from './content';
 import {
   dismissTripActivity,
   isLiveActivitySupported,
@@ -49,7 +55,7 @@ async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void
         // Bez dźwięku: kanał śledzenia ma LOW, a banery przy każdym ticku
         // odliczania byłyby upierkliwe.
         sound: false,
-        data: { kind: 'trip', link: buildTripLink(trip) },
+        data: tripNotificationData(trip),
         sticky: true,
         ...(Platform.OS === 'android' ? { color: copy.accentColor } : {}),
       },
@@ -117,8 +123,12 @@ export async function presentTrip(
   }
 
   if (isLiveActivitySupported() && prefs.liveProgressEnabled) {
-    presentTripActivity(buildActivityProps(p), link);
-    return;
+    // `null` znaczy, że aktywności się nie udało otworzyć (użytkownik
+    // wyłączył Live Activities w Ustawieniach albo iOS odmówił) — wtedy
+    // lecimy zwykłym powiadomieniem, bo cisza byłaby gorsza niż prostsza
+    // prezentacja.
+    const activityId = presentTripActivity(buildActivityProps(p), link);
+    if (activityId != null) return;
   }
 
   await presentFallback(p, trip);

@@ -255,7 +255,11 @@ export function buildNativeState(
 
 /** Deep link do ekranu połączeń — te same parametry co w buildRoutesLink. */
 export function buildTripLink(trip: TrackedTrip): string {
-  const q: Record<string, string> = {
+  return `kilometr://routes?${queryString(tripParams(trip))}`;
+}
+
+function tripParams(trip: TrackedTrip): Record<string, string> {
+  return {
     fromTitle: trip.fromTitle,
     fromLat: String(trip.fromLat),
     fromLon: String(trip.fromLon),
@@ -264,8 +268,26 @@ export function buildTripLink(trip: TrackedTrip): string {
     toLat: String(trip.toLat),
     toLon: String(trip.toLon),
   };
-  const qs = Object.entries(q)
+}
+
+function queryString(q: Record<string, string>): string {
+  return Object.entries(q)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join('&');
-  return `kilometr://routes?${qs}`;
+}
+
+/**
+ * `data` powiadomienia. Płaskie pola, bo po tapnięciu `expo-notifications`
+ * oddaje je niezmienione i `app/_layout` przekłada je 1:1 na parametry
+ * trasy. Znacznik czasu jest potrzebny, bo `getLastNotificationResponseAsync`
+ * zwraca ostatnią odpowiedź **w całej historii** — bez niego apka otwarta
+ * godzinę po tapnięciu znowu skoczyłaby na ekran połączeń.
+ */
+export function tripNotificationData(trip: TrackedTrip, alert?: string): Record<string, unknown> {
+  return {
+    kind: 'trip',
+    at: Date.now(),
+    ...(alert ? { alert } : {}),
+    ...tripParams(trip),
+  };
 }
