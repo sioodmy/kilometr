@@ -39,6 +39,23 @@ function getApiUrl(): string {
 
 export const API_URL = getApiUrl();
 
+// ─── Mapa ────────────────────────────────────────────────────────────────────
+// Wektorowe kafelki OSM (schemat OpenMapTiles) z OpenFreeMap: bez klucza API,
+// bez limitu zapytań i bez znaków wodnych. Styl ciemny M3 budujemy sami
+// (src/map/mapStyle.ts), więc mapa wygląda jak reszta aplikacji.
+export const MAP_SOURCE_URL = process.env.EXPO_PUBLIC_MAP_SOURCE_URL ?? 'https://tiles.openfreemap.org/planet';
+export const MAP_GLYPHS_URL =
+  process.env.EXPO_PUBLIC_MAP_GLYPHS_URL ?? 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
+
+export const MAP_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>' +
+  ' &middot; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>' +
+  ' &middot; <a href="https://openfreemap.org/" target="_blank">OpenFreeMap</a>';
+
+// Geometria ulic (dokładny przebieg kursu). Domyślnie publiczny demo-serwer
+// OSRM — nadpisywalny własnym, np. w sieci firmowej.
+export const OSRM_BASE_URL = process.env.EXPO_PUBLIC_OSRM_URL ?? 'https://router.project-osrm.org';
+
 // Neutralny placeholder zanim GPS zwróci pozycję (prawdziwe współrzędne
 // centrum Wrocławia, nie mock danych). Nadpisywany przez LocationService.
 export const DEFAULT_LOCATION = {
