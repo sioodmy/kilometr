@@ -187,7 +187,7 @@ export default function RoutesScreen() {
   // Toggle sortowania w topBar (iOS-style): 0 = najwcześniej (zegar, lewo),
   // 1 = najszybciej (rakieta, prawo). Kciuk dociąga springiem jak w ustawieniach iOS.
   const SORT_TRACK_W = 78;
-  const SORT_THUMB = 30;
+  const SORT_THUMB = 34;
   const SORT_PAD = 4;
   const SORT_TRAVEL = SORT_TRACK_W - SORT_THUMB - SORT_PAD * 2;
   const sortProgress = useSharedValue(sortMode === 'fastest' ? 1 : 0);
@@ -1335,16 +1335,16 @@ const styles = StyleSheet.create({
   sortThumb: {
     position: 'absolute',
     left: 4,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: scheme.secondaryContainer,
   },
   sortIcons: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 11,
+    paddingHorizontal: 12,
   },
   // Malutki, delikatny podpis pod togglem — tylko info o aktywnym trybie.
   sortLabel: {
@@ -1363,12 +1363,12 @@ const styles = StyleSheet.create({
   },
   // Kolumna pinezki — lustrzane odbicie sortWrap (przycisk + label).
   pinWrap: {
-    width: 38,
+    width: 34,
     alignItems: 'center',
   },
   pinBtn: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
