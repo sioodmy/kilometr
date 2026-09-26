@@ -107,24 +107,30 @@
           done
         '';
 
-      envFor = pkgs:
+      # qemu-user + sysroot x86_64 są potrzebne TYLKO na hostach ARM —
+      # NDK ma binaria x86_64. Na hoście x86_64 dorzucenie sysrootu do
+      # LD_LIBRARY_PATH podmienia libc JVM i Gradle pada z segfaultem
+      # jeszcze przed kompilacją, więc tam zostawiamy LD_LIBRARY_PATH
+      # nietknięte.
+      envFor = system: pkgs:
         let
           sdk = sdkFor pkgs;
           sdkW = sdkInjectedFor pkgs sdk;
-          sysroot = sysrootFor pkgs;
+          needsQemu = system == "aarch64-linux";
+          sysroot = if needsQemu then sysrootFor pkgs else null;
         in {
           # sdkW to shadow-tree, którego rootem jest już katalog android-sdk
           ANDROID_HOME = "${sdkW}";
           ANDROID_SDK_ROOT = "${sdkW}";
           JAVA_HOME = "${pkgs.jdk17}";
-          QEMU_LD_PREFIX = "${sysroot}";
+          QEMU_LD_PREFIX = if sysroot == null then "" else "${sysroot}";
         };
     in
     {
       devShells = forEachSystem (system:
         let
           pkgs = pkgsFor system;
-          env = envFor pkgs;
+          env = envFor system pkgs;
         in {
           default = pkgs.mkShell {
           packages = with pkgs; [
@@ -135,10 +141,16 @@
             curl
           ];
             inherit (env) ANDROID_HOME ANDROID_SDK_ROOT JAVA_HOME QEMU_LD_PREFIX;
-            LD_LIBRARY_PATH = "${env.QEMU_LD_PREFIX}/lib64";
+            LD_LIBRARY_PATH =
+              if env.QEMU_LD_PREFIX == "" then ""
+              else "${env.QEMU_LD_PREFIX}/lib64";
             shellHook = ''
               echo "kilometr dev-shell: ANDROID_HOME=$ANDROID_HOME"
-              echo "  sysroot: $QEMU_LD_PREFIX | $(QEMU_LD_PREFIX=$QEMU_LD_PREFIX ${env.ANDROID_HOME}/cmake/3.22.1/bin/cmake --version 2>/dev/null | head -1 || echo 'cmake check skipped')"
+              if [ -n "$QEMU_LD_PREFIX" ]; then
+                echo "  sysroot: $QEMU_LD_PREFIX | $(QEMU_LD_PREFIX=$QEMU_LD_PREFIX ${env.ANDROID_HOME}/cmake/3.22.1/bin/cmake --version 2>/dev/null | head -1 || echo 'cmake check skipped')"
+              else
+                echo "  host x86_64: bez qemu sysrootu (LD_LIBRARY_PATH nietknięty)"
+              fi
             '';
           };
         });
@@ -146,7 +158,7 @@
       apps = forEachSystem (system:
         let
           pkgs = pkgsFor system;
-          env = envFor pkgs;
+          env = envFor system pkgs;
           buildScript = { defaultRelease ? false }: pkgs.lib.getExe (pkgs.writeShellApplication {
             name = if defaultRelease then "kilometr-build-release-apk" else "kilometr-build-apk";
             runtimeInputs = with pkgs; [ nodejs_22 jdk17 git curl bash ];
@@ -158,7 +170,9 @@
               export JAVA_HOME="${env.JAVA_HOME}"
               export QEMU_LD_PREFIX="${env.QEMU_LD_PREFIX}"
               export PATH="$ANDROID_HOME/platform-tools:$PATH"
-              export LD_LIBRARY_PATH="${env.QEMU_LD_PREFIX}/lib64''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              if [ -n "$QEMU_LD_PREFIX" ]; then
+                export LD_LIBRARY_PATH="$QEMU_LD_PREFIX/lib64''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              fi
 
               BUILD_TYPE="${if defaultRelease then "release" else "debug"}"
               GRADLE_TASK="${if defaultRelease then "assembleRelease" else "assembleDebug"}"
@@ -188,8 +202,21 @@
                 echo "== expo prebuild =="
                 npx expo prebuild --platform android
               fi
+
+              # AGP wypakowuje własne aapt2 z Maven — na NixOS stub-ld
+              # odmawia uruchomienia generycznego binarium ("NixOS cannot run
+              # dynamically linked executables"), więc każde zadanie
+              # mergujące zasoby pada. Wskazujemy aapt2 z SDK, które jest
+              # już łatane pod nix.
+              GRADLE_EXTRA=()
+              AAPT2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+              if [ -x "$AAPT2" ]; then
+                echo "== aapt2: $AAPT2 =="
+                GRADLE_EXTRA+=("-Pandroid.aapt2FromMavenOverride=$AAPT2")
+              fi
+
               echo "== gradle $GRADLE_TASK =="
-              ./android/gradlew -p android "$GRADLE_TASK" -x lint --console=plain
+              ./android/gradlew -p android "$GRADLE_TASK" -x lint --console=plain "''${GRADLE_EXTRA[@]}"
               APK="android/app/build/outputs/apk/$BUILD_TYPE/app-$BUILD_TYPE.apk"
               echo "== OK: $APK ($(du -h "$APK" | cut -f1)) =="
 
