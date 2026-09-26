@@ -975,23 +975,25 @@ export default function RoutesScreen() {
         {/* Pinezka w tej samej kolumnie co toggle (przycisk + niewidzialny
             odstępnik o wysokości labela), żeby górne krawędzie się zgrywały. */}
         <View style={styles.pinWrap}>
-          <Pressable
-            onPress={togglePin}
-            accessibilityRole="button"
-            accessibilityLabel={isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'}
-            style={({ pressed }) => [
-              styles.pinBtn,
-              isPinned && styles.pinBtnActive,
-              pressed && { opacity: 0.8 },
-            ]}
-            hitSlop={8}
-          >
-            <Pin
-              size={17}
-              color={isPinned ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-              fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
-            />
-          </Pressable>
+          <View style={styles.pinSlot}>
+            <Pressable
+              onPress={togglePin}
+              accessibilityRole="button"
+              accessibilityLabel={isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'}
+              style={({ pressed }) => [
+                styles.pinBtn,
+                isPinned && styles.pinBtnActive,
+                pressed && { opacity: 0.8 },
+              ]}
+              hitSlop={8}
+            >
+              <Pin
+                size={17}
+                color={isPinned ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
+                fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
+              />
+            </Pressable>
+          </View>
           <Text style={styles.sortLabel} numberOfLines={1}>
             Pin
           </Text>
@@ -1357,12 +1359,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   // Kolumna pinezki — lustrzane odbicie sortWrap (przycisk + label).
-  // paddingTop dosuwa krótszy przycisk (34 vs tor 38), żeby podpisy
-  // pod spodem siadały w jednej linii.
+  // Slot ma wysokość toru toggla (38), a krótszy przycisk (34) jest
+  // w nim wycentrowany — dzięki temu środki przycisków się zgrywają
+  // I podpisy pod spodem siadają w jednej linii.
   pinWrap: {
     width: 34,
     alignItems: 'center',
-    paddingTop: 4,
+  },
+  pinSlot: {
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pinBtn: {
     width: 34,
