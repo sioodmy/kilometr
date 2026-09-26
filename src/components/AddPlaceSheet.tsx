@@ -217,6 +217,20 @@ export function AddPlaceSheet({
   );
   const [isChangingLoc, setIsChangingLoc] = useState(!initialPlace);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Debounce musi trzymać uchwyt do timera: `return () => clearTimeout(t)`
+  // w obsłudze zdarzenia nic nie czyści, więc każda litera odpalała osobne
+  // wyszukiwanie, a wynik ostatniego bywał nadpisywany pustą listą.
+  const locSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locSearchSeq = useRef(0);
+  const anchorSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const anchorSearchSeq = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (locSearchTimer.current) clearTimeout(locSearchTimer.current);
+      if (anchorSearchTimer.current) clearTimeout(anchorSearchTimer.current);
+    };
+  }, []);
 
   // Expanded icon browser state
   const [isPickingIcon, setIsPickingIcon] = useState(false);
@@ -288,36 +302,56 @@ export function AddPlaceSheet({
 
   const handleQueryChange = (text: string) => {
     setQuery(text);
+    if (locSearchTimer.current) clearTimeout(locSearchTimer.current);
+    const seq = ++locSearchSeq.current;
     if (!text.trim()) {
       setSuggestions([]);
       setSearching(false);
       return;
     }
     setSearching(true);
-    const t = setTimeout(() => {
-      SearchService.search(text).then((res) => {
-        setSuggestions(res);
-        setSearching(false);
-      });
+    locSearchTimer.current = setTimeout(() => {
+      SearchService.search(text)
+        .then((res) => {
+          if (seq !== locSearchSeq.current) return;
+          setSuggestions(res);
+        })
+        .catch(() => {
+          // Zapytanie przerwane nowszym albo błąd — stan ogarnia kolejne.
+          if (seq === locSearchSeq.current) setSuggestions([]);
+        })
+        .finally(() => {
+          if (seq === locSearchSeq.current) setSearching(false);
+        });
     }, 220);
-    return () => clearTimeout(t);
   };
 
   const handleAnchorQueryChange = (text: string) => {
     setAnchorQuery(text);
+    if (anchorSearchTimer.current) clearTimeout(anchorSearchTimer.current);
+    const seq = ++anchorSearchSeq.current;
     if (!text.trim()) {
       setAnchorSuggestions([]);
       setSearchingAnchor(false);
       return;
     }
     setSearchingAnchor(true);
-    const t = setTimeout(() => {
-      SearchService.search(text, selectedLoc ? { lat: selectedLoc.lat, lon: selectedLoc.lon } : undefined).then((res) => {
-        setAnchorSuggestions(res);
-        setSearchingAnchor(false);
-      });
+    anchorSearchTimer.current = setTimeout(() => {
+      SearchService.search(
+        text,
+        selectedLoc ? { lat: selectedLoc.lat, lon: selectedLoc.lon } : undefined,
+      )
+        .then((res) => {
+          if (seq !== anchorSearchSeq.current) return;
+          setAnchorSuggestions(res);
+        })
+        .catch(() => {
+          if (seq === anchorSearchSeq.current) setAnchorSuggestions([]);
+        })
+        .finally(() => {
+          if (seq === anchorSearchSeq.current) setSearchingAnchor(false);
+        });
     }, 220);
-    return () => clearTimeout(t);
   };
 
   const handleSave = () => {
