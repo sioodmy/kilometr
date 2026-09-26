@@ -34,6 +34,7 @@ import {
 import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { setOnboardingSeen } from '../src/services/onboarding';
+import { ensureNotificationPermission, hasNotificationPermission } from '../src/services/notifications';
 import {
   FavoritesService,
   SearchService,
@@ -116,11 +117,9 @@ function usePermissionStates() {
       setLoc('unknown');
     }
     try {
-      // Leniwie. Bezpośredni import expo-notifications potrafi wywalić Expo Go.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const N = require('expo-notifications');
-      const n = await N.getPermissionsAsync();
-      setNotif(n.granted ? 'granted' : n.status === 'denied' ? 'denied' : 'unknown');
+      // Przez serwis powiadomień: ma guard na Expo Go (bezpośredni import
+      // expo-notifications potrafi wywalić ewaluację modułu).
+      setNotif((await hasNotificationPermission()) ? 'granted' : 'unknown');
     } catch {
       setNotif('unknown');
     }
@@ -150,15 +149,7 @@ function usePermissionStates() {
   const requestNotif = useCallback(async () => {
     setBusy('notif');
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const N = require('expo-notifications');
-      const cur = await N.getPermissionsAsync();
-      if (cur.granted) {
-        setNotif('granted');
-      } else {
-        const nxt = await N.requestPermissionsAsync();
-        setNotif(nxt.granted ? 'granted' : 'denied');
-      }
+      setNotif((await ensureNotificationPermission()) ? 'granted' : 'denied');
     } catch {
       setNotif('denied');
     } finally {

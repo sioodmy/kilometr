@@ -36,9 +36,6 @@ import type { NotificationPreferences, TripProgress, TrackedTrip } from './types
 const STORAGE_KEY = 'kilometr.trackedTrip.v2';
 /** Jak długo po przyjeździe zostawiamy powiadomienie „jesteś na miejscu”. */
 const ARRIVED_LINGER_MS = 3 * 60 * 1000;
-const TICK_FAST_MS = 20_000;
-const TICK_RIDING_MS = 30_000;
-const TICK_IDLE_MS = 60_000;
 /** Ile po odjeździe kurs wciąż uznajemy za „swoje” połączenie. */
 const BOARDING_GRACE_SEC = 240;
 
@@ -159,8 +156,12 @@ async function refresh(): Promise<void> {
         const fresh = await planTracked();
         if (!fresh) {
           // Brak połączeń (albo awaria sieci) — zostaje ostatni znany plan.
-          // Po pół godziny bez planu uznajemy, że śledzenie nie ma sensu.
-          if (Date.now() - before.startedAt > 30 * 60 * 1000) {
+          // Oddajemy śledzenie dopiero wtedy, gdy minęło pół godziny od
+          // ODJAZDU (nie od rozpoczęcia śledzenia): przypięty na dwie
+          // godziny kurs nie może zniknąć tylko dlatego, że planer chwilowo
+          // zwrócił pustkę.
+          const deadline = (progress?.departAtMs ?? before.startedAt) + 30 * 60 * 1000;
+          if (Date.now() > deadline) {
             await stopTracking();
           }
           return;
@@ -217,10 +218,24 @@ async function refresh(): Promise<void> {
   return refreshing;
 }
 
+/**
+ * Rytm odświeżania zależy od tego, jak daleko jesteśmy od odjazdu. Licznik
+ * i pasek postępu i tak liczy system, więc JS nie musi tykać co sekundę —
+ * wystarczy, że podajemy mu aktualny plan. Im bliżej odjazdu, tym częściej,
+ * bo wtedy zmienia się to, co użytkownik realnie potrzebuje.
+ */
+const TICK_FAR_MS = 5 * 60_000;
+const TICK_APPROACH_MS = 20_000;
+const TICK_RIDING_MS = 30_000;
+const TICK_IDLE_MS = 60_000;
+/** Poniżej tej granicy odjazdu warto dopytywać planer częściej. */
+const CLOSE_DEPARTURE_SEC = 45 * 60;
+
 function tickIntervalMs(p: TripProgress | null): number {
   if (!p) return TICK_IDLE_MS;
   if (p.phase === 'riding' || p.phase === 'transfer') return TICK_RIDING_MS;
-  if (p.phase === 'walking' || p.phase === 'waiting') return TICK_FAST_MS;
+  if (p.departInSec > CLOSE_DEPARTURE_SEC) return TICK_FAR_MS;
+  if (p.phase === 'walking' || p.phase === 'waiting') return TICK_APPROACH_MS;
   return TICK_IDLE_MS;
 }
 
