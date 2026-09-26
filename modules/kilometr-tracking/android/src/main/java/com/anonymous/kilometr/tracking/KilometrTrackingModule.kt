@@ -36,9 +36,14 @@ class KilometrTrackingModule : Module() {
 
   private val requestCounter = AtomicInteger(0)
 
-  private val context: Context
+  /**
+   * `AppContext` nie wystawia `context` — jedynym bezpiecznym źródłem jest
+   * `reactContext`. Bierzemy `applicationContext`, żeby nie trzymać Activity.
+   * Zwykle `reactContext` jest żywy; null zdarza się w trakcie zamykania
+   * procesu i wtedy po prostu nie pokazujemy powiadomienia.
+   */
+  private val appContextOrNull: Context?
     get() = appContext.reactContext?.applicationContext
-      ?: appContext.context.applicationContext
 
   override fun definition() = ModuleDefinition {
     Name("KilometrTracking")
@@ -46,7 +51,7 @@ class KilometrTrackingModule : Module() {
     Function("isAvailable") { true }
 
     AsyncFunction("ensureChannels") {
-      ensureChannel()
+      appContextOrNull?.let { ensureChannel(it) }
     }
 
     AsyncFunction("present") { state: Map<String, Any?> ->
@@ -54,17 +59,20 @@ class KilometrTrackingModule : Module() {
     }
 
     AsyncFunction("dismiss") {
-      try {
-        NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
-      } catch (_: Throwable) {
-        // powiadomienie mogło już zniknąć
+      val ctx = appContextOrNull
+      if (ctx != null) {
+        try {
+          NotificationManagerCompat.from(ctx).cancel(NOTIFICATION_ID)
+        } catch (_: Throwable) {
+          // powiadomienie mogło już zniknąć
+        }
       }
     }
   }
 
   // ─── Kanał ───────────────────────────────────────────────────────────────
 
-  private fun ensureChannel() {
+  private fun ensureChannel(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (manager.getNotificationChannel(CHANNEL_ID) != null) return
@@ -87,8 +95,9 @@ class KilometrTrackingModule : Module() {
   // ─── Render ──────────────────────────────────────────────────────────────
 
   private fun render(state: Map<String, Any?>): Boolean {
+    val context = appContextOrNull ?: return false
     return try {
-      ensureChannel()
+      ensureChannel(context)
       val manager = NotificationManagerCompat.from(context)
       if (!manager.areNotificationsEnabled()) return false
 
@@ -117,7 +126,7 @@ class KilometrTrackingModule : Module() {
         .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         .setPriority(NotificationCompat.PRIORITY_LOW)
-        .setContentIntent(openApp(state.str("deepLink"), 0))
+        .setContentIntent(openApp(context, state.str("deepLink"), 0))
 
       // Pasek postępu podróży (0..1000). Deterministyczny — system nie animuje
       // go sam, ale przy 20-sekundowym odświeżaniu krok jest ledwo widoczny.
@@ -143,20 +152,18 @@ class KilometrTrackingModule : Module() {
       // Przyciski „Zakończ” i „Trasa”. Oba to deep linki, więc kliknięcie
       // wraca do aplikacji, a decyzję podejmuje JS — nie potrzebujemy
       // BroadcastReceivera ani budzenia procesu w tle.
-      for ((id, title_, url) in actionLinks(state)) {
+      for ((_, actionTitle, url) in actionLinks(state)) {
         builder.addAction(
           NotificationCompat.Action.Builder(
             R.drawable.ic_kilometr_tram,
-            title_,
-            openApp(url, requestCounter.incrementAndGet()),
+            actionTitle,
+            openApp(context, url, requestCounter.incrementAndGet()),
           ).build(),
         )
       }
 
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        builder.setSilent(true)
-      }
-
+      // Dźwięku nie ustawiamy: kanał ma IMPORTANCE_LOW, a setOngoing +
+      // setOnlyAlertOnce pilnują, żeby kolejne aktualizacje nie piszczały.
       manager.notify(NOTIFICATION_ID, builder.build())
       true
     } catch (_: SecurityException) {
@@ -181,7 +188,7 @@ class KilometrTrackingModule : Module() {
     }
   }
 
-  private fun openApp(url: String, requestCode: Int): PendingIntent? {
+  private fun openApp(context: Context, url: String, requestCode: Int): PendingIntent? {
     if (url.isBlank()) return null
     return try {
       val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
