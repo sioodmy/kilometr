@@ -15,7 +15,7 @@ import Animated, {
   Easing,
   FadeInUp,
   FadeOutUp,
-  FlipInEasyY,
+  FlipInEasyX,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
@@ -843,7 +843,7 @@ export default function RoutesScreen() {
   };
 
   // Znacznik odwrócenia trasy: wiersze zamontowane tuż po swapie wjeżdżają
-  // flipem karty (FlipInEasyY) zamiast zwykłego fade-up. Ref, nie stan —
+  // pionowym flipem karty (FlipInEasyX) zamiast zwykłego fade-up. Ref, nie stan —
   // nie wymusza dodatkowego rendera, odczyt w renderItem wystarczy.
   const swapAtRef = useRef(0);
 
@@ -898,7 +898,7 @@ export default function RoutesScreen() {
   // Karty wskakują kaskadą (stagger po indeksie, max ~440 ms), żeby progresywne
   // dokładanie wyglądało płynnie; tuż po swapie — flipem karty.
   // UWAGA: świeża instancja buildera na wiersz — .delay() mutuje współdzielony
-  // obiekt, więc współdzielenie jednego FlipInEasyY/FadeInUp rozwaliłoby delaya.
+  // obiekt, więc współdzielenie jednego FlipInEasyX/FadeInUp rozwaliłoby delaya.
   const openConnection = useCallback(
     (item: Connection) => {
       router.push({ pathname: '/routes/[id]', params: { id: item.id } });
@@ -915,7 +915,7 @@ export default function RoutesScreen() {
         <Animated.View
           entering={
             freshSwap
-              ? new FlipInEasyY().duration(320).delay(stagger)
+              ? new FlipInEasyX().duration(320).delay(stagger)
               : new FadeInUp().duration(280).delay(stagger)
           }
         >
