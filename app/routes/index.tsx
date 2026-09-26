@@ -126,6 +126,14 @@ export default function RoutesScreen() {
     const t = setInterval(check, 30000);
     return () => clearInterval(t);
   }, []);
+  // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
+  // (departInMin liczone przy pobraniu). Przerysowujemy wiersze, nie listę.
+  const [nowTick, setNowTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [noMoreEarlier, setNoMoreEarlier] = useState(false);
@@ -911,6 +919,8 @@ export default function RoutesScreen() {
         <FlatList
           ref={listRef}
           data={displayed}
+          // wymusza przeliczenie etykiet „za X min” bez refetchu
+          extraData={nowTick}
           keyExtractor={(i) => i.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}

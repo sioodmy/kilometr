@@ -198,7 +198,11 @@ export function ConnectionCard({
   let badgeBg: string = scheme.secondaryContainer;
   let badgeFg: string = scheme.onSecondaryContainer;
   let dotColor: string | null = null;
-  const effectiveMin = item.departInMin;
+  // Odliczamy z departureSec, a nie z departInMin z chwili pobrania:
+  // lista może być otwarta kilkanaście minut, a „za 4 min” w międzyczasie
+  // przestałoby być prawdą (i odjechane połączenie wyglądało jak aktualne).
+  const effectiveMin =
+    item.departureSec > 0 ? Math.round((item.departureSec - nowSec()) / 60) : item.departInMin;
 
   if (item.live) {
     if (item.delayMin > 0) {
