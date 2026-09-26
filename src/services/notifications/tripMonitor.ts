@@ -5,8 +5,14 @@ import { getSettingsSync } from '../settings';
 import { liveTracker } from '../liveTracker';
 import type { Connection, RouteQuery, VehiclePosition } from '../../types/models';
 import { buildRoutesLink, mergeWidgetSnapshot, type WidgetPinned } from '../widgetSnapshot';
+import { nowSecOfDay } from '../vehiclePosition';
 import { getNotificationPreferencesSync, loadNotificationPreferences } from './preferences';
 import { computeTripProgress } from './tripProgress';
+import {
+  connectionInProgress,
+  matchTrackedConnection,
+  nextDeparture,
+} from './planMatch';
 import { presentTrip, dismissTracking } from './presenter';
 import {
   cancelScheduledAlerts,
@@ -40,6 +46,12 @@ let tracked: TrackedTrip | null = null;
 let progress: TripProgress | null = null;
 let lastDelayMin = 0;
 let arrivedAt = 0;
+/**
+ * Po odjeździe przestajemy przeliczać plan. Śledzony jest już konkretny kurs —
+ * kolejne zapytania do RAPTOR-a tylko marnowałyby baterię, a po północy
+ * potrafiłyby podmienić plan na jutrzejszy.
+ */
+let planLocked = false;
 let ticker: ReturnType<typeof setInterval> | null = null;
 let refreshing: Promise<void> | null = null;
 
@@ -82,56 +94,6 @@ export function isSameQuery(a: RouteQuery, b: RouteQuery): boolean {
   );
 }
 
-// ─── Dopasowanie świeżego planu do tego, co już śledzimy ────────────────────
-
-function tripIdsOf(c: Connection): string[] {
-  return c.legs.filter((l) => l.tripId).map((l) => l.tripId as string);
-}
-
-function sameTripAs(a: Connection, b: Connection): boolean {
-  const x = tripIdsOf(a);
-  const y = tripIdsOf(b);
-  if (x.length === 0 || x.length !== y.length) return false;
-  return x.every((id) => y.includes(id));
-}
-
-/**
- * Znajduje w świeżym planie to samo połączenie, które już śledzimy. Bez tego
- * każde przeliczenie potrafi „przeskoczyć” na inny kurs i użytkownik widzi
- * inną liczbę przystanków co minutę. Kolejność kryteriów: identyczny odjazd →
- * ten sam kurs (trip_id) → odjazd w ciągu 2 minut.
- */
-export function matchTrackedConnection(
-  conns: Connection[],
-  committed: Connection,
-): Connection | null {
-  const exact = conns.find((c) => c.departureSec === committed.departureSec);
-  if (exact) return exact;
-  const sameTrip = conns.find((c) => sameTripAs(c, committed));
-  if (sameTrip) return sameTrip;
-  const near = conns
-    .filter((c) => Math.abs(c.departureSec - committed.departureSec) <= 120)
-    .sort((a, b) => a.departureSec - b.departureSec)[0];
-  return near ?? null;
-}
-
-/** Kurs, którym właśnie jedziemy — gdy plan już go nie zawiera. */
-function connectionInProgress(conns: Connection[], nowSec: number): Connection | null {
-  const ongoing = conns.filter((c) => {
-    const end = c.departureSec + c.durationMin * 60;
-    return c.departureSec <= nowSec + 60 && end > nowSec;
-  });
-  if (ongoing.length === 0) return null;
-  return ongoing.sort((a, b) => a.departureSec - b.departureSec)[0];
-}
-
-function nextDeparture(conns: Connection[], nowSec: number): Connection | null {
-  const future = conns
-    .filter((c) => c.departureSec > nowSec - BOARDING_GRACE_SEC)
-    .sort((a, b) => a.departureSec - b.departureSec);
-  return future[0] ?? null;
-}
-
 // ─── Pojazd ────────────────────────────────────────────────────────────────
 
 /** Pojazd dopasowany do odcinka, na którym właśnie jesteśmy. */
@@ -171,15 +133,15 @@ async function planTracked(): Promise<Connection | null> {
   });
   if (conns.length === 0) return null;
 
-  const nowSec = Math.floor(Date.now() / 1000) % 86400;
+  const nowSec = nowSecOfDay();
   // Dopóki nie odjechaliśmy, trzymamy się „naszego” odjazdu. Po odjeździe
   // szukamy kursu, którym właśnie jedziemy, a dopiero potem następnego.
   const match = matchTrackedConnection(conns, tracked.connection);
   if (match) return match;
   if (tracked.connection.departureSec > nowSec - BOARDING_GRACE_SEC) {
-    return nextDeparture(conns, nowSec);
+    return nextDeparture(conns, nowSec, BOARDING_GRACE_SEC);
   }
-  return connectionInProgress(conns, nowSec) ?? nextDeparture(conns, nowSec);
+  return connectionInProgress(conns, nowSec) ?? nextDeparture(conns, nowSec, BOARDING_GRACE_SEC);
 }
 
 async function refresh(): Promise<void> {
@@ -187,26 +149,31 @@ async function refresh(): Promise<void> {
   if (refreshing) return refreshing;
 
   refreshing = (async () => {
-    const trip = tracked;
-    if (!trip) return;
+    const before = tracked;
+    if (!before) return;
     const prefs: NotificationPreferences = getNotificationPreferencesSync();
 
-    let conn = trip.connection;
-    try {
-      const fresh = await planTracked();
-      if (!fresh) {
-        // Brak połączeń (albo awaria sieci) — zostaje ostatni znany plan,
-        // powiadomienie dalej pokazuje ostatnią znaną prawdę.
-        if (Date.now() - trip.startedAt > 30 * 60 * 1000) {
-          await stopTracking();
+    // Planujemy tylko do momentu odjazdu (patrz `planLocked`).
+    if (!planLocked) {
+      try {
+        const fresh = await planTracked();
+        if (!fresh) {
+          // Brak połączeń (albo awaria sieci) — zostaje ostatni znany plan.
+          // Po pół godziny bez planu uznajemy, że śledzenie nie ma sensu.
+          if (Date.now() - before.startedAt > 30 * 60 * 1000) {
+            await stopTracking();
+          }
+          return;
         }
-        return;
+        tracked = { ...before, connection: fresh };
+      } catch {
+        // offline — zostaje ostatni plan
       }
-      conn = fresh;
-      tracked = { ...trip, connection: fresh };
-    } catch {
-      // offline — zostaje ostatni plan
     }
+
+    const trip = tracked;
+    if (!trip) return;
+    const conn = trip.connection;
 
     const base = computeTripProgress(conn, {});
     const vehicle = vehicleForTrip(base);
@@ -214,29 +181,34 @@ async function refresh(): Promise<void> {
     // niż interpolacja po czasie, a wynik różni się w tym, ile zostało.
     const p = vehicle ? computeTripProgress(conn, { vehicle }) : base;
     progress = p;
+    if (!planLocked && p.phase !== 'walking' && p.phase !== 'waiting') {
+      planLocked = true;
+    }
 
     // Opóźnienie urosło od poprzedniego ticka → obudź użytkownika.
     if (prefs.disruptionAlertsEnabled && shouldAlertDelay(lastDelayMin, p.delayMin)) {
-      void sendDisruptionAlert(p, tracked ?? trip, prefs);
+      void sendDisruptionAlert(p, trip, prefs);
     }
     lastDelayMin = p.delayMin;
 
-    await presentTrip(tracked ?? trip, p, prefs);
-    await scheduleDepartureAlerts(p, tracked ?? trip, prefs);
+    await presentTrip(trip, p, prefs);
+    await scheduleDepartureAlerts(p, trip, prefs);
 
     if (p.phase === 'arrived') {
       if (arrivedAt === 0) {
         arrivedAt = Date.now();
-        await sendArrivedNotification(p, tracked ?? trip);
+        await sendArrivedNotification(p, trip);
       }
-      // Live Activity zostawiamy chwilę na ekranie blokady, potem sprzątamy.
+      // Komunikat „jesteś na miejscu” zostaje chwilę na ekranie blokady.
       if (Date.now() - arrivedAt > ARRIVED_LINGER_MS) {
         await stopTracking();
         return;
-      }
-    }
+      }    }
 
+    // Faza zmienia się w trakcie podróży, a rytm odświeżania zależy od niej.
+    rescheduleTicker();
     await persist();
+    void pushWidgetPinned(trip);
     notify();
   })().finally(() => {
     refreshing = null;
@@ -271,6 +243,7 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   await loadNotificationPreferences();
   tracked = { ...trip, startedAt: Date.now() };
   arrivedAt = 0;
+  planLocked = false;
   lastDelayMin = trip.connection.delayMin;
   progress = computeTripProgress(trip.connection, {});
   notify();
@@ -279,18 +252,24 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   void pushWidgetPinned(tracked);
 }
 
-export async function stopTracking(): Promise<void> {
+/**
+ * Kończy śledzenie. `lingerSec` zostawia Live Activity / powiadomienie na
+ * ekranie blokady jeszcze przez chwilę — używane po przyjeździe, żeby
+ * „jesteś na miejscu" zdążyło się przeczytać.
+ */
+export async function stopTracking(lingerSec = 0): Promise<void> {
   if (!tracked) return;
   tracked = null;
   progress = null;
   arrivedAt = 0;
+  planLocked = false;
   lastDelayMin = 0;
   if (ticker) {
     clearInterval(ticker);
     ticker = null;
   }
   await cancelScheduledAlerts();
-  await dismissTracking();
+  await dismissTracking(lingerSec);
   await kvRemove(STORAGE_KEY);
   await mergeWidgetSnapshot({ pinned: null });
   notify();

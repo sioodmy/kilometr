@@ -54,7 +54,7 @@ export {
   type TripResponse,
 } from './response';
 export { computeTripProgress } from './tripProgress';
-export { matchTrackedConnection } from './tripMonitor';
+export { matchTrackedConnection } from './planMatch';
 export { buildActivityProps, buildTripCopy, buildTripLink, type TripCopy } from './content';
 export {
   getTrackedTripSync,
@@ -75,6 +75,7 @@ export {
   minutesText,
   plural,
   toAbsoluteMs,
+  transfersText,
   untilText,
 } from './format';
 export {

@@ -45,6 +45,12 @@ export function untilText(sec: number): string {
   return `${min} ${plural(min, 'minuta', 'minuty', 'minut')}`;
 }
 
+/** Liczba przesiadek w powiadomieniu — 0 znika, bo „0 przesiadki” to szum. */
+export function transfersText(n: number): string {
+  if (n <= 0) return '';
+  return `${n} ${plural(n, 'przesiadka', 'przesiadki', 'przesiadek')}`;
+}
+
 /** Opóźnienie kursu: „+6 min”, „punktualnie”, „−2 min”. */
 export function delayText(delayMin: number): string {
   if (delayMin >= 1) return `+${Math.round(delayMin)} min`;
@@ -70,15 +76,25 @@ export function nowSecOfDay(d: Date = new Date()): number {
   return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
 }
 
+const DAY_SEC = 86400;
+const DAY_MS = DAY_SEC * 1000;
+
 /**
  * Sekundy od północy (mogą przekroczyć 86400 przy kursorze na jutrzejszy
  * rozkład — patrz engine.ts, dayOffsetSec) → bezwzględny znacznik ms.
- * Bez tej normalizacji odliczanie po północy pokazuje godziny wczoraj.
+ *
+ * Wybieramy wystąpienie najbliższe `now`, a nie to z dzisiejszego dnia.
+ * Bez tego podróż o 23:58 oglądana o 00:03 dostałaby „dziś 23:58", czyli
+ * ETA 24 godziny zamiast „3 minuty temu".
  */
 export function toAbsoluteMs(sec: number, now: Date = new Date()): number {
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
-  return midnight.getTime() + Math.round(sec) * 1000;
+  const base = midnight.getTime() + Math.round(sec) * 1000;
+  const diff = base - now.getTime();
+  if (diff < -DAY_MS / 2) return base + DAY_MS;
+  if (diff > DAY_MS / 2) return base - DAY_MS;
+  return base;
 }
 
 export function clamp01(v: number): number {

@@ -91,16 +91,18 @@ const KilometrTripActivity = (props: TripActivityProps, environment: LiveActivit
 
   const detailText = (): string => {
     if (arrived) return `Cel: ${props.toTitle}`;
-    if (props.phase === 'walking' && props.walkMeters > 0) {
-      return `${Math.round(props.walkMeters)} m do przystanku`;
+    if (props.phase === 'walking') {
+      const dist = props.walkMeters > 0 ? `${Math.round(props.walkMeters)} m do przystanku` : '';
+      return dist ? `${dist} • ${props.stopName}` : `Przystanek: ${props.stopName}`;
     }
+    if (props.phase === 'waiting') return `Przystanek: ${props.stopName}`;
+    if (props.phase === 'transfer') return props.stopName ? `Przejście: ${props.stopName}` : 'Przejście na kolejny pojazd';
     if (props.nextStop) {
       const hops = props.stopsLeft > 0
         ? ` · ${props.stopsLeft} ${props.stopsLeft === 1 ? 'przystanek' : props.stopsLeft < 5 ? 'przystanki' : 'przystanków'}`
         : '';
       return `Następny: ${props.nextStop}${hops}`;
     }
-    if (props.phase === 'transfer') return 'Przejście na kolejny pojazd';
     return `Cel: ${props.toTitle}`;
   };
 

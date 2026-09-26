@@ -29,6 +29,13 @@ async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void
   if (!N) return;
   const copy = buildTripCopy(p, trip.connection);
   try {
+    // iOS nie ma odpowiednika „update in place” dla lokalnych powiadomień —
+    // kolejne wywołania z tym samym identyfikatorem kumulowałyby się w
+    // Centrum powiadomień. Android nadpisuje pozycję sam, więc tam zostawiamy
+    // Update, żeby nie było okna bez powiadomienia.
+    if (Platform.OS === 'ios') {
+      await N.dismissNotificationAsync(TRACKING_NOTIFICATION_ID);
+    }
     await N.scheduleNotificationAsync({
       identifier: TRACKING_NOTIFICATION_ID,
       content: {

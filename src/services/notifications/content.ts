@@ -1,12 +1,11 @@
-import { getLineColors, inferTransitMode } from '../../components/LineBadge';
+import { getLineColors, inferTransitMode } from '../lineIdentity';
 import type { Connection } from '../../types/models';
 import {
   countdownText,
-  delayText,
-  formatClock,
   formatDistance,
   minutesText,
   toPermille,
+  transfersText,
   untilText,
 } from './format';
 import type {
@@ -50,7 +49,8 @@ function chainLabel(conn: Connection): string {
     .filter((l) => l.mode !== 'walk')
     .map((l) => l.line)
     .filter(Boolean);
-  return lines.join(' → ');
+  // Jedna linia jest już w podtytule — nie powtarzamy jej w treści.
+  return lines.length > 1 ? lines.join(' → ') : '';
 }
 
 function stopsLabel(n: number | null): string {
@@ -89,6 +89,9 @@ export function buildTripCopy(p: TripProgress, conn: Connection): TripCopy {
       const walk = p.walkMeters != null ? formatDistance(p.walkMeters) : '';
       const walkMin = p.walkSec != null ? minutesText(p.walkSec / 60) : '';
       const departIn = Math.max(0, p.departInSec);
+      // Pasek postępu pokazuje dojście do przystanku (p.approachProgress),
+      // a nie podróż — ta jeszcze się nie zaczęła.
+      const approach = p.approachProgress ?? 0;
       return {
         title: walk ? `Idź na przystanek • ${walk}` : 'Idź na przystanek',
         subtitle: `${lineLabel(p)} ${p.line} o ${p.departAt}`,
@@ -102,8 +105,8 @@ export function buildTripCopy(p: TripProgress, conn: Connection): TripCopy {
         countdownCaption: 'do odjazdu',
         countdownAtMs: p.boardAtMs,
         countdownDown: true,
-        progressPermille: toPermille(p.walkSec ? 1 - p.walkSec / Math.max(1, p.departInSec) : 0),
-        showProgress: p.walkSec != null && departIn > 0,
+        progressPermille: toPermille(approach),
+        showProgress: p.approachProgress != null,
         accentColor: accent,
       };
     }
@@ -116,7 +119,7 @@ export function buildTripCopy(p: TripProgress, conn: Connection): TripCopy {
         body: [
           `odjazd ${p.departAt}`,
           p.leg ? `przystanek ${p.leg.fromStop}` : '',
-          `${p.transfers} ${p.transfers === 1 ? 'przesiadka' : 'przesiadki'}`,
+          transfersText(p.transfers),
           delaySuffix(p),
           platform,
         ]
@@ -139,7 +142,7 @@ export function buildTripCopy(p: TripProgress, conn: Connection): TripCopy {
         subtitle: p.interchange ?? (p.leg ? p.leg.fromStop : p.toTitle),
         body: [
           walk ? `dojście ${walk}` : '',
-          `${next} ${untilText(p.departInSec)}`,
+          `${next} ${countdownText(p.boardInSec)}`,
           stopsLabel(p.stopsLeft),
         ]
           .filter(Boolean)
@@ -156,10 +159,11 @@ export function buildTripCopy(p: TripProgress, conn: Connection): TripCopy {
     case 'riding':
     default: {
       const eta = Math.max(0, p.etaMin);
-      const next = p.nextStop ? `następny ${p.nextStop}` : p.toTitle;
       const hops = stopsLabel(p.stopsLeft);
+      // Gdy plan nie ma listy przystanków, nazwy następnego nie zmyłamy —
+      // mówimy tylko, ile ich zostało.
       const body = [
-        next,
+        p.nextStop ? `następny ${p.nextStop}` : '',
         hops,
         `na miejscu ${p.arriveAt}`,
         p.vehicleLabel ?? delaySuffix(p),
@@ -169,7 +173,7 @@ export function buildTripCopy(p: TripProgress, conn: Connection): TripCopy {
       return {
         title: `${lineLabel(p)} ${p.line} • ${minutesText(eta)} do celu`,
         subtitle: p.nextStop
-          ? `Za ${hops || 'chwilę'} • ${p.nextStop}`
+          ? `${hops ? `Za ${hops} • ` : ''}${p.nextStop}`
           : p.direction
             ? `Do ${p.direction}`
             : p.toTitle,
@@ -194,6 +198,7 @@ export function buildActivityProps(p: TripProgress): TripActivityProps {
     lineMode: p.lineMode,
     direction: p.direction || '',
     nextStop: p.nextStop ?? p.toTitle,
+    stopName: p.stopName || p.toTitle,
     nextStopInMin: p.nextStopInMin ?? 0,
     stopsLeft: p.stopsLeft ?? 0,
     etaMin: Math.max(0, p.etaMin),
@@ -264,15 +269,3 @@ export function buildTripLink(trip: TrackedTrip): string {
     .join('&');
   return `kilometr://routes?${qs}`;
 }
-
-/** Godzina odjazdu w formacie zegara — używana w tytule monitu „wyjdź”. */
-export function boardClock(p: TripProgress): string {
-  return p.departAt || formatClock(0);
-}
-
-/** Ile sekund do odjazdu pierwszego pojazdu, licząc od teraz. */
-export function departInSec(p: TripProgress): number {
-  return p.departInSec;
-}
-
-export { delayText };

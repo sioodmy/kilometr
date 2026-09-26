@@ -26,6 +26,12 @@ export interface TripProgress {
   progress: number;
   /** Postęp wewnątrz bieżącego odcinka 0..1. */
   legProgress: number;
+  /**
+   * Postęp dojścia do przystanku 0..1 — null gdy nie idziemy pieszo. W fazie
+   * „idę" to jedyna liczba, która ma sens: podróż jeszcze się nie zaczęła,
+   * więc `progress` byłby zerem przez całe oczekiwanie.
+   */
+  approachProgress: number | null;
 
   /** Odjazd pierwszego pojazdu: ile sekund (może być ujemne = po odjeździe). */
   departInSec: number;
@@ -53,8 +59,10 @@ export interface TripProgress {
   /** Kierunek kursu (np. 'BISKUPIN'). */
   direction: string;
 
-  /** Następny przystanek i ile do niego zostało. */
+  /** Następny przystanek i ile do niego zostało. Przed odjazdem bywa null. */
   nextStop: string | null;
+  /** Przystanek, na którym jesteśmy (albo do którego idziemy). */
+  stopName: string;
   nextStopInMin: number | null;
   /** Przystanki do celu (w tym ten, do którego zbliżasz się). */
   stopsLeft: number | null;
@@ -75,8 +83,10 @@ export interface TripProgress {
   /** Dojście do przystanku: metry i ile sekund zajmie. */
   walkMeters: number | null;
   walkSec: number | null;
-  /** Odjazd, na który trzeba wyjść (po dojściu). */
+  /** Odjazd, na który trzeba wyjść (po dojściu) — przy przesiadce kolejny. */
   boardAtMs: number;
+  /** Ile sekund do tego odjazdu. Ujemne = po odjeździe. */
+  boardInSec: number;
 
   fromTitle: string;
   toTitle: string;
@@ -94,6 +104,8 @@ export interface TripActivityProps {
   lineMode: 'tram' | 'bus' | 'walk';
   direction: string;
   nextStop: string;
+  /** Przystanek, na którym jesteśmy (albo do którego idziemy). */
+  stopName: string;
   nextStopInMin: number;
   stopsLeft: number;
   etaMin: number;
