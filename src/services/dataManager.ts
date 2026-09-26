@@ -10,8 +10,8 @@ import { parseCalendarContent, parseCalendarDatesContent, parseRoutesContent, pa
 import { GTFS } from './gtfsConfig';
 import {
   cleanupRawGtfs,
-  discoverBestArchiveUrl,
-  downloadGtfsZip,
+  downloadArchiveWithFallback,
+  GtfsDownloadError,
   gtfsDir,
   hasExtractedGtfs,
   readGtfsText,
@@ -41,7 +41,7 @@ export type DataStatus =
   | { state: 'downloading'; progress: number }
   | { state: 'importing'; step: string; progress: number }
   | { state: 'ready'; stops: number; trips: number; updatedAt: string | null; source: GtfsSource | null }
-  | { state: 'error'; message: string };
+  | { state: 'error'; message: string; hint?: string; detail?: string };
 
 let status: DataStatus = { state: 'empty' };
 const listeners = new Set<(s: DataStatus) => void>();
@@ -146,8 +146,7 @@ export async function importGtfsFromNetwork(): Promise<void> {
   importInProgress = true;
   try {
     emit({ state: 'downloading', progress: 0 });
-    const url = await discoverBestArchiveUrl();
-    const zipUri = await downloadGtfsZip(url, (p) => {
+    const { uri: zipUri } = await downloadArchiveWithFallback((p) => {
       const progress = p.totalBytes > 0 ? p.bytesWritten / p.totalBytes : 0;
       emit({ state: 'downloading', progress });
     });
@@ -210,9 +209,18 @@ export async function importGtfsFromNetwork(): Promise<void> {
     importInProgress = false;
     await refreshDataStatus();
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn('[DataManager] import failed:', message);
-    emit({ state: 'error', message });
+    const detail = err instanceof Error ? err.message : String(err);
+    // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
+    // do UI — pokazujemy zdanie po polsku, a szczegóły zostają w logu.
+    const message =
+      err instanceof GtfsDownloadError ? err.message : 'Nie udało się przygotować rozkładu';
+    console.warn('[DataManager] import failed:', detail);
+    emit({
+      state: 'error',
+      message,
+      hint: err instanceof GtfsDownloadError ? err.hint : 'Dotknij, aby spróbować ponowić.',
+      detail,
+    });
     try {
       await finishBulkImport();
     } catch {}

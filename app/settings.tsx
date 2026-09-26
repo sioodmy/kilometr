@@ -110,10 +110,12 @@ export default function SettingsScreen() {
     setImporting(true);
     try {
       await importGtfsFromNetwork();
-    } catch {
+    } catch (err) {
+      // Powód z importu (po polsku) zamiast zawsze tego samego „sprawdź internet".
+      const reason = err instanceof Error ? err.message : 'Spróbuj ponownie za chwilę.';
       Alert.alert(
         'Nie udało się pobrać rozkładu',
-        'Sprawdź połączenie z internetem i spróbuj ponownie. Aplikacja pobiera dane prosto z Open Data Wrocław.',
+        `${reason}. Aplikacja pobiera dane prosto z Open Data Wrocław.`,
       );
     } finally {
       setImporting(false);

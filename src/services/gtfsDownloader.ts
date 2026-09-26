@@ -12,6 +12,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { strFromU8, unzipSync } from 'fflate';
 import { GTFS } from './gtfsConfig';
+import { API_URL } from '../config';
 
 export interface GtfsArchiveCandidate {
   id: number;
@@ -108,6 +109,114 @@ export async function discoverBestArchiveUrl(): Promise<string> {
 export interface DownloadProgress {
   bytesWritten: number;
   totalBytes: number;
+}
+
+/**
+ * Błąd pobierania archiwum. `message` jest zdaniem dla użytkownika
+ * (polskie, bez surowego komunikatu sieciowego), `hint` mówi co z tym
+ * zrobić, a `detail` zostaje w logach.
+ */
+export class GtfsDownloadError extends Error {
+  readonly detail: string;
+  readonly hint: string;
+
+  constructor(message: string, detail: string, hint: string) {
+    super(message);
+    this.name = 'GtfsDownloadError';
+    this.detail = detail;
+    this.hint = hint;
+  }
+}
+
+const NO_INTERNET = 'Brak połączenia z internetem';
+const TOO_SLOW = 'Pobieranie trwało zbyt długo';
+const NO_SPACE = 'Za mało miejsca na telefonie';
+const UNREACHABLE = 'Rozkład chwilowo niedostępny';
+const UNKNOWN = 'Nie udało się pobrać rozkładu';
+
+/** Tłumaczy surowy błąd sieci/HTTP RN na komunikat zrozumiały dla użytkownika. */
+export function describeDownloadError(err: unknown): GtfsDownloadError {
+  const detail = err instanceof Error ? err.message : String(err);
+  const low = detail.toLowerCase();
+  if (
+    low.includes('resolve host') ||
+    low.includes('no address associated') ||
+    low.includes('network request failed') ||
+    low.includes('econnrefused') ||
+    low.includes('failed to connect') ||
+    low.includes('unable to resolve')
+  ) {
+    return new GtfsDownloadError(NO_INTERNET, detail, 'Sprawdź internet i dotknij, aby ponowić.');
+  }
+  if (low.includes('timeout') || low.includes('timed out')) {
+    return new GtfsDownloadError(TOO_SLOW, detail, 'Dotknij, aby spróbować ponowić.');
+  }
+  if (low.includes('enospc') || low.includes('no space')) {
+    return new GtfsDownloadError(NO_SPACE, detail, 'Zwolnij trochę miejsca i dotknij, aby ponowić.');
+  }
+  if (low.includes('http response status code')) {
+    return new GtfsDownloadError(UNREACHABLE, detail, 'Spróbuj ponownie za jakiś czas.');
+  }
+  return new GtfsDownloadError(UNKNOWN, detail, 'Dotknij, aby spróbować ponowić.');
+}
+
+export type ArchiveSource = 'catalogue' | 'direct' | 'mirror';
+
+export interface ArchiveDownload {
+  uri: string;
+  source: ArchiveSource;
+}
+
+/**
+ * Lustro: to samo archiwum, które backend dev już trzyma na dysku. W buildzie
+ * release (bez skonfigurowanego API_URL) nie ma do kogo sięgać, więc wtedy
+ * pomijamy kandydata zamiast marnować czasu na martwe połączenie.
+ */
+function mirrorArchiveUrl(): string | null {
+  if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) return null;
+  return `${API_URL}/api/gtfs/archive`;
+}
+
+/**
+ * Pobiera archiwum, próbując po kolei: katalog Open Data → adres bezpośredni
+ * → lustro backendu. Każde źródło dostaje świeży postęp (restart od zera),
+ * a użytkownik widzi komunikat dopiero po wyczerpaniu wszystkich opcji.
+ */
+export async function downloadArchiveWithFallback(
+  onProgress?: (p: DownloadProgress, source: ArchiveSource) => void,
+): Promise<ArchiveDownload> {
+  const mirror = mirrorArchiveUrl();
+  const candidates: { url: string; source: ArchiveSource }[] = [
+    { url: await discoverBestArchiveUrl(), source: 'catalogue' },
+    { url: GTFS.fallbackDirectUrl, source: 'direct' },
+  ];
+  if (mirror) candidates.push({ url: mirror, source: 'mirror' });
+
+  const failures: GtfsDownloadError[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    // Ten sam URL z dwiema etykietami to marnowanie przebiegu.
+    if (seen.has(candidate.url)) continue;
+    seen.add(candidate.url);
+    try {
+      const uri = await downloadGtfsZip(candidate.url, (p) => onProgress?.(p, candidate.source));
+      return { uri, source: candidate.source };
+    } catch (err) {
+      const failure = describeDownloadError(err);
+      console.warn(`[GtfsDownloader] źródło ${candidate.source} zawiodło:`, failure.detail);
+      failures.push(failure);
+    }
+  }
+
+  // Bez internetu nie ma sensu próbować kolejnych źródeł — mówimy wprost.
+  if (failures.length > 0 && failures.every((f) => f.message === NO_INTERNET)) {
+    throw new GtfsDownloadError(
+      NO_INTERNET,
+      failures.map((f) => f.detail).join(' | '),
+      failures[0].hint,
+    );
+  }
+  throw failures[failures.length - 1] ?? new GtfsDownloadError(UNKNOWN, 'brak kandydatów', 'Dotknij, aby spróbować ponowić.');
 }
 
 /** Pobiera gtfs.zip do documentDirectory. Zwraca lokalne URI. */

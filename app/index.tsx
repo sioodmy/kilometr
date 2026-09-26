@@ -587,7 +587,9 @@ export default function HomeScreen() {
           {dataStatus.state === 'error' && (
             <Pressable style={styles.importCardError} onPress={() => void importGtfsFromNetwork()}>
               <Text style={styles.importTitleError}>Błąd pobierania rozkładu</Text>
-              <Text style={styles.importSubError}>{dataStatus.message}. Dotknij, aby ponowić.</Text>
+              <Text style={styles.importSubError}>
+                {dataStatus.message}. {dataStatus.hint ?? 'Dotknij, aby spróbować ponowić.'}
+              </Text>
             </Pressable>
           )}
 
