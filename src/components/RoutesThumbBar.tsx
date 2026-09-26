@@ -95,7 +95,7 @@ export function RoutesThumbBar({
 
   // Krótko, żeby nie ucinało w wąskim guziku (pełne nazwy w a11y).
   const modeLabel =
-    modeFilter === 'tram' ? 'tram' : modeFilter === 'bus' ? 'bus' : 'Pojazdy';
+    modeFilter === 'tram' ? 'Tram' : modeFilter === 'bus' ? 'Bus' : 'Pojazdy';
   const modeA11y =
     modeFilter === 'tram'
       ? 'Tramwaje'
