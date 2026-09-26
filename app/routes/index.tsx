@@ -4,21 +4,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Anchor,
-  ArrowUpDown,
-  ChevronDown,
   ChevronLeft,
-  Clock3,
   Pin,
   X,
 } from 'lucide-react-native';
 import Animated, {
-  Easing,
   FadeIn,
   FadeOut,
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
@@ -57,8 +49,7 @@ import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
-import { RouteFiltersCard, type ModePreference } from '../../src/components/RouteFiltersCard';
-import { RoutesThumbBar } from '../../src/components/RoutesThumbBar';
+import { RoutesThumbBar, type ModePreference, type SortMode } from '../../src/components/RoutesThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 
 const GPS_ITEM: Suggestion = {
@@ -153,11 +144,12 @@ export default function RoutesScreen() {
   // żeby jednym tapnięciem wrócić szybko do domu), 'earliest' = jak w
   // Jakdojade, od najwcześniejszego odjazdu. Magazyn (items) zawsze
   // posortowany po odjeździe — paginacja i hold-to-load na tym bazują.
-  const [sortMode, setSortMode] = useState<'fastest' | 'earliest'>('fastest');
-  // Jednorazowe filtry — NIE są to ustawienia systemowe (maxTransfers
-  // w /settings zostaje nietknięte). Toggle wymusza maxTransfers=0, a segmenty
-  // pojazdów ograniczają RAPTOR-a do kursów danego typu. Tylko dla bieżącego
-  // ekranu wyników, stan nie jest persistowany.
+  const [sortMode, setSortMode] = useState<SortMode>('fastest');
+  // Filtry mieszkają w dolnym menu (RoutesThumbBar) — na górze ekranu nie ma
+  // ich wcale, żeby nic nie powtarzać się w dwóch miejscach. To wciąż
+  // filtry jednorazowe, NIE ustawienia systemowe (maxTransfers w /settings
+  // zostaje nietknięte): toggle wymusza maxTransfers=0, a typ pojazdu
+  // ogranicza RAPTOR-a do kursów danego rodzaju.
   const [directOnly, setDirectOnly] = useState(params.directOnly === '1');
   const [modeFilter, setModeFilter] = useState<ModePreference>(
     params.modes === 'tram' || params.modes === 'bus' ? params.modes : 'all',
@@ -175,25 +167,6 @@ export default function RoutesScreen() {
         a.departureSec - b.departureSec,
     );
   }, [items, sortMode, directOnly]);
-
-  // Zwijanie panelu filtrów. Samo `height` + `overflow: hidden`, bez opacity
-  // i scale: opacity na panelu z cieniami tworzy na Androidzie warstwę
-  // offscreen (klatka po klatce), a scale dawał artefakty subpixelowe
-  // (8bac23c). Sama wysokość to „kurtyna”, którą da się ciąć płynnie.
-  // Wyzwalanie zmiany jest asynchroniczne (patrz setFiltersVisible), więc
-  // w trakcie przeciągania wysokość panelu jest stała i lista pod nim nie
-  // przelicza layoutu co klatkę.
-  const filterProgress = useSharedValue(1);
-  const measuredFiltersHeight = useSharedValue(200);
-
-  const animatedFilterStyle = useAnimatedStyle(() => {
-    const p = filterProgress.value;
-    const h = measuredFiltersHeight.value;
-    return {
-      height: interpolate(p, [0, 1], [0, h]),
-      overflow: 'hidden',
-    };
-  });
 
   // Przypięte połączenie (persistent notification)
   const [pinnedQuery, setPinnedQuery] = useState<PinnedQuery | null>(() => getPinnedQuerySync());
@@ -245,17 +218,15 @@ export default function RoutesScreen() {
   const contentH = useRef(0);
   const pendingAdjust = useRef<number | null>(null);
   const topHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Odliczany „uspokojenie listy” przed zmianą panelu filtrów
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stan panelu oczekujący na koniec pauzy po zmianie (patrz setFiltersVisible)
-  const pendingFilterState = useRef<boolean | null>(null);
-  const filterCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Strefa „trzymam palec na górze” z histerezą: wjście na 60 px, wyjście
+  // dopiero powyżej 110 px — jedno drgnięcie palcem nie kasuje timera.
+  const TOP_ZONE_ENTER = 60;
+  const TOP_ZONE_EXIT = 110;
+  const inTopZone = useRef(false);
 
   useEffect(() => {
     return () => {
       if (topHoldTimer.current) clearTimeout(topHoldTimer.current);
-      if (settleTimer.current) clearTimeout(settleTimer.current);
-      if (filterCooldownTimer.current) clearTimeout(filterCooldownTimer.current);
     };
   }, []);
 
@@ -612,99 +583,9 @@ export default function RoutesScreen() {
   loadEarlierRef.current = handleLoadEarlier;
 
   const lastScrollY = useRef(0);
-  const isFiltersVisible = useRef(true);
-  const accumulatedDelta = useRef(0);
-  const inTopZone = useRef(false);
-  const momentumActive = useRef(false);
-  const lastFilterToggleAt = useRef(0);
-
-  // Próg jest wysoki, bo panel reaguje dopiero na ustabilizowanym
-  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) — 80 px
-  // to jedno świadome przejście, a nie drgnięcie palcem.
-  const HIDE_THRESHOLD = 80;
-  const SHOW_THRESHOLD = 40;
-  // Pauza po zmianie stanu: dwa przeciwstawne gesty w krótkim czasie
-  // nie mogą się zbić w serię szarpnięć panelu.
-  const FILTER_COOLDOWN_MS = 450;
-  // Ile czekamy po puszczeniu palca na sprawdzenie, czy zaczęło się
-  // „rzucanie” listy (momentum). Jeśli tak, decyzja zapada po nim.
-  const SCROLL_SETTLE_MS = 120;
-  const FILTER_ANIM_MS = 300;
-  // Strefa „trzymam palec na górze” z histerezą: wjście na 60 px, wyjście
-  // dopiero powyżej 110 px — jedno drgnięcie palcem nie kasuje już timera.
-  const TOP_ZONE_ENTER = 60;
-  const TOP_ZONE_EXIT = 110;
-
-  // Jedno miejsce do zmiany stanu panelu. Przeskok stanu jest możliwy tylko
-  // raz na FILTER_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
-  // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
-  // niej (pendingFilterState). `force` omija pauzę — przy powrocie na samą
-  // górę listy filtry muszą być od razu.
-  const applyFilterState = (visible: boolean) => {
-    if (isFiltersVisible.current === visible) return;
-    isFiltersVisible.current = visible;
-    lastFilterToggleAt.current = Date.now();
-    pendingFilterState.current = null;
-    if (filterCooldownTimer.current) {
-      clearTimeout(filterCooldownTimer.current);
-      filterCooldownTimer.current = null;
-    }
-    filterProgress.value = withTiming(visible ? 1 : 0, {
-      duration: FILTER_ANIM_MS,
-      easing: Easing.inOut(Easing.cubic),
-    });
-  };
-
-  const setFiltersVisible = (visible: boolean, force = false) => {
-    if (isFiltersVisible.current === visible) return;
-    const wait = FILTER_COOLDOWN_MS - (Date.now() - lastFilterToggleAt.current);
-    if (!force && wait > 0) {
-      pendingFilterState.current = visible;
-      if (filterCooldownTimer.current) clearTimeout(filterCooldownTimer.current);
-      filterCooldownTimer.current = setTimeout(() => {
-        filterCooldownTimer.current = null;
-        const next = pendingFilterState.current;
-        if (next != null) applyFilterState(next);
-      }, wait);
-      return;
-    }
-    applyFilterState(visible);
-  };
-
-  // Decyzja o panelu zapada, gdy lista przestała się ruszać. W trakcie
-  // przeciągania panel ma stałą wysokość: każda klatka animacji zmieniała
-  // layout FlatListu pod nim i to właśnie migało przy trzymaniu palca.
-  const evaluateFiltersOnSettle = () => {
-    if (accumulatedDelta.current >= HIDE_THRESHOLD) {
-      setFiltersVisible(false);
-    } else if (accumulatedDelta.current <= -SHOW_THRESHOLD) {
-      setFiltersVisible(true);
-    }
-  };
-
-  const handleScrollEndDrag = () => {
-    momentumActive.current = false;
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(() => {
-      settleTimer.current = null;
-      if (!momentumActive.current) evaluateFiltersOnSettle();
-    }, SCROLL_SETTLE_MS);
-  };
-
-  const handleMomentumScrollBegin = () => {
-    momentumActive.current = true;
-    if (settleTimer.current) {
-      clearTimeout(settleTimer.current);
-      settleTimer.current = null;
-    }
-  };
-
-  const handleMomentumScrollEnd = () => {
-    momentumActive.current = false;
-    evaluateFiltersOnSettle();
-  };
 
   // Warunki dociągania starszych odjazdów w refie: handler scrolla ma być
+
   // stabilny, a nie przeżywać przez ref każdego renderu.
   const topHoldGate = useRef({ loading: true, loadingEarlier: false, count: 0, noMoreEarlier: false });
   topHoldGate.current = { loading, loadingEarlier, count: items.length, noMoreEarlier };
@@ -725,34 +606,15 @@ export default function RoutesScreen() {
     topHoldTimer.current = null;
   }, []);
 
-  // Detekcja kierunku z histerezą: sam scroll tylko liczy przewinięcie,
-  // nic nie animuje (decyzja zapada na handleScrollEndDrag/MomentumEnd).
+  // Detekcja kierunku z histerezą: handler scrolla tylko pilnuje pozycji
+  // (korekta po dociągnięciu starszych odjazdów) i strefy „trzymam palec
+  // na górze” dociągającej starszych kursów.
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
-    const dy = y - lastScrollY.current;
     lastScrollY.current = y;
     scrollY.current = y;
 
-    // 1. Na samej górze listy (y <= 12) — filtry wracają od razu, bez
-    //    czekania na puszczenie palca: tam scroll i tak się kończy.
-    if (y <= 12) {
-      accumulatedDelta.current = 0;
-      setFiltersVisible(true, true);
-    } else if (dy > 0) {
-      // Scrollowanie W DÓŁ
-      if (accumulatedDelta.current < 0) {
-        accumulatedDelta.current = 0;
-      }
-      accumulatedDelta.current += dy;
-    } else if (dy < 0) {
-      // Scrollowanie W GÓRĘ
-      if (accumulatedDelta.current > 0) {
-        accumulatedDelta.current = 0;
-      }
-      accumulatedDelta.current += dy;
-    }
-
-    // 2. Przytrzymanie na górze. Timer zakładamy RAZ przy wejściu w strefę.
+    // Przytrzymanie na górze. Timer zakładamy RAZ przy wejściu w strefę.
     //    Wcześniej clearTimeout+setTimeout leciał na każdą klatkę — to śmieci
     //    na wątku JS i gest gasł przy mikro-ruchach palca.
     if (!inTopZone.current) {
@@ -809,6 +671,10 @@ export default function RoutesScreen() {
     else setModeFilter('all');
   };
 
+  const handleCycleSort = () => {
+    setSortMode((prev) => (prev === 'fastest' ? 'earliest' : 'fastest'));
+  };
+
   const handleSwap = () => {
     setActiveAnchor(null);
     const tempTitle = fromTitle;
@@ -854,7 +720,8 @@ export default function RoutesScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* 1. Górny pasek: Wstecz + Tytuł + Interaktywny przycisk Czasu */}
+      {/* 1. Górny pasek: tylko Wstecz, tytuł i przypięcie. Czas odjazdu,
+          filtry i sortowanie żyją w dolnym menu pod kciukiem. */}
       <View style={styles.topBar}>
         <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
           <ChevronLeft size={23} color={scheme.onSurface} />
@@ -863,31 +730,6 @@ export default function RoutesScreen() {
         <Text style={styles.screenTitle} numberOfLines={1}>
           Połączenia MPK
         </Text>
-
-        <Pressable
-          onPress={() => setTimeSheetOpen(true)}
-          style={({ pressed }) => [
-            styles.timeChip,
-            isCustomTime && styles.timeChipActive,
-            pressed && { opacity: 0.8 },
-          ]}
-          hitSlop={8}
-        >
-          <Clock3
-            size={14}
-            color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-          />
-          <Text
-            style={[styles.timeText, isCustomTime && styles.timeTextActive]}
-            numberOfLines={1}
-          >
-            {timeLabel}
-          </Text>
-          <ChevronDown
-            size={13}
-            color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-          />
-        </Pressable>
 
         <Pressable
           onPress={togglePin}
@@ -908,7 +750,8 @@ export default function RoutesScreen() {
         </Pressable>
       </View>
 
-      {/* 2. Karta trasy: klikalny Start / Cel + wyśrodkowany przycisk zamiany */}
+      {/* 2. Karta trasy: klikalny Start / Cel. Zamiana miejsc i wybór
+          godziny są w dolnym menu, więc nic tu się nie powtarza. */}
       <View style={styles.routeCard}>
         <View style={styles.endpoints}>
           {/* Start */}
@@ -975,72 +818,9 @@ export default function RoutesScreen() {
             </Text>
           </Pressable>
         </View>
-
-        {/* Idealnie wyśrodkowany przycisk SWAP */}
-        <Pressable
-          onPress={handleSwap}
-          style={({ pressed }) => [
-            styles.swapBtn,
-            pressed && { backgroundColor: scheme.secondaryContainer, transform: [{ scale: 0.93 }] },
-          ]}
-          hitSlop={10}
-        >
-          <ArrowUpDown size={17} color={scheme.primary} />
-        </Pressable>
       </View>
 
-      {/* 3 i 4. Filtry i sortowanie zwijają się, gdy lista się uspokoi */}
-      <Animated.View style={[styles.collapsibleFiltersWrap, animatedFilterStyle]}>
-        <View
-          onLayout={(e) => {
-            const h = e.nativeEvent.layout.height;
-            if (h > 60 && Math.abs(measuredFiltersHeight.value - h) > 2) {
-              measuredFiltersHeight.value = h;
-            }
-          }}
-        >
-          {/* 3. Jednorazowe filtry: bezpośrednie + pojazdy (nie ruszają ustawień) */}
-          <View style={styles.filtersWrap}>
-            <RouteFiltersCard
-              directOnly={directOnly}
-              onDirectChange={setDirectOnly}
-              mode={modeFilter}
-              onModeChange={setModeFilter}
-            />
-          </View>
-
-          {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
-          <View style={styles.sortRow}>
-            {(
-              [
-                { key: 'fastest', label: 'Najszybciej' },
-                { key: 'earliest', label: 'Najwcześniej' },
-              ] as const
-            ).map((opt) => {
-              const active = sortMode === opt.key;
-              return (
-                <Pressable
-                  key={opt.key}
-                  onPress={() => setSortMode(opt.key)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.sortPill,
-                    active && styles.sortPillActive,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                >
-                  <Text style={[styles.sortText, active && styles.sortTextActive]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </Animated.View>
-
-      {/* 5. Lista połączeń */}
+      {/* 3. Lista połączeń */}
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={scheme.primary} />
@@ -1118,9 +898,6 @@ export default function RoutesScreen() {
           onEndReachedThreshold={0.5}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          onScrollEndDrag={handleScrollEndDrag}
-          onMomentumScrollBegin={handleMomentumScrollBegin}
-          onMomentumScrollEnd={handleMomentumScrollEnd}
           onContentSizeChange={handleContentSizeChange}
           renderItem={renderConnection}
           ListHeaderComponent={
@@ -1199,7 +976,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 6. Bottom sheet wyboru daty i godziny */}
+      {/* 4. Bottom sheet wyboru daty i godziny */}
       {timeSheetOpen && (
         <DepartureTimeSheet
           initialTimeSec={departureTimeSec}
@@ -1209,7 +986,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 7. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
+      {/* 5. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
           placeholder={sheetFor === 'from' ? 'Skąd wyruszasz?' : 'Dokąd jedziesz?'}
@@ -1227,7 +1004,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 8. Pływający dolny pasek kciuka w tramwaju */}
+      {/* 6. Dolne menu — jedyne miejsce na filtry i akcje (pod kciukiem) */}
       {!sheetFor && !timeSheetOpen && (
         <RoutesThumbBar
           onSwap={handleSwap}
@@ -1238,6 +1015,8 @@ export default function RoutesScreen() {
           onOpenTimeSheet={() => setTimeSheetOpen(true)}
           modeFilter={modeFilter}
           onCycleMode={handleCycleMode}
+          sortMode={sortMode}
+          onCycleSort={handleCycleSort}
           onRefresh={() => void quietRefresh()}
         />
       )}
@@ -1267,27 +1046,6 @@ const styles = StyleSheet.create({
     ...type.titleMedium,
     fontWeight: '700',
     color: scheme.onSurface,
-  },
-  timeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
-    height: 38,
-    paddingHorizontal: 12,
-  },
-  timeChipActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  timeText: {
-    ...type.labelMedium,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '600',
-  },
-  timeTextActive: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
   },
   pinBtn: {
     width: 38,
@@ -1388,46 +1146,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   // Wyśrodkowany przycisk zamiany
-  swapBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  collapsibleFiltersWrap: {
-    overflow: 'hidden',
-  },
   // Segmented: Najszybciej / Najwcześniej
-  sortRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  filtersWrap: {
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  sortPill: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: shape.full,
-    paddingVertical: 9,
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  sortPillActive: {
-    backgroundColor: scheme.secondaryContainer,
-  },
-  sortText: {
-    ...type.labelLarge,
-    color: scheme.onSurfaceVariant,
-  },
-  sortTextActive: {
-    color: scheme.onSecondaryContainer,
-    fontWeight: '700',
-  },
   countRow: {
     flexDirection: 'row',
     alignItems: 'center',

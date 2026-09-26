@@ -1,7 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  ArrowDownUp,
   ArrowUpDown,
   BusFront,
   Clock3,
@@ -10,8 +9,14 @@ import {
   TramFront,
   Zap,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
-import type { ModePreference } from './RouteFiltersCard';
+import { scheme } from '../theme/tokens';
+import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
+
+/** Filtr środka transportu. Jedyne miejsce, w którym żyje ten typ. */
+export type ModePreference = 'all' | 'tram' | 'bus';
+
+/** Sortowanie listy połączeń. */
+export type SortMode = 'fastest' | 'earliest';
 
 export interface RoutesThumbBarProps {
   onSwap: () => void;
@@ -22,17 +27,18 @@ export interface RoutesThumbBarProps {
   onOpenTimeSheet: () => void;
   modeFilter: ModePreference;
   onCycleMode: () => void;
+  sortMode: SortMode;
+  onCycleSort: () => void;
   onRefresh?: () => void;
   refreshing?: boolean;
 }
 
 /**
- * Pływający pasek szybkiej obsługi jedną ręką w tramwaju (Thumb Zone).
- * Umieszczony w dolnej, naturalnej strefie kciuka:
- * - Szybkie odwrócenie trasy (powrót)
- * - Przełącznik połączeń bezpośrednich (bez przesiadek)
- * - Szybki wybór czasu odjazdu / powrót do „Teraz”
- * - Cykl filtrowania pojazdów (tramwaj / autobus / wszystkie)
+ * Dolne menu ekranu połączeń — jedyne miejsce na filtry i akcje.
+ * Wszystko, czym sterujemy jedną ręką w tramwaju, mieszka pod kciukiem:
+ * odwrócenie trasy, czas odjazdu, filtr bezpośrednich, typ pojazdu,
+ * sortowanie i odświeżenie danych live. Górna część ekranu ma tylko
+ * pokazywać skąd dokąd i listę.
  */
 export function RoutesThumbBar({
   onSwap,
@@ -43,213 +49,106 @@ export function RoutesThumbBar({
   onOpenTimeSheet,
   modeFilter,
   onCycleMode,
+  sortMode,
+  onCycleSort,
   onRefresh,
   refreshing,
 }: RoutesThumbBarProps) {
-  const insets = useSafeAreaInsets();
-
   const renderModeIcon = () => {
     const color = modeFilter !== 'all' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
-    if (modeFilter === 'tram') return <TramFront size={16} color={color} />;
-    if (modeFilter === 'bus') return <BusFront size={16} color={color} />;
-    return <Layers size={16} color={color} />;
+    if (modeFilter === 'tram') return <TramFront size={17} color={color} />;
+    if (modeFilter === 'bus') return <BusFront size={17} color={color} />;
+    return <Layers size={17} color={color} />;
   };
 
   const modeLabel =
     modeFilter === 'tram' ? 'Tramwaje' : modeFilter === 'bus' ? 'Autobusy' : 'Pojazdy';
 
+  const sortLabel = sortMode === 'fastest' ? 'Najszybciej' : 'Najwcześniej';
+
   return (
-    <View
-      pointerEvents="box-none"
-      style={[styles.floatingWrapper, { bottom: Math.max(insets.bottom, 10) + 10 }]}
-    >
-      <View style={styles.bar}>
-        {/* Odwrócenie trasy (powrót) */}
-        <Pressable
-          onPress={onSwap}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel="Odwróć trasę: zamień punkt startowy z docelowym"
-          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
-        >
-          <View style={styles.iconCircle}>
-            <ArrowUpDown size={15} color={scheme.primary} />
-          </View>
-          <Text style={styles.btnLabel}>Odwróć</Text>
-        </Pressable>
+    <ThumbBar>
+      <ThumbBarItem
+        onPress={onSwap}
+        icon={<ArrowUpDown size={17} color={scheme.primary} />}
+        label="Odwróć"
+        accessibilityLabel="Odwróć trasę: zamień punkt startowy z docelowym"
+      />
 
-        <View style={styles.divider} />
+      <ThumbBarDivider />
 
-        {/* Filtr: tylko bezpośrednie */}
-        <Pressable
-          onPress={onToggleDirect}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={
-            directOnly
-              ? 'Filtr połączeń bezpośrednich: aktywny. Dotknij, aby pokazać wszystkie.'
-              : 'Filtr połączeń bezpośrednich: nieaktywny. Dotknij, aby włączyć.'
-          }
-          style={({ pressed }) => [
-            styles.btn,
-            directOnly && styles.btnActive,
-            pressed && styles.btnPressed,
-          ]}
-        >
+      <ThumbBarItem
+        onPress={onToggleDirect}
+        active={directOnly}
+        icon={
           <Zap
-            size={15}
+            size={17}
             color={directOnly ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
             fill={directOnly ? scheme.onPrimaryContainer : 'transparent'}
           />
-          <Text style={[styles.btnLabel, directOnly && styles.btnLabelActive]}>
-            Bezpośr.
-          </Text>
-        </Pressable>
+        }
+        label="Bezpośr."
+        accessibilityLabel={
+          directOnly
+            ? 'Filtr połączeń bezpośrednich: aktywny. Dotknij, aby pokazać wszystkie.'
+            : 'Filtr połączeń bezpośrednich: nieaktywny. Dotknij, aby włączyć.'
+        }
+      />
 
-        <View style={styles.divider} />
+      <ThumbBarDivider />
 
-        {/* Czas odjazdu */}
-        <Pressable
-          onPress={onOpenTimeSheet}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={`Czas odjazdu: ${timeLabel}. Dotknij, aby zmienić.`}
-          style={({ pressed }) => [
-            styles.btn,
-            isCustomTime && styles.btnActive,
-            pressed && styles.btnPressed,
-          ]}
-        >
+      <ThumbBarItem
+        onPress={onCycleMode}
+        active={modeFilter !== 'all'}
+        icon={renderModeIcon()}
+        label={modeLabel}
+        accessibilityLabel={`Filtruj środek transportu: aktualnie ${modeLabel}. Dotknij, aby zmienić.`}
+      />
+
+      <ThumbBarDivider />
+
+      <ThumbBarItem
+        onPress={onOpenTimeSheet}
+        active={isCustomTime}
+        icon={
           <Clock3
-            size={15}
+            size={17}
             color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
           />
-          <Text
-            style={[styles.btnLabel, isCustomTime && styles.btnLabelActive]}
-            numberOfLines={1}
-          >
-            {timeLabel}
-          </Text>
-        </Pressable>
+        }
+        label={timeLabel}
+        accessibilityLabel={`Czas odjazdu: ${timeLabel}. Dotknij, aby zmienić.`}
+      />
 
-        <View style={styles.divider} />
+      <ThumbBarDivider />
 
-        {/* Tryb pojazdu: Tram / Autobus / Wszystkie */}
-        <Pressable
-          onPress={onCycleMode}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={`Filtruj środek transportu: aktualnie ${modeLabel}. Dotknij, aby zmienić.`}
-          style={({ pressed }) => [
-            styles.btn,
-            modeFilter !== 'all' && styles.btnActive,
-            pressed && styles.btnPressed,
-          ]}
-        >
-          {renderModeIcon()}
-          <Text
-            style={[styles.btnLabel, modeFilter !== 'all' && styles.btnLabelActive]}
-            numberOfLines={1}
-          >
-            {modeLabel}
-          </Text>
-        </Pressable>
+      <ThumbBarItem
+        onPress={onCycleSort}
+        active={sortMode === 'earliest'}
+        icon={
+          <ArrowDownUp
+            size={17}
+            color={sortMode === 'earliest' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+          />
+        }
+        label={sortLabel}
+        accessibilityLabel={`Sortowanie: ${sortLabel}. Dotknij, aby zmienić.`}
+      />
 
-        {/* Opcjonalny przycisk szybkiego odświeżenia live */}
-        {onRefresh ? (
-          <>
-            <View style={styles.divider} />
-            <Pressable
-              onPress={onRefresh}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel="Odśwież rozkłady i pozycje na żywo"
-              style={({ pressed }) => [
-                styles.iconOnlyBtn,
-                pressed && styles.btnPressed,
-              ]}
-            >
-              <RotateCw
-                size={16}
-                color={refreshing ? scheme.primary : scheme.onSurfaceVariant}
-              />
-            </Pressable>
-          </>
-        ) : null}
-      </View>
-    </View>
+      {onRefresh ? (
+        <>
+          <ThumbBarDivider />
+          <ThumbBarItem
+            onPress={onRefresh}
+            icon={
+              <RotateCw size={17} color={refreshing ? scheme.primary : scheme.onSurfaceVariant} />
+            }
+            label=""
+            style={{ flex: 0, minWidth: 46, paddingHorizontal: 6 }}
+            accessibilityLabel="Odśwież rozkłady i pozycje na żywo"
+          />
+        </>
+      ) : null}
+    </ThumbBar>
   );
 }
-
-const styles = StyleSheet.create({
-  floatingWrapper: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    alignItems: 'center',
-    zIndex: 99,
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    minHeight: 52,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    maxWidth: 440,
-    width: '100%',
-    justifyContent: 'space-between',
-    ...elev.level3,
-  },
-  btn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: shape.full,
-    minHeight: 42,
-  },
-  btnActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  btnPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.96 }],
-  },
-  iconCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnLabel: {
-    ...type.labelMedium,
-    color: scheme.onSurface,
-    fontWeight: '600',
-  },
-  btnLabelActive: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
-  },
-  divider: {
-    width: 1,
-    height: 20,
-    backgroundColor: scheme.outlineVariant,
-    opacity: 0.5,
-  },
-  iconOnlyBtn: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: shape.full,
-  },
-});
