@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   MapPin,
   Pencil,
@@ -38,6 +39,9 @@ export function ManagePlacesSheet({
 }) {
   const sheetRef = useRef<BottomSheet>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Arkusz leży na spodzie ekranu (edge-to-edge), więc pasek nawigacji
+  // zasłania ostatnią pozycję listy i przycisk „Dodaj miejsce”.
+  const insets = useSafeAreaInsets();
 
   // Android back / gest wstecz zamyka sheet zamiast wyjścia z apki
   const closeRef = useRef(onClose);
@@ -59,6 +63,7 @@ export function ManagePlacesSheet({
       ref={sheetRef}
       index={0}
       snapPoints={['65%', '92%']}
+      bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
       onChange={(idx) => {

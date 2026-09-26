@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import BottomSheet from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Calendar,
   Check,
@@ -144,6 +145,9 @@ export function DepartureTimeSheet({
   const now = new Date();
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
+  // Android z paskiem nawigacji zasłania dolną część arkusza (edge-to-edge),
+  // więc bez tego insetu przycisk „Zastosuj” był w dole martwym polem.
+  const insets = useSafeAreaInsets();
 
   // Oblicz początkowe wartości
   const initialIsNow = initialTimeSec === undefined;
@@ -220,6 +224,7 @@ export function DepartureTimeSheet({
     <BottomSheet
       index={0}
       snapPoints={['64%']}
+      bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
       enableContentPanningGesture={false}

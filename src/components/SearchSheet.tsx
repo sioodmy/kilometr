@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import BottomSheet, { BottomSheetFlatList, TouchableOpacity } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, X } from 'lucide-react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { elev, scheme, shape, type } from '../theme/tokens';
@@ -42,6 +43,8 @@ export function SearchSheet({
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
+  // Pasek nawigacji nie może zasłaniać ostatnich wyników (edge-to-edge).
+  const insets = useSafeAreaInsets();
 
   // Stabilny ref do onClose (unikamy prze-subskrypcji przy każdym renderze)
   const closeRef = useRef(onClose);
@@ -93,6 +96,7 @@ export function SearchSheet({
       ref={ref}
       index={0}
       snapPoints={['92%']}
+      bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
       onChange={(idx) => {
