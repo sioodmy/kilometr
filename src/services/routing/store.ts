@@ -246,11 +246,17 @@ export class LocalGtfsStore {
       const stRows = await db.getAllAsync<{trip_id: string, stop_id: string, arr_sec: number, dep_sec: number, seq: number}>(
         `SELECT trip_id, stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id IN (${list}) ORDER BY trip_id, seq`
       );
+      // Zastępujemy, nie dopisujemy: te same kursy trafiają do kolejnych
+      // wycinków (o innej godzinie), a dopisanie duplikowało wiersze
+      // stop_times. Wzorzec budowany z podwojonej sekwencji przystanków
+      // psuł RAPTOR-a — „wsiądź i wysiądź” na tym samym przystanku,
+      // a wszystkie podróże leciały do odrzucenia jako bezsensowne.
+      const timesByTrip = new Map<string, any[]>();
       for (const r of stRows) {
-        let group = this.stopTimes.get(r.trip_id);
+        let group = timesByTrip.get(r.trip_id);
         if (!group) {
           group = [];
-          this.stopTimes.set(r.trip_id, group);
+          timesByTrip.set(r.trip_id, group);
         }
         group.push({
           trip_id: r.trip_id,
@@ -259,6 +265,9 @@ export class LocalGtfsStore {
           departure_sec: r.dep_sec,
           stop_sequence: r.seq,
         });
+      }
+      for (const [tripId, group] of timesByTrip) {
+        this.stopTimes.set(tripId, group);
       }
     }
 
