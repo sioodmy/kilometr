@@ -7,14 +7,24 @@ import { LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { formatWalkTime } from '../services/settings';
 
+/** Czy liczba od 2 do 4 wymaga formy "2 przesiadki" (z wyjątkiem 12–14). */
+function isFew(n: number): boolean {
+  const last = n % 10;
+  const teen = n % 100;
+  return last >= 2 && last <= 4 && (teen < 12 || teen > 14);
+}
+
 /** Poprawna polska odmiana: 1 przesiadka, 2–4 przesiadki, 5+ przesiadek. */
 export function transfersLabel(n: number): string {
   if (n <= 0) return 'bezpośrednio';
   if (n === 1) return '1 przesiadka';
-  const last = n % 10;
-  const teen = n % 100;
-  if (last >= 2 && last <= 4 && (teen < 12 || teen > 14)) return `${n} przesiadki`;
-  return `${n} przesiadek`;
+  return isFew(n) ? `${n} przesiadki` : `${n} przesiadek`;
+}
+
+/** Poprawna polska odmiana dla liczby połączeń: 1 / 2–4 / 5+. */
+export function connectionsLabel(n: number): string {
+  if (n === 1) return '1 połączenie';
+  return isFew(n) ? `${n} połączenia` : `${n} połączeń`;
 }
 
 /** Minuty od północy dla "teraz". */

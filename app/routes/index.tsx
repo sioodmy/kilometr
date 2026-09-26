@@ -47,8 +47,14 @@ import {
   pingBackend,
   rehydrateConnections,
 } from '../../src/services/offlineCache';
+import {
+  getDataStatus,
+  importGtfsFromNetwork,
+  subscribeDataStatus,
+  type DataStatus,
+} from '../../src/services/dataManager';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionCard } from '../../src/components/ConnectionCard';
+import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import { RouteFiltersCard, type ModePreference } from '../../src/components/RouteFiltersCard';
 import { SearchSheet } from '../../src/components/SearchSheet';
@@ -103,6 +109,13 @@ export default function RoutesScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [offline, setOffline] = useState(false);
+  // Rozkład trzymany na telefonie: bez niego RAPTOR nie ma czym liczyć, więc
+  // pusty wynik to nie „brak serwera", tylko brak danych offline.
+  const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
+  useEffect(() => subscribeDataStatus(setDataStatus), []);
+  const timetableBusy =
+    dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+  const timetableReady = dataStatus.state === 'ready';
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [noMoreEarlier, setNoMoreEarlier] = useState(false);
@@ -393,6 +406,13 @@ export default function RoutesScreen() {
       const q = queryAt(depSec);
       const c = await RoutingService.getConnections(q);
       if (seq !== fetchSeq.current) return;
+      // Bez rozkładu planer zwraca pustkę, a nie błąd — bez tego stanu
+      // użytkownik widzi „nie znaleziono połączeń” zamiast prośby o dane.
+      if (getDataStatus().state !== 'ready') {
+        setItems([]);
+        setLoadError(true);
+        return;
+      }
       setItems(applyLiveList(c, depSec));
       void recordTripSearch(q.fromLat, q.fromLon, q.fromTitle, {
         id: q.toId || q.toTitle,
@@ -835,16 +855,47 @@ export default function RoutesScreen() {
         </View>
       ) : loadError ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>Brak połączenia z serwerem</Text>
-          <Text style={styles.emptySub}>
-            Nie udało się pobrać połączeń MPK. Sprawdź internet i spróbuj ponownie.
+          <Text style={styles.emptyTitle}>
+            {timetableReady ? 'Nie udało się policzyć połączeń' : 'Brak rozkładu MPK'}
           </Text>
-          <Pressable
-            onPress={() => fetchRoutes(departureTimeSec)}
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-          >
-            <Text style={styles.retryText}>Spróbuj ponownie</Text>
-          </Pressable>
+          <Text style={styles.emptySub}>
+            {timetableReady
+              ? 'Planer liczy trasy na telefonie. Spróbuj ponownie — jeśli powtarza się to zawsze, odśwież rozkład w ustawieniach.'
+              : 'Aplikacja liczy trasy na telefonie z pełnego rozkładu MPK. Bez niego nie ma połączeń — pobierz go raz, potem działa offline.'}
+          </Text>
+          {!timetableReady && (
+            <Pressable
+              onPress={() => void importGtfsFromNetwork()}
+              disabled={timetableBusy}
+              style={({ pressed }) => [
+                styles.retryBtn,
+                timetableBusy && styles.retryBtnBusy,
+                pressed && !timetableBusy && { opacity: 0.8 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Pobierz rozkład MPK"
+            >
+              {timetableBusy ? (
+                <Text style={styles.retryText}>
+                  {dataStatus.state === 'downloading'
+                    ? `Pobieranie… ${Math.round(dataStatus.progress * 100)}%`
+                    : dataStatus.state === 'importing'
+                      ? `${dataStatus.step} ${Math.round(dataStatus.progress * 100)}%`
+                      : 'Pobieranie…'}
+                </Text>
+              ) : (
+                <Text style={styles.retryText}>Pobierz rozkład</Text>
+              )}
+            </Pressable>
+          )}
+          {timetableReady && (
+            <Pressable
+              onPress={() => fetchRoutes(departureTimeSec)}
+              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={styles.retryText}>Spróbuj ponownie</Text>
+            </Pressable>
+          )}
         </View>
       ) : (
         <FlatList
@@ -881,7 +932,7 @@ export default function RoutesScreen() {
               )}
               <View style={styles.countRow}>
                 <Text style={styles.count} numberOfLines={1}>
-                  {items.length} połączenia • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
+                  {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
                   {directOnly ? ' • tylko bezpośrednie' : ''}
                   {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
                 </Text>
@@ -1208,6 +1259,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 8,
   },
+  retryBtnBusy: { opacity: 0.7 },
   retryText: {
     ...type.labelLarge,
     fontWeight: '700',

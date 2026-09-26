@@ -14,6 +14,9 @@ export function SmartHistoryList({
   departures?: Record<string, number | undefined>;
   onSelect: (d: SmartDestination) => void;
 }) {
+  // Nagłówek bez treści to martwy szum — przy pustej historii sekcja znika.
+  if (items.length === 0) return null;
+
   return (
     <View style={{ gap: 8 }}>
       <View style={styles.header}>
