@@ -184,12 +184,15 @@ async function writeCache(key: string, coords: Coord[]): Promise<void> {
   await kvSet(CACHE_KEY, JSON.stringify(entries));
 }
 
-async function fetchChunk(points: Coord[]): Promise<Coord[] | null> {
+async function fetchChunk(points: Coord[], signal?: AbortSignal): Promise<Coord[] | null> {
   if (points.length < 2) return null;
   const coordsParam = points.map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
   const url = `${OSRM_BASE_URL}/route/v1/driving/${coordsParam}?overview=full&geometries=geojson`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  // Anulowanie z ekranu ma przerwać także żądanie w locie, nie tylko pętlę.
+  const onAbort = () => ctrl.abort();
+  signal?.addEventListener('abort', onAbort);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
     if (!res.ok) return null;
@@ -205,6 +208,7 @@ async function fetchChunk(points: Coord[]): Promise<Coord[] | null> {
     return null;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -213,7 +217,7 @@ async function fetchChunk(points: Coord[]): Promise<Coord[] | null> {
  * po 20 waypointów) i sklejone w jeden ciąg. Zwraca null, gdy sieć zawodzi —
  * wtedy noga zostaje prosta, a mapa i tak pokazuje trasę.
  */
-export async function fetchLegGeometry(leg: MapLeg): Promise<Coord[] | null> {
+export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
   );
@@ -226,13 +230,15 @@ export async function fetchLegGeometry(leg: MapLeg): Promise<Coord[] | null> {
 
   const chunks: Coord[] = [];
   for (let i = 0; i < points.length - 1; i += WAYPOINTS_PER_REQUEST - 1) {
+    if (signal?.aborted) return null;
     const slice = points.slice(i, i + WAYPOINTS_PER_REQUEST);
-    const part = await fetchChunk(slice);
+    const part = await fetchChunk(slice, signal);
     if (!part) return null;
     // Sklej bez powtórzenia punktu granicznego.
     chunks.push(...(chunks.length > 0 ? part.slice(1) : part));
   }
   if (chunks.length < 2) return null;
+  if (signal?.aborted) return null;
   void writeCache(key, chunks);
   return chunks;
 }
@@ -245,15 +251,21 @@ export function straightGeometry(leg: MapLeg): Coord[] {
 /**
  * Uzupełnia geometrię nóg po kolei (OSRM demo nie lubi równoległych pytań).
  * Każda gotowa noga trafia do `onLeg`, więc mapa dociąga je w tle.
+ *
+ * `signal` pozwala przerwać całą pętlę — ekran nie powinien ciągnąć zapytań do
+ * publicznego serwera po zamknięciu.
  */
 export async function resolveGeometry(
   route: MapRoute,
   onLeg: (legId: string, coords: Coord[]) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   for (const leg of route.legs) {
+    if (signal?.aborted) return;
     if (leg.mode === 'walk') continue;
     if (leg.stops.length < 2) continue;
-    const coords = await fetchLegGeometry(leg).catch(() => null);
+    const coords = await fetchLegGeometry(leg, signal).catch(() => null);
+    if (signal?.aborted) return;
     if (coords && coords.length > 1) onLeg(leg.id, coords);
     // Pauza między zapytaniami — demo-serwer ma limit ~1 req/s.
     await new Promise((r) => setTimeout(r, 350));

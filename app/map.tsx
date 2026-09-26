@@ -128,6 +128,7 @@ export default function RouteMapScreen() {
   useEffect(() => {
     if (!route) return;
     let cancelled = false;
+    const abort = new AbortController();
     setShaping(true);
     // Startujemy od prostych odcinków, żeby trasa była widoczna natychmiast.
     route.legs.forEach((leg) => {
@@ -137,9 +138,13 @@ export default function RouteMapScreen() {
       }
     });
     (async () => {
-      await resolveGeometry(route, (legId, coords) => {
-        if (!cancelled) pushGeometry(legId, coords);
-      });
+      await resolveGeometry(
+        route,
+        (legId, coords) => {
+          if (!cancelled) pushGeometry(legId, coords);
+        },
+        abort.signal,
+      );
       if (cancelled) return;
       setShaping(false);
       // Jeśli po dociągnięciu nadal rysujemy same proste między przystankami,
@@ -152,6 +157,8 @@ export default function RouteMapScreen() {
     })();
     return () => {
       cancelled = true;
+      // Nie ciągniemy zapytań do OSRM po zamknięciu ekranu.
+      abort.abort();
     };
   }, [route, pushGeometry]);
 
@@ -223,7 +230,8 @@ export default function RouteMapScreen() {
     };
   }, [item, route]);
 
-  // Śledzenie pojazdu: gdy GPS przestaje być spójny, gasimy tryb śledzenia.
+  // Śledzenie samo wygasa po 3 minutach — mapa podążająca za pojazdem w tle
+  // zamiast oddawać telefon.
   useEffect(() => {
     if (!follow || !vehicle) return;
     const timer = setTimeout(() => setFollow(false), 3 * 60 * 1000);

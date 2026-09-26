@@ -1,6 +1,6 @@
 // Most między aplikacją a mapą w WebView.
 //
-// WebView dostaje gotowy dokument (Leaflet + kafelki OSM w stylu M3), a stan
+// WebView dostaje gotowy dokument (MapLibre + kafelki OSM w stylu M3), a stan
 // trasy, pojazdu i śledzenia dokładamy komunikatami. Komunikaty w obie strony są
 // typowane w `src/map/types.ts`, żeby zmiana protokołu nie rozjechała się po
 // ekranie.
@@ -90,15 +90,22 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     );
   }, []);
 
+  // Nowy dokument (po ubiciu procesu WebView) to nowa pierwsza nawigacja —
+  // inaczej blokada nawigacji zatrzymałaby mapę na pustym ekranie.
+  const restart = useCallback(() => {
+    firstLoad.current = true;
+    setAttempt((a) => a + 1);
+  }, []);
+
   useImperativeHandle(
     ref,
     () => ({
       setGeometry: (legId, coords) => send({ t: 'geometry', legId, coords, approx: false }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
       center: (lat, lon, zoom) => send({ t: 'center', lat, lon, zoom }),
-      reload: () => setAttempt((a) => a + 1),
+      reload: restart,
     }),
-    [send],
+    [restart, send],
   );
 
   useEffect(() => {
@@ -159,7 +166,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   );
 
   return (
-    <View style={styles.wrap} collapsable={false}>
+    <View style={styles.wrap}>
       <WebView
         key={attempt}
         ref={webRef}
@@ -176,20 +183,20 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         }}
         setSupportMultipleWindows={false}
         javaScriptCanOpenWindowsAutomatically={false}
-        // Gesty muszą być w pełni obsługiwane przez Leaflet, nie przez scroller.
+        // Gesty w pełni obsługuje mapa, a nie scroller pod spodem.
         scrollEnabled={false}
         bounces={false}
         overScrollMode="never"
         showsVerticalScrollIndicator={false}
         setBuiltInZoomControls={false}
         androidLayerType="hardware"
-        onContentProcessDidTerminate={() => setAttempt((a) => a + 1)}
-        onRenderProcessGone={() => setAttempt((a) => a + 1)}
+        onContentProcessDidTerminate={restart}
+        onRenderProcessGone={restart}
         onError={() => onError?.('Nie udało się załadować mapy')}
         onHttpError={(e) => {
           // Główny dokument HTML nigdy nie idzie przez http://, więc każdy
           // błąd HTTP dotyczy zasobów (kafelki) — nie zabijamy całej mapy.
-          if (e.nativeEvent.url === 'about:blank') setAttempt((a) => a + 1);
+          if (e.nativeEvent.url === 'about:blank') restart();
         }}
       />
     </View>
