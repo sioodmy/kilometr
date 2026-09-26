@@ -14,6 +14,7 @@ import {
   Text,
   View,
   type StyleProp,
+  type TextStyle,
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,7 +55,7 @@ interface ThumbBarItemProps {
   accessibilityLabel?: string;
   accessibilityState?: { selected?: boolean; disabled?: boolean };
   style?: StyleProp<ViewStyle>;
-  labelStyle?: StyleProp<ViewStyle>;
+  labelStyle?: StyleProp<TextStyle>;
 }
 
 export function ThumbBarItem({

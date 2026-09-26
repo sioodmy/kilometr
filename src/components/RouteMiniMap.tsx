@@ -58,14 +58,24 @@ export function RouteMiniMap({
 }: RouteMiniMapProps) {
   const view = useMemo(() => {
     if (!coords || coords.length < 2) return null;
-    const { point: cursor } = interpolateRoute(coords, progress);
-    // Trasa dalej (aż do końca albo do `rangeM` po przekroczeniu limitu).
+    const { point: cursor, index } = interpolateRoute(coords, progress);
+
+    // Odcinek „za nami” — krótki ogon, żeby było widać, skąd przyjechaliśmy.
+    const behind: Coord[] = [cursor];
+    let back = 0;
+    for (let i = index; i >= 0; i--) {
+      back += distanceM(behind[behind.length - 1], coords[i]);
+      if (back > rangeM * 0.45) break;
+      behind.push(coords[i]);
+    }
+    behind.reverse();
+
+    // Trasa dalej, aż do `rangeM` po przekroczeniu limitu.
     const ahead: Coord[] = [cursor];
-    for (let i = coords.length - 1; i >= 0; i--) {
-      if (distanceM(cursor, coords[i]) > rangeM * 2.2) break;
+    for (let i = index + 1; i < coords.length; i++) {
+      if (distanceM(cursor, coords[i]) > rangeM * 2) break;
       ahead.push(coords[i]);
     }
-    ahead.reverse();
 
     // Próbka co kilka punktów, żeby liczba odcinków była stała.
     const stride = Math.max(1, Math.ceil(ahead.length / MAX_POINTS));
@@ -73,39 +83,35 @@ export function RouteMiniMap({
     if (points[points.length - 1] !== ahead[ahead.length - 1]) points.push(ahead[ahead.length - 1]);
 
     const scale = size / 2 / rangeM;
+    const toSegs = (line: Coord[], color: string, key: string) =>
+      line.slice(0, -1).map((_, i) => {
+        const a = project(line[i], cursor, scale, size);
+        const b = project(line[i + 1], cursor, scale, size);
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        return (
+          <View
+            key={`${key}${i}`}
+            style={[
+              styles.seg,
+              {
+                width: len,
+                backgroundColor: color,
+                transform: [
+                  { translateX: a.x },
+                  { translateY: a.y - 1.5 },
+                  { rotateZ: `${Math.atan2(dy, dx)}rad` },
+                ],
+              },
+            ]}
+          />
+        );
+      });
+
     const projected = points.map((p) => project(p, cursor, scale, size));
     const half = size / 2;
     const self = { x: half, y: half };
-
-    // Odcinek „przed nami” dostaje akcent — to jest ta nitka trasy dalej.
-    const behind: React.ReactNode[] = [];
-    const aheadSegs: React.ReactNode[] = [];
-    for (let i = 0; i < projected.length - 1; i++) {
-      const a = projected[i];
-      const b = projected[i + 1];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len < 0.6) continue;
-      const seg = (
-        <View
-          key={`s${i}`}
-          style={[
-            styles.seg,
-            {
-              width: len,
-              transform: [
-                { translateX: a.x },
-                { translateY: a.y - 1.5 },
-                { rotateZ: `${Math.atan2(dy, dx)}rad` },
-              ],
-              backgroundColor: i >= 1 ? aheadColor : scheme.outlineVariant,
-            },
-          ]}
-        />
-      );
-      (i >= 1 ? aheadSegs : behind).push(seg);
-    }
 
     const userPt = user ? project([user.lat, user.lon], cursor, scale, size) : null;
     const userInside =
@@ -121,8 +127,8 @@ export function RouteMiniMap({
       vehiclePt.y < size - 2;
 
     return {
-      behind,
-      aheadSegs,
+      behind: toSegs(behind, scheme.outlineVariant, 'b'),
+      ahead: toSegs(points, aheadColor, 'a'),
       self,
       userPt,
       userInside,
@@ -145,7 +151,7 @@ export function RouteMiniMap({
   return (
     <View style={[styles.pad, { width: size, height: size }]}>
       {view.behind}
-      {view.aheadSegs}
+      {view.ahead}
 
       {/* Własna pozycja: kółko z halo, jak na mapie. */}
       {userPt ? (

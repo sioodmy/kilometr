@@ -57,37 +57,21 @@ interface SchedulePoint {
  * Dzięki temu wiemy, czego oczekiwać w dowolnym miejscu trasy.
  */
 function legSchedule(leg: MapLeg, coords: Coord[]): SchedulePoint[] {
-  const pts: SchedulePoint[] = [];
   const fromSec = timeStringToSeconds(leg.departAt);
   const toSec = timeStringToSeconds(leg.arriveAt);
+  const pts: SchedulePoint[] = [];
 
-  const stops = leg.stops;
-  if (stops.length === 0) {
-    return [
-      { alongM: 0, timeSec: fromSec },
-      { alongM: distanceM(coords[0], coords[coords.length - 1]), timeSec: toSec },
-    ];
-  }
-
-  // Pozycja przystanku wzdłuż geometrii: rzutamy jego współrzędne.
-  for (const stop of stops) {
+  for (const stop of leg.stops) {
     const p = projectRoutePoint(coords, stop.lat, stop.lon);
     if (!p) continue;
-    const t =
-      stop.departSec ??
-      stop.arriveSec ??
-      (stop.role === 'board' ? fromSec : toSec);
+    const t = stop.departSec ?? stop.arriveSec;
     if (t == null || !isFinite(t)) continue;
     pts.push({ alongM: p.alongM, timeSec: t });
   }
-  // Pierwsza i ostatnia stopa to końce nogi — czas z planu jest wiążący.
-  const first = pts[0];
-  if (!first || first.alongM > 1) pts.unshift({ alongM: 0, timeSec: fromSec });
-  const last = pts[pts.length - 1];
-  if (!last) pts.push({ alongM: 0, timeSec: toSec });
-  else if (fromSec < toSec) {
-    pts[pts.length - 1] = { alongM: last.alongM, timeSec: toSec };
-  }
+  // Końce nogi są rozstrzygające: plan mówi, o której godzinie wsiadamy
+  // i wysiadamy, a czasy przystanków pośrednich bywają tylko wejściowe.
+  pts.unshift({ alongM: 0, timeSec: fromSec });
+  pts.push({ alongM: Math.max(0, distanceM(coords[0], coords[coords.length - 1])), timeSec: toSec });
   pts.sort((a, b) => a.alongM - b.alongM);
   return pts;
 }

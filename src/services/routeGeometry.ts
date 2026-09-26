@@ -425,20 +425,20 @@ export function getAllRouteCoords(
 export function interpolateRoute(
   coords: Coord[],
   progress: number,
-): { point: Coord; heading: number } {
+): { point: Coord; heading: number; index: number } {
   if (!coords || coords.length === 0) {
-    return { point: [51.1079, 17.0385], heading: 0 };
+    return { point: [51.1079, 17.0385], heading: 0, index: 0 };
   }
   if (coords.length === 1) {
-    return { point: coords[0], heading: 0 };
+    return { point: coords[0], heading: 0, index: 0 };
   }
 
   const p = Math.max(0, Math.min(1, progress));
   if (p === 0) {
-    return { point: coords[0], heading: 0 };
+    return { point: coords[0], heading: 0, index: 0 };
   }
   if (p === 1) {
-    return { point: coords[coords.length - 1], heading: 0 };
+    return { point: coords[coords.length - 1], heading: 0, index: coords.length - 1 };
   }
 
   const dists: number[] = [0];
@@ -450,7 +450,7 @@ export function interpolateRoute(
   }
 
   if (totalDist <= 0) {
-    return { point: coords[0], heading: 0 };
+    return { point: coords[0], heading: 0, index: 0 };
   }
 
   const targetDist = p * totalDist;
@@ -480,7 +480,7 @@ export function interpolateRoute(
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
   const heading = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 
-  return { point: [lat, lon], heading };
+  return { point: [lat, lon], heading, index: segIndex };
 }
 
 /**
