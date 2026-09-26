@@ -45,13 +45,18 @@ export function ThumbBar({ children, bottom = 10, style, contentStyle, inline }:
     </View>
   );
 }
-
 interface ThumbBarItemProps {
   onPress: () => void;
   icon: ReactNode;
   /** Pusta etykieta = przycisk tylko z ikoną. */
   label: string;
   active?: boolean;
+  /**
+   * `vertical` (ikona nad etykietą, jak w M3 navigation bar) mieści 5–6 akcji
+   * w jednej pigułce. `horizontal` zostawiamy tam, gdzie etykieta jest długa
+   * i jest tylko jedna albo dwie (ekran startowy).
+   */
+  layout?: 'vertical' | 'horizontal';
   accessibilityLabel?: string;
   accessibilityState?: { selected?: boolean; disabled?: boolean };
   style?: StyleProp<ViewStyle>;
@@ -63,6 +68,7 @@ export function ThumbBarItem({
   icon,
   label,
   active = false,
+  layout = 'vertical',
   accessibilityLabel,
   accessibilityState,
   style,
@@ -77,6 +83,7 @@ export function ThumbBarItem({
       accessibilityState={accessibilityState ?? { selected: active }}
       style={({ pressed }) => [
         styles.item,
+        layout === 'horizontal' ? styles.itemRow : styles.itemColumn,
         active && styles.itemActive,
         pressed && styles.itemPressed,
         style,
@@ -85,12 +92,18 @@ export function ThumbBarItem({
       {icon}
       {label ? (
         <Text
-          style={[styles.itemLabel, active && styles.itemLabelActive, labelStyle]}
+          style={[
+            styles.itemLabel,
+            layout === 'vertical' && styles.itemLabelVertical,
+            active && styles.itemLabelActive,
+            labelStyle,
+          ]}
           numberOfLines={1}
         >
           {label}
         </Text>
-      ) : null}    </Pressable>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -123,15 +136,23 @@ const styles = StyleSheet.create({
   // Ikona nad etykietą (jak w M3 navigation baru): mieści się 5–6 akcji w
   // jednej pigułce, a palec trafia w kolumnę, nie w wąski pasek.
   item: {
-    flex: 1,
-    flexDirection: 'column',
-    alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
     paddingVertical: 6,
     paddingHorizontal: 2,
     borderRadius: shape.full,
     minHeight: 50,
+  },
+  itemColumn: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
   },
   itemActive: {
     backgroundColor: scheme.primaryContainer,
@@ -142,11 +163,13 @@ const styles = StyleSheet.create({
   },
   itemLabel: {
     ...type.labelSmall,
-    fontSize: 10,
     lineHeight: 12,
     textAlign: 'center',
     color: scheme.onSurfaceVariant,
     fontWeight: '700',
+  },
+  itemLabelVertical: {
+    fontSize: 10,
   },
   itemLabelActive: {
     color: scheme.onPrimaryContainer,

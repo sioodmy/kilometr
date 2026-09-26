@@ -32,6 +32,7 @@ export function HomeThumbBar({
           <ThumbBarItem
             onPress={() => onSelectPlace!(topSavedPlace!)}
             active
+            layout="horizontal"
             icon={<IconComponent size={17} color={scheme.onPrimaryContainer} />}
             label={topSavedPlace!.name}
             style={styles.favItem}
@@ -44,6 +45,7 @@ export function HomeThumbBar({
 
       <ThumbBarItem
         onPress={onOpenSearch}
+        layout="horizontal"
         icon={<Search size={18} color={scheme.primary} />}
         label="Dokąd jedziesz?"
         style={styles.searchItem}
@@ -57,7 +59,7 @@ export function HomeThumbBar({
 const styles = StyleSheet.create({
   favItem: {
     flex: 0,
-    maxWidth: 150,
+    maxWidth: 160,
     backgroundColor: scheme.primaryContainer,
   },
   favLabel: {
@@ -66,8 +68,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   searchItem: {
-    justifyContent: 'flex-start',
-    paddingLeft: 12,
+    flex: 1,
   },
   searchLabel: {
     ...type.bodyMedium,
