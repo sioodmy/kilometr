@@ -39,6 +39,8 @@ export interface RouteMapHandle {
   center: (lat: number, lon: number, zoom?: number, duration?: number) => void;
   /** Wskaźnik pozycji na trasie (kursor przy sterowaniu joystickiem) */
   setCursor: (coords: { lat: number; lon: number } | null) => void;
+  /** Odcinek trasy przed kursorem — podświetlana „nitka dalej”. */
+  setAhead: (coords: [number, number][] | null) => void;
   /** Wymuś ponowne wczytanie silnika mapy (np. po ubiciu procesu WebView). */
   reload: () => void;
 }
@@ -51,6 +53,8 @@ interface RouteMapProps {
   selectedLegId?: string | null;
   /** Wysokość panelu pod mapą — tyle marginesu zostawiamy przy dopasowaniu. */
   paddingBottom?: number;
+  /** Pasek u góry zasłania trasę, więc dopasowanie musi go zostawić. */
+  paddingTop?: number;
   onReady?: () => void;
   onStopTap?: (stop: MapStopTap) => void;
   onLegTap?: (legId: string) => void;
@@ -61,6 +65,15 @@ interface RouteMapProps {
   onError?: (message: string) => void;
 }
 
+/**
+ * GeoJSON chce [lon, lat], a reszta aplikacji (routeGeometry, OSRM, projekcje)
+ * trzyma [lat, lon].zamiana jest tu jedynym miejscem, gdzie te dwa światy
+ * się stykają — bez niej przebieg ulic lądował ~4000 km od trasy, a mapa
+ * dopasowywała widok do tego odległego punktu.
+ */
+const toGeoJson = (coords: [number, number][]): [number, number][] =>
+  coords.map(([lat, lon]) => [lon, lat]);
+
 export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function RouteMap(
   {
     route,
@@ -69,6 +82,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     user = null,
     selectedLegId = null,
     paddingBottom = 190,
+    paddingTop = 42,
     onReady,
     onStopTap,
     onLegTap,
@@ -85,7 +99,8 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   // Marginesy dopasowania idą z aplikacji (panele mają różne wysokości), więc
   // trzymamy je w refie i dokładamy do każdego dopasowania.
   const padRef = useRef<[number, number, number, number]>([42, 42, paddingBottom, 42]);
-  padRef.current = [42, 42, paddingBottom, 42];
+  padRef.current = [paddingTop, 42, paddingBottom, 42];
+
   // WebView ginie bez ostrzeżenia (iOS ubija proces, Android zwalnia pamięć) —
   // inkrement wymusza montowanie od nowa, a stan wraca z bootstrapu.
   const [attempt, setAttempt] = useState(0);
@@ -113,13 +128,18 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   useImperativeHandle(
     ref,
     () => ({
-      setGeometry: (legId, coords) => send({ t: 'geometry', legId, coords, approx: false }),
+      setGeometry: (legId, coords) =>
+        send({ t: 'geometry', legId, coords: toGeoJson(coords), approx: false }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
       center: (lat, lon, zoom, duration) => send({ t: 'center', lat, lon, zoom, duration }),
       setCursor: (coords) =>
         coords
           ? send({ t: 'cursor', lat: coords.lat, lon: coords.lon })
           : send({ t: 'clearCursor' }),
+      setAhead: (coords) =>
+        coords && coords.length > 1
+          ? send({ t: 'ahead', coords: toGeoJson(coords) })
+          : send({ t: 'clearAhead' }),
       reload: restart,
     }),
     [restart, send],

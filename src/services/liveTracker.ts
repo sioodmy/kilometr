@@ -152,7 +152,7 @@ class LiveTracker {
       );
 
       const patternPolylines = new Map<string, PatternPolylineNode[]>();
-      const tracked = this.matchRow(row, dayIndex, nowSec, patternPolylines);
+      const { tracked } = this.matchRow(row, dayIndex, nowSec, patternPolylines);
 
       this.byId.set(vehicleId, tracked);
       if (tracked.matchedTripId) {
@@ -206,7 +206,7 @@ class LiveTracker {
     dayIndex: DayIndex,
     nowSec: number,
     patternPolylines: Map<string, PatternPolylineNode[]>,
-  ): TrackedVehicle {
+  ): { tracked: TrackedVehicle; score: number } {
     const line = row.name.trim().toUpperCase();
     const vehicleId = `${line}-${row.k}`;
     const lat = row.x;
@@ -282,7 +282,6 @@ class LiveTracker {
     // Fallback: dopasowanie do pojedynczych przystanków (np. pętla końcowa lub ostre zakręty)
     if (!bestTripId) {
       for (const [patternId, pattern] of dayIndex.patterns.entries()) {
-        void patternId;
         if (!routeIds.includes(pattern.routeId)) continue;
         const trips = pattern.trips as any[];
         if (!trips) continue;
@@ -320,17 +319,60 @@ class LiveTracker {
     }
 
     return {
-      vehicleId,
-      line,
-      lat,
-      lon,
-      type,
-      delaySec: bestTripId ? bestDelay : 0,
-      matchedTripId: bestTripId,
-      currentStopName: bestCurrentStop,
-      nextStopName: bestNextStop,
-      updatedAt: Date.now(),
+      tracked: {
+        vehicleId,
+        line,
+        lat,
+        lon,
+        type,
+        delaySec: bestTripId ? bestDelay : 0,
+        matchedTripId: bestTripId,
+        currentStopName: bestCurrentStop,
+        nextStopName: bestNextStop,
+        updatedAt: Date.now(),
+      },
+      score: bestTripId ? bestScore : Number.POSITIVE_INFINITY,
     };
+  }
+
+  /**
+   * Rozwiązanie konfliktów po jednym pollu. Bez tego kilka pojazdów tej samej
+   * linii dostawało ten sam `matchedTripId`, a `tripDelays` zapisywał
+   * opóźnienie ostatniego z nich — kolejność z odpowiedzi MPK, czyli losowa.
+   * Stąd „ Tramwaj pokazuje się w losowym miejscu” i skoki opóźnienia.
+   *
+   * Zasada: kurs ma dokładnie jeden pojazd (najlepiej dopasowany), a pojazd
+   * ma dokładnie jeden kurs. Przy remisie wygrywa ten, którego pozycja
+   * pokrywa się z rozkładem najlepiej.
+   */
+  private resolveConflicts(
+    matched: Map<string, { tracked: TrackedVehicle; score: number }>,
+  ): { byId: Map<string, TrackedVehicle>; delays: Map<string, number> } {
+    // Który pojazd wygrywa każdy kurs.
+    const byTrip = new Map<string, { vehicleId: string; score: number }>();
+    for (const [vehicleId, entry] of matched) {
+      const tripId = entry.tracked.matchedTripId;
+      if (!tripId) continue;
+      const held = byTrip.get(tripId);
+      if (!held || entry.score < held.score) byTrip.set(tripId, { vehicleId, score: entry.score });
+    }
+
+    const byId = new Map<string, TrackedVehicle>();
+    const delays = new Map<string, number>();
+    for (const [vehicleId, entry] of matched) {
+      const tripId = entry.tracked.matchedTripId;
+      const winner = tripId ? byTrip.get(tripId) : undefined;
+      if (winner && winner.vehicleId === vehicleId) {
+        byId.set(vehicleId, entry.tracked);
+        if (tripId) delays.set(tripId, entry.tracked.delaySec);
+      } else {
+        // Ten pojazd przegrał spór o kurs (albo w ogóle się nie dopasował) —
+        // zostaje w snapshocie, ale bez kursu, żeby nie wmieszać go w cudzą
+        // podróż. Dla RAPTOR-a brak opóźnienia jest bezpieczniejszy niż zły.
+        byId.set(vehicleId, { ...entry.tracked, matchedTripId: undefined, delaySec: 0 });
+      }
+    }
+    return { byId, delays };
   }
 
   private async matchAll(rows: RawVehicleRow[]): Promise<void> {
@@ -355,17 +397,18 @@ class LiveTracker {
     }
 
     const patternPolylines = new Map<string, PatternPolylineNode[]>();
-    const newById = new Map<string, TrackedVehicle>();
-    const newByLine = new Map<string, TrackedVehicle[]>();
-    const newDelays = new Map<string, number>();
+    const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
 
     for (const row of rows) {
       if (!row.x || !row.y || !row.name) continue;
-      const tracked = this.matchRow(row, dayIndex, nowSec, patternPolylines);
-      newById.set(tracked.vehicleId, tracked);
-      if (tracked.matchedTripId) {
-        newDelays.set(tracked.matchedTripId, tracked.delaySec);
-      }
+      matched.set(row.name.trim().toUpperCase() + '-' + row.k, this.matchRow(row, dayIndex, nowSec, patternPolylines));
+    }
+
+    // Jeden kurs = jeden pojazd (patrz resolveConflicts), inaczej opóźnienia
+    // i strzałka na mapie skakałyby między pojazdami w kolejności z API.
+    const { byId, delays } = this.resolveConflicts(matched);
+    const newByLine = new Map<string, TrackedVehicle[]>();
+    for (const tracked of byId.values()) {
       let list = newByLine.get(tracked.line);
       if (!list) {
         list = [];
@@ -374,9 +417,9 @@ class LiveTracker {
       list.push(tracked);
     }
 
-    this.byId = newById;
+    this.byId = byId;
     this.byLine = newByLine;
-    this.tripDelays = newDelays;
+    this.tripDelays = delays;
   }
 }
 

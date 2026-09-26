@@ -1,15 +1,13 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
-  FadeInUp,
   FadeOut,
   Keyframe,
-  LinearTransition,
   type AnimatedStyle,
 } from 'react-native-reanimated';
 import {
+  ArrowDownUp,
   ArrowUpDown,
   BusFront,
   Clock3,
@@ -18,10 +16,16 @@ import {
   TramFront,
   Zap,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
-import type { ModePreference } from './RouteFiltersCard';
+import { scheme } from '../theme/tokens';
+import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
 
-// ─── Swipe ikon zamiast popu ─────────────────────────────────────────────────
+/** Filtr środka transportu. Jedyne miejsce, w którym żyje ten typ. */
+export type ModePreference = 'all' | 'tram' | 'bus';
+
+/** Sortowanie listy połączeń. */
+export type SortMode = 'fastest' | 'earliest';
+
+// ─── Swipe ikon zamiast popu ────────────────────────────────────────────────
 // Krótki (170 ms) pionowy wjazd z fade: włączenie / następny pojazd = swipe up,
 // wyłączenie / powrót = swipe down. Własny Keyframe zamiast gotowego SlideIn*,
 // żeby dystans był mały (10 px, nie pół ekranu).
@@ -30,20 +34,12 @@ const SWIPE_EASING = Easing.out(Easing.cubic);
 
 const slideUpIn = new Keyframe({
   0: { opacity: 0, transform: [{ translateY: 10 }] },
-  100: {
-    opacity: 1,
-    transform: [{ translateY: 0 }],
-    easing: SWIPE_EASING,
-  },
+  100: { opacity: 1, transform: [{ translateY: 0 }], easing: SWIPE_EASING },
 }).duration(SWIPE_MS);
 
 const slideDownIn = new Keyframe({
   0: { opacity: 0, transform: [{ translateY: -10 }] },
-  100: {
-    opacity: 1,
-    transform: [{ translateY: 0 }],
-    easing: SWIPE_EASING,
-  },
+  100: { opacity: 1, transform: [{ translateY: 0 }], easing: SWIPE_EASING },
 }).duration(SWIPE_MS);
 
 const iconOut = FadeOut.duration(90);
@@ -57,6 +53,8 @@ export interface RoutesThumbBarProps {
   onOpenTimeSheet: () => void;
   modeFilter: ModePreference;
   onCycleMode: () => void;
+  sortMode: SortMode;
+  onCycleSort: () => void;
   onRefresh?: () => void;
   refreshing?: boolean;
   /** Animowany styl hide/show ze scrolla (translateY + opacity z rodzica). */
@@ -64,12 +62,11 @@ export interface RoutesThumbBarProps {
 }
 
 /**
- * Pływający pasek szybkiej obsługi jedną ręką w tramwaju (Thumb Zone).
- * Umieszczony w dolnej, naturalnej strefie kciuka:
- * - Szybkie odwrócenie trasy (powrót)
- * - Przełącznik połączeń bezpośrednich (bez przesiadek)
- * - Szybki wybór czasu odjazdu / powrót do „Teraz”
- * - Cykl filtrowania pojazdów (tramwaj / autobus / wszystkie)
+ * Dolne menu ekranu połączeń — jedyne miejsce na filtry i akcje.
+ * Wszystko, czym sterujemy jedną ręką w tramwaju, mieszka pod kciukiem:
+ * odwrócenie trasy, filtr bezpośrednich, typ pojazdu, czas odjazdu,
+ * sortowanie i odświeżenie danych live. Górna część ekranu ma tylko
+ * pokazywać skąd dokąd i listę.
  */
 export function RoutesThumbBar({
   onSwap,
@@ -80,248 +77,153 @@ export function RoutesThumbBar({
   onOpenTimeSheet,
   modeFilter,
   onCycleMode,
+  sortMode,
+  onCycleSort,
   onRefresh,
   refreshing,
   animatedStyle,
 }: RoutesThumbBarProps) {
-  const insets = useSafeAreaInsets();
-
   const renderModeIcon = () => {
     const color = modeFilter !== 'all' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
-    if (modeFilter === 'tram') return <TramFront size={16} color={color} />;
-    if (modeFilter === 'bus') return <BusFront size={16} color={color} />;
-    return <Layers size={16} color={color} />;
+    if (modeFilter === 'tram') return <TramFront size={17} color={color} />;
+    if (modeFilter === 'bus') return <BusFront size={17} color={color} />;
+    return <Layers size={17} color={color} />;
   };
 
   // Krótko, żeby nie ucinało w wąskim guziku (pełne nazwy w a11y).
-  const modeLabel =
-    modeFilter === 'tram' ? 'Tram' : modeFilter === 'bus' ? 'Bus' : 'Pojazdy';
+  const modeLabel = modeFilter === 'tram' ? 'Tram' : modeFilter === 'bus' ? 'Bus' : 'Pojazdy';
   const modeA11y =
-    modeFilter === 'tram'
-      ? 'Tramwaje'
-      : modeFilter === 'bus'
-        ? 'Autobusy'
-        : 'Wszystkie pojazdy';
+    modeFilter === 'tram' ? 'Tramwaje' : modeFilter === 'bus' ? 'Autobusy' : 'Wszystkie pojazdy';
+
+  // Kolumna w docku ma ~53 dp, a czcionka 10 px — „Najszybciej” nie mieści
+  // się i ucinałoby się w „Najszybc…”. Krótkie polskie nazwy pary są czytelne,
+  // a dokładne brzmienie zostaje w accessibilityLabel.
+  const sortLabel = sortMode === 'fastest' ? 'Przyjazd' : 'Wyjazd';
+
+  // Etykieta czasu bywa pełna („Jutro, 08:15”) i nie mieściłaby się w kolumnie,
+  // więc w docku zostaje sama godzina. Dzień i tak widać w nagłówku listy,
+  // a pełna etykieta idzie do accessibilityLabel.
+  const timeShort = timeLabel.includes(', ') ? timeLabel.split(', ')[1] : timeLabel;
 
   return (
-    <Animated.View
-      pointerEvents="box-none"
-      style={[
-        styles.floatingWrapper,
-        { bottom: Math.max(insets.bottom, 10) + 10 },
-        animatedStyle,
-      ]}
-    >
-      <Animated.View
-        entering={FadeInUp.springify().damping(32).stiffness(500).delay(250)}
-        layout={LinearTransition.springify().damping(32).stiffness(500)}
-        style={styles.bar}
-      >
-        {/* Odwrócenie trasy (powrót) */}
-        <Pressable
-          onPress={onSwap}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel="Odwróć trasę: zamień punkt startowy z docelowym"
-          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
-        >
-          <View style={styles.iconCircle}>
-            <ArrowUpDown size={15} color={scheme.primary} />
-          </View>
-          <Text style={styles.btnLabel}>Odwróć</Text>
-        </Pressable>
+    // Dock przyjmuje gotowy styl animowany (chowanie się przy scrollu),
+    // więc rzutujemy go na zwykły styl — ThumbBar opakowuje go w Animated.View.
+    <ThumbBar style={animatedStyle as StyleProp<ViewStyle>}>
+      <ThumbBarItem
+        onPress={onSwap}
+        icon={<ArrowUpDown size={17} color={scheme.primary} />}
+        label="Odwróć"
+        accessibilityLabel="Odwróć trasę: zamień punkt startowy z docelowym"
+      />
 
-        <View style={styles.divider} />
+      <ThumbBarDivider />
 
-        {/* Filtr: tylko bezpośrednie */}
-        <Pressable
-          onPress={onToggleDirect}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={
-            directOnly
-              ? 'Filtr połączeń bezpośrednich: aktywny. Dotknij, aby pokazać wszystkie.'
-              : 'Filtr połączeń bezpośrednich: nieaktywny. Dotknij, aby włączyć.'
-          }
-          style={({ pressed }) => [
-            styles.btn,
-            directOnly && styles.btnActive,
-            pressed && styles.btnPressed,
-          ]}
-        >
+      <ThumbBarItem
+        onPress={onToggleDirect}
+        active={directOnly}
+        icon={
           <Animated.View
             key={directOnly ? 'direct-on' : 'direct-off'}
             entering={directOnly ? slideUpIn : slideDownIn}
             exiting={iconOut}
           >
             <Zap
-              size={15}
+              size={17}
               color={directOnly ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
               fill={directOnly ? scheme.onPrimaryContainer : 'transparent'}
             />
           </Animated.View>
-          <Text style={[styles.btnLabel, directOnly && styles.btnLabelActive]}>
-            Bezpośr.
-          </Text>
-        </Pressable>
+        }
+        label="Bezpośr."
+        accessibilityLabel={
+          directOnly
+            ? 'Filtr połączeń bezpośrednich: aktywny. Dotknij, aby pokazać wszystkie.'
+            : 'Filtr połączeń bezpośrednich: nieaktywny. Dotknij, aby włączyć.'
+        }
+      />
 
-        <View style={styles.divider} />
+      <ThumbBarDivider />
 
-        {/* Czas odjazdu */}
-        <Pressable
-          onPress={onOpenTimeSheet}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={`Czas odjazdu: ${timeLabel}. Dotknij, aby zmienić.`}
-          style={({ pressed }) => [
-            styles.btn,
-            isCustomTime && styles.btnActive,
-            pressed && styles.btnPressed,
-          ]}
-        >
+      <ThumbBarItem
+        onPress={onCycleMode}
+        active={modeFilter !== 'all'}
+        icon={
+          <Animated.View key={modeFilter} entering={slideUpIn} exiting={iconOut}>
+            {renderModeIcon()}
+          </Animated.View>
+        }
+        label={modeLabel}
+        accessibilityLabel={`Filtruj środek transportu: aktualnie ${modeA11y}. Dotknij, aby zmienić.`}
+      />
+
+      <ThumbBarDivider />
+
+      <ThumbBarItem
+        onPress={onOpenTimeSheet}
+        active={isCustomTime}
+        icon={
           <Animated.View
             key={isCustomTime ? 'time-custom' : 'time-now'}
             entering={isCustomTime ? slideUpIn : slideDownIn}
             exiting={iconOut}
           >
             <Clock3
-              size={15}
+              size={17}
               color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
             />
           </Animated.View>
-          <Text
-            style={[styles.btnLabel, isCustomTime && styles.btnLabelActive]}
-            numberOfLines={1}
-          >
-            {timeLabel}
-          </Text>
-        </Pressable>
+        }
+        label={timeShort}
+        accessibilityLabel={`Czas odjazdu: ${timeLabel}. Dotknij, aby zmienić.`}
+      />
 
-        <View style={styles.divider} />
+      <ThumbBarDivider />
 
-        {/* Tryb pojazdu: Tram / Autobus / Wszystkie */}
-        <Pressable
-          onPress={onCycleMode}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={`Filtruj środek transportu: aktualnie ${modeA11y}. Dotknij, aby zmienić.`}
-          style={({ pressed }) => [
-            styles.btn,
-            modeFilter !== 'all' && styles.btnActive,
-            pressed && styles.btnPressed,
-          ]}
-        >
+      <ThumbBarItem
+        onPress={onCycleSort}
+        active={sortMode === 'earliest'}
+        icon={
           <Animated.View
-            key={modeFilter}
-            entering={slideUpIn}
+            key={sortMode}
+            entering={sortMode === 'earliest' ? slideUpIn : slideDownIn}
             exiting={iconOut}
           >
-            {renderModeIcon()}
+            <ArrowDownUp
+              size={17}
+              color={sortMode === 'earliest' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+            />
           </Animated.View>
-          <Text
-            style={[styles.btnLabel, modeFilter !== 'all' && styles.btnLabelActive]}
-            numberOfLines={1}
-          >
-            {modeLabel}
-          </Text>
-        </Pressable>
+        }
+        label={sortLabel}
+        accessibilityLabel={`Sortowanie: ${
+          sortMode === 'fastest'
+            ? 'najszybszy przyjazd'
+            : 'najwcześniejszy odjazd'
+        }. Dotknij, aby zmienić.`}
+      />
 
-        {/* Opcjonalny przycisk szybkiego odświeżenia live */}
-        {onRefresh ? (
-          <>
-            <View style={styles.divider} />
-            <Pressable
-              onPress={onRefresh}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel="Odśwież rozkłady i pozycje na żywo"
-              style={({ pressed }) => [
-                styles.iconOnlyBtn,
-                pressed && styles.btnPressed,
-              ]}
-            >
-              <RotateCw
-                size={16}
-                color={refreshing ? scheme.primary : scheme.onSurfaceVariant}
-              />
-            </Pressable>
-          </>
-        ) : null}
-      </Animated.View>
-    </Animated.View>
+      {onRefresh ? (
+        <>
+          <ThumbBarDivider />
+          <ThumbBarItem
+            onPress={onRefresh}
+            icon={
+              <RotateCw size={17} color={refreshing ? scheme.primary : scheme.onSurfaceVariant} />
+            }
+            label=""
+            style={styles.iconOnly}
+            accessibilityLabel="Odśwież rozkłady i pozycje na żywo"
+          />
+        </>
+      ) : null}
+    </ThumbBar>
   );
 }
 
 const styles = StyleSheet.create({
-  floatingWrapper: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    alignItems: 'center',
-    zIndex: 99,
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.full,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    gap: 2,
-    minHeight: 52,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    maxWidth: 440,
-    width: '100%',
-    justifyContent: 'space-between',
-    ...elev.level3,
-  },
-  btn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: shape.full,
-    minHeight: 42,
-  },
-  btnActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  btnPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.96 }],
-  },
-  iconCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnLabel: {
-    ...type.labelMedium,
-    color: scheme.onSurface,
-    fontWeight: '600',
-  },
-  btnLabelActive: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
-  },
-  divider: {
-    width: 1,
-    height: 20,
-    backgroundColor: scheme.outlineVariant,
-    opacity: 0.5,
-  },
-  iconOnlyBtn: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: shape.full,
+  // Odświeżenie zostaje samą ikoną, więc nie potrzebuje całej kolumny.
+  iconOnly: {
+    flex: 0,
+    maxWidth: 44,
   },
 });

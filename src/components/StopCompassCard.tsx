@@ -16,6 +16,7 @@ import Animated, {
 import {
   BusFront,
   LocateFixed,
+  Map as MapIcon,
   Navigation2,
   Signpost,
   TramFront,
@@ -26,6 +27,8 @@ import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
 
 interface StopCompassCardProps {
   connection: Connection;
+  /** Otwiera ekran „Mapa trasy” — przycisk siedzi tuż przy radarze. */
+  onOpenMap?: () => void;
 }
 
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -65,7 +68,7 @@ function getDirectionLabel(relAngle: number): string {
   return 'Lekko w lewo';
 }
 
-export function StopCompassCard({ connection }: StopCompassCardProps) {
+export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
   // Znajdź etapy podróży
   const transitLegs = useMemo(() => {
     return connection.legs.filter((l) => l.mode !== 'walk');
@@ -391,14 +394,44 @@ export function StopCompassCard({ connection }: StopCompassCardProps) {
         </Pressable>
       )}
 
-      {/* Przycisk nawigacji w Organic Maps */}
-      <Pressable
-        onPress={handleOpenOrganicMaps}
-        style={({ pressed }) => [styles.navBtn, pressed && { opacity: 0.85 }]}
-      >
-        <Navigation2 size={18} color={scheme.onPrimary} />
-        <Text style={styles.navBtnText}>Nawiguj w Organic Maps</Text>
-      </Pressable>
+      {/* Akcje na dole karty: mapa trasy i nawigacja zewnętrzna stoją
+          tuż pod radarem, w zasięgu kciuka — nie trzeba sięgać na górę. */}
+      <View style={styles.actionRow}>
+        {onOpenMap ? (
+          <Pressable
+            onPress={onOpenMap}
+            style={({ pressed }) => [styles.mapBtn, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Pokaż trasę na mapie"
+          >
+            <MapIcon size={18} color={scheme.onPrimary} />
+            <Text style={styles.mapBtnText}>Mapa trasy</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={handleOpenOrganicMaps}
+          style={({ pressed }) => [
+            styles.navBtn,
+            !onOpenMap && styles.navBtnSolo,
+            pressed && { opacity: 0.85 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Nawiguj do przystanku w Organic Maps"
+        >
+          <Navigation2
+            size={18}
+            color={onOpenMap ? scheme.onSecondaryContainer : scheme.onPrimary}
+          />
+          <Text
+            style={[
+              styles.navBtnText,
+              !onOpenMap && styles.navBtnTextSolo,
+            ]}
+          >
+            Nawiguj
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -654,7 +687,14 @@ const styles = StyleSheet.create({
     color: scheme.onSecondaryContainer,
     fontWeight: '600',
   },
-  navBtn: {
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  mapBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -662,12 +702,32 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primary,
     borderRadius: shape.full,
     height: 48,
-    marginTop: 2,
     ...elev.level1,
+  },
+  mapBtnText: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onPrimary,
+  },
+  navBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: scheme.secondaryContainer,
+    borderRadius: shape.full,
+    height: 48,
+  },
+  navBtnSolo: {
+    backgroundColor: scheme.primary,
   },
   navBtnText: {
     ...type.labelLarge,
     fontWeight: '700',
+    color: scheme.onSecondaryContainer,
+  },
+  navBtnTextSolo: {
     color: scheme.onPrimary,
   },
 });

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowRight, ChevronLeft, ChevronRight, History, Map } from 'lucide-react-native';
+import { ArrowRight, ChevronLeft, History } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { RoutingService } from '../../src/services';
 import { findCachedConnection, rehydrateConnections } from '../../src/services/offlineCache';
@@ -179,28 +179,16 @@ export default function RouteDetailsScreen() {
           )}
         </View>
 
-        {/* Pełna trasa na mapie OSM: przystanki, kierunek kursu i pozycja live */}
-        <Pressable
-          onPress={() => router.push({ pathname: '/map', params: { id: item.id } })}
-          style={({ pressed }) => [styles.mapBtn, pressed && { opacity: 0.85 }]}
-          accessibilityRole="button"
-          accessibilityLabel="Pokaż trasę na mapie"
-        >
-          <Map size={18} color={scheme.onPrimary} />
-          <View style={styles.mapBtnText}>
-            <Text style={styles.mapBtnTitle}>Mapa trasy</Text>
-            <Text style={styles.mapBtnSub} numberOfLines={1}>
-              Przystanki, kierunek kursu i pozycja pojazdu
-            </Text>
-          </View>
-          <ChevronRight size={18} color={scheme.onPrimary} />
-        </Pressable>
-
         <LegTimeline legs={item.legs} />
 
-        <StopCompassCard connection={item} />
+        {/* Radar wraz z wejściem w mapę trasy siedzi na dole ekranu —
+            tam, gdzie sięga kciuk, a nie na górze pod nagłówkiem. */}
+        <StopCompassCard
+          connection={item}
+          onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+        />
 
-        <View style={{ height: 80 }} />
+        <View style={{ height: 90 }} />
       </ScrollView>
 
       {/* Pływający dolny pasek kciuka: łatwy powrót i trasa powrotna */}
@@ -267,19 +255,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  mapBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: scheme.primary,
-    borderRadius: shape.large,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    ...elev.level1,
-  },
-  mapBtnText: { flex: 1, minWidth: 0 },
-  mapBtnTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onPrimary },
-  mapBtnSub: { ...type.labelSmall, color: scheme.onPrimary, opacity: 0.85, marginTop: 1 },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
