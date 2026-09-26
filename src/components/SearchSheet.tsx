@@ -155,11 +155,15 @@ export function SearchSheet({
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={{ gap: 4 }}>
-            <Text style={styles.section}>
-              {hasResults
-                ? `Wyniki dla „${query.trim()}” (${results.length})`
-                : 'Ostatnie przejazdy'}
-            </Text>
+            {/* Nagłówek tylko tam, gdzie coś jest — „Ostatnie przejazdy” nad
+                „Brak wyników” wyglądało jak sprzeczność. */}
+            {(hasResults || displayData.length > 0) && (
+              <Text style={styles.section}>
+                {hasResults
+                  ? `Wyniki dla „${query.trim()}” (${results.length})`
+                  : 'Ostatnie przejazdy'}
+              </Text>
+            )}
             {!hasResults && query.trim().length === 0 && (
               <View style={styles.quickRow}>
                 {savedQuick.map((q) => (

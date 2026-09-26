@@ -206,6 +206,7 @@ function useOnboardingPlaces() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Suggestion[]>([]);
   const [searching, setSearching] = useState(false);
+  const searchSeq = useRef(0);
   const [saving, setSaving] = useState(false);
 
   const reload = useCallback(async () => {
@@ -223,6 +224,7 @@ function useOnboardingPlaces() {
   useEffect(() => {
     if (!activeSlot) return;
     const q = query.trim();
+    const seq = ++searchSeq.current;
     if (!q) {
       setResults([]);
       setSearching(false);
@@ -231,9 +233,15 @@ function useOnboardingPlaces() {
     setSearching(true);
     const t = setTimeout(() => {
       SearchService.search(q)
-        .then(setResults)
-        .catch(() => setResults([]))
-        .finally(() => setSearching(false));
+        .then((r) => {
+          if (seq === searchSeq.current) setResults(r);
+        })
+        .catch(() => {
+          if (seq === searchSeq.current) setResults([]);
+        })
+        .finally(() => {
+          if (seq === searchSeq.current) setSearching(false);
+        });
     }, 250);
     return () => clearTimeout(t);
   }, [query, activeSlot]);
