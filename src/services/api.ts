@@ -83,6 +83,17 @@ export const LocationService: ILocationService = {
 
 let searchAbort: AbortController | null = null;
 
+/**
+ * Wyszukiwanie przerwane nowszym zapytaniem. Odróżniamy to od „brak wyników”,
+ * bo inaczej anulowany request wpisywałby pustą listę po wynikach nowszego.
+ */
+export class SearchAbortedError extends Error {
+  constructor() {
+    super('Wyszukiwanie przerwane przez nowe zapytanie');
+    this.name = 'SearchAbortedError';
+  }
+}
+
 // Cache scalonych podpowiedzi (query + zaokrąglona pozycja) — powtórki migają.
 const mergedCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MERGED_TTL_MS = 120 * 1000;
@@ -136,7 +147,7 @@ export const SearchService: ISearchService = {
         searchStops(q, 12).catch(() => []),
         searchPois(q, coords?.lat, coords?.lon, 8).catch(() => []),
       ]);
-      if (searchAbort !== ctrl) return [];
+      if (searchAbort !== ctrl) throw new SearchAbortedError();
       const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
         id: `stop-${h.stop_id}`,
         title: h.name,
@@ -160,7 +171,7 @@ export const SearchService: ISearchService = {
       let remoteHits: Suggestion[] = [];
       if (needNetwork) {
         remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(() => []);
-        if (searchAbort !== ctrl) return [];
+        if (searchAbort !== ctrl) throw new SearchAbortedError();
       }
 
       // 3. Merge: przystanki absolutnie pierwsze (w kolejności trafienie+waga),
@@ -175,7 +186,7 @@ export const SearchService: ISearchService = {
       // offline / błąd — fallback niżej
     }
 
-    if (searchAbort !== ctrl) return [];
+    if (searchAbort !== ctrl) throw new SearchAbortedError();
     return loadSuggestions(q);
   },
 

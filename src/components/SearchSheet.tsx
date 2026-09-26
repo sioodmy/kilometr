@@ -31,7 +31,7 @@ export function SearchSheet({
   loading: boolean;
   results: Suggestion[];
   recent: Suggestion[];
-  savedQuick: { id: string; title: string }[];
+  savedQuick: Suggestion[];
   onQuery: (q: string) => void;
   onSelect: (s: Suggestion) => void;
   onClose: () => void;
@@ -67,7 +67,6 @@ export function SearchSheet({
   };
 
   const hasResults = results.length > 0;
-  const showRecent = query.trim().length === 0 || (!hasResults && !loading);
 
   const displayData = useMemo(() => {
     if (hasResults) return results;
@@ -156,17 +155,30 @@ export function SearchSheet({
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={{ gap: 4 }}>
-            <Text style={styles.section}>
-              {hasResults
-                ? `Wyniki dla „${query.trim()}” (${results.length})`
-                : 'Ostatnie przejazdy'}
-            </Text>
+            {/* Nagłówek tylko tam, gdzie coś jest — „Ostatnie przejazdy” nad
+                „Brak wyników” wyglądało jak sprzeczność. */}
+            {(hasResults || displayData.length > 0) && (
+              <Text style={styles.section}>
+                {hasResults
+                  ? `Wyniki dla „${query.trim()}” (${results.length})`
+                  : 'Ostatnie przejazdy'}
+              </Text>
+            )}
             {!hasResults && query.trim().length === 0 && (
               <View style={styles.quickRow}>
                 {savedQuick.map((q) => (
-                  <View key={q.id} style={styles.quick}>
-                    <Text style={styles.quickText}>{q.title}</Text>
-                  </View>
+                  <TouchableOpacity
+                    key={q.id}
+                    onPress={() => handleSelect(q)}
+                    activeOpacity={0.7}
+                    style={styles.quick}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Zapisane miejsce: ${q.title}`}
+                  >
+                    <Text style={styles.quickText} numberOfLines={1}>
+                      {q.title}
+                    </Text>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}

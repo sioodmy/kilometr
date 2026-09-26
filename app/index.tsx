@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -385,10 +385,13 @@ export default function HomeScreen() {
     }
   };
 
-  // Debounced search
+  // Debounced search. searchSeq unieważnia odpowiedzi starszych zapytań
+  // w momencie zmiany tekstu — inaczej wolniejsze „d” kasowało wynik „dw”.
+  const searchSeq = useRef(0);
   useEffect(() => {
     if (!sheetMode) return;
     const q = query.trim();
+    const seq = ++searchSeq.current;
     if (!q) {
       setResults([]);
       setLoading(false);
@@ -396,15 +399,32 @@ export default function HomeScreen() {
     }
     setLoading(true);
     const t = setTimeout(() => {
-      SearchService.search(q, currentCoords).then((r) => {
-        setResults(r);
-        setLoading(false);
-      });
+      SearchService.search(q, currentCoords)
+        .then((r) => {
+          if (seq !== searchSeq.current) return;
+          setResults(r);
+          setLoading(false);
+        })
+        .catch(() => {
+          // Przerwane zapytanie albo błąd — nowsze zapytanie ogarnie stan.
+          if (seq === searchSeq.current) setLoading(false);
+        });
     }, 220);
     return () => clearTimeout(t);
   }, [query, sheetMode, currentCoords]);
 
-  const quick = useMemo(() => saved.slice(0, 3).map((s) => ({ id: s.id, title: s.name })), [saved]);
+  const quick = useMemo<Suggestion[]>(
+    () =>
+      saved.slice(0, 3).map((s) => ({
+        id: s.placeId,
+        title: s.name,
+        address: s.address,
+        kind: 'history',
+        lat: s.lat,
+        lon: s.lon,
+      })),
+    [saved],
+  );
 
   const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number }) => {
     void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
