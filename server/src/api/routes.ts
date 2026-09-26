@@ -1,4 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { Router } from 'express';
+import { config } from '../config';
 import { searchSuggestions } from '../search/service';
 import { buildTripStops, planConnections } from '../routing/engine';
 import { vehicleTracker } from '../realtime/tracker';
@@ -20,6 +23,31 @@ apiRouter.get('/health', (req, res) => {
     routesCount: gtfsStore.routes.size,
     vehiclesLive: vehicleTracker.getVehicles().length,
   });
+});
+
+/**
+ * Archiwum GTFS, które backend już ma na dysku. Telefon sięga tu dopiero
+ * wtedy, gdy Open Data Wrocław jest nieosiągalne (captive portal, sieć
+ * blokująca host, brak DNS) — dzięki temu pierwszy import ma drugi
+ * szansę zamiast kończyć się komunikatem o błędzie.
+ */
+apiRouter.get('/gtfs/archive', (req, res) => {
+  const zipPath = path.join(config.dataDir, config.gtfs.cacheFile);
+  let size: number;
+  try {
+    size = fs.statSync(zipPath).size;
+  } catch {
+    res.status(503).json({ error: 'GTFS archive not available on server' });
+    return;
+  }
+  if (size <= 0) {
+    res.status(503).json({ error: 'GTFS archive is empty on server' });
+    return;
+  }
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Length', String(size));
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.sendFile(zipPath);
 });
 
 // Smart location-ranked destinations ("Częste z tej lokalizacji")
