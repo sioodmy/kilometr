@@ -12,13 +12,12 @@ import {
   X,
 } from 'lucide-react-native';
 import Animated, {
-  Easing,
   FadeIn,
   FadeOut,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
@@ -57,7 +56,7 @@ import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
-import { RouteFiltersCard, type ModePreference } from '../../src/components/RouteFiltersCard';
+import type { ModePreference } from '../../src/components/RouteFiltersCard';
 import { RoutesThumbBar } from '../../src/components/RoutesThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 
@@ -176,22 +175,23 @@ export default function RoutesScreen() {
     );
   }, [items, sortMode, directOnly]);
 
-  // Zwijanie panelu filtrów. Samo `height` + `overflow: hidden`, bez opacity
-  // i scale: opacity na panelu z cieniami tworzy na Androidzie warstwę
-  // offscreen (klatka po klatce), a scale dawał artefakty subpixelowe
-  // (8bac23c). Sama wysokość to „kurtyna”, którą da się ciąć płynnie.
-  // Wyzwalanie zmiany jest asynchroniczne (patrz setFiltersVisible), więc
-  // w trakcie przeciągania wysokość panelu jest stała i lista pod nim nie
-  // przelicza layoutu co klatkę.
-  const filterProgress = useSharedValue(1);
-  const measuredFiltersHeight = useSharedValue(200);
+  // Dolny dock (RoutesThumbBar) chowa się przy zjeździe w dół i wraca przy
+  // powrocie w górę — spring zamiast sztywnego timing, żeby było „fajnie".
+  // W przeciwieństwie do starego zwijanego panelu na górze nie ruszamy
+  // layoutu FlatListy (zero flickeru): dock pływa nad listą (absolute).
+  const dockProgress = useSharedValue(1);
 
-  const animatedFilterStyle = useAnimatedStyle(() => {
-    const p = filterProgress.value;
-    const h = measuredFiltersHeight.value;
+  const animatedDockStyle = useAnimatedStyle(() => {
+    const p = dockProgress.value;
     return {
-      height: interpolate(p, [0, 1], [0, h]),
-      overflow: 'hidden',
+      opacity: interpolate(p, [0, 1], [0, 1]),
+      transform: [
+        { translateY: interpolate(p, [0, 1], [110, 0]) },
+        { scale: interpolate(p, [0, 1], [0.94, 1]) },
+      ],
+      // Po schowaniu dock nie łapie dotyków znad listy.
+      // (pointerEvents na Animated.View nie jest animowalne — znika sam,
+      //  bo opacity 0 + translate poza ekran.)
     };
   });
 
@@ -245,17 +245,17 @@ export default function RoutesScreen() {
   const contentH = useRef(0);
   const pendingAdjust = useRef<number | null>(null);
   const topHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Odliczany „uspokojenie listy” przed zmianą panelu filtrów
+  // Odliczane „uspokojenie listy” przed zmianą widoczności docka
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stan panelu oczekujący na koniec pauzy po zmianie (patrz setFiltersVisible)
-  const pendingFilterState = useRef<boolean | null>(null);
-  const filterCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stan docka oczekujący na koniec pauzy po zmianie (patrz setDockVisible)
+  const pendingDockState = useRef<boolean | null>(null);
+  const dockCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (topHoldTimer.current) clearTimeout(topHoldTimer.current);
       if (settleTimer.current) clearTimeout(settleTimer.current);
-      if (filterCooldownTimer.current) clearTimeout(filterCooldownTimer.current);
+      if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
     };
   }, []);
 
@@ -612,73 +612,71 @@ export default function RoutesScreen() {
   loadEarlierRef.current = handleLoadEarlier;
 
   const lastScrollY = useRef(0);
-  const isFiltersVisible = useRef(true);
+  const isDockVisible = useRef(true);
   const accumulatedDelta = useRef(0);
   const inTopZone = useRef(false);
   const momentumActive = useRef(false);
-  const lastFilterToggleAt = useRef(0);
+  const lastDockToggleAt = useRef(0);
 
-  // Próg jest wysoki, bo panel reaguje dopiero na ustabilizowanym
+  // Próg jest wysoki, bo dock reaguje dopiero na ustabilizowanym
   // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) — 80 px
   // to jedno świadome przejście, a nie drgnięcie palcem.
   const HIDE_THRESHOLD = 80;
   const SHOW_THRESHOLD = 40;
   // Pauza po zmianie stanu: dwa przeciwstawne gesty w krótkim czasie
-  // nie mogą się zbić w serię szarpnięć panelu.
-  const FILTER_COOLDOWN_MS = 450;
+  // nie mogą się zbić w serię szarpnięć docka.
+  const DOCK_COOLDOWN_MS = 450;
   // Ile czekamy po puszczeniu palca na sprawdzenie, czy zaczęło się
   // „rzucanie” listy (momentum). Jeśli tak, decyzja zapada po nim.
   const SCROLL_SETTLE_MS = 120;
-  const FILTER_ANIM_MS = 300;
   // Strefa „trzymam palec na górze” z histerezą: wjście na 60 px, wyjście
   // dopiero powyżej 110 px — jedno drgnięcie palcem nie kasuje już timera.
   const TOP_ZONE_ENTER = 60;
   const TOP_ZONE_EXIT = 110;
 
-  // Jedno miejsce do zmiany stanu panelu. Przeskok stanu jest możliwy tylko
-  // raz na FILTER_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
+  const SPRING_SOFT = { damping: 26, stiffness: 320 } as const;
+
+  // Jedno miejsce do zmiany stanu docka. Przeskok stanu jest możliwy tylko
+  // raz na DOCK_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
   // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
-  // niej (pendingFilterState). `force` omija pauzę — przy powrocie na samą
-  // górę listy filtry muszą być od razu.
-  const applyFilterState = (visible: boolean) => {
-    if (isFiltersVisible.current === visible) return;
-    isFiltersVisible.current = visible;
-    lastFilterToggleAt.current = Date.now();
-    pendingFilterState.current = null;
-    if (filterCooldownTimer.current) {
-      clearTimeout(filterCooldownTimer.current);
-      filterCooldownTimer.current = null;
+  // niej (pendingDockState). `force` omija pauzę — przy powrocie na samą
+  // górę listy dock musi być od razu.
+  const applyDockState = (visible: boolean) => {
+    if (isDockVisible.current === visible) return;
+    isDockVisible.current = visible;
+    lastDockToggleAt.current = Date.now();
+    pendingDockState.current = null;
+    if (dockCooldownTimer.current) {
+      clearTimeout(dockCooldownTimer.current);
+      dockCooldownTimer.current = null;
     }
-    filterProgress.value = withTiming(visible ? 1 : 0, {
-      duration: FILTER_ANIM_MS,
-      easing: Easing.inOut(Easing.cubic),
-    });
+    dockProgress.value = withSpring(visible ? 1 : 0, SPRING_SOFT);
   };
 
-  const setFiltersVisible = (visible: boolean, force = false) => {
-    if (isFiltersVisible.current === visible) return;
-    const wait = FILTER_COOLDOWN_MS - (Date.now() - lastFilterToggleAt.current);
+  const setDockVisible = (visible: boolean, force = false) => {
+    if (isDockVisible.current === visible) return;
+    const wait = DOCK_COOLDOWN_MS - (Date.now() - lastDockToggleAt.current);
     if (!force && wait > 0) {
-      pendingFilterState.current = visible;
-      if (filterCooldownTimer.current) clearTimeout(filterCooldownTimer.current);
-      filterCooldownTimer.current = setTimeout(() => {
-        filterCooldownTimer.current = null;
-        const next = pendingFilterState.current;
-        if (next != null) applyFilterState(next);
+      pendingDockState.current = visible;
+      if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
+      dockCooldownTimer.current = setTimeout(() => {
+        dockCooldownTimer.current = null;
+        const next = pendingDockState.current;
+        if (next != null) applyDockState(next);
       }, wait);
       return;
     }
-    applyFilterState(visible);
+    applyDockState(visible);
   };
 
-  // Decyzja o panelu zapada, gdy lista przestała się ruszać. W trakcie
-  // przeciągania panel ma stałą wysokość: każda klatka animacji zmieniała
-  // layout FlatListu pod nim i to właśnie migało przy trzymaniu palca.
-  const evaluateFiltersOnSettle = () => {
+  // Decyzja o docku zapada, gdy lista przestała się ruszać. W trakcie
+  // przeciągania dock tylko liczy deltę — animacja leci na wątku UI
+  // (Reanimated), więc nie blokuje gestu ani nie przelicza layoutu listy.
+  const evaluateDockOnSettle = () => {
     if (accumulatedDelta.current >= HIDE_THRESHOLD) {
-      setFiltersVisible(false);
+      setDockVisible(false);
     } else if (accumulatedDelta.current <= -SHOW_THRESHOLD) {
-      setFiltersVisible(true);
+      setDockVisible(true);
     }
   };
 
@@ -687,7 +685,7 @@ export default function RoutesScreen() {
     if (settleTimer.current) clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(() => {
       settleTimer.current = null;
-      if (!momentumActive.current) evaluateFiltersOnSettle();
+      if (!momentumActive.current) evaluateDockOnSettle();
     }, SCROLL_SETTLE_MS);
   };
 
@@ -701,7 +699,7 @@ export default function RoutesScreen() {
 
   const handleMomentumScrollEnd = () => {
     momentumActive.current = false;
-    evaluateFiltersOnSettle();
+    evaluateDockOnSettle();
   };
 
   // Warunki dociągania starszych odjazdów w refie: handler scrolla ma być
@@ -733,11 +731,11 @@ export default function RoutesScreen() {
     lastScrollY.current = y;
     scrollY.current = y;
 
-    // 1. Na samej górze listy (y <= 12) — filtry wracają od razu, bez
+    // 1. Na samej górze listy (y <= 12) — dock wraca od razu, bez
     //    czekania na puszczenie palca: tam scroll i tak się kończy.
     if (y <= 12) {
       accumulatedDelta.current = 0;
-      setFiltersVisible(true, true);
+      setDockVisible(true, true);
     } else if (dy > 0) {
       // Scrollowanie W DÓŁ
       if (accumulatedDelta.current < 0) {
@@ -989,56 +987,36 @@ export default function RoutesScreen() {
         </Pressable>
       </View>
 
-      {/* 3 i 4. Filtry i sortowanie zwijają się, gdy lista się uspokoi */}
-      <Animated.View style={[styles.collapsibleFiltersWrap, animatedFilterStyle]}>
-        <View
-          onLayout={(e) => {
-            const h = e.nativeEvent.layout.height;
-            if (h > 60 && Math.abs(measuredFiltersHeight.value - h) > 2) {
-              measuredFiltersHeight.value = h;
-            }
-          }}
-        >
-          {/* 3. Jednorazowe filtry: bezpośrednie + pojazdy (nie ruszają ustawień) */}
-          <View style={styles.filtersWrap}>
-            <RouteFiltersCard
-              directOnly={directOnly}
-              onDirectChange={setDirectOnly}
-              mode={modeFilter}
-              onModeChange={setModeFilter}
-            />
-          </View>
-
-          {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
-          <View style={styles.sortRow}>
-            {(
-              [
-                { key: 'fastest', label: 'Najszybciej' },
-                { key: 'earliest', label: 'Najwcześniej' },
-              ] as const
-            ).map((opt) => {
-              const active = sortMode === opt.key;
-              return (
-                <Pressable
-                  key={opt.key}
-                  onPress={() => setSortMode(opt.key)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.sortPill,
-                    active && styles.sortPillActive,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                >
-                  <Text style={[styles.sortText, active && styles.sortTextActive]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </Animated.View>
+      {/* 3. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd).
+          Duży box filtrów z góry usunięty — bezpośrednie + pojazdy żyją
+          w dolnym docku (RoutesThumbBar), żeby nie duplikować UI. */}
+      <View style={styles.sortRow}>
+        {(
+          [
+            { key: 'fastest', label: 'Najszybciej' },
+            { key: 'earliest', label: 'Najwcześniej' },
+          ] as const
+        ).map((opt) => {
+          const active = sortMode === opt.key;
+          return (
+            <Pressable
+              key={opt.key}
+              onPress={() => setSortMode(opt.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              style={({ pressed }) => [
+                styles.sortPill,
+                active && styles.sortPillActive,
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              <Text style={[styles.sortText, active && styles.sortTextActive]}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       {/* 5. Lista połączeń */}
       {loading ? (
@@ -1227,9 +1205,10 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 8. Pływający dolny pasek kciuka w tramwaju */}
+      {/* 8. Pływający dolny pasek kciuka w tramwaju — ze springowym hide/show */}
       {!sheetFor && !timeSheetOpen && (
         <RoutesThumbBar
+          animatedStyle={animatedDockStyle}
           onSwap={handleSwap}
           directOnly={directOnly}
           onToggleDirect={() => setDirectOnly(!directOnly)}
@@ -1396,17 +1375,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  collapsibleFiltersWrap: {
-    overflow: 'hidden',
-  },
-  // Segmented: Najszybciej / Najwcześniej
+  // Segmented: Najszybciej / Najwcześniej (mały, statyczny — bez zwijania)
   sortRow: {
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  filtersWrap: {
     paddingHorizontal: 14,
     marginBottom: 10,
   },

@@ -1,6 +1,12 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  FadeInUp,
+  LinearTransition,
+  ZoomIn,
+  type AnimatedStyle,
+} from 'react-native-reanimated';
 import {
   ArrowUpDown,
   BusFront,
@@ -24,6 +30,8 @@ export interface RoutesThumbBarProps {
   onCycleMode: () => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+  /** Animowany styl hide/show ze scrolla (translateY + opacity z rodzica). */
+  animatedStyle?: AnimatedStyle<ViewStyle>;
 }
 
 /**
@@ -45,6 +53,7 @@ export function RoutesThumbBar({
   onCycleMode,
   onRefresh,
   refreshing,
+  animatedStyle,
 }: RoutesThumbBarProps) {
   const insets = useSafeAreaInsets();
 
@@ -59,11 +68,19 @@ export function RoutesThumbBar({
     modeFilter === 'tram' ? 'Tramwaje' : modeFilter === 'bus' ? 'Autobusy' : 'Pojazdy';
 
   return (
-    <View
+    <Animated.View
       pointerEvents="box-none"
-      style={[styles.floatingWrapper, { bottom: Math.max(insets.bottom, 10) + 10 }]}
+      style={[
+        styles.floatingWrapper,
+        { bottom: Math.max(insets.bottom, 10) + 10 },
+        animatedStyle,
+      ]}
     >
-      <View style={styles.bar}>
+      <Animated.View
+        entering={FadeInUp.springify().damping(26).stiffness(300).delay(250)}
+        layout={LinearTransition.springify().damping(26).stiffness(300)}
+        style={styles.bar}
+      >
         {/* Odwrócenie trasy (powrót) */}
         <Pressable
           onPress={onSwap}
@@ -96,11 +113,16 @@ export function RoutesThumbBar({
             pressed && styles.btnPressed,
           ]}
         >
-          <Zap
-            size={15}
-            color={directOnly ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-            fill={directOnly ? scheme.onPrimaryContainer : 'transparent'}
-          />
+          <Animated.View
+            key={directOnly ? 'direct-on' : 'direct-off'}
+            entering={ZoomIn.springify().damping(18).stiffness(500)}
+          >
+            <Zap
+              size={15}
+              color={directOnly ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+              fill={directOnly ? scheme.onPrimaryContainer : 'transparent'}
+            />
+          </Animated.View>
           <Text style={[styles.btnLabel, directOnly && styles.btnLabelActive]}>
             Bezpośr.
           </Text>
@@ -120,10 +142,15 @@ export function RoutesThumbBar({
             pressed && styles.btnPressed,
           ]}
         >
-          <Clock3
-            size={15}
-            color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-          />
+          <Animated.View
+            key={isCustomTime ? 'time-custom' : 'time-now'}
+            entering={ZoomIn.springify().damping(18).stiffness(500)}
+          >
+            <Clock3
+              size={15}
+              color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+            />
+          </Animated.View>
           <Text
             style={[styles.btnLabel, isCustomTime && styles.btnLabelActive]}
             numberOfLines={1}
@@ -146,7 +173,12 @@ export function RoutesThumbBar({
             pressed && styles.btnPressed,
           ]}
         >
-          {renderModeIcon()}
+          <Animated.View
+            key={modeFilter}
+            entering={ZoomIn.springify().damping(18).stiffness(500)}
+          >
+            {renderModeIcon()}
+          </Animated.View>
           <Text
             style={[styles.btnLabel, modeFilter !== 'all' && styles.btnLabelActive]}
             numberOfLines={1}
@@ -176,8 +208,8 @@ export function RoutesThumbBar({
             </Pressable>
           </>
         ) : null}
-      </View>
-    </View>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
