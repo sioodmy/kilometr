@@ -253,13 +253,22 @@ export default function RoutesScreen() {
   const [results, setResults] = useState<Suggestion[]>([]);
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [savedQuick, setSavedQuick] = useState<{ id: string; title: string }[]>([]);
+  const [savedQuick, setSavedQuick] = useState<Suggestion[]>([]);
 
   useEffect(() => {
     SearchService.recent().then(setRecent);
     Promise.all([FavoritesService.list(), loadSettings()]).then(([places, currentSettings]) => {
       setSavedPlaces(places);
-      setSavedQuick(places.slice(0, 3).map((s) => ({ id: s.id, title: s.name })));
+      setSavedQuick(
+        places.slice(0, 3).map((s) => ({
+          id: s.placeId,
+          title: s.name,
+          address: s.address,
+          kind: 'history' as const,
+          lat: s.lat,
+          lon: s.lon,
+        })),
+      );
 
       if (!initialAnchorCheckedRef.current) {
         initialAnchorCheckedRef.current = true;
@@ -288,9 +297,11 @@ export default function RoutesScreen() {
   }, []);
 
   // Debounced search (jak na głównym), bias wg aktualnego startu
+  const searchSeq = useRef(0);
   useEffect(() => {
     if (!sheetFor) return;
     const q = query.trim();
+    const seq = ++searchSeq.current;
     if (!q) {
       setResults([]);
       setSearchLoading(false);
@@ -298,10 +309,15 @@ export default function RoutesScreen() {
     }
     setSearchLoading(true);
     const t = setTimeout(() => {
-      SearchService.search(q, { lat: fromLat, lon: fromLon }).then((r) => {
-        setResults(r);
-        setSearchLoading(false);
-      });
+      SearchService.search(q, { lat: fromLat, lon: fromLon })
+        .then((r) => {
+          if (seq !== searchSeq.current) return;
+          setResults(r);
+          setSearchLoading(false);
+        })
+        .catch(() => {
+          if (seq === searchSeq.current) setSearchLoading(false);
+        });
     }, 220);
     return () => clearTimeout(t);
   }, [query, sheetFor, fromLat, fromLon]);

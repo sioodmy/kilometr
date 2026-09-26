@@ -31,7 +31,7 @@ export function SearchSheet({
   loading: boolean;
   results: Suggestion[];
   recent: Suggestion[];
-  savedQuick: { id: string; title: string }[];
+  savedQuick: Suggestion[];
   onQuery: (q: string) => void;
   onSelect: (s: Suggestion) => void;
   onClose: () => void;
@@ -67,7 +67,6 @@ export function SearchSheet({
   };
 
   const hasResults = results.length > 0;
-  const showRecent = query.trim().length === 0 || (!hasResults && !loading);
 
   const displayData = useMemo(() => {
     if (hasResults) return results;
@@ -164,9 +163,18 @@ export function SearchSheet({
             {!hasResults && query.trim().length === 0 && (
               <View style={styles.quickRow}>
                 {savedQuick.map((q) => (
-                  <View key={q.id} style={styles.quick}>
-                    <Text style={styles.quickText}>{q.title}</Text>
-                  </View>
+                  <TouchableOpacity
+                    key={q.id}
+                    onPress={() => handleSelect(q)}
+                    activeOpacity={0.7}
+                    style={styles.quick}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Zapisane miejsce: ${q.title}`}
+                  >
+                    <Text style={styles.quickText} numberOfLines={1}>
+                      {q.title}
+                    </Text>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
