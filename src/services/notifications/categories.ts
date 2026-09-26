@@ -10,9 +10,6 @@ export const ALERT_CATEGORY = 'kilometr.alert';
 export const ACTION_STOP = 'kilometr.action.stop';
 export const ACTION_OPEN_ROUTES = 'kilometr.action.routes';
 
-/** Domyślne „tapnięcie" powiadomienia — bez przycisku akcji. */
-const DEFAULT_ACTION = 'default';
-
 /** Czy użytkownik wcisnął „Zakończ śledzenie”, a nie po prostu tapnął. */
 export function isStopAction(actionIdentifier: string | undefined): boolean {
   return actionIdentifier === ACTION_STOP;

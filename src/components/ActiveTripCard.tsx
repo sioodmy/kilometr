@@ -38,6 +38,12 @@ function ModeIcon({ mode, color, size = 14 }: { mode: TripProgress['lineMode']; 
   );
 }
 
+/** Ta sama etykieta co w powiadomieniu — „Tramwaj 4" albo „Pieszo". */
+function lineLabel(mode: TripProgress['lineMode']): string {
+  if (mode === 'walk') return 'Pieszo';
+  return mode === 'tram' ? 'Tramwaj' : 'Autobus';
+}
+
 function useCountdown(targetMs: number, down: boolean): string {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -50,8 +56,19 @@ function useCountdown(targetMs: number, down: boolean): string {
 }
 
 /** Pasek postępu: szerokość animowana na UI thread, więc nie migocze. */
-function ProgressBar({ value, color, height = 5 }: { value: number; color: string; height?: number }) {
+function ProgressBar({
+  value,
+  color,
+  height = 5,
+  label,
+}: {
+  value: number;
+  color: string;
+  height?: number;
+  label: string;
+}) {
   const width = useSharedValue(0);
+  const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
 
   useEffect(() => {
     width.value = withTiming(Math.max(0.015, value), {
@@ -63,7 +80,13 @@ function ProgressBar({ value, color, height = 5 }: { value: number; color: strin
   const animated = useAnimatedStyle(() => ({ width: `${width.value * 100}%` }));
 
   return (
-    <View style={[styles.track, { height, borderRadius: height / 2 }]}>
+    <View
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
+      accessibilityValue={{ min: 0, max: 100, now: pct }}
+      style={[styles.track, { height, borderRadius: height / 2 }]}
+    >
       <Animated.View style={[styles.fill, { backgroundColor: color, borderRadius: height / 2 }, animated]} />
     </View>
   );
@@ -95,10 +118,32 @@ export function ActiveTripCard({
       ? null
       : `${progress.stopsLeft} ${plural(progress.stopsLeft, 'przystanek', 'przystanki', 'przystanków')}`;
 
+  const progressValue = arrived ? 1 : (progress.approachProgress ?? progress.progress) ?? 0;
+  const progressLabel = progress.approachProgress != null
+    ? 'Dojście do przystanku'
+    : 'Postęp podróży';
+
+  /**
+   * TalkOutLoud nie umie ogarnąć karty z kilkoma aktualizowanymi co sekundę
+   * tekstami — czytałby „3 min 59, 3 min 58…". Dlatego karta dostaje jeden
+   * gotowy zdań, a pasek osobną rolę progressbar z procentem.
+   */
+  const speech = [
+    PHASE_LABEL[progress.phase].toLowerCase(),
+    progress.line ? `${lineLabel(progress.lineMode)} ${progress.line}` : null,
+    progress.nextStop ? `następny przystanek ${progress.nextStop}` : null,
+    hops,
+    `na miejscu ${progress.arriveAt}`,
+    countdownCaption ? `${countdown} ${countdownCaption}` : null,
+    progress.delayMin >= 2 ? `opóźnienie ${Math.round(progress.delayMin)} minuty` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   return (
-    <View style={[styles.card, { borderColor: accent }]}>
+    <View style={[styles.card, { borderColor: accent }]} accessible accessibilityRole="summary" accessibilityLabel={speech}>
       {/* Pasek postępu podróży — sygnał „jesteś w trakcie”, nie liczba. */}
-      <ProgressBar value={arrived ? 1 : progress.progress} color={accent} />
+      <ProgressBar value={progressValue} color={accent} label={progressLabel} />
 
       <View style={styles.head}>
         <View style={[styles.lineChip, { backgroundColor: progress.lineMode === 'walk' ? scheme.surfaceContainerHighest : bg }]}>

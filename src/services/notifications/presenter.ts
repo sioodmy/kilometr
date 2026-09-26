@@ -108,7 +108,12 @@ export async function presentTrip(
 
   const link = buildTripLink(trip);
 
-  if (Platform.OS === 'android') {
+  // `liveProgressEnabled` to wspólny przełącznik dla obu nośników systemowych:
+  // paska postępu z chronometrem na Androidzie i Live Activity na iOS. Wyłączony
+  // = zostaje zwykłe powiadomienie z tekstem, bez modułu natywnego.
+  const wantSystemSurface = prefs.liveProgressEnabled;
+
+  if (Platform.OS === 'android' && wantSystemSurface) {
     const native = getTrackingNative();
     if (native) {
       try {
@@ -122,7 +127,7 @@ export async function presentTrip(
     }
   }
 
-  if (isLiveActivitySupported() && prefs.liveProgressEnabled) {
+  if (isLiveActivitySupported() && wantSystemSurface) {
     // `null` znaczy, że aktywności się nie udało otworzyć (użytkownik
     // wyłączył Live Activities w Ustawieniach albo iOS odmówił) — wtedy
     // lecimy zwykłym powiadomieniem, bo cisza byłaby gorsza niż prostsza
