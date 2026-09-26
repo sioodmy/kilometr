@@ -272,20 +272,70 @@ export async function resolveGeometry(
   }
 }
 
-/** Najbliższy punkt na nodze + kurs w nim — do strzałki pojazdu live. */
-export function projectOnGeometry(
+/** Odległość w metrach między dwoma punktami geograficznymi. */
+export function distanceM(p1: Coord, p2: Coord): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = (p2[0] - p1[0]) * 111320;
+  const dLon = (p2[1] - p1[1]) * 111320 * Math.cos(toRad((p1[0] + p2[0]) / 2));
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
+
+/** Skumulowane odległości wzdłuż linii; długość = coords.length + 1. */
+export function cumulativeDistances(coords: Coord[]): number[] {
+  const out = [0];
+  for (let i = 0; i < coords.length - 1; i++) {
+    out.push(out[i] + distanceM(coords[i], coords[i + 1]));
+  }
+  return out;
+}
+
+export interface Projection {
+  /** Najbliższy punkt na linii. */
+  lat: number;
+  lon: number;
+  /** Kurs (azymut) odcinka, na którym leży ten punkt. */
+  heading: number;
+  /** Odległość od początku linii wzdłuż niej [m]. */
+  alongM: number;
+  /** 0..1 wzdłuż linii. */
+  progress: number;
+  /** Dystans od linii [m]. */
+  offsetM: number;
+  /** Długość całej linii [m]. */
+  totalM: number;
+}
+
+/**
+ * Rzut punktu na linię trasy wraz z postępem (0..1) i dystansem od niej.
+ * To jedyne miejsce, w którym liczymy „gdzie wzdłuż trasy coś jest” —
+ * strzałka pojazdu, kursor joysticka i dopasowanie live korzystają z tego
+ * samego rachunku, więc nic się nie rozjeżdża.
+ */
+export function projectRoutePoint(
   coords: Coord[],
   lat: number,
   lon: number,
-): { lat: number; lon: number; heading: number } | null {
-  if (coords.length === 0) return null;
-  if (coords.length === 1) return { lat: coords[0][0], lon: coords[0][1], heading: 0 };
-
+): Projection | null {
+  if (!coords || coords.length === 0) return null;
   const toRad = (d: number) => (d * Math.PI) / 180;
+  if (coords.length === 1) {
+    return {
+      lat: coords[0][0],
+      lon: coords[0][1],
+      heading: 0,
+      alongM: 0,
+      progress: 0,
+      offsetM: distanceM(coords[0], [lat, lon]),
+      totalM: 0,
+    };
+  }
+
+  const cum = cumulativeDistances(coords);
   let best = Infinity;
   let bestLat = coords[0][0];
   let bestLon = coords[0][1];
   let bestHeading = 0;
+  let bestAlong = 0;
 
   for (let i = 0; i < coords.length - 1; i++) {
     const [lat1, lon1] = coords[i];
@@ -307,6 +357,7 @@ export function projectOnGeometry(
       best = d;
       bestLat = pLat;
       bestLon = pLon;
+      bestAlong = cum[i] + t * (cum[i + 1] - cum[i]);
       const phi1 = toRad(lat1);
       const phi2 = toRad(lat2);
       const dLambda = toRad(lon2 - lon1);
@@ -315,17 +366,27 @@ export function projectOnGeometry(
       bestHeading = (Math.atan2(y2, x2) * 180) / Math.PI;
     }
   }
-  return { lat: bestLat, lon: bestLon, heading: (bestHeading + 360) % 360 };
+  const total = cum[cum.length - 1];
+  return {
+    lat: bestLat,
+    lon: bestLon,
+    heading: (bestHeading + 360) % 360,
+    alongM: bestAlong,
+    progress: total > 0 ? Math.max(0, Math.min(1, bestAlong / total)) : 0,
+    offsetM: distanceM([bestLat, bestLon], [lat, lon]),
+    totalM: total,
+  };
 }
 
-/**
- * Odległość w metrach między dwoma punktami geograficznymi.
- */
-export function distanceM(p1: Coord, p2: Coord): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = (p2[0] - p1[0]) * 111320;
-  const dLon = (p2[1] - p1[1]) * 111320 * Math.cos(toRad((p1[0] + p2[0]) / 2));
-  return Math.sqrt(dLat * dLat + dLon * dLon);
+/** Najbliższy punkt na nodze + kurs w nim — do strzałki pojazdu live. */
+export function projectOnGeometry(
+  coords: Coord[],
+  lat: number,
+  lon: number,
+): { lat: number; lon: number; heading: number } | null {
+  const p = projectRoutePoint(coords, lat, lon);
+  if (!p) return null;
+  return { lat: p.lat, lon: p.lon, heading: p.heading };
 }
 
 /**
@@ -423,7 +484,7 @@ export function interpolateRoute(
 }
 
 /**
- * Wyszukuje najbliższy przystanek na trasie do zadanego punktu.
+ * Wyszukuje najbliższy punkt na trasie do zadanego punktu.
  */
 export function findNearestStop(
   route: MapRoute | null,
@@ -448,3 +509,43 @@ export function findNearestStop(
   if (!bestStop || !bestLeg) return null;
   return { stop: bestStop, leg: bestLeg, distanceM: bestDist };
 }
+
+/**
+ * Przystanek, do którego się zbliżamy przy danym postępie trasy — czyli
+ * pierwszy leżący dalej wzdłuż linii. Zwykłe „najbliższy” przy skręcie
+ * potrafi wskazać przystanek za kulisami, a właśnie po to jest ten
+ * kurs joystickem.
+ */
+export function findNextStop(
+  route: MapRoute | null,
+  coords: Coord[],
+  progress: number,
+): { stop: MapStop; leg: MapLeg; distanceM: number } | null {
+  if (!route || coords.length < 2) return null;
+  const cum = cumulativeDistances(coords);
+  const total = cum[cum.length - 1];
+  if (total <= 0) return null;
+  const alongM = Math.max(0, Math.min(1, progress)) * total;
+  const { point } = interpolateRoute(coords, progress);
+
+  let best: { stop: MapStop; leg: MapLeg; distanceM: number } | null = null;
+  for (const leg of route.legs) {
+    for (const stop of leg.stops) {
+      if (stop.role === 'walk') continue;
+      const p = projectRoutePoint(coords, stop.lat, stop.lon);
+      if (!p) continue;
+      if (p.alongM < alongM - 15) continue; // już za nami
+      if (!best || p.alongM < best.distanceM + alongM) {
+        best = { stop, leg, distanceM: p.alongM - alongM };
+      }
+    }
+  }
+  if (best) {
+    // Odległość po prostej na wypadek, gdyby przystanek leżał obok kursu
+    // (droga zygzakowata) — wtedy pokazujemy odległość powietrzną.
+    const air = distanceM([best.stop.lat, best.stop.lon], point);
+    return { ...best, distanceM: Math.max(0, Math.min(best.distanceM, air)) };
+  }
+  return findNearestStop(route, point);
+}
+

@@ -1,12 +1,14 @@
-// Komponent wirtualnego joysticka do nawigacji po trasie.
+// Sterowanie trasą w dolnym menu (nie osobny podmenu).
 //
 // Oś X: przelot wzdłuż trasy (Start ◄──► Meta).
 // Oś Y: przybliżanie i oddalanie mapy (Zoom + ▲ / Zoom − ▼).
+// Sam pad to jednocześnie miniaturowa mapa: widać nitkę trasy dalej,
+// kursor na trasie i naszą własną pozycję.
 //
-// Zbudowany z użyciem czystego PanRespondera i Animated z React Native,
-// ze sprężynowym powrotem do środka po zwolnieniu kciuka.
+// Zbudowany z czystego PanRespondera i Animated z React Native, ze
+// sprężynowym powrotem gałki do środka po zwolnieniu kciuka.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   PanResponder,
@@ -17,41 +19,47 @@ import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
-import { Maximize, X, ZoomIn, ZoomOut } from 'lucide-react-native';
-import type { MapRoute } from '../map/types';
-import { scheme, type } from '../theme/tokens';
+import { SkipBack, SkipForward } from 'lucide-react-native';
+import type { Coord } from '../services/routeGeometry';
+import { scheme, shape, type } from '../theme/tokens';
+import { RouteMiniMap } from './RouteMiniMap';
 
-const JOYSTICK_RADIUS = 56;
-const PUCK_RADIUS = 24;
-const MAX_DEFLECTION = JOYSTICK_RADIUS - 12; // 44px
+const JOYSTICK_RADIUS = 46;
+const PUCK_RADIUS = 19;
+const MAX_DEFLECTION = JOYSTICK_RADIUS - 11;
 const DEADZONE = 0.08;
+/** Mini-mapa pad'a nie musi chodzić 60 fps — wystarczy ~15, reszta to szum. */
+const MINI_MAP_HZ = 15;
 
 export interface RouteJoystickProps {
-  route: MapRoute;
+  /** Pełna trasa — mini-mapa w padzie rysuje z niej odcinek przed kursorem. */
+  coords: Coord[];
   progress: number;
   zoom: number;
-  nearestStopName?: string;
-  currentLegLine?: string;
-  currentLegMode?: string;
+  /** Najbliższy przystanek przed punktem kursu. */
+  aheadStopName?: string;
+  aheadStopDistanceM?: number;
+  /** Nasza pozycja względem punktu kursu (null = brak fixa GPS). */
+  userDistanceM?: number | null;
+  user?: { lat: number; lon: number } | null;
+  vehicle?: { lat: number; lon: number; color: string } | null;
   onNavigate: (progress: number, zoom: number, duration?: number) => void;
   onJumpStart: () => void;
   onJumpFinish: () => void;
-  onFit: () => void;
-  onClose: () => void;
 }
 
 export function RouteJoystick({
-  route,
+  coords,
   progress,
   zoom,
-  nearestStopName,
-  currentLegLine,
-  currentLegMode,
+  aheadStopName,
+  aheadStopDistanceM,
+  userDistanceM,
+  user,
+  vehicle,
   onNavigate,
   onJumpStart,
   onJumpFinish,
-  onFit,
-  onClose,
 }: RouteJoystickProps) {
   // Płynna pozycja gałki
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -68,6 +76,11 @@ export function RouteJoystick({
   const loopActiveRef = useRef<boolean>(false);
 
   const [trackWidth, setTrackWidth] = useState(240);
+  // Mini-mapa dostaje throttlowany postęp, bo pad przesuwa się 60 razy
+  // na sekundę, a przeliczanie kilkunastu odcinków w każdej klatce
+  // nie wnosiłoby nic poza jankiem.
+  const [miniProgress, setMiniProgress] = useState(progress);
+  const lastMiniAt = useRef(0);
 
   const updateLoop = useCallback(() => {
     if (!loopActiveRef.current) return;
@@ -135,6 +148,14 @@ export function RouteJoystick({
     };
   }, [stopLoop]);
 
+  // Throttling postępu dla mini-mapy (albo ~15 Hz, albo od razu po puszczeniu).
+  useEffect(() => {
+    const now = Date.now();
+    if (now - lastMiniAt.current < 1000 / MINI_MAP_HZ) return;
+    lastMiniAt.current = now;
+    setMiniProgress(progress);
+  }, [progress]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -161,6 +182,7 @@ export function RouteJoystick({
       },
       onPanResponderRelease: () => {
         stopLoop();
+        setMiniProgress(progressRef.current);
         Animated.spring(pan, {
           toValue: { x: 0, y: 0 },
           friction: 6,
@@ -170,6 +192,7 @@ export function RouteJoystick({
       },
       onPanResponderTerminate: () => {
         stopLoop();
+        setMiniProgress(progressRef.current);
         Animated.spring(pan, {
           toValue: { x: 0, y: 0 },
           friction: 6,
@@ -195,215 +218,189 @@ export function RouteJoystick({
 
   const percent = Math.round(progress * 100);
 
+  const ahead = useMemo(() => {
+    if (!aheadStopName) return 'koniec trasy';
+    if (aheadStopDistanceM == null) return aheadStopName;
+    return `${aheadStopName} · ${Math.round(aheadStopDistanceM)} m`;
+  }, [aheadStopName, aheadStopDistanceM]);
+
+  const userLabel =
+    userDistanceM == null
+      ? 'Brak pozycji GPS'
+      : userDistanceM < 25
+        ? 'Jesteś na trasie'
+        : `Ty: ${Math.round(userDistanceM)} m od trasy`;
+
   return (
-    <View style={styles.card}>
-      {/* Nagłówek: postęp trasy i zamknięcie */}
-      <View style={styles.header}>
-        <View style={styles.titleWrap}>
-          <Text style={styles.badgeText}>🕹️ Nawigacja trasą</Text>
-          <Text style={styles.percentText}>{percent}%</Text>
-        </View>
-        <Pressable
-          onPress={onClose}
-          hitSlop={10}
-          style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.7 }]}
-          accessibilityRole="button"
-          accessibilityLabel="Zamknij sterowanie joystickiem"
-        >
-          <X size={18} color={scheme.onSurfaceVariant} />
-        </Pressable>
-      </View>
-
-      {/* Info o bieżącej lokalizacji na trasie */}
-      <View style={styles.statusRow}>
-        <Text style={styles.statusText} numberOfLines={1}>
-          {nearestStopName ? `📍 ${nearestStopName}` : `${route.fromTitle} → ${route.toTitle}`}
-          {currentLegLine ? ` • Linia ${currentLegLine}` : ''}
-        </Text>
-        <Text style={styles.zoomPill}>Zoom {zoom.toFixed(1)}x</Text>
-      </View>
-
-      {/* Oś trasy (interaktywny suwak start -> meta) */}
-      <View style={styles.scrubberSection}>
-        <View style={styles.scrubberLabels}>
-          <Text style={styles.scrubberLabel} numberOfLines={1}>
-            {route.fromTitle}
-          </Text>
-          <Text style={[styles.scrubberLabel, styles.scrubberLabelEnd]} numberOfLines={1}>
-            {route.toTitle}
-          </Text>
-        </View>
-
-        <Pressable
-          style={styles.track}
-          onLayout={handleTrackLayout}
-          onPress={handleTrackTouch}
-          hitSlop={{ top: 8, bottom: 8 }}
-          accessibilityRole="adjustable"
-          accessibilityLabel="Oś postępu trasy"
-        >
-          <View style={[styles.trackFill, { width: `${percent}%` }]} />
-          <View style={[styles.thumb, { left: `${percent}%` }]} />
-        </Pressable>
-      </View>
-
-      {/* Główny pad 2D joysticka */}
-      <View style={styles.joystickArea}>
-        <View style={styles.joystickOuter}>
-          {/* Etykiety osi */}
-          <Text style={[styles.axisLabel, styles.axisTop]}>▲ Zoom +</Text>
-          <Text style={[styles.axisLabel, styles.axisBottom]}>▼ Zoom −</Text>
-          <Text style={[styles.axisLabel, styles.axisLeft]}>◄ Start</Text>
-          <Text style={[styles.axisLabel, styles.axisRight]}>Meta ►</Text>
-
-          {/* Linie celownika osi X / Y */}
-          <View style={styles.crosshairH} />
-          <View style={styles.crosshairV} />
-
-          {/* Ruchoma gałka joysticka */}
+    <View style={styles.row}>
+      {/* Pad = jednocześnie joystick i radar kierunkowy trasy */}
+      <View style={styles.padWrap}>
+        <RouteMiniMap
+          coords={coords}
+          progress={miniProgress}
+          size={JOYSTICK_RADIUS * 2}
+          user={user}
+          vehicle={vehicle}
+        />
+        {/* Gałka leży na podglądzie, a nie obok niego. */}
+        <View style={styles.puckLayer} {...panResponder.panHandlers}>
           <Animated.View
             style={[
               styles.puck,
-              {
-                transform: [{ translateX: pan.x }, { translateY: pan.y }],
-              },
+              { transform: [{ translateX: pan.x }, { translateY: pan.y }] },
             ]}
-            {...panResponder.panHandlers}
           >
-            <View style={styles.puckCenter} />
+            <View style={styles.puckRing} />
+            <View style={styles.puckCore} />
           </Animated.View>
         </View>
+        {/* Podpowiedzi osi — tylko cztery strzałki, bez tekstu. */}
+        <Text style={[styles.axisHint, styles.axisTop]}>▲</Text>
+        <Text style={[styles.axisHint, styles.axisBottom]}>▼</Text>
+        <Text style={[styles.axisHint, styles.axisLeft]}>◄</Text>
+        <Text style={[styles.axisHint, styles.axisRight]}>►</Text>
       </View>
 
-      {/* Dolny pasek szybkich akcji */}
-      <View style={styles.actionsRow}>
-        <Pressable
-          onPress={onJumpStart}
-          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel="Przejdź do startu trasy"
-        >
-          <Text style={styles.actionBtnText}>Początek</Text>
-        </Pressable>
+      <View style={styles.info}>
+        <Text style={styles.aheadLabel} numberOfLines={1}>
+          Dalej: {ahead}
+        </Text>
+        <Text style={styles.metaLabel} numberOfLines={1}>
+          {userLabel} · Zoom {zoom.toFixed(1)}
+        </Text>
 
-        <Pressable
-          onPress={onFit}
-          style={({ pressed }) => [styles.actionBtn, styles.actionBtnAccent, pressed && styles.actionBtnPressed]}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel="Dopasuj widok do całej trasy"
-        >
-          <Maximize size={14} color={scheme.onPrimaryContainer} />
-          <Text style={[styles.actionBtnText, styles.actionBtnAccentText]}>Dopasuj</Text>
-        </Pressable>
+        <View style={styles.trackRow}>
+          <Pressable
+            onPress={onJumpStart}
+            hitSlop={8}
+            style={({ pressed }) => [styles.jumpBtn, pressed && styles.jumpBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Przejdź do startu trasy"
+          >
+            <SkipBack size={16} color={scheme.onSurface} />
+          </Pressable>
 
-        <Pressable
-          onPress={onJumpFinish}
-          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel="Przejdź do końca trasy"
-        >
-          <Text style={styles.actionBtnText}>Koniec</Text>
-        </Pressable>
+          <Pressable
+            style={styles.track}
+            onLayout={handleTrackLayout}
+            onPress={handleTrackTouch}
+            hitSlop={{ top: 10, bottom: 10 }}
+            accessibilityRole="adjustable"
+            accessibilityLabel="Oś postępu trasy"
+            accessibilityValue={{ min: 0, max: 100, now: percent }}
+          >
+            <View style={[styles.trackFill, { width: `${percent}%` }]} />
+            <View style={[styles.thumb, { left: `${percent}%` }]} />
+          </Pressable>
+
+          <Pressable
+            onPress={onJumpFinish}
+            hitSlop={8}
+            style={({ pressed }) => [styles.jumpBtn, pressed && styles.jumpBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Przejdź do końca trasy"
+          >
+            <SkipForward size={16} color={scheme.onSurface} />
+          </Pressable>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: 24,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  padWrap: {
+    width: JOYSTICK_RADIUS * 2,
+    height: JOYSTICK_RADIUS * 2,
+    borderRadius: JOYSTICK_RADIUS,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
+    overflow: 'hidden',
   },
-  header: {
-    flexDirection: 'row',
+  puckLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  puck: {
+    position: 'absolute',
+    left: JOYSTICK_RADIUS - PUCK_RADIUS,
+    top: JOYSTICK_RADIUS - PUCK_RADIUS,
+    width: PUCK_RADIUS * 2,
+    height: PUCK_RADIUS * 2,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    justifyContent: 'center',
   },
-  titleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  puckRing: {
+    position: 'absolute',
+    width: PUCK_RADIUS * 2,
+    height: PUCK_RADIUS * 2,
+    borderRadius: PUCK_RADIUS,
+    borderWidth: 2,
+    borderColor: scheme.primary,
+    backgroundColor: 'rgba(17,20,20,0.35)',
   },
-  badgeText: {
-    ...type.labelMedium,
-    color: scheme.primary,
+  puckCore: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: scheme.primary,
+  },
+  axisHint: {
+    position: 'absolute',
+    fontSize: 9,
     fontWeight: '700',
-  },
-  percentText: {
-    ...type.labelSmall,
     color: scheme.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '800',
-    backgroundColor: scheme.surfaceContainerHighest,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
+    opacity: 0.5,
   },
-  closeBtn: {
-    padding: 4,
-    borderRadius: 999,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 8,
-  },
-  statusText: {
-    ...type.bodySmall,
-    color: scheme.onSurface,
-    fontWeight: '600',
+  axisTop: { top: 3, alignSelf: 'center' },
+  axisBottom: { bottom: 3, alignSelf: 'center' },
+  axisLeft: { left: 4, top: JOYSTICK_RADIUS - 6 },
+  axisRight: { right: 4, top: JOYSTICK_RADIUS - 6 },
+  info: {
     flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
-  zoomPill: {
-    ...type.labelSmall,
-    color: scheme.onTertiaryContainer,
-    backgroundColor: scheme.tertiaryContainer,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    fontVariant: ['tabular-nums'],
+  aheadLabel: {
+    ...type.labelLarge,
     fontWeight: '700',
+    color: scheme.onSurface,
   },
-  scrubberSection: {
-    marginBottom: 10,
-  },
-  scrubberLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  scrubberLabel: {
+  metaLabel: {
     ...type.labelSmall,
     color: scheme.onSurfaceVariant,
-    fontSize: 10,
-    maxWidth: '48%',
   },
-  scrubberLabelEnd: {
-    textAlign: 'right',
+  trackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  jumpBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  jumpBtnPressed: {
+    opacity: 0.7,
   },
   track: {
+    flex: 1,
     height: 8,
     backgroundColor: scheme.surfaceContainerLowest,
     borderRadius: 4,
     justifyContent: 'center',
-    overflow: 'visible',
-    position: 'relative',
   },
   trackFill: {
     height: '100%',
@@ -417,111 +414,7 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     backgroundColor: scheme.primary,
     borderWidth: 2,
-    borderColor: scheme.surface,
+    borderColor: scheme.surfaceContainerHigh,
     marginLeft: -7,
-  },
-  joystickArea: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 4,
-  },
-  joystickOuter: {
-    width: JOYSTICK_RADIUS * 2,
-    height: JOYSTICK_RADIUS * 2,
-    borderRadius: JOYSTICK_RADIUS,
-    backgroundColor: scheme.surfaceContainerLowest,
-    borderWidth: 1.5,
-    borderColor: scheme.outlineVariant,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  crosshairH: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    height: 1,
-    backgroundColor: scheme.outlineVariant,
-    opacity: 0.4,
-  },
-  crosshairV: {
-    position: 'absolute',
-    top: 8,
-    bottom: 8,
-    width: 1,
-    backgroundColor: scheme.outlineVariant,
-    opacity: 0.4,
-  },
-  axisLabel: {
-    position: 'absolute',
-    ...type.labelSmall,
-    fontSize: 9,
-    fontWeight: '700',
-    color: scheme.onSurfaceVariant,
-    opacity: 0.85,
-  },
-  axisTop: {
-    top: 4,
-  },
-  axisBottom: {
-    bottom: 4,
-  },
-  axisLeft: {
-    left: 6,
-  },
-  axisRight: {
-    right: 6,
-  },
-  puck: {
-    width: PUCK_RADIUS * 2,
-    height: PUCK_RADIUS * 2,
-    borderRadius: PUCK_RADIUS,
-    backgroundColor: scheme.secondaryContainer,
-    borderWidth: 2,
-    borderColor: scheme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: scheme.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  puckCenter: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: scheme.primary,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 8,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 7,
-    borderRadius: 12,
-    backgroundColor: scheme.surfaceContainerHighest,
-  },
-  actionBtnPressed: {
-    opacity: 0.7,
-  },
-  actionBtnAccent: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  actionBtnText: {
-    ...type.labelMedium,
-    color: scheme.onSurface,
-    fontWeight: '700',
-  },
-  actionBtnAccentText: {
-    color: scheme.onPrimaryContainer,
   },
 });

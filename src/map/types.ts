@@ -90,4 +90,7 @@ export type MapInMessage =
   | { t: 'user'; lat: number; lon: number; heading: number | null }
   | { t: 'center'; lat: number; lon: number; zoom?: number; duration?: number }
   | { t: 'cursor'; lat: number; lon: number }
-  | { t: 'clearCursor' };
+  | { t: 'clearCursor' }
+  /** Odcinek trasy przed kursorem (podświetlana „nitka dalej”). */
+  | { t: 'ahead'; coords: [number, number][] }
+  | { t: 'clearAhead' };

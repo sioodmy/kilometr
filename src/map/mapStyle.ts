@@ -297,6 +297,9 @@ function baseLayers() {
 }
 
 export const ROUTE_SOURCE_ID = 'kilometr-trasa';
+/** Osobne źródło na podświetlony odcinek przed kursorem (sterowanie trasą). */
+export const AHEAD_SOURCE_ID = 'kilometr-ahead';
+export const AHEAD_LAYER_ID = 'trasa-ahead';
 
 // `sel` na obiekcie linii: 2 = wybrana noga, 1 = przygaszona reszta,
 // 0 = nic nie wybrane (wtedy wszystkie nogi rysujemy na pełnej szerokości).
@@ -385,6 +388,10 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
  * Pełny styl mapy: podkład OSM + warstwy trasy. Trasa siedzi w tym samym
  * stylu, więc WebView nie musi nic doklejać po wczytaniu — wystarczy
  * `setData` na źródle GeoJSON.
+ *
+ * Warstwa `trasa-ahead` startuje pusta i zostawia miejsce dla podświetlenia
+ * odcinka przed kursorem (dodawanego z aplikacji przy sterowaniu trasą),
+ * dzięki czemu nie trzeba go doklejać do stylu w trakcie jazdy.
  */
 export function buildMapStyle() {
   return {
@@ -393,8 +400,24 @@ export function buildMapStyle() {
     sources: {
       openmaptiles: { type: 'vector', url: MAP_SOURCE_URL, attribution: '' },
       [ROUTE_SOURCE_ID]: { type: 'geojson', data: EMPTY },
+      [AHEAD_SOURCE_ID]: { type: 'geojson', data: EMPTY },
     },
     glyphs: MAP_GLYPHS_URL,
-    layers: [...baseLayers(), ...buildRouteLayers()],
+    layers: [
+      ...baseLayers(),
+      ...buildRouteLayers(),
+      {
+        id: AHEAD_LAYER_ID,
+        type: 'line' as const,
+        source: AHEAD_SOURCE_ID,
+        layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
+        paint: {
+          'line-color': '#7DF8DE',
+          'line-width': 3,
+          'line-opacity': 0.9,
+          'line-dasharray': [1.2, 1.4],
+        },
+      },
+    ],
   };
 }
