@@ -44,7 +44,7 @@ import {
 } from '../../src/services/pinnedConnection';
 import {
   loadConnections,
-  pingBackend,
+  hasLocalTimetable,
   rehydrateConnections,
 } from '../../src/services/offlineCache';
 import {
@@ -53,6 +53,7 @@ import {
   subscribeDataStatus,
   type DataStatus,
 } from '../../src/services/dataManager';
+import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
@@ -116,6 +117,15 @@ export default function RoutesScreen() {
   const timetableBusy =
     dataStatus.state === 'downloading' || dataStatus.state === 'importing';
   const timetableReady = dataStatus.state === 'ready';
+  // Brak sieci = brak opóźnień z MPK. Bez komunikatu użytkownik myśli,
+  // że planer po prostu nie umie opóźnień.
+  const [liveStale, setLiveStale] = useState(false);
+  useEffect(() => {
+    const check = () => setLiveStale(liveTracker.getLiveState() === 'stale');
+    check();
+    const t = setInterval(check, 30000);
+    return () => clearInterval(t);
+  }, []);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [noMoreEarlier, setNoMoreEarlier] = useState(false);
@@ -472,7 +482,7 @@ export default function RoutesScreen() {
     let cancelled = false;
     const beat = async () => {
       if (cancelled || !offlineRef.current) return;
-      if (await pingBackend()) {
+      if (await hasLocalTimetable()) {
         if (cancelled) return;
         await quietRefresh();
       }
@@ -941,10 +951,18 @@ export default function RoutesScreen() {
                     onPress={() => quietRefresh()}
                     style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
                     hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ostatnie dane z cache. Dotknij, aby odświeżyć."
                   >
                     <View style={styles.offlineDot} />
                     <Text style={styles.offlineText}>offline</Text>
                   </Pressable>
+                )}
+                {liveStale && !offline && (
+                  <View style={styles.offlineChip}>
+                    <View style={styles.offlineDot} />
+                    <Text style={styles.offlineText}>brak danych live</Text>
+                  </View>
                 )}
               </View>
             </View>
