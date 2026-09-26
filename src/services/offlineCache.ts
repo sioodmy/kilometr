@@ -2,9 +2,13 @@ import { kvGet, kvSet } from './storage';
 
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
-/** Szybki heartbeat: czy backend żyje (do wykrywania powrotu sieci). */
-export async function pingBackend(timeoutMs = 2500): Promise<boolean> {
-  // Tryb offline-first: lokalny GTFS w SQLite znaczy "działa".
+/**
+ * Czy telefon ma lokalny rozkład — czyli czy w ogóle da się zaplanować
+ * trasę. Planer jeździ po SQLite, nie po serwerze, więc nazwa „pingBackend”
+ * wprowadzała w błąd (a komunikat „Offline” na ekranie głównym był
+ * mylący: brak rozkładu to nie brak internetu).
+ */
+export async function hasLocalTimetable(): Promise<boolean> {
   try {
     const { getGtfsStats } = await import('./gtfsDatabase');
     const stats = await getGtfsStats();

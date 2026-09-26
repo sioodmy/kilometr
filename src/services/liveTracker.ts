@@ -48,8 +48,21 @@ class LiveTracker {
   private byLine = new Map<string, TrackedVehicle[]>();
   private tripDelays = new Map<string, number>();
   private lastOk = 0;
+  private failed = false;
   private inFlight = false;
   private timer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Stan danych live: 'fresh' (mamy świeże opóźnienia), 'stale' (poll
+   * nie działa — opóźnień nie będzie), 'unknown' (jeszcze nie wiadomo).
+   * Bez tego użytkownik widzi połączenia bez żadnej informacji, dlaczego
+   * nie ma ani kropki, ani opóźnienia.
+   */
+  getLiveState(): 'fresh' | 'stale' | 'unknown' {
+    if (Date.now() - this.lastOk < FRESH_MS) return 'fresh';
+    if (this.failed || this.lastOk > 0) return 'stale';
+    return 'unknown';
+  }
 
   /** Czyści stan trackera (np. po resecie bazy lub nowym imporcie). */
   reset(): void {
@@ -57,6 +70,7 @@ class LiveTracker {
     this.byLine.clear();
     this.tripDelays.clear();
     this.lastOk = 0;
+    this.failed = false;
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -102,9 +116,14 @@ class LiveTracker {
       if (rows && rows.length > 0) {
         await this.matchAll(rows);
         this.lastOk = Date.now();
+        this.failed = false;
+      } else {
+        // Pusta odpowiedź to też brak danych — np. w nocy albo przy błędzie.
+        this.failed = true;
       }
     } catch (err) {
       console.warn('[LiveTracker] poll failed:', err);
+      this.failed = true;
     } finally {
       this.inFlight = false;
     }

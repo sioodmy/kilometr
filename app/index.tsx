@@ -7,7 +7,6 @@ import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
-import { pingBackend } from '../src/services/offlineCache';
 import {
   type DataStatus,
   getDataStatus,
@@ -65,7 +64,6 @@ export default function HomeScreen() {
   });
   const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
-  const [offline, setOffline] = useState(false);
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
 
@@ -118,7 +116,7 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // Status sieci: ping przy starcie, powrocie na foreground i co 30 s.
+  // Status danych: przy starcie, powrocie na foreground i co 30 s.
   // refreshDataStatus ładuje status lokalnego GTFS — jeśli pusty, automatycznie
   // uruchamiamy pobieranie rozkładu, aby aplikacja działała bez serwera dev.
   useEffect(() => {
@@ -128,8 +126,6 @@ export default function HomeScreen() {
       if (st.state === 'empty') {
         void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
       }
-      const online = await pingBackend();
-      if (!cancelled) setOffline(!online);
     };
     void check();
     const sub = AppState.addEventListener('change', (state) => {
@@ -162,10 +158,9 @@ export default function HomeScreen() {
     });
   }, []);
 
-  // Po zakończeniu importu GTFS aktualizujemy odjazdy i zdejmujemy badge offline
+  // Po zakończeniu importu GTFS aktualizujemy odjazdy
   useEffect(() => {
     if (dataStatus.state === 'ready') {
-      setOffline(false);
       refreshPlaces();
       if (!isCustomStart) {
         LocationService.getCurrentLocation().then((l) => {
@@ -531,12 +526,6 @@ export default function HomeScreen() {
                 </Pressable>
               )}
             </View>
-            {offline && (
-              <View style={styles.offlinePill}>
-                <View style={styles.offlineDot} />
-                <Text style={styles.offlineText}>Offline</Text>
-              </View>
-            )}
             <View style={styles.topActions}>
               <Pressable
                 style={styles.iconBtn}
@@ -748,23 +737,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     backgroundColor: scheme.surfaceContainerHigh,
   },
-  offlinePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 0,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingHorizontal: 10,
-    height: 32,
-  },
-  offlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: scheme.warning,
-  },
-  offlineText: { ...type.labelSmall, fontWeight: '700', color: scheme.onSurfaceVariant },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   iconBtn: {
     width: 40,
