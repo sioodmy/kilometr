@@ -71,6 +71,9 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
           <Stack.Screen name="routes" options={{ headerShown: false }} />
+          {/* Mapa ma własny gest przesuwania — natywny swipe-back zjadałby
+              przeciąganie widoku i mapa skakałaby przy powrocie. */}
+          <Stack.Screen name="map" options={{ gestureEnabled: false }} />
           <Stack.Screen
             name="news"
             options={{
