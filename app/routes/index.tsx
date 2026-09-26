@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, InteractionManager, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -69,6 +69,16 @@ const GPS_ITEM: Suggestion = {
   lat: 0,
   lon: 0,
 };
+
+/** Sekundy od północy — jeden zegar dla całego ekranu. */
+function nowSeconds(): number {
+  const d = new Date();
+  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+}
+
+// Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
+// VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
+const connectionKey = (item: Connection) => item.id;
 
 export default function RoutesScreen() {
   const router = useRouter();
@@ -166,7 +176,13 @@ export default function RoutesScreen() {
     );
   }, [items, sortMode, directOnly]);
 
-  // Animacja płynnego chowania/pokazywania filtrów przy scrollowaniu
+  // Zwijanie panelu filtrów. Samo `height` + `overflow: hidden`, bez opacity
+  // i scale: opacity na panelu z cieniami tworzy na Androidzie warstwę
+  // offscreen (klatka po klatce), a scale dawał artefakty subpixelowe
+  // (8bac23c). Sama wysokość to „kurtyna”, którą da się ciąć płynnie.
+  // Wyzwalanie zmiany jest asynchroniczne (patrz setFiltersVisible), więc
+  // w trakcie przeciągania wysokość panelu jest stała i lista pod nim nie
+  // przelicza layoutu co klatkę.
   const filterProgress = useSharedValue(1);
   const measuredFiltersHeight = useSharedValue(200);
 
@@ -174,13 +190,7 @@ export default function RoutesScreen() {
     const p = filterProgress.value;
     const h = measuredFiltersHeight.value;
     return {
-      opacity: p,
-      maxHeight: interpolate(p, [0, 1], [0, h]),
-      transform: [
-        {
-          translateY: interpolate(p, [0, 1], [-8, 0]),
-        },
-      ],
+      height: interpolate(p, [0, 1], [0, h]),
       overflow: 'hidden',
     };
   });
@@ -235,10 +245,17 @@ export default function RoutesScreen() {
   const contentH = useRef(0);
   const pendingAdjust = useRef<number | null>(null);
   const topHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Odliczany „uspokojenie listy” przed zmianą panelu filtrów
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stan panelu oczekujący na koniec pauzy po zmianie (patrz setFiltersVisible)
+  const pendingFilterState = useRef<boolean | null>(null);
+  const filterCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (topHoldTimer.current) clearTimeout(topHoldTimer.current);
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      if (filterCooldownTimer.current) clearTimeout(filterCooldownTimer.current);
     };
   }, []);
 
@@ -551,26 +568,26 @@ export default function RoutesScreen() {
     if (!firstDeparture || firstDeparture <= 0) return;
 
     setLoadingEarlier(true);
-    // Zapamiętaj wysokość kontentu, żeby po prependzie cofnąć offset (brak skoku)
-    pendingAdjust.current = contentH.current;
     const seq = ++fetchSeq.current;
 
     try {
       const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
-      if (seq !== fetchSeq.current) {
-        pendingAdjust.current = null;
-        return;
-      }
+      if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
         if (added === 0) {
           setNoMoreEarlier(true);
-          pendingAdjust.current = null;
+          return list;
         }
+        // Bazę do korekty scrolla bierzemy dopiero TU — czyli jeszcze przed
+        // renderem, w którym dojdą nowe wiersze. Pomiar na starcie
+        // zapytania bywał nieaktualny (np. rozciągał się nagłówek), przez co
+        // lista skakała dwa razy zamiast raz.
+        pendingAdjust.current = contentH.current;
         return list;
       });
     } catch {
-      pendingAdjust.current = null;
+      // po cichu — lista zostaje
     } finally {
       if (seq === fetchSeq.current) {
         setLoadingEarlier(false);
@@ -578,71 +595,163 @@ export default function RoutesScreen() {
     }
   };
 
+  // Ref na aktualną funkcję: handler scrolla ma być stabilny (patrz useCallback
+  // niżej), a nie przeżywać przez ref każdego renderu.
+  const loadEarlierRef = useRef(handleLoadEarlier);
+  loadEarlierRef.current = handleLoadEarlier;
+
   const lastScrollY = useRef(0);
   const isFiltersVisible = useRef(true);
   const accumulatedDelta = useRef(0);
+  const inTopZone = useRef(false);
+  const momentumActive = useRef(false);
+  const lastFilterToggleAt = useRef(0);
 
-  const HIDE_THRESHOLD = 45;
-  const SHOW_THRESHOLD = 30;
+  // Próg jest wysoki, bo panel reaguje dopiero na ustabilizowanym
+  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) — 80 px
+  // to jedno świadome przejście, a nie drgnięcie palcem.
+  const HIDE_THRESHOLD = 80;
+  const SHOW_THRESHOLD = 40;
+  // Pauza po zmianie stanu: dwa przeciwstawne gesty w krótkim czasie
+  // nie mogą się zbić w serię szarpnięć panelu.
+  const FILTER_COOLDOWN_MS = 450;
+  // Ile czekamy po puszczeniu palca na sprawdzenie, czy zaczęło się
+  // „rzucanie” listy (momentum). Jeśli tak, decyzja zapada po nim.
+  const SCROLL_SETTLE_MS = 120;
+  const FILTER_ANIM_MS = 300;
+  // Strefa „trzymam palec na górze” z histerezą: wjście na 60 px, wyjście
+  // dopiero powyżej 110 px — jedno drgnięcie palcem nie kasuje już timera.
+  const TOP_ZONE_ENTER = 60;
+  const TOP_ZONE_EXIT = 110;
 
-  // Góra listy: przytrzymaj chwilę na samej górze → dładuj wcześniejsze; detekcja kierunku dla filtrów z histerezą
-  const handleScroll = (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+  // Jedno miejsce do zmiany stanu panelu. Przeskok stanu jest możliwy tylko
+  // raz na FILTER_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
+  // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
+  // niej (pendingFilterState). `force` omija pauzę — przy powrocie na samą
+  // górę listy filtry muszą być od razu.
+  const applyFilterState = (visible: boolean) => {
+    if (isFiltersVisible.current === visible) return;
+    isFiltersVisible.current = visible;
+    lastFilterToggleAt.current = Date.now();
+    pendingFilterState.current = null;
+    if (filterCooldownTimer.current) {
+      clearTimeout(filterCooldownTimer.current);
+      filterCooldownTimer.current = null;
+    }
+    filterProgress.value = withTiming(visible ? 1 : 0, {
+      duration: FILTER_ANIM_MS,
+      easing: Easing.inOut(Easing.cubic),
+    });
+  };
+
+  const setFiltersVisible = (visible: boolean, force = false) => {
+    if (isFiltersVisible.current === visible) return;
+    const wait = FILTER_COOLDOWN_MS - (Date.now() - lastFilterToggleAt.current);
+    if (!force && wait > 0) {
+      pendingFilterState.current = visible;
+      if (filterCooldownTimer.current) clearTimeout(filterCooldownTimer.current);
+      filterCooldownTimer.current = setTimeout(() => {
+        filterCooldownTimer.current = null;
+        const next = pendingFilterState.current;
+        if (next != null) applyFilterState(next);
+      }, wait);
+      return;
+    }
+    applyFilterState(visible);
+  };
+
+  // Decyzja o panelu zapada, gdy lista przestała się ruszać. W trakcie
+  // przeciągania panel ma stałą wysokość: każda klatka animacji zmieniała
+  // layout FlatListu pod nim i to właśnie migało przy trzymaniu palca.
+  const evaluateFiltersOnSettle = () => {
+    if (accumulatedDelta.current >= HIDE_THRESHOLD) {
+      setFiltersVisible(false);
+    } else if (accumulatedDelta.current <= -SHOW_THRESHOLD) {
+      setFiltersVisible(true);
+    }
+  };
+
+  const handleScrollEndDrag = () => {
+    momentumActive.current = false;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      if (!momentumActive.current) evaluateFiltersOnSettle();
+    }, SCROLL_SETTLE_MS);
+  };
+
+  const handleMomentumScrollBegin = () => {
+    momentumActive.current = true;
+    if (settleTimer.current) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+  };
+
+  const handleMomentumScrollEnd = () => {
+    momentumActive.current = false;
+    evaluateFiltersOnSettle();
+  };
+
+  // Warunki dociągania starszych odjazdów w refie: handler scrolla ma być
+  // stabilny, a nie przeżywać przez ref każdego renderu.
+  const topHoldGate = useRef({ loading: true, loadingEarlier: false, count: 0, noMoreEarlier: false });
+  topHoldGate.current = { loading, loadingEarlier, count: items.length, noMoreEarlier };
+
+  const startTopHold = useCallback(() => {
+    if (topHoldTimer.current) return;
+    const g = topHoldGate.current;
+    if (g.loading || g.loadingEarlier || g.count === 0 || g.noMoreEarlier) return;
+    topHoldTimer.current = setTimeout(() => {
+      topHoldTimer.current = null;
+      void loadEarlierRef.current();
+    }, 350);
+  }, []);
+
+  const cancelTopHold = useCallback(() => {
+    if (!topHoldTimer.current) return;
+    clearTimeout(topHoldTimer.current);
+    topHoldTimer.current = null;
+  }, []);
+
+  // Detekcja kierunku z histerezą: sam scroll tylko liczy przewinięcie,
+  // nic nie animuje (decyzja zapada na handleScrollEndDrag/MomentumEnd).
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     const dy = y - lastScrollY.current;
     lastScrollY.current = y;
     scrollY.current = y;
 
-    // 1. Na samej górze listy (y <= 12) — zawsze natychmiast pokazuj filtry
+    // 1. Na samej górze listy (y <= 12) — filtry wracają od razu, bez
+    //    czekania na puszczenie palca: tam scroll i tak się kończy.
     if (y <= 12) {
       accumulatedDelta.current = 0;
-      if (!isFiltersVisible.current) {
-        isFiltersVisible.current = true;
-        filterProgress.value = withTiming(1, {
-          duration: 250,
-          easing: Easing.out(Easing.cubic),
-        });
-      }
+      setFiltersVisible(true, true);
     } else if (dy > 0) {
       // Scrollowanie W DÓŁ
       if (accumulatedDelta.current < 0) {
         accumulatedDelta.current = 0;
       }
       accumulatedDelta.current += dy;
-
-      // Schowaj filtry dopiero po przewinięciu co najmniej HIDE_THRESHOLD w dół
-      if (accumulatedDelta.current >= HIDE_THRESHOLD && isFiltersVisible.current && y > 30) {
-        isFiltersVisible.current = false;
-        filterProgress.value = withTiming(0, {
-          duration: 220,
-          easing: Easing.out(Easing.cubic),
-        });
-      }
     } else if (dy < 0) {
       // Scrollowanie W GÓRĘ
       if (accumulatedDelta.current > 0) {
         accumulatedDelta.current = 0;
       }
       accumulatedDelta.current += dy;
+    }
 
-      // Pokaż filtry dopiero po przewinięciu co najmniej SHOW_THRESHOLD w górę
-      if (accumulatedDelta.current <= -SHOW_THRESHOLD && !isFiltersVisible.current) {
-        isFiltersVisible.current = true;
-        filterProgress.value = withTiming(1, {
-          duration: 250,
-          easing: Easing.out(Easing.cubic),
-        });
+    // 2. Przytrzymanie na górze. Timer zakładamy RAZ przy wejściu w strefę.
+    //    Wcześniej clearTimeout+setTimeout leciał na każdą klatkę — to śmieci
+    //    na wątku JS i gest gasł przy mikro-ruchach palca.
+    if (!inTopZone.current) {
+      if (y <= TOP_ZONE_ENTER) {
+        inTopZone.current = true;
+        startTopHold();
       }
-    }
-
-    if (topHoldTimer.current) {
-      clearTimeout(topHoldTimer.current);
-      topHoldTimer.current = null;
-    }
-    if (y <= 80 && !loading && !loadingEarlier && items.length > 0 && !noMoreEarlier) {
-      topHoldTimer.current = setTimeout(() => {
-        topHoldTimer.current = null;
-        handleLoadEarlier();
-      }, 350);
+    } else if (y > TOP_ZONE_EXIT) {
+      inTopZone.current = false;
+      cancelTopHold();
     }
   };
 
@@ -710,6 +819,24 @@ export default function RoutesScreen() {
   };
 
   const isCustomTime = departureTimeSec !== undefined;
+
+  // Stabilne referencje dla FlatList: bez nich każdy render rodzica tworzył
+  // nowe closures, przez co wiersze (pamiętane przez React.memo) przeliczały
+  // się od nowa i lista „przybliżała” zamiast płynnie się toczyć.
+  const openConnection = useCallback(
+    (item: Connection) => {
+      router.push({ pathname: '/routes/[id]', params: { id: item.id } });
+    },
+    [router],
+  );
+
+  const renderConnection = useCallback(
+    ({ item }: { item: Connection }) => {
+      const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
+      return <ConnectionCard item={item} dimmed={past} onPress={openConnection} />;
+    },
+    [openConnection],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -848,7 +975,7 @@ export default function RoutesScreen() {
         </Pressable>
       </View>
 
-      {/* 3 i 4. Płynnie zwijane filtry i sortowanie przy scrollowaniu */}
+      {/* 3 i 4. Filtry i sortowanie zwijają się, gdy lista się uspokoi */}
       <Animated.View style={[styles.collapsibleFiltersWrap, animatedFilterStyle]}>
         <View
           onLayout={(e) => {
@@ -964,60 +1091,50 @@ export default function RoutesScreen() {
           data={displayed}
           // wymusza przeliczenie etykiet „za X min” bez refetchu
           extraData={nowTick}
-          keyExtractor={(i) => i.id}
+          keyExtractor={connectionKey}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
+          // Na Androidzie RN domyślnie odpija widoki spoza kadru
+          // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
+          // nagłówkiem powoduje to miganie pustych miejsc w trakcie
+          // przeciągania palcem, więc trzymamy komórki podpięte.
+          removeClippedSubviews={false}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          onScrollEndDrag={handleScrollEndDrag}
+          onMomentumScrollBegin={handleMomentumScrollBegin}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
           onContentSizeChange={handleContentSizeChange}
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-          renderItem={({ item }) => {
-            const d = new Date();
-            const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-            const past = item.departureSec > 0 && item.departureSec < nowS - 60;
-            return (
-              <ConnectionCard
-                item={item}
-                dimmed={past}
-                onPress={() => router.push({ pathname: '/routes/[id]', params: { id: item.id } })}
-              />
-            );
-          }}
+          renderItem={renderConnection}
           ListHeaderComponent={
-            <View>
-              {loadingEarlier && (
-                <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color={scheme.primary} />
+            <View style={styles.countRow}>
+              <Text style={styles.count} numberOfLines={1}>
+                {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
+                {directOnly ? ' • tylko bezpośrednie' : ''}
+                {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
+                {loadingEarlier ? ' • wczytuję wcześniejsze…' : ''}
+              </Text>
+              {offline && (
+                <Pressable
+                  onPress={() => quietRefresh()}
+                  style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ostatnie dane z cache. Dotknij, aby odświeżyć."
+                >
+                  <View style={styles.offlineDot} />
+                  <Text style={styles.offlineText}>offline</Text>
+                </Pressable>
+              )}
+              {liveStale && !offline && (
+                <View style={styles.offlineChip}>
+                  <View style={styles.offlineDot} />
+                  <Text style={styles.offlineText}>brak danych live</Text>
                 </View>
               )}
-              <View style={styles.countRow}>
-                <Text style={styles.count} numberOfLines={1}>
-                  {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
-                  {directOnly ? ' • tylko bezpośrednie' : ''}
-                  {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
-                </Text>
-                {offline && (
-                  <Pressable
-                    onPress={() => quietRefresh()}
-                    style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel="Ostatnie dane z cache. Dotknij, aby odświeżyć."
-                  >
-                    <View style={styles.offlineDot} />
-                    <Text style={styles.offlineText}>offline</Text>
-                  </Pressable>
-                )}
-                {liveStale && !offline && (
-                  <View style={styles.offlineChip}>
-                    <View style={styles.offlineDot} />
-                    <Text style={styles.offlineText}>brak danych live</Text>
-                  </View>
-                )}
-              </View>
             </View>
           }
           ListFooterComponent={

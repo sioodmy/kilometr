@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ArrowRight, Footprints } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
@@ -140,13 +140,13 @@ function rowWidth(segs: SegmentItem[], badgeW: number): number {
   );
 }
 
-export function ConnectionCard({
+export const ConnectionCard = memo(function ConnectionCard({
   item,
   onPress,
   dimmed = false,
 }: {
   item: Connection;
-  onPress: () => void;
+  onPress: (item: Connection) => void;
   /** historyczne (przeszłe) połączenie — przygaszony wygląd */
   dimmed?: boolean;
 }) {
@@ -242,13 +242,16 @@ export function ConnectionCard({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(item)}
       accessibilityRole="button"
       accessibilityLabel={accessibilityDesc}
+      // Sam kolor tła zamiast skali: przyciśnięcie nie musi przeliczać warstwy
+      // i ponownie rasterować karty z cieniem. Skala + opacity pulsowały przy
+      // każdym przytrzymaniu palca na starcie przeciągania.
       style={({ pressed }) => [
         styles.card,
         dimmed && styles.dimmed,
-        pressed && { backgroundColor: scheme.surfaceContainerHigh, transform: [{ scale: 0.985 }] },
+        pressed && { backgroundColor: scheme.surfaceContainerHigh },
       ]}
     >
       {/* Góra: ZA ILE odjazd (główne) + pill z czasem jazdy */}
@@ -322,7 +325,7 @@ export function ConnectionCard({
       {item.interchange ? <Text style={styles.interchange}>{item.interchange}</Text> : null}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   // M3 elevated card: surfaceContainer + level1, shape large, minHeight 92 dla kciuka
