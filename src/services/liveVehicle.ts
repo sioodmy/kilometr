@@ -32,8 +32,13 @@ const MAX_DELAY_SEC = 1500;
 const MIN_DELAY_SEC = -240;
 /** Bonus za trafienie w dokładny tripId z rozkładu. */
 const TRIP_MATCH_BONUS = 0.45;
-/** Ile gorszy może być nowy kandydat, żebyśmy zostawili poprzedni pojazd. */
-const SWITCH_TOLERANCE = 45;
+/**
+ * O ile nowy kandydat musi być lepszy, żeby przejąć śledzenie. Jednostka
+ * scoringu to ~1 minuta błędu rozkładu (plus 5 m odchylenia od linii), więc
+ * 2 oznacza: „daj nowego tylko wtedy, gdy ten stary jest wyraźnie gorszy”.
+ * Przy 45 przełączanie praktycznie nie następowało wcale.
+ */
+const SWITCH_TOLERANCE = 2;
 
 export interface LegVehicleMatch {
   vehicle: TrackedVehicle;
@@ -121,67 +126,54 @@ export function matchVehicleToLeg(
 
   const schedule = legSchedule(leg, coords);
   const line = leg.line.trim().toUpperCase();
-  let best: LegVehicleMatch | null = null;
-  let bestScore = Infinity;
 
-  for (const v of candidates) {
-    if (v.line.trim().toUpperCase() !== line) continue;
+  /**
+   * Ocena jednego pojazdu: jak bardzo odbiega od rozkładu NOGI w tym miejscu.
+   * `null` = ten pojazd w ogóle nie obsługuje tej nogi.
+   */
+  const scoreVehicle = (v: TrackedVehicle): LegVehicleMatch | null => {
+    if (v.line.trim().toUpperCase() !== line) return null;
     const p = projectRoutePoint(coords, v.lat, v.lon);
-    if (!p || p.offsetM > MAX_CORRIDOR_M) continue;
-
-    const expected = expectedTimeAt(schedule, p.alongM, p);
-    if (!expected) continue;
-    const delay = options.nowSec - expected;
-    if (delay < MIN_DELAY_SEC || delay > MAX_DELAY_SEC) continue;
+    if (!p || p.offsetM > MAX_CORRIDOR_M) return null;
 
     // Punkt tuż przed startem albo tuż po końcu nóg: to raczej sąsiedni
     // kurs, a nie ten, na który czekamy — odcinamy skrajności.
-    if (p.progress < -0.02 || p.progress > 1.02) continue;
+    if (p.progress < -0.02 || p.progress > 1.02) return null;
+
+    const expected = expectedTimeAt(schedule, p.alongM, p);
+    if (!expected) return null;
+    const delay = options.nowSec - expected;
+    if (delay < MIN_DELAY_SEC || delay > MAX_DELAY_SEC) return null;
 
     let score = Math.abs(delay) / 60 + p.offsetM / 200;
     if (leg.tripId && v.matchedTripId === leg.tripId) score *= TRIP_MATCH_BONUS;
-    if (v.vehicleId === options.preferVehicleId) score *= 0.9;
+    return {
+      vehicle: v,
+      progress: p.progress,
+      delaySec: delay,
+      offsetM: p.offsetM,
+      heading: p.heading,
+      score,
+    };
+  };
 
-    if (score < bestScore) {
-      bestScore = score;
-      best = {
-        vehicle: v,
-        progress: p.progress,
-        delaySec: delay,
-        offsetM: p.offsetM,
-        heading: p.heading,
-        score,
-      };
-    }
+  const scored: LegVehicleMatch[] = [];
+  for (const v of candidates) {
+    const m = scoreVehicle(v);
+    if (m) scored.push(m);
   }
+  if (scored.length === 0) return null;
+  scored.sort((a, b) => a.score - b.score);
 
-  if (!best) return null;
   // Ten sam pojazd co ostatnio zostaje, dopóki nowy kandydat nie jest
   // wyraźnie lepszy — inaczej strzałka skacze między dwoma pojazdami
   // stojącymi na tym samym przystanku.
-  if (
-    options.preferVehicleId &&
-    best.vehicle.vehicleId !== options.preferVehicleId &&
-    best.score < SWITCH_TOLERANCE
-  ) {
-    const keep = candidates.find((v) => v.vehicleId === options.preferVehicleId);
-    if (keep) {
-      const p = projectRoutePoint(coords, keep.lat, keep.lon);
-      if (p && p.offsetM <= MAX_CORRIDOR_M) {
-        const expected = expectedTimeAt(schedule, p.alongM, p);
-        const delay = options.nowSec - expected;
-        if (delay >= MIN_DELAY_SEC && delay <= MAX_DELAY_SEC && p.progress >= -0.02) {
-          return {
-            vehicle: keep,
-            progress: p.progress,
-            delaySec: delay,
-            offsetM: p.offsetM,
-            heading: p.heading,
-            score: 0,
-          };
-        }
-      }
-    }
+  const previous = options.preferVehicleId
+    ? scored.find((m) => m.vehicle.vehicleId === options.preferVehicleId)
+    : undefined;
+  const best = scored[0];
+  if (previous && previous !== best && best.score >= previous.score - SWITCH_TOLERANCE) {
+    return previous;
   }
   return best;
 }
