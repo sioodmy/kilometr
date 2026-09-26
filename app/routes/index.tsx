@@ -992,8 +992,8 @@ export default function RoutesScreen() {
               fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
             />
           </Pressable>
-          <Text style={[styles.sortLabel, styles.sortLabelHidden]} numberOfLines={1}>
-            {'\u00A0'}
+          <Text style={styles.sortLabel} numberOfLines={1}>
+            Pin
           </Text>
         </View>
       </View>
@@ -1355,11 +1355,6 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     opacity: 0.65,
     textAlign: 'center',
-  },
-  // Niewidzialny odstępnik pod pinezką: ta sama wysokość co sortLabel,
-  // żeby pinezka siedziała w pionie równo z togglem.
-  sortLabelHidden: {
-    opacity: 0,
   },
   // Kolumna pinezki — lustrzane odbicie sortWrap (przycisk + label).
   pinWrap: {
