@@ -246,12 +246,8 @@ export default function HomeScreen() {
     // Sekcję `pinned` w snapshocie widgetów pisze teraz monitor podróży
     // (src/services/notifications) — ma już przeliczony plan i godziny, więc
     // nie dublujemy tu zapytania do RAPTOR-a. Home odpowiada tylko za `next`
-    // i `quick`, i robi to merge'em, żeby nie wyzerować przypięcia.
-    if (!best && quick.length === 0) {
-      if (cancelled) return;
-      void mergeWidgetSnapshot({ next: null, quick: [] });
-      return;
-    }
+    // i `quick`, i robi to merge'em, żeby go nie wyzerować.
+    if (cancelled) return;
     void mergeWidgetSnapshot({
       next: best && bestDest ? connectionToWidgetNext(best, from, bestDest) : null,
       quick,

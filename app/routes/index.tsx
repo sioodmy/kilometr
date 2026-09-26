@@ -96,14 +96,16 @@ export default function RoutesScreen() {
   const [toLon, setToLon] = useState(Number(params.toLon ?? 0));
   const [toId, setToId] = useState(String(params.toId ?? ''));
 
-  // Przycisk „Zakończ” w powiadomieniu to deep link z parametrem action=stop.
-  // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl renderów.
+  // Przycisk „Zakończ" w powiadomieniu to deep link z parametrem action=stop.
+  // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl
+  // renderów; zależność od params.action, bo ekspo-router podmienia
+  // parametry bez remountu, gdy ekran jest już otwarty.
   const stopFromLinkRef = useRef(params.action === 'stop');
   useEffect(() => {
     if (!stopFromLinkRef.current) return;
     stopFromLinkRef.current = false;
     void stopTracking();
-  }, []);
+  }, [params.action]);
 
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [activeAnchor, setActiveAnchor] = useState<ActiveAnchor | null>(null);
