@@ -88,4 +88,6 @@ export type MapInMessage =
   | { t: 'vehicle'; vehicle: MapVehicle | null }
   | { t: 'follow'; on: boolean }
   | { t: 'user'; lat: number; lon: number; heading: number | null }
-  | { t: 'center'; lat: number; lon: number; zoom?: number };
+  | { t: 'center'; lat: number; lon: number; zoom?: number; duration?: number }
+  | { t: 'cursor'; lat: number; lon: number }
+  | { t: 'clearCursor' };

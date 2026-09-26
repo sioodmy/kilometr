@@ -18,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Location from 'expo-location';
 import {
   ChevronLeft,
+  Gamepad2,
   Info,
   LocateFixed,
   Maximize,
@@ -31,11 +32,15 @@ import { findCachedConnection, rehydrateConnections } from '../src/services/offl
 import { liveTracker } from '../src/services/liveTracker';
 import {
   buildMapRoute,
+  findNearestStop,
+  getAllRouteCoords,
+  interpolateRoute,
   projectOnGeometry,
   resolveGeometry,
   straightGeometry,
 } from '../src/services/routeGeometry';
 import { RouteMap, type MapStopTap, type RouteMapHandle } from '../src/components/RouteMap';
+import { RouteJoystick } from '../src/components/RouteJoystick';
 import { getLineColors, inferTransitMode, LineBadge } from '../src/components/LineBadge';
 import { LiveDot } from '../src/components/LiveDot';
 import { formatWalkDistance } from '../src/services/settings';
@@ -72,12 +77,18 @@ export default function RouteMapScreen() {
   const [shaping, setShaping] = useState(false);
   const [stopTap, setStopTap] = useState<MapStopTap | null>(null);
 
+  // Sterowanie joystickiem
+  const [geometryRev, setGeometryRev] = useState(0);
+  const [showJoystick, setShowJoystick] = useState(false);
+  const [joystickProgress, setJoystickProgress] = useState(0);
+  const [joystickZoom, setJoystickZoom] = useState(15.5);
+
   const mapRef = useRef<RouteMapHandle>(null);
   // Geometria ulic trzymana jest poza stanem renderu: mapa dostaje ją
   // impulsowo, a po remoncie WebView trzeba ją wysłać jeszcze raz.
   const geometryRef = useRef(new Map<string, Coord[]>());
 
-  // ─── Połączenie ────────────────────────────────────────────────────────────
+  // ─── Połączenie ─────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
     const connectionId = String(id);
@@ -113,16 +124,30 @@ export default function RouteMapScreen() {
     [route, selectedLegId],
   );
 
+  // Współrzędne całej trasy do płynnej nawigacji joystickiem
+  const allRouteCoords = useMemo(() => {
+    return getAllRouteCoords(route, geometryRef.current);
+  }, [route, geometryRev]);
+
+  const currentRoutePoint = useMemo(() => {
+    return interpolateRoute(allRouteCoords, joystickProgress);
+  }, [allRouteCoords, joystickProgress]);
+
+  const nearestStopInfo = useMemo(() => {
+    return findNearestStop(route, currentRoutePoint.point);
+  }, [route, currentRoutePoint.point]);
+
   // Domyślnie zaznaczamy pierwszy etap: mapa od razu wie, co jest aktywne.
   useEffect(() => {
     if (!route || selectedLegId) return;
     setSelectedLegId(route.legs[0]?.id ?? null);
   }, [route, selectedLegId]);
 
-  // ─── Geometria ulic (OSRM, w tle) ─────────────────────────────────────────
+  // ─── Geometria ulic (OSRM, w tle) ───────────────────────────
   const pushGeometry = useCallback((legId: string, coords: Coord[]) => {
     geometryRef.current.set(legId, coords);
     mapRef.current?.setGeometry(legId, coords);
+    setGeometryRev((v) => v + 1);
   }, []);
 
   useEffect(() => {
@@ -173,7 +198,7 @@ export default function RouteMapScreen() {
     mapRef.current?.fit();
   }, []);
 
-  // ─── Pojazd na żywo ────────────────────────────────────────────────────────
+  // ─── Pojazd na żywo ─────────────────────────────────────────
   useEffect(() => {
     if (!item) return;
     let cancelled = false;
@@ -221,57 +246,36 @@ export default function RouteMapScreen() {
       });
     };
 
-    void liveTracker.ensureFresh();
     update();
-    const timer = setInterval(update, VEHICLE_POLL_MS);
+    const interval = setInterval(update, VEHICLE_POLL_MS);
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      clearInterval(interval);
     };
   }, [item, route]);
 
-  // Śledzenie samo wygasa po 3 minutach — mapa podążająca za pojazdem w tle
-  // zamiast oddawać telefon.
+  // ─── Pozycja użytkownika ────────────────────────────────────
   useEffect(() => {
-    if (!follow || !vehicle) return;
-    const timer = setTimeout(() => setFollow(false), 3 * 60 * 1000);
-    return () => clearTimeout(timer);
-  }, [follow, vehicle]);
-
-  // ─── Własna pozycja ────────────────────────────────────────────────────────
-  useEffect(() => {
-    let mounted = true;
     let sub: Location.LocationSubscription | null = null;
-    let last: { lat: number; lon: number } | null = null;
     (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted' || !mounted) return;
-        sub = await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.Balanced, distanceInterval: LOCATION_MIN_MOVE_M },
-          (pos) => {
-            const next = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-            if (last) {
-              const dLat = (next.lat - last.lat) * 111320;
-              const dLon = (next.lon - last.lon) * 111320 * Math.cos((next.lat * Math.PI) / 180);
-              if (Math.sqrt(dLat * dLat + dLon * dLon) < LOCATION_MIN_MOVE_M) return;
-            }
-            last = next;
-            setUserLoc(next);
-          },
-        );
-      } catch {
-        // Brak fixu nie blokuje mapy — karta kompasu w szczegółach mówi o tym
-        // swoim językiem, a tu cicho pomijamy.
-      }
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== Location.PermissionStatus.GRANTED) return;
+      sub = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: LOCATION_MIN_MOVE_M,
+        },
+        (loc) => {
+          setUserLoc({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+        },
+      );
     })();
     return () => {
-      mounted = false;
       sub?.remove();
     };
   }, []);
 
-  // ─── Akcje ─────────────────────────────────────────────────────────────────
+  // ─── Akcje ──────────────────────────────────────────────────
   const handleSelectLeg = (legId: string) => {
     setSelectedLegId(legId);
     setStopTap(null);
@@ -288,7 +292,50 @@ export default function RouteMapScreen() {
     mapRef.current?.fit();
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const handleJoystickNavigate = useCallback(
+    (prog: number, z: number, dur = 0) => {
+      setJoystickProgress(prog);
+      setJoystickZoom(z);
+      setFollow(false);
+
+      const coords = getAllRouteCoords(route, geometryRef.current);
+      const { point } = interpolateRoute(coords, prog);
+      mapRef.current?.center(point[0], point[1], z, dur);
+      mapRef.current?.setCursor({ lat: point[0], lon: point[1] });
+    },
+    [route],
+  );
+
+  const handleJoystickJumpStart = useCallback(() => {
+    handleJoystickNavigate(0, 16, 400);
+  }, [handleJoystickNavigate]);
+
+  const handleJoystickJumpFinish = useCallback(() => {
+    handleJoystickNavigate(1, 16, 400);
+  }, [handleJoystickNavigate]);
+
+  const toggleJoystick = useCallback(() => {
+    setShowJoystick((prev) => {
+      const next = !prev;
+      if (next) {
+        setFollow(false);
+        const coords = getAllRouteCoords(route, geometryRef.current);
+        const { point } = interpolateRoute(coords, joystickProgress);
+        mapRef.current?.center(point[0], point[1], joystickZoom, 400);
+        mapRef.current?.setCursor({ lat: point[0], lon: point[1] });
+      } else {
+        mapRef.current?.setCursor(null);
+      }
+      return next;
+    });
+  }, [route, joystickProgress, joystickZoom]);
+
+  const handleCloseJoystick = useCallback(() => {
+    setShowJoystick(false);
+    mapRef.current?.setCursor(null);
+  }, []);
+
+  // ─── Render ─────────────────────────────────────────────────
   if (loadFailed) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -388,7 +435,7 @@ export default function RouteMapScreen() {
         </View>
       )}
 
-      {/* 1. Górny pasek: wstecz, trasa, dopasuj, śledź */}
+      {/* 1. Górny pasek: wstecz, trasa, dopasuj, joystick, zlokalizuj, śledź */}
       <View style={[styles.header, { paddingTop: insets.top + 6 }]} pointerEvents="box-none">
         <View style={styles.headerBar} pointerEvents="auto">
           <Pressable
@@ -420,6 +467,23 @@ export default function RouteMapScreen() {
             <Maximize size={19} color={scheme.onSecondaryContainer} />
           </Pressable>
           <Pressable
+            onPress={toggleJoystick}
+            style={({ pressed }) => [
+              styles.iconBtn,
+              showJoystick && styles.iconBtnActive,
+              pressed && { opacity: 0.7 },
+            ]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityState={{ selected: showJoystick }}
+            accessibilityLabel={showJoystick ? 'Wyłącz joystick trasy' : 'Sterowanie trasą joystickiem'}
+          >
+            <Gamepad2
+              size={19}
+              color={showJoystick ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
+            />
+          </Pressable>
+          <Pressable
             onPress={handleLocate}
             style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
             hitSlop={8}
@@ -449,155 +513,191 @@ export default function RouteMapScreen() {
         </View>
       </View>
 
-      {/* 2. Panel: etapy, szczegóły wybranego etapu, pojazd live */}
-      <View
-        style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 10) }]}
-        onLayout={(e) => {
-          const h = e.nativeEvent.layout.height;
-          if (Math.abs(h - panelHeight) > 2) setPanelHeight(h);
-        }}
-      >
-        {stopTap ? (
-          <View style={styles.stopCard}>
-            <View style={[styles.stopDot, stopDotStyle(stopTap.role)]} />
-            <View style={styles.stopText}>
-              <Text style={styles.stopRole}>{stopRoleLabel(stopTap.role)}</Text>
-              <Text style={styles.stopName} numberOfLines={2}>
-                {stopTap.name}
-              </Text>
-            </View>
-            {stopTap.arriveSec != null && (
-              <Text style={styles.stopTime}>{secondsToTimeString(stopTap.arriveSec)}</Text>
-            )}
-            <Pressable
-              onPress={() => setStopTap(null)}
-              hitSlop={10}
-              style={({ pressed }) => [styles.stopClose, pressed && { opacity: 0.6 }]}
-              accessibilityRole="button"
-              accessibilityLabel="Zamknij informację o przystanku"
-            >
-              <Text style={styles.stopCloseText}>✕</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <Text style={styles.legsHint}>Etapy podróży</Text>
-        )}
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          overScrollMode="never"
-          contentContainerStyle={styles.legChips}
+      {/* 2. Panel dolny: Joystick trasy LUB etapy i szczegóły */}
+      {showJoystick && route ? (
+        <View
+          style={[styles.joystickContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (Math.abs(h - panelHeight) > 2) setPanelHeight(h);
+          }}
         >
-          {route.legs.map((leg) => {
-            const active = leg.id === selectedLeg?.id;
-            return (
+          <RouteJoystick
+            route={route}
+            progress={joystickProgress}
+            zoom={joystickZoom}
+            nearestStopName={nearestStopInfo?.stop.name}
+            currentLegLine={nearestStopInfo?.leg.line}
+            currentLegMode={nearestStopInfo?.leg.mode}
+            onNavigate={handleJoystickNavigate}
+            onJumpStart={handleJoystickJumpStart}
+            onJumpFinish={handleJoystickJumpFinish}
+            onFit={handleFit}
+            onClose={handleCloseJoystick}
+          />
+        </View>
+      ) : (
+        <View
+          style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 10) }]}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (Math.abs(h - panelHeight) > 2) setPanelHeight(h);
+          }}
+        >
+          {stopTap ? (
+            <View style={styles.stopCard}>
+              <View style={[styles.stopDot, stopDotStyle(stopTap.role)]} />
+              <View style={styles.stopText}>
+                <Text style={styles.stopRole}>{stopRoleLabel(stopTap.role)}</Text>
+                <Text style={styles.stopName} numberOfLines={2}>
+                  {stopTap.name}
+                </Text>
+              </View>
+              {stopTap.arriveSec != null && (
+                <Text style={styles.stopTime}>{secondsToTimeString(stopTap.arriveSec)}</Text>
+              )}
               <Pressable
-                key={leg.id}
-                onPress={() => handleSelectLeg(leg.id)}
-                style={({ pressed }) => [
-                  styles.legChip,
-                  active && styles.legChipActive,
-                  pressed && { opacity: 0.75 },
-                ]}
+                onPress={() => setStopTap(null)}
+                hitSlop={10}
+                style={({ pressed }) => [styles.stopClose, pressed && { opacity: 0.6 }]}
                 accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Etap: ${leg.fromStop} do ${leg.toStop}`}
+                accessibilityLabel="Zamknij informację o przystanku"
               >
-                <LineBadge mode={leg.mode} line={leg.line} compact />
-                <Text style={[styles.legChipText, active && styles.legChipTextActive]} numberOfLines={1}>
-                  {leg.line ? `${leg.line} → ${leg.toStop}` : leg.toStop}
-                </Text>
+                <Text style={styles.stopCloseText}>✕</Text>
               </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {selectedLeg && (
-          <View style={styles.detail}>
-            <View style={styles.detailTimes}>
-              <Text style={styles.detailTime}>{selectedLeg.departAt}</Text>
-              <Text style={styles.detailArrow}>→</Text>
-              <Text style={styles.detailTime}>{selectedLeg.arriveAt}</Text>
-              {selectedLeg.mode === 'walk' ? (
-                selectedLeg.walkM ? (
-                  <Text style={styles.detailMeta} numberOfLines={1}>
-                    {formatWalkDistance(selectedLeg.walkM)}
-                  </Text>
-                ) : null
-              ) : (
-                <Text style={styles.detailMeta} numberOfLines={1}>
-                  {selectedLeg.stopsCount > 0 ? `${selectedLeg.stopsCount} przystanków` : 'bez przystanków'}
-                  {selectedLeg.direction ? ` • w kier. ${selectedLeg.direction}` : ''}
-                </Text>
-              )}
             </View>
-            <Text style={styles.detailStops} numberOfLines={2}>
-              {selectedLeg.fromStop} → {selectedLeg.toStop}
-              {selectedLeg.platformCode ? ` (peron ${selectedLeg.platformCode})` : ''}
-            </Text>
-          </View>
-        )}
+          ) : (
+            <Text style={styles.legsHint}>Etapy podróży</Text>
+          )}
 
-        {/* Stan pojazdu: realny GPS albo uczciwe „nie wiem” */}
-        <View style={styles.vehicleRow}>
-          {vehicle ? (
-            <>
-              <LiveDot color={vehicle.color} size={8} />
-              <Text style={styles.vehicleText} numberOfLines={1}>
-                {vehicle.line} • {vehicle.currentStopName ?? 'w trasie'}
-                {vehicle.nextStopName ? ` → ${vehicle.nextStopName}` : ''}
-              </Text>
-              {vehicle.delaySec > 30 ? (
-                <View style={[styles.delayBadge, { backgroundColor: scheme.errorContainer }]}>
-                  <Text style={[styles.delayText, { color: scheme.onErrorContainer }]}>
-                    +{Math.round(vehicle.delaySec / 60)} min
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            overScrollMode="never"
+            contentContainerStyle={styles.legChips}
+          >
+            {route.legs.map((leg) => {
+              const active = leg.id === selectedLeg?.id;
+              return (
+                <Pressable
+                  key={leg.id}
+                  onPress={() => handleSelectLeg(leg.id)}
+                  style={({ pressed }) => [
+                    styles.legChip,
+                    active && styles.legChipActive,
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={
+                    leg.mode === 'walk'
+                      ? `Etap pieszy ${formatWalkDistance(leg.walkM ?? 0)}`
+                      : `Linia ${leg.line ?? ''} kierunek ${leg.direction ?? ''}`
+                  }
+                >
+                  {leg.mode === 'walk' ? (
+                    <Text style={styles.walkIcon}>🚶</Text>
+                  ) : (
+                    <LineBadge line={leg.line} mode={leg.mode} compact />
+                  )}
+                  <View style={styles.legChipText}>
+                    <Text style={[styles.legChipTitle, active && styles.legChipTitleActive]}>
+                      {leg.mode === 'walk' ? formatWalkDistance(leg.walkM ?? 0) : `Linia ${leg.line}`}
+                    </Text>
+                    <Text style={styles.legChipSub} numberOfLines={1}>
+                      {leg.departAt}–{leg.arriveAt}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          {/* Szczegóły wybranego etapu + pojazd live */}
+          <View style={styles.legDetails}>
+            {selectedLeg && (
+              <>
+                <View style={styles.legMeta}>
+                  <Text style={styles.legMetaFrom} numberOfLines={1}>
+                    Z: <Text style={styles.legMetaBold}>{selectedLeg.fromStop}</Text>
+                  </Text>
+                  <Text style={styles.legMetaTo} numberOfLines={1}>
+                    Do: <Text style={styles.legMetaBold}>{selectedLeg.toStop}</Text>
                   </Text>
                 </View>
-              ) : (
-                <View style={[styles.delayBadge, { backgroundColor: scheme.successContainer }]}>
-                  <Text style={[styles.delayText, { color: scheme.onSuccessContainer }]}>na czas</Text>
-                </View>
-              )}
-            </>
-          ) : (
-            <>
-              <LiveDot color={scheme.outline} size={8} pulse={false} />
-              <Text style={styles.vehicleMuted} numberOfLines={2}>
-                {item.live
-                  ? 'Pojazd jeszcze bez pozycji — dane live nie pokazują GPS dla tego kursu.'
-                  : liveState === 'stale'
+                {selectedLeg.stops.length > 2 && (
+                  <Text style={styles.stopsCount}>
+                    {selectedLeg.stops.length - 2}{' '}
+                    {selectedLeg.stops.length - 2 === 1
+                      ? 'przystanek pośredni'
+                      : selectedLeg.stops.length - 2 < 5
+                        ? 'przystanki pośrednie'
+                        : 'przystanków pośrednich'}
+                  </Text>
+                )}
+              </>
+            )}
+
+            {/* Pojazd na żywo dla wybranego etapu */}
+            {vehicle && selectedLeg && vehicle.legId === selectedLeg.id ? (
+              <View style={styles.vehicleRow}>
+                <LiveDot color={vehicle.color} size={8} pulse={liveState === 'fresh'} />
+                <Text style={styles.vehicleText} numberOfLines={1}>
+                  Pojazd {vehicle.vehicleId ?? vehicle.line} •{' '}
+                  {vehicle.delaySec > 30
+                    ? `spóźniony +${Math.round(vehicle.delaySec / 60)} min`
+                    : vehicle.delaySec < -30
+                      ? `przed czasem ${Math.round(vehicle.delaySec / 60)} min`
+                      : 'punktualnie'}
+                  {vehicle.nextStopName ? ` • następny: ${vehicle.nextStopName}` : ''}
+                </Text>
+              </View>
+            ) : (
+              selectedLeg?.mode !== 'walk' && (
+                <Text style={styles.vehicleMuted}>
+                  {liveState === 'stale'
                     ? 'Brak danych live z MPK (rozkład z wyliczonymi czasami).'
                     : 'Rozkład jazdy — pozycja pojazdu pojawi się, gdy MPK ją udostępni.'}
-              </Text>
-            </>
-          )}
-        </View>
+                </Text>
+              )
+            )}
+          </View>
 
-        {/* Legenda: bez niej ktoś nie odczyta, że przerywana linia to spacer */}
-        <View style={styles.legend}>
-          {transitLegs.slice(0, 1).map((l) => (
-            <View key={`l-${l.id}`} style={styles.legendItem}>
-              <View style={[styles.legendLine, { backgroundColor: l.color }]} />
-              <Text style={styles.legendText}>kurs {l.line ?? ''}</Text>
-            </View>
-          ))}
-          {walkLegs.length > 0 && (
+          {/* Legenda + akcja włączenia joysticka */}
+          <View style={styles.legend}>
+            {transitLegs.slice(0, 1).map((l) => (
+              <View key={`l-${l.id}`} style={styles.legendItem}>
+                <View style={[styles.legendLine, { backgroundColor: l.color }]} />
+                <Text style={styles.legendText}>kurs {l.line ?? ''}</Text>
+              </View>
+            ))}
+            {walkLegs.length > 0 && (
+              <View style={styles.legendItem}>
+                <View style={styles.legendDash} />
+                <Text style={styles.legendText}>spacer</Text>
+              </View>
+            )}
             <View style={styles.legendItem}>
-              <View style={styles.legendDash} />
-              <Text style={styles.legendText}>spacer</Text>
+              <View style={[styles.legendLine, { backgroundColor: scheme.success }]} />
+              <Text style={styles.legendText}>start</Text>
             </View>
-          )}
-          <View style={styles.legendItem}>
-            <View style={[styles.legendLine, { backgroundColor: scheme.success }]} />
-            <Text style={styles.legendText}>start</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendLine, { backgroundColor: scheme.error }]} />
-            <Text style={styles.legendText}>cel</Text>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendLine, { backgroundColor: scheme.error }]} />
+              <Text style={styles.legendText}>cel</Text>
+            </View>
+            <Pressable
+              onPress={toggleJoystick}
+              style={({ pressed }) => [styles.joystickPill, pressed && { opacity: 0.75 }]}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Włącz sterowanie trasą joystickiem"
+            >
+              <Gamepad2 size={13} color={scheme.primary} />
+              <Text style={styles.joystickPillText}>Joystick</Text>
+            </Pressable>
           </View>
         </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -672,51 +772,43 @@ const styles = StyleSheet.create({
     gap: 10,
     ...elev.level3,
   },
+  joystickContainer: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 0,
+    zIndex: 10,
+  },
   legsHint: { ...type.labelSmall, color: scheme.onSurfaceVariant, fontWeight: '700', letterSpacing: 0.4 },
   legChips: { gap: 8, paddingRight: 14 },
   legChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.full,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    paddingLeft: 5,
-    paddingRight: 13,
-    paddingVertical: 5,
-    maxWidth: 240,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
   legChipActive: {
     backgroundColor: scheme.secondaryContainer,
-    borderColor: scheme.outlineVariant,
+    borderWidth: 1,
+    borderColor: scheme.primary,
   },
-  legChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  legChipTextActive: { color: scheme.onSurface, fontWeight: '700' },
-  detail: { gap: 3 },
-  detailTimes: { flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
-  detailTime: {
-    ...type.titleLarge,
-    fontWeight: '800',
-    color: scheme.onSurface,
-    fontVariant: ['tabular-nums'],
-  },
-  detailArrow: { ...type.titleMedium, color: scheme.onSurfaceVariant },
-  detailMeta: { ...type.labelMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  detailStops: { ...type.bodyMedium, color: scheme.onSurface },
-  vehicleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  vehicleText: { ...type.bodyMedium, color: scheme.onSurface, flex: 1, fontWeight: '600' },
-  vehicleMuted: { ...type.bodySmall, color: scheme.onSurfaceVariant, flex: 1 },
-  delayBadge: { borderRadius: shape.full, paddingHorizontal: 8, paddingVertical: 3 },
-  delayText: { ...type.labelSmall, fontWeight: '800' },
+  walkIcon: { fontSize: 16 },
+  legChipText: { gap: 1 },
+  legChipTitle: { ...type.labelMedium, fontWeight: '700', color: scheme.onSurface },
+  legChipTitleActive: { color: scheme.onSecondaryContainer },
+  legChipSub: { ...type.labelSmall, color: scheme.onSurfaceVariant },
+  legDetails: { gap: 6 },
+  legMeta: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
+  legMetaFrom: { ...type.bodySmall, color: scheme.onSurfaceVariant, flex: 1, minWidth: 120 },
+  legMetaTo: { ...type.bodySmall, color: scheme.onSurfaceVariant, flex: 1, minWidth: 120 },
+  legMetaBold: { color: scheme.onSurface, fontWeight: '700' },
+  stopsCount: { ...type.labelSmall, color: scheme.onSurfaceVariant },
+  vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  vehicleText: { ...type.labelSmall, color: scheme.primary, fontWeight: '700', flex: 1 },
+  vehicleMuted: { ...type.labelSmall, color: scheme.onSurfaceVariant, fontStyle: 'italic' },
   legend: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendLine: { width: 18, height: 4, borderRadius: 2 },
@@ -728,6 +820,23 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   legendText: { ...type.labelSmall, color: scheme.onSurfaceVariant },
+  joystickPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    marginLeft: 'auto',
+  },
+  joystickPillText: {
+    ...type.labelSmall,
+    color: scheme.onSurface,
+    fontWeight: '700',
+  },
   stopCard: {
     flexDirection: 'row',
     alignItems: 'center',

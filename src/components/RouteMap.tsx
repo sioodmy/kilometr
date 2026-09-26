@@ -1,16 +1,27 @@
-// Most między aplikacją a mapą w WebView.
+// Komponent mapy trasy: WebView z MapLibre GL, kafelkami OSM w stylu M3,
+// geometrią trasy, przystankami i pojazdem na żywo.
 //
-// WebView dostaje gotowy dokument (MapLibre + kafelki OSM w stylu M3), a stan
-// trasy, pojazdu i śledzenia dokładamy komunikatami. Komunikaty w obie strony są
-// typowane w `src/map/types.ts`, żeby zmiana protokołu nie rozjechała się po
-// ekranie.
+// Cała logika mapowa żyje w `src/map/routeMapDocument.ts`, a ten komponent
+// zajmuje się:
+//  - cyklem życia WebView (restart po ubiciu procesu przez system),
+//  - mostkiem komunikatów w obie strony,
+//  - trzymaniem marginesów dopasowania do panelu,
+//  - blokadą zewnętrznych URL-i (poza atrybucją).
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
-import { scheme } from '../theme/tokens';
 import { buildRouteMapDocument } from '../map/routeMapDocument';
 import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
+import { scheme } from '../theme/tokens';
 
 export interface MapStopTap {
   stopId: string;
@@ -25,7 +36,9 @@ export interface RouteMapHandle {
   setGeometry: (legId: string, coords: [number, number][]) => void;
   /** Dopasuj widok do trasy (całej albo wybranej nogi — patrz selectedLegId). */
   fit: () => void;
-  center: (lat: number, lon: number, zoom?: number) => void;
+  center: (lat: number, lon: number, zoom?: number, duration?: number) => void;
+  /** Wskaźnik pozycji na trasie (kursor przy sterowaniu joystickiem) */
+  setCursor: (coords: { lat: number; lon: number } | null) => void;
   /** Wymuś ponowne wczytanie silnika mapy (np. po ubiciu procesu WebView). */
   reload: () => void;
 }
@@ -102,7 +115,11 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     () => ({
       setGeometry: (legId, coords) => send({ t: 'geometry', legId, coords, approx: false }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
-      center: (lat, lon, zoom) => send({ t: 'center', lat, lon, zoom }),
+      center: (lat, lon, zoom, duration) => send({ t: 'center', lat, lon, zoom, duration }),
+      setCursor: (coords) =>
+        coords
+          ? send({ t: 'cursor', lat: coords.lat, lon: coords.lon })
+          : send({ t: 'clearCursor' }),
       reload: restart,
     }),
     [restart, send],

@@ -25,7 +25,7 @@ const CACHE_MAX_ENTRIES = 60;
 const WAYPOINTS_PER_REQUEST = 20;
 const REQUEST_TIMEOUT_MS = 8000;
 
-type Coord = [number, number];
+export type Coord = [number, number];
 
 interface CacheEntry {
   k: string;
@@ -33,7 +33,7 @@ interface CacheEntry {
   c: Coord[];
 }
 
-// ─── Model trasy ─────────────────────────────────────────────────────────────
+// ─── Model trasy ─────────────────────────────────────────────
 
 function legStops(leg: Leg): MapStop[] {
   const stops: MapStop[] = [];
@@ -134,7 +134,7 @@ export function buildMapRoute(connection: Connection): MapRoute {
   };
 }
 
-// ─── Geometria z OSRM ────────────────────────────────────────────────────────
+// ─── Geometria z OSRM ────────────────────────────────────────
 
 function waypointKey(coords: Coord[]): string {
   // 5 m ≈ 4–5 miejsc po przecinku — tyle wystarczy, żeby klucz był stabilny.
@@ -272,7 +272,7 @@ export async function resolveGeometry(
   }
 }
 
-/** Najbliższy punkt na noge + kurs w nim — do strzałki pojazdu live. */
+/** Najbliższy punkt na nodze + kurs w nim — do strzałki pojazdu live. */
 export function projectOnGeometry(
   coords: Coord[],
   lat: number,
@@ -316,4 +316,135 @@ export function projectOnGeometry(
     }
   }
   return { lat: bestLat, lon: bestLon, heading: (bestHeading + 360) % 360 };
+}
+
+/**
+ * Odległość w metrach między dwoma punktami geograficznymi.
+ */
+export function distanceM(p1: Coord, p2: Coord): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = (p2[0] - p1[0]) * 111320;
+  const dLon = (p2[1] - p1[1]) * 111320 * Math.cos(toRad((p1[0] + p2[0]) / 2));
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
+
+/**
+ * Zwraca ciągłą listę współrzędnych całej trasy od początku do końca.
+ * Wykorzystuje geometrię ulic z OSRM (jeśli jest w pamięci), a dla brakujących nóg
+ * odcinki proste między przystankami.
+ */
+export function getAllRouteCoords(
+  route: MapRoute | null,
+  geometryMap?: Map<string, Coord[]>,
+): Coord[] {
+  if (!route || !route.legs || route.legs.length === 0) return [];
+  const out: Coord[] = [];
+
+  for (const leg of route.legs) {
+    const coords = geometryMap?.get(leg.id) ?? straightGeometry(leg);
+    for (let i = 0; i < coords.length; i++) {
+      const c = coords[i];
+      if (out.length > 0) {
+        const last = out[out.length - 1];
+        if (Math.abs(last[0] - c[0]) < 1e-6 && Math.abs(last[1] - c[1]) < 1e-6) {
+          continue; // Pomiń duplikujący się punkt styku etapów
+        }
+      }
+      out.push(c);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Oblicza punkt na trasie dla zadanego postępu (od 0.0 - start do 1.0 - meta)
+ * wraz z kursem (azymutem) w tym punkcie.
+ */
+export function interpolateRoute(
+  coords: Coord[],
+  progress: number,
+): { point: Coord; heading: number } {
+  if (!coords || coords.length === 0) {
+    return { point: [51.1079, 17.0385], heading: 0 };
+  }
+  if (coords.length === 1) {
+    return { point: coords[0], heading: 0 };
+  }
+
+  const p = Math.max(0, Math.min(1, progress));
+  if (p === 0) {
+    return { point: coords[0], heading: 0 };
+  }
+  if (p === 1) {
+    return { point: coords[coords.length - 1], heading: 0 };
+  }
+
+  const dists: number[] = [0];
+  let totalDist = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const d = distanceM(coords[i], coords[i + 1]);
+    totalDist += d;
+    dists.push(totalDist);
+  }
+
+  if (totalDist <= 0) {
+    return { point: coords[0], heading: 0 };
+  }
+
+  const targetDist = p * totalDist;
+  let segIndex = 0;
+  for (let i = 0; i < dists.length - 1; i++) {
+    if (targetDist <= dists[i + 1]) {
+      segIndex = i;
+      break;
+    }
+  }
+
+  const segStartDist = dists[segIndex];
+  const segEndDist = dists[segIndex + 1];
+  const segLen = segEndDist - segStartDist;
+  const t = segLen > 0 ? (targetDist - segStartDist) / segLen : 0;
+
+  const c1 = coords[segIndex];
+  const c2 = coords[segIndex + 1];
+  const lat = c1[0] + t * (c2[0] - c1[0]);
+  const lon = c1[1] + t * (c2[1] - c1[1]);
+
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const lat1 = toRad(c1[0]);
+  const lat2 = toRad(c2[0]);
+  const dLon = toRad(c2[1] - c1[1]);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  const heading = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+
+  return { point: [lat, lon], heading };
+}
+
+/**
+ * Wyszukuje najbliższy przystanek na trasie do zadanego punktu.
+ */
+export function findNearestStop(
+  route: MapRoute | null,
+  point: Coord,
+): { stop: MapStop; leg: MapLeg; distanceM: number } | null {
+  if (!route || !route.legs) return null;
+  let bestStop: MapStop | null = null;
+  let bestLeg: MapLeg | null = null;
+  let bestDist = Infinity;
+
+  for (const leg of route.legs) {
+    for (const stop of leg.stops) {
+      const d = distanceM([stop.lat, stop.lon], point);
+      if (d < bestDist) {
+        bestDist = d;
+        bestStop = stop;
+        bestLeg = leg;
+      }
+    }
+  }
+
+  if (!bestStop || !bestLeg) return null;
+  return { stop: bestStop, leg: bestLeg, distanceM: bestDist };
 }
