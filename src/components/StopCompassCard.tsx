@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   BusFront,
+  LocateFixed,
   Navigation2,
   Signpost,
   TramFront,
@@ -85,6 +86,9 @@ export function StopCompassCard({ connection }: StopCompassCardProps) {
   const TargetIcon = resolvedMode === 'tram' ? TramFront : resolvedMode === 'bus' ? BusFront : Signpost;
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+  // Stan namierzania: bez niego „Namierzam…” wisiałoby w nieskończoność
+  // (brak fixa GPS, wyłączona lokalizacja, środek budynku).
+  const [locState, setLocState] = useState<'seeking' | 'ok' | 'denied' | 'noFix'>('seeking');
   // Filtrowany kurs urządzenia (stopnie). Surowy magnetometr skacze ±10° —
   // wygładzamy low-pass na wektorze + histereza 2°, żeby kompas nie migotał.
   const [deviceHeading, setDeviceHeading] = useState<number>(0);
@@ -124,7 +128,11 @@ export function StopCompassCard({ connection }: StopCompassCardProps) {
     async function startTracking() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted' || !isMounted) return;
+        if (!isMounted) return;
+        if (status !== 'granted') {
+          setLocState('denied');
+          return;
+        }
 
         locSub = await Location.watchPositionAsync(
           {
@@ -142,6 +150,7 @@ export function StopCompassCard({ connection }: StopCompassCardProps) {
             }
             lastLoc.current = next;
             setUserLocation(next);
+            setLocState('ok');
           }
         );
 
@@ -154,13 +163,20 @@ export function StopCompassCard({ connection }: StopCompassCardProps) {
         });
       } catch (err) {
         console.log('[StopCompassCard] Tracking error:', err);
+        if (isMounted) setLocState('noFix');
       }
     }
 
     startTracking();
 
+    // Po 8 s bez fixu przestajemy udawać, że czekamy — pokazujemy realny stan.
+    const noFixTimer = setTimeout(() => {
+      if (isMounted) setLocState((s) => (s === 'seeking' ? 'noFix' : s));
+    }, 8000);
+
     return () => {
       isMounted = false;
+      clearTimeout(noFixTimer);
       locSub?.remove();
       headingSub?.remove();
     };
@@ -231,15 +247,18 @@ export function StopCompassCard({ connection }: StopCompassCardProps) {
     await Linking.openURL(osmUrl);
   };
 
-  const formattedDistance =
-    distanceM == null
-      ? 'Namierzam…'
-      : distanceM >= 1000
-      ? `${(distanceM / 1000).toFixed(1)} km`
-      : `${distanceM} m`;
+  const hasTarget = targetLat != null && targetLon != null;
+  // Kompas ma sens tylko z fixem GPS ORAZ współrzędnymi przystanku.
+  const compassReady = hasTarget && distanceM != null;
+
+  const compassHint = !hasTarget
+    ? 'Ten przystanek nie ma współrzędnych w rozkładzie.'
+    : locState === 'denied'
+      ? 'Lokalizacja jest wyłączona — bez niej nie pokażę kierunku do przystanku.'
+      : 'Nie mam jeszcze Twojej pozycji. Poczekaj na sygnał GPS albo skorzystaj z nawigacji poniżej.';
 
   const walkMin = distanceM != null ? Math.max(1, Math.round(distanceM / 80)) : null;
-  const directionLabel = distanceM != null ? getDirectionLabel(relativeAngle) : 'Wyszukuję pozycję';
+  const directionLabel = compassReady ? getDirectionLabel(relativeAngle) : compassHint;
 
   return (
     <View style={styles.card}>
@@ -308,48 +327,69 @@ export function StopCompassCard({ connection }: StopCompassCardProps) {
       </View>
 
       {/* Radar nawigujący w stronę przystanku + odległość */}
-      <View style={styles.compassRow}>
-        <View style={styles.dialContainer}>
-          <View style={styles.dial}>
-            {/* Wewnętrzny okrąg radaru */}
-            <View style={styles.innerRing} />
-            <View style={styles.crosshairV} />
-            <View style={styles.crosshairH} />
+      {compassReady ? (
+        <View style={styles.compassRow}>
+          <View style={styles.dialContainer}>
+            <View style={styles.dial}>
+              {/* Wewnętrzny okrąg radaru */}
+              <View style={styles.innerRing} />
+              <View style={styles.crosshairV} />
+              <View style={styles.crosshairH} />
 
-            {/* Warstwa nawigacyjna obracana w stronę przystanku */}
-            <Animated.View style={[styles.pointerContainer, pointerStyle]}>
-              {/* Promień w stronę przystanku */}
-              <View style={[styles.pointerBeam, { backgroundColor: lineAccent }]} />
+              {/* Warstwa nawigacyjna obracana w stronę przystanku */}
+              <Animated.View style={[styles.pointerContainer, pointerStyle]}>
+                {/* Promień w stronę przystanku */}
+                <View style={[styles.pointerBeam, { backgroundColor: lineAccent }]} />
 
-              {/* Ikonka przystanku/pojazdu wskazująca dokładne położenie peronu */}
-              <View style={[styles.stopTargetBadge, { backgroundColor: lineAccent }]}>
-                <Animated.View style={counterStyle}>
-                  <TargetIcon size={16} color={lineFg} />
-                </Animated.View>
+                {/* Ikonka przystanku/pojazdu wskazująca dokładne położenie peronu */}
+                <View style={[styles.stopTargetBadge, { backgroundColor: lineAccent }]}>
+                  <Animated.View style={counterStyle}>
+                    <TargetIcon size={16} color={lineFg} />
+                  </Animated.View>
+                </View>
+              </Animated.View>
+
+              {/* Punkt użytkownika w centrum (Twoja pozycja) */}
+              <View style={styles.userPulse}>
+                <View style={styles.userDot} />
               </View>
-            </Animated.View>
-
-            {/* Punkt użytkownika w centrum (Twoja pozycja) */}
-            <View style={styles.userPulse}>
-              <View style={styles.userDot} />
             </View>
           </View>
-        </View>
 
-        {/* Dane odległości i wskazówka kierunku */}
-        <View style={styles.distanceInfo}>
-          <Text style={styles.directionGuide}>{directionLabel}</Text>
-          <Text style={styles.distanceNumber}>{formattedDistance}</Text>
-          <Text style={styles.distanceLabel} numberOfLines={1}>
-            w linii prostej
-          </Text>
-          {walkMin != null && (
-            <View style={styles.walkBadge}>
-              <Text style={styles.walkEst}>~{walkMin} min pieszo</Text>
-            </View>
-          )}
+          {/* Dane odległości i wskazówka kierunku */}
+          <View style={styles.distanceInfo}>
+            <Text style={styles.directionGuide}>{directionLabel}</Text>
+            <Text style={styles.distanceNumber}>
+              {distanceM! >= 1000 ? `${(distanceM! / 1000).toFixed(1)} km` : `${distanceM} m`}
+            </Text>
+            <Text style={styles.distanceLabel} numberOfLines={1}>
+              w linii prostej
+            </Text>
+            {walkMin != null && (
+              <View style={styles.walkBadge}>
+                <Text style={styles.walkEst}>~{walkMin} min pieszo</Text>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      ) : (
+        /* Bez fixu GPS kompas tylko by mylił — zostaje powód i wyjście z kartki. */
+        <View style={styles.hintRow}>
+          <LocateFixed size={18} color={scheme.onSurfaceVariant} />
+          <Text style={styles.hintText}>{directionLabel}</Text>
+        </View>
+      )}
+
+      {locState === 'denied' && hasTarget && (
+        <Pressable
+          onPress={() => void Linking.openSettings()}
+          style={({ pressed }) => [styles.settingsBtn, pressed && { opacity: 0.8 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Otwórz ustawienia aplikacji"
+        >
+          <Text style={styles.settingsBtnText}>Włącz lokalizację w ustawieniach</Text>
+        </Pressable>
+      )}
 
       {/* Przycisk nawigacji w Organic Maps */}
       <Pressable
@@ -561,6 +601,32 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
     alignItems: 'flex-start',
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerHighest,
+  },
+  hintText: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    flex: 1,
+    lineHeight: 19,
+  },
+  settingsBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  settingsBtnText: {
+    ...type.labelLarge,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '600',
   },
   directionGuide: {
     ...type.labelMedium,
