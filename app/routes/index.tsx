@@ -634,7 +634,8 @@ export default function RoutesScreen() {
   const TOP_ZONE_ENTER = 60;
   const TOP_ZONE_EXIT = 110;
 
-  const SPRING_SOFT = { damping: 26, stiffness: 320 } as const;
+  // Szybki, prawie krytycznie tłumiony spring: bez podskoku, ~200 ms.
+  const SPRING_SNAPPY = { damping: 55, stiffness: 550 } as const;
 
   // Jedno miejsce do zmiany stanu docka. Przeskok stanu jest możliwy tylko
   // raz na DOCK_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
@@ -650,7 +651,7 @@ export default function RoutesScreen() {
       clearTimeout(dockCooldownTimer.current);
       dockCooldownTimer.current = null;
     }
-    dockProgress.value = withSpring(visible ? 1 : 0, SPRING_SOFT);
+    dockProgress.value = withSpring(visible ? 1 : 0, SPRING_SNAPPY);
   };
 
   const setDockVisible = (visible: boolean, force = false) => {

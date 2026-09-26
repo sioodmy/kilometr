@@ -106,8 +106,8 @@ export function RoutesThumbBar({
       ]}
     >
       <Animated.View
-        entering={FadeInUp.springify().damping(26).stiffness(300).delay(250)}
-        layout={LinearTransition.springify().damping(26).stiffness(300)}
+        entering={FadeInUp.springify().damping(32).stiffness(500).delay(250)}
+        layout={LinearTransition.springify().damping(32).stiffness(500)}
         style={styles.bar}
       >
         {/* Odwrócenie trasy (powrót) */}
@@ -274,9 +274,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: shape.full,
     minHeight: 42,
   },
