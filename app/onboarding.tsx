@@ -670,6 +670,19 @@ export default function OnboardingScreen() {
                         />
                         {slots.searching && <ActivityIndicator size="small" color={scheme.primary} />}
                       </View>
+                      {/* Bez tego użytkownik widział pole z wpisanym tekstem
+                          i nic więcej — bez informacji, czy szukanie w ogóle
+                          działa. Adresy wymagają internetu, przystanki nie. */}
+                      {slots.results.length === 0 &&
+                        !slots.searching &&
+                        slots.query.trim().length >= 2 && (
+                          <View style={s.noResults}>
+                            <Text style={s.noResultsText}>
+                              Brak wyników dla „{slots.query.trim()}”. Przystanki
+                              szukamy offline, adresy wymagają internetu.
+                            </Text>
+                          </View>
+                        )}
                       {slots.results.map((r) => (
                         <Pressable
                           key={r.id}
@@ -922,6 +935,12 @@ const s = StyleSheet.create({
   },
   resultTitle: { ...type.titleSmall, color: scheme.onSurface },
   resultSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  noResults: {
+    padding: 12,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  noResultsText: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
   footer: { paddingHorizontal: 20, paddingBottom: 10, paddingTop: 8, gap: 6 },
   primary: {
     flexDirection: 'row',
