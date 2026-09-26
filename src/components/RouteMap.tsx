@@ -65,6 +65,15 @@ interface RouteMapProps {
   onError?: (message: string) => void;
 }
 
+/**
+ * GeoJSON chce [lon, lat], a reszta aplikacji (routeGeometry, OSRM, projekcje)
+ * trzyma [lat, lon].zamiana jest tu jedynym miejscem, gdzie te dwa światy
+ * się stykają — bez niej przebieg ulic lądował ~4000 km od trasy, a mapa
+ * dopasowywała widok do tego odległego punktu.
+ */
+const toGeoJson = (coords: [number, number][]): [number, number][] =>
+  coords.map(([lat, lon]) => [lon, lat]);
+
 export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function RouteMap(
   {
     route,
@@ -119,7 +128,8 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   useImperativeHandle(
     ref,
     () => ({
-      setGeometry: (legId, coords) => send({ t: 'geometry', legId, coords, approx: false }),
+      setGeometry: (legId, coords) =>
+        send({ t: 'geometry', legId, coords: toGeoJson(coords), approx: false }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
       center: (lat, lon, zoom, duration) => send({ t: 'center', lat, lon, zoom, duration }),
       setCursor: (coords) =>
@@ -127,7 +137,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
           ? send({ t: 'cursor', lat: coords.lat, lon: coords.lon })
           : send({ t: 'clearCursor' }),
       setAhead: (coords) =>
-        coords && coords.length > 1 ? send({ t: 'ahead', coords }) : send({ t: 'clearAhead' }),
+        coords && coords.length > 1
+          ? send({ t: 'ahead', coords: toGeoJson(coords) })
+          : send({ t: 'clearAhead' }),
       reload: restart,
     }),
     [restart, send],

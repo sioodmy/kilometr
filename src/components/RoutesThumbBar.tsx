@@ -64,7 +64,9 @@ export function RoutesThumbBar({
   const modeLabel =
     modeFilter === 'tram' ? 'Tramwaje' : modeFilter === 'bus' ? 'Autobusy' : 'Pojazdy';
 
-  const sortLabel = sortMode === 'fastest' ? 'Najszybciej' : 'Najwcześniej';
+  // Etykiety w kolumnie muszą się mieścić w ~60 dp, więc skracamy
+  // sortowanie do dwóch słów (pełna nazwa jest w accessibilityLabel).
+  const sortLabel = sortMode === 'fastest' ? 'Najszybciej' : 'Odjazdem';
 
   return (
     <ThumbBar>
@@ -144,7 +146,7 @@ export function RoutesThumbBar({
               <RotateCw size={17} color={refreshing ? scheme.primary : scheme.onSurfaceVariant} />
             }
             label=""
-            style={{ flex: 0, minWidth: 46, paddingHorizontal: 6 }}
+            style={{ flex: 0, maxWidth: 44 }}
             accessibilityLabel="Odśwież rozkłady i pozycje na żywo"
           />
         </>

@@ -90,8 +90,7 @@ export function ThumbBarItem({
         >
           {label}
         </Text>
-      ) : null}
-    </Pressable>
+      ) : null}    </Pressable>
   );
 }
 
@@ -109,28 +108,30 @@ const styles = StyleSheet.create({
   },
   bar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    minHeight: 54,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    minHeight: 58,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
     maxWidth: 460,
     width: '100%',
     ...elev.level3,
   },
+  // Ikona nad etykietą (jak w M3 navigation baru): mieści się 5–6 akcji w
+  // jednej pigułce, a palec trafia w kolumnę, nie w wąski pasek.
   item: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    gap: 2,
+    paddingVertical: 6,
+    paddingHorizontal: 2,
     borderRadius: shape.full,
-    minHeight: 44,
+    minHeight: 50,
   },
   itemActive: {
     backgroundColor: scheme.primaryContainer,
@@ -140,7 +141,10 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.96 }],
   },
   itemLabel: {
-    ...type.labelMedium,
+    ...type.labelSmall,
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: 'center',
     color: scheme.onSurfaceVariant,
     fontWeight: '700',
   },
@@ -149,7 +153,8 @@ const styles = StyleSheet.create({
   },
   divider: {
     width: 1,
-    height: 22,
+    alignSelf: 'center',
+    marginVertical: 12,
     backgroundColor: scheme.outlineVariant,
     opacity: 0.5,
   },

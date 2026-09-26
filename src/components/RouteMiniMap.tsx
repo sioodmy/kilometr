@@ -15,7 +15,7 @@ import { scheme } from '../theme/tokens';
 import { distanceM, interpolateRoute, type Coord } from '../services/routeGeometry';
 
 /** Ile metrów widać od kursora do krawędzi pada. */
-const DEFAULT_RANGE_M = 110;
+const DEFAULT_RANGE_M = 190;
 /** Ile punktów trasy rysujemy — mniej = taniej na klatkę, więcej = gładziej. */
 const MAX_POINTS = 18;
 
@@ -83,6 +83,10 @@ export function RouteMiniMap({
     if (points[points.length - 1] !== ahead[ahead.length - 1]) points.push(ahead[ahead.length - 1]);
 
     const scale = size / 2 / rangeM;
+    // Odcinek rysujemy jako zerowe pudełko w punkcie początku (obrót wokół
+    // własnego środka = wokół tego punktu) z odcinkiem ułożonym wzdłuż X.
+    // Dzięki temu nie trzeba ufać `transformOrigin`, które nie działa tak
+    // samo na każdym Androidzie — a kawałek odcinka wypadał poza pad.
     const toSegs = (line: Coord[], color: string, key: string) =>
       line.slice(0, -1).map((_, i) => {
         const a = project(line[i], cursor, scale, size);
@@ -90,22 +94,21 @@ export function RouteMiniMap({
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 0.5) return null;
         return (
           <View
             key={`${key}${i}`}
             style={[
-              styles.seg,
+              styles.pivot,
               {
-                width: len,
-                backgroundColor: color,
-                transform: [
-                  { translateX: a.x },
-                  { translateY: a.y - 1.5 },
-                  { rotateZ: `${Math.atan2(dy, dx)}rad` },
-                ],
+                left: a.x,
+                top: a.y,
+                transform: [{ rotateZ: `${Math.atan2(dy, dx)}rad` }],
               },
             ]}
-          />
+          >
+            <View style={[styles.seg, { width: len, backgroundColor: color }]} />
+          </View>
         );
       });
 
@@ -200,13 +203,17 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: scheme.surfaceContainerLowest,
   },
+  pivot: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+  },
   seg: {
     position: 'absolute',
     left: 0,
-    top: 0,
-    height: 3,
+    top: -2,
+    height: 4,
     borderRadius: 2,
-    transformOrigin: 'left center',
   },
   self: {
     position: 'absolute',

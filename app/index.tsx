@@ -793,7 +793,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
-  hero: { ...type.displaySmall, color: scheme.onSurface, marginTop: 16 },
+  // Nagłówek zostaje, ale schodzi do rozmiaru tytułu: pytanie „dokąd”
+  // ma teraz swoje wejście w dolnym menu, więc nie zajmuje pół ekranu.
+  hero: { ...type.titleLarge, fontWeight: '700', color: scheme.onSurface, marginTop: 14 },
   importCard: {
     flexDirection: 'row',
     alignItems: 'center',
