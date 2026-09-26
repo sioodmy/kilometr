@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View, InteractionManager, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -68,6 +68,16 @@ const GPS_ITEM: Suggestion = {
   lat: 0,
   lon: 0,
 };
+
+/** Sekundy od północy — jeden zegar dla całego ekranu. */
+function nowSeconds(): number {
+  const d = new Date();
+  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+}
+
+// Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
+// VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
+const connectionKey = (item: Connection) => item.id;
 
 export default function RoutesScreen() {
   const router = useRouter();
@@ -550,26 +560,26 @@ export default function RoutesScreen() {
     if (!firstDeparture || firstDeparture <= 0) return;
 
     setLoadingEarlier(true);
-    // Zapamiętaj wysokość kontentu, żeby po prependzie cofnąć offset (brak skoku)
-    pendingAdjust.current = contentH.current;
     const seq = ++fetchSeq.current;
 
     try {
       const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
-      if (seq !== fetchSeq.current) {
-        pendingAdjust.current = null;
-        return;
-      }
+      if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
         if (added === 0) {
           setNoMoreEarlier(true);
-          pendingAdjust.current = null;
+          return list;
         }
+        // Bazę do korekty scrolla bierzemy dopiero TU — czyli jeszcze przed
+        // renderem, w którym dojdą nowe wiersze. Pomiar na starcie
+        // zapytania bywał nieaktualny (np. rozciągał się nagłówek), przez co
+        // lista skakała dwa razy zamiast raz.
+        pendingAdjust.current = contentH.current;
         return list;
       });
     } catch {
-      pendingAdjust.current = null;
+      // po cichu — lista zostaje
     } finally {
       if (seq === fetchSeq.current) {
         setLoadingEarlier(false);
@@ -577,15 +587,46 @@ export default function RoutesScreen() {
     }
   };
 
+  // Ref na aktualną funkcję: handler scrolla ma być stabilny (patrz useCallback
+  // niżej), a nie przeżywać przez ref każdego renderu.
+  const loadEarlierRef = useRef(handleLoadEarlier);
+  loadEarlierRef.current = handleLoadEarlier;
+
   const lastScrollY = useRef(0);
   const isFiltersVisible = useRef(true);
   const accumulatedDelta = useRef(0);
+  const inTopZone = useRef(false);
 
   const HIDE_THRESHOLD = 45;
   const SHOW_THRESHOLD = 30;
+  // Strefa „trzymam palec na górze” z histerezą: wjście na 60 px, wyjście
+  // dopiero powyżej 110 px — jedno drgnięcie palcem nie kasuje już timera.
+  const TOP_ZONE_ENTER = 60;
+  const TOP_ZONE_EXIT = 110;
 
-  // Góra listy: przytrzymaj chwilę na samej górze → dładuj wcześniejsze; detekcja kierunku dla filtrów z histerezą
-  const handleScroll = (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+  // Warunki dociągania starszych odjazdów w refie: handler scrolla ma być
+  // stabilny, a nie przeżywać przez ref każdego renderu.
+  const topHoldGate = useRef({ loading: true, loadingEarlier: false, count: 0, noMoreEarlier: false });
+  topHoldGate.current = { loading, loadingEarlier, count: items.length, noMoreEarlier };
+
+  const startTopHold = useCallback(() => {
+    if (topHoldTimer.current) return;
+    const g = topHoldGate.current;
+    if (g.loading || g.loadingEarlier || g.count === 0 || g.noMoreEarlier) return;
+    topHoldTimer.current = setTimeout(() => {
+      topHoldTimer.current = null;
+      void loadEarlierRef.current();
+    }, 350);
+  }, []);
+
+  const cancelTopHold = useCallback(() => {
+    if (!topHoldTimer.current) return;
+    clearTimeout(topHoldTimer.current);
+    topHoldTimer.current = null;
+  }, []);
+
+  // Góra listy: przytrzymaj chwilę na górze → dładuj wcześniejsze; detekcja kierunku dla filtrów z histerezą
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     const dy = y - lastScrollY.current;
     lastScrollY.current = y;
@@ -633,15 +674,17 @@ export default function RoutesScreen() {
       }
     }
 
-    if (topHoldTimer.current) {
-      clearTimeout(topHoldTimer.current);
-      topHoldTimer.current = null;
-    }
-    if (y <= 80 && !loading && !loadingEarlier && items.length > 0 && !noMoreEarlier) {
-      topHoldTimer.current = setTimeout(() => {
-        topHoldTimer.current = null;
-        handleLoadEarlier();
-      }, 350);
+    // 2. Przytrzymanie na górze. Timer zakładamy RAZ przy wejściu w strefę.
+    //    Wcześniej clearTimeout+setTimeout leciał na każdą klatkę — to śmieci
+    //    na wątku JS i gest gasł przy mikro-ruchach palca.
+    if (!inTopZone.current) {
+      if (y <= TOP_ZONE_ENTER) {
+        inTopZone.current = true;
+        startTopHold();
+      }
+    } else if (y > TOP_ZONE_EXIT) {
+      inTopZone.current = false;
+      cancelTopHold();
     }
   };
 
@@ -692,6 +735,24 @@ export default function RoutesScreen() {
   };
 
   const isCustomTime = departureTimeSec !== undefined;
+
+  // Stabilne referencje dla FlatList: bez nich każdy render rodzica tworzył
+  // nowe closures, przez co wiersze (pamiętane przez React.memo) przeliczały
+  // się od nowa i lista „przybliżała” zamiast płynnie się toczyć.
+  const openConnection = useCallback(
+    (item: Connection) => {
+      router.push({ pathname: '/routes/[id]', params: { id: item.id } });
+    },
+    [router],
+  );
+
+  const renderConnection = useCallback(
+    ({ item }: { item: Connection }) => {
+      const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
+      return <ConnectionCard item={item} dimmed={past} onPress={openConnection} />;
+    },
+    [openConnection],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -937,60 +998,47 @@ export default function RoutesScreen() {
           data={displayed}
           // wymusza przeliczenie etykiet „za X min” bez refetchu
           extraData={nowTick}
-          keyExtractor={(i) => i.id}
+          keyExtractor={connectionKey}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
+          // Na Androidzie RN domyślnie odpija widoki spoza kadru
+          // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
+          // nagłówkiem powoduje to miganie pustych miejsc w trakcie
+          // przeciągania palcem, więc trzymamy komórki podpięte.
+          removeClippedSubviews={false}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           onScroll={handleScroll}
           scrollEventThrottle={16}
           onContentSizeChange={handleContentSizeChange}
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-          renderItem={({ item }) => {
-            const d = new Date();
-            const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-            const past = item.departureSec > 0 && item.departureSec < nowS - 60;
-            return (
-              <ConnectionCard
-                item={item}
-                dimmed={past}
-                onPress={() => router.push({ pathname: '/routes/[id]', params: { id: item.id } })}
-              />
-            );
-          }}
+          renderItem={renderConnection}
           ListHeaderComponent={
-            <View>
-              {loadingEarlier && (
-                <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color={scheme.primary} />
+            <View style={styles.countRow}>
+              <Text style={styles.count} numberOfLines={1}>
+                {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
+                {directOnly ? ' • tylko bezpośrednie' : ''}
+                {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
+                {loadingEarlier ? ' • wczytuję wcześniejsze…' : ''}
+              </Text>
+              {offline && (
+                <Pressable
+                  onPress={() => quietRefresh()}
+                  style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ostatnie dane z cache. Dotknij, aby odświeżyć."
+                >
+                  <View style={styles.offlineDot} />
+                  <Text style={styles.offlineText}>offline</Text>
+                </Pressable>
+              )}
+              {liveStale && !offline && (
+                <View style={styles.offlineChip}>
+                  <View style={styles.offlineDot} />
+                  <Text style={styles.offlineText}>brak danych live</Text>
                 </View>
               )}
-              <View style={styles.countRow}>
-                <Text style={styles.count} numberOfLines={1}>
-                  {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
-                  {directOnly ? ' • tylko bezpośrednie' : ''}
-                  {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
-                </Text>
-                {offline && (
-                  <Pressable
-                    onPress={() => quietRefresh()}
-                    style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel="Ostatnie dane z cache. Dotknij, aby odświeżyć."
-                  >
-                    <View style={styles.offlineDot} />
-                    <Text style={styles.offlineText}>offline</Text>
-                  </Pressable>
-                )}
-                {liveStale && !offline && (
-                  <View style={styles.offlineChip}>
-                    <View style={styles.offlineDot} />
-                    <Text style={styles.offlineText}>brak danych live</Text>
-                  </View>
-                )}
-              </View>
             </View>
           }
           ListFooterComponent={
