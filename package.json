@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "tsx": "^4.20.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -38,7 +39,9 @@
     "server": "npm --prefix server start",
     "server:dev": "npm --prefix server run dev",
     "setup": "npm --prefix server run setup",
-    "phone": "bash scripts/launch-phone.sh"
+    "phone": "bash scripts/launch-phone.sh",
+    "check:notifications": "tsx scripts/check-notifications.ts",
+    "typecheck": "tsc --noEmit"
   },
   "private": true,
   "overrides": {

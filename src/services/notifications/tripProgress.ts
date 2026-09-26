@@ -284,6 +284,7 @@ export function computeTripProgress(
 
   return {
     phase,
+    computedAt: nowMs,
     progress,
     legProgress,
     approachProgress,
@@ -300,9 +301,10 @@ export function computeTripProgress(
     lineMode,
     lineColor,
     direction: lineLeg?.direction ?? '',
-    // Przed odjazdem nie ma jeszcze „następnego przystanku" — stoimy na tym,
-    // do którego mamy dojść. Wtedy pokazujemy nazwę przystanku jako `stopName`.
-    nextStop: activeTransit ? (vp.nextStop ?? null) : arrived ? conn.toTitle : null,
+    // Następny przystanek ma sens tylko w fazie „jadę". Stojąc na przystanku
+    // albo idąc na przesiadkę jesteśmy już NA przystanku, więc raportowanie
+    // „następny: <przystanek>" myliłoby — wtedy pokazujemy `stopName`.
+    nextStop: phase === 'riding' ? (vp.nextStop ?? null) : arrived ? conn.toTitle : null,
     stopName,
     nextStopInMin,
     stopsLeft,

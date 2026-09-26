@@ -22,6 +22,13 @@ export type TripPhase =
 /** Stan, na którym budujemy treść powiadomienia. Wyliczany z Connection + zegarek + GPS. */
 export interface TripProgress {
   phase: TripPhase;
+  /**
+   * Czas (ms), dla którego policzono ten stan. Wszystko poniżej liczone
+   * względem `Date.now()` dałoby wynik zależny od zegara systemowego i psuło
+   * powtarzalność — a po drodze okazało się, że `showCountdown` dla stanu
+   * policzonego w przeszłości wychodził „nie pokazuj licznika".
+   */
+  computedAt: number;
   /** Postęp całej podróży 0..1 (0 = start, 1 = cel). Do paska postępu. */
   progress: number;
   /** Postęp wewnątrz bieżącego odcinka 0..1. */
