@@ -11,6 +11,10 @@ import {
 import Animated, {
   FadeIn,
   FadeOut,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
@@ -49,7 +53,11 @@ import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
-import { RoutesThumbBar, type ModePreference, type SortMode } from '../../src/components/RoutesThumbBar';
+import {
+  RoutesThumbBar,
+  type ModePreference,
+  type SortMode,
+} from '../../src/components/RoutesThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 
 const GPS_ITEM: Suggestion = {
@@ -168,6 +176,26 @@ export default function RoutesScreen() {
     );
   }, [items, sortMode, directOnly]);
 
+  // Dolny dock (RoutesThumbBar) chowa się przy zjeździe w dół i wraca przy
+  // powrocie w górę — spring zamiast sztywnego timing, żeby było „fajnie".
+  // W przeciwieństwie do starego zwijanego panelu na górze nie ruszamy
+  // layoutu FlatListy (zero flickeru): dock pływa nad listą (absolute).
+  const dockProgress = useSharedValue(1);
+
+  const animatedDockStyle = useAnimatedStyle(() => {
+    const p = dockProgress.value;
+    return {
+      opacity: interpolate(p, [0, 1], [0, 1]),
+      transform: [
+        { translateY: interpolate(p, [0, 1], [110, 0]) },
+        { scale: interpolate(p, [0, 1], [0.94, 1]) },
+      ],
+      // Po schowaniu dock nie łapie dotyków znad listy.
+      // (pointerEvents na Animated.View nie jest animowalne — znika sam,
+      //  bo opacity 0 + translate poza ekran.)
+    };
+  });
+
   // Przypięte połączenie (persistent notification)
   const [pinnedQuery, setPinnedQuery] = useState<PinnedQuery | null>(() => getPinnedQuerySync());
   useEffect(() => subscribePinned(setPinnedQuery), []);
@@ -223,10 +251,17 @@ export default function RoutesScreen() {
   const TOP_ZONE_ENTER = 60;
   const TOP_ZONE_EXIT = 110;
   const inTopZone = useRef(false);
+  // Odliczane „uspokojenie listy” przed zmianą widoczności docka
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stan docka oczekujący na koniec pauzy po zmianie (patrz setDockVisible)
+  const pendingDockState = useRef<boolean | null>(null);
+  const dockCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (topHoldTimer.current) clearTimeout(topHoldTimer.current);
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
     };
   }, []);
 
@@ -583,6 +618,91 @@ export default function RoutesScreen() {
   loadEarlierRef.current = handleLoadEarlier;
 
   const lastScrollY = useRef(0);
+  const isDockVisible = useRef(true);
+  const accumulatedDelta = useRef(0);
+  const momentumActive = useRef(false);
+  const lastDockToggleAt = useRef(0);
+
+  // Próg jest wysoki, bo dock reaguje dopiero na ustabilizowanym
+  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) — 80 px
+  // to jedno świadome przejście, a nie drgnięcie palcem.
+  const HIDE_THRESHOLD = 80;
+  const SHOW_THRESHOLD = 40;
+  // Pauza po zmianie stanu: dwa przeciwstawne gesty w krótkim czasie
+  // nie mogą się zbić w serię szarpnięć docka.
+  const DOCK_COOLDOWN_MS = 450;
+  // Ile czekamy po puszczeniu palca na sprawdzenie, czy zaczęło się
+  // „rzucanie” listy (momentum). Jeśli tak, decyzja zapada po nim.
+  const SCROLL_SETTLE_MS = 120;
+
+  // Szybki, prawie krytycznie tłumiony spring: bez podskoku, ~200 ms.
+  const SPRING_SNAPPY = { damping: 55, stiffness: 550 } as const;
+
+  // Jedno miejsce do zmiany stanu docka. Przeskok stanu jest możliwy tylko
+  // raz na DOCK_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
+  // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
+  // niej (pendingDockState). `force` omija pauzę — przy powrocie na samą
+  // górę listy dock musi być od razu.
+  const applyDockState = (visible: boolean) => {
+    if (isDockVisible.current === visible) return;
+    isDockVisible.current = visible;
+    lastDockToggleAt.current = Date.now();
+    pendingDockState.current = null;
+    if (dockCooldownTimer.current) {
+      clearTimeout(dockCooldownTimer.current);
+      dockCooldownTimer.current = null;
+    }
+    dockProgress.value = withSpring(visible ? 1 : 0, SPRING_SNAPPY);
+  };
+
+  const setDockVisible = (visible: boolean, force = false) => {
+    if (isDockVisible.current === visible) return;
+    const wait = DOCK_COOLDOWN_MS - (Date.now() - lastDockToggleAt.current);
+    if (!force && wait > 0) {
+      pendingDockState.current = visible;
+      if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
+      dockCooldownTimer.current = setTimeout(() => {
+        dockCooldownTimer.current = null;
+        const next = pendingDockState.current;
+        if (next != null) applyDockState(next);
+      }, wait);
+      return;
+    }
+    applyDockState(visible);
+  };
+
+  // Decyzja o docku zapada, gdy lista przestała się ruszać. W trakcie
+  // przeciągania dock tylko liczy deltę — animacja leci na wątku UI
+  // (Reanimated), więc nie blokuje gestu ani nie przelicza layoutu listy.
+  const evaluateDockOnSettle = () => {
+    if (accumulatedDelta.current >= HIDE_THRESHOLD) {
+      setDockVisible(false);
+    } else if (accumulatedDelta.current <= -SHOW_THRESHOLD) {
+      setDockVisible(true);
+    }
+  };
+
+  const handleScrollEndDrag = () => {
+    momentumActive.current = false;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      if (!momentumActive.current) evaluateDockOnSettle();
+    }, SCROLL_SETTLE_MS);
+  };
+
+  const handleMomentumScrollBegin = () => {
+    momentumActive.current = true;
+    if (settleTimer.current) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+  };
+
+  const handleMomentumScrollEnd = () => {
+    momentumActive.current = false;
+    evaluateDockOnSettle();
+  };
 
   // Warunki dociągania starszych odjazdów w refie: handler scrolla ma być
 
@@ -611,10 +731,30 @@ export default function RoutesScreen() {
   // na górze” dociągającej starszych kursów.
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
+    const dy = y - lastScrollY.current;
     lastScrollY.current = y;
     scrollY.current = y;
 
-    // Przytrzymanie na górze. Timer zakładamy RAZ przy wejściu w strefę.
+    // 1. Na samej górze listy (y <= 12) — dock wraca od razu, bez
+    //    czekania na puszczenie palca: tam scroll i tak się kończy.
+    if (y <= 12) {
+      accumulatedDelta.current = 0;
+      setDockVisible(true, true);
+    } else if (dy > 0) {
+      // Scrollowanie W DÓŁ
+      if (accumulatedDelta.current < 0) {
+        accumulatedDelta.current = 0;
+      }
+      accumulatedDelta.current += dy;
+    } else if (dy < 0) {
+      // Scrollowanie W GÓRĘ
+      if (accumulatedDelta.current > 0) {
+        accumulatedDelta.current = 0;
+      }
+      accumulatedDelta.current += dy;
+    }
+
+    // 2. Przytrzymanie na górze. Timer zakładamy RAZ przy wejściu w strefę.
     //    Wcześniej clearTimeout+setTimeout leciał na każdą klatkę — to śmieci
     //    na wątku JS i gest gasł przy mikro-ruchach palca.
     if (!inTopZone.current) {
@@ -898,6 +1038,9 @@ export default function RoutesScreen() {
           onEndReachedThreshold={0.5}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          onScrollEndDrag={handleScrollEndDrag}
+          onMomentumScrollBegin={handleMomentumScrollBegin}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
           onContentSizeChange={handleContentSizeChange}
           renderItem={renderConnection}
           ListHeaderComponent={
@@ -1004,9 +1147,11 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 6. Dolne menu — jedyne miejsce na filtry i akcje (pod kciukiem) */}
+      {/* 6. Dolne menu — jedyne miejsce na filtry i akcje (pod kciukiem),
+          ze springowym chowaniem się przy przewijaniu listy. */}
       {!sheetFor && !timeSheetOpen && (
         <RoutesThumbBar
+          animatedStyle={animatedDockStyle}
           onSwap={handleSwap}
           directOnly={directOnly}
           onToggleDirect={() => setDirectOnly(!directOnly)}
@@ -1145,8 +1290,6 @@ const styles = StyleSheet.create({
     color: scheme.onSurface,
     flex: 1,
   },
-  // Wyśrodkowany przycisk zamiany
-  // Segmented: Najszybciej / Najwcześniej
   countRow: {
     flexDirection: 'row',
     alignItems: 'center',

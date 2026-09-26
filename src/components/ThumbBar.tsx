@@ -17,6 +17,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { elev, scheme, shape, type } from '../theme/tokens';
 
@@ -36,13 +37,15 @@ export function ThumbBar({ children, bottom = 10, style, contentStyle, inline }:
   if (inline) {
     return <View style={[styles.bar, contentStyle]}>{children}</View>;
   }
+  // Animated.View, bo rodzic potrafi chować/pokazywać dock stylem z useAnimatedStyle
+  // (zwykle przy przewijaniu listy) — na zwykłym View to nie zadziała.
   return (
-    <View
+    <Animated.View
       pointerEvents="box-none"
       style={[styles.wrapper, { bottom: Math.max(insets.bottom, 10) + bottom }, style]}
     >
       <View style={[styles.bar, contentStyle]}>{children}</View>
-    </View>
+    </Animated.View>
   );
 }
 interface ThumbBarItemProps {

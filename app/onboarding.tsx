@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import {
   Bell,
@@ -103,6 +104,11 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
 
 // ─── Krok 1: uprawnienia ─────────────────────────────────────────────────────
 
+// Push w Expo Go nie istnieje od SDK 53 (sam require + getPermissionsAsync
+// rzuca błąd do LogBoxa), więc nawet nie próbujemy — ten sam guard co
+// w pinnedConnection.getNotifications(). Powiadomienia działają w dev buildzie.
+const NOTIF_SUPPORTED = Constants.appOwnership !== 'expo';
+
 function usePermissionStates() {
   const [loc, setLoc] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [notif, setNotif] = useState<'unknown' | 'granted' | 'denied'>('unknown');
@@ -116,6 +122,10 @@ function usePermissionStates() {
       setLoc('unknown');
     }
     try {
+      if (!NOTIF_SUPPORTED) {
+        setNotif('unknown');
+        return;
+      }
       // Leniwie. Bezpośredni import expo-notifications potrafi wywalić Expo Go.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const N = require('expo-notifications');
@@ -148,6 +158,7 @@ function usePermissionStates() {
   }, []);
 
   const requestNotif = useCallback(async () => {
+    if (!NOTIF_SUPPORTED) return;
     setBusy('notif');
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -482,6 +493,11 @@ export default function OnboardingScreen() {
                   <Check size={16} color={scheme.success} />
                   <Text style={s.doneText}>Powiadomienia włączone.</Text>
                 </View>
+              ) : !NOTIF_SUPPORTED ? (
+                <Text style={s.fine}>
+                  Podgląd w Expo Go — powiadomienia (przypięte połączenie) działają w buildzie
+                  deweloperskim.
+                </Text>
               ) : (
                 <Pressable
                   onPress={() => void perms.requestNotif()}
