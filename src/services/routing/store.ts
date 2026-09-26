@@ -1,4 +1,4 @@
-import { importInProgress } from '../dataManager';
+import { awaitImportSettled, importInProgress } from '../dataManager';
 import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
 
@@ -45,6 +45,14 @@ export class LocalGtfsStore {
 
   async load() {
     if (this.isLoaded) return;
+    // Import w toku = sklep musi zostać pusty do jego końca (reset() czyści
+    // je na końcu importu). Bez czekania load() wracał „wstecz" z pustymi
+    // przystankami, a planer oddawał zero połączeń zamiast „rozkład się
+    // importuje" — ekran pokazywał wtedy „nie znaleziono połączeń".
+    if (importInProgress) {
+      await awaitImportSettled();
+      if (this.isLoaded) return;
+    }
     console.log('[LocalGtfsStore] Initializing...');
     if (importInProgress) return;
     const db = await getGtfsDb();
