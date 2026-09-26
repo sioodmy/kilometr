@@ -27,17 +27,31 @@ function alertId(kind: AlertKind, tripId: string): string {
   return `kilometr.alert.${kind}.${tripId}`;
 }
 
+/**
+ * Ids alertów trzymamy też w pamięci. Ten serwis woła planowanie przy każdym
+ * odświeżeniu (co 20–30 s), więc czytanie i pisanie kv przy każdym ticku to
+ * cztery operacje I/O na minutę bez żadnej korzyści.
+ */
+const memoryAlertIds = new Set<string>();
+let alertIdsLoaded = false;
+
 async function readAlertIds(): Promise<string[]> {
+  if (alertIdsLoaded) return Array.from(memoryAlertIds);
+  alertIdsLoaded = true;
   try {
     const raw = await kvGet(ALERT_IDS_KEY);
-    if (raw) return JSON.parse(raw) as string[];
+    if (raw) {
+      for (const id of JSON.parse(raw) as string[]) memoryAlertIds.add(id);
+    }
   } catch {
     // brak zapisu
   }
-  return [];
+  return Array.from(memoryAlertIds);
 }
 
 async function writeAlertIds(ids: string[]): Promise<void> {
+  memoryAlertIds.clear();
+  for (const id of ids) memoryAlertIds.add(id);
   try {
     await kvSet(ALERT_IDS_KEY, JSON.stringify(ids.slice(-12)));
   } catch {
@@ -49,7 +63,7 @@ async function writeAlertIds(ids: string[]): Promise<void> {
 export async function cancelScheduledAlerts(): Promise<void> {
   const N = getNotifications();
   const ids = await readAlertIds();
-  if (N && ids.length > 0) {
+  if (N) {
     for (const id of ids) {
       try {
         await N.cancelScheduledNotificationAsync(id);
@@ -59,9 +73,28 @@ export async function cancelScheduledAlerts(): Promise<void> {
     }
   }
   await kvRemove(ALERT_IDS_KEY);
+  memoryAlertIds.clear();
+  scheduledAt.clear();
+  alertIdsLoaded = true;
+}
+
+/**
+ * Ostatnio zaplanowany czas dla danego alertu. Planowanie wołujemy przy każdym
+ * odświeżeniu, a godzina odjazdu zmienia się rzadko — bez tego pchaliśmy
+ * cancel + schedule dwa razy co 20 s niepotrzebnie.
+ */
+const scheduledAt = new Map<string, number>();
+
+function alreadyScheduled(id: string, atMs: number): boolean {
+  return scheduledAt.get(id) === atMs;
+}
+
+function forgetSchedule(id: string): void {
+  scheduledAt.delete(id);
 }
 
 async function cancelOne(id: string): Promise<void> {
+  forgetSchedule(id);
   const N = getNotifications();
   if (!N) return;
   try {
@@ -119,6 +152,11 @@ async function schedule(
   const trigger = alertTrigger(atMs);
   if (!trigger) return;
   const content = leaveContent(p, trip, kind === 'imminent', prefs.departureAlertLeadMin);
+  // Dźwięk na Androidzie pochodzi z kanału (alertów), więc `sound` ma znaczenie
+  // tylko na iOS. Różnicujemy natomiast pilność: uprzedzenie to zwykłe
+  // „aktywne" powiadomienie, a „wyjdź teraz" jest czasowo wrażliwe i ma
+  // przebić się przez tryb „nie przeszkadzać" — kurs zaraz odjeżdża.
+  const timeSensitive = kind === 'imminent';
   try {
     await N.scheduleNotificationAsync({
       identifier: id,
@@ -126,17 +164,18 @@ async function schedule(
         title: content.title,
         body: content.body,
         data: content.data,
-        sound: kind === 'imminent' ? 'default' : 'default',
+        sound: 'default',
         categoryIdentifier: ALERT_CATEGORY,
-        // Czas wrażliwy: bus/tramwaj odjeżdża, użytkownik musi to zobaczyć
-        // nawet przy włączonym trybie „nie przeszkadzać” od czasu do czasu.
-        ...(Platform.OS === 'ios' ? { interruptionLevel: 'timeSensitive' as const } : {}),
+        ...(Platform.OS === 'ios'
+          ? { interruptionLevel: timeSensitive ? ('timeSensitive' as const) : ('active' as const) }
+          : {}),
         ...(Platform.OS === 'android' ? { priority: 'high' as const, sticky: false } : {}),
       },
       trigger,
     });
     const ids = await readAlertIds();
     await writeAlertIds([...ids.filter((x) => x !== id), id]);
+    scheduledAt.set(id, atMs);
   } catch (err) {
     console.warn('[Powiadomienia] nie udało się zaplanować alertu:', err);
   }
@@ -144,8 +183,10 @@ async function schedule(
 
 /**
  * Planuje alerty „wyjdź” na podstawie aktualnego stanu podróży. Wołane po
- * każdym odświeżeniu — poprzednie alerty są najpierw kasowane, więc nie
- * nakłada się ich na siebie przy kolejnych przeliczeniach trasy.
+ * każdym odświeżeniu, ale przelicza się tylko wtedy, gdy coś się zmieniło:
+ * godzina odjazdu (opóźnienie), wyprzedzenie w Ustawieniach albo pozycja
+ * względem progu 20 s. W przeciwnym razie dwa razy co 20 s kasowalibyśmy
+ * i od nowa planowali te same alerty.
  */
 export async function scheduleDepartureAlerts(
   p: TripProgress,
@@ -159,19 +200,21 @@ export async function scheduleDepartureAlerts(
 
   const nowMs = Date.now();
   const leadSec = prefs.departureAlertLeadMin * 60;
-  const leadAt = p.boardAtMs - leadSec * 1000;
-  const imminentAt = p.boardAtMs - IMMINENT_LEAD_SEC * 1000;
+  const wanted: { kind: AlertKind; atMs: number }[] = [
+    { kind: 'lead', atMs: p.boardAtMs - leadSec * 1000 },
+    { kind: 'imminent', atMs: p.boardAtMs - IMMINENT_LEAD_SEC * 1000 },
+  ];
 
-  if (leadAt - nowMs > MIN_SCHEDULE_AHEAD_SEC * 1000) {
-    await schedule(p, trip, 'lead', leadAt, prefs);
-  } else {
-    await cancelOne(alertId('lead', trip.id));
-  }
-
-  if (prefs.imminentAlert && imminentAt - nowMs > MIN_SCHEDULE_AHEAD_SEC * 1000) {
-    await schedule(p, trip, 'imminent', imminentAt, prefs);
-  } else {
-    await cancelOne(alertId('imminent', trip.id));
+  for (const { kind, atMs } of wanted) {
+    const id = alertId(kind, trip.id);
+    const soon = atMs - nowMs > MIN_SCHEDULE_AHEAD_SEC * 1000;
+    // Alert poza horyzontem, alert wyłączony albo identyczny z zaplanowanym
+    // wcześniej — nie ruszamy niczego.
+    if (!soon || (kind === 'imminent' && !prefs.imminentAlert) || alreadyScheduled(id, atMs)) {
+      if (!soon) forgetSchedule(id);
+      continue;
+    }
+    await schedule(p, trip, kind, atMs, prefs);
   }
 }
 
