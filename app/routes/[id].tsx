@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowRight, ChevronLeft, History } from 'lucide-react-native';
+import { ArrowRight, ChevronLeft, History, Radio } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { DEFAULT_LOCATION } from '../../src/config';
 import { RoutingService } from '../../src/services';
 import { findCachedConnection, rehydrateConnections } from '../../src/services/offlineCache';
 import type { Connection } from '../../src/types/models';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { LiveDot } from '../../src/components/LiveDot';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
+import { ActiveTripCard } from '../../src/components/ActiveTripCard';
+import {
+  areNotificationsSupported,
+  ensureNotificationPermission,
+  permissionDeniedMessage,
+  startTracking,
+  stopTracking,
+  useTrackedTrip,
+  type TrackedTrip,
+} from '../../src/services/notifications';
 
 export default function RouteDetailsScreen() {
   const router = useRouter();
@@ -17,6 +28,45 @@ export default function RouteDetailsScreen() {
   const [item, setItem] = useState<Connection | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
+  const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
+
+  // Ten ekran pokazuje dokładnie ten kurs, który jest śledzony (albo żaden).
+  const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
+
+  /** Śledzimy właśnie ten kurs, nie całe zapytanie — patrz ekran połączeń. */
+  const handleTrack = async () => {
+    if (!item) return;
+    if (!areNotificationsSupported()) {
+      Alert.alert(
+        'Śledzenie niedostępne',
+        'Powiadomienia wymagają builda deweloperskiego — Expo Go ich nie wspiera.',
+      );
+      return;
+    }
+    const ok = await ensureNotificationPermission();
+    if (!ok) {
+      Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
+      return;
+    }
+    // Współrzędne bierzemy z odcinków (Leg ma from/to lat/lon); fallback to
+    // domyślnego miejsca, bo planer i tak zakotwiczy się do najbliższego
+    // przystanku wokół tych współrzędnych.
+    const firstLeg = item.legs[0];
+    const lastLeg = item.legs[item.legs.length - 1];
+    const track: TrackedTrip = {
+      id: item.id,
+      fromTitle: item.fromTitle,
+      fromLat: firstLeg?.fromLat ?? DEFAULT_LOCATION.lat,
+      fromLon: firstLeg?.fromLon ?? DEFAULT_LOCATION.lon,
+      toId: item.toTitle,
+      toTitle: item.toTitle,
+      toLat: lastLeg?.toLat ?? DEFAULT_LOCATION.lat,
+      toLon: lastLeg?.toLon ?? DEFAULT_LOCATION.lon,
+      connection: item,
+      startedAt: Date.now(),
+    };
+    await startTracking(track);
+  };
 
   useEffect(() => {
     if (id) {
@@ -154,6 +204,26 @@ export default function RouteDetailsScreen() {
           )}
         </View>
 
+        {isTrackedThis && trackedProgress && trackedTrip ? (
+          <View style={styles.trackSlot}>
+            <ActiveTripCard
+              trip={trackedTrip}
+              progress={trackedProgress}
+              onStop={() => void stopTracking()}
+            />
+          </View>
+        ) : (
+          <Pressable
+            onPress={handleTrack}
+            accessibilityRole="button"
+            accessibilityLabel="Śledź to połączenie — odliczanie i postęp w powiadomieniu"
+            style={({ pressed }) => [styles.trackCta, pressed && { opacity: 0.8 }]}
+          >
+            <Radio size={17} color={scheme.onPrimaryContainer} />
+            <Text style={styles.trackCtaText}>Śledź to połączenie</Text>
+          </Pressable>
+        )}
+
         <LegTimeline legs={item.legs} />
 
         <StopCompassCard connection={item} />
@@ -176,6 +246,18 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
+  trackSlot: { marginBottom: 12 },
+  trackCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: scheme.primaryContainer,
+    borderRadius: shape.full,
+    paddingVertical: 13,
+    marginBottom: 12,
+  },
+  trackCtaText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimaryContainer },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8 },
   iconBtn: { width: 40, height: 40, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },

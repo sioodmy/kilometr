@@ -15,18 +15,16 @@ import {
   subscribeDataStatus,
 } from '../src/services/dataManager';
 import { getSettingsSync } from '../src/services/settings';
-import { getPinnedQuerySync } from '../src/services/pinnedConnection';
 import {
   buildRoutesLink,
   connectionToWidgetNext,
   mergeWidgetSnapshot,
-  pickNextConnection,
-  writeWidgetSnapshot,
-  type WidgetPinned,
   type WidgetQuickItem,
 } from '../src/services/widgetSnapshot';
+import { stopTracking, useTrackedTrip } from '../src/services/notifications';
 import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
 import { SavedPlacesRow } from '../src/components/SavedPlacesRow';
+import { ActiveTripCard } from '../src/components/ActiveTripCard';
 import { SearchBar } from '../src/components/SearchBar';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
@@ -53,6 +51,7 @@ export default function HomeScreen() {
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [manageSheetOpen, setManageSheetOpen] = useState(false);
   const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
+  const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Suggestion[]>([]);
   const [recent, setRecent] = useState<Suggestion[]>([]);
@@ -244,68 +243,19 @@ export default function HomeScreen() {
       }),
     }));
 
-    const pinnedQuery = getPinnedQuerySync();
-    const basePinned: WidgetPinned | null = pinnedQuery
-      ? {
-          fromTitle: pinnedQuery.fromTitle,
-          toTitle: pinnedQuery.toTitle,
-          deepLink: buildRoutesLink({
-            fromTitle: pinnedQuery.fromTitle,
-            fromLat: pinnedQuery.fromLat,
-            fromLon: pinnedQuery.fromLon,
-            toId: pinnedQuery.toId,
-            toTitle: pinnedQuery.toTitle,
-            toLat: pinnedQuery.toLat,
-            toLon: pinnedQuery.toLon,
-          }),
-        }
-      : null;
-
-    // Bez przypięcia i bez połączeń nie ma czego zapisywać.
-    if (!best && !basePinned && quick.length === 0) return;
-
-    const next =
-      best && bestDest ? connectionToWidgetNext(best, from, bestDest) : null;
-
-    // Dociągnij godziny dla przypiętego (1 zapytanie, tylko gdy jest pin).
-    const finish = (pinned: WidgetPinned | null) => {
+    // Sekcję `pinned` w snapshocie widgetów pisze teraz monitor podróży
+    // (src/services/notifications) — ma już przeliczony plan i godziny, więc
+    // nie dublujemy tu zapytania do RAPTOR-a. Home odpowiada tylko za `next`
+    // i `quick`, i robi to merge'em, żeby nie wyzerować przypięcia.
+    if (!best && quick.length === 0) {
       if (cancelled) return;
-      void writeWidgetSnapshot({ updatedAt: Date.now(), next, pinned, quick });
-    };
-    if (basePinned && pinnedQuery) {
-      const s = getSettingsSync();
-      RoutingService.getConnections({
-        fromTitle: pinnedQuery.fromTitle,
-        fromLat: pinnedQuery.fromLat,
-        fromLon: pinnedQuery.fromLon,
-        toId: pinnedQuery.toId,
-        toTitle: pinnedQuery.toTitle,
-        toLat: pinnedQuery.toLat,
-        toLon: pinnedQuery.toLon,
-        maxTransfers: s.maxTransfers,
-        minTransferSec: s.minTransferSec,
-        maxWalkM: s.maxWalkM,
-        walkSpeedMps: s.walkSpeedMps,
-      })
-        .then((conns) => {
-          const first = pickNextConnection(conns);
-          finish(
-            first
-              ? {
-                  ...basePinned,
-                  departAt: first.departAt,
-                  arriveAt: first.arriveAt,
-                  durationMin: first.durationMin,
-                  delayMin: first.delayMin,
-                  live: first.live,
-                }
-              : basePinned,
-          );
-        })
-        .catch(() => finish(basePinned));
-    } else {
-      finish(basePinned);
+      void mergeWidgetSnapshot({ next: null, quick: [] });
+      return;
     }
+    void mergeWidgetSnapshot({
+      next: best && bestDest ? connectionToWidgetNext(best, from, bestDest) : null,
+      quick,
+    });
     return () => {
       cancelled = true;
     };
@@ -571,6 +521,24 @@ export default function HomeScreen() {
             </View>
           </View>
 
+          {/* Aktywna podróż jest pierwszą rzeczą na ekranie — to ją użytkownik
+              śledzi, a nie wyszukiwarka. Po zakończeniu znika sama. */}
+          {trackedTrip && trackedProgress ? (
+            <View style={styles.activeTripSlot}>
+              <ActiveTripCard
+                trip={trackedTrip}
+                progress={trackedProgress}
+                onStop={() => void stopTracking()}
+                onOpen={() =>
+                  router.push({
+                    pathname: '/routes/[id]',
+                    params: { id: trackedTrip.connection.id },
+                  })
+                }
+              />
+            </View>
+          ) : null}
+
           <Text style={styles.hero}>Gdzie jedziemy?</Text>
 
           {dataStatus.state === 'downloading' && (
@@ -642,8 +610,7 @@ export default function HomeScreen() {
           <SmartHistoryList items={smart} departures={nextDepart} onSelect={(d) => goToRoutes(d)} />
 
           <View style={{ height: 90 }} />
-        </ScrollView>
-      </SafeAreaView>
+        </ScrollView>      </SafeAreaView>
 
       {sheetMode && (
         <SearchSheet
@@ -723,6 +690,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1 },
   body: { paddingHorizontal: 16, paddingTop: 6 },
+  activeTripSlot: { marginTop: 8, marginBottom: 8 },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44 },
   loc: {
     flexDirection: 'row',

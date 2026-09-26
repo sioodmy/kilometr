@@ -21,6 +21,7 @@ import {
   type DataStatus,
 } from '../src/services/dataManager';
 import { transfersLabel } from '../src/components/ConnectionCard';
+import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 
 function dataStatusLabel(s: DataStatus): string {
   switch (s.state) {
@@ -253,6 +254,15 @@ export default function SettingsScreen() {
         <Text style={styles.foot}>
           Ustawienia zapisują się automatycznie i dotyczą kolejnych wyszukiwań połączeń.
         </Text>
+
+        <View style={styles.sectionLabel}>
+          <Text style={styles.sectionLabelText}>Powiadomienia i śledzenie</Text>
+        </View>
+        <NotificationPrefsCard />
+
+        <Text style={styles.foot}>
+          Powiadomienia działają w buildzie deweloperskim. Expo Go ich nie obsługuje.
+        </Text>
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -279,4 +289,6 @@ const styles = StyleSheet.create({
   downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: scheme.secondaryContainer, borderRadius: shape.full, paddingVertical: 12 },
   downloadText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
   foot: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 16 },
+  sectionLabel: { marginTop: 10 },
+  sectionLabelText: { ...type.titleSmall, color: scheme.onSurfaceVariant, fontWeight: '600' },
 });

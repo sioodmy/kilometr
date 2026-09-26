@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   Clock3,
   Pin,
+  Radio,
   X,
 } from 'lucide-react-native';
 import Animated, {
@@ -33,15 +34,15 @@ import {
 } from '../../src/services';
 import { getSettingsSync, loadSettings } from '../../src/services/settings';
 import {
-  ensurePinPermissions,
-  getPinnedQuerySync,
-  isPinSupported,
+  areNotificationsSupported,
+  ensureNotificationPermission,
   isSameQuery,
-  pinConnection,
-  subscribePinned,
-  unpinConnection,
-  type PinnedQuery,
-} from '../../src/services/pinnedConnection';
+  permissionDeniedMessage,
+  startTracking,
+  stopTracking,
+  useTrackedTrip,
+  type TrackedTrip,
+} from '../../src/services/notifications';
 import {
   loadConnections,
   hasLocalTimetable,
@@ -56,6 +57,7 @@ import {
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
+import { ActiveTripCard } from '../../src/components/ActiveTripCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import { RouteFiltersCard, type ModePreference } from '../../src/components/RouteFiltersCard';
 import { SearchSheet } from '../../src/components/SearchSheet';
@@ -81,6 +83,8 @@ export default function RoutesScreen() {
     toLon: string;
     directOnly?: string;
     modes?: string;
+    /** Dokładnie 'stop' po naciśnięciu „Zakończ” w powiadomieniu. */
+    action?: string;
   }>();
 
   const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
@@ -91,6 +95,15 @@ export default function RoutesScreen() {
   const [toLat, setToLat] = useState(Number(params.toLat ?? 0));
   const [toLon, setToLon] = useState(Number(params.toLon ?? 0));
   const [toId, setToId] = useState(String(params.toId ?? ''));
+
+  // Przycisk „Zakończ” w powiadomieniu to deep link z parametrem action=stop.
+  // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl renderów.
+  const stopFromLinkRef = useRef(params.action === 'stop');
+  useEffect(() => {
+    if (!stopFromLinkRef.current) return;
+    stopFromLinkRef.current = false;
+    void stopTracking();
+  }, []);
 
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [activeAnchor, setActiveAnchor] = useState<ActiveAnchor | null>(null);
@@ -184,9 +197,8 @@ export default function RoutesScreen() {
     };
   });
 
-  // Przypięte połączenie (persistent notification)
-  const [pinnedQuery, setPinnedQuery] = useState<PinnedQuery | null>(() => getPinnedQuerySync());
-  useEffect(() => subscribePinned(setPinnedQuery), []);
+  // Aktywna podróż: ta sama karta, która zasila powiadomienie i Live Activity.
+  const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
 
   const currentQuery = useMemo(
     () => ({
@@ -203,29 +215,61 @@ export default function RoutesScreen() {
     }),
     [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
   );
-  const isPinned = pinnedQuery != null && isSameQuery(pinnedQuery, currentQuery);
 
-  const togglePin = async () => {
-    if (isPinned) {
-      await unpinConnection();
-      return;
-    }
-    if (!isPinSupported()) {
+  // Czy właśnie śledzimy tę trasę (niezależnie od wybranego kursu).
+  const isTrackingThisRoute =
+    trackedTrip != null && isSameQuery(trackedTrip, currentQuery);
+  /**
+   * Śledzenie konkretnego kursu, a nie całego zapytania. Użytkownik widzi
+   * na liście godziny i linie — jeśli przypniemy zapytanie, powiadomienie
+   * mogłoby w międzyczasie przeskoczyć na inny kurs i kłamać.
+   */
+  const startTrackingConnection = async (conn: Connection) => {
+    if (!areNotificationsSupported()) {
       Alert.alert(
-        'Pinezka niedostępna',
-        'Przypięte powiadomienie wymaga builda deweloperskiego — Expo Go nie wspiera powiadomień.',
+        'Śledzenie niedostępne',
+        'Powiadomienia wymagają builda deweloperskiego — Expo Go ich nie wspiera.',
       );
       return;
     }
-    const ok = await ensurePinPermissions();
+    const ok = await ensureNotificationPermission();
     if (!ok) {
-      Alert.alert(
-        'Powiadomienia wyłączone',
-        'Zezwól na powiadomienia w ustawieniach systemu, żeby przypiąć połączenie.',
-      );
+      Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
       return;
     }
-    await pinConnection(currentQuery);
+    const track: TrackedTrip = {
+      id: conn.id,
+      fromTitle,
+      fromLat,
+      fromLon,
+      toId,
+      toTitle,
+      toLat,
+      toLon,
+      anchorStopId: activeAnchor?.stopId,
+      anchorStopLat: activeAnchor?.lat,
+      anchorStopLon: activeAnchor?.lon,
+      connection: conn,
+      startedAt: Date.now(),
+    };
+    await startTracking(track);
+  };
+
+  /**
+   * Przycisk w pasku: śledzimy najbliższe połączenie z listy. Ten sam
+   * przycisk zdejmuje śledzenie, jeśli dotyczy już tej trasy.
+   */
+  const toggleTracking = async () => {
+    if (isTrackingThisRoute) {
+      await stopTracking();
+      return;
+    }
+    const next = displayed[0] ?? items[0];
+    if (!next) {
+      Alert.alert('Brak połączeń', 'Poczekaj aż pojawi się kurs na tej trasie.');
+      return;
+    }
+    await startTrackingConnection(next);
   };
 
   // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
@@ -731,21 +775,24 @@ export default function RoutesScreen() {
         </Pressable>
 
         <Pressable
-          onPress={togglePin}
+          onPress={toggleTracking}
           accessibilityRole="button"
-          accessibilityLabel={isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'}
+          accessibilityState={{ selected: isTrackingThisRoute }}
+          accessibilityLabel={
+            isTrackingThisRoute ? 'Zatrzymaj śledzenie podróży' : 'Śledź najbliższe połączenie'
+          }
           style={({ pressed }) => [
             styles.pinBtn,
-            isPinned && styles.pinBtnActive,
+            isTrackingThisRoute && styles.pinBtnActive,
             pressed && { opacity: 0.8 },
           ]}
           hitSlop={8}
         >
-          <Pin
-            size={17}
-            color={isPinned ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-            fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
-          />
+          {isTrackingThisRoute ? (
+            <Radio size={17} color={scheme.onPrimaryContainer} />
+          ) : (
+            <Pin size={17} color={scheme.onSecondaryContainer} />
+          )}
         </Pressable>
       </View>
 
@@ -951,16 +998,57 @@ export default function RoutesScreen() {
             const d = new Date();
             const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
             const past = item.departureSec > 0 && item.departureSec < nowS - 60;
+            const isTracked =
+              trackedTrip?.connection.id === item.id && isTrackingThisRoute;
             return (
-              <ConnectionCard
-                item={item}
-                dimmed={past}
-                onPress={() => router.push({ pathname: '/routes/[id]', params: { id: item.id } })}
-              />
+              <View>
+                <ConnectionCard
+                  item={item}
+                  dimmed={past}
+                  onPress={() =>
+                    router.push({ pathname: '/routes/[id]', params: { id: item.id } })
+                  }
+                />
+                {/* Śledzimy konkretny kurs, nie całe zapytanie — inaczej
+                    powiadomienie potrafiłoby przeskoczyć na inną godzinę. */}
+                {!past && !isTracked ? (
+                  <Pressable
+                    onPress={() => void startTrackingConnection(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Śledź połączenie o ${item.departAt}`}
+                    style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}
+                    hitSlop={6}
+                  >
+                    <Radio size={13} color={scheme.onSurfaceVariant} />
+                    <Text style={styles.trackBtnText}>Śledź ten kurs</Text>
+                  </Pressable>
+                ) : null}
+                {isTracked ? (
+                  <View style={styles.trackActive}>
+                    <Radio size={13} color={scheme.primary} />
+                    <Text style={styles.trackActiveText}>Śledzone</Text>
+                  </View>
+                ) : null}
+              </View>
             );
           }}
           ListHeaderComponent={
             <View>
+              {trackedTrip && trackedProgress ? (
+                <View style={styles.activeTripSlot}>
+                  <ActiveTripCard
+                    trip={trackedTrip}
+                    progress={trackedProgress}
+                    onStop={() => void stopTracking()}
+                    onOpen={() =>
+                      router.push({
+                        pathname: '/routes/[id]',
+                        params: { id: trackedTrip.connection.id },
+                      })
+                    }
+                  />
+                </View>
+              ) : null}
               {loadingEarlier && (
                 <View style={{ paddingVertical: 12, alignItems: 'center' }}>
                   <ActivityIndicator size="small" color={scheme.primary} />
@@ -1126,6 +1214,45 @@ const styles = StyleSheet.create({
   },
   pinBtnActive: {
     backgroundColor: scheme.primaryContainer,
+  },
+  // Karta aktywnej podróży nad listą połączeń
+  activeTripSlot: {
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+  },
+  // Akcja „Śledź ten kurs" pod kartą połączenia
+  trackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    marginLeft: 4,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    paddingHorizontal: 12,
+    height: 30,
+  },
+  trackBtnText: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  trackActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    marginLeft: 4,
+    paddingHorizontal: 12,
+    height: 30,
+    justifyContent: 'center',
+  },
+  trackActiveText: {
+    ...type.labelMedium,
+    color: scheme.primary,
+    fontWeight: '700',
   },
   // Karta trasy z dedykowanymi kolumnami
   routeCard: {

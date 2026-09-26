@@ -59,6 +59,7 @@ export { buildActivityProps, buildTripCopy, buildTripLink, type TripCopy } from 
 export {
   getTrackedTripSync,
   getTripProgressSync,
+  isSameQuery,
   refreshTrackedTrip,
   restoreTrackedTrip,
   startTracking,
@@ -80,4 +81,5 @@ export {
   hasActiveTripActivity,
   isLiveActivitySupported,
 } from './liveActivity/controller';
+export { useTrackedTrip } from './useTrackedTrip';
 export { TRIP_ACTIVITY_NAME } from './liveActivity/KilometrTripActivity';
