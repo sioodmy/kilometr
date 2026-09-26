@@ -93,8 +93,15 @@ export function RoutesThumbBar({
     return <Layers size={16} color={color} />;
   };
 
+  // Krótko, żeby nie ucinało w wąskim guziku (pełne nazwy w a11y).
   const modeLabel =
-    modeFilter === 'tram' ? 'Tramwaje' : modeFilter === 'bus' ? 'Autobusy' : 'Pojazdy';
+    modeFilter === 'tram' ? 'tram' : modeFilter === 'bus' ? 'bus' : 'Pojazdy';
+  const modeA11y =
+    modeFilter === 'tram'
+      ? 'Tramwaje'
+      : modeFilter === 'bus'
+        ? 'Autobusy'
+        : 'Wszystkie pojazdy';
 
   return (
     <Animated.View
@@ -197,7 +204,7 @@ export function RoutesThumbBar({
           onPress={onCycleMode}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel={`Filtruj środek transportu: aktualnie ${modeLabel}. Dotknij, aby zmienić.`}
+          accessibilityLabel={`Filtruj środek transportu: aktualnie ${modeA11y}. Dotknij, aby zmienić.`}
           style={({ pressed }) => [
             styles.btn,
             modeFilter !== 'all' && styles.btnActive,
