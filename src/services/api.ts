@@ -203,7 +203,7 @@ export const SearchService: ISearchService = {
 const recentPlannedConnections = new Map<string, Connection>();
 
 export const RoutingService: IRoutingService = {
-  async getConnections(query: RouteQuery): Promise<Connection[]> {
+  async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
     try {
       const connections = await planConnections({
         fromTitle: query.fromTitle,
@@ -222,6 +222,16 @@ export const RoutingService: IRoutingService = {
         anchorStopId: query.anchorStopId,
         anchorStopLat: query.anchorStopLat,
         anchorStopLon: query.anchorStopLon,
+        // Progres dokładamy też do podręcznego cache, żeby ekran detalu
+        // działał nawet jeśli użytkownik tapnie wiersz w trakcie liczenia.
+        onProgress: onProgress
+          ? (partial) => {
+              for (const c of partial) {
+                recentPlannedConnections.set(c.id, c);
+              }
+              onProgress(partial);
+            }
+          : undefined,
       });
       
       for (const c of connections) {

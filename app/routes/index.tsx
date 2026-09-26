@@ -4,22 +4,25 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Anchor,
-  ArrowUpDown,
-  ChevronDown,
+  ArrowRight,
   ChevronLeft,
   Clock3,
   Pin,
+  Rocket,
   X,
 } from 'lucide-react-native';
 import Animated, {
-  FadeIn,
-  FadeOut,
+  Easing,
+  FadeInUp,
+  FadeOutUp,
+  FlipInEasyY,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
-import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
 import {
   FavoritesService,
@@ -180,6 +183,28 @@ export default function RoutesScreen() {
   // W przeciwieństwie do starego zwijanego panelu na górze nie ruszamy
   // layoutu FlatListy (zero flickeru): dock pływa nad listą (absolute).
   const dockProgress = useSharedValue(1);
+
+  // Toggle sortowania w topBar (iOS-style): 0 = najwcześniej (zegar, lewo),
+  // 1 = najszybciej (rakieta, prawo). Kciuk dociąga springiem jak w ustawieniach iOS.
+  const SORT_TRACK_W = 78;
+  const SORT_THUMB = 30;
+  const SORT_PAD = 4;
+  const SORT_TRAVEL = SORT_TRACK_W - SORT_THUMB - SORT_PAD * 2;
+  const sortProgress = useSharedValue(sortMode === 'fastest' ? 1 : 0);
+  useEffect(() => {
+    // withTiming zamiast springa: spring overshootował i kciuk
+    // wyskakiwał poza tor w trakcie animacji.
+    sortProgress.value = withTiming(sortMode === 'fastest' ? 1 : 0, {
+      duration: 190,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [sortMode, sortProgress]);
+  const animatedSortThumb = useAnimatedStyle(() => ({
+    transform: [{ translateX: sortProgress.value * SORT_TRAVEL }],
+  }));
+  const toggleSortMode = useCallback(() => {
+    setSortMode((m) => (m === 'fastest' ? 'earliest' : 'fastest'));
+  }, []);
 
   const animatedDockStyle = useAnimatedStyle(() => {
     const p = dockProgress.value;
@@ -469,7 +494,16 @@ export default function RoutesScreen() {
         return;
       }
       const q = queryAt(depSec);
-      const c = await RoutingService.getConnections(q);
+      // Progresywne ładowanie "po kolei": pierwsze okno RAPTOR-a wpada szybko,
+      // podmieniamy listę i gasimy pełny spinner od razu — reszta dociąga się
+      // w tle bez migotania (stabilne klucze FlatList).
+      const c = await RoutingService.getConnections(q, (partial) => {
+        if (seq !== fetchSeq.current) return;
+        const live = applyLiveList(partial, depSec);
+        if (live.length === 0) return;
+        setItems(live);
+        setLoading(false);
+      });
       if (seq !== fetchSeq.current) return;
       if (noTimetable()) {
         setItems([]);
@@ -808,7 +842,32 @@ export default function RoutesScreen() {
     else setModeFilter('all');
   };
 
+  // Znacznik odwrócenia trasy: wiersze zamontowane tuż po swapie wjeżdżają
+  // flipem karty (FlipInEasyY) zamiast zwykłego fade-up. Ref, nie stan —
+  // nie wymusza dodatkowego rendera, odczyt w renderItem wystarczy.
+  const swapAtRef = useRef(0);
+
+  // Strzałka w nagłówku: pełny obrót 360° + minimalny pop (skala).
+  // Licznik rośnie o 1 na swap — obrót zawsze do przodu, bez resetowania.
+  const arrowSpin = useSharedValue(0);
+  const animatedArrowStyle = useAnimatedStyle(() => {
+    const p = arrowSpin.value % 1;
+    return {
+      transform: [
+        { rotate: `${p * 360}deg` },
+        { scale: 1 + 0.28 * Math.sin(Math.PI * p) },
+      ],
+    };
+  });
+
   const handleSwap = () => {
+    swapAtRef.current = Date.now();
+    arrowSpin.value = withTiming(Math.round(arrowSpin.value) + 1, {
+      duration: 450,
+      easing: Easing.inOut(Easing.ease),
+    });
+    // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
     setActiveAnchor(null);
     const tempTitle = fromTitle;
     const tempLat = fromLat;
@@ -836,6 +895,10 @@ export default function RoutesScreen() {
   // Stabilne referencje dla FlatList: bez nich każdy render rodzica tworzył
   // nowe closures, przez co wiersze (pamiętane przez React.memo) przeliczały
   // się od nowa i lista „przybliżała” zamiast płynnie się toczyć.
+  // Karty wskakują kaskadą (stagger po indeksie, max ~440 ms), żeby progresywne
+  // dokładanie wyglądało płynnie; tuż po swapie — flipem karty.
+  // UWAGA: świeża instancja buildera na wiersz — .delay() mutuje współdzielony
+  // obiekt, więc współdzielenie jednego FlipInEasyY/FadeInUp rozwaliłoby delaya.
   const openConnection = useCallback(
     (item: Connection) => {
       router.push({ pathname: '/routes/[id]', params: { id: item.id } });
@@ -844,16 +907,29 @@ export default function RoutesScreen() {
   );
 
   const renderConnection = useCallback(
-    ({ item }: { item: Connection }) => {
+    ({ item, index }: { item: Connection; index: number }) => {
       const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
-      return <ConnectionCard item={item} dimmed={past} onPress={openConnection} />;
+      const stagger = Math.min(index * 55, 440);
+      const freshSwap = Date.now() - swapAtRef.current < 2500;
+      return (
+        <Animated.View
+          entering={
+            freshSwap
+              ? new FlipInEasyY().duration(320).delay(stagger)
+              : new FadeInUp().duration(280).delay(stagger)
+          }
+        >
+          <ConnectionCard item={item} dimmed={past} onPress={openConnection} />
+        </Animated.View>
+      );
     },
     [openConnection],
   );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* 1. Górny pasek: Wstecz + Tytuł + Interaktywny przycisk Czasu */}
+      {/* 1. Górny pasek: Wstecz + Tytuł + Toggle sortowania + Pinezka.
+          Czas odjazdu żyje w dolnym docku (RoutesThumbBar). */}
       <View style={styles.topBar}>
         <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
           <ChevronLeft size={23} color={scheme.onSurface} />
@@ -863,160 +939,148 @@ export default function RoutesScreen() {
           Połączenia MPK
         </Text>
 
-        <Pressable
-          onPress={() => setTimeSheetOpen(true)}
-          style={({ pressed }) => [
-            styles.timeChip,
-            isCustomTime && styles.timeChipActive,
-            pressed && { opacity: 0.8 },
-          ]}
-          hitSlop={8}
-        >
-          <Clock3
-            size={14}
-            color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-          />
-          <Text
-            style={[styles.timeText, isCustomTime && styles.timeTextActive]}
-            numberOfLines={1}
+        <View style={styles.sortWrap}>
+          <Pressable
+            onPress={toggleSortMode}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: sortMode === 'fastest' }}
+            accessibilityLabel={
+              sortMode === 'fastest'
+                ? 'Sortowanie: najszybciej. Dotknij, aby przełączyć na najwcześniej.'
+                : 'Sortowanie: najwcześniej. Dotknij, aby przełączyć na najszybciej.'
+            }
+            style={({ pressed }) => [
+              styles.sortToggle,
+              pressed && { opacity: 0.85 },
+            ]}
+            hitSlop={8}
           >
-            {timeLabel}
+            <Animated.View style={[styles.sortThumb, animatedSortThumb]} />
+            <View style={styles.sortIcons} pointerEvents="none">
+              <Clock3
+                size={15}
+                color={sortMode === 'earliest' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+              />
+              <Rocket
+                size={15}
+                color={sortMode === 'fastest' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+              />
+            </View>
+          </Pressable>
+          <Text style={styles.sortLabel} numberOfLines={1}>
+            {sortMode === 'fastest' ? 'najszybciej' : 'najwcześniej'}
           </Text>
-          <ChevronDown
-            size={13}
-            color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-          />
-        </Pressable>
-
-        <Pressable
-          onPress={togglePin}
-          accessibilityRole="button"
-          accessibilityLabel={isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'}
-          style={({ pressed }) => [
-            styles.pinBtn,
-            isPinned && styles.pinBtnActive,
-            pressed && { opacity: 0.8 },
-          ]}
-          hitSlop={8}
-        >
-          <Pin
-            size={17}
-            color={isPinned ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-            fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
-          />
-        </Pressable>
-      </View>
-
-      {/* 2. Karta trasy: klikalny Start / Cel + wyśrodkowany przycisk zamiany */}
-      <View style={styles.routeCard}>
-        <View style={styles.endpoints}>
-          {/* Start */}
-          <Pressable
-            onPress={() => setSheetFor('from')}
-            accessibilityRole="button"
-            accessibilityLabel={`Zmień miejsce startowe, obecnie ${fromTitle}`}
-            style={({ pressed }) => [styles.endpointRow, pressed && { opacity: 0.7 }]}
-            hitSlop={6}
-          >
-            <View style={[styles.indicatorDot, { backgroundColor: scheme.success }]} />
-            {activeAnchor ? (
-              <Animated.View
-                entering={FadeIn.duration(160)}
-                exiting={FadeOut.duration(120)}
-                style={styles.anchorBadge}
-              >
-                <Anchor size={13} color={scheme.primary} />
-                <Text style={styles.anchorStopText} numberOfLines={1}>
-                  {activeAnchor.stopName}
-                </Text>
-                <View style={styles.anchorPlaceTag}>
-                  <Text style={styles.anchorPlaceText} numberOfLines={1}>
-                    {activeAnchor.placeName}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleDismissAnchor();
-                  }}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    styles.anchorCloseBtn,
-                    pressed && { opacity: 0.6, transform: [{ scale: 0.88 }] },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Usuń zakotwiczenie przystanku i szukaj z GPS"
-                >
-                  <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
-                </Pressable>
-              </Animated.View>
-            ) : (
-              <Text style={styles.fromText} numberOfLines={1}>
-                {fromTitle}
-              </Text>
-            )}
-          </Pressable>
-
-          {/* Łącznik pionowy */}
-          <View style={styles.connector} />
-
-          {/* Cel */}
-          <Pressable
-            onPress={() => setSheetFor('to')}
-            accessibilityRole="button"
-            accessibilityLabel={`Zmień cel, obecnie ${toTitle}`}
-            style={({ pressed }) => [styles.endpointRow, pressed && { opacity: 0.7 }]}
-            hitSlop={6}
-          >
-            <View style={[styles.indicatorDot, { backgroundColor: scheme.error }]} />
-            <Text style={styles.toText} numberOfLines={1}>
-              {toTitle}
-            </Text>
-          </Pressable>
         </View>
 
-        {/* Idealnie wyśrodkowany przycisk SWAP */}
+        {/* Pinezka w tej samej kolumnie co toggle (przycisk + niewidzialny
+            odstępnik o wysokości labela), żeby górne krawędzie się zgrywały. */}
+        <View style={styles.pinWrap}>
+          <Pressable
+            onPress={togglePin}
+            accessibilityRole="button"
+            accessibilityLabel={isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'}
+            style={({ pressed }) => [
+              styles.pinBtn,
+              isPinned && styles.pinBtnActive,
+              pressed && { opacity: 0.8 },
+            ]}
+            hitSlop={8}
+          >
+            <Pin
+              size={17}
+              color={isPinned ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
+              fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
+            />
+          </Pressable>
+          <Text style={[styles.sortLabel, styles.sortLabelHidden]} numberOfLines={1}>
+            {'\u00A0'}
+          </Text>
+        </View>
+      </View>
+
+      {/* 2. Nagłówek trasy w stylu One UI: bez tła, jedna linia
+          „Start → Cel". Strzałka to swap, boki otwierają wyszukiwarkę. */}
+      <View style={styles.routeHeader}>
+        <Pressable
+          onPress={() => setSheetFor('from')}
+          accessibilityRole="button"
+          accessibilityLabel={`Zmień miejsce startowe, obecnie ${fromTitle}`}
+          style={({ pressed }) => [styles.routeSide, pressed && { opacity: 0.6 }]}
+          hitSlop={6}
+        >
+          {activeAnchor ? (
+            <View style={styles.routeAnchorRow}>
+              <Anchor size={14} color={scheme.primary} />
+              <Text style={styles.routeText} numberOfLines={1}>
+                {activeAnchor.stopName}
+              </Text>
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleDismissAnchor();
+                }}
+                hitSlop={10}
+                style={({ pressed }) => [
+                  styles.anchorCloseBtn,
+                  pressed && { opacity: 0.6, transform: [{ scale: 0.88 }] },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Usuń zakotwiczenie przystanku i szukaj z GPS"
+              >
+                <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
+              </Pressable>
+            </View>
+          ) : (
+            // Klucz po tytule: zmiana tekstu (swap / nowy wybór) rolkuje
+            // wiersz lokalnie jak tablicę odjazdów — stary odjeżdża lekko
+            // w górę z fade, nowy wjeżdża z dołu. Bez latania przez ekran
+            // (Fade, nie Slide — Slide startuje z krawędzi okna).
+            <Animated.View
+              key={`from-${fromTitle}`}
+              entering={new FadeInUp().duration(240)}
+              exiting={new FadeOutUp().duration(200)}
+              style={styles.routeSlide}
+            >
+              <Text style={styles.routeText} numberOfLines={1}>
+                {fromTitle}
+              </Text>
+            </Animated.View>
+          )}
+        </Pressable>
+
         <Pressable
           onPress={handleSwap}
+          accessibilityRole="button"
+          accessibilityLabel="Odwróć trasę: zamień punkt startowy z docelowym"
           style={({ pressed }) => [
-            styles.swapBtn,
-            pressed && { backgroundColor: scheme.secondaryContainer, transform: [{ scale: 0.93 }] },
+            styles.routeArrowBtn,
+            pressed && { opacity: 0.6, transform: [{ scale: 0.9 }] },
           ]}
           hitSlop={10}
         >
-          <ArrowUpDown size={17} color={scheme.primary} />
+          <Animated.View style={animatedArrowStyle}>
+            <ArrowRight size={21} color={scheme.primary} strokeWidth={2.5} />
+          </Animated.View>
         </Pressable>
-      </View>
 
-      {/* 3. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd).
-          Duży box filtrów z góry usunięty — bezpośrednie + pojazdy żyją
-          w dolnym docku (RoutesThumbBar), żeby nie duplikować UI. */}
-      <View style={styles.sortRow}>
-        {(
-          [
-            { key: 'fastest', label: 'Najszybciej' },
-            { key: 'earliest', label: 'Najwcześniej' },
-          ] as const
-        ).map((opt) => {
-          const active = sortMode === opt.key;
-          return (
-            <Pressable
-              key={opt.key}
-              onPress={() => setSortMode(opt.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={({ pressed }) => [
-                styles.sortPill,
-                active && styles.sortPillActive,
-                pressed && { opacity: 0.8 },
-              ]}
-            >
-              <Text style={[styles.sortText, active && styles.sortTextActive]}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <Pressable
+          onPress={() => setSheetFor('to')}
+          accessibilityRole="button"
+          accessibilityLabel={`Zmień cel, obecnie ${toTitle}`}
+          style={({ pressed }) => [styles.routeSideGrow, pressed && { opacity: 0.6 }]}
+          hitSlop={6}
+        >
+          <Animated.View
+            key={`to-${toTitle}`}
+            entering={new FadeInUp().duration(240)}
+            exiting={new FadeOutUp().duration(200)}
+            style={styles.routeSlide}
+          >
+            <Text style={styles.routeTextStrong} numberOfLines={1}>
+              {toTitle}
+            </Text>
+          </Animated.View>
+        </Pressable>
       </View>
 
       {/* 5. Lista połączeń */}
@@ -1229,7 +1293,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -1247,27 +1311,60 @@ const styles = StyleSheet.create({
     ...type.titleMedium,
     fontWeight: '700',
     color: scheme.onSurface,
+    // Optyczne wycentrowanie względem toru toggla / pinezki (38 px):
+    // sam tekst ma ~22 px, więc doklejamy górę, żeby środki się zgrywały.
+    paddingTop: 8,
   },
-  timeChip: {
+  // Toggle sortowania w stylu przełącznika iOS: tor z dwiema ikonami
+  // (zegar = najwcześniej, rakieta = najszybciej), kciuk suwa się springiem.
+  sortWrap: {
+    width: 78,
+    alignItems: 'center',
+  },
+  sortToggle: {
+    width: 78,
+    height: 38,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    justifyContent: 'center',
+    // Twardy clip: kciuk nigdy nie wystaje poza tor, nawet w locie.
+    overflow: 'hidden',
+  },
+  sortThumb: {
+    position: 'absolute',
+    left: 4,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  sortIcons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
-    height: 38,
-    paddingHorizontal: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 11,
   },
-  timeChipActive: {
-    backgroundColor: scheme.primaryContainer,
+  // Malutki, delikatny podpis pod togglem — tylko info o aktywnym trybie.
+  sortLabel: {
+    marginTop: 2,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '500',
+    color: scheme.onSurfaceVariant,
+    opacity: 0.65,
+    textAlign: 'center',
   },
-  timeText: {
-    ...type.labelMedium,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '600',
+  // Niewidzialny odstępnik pod pinezką: ta sama wysokość co sortLabel,
+  // żeby pinezka siedziała w pionie równo z togglem.
+  sortLabelHidden: {
+    opacity: 0,
   },
-  timeTextActive: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
+  // Kolumna pinezki — lustrzane odbicie sortWrap (przycisk + label).
+  pinWrap: {
+    width: 38,
+    alignItems: 'center',
   },
   pinBtn: {
     width: 38,
@@ -1280,77 +1377,55 @@ const styles = StyleSheet.create({
   pinBtnActive: {
     backgroundColor: scheme.primaryContainer,
   },
-  // Karta trasy z dedykowanymi kolumnami
-  routeCard: {
+  // Nagłówek trasy w stylu One UI: bez tła, jedna linia.
+  // Wysokość jak dawny box (~64), większy font, luźny oddech z boków.
+  routeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    marginHorizontal: 14,
-    marginBottom: 10,
-    paddingVertical: 10,
-    paddingLeft: 14,
-    paddingRight: 10,
-    gap: 12,
-    ...elev.level1,
+    minHeight: 68,
+    marginHorizontal: 2,
+    marginTop: 4,
+    marginBottom: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
-  endpoints: {
-    flex: 1,
-    gap: 3,
+  routeSide: {
+    flexShrink: 1,
+    maxWidth: '42%',
     justifyContent: 'center',
   },
-  endpointRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  indicatorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  connector: {
-    width: 2,
-    height: 10,
-    backgroundColor: scheme.outlineVariant,
-    marginLeft: 3,
-  },
-  fromText: {
-    ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
+  routeSideGrow: {
     flex: 1,
+    justifyContent: 'center',
   },
-  anchorBadge: {
+  // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
+  // nazwy dalej ucinały się z elipsą w jednej linii.
+  routeSlide: {
+    flexShrink: 1,
+  },
+  routeAnchorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingLeft: 8,
-    paddingRight: 6,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    maxWidth: '92%',
+    gap: 5,
   },
-  anchorStopText: {
-    ...type.labelMedium,
+  routeText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+  },
+  routeTextStrong: {
+    fontSize: 20,
     fontWeight: '700',
     color: scheme.onSurface,
-    maxWidth: 130,
   },
-  anchorPlaceTag: {
-    backgroundColor: scheme.secondaryContainer,
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
+  routeArrowBtn: {
+    width: 36,
+    height: 36,
     borderRadius: shape.full,
-  },
-  anchorPlaceText: {
-    ...type.labelSmall,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '600',
-    fontSize: 11,
-    maxWidth: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 8,
+    flexShrink: 0,
   },
   anchorCloseBtn: {
     width: 20,
@@ -1360,46 +1435,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 2,
-  },
-  toText: {
-    ...type.titleSmall,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    flex: 1,
-  },
-  // Wyśrodkowany przycisk zamiany
-  swapBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Segmented: Najszybciej / Najwcześniej (mały, statyczny — bez zwijania)
-  sortRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  sortPill: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: shape.full,
-    paddingVertical: 9,
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  sortPillActive: {
-    backgroundColor: scheme.secondaryContainer,
-  },
-  sortText: {
-    ...type.labelLarge,
-    color: scheme.onSurfaceVariant,
-  },
-  sortTextActive: {
-    color: scheme.onSecondaryContainer,
-    fontWeight: '700',
   },
   countRow: {
     flexDirection: 'row',
