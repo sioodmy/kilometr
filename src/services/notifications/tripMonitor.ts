@@ -174,6 +174,14 @@ async function refresh(): Promise<void> {
 
     const trip = tracked;
     if (!trip) return;
+
+    // Użytkownik wyłączył wszystkie powiadomienia — nie ma po co dalej
+    // planować, tym bardziej że samo śledzenie kosztuje odpytania planera.
+    if (!prefs.trackingEnabled && !prefs.departureAlertsEnabled && !prefs.disruptionAlertsEnabled) {
+      await stopTracking();
+      return;
+    }
+
     const conn = trip.connection;
 
     const base = computeTripProgress(conn, {});
@@ -196,15 +204,17 @@ async function refresh(): Promise<void> {
     await scheduleDepartureAlerts(p, trip, prefs);
 
     if (p.phase === 'arrived') {
+      // „Jesteś na miejscu" to komunikat, a nie stan — bez alertów go nie ma.
       if (arrivedAt === 0) {
         arrivedAt = Date.now();
-        await sendArrivedNotification(p, trip);
+        if (prefs.departureAlertsEnabled) await sendArrivedNotification(p, trip);
       }
-      // Komunikat „jesteś na miejscu” zostaje chwilę na ekranie blokady.
+      // Komunikat zostaje chwilę na ekranie blokady, potem sprzątamy.
       if (Date.now() - arrivedAt > ARRIVED_LINGER_MS) {
         await stopTracking();
         return;
-      }    }
+      }
+    }
 
     // Faza zmienia się w trakcie podróży, a rytm odświeżania zależy od niej.
     rescheduleTicker();

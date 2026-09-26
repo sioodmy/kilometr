@@ -168,6 +168,29 @@ const KilometrTripActivity = (props: TripActivityProps, environment: LiveActivit
     />
   );
 
+  /**
+   * Zwinięta wyspa ma ledwie kilkanaście punktów na `compactTrailing`, a
+   * licznik powyżej godziny wypisuje się jako „1:02:33” i się ucina. Daleko
+   * od odjazdu pokazujemy wtedy po prostu godzinę — jest węższa i bardziej
+   * użyteczna („wyjdę o 14:32” zamiast „t−62 minuty”).
+   */
+  const LONG_AHEAD_SEC = 40 * 60;
+  const isLongAhead = !countUp && targetMs - Date.now() > LONG_AHEAD_SEC * 1000;
+  const compactCounter = (
+    <Text
+      modifiers={[
+        font({ size: 15, weight: 'semibold', design: 'rounded' }),
+        monospacedDigit(),
+        foregroundStyle(ink),
+      ]}
+    >
+      {isLongAhead ? (waiting ? props.departAt : props.arriveAt) : ''}
+    </Text>
+  );
+
+  /** Zwinięta wyspa: godzina, gdy daleko; żywy licznik, gdy blisko. */
+  const compactTrailing = isLongAhead ? compactCounter : countdownText(15, ink);
+
   // ─── Ekran blokady ──────────────────────────────────────────────────────
   const banner = (
     <VStack
@@ -229,10 +252,29 @@ const KilometrTripActivity = (props: TripActivityProps, environment: LiveActivit
     </VStack>
   );
 
+  /**
+   * Wariant dla CarPlay i watchOS. To wąski pas (ułamek szerokości ekranu
+   * zegarka), więc pełny banner ucina wszystko poza pierwszym wierszem —
+   * zostawiamy fazę, licznik i kierunek, bez paska postępu.
+   */
+  const bannerSmall = (
+    <HStack spacing={6} modifiers={[padding({ all: 8 }), activityBackgroundTint(SURFACE)]}>
+      {lineBadge(13)}
+      <VStack spacing={0} alignment="leading">
+        <Text modifiers={[font({ size: 12, weight: 'semibold' }), foregroundStyle(ink), lineLimit(1)]}>
+          {statusText()}
+        </Text>
+        <Text modifiers={[font({ size: 11 }), foregroundStyle(muted), lineLimit(1)]}>
+          {props.direction || props.toTitle}
+        </Text>
+      </VStack>
+      <Spacer />
+      {arrived ? null : countdownText(15, arrived ? SUCCESS : ACCENT)}
+    </HStack>
+  );
+
   // ─── Dynamic Island: wariant zwinięty ───────────────────────────────────
   const compactLeading = lineBadge(13);
-
-  const compactTrailing = countdownText(15, ink);
 
   const minimal = modeIcon(16);
 
@@ -302,7 +344,7 @@ const KilometrTripActivity = (props: TripActivityProps, environment: LiveActivit
 
   return {
     banner,
-    bannerSmall: banner,
+    bannerSmall,
     compactLeading,
     compactTrailing,
     minimal,
