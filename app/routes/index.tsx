@@ -427,6 +427,12 @@ export default function RoutesScreen() {
     return list;
   };
 
+  // Brak rozkładu = brak danych, a nie „nie znaleziono połączeń”. Silnik na
+  // pustym sklepie zwraca pustkę BEZ błędu, więc sprawdzamy status w dwóch
+  // miejscach: przed zapytaniem (żeby nie liczyć na nic) i po nim (żeby
+  // wyłapać import, który ruszył w trakcie zapytania).
+  const noTimetable = () => getDataStatus().state !== 'ready';
+
   const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
     const seq = ++fetchSeq.current;
     if (!seamless) {
@@ -438,12 +444,17 @@ export default function RoutesScreen() {
     setNoMoreLater(false);
     const depSec = targetDepSec !== undefined ? targetDepSec : departureTimeSec;
     try {
+      // Wcześniej niż dotąd: pusty sklep dawał „zero połączeń", a ekran
+      // pokazywał to jako wynik wyszukiwania.
+      if (noTimetable()) {
+        setItems([]);
+        setLoadError(true);
+        return;
+      }
       const q = queryAt(depSec);
       const c = await RoutingService.getConnections(q);
       if (seq !== fetchSeq.current) return;
-      // Bez rozkładu planer zwraca pustkę, a nie błąd — bez tego stanu
-      // użytkownik widzi „nie znaleziono połączeń” zamiast prośby o dane.
-      if (getDataStatus().state !== 'ready') {
+      if (noTimetable()) {
         setItems([]);
         setLoadError(true);
         return;
@@ -667,7 +678,10 @@ export default function RoutesScreen() {
       fetchRoutes(departureTimeSec, items.length > 0);
     });
     return () => task.cancel();
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter]);
+    // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
+    // importu dostawał pustą listę i nigdy sam się nie odpytywał, więc
+    // połączenia zostawały niewidoczne mimo gotowego rozkładu.
+  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady]);
 
   const [pullRefreshing, setPullRefreshing] = useState(false);
 
