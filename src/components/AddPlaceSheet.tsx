@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import BottomSheet, { BottomSheetFlatList, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Anchor,
   Baby,
@@ -196,6 +197,9 @@ export function AddPlaceSheet({
   onDelete?: (id: string) => void;
 }) {
   const sheetRef = useRef<BottomSheet>(null);
+  // Formularz kończy się przyciskiem „Zapisz”; bez insetu jest pod paskiem
+  // nawigacji i w dolnej połowie nie reaguje na dotknięcie.
+  const insets = useSafeAreaInsets();
   const isEditing = Boolean(initialPlace);
 
   const [name, setName] = useState(initialPlace?.name || '');
@@ -395,6 +399,7 @@ export function AddPlaceSheet({
       ref={sheetRef}
       index={isEditing ? 0 : 1}
       snapPoints={['65%', '92%']}
+      bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
       onChange={(idx) => {
