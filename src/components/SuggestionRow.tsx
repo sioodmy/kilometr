@@ -66,7 +66,12 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title}${subtitle ? `, ${subtitle}` : ''}`}
+      style={({ pressed }) => [
+        styles.row,
+        pressed && { backgroundColor: scheme.surfaceContainerHighest, opacity: 0.9 },
+      ]}
     >
       <View style={[styles.icon, { backgroundColor: iconBg }]}>
         <Icon size={19} color={iconFg} />
@@ -84,7 +89,15 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10, paddingHorizontal: 16, borderRadius: shape.large },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: shape.large,
+    minHeight: 56,
+  },
   icon: { width: 44, height: 44, borderRadius: shape.full, alignItems: 'center', justifyContent: 'center' },
   mid: { flex: 1, gap: 1 },
   title: { ...type.bodyLarge, color: scheme.onSurface },

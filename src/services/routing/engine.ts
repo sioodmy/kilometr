@@ -121,6 +121,12 @@ export interface PlanOptions {
   anchorStopId?: string;
   anchorStopLat?: number;
   anchorStopLon?: number;
+  /**
+   * Progresywne oddawanie wyników: wywoływane po każdym oknie czasowym
+   * RAPTOR-a z połączeniami policzonymi dotąd. UI podmienia listę na
+   * bieżąco ("po kolei"), zamiast trzymać pełny spinner do samego końca.
+   */
+  onProgress?: (partial: Connection[]) => void;
 }
 
 /**
@@ -152,6 +158,152 @@ function toDateStr(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}${m}${d}`;
+}
+
+interface MapCtx {
+  currentSec: number;
+  dayOffsetSec: number;
+  tripDelays: Map<string, number>;
+}
+
+/** Sortowanie po koszcie uogólnionym: door-to-door + 10 min kary za przesiadkę. */
+function sortConnectionsByCost(connections: Connection[]): Connection[] {
+  const TRANSFER_PENALTY_MIN = 10;
+  connections.sort((a, b) => {
+    const costA = a.departInMin + a.durationMin + a.transfers * TRANSFER_PENALTY_MIN;
+    const costB = b.departInMin + b.durationMin + b.transfers * TRANSFER_PENALTY_MIN;
+    if (costA !== costB) return costA - costB;
+    return a.departInMin - b.departInMin;
+  });
+  return connections;
+}
+
+/**
+ * Mapowanie RawJourney → Connection (legi, flagi live, czasy finalne).
+ * Bez opcji "na piechotę" — tę dokłada wywołujący na samym końcu.
+ * Używane i dla emisji progresywnych (po każdym oknie), i dla wyniku finalnego.
+ */
+function mapJourneysToConnections(
+  journeys: RawJourney[],
+  options: PlanOptions,
+  ctx: MapCtx,
+): Connection[] {
+  const connections: Connection[] = [];
+
+  for (let idx = 0; idx < journeys.length; idx++) {
+    const rj = journeys[idx];
+    // Kotwica nie może wymuszać bezsensu: "wsiądź i wysiądź po 1 przystanku,
+    // resztę idź z buta" odrzucamy niezależnie od preferencji startu.
+    if (isPointlessShortRide(rj)) continue;
+    const legs: Leg[] = [];
+    let overallLive = false;
+    let maxDelayMin = 0;
+
+    for (let lIdx = 0; lIdx < rj.segments.length; lIdx++) {
+      const seg = rj.segments[lIdx];
+      let legLive = false;
+      let legDelayMin = 0;
+
+      if (seg.type === 'transit') {
+        // Ten sam snapshot opóźnień co w RAPTOR-ze: czasy segmentów są już
+        // efektywne (NIE dodajemy opóźnienia drugi raz). Tu tylko flaga live
+        // i wartość do wyświetlenia.
+        const dSec = ctx.tripDelays.get(seg.tripId ?? '');
+        if (dSec !== undefined) {
+          legLive = true;
+          legDelayMin = Math.round(dSec / 60);
+          overallLive = true;
+          if (Math.abs(legDelayMin) > Math.abs(maxDelayMin)) {
+            maxDelayMin = legDelayMin;
+          }
+        }
+      }
+
+      // Czasy już finalne (efektywne) — prosto z segmentów.
+      const adjDepartSec = seg.departSec;
+      const adjArriveSec = seg.arriveSec;
+      // Ostatnia noga piesza do celu dziedziczy nazwę celu podróży.
+      const toName =
+        seg.toStopId === 'destination' ? options.toTitle : seg.toStopName;
+      const fromName =
+        seg.fromStopId === 'origin' ? options.fromTitle : seg.fromStopName;
+
+      const fromStopObj = gtfsStore.stops.get(seg.fromStopId);
+      const toStopObj = gtfsStore.stops.get(seg.toStopId);
+
+      const fromLat = seg.fromStopId === 'origin' ? options.fromLat : fromStopObj?.stop_lat;
+      const fromLon = seg.fromStopId === 'origin' ? options.fromLon : fromStopObj?.stop_lon;
+      const toLat = seg.toStopId === 'destination' ? options.toLat : toStopObj?.stop_lat;
+      const toLon = seg.toStopId === 'destination' ? options.toLon : toStopObj?.stop_lon;
+
+      // Intermediate stops: TYLKO board→alight, nie cały kurs
+      const intermediateStops =
+        seg.type === 'transit' && seg.tripId && seg.fromStopId && seg.toStopId
+          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId)
+          : undefined;
+
+      legs.push({
+        id: `c${idx + 1}l${lIdx + 1}`,
+        mode: seg.type === 'walk' ? 'walk' : seg.mode || 'bus',
+        line: seg.line,
+        direction: seg.direction,
+        fromStop: fromName,
+        toStop: toName,
+        fromStopId: seg.fromStopId,
+        toStopId: seg.toStopId,
+        fromLat,
+        fromLon,
+        toLat,
+        toLon,
+        platformCode: fromStopObj?.stop_code,
+        departAt: secondsToTimeString(adjDepartSec),
+        arriveAt: secondsToTimeString(adjArriveSec),
+        stopsCount: seg.stopsCount,
+        walkM: seg.walkMeters,
+        live: legLive,
+        tripId: seg.type === 'transit' ? seg.tripId : undefined,
+        routeId: seg.type === 'transit' ? seg.routeId : undefined,
+        intermediateStops,
+      });
+    }
+
+    const transitLegs = legs.filter((l) => l.mode !== 'walk');
+    if (transitLegs.length === 0) continue;
+
+    // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) — dokładamy
+    // tylko offset dnia (zapytanie o jutro): RAPTOR liczył porą dnia.
+    const adjDepartureSec = rj.departureSec + ctx.dayOffsetSec;
+    const adjArrivalSec = rj.arrivalSec + ctx.dayOffsetSec;
+    const durationMin = Math.max(1, Math.round((adjArrivalSec - adjDepartureSec) / 60));
+    const departInMin = Math.max(0, Math.round((adjDepartureSec - ctx.currentSec) / 60));
+
+    // Interchange description if transfers exist
+    let interchange: string | undefined;
+    if (rj.transfers > 0) {
+      const via = Array.from(new Set(transitLegs.slice(0, -1).map((l) => l.toStop)));
+      if (via.length > 0) {
+        interchange = via.length === 1 ? `Przesiadka: ${via[0]}` : `Przesiadki: ${via.join(' • ')}`;
+      }
+    }
+
+    connections.push({
+      id: `conn-${idx + 1}-${rj.departureSec + ctx.dayOffsetSec}`,
+      fromTitle: options.fromTitle,
+      toTitle: options.toTitle,
+      departInMin,
+      departureSec: adjDepartureSec,
+      departAt: secondsToTimeString(adjDepartureSec),
+      arriveAt: secondsToTimeString(adjArrivalSec),
+      durationMin,
+      transfers: rj.transfers,
+      delayMin: maxDelayMin,
+      live: overallLive,
+      legs,
+      interchange,
+    });
+  }
+
+  return connections;
 }
 
 export async function planConnections(options: PlanOptions): Promise<Connection[]> {
@@ -257,6 +409,18 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const rawJourneys: RawJourney[] = [];
   const timeWindows = [0, 300, 600, 900, 1200, 1800, 2700, 3600];
 
+  // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
+  // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
+  const applyModeFilter = (list: RawJourney[]) =>
+    modes === 'all'
+      ? list
+      : list.filter((j) =>
+          j.segments
+            .filter((s) => s.type === 'transit')
+            .every((s) => s.mode === modes),
+        );
+  const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays };
+
   for (const offsetSec of timeWindows) {
     const batch = runRaptor(gtfsStore, origins, destinations, departureSec + offsetSec, {
       maxTransfers,
@@ -268,138 +432,30 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     for (const j of batch) {
       if (j.transfers <= maxTransfers) rawJourneys.push(j);
     }
+    // Progres: po każdym oknie wydaj to, co mamy — UI dokłada wiersze
+    // "po kolei" zamiast czekać na całość. await ustępuje wątek JS,
+    // żeby FlatList zdążyła się przemalować między oknami.
+    if (options.onProgress && rawJourneys.length > 0) {
+      const partial = sortConnectionsByCost(
+        mapJourneysToConnections(
+          filterParetoJourneys(applyModeFilter(rawJourneys), departureSec),
+          options,
+          mapCtx,
+        ),
+      );
+      if (partial.length > 0) {
+        options.onProgress(partial);
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+    }
   }
-
-  // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
-  // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
-  const modeJourneys =
-    modes === 'all'
-      ? rawJourneys
-      : rawJourneys.filter((j) =>
-          j.segments
-            .filter((s) => s.type === 'transit')
-            .every((s) => s.mode === modes),
-        );
 
   // Jedna wspólna selekcja Pareto + różnorodność na CAŁYM zbiorze
   // (osobno na okno dublowałyby się te same kursy).
-  const filtered = filterParetoJourneys(modeJourneys, departureSec);
+  const filtered = filterParetoJourneys(applyModeFilter(rawJourneys), departureSec);
 
   // 4. Map into Connection model
-  const connections: Connection[] = [];
-
-  for (let idx = 0; idx < filtered.length; idx++) {
-    const rj = filtered[idx];
-    // Kotwica nie może wymuszać bezsensu: "wsiądź i wysiądź po 1 przystanku,
-    // resztę idź z buta" odrzucamy niezależnie od preferencji startu.
-    if (isPointlessShortRide(rj)) continue;
-    const legs: Leg[] = [];
-    let overallLive = false;
-    let maxDelayMin = 0;
-
-    for (let lIdx = 0; lIdx < rj.segments.length; lIdx++) {
-      const seg = rj.segments[lIdx];
-      let legLive = false;
-      let legDelayMin = 0;
-
-      if (seg.type === 'transit') {
-        // Ten sam snapshot opóźnień co w RAPTOR-ze: czasy segmentów są już
-        // efektywne (NIE dodajemy opóźnienia drugi raz). Tu tylko flaga live
-        // i wartość do wyświetlenia.
-        const dSec = tripDelays.get(seg.tripId ?? '');
-        if (dSec !== undefined) {
-          legLive = true;
-          legDelayMin = Math.round(dSec / 60);
-          overallLive = true;
-          if (Math.abs(legDelayMin) > Math.abs(maxDelayMin)) {
-            maxDelayMin = legDelayMin;
-          }
-        }
-      }
-
-      // Czasy już finalne (efektywne) — prosto z segmentów.
-      const adjDepartSec = seg.departSec;
-      const adjArriveSec = seg.arriveSec;
-      // Ostatnia noga piesza do celu dziedziczy nazwę celu podróży.
-      const toName =
-        seg.toStopId === 'destination' ? options.toTitle : seg.toStopName;
-      const fromName =
-        seg.fromStopId === 'origin' ? options.fromTitle : seg.fromStopName;
-
-      const fromStopObj = gtfsStore.stops.get(seg.fromStopId);
-      const toStopObj = gtfsStore.stops.get(seg.toStopId);
-
-      const fromLat = seg.fromStopId === 'origin' ? options.fromLat : fromStopObj?.stop_lat;
-      const fromLon = seg.fromStopId === 'origin' ? options.fromLon : fromStopObj?.stop_lon;
-      const toLat = seg.toStopId === 'destination' ? options.toLat : toStopObj?.stop_lat;
-      const toLon = seg.toStopId === 'destination' ? options.toLon : toStopObj?.stop_lon;
-
-      // Intermediate stops: TYLKO board→alight, nie cały kurs
-      const intermediateStops =
-        seg.type === 'transit' && seg.tripId && seg.fromStopId && seg.toStopId
-          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId)
-          : undefined;
-
-      legs.push({
-        id: `c${idx + 1}l${lIdx + 1}`,
-        mode: seg.type === 'walk' ? 'walk' : seg.mode || 'bus',
-        line: seg.line,
-        direction: seg.direction,
-        fromStop: fromName,
-        toStop: toName,
-        fromStopId: seg.fromStopId,
-        toStopId: seg.toStopId,
-        fromLat,
-        fromLon,
-        toLat,
-        toLon,
-        platformCode: fromStopObj?.stop_code,
-        departAt: secondsToTimeString(adjDepartSec),
-        arriveAt: secondsToTimeString(adjArriveSec),
-        stopsCount: seg.stopsCount,
-        walkM: seg.walkMeters,
-        live: legLive,
-        tripId: seg.type === 'transit' ? seg.tripId : undefined,
-        routeId: seg.type === 'transit' ? seg.routeId : undefined,
-        intermediateStops,
-      });
-    }
-
-    const transitLegs = legs.filter((l) => l.mode !== 'walk');
-    if (transitLegs.length === 0) continue;
-
-    // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) — dokładamy
-    // tylko offset dnia (zapytanie o jutro): RAPTOR liczył porą dnia.
-    const adjDepartureSec = rj.departureSec + dayOffsetSec;
-    const adjArrivalSec = rj.arrivalSec + dayOffsetSec;
-    const durationMin = Math.max(1, Math.round((adjArrivalSec - adjDepartureSec) / 60));
-    const departInMin = Math.max(0, Math.round((adjDepartureSec - currentSec) / 60));
-
-    // Interchange description if transfers exist
-    let interchange: string | undefined;
-    if (rj.transfers > 0) {
-      const via = Array.from(new Set(transitLegs.slice(0, -1).map((l) => l.toStop)));
-      if (via.length > 0) {
-        interchange = via.length === 1 ? `Przesiadka: ${via[0]}` : `Przesiadki: ${via.join(' • ')}`;
-      }
-    }
-
-    connections.push({
-      id: `conn-${idx + 1}-${rj.departureSec + dayOffsetSec}`,
-      fromTitle: options.fromTitle,
-      toTitle: options.toTitle,
-      departInMin,
-      departureSec: adjDepartureSec,
-      departAt: secondsToTimeString(adjDepartureSec),
-      arriveAt: secondsToTimeString(adjArrivalSec),
-      durationMin,
-      transfers: rj.transfers,
-      delayMin: maxDelayMin,
-      live: overallLive,
-      legs,
-      interchange,
-    });
-  }
+  const connections = mapJourneysToConnections(filtered, options, mapCtx);
 
   // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) — jeśli prosto
   // jest w zasięgu spaceru z ustawień, dokładamy ją do listy.
@@ -446,13 +502,6 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     });
   }
 
-  // Sortowanie po koszcie uogólnionym: door-to-door + 10 min kary za przesiadkę.
-  const TRANSFER_PENALTY_MIN = 10;
-  connections.sort((a, b) => {
-    const costA = a.departInMin + a.durationMin + a.transfers * TRANSFER_PENALTY_MIN;
-    const costB = b.departInMin + b.durationMin + b.transfers * TRANSFER_PENALTY_MIN;
-    if (costA !== costB) return costA - costB;
-    return a.departInMin - b.departInMin;
-  });
+  sortConnectionsByCost(connections);
   return connections;
 }

@@ -25,7 +25,7 @@ import { stopTracking, useTrackedTrip } from '../src/services/notifications';
 import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
 import { SavedPlacesRow } from '../src/components/SavedPlacesRow';
 import { ActiveTripCard } from '../src/components/ActiveTripCard';
-import { SearchBar } from '../src/components/SearchBar';
+import { HomeThumbBar } from '../src/components/HomeThumbBar';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
@@ -359,6 +359,10 @@ export default function HomeScreen() {
     return () => clearTimeout(t);
   }, [query, sheetMode, currentCoords]);
 
+  const topSavedPlace = useMemo(() => {
+    return saved.find((p) => p.icon === 'home') ?? saved[0];
+  }, [saved]);
+
   const quick = useMemo<Suggestion[]>(
     () =>
       saved.slice(0, 3).map((s) => ({
@@ -566,15 +570,8 @@ export default function HomeScreen() {
             </Pressable>
           )}
 
-          <View style={{ height: 24 }} />
-          <SearchBar
-            onPress={() => {
-              setReturnToDestinationAfterStart(false);
-              setQuery('');
-              setSheetMode('destination');
-            }}
-          />
-
+          {/* Wyszukiwarka celu jest tylko w dolnym menu pod kciukiem —
+              drugi raz na górze ekranu to ta sama akcja w dwóch miejscach. */}
           <View style={{ height: 20 }} />
           <View style={styles.sectionHeader}>
             <Text style={styles.section}>Zapisane miejsca</Text>
@@ -606,7 +603,22 @@ export default function HomeScreen() {
           <SmartHistoryList items={smart} departures={nextDepart} onSelect={(d) => goToRoutes(d)} />
 
           <View style={{ height: 90 }} />
-        </ScrollView>      </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+
+      {!sheetMode && !manageSheetOpen && !addPlaceOpen && (
+        <HomeThumbBar
+          onOpenSearch={() => {
+            setReturnToDestinationAfterStart(false);
+            setQuery('');
+            setSheetMode('destination');
+          }}
+          topSavedPlace={topSavedPlace}
+          onSelectPlace={(p) =>
+            goToRoutes({ id: p.placeId, title: p.name, address: p.address, lat: p.lat, lon: p.lon })
+          }
+        />
+      )}
 
       {sheetMode && (
         <SearchSheet
@@ -746,7 +758,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
-  hero: { ...type.displaySmall, color: scheme.onSurface, marginTop: 16 },
+  // Nagłówek zostaje, ale schodzi do rozmiaru tytułu: pytanie „dokąd”
+  // ma teraz swoje wejście w dolnym menu, więc nie zajmuje pół ekranu.
+  hero: { ...type.titleLarge, fontWeight: '700', color: scheme.onSurface, marginTop: 14 },
   importCard: {
     flexDirection: 'row',
     alignItems: 'center',

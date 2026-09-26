@@ -12,6 +12,7 @@ import { LegTimeline } from '../../src/components/LegTimeline';
 import { LiveDot } from '../../src/components/LiveDot';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
 import { ActiveTripCard } from '../../src/components/ActiveTripCard';
+import { RouteDetailsThumbBar } from '../../src/components/RouteDetailsThumbBar';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -91,6 +92,30 @@ export default function RouteDetailsScreen() {
       return () => task.cancel();
     }
   }, [id]);
+
+  const handleReverseRoute = () => {
+    if (!item || item.legs.length === 0) return;
+    const firstLeg = item.legs[0];
+    const lastLeg = item.legs[item.legs.length - 1];
+
+    const revFromLat = lastLeg.toLat != null ? String(lastLeg.toLat) : '';
+    const revFromLon = lastLeg.toLon != null ? String(lastLeg.toLon) : '';
+    const revToLat = firstLeg.fromLat != null ? String(firstLeg.fromLat) : '';
+    const revToLon = firstLeg.fromLon != null ? String(firstLeg.fromLon) : '';
+
+    router.push({
+      pathname: '/routes',
+      params: {
+        fromTitle: item.toTitle,
+        fromLat: revFromLat,
+        fromLon: revFromLon,
+        toId: '',
+        toTitle: item.fromTitle,
+        toLat: revToLat,
+        toLon: revToLon,
+      },
+    });
+  };
 
   if (loadFailed) {
     return (
@@ -226,10 +251,21 @@ export default function RouteDetailsScreen() {
 
         <LegTimeline legs={item.legs} />
 
-        <StopCompassCard connection={item} />
+        {/* Radar wraz z wejściem w mapę trasy siedzi na dole ekranu —
+            tam, gdzie sięga kciuk, a nie na górze pod nagłówkiem. */}
+        <StopCompassCard
+          connection={item}
+          onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+        />
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: 90 }} />
       </ScrollView>
+
+      {/* Pływający dolny pasek kciuka: łatwy powrót i trasa powrotna */}
+      <RouteDetailsThumbBar
+        onBack={() => router.back()}
+        onReverseRoute={handleReverseRoute}
+      />
     </SafeAreaView>
   );
 }
@@ -261,7 +297,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8 },
   iconBtn: { width: 40, height: 40, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
-  body: { paddingHorizontal: 14, gap: 12 },
+  body: { paddingHorizontal: 14, gap: 12, paddingBottom: 24 },
   summary: { backgroundColor: scheme.surfaceContainer, borderRadius: shape.large, padding: 16, gap: 8, ...elev.level1 },
   timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   times: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },

@@ -111,6 +111,7 @@ export function SearchSheet({
         {originTitle && onChangeOrigin && (
           <TouchableOpacity
             onPress={onChangeOrigin}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={styles.originHintRow}
             activeOpacity={0.7}
             accessibilityRole="button"
@@ -125,9 +126,16 @@ export function SearchSheet({
           </TouchableOpacity>
         )}
 
-        {/* M3 search field */}
+        {/* M3 search field z powiększonymi celami dotykowymi */}
         <View style={styles.inputBox}>
-          <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.leadingBtn} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={handleClose}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={styles.leadingBtn}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Zamknij wyszukiwarkę"
+          >
             <ArrowLeft size={21} color={scheme.onSurface} />
           </TouchableOpacity>
           <TextInput
@@ -144,7 +152,14 @@ export function SearchSheet({
               <ActivityIndicator size="small" color={scheme.primary} />
             </View>
           ) : query ? (
-            <TouchableOpacity onPress={() => onQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.trailingBtn} activeOpacity={0.7}>
+            <TouchableOpacity
+              onPress={() => onQuery('')}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.trailingBtn}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Wyczyść zapytanie"
+            >
               <X size={19} color={scheme.onSurfaceVariant} />
             </TouchableOpacity>
           ) : null}
@@ -158,9 +173,8 @@ export function SearchSheet({
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
-          <View style={{ gap: 4 }}>
-            {/* Nagłówek tylko tam, gdzie coś jest — „Ostatnie przejazdy” nad
-                „Brak wyników” wyglądało jak sprzeczność. */}
+          <View style={{ gap: 6 }}>
+            {/* Nagłówek tylko tam, gdzie coś jest */}
             {(hasResults || displayData.length > 0) && (
               <Text style={styles.section}>
                 {hasResults
@@ -174,6 +188,7 @@ export function SearchSheet({
                   <TouchableOpacity
                     key={q.id}
                     onPress={() => handleSelect(q)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     activeOpacity={0.7}
                     style={styles.quick}
                     accessibilityRole="button"
@@ -203,19 +218,25 @@ export function SearchSheet({
 }
 
 const styles = StyleSheet.create({
-  sheet: { borderTopLeftRadius: shape.extraLarge, borderTopRightRadius: shape.extraLarge, backgroundColor: scheme.surfaceContainer, ...elev.level3 },
+  sheet: {
+    borderTopLeftRadius: shape.extraLarge,
+    borderTopRightRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainer,
+    ...elev.level3,
+  },
   handle: { backgroundColor: scheme.outlineVariant, width: 44 },
-  head: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, gap: 12 },
+  head: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, gap: 10 },
   originHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.full,
     alignSelf: 'flex-start',
     maxWidth: '100%',
+    minHeight: 38,
   },
   originHintDot: {
     width: 7,
@@ -251,16 +272,62 @@ const styles = StyleSheet.create({
     height: 56,
     ...elev.level1,
   },
-  leadingBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: shape.full },
-  trailingBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: shape.full },
-  input: { flex: 1, ...type.bodyLarge, color: scheme.onSurface, paddingVertical: 0, paddingHorizontal: 4 },
+  leadingBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: shape.full,
+  },
+  trailingBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: shape.full,
+  },
+  input: {
+    flex: 1,
+    ...type.bodyLarge,
+    color: scheme.onSurface,
+    paddingVertical: 0,
+    paddingHorizontal: 4,
+  },
   list: { paddingHorizontal: 4, paddingBottom: 40, gap: 2 },
-  section: { ...type.labelMedium, color: scheme.onSurfaceVariant, paddingHorizontal: 20, paddingTop: 14 },
-  quickRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8, flexWrap: 'wrap' },
-  // M3 suggestion chip
-  quick: { backgroundColor: scheme.secondaryContainer, borderRadius: shape.small, paddingHorizontal: 12, paddingVertical: 8 },
-  quickText: { ...type.labelLarge, color: scheme.onSecondaryContainer },
+  section: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    flexWrap: 'wrap',
+  },
+  // M3 suggestion chip z ergonomicznym rozmiarem dla kciuka (minHeight: 42)
+  quick: {
+    backgroundColor: scheme.secondaryContainer,
+    borderRadius: shape.full,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 42,
+    justifyContent: 'center',
+  },
+  quickText: {
+    ...type.labelLarge,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '600',
+  },
   empty: { padding: 24, alignItems: 'center', gap: 6 },
   emptyTitle: { ...type.titleMedium, color: scheme.onSurface },
-  emptySub: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
+  emptySub: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });

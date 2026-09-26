@@ -140,6 +140,34 @@ async function ensureSearchReady(): Promise<void> {
 
 export let importInProgress = false;
 
+/**
+ * Czeka, aż trwający import GTFS się zakończy. Rozwiązuje się natychmiast,
+ * gdy nic nie jest importowane.
+ *
+ * Silnik routingu używa tego zamiast pytać „coś się ładuje?" i oddawać pustą
+ * listę: `LocalGtfsStore.load()` w trakcie importu nie ma prawidłowych
+ * przystanków, więc planer zwracał zero połączeń i ekran pokazywał „nie
+ * znaleziono połączeń" zamiast „rozkład się importuje".
+ */
+export function awaitImportSettled(timeoutMs = 180000): Promise<void> {
+  if (!importInProgress) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      listeners.delete(watch);
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    const watch = () => {
+      if (!importInProgress) finish();
+    };
+    listeners.add(watch);
+  });
+}
+
 /** Pełny import: katalog → zip → unzip → SQLite. Długie, z progresem. */
 export async function importGtfsFromNetwork(): Promise<void> {
   if (importInProgress) return;

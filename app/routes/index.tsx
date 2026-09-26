@@ -1,25 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, InteractionManager, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Anchor,
-  ArrowUpDown,
-  ChevronDown,
   ChevronLeft,
-  Clock3,
   Pin,
   Radio,
   X,
 } from 'lucide-react-native';
 import Animated, {
-  Easing,
   FadeIn,
+  FadeInUp,
   FadeOut,
+  FadeOutUp,
+  FlipInEasyX,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
@@ -59,7 +58,11 @@ import type { Connection, SavedPlace, Suggestion } from '../../src/types/models'
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { ActiveTripCard } from '../../src/components/ActiveTripCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
-import { RouteFiltersCard, type ModePreference } from '../../src/components/RouteFiltersCard';
+import {
+  RoutesThumbBar,
+  type ModePreference,
+  type SortMode,
+} from '../../src/components/RoutesThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 
 const GPS_ITEM: Suggestion = {
@@ -70,6 +73,16 @@ const GPS_ITEM: Suggestion = {
   lat: 0,
   lon: 0,
 };
+
+/** Sekundy od północy — jeden zegar dla całego ekranu. */
+function nowSeconds(): number {
+  const d = new Date();
+  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+}
+
+// Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
+// VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
+const connectionKey = (item: Connection) => item.id;
 
 export default function RoutesScreen() {
   const router = useRouter();
@@ -96,7 +109,7 @@ export default function RoutesScreen() {
   const [toLon, setToLon] = useState(Number(params.toLon ?? 0));
   const [toId, setToId] = useState(String(params.toId ?? ''));
 
-  // Przycisk „Zakończ" w powiadomieniu to deep link z parametrem action=stop.
+  // Przycisk „Zakończ” w powiadomieniu to deep link z parametrem action=stop.
   // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl
   // renderów; zależność od params.action, bo ekspo-router podmienia
   // parametry bez remountu, gdy ekran jest już otwarty.
@@ -157,11 +170,12 @@ export default function RoutesScreen() {
   // żeby jednym tapnięciem wrócić szybko do domu), 'earliest' = jak w
   // Jakdojade, od najwcześniejszego odjazdu. Magazyn (items) zawsze
   // posortowany po odjeździe — paginacja i hold-to-load na tym bazują.
-  const [sortMode, setSortMode] = useState<'fastest' | 'earliest'>('fastest');
-  // Jednorazowe filtry — NIE są to ustawienia systemowe (maxTransfers
-  // w /settings zostaje nietknięte). Toggle wymusza maxTransfers=0, a segmenty
-  // pojazdów ograniczają RAPTOR-a do kursów danego typu. Tylko dla bieżącego
-  // ekranu wyników, stan nie jest persistowany.
+  const [sortMode, setSortMode] = useState<SortMode>('fastest');
+  // Filtry mieszkają w dolnym menu (RoutesThumbBar) — na górze ekranu nie ma
+  // ich wcale, żeby nic nie powtarzać się w dwóch miejscach. To wciąż
+  // filtry jednorazowe, NIE ustawienia systemowe (maxTransfers w /settings
+  // zostaje nietknięte): toggle wymusza maxTransfers=0, a typ pojazdu
+  // ogranicza RAPTOR-a do kursów danego rodzaju.
   const [directOnly, setDirectOnly] = useState(params.directOnly === '1');
   const [modeFilter, setModeFilter] = useState<ModePreference>(
     params.modes === 'tram' || params.modes === 'bus' ? params.modes : 'all',
@@ -180,22 +194,23 @@ export default function RoutesScreen() {
     );
   }, [items, sortMode, directOnly]);
 
-  // Animacja płynnego chowania/pokazywania filtrów przy scrollowaniu
-  const filterProgress = useSharedValue(1);
-  const measuredFiltersHeight = useSharedValue(200);
+  // Dolny dock (RoutesThumbBar) chowa się przy zjeździe w dół i wraca przy
+  // powrocie w górę — spring zamiast sztywnego timing, żeby było „fajnie".
+  // W przeciwieństwie do starego zwijanego panelu na górze nie ruszamy
+  // layoutu FlatListy (zero flickeru): dock pływa nad listą (absolute).
+  const dockProgress = useSharedValue(1);
 
-  const animatedFilterStyle = useAnimatedStyle(() => {
-    const p = filterProgress.value;
-    const h = measuredFiltersHeight.value;
+  const animatedDockStyle = useAnimatedStyle(() => {
+    const p = dockProgress.value;
     return {
-      opacity: p,
-      maxHeight: interpolate(p, [0, 1], [0, h]),
+      opacity: interpolate(p, [0, 1], [0, 1]),
       transform: [
-        {
-          translateY: interpolate(p, [0, 1], [-8, 0]),
-        },
+        { translateY: interpolate(p, [0, 1], [110, 0]) },
+        { scale: interpolate(p, [0, 1], [0.94, 1]) },
       ],
-      overflow: 'hidden',
+      // Po schowaniu dock nie łapie dotyków znad listy.
+      // (pointerEvents na Animated.View nie jest animowalne — znika sam,
+      //  bo opacity 0 + translate poza ekran.)
     };
   });
 
@@ -219,49 +234,49 @@ export default function RoutesScreen() {
   );
 
   // Czy właśnie śledzimy tę trasę (niezależnie od wybranego kursu).
-  const isTrackingThisRoute =
-    trackedTrip != null && isSameQuery(trackedTrip, currentQuery);
-  /**
-   * Śledzenie konkretnego kursu, a nie całego zapytania. Użytkownik widzi
-   * na liście godziny i linie — jeśli przypniemy zapytanie, powiadomienie
-   * mogłoby w międzyczasie przeskoczyć na inny kurs i kłamać.
-   */
-  const startTrackingConnection = async (conn: Connection) => {
-    if (!areNotificationsSupported()) {
-      Alert.alert(
-        'Śledzenie niedostępne',
-        'Powiadomienia wymagają builda deweloperskiego — Expo Go ich nie wspiera.',
-      );
-      return;
-    }
-    const ok = await ensureNotificationPermission();
-    if (!ok) {
-      Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
-      return;
-    }
-    const track: TrackedTrip = {
-      id: conn.id,
-      fromTitle,
-      fromLat,
-      fromLon,
-      toId,
-      toTitle,
-      toLat,
-      toLon,
-      anchorStopId: activeAnchor?.stopId,
-      anchorStopLat: activeAnchor?.lat,
-      anchorStopLon: activeAnchor?.lon,
-      connection: conn,
-      startedAt: Date.now(),
-    };
-    await startTracking(track);
-  };
+  const isTrackingThisRoute = trackedTrip != null && isSameQuery(trackedTrip, currentQuery);
 
   /**
-   * Przycisk w pasku: śledzimy najbliższe połączenie z listy. Ten sam
-   * przycisk zdejmuje śledzenie, jeśli dotyczy już tej trasy.
+   * Śledzenie konkretnego kursu, a nie całego zapytania. Użytkownik widzi
+   * na liście godziny i linie — gdybyśmy śledzili zapytanie, powiadomienie
+   * mogłoby w międzyczasie przeskoczyć na inny kurs i kłamać.
    */
-  const toggleTracking = async () => {
+  const startTrackingConnection = useCallback(
+    async (conn: Connection) => {
+      if (!areNotificationsSupported()) {
+        Alert.alert(
+          'Śledzenie niedostępne',
+          'Powiadomienia wymagają builda deweloperskiego — Expo Go ich nie wspiera.',
+        );
+        return;
+      }
+      const ok = await ensureNotificationPermission();
+      if (!ok) {
+        Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
+        return;
+      }
+      const track: TrackedTrip = {
+        id: conn.id,
+        fromTitle,
+        fromLat,
+        fromLon,
+        toId,
+        toTitle,
+        toLat,
+        toLon,
+        anchorStopId: activeAnchor?.stopId,
+        anchorStopLat: activeAnchor?.lat,
+        anchorStopLon: activeAnchor?.lon,
+        connection: conn,
+        startedAt: Date.now(),
+      };
+      await startTracking(track);
+    },
+    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
+  );
+
+  /** Przycisk w pasku: śledzimy najbliższe połączenie z listy. */
+  const toggleTracking = useCallback(async () => {
     if (isTrackingThisRoute) {
       await stopTracking();
       return;
@@ -272,7 +287,7 @@ export default function RoutesScreen() {
       return;
     }
     await startTrackingConnection(next);
-  };
+  }, [isTrackingThisRoute, displayed, items, startTrackingConnection]);
 
   // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
   const listRef = useRef<FlatList<Connection>>(null);
@@ -280,10 +295,22 @@ export default function RoutesScreen() {
   const contentH = useRef(0);
   const pendingAdjust = useRef<number | null>(null);
   const topHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Strefa „trzymam palec na górze” z histerezą: wjście na 60 px, wyjście
+  // dopiero powyżej 110 px — jedno drgnięcie palcem nie kasuje timera.
+  const TOP_ZONE_ENTER = 60;
+  const TOP_ZONE_EXIT = 110;
+  const inTopZone = useRef(false);
+  // Odliczane „uspokojenie listy” przed zmianą widoczności docka
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stan docka oczekujący na koniec pauzy po zmianie (patrz setDockVisible)
+  const pendingDockState = useRef<boolean | null>(null);
+  const dockCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (topHoldTimer.current) clearTimeout(topHoldTimer.current);
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
     };
   }, []);
 
@@ -472,6 +499,12 @@ export default function RoutesScreen() {
     return list;
   };
 
+  // Brak rozkładu = brak danych, a nie „nie znaleziono połączeń”. Silnik na
+  // pustym sklepie zwraca pustkę BEZ błędu, więc sprawdzamy status w dwóch
+  // miejscach: przed zapytaniem (żeby nie liczyć na nic) i po nim (żeby
+  // wyłapać import, który ruszył w trakcie zapytania).
+  const noTimetable = () => getDataStatus().state !== 'ready';
+
   const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
     const seq = ++fetchSeq.current;
     if (!seamless) {
@@ -483,12 +516,26 @@ export default function RoutesScreen() {
     setNoMoreLater(false);
     const depSec = targetDepSec !== undefined ? targetDepSec : departureTimeSec;
     try {
+      // Wcześniej niż dotąd: pusty sklep dawał „zero połączeń", a ekran
+      // pokazywał to jako wynik wyszukiwania.
+      if (noTimetable()) {
+        setItems([]);
+        setLoadError(true);
+        return;
+      }
       const q = queryAt(depSec);
-      const c = await RoutingService.getConnections(q);
+      // Progresywne ładowanie "po kolei": pierwsze okno RAPTOR-a wpada szybko,
+      // podmieniamy listę i gasimy pełny spinner od razu — reszta dociąga się
+      // w tle bez migotania (stabilne klucze FlatList).
+      const c = await RoutingService.getConnections(q, (partial) => {
+        if (seq !== fetchSeq.current) return;
+        const live = applyLiveList(partial, depSec);
+        if (live.length === 0) return;
+        setItems(live);
+        setLoading(false);
+      });
       if (seq !== fetchSeq.current) return;
-      // Bez rozkładu planer zwraca pustkę, a nie błąd — bez tego stanu
-      // użytkownik widzi „nie znaleziono połączeń” zamiast prośby o dane.
-      if (getDataStatus().state !== 'ready') {
+      if (noTimetable()) {
         setItems([]);
         setLoadError(true);
         return;
@@ -596,26 +643,26 @@ export default function RoutesScreen() {
     if (!firstDeparture || firstDeparture <= 0) return;
 
     setLoadingEarlier(true);
-    // Zapamiętaj wysokość kontentu, żeby po prependzie cofnąć offset (brak skoku)
-    pendingAdjust.current = contentH.current;
     const seq = ++fetchSeq.current;
 
     try {
       const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
-      if (seq !== fetchSeq.current) {
-        pendingAdjust.current = null;
-        return;
-      }
+      if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
         if (added === 0) {
           setNoMoreEarlier(true);
-          pendingAdjust.current = null;
+          return list;
         }
+        // Bazę do korekty scrolla bierzemy dopiero TU — czyli jeszcze przed
+        // renderem, w którym dojdą nowe wiersze. Pomiar na starcie
+        // zapytania bywał nieaktualny (np. rozciągał się nagłówek), przez co
+        // lista skakała dwa razy zamiast raz.
+        pendingAdjust.current = contentH.current;
         return list;
       });
     } catch {
-      pendingAdjust.current = null;
+      // po cichu — lista zostaje
     } finally {
       if (seq === fetchSeq.current) {
         setLoadingEarlier(false);
@@ -623,71 +670,159 @@ export default function RoutesScreen() {
     }
   };
 
+  // Ref na aktualną funkcję: handler scrolla ma być stabilny (patrz useCallback
+  // niżej), a nie przeżywać przez ref każdego renderu.
+  const loadEarlierRef = useRef(handleLoadEarlier);
+  loadEarlierRef.current = handleLoadEarlier;
+
   const lastScrollY = useRef(0);
-  const isFiltersVisible = useRef(true);
+  const isDockVisible = useRef(true);
   const accumulatedDelta = useRef(0);
+  const momentumActive = useRef(false);
+  const lastDockToggleAt = useRef(0);
 
-  const HIDE_THRESHOLD = 45;
-  const SHOW_THRESHOLD = 30;
+  // Próg jest wysoki, bo dock reaguje dopiero na ustabilizowanym
+  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) — 80 px
+  // to jedno świadome przejście, a nie drgnięcie palcem.
+  const HIDE_THRESHOLD = 80;
+  const SHOW_THRESHOLD = 40;
+  // Pauza po zmianie stanu: dwa przeciwstawne gesty w krótkim czasie
+  // nie mogą się zbić w serię szarpnięć docka.
+  const DOCK_COOLDOWN_MS = 450;
+  // Ile czekamy po puszczeniu palca na sprawdzenie, czy zaczęło się
+  // „rzucanie” listy (momentum). Jeśli tak, decyzja zapada po nim.
+  const SCROLL_SETTLE_MS = 120;
 
-  // Góra listy: przytrzymaj chwilę na samej górze → dładuj wcześniejsze; detekcja kierunku dla filtrów z histerezą
-  const handleScroll = (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+  // Szybki, prawie krytycznie tłumiony spring: bez podskoku, ~200 ms.
+  const SPRING_SNAPPY = { damping: 55, stiffness: 550 } as const;
+
+  // Jedno miejsce do zmiany stanu docka. Przeskok stanu jest możliwy tylko
+  // raz na DOCK_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
+  // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
+  // niej (pendingDockState). `force` omija pauzę — przy powrocie na samą
+  // górę listy dock musi być od razu.
+  const applyDockState = (visible: boolean) => {
+    if (isDockVisible.current === visible) return;
+    isDockVisible.current = visible;
+    lastDockToggleAt.current = Date.now();
+    pendingDockState.current = null;
+    if (dockCooldownTimer.current) {
+      clearTimeout(dockCooldownTimer.current);
+      dockCooldownTimer.current = null;
+    }
+    dockProgress.value = withSpring(visible ? 1 : 0, SPRING_SNAPPY);
+  };
+
+  const setDockVisible = (visible: boolean, force = false) => {
+    if (isDockVisible.current === visible) return;
+    const wait = DOCK_COOLDOWN_MS - (Date.now() - lastDockToggleAt.current);
+    if (!force && wait > 0) {
+      pendingDockState.current = visible;
+      if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
+      dockCooldownTimer.current = setTimeout(() => {
+        dockCooldownTimer.current = null;
+        const next = pendingDockState.current;
+        if (next != null) applyDockState(next);
+      }, wait);
+      return;
+    }
+    applyDockState(visible);
+  };
+
+  // Decyzja o docku zapada, gdy lista przestała się ruszać. W trakcie
+  // przeciągania dock tylko liczy deltę — animacja leci na wątku UI
+  // (Reanimated), więc nie blokuje gestu ani nie przelicza layoutu listy.
+  const evaluateDockOnSettle = () => {
+    if (accumulatedDelta.current >= HIDE_THRESHOLD) {
+      setDockVisible(false);
+    } else if (accumulatedDelta.current <= -SHOW_THRESHOLD) {
+      setDockVisible(true);
+    }
+  };
+
+  const handleScrollEndDrag = () => {
+    momentumActive.current = false;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      if (!momentumActive.current) evaluateDockOnSettle();
+    }, SCROLL_SETTLE_MS);
+  };
+
+  const handleMomentumScrollBegin = () => {
+    momentumActive.current = true;
+    if (settleTimer.current) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+  };
+
+  const handleMomentumScrollEnd = () => {
+    momentumActive.current = false;
+    evaluateDockOnSettle();
+  };
+
+  // Warunki dociągania starszych odjazdów w refie: handler scrolla ma być
+
+  // stabilny, a nie przeżywać przez ref każdego renderu.
+  const topHoldGate = useRef({ loading: true, loadingEarlier: false, count: 0, noMoreEarlier: false });
+  topHoldGate.current = { loading, loadingEarlier, count: items.length, noMoreEarlier };
+
+  const startTopHold = useCallback(() => {
+    if (topHoldTimer.current) return;
+    const g = topHoldGate.current;
+    if (g.loading || g.loadingEarlier || g.count === 0 || g.noMoreEarlier) return;
+    topHoldTimer.current = setTimeout(() => {
+      topHoldTimer.current = null;
+      void loadEarlierRef.current();
+    }, 350);
+  }, []);
+
+  const cancelTopHold = useCallback(() => {
+    if (!topHoldTimer.current) return;
+    clearTimeout(topHoldTimer.current);
+    topHoldTimer.current = null;
+  }, []);
+
+  // Detekcja kierunku z histerezą: handler scrolla tylko pilnuje pozycji
+  // (korekta po dociągnięciu starszych odjazdów) i strefy „trzymam palec
+  // na górze” dociągającej starszych kursów.
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     const dy = y - lastScrollY.current;
     lastScrollY.current = y;
     scrollY.current = y;
 
-    // 1. Na samej górze listy (y <= 12) — zawsze natychmiast pokazuj filtry
+    // 1. Na samej górze listy (y <= 12) — dock wraca od razu, bez
+    //    czekania na puszczenie palca: tam scroll i tak się kończy.
     if (y <= 12) {
       accumulatedDelta.current = 0;
-      if (!isFiltersVisible.current) {
-        isFiltersVisible.current = true;
-        filterProgress.value = withTiming(1, {
-          duration: 250,
-          easing: Easing.out(Easing.cubic),
-        });
-      }
+      setDockVisible(true, true);
     } else if (dy > 0) {
       // Scrollowanie W DÓŁ
       if (accumulatedDelta.current < 0) {
         accumulatedDelta.current = 0;
       }
       accumulatedDelta.current += dy;
-
-      // Schowaj filtry dopiero po przewinięciu co najmniej HIDE_THRESHOLD w dół
-      if (accumulatedDelta.current >= HIDE_THRESHOLD && isFiltersVisible.current && y > 30) {
-        isFiltersVisible.current = false;
-        filterProgress.value = withTiming(0, {
-          duration: 220,
-          easing: Easing.out(Easing.cubic),
-        });
-      }
     } else if (dy < 0) {
       // Scrollowanie W GÓRĘ
       if (accumulatedDelta.current > 0) {
         accumulatedDelta.current = 0;
       }
       accumulatedDelta.current += dy;
+    }
 
-      // Pokaż filtry dopiero po przewinięciu co najmniej SHOW_THRESHOLD w górę
-      if (accumulatedDelta.current <= -SHOW_THRESHOLD && !isFiltersVisible.current) {
-        isFiltersVisible.current = true;
-        filterProgress.value = withTiming(1, {
-          duration: 250,
-          easing: Easing.out(Easing.cubic),
-        });
+    // 2. Przytrzymanie na górze. Timer zakładamy RAZ przy wejściu w strefę.
+    //    Wcześniej clearTimeout+setTimeout leciał na każdą klatkę — to śmieci
+    //    na wątku JS i gest gasł przy mikro-ruchach palca.
+    if (!inTopZone.current) {
+      if (y <= TOP_ZONE_ENTER) {
+        inTopZone.current = true;
+        startTopHold();
       }
-    }
-
-    if (topHoldTimer.current) {
-      clearTimeout(topHoldTimer.current);
-      topHoldTimer.current = null;
-    }
-    if (y <= 80 && !loading && !loadingEarlier && items.length > 0 && !noMoreEarlier) {
-      topHoldTimer.current = setTimeout(() => {
-        topHoldTimer.current = null;
-        handleLoadEarlier();
-      }, 350);
+    } else if (y > TOP_ZONE_EXIT) {
+      inTopZone.current = false;
+      cancelTopHold();
     }
   };
 
@@ -712,9 +847,41 @@ export default function RoutesScreen() {
       fetchRoutes(departureTimeSec, items.length > 0);
     });
     return () => task.cancel();
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter]);
+    // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
+    // importu dostawał pustą listę i nigdy sam się nie odpytywał, więc
+    // połączenia zostawały niewidoczne mimo gotowego rozkładu.
+  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady]);
+
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    try {
+      await fetchRoutes(departureTimeSec, true);
+    } finally {
+      setPullRefreshing(false);
+    }
+  };
+
+  const handleCycleMode = () => {
+    if (modeFilter === 'all') setModeFilter('tram');
+    else if (modeFilter === 'tram') setModeFilter('bus');
+    else setModeFilter('all');
+  };
+
+  const handleCycleSort = () => {
+    setSortMode((prev) => (prev === 'fastest' ? 'earliest' : 'fastest'));
+  };
+
+  // Znacznik odwrócenia trasy: wiersze zamontowane tuż po swapie wjeżdżają
+  // pionowym flipem karty (FlipInEasyX) zamiast zwykłego fade-up. Ref, nie stan —
+  // nie wymusza dodatkowego rendera, odczyt w renderItem wystarczy.
+  const swapAtRef = useRef(0);
 
   const handleSwap = () => {
+    swapAtRef.current = Date.now();
+    // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
     setActiveAnchor(null);
     const tempTitle = fromTitle;
     const tempLat = fromLat;
@@ -739,9 +906,63 @@ export default function RoutesScreen() {
 
   const isCustomTime = departureTimeSec !== undefined;
 
+  // Stabilne referencje dla FlatList: bez nich każdy render rodzica tworzył
+  // nowe closures, przez co wiersze (pamiętane przez React.memo) przeliczały
+  // się od nowa i lista „przybliżała” zamiast płynnie się toczyć.
+  // Karty wskakują kaskadą (stagger po indeksie, max ~440 ms), żeby progresywne
+  // dokładanie wyglądało płynnie; tuż po swapie — flipem karty.
+  // UWAGA: świeża instancja buildera na wiersz — .delay() mutuje współdzielony
+  // obiekt, więc współdzielenie jednego FlipInEasyX/FadeInUp rozwaliłoby delaya.
+  const openConnection = useCallback(
+    (item: Connection) => {
+      router.push({ pathname: '/routes/[id]', params: { id: item.id } });
+    },
+    [router],
+  );
+
+  const renderConnection = useCallback(
+    ({ item, index }: { item: Connection; index: number }) => {
+      const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
+      const stagger = Math.min(index * 55, 440);
+      const freshSwap = Date.now() - swapAtRef.current < 2500;
+      const isTracked = isTrackingThisRoute && trackedTrip?.connection.id === item.id;
+      return (
+        <Animated.View
+          entering={
+            freshSwap
+              ? new FlipInEasyX().duration(320).delay(stagger)
+              : new FadeInUp().duration(280).delay(stagger)
+          }
+        >
+          <ConnectionCard item={item} dimmed={past} onPress={openConnection} />
+          {/* Śledzimy konkretny kurs, nie całe zapytanie. */}
+          {!past && isTracked ? (
+            <View style={styles.trackActive}>
+              <Radio size={13} color={scheme.primary} />
+              <Text style={styles.trackActiveText}>Śledzone</Text>
+            </View>
+          ) : !past ? (
+            <Pressable
+              onPress={() => void startTrackingConnection(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`Śledź połączenie o ${item.departAt}`}
+              style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}
+              hitSlop={6}
+            >
+              <Radio size={13} color={scheme.onSurfaceVariant} />
+              <Text style={styles.trackBtnText}>Śledź ten kurs</Text>
+            </Pressable>
+          ) : null}
+        </Animated.View>
+      );
+    },
+    [openConnection, isTrackingThisRoute, trackedTrip?.connection.id, startTrackingConnection],
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* 1. Górny pasek: Wstecz + Tytuł + Interaktywny przycisk Czasu */}
+      {/* 1. Górny pasek: tylko Wstecz, tytuł i przypięcie. Czas odjazdu,
+          filtry, sortowanie i zamiana trasy żyją w dolnym menu pod kciukiem. */}
       <View style={styles.topBar}>
         <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
           <ChevronLeft size={23} color={scheme.onSurface} />
@@ -751,54 +972,44 @@ export default function RoutesScreen() {
           Połączenia MPK
         </Text>
 
-        <Pressable
-          onPress={() => setTimeSheetOpen(true)}
-          style={({ pressed }) => [
-            styles.timeChip,
-            isCustomTime && styles.timeChipActive,
-            pressed && { opacity: 0.8 },
-          ]}
-          hitSlop={8}
-        >
-          <Clock3
-            size={14}
-            color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-          />
-          <Text
-            style={[styles.timeText, isCustomTime && styles.timeTextActive]}
-            numberOfLines={1}
-          >
-            {timeLabel}
+        {/* Śledzenie podróży: przycisk w slocie z podpisem (z main) + niewidoczny
+            odstępnik, żeby górna krawędź zgryzała się z resztą paska. Podpis
+            nazywa czynność, nie stan — „Śledź" albo „Przerwij". */}
+        <View style={styles.pinWrap}>
+          <View style={styles.pinSlot}>
+            <Pressable
+              onPress={toggleTracking}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isTrackingThisRoute }}
+              accessibilityLabel={
+                isTrackingThisRoute
+                  ? 'Zatrzymaj śledzenie podróży'
+                  : 'Śledź najbliższe połączenie'
+              }
+              style={({ pressed }) => [
+                styles.pinBtn,
+                isTrackingThisRoute && styles.pinBtnActive,
+                pressed && { opacity: 0.8 },
+              ]}
+              hitSlop={8}
+            >
+              {isTrackingThisRoute ? (
+                <Radio size={17} color={scheme.onPrimaryContainer} />
+              ) : (
+                <Pin size={17} color={scheme.onSecondaryContainer} />
+              )}
+            </Pressable>
+          </View>
+          <Text style={styles.pinLabel} numberOfLines={1}>
+            {isTrackingThisRoute ? 'Przerwij' : 'Śledź'}
           </Text>
-          <ChevronDown
-            size={13}
-            color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-          />
-        </Pressable>
-
-        <Pressable
-          onPress={toggleTracking}
-          accessibilityRole="button"
-          accessibilityState={{ selected: isTrackingThisRoute }}
-          accessibilityLabel={
-            isTrackingThisRoute ? 'Zatrzymaj śledzenie podróży' : 'Śledź najbliższe połączenie'
-          }
-          style={({ pressed }) => [
-            styles.pinBtn,
-            isTrackingThisRoute && styles.pinBtnActive,
-            pressed && { opacity: 0.8 },
-          ]}
-          hitSlop={8}
-        >
-          {isTrackingThisRoute ? (
-            <Radio size={17} color={scheme.onPrimaryContainer} />
-          ) : (
-            <Pin size={17} color={scheme.onSecondaryContainer} />
-          )}
-        </Pressable>
+        </View>
       </View>
 
-      {/* 2. Karta trasy: klikalny Start / Cel + wyśrodkowany przycisk zamiany */}
+      {/* 2. Karta trasy: klikalny Start / Cel. Zamiana miejsc, czas odjazdu
+          i sortowanie żyją w dolnym menu, więc nic tu się nie powtarza.
+          Tytuł startu i celu rolkuje się przy zmianie (z main), żeby zamiana
+          trasy była czytelna bez dodatkowego miejsca. */}
       <View style={styles.routeCard}>
         <View style={styles.endpoints}>
           {/* Start */}
@@ -842,9 +1053,16 @@ export default function RoutesScreen() {
                 </Pressable>
               </Animated.View>
             ) : (
-              <Text style={styles.fromText} numberOfLines={1}>
-                {fromTitle}
-              </Text>
+              <Animated.View
+                key={`from-${fromTitle}`}
+                entering={new FadeInUp().duration(220)}
+                exiting={new FadeOutUp().duration(180)}
+                style={styles.routeSlide}
+              >
+                <Text style={styles.fromText} numberOfLines={1}>
+                  {fromTitle}
+                </Text>
+              </Animated.View>
             )}
           </Pressable>
 
@@ -860,77 +1078,21 @@ export default function RoutesScreen() {
             hitSlop={6}
           >
             <View style={[styles.indicatorDot, { backgroundColor: scheme.error }]} />
-            <Text style={styles.toText} numberOfLines={1}>
-              {toTitle}
-            </Text>
+            <Animated.View
+              key={`to-${toTitle}`}
+              entering={new FadeInUp().duration(220)}
+              exiting={new FadeOutUp().duration(180)}
+              style={styles.routeSlide}
+            >
+              <Text style={styles.toText} numberOfLines={1}>
+                {toTitle}
+              </Text>
+            </Animated.View>
           </Pressable>
         </View>
-
-        {/* Idealnie wyśrodkowany przycisk SWAP */}
-        <Pressable
-          onPress={handleSwap}
-          style={({ pressed }) => [
-            styles.swapBtn,
-            pressed && { backgroundColor: scheme.secondaryContainer, transform: [{ scale: 0.93 }] },
-          ]}
-          hitSlop={10}
-        >
-          <ArrowUpDown size={17} color={scheme.primary} />
-        </Pressable>
       </View>
 
-      {/* 3 i 4. Płynnie zwijane filtry i sortowanie przy scrollowaniu */}
-      <Animated.View style={[styles.collapsibleFiltersWrap, animatedFilterStyle]}>
-        <View
-          onLayout={(e) => {
-            const h = e.nativeEvent.layout.height;
-            if (h > 60 && Math.abs(measuredFiltersHeight.value - h) > 2) {
-              measuredFiltersHeight.value = h;
-            }
-          }}
-        >
-          {/* 3. Jednorazowe filtry: bezpośrednie + pojazdy (nie ruszają ustawień) */}
-          <View style={styles.filtersWrap}>
-            <RouteFiltersCard
-              directOnly={directOnly}
-              onDirectChange={setDirectOnly}
-              mode={modeFilter}
-              onModeChange={setModeFilter}
-            />
-          </View>
-
-          {/* 4. Sortowanie: najszybciej (przybycie) albo najwcześniej (odjazd) */}
-          <View style={styles.sortRow}>
-            {(
-              [
-                { key: 'fastest', label: 'Najszybciej' },
-                { key: 'earliest', label: 'Najwcześniej' },
-              ] as const
-            ).map((opt) => {
-              const active = sortMode === opt.key;
-              return (
-                <Pressable
-                  key={opt.key}
-                  onPress={() => setSortMode(opt.key)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.sortPill,
-                    active && styles.sortPillActive,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                >
-                  <Text style={[styles.sortText, active && styles.sortTextActive]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </Animated.View>
-
-      {/* 5. Lista połączeń */}
+      {/* 3. Lista połączeń */}
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={scheme.primary} />
@@ -983,104 +1145,62 @@ export default function RoutesScreen() {
       ) : (
         <FlatList
           ref={listRef}
+          refreshControl={
+            <RefreshControl
+              refreshing={pullRefreshing}
+              onRefresh={handlePullRefresh}
+              tintColor={scheme.primary}
+              colors={[scheme.primary]}
+              progressBackgroundColor={scheme.surfaceContainerHigh}
+            />
+          }
           data={displayed}
           // wymusza przeliczenie etykiet „za X min” bez refetchu
           extraData={nowTick}
-          keyExtractor={(i) => i.id}
+          keyExtractor={connectionKey}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
+          // Na Androidzie RN domyślnie odpija widoki spoza kadru
+          // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
+          // nagłówkiem powoduje to miganie pustych miejsc w trakcie
+          // przeciągania palcem, więc trzymamy komórki podpięte.
+          removeClippedSubviews={false}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          onScrollEndDrag={handleScrollEndDrag}
+          onMomentumScrollBegin={handleMomentumScrollBegin}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
           onContentSizeChange={handleContentSizeChange}
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-          renderItem={({ item }) => {
-            const d = new Date();
-            const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-            const past = item.departureSec > 0 && item.departureSec < nowS - 60;
-            const isTracked =
-              trackedTrip?.connection.id === item.id && isTrackingThisRoute;
-            return (
-              <View>
-                <ConnectionCard
-                  item={item}
-                  dimmed={past}
-                  onPress={() =>
-                    router.push({ pathname: '/routes/[id]', params: { id: item.id } })
-                  }
-                />
-                {/* Śledzimy konkretny kurs, nie całe zapytanie — inaczej
-                    powiadomienie potrafiłoby przeskoczyć na inną godzinę. */}
-                {!past && !isTracked ? (
-                  <Pressable
-                    onPress={() => void startTrackingConnection(item)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Śledź połączenie o ${item.departAt}`}
-                    style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}
-                    hitSlop={6}
-                  >
-                    <Radio size={13} color={scheme.onSurfaceVariant} />
-                    <Text style={styles.trackBtnText}>Śledź ten kurs</Text>
-                  </Pressable>
-                ) : null}
-                {isTracked ? (
-                  <View style={styles.trackActive}>
-                    <Radio size={13} color={scheme.primary} />
-                    <Text style={styles.trackActiveText}>Śledzone</Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          }}
+          renderItem={renderConnection}
           ListHeaderComponent={
-            <View>
-              {trackedTrip && trackedProgress ? (
-                <View style={styles.activeTripSlot}>
-                  <ActiveTripCard
-                    trip={trackedTrip}
-                    progress={trackedProgress}
-                    onStop={() => void stopTracking()}
-                    onOpen={() =>
-                      router.push({
-                        pathname: '/routes/[id]',
-                        params: { id: trackedTrip.connection.id },
-                      })
-                    }
-                  />
-                </View>
-              ) : null}
-              {loadingEarlier && (
-                <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color={scheme.primary} />
+            <View style={styles.countRow}>
+              <Text style={styles.count} numberOfLines={1}>
+                {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
+                {directOnly ? ' • tylko bezpośrednie' : ''}
+                {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
+                {loadingEarlier ? ' • wczytuję wcześniejsze…' : ''}
+              </Text>
+              {offline && (
+                <Pressable
+                  onPress={() => quietRefresh()}
+                  style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ostatnie dane z cache. Dotknij, aby odświeżyć."
+                >
+                  <View style={styles.offlineDot} />
+                  <Text style={styles.offlineText}>offline</Text>
+                </Pressable>
+              )}
+              {liveStale && !offline && (
+                <View style={styles.offlineChip}>
+                  <View style={styles.offlineDot} />
+                  <Text style={styles.offlineText}>brak danych live</Text>
                 </View>
               )}
-              <View style={styles.countRow}>
-                <Text style={styles.count} numberOfLines={1}>
-                  {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
-                  {directOnly ? ' • tylko bezpośrednie' : ''}
-                  {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
-                </Text>
-                {offline && (
-                  <Pressable
-                    onPress={() => quietRefresh()}
-                    style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel="Ostatnie dane z cache. Dotknij, aby odświeżyć."
-                  >
-                    <View style={styles.offlineDot} />
-                    <Text style={styles.offlineText}>offline</Text>
-                  </Pressable>
-                )}
-                {liveStale && !offline && (
-                  <View style={styles.offlineChip}>
-                    <View style={styles.offlineDot} />
-                    <Text style={styles.offlineText}>brak danych live</Text>
-                  </View>
-                )}
-              </View>
             </View>
           }
           ListFooterComponent={
@@ -1131,7 +1251,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 6. Bottom sheet wyboru daty i godziny */}
+      {/* 4. Bottom sheet wyboru daty i godziny */}
       {timeSheetOpen && (
         <DepartureTimeSheet
           initialTimeSec={departureTimeSec}
@@ -1141,7 +1261,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 7. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
+      {/* 5. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
           placeholder={sheetFor === 'from' ? 'Skąd wyruszasz?' : 'Dokąd jedziesz?'}
@@ -1158,6 +1278,25 @@ export default function RoutesScreen() {
           }}
         />
       )}
+
+      {/* 6. Dolne menu — jedyne miejsce na filtry i akcje (pod kciukiem),
+          ze springowym chowaniem się przy przewijaniu listy. */}
+      {!sheetFor && !timeSheetOpen && (
+        <RoutesThumbBar
+          animatedStyle={animatedDockStyle}
+          onSwap={handleSwap}
+          directOnly={directOnly}
+          onToggleDirect={() => setDirectOnly(!directOnly)}
+          timeLabel={timeLabel}
+          isCustomTime={isCustomTime}
+          onOpenTimeSheet={() => setTimeSheetOpen(true)}
+          modeFilter={modeFilter}
+          onCycleMode={handleCycleMode}
+          sortMode={sortMode}
+          onCycleSort={handleCycleSort}
+          onRefresh={() => void quietRefresh()}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -1166,7 +1305,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -1184,45 +1323,39 @@ const styles = StyleSheet.create({
     ...type.titleMedium,
     fontWeight: '700',
     color: scheme.onSurface,
+    // Optyczne wycentrowanie względem toru toggla / pinezki (38 px):
+    // sam tekst ma ~22 px, więc doklejamy górę, żeby środki się zgrywały.
+    paddingTop: 8,
   },
-  timeChip: {
-    flexDirection: 'row',
+  pinWrap: {
+    width: 34,
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
+  },
+  pinSlot: {
     height: 38,
-    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  timeChipActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  timeText: {
-    ...type.labelMedium,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '600',
-  },
-  timeTextActive: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
+  pinLabel: {
+    marginTop: 2,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '500',
+    color: scheme.onSurfaceVariant,
+    opacity: 0.65,
+    textAlign: 'center',
   },
   pinBtn: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pinBtnActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
   // Karta aktywnej podróży nad listą połączeń
-  activeTripSlot: {
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-  },
-  // Akcja „Śledź ten kurs" pod kartą połączenia
+  activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
+  // Akcja „Śledź ten kurs” pod kartą połączenia
   trackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1235,11 +1368,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 30,
   },
-  trackBtnText: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-    fontWeight: '600',
-  },
+  trackBtnText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   trackActive: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1251,12 +1380,33 @@ const styles = StyleSheet.create({
     height: 30,
     justifyContent: 'center',
   },
-  trackActiveText: {
-    ...type.labelMedium,
-    color: scheme.primary,
-    fontWeight: '700',
+  trackActiveText: { ...type.labelMedium, color: scheme.primary, fontWeight: '700' },
+  pinBtnActive: {
+    backgroundColor: scheme.primaryContainer,
   },
-  // Karta trasy z dedykowanymi kolumnami
+  // Nagłówek trasy w stylu One UI: bez tła, jedna linia.
+  // Wysokość jak dawny box (~64), większy font, luźny oddech z boków.
+  // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
+  // nazwy dalej ucinały się z elipsą w jednej linii.
+  anchorCloseBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
+  },
+  toText: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
+  // nazwy dalej ucinały się z elipsą w jednej linii.
+  routeSlide: {
+    flexShrink: 1,
+  },
   routeCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1294,7 +1444,6 @@ const styles = StyleSheet.create({
   fromText: {
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
-    flex: 1,
   },
   anchorBadge: {
     flexDirection: 'row',
@@ -1328,62 +1477,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     maxWidth: 60,
   },
-  anchorCloseBtn: {
-    width: 20,
-    height: 20,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-  },
-  toText: {
-    ...type.titleSmall,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    flex: 1,
-  },
-  // Wyśrodkowany przycisk zamiany
-  swapBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  collapsibleFiltersWrap: {
-    overflow: 'hidden',
-  },
-  // Segmented: Najszybciej / Najwcześniej
-  sortRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  filtersWrap: {
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  sortPill: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: shape.full,
-    paddingVertical: 9,
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  sortPillActive: {
-    backgroundColor: scheme.secondaryContainer,
-  },
-  sortText: {
-    ...type.labelLarge,
-    color: scheme.onSurfaceVariant,
-  },
-  sortTextActive: {
-    color: scheme.onSecondaryContainer,
-    fontWeight: '700',
-  },
   countRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1398,7 +1491,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 14,
-    paddingBottom: 36,
+    paddingBottom: 96,
     gap: 10,
   },
   loading: {

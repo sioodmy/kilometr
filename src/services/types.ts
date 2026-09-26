@@ -15,7 +15,7 @@ export interface ISearchService {
 }
 
 export interface IRoutingService {
-  getConnections(query: RouteQuery): Promise<Connection[]>;
+  getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]>;
   getConnectionById(id: string): Promise<Connection | undefined>;
   saveRoute(connection: Connection): Promise<void>;
   deleteSavedRoute(id: string): Promise<void>;

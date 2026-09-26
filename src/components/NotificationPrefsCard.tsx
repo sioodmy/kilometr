@@ -1,7 +1,6 @@
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BellRing, Minus, Navigation, Plus } from 'lucide-react-native';
+import { BellRing, Check, Minus, Navigation, Plus } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
-import { M3Switch } from './M3Switch';
 import {
   areNotificationsSupported,
   isDynamicIslandPlatform,
@@ -14,12 +13,54 @@ import {
 // Ustawienia powiadomień. Świadomie wyjaśniamy DLACZEGO coś jest włączone:
 // „pasek postępu" i „Dynamic Island" brzmią dla użytkownika jak gadżet,
 // a to są realne, mierzalne rzeczy (odliczanie bez budzenia aplikacji).
+//
+// Przełącznik to naciskany pill, nie M3 Switch — w dolnym menu aplikacji
+// (i przy okazji na ekranie tras) zrezygnowano z przełączników na rzecz
+// przycisków, więc nie wprowadzamy ich z powrotem w Ustawieniach.
 
 const LEAD_MIN = [1, 3, 5, 10, 15];
 
 function leadIndex(min: number): number {
   const i = LEAD_MIN.indexOf(min);
   return i >= 0 ? i : LEAD_MIN.indexOf(5);
+}
+
+function Toggle({
+  value,
+  onChange,
+  disabled,
+  label,
+}: {
+  value: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  label: string;
+}) {
+  return (
+    <Pressable
+      onPress={() => onChange(!value)}
+      disabled={disabled}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: value, disabled: !!disabled }}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.toggle,
+        value && styles.toggleOn,
+        disabled && styles.toggleDisabled,
+        pressed && !disabled && { opacity: 0.7 },
+      ]}
+    >
+      {value ? (
+        <Check size={14} color={scheme.onPrimaryContainer} strokeWidth={2.6} />
+      ) : (
+        <Minus size={14} color={scheme.onSurfaceVariant} strokeWidth={2.6} />
+      )}
+      <Text style={[styles.toggleText, value && styles.toggleTextOn]}>
+        {value ? 'Wł.' : 'Wył.'}
+      </Text>
+    </Pressable>
+  );
 }
 
 function ToggleRow({
@@ -44,7 +85,7 @@ function ToggleRow({
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowHint}>{hint}</Text>
       </View>
-      <M3Switch value={value} onChange={onChange} disabled={disabled} label={title} />
+      <Toggle value={value} onChange={onChange} disabled={disabled} label={title} />
     </View>
   );
 }
@@ -221,6 +262,29 @@ const styles = StyleSheet.create({
   },
   spacerIcon: {
     width: 17,
+  },
+  toggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.full,
+    paddingHorizontal: 11,
+    height: 34,
+  },
+  toggleOn: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  toggleDisabled: {
+    opacity: 0.35,
+  },
+  toggleText: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  toggleTextOn: {
+    color: scheme.onPrimaryContainer,
   },
   stepper: {
     flexDirection: 'row',

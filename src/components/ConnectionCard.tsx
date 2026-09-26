@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ArrowRight, Footprints } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
@@ -140,13 +140,13 @@ function rowWidth(segs: SegmentItem[], badgeW: number): number {
   );
 }
 
-export function ConnectionCard({
+export const ConnectionCard = memo(function ConnectionCard({
   item,
   onPress,
   dimmed = false,
 }: {
   item: Connection;
-  onPress: () => void;
+  onPress: (item: Connection) => void;
   /** historyczne (przeszłe) połączenie — przygaszony wygląd */
   dimmed?: boolean;
 }) {
@@ -200,7 +200,7 @@ export function ConnectionCard({
   let dotColor: string | null = null;
   // Odliczamy z departureSec, a nie z departInMin z chwili pobrania:
   // lista może być otwarta kilkanaście minut, a „za 4 min” w międzyczasie
-  // przestałoby być prawdą (i odjechane połączenie wyglądało jak aktualne).
+  // przestałoby być prawdą (i odjechane połączenie wyglądałoby jak aktualne).
   const effectiveMin =
     item.departureSec > 0 ? Math.round((item.departureSec - nowSec()) / 60) : item.departInMin;
 
@@ -237,13 +237,21 @@ export function ConnectionCard({
       ? scheme.error
       : scheme.onSurface;
 
+  const linesSummary = boarding.map((b) => b.line).filter(Boolean).join(', ');
+  const accessibilityDesc = `${departureText}, czas jazdy ${item.durationMin} min, odjazd ${item.departAt}, przyjazd ${item.arriveAt}, ${walkOnly ? 'trasa piesza' : transfersLabel(item.transfers)}${linesSummary ? `, linie ${linesSummary}` : ''}`;
+
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(item)}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityDesc}
+      // Sam kolor tła zamiast skali: przyciśnięcie nie musi przeliczać warstwy
+      // i ponownie rasterować karty z cieniem. Skala + opacity pulsowały przy
+      // każdym przytrzymaniu palca na starcie przeciągania.
       style={({ pressed }) => [
         styles.card,
         dimmed && styles.dimmed,
-        pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 },
+        pressed && { backgroundColor: scheme.surfaceContainerHigh },
       ]}
     >
       {/* Góra: ZA ILE odjazd (główne) + pill z czasem jazdy */}
@@ -273,31 +281,26 @@ export function ConnectionCard({
               <Footprints size={12} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
               <Text style={styles.walkPillText}>{walkMin}m</Text>
             </View>
-            <Text style={styles.walkOnlyText}>Pieszo do celu</Text>
+            <Text style={styles.walkLabel}>całość pieszo</Text>
           </View>
         ) : (
           visible.segments.map((seg) => {
-            if (seg.type === 'walk') {
-              return (
-                <View
-                  key={seg.key}
-                  style={styles.walkPill}
-                  accessibilityLabel={`${seg.minutes} minut pieszo`}
-                >
-                  <Footprints size={12} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
-                  <Text style={styles.walkPillText}>{seg.minutes}m</Text>
-                </View>
-              );
-            }
             if (seg.type === 'arrow') {
               return (
                 <ArrowRight
                   key={seg.key}
-                  size={13}
-                  color={scheme.outline}
+                  size={12}
+                  color={scheme.onSurfaceVariant}
                   strokeWidth={2}
-                  style={styles.arrowIcon}
                 />
+              );
+            }
+            if (seg.type === 'walk') {
+              return (
+                <View key={seg.key} style={styles.walkPill}>
+                  <Footprints size={12} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
+                  <Text style={styles.walkPillText}>{seg.minutes}m</Text>
+                </View>
               );
             }
             const showDirection = boarding.length === 1 && visible.dirWidth > 0;
@@ -322,15 +325,17 @@ export function ConnectionCard({
       {item.interchange ? <Text style={styles.interchange}>{item.interchange}</Text> : null}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
-  // M3 elevated card: surfaceContainer + level1, shape large
+  // M3 elevated card: surfaceContainer + level1, shape large, minHeight 92 dla kciuka
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.large,
     padding: 14,
     gap: 10,
+    minHeight: 92,
+    justifyContent: 'center',
     ...elev.level1,
   },
   dimmed: {
@@ -368,10 +373,9 @@ const styles = StyleSheet.create({
   hoursDot: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-    marginHorizontal: 1,
   },
   hours: {
-    ...type.bodySmall,
+    ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
   },
   legs: {
@@ -379,55 +383,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     flexWrap: 'nowrap',
-    overflow: 'hidden',
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.medium,
-    padding: 8,
-  },
-  transitGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    flexShrink: 0,
-  },
-  dir: {
-    ...type.labelMedium,
-    color: scheme.onSurface,
-    flexShrink: 1,
-  },
-  walkPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3.5,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.full,
-    paddingHorizontal: 7,
-    height: 26,
-  },
-  walkPillText: {
-    ...type.labelSmall,
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '700',
-    color: scheme.onSurfaceVariant,
-    includeFontPadding: false,
-  },
-  arrowIcon: {
-    marginHorizontal: 1,
   },
   walkOnlyWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 2,
   },
-  walkOnlyText: {
-    ...type.labelMedium,
-    fontWeight: '600',
+  walkPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: scheme.surfaceContainerHigh,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: shape.small,
+  },
+  walkPillText: {
+    ...type.labelSmall,
     color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  walkLabel: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+  },
+  transitGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  dir: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    flexShrink: 1,
   },
   interchange: {
     ...type.bodySmall,
-    color: scheme.primary,
+    color: scheme.onSurfaceVariant,
+    fontStyle: 'italic',
   },
 });

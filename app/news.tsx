@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -22,7 +22,13 @@ import {
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { fetchMpkNews, markNewsSeen, type MpkNewsItem } from '../src/services/mpkNews';
 
-function NewsCard({ item, onOpen }: { item: MpkNewsItem; onOpen: (item: MpkNewsItem) => void }) {
+const NewsCard = memo(function NewsCard({
+  item,
+  onOpen,
+}: {
+  item: MpkNewsItem;
+  onOpen: (item: MpkNewsItem) => void;
+}) {
   const urgent = item.urgent;
   return (
     <Pressable
@@ -60,7 +66,7 @@ function NewsCard({ item, onOpen }: { item: MpkNewsItem; onOpen: (item: MpkNewsI
       </View>
     </Pressable>
   );
-}
+});
 
 function SkeletonCard() {
   return (
@@ -106,6 +112,13 @@ export default function NewsScreen() {
     if (!item.link) return;
     void Linking.openURL(item.link).catch(() => {});
   }, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: MpkNewsItem }) => <NewsCard item={item} onOpen={openItem} />,
+    [openItem],
+  );
+
+  const keyExtractor = useCallback((it: MpkNewsItem) => it.id, []);
 
   const urgentCount = items.filter((i) => i.urgent).length;
 
@@ -163,10 +176,13 @@ export default function NewsScreen() {
       ) : (
         <FlatList
           data={items}
-          keyExtractor={(it) => it.id}
+          keyExtractor={keyExtractor}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
+          // Jak na liście połączeń: bez tego Android odpina karty spoza kadru
+          // i przy przeciąganiu palcem miga pustymi miejscami.
+          removeClippedSubviews={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -175,7 +191,7 @@ export default function NewsScreen() {
               colors={[scheme.primary]}
             />
           }
-          renderItem={({ item }) => <NewsCard item={item} onOpen={openItem} />}
+          renderItem={renderItem}
         />
       )}
     </SafeAreaView>

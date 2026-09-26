@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import {
   Bell,
@@ -104,6 +105,11 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
 
 // ─── Krok 1: uprawnienia ─────────────────────────────────────────────────────
 
+// Push w Expo Go nie istnieje od SDK 53 (sam require + getPermissionsAsync
+// rzuca błąd do LogBoxa), więc nawet nie próbujemy — ten sam guard co
+// w pinnedConnection.getNotifications(). Powiadomienia działają w dev buildzie.
+const NOTIF_SUPPORTED = Constants.appOwnership !== 'expo';
+
 function usePermissionStates() {
   const [loc, setLoc] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [notif, setNotif] = useState<'unknown' | 'granted' | 'denied'>('unknown');
@@ -117,8 +123,13 @@ function usePermissionStates() {
       setLoc('unknown');
     }
     try {
-      // Przez serwis powiadomień: ma guard na Expo Go (bezpośredni import
-      // expo-notifications potrafi wywalić ewaluację modułu).
+      if (!NOTIF_SUPPORTED) {
+        setNotif('unknown');
+        return;
+      }
+      // Przez serwis powiadomień, który ma własny guard na Expo Go i rozumie
+      // też iOS `provisional`. Dzięki temu onboarding nie duplikuje logiki
+      // uprawnień, którą ma już reszta aplikacji.
       setNotif((await hasNotificationPermission()) ? 'granted' : 'unknown');
     } catch {
       setNotif('unknown');
@@ -147,6 +158,7 @@ function usePermissionStates() {
   }, []);
 
   const requestNotif = useCallback(async () => {
+    if (!NOTIF_SUPPORTED) return;
     setBusy('notif');
     try {
       setNotif((await ensureNotificationPermission()) ? 'granted' : 'denied');
@@ -473,6 +485,11 @@ export default function OnboardingScreen() {
                   <Check size={16} color={scheme.success} />
                   <Text style={s.doneText}>Powiadomienia włączone.</Text>
                 </View>
+              ) : !NOTIF_SUPPORTED ? (
+                <Text style={s.fine}>
+                  Podgląd w Expo Go — powiadomienia (przypięte połączenie) działają w buildzie
+                  deweloperskim.
+                </Text>
               ) : (
                 <Pressable
                   onPress={() => void perms.requestNotif()}
