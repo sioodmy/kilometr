@@ -28,7 +28,6 @@ import {
 import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
 import { SavedPlacesRow } from '../src/components/SavedPlacesRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
-import { SearchBar } from '../src/components/SearchBar';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
@@ -607,15 +606,8 @@ export default function HomeScreen() {
             </Pressable>
           )}
 
-          <View style={{ height: 24 }} />
-          <SearchBar
-            onPress={() => {
-              setReturnToDestinationAfterStart(false);
-              setQuery('');
-              setSheetMode('destination');
-            }}
-          />
-
+          {/* Wyszukiwarka celu jest tylko w dolnym menu pod kciukiem —
+              drugi raz na górze ekranu to ta sama akcja w dwóch miejscach. */}
           <View style={{ height: 20 }} />
           <View style={styles.sectionHeader}>
             <Text style={styles.section}>Zapisane miejsca</Text>

@@ -702,15 +702,15 @@ export default function RouteMapScreen() {
 /** Odcinek trasy przed punktem `progress` — „nitka dalej” na dużej mapie. */
 function aheadSlice(coords: Coord[], progress: number, maxM: number): Coord[] {
   if (coords.length < 2) return [];
-  const out: Coord[] = [];
+  const { point: cursor, index } = interpolateRoute(coords, progress);
+  const out: Coord[] = [cursor];
   let travelled = 0;
-  const { point: cursor } = interpolateRoute(coords, progress);
   let previous: Coord = cursor;
-  for (const c of coords) {
-    travelled += distanceM(previous, c);
-    previous = c;
+  for (let i = index + 1; i < coords.length; i++) {
+    travelled += distanceM(previous, coords[i]);
+    previous = coords[i];
     if (travelled > maxM) break;
-    out.push(c);
+    out.push(coords[i]);
   }
   return out;
 }
