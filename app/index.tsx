@@ -27,6 +27,7 @@ import {
 } from '../src/services/widgetSnapshot';
 import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
 import { SavedPlacesRow } from '../src/components/SavedPlacesRow';
+import { HomeThumbBar } from '../src/components/HomeThumbBar';
 import { SearchBar } from '../src/components/SearchBar';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
@@ -413,6 +414,10 @@ export default function HomeScreen() {
     return () => clearTimeout(t);
   }, [query, sheetMode, currentCoords]);
 
+  const topSavedPlace = useMemo(() => {
+    return saved.find((p) => p.icon === 'home') ?? saved[0];
+  }, [saved]);
+
   const quick = useMemo<Suggestion[]>(
     () =>
       saved.slice(0, 3).map((s) => ({
@@ -644,6 +649,20 @@ export default function HomeScreen() {
           <View style={{ height: 90 }} />
         </ScrollView>
       </SafeAreaView>
+
+      {!sheetMode && !manageSheetOpen && !addPlaceOpen && (
+        <HomeThumbBar
+          onOpenSearch={() => {
+            setReturnToDestinationAfterStart(false);
+            setQuery('');
+            setSheetMode('destination');
+          }}
+          topSavedPlace={topSavedPlace}
+          onSelectPlace={(p) =>
+            goToRoutes({ id: p.placeId, title: p.name, address: p.address, lat: p.lat, lon: p.lon })
+          }
+        />
+      )}
 
       {sheetMode && (
         <SearchSheet
