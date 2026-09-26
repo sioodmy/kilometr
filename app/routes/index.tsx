@@ -1357,9 +1357,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   // Kolumna pinezki — lustrzane odbicie sortWrap (przycisk + label).
+  // paddingTop dosuwa krótszy przycisk (34 vs tor 38), żeby podpisy
+  // pod spodem siadały w jednej linii.
   pinWrap: {
     width: 34,
     alignItems: 'center',
+    paddingTop: 4,
   },
   pinBtn: {
     width: 34,
