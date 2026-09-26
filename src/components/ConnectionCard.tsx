@@ -128,8 +128,10 @@ const W_BADGE_COMPACT = 42;
 const W_ARROW = 16;
 const W_WALK = 46;
 const W_GAP = 6;
-const W_DIR_PER_CHAR = 6.5;
-const W_DIR_MAX = 110;
+// Ile kierunku warto jeszcze pokazać. Poniżej tego miejsca i tak zostałyby
+// same wielkie kropki po elipsie („LEŚNI…”), więc lepiej nie pokazywać wcale —
+// pełny kierunek jest na ekranie szczegółów.
+const W_DIR_MIN = 44;
 
 function rowWidth(segs: SegmentItem[], badgeW: number): number {
   const badges = segs.filter((s) => s.type === 'transit').length;
@@ -160,7 +162,8 @@ export const ConnectionCard = memo(function ConnectionCard({
   const badgeW = compact ? W_BADGE_COMPACT : W_BADGE;
 
   // Co widać w jednej linii:
-  // - kierunek tylko przy pojedynczej linii i tylko gdy na pewno się mieści,
+  // - kierunek tylko przy pojedynczej linii i tylko gdy jest na niego miejsce
+  //   (resztę wiersza zajmuje kierunek aż do krawędzi karty),
   // - przy kilku liniach kierunków nie ma wcale; gdy ciasno, wypadają najpierw
   //   piesze transfery, potem końcowy i początkowy spacer. Badge linii i strzałki
   //   zostają zawsze. Pełne dane są na ekranie szczegółów.
@@ -168,11 +171,11 @@ export const ConnectionCard = memo(function ConnectionCard({
     if (walkOnly) return { segments, dirWidth: 0 };
     if (boarding.length === 1) {
       const dir = boarding[0]?.direction ?? '';
-      const dirW = Math.min(dir.length * W_DIR_PER_CHAR, W_DIR_MAX);
-      const base = rowWidth(segments, badgeW);
-      if (dir && base + W_GAP + dirW <= avail) {
-        return { segments, dirWidth: Math.min(dirW, avail - base - W_GAP) };
-      }
+      // Szerokość kierunku to cały wolny pas wiersza, a nie szacunek z liczby
+      // znaków: przy 12 px i wielkich literach „LEŚNICE” potrzebuje ~56 px, a
+      // przelicznik 6,5/znak dawał 45 px i ucinał nazwę do „LEŚNI…”.
+      const free = avail - rowWidth(segments, badgeW) - W_GAP;
+      if (dir && free >= W_DIR_MIN) return { segments, dirWidth: free };
       return { segments, dirWidth: 0 };
     }
     if (rowWidth(segments, badgeW) <= avail) return { segments, dirWidth: 0 };
