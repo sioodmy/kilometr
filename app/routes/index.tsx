@@ -907,32 +907,28 @@ export default function RoutesScreen() {
           Połączenia MPK
         </Text>
 
-        {/* Pinezka z podpisem „Pin” (z main): przycisk w slocie + niewidoczny
-            odstępnik, żeby górna krawędź zgrywała się z resztą paska. */}
-        <View style={styles.pinWrap}>
-          <View style={styles.pinSlot}>
-            <Pressable
-              onPress={togglePin}
-              accessibilityRole="button"
-              accessibilityLabel={isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'}
-              style={({ pressed }) => [
-                styles.pinBtn,
-                isPinned && styles.pinBtnActive,
-                pressed && { opacity: 0.8 },
-              ]}
-              hitSlop={8}
-            >
-              <Pin
-                size={17}
-                color={isPinned ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
-                fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
-              />
-            </Pressable>
-          </View>
-          <Text style={styles.pinLabel} numberOfLines={1}>
-            Pin
-          </Text>
-        </View>
+        {/* Pinezka: zwykły przycisk-pasek, 1:1 ze strzałką wstecz. Podpis
+            „Pin” wyglądał jak sierota, kiedy sortowanie zjechało do docka —
+            opis zostaje w accessibilityLabel. */}
+        <Pressable
+          onPress={togglePin}
+          accessibilityRole="button"
+          accessibilityLabel={
+            isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'
+          }
+          style={({ pressed }) => [
+            styles.pinBtn,
+            isPinned && styles.pinBtnActive,
+            pressed && { opacity: 0.7 },
+          ]}
+          hitSlop={8}
+        >
+          <Pin
+            size={19}
+            color={isPinned ? scheme.onPrimaryContainer : scheme.onSurface}
+            fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
+          />
+        </Pressable>
       </View>
 
       {/* 2. Karta trasy: klikalny Start / Cel. Zamiana miejsc, czas odjazdu
@@ -1234,7 +1230,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    // Centrujemy pionowo: dwa okrągłe przyciski (40) i tytuł między nimi —
+    // bez ręcznego podkładania paddingu pod tekst.
+    alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -1252,43 +1250,20 @@ const styles = StyleSheet.create({
     ...type.titleMedium,
     fontWeight: '700',
     color: scheme.onSurface,
-    // Optyczne wycentrowanie względem toru toggla / pinezki (38 px):
-    // sam tekst ma ~22 px, więc doklejamy górę, żeby środki się zgrywały.
-    paddingTop: 8,
   },
-  pinWrap: {
-    width: 34,
-    alignItems: 'center',
-  },
-  pinSlot: {
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinLabel: {
-    marginTop: 2,
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '500',
-    color: scheme.onSurfaceVariant,
-    opacity: 0.65,
-    textAlign: 'center',
-  },
+  // Pinezka 1:1 ze strzałką wstecz — dwa okrągłe akcje na końcach paska.
   pinBtn: {
-    width: 34,
-    height: 34,
+    width: 40,
+    height: 40,
     borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pinBtnActive: {
     backgroundColor: scheme.primaryContainer,
   },
-  // Nagłówek trasy w stylu One UI: bez tła, jedna linia.
-  // Wysokość jak dawny box (~64), większy font, luźny oddech z boków.
-  // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
-  // nazwy dalej ucinały się z elipsą w jednej linii.
+  // Zamknięcie zakotwiczenia (przystanek) w wierszu startu trasy.
   anchorCloseBtn: {
     width: 20,
     height: 20,
