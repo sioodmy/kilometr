@@ -151,6 +151,10 @@ export default function RoutesScreen() {
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [noMoreEarlier, setNoMoreEarlier] = useState(false);
   const [noMoreLater, setNoMoreLater] = useState(false);
+  // Doładowanie potrafi paść (baza w trakcie importu, pusty dzień) i wtedy
+  // lista po cichu przestawała się dociągać. Bez tego użytkownik scrollował
+  // do końca i nie dostawał żadnej odpowiedzi.
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   // Sortowanie listy: 'fastest' = najwcześniejsze przybycie (domyślnie,
   // żeby jednym tapnięciem wrócić szybko do domu), 'earliest' = jak w
   // Jakdojade, od najwcześniejszego odjazdu. Magazyn (items) zawsze
@@ -468,6 +472,7 @@ export default function RoutesScreen() {
     setOffline(false);
     setNoMoreEarlier(false);
     setNoMoreLater(false);
+    setLoadMoreFailed(false);
     const depSec = targetDepSec !== undefined ? targetDepSec : departureTimeSec;
     try {
       // Wcześniej niż dotąd: pusty sklep dawał „zero połączeń", a ekran
@@ -569,6 +574,7 @@ export default function RoutesScreen() {
     if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreLater || offline) return;
 
     setLoadingMore(true);
+    setLoadMoreFailed(false);
     const lastDeparture = items[items.length - 1].departureSec;
     const nextDeparture = lastDeparture + 60;
     const seq = ++fetchSeq.current;
@@ -581,8 +587,9 @@ export default function RoutesScreen() {
         if (added === 0) setNoMoreLater(true);
         return list;
       });
-    } catch {
-      // po cichu — lista zostaje, spinner znika
+    } catch (err) {
+      console.warn('[Routes] load more failed:', err);
+      if (seq === fetchSeq.current) setLoadMoreFailed(true);
     } finally {
       if (seq === fetchSeq.current) {
         setLoadingMore(false);
@@ -1132,10 +1139,34 @@ export default function RoutesScreen() {
               )}
             </View>
           }
+          // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
+          // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
+          // widać, to spinner, a po błędzie — nic, czyli lista po cichu
+          // przestawała się dociągać.
+          // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć —
+          // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
           ListFooterComponent={
-            loadingMore ? (
-              <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                <ActivityIndicator size="small" color={scheme.primary} />
+            loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
+              <View style={styles.footer}>
+                {loadingMore ? (
+                  <ActivityIndicator size="small" color={scheme.primary} />
+                ) : loadMoreFailed ? (
+                  <>
+                    <Text style={styles.footerText}>
+                      Nie udało się dociągnąć dalszych połączeń.
+                    </Text>
+                    <Pressable
+                      onPress={() => void handleLoadMore()}
+                      style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Spróbuj dociągnąć dalsze połączenia"
+                    >
+                      <Text style={styles.retryText}>Spróbuj ponownie</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Text style={styles.footerText}>To wszystkie odjazdy z tej trasy.</Text>
+                )}
               </View>
             ) : null
           }
@@ -1395,6 +1426,8 @@ const styles = StyleSheet.create({
     paddingBottom: 96,
     gap: 10,
   },
+  footer: { paddingVertical: 18, alignItems: 'center', gap: 10 },
+  footerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
   loading: {
     flex: 1,
     alignItems: 'center',
