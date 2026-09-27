@@ -272,8 +272,17 @@ export const ConnectionCard = memo(function ConnectionCard({
         <Text style={styles.hours}>{item.departAt}</Text>
         <ArrowRight size={12} color={scheme.onSurfaceVariant} strokeWidth={2} />
         <Text style={styles.hours}>{item.arriveAt}</Text>
-        <Text style={styles.hoursDot}>•</Text>
-        <Text style={styles.hours}>{walkOnly ? 'pieszo' : transfersLabel(item.transfers)}</Text>
+        {/* Przy połączeniu bezpośrednim tekst „bezpośrednio” jest w rzucie oczu
+            wierszem szumu — jedna linia bez strzałki przesiadki mówi to samo.
+            Zostaje przy przesiadkach i przy trasie pieszej. */}
+        {walkOnly || item.transfers > 0 ? (
+          <>
+            <Text style={styles.hoursDot}>•</Text>
+            <Text style={styles.hours}>
+              {walkOnly ? 'pieszo' : transfersLabel(item.transfers)}
+            </Text>
+          </>
+        ) : null}
       </View>
 
       {/* Środek: badge linii oraz piesze części trasy (zgodnie ze stylem Jakdojade) */}
