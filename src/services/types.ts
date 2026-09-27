@@ -16,7 +16,14 @@ export interface ISearchService {
 
 export interface IRoutingService {
   getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]>;
-  getConnectionById(id: string): Promise<Connection | undefined>;
+  /**
+   * Pojedyncze połączenie wraz z informacją, SKĄD je wzięliśmy.
+   * `source: 'cache'` oznacza, że nie ma go w pamięci procesu i pochodzi
+   * z zapisu na dysku — wtedy czasy są sprzed zapisu, a `live` jest zerowane.
+   * Bez tej informacji ekran szczegółów pokazywał dane z cache tak, jakby były
+   * świeżo policzone, a użytkownik nie miał szansy tego odróżnić.
+   */
+  getConnectionById(id: string): Promise<{ connection: Connection; source: 'live' | 'cache' } | undefined>;
   saveRoute(connection: Connection): Promise<void>;
   deleteSavedRoute(id: string): Promise<void>;
   isRouteSaved(id: string): Promise<boolean>;

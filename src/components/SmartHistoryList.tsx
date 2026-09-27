@@ -45,11 +45,17 @@ export function SmartHistoryList({
   );
 }
 
-/** "za X min" do najszybszego połączenia; powyżej 59 min pokazuje pełną godzinę odjazdu (np. "13:20"). */
+/**
+ * „za X min” do najszybszego połączenia; powyżej 59 min pokazuje pełną godzinę
+ * odjazdu (np. „13:20”), a wartości ujemne — ile minut temu coś odjechało.
+ * Ujemne bez tej gałęzi obcinały się do zera i raportowały „za chwilę”.
+ */
 export function formatDepartIn(departInMin: number | undefined): string | null {
   if (departInMin === undefined || !Number.isFinite(departInMin)) return null;
-  const m = Math.max(0, Math.round(departInMin));
+  const m = Math.round(departInMin);
   if (m > 180) return null;
+  if (m < -180) return null;
+  if (m < 0) return m >= -1 ? 'przed chwilą' : `${-m} min temu`;
   if (m > 59) {
     const target = new Date(Date.now() + m * 60 * 1000);
     const hh = String(target.getHours()).padStart(2, '0');

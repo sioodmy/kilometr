@@ -31,10 +31,18 @@ export default function RootLayout() {
   useEffect(() => {
     loadSettings();
     // Pierwsze uruchomienie → onboarding (dostępy, rozkład offline, miejsca).
-    hasSeenOnboarding().then((seen) => {
-      if (!seen) router.replace('/onboarding');
-      setReady(true);
-    });
+    // .catch jest tu krytyczny: bez niego odrzucenie (np. uszkodzony KV po
+    // przywróceniu z backupu) zostawiałoby `ready === false` na zawsze, czyli
+    // biały ekran bez możliwości wyjścia. Odtąd startujemy, a problem
+    // zgłaszamy — ekran połączeń i tak pokaże pusty stan rozkładu.
+    hasSeenOnboarding()
+      .then((seen) => {
+        if (!seen) router.replace('/onboarding');
+      })
+      .catch((err) => {
+        console.warn('[RootLayout] onboarding flag unreadable:', err);
+      })
+      .finally(() => setReady(true));
     // Powiadomienia ładowane leniwie w serwisie (guard na Expo Go)
     setupNotificationHandler();
     setupPinnedChannel();
@@ -42,7 +50,7 @@ export default function RootLayout() {
     startPinnedTicker();
 
     // Tap w przypięte powiadomienie → ekran połączeń
-    getPinTapData().then(navigateFromNotification);
+    getPinTapData().then(navigateFromNotification, () => {});
     const remove = addPinTapListener(navigateFromNotification);
     return remove;
   }, []);

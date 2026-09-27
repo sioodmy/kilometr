@@ -192,6 +192,20 @@ export default function NewsScreen() {
             />
           }
           renderItem={renderItem}
+          // Bez tego pusty, ale poprawnie pobrany kanał dawał biały ekran pod
+          // nagłówkiem — użytkownik nie odróżniał go od awarii.
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <View style={styles.stateIcon}>
+                <Newspaper size={28} color={scheme.onSurfaceVariant} />
+              </View>
+              <Text style={styles.stateTitle}>Brak komunikatów</Text>
+              <Text style={styles.stateText}>
+                Wrocław nie opublikował teraz żadnego utrudnienia. Przeciągnij w dół,
+                żeby sprawdzić ponownie.
+              </Text>
+            </View>
+          }
         />
       )}
     </SafeAreaView>
@@ -227,6 +241,7 @@ const styles = StyleSheet.create({
   headerTitle: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
   headerSub: { ...type.labelSmall, color: scheme.onSurfaceVariant, marginTop: 1 },
   list: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 40, gap: 12 },
+  emptyWrap: { alignItems: 'center', gap: 10, paddingTop: 72, paddingHorizontal: 24 },
   // M3 elevated card
   card: {
     backgroundColor: scheme.surfaceContainer,
