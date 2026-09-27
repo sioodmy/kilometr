@@ -1113,7 +1113,16 @@ export default function RoutesScreen() {
           ListHeaderComponent={
             <View style={styles.countRow}>
               <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
+                {connectionsLabel(items.length)} •{' '}
+                {isCustomTime
+                  ? `odjazd ${timeLabel}`
+                  : // Nagłówek mówi wprost, czym jest posortowana lista. Przy
+                    // domyślnym „najszybszy przyjazd” napis „najbliższe odjazdy”
+                    // był po prostu nieprawdą (to samo z resztą: przy własnej
+                    // godzinie sortowanie bywa zgodne przypadkiem).
+                    sortMode === 'fastest'
+                    ? 'najszybszy przyjazd'
+                    : 'najbliższe odjazdy'}
                 {directOnly ? ' • tylko bezpośrednie' : ''}
                 {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
                 {loadingEarlier ? ' • wczytuję wcześniejsze…' : ''}
