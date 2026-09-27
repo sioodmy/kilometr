@@ -399,7 +399,7 @@ export default function HomeScreen() {
     }
     setLoading(true);
     const t = setTimeout(() => {
-      SearchService.search(q, currentCoords)
+      SearchService.search(q, currentCoords, 'home-sheet')
         .then((r) => {
           if (seq !== searchSeq.current) return;
           setResults(r);
