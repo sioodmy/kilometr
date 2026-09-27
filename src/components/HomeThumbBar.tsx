@@ -1,48 +1,32 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { Home, Search } from 'lucide-react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
+import { LocateFixed, Search, X } from 'lucide-react-native';
 import { scheme, type } from '../theme/tokens';
 import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
-import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
-import type { SavedPlace } from '../types/models';
 
 interface HomeThumbBarProps {
   onOpenSearch: () => void;
-  topSavedPlace?: SavedPlace;
-  onSelectPlace?: (place: SavedPlace) => void;
+  /** Miejsce odjazdu — w miejscu dawnego skrótu do ulubionego. */
+  startTitle: string;
+  isCustomStart: boolean;
+  onOpenStart: () => void;
+  onResetStart: () => void;
 }
 
 /**
- * Dolne menu ekranu głównego — ta sama pigułka co na pozostałych ekranach,
- * więc kciuk trafia w to samo miejsce niezależnie od tego, gdzie jesteśmy:
- * skrót do ulubionego miejsca i wyszukiwarka celu.
+ * Dolne menu ekranu głównego — jeden wiersz, dwa wejścia:
+ * z lewej wyszukiwarka celu, z prawej wybór startu („z: …” z ikonką
+ * po prawej). Ten sam font, te same ikony (18) i wyśrodkowane labele.
  */
 export function HomeThumbBar({
   onOpenSearch,
-  topSavedPlace,
-  onSelectPlace,
+  startTitle,
+  isCustomStart,
+  onOpenStart,
+  onResetStart,
 }: HomeThumbBarProps) {
-  const IconComponent = topSavedPlace ? (SAVED_PLACE_ICONS[topSavedPlace.icon] ?? Home) : Home;
-  const showFav = !!topSavedPlace && !!onSelectPlace;
-
   return (
     <ThumbBar>
-      {showFav ? (
-        <>
-          <ThumbBarItem
-            onPress={() => onSelectPlace!(topSavedPlace!)}
-            active
-            layout="horizontal"
-            icon={<IconComponent size={17} color={scheme.onPrimaryContainer} />}
-            label={topSavedPlace!.name}
-            style={styles.favItem}
-            labelStyle={styles.favLabel}
-            accessibilityLabel={`Szybka trasa: ${topSavedPlace!.name}`}
-          />
-          <ThumbBarDivider />
-        </>
-      ) : null}
-
       <ThumbBarItem
         onPress={onOpenSearch}
         layout="horizontal"
@@ -52,27 +36,94 @@ export function HomeThumbBar({
         labelStyle={styles.searchLabel}
         accessibilityLabel="Szukaj adresu, przystanku lub miejsca"
       />
+
+      <ThumbBarDivider />
+
+      <Pressable
+        onPress={onOpenStart}
+        style={({ pressed }) => [styles.startItem, pressed && { opacity: 0.7 }]}
+        accessibilityRole="button"
+        accessibilityLabel={
+          isCustomStart
+            ? `Początek trasy: ${startTitle}. Dotknij, aby zmienić.`
+            : `Lokalizacja: ${startTitle}. Dotknij, aby zmienić miejsce początkowe.`
+        }
+      >
+        <Text
+          style={[styles.startText, isCustomStart && styles.startTextCustom]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          z: {startTitle}
+        </Text>
+        {isCustomStart ? (
+          <Pressable
+            hitSlop={8}
+            onPress={(e) => {
+              e.stopPropagation();
+              onResetStart();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Przywróć bieżącą lokalizację GPS"
+            style={styles.startResetBtn}
+          >
+            <X size={14} color={scheme.onSurfaceVariant} />
+          </Pressable>
+        ) : (
+          <LocateFixed size={18} color={scheme.onSurfaceVariant} />
+        )}
+      </Pressable>
     </ThumbBar>
   );
 }
 
 const styles = StyleSheet.create({
-  favItem: {
-    flex: 0,
-    maxWidth: 160,
-    backgroundColor: scheme.primaryContainer,
-  },
-  favLabel: {
-    ...type.labelLarge,
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
-  },
+  // Szukanie bierze wolne miejsce, start ma maks. 45% i ucina się z elipsą —
+  // label „Dokąd jedziesz?” nigdy nie ginie. Oba wiersze: bodyMedium,
+  // ikony 18, min. 50 px, wyśrodkowane w pionie (bar rozciąga, items centrują).
   searchItem: {
     flex: 1,
+    minWidth: 0,
+    // Bazowy ThumbBarItem centruje treść — tu ma hugować lewą (symetria
+    // do startu hugującego prawą: 12 + 4 z obu stron pigułki).
+    justifyContent: 'flex-start',
   },
   searchLabel: {
     ...type.bodyMedium,
+    lineHeight: 20,
     color: scheme.onSurfaceVariant,
     fontWeight: '500',
+  },
+  startItem: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: '45%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    paddingHorizontal: 12,
+    minHeight: 50,
+  },
+  startText: {
+    ...type.bodyMedium,
+    lineHeight: 20,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '500',
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  startTextCustom: {
+    color: scheme.onSurface,
+    fontWeight: '600',
+  },
+  startResetBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
 });
