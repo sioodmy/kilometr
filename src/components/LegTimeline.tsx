@@ -12,7 +12,7 @@ import type { Leg, LegStop, VehiclePosition } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { RoutingService } from '../services';
-import { formatWalkTime } from '../services/settings';
+import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
 const stopsCache = new Map<string, LegStop[]>();
@@ -420,13 +420,14 @@ function TransitLegCard({
 /** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
 export function LegTimeline({ legs }: { legs: Leg[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const walkMps = useWalkSpeedMps();
 
   return (
     <View style={s.list}>
       {legs.map((leg, i) => {
         const last = i === legs.length - 1;
         if (leg.mode === 'walk') {
-          const walkMin = Math.max(1, Math.round((leg.walkM ?? 200) / 80));
+          const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
           const isSameStop =
             normalizeName(leg.fromStop) === normalizeName(leg.toStop) ||
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
