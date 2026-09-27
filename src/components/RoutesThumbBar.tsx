@@ -7,11 +7,11 @@ import Animated, {
   type AnimatedStyle,
 } from 'react-native-reanimated';
 import {
-  ArrowDownUp,
   ArrowUpDown,
   BusFront,
   Clock3,
   Layers,
+  Rocket,
   RotateCw,
   TramFront,
   Zap,
@@ -181,6 +181,7 @@ export function RoutesThumbBar({
 
       <ThumbBarItem
         onPress={onCycleSort}
+        mode
         active={sortMode === 'earliest'}
         icon={
           <Animated.View
@@ -188,10 +189,14 @@ export function RoutesThumbBar({
             entering={sortMode === 'earliest' ? slideUpIn : slideDownIn}
             exiting={iconOut}
           >
-            <ArrowDownUp
-              size={17}
-              color={sortMode === 'earliest' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-            />
+            {/* Ikona niesie tryb: rakieta = najszybszy przyjazd, zegar =
+                najwcześniejszy odjazd. Sam przycisk jest zawsze wypełniony,
+                bo sortowanie ma zawsze jakąś wartość. */}
+            {sortMode === 'earliest' ? (
+              <Clock3 size={17} color={scheme.onPrimaryContainer} />
+            ) : (
+              <Rocket size={17} color={scheme.onSecondaryContainer} />
+            )}
           </Animated.View>
         }
         label={sortLabel}

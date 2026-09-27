@@ -55,6 +55,12 @@ interface ThumbBarItemProps {
   label: string;
   active?: boolean;
   /**
+   * Przycisk trybu (sortowanie, wymiana): ma wartość zawsze, więc dostaje
+   * wypełnienie niezależnie od `active`. Bez tego ustawienie domyślne wygląda
+   * jak wyłączony filtr, a użytkownik szuka przycisku, którego już używa.
+   */
+  mode?: boolean;
+  /**
    * `vertical` (ikona nad etykietą, jak w M3 navigation bar) mieści 5–6 akcji
    * w jednej pigułce. `horizontal` zostawiamy tam, gdzie etykieta jest długa
    * i jest tylko jedna albo dwie (ekran startowy).
@@ -71,6 +77,7 @@ export function ThumbBarItem({
   icon,
   label,
   active = false,
+  mode = false,
   layout = 'vertical',
   accessibilityLabel,
   accessibilityState,
@@ -87,6 +94,7 @@ export function ThumbBarItem({
       style={({ pressed }) => [
         styles.item,
         layout === 'horizontal' ? styles.itemRow : styles.itemColumn,
+        mode && !active && styles.itemMode,
         active && styles.itemActive,
         pressed && styles.itemPressed,
         style,
@@ -98,6 +106,7 @@ export function ThumbBarItem({
           style={[
             styles.itemLabel,
             layout === 'vertical' && styles.itemLabelVertical,
+            (mode || active) && styles.itemLabelMode,
             active && styles.itemLabelActive,
             labelStyle,
           ]}
@@ -160,6 +169,11 @@ const styles = StyleSheet.create({
   itemActive: {
     backgroundColor: scheme.primaryContainer,
   },
+  // Przycisk trybu w stanie „nie-aktywny": wypełniony, ale spokojny — inny
+  // kolor niż zielony filtr, bo tu nic nie jest włączane ani wyłączane.
+  itemMode: {
+    backgroundColor: scheme.secondaryContainer,
+  },
   itemPressed: {
     opacity: 0.72,
     transform: [{ scale: 0.96 }],
@@ -176,6 +190,9 @@ const styles = StyleSheet.create({
   },
   itemLabelActive: {
     color: scheme.onPrimaryContainer,
+  },
+  itemLabelMode: {
+    color: scheme.onSecondaryContainer,
   },
   divider: {
     width: 1,
