@@ -9,7 +9,11 @@ import type {
 } from '../types/models';
 
 export interface ISearchService {
-  search(query: string, coords?: { lat: number; lon: number }): Promise<Suggestion[]>;
+  /**
+   * `scope` rozdziela anulowanie między niezależnymi polami wyszukiwania —
+   * bez niego zapytanie w jednym polu zabijałooby zapytanie w drugim.
+   */
+  search(query: string, coords?: { lat: number; lon: number }, scope?: string): Promise<Suggestion[]>;
   recent(): Promise<Suggestion[]>;
   recordRecent(item: Suggestion): Promise<void>;
 }

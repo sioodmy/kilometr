@@ -81,7 +81,17 @@ export const LocationService: ILocationService = {
   },
 };
 
-let searchAbort: AbortController | null = null;
+/**
+ * Abort per kontekst, nie globalny. Wyszukiwarka miejsca docelowego i
+ * wyszukiwarka adresu w „Nowym zapisanym miejscu” to dwa niezależne pola
+ * tekstowe, które potrafią być otwarte w tej samej chwili (arkusz wyboru
+ * miejsca startowego otwiera wyszukiwarkę po zapisaniu). Przy jednym
+ * wspólnym `AbortController` nowsze zapytanie z drugiego pola zabijało
+ * pierwsze, a przegrany dostawał `SearchAbortedError` zamieniany przez
+ * wywołującego w „brak wyników” — czyli wynik znikiał bez powodu.
+ */
+const searchAborts = new Map<string, AbortController>();
+const DEFAULT_SEARCH_SCOPE = 'default';
 
 /**
  * Wyszukiwanie przerwane nowszym zapytaniem. Odróżniamy to od „brak wyników”,
@@ -118,13 +128,19 @@ function mergedSet(key: string, data: Suggestion[]): void {
 }
 
 export const SearchService: ISearchService = {
-  async search(query: string, coords?: { lat: number; lon: number }): Promise<Suggestion[]> {
+  async search(
+    query: string,
+    coords?: { lat: number; lon: number },
+    scope: string = DEFAULT_SEARCH_SCOPE,
+  ): Promise<Suggestion[]> {
     const q = query.trim();
     if (!q) return [];
 
-    searchAbort?.abort();
+    searchAborts.get(scope)?.abort();
     const ctrl = new AbortController();
-    searchAbort = ctrl;
+    searchAborts.set(scope, ctrl);
+    // Zapytanie uznane za nieaktualne → nie wrzucamy go do cache podpowiedzi.
+    const isCurrent = () => searchAborts.get(scope) === ctrl;
 
     const hasPos = coords !== undefined;
     const cacheKey = `v2:${q.toLowerCase()}|${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : '-'}`;
@@ -147,7 +163,7 @@ export const SearchService: ISearchService = {
         searchStops(q, 12).catch(() => []),
         searchPois(q, coords?.lat, coords?.lon, 8).catch(() => []),
       ]);
-      if (searchAbort !== ctrl) throw new SearchAbortedError();
+      if (!isCurrent()) throw new SearchAbortedError();
       const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
         id: `stop-${h.stop_id}`,
         title: h.name,
@@ -171,7 +187,7 @@ export const SearchService: ISearchService = {
       let remoteHits: Suggestion[] = [];
       if (needNetwork) {
         remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(() => []);
-        if (searchAbort !== ctrl) throw new SearchAbortedError();
+        if (!isCurrent()) throw new SearchAbortedError();
       }
 
       // 3. Merge: przystanki absolutnie pierwsze (w kolejności trafienie+waga),
@@ -179,14 +195,14 @@ export const SearchService: ISearchService = {
       const merged = dedupeAndSort(localSuggestions, remoteHits, hasPos, normQ).slice(0, 15);
       if (merged.length > 0) {
         mergedSet(cacheKey, merged);
-        if (searchAbort === ctrl) void saveSuggestions(q, merged);
+        if (isCurrent()) void saveSuggestions(q, merged);
         return merged;
       }
     } catch {
       // offline / błąd — fallback niżej
     }
 
-    if (searchAbort !== ctrl) throw new SearchAbortedError();
+    if (!isCurrent()) throw new SearchAbortedError();
     return loadSuggestions(q);
   },
 

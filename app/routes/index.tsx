@@ -367,7 +367,7 @@ export default function RoutesScreen() {
     }
     setSearchLoading(true);
     const t = setTimeout(() => {
-      SearchService.search(q, { lat: fromLat, lon: fromLon })
+      SearchService.search(q, { lat: fromLat, lon: fromLon }, 'routes-start')
         .then((r) => {
           if (seq !== searchSeq.current) return;
           setResults(r);
