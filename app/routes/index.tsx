@@ -1112,7 +1112,7 @@ export default function RoutesScreen() {
           renderItem={renderConnection}
           ListHeaderComponent={
             <View style={styles.countRow}>
-              <Text style={styles.count} numberOfLines={1}>
+              <Text style={styles.count} numberOfLines={2}>
                 {connectionsLabel(items.length)} •{' '}
                 {isCustomTime
                   ? `odjazd ${timeLabel}`
@@ -1378,7 +1378,11 @@ const styles = StyleSheet.create({
   },
   countRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // Nagłówek potrafi być długi („11 połączeń • najszybszy przyjazd •
+    // tramwaje”) i chip „brak danych live” zabiera mu szerokość, więc tekst
+    // zawija się na dwie linie zamiast ucinać się do „• tramw…”. Sam chip
+    // trzymamy u góry, żeby przy jednej linii wyglądał jak dotąd.
+    alignItems: 'flex-start',
     gap: 8,
     marginBottom: 8,
     paddingHorizontal: 4,
