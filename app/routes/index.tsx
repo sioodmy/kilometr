@@ -495,12 +495,22 @@ export default function RoutesScreen() {
         return;
       }
       setItems(applyLiveList(c, depSec));
-      void recordTripSearch(q.fromLat, q.fromLon, q.fromTitle, {
-        id: q.toId || q.toTitle,
-        title: q.toTitle,
-        lat: q.toLat,
-        lon: q.toLon,
-      });
+      // Zmierzony czas dojazdu (najszybszy znaleziony kurs) trafia do
+      // historii — dzięki temu ekran startu pokazuje prawdziwy „~X min”
+      // zamiast stałych osiemnastu minut.
+      const fastest = c[0];
+      void recordTripSearch(
+        q.fromLat,
+        q.fromLon,
+        q.fromTitle,
+        {
+          id: q.toId || q.toTitle,
+          title: q.toTitle,
+          lat: q.toLat,
+          lon: q.toLon,
+        },
+        fastest?.durationMin,
+      );
     } catch {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
