@@ -19,6 +19,15 @@ function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): numb
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+/**
+ * Identyfikator nowego zapisu. Nie `Math.random().toString(36).substring(7)` —
+ * `substring(7)` potrafi zwrócić `''`, gdy zapis jest krótszy niż 7 znaków.
+ * Wycinamy z końca, więc długość wyniku jest zawsze stała.
+ */
+function newId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export const LocationService: ILocationService = {
   async getCurrentLocation() {
     try {
@@ -356,9 +365,15 @@ export const FavoritesService: IFavoritesService = {
     anchorStopLon?: number | null;
   }): Promise<SavedPlace> {
     const places = await this.list();
+    // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
+    // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
+    // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
+    // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
+    // obcinamy dopiero na jego końcu — długość jest wtedy stała.
+    const id = newId();
     const newPlace: SavedPlace = {
-      id: Math.random().toString(36).substring(7),
-      placeId: Math.random().toString(36).substring(7),
+      id,
+      placeId: id,
       name: place.name,
       icon: place.icon,
       address: place.address,
