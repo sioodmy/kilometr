@@ -165,6 +165,10 @@ const STORAGE_KEYS = {
 const MAX_HISTORY_ITEMS = 80;
 const CLUSTER_RADIUS_M = 1600;
 const EXCLUSION_RADIUS_M = 250;
+// Przypięte miejsce i cel z historii to potem często TEN SAM budynek, tylko pod
+// dwoma różnymi id (przypięcie ma własny token, historia trzyma id z
+// wyszukiwarki). 150 m to w promieniu chodzenia — dalej to już inne miejsce.
+const SAME_PLACE_RADIUS_M = 150;
 
 export async function loadTripHistory(): Promise<TripHistoryItem[]> {
   try {
@@ -323,6 +327,35 @@ export async function getSmartDestinationsForLocation(
 
     const key = place.placeId || place.id;
     let cand = candidateMap.get(key);
+    // Ten sam budynek co istniejący cel, tylko inne id? Scalamy w istniejący
+    // wpis zamiast tworzyć drugi — inaczej „Szybkie cele" pokazuje dwa
+    // identyczne wiersze, każdy z osobnym planowaniem trasy, a limit 4 zjada
+    // jedno miejsce na duplikat.
+    // Ten sam budynek co istniejący cel, tylko inne id? Scalamy w istniejący
+    // wpis zamiast tworzyć drugi — inaczej „Szybkie cele" pokazuje dwa
+    // identyczne wiersze, każdy z osobnym planowaniem trasy, a limit 4 zjada
+    // jedno miejsce na duplikat. Przypięte miejsca NIE scalamy ze sobą — dwa
+    // pin-y 100 m od siebie to dwie różne sprawy, nie duplikat.
+    let mergedByDistance = false;
+    if (
+      !cand &&
+      Number.isFinite(place.lat) &&
+      Number.isFinite(place.lon)
+    ) {
+      for (const existing of candidateMap.values()) {
+        if (existing.isSavedPlace) continue;
+        if (
+          Number.isFinite(existing.lat) &&
+          Number.isFinite(existing.lon) &&
+          distanceMeters(existing.lat, existing.lon, place.lat, place.lon) <=
+            SAME_PLACE_RADIUS_M
+        ) {
+          cand = existing;
+          mergedByDistance = true;
+          break;
+        }
+      }
+    }
     if (!cand) {
       cand = {
         id: place.placeId || place.id,
@@ -339,6 +372,15 @@ export async function getSmartDestinationsForLocation(
       candidateMap.set(key, cand);
     } else {
       cand.isSavedPlace = true;
+      if (mergedByDistance) {
+        // Nazwa i współrzędne przypiętego miejsca są kanoniczne — użytkownik
+        // sam je wpisał i tak wyglądają w „Zapisane miejsca".
+        cand.title = place.name;
+        cand.address = place.address;
+        cand.lat = place.lat;
+        cand.lon = place.lon;
+        cand.id = key;
+      }
     }
   }
 
