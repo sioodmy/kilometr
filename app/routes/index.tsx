@@ -155,6 +155,10 @@ export default function RoutesScreen() {
   // lista po cichu przestawała się dociągać. Bez tego użytkownik scrollował
   // do końca i nie dostawał żadnej odpowiedzi.
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  // Drugi kierunek miał dokładnie ten sam catch co doładowanie w dół, tyle że
+  // bez żadnego widocznego efektu: przyciągnięcie do góry nic nie robiło po
+  // błędzie, a `noMoreEarlier` pilnował tylko gestu, nie pokazywał nic.
+  const [loadEarlierFailed, setLoadEarlierFailed] = useState(false);
   // Sortowanie listy: 'fastest' = najwcześniejsze przybycie (domyślnie,
   // żeby jednym tapnięciem wrócić szybko do domu), 'earliest' = jak w
   // Jakdojade, od najwcześniejszego odjazdu. Magazyn (items) zawsze
@@ -468,11 +472,21 @@ export default function RoutesScreen() {
     if (!seamless) {
       setLoading(true);
     }
+    // Nowe zapytanie przejmuje ownership ZAWSZE — w tym doładowania, które
+    // mogły jeszcze lecieć. Wszystkie trzy ścieżki dzielą jeden fetchSeq, więc
+    // ich `finally` czyści własną flagę tylko gdy `seq` wciąż jest aktualne.
+    // Bez tego zdania doładowanie wyprzedzone takim zapytaniem zostawiało
+    // loadingMore/loadingEarlier na true już na zawsze: nagłówek wisił z
+    // „wczytuję wcześniejsze…", a handleLoadMore/handleLoadEarlier warunkiem
+    // kończyły się na tej zablokowanej flagi i już nigdy nic nie dociągały.
+    setLoadingMore(false);
+    setLoadingEarlier(false);
     setLoadError(false);
     setOffline(false);
     setNoMoreEarlier(false);
     setNoMoreLater(false);
     setLoadMoreFailed(false);
+    setLoadEarlierFailed(false);
     const depSec = targetDepSec !== undefined ? targetDepSec : departureTimeSec;
     try {
       // Wcześniej niż dotąd: pusty sklep dawał „zero połączeń", a ekran
@@ -575,6 +589,8 @@ export default function RoutesScreen() {
 
     setLoadingMore(true);
     setLoadMoreFailed(false);
+    // Ta ścieżka wyprzedza ewentualne doładowanie w górę (patrz fetchRoutes).
+    setLoadingEarlier(false);
     const lastDeparture = items[items.length - 1].departureSec;
     const nextDeparture = lastDeparture + 60;
     const seq = ++fetchSeq.current;
@@ -604,6 +620,9 @@ export default function RoutesScreen() {
     if (!firstDeparture || firstDeparture <= 0) return;
 
     setLoadingEarlier(true);
+    setLoadEarlierFailed(false);
+    // Ta ścieżka wyprzedza ewentualne doładowanie w dół (patrz fetchRoutes).
+    setLoadingMore(false);
     const seq = ++fetchSeq.current;
 
     try {
@@ -622,8 +641,13 @@ export default function RoutesScreen() {
         pendingAdjust.current = contentH.current;
         return list;
       });
-    } catch {
-      // po cichu — lista zostaje
+    } catch (err) {
+      // Ten sam powód co w handleLoadMore: wyjątek bez informacji wygląda
+      // jak „nie ma wcześniejszych", a to dwie zupełnie różne odpowiedzi.
+      console.warn('[Routes] load earlier failed:', err);
+      if (seq === fetchSeq.current) {
+        setLoadEarlierFailed(true);
+      }
     } finally {
       if (seq === fetchSeq.current) {
         setLoadingEarlier(false);
@@ -1135,6 +1159,23 @@ export default function RoutesScreen() {
                 <View style={styles.offlineChip}>
                   <View style={styles.offlineDot} />
                   <Text style={styles.offlineText}>brak danych live</Text>
+                </View>
+              )}
+              {!loadingEarlier && loadEarlierFailed && (
+                <Pressable
+                  onPress={() => void loadEarlierRef.current()}
+                  style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Nie udało się dociągnąć wcześniejszych połączeń. Dotknij, aby spróbować ponownie."
+                >
+                  <View style={styles.offlineDot} />
+                  <Text style={styles.offlineText}>cofnij · spróbuj</Text>
+                </Pressable>
+              )}
+              {!loadingEarlier && !loadEarlierFailed && noMoreEarlier && items.length > 0 && (
+                <View style={styles.offlineChip}>
+                  <Text style={styles.offlineText}>to wszystkie wcześniejsze</Text>
                 </View>
               )}
             </View>
