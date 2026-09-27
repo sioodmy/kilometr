@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Text,
   View,
-  type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
 import { SkipBack, SkipForward } from 'lucide-react-native';
@@ -203,13 +202,37 @@ export function RouteJoystick({
     }),
   ).current;
 
-  // Bezpośrednie kliknięcie / przeciągnięcie po pasku postępu trasy
-  const handleTrackTouch = (e: GestureResponderEvent) => {
-    const x = e.nativeEvent.locationX;
-    if (trackWidth > 0) {
+  // Przeciąganie palcem po pasku postępu trasy. Wcześniej obsługiwane było
+  // wyłącznie `onPress`, mimo że podpis pod sliderem obiecywał „przeciągnij” —
+  // mapa przeskakiwała dopiero po puszczeniu palca i to w miejscu, gdzie
+  // palec zaczął, a nie gdzie skończył.
+  const seekTo = useCallback(
+    (x: number, duration: number) => {
+      if (trackWidth <= 0) return;
       const p = Math.max(0, Math.min(1, x / trackWidth));
-      onNavigate(p, zoomRef.current, 300);
-    }
+      progressRef.current = p;
+      onNavigate(p, zoomRef.current, duration);
+    },
+    [onNavigate, trackWidth],
+  );
+
+  const trackPanResponder = useRef(
+    PanResponder.create({
+      // Przejmuje gest od razu, żeby już pierwszy ruch palca coś robił.
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => seekTo(e.nativeEvent.locationX, 90),
+      onPanResponderMove: (e) => seekTo(e.nativeEvent.locationX, 0),
+      onPanResponderTerminationRequest: () => false,
+    }),
+  ).current;
+
+  // SeekBar dla TalkBacka: rola „adjustable” bez `accessibilityValue` i bez
+  // `onAccessibilityAction` jest dla czytnika ekranu martwa.
+  const handleTrackA11y = (delta: number) => {
+    const next = Math.max(0, Math.min(1, progressRef.current + delta));
+    progressRef.current = next;
+    onNavigate(next, zoomRef.current, 160);
   };
 
   const handleTrackLayout = (e: LayoutChangeEvent) => {
@@ -280,18 +303,28 @@ export function RouteJoystick({
             <SkipBack size={16} color={scheme.onSurface} />
           </Pressable>
 
-          <Pressable
+          <View
             style={styles.track}
             onLayout={handleTrackLayout}
-            onPress={handleTrackTouch}
-            hitSlop={{ top: 10, bottom: 10 }}
+            hitSlop={{ top: 12, bottom: 12 }}
+            {...trackPanResponder.panHandlers}
+            accessible
             accessibilityRole="adjustable"
             accessibilityLabel="Oś postępu trasy"
+            accessibilityHint="Przeciągnij palcem albo użyj strzałek, aby przesunąć widok wzdłuż trasy"
             accessibilityValue={{ min: 0, max: 100, now: percent }}
+            accessibilityActions={[
+              { name: 'increment', label: 'Dalej wzdłuż trasy' },
+              { name: 'decrement', label: 'Wstecz wzdłuż trasy' },
+            ]}
+            onAccessibilityAction={(e) => {
+              if (e.nativeEvent.actionName === 'increment') handleTrackA11y(0.05);
+              else if (e.nativeEvent.actionName === 'decrement') handleTrackA11y(-0.05);
+            }}
           >
             <View style={[styles.trackFill, { width: `${percent}%` }]} />
             <View style={[styles.thumb, { left: `${percent}%` }]} />
-          </Pressable>
+          </View>
 
           <Pressable
             onPress={onJumpFinish}
