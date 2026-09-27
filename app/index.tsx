@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { Bell, Settings2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
@@ -15,6 +16,7 @@ import {
   subscribeDataStatus,
 } from '../src/services/dataManager';
 import { getSettingsSync } from '../src/services/settings';
+import { loadTripHistory, type TripHistoryItem } from '../src/services/smartRanker';
 import { getPinnedQuerySync } from '../src/services/pinnedConnection';
 import {
   buildRoutesLink,
@@ -29,6 +31,14 @@ import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../sr
 import { SavedPlacesRow, SAVED_PLACE_ICONS } from '../src/components/SavedPlacesRow';
 import { getSuggestionIconMeta, type SuggestionIconMeta } from '../src/components/SuggestionRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
+import {
+  LAST_TRIP_ARM_1,
+  LAST_TRIP_ARM_2,
+  LAST_TRIP_DISARM_2,
+  LAST_TRIP_MAX,
+  LastTripPull,
+  type LastTripOption,
+} from '../src/components/LastTripPull';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
@@ -67,6 +77,20 @@ export default function HomeScreen() {
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
+
+  // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
+  // gestem, zero klikalnych elementów. pullOption żyje w stanie (oduswitch
+  // tekstu/strzałki), wysokość reveal w shared value (płynnie, bez rerenderów).
+  const [lastTrip, setLastTrip] = useState<TripHistoryItem | null>(null);
+  const [pullOption, setPullOption] = useState<LastTripOption>(0);
+  const [scrollLocked, setScrollLocked] = useState(false);
+  const pullHeight = useSharedValue(0);
+  const atTopRef = useRef(true);
+  const optionRef = useRef<LastTripOption>(0);
+  const lastTripRef = useRef<TripHistoryItem | null>(null);
+  lastTripRef.current = lastTrip;
+  const sheetsOpenRef = useRef(false);
+  sheetsOpenRef.current = sheetMode !== null || manageSheetOpen || addPlaceOpen;
 
   useEffect(() => {
     return subscribeDataStatus(setDataStatus);
@@ -147,6 +171,9 @@ export default function HomeScreen() {
   useEffect(() => {
     refreshPlaces();
     SearchService.recent().then(setRecent);
+    loadTripHistory().then((h) => {
+      if (h.length > 0) setLastTrip(h[0]);
+    });
     // Live GPS od startu (ticker w tle) — opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
 
@@ -470,6 +497,79 @@ export default function HomeScreen() {
     });
   };
 
+  // Otwarcie ostatniego połączenia z pulla: start bierzemy z zapisanej
+  // trasy (nie z bieżącego GPS), żeby skrót odtwarzał dokładnie to połączenie.
+  const openLastTrip = useCallback(
+    (reversed: boolean) => {
+      const t = lastTripRef.current;
+      if (!t) return;
+      const fromTitle = reversed ? t.dest_title : t.origin_title;
+      const fromLat = reversed ? t.dest_lat : t.origin_lat;
+      const fromLon = reversed ? t.dest_lon : t.origin_lon;
+      const to = reversed
+        ? { id: t.origin_title, title: t.origin_title, lat: t.origin_lat, lon: t.origin_lon }
+        : { id: t.dest_id, title: t.dest_title, address: t.dest_address, lat: t.dest_lat, lon: t.dest_lon };
+      void recordTripSearch(fromLat, fromLon, fromTitle, to);
+      router.push({
+        pathname: '/routes',
+        params: {
+          fromTitle,
+          fromLat: String(fromLat),
+          fromLon: String(fromLon),
+          toId: to.id,
+          toTitle: to.title,
+          toLat: String(to.lat),
+          toLon: String(to.lon),
+        },
+      });
+    },
+    [router],
+  );
+
+  // Pull jak na Twitterze, ale zamiast spinnera: ostatnie połączenie + toggle.
+  // Capture (rodzic pierwszy), żeby ScrollView nie zabrał gestu; bierzemy tylko
+  // zdecydowane pociągnięcia w dół z samej góry, przy zamkniętych arkuszach.
+  const pullResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        !sheetsOpenRef.current &&
+        lastTripRef.current != null &&
+        atTopRef.current &&
+        g.dy > 12 &&
+        Math.abs(g.dy) > Math.abs(g.dx) * 1.4,
+      onPanResponderGrant: () => setScrollLocked(true),
+      onPanResponderMove: (_, g) => {
+        const h = Math.max(0, Math.min(LAST_TRIP_MAX, g.dy));
+        pullHeight.value = h;
+        const cur = optionRef.current;
+        let next: LastTripOption = cur;
+        if (h >= LAST_TRIP_ARM_2) next = 2;
+        else if (cur === 2) next = h >= LAST_TRIP_DISARM_2 ? 2 : h >= LAST_TRIP_ARM_1 ? 1 : 0;
+        else next = h >= LAST_TRIP_ARM_1 ? 1 : 0;
+        if (next !== cur) {
+          optionRef.current = next;
+          setPullOption(next);
+        }
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderRelease: () => {
+        const opt = optionRef.current;
+        optionRef.current = 0;
+        setPullOption(0);
+        pullHeight.value = withTiming(0, { duration: 220 });
+        setScrollLocked(false);
+        if (opt === 1) openLastTrip(false);
+        else if (opt === 2) openLastTrip(true);
+      },
+      onPanResponderTerminate: () => {
+        optionRef.current = 0;
+        setPullOption(0);
+        pullHeight.value = withTiming(0, { duration: 220 });
+        setScrollLocked(false);
+      },
+    }),
+  ).current;
+
   const handleSavePlace = async (placeData: {
     id?: string;
     name: string;
@@ -519,10 +619,34 @@ export default function HomeScreen() {
     FavoritesService.smartFromOrigin(locTitle, currentCoords).then(setSmart);
   };
 
+  // Ostatnie połączenie świeże po powrocie (pull może odpalić nową trasę).
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadTripHistory().then((h) => {
+        if (!cancelled && h.length > 0) setLastTrip(h[0]);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
   return (
-    <View style={styles.root}>
+    <View style={styles.root} {...pullResponder.panHandlers}>
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} overScrollMode="never">
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          scrollEnabled={!scrollLocked}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            atTopRef.current = e.nativeEvent.contentOffset.y <= 1;
+          }}
+        >
+          {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
           <View style={styles.topBar}>
             <Text style={styles.headerTitle}>Gdzie jedziemy?</Text>
             <View style={styles.topActions}>
