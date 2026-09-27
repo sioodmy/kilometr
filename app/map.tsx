@@ -493,7 +493,9 @@ export default function RouteMapScreen() {
             <ChevronLeft size={22} color={scheme.onSurface} />
           </Pressable>
           <View style={styles.headerText}>
-            <Text style={styles.headerTitle} numberOfLines={1}>
+            {/* Dwie linie jak w szczegółach połączenia: przy jednej nazwy
+                przystanków ucinały się w „(Dwo…”. */}
+            <Text style={styles.headerTitle} numberOfLines={2}>
               {item.fromTitle} → {item.toTitle}
             </Text>
             <Text style={styles.headerSub} numberOfLines={1}>
