@@ -1321,10 +1321,14 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+  // Kreska łącząca kropkę startu z kropką celu. W outlineVariant ginęła w tle
+  // karty i wyglądała jak przypadkowy artefakt — jaśniejsza i dłuższa czyta się
+  // jako oś trasy.
   connector: {
     width: 2,
-    height: 10,
-    backgroundColor: scheme.outlineVariant,
+    height: 14,
+    backgroundColor: scheme.outline,
+    opacity: 0.7,
     marginLeft: 3,
   },
   fromText: {
