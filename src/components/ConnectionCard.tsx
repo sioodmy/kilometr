@@ -5,7 +5,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
-import { formatWalkTime } from '../services/settings';
+import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 /** Czy liczba od 2 do 4 wymaga formy "2 przesiadki" (z wyjątkiem 12–14). */
 function isFew(n: number): boolean {
@@ -44,10 +44,10 @@ function parseHMtoSec(hm: string): number | null {
   return Number(m[1]) * 3600 + Number(m[2]) * 60;
 }
 
-function getLegWalkMin(leg?: Leg): number {
+function getLegWalkMin(leg: Leg | undefined, walkMps: number): number {
   if (!leg) return 1;
   if (leg.walkM != null && leg.walkM > 0) {
-    return Math.max(1, Math.round(leg.walkM / 80));
+    return walkMinutesFor(leg.walkM, walkMps);
   }
   const dep = parseHMtoSec(leg.departAt);
   const arr = parseHMtoSec(leg.arriveAt);
@@ -57,7 +57,7 @@ function getLegWalkMin(leg?: Leg): number {
   return 1;
 }
 
-function buildLegSegments(legs: Leg[]): SegmentItem[] {
+function buildLegSegments(legs: Leg[], walkMps: number): SegmentItem[] {
   const transitLegs = legs.filter((l) => l.mode !== 'walk');
   if (transitLegs.length === 0) {
     return [];
@@ -70,7 +70,7 @@ function buildLegSegments(legs: Leg[]): SegmentItem[] {
   if (firstTransitIdx > 0) {
     const initialWalks = legs.slice(0, firstTransitIdx);
     const walkM = initialWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-    const min = walkM > 0 ? Math.max(1, Math.round(walkM / 80)) : getLegWalkMin(initialWalks[0]);
+    const min = walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(initialWalks[0], walkMps);
     if (min > 0) {
       items.push({ type: 'walk', key: 'walk-initial', minutes: min });
     }
@@ -91,9 +91,9 @@ function buildLegSegments(legs: Leg[]): SegmentItem[] {
         const intermediateWalks = legs.slice(curIdx + 1, nextIdx).filter((l) => l.mode === 'walk');
         const transferM = intermediateWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
         if (transferM > 0) {
-          transferWalkMin = Math.max(1, Math.round(transferM / 80));
+          transferWalkMin = walkMinutesFor(transferM, walkMps);
         } else if (intermediateWalks.length > 0) {
-          transferWalkMin = getLegWalkMin(intermediateWalks[0]);
+          transferWalkMin = getLegWalkMin(intermediateWalks[0], walkMps);
         }
       }
 
@@ -111,7 +111,7 @@ function buildLegSegments(legs: Leg[]): SegmentItem[] {
   if (lastTransitIdx >= 0 && lastTransitIdx < legs.length - 1) {
     const finalWalks = legs.slice(lastTransitIdx + 1);
     const walkM = finalWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-    const min = walkM > 0 ? Math.max(1, Math.round(walkM / 80)) : getLegWalkMin(finalWalks[0]);
+    const min = walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(finalWalks[0], walkMps);
     if (min > 0) {
       items.push({ type: 'walk', key: 'walk-final', minutes: min });
     }
@@ -150,9 +150,10 @@ export const ConnectionCard = memo(function ConnectionCard({
   /** historyczne (przeszłe) połączenie — przygaszony wygląd */
   dimmed?: boolean;
 }) {
+  const walkMps = useWalkSpeedMps();
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
-  const segments = useMemo(() => buildLegSegments(item.legs), [item.legs]);
+  const segments = useMemo(() => buildLegSegments(item.legs, walkMps), [item.legs, walkMps]);
   const { width: winWidth } = useWindowDimensions();
   // Miejsce na rząd: ekran minus paddingi (lista 14 + karta 14 + wiersz 8, ×2).
   const avail = winWidth - 72;
@@ -218,7 +219,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 
   const walkM = walkOnly ? item.legs[0]?.walkM : undefined;
   const walkMin =
-    item.durationMin || (walkM != null ? Math.max(1, Math.round(walkM / 80)) : 1);
+    item.durationMin || (walkM != null ? walkMinutesFor(walkM, walkMps) : 1);
 
   const departureText = historical
     ? minsAgo <= 1
