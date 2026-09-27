@@ -368,6 +368,42 @@ expect('odjazd minął → bierzemy kurs, którym jedziemy', afterDeparture?.dep
 // przeliczeniu planu użytkownik nagle jechałby inną trasą.
 expect('przejęty kurs zostaje na tej samej linii', afterDeparture?.legs[1].line, '10');
 
+// Drugi mechanizm tego samego buga: planer nie zwraca już śledzonego kursu, ale
+// zwraca inny egzemplarz TEJ SAMEJ linii. Przed odjazdem nie wolno na to
+// wziąć (na telefonie śledzone 11:30 skoczyło na 11:50), po odjeździe — już
+// tak, bo wtedy i tak musimy wybrać kurs, którym jedziemy.
+const noIdsTracked = { ...tracked10, legs: tracked10.legs.map((l) => ({ ...l, tripId: undefined })) };
+const noIdsLater = {
+  ...laterSameLine,
+  departAt: '04:50',
+  departureSec: 4 * 3600 + 50 * 60,
+  legs: noIdsTracked.legs.map((l) => ({ ...l })),
+};
+expect(
+  'inny egzemplarz linii przed odjazdem → zostajemy przy swoim',
+  resolveTrackedConnection([noIdsLater], noIdsTracked, at0401, GRACE)?.departAt,
+  '04:01',
+);
+expect(
+  'po odjeździe ten sam podpis już wystarczy',
+  resolveTrackedConnection([noIdsLater], noIdsTracked, 4 * 3600 + 55 * 60, GRACE)?.departAt,
+  '04:50',
+);
+
+// Opóźnienie wciąż ma się przepisywać: trip_id jest stabilny przy opóźnieniu.
+const delayedRun = {
+  ...tracked10,
+  departAt: '04:06',
+  departureSec: 4 * 3600 + 6 * 60,
+  delayMin: 5,
+  legs: [tracked10.legs[0], { ...tracked10.legs[1], tripId: 'trip-10-0401' }],
+};
+expect(
+  'opóźnienie tego samego kursu przed odjazdem',
+  resolveTrackedConnection([delayedRun], tracked10, at0401, GRACE)?.departAt,
+  '04:06',
+);
+
 // Ten sam odjazd zawsze wygrywa, nawet gdy planer oddał świeżą wersję.
 const sameTripRenumbered = {
   ...tracked10,

@@ -59,7 +59,13 @@ async function writeAlertIds(ids: string[]): Promise<void> {
   }
 }
 
-/** Usuwa wszystkie zaplanowane alerty podróży (też po restarcie aplikacji). */
+/**
+ * Usuwa wszystkie alerty podróży: i te zaplanowane, i te, które już się
+ * pokazały. samo `cancelScheduledNotificationAsync` wystarcza tylko dla
+ * oczekujących — po „Wyjdź teraz" baner zostaje na ekranie blokady, a użytkownik
+ * właśnie zakończył śledzenie i nie powinien dostawać przypomnień o kursie,
+ * który go nie dotyczy.
+ */
 export async function cancelScheduledAlerts(): Promise<void> {
   const N = getNotifications();
   const ids = await readAlertIds();
@@ -69,6 +75,11 @@ export async function cancelScheduledAlerts(): Promise<void> {
         await N.cancelScheduledNotificationAsync(id);
       } catch {
         // mógł już zniknąć
+      }
+      try {
+        await N.dismissNotificationAsync(id);
+      } catch {
+        // nie zdążył się pokazać
       }
     }
   }

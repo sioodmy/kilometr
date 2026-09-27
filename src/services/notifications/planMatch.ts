@@ -8,6 +8,20 @@ import { normalizeName } from '../vehiclePosition';
 /** Ile przesunięcia odjazdu tolerujemy, gdy nie mamy trip_id do porównania. */
 const LOOSE_WINDOW_SEC = 30 * 60;
 
+/**
+ * Ile przesunięcia uznajemy jeszcze za opóźnienie tego samego kursu.
+ *
+ * Odróżniamy dwie rzeczy, które wyglądają podobnie: tramwaj ten sam, który
+ * spóźnił się o kilka minut, i tramwaj tej samej linii, który po prostu
+ * odjeżdża później. Przy oknie pół godziny nie da się ich rozróżnić i plan
+ * potrafił podmienić śledzony kurs na inny egzemplarz tej samej linii —
+ * użytkownik widział wtedy „Tramwaj 3 o 11:50", czekając na 11:30.
+ * Przed odjazdem zostajemy więc przy kursie, który przesunął się najwyżej
+ * o kwadrans; szersze okno zostaje dopiero na wypadek zmiany kursu po
+ * odjeździe, gdzie i tak musimy coś wybrać.
+ */
+const DELAY_WINDOW_SEC = 15 * 60;
+
 function tripIdsOf(c: Connection): string[] {
   return c.legs.filter((l) => l.tripId).map((l) => l.tripId as string);
 }
@@ -34,8 +48,11 @@ function tripSignature(c: Connection): string | null {
  * Kolejność kryteriów:
  *  1. ten sam zestaw trip_id — jednoznaczne, RAPTOR daje je zawsze dla
  *     odcinków pojazdowych, więc to rozwiązuje zdecydowaną większość;
- *  2. ten sam podpis kursu (linie + przystanek startowy) w oknie pół godziny
- *     — łapie plan z cache albo renormalizację, gdzie trip_id zniknęło;
+ *  2. ten sam podpis kursu (linie + przystanek startowy) — łapie plan
+ *     z cache albo renormalizację, gdzie trip_id zniknęło. `windowSec`
+ *     decyduje, jak duże przesunięcie uznajemy za opóźnienie tego samego
+ *     kursu: przed odjazdem przekazujemy wąskie okno, żeby nie wziąć innego
+ *     egzemplarza linii;
  *  3. dokładnie ten sam odjazd — tylko gdy podpisu nie mamy (brak danych).
  *
  * Świadomie NIE dopasowujemy po samym odjeździe: dwie linie mogą odjechać
@@ -45,6 +62,7 @@ function tripSignature(c: Connection): string | null {
 export function matchTrackedConnection(
   conns: Connection[],
   committed: Connection,
+  windowSec: number = LOOSE_WINDOW_SEC,
 ): Connection | null {
   const committedTrips = tripIdsOf(committed);
   if (committedTrips.length > 0) {
@@ -61,7 +79,7 @@ export function matchTrackedConnection(
       .filter(
         (c) =>
           tripSignature(c) === signature &&
-          Math.abs(c.departureSec - committed.departureSec) <= LOOSE_WINDOW_SEC,
+          Math.abs(c.departureSec - committed.departureSec) <= windowSec,
       )
       .sort(
         (a, b) =>
@@ -124,10 +142,17 @@ export function resolveTrackedConnection(
 ): Connection | null {
   if (conns.length === 0) return null;
 
-  const match = matchTrackedConnection(conns, committed);
+  const stillAhead = committed.departureSec > nowSec - graceSec;
+
+  // Przed odjazdem wolno tylko ten sam kurs. `trip_id` przeżywa opóźnienie,
+  // więc spóźniony odjazd nadal się przepisze, a przy braku trip_id zostaje
+  // wąskie okno opóźnienia — inny egzemplarz tej samej linii nas nie ruszy.
+  const match = stillAhead
+    ? matchTrackedConnection(conns, committed, DELAY_WINDOW_SEC)
+    : matchTrackedConnection(conns, committed);
   if (match) return match;
 
-  if (committed.departureSec > nowSec - graceSec) return committed;
+  if (stillAhead) return committed;
 
   return connectionInProgress(conns, nowSec) ?? nextDeparture(conns, nowSec, graceSec);
 }
