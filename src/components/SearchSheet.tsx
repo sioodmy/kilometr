@@ -69,6 +69,20 @@ export function SearchSheet({
     ref.current?.close();
   };
 
+  /**
+   * Enter na klawiaturze (returnKeyType="search") wcześniej nic nie robił.
+   * Jeden wynik = wprost do niego (typowy przypadek „piszę nazwę przystanku”),
+   * wiele wyników = chowamy klawiaturę, żeby lista była do stuknięcia. Nigdy
+   * nie zgadujemy miejsca przy kilku podobnych nazwach.
+   */
+  const handleSubmit = () => {
+    if (results.length === 1) {
+      onSelect(results[0]);
+      return;
+    }
+    inputRef.current?.blur();
+  };
+
   const hasResults = results.length > 0;
 
   const displayData = useMemo(() => {
@@ -142,6 +156,7 @@ export function SearchSheet({
             ref={inputRef}
             value={query}
             onChangeText={onQuery}
+            onSubmitEditing={handleSubmit}
             placeholder={placeholder}
             placeholderTextColor={scheme.onSurfaceVariant}
             style={styles.input}
