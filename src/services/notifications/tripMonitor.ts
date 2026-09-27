@@ -8,11 +8,7 @@ import { buildRoutesLink, mergeWidgetSnapshot, type WidgetPinned } from '../widg
 import { nowSecOfDay } from '../vehiclePosition';
 import { getNotificationPreferencesSync, loadNotificationPreferences } from './preferences';
 import { computeTripProgress } from './tripProgress';
-import {
-  connectionInProgress,
-  matchTrackedConnection,
-  nextDeparture,
-} from './planMatch';
+import { resolveTrackedConnection } from './planMatch';
 import { presentTrip, dismissTracking } from './presenter';
 import {
   cancelScheduledAlerts,
@@ -130,15 +126,9 @@ async function planTracked(): Promise<Connection | null> {
   });
   if (conns.length === 0) return null;
 
-  const nowSec = nowSecOfDay();
-  // Dopóki nie odjechaliśmy, trzymamy się „naszego” odjazdu. Po odjeździe
-  // szukamy kursu, którym właśnie jedziemy, a dopiero potem następnego.
-  const match = matchTrackedConnection(conns, tracked.connection);
-  if (match) return match;
-  if (tracked.connection.departureSec > nowSec - BOARDING_GRACE_SEC) {
-    return nextDeparture(conns, nowSec, BOARDING_GRACE_SEC);
-  }
-  return connectionInProgress(conns, nowSec) ?? nextDeparture(conns, nowSec, BOARDING_GRACE_SEC);
+  // Całą politykę doboru kursu trzyma `resolveTrackedConnection` — jest czysta
+  // i da się ją przetestować bez planera (patrz scripts/check-notifications.ts).
+  return resolveTrackedConnection(conns, tracked.connection, nowSecOfDay(), BOARDING_GRACE_SEC);
 }
 
 async function refresh(): Promise<void> {

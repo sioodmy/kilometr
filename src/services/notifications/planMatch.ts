@@ -95,3 +95,39 @@ export function nextDeparture(
     .sort((a, b) => a.departureSec - b.departureSec);
   return future[0] ?? null;
 }
+
+/**
+ * Wybór kursu po odświeżeniu planu — cała polityka w jednym miejscu.
+ *
+ * Kolejność:
+ *  1. ten sam kurs (`trip_id`, a w razie jego braku podpis) — zawsze wygrywa,
+ *     dzięki temu opóźnienie nie zmienia pokazywanego odjazdu;
+ *  2. dopóki śledzony odjazd nie minął, zostajemy przy nim, nawet jeśli planer
+ *     go nie zwrócił. Bez tego powiadomienie co odświeżenie potrafiło przeskoczyć
+ *     na inny kurs: użytkownik śledził Tramwaj 10 o 04:01, a planer odpowiadał
+ *     tylko „najbliższym" 03:57, więc pysk zmieniał się z „Idź na przystanek"
+ *     na „Czekaj na pojazd", liczba przystanków skakała 4↔5, a godzina odjazdu
+ *     w karcie nie zgadzała się z odliczanym licznikiem;
+ *  3. po odjeździe (z grzecznością na wsiadanie): kurs, którym właśnie jedziemy,
+ *     a dopiero gdy żadnego nie ma — następny.
+ *
+ * Świadomie zostajemy przy starym planie zamiast przeskakiwać: użytkownik
+ * świadomie wcisnął „Śledź ten kurs", więc stabilność jest tu wartością, a
+ * najbliższy kurs tylko ostatnim wyborem. Utracone odjazdy i tak kończą się
+ * w `refresh()` po pół godziny od planowanego odjazdu.
+ */
+export function resolveTrackedConnection(
+  conns: Connection[],
+  committed: Connection,
+  nowSec: number,
+  graceSec: number,
+): Connection | null {
+  if (conns.length === 0) return null;
+
+  const match = matchTrackedConnection(conns, committed);
+  if (match) return match;
+
+  if (committed.departureSec > nowSec - graceSec) return committed;
+
+  return connectionInProgress(conns, nowSec) ?? nextDeparture(conns, nowSec, graceSec);
+}

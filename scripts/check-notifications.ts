@@ -18,7 +18,10 @@
 
 import { computeTripProgress } from '../src/services/notifications/tripProgress';
 import { buildTripCopy, buildActivityProps, buildNativeState } from '../src/services/notifications/content';
-import { matchTrackedConnection } from '../src/services/notifications/planMatch';
+import {
+  matchTrackedConnection,
+  resolveTrackedConnection,
+} from '../src/services/notifications/planMatch';
 import { countdownText, toAbsoluteMs, untilText } from '../src/services/notifications/format';
 import type { Connection, Leg, LegStop } from '../src/types/models';
 
@@ -306,6 +309,78 @@ const other = {
 };
 // Regression: dopasowanie po samym odjeździe potrafiło podmienić kurs.
 expect('inny kurs → brak dopasowania', matchTrackedConnection([other], noIds), null);
+
+// ─── Wybór kursu po odświeżeniu planu ─────────────────────────────────────
+
+describe('Wybór kursu po odświeżeniu planu');
+
+const tracked10 = {
+  ...simple,
+  departAt: '04:01',
+  departureSec: 4 * 3600 + 1 * 60,
+  legs: [simple.legs[0], { ...simple.legs[1], line: '10', tripId: 'trip-10-0401' }],
+};
+// To, co planer odpowiadał na urządzeniu: ten sam odcinek, ale najbliższy
+// kurs wychodził cztery minuty wcześniej i w innym wariancie trasy.
+const otherLine = {
+  ...simple,
+  id: 'other-line',
+  departAt: '03:57',
+  departureSec: 4 * 3600 - 3 * 60,
+  durationMin: 12,
+  legs: [simple.legs[0], { ...simple.legs[1], line: '3', tripId: 'trip-3-0357' }],
+};
+const GRACE = 240;
+const at0401 = 4 * 3600 + 1 * 60 - 90; // 1,5 min przed odjazdem
+
+// Regression z urządzenia: śledzony 04:01 (linia 10) potrafił przeskoczyć na
+// 03:57 (linia 3) i z powrotem, co zmieniało fazę, liczbę przystanków i
+// godzinę odjazdu w karcie.
+expect(
+  'odjazd jeszcze nie minął → zostajemy przy swoim kursie',
+  resolveTrackedConnection([otherLine], tracked10, at0401, GRACE)?.departAt,
+  '04:01',
+);
+expect(
+  'linia się nie zmienia',
+  resolveTrackedConnection([otherLine], tracked10, at0401, GRACE)?.legs[1].line,
+  '10',
+);
+
+// Po odjeździe (z grzecznością) śledzenie ma się zgodzić na nowy kurs —
+// inaczej użytkownik zostałby z nieistniejącym połączeniem do końca dnia.
+const laterSameLine = {
+  ...tracked10,
+  id: 'later-10',
+  departAt: '04:05',
+  departureSec: 4 * 3600 + 5 * 60,
+  durationMin: 10,
+  legs: [tracked10.legs[0], { ...tracked10.legs[1], tripId: 'trip-10-0405' }],
+};
+const afterDeparture = resolveTrackedConnection(
+  [laterSameLine],
+  tracked10,
+  4 * 3600 + 6 * 60,
+  GRACE,
+);
+expect('odjazd minął → bierzemy kurs, którym jedziemy', afterDeparture?.departAt, '04:05');
+// Przy przejęciu kursu zmienia się godzina, ale nie linia — inaczej po
+// przeliczeniu planu użytkownik nagle jechałby inną trasą.
+expect('przejęty kurs zostaje na tej samej linii', afterDeparture?.legs[1].line, '10');
+
+// Ten sam odjazd zawsze wygrywa, nawet gdy planer oddał świeżą wersję.
+const sameTripRenumbered = {
+  ...tracked10,
+  departAt: '04:03',
+  departureSec: 4 * 3600 + 3 * 60,
+  delayMin: 2,
+};
+expect(
+  'ten sam trip_id wygrywa z opóźnieniem',
+  resolveTrackedConnection([sameTripRenumbered], tracked10, at0401, GRACE)?.departAt,
+  '04:03',
+);
+expect('pusty plan → null', resolveTrackedConnection([], tracked10, at0401, GRACE), null);
 
 // ─── Dane przekazywane do nośników ─────────────────────────────────────────
 
