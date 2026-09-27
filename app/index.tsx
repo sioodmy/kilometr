@@ -28,6 +28,7 @@ import {
 import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
 import { SavedPlacesRow } from '../src/components/SavedPlacesRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
+import { useThumbBarInset } from '../src/components/ThumbBar';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
@@ -48,6 +49,9 @@ export default function HomeScreen() {
   const [smart, setSmart] = useState<SmartDestination[]>([]);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
+  // Zapas na dole zamiast wpisanych 90 px — wysokość paska kciuka mierzy się
+  // w trakcie layoutu, a na telefonach z paskiem nawigacji jest wyższy.
+  const thumbInset = useThumbBarInset();
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
@@ -638,7 +642,7 @@ export default function HomeScreen() {
           <View style={{ height: 20 }} />
           <SmartHistoryList items={smart} departures={nextDepart} onSelect={(d) => goToRoutes(d)} />
 
-          <View style={{ height: 90 }} />
+          <View style={{ height: thumbInset }} />
         </ScrollView>
       </SafeAreaView>
 

@@ -11,6 +11,7 @@ import { LegTimeline } from '../../src/components/LegTimeline';
 import { LiveDot } from '../../src/components/LiveDot';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
 import { RouteDetailsThumbBar } from '../../src/components/RouteDetailsThumbBar';
+import { useThumbBarInset } from '../../src/components/ThumbBar';
 
 export default function RouteDetailsScreen() {
   const router = useRouter();
@@ -18,6 +19,10 @@ export default function RouteDetailsScreen() {
   const [item, setItem] = useState<Connection | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
+  // Zapas na dole liczony z zmierzonej wysokości pływającego paska, nie
+  // wpisany na oko. Wcześniej było tu sztywne 90 px, przez co przycisk
+  // „Mapa trasy” na dole karty lądował pod paskiem i nie dało się go nacisnąć.
+  const thumbInset = useThumbBarInset();
 
   useEffect(() => {
     if (id) {
@@ -188,7 +193,7 @@ export default function RouteDetailsScreen() {
           onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
         />
 
-        <View style={{ height: 90 }} />
+        <View style={{ height: thumbInset }} />
       </ScrollView>
 
       {/* Pływający dolny pasek kciuka: łatwy powrót i trasa powrotna */}
