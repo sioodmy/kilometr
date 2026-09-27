@@ -100,7 +100,8 @@ export interface SmartDestination extends LatLon {
   address: string;
   /** weekly tap count from this origin — drives ranking */
   frequency: number;
-  avgDurationMin: number;
+  /** Średni zmierzony czas dojazdu w minutach; undefined = jeszcze nie wiemy. */
+  avgDurationMin?: number;
   originId: string;
 }
 

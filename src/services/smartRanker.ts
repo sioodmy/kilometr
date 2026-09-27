@@ -13,7 +13,8 @@ export interface TripHistoryItem {
   dest_address: string;
   dest_lat: number;
   dest_lon: number;
-  duration_min: number;
+  /** Zmierzony czas dojazdu w minutach. Brak = nie wiemy (nie zmyślamy w UI). */
+  duration_min?: number;
   timestamp: number;
 }
 
@@ -188,7 +189,9 @@ export async function recordTripSearch(
   originLon: number,
   originTitle: string,
   dest: { id: string; title: string; address?: string; lat: number; lon: number },
-  durationMin = 18,
+  /** Zmierzony czas dojazdu (min). Bez niego zapisujemy przejazd bez czasu —
+   *  wtedy ekran startu nie pokazuje zmyślonego „~18 min”. */
+  durationMin?: number,
 ): Promise<void> {
   if (!dest.title || typeof dest.lat !== 'number' || typeof dest.lon !== 'number') return;
   const history = await loadTripHistory();
@@ -203,7 +206,7 @@ export async function recordTripSearch(
     dest_address: dest.address || 'Wrocław',
     dest_lat: dest.lat,
     dest_lon: dest.lon,
-    duration_min: durationMin,
+    duration_min: durationMin && durationMin > 0 ? Math.round(durationMin) : undefined,
     timestamp: Date.now(),
   };
 
@@ -272,7 +275,9 @@ export async function getSmartDestinationsForLocation(
     weeklyCount: number;
     totalCount: number;
     lastTimestamp: number;
-    avgDurationMin: number;
+    /** Suma i liczba zmierzonych czasów — średnią liczymy na końcu. */
+    durationSum: number;
+    durationCount: number;
     isSavedPlace: boolean;
   }
 
@@ -300,13 +305,18 @@ export async function getSmartDestinationsForLocation(
         weeklyCount: 0,
         totalCount: 0,
         lastTimestamp: t.timestamp,
-        avgDurationMin: t.duration_min || 18,
+        durationSum: 0,
+        durationCount: 0,
         isSavedPlace: false,
       };
       candidateMap.set(key, cand);
     }
 
     cand.totalCount += 1;
+    if (t.duration_min != null && t.duration_min > 0) {
+      cand.durationSum += t.duration_min;
+      cand.durationCount += 1;
+    }
     if (t.timestamp >= oneWeekAgo) {
       cand.weeklyCount += 1;
     }
@@ -333,7 +343,10 @@ export async function getSmartDestinationsForLocation(
         weeklyCount: 3,
         totalCount: 5,
         lastTimestamp: now - 12 * 3600 * 1000,
-        avgDurationMin: 20,
+        // Zapisane miejsce bez historii nie ma zmierzonego czasu — w UI pokaże
+        // wtedy wyłącznie najbliższy odjazd, a nie zmyślone „~20 min”.
+        durationSum: 0,
+        durationCount: 0,
         isSavedPlace: true,
       };
       candidateMap.set(key, cand);
@@ -364,7 +377,8 @@ export async function getSmartDestinationsForLocation(
     title: cand.title,
     address: cand.address,
     frequency,
-    avgDurationMin: cand.avgDurationMin,
+    avgDurationMin:
+      cand.durationCount > 0 ? Math.round(cand.durationSum / cand.durationCount) : undefined,
     lat: cand.lat,
     lon: cand.lon,
     originId,

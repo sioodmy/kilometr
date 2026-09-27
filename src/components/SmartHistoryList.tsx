@@ -25,6 +25,10 @@ export function SmartHistoryList({
       </View>
       {items.map((d, index) => {
         const departLabel = formatDepartIn(departures?.[d.id]);
+        // Nie pokazujemy zmyślonego czasu: „~X min” tylko wtedy, gdy mamy
+        // zmierzony średni dojazd. W przeciwnym razie kolumna zostaje pusta,
+        // aż pojawi się najbliższy odjazd.
+        const timeLabel = d.avgDurationMin != null ? `~${d.avgDurationMin} min` : null;
         return (
           <Pressable key={`${d.id}-${index}`} onPress={() => onSelect(d)} style={({ pressed }) => [styles.card, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}>
             <View style={styles.icon}>
@@ -34,10 +38,12 @@ export function SmartHistoryList({
               <Text style={styles.title} numberOfLines={1}>{d.title}</Text>
               <Text style={styles.sub} numberOfLines={1}>{d.address}</Text>
             </View>
-            <View style={styles.right}>
-              <Text style={styles.time}>~{d.avgDurationMin} min</Text>
-              {departLabel ? <Text style={styles.depart}>{departLabel}</Text> : null}
-            </View>
+            {(timeLabel || departLabel) && (
+              <View style={styles.right}>
+                {timeLabel ? <Text style={styles.time}>{timeLabel}</Text> : null}
+                {departLabel ? <Text style={styles.depart}>{departLabel}</Text> : null}
+              </View>
+            )}
           </Pressable>
         );
       })}
