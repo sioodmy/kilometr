@@ -3,7 +3,7 @@ import { kvGet, kvSet } from './storage';
 import { DEFAULT_LOCATION } from '../config';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
+import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
 import { planConnections, buildTripStops } from './routing/engine';
 import { fetchVehiclesDirect } from './realtimeClient';
 
@@ -248,19 +248,25 @@ export const RoutingService: IRoutingService = {
     }
   },
 
-  async getConnectionById(id: string): Promise<Connection | undefined> {
+  async getConnectionById(id: string): Promise<{ connection: Connection; source: 'live' | 'cache' } | undefined> {
     const found = recentPlannedConnections.get(id);
-    if (found) return found;
+    if (found) return { connection: found, source: 'live' };
 
     const saved = await this.isRouteSaved(id);
     if (saved) {
       const allSaved = await getSavedRoutes();
-      return allSaved.find(r => r.id === id)?.connection;
+      const hit = allSaved.find(r => r.id === id)?.connection;
+      if (hit) return { connection: hit, source: 'live' };
     }
-    
+
     const cached = await findCachedConnection(id);
-    if (cached) return cached;
-    
+    if (cached) {
+      // Z dysku: czasy przeliczamy na teraz i gasiemy `live`, żeby szczegóły
+      // nie udawały, że mają opóźnienie z serwera. Ekran dostanie
+      // `source: 'cache'` i powie o tym wprost użytkownikowi.
+      return { connection: rehydrateConnections([cached])[0], source: 'cache' };
+    }
+
     return undefined;
   },
 

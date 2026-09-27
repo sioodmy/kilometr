@@ -113,12 +113,16 @@ export async function findCachedConnection(id: string): Promise<Connection | nul
 /**
  * Odświeża czasy względne na bazie absolutnego departureSec.
  * Live wyłączamy — offline nie ma realtime, pokazujemy wg rozkładu.
+ *
+ * Ujemnych wartości NIE obcinamy do zera: połączenie sprzed 20 minut ma pokazać
+ * „20 min temu”, a nie „za chwilę”. Docięcie zamieniało nieodejazd w najbliższy
+ * odjazd, czyli informację odwrotną do prawdy.
  */
 export function rehydrateConnections(list: Connection[]): Connection[] {
   const now = nowSec();
   return list.map((c) => ({
     ...c,
-    departInMin: c.departureSec > 0 ? Math.max(0, Math.round((c.departureSec - now) / 60)) : c.departInMin,
+    departInMin: c.departureSec > 0 ? Math.round((c.departureSec - now) / 60) : c.departInMin,
     live: false,
   }));
 }

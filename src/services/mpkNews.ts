@@ -1,5 +1,7 @@
 // Czytnik aktualności MPK / wroclaw.pl (RSS) — bez dodatkowych zależności.
 // Feed: https://www.wroclaw.pl/komunikacja/rss (RSS 2.0, opis w CDATA z <img> + tekst).
+import { withTimeout } from './net';
+
 export type MpkNewsItem = {
   id: string;
   title: string;
@@ -12,6 +14,9 @@ export type MpkNewsItem = {
 };
 
 export const MPK_NEWS_URL = 'https://www.wroclaw.pl/komunikacja/rss';
+
+/** RSS bywa wolny; po 12 s uznajemy pobieranie za nieudane, żeby ekran nie wisiał. */
+const NEWS_TIMEOUT_MS = 12000;
 
 function tagInner(xml: string, tag: string): string {
   const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
@@ -135,15 +140,22 @@ export function getCachedNews(): MpkNewsItem[] | null {
 }
 
 export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
-  const res = await fetch(MPK_NEWS_URL, {
-    headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
-    signal,
-  });
-  if (!res.ok) throw new Error(`RSS ${res.status}`);
-  const xml = await res.text();
-  const items = parseMpkRss(xml);
-  cachedNewsItems = items;
-  return items;
+  // Bez limitu czasu wiszące połączenie z wroclaw.pl zostawiało ekran
+  // „Pobieranie komunikatów…” na zawsze i blokowało odświeżenie plakietki.
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const res = await fetch(MPK_NEWS_URL, {
+      headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
+      signal: scope.signal,
+    });
+    if (!res.ok) throw new Error(`RSS ${res.status}`);
+    const xml = await res.text();
+    const items = parseMpkRss(xml);
+    cachedNewsItems = items;
+    return items;
+  } finally {
+    scope.dispose();
+  }
 }
 
 // Czy dziś pojawiło się pilne utrudnienie? → czerwony badge na dzwonku.
