@@ -61,9 +61,11 @@ interface ThumbBarItemProps {
    */
   layout?: 'vertical' | 'horizontal';
   accessibilityLabel?: string;
-  accessibilityState?: { selected?: boolean; disabled?: boolean };
+  accessibilityState?: { selected?: boolean; disabled?: boolean; busy?: boolean };
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
+  /** Chwilowo niedostępny (np. trwa operacja) — przygaszony, nieklikalny. */
+  disabled?: boolean;
 }
 
 export function ThumbBarItem({
@@ -163,6 +165,9 @@ const styles = StyleSheet.create({
   itemPressed: {
     opacity: 0.72,
     transform: [{ scale: 0.96 }],
+  },
+  itemDisabled: {
+    opacity: 0.45,
   },
   itemLabel: {
     ...type.labelSmall,

@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
   FadeOut,
   Keyframe,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
   type AnimatedStyle,
 } from 'react-native-reanimated';
 import {
@@ -83,6 +87,18 @@ export function RoutesThumbBar({
   refreshing,
   animatedStyle,
 }: RoutesThumbBarProps) {
+  // Kręcenie ikony odświeżania — osobno, żeby nie mieszać animacji z logiką
+  // filtra trybu. Wydzielone w hook, bo jedyne zadanie to przełączanie kąta.
+  const spin = useSharedValue(0);
+  const refreshSpin = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spin.value}deg` }],
+  }));
+  useEffect(() => {
+    spin.value = refreshing
+      ? withRepeat(withTiming(360, { duration: 900, easing: Easing.linear }), -1, false)
+      : withTiming(0, { duration: 200 });
+  }, [refreshing, spin]);
+
   const renderModeIcon = () => {
     const color = modeFilter !== 'all' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
     if (modeFilter === 'tram') return <TramFront size={17} color={color} />;
@@ -207,12 +223,24 @@ export function RoutesThumbBar({
           <ThumbBarDivider />
           <ThumbBarItem
             onPress={onRefresh}
+            // Odświeżenie ma z definicji coś robić (odczyt pozycji + przeliczenie),
+            // więc w trakcie jest niedostępne — inaczej da się je wcisnąć dwa razy
+            // i odpalić dwa przeliczenia jedno na drugim.
+            disabled={refreshing}
             icon={
-              <RotateCw size={17} color={refreshing ? scheme.primary : scheme.onSurfaceVariant} />
+              // Ikona kręci się przez cały czas trwania operacji, więc widać,
+              // że przycisk żyje — wcześniej wyglądał jak martwy.
+              <Animated.View style={refreshSpin}>
+                <RotateCw
+                  size={17}
+                  color={refreshing ? scheme.primary : scheme.onSurfaceVariant}
+                />
+              </Animated.View>
             }
             label=""
             style={styles.iconOnly}
-            accessibilityLabel="Odśwież rozkłady i pozycje na żywo"
+            accessibilityState={{ busy: refreshing }}
+            accessibilityLabel="Odśwież pozycje pojazdów i przelicz trasy"
           />
         </>
       ) : null}

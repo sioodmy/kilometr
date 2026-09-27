@@ -139,6 +139,13 @@ export default function RoutesScreen() {
     const t = setInterval(check, 30000);
     return () => clearInterval(t);
   }, []);
+  // Stan odświeżania pod przyciskiem w docku: bez niego ikona nigdy nie
+  // pokazywała, że coś się dzieje, a TalkBack nie wiedział, że przycisk jest
+  // zajęty. refreshBusy pilnuje podwójnego stuknięcia.
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const refreshBusy = useRef(false);
+
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
   // (departInMin liczone przy pobraniu). Przerysowujemy wiersze, nie listę.
   const [nowTick, setNowTick] = useState(0);
@@ -541,6 +548,28 @@ export default function RoutesScreen() {
       return true;
     } catch {
       return false;
+    }
+  };
+
+  // Świeżenie pod przyciskiem odświeżania: najpierw realny odczyt pozycji
+  // pojazdów z MPK, dopiero potem przeliczenie tras — żeby czasy na liście
+  // uwzględniały opóźnienia sprzed chwili, a nie sprzed pół minuty. Sam
+  // `quietRefresh` liczy lokalnie i niczego z sieci nie pobierał, więc
+  // przycisk obiecywał dane live, których nie dostarczał.
+  const handleRefresh = async () => {
+    if (refreshBusy.current) return;
+    refreshBusy.current = true;
+    setRefreshing(true);
+    try {
+      await liveTracker.poll();
+      const ok = await quietRefresh();
+      if (!ok) {
+        setRefreshFailed(true);
+        setTimeout(() => setRefreshFailed(false), 4000);
+      }
+    } finally {
+      refreshBusy.current = false;
+      setRefreshing(false);
     }
   };
 
@@ -1130,6 +1159,18 @@ export default function RoutesScreen() {
                   <Text style={styles.offlineText}>brak danych live</Text>
                 </View>
               )}
+              {/* Ciche „nie udało się” po naciśnięciu odświeżania było gorsze
+                  niż brak informacji — użytkownik myślał, że przycisk nie działa. */}
+              {refreshFailed && (
+                <View
+                  style={styles.offlineChip}
+                  accessibilityLiveRegion="polite"
+                  accessibilityRole="alert"
+                >
+                  <View style={[styles.offlineDot, { backgroundColor: scheme.error }]} />
+                  <Text style={styles.offlineText}>nie udało się przeliczyć tras</Text>
+                </View>
+              )}
             </View>
           }
           ListFooterComponent={
@@ -1223,7 +1264,8 @@ export default function RoutesScreen() {
           onCycleMode={handleCycleMode}
           sortMode={sortMode}
           onCycleSort={handleCycleSort}
-          onRefresh={() => void quietRefresh()}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
         />
       )}
     </SafeAreaView>
