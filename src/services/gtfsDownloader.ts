@@ -13,6 +13,17 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { strFromU8, unzipSync } from 'fflate';
 import { GTFS } from './gtfsConfig';
 import { API_URL } from '../config';
+import { getLocaleSync, type Strings } from '../i18n';
+import { pl } from '../i18n/pl';
+import { en } from '../i18n/en';
+import { de } from '../i18n/de';
+import { uk } from '../i18n/uk';
+
+const DL_DICTS: Record<string, Strings> = { pl, en, de, uk };
+
+function dlTr() {
+  return (DL_DICTS[getLocaleSync()] ?? pl).downloader;
+}
 
 export interface GtfsArchiveCandidate {
   id: number;
@@ -113,29 +124,27 @@ export interface DownloadProgress {
 
 /**
  * Błąd pobierania archiwum. `message` jest zdaniem dla użytkownika
- * (polskie, bez surowego komunikatu sieciowego), `hint` mówi co z tym
- * zrobić, a `detail` zostaje w logach.
+ * (w jego języku, bez surowego komunikatu sieciowego), `hint` mówi co
+ * z tym zrobić, a `detail` zostaje w logach.
  */
 export class GtfsDownloadError extends Error {
   readonly detail: string;
   readonly hint: string;
+  /** Stabilny kod przyczyny (niezależny od języka komunikatu). */
+  readonly code: 'no-net' | 'timeout' | 'no-space' | 'unreachable' | 'unknown';
 
-  constructor(message: string, detail: string, hint: string) {
+  constructor(message: string, detail: string, hint: string, code: GtfsDownloadError['code'] = 'unknown') {
     super(message);
     this.name = 'GtfsDownloadError';
     this.detail = detail;
     this.hint = hint;
+    this.code = code;
   }
 }
 
-const NO_INTERNET = 'Brak połączenia z internetem';
-const TOO_SLOW = 'Pobieranie trwało zbyt długo';
-const NO_SPACE = 'Za mało miejsca na telefonie';
-const UNREACHABLE = 'Rozkład chwilowo niedostępny';
-const UNKNOWN = 'Nie udało się pobrać rozkładu';
-
 /** Tłumaczy surowy błąd sieci/HTTP RN na komunikat zrozumiały dla użytkownika. */
 export function describeDownloadError(err: unknown): GtfsDownloadError {
+  const T = dlTr();
   const detail = err instanceof Error ? err.message : String(err);
   const low = detail.toLowerCase();
   if (
@@ -146,18 +155,18 @@ export function describeDownloadError(err: unknown): GtfsDownloadError {
     low.includes('failed to connect') ||
     low.includes('unable to resolve')
   ) {
-    return new GtfsDownloadError(NO_INTERNET, detail, 'Sprawdź internet i dotknij, aby ponowić.');
+    return new GtfsDownloadError(T.noNet, detail, T.hintRetry, 'no-net');
   }
   if (low.includes('timeout') || low.includes('timed out')) {
-    return new GtfsDownloadError(TOO_SLOW, detail, 'Dotknij, aby spróbować ponowić.');
+    return new GtfsDownloadError(T.timeout, detail, T.hintTouch, 'timeout');
   }
   if (low.includes('enospc') || low.includes('no space')) {
-    return new GtfsDownloadError(NO_SPACE, detail, 'Zwolnij trochę miejsca i dotknij, aby ponowić.');
+    return new GtfsDownloadError(T.noSpace, detail, T.hintSpace, 'no-space');
   }
   if (low.includes('http response status code')) {
-    return new GtfsDownloadError(UNREACHABLE, detail, 'Spróbuj ponownie za jakiś czas.');
+    return new GtfsDownloadError(T.unavailable, detail, T.hintLater, 'unreachable');
   }
-  return new GtfsDownloadError(UNKNOWN, detail, 'Dotknij, aby spróbować ponowić.');
+  return new GtfsDownloadError(T.failed, detail, T.hintTouch, 'unknown');
 }
 
 export type ArchiveSource = 'catalogue' | 'direct' | 'mirror';
@@ -209,14 +218,16 @@ export async function downloadArchiveWithFallback(
   }
 
   // Bez internetu nie ma sensu próbować kolejnych źródeł — mówimy wprost.
-  if (failures.length > 0 && failures.every((f) => f.message === NO_INTERNET)) {
+  const T = dlTr();
+  if (failures.length > 0 && failures.every((f) => f.code === 'no-net')) {
     throw new GtfsDownloadError(
-      NO_INTERNET,
+      T.noNet,
       failures.map((f) => f.detail).join(' | '),
       failures[0].hint,
+      'no-net',
     );
   }
-  throw failures[failures.length - 1] ?? new GtfsDownloadError(UNKNOWN, 'brak kandydatów', 'Dotknij, aby spróbować ponowić.');
+  throw failures[failures.length - 1] ?? new GtfsDownloadError(T.failed, 'brak kandydatów', T.hintTouch, 'unknown');
 }
 
 /** Pobiera gtfs.zip do documentDirectory. Zwraca lokalne URI. */
@@ -240,7 +251,7 @@ export async function downloadGtfsZip(
     },
   );
   const result = await task.downloadAsync();
-  if (!result?.uri) throw new Error('Pobieranie GTFS nie zwróciło pliku');
+  if (!result?.uri) throw new Error(dlTr().noFile);
   return result.uri;
 }
 

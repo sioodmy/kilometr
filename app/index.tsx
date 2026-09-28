@@ -17,7 +17,6 @@ import {
 } from '../src/services/dataManager';
 import { getSettingsSync } from '../src/services/settings';
 import { loadCachedSmartDestinations, loadTripHistory, saveCachedSmartDestinations, type TripHistoryItem } from '../src/services/smartRanker';
-import { getPinnedQuerySync } from '../src/services/pinnedConnection';
 import {
   buildRoutesLink,
   connectionToWidgetNext,

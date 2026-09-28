@@ -17,6 +17,18 @@ import {
   readGtfsText,
   unzipGtfs,
 } from './gtfsDownloader';
+import { getLocaleSync, type Strings } from '../i18n';
+import { pl } from '../i18n/pl';
+import { en } from '../i18n/en';
+import { de } from '../i18n/de';
+import { uk } from '../i18n/uk';
+
+const DATA_DICTS: Record<string, Strings> = { pl, en, de, uk };
+
+function dataTr(): Strings['data'] {
+  return (DATA_DICTS[getLocaleSync()] ?? pl).data;
+}
+
 import {
   getGtfsStats,
   getMeta,
@@ -179,36 +191,37 @@ export async function importGtfsFromNetwork(): Promise<void> {
       emit({ state: 'downloading', progress });
     });
 
-    emit({ state: 'importing', step: 'Rozpakowywanie…', progress: 0 });
+    const T = dataTr();
+    emit({ state: 'importing', step: T.stepUnpack, progress: 0 });
     await unzipGtfs(zipUri);
 
     await clearGtfsTables();
     await prepareForBulkImport();
 
-    emit({ state: 'importing', step: 'Przystanki…', progress: 0.05 });
+    emit({ state: 'importing', step: T.stepStops, progress: 0.05 });
     const stopsTxt = await readGtfsText('stops.txt');
-    if (!stopsTxt) throw new Error('Brak stops.txt w archiwum GTFS');
+    if (!stopsTxt) throw new Error(T.errStops);
     await importStops(parseStopsContent(stopsTxt));
 
-    emit({ state: 'importing', step: 'Linie…', progress: 0.15 });
+    emit({ state: 'importing', step: T.stepLines, progress: 0.15 });
     const routesTxt = await readGtfsText('routes.txt');
     if (routesTxt) await importRoutes(parseRoutesContent(routesTxt));
 
-    emit({ state: 'importing', step: 'Kalendarz…', progress: 0.25 });
+    emit({ state: 'importing', step: T.stepCalendar, progress: 0.25 });
     const calTxt = await readGtfsText('calendar.txt');
     if (calTxt) await importCalendar(parseCalendarContent(calTxt));
     const calDatesTxt = await readGtfsText('calendar_dates.txt');
     await importCalendarDates(calDatesTxt ? parseCalendarDatesContent(calDatesTxt) : []);
 
-    emit({ state: 'importing', step: 'Kursy…', progress: 0.35 });
+    emit({ state: 'importing', step: T.stepTrips, progress: 0.35 });
     const tripsTxt = await readGtfsText('trips.txt');
-    if (!tripsTxt) throw new Error('Brak trips.txt w archiwum GTFS');
+    if (!tripsTxt) throw new Error(T.errTrips);
     // Tripsy całego miasta na raz to ~2.2 MB tekstu — wchodzi bez chunkowania.
     await importTrips(parseTripsContent(tripsTxt));
 
-    emit({ state: 'importing', step: 'Czasy odjazdów…', progress: 0.5 });
+    emit({ state: 'importing', step: T.stepTimes, progress: 0.5 });
     const stopTimesTxt = await readGtfsText('stop_times.txt');
-    if (!stopTimesTxt) throw new Error('Brak stop_times.txt w archiwum GTFS');
+    if (!stopTimesTxt) throw new Error(T.errTimes);
     let done = 0;
     await parseStopTimesBatched(
       stopTimesTxt,
@@ -216,15 +229,15 @@ export async function importGtfsFromNetwork(): Promise<void> {
         await importStopTimesBatch(batch);
         done += batch.length;
         // Progres orientacyjny: ~1.5M wierszy w stop_times Wrocławia.
-        emit({ state: 'importing', step: `Czasy odjazdów… (${Math.round(done / 1000)}k)`, progress: Math.min(0.95, 0.5 + done / 1500000 / 2) });
+        emit({ state: 'importing', step: T.stepTimesK(Math.round(done / 1000)), progress: Math.min(0.95, 0.5 + done / 1500000 / 2) });
       },
       { batchSize: 5000 },
     );
 
-    emit({ state: 'importing', step: 'Budowanie indeksów…', progress: 0.97 });
+    emit({ state: 'importing', step: T.stepIndex, progress: 0.97 });
     await finishBulkImport();
 
-    emit({ state: 'importing', step: 'Wagi przystanków…', progress: 0.98 });
+    emit({ state: 'importing', step: T.stepWeights, progress: 0.98 });
     await computeStopWeights();
 
     await setMeta('gtfs_imported_at', new Date().toISOString());
@@ -239,14 +252,15 @@ export async function importGtfsFromNetwork(): Promise<void> {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
-    // do UI — pokazujemy zdanie po polsku, a szczegóły zostają w logu.
+    // do UI — pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
+    const Terr = dataTr();
     const message =
-      err instanceof GtfsDownloadError ? err.message : 'Nie udało się przygotować rozkładu';
+      err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
     console.warn('[DataManager] import failed:', detail);
     emit({
       state: 'error',
       message,
-      hint: err instanceof GtfsDownloadError ? err.hint : 'Dotknij, aby spróbować ponowić.',
+      hint: err instanceof GtfsDownloadError ? err.hint : Terr.retryHint,
       detail,
     });
     try {
