@@ -273,12 +273,6 @@ export default function RoutesScreen() {
   const scrollY = useRef(0);
   const contentH = useRef(0);
   const pendingAdjust = useRef<number | null>(null);
-  const topHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Strefa „trzymam palec na górze” z histerezą: wjście na 60 px, wyjście
-  // dopiero powyżej 110 px — jedno drgnięcie palcem nie kasuje timera.
-  const TOP_ZONE_ENTER = 60;
-  const TOP_ZONE_EXIT = 110;
-  const inTopZone = useRef(false);
   // Odliczane „uspokojenie listy” przed zmianą widoczności docka
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stan docka oczekujący na koniec pauzy po zmianie (patrz setDockVisible)
@@ -287,7 +281,6 @@ export default function RoutesScreen() {
 
   useEffect(() => {
     return () => {
-      if (topHoldTimer.current) clearTimeout(topHoldTimer.current);
       if (settleTimer.current) clearTimeout(settleTimer.current);
       if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
     };
@@ -747,31 +740,10 @@ export default function RoutesScreen() {
     evaluateDockOnSettle();
   };
 
-  // Warunki dociągania starszych odjazdów w refie: handler scrolla ma być
-
-  // stabilny, a nie przeżywać przez ref każdego renderu.
-  const topHoldGate = useRef({ loading: true, loadingEarlier: false, count: 0, noMoreEarlier: false });
-  topHoldGate.current = { loading, loadingEarlier, count: items.length, noMoreEarlier };
-
-  const startTopHold = useCallback(() => {
-    if (topHoldTimer.current) return;
-    const g = topHoldGate.current;
-    if (g.loading || g.loadingEarlier || g.count === 0 || g.noMoreEarlier) return;
-    topHoldTimer.current = setTimeout(() => {
-      topHoldTimer.current = null;
-      void loadEarlierRef.current();
-    }, 350);
-  }, []);
-
-  const cancelTopHold = useCallback(() => {
-    if (!topHoldTimer.current) return;
-    clearTimeout(topHoldTimer.current);
-    topHoldTimer.current = null;
-  }, []);
-
-  // Detekcja kierunku z histerezą: handler scrolla tylko pilnuje pozycji
-  // (korekta po dociągnięciu starszych odjazdów) i strefy „trzymam palec
-  // na górze” dociągającej starszych kursów.
+  // Handler scrolla pilnuje pozycji (korekta po dociągnięciu starszych
+  // odjazdów z góry) i kierunku do chowania docka. Historyczne odjazdy
+  // dociąga JUŻ TYLKO gest pull-to-load znad listy (RefreshControl niżej) —
+  // automatyczne dokładanie po samym dotknięciu góry było za łatwe.
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     const dy = y - lastScrollY.current;
@@ -795,19 +767,6 @@ export default function RoutesScreen() {
         accumulatedDelta.current = 0;
       }
       accumulatedDelta.current += dy;
-    }
-
-    // 2. Przytrzymanie na górze. Timer zakładamy RAZ przy wejściu w strefę.
-    //    Wcześniej clearTimeout+setTimeout leciał na każdą klatkę — to śmieci
-    //    na wątku JS i gest gasł przy mikro-ruchach palca.
-    if (!inTopZone.current) {
-      if (y <= TOP_ZONE_ENTER) {
-        inTopZone.current = true;
-        startTopHold();
-      }
-    } else if (y > TOP_ZONE_EXIT) {
-      inTopZone.current = false;
-      cancelTopHold();
     }
   };
 
@@ -837,15 +796,11 @@ export default function RoutesScreen() {
     // połączenia zostawały niewidoczne mimo gotowego rozkładu.
   }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady]);
 
-  const [pullRefreshing, setPullRefreshing] = useState(false);
-
-  const handlePullRefresh = async () => {
-    setPullRefreshing(true);
-    try {
-      await fetchRoutes(departureTimeSec, true);
-    } finally {
-      setPullRefreshing(false);
-    }
+  // Pull znad listy NIE odświeża — dociąga historyczne (już odjechane)
+  // połączenia. To JEDYNY sposób na ich wczytanie; odświeżanie listy robią
+  // filtry, czas i powrót na ekran (fetchRoutes w efektach).
+  const handlePullEarlier = () => {
+    void loadEarlierRef.current();
   };
 
   const handleCycleMode = () => {
@@ -1161,8 +1116,8 @@ export default function RoutesScreen() {
           ref={listRef}
           refreshControl={
             <RefreshControl
-              refreshing={pullRefreshing}
-              onRefresh={handlePullRefresh}
+              refreshing={loadingEarlier}
+              onRefresh={handlePullEarlier}
               tintColor={scheme.primary}
               colors={[scheme.primary]}
               progressBackgroundColor={scheme.surfaceContainerHigh}
