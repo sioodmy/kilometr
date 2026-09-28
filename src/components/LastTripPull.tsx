@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeInUp,
@@ -14,13 +14,15 @@ import { ArrowRight, RotateCcw, Search } from 'lucide-react-native';
 import { elev, scheme, shape } from '../theme/tokens';
 import type { TripHistoryItem } from '../services/smartRanker';
 
-// Progi pulla (px): lupka od 70, powrót od 175 (odpuszcza poniżej 155).
-// Treść (pill + tekst) odsłania się w całości do ~150, więc przełączenie
-// jest celowo głębiej — najpierw widać trasę, potem można ją odwrócić.
+// Progi pulla (px): lupka od 70, a szybki powrót (reverse) dopiero od ~36%
+// wysokości ekranu — celowo głęboko, żeby nie dało się go zahaczyć
+// przypadkowym pociągnięciem. MAX zostawia zapas nad progiem.
+const SCREEN_H = Dimensions.get('window').height;
+const ARM_2_PX = Math.round(SCREEN_H * 0.36);
 export const LAST_TRIP_ARM_1 = 70;
-export const LAST_TRIP_ARM_2 = 175;
-export const LAST_TRIP_DISARM_2 = 155;
-export const LAST_TRIP_MAX = 230;
+export const LAST_TRIP_ARM_2 = ARM_2_PX;
+export const LAST_TRIP_DISARM_2 = ARM_2_PX - 20;
+export const LAST_TRIP_MAX = ARM_2_PX + 60;
 
 export type LastTripOption = 0 | 1 | 2;
 
