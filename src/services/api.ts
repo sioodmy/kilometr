@@ -239,6 +239,7 @@ export const RoutingService: IRoutingService = {
         toLon: query.toLon,
         toId: query.toId,
         departureTimeSec: query.departureTimeSec,
+        arriveBySec: query.arriveBySec,
         maxTransfers: query.maxTransfers,
         modes: query.modes,
         minTransferSec: query.minTransferSec,
@@ -263,7 +264,7 @@ export const RoutingService: IRoutingService = {
         recentPlannedConnections.set(c.id, c);
       }
 
-      if (!query.departureTimeSec) {
+      if (!query.departureTimeSec && !query.arriveBySec) {
         void saveConnections(query, connections);
       }
       return connections;

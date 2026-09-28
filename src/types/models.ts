@@ -196,6 +196,8 @@ export interface RouteQuery {
   toLat: number;
   toLon: number;
   departureTimeSec?: number;
+  /** „Bądź na X” (sekundy, z offsetem dnia jak departureTimeSec). Rozłączne z departureTimeSec. */
+  arriveBySec?: number;
   /** 0–3, default 2 */
   maxTransfers?: number;
   /** Jednorazowy filtr pojazdów ('all' = tramwaje + autobusy, default).
