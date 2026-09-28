@@ -81,15 +81,37 @@ function isSameDestination(trip: TripHistoryItem, dest: TripDestinationInput): b
 }
 
 /**
- * Wpis opisujący tę samą parę co teraz sprawdzana: ten sam cel (po id, nazwie
- * albo współrzędnych) w promieniu tego samego startu. Dzięki temu „z Polbudu
- * do domu" i „z Rynku do domu" to dwa osobne nawyki, a nie jeden.
+ * Wszystkie wpisy opisujące tę samą parę co teraz sprawdzana: ten sam cel (po
+ * id, nazwie albo współrzędnych) w promieniu tego samego startu. Dzięki temu
+ * „z Polbudu do domu" i „z Rynku do domu" to dwa osobne nawyki, a nie jeden.
  *
- * W klastrze może być więcej niż jeden wpis o tym samym celu (dwa starty po
- * 1,6 km od siebie, albo dane sprzed zmiany formatu). Wybieramy wtedy
- * **najmocniejszy** nawyk — nowe sprawdzenie musi dodać się do niego, inaczej
- * licznik rozjeżdżałby się między wpisami i suma przestałaby znaczyć
- * „tyle razy sprawdzałem stąd".
+ * Lista może mieć więcej niż jeden element (dwa starty w promieniu 1,6 km
+ * albo dane sprzed zmiany formatu), bo `CLUSTER_RADIUS_M` to miara „to samo
+ * miejsce" dla rankingu.
+ */
+function matchingTrips(
+  history: TripHistoryItem[],
+  originLat: number,
+  originLon: number,
+  dest: TripDestinationInput,
+): TripHistoryItem[] {
+  const matches: TripHistoryItem[] = [];
+  for (const trip of history) {
+    if (!isSameDestination(trip, dest)) continue;
+    // Wpis ze śmieciami współrzędnymi (NaN) wypadałby z rankingu, bo `NaN`
+    // nie mieści się w żadnym promieniu — a tutaj `NaN > CLUSTER_RADIUS_M`
+    // to fałsz, więc bez tego pilnowałby go jako głównego nawyku.
+    if (!finite(trip.origin_lat) || !finite(trip.origin_lon)) continue;
+    if (distanceMeters(originLat, originLon, trip.origin_lat, trip.origin_lon) > CLUSTER_RADIUS_M) continue;
+    matches.push(trip);
+  }
+  return matches;
+}
+
+/**
+ * Wpis, do którego trafi nowe sprawdzenie: **najmocniejszy** nawyk klastra
+ * (przy remisie najświeższy). Inaczej licznik rozjeżdżałby się między wpisami
+ * i suma przestałaby znaczyć „tyle razy sprawdzałem stąd".
  */
 export function findTripPair(
   history: TripHistoryItem[],
@@ -98,9 +120,7 @@ export function findTripPair(
   dest: TripDestinationInput,
 ): TripHistoryItem | undefined {
   let best: TripHistoryItem | undefined;
-  for (const trip of history) {
-    if (!isSameDestination(trip, dest)) continue;
-    if (distanceMeters(originLat, originLon, trip.origin_lat, trip.origin_lon) > CLUSTER_RADIUS_M) continue;
+  for (const trip of matchingTrips(history, originLat, originLon, dest)) {
     if (
       !best ||
       tripUses(trip) > tripUses(best) ||
@@ -156,11 +176,15 @@ export function mergeTripSearch(
   }
 
   const measured = finite(measuredMinutes) && measuredMinutes > 0 ? measuredMinutes : undefined;
+  const matches = matchingTrips(history, originLat, originLon, dest);
   const match = findTripPair(history, originLat, originLon, dest);
 
   if (match) {
     const uses = tripUses(match);
-    const isRepeat = now - match.timestamp < REPEAT_GAP_MS;
+    // Okno powtórki liczy się dla CAŁEGO klastra, nie dla wybranego wpisu:
+    // sprawdzenie z PWR minutę po sprawdzeniu z Rynku to ta sama akcja
+    // (w promieniu 1,6 km to jedno miejsce), więc licznik nie rośnie.
+    const isRepeat = matches.some((trip) => now - trip.timestamp < REPEAT_GAP_MS);
     const previous = match.duration_min || FALLBACK_TRIP_MIN;
     const merged: TripHistoryItem = {
       ...match,
@@ -285,22 +309,12 @@ export function rankSmartDestinations(
     const key = trip.dest_id || trip.dest_title;
     const uses = tripUses(trip);
     const duration = trip.duration_min || FALLBACK_TRIP_MIN;
-    let cand = candidateMap.get(key);
-    if (!cand) {
-      // Ten sam budynek pod dwiema nazwami (albo dwoma id) w danych sprzed
-      // zmiany: `recordTripSearch` porównywał tytuły, nie współrzędne, więc
-      // „Magnolia Park" i „Siłownia" mogły zostać w historii obok siebie.
-      // Jeden wiersz, inaczej limit 4 wyrzuci prawdziwą destynację — dokładnie
-      // powód, dla którego #45 scalało przypięte miejsce z historią.
-      for (const existing of candidateMap.values()) {
-        if (
-          distanceMeters(existing.lat, existing.lon, trip.dest_lat, trip.dest_lon) <= SAME_PLACE_RADIUS_M
-        ) {
-          cand = existing;
-          break;
-        }
-      }
-    }
+    // Świadomie po kluczu, a nie po współrzędnych: dwa różne cele 100 m od
+    // siebie to dwie różne sprawy (tak #45 świadomie NIE scala dwóch
+    // przypiętych miejsc). Współrzędne decydują o tym, czy dwa zapisy tego
+    // samego celu to jeden nawyk — ale w `mergeTripSearch`, przy zapisie,
+    // a nie tutaj, gdzie decyduje o tym, co widać na liście.
+    const cand = candidateMap.get(key);
     if (!cand) {
       candidateMap.set(key, {
         id: trip.dest_id,

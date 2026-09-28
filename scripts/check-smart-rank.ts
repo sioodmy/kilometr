@@ -198,6 +198,42 @@ describe('mergeTripSearch: klastr startów w promieniu 1,6 km');
   // Słabszy wpis zostaje w historii (to inna para: inny start), ale ranking
   // widzi jedną destynację: 5 + 1 + 1 (nowe sprawdzenie) = 7 sprawdzeń.
   expect('całość klastra to jedna destynacja', rankSmartDestinations(merged, [], PWR.lat, PWR.lon, NOW + 6 * HOUR)[0].frequency, 7);
+  expect('nic nie zniknęło z sumy', 5 + 1 + 1, rankSmartDestinations(merged, [], PWR.lat, PWR.lon, NOW + 6 * HOUR)[0].frequency);
+
+describe('mergeTripSearch: okno powtórki liczy się dla klastra');
+{
+  // Dwa wpisy o tym samym celu, oba w promieniu 1,6 km: mocniejszy (uses = 6)
+  // i ten sprawdzany przed chwilą (uses = 1, minutę temu).
+  const history: TripHistoryItem[] = [
+    { ...historyFrom(PWR, home, 1, NOW - 60_000, 22), id: 'just-used' },
+    {
+      ...historyFrom({ lat: PWR.lat + 0.005, lon: PWR.lon + 0.005 }, home, 6, NOW - 2 * HOUR, 22),
+      id: 'strong',
+    },
+  ];
+  // Nowe sprawdzenie z klastra minutę po poprzednim to JEDNA akcja użytkownika
+  // (dokładnie to, po co jest okno): suma zostaje 7, a nie 8.
+  const soon = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW);
+  expect('klastr nie dostaje drugiego +1', rankSmartDestinations(soon, [], PWR.lat, PWR.lon, NOW)[0].frequency, 7);
+  const later = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW + HOUR);
+  expect('po godzinie to nowe sprawdzenie', rankSmartDestinations(later, [], PWR.lat, PWR.lon, NOW + HOUR)[0].frequency, 8);
+}
+
+describe('mergeTripSearch: śmieci w historii nie przejmują nawyku');
+{
+  // Wpis ze śmieciami w starcie: `NaN > 1600` to fałsz, więc bez pilnowania
+  // przejąłby każde nowe sprawdzenie jako „najmocniejszy nawyk".
+  const garbage: TripHistoryItem = {
+    ...historyFrom(PWR, home, 99, NOW - DAY, 22),
+    id: 'garbage',
+    origin_lat: NaN,
+    origin_lon: NaN,
+  };
+  const history = [garbage, historyFrom(PWR, home, 2, NOW - 3 * DAY, 22)];
+  expect('śmieci w promieniu są pomijane', findTripPair(history, PWR.lat, PWR.lon, home)?.id !== 'garbage', true);
+  const merged = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW + 6 * HOUR);
+  expect('increment idzie do prawdziwego wpisu', tripUses(findTripPair(merged, PWR.lat, PWR.lon, home) as TripHistoryItem), 3);
+}
 }
 
 describe('tripUses: stare wpisy bez pola');
@@ -269,18 +305,35 @@ describe('Ranking: te same cele z różnych startów to jeden cel');
   expect('sprawdzenia z klastra sumują się', ranked[0].frequency, 7);
 }
 
-describe('Ranking: stare wpisy w klastrze też się sumują');
+describe('Ranking: dwa różne cele blisko siebie zostają dwoma wierszami');
 {
-  // Dane sprzed pola `uses` (każdy wpis = jedno sprawdzenie) mogą dotrzeć do
-  // rankingu jako osobne wpisy o tym samym celu, bo stary kod porównywał
-  // tytuły, a nie współrzędne („Dom" i „Swojczycka 41" to ten sam budynek).
-  const legacy = (title: string, uses?: number): TripHistoryItem => {
-    const base = historyFrom(PWR, gym, 1, NOW - 2 * DAY, 20);
-    return { ...base, id: `legacy-${title}`, dest_title: title, dest_id: title, ...(uses === undefined ? {} : { uses }) };
-  };
-  const ranked = rankSmartDestinations([legacy('Siłownia'), legacy('Magnolia')], [], PWR.lat, PWR.lon, NOW);
-  expect('dwa stare wpisy to jeden nawyk', ranked.length, 1);
-  expect('stare wpisy sumują się po 1', ranked[0].frequency, 2);
+  // Świadome ograniczenie, nie przypadek: ranking rozpoznaje cele po kluczu
+  // (`id` albo tytuł), a nie po współrzędnych. Dwa różne miejsca 140 m od
+  // siebie to dwie różne sprawy — tak #45 świadomie nie scala dwóch przypiętych
+  // miejsc. Ciche złączenie dwóch wierszy gubiłoby cel, o którym nikt nie prosił.
+  const neighbour = dest('plac-wilka', 'Plac Włókien', { lat: GYM.lat + 0.001, lon: GYM.lon + 0.0005 });
+  const ranked = rankSmartDestinations(
+    [historyFrom(PWR, gym, 4, NOW - DAY, 18), historyFrom(PWR, neighbour, 1, NOW - HOUR, 6)],
+    [],
+    PWR.lat,
+    PWR.lon,
+    NOW,
+  );
+  expectList('oba wiersze zostają', titles(ranked), ['Siłownia', 'Plac Włókien']);
+}
+
+describe('Ranking: stare wpisy bez `uses` liczą się po 1');
+{
+  // Dane sprzed pola `uses`: każdy wpis to jedno sprawdzenie, więc kandydat
+  // zbiera z nich licznik, a nie datę.
+  const legacy: TripHistoryItem[] = [
+    { ...historyFrom(PWR, home, 1, NOW - 3 * DAY, 22), uses: undefined, dest_id: 'dom-1', dest_title: 'Dom' },
+    { ...historyFrom(PWR, home, 1, NOW - 5 * DAY, 24), uses: undefined, dest_id: 'dom-1', dest_title: 'Dom' },
+  ];
+  const ranked = rankSmartDestinations(legacy, [], PWR.lat, PWR.lon, NOW);
+  expect('jeden wiersz z dwóch starych wpisów', ranked.length, 1);
+  expect('stare wpisy dają po 1', ranked[0].frequency, 2);
+  expect('czas dojazdu to średnia ważona', ranked[0].avgDurationMin, 23);
 }
 
 describe('Ranking: przypięte miejsce i wykluczenia');
