@@ -42,6 +42,7 @@
     "setup": "npm --prefix server run setup",
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
+    "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "typecheck": "tsc --noEmit"
   },
   "private": true,

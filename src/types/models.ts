@@ -98,8 +98,9 @@ export interface SmartDestination extends LatLon {
   id: string;
   title: string;
   address: string;
-  /** weekly tap count from this origin — drives ranking */
+  /** Ile razy sprawdzano tę trasę z tego miejsca — napędza ranking */
   frequency: number;
+  /** Szacowany czas dojazdu w minutach (pomiar z planera albo wartość domyślna) */
   avgDurationMin: number;
   originId: string;
 }

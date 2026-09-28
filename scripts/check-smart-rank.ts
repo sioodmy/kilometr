@@ -1,0 +1,340 @@
+/**
+ * Sprawdzenie rankingu „Ostatnich miejsc" (issue #2 i #11).
+ *
+ * Uruchomienie: `npm run check:smart-rank`
+ *
+ * To nie jest framework testowy, tylko jeden plik z asercjami — tak samo jak
+ * `check:notifications`. Powód jest konkretny: „Ostatnie miejsca" to NIE jest
+ * historia wyszukiwania, tylko ranking nawyków, a przez długi czas ranking
+ * wyglądał poprawnie, a był chronologiczny. `recordTripSearch` kasował każdy
+ * poprzedni wpis o tym samym celu, więc `weeklyCount`/`totalCount` zawsze
+ * wynosiły 1, a decydował wyłącznie „kiedy ostatnio" (recencyBoost 0–8 pkt
+ * przy 1,5 pkt za każde sprawdzenie).
+ *
+ * Na realnym przebiegu: pięć wyjazdów do domu z Polbudu w ciągu miesiąca
+ * przegrywało z jednym sprawdzeniem „Galeria" z rana, bo ten świeży wpis
+ * dostawał 7,5 pkt, a dom — 6,9. Teraz nawyk waży 10 pkt za sprawdzenie.
+ *
+ * Każdy przypadek poniżej to regression guard na jeden z tych błędów.
+ * Uruchamia się przez `tsx`, więc nie potrzebuje konfiguracji testowej.
+ */
+
+import {
+  CLUSTER_RADIUS_M,
+  EXCLUSION_RADIUS_M,
+  FALLBACK_TRIP_MIN,
+  REPEAT_GAP_MS,
+  mergeTripSearch,
+  rankSmartDestinations,
+  scoreCandidate,
+  tripUses,
+  type TripDestinationInput,
+  type TripHistoryItem,
+} from '../src/services/smartRanking';
+import type { SavedPlace } from '../src/types/models';
+
+// ─── Framework asercji ─────────────────────────────────────────────────────
+
+let passed = 0;
+const failures: string[] = [];
+let section = '';
+
+function describe(name: string): void {
+  section = name;
+  console.log(`\n— ${name}`);
+}
+
+function expect<T>(label: string, got: T, want: T): void {
+  if (got === want) {
+    passed++;
+    console.log(`   ok    ${label} = ${JSON.stringify(got)}`);
+    return;
+  }
+  failures.push(`${section} → ${label}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+  console.log(`   FAIL  ${label} = ${JSON.stringify(got)} (oczekiwano ${JSON.stringify(want)})`);
+}
+
+/** Tablice po ludzku: `===` porównuje referencje, a tu chodzi o treść. */
+function expectList(label: string, got: string[], want: string[]): void {
+  expect(label, got.join(' → '), want.join(' → '));
+}
+
+function expectTrue(label: string, got: boolean): void {
+  expect(label, got, true);
+}
+
+// ─── Dane testowe ──────────────────────────────────────────────────────────
+
+const MIN = 60 * 1000;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
+const NOW = Date.UTC(2026, 8, 28, 8, 0, 0);
+
+// Polibuda, dom (Swojczyce), galeria, Rynek, siłownia.
+const PWR = { lat: 51.1079, lon: 17.0617 };
+const HOME = { lat: 51.1085, lon: 17.1021 };
+const MALL = { lat: 51.1015, lon: 17.0352 };
+const MARKET = { lat: 51.1079, lon: 17.0385 };
+const GYM = { lat: 51.1181, lon: 16.9946 };
+
+function dest(id: string, title: string, at: { lat: number; lon: number }): TripDestinationInput {
+  return { id, title, lat: at.lat, lon: at.lon };
+}
+
+const home = dest('swojczycka', 'Dom', HOME);
+const mall = dest('galeria', 'Galeria', MALL);
+const market = dest('rynek', 'Rynek', MARKET);
+const gym = dest('magnolia', 'Siłownia', GYM);
+
+/** Historia z jednego miejsca: `count` sprawdzeń tego samego celu. */
+function historyFrom(
+  origin: { lat: number; lon: number },
+  target: TripDestinationInput,
+  count: number,
+  lastSeen: number,
+  durationMin = 18,
+): TripHistoryItem {
+  return {
+    id: `t-${target.id}-${origin.lat}`,
+    origin_title: 'Polibuda',
+    origin_lat: origin.lat,
+    origin_lon: origin.lon,
+    dest_id: target.id,
+    dest_title: target.title,
+    dest_address: `${target.title}, Wrocław`,
+    dest_lat: target.lat,
+    dest_lon: target.lon,
+    duration_min: durationMin,
+    timestamp: lastSeen,
+    uses: count,
+  };
+}
+
+const titles = (list: { title: string }[]): string[] => list.map((d) => d.title);
+
+// ─── Zapis sprawdzenia trasy ───────────────────────────────────────────────
+
+describe('mergeTripSearch: powtórka tej samej pary');
+{
+  const once = mergeTripSearch([], PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW);
+  expect('nowa para = jeden wpis', once.length, 1);
+  expect('uses zaczyna od 1', tripUses(once[0]), 1);
+  expect('zmierzony czas dojazdu wchodzi do wpisu', once[0].duration_min, 22);
+
+  // Regression: drugi zapis tej samej trasy w ciągu minuty to to samo
+  // sprawdzenie (ekran połączeń odpala zapytanie drugi raz), nie drugie użycie.
+  const again = mergeTripSearch(once, PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW + 1000);
+  expect('nie przyrośnie drugi wpis', again.length, 1);
+  expect('powtórka nie zwiększa uses', tripUses(again[0]), 1);
+  expect('powtórka odświeża czas', again[0].timestamp, NOW + 1000);
+  expect('powtórka bierze nowy pomiar', again[0].duration_min, 22);
+
+  const later = mergeTripSearch(again, PWR.lat, PWR.lon, 'Polibuda', home, 24, NOW + 2 * HOUR);
+  expect('po godzinie to już nowe sprawdzenie', tripUses(later[0]), 2);
+  expect('czas dojazdu uśredniony', later[0].duration_min, 23);
+}
+
+describe('mergeTripSearch: to samo miejsce z innego startu');
+{
+  // Regression: stary kod kasował wszystkie wpisy o tym samym celu, więc
+  // jedno sprawdzenie „do domu" z Rynku gasiło nawyk „do domu" z Polbudu.
+  let history = mergeTripSearch([], PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW - 6 * DAY);
+  history = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW - 4 * DAY);
+  history = mergeTripSearch(history, MARKET.lat, MARKET.lon, 'Rynek', home, 18, NOW - 2 * HOUR);
+  expect('oba nawyki zostają w historii', history.length, 2);
+  expect('oba to ten sam cel', history.filter((t) => t.dest_id === 'swojczycka').length, 2);
+
+  const fromPwr = rankSmartDestinations(history, [], PWR.lat, PWR.lon, NOW);
+  expectTrue('z Polbudy widać Dom', fromPwr.some((d) => d.id === 'swojczycka'));
+  const fromMarket = rankSmartDestinations(history, [], MARKET.lat, MARKET.lon, NOW);
+  expect('z Rynku widać swoje (uses = 1)', fromMarket[0].frequency, 1);
+}
+
+describe('mergeTripSearch: cel dwa metry od celu');
+{
+  // Ten sam budynek pod dwoma id (wyszukiwarka vs przypięte miejsce) to ten
+  // sam nawyk — inaczej limit wyrzuci prawdziwą destynację (#45).
+  const near = dest('osm:node/1', 'Dom (Swojczycka 41)', { lat: HOME.lat + 0.00005, lon: HOME.lon });
+  const history = mergeTripSearch([], PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW - 3 * DAY);
+  const merged = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', near, 22, NOW - 2 * HOUR);
+  expect('to jeden wpis, nie dwa', merged.length, 1);
+  expect('uses policzone razem', tripUses(merged[0]), 2);
+}
+
+describe('mergeTripSearch: śmieci z deep linka');
+{
+  // `Number('abc')` = NaN, a NaN przechodził dawny `typeof === 'number'`.
+  // Wpis z NaN nigdy nie przechodził żadnego promienia w rankingu, więc
+  // znikal bez śladu — lepiej nie zapisać go wcale.
+  const history = mergeTripSearch([], PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW);
+  expect(
+    'NaN współrzędne celu nie trafia do historii',
+    mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', { id: 'x', title: 'X', lat: NaN, lon: 17 }, undefined, NOW + HOUR).length,
+    1,
+  );
+  expect(
+    'NaN współrzędne startu nie trafia do historii',
+    mergeTripSearch(history, NaN, 17, 'Polibuda', mall, undefined, NOW + HOUR).length,
+    1,
+  );
+  expect('historia bez zmian', history[0].dest_title, 'Dom');
+}
+
+describe('tripUses: stare wpisy bez pola');
+{
+  const legacy: TripHistoryItem = {
+    id: 'old',
+    origin_title: 'Polibuda',
+    origin_lat: PWR.lat,
+    origin_lon: PWR.lon,
+    dest_id: 'swojczycka',
+    dest_title: 'Dom',
+    dest_address: 'Swojczycka 41, Wrocław',
+    dest_lat: HOME.lat,
+    dest_lon: HOME.lon,
+    duration_min: 18,
+    timestamp: NOW - DAY,
+  };
+  expect('brak pola = jedno sprawdzenie', tripUses(legacy), 1);
+  expect('zero/ujemne nie psują rankingu', tripUses({ ...legacy, uses: 0 }), 1);
+  const ranked = rankSmartDestinations([legacy], [], PWR.lat, PWR.lon, NOW);
+  expect('stary wpis nadal się pojawia', ranked[0].title, 'Dom');
+}
+
+// ─── Ranking ───────────────────────────────────────────────────────────────
+
+describe('Ranking: nawyk bije jednorazową świeżość (#2)');
+{
+  // Pięć wyjazdów do domu w ciągu miesiąca (ostatni wczoraj) i jedno
+  // sprawdzenie galerii dziś rano. Chronologicznie galeria wygrywała.
+  const history: TripHistoryItem[] = [
+    historyFrom(PWR, home, 5, NOW - DAY, 22),
+    historyFrom(PWR, mall, 1, NOW - 2 * HOUR, 12),
+  ];
+  const ranked = rankSmartDestinations(history, [], PWR.lat, PWR.lon, NOW);
+  expectList('kolejność to nawyk, nie data', titles(ranked).slice(0, 2), ['Dom', 'Galeria']);
+  expect('częstotliwość z historii', ranked[0].frequency, 5);
+  expect('zmierzony czas dojazdu', ranked[0].avgDurationMin, 22);
+}
+
+describe('Ranking: stary nawyk nie umiera, ale gaśnie (#11)');
+{
+  const history = [
+    historyFrom(PWR, home, 6, NOW - 20 * DAY, 22),
+    historyFrom(PWR, mall, 2, NOW - 2 * HOUR, 12),
+  ];
+  const ranked = rankSmartDestinations(history, [], PWR.lat, PWR.lon, NOW);
+  expect('nawyk z miesiąca temu wciąż pierwszy', ranked[0].title, 'Dom');
+  expect('ale świeżość nie ratuje świeżego strzału', ranked[0].frequency, 6);
+
+  // To samo, tylko nawyk wygasł: dwa świeże sprawdzenia wygrywają.
+  const faded = [
+    historyFrom(PWR, home, 6, NOW - 40 * DAY, 22),
+    historyFrom(PWR, mall, 3, NOW - 2 * HOUR, 12),
+  ];
+  expect('wygasły nawyk przegrywa', rankSmartDestinations(faded, [], PWR.lat, PWR.lon, NOW)[0].title, 'Galeria');
+}
+
+describe('Ranking: te same cele z różnych startów to jeden cel');
+{
+  const history = [
+    historyFrom(PWR, gym, 4, NOW - DAY, 18),
+    historyFrom({ lat: PWR.lat + 0.004, lon: PWR.lon + 0.004 }, gym, 3, NOW - 3 * DAY, 18),
+    historyFrom(PWR, market, 1, NOW - HOUR, 10),
+  ];
+  const ranked = rankSmartDestinations(history, [], PWR.lat, PWR.lon, NOW);
+  expectList('brak duplikatu celu', titles(ranked), ['Siłownia', 'Rynek']);
+  // max(4, 3), nie suma — te same podejścia policzone dwa razy to szum.
+  expect('licznik z najmocniejszego wpisu, nie suma', ranked[0].frequency, 4);
+}
+
+describe('Ranking: przypięte miejsce i wykluczenia');
+{
+  const places: SavedPlace[] = [
+    {
+      id: 'pin-1',
+      name: 'Dom',
+      icon: 'home',
+      placeId: 'swojczycka',
+      address: 'Swojczycka 41, Wrocław',
+      lat: HOME.lat,
+      lon: HOME.lon,
+    },
+    {
+      id: 'pin-2',
+      name: 'Siłownia',
+      icon: 'gym',
+      placeId: 'magnolia',
+      address: 'Magnolia Park, Legnicka 58',
+      lat: GYM.lat,
+      lon: GYM.lon,
+    },
+  ];
+  // Stoimy na Polbududzie i mamy tam nawyk do domu (5) i do galerii (1).
+  const history = [
+    historyFrom(PWR, home, 5, NOW - DAY, 22),
+    historyFrom(PWR, mall, 1, NOW - HOUR, 12),
+  ];
+  const ranked = rankSmartDestinations(history, places, PWR.lat, PWR.lon, NOW);
+  expectList('przypięte miejsce wchodzi do rankingu', titles(ranked), ['Dom', 'Siłownia', 'Galeria']);
+  expect('przypięte miejsce bez historii ma fallback', ranked[1].avgDurationMin, FALLBACK_TRIP_MIN);
+  expect('przypięty cel dostaje częstotliwość 1', ranked[1].frequency, 1);
+
+  // Stoimy W domu: dom jest tu miejscem kontekstowym, więc nie proponujemy
+  // powrotu do domu (kiedyś pilnowało tego tylko 250 m od celu).
+  const atHome = rankSmartDestinations(history, places, HOME.lat, HOME.lon, NOW);
+  expectTrue('nie proponujemy miejsca, w którym stoimy', !atHome.some((d) => d.id === 'swojczycka'));
+
+  // Ten sam budynek z historii i z przypięcia = jeden wiersz (#45).
+  const bothSources = rankSmartDestinations(history, places, PWR.lat, PWR.lon, NOW, 4);
+  expectList('bez duplikatu po scaleniu po współrzędnych', titles(bothSources), ['Dom', 'Siłownia', 'Galeria']);
+}
+
+describe('Ranking: pusto znaczy pusto');
+{
+  expect('bez historii i bez przypiętych miejsc lista pusta', rankSmartDestinations([], [], PWR.lat, PWR.lon, NOW).length, 0);
+  // Użytkownik dopiero zaczął: bierzemy globalną historię, żeby sekcja
+  // „Ostatnie miejsca" nie była pusta.
+  const history = [historyFrom(MARKET, home, 2, NOW - DAY, 22)];
+  expectTrue('bez przejazdów z okolicy bierzemy globalne', rankSmartDestinations(history, [], PWR.lat, PWR.lon, NOW).length > 0);
+  // Historia sprzed dwóch miesięcy i tak ma sens, dopóki nie ma bliższych.
+  const stale = [historyFrom(MARKET, home, 2, NOW - 60 * DAY, 22)];
+  expect('stara historia wciąż pokazuje cel', rankSmartDestinations(stale, [], PWR.lat, PWR.lon, NOW)[0].title, 'Dom');
+}
+
+describe('Ranking: limity i promienie');
+{
+  const many = ['a', 'b', 'c', 'd', 'e'].map((id, i) =>
+    historyFrom(PWR, dest(id, `Cel ${id}`, { lat: 51.11 + i * 0.01, lon: 17.07 }), i + 1, NOW - HOUR, 15),
+  );
+  expect('limit domyślny to 4', rankSmartDestinations(many, [], PWR.lat, PWR.lon, NOW).length, 4);
+  expect('limit jest przekazywany', rankSmartDestinations(many, [], PWR.lat, PWR.lon, NOW, 2).length, 2);
+
+  // Wpis sprzed miesiąca, ale start 5 km od użytkownika — wypada, bo w okolicy
+  // jest coś innego.
+  const near = [historyFrom(PWR, market, 1, NOW - HOUR, 10)];
+  const far = [historyFrom({ lat: 51.15, lon: 17.2 }, home, 9, NOW - HOUR, 22)];
+  expectList('daleki start wypada z rankingu', titles(rankSmartDestinations([...far, ...near], [], PWR.lat, PWR.lon, NOW)), ['Rynek']);
+  expect('promień klastera to 1600 m', CLUSTER_RADIUS_M, 1600);
+  expect('promień wykluczenia to 250 m', EXCLUSION_RADIUS_M, 250);
+}
+
+describe('Punktacja: monotoniczność');
+{
+  const fresh = NOW - HOUR;
+  expect('więcej sprawdzeń = więcej punktów', scoreCandidate(3, fresh, false, NOW) > scoreCandidate(2, fresh, false, NOW), true);
+  expect('przypięte miejsce punktuje', scoreCandidate(1, fresh, true, NOW) > scoreCandidate(1, fresh, false, NOW), true);
+  expect('wiek gasi, ale nie odwraca', scoreCandidate(4, NOW - 30 * DAY, false, NOW) > scoreCandidate(2, fresh, false, NOW), true);
+  expect('okno powtórki to 5 minut', REPEAT_GAP_MS, 5 * MIN);
+}
+
+// ─── Podsumowanie ─────────────────────────────────────────────────────────
+
+console.log(`\n${'='.repeat(52)}`);
+if (failures.length === 0) {
+  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  process.exit(0);
+}
+console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);
+for (const f of failures) console.log(`  - ${f}`);
+process.exit(1);
