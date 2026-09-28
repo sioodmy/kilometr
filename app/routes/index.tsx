@@ -68,6 +68,7 @@ import {
   type ModePreference,
   type SortMode,
 } from '../../src/components/RoutesThumbBar';
+import { useThumbBarInset } from '../../src/components/ThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 
 const GPS_ITEM: Suggestion = {
@@ -208,6 +209,9 @@ export default function RoutesScreen() {
   // W przeciwieństwie do starego zwijanego panelu na górze nie ruszamy
   // layoutu FlatListy (zero flickeru): dock pływa nad listą (absolute).
   const dockProgress = useSharedValue(1);
+  // Zapas pod listą liczony z zmierzonej wysokości docka — wpisane wcześniej
+  // 96 px nie wystarczało i ostatnia karta chowała się pod paskiem.
+  const thumbInset = useThumbBarInset();
 
   const animatedDockStyle = useAnimatedStyle(() => {
     const p = dockProgress.value;
@@ -1245,7 +1249,7 @@ export default function RoutesScreen() {
           // wymusza przeliczenie etykiet „za X min” bez refetchu
           extraData={nowTick}
           keyExtractor={connectionKey}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: thumbInset }]}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
           // Na Androidzie RN domyślnie odpija widoki spoza kadru
@@ -1619,7 +1623,6 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 14,
-    paddingBottom: 96,
     gap: 10,
   },
   footer: { paddingVertical: 18, alignItems: 'center', gap: 10 },

@@ -29,6 +29,7 @@ import { SavedPlacesRow, SAVED_PLACE_ICONS } from '../src/components/SavedPlaces
 import { ActiveTripCard } from '../src/components/ActiveTripCard';
 import { getSuggestionIconMeta, type SuggestionIconMeta } from '../src/components/SuggestionRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
+import { useThumbBarInset } from '../src/components/ThumbBar';
 import {
   LAST_TRIP_ARM_1,
   LAST_TRIP_ARM_2,
@@ -57,6 +58,9 @@ export default function HomeScreen() {
   const [smart, setSmart] = useState<SmartDestination[]>([]);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
+  // Zapas na dole zamiast wpisanych 90 px — wysokość paska kciuka mierzy się
+  // w trakcie layoutu, a na telefonach z paskiem nawigacji jest wyższy.
+  const thumbInset = useThumbBarInset();
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
@@ -688,7 +692,10 @@ export default function HomeScreen() {
             }}
           />
 
-          <View style={{ height: 90 }} />
+          <View style={{ height: 20 }} />
+          <SmartHistoryList items={smart} departures={nextDepart} onSelect={(d) => goToRoutes(d)} />
+
+          <View style={{ height: thumbInset }} />
         </ScrollView>
       </SafeAreaView>
 

@@ -7,8 +7,9 @@
 //  - `ThumbBarItem`  — pojedynczy przycisk ikona + etykieta (>= 44 px,
 //                      czyli próg dotyku dla palca w ruchu).
 
-import React, { type ReactNode } from 'react';
+import React, { useEffect, useState, type ReactNode } from 'react';
 import {
+  LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -20,6 +21,41 @@ import {
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { elev, scheme, shape, type } from '../theme/tokens';
+
+/** Odstęp pigułki od krawędzi ekranu (nad `bottom` z insetów). */
+const BAR_EDGE_GAP = 10;
+/** Wysokość z `styles.bar` — stan początkowy, zanim `onLayout` ją zmierzy. */
+const BAR_MIN_HEIGHT = 58;
+/** Dodatkowy oddech między paskiem a ostatnim elementem treści. */
+const CONTENT_GAP = 12;
+
+let measuredBarHeight = BAR_MIN_HEIGHT;
+const insetListeners = new Set<() => void>();
+
+/**
+ * Ile pikseli od dołu musi zostawić przewijana treść, żeby pływający pasek
+ * kciuka niczego nie zasłonił.
+ *
+ * Każdy ekran miał tu własną zgadywaną liczbę (90, 80, 96 px) i wszystkie
+ * były za małe — na telefonie z paskiem nawigacji pasek zajmuje ~116 px, więc
+ * ostatni przycisk („Mapa trasy”) lądował pod nim i był nieosiągalny. Teraz
+ * wysokość jest mierzona, a nie zgadnięta.
+ */
+export function useThumbBarInset(): number {
+  const insets = useSafeAreaInsets();
+  const [barHeight, setBarHeight] = useState(measuredBarHeight);
+
+  useEffect(() => {
+    const update = () => setBarHeight(measuredBarHeight);
+    insetListeners.add(update);
+    update();
+    return () => {
+      insetListeners.delete(update);
+    };
+  }, []);
+
+  return Math.max(insets.bottom, BAR_EDGE_GAP) + BAR_EDGE_GAP + barHeight + CONTENT_GAP;
+}
 
 interface ThumbBarProps {
   children: ReactNode;
@@ -37,6 +73,15 @@ export function ThumbBar({ children, bottom = 10, style, contentStyle, inline }:
   if (inline) {
     return <View style={[styles.bar, contentStyle]}>{children}</View>;
   }
+  // Wysokość rzeczywista (liczba przycisków, zawinięte etykiety) — nie
+  // minHeight — bo od niej zależy zapas treści z useThumbBarInset().
+  const handleBarLayout = (e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    if (h > 0 && Math.abs(h - measuredBarHeight) > 0.5) {
+      measuredBarHeight = h;
+      for (const l of insetListeners) l();
+    }
+  };
   // Animated.View, bo rodzic potrafi chować/pokazywać dock stylem z useAnimatedStyle
   // (zwykle przy przewijaniu listy) — na zwykłym View to nie zadziała.
   return (
@@ -44,7 +89,9 @@ export function ThumbBar({ children, bottom = 10, style, contentStyle, inline }:
       pointerEvents="box-none"
       style={[styles.wrapper, { bottom: Math.max(insets.bottom, 10) + bottom }, style]}
     >
-      <View style={[styles.bar, contentStyle]}>{children}</View>
+      <View style={[styles.bar, contentStyle]} onLayout={handleBarLayout}>
+        {children}
+      </View>
     </Animated.View>
   );
 }
