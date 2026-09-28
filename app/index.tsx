@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, ScrollView
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
-import { Bell, Settings2 } from 'lucide-react-native';
+import { Bell, History, Settings2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { DEFAULT_LOCATION } from '../src/config';
@@ -58,6 +58,9 @@ export default function HomeScreen() {
   };
   const [saved, setSaved] = useState<SavedPlace[]>([]);
   const [smart, setSmart] = useState<SmartDestination[]>([]);
+  // Prawdziwa pustka vs ładowanie: pusty stan pokazujemy dopiero, gdy świeży
+  // ranking (albo błąd GPS) potwierdzi brak danych — inaczej migałby przed GPS.
+  const [smartReady, setSmartReady] = useState(false);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string } | null>(null);
@@ -179,6 +182,7 @@ export default function HomeScreen() {
   // gołe ostatnie miejsca natychmiast (bez czekania na GPS).
   const applySmart = useCallback((list: SmartDestination[]) => {
     setSmart(list);
+    setSmartReady(true);
     void saveCachedSmartDestinations(list);
   }, []);
 
@@ -203,6 +207,10 @@ export default function HomeScreen() {
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
       FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(applySmart);
+    }).catch(() => {
+      // Brak GPS (brak zgody / emulator): lista zostaje z cache, a flaga
+      // gotowości pozwala pokazać uczciwy pusty stan zamiast wiecznej dziury.
+      setSmartReady(true);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -788,7 +796,28 @@ export default function HomeScreen() {
 
           {/* Wyszukiwarka celu jest tylko w dolnym menu pod kciukiem —
               drugi raz na górze ekranu to ta sama akcja w dwóch miejscach. */}
-          <SmartHistoryList items={smartOrdered} departures={nextDepart} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
+          {smartOrdered.length === 0 && smartReady ? (
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIcon}>
+                <History size={20} color={scheme.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
+              <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
+              <Pressable
+                style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.7 }]}
+                accessibilityRole="button"
+                onPress={() => {
+                  setReturnToDestinationAfterStart(false);
+                  setQuery('');
+                  setSheetMode('destination');
+                }}
+              >
+                <Text style={styles.emptyCtaText}>{s.home.historyEmptyAction}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <SmartHistoryList items={smartOrdered} departures={nextDepart} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
+          )}
 
           <View style={{ height: 20 }} />
           <View style={styles.sectionHeader}>
@@ -934,6 +963,33 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   section: { ...type.titleMedium, color: scheme.onSurface },
+  emptyCard: {
+    gap: 8,
+    marginTop: 12,
+    padding: 16,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.large,
+    ...elev.level1,
+  },
+  emptyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: { ...type.titleMedium, color: scheme.onSurface },
+  emptyBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  emptyCta: {
+    marginTop: 6,
+    paddingVertical: 11,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyCtaText: { ...type.labelLarge, color: scheme.onPrimary, fontWeight: '700' },
   importCard: {
     flexDirection: 'row',
     alignItems: 'center',

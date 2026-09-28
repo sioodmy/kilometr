@@ -143,6 +143,9 @@ export function LastTripPull({
             </Text>
           </Animated.View>
         </View>
+        <Text style={styles.hint} numberOfLines={2}>
+          {reversed ? s.lastTrip.pullHintBack : s.lastTrip.pullHint}
+        </Text>
       </View>
     </Animated.View>
   );
@@ -184,6 +187,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: scheme.onSurface,
     textAlign: 'center',
+  },
+  hint: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
   // Pionowy toggle w vibe docka: pigułka, tor, kciuk jak wczoraj.
   pill: {

@@ -47,6 +47,9 @@ export const pl = {
     editCard: 'Edytuj',
     editCardSub: 'zapisane miejsca',
     historyTitle: 'Ostatnie miejsca',
+    historyEmptyTitle: 'Brak ostatnich miejsc',
+    historyEmptyBody: 'Wyszukaj połączenie, a zapisze się tutaj jako szybki cel.',
+    historyEmptyAction: 'Szukaj połączenia',
     openConnA11y: (title: string, label: string) => `Otwórz połączenie do ${title}, ${label}`,
     gpsTitle: 'Moja lokalizacja (GPS)',
     gpsAddressHome: 'Bieżąca pozycja urządzenia',
@@ -499,6 +502,8 @@ export const pl = {
   lastTrip: {
     backA11y: (from: string, to: string) => `Szybki powrót: ${from} do ${to}. Puść, aby wyszukać.`,
     lastA11y: (from: string, to: string) => `Ostatnie połączenie: ${from} do ${to}. Ciągnij dalej, aby odwrócić.`,
+    pullHint: 'Ostatnio wyszukiwane połączenie.\nPuść, by wyszukać',
+    pullHintBack: 'Droga powrotna.\nPuść, by wyszukać',
   },
   suggestion: {
     stopFallback: 'Przystanek',
