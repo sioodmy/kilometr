@@ -265,6 +265,7 @@ export function rankSmartDestinations(
   userLon: number,
   now: number,
   limit = 4,
+  exclusionRadiusM = EXCLUSION_RADIUS_M,
 ): SmartDestination[] {
   const oneMonthAgo = now - 30 * DAY_MS;
 
@@ -298,7 +299,7 @@ export function rankSmartDestinations(
 
   for (const trip of nearbyTrips) {
     const distToDest = distanceMeters(userLat, userLon, trip.dest_lat, trip.dest_lon);
-    if (distToDest <= EXCLUSION_RADIUS_M) continue;
+    if (distToDest <= exclusionRadiusM) continue;
     if (
       currentContextPlace &&
       (trip.dest_id === currentContextPlace.id || trip.dest_id === currentContextPlace.placeId)
@@ -346,7 +347,7 @@ export function rankSmartDestinations(
   for (const place of savedPlaces) {
     if (currentContextPlace && place.id === currentContextPlace.id) continue;
     const distToDest = distanceMeters(userLat, userLon, place.lat, place.lon);
-    if (distToDest <= EXCLUSION_RADIUS_M) continue;
+    if (distToDest <= exclusionRadiusM) continue;
 
     const key = place.placeId || place.id;
     let cand = candidateMap.get(key);
