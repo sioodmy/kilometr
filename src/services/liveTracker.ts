@@ -155,7 +155,7 @@ class LiveTracker {
       const { tracked } = this.matchRow(row, dayIndex, nowSec, patternPolylines);
 
       this.byId.set(vehicleId, tracked);
-      if (tracked.matchedTripId) {
+      if (tracked.matchedTripId && tracked.delaySec !== null) {
         this.tripDelays.set(tracked.matchedTripId, tracked.delaySec);
       }
       let list = this.byLine.get(line);
@@ -314,8 +314,17 @@ class LiveTracker {
       }
     }
 
-    if (bestDelay !== 0 && Math.abs(bestDelay) > DELAY_CAP_SEC) {
-      bestDelay = 0;
+    // Poza DELAY_CAP_SEC opóźnienie nie znaczy „pojazd 40 minut spóźniony”
+    // tylko „dopasowanie do kursu jest podejrzane”. Wcześniej taki wynik
+    // zerowano, a pojazd zostawał `live: true` — użytkownik dostawał zielony
+    // „Na czas” przy tramwaju, który wyraźnie nie jest na czas. Teraz zamiast
+    // kłamstwa jest brak informacji: delaySec = null, a UI pada z powrotem na
+    // „Rozkład”, bo `live` jest wyprowadzane z `delaySec`.
+    const delayOutOfRange = bestDelay !== 0 && Math.abs(bestDelay) > DELAY_CAP_SEC;
+    if (delayOutOfRange) {
+      console.warn(
+        `[LiveTracker] ${line} ${vehicleId}: odrzucone opóźnienie ${Math.round(bestDelay / 60)} min (> ${DELAY_CAP_SEC / 60})`,
+      );
     }
 
     return {
@@ -325,8 +334,11 @@ class LiveTracker {
         lat,
         lon,
         type,
-        delaySec: bestTripId ? bestDelay : 0,
-        matchedTripId: bestTripId,
+        // `null` = brak wiarygodnego pomiaru (a nie „na czas”). Dzięki temu
+        // `matchSingle` nie ustawia `matchedTripId`, więc RAPTOR nie dostaje
+        // fałszywego opóźnienia, a UI pokazuje rozkład zamiast zielonego badge.
+        delaySec: bestTripId && !delayOutOfRange ? bestDelay : null,
+        matchedTripId: bestTripId && !delayOutOfRange ? bestTripId : undefined,
         currentStopName: bestCurrentStop,
         nextStopName: bestNextStop,
         updatedAt: Date.now(),
@@ -364,12 +376,14 @@ class LiveTracker {
       const winner = tripId ? byTrip.get(tripId) : undefined;
       if (winner && winner.vehicleId === vehicleId) {
         byId.set(vehicleId, entry.tracked);
-        if (tripId) delays.set(tripId, entry.tracked.delaySec);
+        if (tripId && entry.tracked.delaySec !== null) delays.set(tripId, entry.tracked.delaySec);
       } else {
         // Ten pojazd przegrał spór o kurs (albo w ogóle się nie dopasował) —
         // zostaje w snapshocie, ale bez kursu, żeby nie wmieszać go w cudzą
         // podróż. Dla RAPTOR-a brak opóźnienia jest bezpieczniejszy niż zły.
-        byId.set(vehicleId, { ...entry.tracked, matchedTripId: undefined, delaySec: 0 });
+        // `null`, nie `0`: zero oznaczałoby „na czas”, a tu po prostu nie
+        // wiemy — i UI pokazałoby zielony badge dla pojazdu bez pomiaru.
+        byId.set(vehicleId, { ...entry.tracked, matchedTripId: undefined, delaySec: null });
       }
     }
     return { byId, delays };

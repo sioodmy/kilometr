@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { getLineColors } from '../components/LineBadge';
+import { getLineColors } from './lineIdentity';
 import type { Connection } from '../types/models';
 
 // Snapshot dla natywnych widgetów z ekranu głównego (Android AppWidgetProvider

@@ -3,7 +3,7 @@ import { kvGet, kvSet } from './storage';
 import { DEFAULT_LOCATION } from '../config';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
+import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
 import { planConnections, buildTripStops } from './routing/engine';
 import { fetchVehiclesDirect } from './realtimeClient';
 
@@ -17,6 +17,15 @@ function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): numb
     Math.sin(dLa / 2) ** 2 +
     Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLo / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+/**
+ * Identyfikator nowego zapisu. Nie `Math.random().toString(36).substring(7)` —
+ * `substring(7)` potrafi zwrócić `''`, gdy zapis jest krótszy niż 7 znaków.
+ * Wycinamy z końca, więc długość wyniku jest zawsze stała.
+ */
+function newId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export const LocationService: ILocationService = {
@@ -81,7 +90,17 @@ export const LocationService: ILocationService = {
   },
 };
 
-let searchAbort: AbortController | null = null;
+/**
+ * Abort per kontekst, nie globalny. Wyszukiwarka miejsca docelowego i
+ * wyszukiwarka adresu w „Nowym zapisanym miejscu” to dwa niezależne pola
+ * tekstowe, które potrafią być otwarte w tej samej chwili (arkusz wyboru
+ * miejsca startowego otwiera wyszukiwarkę po zapisaniu). Przy jednym
+ * wspólnym `AbortController` nowsze zapytanie z drugiego pola zabijało
+ * pierwsze, a przegrany dostawał `SearchAbortedError` zamieniany przez
+ * wywołującego w „brak wyników” — czyli wynik znikiał bez powodu.
+ */
+const searchAborts = new Map<string, AbortController>();
+const DEFAULT_SEARCH_SCOPE = 'default';
 
 /**
  * Wyszukiwanie przerwane nowszym zapytaniem. Odróżniamy to od „brak wyników”,
@@ -118,13 +137,19 @@ function mergedSet(key: string, data: Suggestion[]): void {
 }
 
 export const SearchService: ISearchService = {
-  async search(query: string, coords?: { lat: number; lon: number }): Promise<Suggestion[]> {
+  async search(
+    query: string,
+    coords?: { lat: number; lon: number },
+    scope: string = DEFAULT_SEARCH_SCOPE,
+  ): Promise<Suggestion[]> {
     const q = query.trim();
     if (!q) return [];
 
-    searchAbort?.abort();
+    searchAborts.get(scope)?.abort();
     const ctrl = new AbortController();
-    searchAbort = ctrl;
+    searchAborts.set(scope, ctrl);
+    // Zapytanie uznane za nieaktualne → nie wrzucamy go do cache podpowiedzi.
+    const isCurrent = () => searchAborts.get(scope) === ctrl;
 
     const hasPos = coords !== undefined;
     const cacheKey = `v2:${q.toLowerCase()}|${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : '-'}`;
@@ -147,7 +172,7 @@ export const SearchService: ISearchService = {
         searchStops(q, 12).catch(() => []),
         searchPois(q, coords?.lat, coords?.lon, 8).catch(() => []),
       ]);
-      if (searchAbort !== ctrl) throw new SearchAbortedError();
+      if (!isCurrent()) throw new SearchAbortedError();
       const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
         id: `stop-${h.stop_id}`,
         title: h.name,
@@ -171,7 +196,7 @@ export const SearchService: ISearchService = {
       let remoteHits: Suggestion[] = [];
       if (needNetwork) {
         remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(() => []);
-        if (searchAbort !== ctrl) throw new SearchAbortedError();
+        if (!isCurrent()) throw new SearchAbortedError();
       }
 
       // 3. Merge: przystanki absolutnie pierwsze (w kolejności trafienie+waga),
@@ -179,14 +204,14 @@ export const SearchService: ISearchService = {
       const merged = dedupeAndSort(localSuggestions, remoteHits, hasPos, normQ).slice(0, 15);
       if (merged.length > 0) {
         mergedSet(cacheKey, merged);
-        if (searchAbort === ctrl) void saveSuggestions(q, merged);
+        if (isCurrent()) void saveSuggestions(q, merged);
         return merged;
       }
     } catch {
       // offline / błąd — fallback niżej
     }
 
-    if (searchAbort !== ctrl) throw new SearchAbortedError();
+    if (!isCurrent()) throw new SearchAbortedError();
     return loadSuggestions(q);
   },
 
@@ -248,19 +273,25 @@ export const RoutingService: IRoutingService = {
     }
   },
 
-  async getConnectionById(id: string): Promise<Connection | undefined> {
+  async getConnectionById(id: string): Promise<{ connection: Connection; source: 'live' | 'cache' } | undefined> {
     const found = recentPlannedConnections.get(id);
-    if (found) return found;
+    if (found) return { connection: found, source: 'live' };
 
     const saved = await this.isRouteSaved(id);
     if (saved) {
       const allSaved = await getSavedRoutes();
-      return allSaved.find(r => r.id === id)?.connection;
+      const hit = allSaved.find(r => r.id === id)?.connection;
+      if (hit) return { connection: hit, source: 'live' };
     }
-    
+
     const cached = await findCachedConnection(id);
-    if (cached) return cached;
-    
+    if (cached) {
+      // Z dysku: czasy przeliczamy na teraz i gasiemy `live`, żeby szczegóły
+      // nie udawały, że mają opóźnienie z serwera. Ekran dostanie
+      // `source: 'cache'` i powie o tym wprost użytkownikowi.
+      return { connection: rehydrateConnections([cached])[0], source: 'cache' };
+    }
+
     return undefined;
   },
 
@@ -350,9 +381,15 @@ export const FavoritesService: IFavoritesService = {
     anchorStopLon?: number | null;
   }): Promise<SavedPlace> {
     const places = await this.list();
+    // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
+    // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
+    // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
+    // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
+    // obcinamy dopiero na jego końcu — długość jest wtedy stała.
+    const id = newId();
     const newPlace: SavedPlace = {
-      id: Math.random().toString(36).substring(7),
-      placeId: Math.random().toString(36).substring(7),
+      id,
+      placeId: id,
       name: place.name,
       icon: place.icon,
       address: place.address,

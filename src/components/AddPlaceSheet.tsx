@@ -315,7 +315,7 @@ export function AddPlaceSheet({
     }
     setSearching(true);
     locSearchTimer.current = setTimeout(() => {
-      SearchService.search(text)
+      SearchService.search(text, undefined, 'add-place-address')
         .then((res) => {
           if (seq !== locSearchSeq.current) return;
           setSuggestions(res);
@@ -344,6 +344,7 @@ export function AddPlaceSheet({
       SearchService.search(
         text,
         selectedLoc ? { lat: selectedLoc.lat, lon: selectedLoc.lon } : undefined,
+        'add-place-anchor',
       )
         .then((res) => {
           if (seq !== anchorSearchSeq.current) return;

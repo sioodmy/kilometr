@@ -32,7 +32,6 @@ import {
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
-import { findCachedConnection, rehydrateConnections } from '../src/services/offlineCache';
 import { liveTracker } from '../src/services/liveTracker';
 import { isLegRunning, matchVehicleToLeg, type LegVehicleMatch } from '../src/services/liveVehicle';
 import {
@@ -110,13 +109,13 @@ export default function RouteMapScreen() {
     (async () => {
       let found: Connection | undefined;
       try {
-        found = await RoutingService.getConnectionById(connectionId);
+        // Serwis sam zgłasza, czy połączenie jest świeże czy z pamięci
+        // podręcznej — osobny fallback do findCachedConnection był martwy
+        // (serwis już go wykonywał), więc mapa nie wiedziała, skąd ma dane.
+        const hit = await RoutingService.getConnectionById(connectionId);
+        found = hit?.connection;
       } catch {
         found = undefined;
-      }
-      if (!found) {
-        const cached = await findCachedConnection(connectionId);
-        if (cached) found = rehydrateConnections([cached])[0];
       }
       if (cancelled) return;
       if (found) {

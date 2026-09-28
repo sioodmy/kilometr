@@ -24,6 +24,7 @@ import {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
+import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 interface StopCompassCardProps {
   connection: Connection;
@@ -69,6 +70,9 @@ function getDirectionLabel(relAngle: number): string {
 }
 
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
+  // Czas dojścia liczony z tempem chodzenia ustawionym przez użytkownika,
+  // a nie z wpisanych na sztywno 80 m/min.
+  const walkMps = useWalkSpeedMps();
   // Znajdź etapy podróży
   const transitLegs = useMemo(() => {
     return connection.legs.filter((l) => l.mode !== 'walk');
@@ -260,7 +264,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       ? 'Lokalizacja jest wyłączona — bez niej nie pokażę kierunku do przystanku.'
       : 'Nie mam jeszcze Twojej pozycji. Poczekaj na sygnał GPS albo skorzystaj z nawigacji poniżej.';
 
-  const walkMin = distanceM != null ? Math.max(1, Math.round(distanceM / 80)) : null;
+  const walkMin = distanceM != null ? walkMinutesFor(distanceM, walkMps) : null;
   const directionLabel = compassReady ? getDirectionLabel(relativeAngle) : compassHint;
 
   return (

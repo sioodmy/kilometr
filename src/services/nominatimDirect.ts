@@ -59,12 +59,37 @@ function toSuggestion(row: NominatimRow): Suggestion | null {
   };
 }
 
+/**
+ * Sygnał, który przerwie żądanie po `timeoutMs` ALBO po przerwaniu `outer`.
+ *
+ * Wcześniejsza wersja robiła `signal: signal ?? ctrl.signal` i odpalała
+ * `setTimeout(() => ctrl.abort(), 5000)` na kontrolerze, którego nikt nie
+ * podpiął do żądania. Każdy wywołujący przekazuje własny sygnał, więc limit
+ * czasu nigdy nie zadziałał, a wiszące połączenie z Nominatim zostawiało
+ * wyszukiwarkę bez wyników na zawsze.
+ */
+function scopedSignal(timeoutMs: number, outer?: AbortSignal): { signal: AbortSignal; dispose: () => void } {
+  const ctrl = new AbortController();
+  const onOuter = () => ctrl.abort();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  // Sygnał przychodzący już przerwany musi zadziałać natychmiast.
+  if (outer?.aborted) ctrl.abort();
+  else outer?.addEventListener('abort', onOuter);
+  return {
+    signal: ctrl.signal,
+    dispose: () => {
+      clearTimeout(timer);
+      outer?.removeEventListener('abort', onOuter);
+    },
+  };
+}
+
 /** Szuka adresów/POI w Nominatim z bounding boxem Wrocławia. */
 export async function searchNominatimDirect(
   query: string,
   userLat?: number,
   userLon?: number,
-  signal?: AbortSignal,
+  outer?: AbortSignal,
 ): Promise<Suggestion[]> {
   const q = query.trim();
   if (!q || q.length < 2) return [];
@@ -82,12 +107,11 @@ export async function searchNominatimDirect(
     bounded: '1',
     addressdetails: '1',
   });
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
+  const scope = scopedSignal(5000, outer);
   try {
     const res = await fetch(`${NOMINATIM.baseUrl}?${params.toString()}`, {
       headers: { 'User-Agent': NOMINATIM.userAgent, Accept: 'application/json' },
-      signal: signal ?? ctrl.signal,
+      signal: scope.signal,
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as NominatimRow[];
@@ -107,7 +131,7 @@ export async function searchNominatimDirect(
   } catch {
     return [];
   } finally {
-    clearTimeout(timer);
+    scope.dispose();
   }
 }
 

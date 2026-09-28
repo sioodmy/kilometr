@@ -198,7 +198,20 @@
                 echo "== npm ci =="
                 npm ci --no-audit --no-fund
               fi
+              # Katalog android/ jest generowany i w .gitignore, więc powstaje
+              # raz. Ale po dodaniu nowego modułu w modules/ jego podprojekt
+              # trafia do settings.gradle dopiero przy kolejnym prebuild —
+              # bez tego Gradle builduje apkę bez natywnej powiadomienia
+              # śledzącej (pasek postępu + chronometr), a błąd objawia się
+              # dopiero w trakcie, nie na etapie konfiguracji.
+              NEEDS_PREBUILD=0
               if [ ! -d android ]; then
+                NEEDS_PREBUILD=1
+              elif [ -d modules ] && [ modules -nt android ]; then
+                echo "== modules/ nowsze od android/ — regenereujemy =="
+                NEEDS_PREBUILD=1
+              fi
+              if [ "$NEEDS_PREBUILD" = "1" ]; then
                 echo "== expo prebuild =="
                 npx expo prebuild --platform android
               fi

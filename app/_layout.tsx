@@ -7,21 +7,26 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
 import { loadSettings } from '../src/services/settings';
 import { hasSeenOnboarding } from '../src/services/onboarding';
+import { loadNotificationPreferences } from '../src/services/notifications/preferences';
 import {
-  addPinTapListener,
-  getPinTapData,
-  restorePinnedQuery,
-  setupNotificationHandler,
-  setupPinnedChannel,
-  startPinnedTicker,
-  type PinTapData,
-} from '../src/services/pinnedConnection';
+  addTripResponseListener,
+  getLastTripResponse,
+  restoreTrackedTrip,
+  setupNotifications,
+  startTrackedTripListener,
+  stopTracking,
+  type TripResponse,
+} from '../src/services/notifications';
 
 LogBox.ignoreAllLogs(true);
 
-function navigateFromNotification(data: PinTapData) {
-  if (!data) return;
-  router.push({ pathname: '/routes', params: data });
+function navigateFromNotification(res: TripResponse) {
+  if (res.stop) {
+    void stopTracking();
+    return;
+  }
+  if (!res.link) return;
+  router.push({ pathname: '/routes', params: res.link });
 }
 
 export default function RootLayout() {
@@ -30,20 +35,32 @@ export default function RootLayout() {
   // Ustawienia trasy z AsyncStorage dostępne globalnie od startu
   useEffect(() => {
     loadSettings();
-    // Pierwsze uruchomienie → onboarding (dostępy, rozkład offline, miejsca).
-    hasSeenOnboarding().then((seen) => {
-      if (!seen) router.replace('/onboarding');
-      setReady(true);
-    });
     // Powiadomienia ładowane leniwie w serwisie (guard na Expo Go)
-    setupNotificationHandler();
-    setupPinnedChannel();
-    restorePinnedQuery();
-    startPinnedTicker();
+    void loadNotificationPreferences();
+    // Kanały muszą istnieć przed prośbą o uprawnienia (Android 13+), więc
+    // konfigurujemy je na starcie, a nie przy przypięciu trasy.
+    void setupNotifications();
+    // Pierwsze uruchomienie → onboarding (dostępy, rozkład offline, miejsca).
+    // .catch jest tu krytyczny: bez niego odrzucenie (np. uszkodzony KV po
+    // przywróceniu z backupu) zostawiałoby `ready === false` na zawsze, czyli
+    // biały ekran bez możliwości wyjścia. Odtąd startujemy, a problem
+    // zgłaszamy — ekran połączeń i tak pokaże pusty stan rozkładu.
+    hasSeenOnboarding()
+      .then((seen) => {
+        if (!seen) router.replace('/onboarding');
+      })
+      .catch((err) => {
+        console.warn('[RootLayout] onboarding flag unreadable:', err);
+      })
+      .finally(() => setReady(true));
+    // Śledzenie podróży przeżywa restart telefonu, więc podnosimy je,
+    // zanim użytkownik cokolwiek otworzy.
+    void restoreTrackedTrip();
+    startTrackedTripListener();
 
-    // Tap w przypięte powiadomienie → ekran połączeń
-    getPinTapData().then(navigateFromNotification);
-    const remove = addPinTapListener(navigateFromNotification);
+    // Tap w powiadomienie lub przycisk akcji → ekran połączeń / koniec
+    getLastTripResponse().then(navigateFromNotification);
+    const remove = addTripResponseListener(navigateFromNotification);
     return remove;
   }, []);
   if (!ready) {

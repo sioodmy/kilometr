@@ -114,6 +114,36 @@ export function useRoutingSettings() {
   return { settings, update, reset: () => saveSettings({ ...DEFAULT_SETTINGS }) };
 }
 
+/**
+ * Tylko tempo chodzenia (m/s) — lekka subskrypcja dla komponentów, które
+ * jedynie przeliczają metry na minuty (karty połączeń, oś czasu, kompas).
+ * Bez tego podpięcia każda kartka trzymała własny, wpisany na sztywno
+ * `m / 80` i ignorowała ustawienie „Tempo chodzenia” z ekranu ustawień.
+ */
+export function useWalkSpeedMps(): number {
+  const [mps, setMps] = useState(cached.walkSpeedMps);
+
+  useEffect(() => {
+    const onChange = (s: RoutingSettings) => setMps(s.walkSpeedMps);
+    listeners.add(onChange);
+    return () => {
+      listeners.delete(onChange);
+    };
+  }, []);
+
+  return mps;
+}
+
+/** Metry przechodzone w minucie dla danego tempa (1.3 m/s ≈ 78 m/min). */
+export function walkMetersPerMinute(speedMps: number = DEFAULT_SETTINGS.walkSpeedMps): number {
+  return Math.max(1, speedMps * 60);
+}
+
+/** Minuty piesza dla dystansu, zgodnie z tempem ustawionym przez użytkownika. */
+export function walkMinutesFor(meters: number, speedMps?: number): number {
+  return Math.max(1, Math.round(meters / walkMetersPerMinute(speedMps)));
+}
+
 export function formatTransferTime(sec: number): string {
   const min = Math.round(sec / 60);
   return `${min} min`;
@@ -132,8 +162,7 @@ export function formatWalkTime(min: number): string {
 
 export function formatWalkDistance(m: number, speedMps = 1.3): string {
   const dist = m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`;
-  const min = Math.max(1, Math.round(m / (speedMps * 60)));
-  return `${dist} (~${min} min)`;
+  return `${dist} (~${walkMinutesFor(m, speedMps)} min)`;
 }
 
 /**

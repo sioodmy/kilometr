@@ -12,161 +12,32 @@ import type { Leg, LegStop, VehiclePosition } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { RoutingService } from '../services';
-import { formatWalkTime } from '../services/settings';
+import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+import {
+  buildFallbackStops,
+  findUserSegment,
+  locateVehicle,
+  normalizeName,
+} from '../services/vehiclePosition';
+
+// Logika pozycji pojazdu mieszka w serwisie, bo korzysta z niej również
+// silnik powiadomień (nie chcemy, żeby serwis importował komponent).
+export { buildFallbackStops, findUserSegment, locateVehicle } from '../services/vehiclePosition';
+export type { VehicleGap } from '../services/vehiclePosition';
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
+// Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
+// pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
+// najstarszy wpis — bez dodatkowej kolejki.
+const STOPS_CACHE_MAX = 80;
 const stopsCache = new Map<string, LegStop[]>();
 const stopsPromise = new Map<string, Promise<LegStop[]>>();
 
-function normalizeName(s: string): string {
-  return (s || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ł/g, 'l')
-    .trim();
-}
-
-function parseHMtoSec(hm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})/.exec(hm || '');
-  if (!m) return null;
-  return Number(m[1]) * 3600 + Number(m[2]) * 60;
-}
-
-function nowSec(): number {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-}
-
-/**
- * Awaryjna lista gdy backend nie zwrócił sekwencji i nie da się jej dociągnąć.
- * Uczciwa: tylko znane końce odcinka (zero wymyślonych przystanków po drodze).
- */
-export function buildFallbackStops(leg: Leg): LegStop[] {
-  if (leg.intermediateStops && leg.intermediateStops.length >= 2) {
-    return leg.intermediateStops;
-  }
-  const depSec = parseHMtoSec(leg.departAt);
-  const arrSec = parseHMtoSec(leg.arriveAt);
-  const mk = (
-    first: boolean,
-  ): LegStop => ({
-    stopId: first
-      ? leg.fromStopId || `fallback-${leg.id}-from`
-      : leg.toStopId || `fallback-${leg.id}-to`,
-    name: first ? leg.fromStop : leg.toStop,
-    lat: first ? leg.fromLat : leg.toLat,
-    lon: first ? leg.fromLon : leg.toLon,
-    seq: first ? 1 : 2,
-    arriveSec: first ? depSec ?? undefined : arrSec ?? undefined,
-    departSec: first ? depSec ?? undefined : arrSec ?? undefined,
-  });
-  return [mk(true), mk(false)];
-}
-
-/** Nasz odcinek (wsiadanie→wysiadanie) jako indeksy w pełnej liście kursu. */
-export function findUserSegment(stops: LegStop[], leg: Leg): { start: number; end: number } {
-  if (stops.length === 0) return { start: 0, end: 0 };
-  let start = -1;
-  let end = -1;
-  if (leg.fromStopId) start = stops.findIndex((s) => s.stopId === leg.fromStopId);
-  if (leg.toStopId) end = stops.findIndex((s) => s.stopId === leg.toStopId);
-  if (start < 0) {
-    const n = normalizeName(leg.fromStop);
-    start = stops.findIndex((s) => normalizeName(s.name) === n);
-  }
-  if (end < 0) {
-    const n = normalizeName(leg.toStop);
-    // ostatni match — nazwy przystanków potrafią się powtarzać na linii
-    for (let i = stops.length - 1; i >= 0; i--) {
-      if (normalizeName(stops[i].name) === n) {
-        end = i;
-        break;
-      }
-    }
-  }
-  // Fallback: syntetyczna lista = w całości nasz odcinek
-  if (start < 0) start = 0;
-  if (end < 0) end = stops.length - 1;
-  if (end < start) end = start;
-  return { start, end };
-}
-
-export interface VehicleGap {
-  /** indeks przerwy między stops[gap] a stops[gap+1]; -1 = przed odjazdem, -2 = po przyjeździe */
-  gap: number;
-  isLive: boolean;
-  label: string;
-}
-
-/** Gdzie jest pojazd: GPS (current/next stop lub coords) albo estymacja czasowa. */
-export function locateVehicle(stops: LegStop[], leg: Leg, vehicle: VehiclePosition | null): VehicleGap {
-  const n = stops.length;
-  if (n < 2) return { gap: -1, isLive: false, label: 'Brak danych o trasie' };
-
-  if (vehicle) {
-    const cur = vehicle.currentStopName ? normalizeName(vehicle.currentStopName) : '';
-    const nxt = vehicle.nextStopName ? normalizeName(vehicle.nextStopName) : '';
-    let curIdx = cur ? stops.findIndex((s) => normalizeName(s.name).includes(cur) || cur.includes(normalizeName(s.name))) : -1;
-    let nxtIdx = nxt ? stops.findIndex((s) => normalizeName(s.name).includes(nxt) || nxt.includes(normalizeName(s.name))) : -1;
-    if (curIdx >= 0 && nxtIdx === curIdx + 1) {
-      return {
-        gap: curIdx,
-        isLive: true,
-        label: `Pojazd: ${stops[curIdx].name} → ${stops[nxtIdx].name} • live`,
-      };
-    }
-    if (nxtIdx > 0) {
-      return {
-        gap: Math.min(n - 2, Math.max(0, nxtIdx - 1)),
-        isLive: true,
-        label: `Pojazd: przed ${stops[nxtIdx].name} • live`,
-      };
-    }
-    if (curIdx >= 0) {
-      return {
-        gap: Math.min(n - 2, curIdx),
-        isLive: true,
-        label: `Pojazd: ${stops[curIdx].name} • live`,
-      };
-    }
-    // GPS coords: najbliższy przystanek, pojazd jedzie "do przodu" trasy
-    if (vehicle.lat != null && vehicle.lon != null) {
-      let best = 0;
-      let bestD = Infinity;
-      for (let i = 0; i < n; i++) {
-        const s = stops[i];
-        if (s.lat == null || s.lon == null) continue;
-        const d = (s.lat - vehicle.lat) ** 2 + (s.lon - vehicle.lon) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          best = i;
-        }
-      }
-      if (bestD < Infinity) {
-        const gap = Math.min(n - 2, Math.max(0, best >= n - 1 ? n - 2 : best));
-        return { gap, isLive: true, label: `Pojazd: okolice ${stops[best].name} • live` };
-      }
-    }
-  }
-
-  // Estymacja czasowa: postęp kursu względem "teraz"
-  const depSec = parseHMtoSec(leg.departAt);
-  const arrSec = parseHMtoSec(leg.arriveAt);
-  if (depSec == null || arrSec == null || arrSec <= depSec) {
-    return { gap: 0, isLive: false, label: `Pozycja szacowana: ${stops[0].name} → ${stops[n - 1].name}` };
-  }
-  const t = nowSec();
-  if (t < depSec) return { gap: -1, isLive: false, label: `Przed odjazdem (${leg.departAt}) • pozycja szacowana` };
-  if (t > arrSec) return { gap: -2, isLive: false, label: 'Kurs zakończony • pozycja szacowana' };
-  const progress = (t - depSec) / (arrSec - depSec);
-  const floatIdx = progress * (n - 1);
-  const gap = Math.min(n - 2, Math.max(0, Math.floor(floatIdx)));
-  return {
-    gap,
-    isLive: false,
-    label: `Pojazd (szac.): ${stops[gap].name} → ${stops[gap + 1].name}`,
-  };
+function cacheStops(key: string, stops: LegStop[]) {
+  stopsCache.set(key, stops);
+  if (stopsCache.size <= STOPS_CACHE_MAX) return;
+  const oldest = stopsCache.keys().next();
+  if (!oldest.done) stopsCache.delete(oldest.value);
 }
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy przy ticku pojazdu) ─────
@@ -253,16 +124,39 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
     setLoading(true);
     let promise = stopsPromise.get(leg.tripId);
     if (!promise) {
-      promise = RoutingService.getTripStops(leg.tripId).catch(() => [] as LegStop[]);
+      // Odrzucenie NIE jest zapamiętywane. Wcześniej `.catch(() => [])` trafiał
+      // do `stopsPromise` razem z sukcesem, więc jedna chwilowa awaria (zamknięta
+      // baza, odjęty slot importu) zostawiała ten kurs z dwoma przystankami
+      // do końca życia procesu — użytkownik dostawał „trasa niepełna” bez
+      // możliwości naprawienia.
+      promise = RoutingService.getTripStops(leg.tripId)
+        .then((stops) => {
+          stopsPromise.delete(leg.tripId!);
+          return stops;
+        })
+        .catch((err) => {
+          stopsPromise.delete(leg.tripId!);
+          throw err;
+        });
       stopsPromise.set(leg.tripId, promise);
     }
-    promise.then((fetched) => {
-      if (!mounted.current) return;
-      const resolved = fetched.length >= 2 ? fetched : buildFallbackStops(leg);
-      stopsCache.set(cacheKey, resolved);
-      setStops(resolved);
-      setLoading(false);
-    });
+    promise.then(
+      (fetched) => {
+        if (!mounted.current) return;
+        // Do cache trafiają TYLKO przystanki z bazy. Wersja z `buildFallbackStops`
+        // to dwa przystanki z etykiety — zapisana w cache na stałe psuła
+        // wyświetlanie przy następnym otwarciu tego samego odcinka.
+        if (fetched.length >= 2) cacheStops(cacheKey, fetched);
+        setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('[LegTimeline] trip stops failed:', err);
+        if (!mounted.current) return;
+        setStops(buildFallbackStops(leg));
+        setLoading(false);
+      },
+    );
   }, [cacheKey, leg]);
 
   // Polling TYLKO konkretnego pojazdu tego kursu (match po tripId).
@@ -420,13 +314,14 @@ function TransitLegCard({
 /** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
 export function LegTimeline({ legs }: { legs: Leg[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const walkMps = useWalkSpeedMps();
 
   return (
     <View style={s.list}>
       {legs.map((leg, i) => {
         const last = i === legs.length - 1;
         if (leg.mode === 'walk') {
-          const walkMin = Math.max(1, Math.round((leg.walkM ?? 200) / 80));
+          const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
           const isSameStop =
             normalizeName(leg.fromStop) === normalizeName(leg.toStop) ||
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
