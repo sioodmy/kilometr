@@ -4,6 +4,9 @@ import Animated, {
   Easing,
   FadeOut,
   Keyframe,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
   type AnimatedStyle,
 } from 'react-native-reanimated';
 import {
@@ -90,13 +93,37 @@ export function RoutesThumbBar({
   // a pełna etykieta idzie do accessibilityLabel.
   const timeShort = timeLabel.includes(', ') ? timeLabel.split(', ')[1] : timeLabel;
 
+  // Pop przy swapie: pełny obrót 360° + minimalny pop skali, w tym samym
+  // timingu co rolka tekstu nagłówka (FadeInUp 240 ms) — góra i dół kręcą się razem.
+  const swapSpin = useSharedValue(0);
+  const swapStyle = useAnimatedStyle(() => {
+    const p = swapSpin.value % 1;
+    return {
+      transform: [
+        { rotate: `${p * 360}deg` },
+        { scale: 1 + 0.28 * Math.sin(Math.PI * p) },
+      ],
+    };
+  });
+  const handleSwapPress = () => {
+    swapSpin.value = withTiming(Math.round(swapSpin.value) + 1, {
+      duration: 240,
+      easing: Easing.inOut(Easing.ease),
+    });
+    onSwap();
+  };
+
   return (
     // Dock przyjmuje gotowy styl animowany (chowanie się przy scrollu),
     // więc rzutujemy go na zwykły styl — ThumbBar opakowuje go w Animated.View.
     <ThumbBar style={animatedStyle as StyleProp<ViewStyle>}>
       <ThumbBarItem
-        onPress={onSwap}
-        icon={<ArrowUpDown size={17} color={scheme.primary} />}
+        onPress={handleSwapPress}
+        icon={
+          <Animated.View style={swapStyle}>
+            <ArrowUpDown size={17} color={scheme.onSurfaceVariant} />
+          </Animated.View>
+        }
         label="Odwróć"
         accessibilityLabel="Odwróć trasę: zamień punkt startowy z docelowym"
       />
