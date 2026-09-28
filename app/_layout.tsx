@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
+import { initLocale } from '../src/i18n';
 import { loadSettings } from '../src/services/settings';
 import { hasSeenOnboarding } from '../src/services/onboarding';
 import {
@@ -27,9 +28,10 @@ function navigateFromNotification(data: PinTapData) {
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
 
-  // Ustawienia trasy z AsyncStorage dostępne globalnie od startu
+  // Ustawienia trasy i język z kv-store dostępne globalnie od startu
   useEffect(() => {
     loadSettings();
+    void initLocale();
     // Pierwsze uruchomienie → onboarding (dostępy, rozkład offline, miejsca).
     // .catch jest tu krytyczny: bez niego odrzucenie (np. uszkodzony KV po
     // przywróceniu z backupu) zostawiałoby `ready === false` na zawsze, czyli

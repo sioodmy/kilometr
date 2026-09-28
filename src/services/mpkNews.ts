@@ -1,6 +1,17 @@
 // Czytnik aktualności MPK / wroclaw.pl (RSS) — bez dodatkowych zależności.
 // Feed: https://www.wroclaw.pl/komunikacja/rss (RSS 2.0, opis w CDATA z <img> + tekst).
 import { withTimeout } from './net';
+import { getLocaleSync, type Strings } from '../i18n';
+import { pl } from '../i18n/pl';
+import { en } from '../i18n/en';
+import { de } from '../i18n/de';
+import { uk } from '../i18n/uk';
+
+const NEWS_SVC_DICTS: Record<string, Strings> = { pl, en, de, uk };
+
+function newsTitleFallback(): string {
+  return (NEWS_SVC_DICTS[getLocaleSync()] ?? pl).newsSvc.untitled;
+}
 
 export type MpkNewsItem = {
   id: string;
@@ -76,15 +87,16 @@ function htmlToText(html: string): string {
 
 export function formatNewsDate(ts: number | null): string {
   if (!ts) return '';
+  const t = NEWS_SVC_DICTS[getLocaleSync()].newsSvc;
   const d = new Date(ts);
   const now = Date.now();
   const diffMin = Math.max(0, Math.round((now - ts) / 60000));
-  if (diffMin < 60) return diffMin <= 1 ? 'przed chwilą' : `${diffMin} min temu`;
+  if (diffMin < 60) return diffMin <= 1 ? t.justNow : t.minsAgo(diffMin);
   const diffH = Math.round(diffMin / 60);
-  if (diffH < 24) return `${diffH} godz. temu`;
+  if (diffH < 24) return t.hoursAgo(diffH);
   const diffD = Math.round(diffH / 24);
-  if (diffD === 1) return 'wczoraj';
-  if (diffD < 7) return `${diffD} dni temu`;
+  if (diffD === 1) return t.yesterday;
+  if (diffD < 7) return t.daysAgo(diffD);
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   return `${dd}.${mm}.${d.getFullYear()}`;
@@ -105,7 +117,7 @@ export function parseMpkRss(xml: string): MpkNewsItem[] {
     if (!title && !link) continue;
     items.push({
       id: link || title,
-      title: title || '(bez tytułu)',
+      title: title || newsTitleFallback(),
       link,
       description,
       imageUrl,

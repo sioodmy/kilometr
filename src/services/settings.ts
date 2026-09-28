@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { kvGet, kvSet } from './storage';
+import { getLocaleSync, type Strings } from '../i18n';
+import { pl } from '../i18n/pl';
+import { en } from '../i18n/en';
+import { de } from '../i18n/de';
+import { uk } from '../i18n/uk';
+
+const SETTINGS_DICTS: Record<string, Strings> = { pl, en, de, uk };
+
+/** Słownik pod bieżące locale — do synchronicznych helperów formatujących. */
+function tr(): Strings {
+  return SETTINGS_DICTS[getLocaleSync()] ?? pl;
+}
 
 export interface RoutingSettings {
   /** 0–3, default 2 */
@@ -144,6 +156,8 @@ export function walkMinutesFor(meters: number, speedMps?: number): number {
   return Math.max(1, Math.round(meters / walkMetersPerMinute(speedMps)));
 }
 
+
+
 export function formatTransferTime(sec: number): string {
   const min = Math.round(sec / 60);
   return `${min} min`;
@@ -151,13 +165,7 @@ export function formatTransferTime(sec: number): string {
 
 export function formatWalkTime(min: number): string {
   const m = Math.max(1, Math.round(min));
-  if (m === 1) return '1 minuta pieszo';
-  const last = m % 10;
-  const teen = m % 100;
-  if (last >= 2 && last <= 4 && (teen < 12 || teen > 14)) {
-    return `${m} minuty pieszo`;
-  }
-  return `${m} minut pieszo`;
+  return tr().settings.walkTime(m);
 }
 
 export function formatWalkDistance(m: number, speedMps = 1.3): string {
@@ -170,7 +178,7 @@ export function formatWalkDistance(m: number, speedMps = 1.3): string {
  */
 export function formatDistance(meters: number): string {
   if (meters == null || isNaN(meters) || meters < 0) return '';
-  if (meters < 10) return '< 10 m';
+  if (meters < 10) return tr().common.lessThan10m;
   if (meters < 100) return `${Math.round(meters / 5) * 5} m`;
   if (meters < 950) return `${Math.round(meters / 10) * 10} m`;
   if (meters < 9950) {
@@ -182,13 +190,14 @@ export function formatDistance(meters: number): string {
 
 export function formatWalkSpeed(mps: number): string {
   const kmh = mps * 3.6;
-  return `${kmh.toFixed(1)} km/h`;
+  return tr().common.kmh(kmh.toFixed(1));
 }
 
 export function walkSpeedLabel(mps: number): string {
-  if (mps <= 0.9) return 'Wolny';
-  if (mps <= 1.1) return 'Spokojny';
-  if (mps <= 1.4) return 'Normalny';
-  if (mps <= 1.7) return 'Szybki';
-  return 'Bardzo szybki';
+  const s = tr().settings;
+  if (mps <= 0.9) return s.speedSlow;
+  if (mps <= 1.1) return s.speedCalm;
+  if (mps <= 1.4) return s.speedNormal;
+  if (mps <= 1.7) return s.speedFast;
+  return s.speedVeryFast;
 }

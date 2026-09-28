@@ -68,6 +68,7 @@ export async function initLocale(): Promise<Locale> {
     }
   } catch {}
   currentLocale = resolve(currentSetting);
+  notify();
   return currentLocale;
 }
 

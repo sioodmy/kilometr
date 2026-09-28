@@ -6,6 +6,17 @@ import { getSettingsSync } from './settings';
 import { inferTransitMode } from '../components/LineBadge';
 import { buildRoutesLink, mergeWidgetSnapshot, type WidgetPinned } from './widgetSnapshot';
 import type { Connection, RouteQuery } from '../types/models';
+import { getLocaleSync, type Strings } from '../i18n';
+import { pl } from '../i18n/pl';
+import { en } from '../i18n/en';
+import { de } from '../i18n/de';
+import { uk } from '../i18n/uk';
+
+const PINNED_DICTS: Record<string, Strings> = { pl, en, de, uk };
+
+function pinTr(): Strings['pinned'] {
+  return (PINNED_DICTS[getLocaleSync()] ?? pl).pinned;
+}
 
 // Persistent notification (a'la Uber Eats) z najbliższym połączeniem:
 // jaki tramwaj/bus, za ile, skąd. Na Androidzie sticky (ongoing),
@@ -104,7 +115,7 @@ export async function setupPinnedChannel(): Promise<void> {
   if (!N || Platform.OS !== 'android') return;
   try {
     await N.setNotificationChannelAsync(CHANNEL_ID, {
-      name: 'Przypięte połączenie',
+      name: pinTr().channel,
       importance: N.AndroidImportance.LOW,
       lockscreenVisibility: N.AndroidNotificationVisibility.PUBLIC,
     });
@@ -132,18 +143,21 @@ function nowSec(): number {
 }
 
 function timeText(conn: Connection): string {
+  const t = pinTr();
   const mins = Math.round((conn.departureSec - nowSec()) / 60);
-  if (mins <= 1) return 'odjazd teraz';
+  if (mins <= 1) return t.nowText;
   if (mins > 59) return conn.departAt;
-  return `za ${mins} min`;
+  return t.inMin(mins);
 }
 
 function buildContent(conn: Connection, query: PinnedQuery) {
+  const t = pinTr();
   const boarding = conn.legs.filter((l) => l.mode !== 'walk');
   const first = boarding[0];
   const modeWord =
-    first && inferTransitMode(first.mode, first.line) === 'tram' ? 'Tramwaj' : 'Autobus';
-  const title = first ? `${modeWord} ${first.line} • ${timeText(conn)}` : `Połączenie • ${timeText(conn)}`;
+    first && inferTransitMode(first.mode, first.line) === 'tram' ? t.tram : t.bus;
+  const time = timeText(conn);
+  const title = first ? t.titleLine(modeWord, first.line ?? '', time) : t.titlePlain(time);
   const lines = boarding.map((b) => b.line).filter(Boolean).join(' → ');
   const body =
     lines.length > 0
