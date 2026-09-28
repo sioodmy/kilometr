@@ -10,7 +10,6 @@ import type { Connection } from '../../src/types/models';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { LiveDot } from '../../src/components/LiveDot';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
-import { RouteDetailsThumbBar } from '../../src/components/RouteDetailsThumbBar';
 
 export default function RouteDetailsScreen() {
   const router = useRouter();
@@ -53,30 +52,6 @@ export default function RouteDetailsScreen() {
       task.cancel();
     };
   }, [id]);
-
-  const handleReverseRoute = () => {
-    if (!item || item.legs.length === 0) return;
-    const firstLeg = item.legs[0];
-    const lastLeg = item.legs[item.legs.length - 1];
-
-    const revFromLat = lastLeg.toLat != null ? String(lastLeg.toLat) : '';
-    const revFromLon = lastLeg.toLon != null ? String(lastLeg.toLon) : '';
-    const revToLat = firstLeg.fromLat != null ? String(firstLeg.fromLat) : '';
-    const revToLon = firstLeg.fromLon != null ? String(firstLeg.fromLon) : '';
-
-    router.push({
-      pathname: '/routes',
-      params: {
-        fromTitle: item.toTitle,
-        fromLat: revFromLat,
-        fromLon: revFromLon,
-        toId: '',
-        toTitle: item.fromTitle,
-        toLat: revToLat,
-        toLon: revToLon,
-      },
-    });
-  };
 
   if (loadFailed) {
     return (
@@ -240,14 +215,8 @@ export default function RouteDetailsScreen() {
           </>
         )}
 
-        <View style={{ height: 90 }} />
+        <View style={{ height: 24 }} />
       </ScrollView>
-
-      {/* Pływający dolny pasek kciuka: łatwy powrót i trasa powrotna */}
-      <RouteDetailsThumbBar
-        onBack={() => router.back()}
-        onReverseRoute={handleReverseRoute}
-      />
     </SafeAreaView>
   );
 }

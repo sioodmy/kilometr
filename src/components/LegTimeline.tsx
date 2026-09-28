@@ -8,7 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../theme/tokens';
-import type { Leg, LegStop, VehiclePosition } from '../types/models';
+import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { RoutingService } from '../services';
@@ -42,11 +42,6 @@ function parseHMtoSec(hm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})/.exec(hm || '');
   if (!m) return null;
   return Number(m[1]) * 3600 + Number(m[2]) * 60;
-}
-
-function nowSec(): number {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
 }
 
 /**
@@ -103,84 +98,7 @@ export function findUserSegment(stops: LegStop[], leg: Leg): { start: number; en
   return { start, end };
 }
 
-export interface VehicleGap {
-  /** indeks przerwy między stops[gap] a stops[gap+1]; -1 = przed odjazdem, -2 = po przyjeździe */
-  gap: number;
-  isLive: boolean;
-  label: string;
-}
-
-/** Gdzie jest pojazd: GPS (current/next stop lub coords) albo estymacja czasowa. */
-export function locateVehicle(stops: LegStop[], leg: Leg, vehicle: VehiclePosition | null): VehicleGap {
-  const n = stops.length;
-  if (n < 2) return { gap: -1, isLive: false, label: 'Brak danych o trasie' };
-
-  if (vehicle) {
-    const cur = vehicle.currentStopName ? normalizeName(vehicle.currentStopName) : '';
-    const nxt = vehicle.nextStopName ? normalizeName(vehicle.nextStopName) : '';
-    let curIdx = cur ? stops.findIndex((s) => normalizeName(s.name).includes(cur) || cur.includes(normalizeName(s.name))) : -1;
-    let nxtIdx = nxt ? stops.findIndex((s) => normalizeName(s.name).includes(nxt) || nxt.includes(normalizeName(s.name))) : -1;
-    if (curIdx >= 0 && nxtIdx === curIdx + 1) {
-      return {
-        gap: curIdx,
-        isLive: true,
-        label: `Pojazd: ${stops[curIdx].name} → ${stops[nxtIdx].name} • live`,
-      };
-    }
-    if (nxtIdx > 0) {
-      return {
-        gap: Math.min(n - 2, Math.max(0, nxtIdx - 1)),
-        isLive: true,
-        label: `Pojazd: przed ${stops[nxtIdx].name} • live`,
-      };
-    }
-    if (curIdx >= 0) {
-      return {
-        gap: Math.min(n - 2, curIdx),
-        isLive: true,
-        label: `Pojazd: ${stops[curIdx].name} • live`,
-      };
-    }
-    // GPS coords: najbliższy przystanek, pojazd jedzie "do przodu" trasy
-    if (vehicle.lat != null && vehicle.lon != null) {
-      let best = 0;
-      let bestD = Infinity;
-      for (let i = 0; i < n; i++) {
-        const s = stops[i];
-        if (s.lat == null || s.lon == null) continue;
-        const d = (s.lat - vehicle.lat) ** 2 + (s.lon - vehicle.lon) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          best = i;
-        }
-      }
-      if (bestD < Infinity) {
-        const gap = Math.min(n - 2, Math.max(0, best >= n - 1 ? n - 2 : best));
-        return { gap, isLive: true, label: `Pojazd: okolice ${stops[best].name} • live` };
-      }
-    }
-  }
-
-  // Estymacja czasowa: postęp kursu względem "teraz"
-  const depSec = parseHMtoSec(leg.departAt);
-  const arrSec = parseHMtoSec(leg.arriveAt);
-  if (depSec == null || arrSec == null || arrSec <= depSec) {
-    return { gap: 0, isLive: false, label: `Pozycja szacowana: ${stops[0].name} → ${stops[n - 1].name}` };
-  }
-  const t = nowSec();
-  if (t < depSec) return { gap: -1, isLive: false, label: `Przed odjazdem (${leg.departAt}) • pozycja szacowana` };
-  if (t > arrSec) return { gap: -2, isLive: false, label: 'Kurs zakończony • pozycja szacowana' };
-  const progress = (t - depSec) / (arrSec - depSec);
-  const floatIdx = progress * (n - 1);
-  const gap = Math.min(n - 2, Math.max(0, Math.floor(floatIdx)));
-  return {
-    gap,
-    isLive: false,
-    label: `Pojazd (szac.): ${stops[gap].name} → ${stops[gap + 1].name}`,
-  };
-}
-
-// ─── Wiersz przystanku (memo = brak re-renderów listy przy ticku pojazdu) ─────
+// ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
 // Rail ma KRESKĘ CIĄGŁĄ: kropka + łącznik flex:1 rozciągany na wysokość wiersza.
 // Dzięki temu linia jest rzeczywiście połączona przez wszystkie kropki.
 const StopRow = memo(function StopRow({
@@ -189,14 +107,12 @@ const StopRow = memo(function StopRow({
   inSegment,
   accent,
   connectorAccent,
-  vehicleHere,
 }: {
   stop: LegStop;
   isLast: boolean;
   inSegment: boolean;
   accent: string;
   connectorAccent: boolean;
-  vehicleHere: boolean;
 }) {
   return (
     <View style={s.stopRow}>
@@ -211,11 +127,6 @@ const StopRow = memo(function StopRow({
         />
         {!isLast && (
           <View style={[s.connector, { backgroundColor: connectorAccent ? accent : scheme.outlineVariant }]} />
-        )}
-        {vehicleHere && (
-          <View style={s.vehicleOnRail}>
-            <LiveDot color={scheme.primary} size={9} />
-          </View>
         )}
       </View>
       <View style={s.stopBody}>
@@ -232,7 +143,6 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
   const cacheKey = leg.tripId || leg.id;
   const [stops, setStops] = useState<LegStop[]>(() => stopsCache.get(cacheKey) ?? buildFallbackStops(leg));
   const [loading, setLoading] = useState(() => !stopsCache.has(cacheKey) && !!leg.tripId);
-  const [vehicle, setVehicle] = useState<VehiclePosition | null>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -299,44 +209,7 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
     );
   }, [cacheKey, leg]);
 
-  // Polling TYLKO konkretnego pojazdu tego kursu (match po tripId).
-  // Celowo BEZ fallbacku do pierwszego pojazdu linii — pokazujemy lokalizację
-  // tramwaju/busa, którym faktycznie jedziemy, a nie jakiegokolwiek.
-  // Bez tripId (mock) nie da się zidentyfikować pojazdu → sama estymacja.
-  useEffect(() => {
-    if (!leg.line || !leg.tripId) return;
-    let cancelled = false;
-    const line = leg.line;
-    const tripId = leg.tripId;
-    const lastSig = { current: '' };
-
-    const fetchOnce = async () => {
-      try {
-        const list = await RoutingService.getVehicles(line);
-        if (cancelled || !mounted.current) return;
-        const match = list.find((v) => v.matchedTripId === tripId) ?? null;
-        const sig = match
-          ? `${match.vehicleId}|${match.lat.toFixed(5)}|${match.lon.toFixed(5)}|${match.currentStopName}|${match.nextStopName}`
-          : 'none';
-        if (sig !== lastSig.current) {
-          lastSig.current = sig;
-          setVehicle(match);
-        }
-      } catch {
-        // offline — zostaje estymacja czasowa
-      }
-    };
-
-    fetchOnce();
-    const timer = setInterval(fetchOnce, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [leg.line, leg.tripId]);
-
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
-  const gap = useMemo(() => locateVehicle(stops, leg, vehicle), [stops, leg, vehicle]);
 
   if (loading) {
     return (
@@ -355,14 +228,6 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
 
   return (
     <View style={s.stopsWrap}>
-      {gap.isLive && (
-        <View style={[s.vehicleBanner, s.vehicleBannerLive]}>
-          <LiveDot color={scheme.primary} size={7} />
-          <Text style={s.vehicleText} numberOfLines={2}>
-            {gap.label}
-          </Text>
-        </View>
-      )}
       {stops.map((stop, i) => {
         const inSegment = i >= segment.start && i <= segment.end;
         const connectorAccent = i >= segment.start && i + 1 <= segment.end;
@@ -374,7 +239,6 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
             inSegment={inSegment}
             accent={accent}
             connectorAccent={connectorAccent}
-            vehicleHere={gap.isLive && gap.gap === i}
           />
         );
       })}
@@ -564,28 +428,10 @@ const s = StyleSheet.create({
   // tutaj zwykły kontener bez własnych animacji wejścia/wyjścia
   stopsWrap: { marginTop: 8, gap: 0 },
   stopsCollapsed: { height: 0, opacity: 0, overflow: 'hidden', marginTop: 0 },
-  vehicleBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: shape.small,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  vehicleBannerLive: { backgroundColor: scheme.secondaryContainer },
-  vehicleText: { flex: 1, ...type.labelMedium, color: scheme.onSurfaceVariant },
   stopRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
   stopRail: { width: 22, alignItems: 'center', position: 'relative' },
   dot: { width: 13, height: 13, borderRadius: 99, borderWidth: 2, marginTop: 4, zIndex: 1 },
   connector: { width: 3, flex: 1, minHeight: 12, borderRadius: 99, marginTop: -1 },
-  vehicleOnRail: {
-    position: 'absolute',
-    top: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
   stopBody: { flex: 1, justifyContent: 'center', minHeight: 30, paddingBottom: 6 },
   stopName: { ...type.bodyMedium, color: scheme.onSurface },
   stopNameDim: { color: scheme.onSurfaceVariant },
