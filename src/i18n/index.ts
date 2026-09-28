@@ -55,6 +55,13 @@ export function getLocaleSync(): Locale {
   return currentLocale;
 }
 
+/** Słownik pod bieżące locale do synchronicznych helperów (formatery liczb
+ * mnogich, statusy). Wołać wewnątrz funkcji, nie na module — inaczej zmiana
+ * języka nie odświeży tekstów. Komponenty: używaj `useStrings()`. */
+export function tr(): Strings {
+  return DICTS[currentLocale] ?? pl;
+}
+
 export function getLocaleSettingSync(): LocaleSetting {
   return currentSetting;
 }

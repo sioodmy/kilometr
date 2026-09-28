@@ -315,10 +315,12 @@ export const pl = {
     emptyBody: 'Dodaj dom, pracę lub ulubione punkty, aby jednym dotknięciem sprawdzać połączenia.',
     addNew: 'Dodaj nowe miejsce',
     removeTitle: (name: string) => `Usunąć „${name}”?`,
+    removeGeneric: 'Usunąć to miejsce?',
+    removeConfirm: 'Usuń',
     iconCategories: {
       all: 'Wszystkie',
       frequent: 'Częste',
-      travel: 'Podróż',
+      transit: 'Podróż',
       food: 'Jedzenie',
       health: 'Zdrowie',
       culture: 'Kultura',
@@ -455,8 +457,8 @@ export const pl = {
       `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
     fromPrefix: 'z ',
     toPrefix: 'do ',
-    stopsSummary: (n: number, open: boolean) =>
-      `${n} przystanki • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
+    stopsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} przystanki • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
   },
   compass: {
     ahead: 'Prosto przed Tobą',
@@ -489,7 +491,7 @@ export const pl = {
     noGps: 'Brak pozycji GPS',
     onTrack: 'Jesteś na trasie',
     offTrack: (m: number) => `Ty: ${m} m od trasy`,
-    zoomUser: (label: string, z: number) => `${label} · Zoom ${z}`,
+    zoomUser: (label: string, z: string) => `${label} · Zoom ${z}`,
     goStartA11y: 'Przejdź do startu trasy',
     progressA11y: 'Oś postępu trasy',
     goEndA11y: 'Przejdź do końca trasy',

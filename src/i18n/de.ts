@@ -308,10 +308,12 @@ export const de: Strings = {
     emptyBody: 'Füge Zuhause, Arbeit oder Lieblingsorte hinzu, um Verbindungen mit einem Tipp zu prüfen.',
     addNew: 'Neuen Ort hinzufügen',
     removeTitle: (name: string) => `„${name}“ entfernen?`,
+    removeGeneric: 'Diesen Ort entfernen?',
+    removeConfirm: 'Entfernen',
     iconCategories: {
       all: 'Alle',
       frequent: 'Häufig',
-      travel: 'Reise',
+      transit: 'Reise',
       food: 'Essen',
       health: 'Gesundheit',
       culture: 'Kultur',
@@ -446,7 +448,8 @@ export const de: Strings = {
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
-    stopsSummary: (n: number, open: boolean) => `${n} Haltestellen • ${open ? 'ein' : 'aus'}klappen`,
+    stopsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} Haltestellen • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
   },
   compass: {
     ahead: 'Geradeaus',
@@ -479,7 +482,7 @@ export const de: Strings = {
     noGps: 'Keine GPS-Position',
     onTrack: 'Du bist auf der Route',
     offTrack: (m: number) => `Du: ${m} m neben der Route`,
-    zoomUser: (label: string, z: number) => `${label} · Zoom ${z}`,
+    zoomUser: (label: string, z: string) => `${label} · Zoom ${z}`,
     goStartA11y: 'Zum Routenstart springen',
     progressA11y: 'Routenfortschritt',
     goEndA11y: 'Zum Routenende springen',

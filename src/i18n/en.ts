@@ -308,10 +308,12 @@ export const en: Strings = {
     emptyBody: 'Add home, work or favourite spots to check connections with one tap.',
     addNew: 'Add a new place',
     removeTitle: (name: string) => `Remove “${name}”?`,
+    removeGeneric: 'Remove this place?',
+    removeConfirm: 'Remove',
     iconCategories: {
       all: 'All',
       frequent: 'Frequent',
-      travel: 'Travel',
+      transit: 'Travel',
       food: 'Food',
       health: 'Health',
       culture: 'Culture',
@@ -447,7 +449,8 @@ export const en: Strings = {
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
     fromPrefix: 'from ',
     toPrefix: 'to ',
-    stopsSummary: (n: number, open: boolean) => `${n} stops • ${open ? 'collapse' : 'expand'} stops`,
+    stopsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} stops • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
   },
   compass: {
     ahead: 'Straight ahead',
@@ -480,7 +483,7 @@ export const en: Strings = {
     noGps: 'No GPS position',
     onTrack: 'You are on route',
     offTrack: (m: number) => `You: ${m} m off route`,
-    zoomUser: (label: string, z: number) => `${label} · Zoom ${z}`,
+    zoomUser: (label: string, z: string) => `${label} · Zoom ${z}`,
     goStartA11y: 'Go to route start',
     progressA11y: 'Route progress axis',
     goEndA11y: 'Go to route end',
