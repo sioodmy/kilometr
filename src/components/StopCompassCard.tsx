@@ -262,10 +262,18 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     ? 'Ten przystanek nie ma współrzędnych w rozkładzie.'
     : locState === 'denied'
       ? 'Lokalizacja jest wyłączona — bez niej nie pokażę kierunku do przystanku.'
-      : 'Nie mam jeszcze Twojej pozycji. Poczekaj na sygnał GPS albo skorzystaj z nawigacji poniżej.';
+      : // Nagłówek karty już mówi „Brak pozycji GPS”, więc dolna linia tylko
+        // podpowiada wyjście — jedno, krótkie zdanie zamiast trzech.
+        'Kierunek i odległość pokażę, gdy znajdę sygnał GPS.';
 
   const walkMin = distanceM != null ? walkMinutesFor(distanceM, walkMps) : null;
   const directionLabel = compassReady ? getDirectionLabel(relativeAngle) : compassHint;
+
+  // Bez fixa GPS nie ma kompasu, więc podpis „Kieruj się według kompasu” jest
+  // obietnicą, której karta nie spełnia. W zamian mówi wprost, czego brakuje,
+  // a wyjaśnienie u dołu zostaje jednolinijkowe — na ekranie w tramwaju
+  // liczy się każda linia pionu.
+  const noFix = !compassReady && locState !== 'denied' && hasTarget;
 
   return (
     <View style={styles.card}>
@@ -273,9 +281,11 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         <View style={styles.cardHeaderIcon}>
           <Navigation2 size={18} color={scheme.primary} />
         </View>
-        <View>
+        <View style={styles.cardHeaderText}>
           <Text style={styles.cardTitle}>Lokalizacja przystanku</Text>
-          <Text style={styles.cardSubtitle}>Kieruj się według kompasu</Text>
+          <Text style={styles.cardSubtitle} numberOfLines={1}>
+            {noFix ? 'Brak pozycji GPS' : 'Kieruj się według kompasu'}
+          </Text>
         </View>
       </View>
       
@@ -467,6 +477,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: scheme.onSurface,
   },
+  cardHeaderText: { flex: 1, minWidth: 0 },
   cardSubtitle: {
     ...type.labelMedium,
     color: scheme.onSurfaceVariant,
