@@ -1053,7 +1053,7 @@ export default function RoutesScreen() {
             </View>
           </Pressable>
           <Text style={styles.sortLabel} numberOfLines={1}>
-            {sortMode === 'fastest' ? 'przyjazd' : 'odjazd'}
+            {sortMode === 'fastest' ? 'Przyjazd' : 'Odjazd'}
           </Text>
         </View>
 
