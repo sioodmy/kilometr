@@ -12,6 +12,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import type { LegMode, SmartDestination } from '../types/models';
 import type { SuggestionIconMeta } from './SuggestionRow';
 import { LineBadge } from './LineBadge';
+import { useStrings, tr } from '../i18n';
 
 export interface SmartLineBadge {
   mode?: LegMode;
@@ -72,6 +73,7 @@ export function SmartHistoryList({
   /** Ikonki jak w wyszukiwarce, kluczem id destynacji; brak wpisu = brak ikonki (dociągnie się z animacją slide-left) */
   icons?: Record<string, SuggestionIconMeta | undefined>;
 }) {
+  const s = useStrings();
   // Nagłówek bez treści to martwy szum — przy pustej historii sekcja znika.
   if (items.length === 0) return null;
 
@@ -80,7 +82,7 @@ export function SmartHistoryList({
       {!hideHeader && (
         <View style={styles.header}>
           <History size={16} color={scheme.primary} />
-          <Text style={styles.headerText}>Ostatnie miejsca</Text>
+          <Text style={styles.headerText}>{s.home.historyTitle}</Text>
         </View>
       )}
       {items.map((d) => {
@@ -115,14 +117,16 @@ export function SmartHistoryList({
                     else onSelect(d);
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Otwórz połączenie do ${d.title}, ${departLabel}`}
+                  accessibilityLabel={s.home.openConnA11y(d.title, departLabel)}
                   hitSlop={8}
                   style={({ pressed }) => [styles.rightTouch, pressed && { opacity: 0.6 }]}
                 >
                   <View style={styles.right}>
-                    {badge?.line ? (
-                      <LineBadge mode={badge.mode} line={badge.line} />
-                    ) : null}
+                    <View style={styles.badgeSlot}>
+                      {badge?.line ? (
+                        <LineBadge mode={badge.mode} line={badge.line} />
+                      ) : null}
+                    </View>
                     <Text style={styles.depart} numberOfLines={1}>{departLabel}</Text>
                   </View>
                 </Pressable>
@@ -145,15 +149,15 @@ export function formatDepartIn(departInMin: number | undefined): string | null {
   const m = Math.round(departInMin);
   if (m > 180) return null;
   if (m < -180) return null;
-  if (m < 0) return m >= -1 ? 'przed chwilą' : `${-m} min temu`;
+  if (m < 0) return m >= -1 ? tr().common.departJustAgo : tr().common.departAgo(-m);
   if (m > 59) {
     const target = new Date(Date.now() + m * 60 * 1000);
     const hh = String(target.getHours()).padStart(2, '0');
     const mm = String(target.getMinutes()).padStart(2, '0');
     return `${hh}:${mm}`;
   }
-  if (m <= 1) return 'za chwilę';
-  return `za ${m} min`;
+  if (m <= 1) return tr().common.departNow;
+  return tr().common.departIn(m);
 }
 
 const styles = StyleSheet.create({
@@ -184,9 +188,11 @@ const styles = StyleSheet.create({
   mid: { flex: 1, justifyContent: 'center', gap: 2, minWidth: 0 },
   title: { ...type.bodyLarge, color: scheme.onSurface },
   sub: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
-  // Prawa kolumna: badge na górze, „za x min” pod nim — wszystko wyśrodkowane
-  // w pionie karty i w osi własnej kolumny.
+  // Prawa kolumna: badge na górze, „za x min” pod nim — oba w slotach
+  // o STAŁEJ wysokości, więc ikonki stoją pod ikonkami, a teksty pod
+  // tekstami w każdym wierszu (także bez linii — pusty slot trzyma rytm).
   rightTouch: { justifyContent: 'center', alignItems: 'center' },
-  right: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, flexShrink: 0 },
-  depart: { ...type.titleSmall, color: scheme.onSurface, flexShrink: 0, textAlign: 'center' },
+  right: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, flexShrink: 0, minWidth: 64 },
+  badgeSlot: { height: 28, alignItems: 'center', justifyContent: 'center' },
+  depart: { ...type.titleSmall, lineHeight: 20, color: scheme.onSurface, flexShrink: 0, textAlign: 'center' },
 });

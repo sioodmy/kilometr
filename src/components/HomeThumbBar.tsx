@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 import { LocateFixed, Search, X } from 'lucide-react-native';
 import { scheme, type } from '../theme/tokens';
 import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
+import { useStrings } from '../i18n';
 
 interface HomeThumbBarProps {
   onOpenSearch: () => void;
@@ -25,16 +26,17 @@ export function HomeThumbBar({
   onOpenStart,
   onResetStart,
 }: HomeThumbBarProps) {
+  const s = useStrings();
   return (
     <ThumbBar>
       <ThumbBarItem
         onPress={onOpenSearch}
         layout="horizontal"
         icon={<Search size={18} color={scheme.primary} />}
-        label="Dokąd jedziesz?"
+        label={s.home.searchLabel}
         style={styles.searchItem}
         labelStyle={styles.searchLabel}
-        accessibilityLabel="Szukaj adresu, przystanku lub miejsca"
+        accessibilityLabel={s.home.searchA11y}
       />
 
       <ThumbBarDivider />
@@ -45,8 +47,8 @@ export function HomeThumbBar({
         accessibilityRole="button"
         accessibilityLabel={
           isCustomStart
-            ? `Początek trasy: ${startTitle}. Dotknij, aby zmienić.`
-            : `Lokalizacja: ${startTitle}. Dotknij, aby zmienić miejsce początkowe.`
+            ? s.home.startCustomA11y(startTitle)
+            : s.home.startGpsA11y(startTitle)
         }
       >
         <Text
@@ -54,7 +56,7 @@ export function HomeThumbBar({
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          z: {startTitle}
+          {s.home.startFrom(startTitle)}
         </Text>
         {isCustomStart ? (
           <Pressable
@@ -64,7 +66,7 @@ export function HomeThumbBar({
               onResetStart();
             }}
             accessibilityRole="button"
-            accessibilityLabel="Przywróć bieżącą lokalizację GPS"
+            accessibilityLabel={s.home.resetStartA11y}
             style={styles.startResetBtn}
           >
             <X size={14} color={scheme.onSurfaceVariant} />

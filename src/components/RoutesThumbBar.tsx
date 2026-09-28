@@ -19,6 +19,7 @@ import {
 } from 'lucide-react-native';
 import { scheme } from '../theme/tokens';
 import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
+import { useStrings } from '../i18n';
 
 /** Filtr środka transportu. Jedyne miejsce, w którym żyje ten typ. */
 export type ModePreference = 'all' | 'tram' | 'bus';
@@ -76,6 +77,7 @@ export function RoutesThumbBar({
   onCycleMode,
   animatedStyle,
 }: RoutesThumbBarProps) {
+  const s = useStrings();
   const renderModeIcon = () => {
     const color = modeFilter !== 'all' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
     if (modeFilter === 'tram') return <TramFront size={17} color={color} />;
@@ -84,9 +86,9 @@ export function RoutesThumbBar({
   };
 
   // Krótko, żeby nie ucinało w wąskim guziku (pełne nazwy w a11y).
-  const modeLabel = modeFilter === 'tram' ? 'Tram' : modeFilter === 'bus' ? 'Bus' : 'Pojazdy';
+  const modeLabel = modeFilter === 'tram' ? s.routesBar.modeTram : modeFilter === 'bus' ? s.routesBar.modeBus : s.routesBar.modeAll;
   const modeA11y =
-    modeFilter === 'tram' ? 'Tramwaje' : modeFilter === 'bus' ? 'Autobusy' : 'Wszystkie pojazdy';
+    modeFilter === 'tram' ? s.routesBar.modeTramA11y : modeFilter === 'bus' ? s.routesBar.modeBusA11y : s.routesBar.modeAllA11y;
 
   // Etykieta czasu bywa pełna („Jutro, 08:15”) i nie mieściłaby się w kolumnie,
   // więc w docku zostaje sama godzina. Dzień i tak widać w nagłówku listy,
@@ -124,8 +126,8 @@ export function RoutesThumbBar({
             <ArrowUpDown size={17} color={scheme.onSurfaceVariant} />
           </Animated.View>
         }
-        label="Odwróć"
-        accessibilityLabel="Odwróć trasę: zamień punkt startowy z docelowym"
+        label={s.routesBar.reverse}
+        accessibilityLabel={s.routesBar.reverseA11y}
       />
 
       <ThumbBarDivider />
@@ -146,11 +148,11 @@ export function RoutesThumbBar({
             />
           </Animated.View>
         }
-        label="Bezpośr."
+        label={s.routesBar.direct}
         accessibilityLabel={
           directOnly
-            ? 'Filtr połączeń bezpośrednich: aktywny. Dotknij, aby pokazać wszystkie.'
-            : 'Filtr połączeń bezpośrednich: nieaktywny. Dotknij, aby włączyć.'
+            ? s.routesBar.directOnA11y
+            : s.routesBar.directOffA11y
         }
       />
 
@@ -165,7 +167,7 @@ export function RoutesThumbBar({
           </Animated.View>
         }
         label={modeLabel}
-        accessibilityLabel={`Filtruj środek transportu: aktualnie ${modeA11y}. Dotknij, aby zmienić.`}
+        accessibilityLabel={s.routesBar.modeFilterA11y(modeA11y)}
       />
 
       <ThumbBarDivider />
@@ -186,7 +188,7 @@ export function RoutesThumbBar({
           </Animated.View>
         }
         label={timeShort}
-        accessibilityLabel={`Czas odjazdu: ${timeLabel}. Dotknij, aby zmienić.`}
+        accessibilityLabel={s.routesBar.timeA11y(timeLabel)}
       />
     </ThumbBar>
   );

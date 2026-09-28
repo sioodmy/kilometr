@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
+import { useStrings } from '../i18n';
 
 /** „Wyjdź o” vs „bądź na” — tryb przekazywany do silnika (departureTimeSec / arriveBySec). */
 export type TimeMode = 'depart' | 'arrive';
@@ -138,8 +139,8 @@ export function DepartureTimeSheet({
   onSelect,
 }: DepartureTimeSheetProps) {
   // Android back / gest wstecz zamyka sheet zamiast wyjścia z apki
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const s = useStrings();
+  const closeRef = useRef(onClose);  closeRef.current = onClose;
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       closeRef.current();
@@ -221,13 +222,13 @@ export function DepartureTimeSheet({
     if (isNow) {
       onSelect({
         timeSec: undefined,
-        label: 'Teraz',
+        label: s.common.now,
         mode: 'depart',
       });
     } else {
       const baseSec = hour * 3600 + minute * 60;
       const totalSec = day === 'tomorrow' ? baseSec + 86400 : baseSec;
-      const dayLabel = day === 'today' ? 'Dziś' : 'Jutro';
+      const dayLabel = day === 'today' ? s.common.today : s.common.tomorrow;
       onSelect({
         timeSec: totalSec,
         label: `${dayLabel}, ${pad(hour)}:${pad(minute)}`,
@@ -237,11 +238,12 @@ export function DepartureTimeSheet({
     onClose();
   };
 
+  const dayLower = day === 'today' ? s.common.todayLower : s.common.tomorrowLower;
   const confirmText = isNow
-    ? 'Wyszukaj od teraz'
+    ? s.timeSheet.confirmNow
     : mode === 'arrive'
-      ? `Bądź na: ${day === 'today' ? 'dziś' : 'jutro'}, ${pad(hour)}:${pad(minute)}`
-      : `Zastosuj: ${day === 'today' ? 'dziś' : 'jutro'}, ${pad(hour)}:${pad(minute)}`;
+      ? s.timeSheet.confirmArrive(dayLower, pad(hour), pad(minute))
+      : s.timeSheet.confirmDepart(dayLower, pad(hour), pad(minute));
 
   return (
     <BottomSheet
@@ -266,7 +268,7 @@ export function DepartureTimeSheet({
             ) : (
               <Clock size={20} color={scheme.primary} />
             )}
-            <Text style={styles.title}>{mode === 'arrive' ? 'Czas przyjazdu' : 'Czas odjazdu'}</Text>
+            <Text style={styles.title}>{mode === 'arrive' ? s.timeSheet.titleArrive : s.timeSheet.titleDepart}</Text>
           </View>
           <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
             <X size={20} color={scheme.onSurfaceVariant} />
@@ -279,11 +281,11 @@ export function DepartureTimeSheet({
             onPress={() => handleModeChange('depart')}
             style={[styles.dayTab, mode === 'depart' && styles.dayTabActive]}
             accessibilityRole="button"
-            accessibilityLabel="Szukaj od podanej godziny"
+            accessibilityLabel={s.timeSheet.modeDepartA11y}
           >
             <Clock size={14} color={mode === 'depart' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
             <Text style={[styles.dayTabText, mode === 'depart' && styles.dayTabTextActive]}>
-              Odjazd
+              {s.timeSheet.modeDepart}
             </Text>
           </Pressable>
 
@@ -291,11 +293,11 @@ export function DepartureTimeSheet({
             onPress={() => handleModeChange('arrive')}
             style={[styles.dayTab, mode === 'arrive' && styles.dayTabActive]}
             accessibilityRole="button"
-            accessibilityLabel="Bądź na miejscu o podanej godzinie"
+            accessibilityLabel={s.timeSheet.modeArriveA11y}
           >
             <Flag size={14} color={mode === 'arrive' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
             <Text style={[styles.dayTabText, mode === 'arrive' && styles.dayTabTextActive]}>
-              Przyjazd
+              {s.timeSheet.modeArrive}
             </Text>
           </Pressable>
         </View>
@@ -307,28 +309,28 @@ export function DepartureTimeSheet({
             style={[styles.presetChip, isNow && styles.presetChipActive]}
           >
             <Sparkles size={14} color={isNow ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
-            <Text style={[styles.presetText, isNow && styles.presetTextActive]}>Teraz</Text>
+            <Text style={[styles.presetText, isNow && styles.presetTextActive]}>{s.common.now}</Text>
           </Pressable>
 
           <Pressable
             onPress={() => handleQuickAdd(15)}
             style={styles.presetChip}
           >
-            <Text style={styles.presetText}>+15 min</Text>
+            <Text style={styles.presetText}>{s.common.add15}</Text>
           </Pressable>
 
           <Pressable
             onPress={() => handleQuickAdd(30)}
             style={styles.presetChip}
           >
-            <Text style={styles.presetText}>+30 min</Text>
+            <Text style={styles.presetText}>{s.common.add30}</Text>
           </Pressable>
 
           <Pressable
             onPress={() => handleQuickAdd(60)}
             style={styles.presetChip}
           >
-            <Text style={styles.presetText}>+1 godz.</Text>
+            <Text style={styles.presetText}>{s.common.add60}</Text>
           </Pressable>
         </View>
 
@@ -343,7 +345,7 @@ export function DepartureTimeSheet({
           >
             <Calendar size={14} color={day === 'today' && !isNow ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
             <Text style={[styles.dayTabText, day === 'today' && !isNow && styles.dayTabTextActive]}>
-              Dzisiaj
+              {s.timeSheet.dayToday}
             </Text>
           </Pressable>
 
@@ -356,7 +358,7 @@ export function DepartureTimeSheet({
           >
             <Calendar size={14} color={day === 'tomorrow' && !isNow ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
             <Text style={[styles.dayTabText, day === 'tomorrow' && !isNow && styles.dayTabTextActive]}>
-              Jutro
+              {s.timeSheet.dayTomorrow}
             </Text>
           </Pressable>
         </View>
@@ -364,9 +366,9 @@ export function DepartureTimeSheet({
         {/* Panel zegara przesuwany (Wheel Picker) */}
         <View style={styles.clockCard}>
           <View style={styles.labelsRow}>
-            <Text style={styles.wheelColLabel}>godzina</Text>
+            <Text style={styles.wheelColLabel}>{s.timeSheet.hourLabel}</Text>
             <View style={{ width: 24 }} />
-            <Text style={styles.wheelColLabel}>minuta</Text>
+            <Text style={styles.wheelColLabel}>{s.timeSheet.minuteLabel}</Text>
           </View>
 
           <View style={styles.wheelsRow}>

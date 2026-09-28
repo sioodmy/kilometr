@@ -23,6 +23,7 @@ import { SkipBack, SkipForward } from 'lucide-react-native';
 import type { Coord } from '../services/routeGeometry';
 import { scheme, shape, type } from '../theme/tokens';
 import { RouteMiniMap } from './RouteMiniMap';
+import { useStrings } from '../i18n';
 
 const JOYSTICK_RADIUS = 46;
 const PUCK_RADIUS = 19;
@@ -61,6 +62,7 @@ export function RouteJoystick({
   onJumpStart,
   onJumpFinish,
 }: RouteJoystickProps) {
+  const s = useStrings();
   // Płynna pozycja gałki
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
 
@@ -219,17 +221,17 @@ export function RouteJoystick({
   const percent = Math.round(progress * 100);
 
   const ahead = useMemo(() => {
-    if (!aheadStopName) return 'koniec trasy';
+    if (!aheadStopName) return s.joystick.routeEnd;
     if (aheadStopDistanceM == null) return aheadStopName;
     return `${aheadStopName} · ${Math.round(aheadStopDistanceM)} m`;
-  }, [aheadStopName, aheadStopDistanceM]);
+  }, [aheadStopName, aheadStopDistanceM, s]);
 
   const userLabel =
     userDistanceM == null
-      ? 'Brak pozycji GPS'
+      ? s.joystick.noGps
       : userDistanceM < 25
-        ? 'Jesteś na trasie'
-        : `Ty: ${Math.round(userDistanceM)} m od trasy`;
+        ? s.joystick.onTrack
+        : s.joystick.offTrack(Math.round(userDistanceM));
 
   return (
     <View style={styles.row}>
@@ -263,10 +265,10 @@ export function RouteJoystick({
 
       <View style={styles.info}>
         <Text style={styles.aheadLabel} numberOfLines={1}>
-          Dalej: {ahead}
+          {s.joystick.nextUp(ahead)}
         </Text>
         <Text style={styles.metaLabel} numberOfLines={1}>
-          {userLabel} · Zoom {zoom.toFixed(1)}
+          {s.joystick.zoomUser(userLabel, zoom.toFixed(1))}
         </Text>
 
         <View style={styles.trackRow}>
@@ -275,7 +277,7 @@ export function RouteJoystick({
             hitSlop={8}
             style={({ pressed }) => [styles.jumpBtn, pressed && styles.jumpBtnPressed]}
             accessibilityRole="button"
-            accessibilityLabel="Przejdź do startu trasy"
+            accessibilityLabel={s.joystick.goStartA11y}
           >
             <SkipBack size={16} color={scheme.onSurface} />
           </Pressable>
@@ -286,7 +288,7 @@ export function RouteJoystick({
             onPress={handleTrackTouch}
             hitSlop={{ top: 10, bottom: 10 }}
             accessibilityRole="adjustable"
-            accessibilityLabel="Oś postępu trasy"
+            accessibilityLabel={s.joystick.progressA11y}
             accessibilityValue={{ min: 0, max: 100, now: percent }}
           >
             <View style={[styles.trackFill, { width: `${percent}%` }]} />
@@ -298,7 +300,7 @@ export function RouteJoystick({
             hitSlop={8}
             style={({ pressed }) => [styles.jumpBtn, pressed && styles.jumpBtnPressed]}
             accessibilityRole="button"
-            accessibilityLabel="Przejdź do końca trasy"
+            accessibilityLabel={s.joystick.goEndA11y}
           >
             <SkipForward size={16} color={scheme.onSurface} />
           </Pressable>

@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
+import { useStrings } from '../i18n';
 import type { SavedPlace } from '../types/models';
 import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
 
@@ -39,6 +40,7 @@ export function ManagePlacesSheet({
 }) {
   const sheetRef = useRef<BottomSheet>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const s = useStrings();
   // Arkusz leży na spodzie ekranu (edge-to-edge), więc pasek nawigacji
   // zasłania ostatnią pozycję listy i przycisk „Dodaj miejsce”.
   const insets = useSafeAreaInsets();
@@ -77,13 +79,13 @@ export function ManagePlacesSheet({
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>Zapisane miejsca</Text>
+              <Text style={styles.title}>{s.places.manageTitle}</Text>
               <View style={styles.countBadge}>
                 <Text style={styles.countText}>{places.length}</Text>
               </View>
             </View>
             <Text style={styles.subtitle}>
-              Zarządzaj swoimi szybkimi celami podróży
+              {s.places.manageSub}
             </Text>
           </View>
           <View style={styles.headerActions}>
@@ -110,16 +112,16 @@ export function ManagePlacesSheet({
             <View style={styles.emptyIconWrap}>
               <Star size={32} color={scheme.onSurfaceVariant} />
             </View>
-            <Text style={styles.emptyTitle}>Brak zapisanych miejsc</Text>
+            <Text style={styles.emptyTitle}>{s.places.emptyTitle}</Text>
             <Text style={styles.emptySubtitle}>
-              Dodaj dom, pracę lub ulubione punkty, aby jednym dotknięciem sprawdzać połączenia.
+              {s.places.emptyBody}
             </Text>
             <Pressable
               onPress={onAddNew}
               style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }]}
             >
               <Plus size={20} color={scheme.onPrimary} />
-              <Text style={styles.addBtnText}>Dodaj nowe miejsce</Text>
+              <Text style={styles.addBtnText}>{s.places.addNew}</Text>
             </Pressable>
           </View>
         ) : (
@@ -135,7 +137,7 @@ export function ManagePlacesSheet({
                 style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }]}
               >
                 <Plus size={20} color={scheme.onPrimary} />
-                <Text style={styles.addBtnText}>Dodaj nowe miejsce</Text>
+                <Text style={styles.addBtnText}>{s.places.addNew}</Text>
               </Pressable>
             }
             renderItem={({ item }: { item: SavedPlace }) => {
@@ -148,7 +150,7 @@ export function ManagePlacesSheet({
                     <View style={styles.confirmLeft}>
                       <Trash2 size={18} color={scheme.error} />
                       <Text style={styles.confirmText} numberOfLines={1}>
-                        Usunąć „{item.name}”?
+                        {s.places.removeTitle(item.name)}
                       </Text>
                     </View>
                     <View style={styles.confirmActions}>
@@ -156,7 +158,7 @@ export function ManagePlacesSheet({
                         onPress={() => setDeletingId(null)}
                         style={({ pressed }) => [styles.cancelInlineBtn, pressed && { opacity: 0.7 }]}
                       >
-                        <Text style={styles.cancelInlineText}>Nie</Text>
+                        <Text style={styles.cancelInlineText}>{s.common.no}</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => {
@@ -165,7 +167,7 @@ export function ManagePlacesSheet({
                         }}
                         style={({ pressed }) => [styles.deleteInlineBtn, pressed && { opacity: 0.7 }]}
                       >
-                        <Text style={styles.deleteInlineText}>Usuń</Text>
+                        <Text style={styles.deleteInlineText}>{s.places.removeConfirm}</Text>
                       </Pressable>
                     </View>
                   </View>

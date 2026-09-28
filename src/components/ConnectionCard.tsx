@@ -6,25 +6,16 @@ import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+import { tr } from '../i18n';
 
-/** Czy liczba od 2 do 4 wymaga formy "2 przesiadki" (z wyjątkiem 12–14). */
-function isFew(n: number): boolean {
-  const last = n % 10;
-  const teen = n % 100;
-  return last >= 2 && last <= 4 && (teen < 12 || teen > 14);
-}
-
-/** Poprawna polska odmiana: 1 przesiadka, 2–4 przesiadki, 5+ przesiadek. */
+/** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2–4 / 5+). */
 export function transfersLabel(n: number): string {
-  if (n <= 0) return 'bezpośrednio';
-  if (n === 1) return '1 przesiadka';
-  return isFew(n) ? `${n} przesiadki` : `${n} przesiadek`;
+  return tr().connection.transfers(n);
 }
 
-/** Poprawna polska odmiana dla liczby połączeń: 1 / 2–4 / 5+. */
+/** Poprawna odmiana liczby połączeń (słownik i18n: 1 / 2–4 / 5+). */
 export function connectionsLabel(n: number): string {
-  if (n === 1) return '1 połączenie';
-  return isFew(n) ? `${n} połączenia` : `${n} połączeń`;
+  return tr().connection.connections(n);
 }
 
 /** Minuty od północy dla "teraz". */
@@ -226,15 +217,15 @@ export const ConnectionCard = memo(function ConnectionCard({
 
   const departureText = historical
     ? minsAgo <= 1
-      ? 'przed chwilą'
-      : `${minsAgo} min temu`
+      ? tr().common.departJustAgo
+      : tr().common.departAgo(minsAgo)
     : walkOnly && walkM != null
       ? formatWalkTime(walkMin)
       : effectiveMin <= 1
-        ? 'za chwilę'
+        ? tr().common.departNow
         : effectiveMin > 59
           ? item.departAt
-          : `za ${effectiveMin} min`;
+          : tr().common.departIn(effectiveMin);
   const departureColor = historical
     ? scheme.onSurfaceVariant
     : item.live && item.delayMin > 0
@@ -242,7 +233,14 @@ export const ConnectionCard = memo(function ConnectionCard({
       : scheme.onSurface;
 
   const linesSummary = boarding.map((b) => b.line).filter(Boolean).join(', ');
-  const accessibilityDesc = `${departureText}, czas jazdy ${item.durationMin} min, odjazd ${item.departAt}, przyjazd ${item.arriveAt}, ${walkOnly ? 'trasa piesza' : transfersLabel(item.transfers)}${linesSummary ? `, linie ${linesSummary}` : ''}`;
+  const accessibilityDesc = tr().connection.cardA11y(
+    departureText,
+    item.durationMin,
+    item.departAt,
+    item.arriveAt,
+    walkOnly ? tr().connection.walkRoute : transfersLabel(item.transfers),
+    linesSummary,
+  );
 
   return (
     <Pressable
@@ -264,7 +262,7 @@ export const ConnectionCard = memo(function ConnectionCard({
         <View style={[styles.badge, { backgroundColor: historical ? scheme.surfaceContainerHighest : badgeBg }]}>
           {dotColor != null && !historical && <LiveDot color={dotColor} size={7} />}
           <Text style={[styles.badgeText, { color: historical ? scheme.onSurfaceVariant : badgeFg }]}>
-            {item.durationMin} min
+            {tr().common.durMin(item.durationMin)}
           </Text>
         </View>
       </View>
@@ -274,7 +272,7 @@ export const ConnectionCard = memo(function ConnectionCard({
         <ArrowRight size={12} color={scheme.onSurfaceVariant} strokeWidth={2} />
         <Text style={styles.hours}>{item.arriveAt}</Text>
         <Text style={styles.hoursDot}>•</Text>
-        <Text style={styles.hours}>{walkOnly ? 'pieszo' : transfersLabel(item.transfers)}</Text>
+        <Text style={styles.hours}>{walkOnly ? tr().connection.walkLeg : transfersLabel(item.transfers)}</Text>
       </View>
 
       {/* Środek: badge linii oraz piesze części trasy (zgodnie ze stylem Jakdojade) */}
@@ -285,7 +283,7 @@ export const ConnectionCard = memo(function ConnectionCard({
               <Footprints size={12} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
               <Text style={styles.walkPillText}>{walkMin}m</Text>
             </View>
-            <Text style={styles.walkLabel}>całość pieszo</Text>
+            <Text style={styles.walkLabel}>{tr().connection.walkAll}</Text>
           </View>
         ) : (
           visible.segments.map((seg) => {

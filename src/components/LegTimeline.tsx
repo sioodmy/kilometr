@@ -13,6 +13,7 @@ import { getLineColors, LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+import { useStrings } from '../i18n';
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
@@ -259,6 +260,8 @@ function TransitLegCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
+  const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(false);
@@ -278,7 +281,7 @@ function TransitLegCard({
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={`${leg.line} kierunek ${leg.direction}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`}
+        accessibilityLabel={t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded)}
         style={({ pressed }) => [s.card, pressed && { opacity: 0.96 }]}
       >
         <View style={s.cardTop}>
@@ -292,14 +295,14 @@ function TransitLegCard({
           </Animated.View>
         </View>
         <Text style={s.stopBig}>
-          <Text style={s.stopPrefix}>z </Text>
+          <Text style={s.stopPrefix}>{t.leg.fromPrefix}</Text>
           {leg.fromStop} <Text style={s.hour}>{leg.departAt}</Text>
         </Text>
         <Text style={s.meta}>
-          {leg.stopsCount} przystanki • ~{leg.stopsCount * 2} min • {expanded ? 'zwiń' : 'rozwiń przystanki'}
+          {t.leg.stopsSummary(leg.stopsCount, leg.stopsCount * 2, expanded)}
         </Text>
         <Text style={s.stopBig}>
-          <Text style={s.stopPrefix}>do </Text>
+          <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
           {leg.toStop} <Text style={s.hour}>{leg.arriveAt}</Text>
         </Text>
         {hasOpened && (

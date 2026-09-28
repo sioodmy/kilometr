@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, X } from 'lucide-react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { elev, scheme, shape, type } from '../theme/tokens';
+import { useStrings } from '../i18n';
 import type { Suggestion } from '../types/models';
 import { SuggestionRow } from './SuggestionRow';
 
@@ -22,7 +23,7 @@ export function SearchSheet({
   onQuery,
   onSelect,
   onClose,
-  placeholder = 'Szukaj we Wrocławiu…',
+  placeholder: placeholderProp,
   originTitle,
   onChangeOrigin,
   closeOnSelect = true,
@@ -43,6 +44,8 @@ export function SearchSheet({
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
+  const s = useStrings();
+  const placeholder = placeholderProp ?? s.search.defaultPlaceholder;
   // Pasek nawigacji nie może zasłaniać ostatnich wyników (edge-to-edge).
   const insets = useSafeAreaInsets();
 
@@ -115,14 +118,14 @@ export function SearchSheet({
             style={styles.originHintRow}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel={`Punkt startowy: ${originTitle}. Dotknij, aby zmienić.`}
+            accessibilityLabel={s.search.originA11y(originTitle)}
           >
             <View style={styles.originHintDot} />
-            <Text style={styles.originHintLabel}>Z:</Text>
+            <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
             <Text style={styles.originHintTitle} numberOfLines={1}>
               {originTitle}
             </Text>
-            <Text style={styles.originHintChange}>Zmień</Text>
+            <Text style={styles.originHintChange}>{s.search.change}</Text>
           </TouchableOpacity>
         )}
 
@@ -134,7 +137,7 @@ export function SearchSheet({
             style={styles.leadingBtn}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="Zamknij wyszukiwarkę"
+            accessibilityLabel={s.search.closeA11y}
           >
             <ArrowLeft size={21} color={scheme.onSurface} />
           </TouchableOpacity>
@@ -158,7 +161,7 @@ export function SearchSheet({
               style={styles.trailingBtn}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Wyczyść zapytanie"
+              accessibilityLabel={s.search.clearA11y}
             >
               <X size={19} color={scheme.onSurfaceVariant} />
             </TouchableOpacity>
@@ -178,8 +181,8 @@ export function SearchSheet({
             {(hasResults || displayData.length > 0) && (
               <Text style={styles.section}>
                 {hasResults
-                  ? `Wyniki dla „${query.trim()}” (${results.length})`
-                  : 'Ostatnie przejazdy'}
+                  ? s.search.resultsFor(query.trim(), results.length)
+                  : s.search.recentTrips}
               </Text>
             )}
             {!hasResults && query.trim().length === 0 && (
@@ -192,7 +195,7 @@ export function SearchSheet({
                     activeOpacity={0.7}
                     style={styles.quick}
                     accessibilityRole="button"
-                    accessibilityLabel={`Zapisane miejsce: ${q.title}`}
+                    accessibilityLabel={s.search.savedA11y(q.title)}
                   >
                     <Text style={styles.quickText} numberOfLines={1}>
                       {q.title}
@@ -208,8 +211,8 @@ export function SearchSheet({
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>{loading ? 'Szukam we Wrocławiu…' : 'Brak wyników'}</Text>
-            <Text style={styles.emptySub}>Spróbuj: „arkady”, „biskupin”, „zoo”, „swojczycka” — działa też bez polskich znaków.</Text>
+            <Text style={styles.emptyTitle}>{loading ? s.search.searching : s.search.noResults}</Text>
+            <Text style={styles.emptySub}>{s.search.noResultsHint}</Text>
           </View>
         }
       />

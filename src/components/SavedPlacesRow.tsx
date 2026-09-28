@@ -55,6 +55,7 @@ import {
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon } from '../types/models';
+import { useStrings } from '../i18n';
 
 export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, any> = {
   home: Home,
@@ -125,6 +126,7 @@ export function SavedPlacesRow({
   onManage: () => void;
   onEdit?: (p: SavedPlace) => void;
 }) {
+  const s = useStrings();
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} overScrollMode="never" contentContainerStyle={styles.row}>
       {places.map((p) => {
@@ -152,7 +154,7 @@ export function SavedPlacesRow({
       <Pressable
         onPress={onManage}
         accessibilityRole="button"
-        accessibilityLabel="Edytuj zapisane miejsca"
+        accessibilityLabel={s.home.editSavedA11y}
         style={({ pressed }) => [
           styles.card,
           pressed && { backgroundColor: scheme.surfaceContainerHighest, transform: [{ scale: 0.98 }] },
@@ -162,8 +164,8 @@ export function SavedPlacesRow({
           <Pencil size={20} color={scheme.primary} />
         </View>
         <View style={styles.textContainer}>
-          <Text style={styles.name}>Edytuj</Text>
-          <Text style={styles.addr}>zapisane miejsca</Text>
+          <Text style={styles.name}>{s.home.editCard}</Text>
+          <Text style={styles.addr}>{s.home.editCardSub}</Text>
         </View>
       </Pressable>
     </ScrollView>
