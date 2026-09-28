@@ -83,6 +83,8 @@ export default function HomeScreen() {
   // Generacja wyszukiwania tras w tle — przerwanie (np. użytkownik zaczął
   // własną trasę) to po prostu podbicie licznika, pętla sama się zatrzyma.
   const routeSearchGen = useRef(0);
+  // Ostatni origin dogrzewania — reset prawych stron tylko przy jego zmianie.
+  const lastOriginRef = useRef<string | null>(null);
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
 
@@ -236,11 +238,34 @@ export default function HomeScreen() {
     }
     const gen = ++routeSearchGen.current;
     let cancelled = false;
-    // Nowy przebieg = czyste prawe strony, żeby stare odjazdy nie wisiały
-    // przy nowej lokalizacji startowej.
-    setNextDepart({});
-    setFirstConns({});
-    setFirstLegs({});
+    // Prawe strony czyścimy TYLKO przy zmianie originu (inne współrzędne /
+    // tytuł startu) — żeby stare odjazdy nie wisiały przy nowej lokalizacji.
+    // Przy samej zamianie listy (cache → świeży ranking, reorder) przycinamy
+    // jedynie wpisy znikniętych celów, a reszta dokleja się po kolei bez
+    // mrugnięcia całością naraz.
+    const originKey = `${locTitle}|${currentCoords.lat},${currentCoords.lon}`;
+    if (lastOriginRef.current !== originKey) {
+      lastOriginRef.current = originKey;
+      setNextDepart({});
+      setFirstConns({});
+      setFirstLegs({});
+    } else {
+      const ids = new Set(smart.map((d) => d.id));
+      const prune = <T,>(prev: Record<string, T>): Record<string, T> => {
+        let changed = false;
+        const next = { ...prev };
+        for (const k of Object.keys(next)) {
+          if (!ids.has(k)) {
+            delete next[k];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      };
+      setNextDepart(prune);
+      setFirstConns(prune);
+      setFirstLegs(prune);
+    }
     const s = getSettingsSync();
     void (async () => {
       for (const d of smart) {

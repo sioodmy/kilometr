@@ -1,8 +1,6 @@
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  FadeIn,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -92,15 +90,11 @@ export function SmartHistoryList({
         const Icon = meta?.Icon;
         const badge = lineBadges?.[d.id];
         // Klucz stabilny po id (bez indeksu): przy zamianie cache → świeży
-        // ranking React godzi wiersze w miejscu zamiast je przemontowywać,
-        // a LinearTransition płynnie przesuwa je na nowe pozycje.
+        // ranking React godzi wiersze w miejscu zamiast je przemontowywać —
+        // zero flickeru. Bez layout-animacji na wierszach: każdy doklejony
+        // odjazd robił relayout i sprężynował całą listę (pływanie przy scrollu).
         return (
-          <Animated.View
-            key={d.id}
-            layout={LinearTransition.springify().damping(26).stiffness(280)}
-            entering={FadeIn.duration(220)}
-          >
-          <Pressable onPress={() => onSelect(d)} style={({ pressed }) => [styles.card, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}>
+          <Pressable key={d.id} onPress={() => onSelect(d)} style={({ pressed }) => [styles.card, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}>
             {Icon ? (
               <SlideIn distance={30} style={styles.iconSlide}>
                 <View style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}>
@@ -135,7 +129,6 @@ export function SmartHistoryList({
               </SlideIn>
             ) : null}
           </Pressable>
-          </Animated.View>
         );
       })}
     </View>
