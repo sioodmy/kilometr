@@ -36,6 +36,9 @@ import {
   recordTripSearch,
   type ActiveAnchor,
 } from '../../src/services';
+// Mediana czasu dojazdu jest czysta i idzie do nawyku w „Ostatnich miejscach",
+// więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
+import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings } from '../../src/services/settings';
 import {
   areNotificationsSupported,
@@ -573,12 +576,16 @@ export default function RoutesScreen() {
         return;
       }
       setItems(applyLiveList(c, depSec));
+      // Zapisujemy nawyk z ZMIERZONYM czasem dojazdu (mediana z pierwszego
+      // okna), żeby „Ostatnie miejsca" nie pokazywały w kartce zawsze
+      // domyślnych 18 min. `mergeTripSearch` i tak potraktuje to jako to samo
+      // sprawdzenie, które zapisał ekran główny.
       void recordTripSearch(q.fromLat, q.fromLon, q.fromTitle, {
         id: q.toId || q.toTitle,
         title: q.toTitle,
         lat: q.toLat,
         lon: q.toLon,
-      });
+      }, typicalDurationMin(c));
     } catch {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
@@ -1053,7 +1060,7 @@ export default function RoutesScreen() {
             </View>
           </Pressable>
           <Text style={styles.sortLabel} numberOfLines={1}>
-            {sortMode === 'fastest' ? 'przyjazd' : 'odjazd'}
+            {sortMode === 'fastest' ? 'Przyjazd' : 'Odjazd'}
           </Text>
         </View>
 

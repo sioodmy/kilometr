@@ -1,21 +1,16 @@
 import { kvGet, kvSet } from './storage';
-import { distanceMeters } from '../gtfs/geo';
 import { DEFAULT_LOCATION } from '../config';
+import {
+  mergeTripSearch,
+  rankSmartDestinations,
+  type TripDestinationInput,
+  type TripHistoryItem,
+} from './smartRanking';
 import type { SavedPlace, SmartDestination } from '../types/models';
 
-export interface TripHistoryItem {
-  id: string;
-  origin_title: string;
-  origin_lat: number;
-  origin_lon: number;
-  dest_id: string;
-  dest_title: string;
-  dest_address: string;
-  dest_lat: number;
-  dest_lon: number;
-  duration_min: number;
-  timestamp: number;
-}
+// Typ przejazdu i cała logika rankingu mieszkają w czystym module bez natywnych
+// zależności (`npm run check:smart-rank` policzy je bez telefonu).
+export type { TripHistoryItem } from './smartRanking';
 
 export const INITIAL_SAVED_PLACES: SavedPlace[] = [
   {
@@ -163,12 +158,6 @@ const STORAGE_KEYS = {
 };
 
 const MAX_HISTORY_ITEMS = 80;
-const CLUSTER_RADIUS_M = 1600;
-const EXCLUSION_RADIUS_M = 250;
-// Przypięte miejsce i cel z historii to potem często TEN SAM budynek, tylko pod
-// dwoma różnymi id (przypięcie ma własny token, historia trzyma id z
-// wyszukiwarki). 150 m to w promieniu chodzenia — dalej to już inne miejsce.
-const SAME_PLACE_RADIUS_M = 150;
 
 export async function loadTripHistory(): Promise<TripHistoryItem[]> {
   try {
@@ -187,31 +176,33 @@ export async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
   } catch {}
 }
 
+/**
+ * Zapisuje jedno sprawdzenie trasy `stąd → tam`.
+ *
+ * Liczy się nawyk, a nie historia wyszukiwania: powtórna kontrola tej samej
+ * pary zwiększa `uses`, a wybór celu z innego miejsca tworzy osobny wpis
+ * (szczegóły w `mergeTripSearch`). `measuredMinutes` to prawdziwy czas dojazdu
+ * z planera — bez niego zostajemy przy `FALLBACK_TRIP_MIN`.
+ */
 export async function recordTripSearch(
   originLat: number,
   originLon: number,
   originTitle: string,
-  dest: { id: string; title: string; address?: string; lat: number; lon: number },
-  durationMin = 18,
+  dest: TripDestinationInput,
+  measuredMinutes?: number,
 ): Promise<void> {
   if (!dest.title || typeof dest.lat !== 'number' || typeof dest.lon !== 'number') return;
+  // `NaN` i `0` są fałszywe, więc `||` łapie też śmieci z deep linka.
   const history = await loadTripHistory();
-  const id = `trip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const item: TripHistoryItem = {
-    id,
-    origin_title: originTitle || 'Wrocław',
-    origin_lat: originLat || DEFAULT_LOCATION.lat,
-    origin_lon: originLon || DEFAULT_LOCATION.lon,
-    dest_id: dest.id || dest.title,
-    dest_title: dest.title,
-    dest_address: dest.address || 'Wrocław',
-    dest_lat: dest.lat,
-    dest_lon: dest.lon,
-    duration_min: durationMin,
-    timestamp: Date.now(),
-  };
-
-  const updated = [item, ...history.filter((h) => h.dest_id !== dest.id && h.dest_title !== dest.title)];
+  const updated = mergeTripSearch(
+    history,
+    originLat || DEFAULT_LOCATION.lat,
+    originLon || DEFAULT_LOCATION.lon,
+    originTitle,
+    dest,
+    measuredMinutes,
+    Date.now(),
+  );
   await saveTripHistory(updated);
 }
 
@@ -220,195 +211,16 @@ export async function getSmartDestinationsForLocation(
   userLon: number,
   limit = 4,
 ): Promise<SmartDestination[]> {
-  const now = Date.now();
-  const oneWeekAgo = now - 7 * 24 * 3600 * 1000;
-  const oneMonthAgo = now - 30 * 24 * 3600 * 1000;
-
-  // 1. Zapisane miejsca użytkownika
+  // Zapisane miejsca użytkownika (ten sam klucz co w FavoritesService).
   let savedPlaces: SavedPlace[] = [];
   try {
     const rawPlaces = await kvGet(STORAGE_KEYS.SAVED_PLACES);
     if (rawPlaces) {
-      savedPlaces = JSON.parse(rawPlaces);
+      const parsed = JSON.parse(rawPlaces);
+      if (Array.isArray(parsed)) savedPlaces = parsed;
     }
   } catch {}
-  if (!savedPlaces || savedPlaces.length === 0) {
-    savedPlaces = [];
-  }
 
-  // 2. Wykryj, czy użytkownik jest blisko któregoś z zapisanych miejsc
-  let currentContextPlace: SavedPlace | null = null;
-  for (const place of savedPlaces) {
-    if (typeof place.lat === 'number' && typeof place.lon === 'number') {
-      const dist = distanceMeters(userLat, userLon, place.lat, place.lon);
-      if (dist <= 350) {
-        currentContextPlace = place;
-        break;
-      }
-    }
-  }
-
-  const originId = currentContextPlace ? currentContextPlace.placeId || currentContextPlace.id : 'current-gps';
-
-  // 3. Historia przejazdów
   const history = await loadTripHistory();
-  const recentMonthTrips = history.filter((t) => t.timestamp >= oneMonthAgo);
-
-  // Filtrujemy przejazdy z okolic bieżącej pozycji
-  let nearbyTrips = recentMonthTrips.filter((t) => {
-    const dist = distanceMeters(userLat, userLon, t.origin_lat, t.origin_lon);
-    return dist <= CLUSTER_RADIUS_M;
-  });
-
-  // Jeśli brak przejazdów z tego punktu, użyj globalnej historii jako bazy,
-  // żeby użytkownik NIGDY nie widział pustej sekcji "Ostatnie miejsca"
-  if (nearbyTrips.length === 0) {
-    nearbyTrips = recentMonthTrips.length > 0 ? recentMonthTrips : history;
-  }
-
-  // 4. Agregacja kandydatów destynacji
-  interface CandidateStats {
-    id: string;
-    title: string;
-    address: string;
-    lat: number;
-    lon: number;
-    weeklyCount: number;
-    totalCount: number;
-    lastTimestamp: number;
-    avgDurationMin: number;
-    isSavedPlace: boolean;
-  }
-
-  const candidateMap = new Map<string, CandidateStats>();
-
-  for (const t of nearbyTrips) {
-    // Nie sugeruj miejsca, w którym użytkownik już się znajduje (<250 m)
-    const distToDest = distanceMeters(userLat, userLon, t.dest_lat, t.dest_lon);
-    if (distToDest <= EXCLUSION_RADIUS_M) continue;
-
-    // Nie sugeruj miejsca kontekstowego
-    if (currentContextPlace && (t.dest_id === currentContextPlace.id || t.dest_id === currentContextPlace.placeId)) {
-      continue;
-    }
-
-    const key = t.dest_id || t.dest_title;
-    let cand = candidateMap.get(key);
-    if (!cand) {
-      cand = {
-        id: t.dest_id,
-        title: t.dest_title,
-        address: t.dest_address,
-        lat: t.dest_lat,
-        lon: t.dest_lon,
-        weeklyCount: 0,
-        totalCount: 0,
-        lastTimestamp: t.timestamp,
-        avgDurationMin: t.duration_min || 18,
-        isSavedPlace: false,
-      };
-      candidateMap.set(key, cand);
-    }
-
-    cand.totalCount += 1;
-    if (t.timestamp >= oneWeekAgo) {
-      cand.weeklyCount += 1;
-    }
-    if (t.timestamp > cand.lastTimestamp) {
-      cand.lastTimestamp = t.timestamp;
-    }
-  }
-
-  // 5. Bonus dla zapisanych miejsc (np. Dom, Praca, Szkoła)
-  for (const place of savedPlaces) {
-    if (currentContextPlace && place.id === currentContextPlace.id) continue;
-    const distToDest = distanceMeters(userLat, userLon, place.lat, place.lon);
-    if (distToDest <= EXCLUSION_RADIUS_M) continue;
-
-    const key = place.placeId || place.id;
-    let cand = candidateMap.get(key);
-    // Ten sam budynek co istniejący cel, tylko inne id? Scalamy w istniejący
-    // wpis zamiast tworzyć drugi — inaczej „Szybkie cele" pokazuje dwa
-    // identyczne wiersze, każdy z osobnym planowaniem trasy, a limit 4 zjada
-    // jedno miejsce na duplikat.
-    // Ten sam budynek co istniejący cel, tylko inne id? Scalamy w istniejący
-    // wpis zamiast tworzyć drugi — inaczej „Szybkie cele" pokazuje dwa
-    // identyczne wiersze, każdy z osobnym planowaniem trasy, a limit 4 zjada
-    // jedno miejsce na duplikat. Przypięte miejsca NIE scalamy ze sobą — dwa
-    // pin-y 100 m od siebie to dwie różne sprawy, nie duplikat.
-    let mergedByDistance = false;
-    if (
-      !cand &&
-      Number.isFinite(place.lat) &&
-      Number.isFinite(place.lon)
-    ) {
-      for (const existing of candidateMap.values()) {
-        if (existing.isSavedPlace) continue;
-        if (
-          Number.isFinite(existing.lat) &&
-          Number.isFinite(existing.lon) &&
-          distanceMeters(existing.lat, existing.lon, place.lat, place.lon) <=
-            SAME_PLACE_RADIUS_M
-        ) {
-          cand = existing;
-          mergedByDistance = true;
-          break;
-        }
-      }
-    }
-    if (!cand) {
-      cand = {
-        id: place.placeId || place.id,
-        title: place.name,
-        address: place.address,
-        lat: place.lat,
-        lon: place.lon,
-        weeklyCount: 3,
-        totalCount: 5,
-        lastTimestamp: now - 12 * 3600 * 1000,
-        avgDurationMin: 20,
-        isSavedPlace: true,
-      };
-      candidateMap.set(key, cand);
-    } else {
-      cand.isSavedPlace = true;
-      if (mergedByDistance) {
-        // Nazwa i współrzędne przypiętego miejsca są kanoniczne — użytkownik
-        // sam je wpisał i tak wyglądają w „Zapisane miejsca".
-        cand.title = place.name;
-        cand.address = place.address;
-        cand.lat = place.lat;
-        cand.lon = place.lon;
-        cand.id = key;
-      }
-    }
-  }
-
-  // 6. Ranking
-  const scored = Array.from(candidateMap.values()).map((cand) => {
-    const hoursSinceLast = (now - cand.lastTimestamp) / (3600 * 1000);
-    const recencyBoost = Math.max(0, 8 - hoursSinceLast / 12);
-    const savedBonus = cand.isSavedPlace ? 12 : 0;
-    const score = cand.weeklyCount * 4 + cand.totalCount * 1.5 + savedBonus + recencyBoost;
-    const frequency = Math.max(1, cand.weeklyCount > 0 ? cand.weeklyCount : Math.round(cand.totalCount / 3));
-
-    return {
-      cand,
-      score,
-      frequency,
-    };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-
-  return scored.slice(0, limit).map(({ cand, frequency }) => ({
-    id: cand.id,
-    title: cand.title,
-    address: cand.address,
-    frequency,
-    avgDurationMin: cand.avgDurationMin,
-    lat: cand.lat,
-    lon: cand.lon,
-    originId,
-  }));
+  return rankSmartDestinations(history, savedPlaces, userLat, userLon, Date.now(), limit);
 }

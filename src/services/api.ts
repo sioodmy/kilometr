@@ -360,8 +360,11 @@ export const FavoritesService: IFavoritesService = {
   async smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]> {
     try {
       const { getSmartDestinationsForLocation } = await import('./smartRanker');
-      const lat = coords?.lat ?? DEFAULT_LOCATION.lat;
-      const lon = coords?.lon ?? DEFAULT_LOCATION.lon;
+      // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS — a
+      // ranking na `NaN` wypadałby z każdego promienia, czyli pokazałby
+      // historię z całego miasta jako „w okolicy".
+      const lat = Number.isFinite(coords?.lat) ? coords!.lat! : DEFAULT_LOCATION.lat;
+      const lon = Number.isFinite(coords?.lon) ? coords!.lon! : DEFAULT_LOCATION.lon;
       return await getSmartDestinationsForLocation(lat, lon);
     } catch (err) {
       console.warn('[FavoritesService] smartFromOrigin failed:', err);
