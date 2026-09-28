@@ -164,7 +164,8 @@ const STORAGE_KEYS = {
 
 const MAX_HISTORY_ITEMS = 80;
 const CLUSTER_RADIUS_M = 1600;
-const EXCLUSION_RADIUS_M = 250;
+// Fallback gdy ustawień nie da się odczytać (np. pierwsze uruchomienie).
+const EXCLUSION_RADIUS_FALLBACK_M = 300;
 // Przypięte miejsce i cel z historii to potem często TEN SAM budynek, tylko pod
 // dwoma różnymi id (przypięcie ma własny token, historia trzyma id z
 // wyszukiwarki). 150 m to w promieniu chodzenia — dalej to już inne miejsce.
@@ -218,8 +219,15 @@ export async function recordTripSearch(
 export async function getSmartDestinationsForLocation(
   userLat: number,
   userLon: number,
-  limit = 4,
+  limit = 5,
 ): Promise<SmartDestination[]> {
+  // Dystans kotwiczenia z ustawień: miejsce bliżej niż to nie jest celem —
+  // skipujemy je i pokazujemy następne w rankingu.
+  let exclusionRadiusM = EXCLUSION_RADIUS_FALLBACK_M;
+  try {
+    const { getSettingsSync } = await import('./settings');
+    exclusionRadiusM = getSettingsSync().anchorRadiusM ?? EXCLUSION_RADIUS_FALLBACK_M;
+  } catch {}
   const now = Date.now();
   const oneWeekAgo = now - 7 * 24 * 3600 * 1000;
   const oneMonthAgo = now - 30 * 24 * 3600 * 1000;
@@ -283,9 +291,9 @@ export async function getSmartDestinationsForLocation(
   const candidateMap = new Map<string, CandidateStats>();
 
   for (const t of nearbyTrips) {
-    // Nie sugeruj miejsca, w którym użytkownik już się znajduje (<250 m)
+    // Nie sugeruj miejsca, w którym użytkownik już się znajduje (dystans kotwiczenia)
     const distToDest = distanceMeters(userLat, userLon, t.dest_lat, t.dest_lon);
-    if (distToDest <= EXCLUSION_RADIUS_M) continue;
+    if (distToDest <= exclusionRadiusM) continue;
 
     // Nie sugeruj miejsca kontekstowego
     if (currentContextPlace && (t.dest_id === currentContextPlace.id || t.dest_id === currentContextPlace.placeId)) {
@@ -323,7 +331,7 @@ export async function getSmartDestinationsForLocation(
   for (const place of savedPlaces) {
     if (currentContextPlace && place.id === currentContextPlace.id) continue;
     const distToDest = distanceMeters(userLat, userLon, place.lat, place.lon);
-    if (distToDest <= EXCLUSION_RADIUS_M) continue;
+    if (distToDest <= exclusionRadiusM) continue;
 
     const key = place.placeId || place.id;
     let cand = candidateMap.get(key);
@@ -411,4 +419,32 @@ export async function getSmartDestinationsForLocation(
     lon: cand.lon,
     originId,
   }));
+}
+
+// ─── Natychmiastowy start: cache ostatniej listy ────────────────────────────
+// GPS potrafi myśleć parę sekund, więc na starcie malujemy gołe ostatnie
+// miejsca z cache (bez ikon i odjazdów — te dociągają się jak zwykle),
+// a gdy GPS + świeży ranking dotrą, lista zamienia się w miejscu.
+const SMART_CACHE_KEY = 'kilometr.smart_cache.v1';
+const SMART_CACHE_MAX = 5;
+
+export async function loadCachedSmartDestinations(): Promise<SmartDestination[]> {
+  try {
+    const raw = await kvGet(SMART_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { items?: SmartDestination[] };
+    const items = Array.isArray(parsed?.items) ? parsed.items : [];
+    return items
+      .filter((d) => d && typeof d.id === 'string' && typeof d.lat === 'number' && typeof d.lon === 'number')
+      .slice(0, SMART_CACHE_MAX);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCachedSmartDestinations(items: SmartDestination[]): Promise<void> {
+  try {
+    if (!Array.isArray(items) || items.length === 0) return;
+    await kvSet(SMART_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items: items.slice(0, SMART_CACHE_MAX) }));
+  } catch {}
 }
