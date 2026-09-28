@@ -107,7 +107,7 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
 
 // Push w Expo Go nie istnieje od SDK 53 (sam require + getPermissionsAsync
 // rzuca błąd do LogBoxa), więc nawet nie próbujemy — ten sam guard co
-// w pinnedConnection.getNotifications(). Powiadomienia działają w dev buildzie.
+// w notifications.getNotifications(). Powiadomienia działają w dev buildzie.
 const NOTIF_SUPPORTED = Constants.appOwnership !== 'expo';
 
 function usePermissionStates() {

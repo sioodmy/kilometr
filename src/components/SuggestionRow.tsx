@@ -41,14 +41,25 @@ const KIND_META: Record<string, { Icon: any; bg: string; fg: string }> = {
   place:         { Icon: ShoppingBag,   bg: scheme.primaryContainer,         fg: scheme.onPrimaryContainer },
 };
 
-export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: () => void }) {
-  const isGps = item.id === '__gps';
-  // Use category if available, otherwise fall back to kind
+export interface SuggestionIconMeta { Icon: any; bg: string; fg: string; }
+
+/** Ta sama ikonka co w wierszu wyszukiwarki — po kategorii, inaczej po rodzaju. */
+export function getSuggestionIconMeta(
+  item: Pick<Suggestion, 'id' | 'kind'> & { category?: string },
+): SuggestionIconMeta {
+  if (item.id === '__gps') {
+    return { Icon: LocateFixed, bg: scheme.primaryContainer, fg: scheme.onPrimaryContainer };
+  }
   const key = item.category || item.kind;
   const meta = KIND_META[key] || KIND_META['place'];
-  const Icon = isGps ? LocateFixed : meta.Icon;
-  const iconBg = isGps ? scheme.primaryContainer : meta.bg;
-  const iconFg = isGps ? scheme.onPrimaryContainer : meta.fg;
+  return { Icon: meta.Icon, bg: meta.bg, fg: meta.fg };
+}
+
+export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: () => void }) {
+  const meta = getSuggestionIconMeta(item);
+  const Icon = meta.Icon;
+  const iconBg = meta.bg;
+  const iconFg = meta.fg;
 
   // Oczyszczenie adresu z ewentualnych pozostałości numeru słupka (np. z pamięci podręcznej)
   let cleanAddress = (item.address || '')

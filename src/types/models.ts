@@ -123,7 +123,12 @@ export interface VehiclePosition {
   line: string;
   lat: number;
   lon: number;
-  delaySec: number;
+  /**
+   * `null` = brak wiarygodnego pomiaru, co jest INNYM stanem niż 0.
+   * Zero znaczy „na czas”; `null` znaczy „nie wiadomo” (np. dopasowanie
+   * pojazdu do kursu przekroczyło sensowny limit i zostało odrzucone).
+   */
+  delaySec: number | null;
   currentStopName?: string;
   nextStopName?: string;
   updatedAt: number;

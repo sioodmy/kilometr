@@ -41,10 +41,18 @@ export default function RootLayout() {
     // konfigurujemy je na starcie, a nie przy przypięciu trasy.
     void setupNotifications();
     // Pierwsze uruchomienie → onboarding (dostępy, rozkład offline, miejsca).
-    hasSeenOnboarding().then((seen) => {
-      if (!seen) router.replace('/onboarding');
-      setReady(true);
-    });
+    // .catch jest tu krytyczny: bez niego odrzucenie (np. uszkodzony KV po
+    // przywróceniu z backupu) zostawiałoby `ready === false` na zawsze, czyli
+    // biały ekran bez możliwości wyjścia. Odtąd startujemy, a problem
+    // zgłaszamy — ekran połączeń i tak pokaże pusty stan rozkładu.
+    hasSeenOnboarding()
+      .then((seen) => {
+        if (!seen) router.replace('/onboarding');
+      })
+      .catch((err) => {
+        console.warn('[RootLayout] onboarding flag unreadable:', err);
+      })
+      .finally(() => setReady(true));
     // Śledzenie podróży przeżywa restart telefonu, więc podnosimy je,
     // zanim użytkownik cokolwiek otworzy.
     void restoreTrackedTrip();

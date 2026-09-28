@@ -12,7 +12,7 @@ import type { Leg, LegStop, VehiclePosition } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { RoutingService } from '../services';
-import { formatWalkTime } from '../services/settings';
+import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import {
   buildFallbackStops,
   findUserSegment,
@@ -26,8 +26,19 @@ export { buildFallbackStops, findUserSegment, locateVehicle } from '../services/
 export type { VehicleGap } from '../services/vehiclePosition';
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
+// Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
+// pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
+// najstarszy wpis — bez dodatkowej kolejki.
+const STOPS_CACHE_MAX = 80;
 const stopsCache = new Map<string, LegStop[]>();
 const stopsPromise = new Map<string, Promise<LegStop[]>>();
+
+function cacheStops(key: string, stops: LegStop[]) {
+  stopsCache.set(key, stops);
+  if (stopsCache.size <= STOPS_CACHE_MAX) return;
+  const oldest = stopsCache.keys().next();
+  if (!oldest.done) stopsCache.delete(oldest.value);
+}
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy przy ticku pojazdu) ─────
 // Rail ma KRESKĘ CIĄGŁĄ: kropka + łącznik flex:1 rozciągany na wysokość wiersza.
@@ -113,16 +124,39 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
     setLoading(true);
     let promise = stopsPromise.get(leg.tripId);
     if (!promise) {
-      promise = RoutingService.getTripStops(leg.tripId).catch(() => [] as LegStop[]);
+      // Odrzucenie NIE jest zapamiętywane. Wcześniej `.catch(() => [])` trafiał
+      // do `stopsPromise` razem z sukcesem, więc jedna chwilowa awaria (zamknięta
+      // baza, odjęty slot importu) zostawiała ten kurs z dwoma przystankami
+      // do końca życia procesu — użytkownik dostawał „trasa niepełna” bez
+      // możliwości naprawienia.
+      promise = RoutingService.getTripStops(leg.tripId)
+        .then((stops) => {
+          stopsPromise.delete(leg.tripId!);
+          return stops;
+        })
+        .catch((err) => {
+          stopsPromise.delete(leg.tripId!);
+          throw err;
+        });
       stopsPromise.set(leg.tripId, promise);
     }
-    promise.then((fetched) => {
-      if (!mounted.current) return;
-      const resolved = fetched.length >= 2 ? fetched : buildFallbackStops(leg);
-      stopsCache.set(cacheKey, resolved);
-      setStops(resolved);
-      setLoading(false);
-    });
+    promise.then(
+      (fetched) => {
+        if (!mounted.current) return;
+        // Do cache trafiają TYLKO przystanki z bazy. Wersja z `buildFallbackStops`
+        // to dwa przystanki z etykiety — zapisana w cache na stałe psuła
+        // wyświetlanie przy następnym otwarciu tego samego odcinka.
+        if (fetched.length >= 2) cacheStops(cacheKey, fetched);
+        setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('[LegTimeline] trip stops failed:', err);
+        if (!mounted.current) return;
+        setStops(buildFallbackStops(leg));
+        setLoading(false);
+      },
+    );
   }, [cacheKey, leg]);
 
   // Polling TYLKO konkretnego pojazdu tego kursu (match po tripId).
@@ -280,13 +314,14 @@ function TransitLegCard({
 /** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
 export function LegTimeline({ legs }: { legs: Leg[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const walkMps = useWalkSpeedMps();
 
   return (
     <View style={s.list}>
       {legs.map((leg, i) => {
         const last = i === legs.length - 1;
         if (leg.mode === 'walk') {
-          const walkMin = Math.max(1, Math.round((leg.walkM ?? 200) / 80));
+          const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
           const isSameStop =
             normalizeName(leg.fromStop) === normalizeName(leg.toStop) ||
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();

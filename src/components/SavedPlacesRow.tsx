@@ -26,6 +26,7 @@ import {
   Music,
   Package,
   PawPrint,
+  Pencil,
   Pill,
   Pizza,
   Plane,
@@ -111,15 +112,17 @@ export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, any> = {
 };
 
 // M3 filled cards: tonal icon container, no borders, shape large.
+// Kwadraty (bok = szerokość), nie pionowe prostokąty.
 export function SavedPlacesRow({
   places,
   onSelect,
-  onAdd,
+  onManage,
   onEdit,
 }: {
   places: SavedPlace[];
   onSelect: (p: SavedPlace) => void;
-  onAdd: () => void;
+  /** Ostatnia karta otwiera menu edycji (tam też dodawanie). */
+  onManage: () => void;
   onEdit?: (p: SavedPlace) => void;
 }) {
   return (
@@ -144,21 +147,23 @@ export function SavedPlacesRow({
           </Pressable>
         );
       })}
-      {/* M3 outlined "add" card */}
+      {/* Edycja jak zwykła karta (to samo pudełko i rytm), tylko z ołówkiem —
+          dodawanie żyje w menu edycji. */}
       <Pressable
-        onPress={onAdd}
+        onPress={onManage}
+        accessibilityRole="button"
+        accessibilityLabel="Edytuj zapisane miejsca"
         style={({ pressed }) => [
           styles.card,
-          styles.add,
           pressed && { backgroundColor: scheme.surfaceContainerHighest, transform: [{ scale: 0.98 }] },
         ]}
       >
         <View style={[styles.icon, styles.addIcon]}>
-          <Plus size={20} color={scheme.primary} />
+          <Pencil size={20} color={scheme.primary} />
         </View>
         <View style={styles.textContainer}>
-          <Text style={styles.name}>Dodaj</Text>
-          <Text style={styles.addr}>własne miejsce</Text>
+          <Text style={styles.name}>Edytuj</Text>
+          <Text style={styles.addr}>zapisane miejsca</Text>
         </View>
       </Pressable>
     </ScrollView>
@@ -168,20 +173,13 @@ export function SavedPlacesRow({
 const styles = StyleSheet.create({
   row: { gap: 10, paddingVertical: 4 },
   card: {
-    width: 114,
-    minHeight: 116,
+    width: 116,
+    aspectRatio: 1,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.large,
     padding: 12,
     justifyContent: 'space-between',
     ...elev.level1,
-  },
-  add: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: scheme.outlineVariant,
-    borderStyle: 'dashed',
-    elevation: 0,
   },
   icon: {
     width: 40,

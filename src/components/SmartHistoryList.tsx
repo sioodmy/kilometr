@@ -2,33 +2,44 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Clock3, History } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SmartDestination } from '../types/models';
+import type { SuggestionIconMeta } from './SuggestionRow';
 
 // M3 filled list cards with tonal icon + supporting text on the trailing side.
 export function SmartHistoryList({
   items,
   departures,
   onSelect,
+  hideHeader,
+  icons,
 }: {
   items: SmartDestination[];
   /** najszybszy odjazd do celu w minutach, kluczem id destynacji; brak wpisu = nie pokazuj labelu */
   departures?: Record<string, number | undefined>;
   onSelect: (d: SmartDestination) => void;
+  /** Czysty widok bez nagłówka „Ostatnie miejsca” (nagłówek żyje gdzie indziej). */
+  hideHeader?: boolean;
+  /** Ikonki jak w wyszukiwarce, kluczem id destynacji; brak wpisu = zegar. */
+  icons?: Record<string, SuggestionIconMeta | undefined>;
 }) {
   // Nagłówek bez treści to martwy szum — przy pustej historii sekcja znika.
   if (items.length === 0) return null;
 
   return (
     <View style={{ gap: 8 }}>
-      <View style={styles.header}>
-        <History size={16} color={scheme.primary} />
-        <Text style={styles.headerText}>Ostatnie miejsca</Text>
-      </View>
+      {!hideHeader && (
+        <View style={styles.header}>
+          <History size={16} color={scheme.primary} />
+          <Text style={styles.headerText}>Ostatnie miejsca</Text>
+        </View>
+      )}
       {items.map((d, index) => {
         const departLabel = formatDepartIn(departures?.[d.id]);
+        const meta = icons?.[d.id];
+        const Icon = meta?.Icon ?? Clock3;
         return (
           <Pressable key={`${d.id}-${index}`} onPress={() => onSelect(d)} style={({ pressed }) => [styles.card, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}>
-            <View style={styles.icon}>
-              <Clock3 size={19} color={scheme.onSecondaryContainer} />
+            <View style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}>
+              <Icon size={19} color={meta?.fg ?? scheme.onSecondaryContainer} />
             </View>
             <View style={styles.mid}>
               <Text style={styles.title} numberOfLines={1}>{d.title}</Text>
@@ -45,11 +56,17 @@ export function SmartHistoryList({
   );
 }
 
-/** "za X min" do najszybszego połączenia; powyżej 59 min pokazuje pełną godzinę odjazdu (np. "13:20"). */
+/**
+ * „za X min” do najszybszego połączenia; powyżej 59 min pokazuje pełną godzinę
+ * odjazdu (np. „13:20”), a wartości ujemne — ile minut temu coś odjechało.
+ * Ujemne bez tej gałęzi obcinały się do zera i raportowały „za chwilę”.
+ */
 export function formatDepartIn(departInMin: number | undefined): string | null {
   if (departInMin === undefined || !Number.isFinite(departInMin)) return null;
-  const m = Math.max(0, Math.round(departInMin));
+  const m = Math.round(departInMin);
   if (m > 180) return null;
+  if (m < -180) return null;
+  if (m < 0) return m >= -1 ? 'przed chwilą' : `${-m} min temu`;
   if (m > 59) {
     const target = new Date(Date.now() + m * 60 * 1000);
     const hh = String(target.getHours()).padStart(2, '0');

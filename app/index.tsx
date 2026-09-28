@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronDown, LocateFixed, MapPin, Pencil, Bell, Settings2, X } from 'lucide-react-native';
+import { useSharedValue, withTiming } from 'react-native-reanimated';
+import { Bell, Settings2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch } from '../src/services';
@@ -15,6 +16,7 @@ import {
   subscribeDataStatus,
 } from '../src/services/dataManager';
 import { getSettingsSync } from '../src/services/settings';
+import { loadTripHistory, type TripHistoryItem } from '../src/services/smartRanker';
 import {
   buildRoutesLink,
   connectionToWidgetNext,
@@ -23,9 +25,18 @@ import {
 } from '../src/services/widgetSnapshot';
 import { stopTracking, useTrackedTrip } from '../src/services/notifications';
 import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
-import { SavedPlacesRow } from '../src/components/SavedPlacesRow';
+import { SavedPlacesRow, SAVED_PLACE_ICONS } from '../src/components/SavedPlacesRow';
 import { ActiveTripCard } from '../src/components/ActiveTripCard';
+import { getSuggestionIconMeta, type SuggestionIconMeta } from '../src/components/SuggestionRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
+import {
+  LAST_TRIP_ARM_1,
+  LAST_TRIP_ARM_2,
+  LAST_TRIP_DISARM_2,
+  LAST_TRIP_MAX,
+  LastTripPull,
+  type LastTripOption,
+} from '../src/components/LastTripPull';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
@@ -65,6 +76,20 @@ export default function HomeScreen() {
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
+
+  // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
+  // gestem, zero klikalnych elementów. pullOption żyje w stanie (oduswitch
+  // tekstu/strzałki), wysokość reveal w shared value (płynnie, bez rerenderów).
+  const [lastTrip, setLastTrip] = useState<TripHistoryItem | null>(null);
+  const [pullOption, setPullOption] = useState<LastTripOption>(0);
+  const [scrollLocked, setScrollLocked] = useState(false);
+  const pullHeight = useSharedValue(0);
+  const atTopRef = useRef(true);
+  const optionRef = useRef<LastTripOption>(0);
+  const lastTripRef = useRef<TripHistoryItem | null>(null);
+  lastTripRef.current = lastTrip;
+  const sheetsOpenRef = useRef(false);
+  sheetsOpenRef.current = sheetMode !== null || manageSheetOpen || addPlaceOpen;
 
   useEffect(() => {
     return subscribeDataStatus(setDataStatus);
@@ -145,6 +170,9 @@ export default function HomeScreen() {
   useEffect(() => {
     refreshPlaces();
     SearchService.recent().then(setRecent);
+    loadTripHistory().then((h) => {
+      if (h.length > 0) setLastTrip(h[0]);
+    });
     // Live GPS od startu (ticker w tle) — opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
 
@@ -281,6 +309,30 @@ export default function HomeScreen() {
 
   const recentWithGps = useMemo(() => [GPS_ITEM, ...recentFromSmart], [recentFromSmart]);
 
+  // Najlepszy wynik na dole (pod kciukiem), najsłabszy na górze.
+  const smartReversed = useMemo(() => [...smart].reverse(), [smart]);
+
+  // Ikonki jak w wyszukiwarce: zapisane miejsce → jego ikona,
+  // inaczej rodzaj z historii wyszukiwania, inaczej zegar (w liście).
+  const smartIcons = useMemo(() => {
+    const map: Record<string, SuggestionIconMeta | undefined> = {};
+    const recentById = new Map(recent.map((r) => [r.id, r]));
+    for (const d of smart) {
+      const savedMatch = saved.find((p) => p.placeId === d.id);
+      if (savedMatch) {
+        map[d.id] = {
+          Icon: SAVED_PLACE_ICONS[savedMatch.icon],
+          bg: scheme.primaryContainer,
+          fg: scheme.onPrimaryContainer,
+        };
+        continue;
+      }
+      const r = recentById.get(d.id);
+      if (r) map[d.id] = getSuggestionIconMeta(r);
+    }
+    return map;
+  }, [smart, saved, recent]);
+
   const resetToGps = async () => {
     setIsCustomStart(false);
     if (gpsLocation) {
@@ -345,7 +397,7 @@ export default function HomeScreen() {
     }
     setLoading(true);
     const t = setTimeout(() => {
-      SearchService.search(q, currentCoords)
+      SearchService.search(q, currentCoords, 'home-sheet')
         .then((r) => {
           if (seq !== searchSeq.current) return;
           setResults(r);
@@ -358,10 +410,6 @@ export default function HomeScreen() {
     }, 220);
     return () => clearTimeout(t);
   }, [query, sheetMode, currentCoords]);
-
-  const topSavedPlace = useMemo(() => {
-    return saved.find((p) => p.icon === 'home') ?? saved[0];
-  }, [saved]);
 
   const quick = useMemo<Suggestion[]>(
     () =>
@@ -394,6 +442,79 @@ export default function HomeScreen() {
       },
     });
   };
+
+  // Otwarcie ostatniego połączenia z pulla: start bierzemy z zapisanej
+  // trasy (nie z bieżącego GPS), żeby skrót odtwarzał dokładnie to połączenie.
+  const openLastTrip = useCallback(
+    (reversed: boolean) => {
+      const t = lastTripRef.current;
+      if (!t) return;
+      const fromTitle = reversed ? t.dest_title : t.origin_title;
+      const fromLat = reversed ? t.dest_lat : t.origin_lat;
+      const fromLon = reversed ? t.dest_lon : t.origin_lon;
+      const to = reversed
+        ? { id: t.origin_title, title: t.origin_title, lat: t.origin_lat, lon: t.origin_lon }
+        : { id: t.dest_id, title: t.dest_title, address: t.dest_address, lat: t.dest_lat, lon: t.dest_lon };
+      void recordTripSearch(fromLat, fromLon, fromTitle, to);
+      router.push({
+        pathname: '/routes',
+        params: {
+          fromTitle,
+          fromLat: String(fromLat),
+          fromLon: String(fromLon),
+          toId: to.id,
+          toTitle: to.title,
+          toLat: String(to.lat),
+          toLon: String(to.lon),
+        },
+      });
+    },
+    [router],
+  );
+
+  // Pull jak na Twitterze, ale zamiast spinnera: ostatnie połączenie + toggle.
+  // Capture (rodzic pierwszy), żeby ScrollView nie zabrał gestu; bierzemy tylko
+  // zdecydowane pociągnięcia w dół z samej góry, przy zamkniętych arkuszach.
+  const pullResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        !sheetsOpenRef.current &&
+        lastTripRef.current != null &&
+        atTopRef.current &&
+        g.dy > 12 &&
+        Math.abs(g.dy) > Math.abs(g.dx) * 1.4,
+      onPanResponderGrant: () => setScrollLocked(true),
+      onPanResponderMove: (_, g) => {
+        const h = Math.max(0, Math.min(LAST_TRIP_MAX, g.dy));
+        pullHeight.value = h;
+        const cur = optionRef.current;
+        let next: LastTripOption = cur;
+        if (h >= LAST_TRIP_ARM_2) next = 2;
+        else if (cur === 2) next = h >= LAST_TRIP_DISARM_2 ? 2 : h >= LAST_TRIP_ARM_1 ? 1 : 0;
+        else next = h >= LAST_TRIP_ARM_1 ? 1 : 0;
+        if (next !== cur) {
+          optionRef.current = next;
+          setPullOption(next);
+        }
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderRelease: () => {
+        const opt = optionRef.current;
+        optionRef.current = 0;
+        setPullOption(0);
+        pullHeight.value = withTiming(0, { duration: 220 });
+        setScrollLocked(false);
+        if (opt === 1) openLastTrip(false);
+        else if (opt === 2) openLastTrip(true);
+      },
+      onPanResponderTerminate: () => {
+        optionRef.current = 0;
+        setPullOption(0);
+        pullHeight.value = withTiming(0, { duration: 220 });
+        setScrollLocked(false);
+      },
+    }),
+  ).current;
 
   const handleSavePlace = async (placeData: {
     id?: string;
@@ -444,58 +565,36 @@ export default function HomeScreen() {
     FavoritesService.smartFromOrigin(locTitle, currentCoords).then(setSmart);
   };
 
+  // Ostatnie połączenie świeże po powrocie (pull może odpalić nową trasę).
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadTripHistory().then((h) => {
+        if (!cancelled && h.length > 0) setLastTrip(h[0]);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
   return (
-    <View style={styles.root}>
+    <View style={styles.root} {...pullResponder.panHandlers}>
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} overScrollMode="never">
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          scrollEnabled={!scrollLocked}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            atTopRef.current = e.nativeEvent.contentOffset.y <= 1;
+          }}
+        >
+          {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
           <View style={styles.topBar}>
-            <View style={[styles.loc, isCustomStart && styles.locCustom]}>
-              <Pressable
-                onPress={() => {
-                  setReturnToDestinationAfterStart(false);
-                  setQuery('');
-                  setSheetMode('start');
-                }}
-                style={styles.locPressable}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isCustomStart
-                    ? `Początek trasy: ${locTitle}. Dotknij, aby zmienić.`
-                    : `Lokalizacja: ${locTitle}. Dotknij, aby zmienić miejsce początkowe.`
-                }
-              >
-                {isCustomStart ? (
-                  <MapPin size={15} color={scheme.primary} />
-                ) : (
-                  <LocateFixed size={15} color={scheme.onSecondaryContainer} />
-                )}
-                <Text
-                  style={[styles.locText, isCustomStart && styles.locTextCustom]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {locTitle}
-                </Text>
-                {!isCustomStart && (
-                  <ChevronDown
-                    size={14}
-                    color={scheme.onSecondaryContainer}
-                    style={{ opacity: 0.6, marginLeft: 2 }}
-                  />
-                )}
-              </Pressable>
-              {isCustomStart && (
-                <Pressable
-                  hitSlop={8}
-                  onPress={resetToGps}
-                  accessibilityRole="button"
-                  accessibilityLabel="Przywróć bieżącą lokalizację GPS"
-                  style={styles.locResetBtn}
-                >
-                  <X size={14} color={scheme.onSurfaceVariant} />
-                </Pressable>
-              )}
-            </View>
+            <Text style={styles.headerTitle}>Gdzie jedziemy?</Text>
             <View style={styles.topActions}>
               <Pressable
                 style={styles.iconBtn}
@@ -539,8 +638,6 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          <Text style={styles.hero}>Gdzie jedziemy?</Text>
-
           {dataStatus.state === 'downloading' && (
             <View style={styles.importCard}>
               <ActivityIndicator size="small" color={scheme.primary} />
@@ -570,37 +667,26 @@ export default function HomeScreen() {
             </Pressable>
           )}
 
+          {/* Listy tuż pod nagłówkiem, bez wypychania na dół. */}
+          <View style={{ height: 12 }} />
+
           {/* Wyszukiwarka celu jest tylko w dolnym menu pod kciukiem —
               drugi raz na górze ekranu to ta sama akcja w dwóch miejscach. */}
+          <SmartHistoryList items={smartReversed} departures={nextDepart} onSelect={(d) => goToRoutes(d)} icons={smartIcons} />
+
           <View style={{ height: 20 }} />
           <View style={styles.sectionHeader}>
             <Text style={styles.section}>Zapisane miejsca</Text>
-            <Pressable
-              onPress={() => setManageSheetOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Zarządzaj zapisanymi miejscami"
-              style={({ pressed }) => [styles.manageBtn, pressed && { opacity: 0.6 }]}
-              hitSlop={8}
-            >
-              <Pencil size={14} color={scheme.onSurfaceVariant} />
-            </Pressable>
           </View>
-
           <SavedPlacesRow
             places={saved}
             onSelect={(p) => goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })}
-            onAdd={() => {
-              setEditingPlace(null);
-              setAddPlaceOpen(true);
-            }}
+            onManage={() => setManageSheetOpen(true)}
             onEdit={(p) => {
               setEditingPlace(p);
               setAddPlaceOpen(true);
             }}
           />
-
-          <View style={{ height: 20 }} />
-          <SmartHistoryList items={smart} departures={nextDepart} onSelect={(d) => goToRoutes(d)} />
 
           <View style={{ height: 90 }} />
         </ScrollView>
@@ -613,10 +699,14 @@ export default function HomeScreen() {
             setQuery('');
             setSheetMode('destination');
           }}
-          topSavedPlace={topSavedPlace}
-          onSelectPlace={(p) =>
-            goToRoutes({ id: p.placeId, title: p.name, address: p.address, lat: p.lat, lon: p.lon })
-          }
+          startTitle={locTitle}
+          isCustomStart={isCustomStart}
+          onOpenStart={() => {
+            setReturnToDestinationAfterStart(false);
+            setQuery('');
+            setSheetMode('start');
+          }}
+          onResetStart={() => void resetToGps()}
         />
       )}
 
@@ -697,44 +787,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1 },
-  body: { paddingHorizontal: 16, paddingTop: 6 },
+  body: { paddingHorizontal: 16, paddingTop: 6, flexGrow: 1 },
   activeTripSlot: { marginTop: 8, marginBottom: 8 },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44 },
-  loc: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
-    paddingLeft: 12,
-    paddingRight: 10,
-    height: 40,
-    flex: 1,
-    minWidth: 0,
-  },
-  locCustom: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderWidth: 1,
-    borderColor: scheme.primary,
-  },
-  locPressable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    minWidth: 0,
-    height: '100%',
-  },
-  locText: { ...type.labelLarge, color: scheme.onSecondaryContainer, flexShrink: 1, minWidth: 0 },
-  locTextCustom: { color: scheme.onSurface, fontWeight: '600' },
-  locResetBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   iconBtn: {
     width: 40,
@@ -758,9 +813,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
-  // Nagłówek zostaje, ale schodzi do rozmiaru tytułu: pytanie „dokąd”
-  // ma teraz swoje wejście w dolnym menu, więc nie zajmuje pół ekranu.
-  hero: { ...type.titleLarge, fontWeight: '700', color: scheme.onSurface, marginTop: 14 },
+  // Nagłówek: pytanie o cel nad wolnym powietrzem.
+  headerTitle: { ...type.headlineSmall, fontWeight: '700', color: scheme.onSurface, flex: 1 },
+  sectionHeader: {
+    marginBottom: 10,
+  },
+  section: { ...type.titleMedium, color: scheme.onSurface },
   importCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -796,19 +854,5 @@ const styles = StyleSheet.create({
     ...type.labelSmall,
     color: scheme.onErrorContainer,
     marginTop: 2,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  section: { ...type.titleMedium, color: scheme.onSurface },
-  manageBtn: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: shape.full,
   },
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import Animated, {
   Easing,
   FadeOut,
@@ -7,12 +7,10 @@ import Animated, {
   type AnimatedStyle,
 } from 'react-native-reanimated';
 import {
-  ArrowDownUp,
   ArrowUpDown,
   BusFront,
   Clock3,
   Layers,
-  RotateCw,
   TramFront,
   Zap,
 } from 'lucide-react-native';
@@ -53,20 +51,16 @@ export interface RoutesThumbBarProps {
   onOpenTimeSheet: () => void;
   modeFilter: ModePreference;
   onCycleMode: () => void;
-  sortMode: SortMode;
-  onCycleSort: () => void;
-  onRefresh?: () => void;
-  refreshing?: boolean;
   /** Animowany styl hide/show ze scrolla (translateY + opacity z rodzica). */
   animatedStyle?: AnimatedStyle<ViewStyle>;
 }
 
 /**
- * Dolne menu ekranu połączeń — jedyne miejsce na filtry i akcje.
- * Wszystko, czym sterujemy jedną ręką w tramwaju, mieszka pod kciukiem:
- * odwrócenie trasy, filtr bezpośrednich, typ pojazdu, czas odjazdu,
- * sortowanie i odświeżenie danych live. Górna część ekranu ma tylko
- * pokazywać skąd dokąd i listę.
+ * Dolne menu ekranu połączeń — filtry i akcje pod kciukiem.
+ * Wszystko, czym sterujemy jedną ręką w tramwaju, mieszka na dole:
+ * odwrócenie trasy, filtr bezpośrednich, typ pojazdu i czas odjazdu.
+ * Sortowanie wróciło do górnego paska (toggle iOS), a odświeżanie
+ * jest gestem pull-to-refresh na liście. Góra pokazuje skąd dokąd.
  */
 export function RoutesThumbBar({
   onSwap,
@@ -77,10 +71,6 @@ export function RoutesThumbBar({
   onOpenTimeSheet,
   modeFilter,
   onCycleMode,
-  sortMode,
-  onCycleSort,
-  onRefresh,
-  refreshing,
   animatedStyle,
 }: RoutesThumbBarProps) {
   const renderModeIcon = () => {
@@ -94,11 +84,6 @@ export function RoutesThumbBar({
   const modeLabel = modeFilter === 'tram' ? 'Tram' : modeFilter === 'bus' ? 'Bus' : 'Pojazdy';
   const modeA11y =
     modeFilter === 'tram' ? 'Tramwaje' : modeFilter === 'bus' ? 'Autobusy' : 'Wszystkie pojazdy';
-
-  // Kolumna w docku ma ~53 dp, a czcionka 10 px — „Najszybciej” nie mieści
-  // się i ucinałoby się w „Najszybc…”. Krótkie polskie nazwy pary są czytelne,
-  // a dokładne brzmienie zostaje w accessibilityLabel.
-  const sortLabel = sortMode === 'fastest' ? 'Przyjazd' : 'Wyjazd';
 
   // Etykieta czasu bywa pełna („Jutro, 08:15”) i nie mieściłaby się w kolumnie,
   // więc w docku zostaje sama godzina. Dzień i tak widać w nagłówku listy,
@@ -176,54 +161,6 @@ export function RoutesThumbBar({
         label={timeShort}
         accessibilityLabel={`Czas odjazdu: ${timeLabel}. Dotknij, aby zmienić.`}
       />
-
-      <ThumbBarDivider />
-
-      <ThumbBarItem
-        onPress={onCycleSort}
-        active={sortMode === 'earliest'}
-        icon={
-          <Animated.View
-            key={sortMode}
-            entering={sortMode === 'earliest' ? slideUpIn : slideDownIn}
-            exiting={iconOut}
-          >
-            <ArrowDownUp
-              size={17}
-              color={sortMode === 'earliest' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-            />
-          </Animated.View>
-        }
-        label={sortLabel}
-        accessibilityLabel={`Sortowanie: ${
-          sortMode === 'fastest'
-            ? 'najszybszy przyjazd'
-            : 'najwcześniejszy odjazd'
-        }. Dotknij, aby zmienić.`}
-      />
-
-      {onRefresh ? (
-        <>
-          <ThumbBarDivider />
-          <ThumbBarItem
-            onPress={onRefresh}
-            icon={
-              <RotateCw size={17} color={refreshing ? scheme.primary : scheme.onSurfaceVariant} />
-            }
-            label=""
-            style={styles.iconOnly}
-            accessibilityLabel="Odśwież rozkłady i pozycje na żywo"
-          />
-        </>
-      ) : null}
     </ThumbBar>
   );
 }
-
-const styles = StyleSheet.create({
-  // Odświeżenie zostaje samą ikoną, więc nie potrzebuje całej kolumny.
-  iconOnly: {
-    flex: 0,
-    maxWidth: 44,
-  },
-});

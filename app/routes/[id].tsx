@@ -2,11 +2,18 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowRight, ChevronLeft, History, Radio } from 'lucide-react-native';
+import {
+  ArrowRight,
+  ChevronLeft,
+  CloudOff,
+  History,
+  Radio,
+  RouteOff,
+} from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
 import { RoutingService } from '../../src/services';
-import { findCachedConnection, rehydrateConnections } from '../../src/services/offlineCache';
+import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { LiveDot } from '../../src/components/LiveDot';
@@ -70,27 +77,38 @@ export default function RouteDetailsScreen() {
   };
 
   useEffect(() => {
-    if (id) {
-      setLoadFailed(false);
-      setOffline(false);
-      const task = InteractionManager.runAfterInteractions(() => {
-        RoutingService.getConnectionById(String(id)).then(async (c) => {
-          if (c) {
-            setItem(c);
-          } else {
-            // Offline: szczegóły z cache (pełne legs + intermediateStops).
-            const cached = await findCachedConnection(String(id));
-            if (cached) {
-              setItem(rehydrateConnections([cached])[0]);
-              setOffline(true);
-            } else {
-              setLoadFailed(true);
-            }
-          }
-        });
-      });
-      return () => task.cancel();
+    // Brak id to nie „wczytujemy” — inaczej ekran zostawał ze spinnerem w nieskończoność.
+    if (!id) {
+      setLoadFailed(true);
+      return;
     }
+    setLoadFailed(false);
+    setOffline(false);
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      // .catch jest konieczny: getConnectionById i findCachedConnection rzucają,
+      // a wcześniejsza wersja zostawiała spinner na ekranie na zawsze.
+      const load = async () => {
+        try {
+          const hit = await RoutingService.getConnectionById(String(id));
+          if (cancelled) return;
+          if (hit) {
+            setItem(hit.connection);
+            setOffline(hit.source === 'cache');
+            return;
+          }
+          setLoadFailed(true);
+        } catch (err) {
+          console.warn('[RouteDetails] load failed:', err);
+          if (!cancelled) setLoadFailed(true);
+        }
+      };
+      void load();
+    });
+    return () => {
+      cancelled = true;
+      task.cancel();
+    };
   }, [id]);
 
   const handleReverseRoute = () => {
@@ -158,6 +176,16 @@ export default function RouteDetailsScreen() {
   const late = item.live && item.delayMin > 0;
   const early = item.live && item.delayMin < 0;
   const onTime = item.live && item.delayMin === 0;
+  const noLegs = item.legs.length === 0;
+  const liveStale = liveTracker.getLiveState() !== 'fresh';
+
+  // Treść komunikatu o źródle danych. Kolejność ma znaczenie: połączenie
+  // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
+  const dataNote = offline
+    ? 'Z pamięci offline — czasy według rozkładu, bez danych live'
+    : liveStale
+      ? 'Brak danych live — czasy według rozkładu'
+      : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -170,6 +198,15 @@ export default function RouteDetailsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
+        {/* Skąd pochodzą dane. Lista połączeń ma taki komunikat od dawna,
+            ekran szczegółów milczał — a pokazywał te same czasy bez opóźnień,
+            jakby pochodziły z MPK na żywo. */}
+        {dataNote && (
+          <View style={styles.offlineBanner}>
+            <CloudOff size={15} color={scheme.onWarningContainer} strokeWidth={2.2} />
+            <Text style={styles.offlineBannerText}>{dataNote}</Text>
+          </View>
+        )}
         {/* M3 filled summary card + tonal status banner */}
         <View style={styles.summary}>
           <View style={styles.timeRow}>
@@ -224,7 +261,9 @@ export default function RouteDetailsScreen() {
           ) : (
             <View style={[styles.statusBadge, { backgroundColor: scheme.surfaceContainerHighest }]}>
               <History size={12} color={scheme.onSurfaceVariant} />
-              <Text style={[styles.statusText, { color: scheme.onSurfaceVariant }]}>Rozkład</Text>
+              <Text style={[styles.statusText, { color: scheme.onSurfaceVariant }]}>
+                {offline ? 'Rozkład z cache' : 'Rozkład'}
+              </Text>
             </View>
           )}
         </View>
@@ -249,14 +288,34 @@ export default function RouteDetailsScreen() {
           </Pressable>
         )}
 
-        <LegTimeline legs={item.legs} />
+        {noLegs ? (
+          <View style={styles.emptyCard}>
+            <RouteOff size={20} color={scheme.onSurfaceVariant} strokeWidth={2} />
+            <Text style={styles.emptyTitle}>Brak przebiegu trasy</Text>
+            <Text style={styles.emptyText}>
+              To połączenie nie ma zapisanych przystanków, więc nie da się narysować
+              trasy ani wskazać najbliższego przystanku. Wróć do listy i wybierz
+              inne połączenie.
+            </Text>
+            <Pressable
+              onPress={() => router.back()}
+              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={styles.retryText}>Wróć do listy</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <LegTimeline legs={item.legs} />
 
-        {/* Radar wraz z wejściem w mapę trasy siedzi na dole ekranu —
-            tam, gdzie sięga kciuk, a nie na górze pod nagłówkiem. */}
-        <StopCompassCard
-          connection={item}
-          onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
-        />
+            {/* Radar wraz z wejściem w mapę trasy siedzi na dole ekranu —
+                tam, gdzie sięga kciuk, a nie na górze pod nagłówkiem. */}
+            <StopCompassCard
+              connection={item}
+              onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+            />
+          </>
+        )}
 
         <View style={{ height: 90 }} />
       </ScrollView>
@@ -348,4 +407,23 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   statusText: { ...type.labelSmall, fontWeight: '700' },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: scheme.warningContainer,
+    borderRadius: shape.large,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  offlineBannerText: { ...type.labelMedium, color: scheme.onWarningContainer, flex: 1 },
+  emptyCard: {
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.large,
+    padding: 20,
+  },
+  emptyTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
+  emptyText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
 });

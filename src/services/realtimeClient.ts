@@ -76,7 +76,8 @@ export async function fetchVehiclesDirect(line?: string): Promise<VehiclePositio
         line: lineName,
         lat: row.x,
         lon: row.y,
-        delaySec: snap?.delaySec ?? 0,
+        // Brak dopasowania do kursu to nie „na czas”, tylko brak pomiaru.
+        delaySec: snap?.delaySec ?? null,
         matchedTripId: snap?.matchedTripId,
         currentStopName: snap?.currentStopName,
         nextStopName: snap?.nextStopName,
