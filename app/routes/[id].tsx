@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowRight, ChevronLeft, CloudOff, History, RouteOff } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
@@ -12,6 +13,7 @@ import { LiveDot } from '../../src/components/LiveDot';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
 
 export default function RouteDetailsScreen() {
+  const s = useStrings();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [item, setItem] = useState<Connection | null>(null);
@@ -60,15 +62,15 @@ export default function RouteDetailsScreen() {
           <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
-          <Text style={styles.headerTitle}>Szczegóły połączenia</Text>
+          <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
         </View>
         <View style={styles.loading}>
-          <Text style={styles.loadingText}>Nie udało się wczytać połączenia.</Text>
+          <Text style={styles.loadingText}>{s.routeDetails.loadFail}</Text>
           <Pressable
             onPress={() => router.back()}
             style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
           >
-            <Text style={styles.retryText}>Wróć do listy</Text>
+            <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -82,7 +84,7 @@ export default function RouteDetailsScreen() {
           <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
-          <Text style={styles.headerTitle}>Szczegóły połączenia</Text>
+          <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
         </View>
         <View style={styles.loading}>
           <ActivityIndicator color={scheme.primary} />
@@ -100,9 +102,9 @@ export default function RouteDetailsScreen() {
   // Treść komunikatu o źródle danych. Kolejność ma znaczenie: połączenie
   // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
   const dataNote = offline
-    ? 'Z pamięci offline — czasy według rozkładu, bez danych live'
+    ? s.routeDetails.offlineNote
     : liveStale
-      ? 'Brak danych live — czasy według rozkładu'
+      ? s.routeDetails.noLiveNote
       : null;
 
   return (
@@ -112,7 +114,7 @@ export default function RouteDetailsScreen() {
         <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>Szczegóły połączenia</Text>
+        <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
@@ -141,7 +143,7 @@ export default function RouteDetailsScreen() {
             </View>
             <View style={styles.durationPill}>
               <Text style={styles.durationText} numberOfLines={1}>
-                {item.durationMin} min
+                {s.common.durMin(item.durationMin)}
               </Text>
             </View>
           </View>
@@ -174,13 +176,13 @@ export default function RouteDetailsScreen() {
           ) : onTime ? (
             <View style={[styles.statusBadge, { backgroundColor: scheme.successContainer }]}>
               <LiveDot color={scheme.success} size={7} />
-              <Text style={[styles.statusText, { color: scheme.onSuccessContainer }]}>Na czas</Text>
+              <Text style={[styles.statusText, { color: scheme.onSuccessContainer }]}>{s.routeDetails.onTime}</Text>
             </View>
           ) : (
             <View style={[styles.statusBadge, { backgroundColor: scheme.surfaceContainerHighest }]}>
               <History size={12} color={scheme.onSurfaceVariant} />
               <Text style={[styles.statusText, { color: scheme.onSurfaceVariant }]}>
-                {offline ? 'Rozkład z cache' : 'Rozkład'}
+                {offline ? s.routeDetails.scheduleCache : s.routeDetails.schedule}
               </Text>
             </View>
           )}
@@ -189,17 +191,15 @@ export default function RouteDetailsScreen() {
         {noLegs ? (
           <View style={styles.emptyCard}>
             <RouteOff size={20} color={scheme.onSurfaceVariant} strokeWidth={2} />
-            <Text style={styles.emptyTitle}>Brak przebiegu trasy</Text>
+            <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
             <Text style={styles.emptyText}>
-              To połączenie nie ma zapisanych przystanków, więc nie da się narysować
-              trasy ani wskazać najbliższego przystanku. Wróć do listy i wybierz
-              inne połączenie.
+              {s.routeDetails.noTripBody}
             </Text>
             <Pressable
               onPress={() => router.back()}
               style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
             >
-              <Text style={styles.retryText}>Wróć do listy</Text>
+              <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
             </Pressable>
           </View>
         ) : (

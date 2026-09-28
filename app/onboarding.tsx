@@ -34,6 +34,7 @@ import {
 } from 'lucide-react-native';
 import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
+import { useStrings } from '../src/i18n';
 import { setOnboardingSeen } from '../src/services/onboarding';
 import {
   FavoritesService,
@@ -48,15 +49,15 @@ import {
 } from '../src/services/dataManager';
 import type { SavedPlace, Suggestion } from '../src/types/models';
 
-const STEPS = ['Witaj', 'Uprawnienia', 'Rozkład', 'Miejsca'];
-
 // ─── Małe klocki ─────────────────────────────────────────────────────────────
 
 function Dots({ step }: { step: number }) {
+  const s = useStrings();
+  const steps = s.onboarding.steps;
   return (
-    <View style={s.dots}>
-      {STEPS.map((label, i) => (
-        <View key={label} style={[s.dot, i === step && s.dotActive, i < step && s.dotDone]} />
+    <View style={st.dots}>
+      {steps.map((label, i) => (
+        <View key={label} style={[st.dot, i === step && st.dotActive, i < step && st.dotDone]} />
       ))}
     </View>
   );
@@ -78,13 +79,13 @@ function PrimaryBtn({
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
-        s.primary,
-        disabled && s.primaryDisabled,
+        st.primary,
+        disabled && st.primaryDisabled,
         pressed && !disabled && { opacity: 0.88, transform: [{ scale: 0.99 }] },
       ]}
       accessibilityRole="button"
     >
-      <Text style={[s.primaryText, disabled && s.primaryTextDisabled]}>{label}</Text>
+      <Text style={[st.primaryText, disabled && st.primaryTextDisabled]}>{label}</Text>
       {icon}
     </Pressable>
   );
@@ -94,10 +95,10 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [s.ghost, pressed && { opacity: 0.7 }]}
+      style={({ pressed }) => [st.ghost, pressed && { opacity: 0.7 }]}
       accessibilityRole="button"
     >
-      <Text style={s.ghostText}>{label}</Text>
+      <Text style={st.ghostText}>{label}</Text>
     </Pressable>
   );
 }
@@ -181,37 +182,35 @@ function usePermissionStates() {
 }
 
 function StatusPill({ v }: { v: 'unknown' | 'granted' | 'denied' }) {
+  const s = useStrings();
   if (v === 'granted')
     return (
-      <View style={[s.pill, s.pillOk]}>
+      <View style={[st.pill, st.pillOk]}>
         <Check size={12} color={scheme.onSuccessContainer} />
-        <Text style={[s.pillText, { color: scheme.onSuccessContainer }]}>Włączone</Text>
+        <Text style={[st.pillText, { color: scheme.onSuccessContainer }]}>{s.onboarding.granted}</Text>
       </View>
     );
   if (v === 'denied')
     return (
-      <View style={[s.pill, s.pillOff]}>
-        <Text style={[s.pillText, { color: scheme.onSurfaceVariant }]}>Wyłączone</Text>
+      <View style={[st.pill, st.pillOff]}>
+        <Text style={[st.pillText, { color: scheme.onSurfaceVariant }]}>{s.onboarding.denied}</Text>
       </View>
     );
   return (
-    <View style={s.pill}>
-      <Text style={s.pillText}>Do włączenia</Text>
+    <View style={st.pill}>
+      <Text style={st.pillText}>{s.onboarding.toEnable}</Text>
     </View>
   );
 }
 
 // ─── Krok 3: zapisane miejsca ────────────────────────────────────────────────
 
-const PLACE_SLOTS = [
-  { key: 'home', name: 'Dom', icon: Home, hint: 'np. Swojczycka 41' },
-  { key: 'work', name: 'Praca', icon: Briefcase, hint: 'np. Sky Tower' },
-  { key: 'school', name: 'Uczelnia', icon: GraduationCap, hint: 'np. Politechnika' },
-] as const;
+type SlotKey = 'home' | 'work' | 'school';
 
-type SlotKey = (typeof PLACE_SLOTS)[number]['key'];
+const SLOT_KEYS: readonly SlotKey[] = ['home', 'work', 'school'];
 
 function useOnboardingPlaces() {
+  const s = useStrings();
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [activeSlot, setActiveSlot] = useState<SlotKey | null>(null);
   const [query, setQuery] = useState('');
@@ -258,22 +257,32 @@ function useOnboardingPlaces() {
   }, [query, activeSlot]);
 
   const bySlot = useMemo(() => {
+    const slotNames: Record<SlotKey, string> = {
+      home: s.onboarding.slotHome,
+      work: s.onboarding.slotWork,
+      school: s.onboarding.slotUni,
+    };
     const map = {} as Record<SlotKey, SavedPlace | undefined>;
-    for (const slot of PLACE_SLOTS) {
-      map[slot.key] =
-        places.find((p) => p.icon === slot.key) ??
-        places.find((p) => p.name.toLowerCase() === slot.name.toLowerCase());
+    for (const key of SLOT_KEYS) {
+      map[key] =
+        places.find((p) => p.icon === key) ??
+        places.find((p) => p.name.toLowerCase() === slotNames[key].toLowerCase());
     }
     return map;
-  }, [places]);
+  }, [places, s]);
 
   const saveForSlot = useCallback(
     async (slot: SlotKey, sug: Suggestion) => {
-      const meta = PLACE_SLOTS.find((x) => x.key === slot)!;
+      const slotNames: Record<SlotKey, string> = {
+        home: s.onboarding.slotHome,
+        work: s.onboarding.slotWork,
+        school: s.onboarding.slotUni,
+      };
+      const name = slotNames[slot];
       setSaving(true);
       try {
         await FavoritesService.addPlace({
-          name: meta.name,
+          name,
           icon: slot,
           address: sug.address || sug.title,
           lat: sug.lat,
@@ -287,7 +296,7 @@ function useOnboardingPlaces() {
         setSaving(false);
       }
     },
-    [reload],
+    [reload, s],
   );
 
   const remove = useCallback(
@@ -304,6 +313,7 @@ function useOnboardingPlaces() {
 // ─── Ekran ───────────────────────────────────────────────────────────────────
 
 export default function OnboardingScreen() {
+  const s = useStrings();
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
@@ -311,6 +321,12 @@ export default function OnboardingScreen() {
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [downloading, setDownloading] = useState(false);
   const slots = useOnboardingPlaces();
+  const steps = s.onboarding.steps;
+  const placeSlots = [
+    { key: 'home' as SlotKey, name: s.onboarding.slotHome, icon: Home, hint: s.onboarding.slotHomeHint },
+    { key: 'work' as SlotKey, name: s.onboarding.slotWork, icon: Briefcase, hint: s.onboarding.slotWorkHint },
+    { key: 'school' as SlotKey, name: s.onboarding.slotUni, icon: GraduationCap, hint: s.onboarding.slotUniHint },
+  ];
   const startedDownload = useRef(false);
   // Krok 3: przewijanie otwartego slotu nad klawiaturę.
   const step3Scroll = useRef<ScrollView>(null);
@@ -340,7 +356,7 @@ export default function OnboardingScreen() {
     router.replace('/');
   }, [leaving, router]);
 
-  const next = useCallback(() => setStep((v) => Math.min(v + 1, STEPS.length - 1)), []);
+  const next = useCallback(() => setStep((v) => Math.min(v + 1, steps.length - 1)), [steps.length]);
   const back = useCallback(() => setStep((v) => Math.max(v - 1, 0)), []);
 
   const startDownload = useCallback(async () => {
@@ -362,23 +378,23 @@ export default function OnboardingScreen() {
   const savedCount = slots.places.length;
 
   return (
-    <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
       {/* Pasek postępu */}
-      <View style={s.top}>
+      <View style={st.top}>
         {step > 0 ? (
-          <Pressable onPress={back} hitSlop={10} style={s.back} accessibilityLabel="Wstecz">
+          <Pressable onPress={back} hitSlop={10} style={st.back} accessibilityLabel={s.onboarding.backA11y}>
             <ChevronLeft size={22} color={scheme.onSurface} />
           </Pressable>
         ) : (
-          <View style={s.back} />
+          <View style={st.back} />
         )}
         <View style={{ flex: 1, alignItems: 'center', gap: 6 }}>
           <Dots step={step} />
-          <Text style={s.stepLabel}>
-            Krok {step + 1} z {STEPS.length} • {STEPS[step]}
+          <Text style={st.stepLabel}>
+            {s.onboarding.stepOf(step + 1, steps.length, steps[step])}
           </Text>
         </View>
-        <View style={s.back} />
+        <View style={st.back} />
       </View>
 
       <Animated.View
@@ -390,40 +406,40 @@ export default function OnboardingScreen() {
         {/* ── 0 · Powitanie ─────────────────────────────────────────── */}
         {step === 0 && (
           <ScrollView
-            contentContainerStyle={s.body}
+            contentContainerStyle={st.body}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
           >
-            <View style={s.heroMark}>
-              <View style={s.heroGlow} />
+            <View style={st.heroMark}>
+              <View style={st.heroGlow} />
               <TramFront size={44} color={scheme.onPrimaryContainer} />
             </View>
-            <Text style={s.hero}>Kilometr</Text>
-            <Text style={s.lead}>Tym razem dojedziesz.</Text>
+            <Text style={st.hero}>{s.onboarding.brand}</Text>
+            <Text style={st.lead}>{s.onboarding.tagline}</Text>
 
-            <View style={s.featList}>
-              <View style={s.feat}>
-                <View style={s.featIcon}>
+            <View style={st.featList}>
+              <View style={st.feat}>
+                <View style={st.featIcon}>
                   <Zap size={18} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.featTitle}>Szybko</Text>
+                  <Text style={st.featTitle}>{s.onboarding.fast}</Text>
                 </View>
               </View>
-              <View style={s.feat}>
-                <View style={s.featIcon}>
+              <View style={st.feat}>
+                <View style={st.featIcon}>
                   <X size={18} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.featTitle}>Bez reklam</Text>
+                  <Text style={st.featTitle}>{s.onboarding.noAds}</Text>
                 </View>
               </View>
-              <View style={s.feat}>
-                <View style={s.featIcon}>
+              <View style={st.feat}>
+                <View style={st.featIcon}>
                   <Check size={18} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.featTitle}>Bez mikropłatności</Text>
+                  <Text style={st.featTitle}>{s.onboarding.noPay}</Text>
                 </View>
               </View>
             </View>
@@ -433,83 +449,81 @@ export default function OnboardingScreen() {
         {/* ── 1 · Dostępy ───────────────────────────────────────────── */}
         {step === 1 && (
           <ScrollView
-            contentContainerStyle={s.body}
+            contentContainerStyle={st.body}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
           >
-            <Text style={s.title}>Uprawnienia</Text>
-            <Text style={s.leadSmall}>Lokalizacja i powiadomienia. Oba opcjonalne.</Text>
+            <Text style={st.title}>{s.onboarding.permTitle}</Text>
+            <Text style={st.leadSmall}>{s.onboarding.permSub}</Text>
 
-            <View style={s.card}>
-              <View style={s.cardHead}>
-                <View style={s.cardIcon}>
+            <View style={st.card}>
+              <View style={st.cardHead}>
+                <View style={st.cardIcon}>
                   <LocateFixed size={20} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.cardTitle}>Lokalizacja</Text>
+                  <Text style={st.cardTitle}>{s.onboarding.locTitle}</Text>
                 </View>
                 <StatusPill v={perms.loc} />
               </View>
-              <Text style={s.cardBody}>
-                Służy do ustawienia punktu startowego i sortowania przystanków według odległości.
-                Przetwarzana lokalnie na urządzeniu.
+              <Text style={st.cardBody}>
+                {s.onboarding.locBody}
               </Text>
               {perms.loc === 'granted' ? (
-                <View style={s.doneRow}>
+                <View style={st.doneRow}>
                   <Check size={16} color={scheme.success} />
-                  <Text style={s.doneText}>Lokalizacja włączona.</Text>
+                  <Text style={st.doneText}>{s.onboarding.locOn}</Text>
                 </View>
               ) : (
                 <Pressable
                   onPress={() => void perms.requestLoc()}
                   disabled={perms.busy !== null}
-                  style={({ pressed }) => [s.allow, pressed && { opacity: 0.8 }]}
+                  style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
                 >
                   {perms.busy === 'loc' ? (
                     <ActivityIndicator size="small" color={scheme.onPrimary} />
                   ) : (
                     <LocateFixed size={17} color={scheme.onPrimary} />
                   )}
-                  <Text style={s.allowText}>Zezwól na lokalizację</Text>
+                  <Text style={st.allowText}>{s.onboarding.locAllow}</Text>
                 </Pressable>
               )}
             </View>
 
-            <View style={s.card}>
-              <View style={s.cardHead}>
-                <View style={s.cardIcon}>
+            <View style={st.card}>
+              <View style={st.cardHead}>
+                <View style={st.cardIcon}>
                   <Bell size={20} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.cardTitle}>Powiadomienia</Text>
+                  <Text style={st.cardTitle}>{s.onboarding.notifTitle}</Text>
                 </View>
                 <StatusPill v={perms.notif} />
               </View>
-              <Text style={s.cardBody}>
-                Służą do wyświetlania przypiętego połączenia i alertów o utrudnieniach.
+              <Text style={st.cardBody}>
+                {s.onboarding.notifBody}
               </Text>
               {perms.notif === 'granted' ? (
-                <View style={s.doneRow}>
+                <View style={st.doneRow}>
                   <Check size={16} color={scheme.success} />
-                  <Text style={s.doneText}>Powiadomienia włączone.</Text>
+                  <Text style={st.doneText}>{s.onboarding.notifOn}</Text>
                 </View>
               ) : !NOTIF_SUPPORTED ? (
-                <Text style={s.fine}>
-                  Podgląd w Expo Go — powiadomienia (przypięte połączenie) działają w buildzie
-                  deweloperskim.
+                <Text style={st.fine}>
+                  {s.onboarding.notifExpoGo}
                 </Text>
               ) : (
                 <Pressable
                   onPress={() => void perms.requestNotif()}
                   disabled={perms.busy !== null}
-                  style={({ pressed }) => [s.allow, pressed && { opacity: 0.8 }]}
+                  style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
                 >
                   {perms.busy === 'notif' ? (
                     <ActivityIndicator size="small" color={scheme.onPrimary} />
                   ) : (
                     <Bell size={17} color={scheme.onPrimary} />
                   )}
-                  <Text style={s.allowText}>Włącz powiadomienia</Text>
+                  <Text style={st.allowText}>{s.onboarding.notifAllow}</Text>
                 </Pressable>
               )}
             </View>
@@ -519,63 +533,63 @@ export default function OnboardingScreen() {
         {/* ── 2 · Rozkład ───────────────────────────────────────────── */}
         {step === 2 && (
           <ScrollView
-            contentContainerStyle={s.body}
+            contentContainerStyle={st.body}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
           >
-            <View style={s.heroMarkSmall}>
+            <View style={st.heroMarkSmall}>
               <Database size={30} color={scheme.onPrimaryContainer} />
             </View>
-            <Text style={s.title}>Pobierz rozkład{'\n'}Wrocławia</Text>
-            <Text style={s.leadSmall}>
-              Pełny rozkład MPK z Open Data Wrocław. Pobierany raz. Działa offline.
+            <Text style={st.title}>{s.onboarding.dlTitle}</Text>
+            <Text style={st.leadSmall}>
+              {s.onboarding.dlBody}
             </Text>
 
-            <View style={s.card}>
+            <View style={st.card}>
               {dataStatus.state === 'empty' && !busyGtfs && (
                 <>
-                  <View style={s.statRow}>
+                  <View style={st.statRow}>
                     <WifiOff size={18} color={scheme.onSurfaceVariant} />
-                    <Text style={s.statText}>Brak danych offline.</Text>
+                    <Text style={st.statText}>{s.onboarding.dlEmpty}</Text>
                   </View>
                   <Pressable
                     onPress={() => void startDownload()}
-                    style={({ pressed }) => [s.allow, pressed && { opacity: 0.8 }]}
+                    style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
                   >
                     <Download size={17} color={scheme.onPrimary} />
-                    <Text style={s.allowText}>Pobierz pełny rozkład</Text>
+                    <Text style={st.allowText}>{s.onboarding.dlAction}</Text>
                   </Pressable>
-                  <Text style={s.fine}>~40–60 MB • kilka minut • tylko raz</Text>
+                  <Text style={st.fine}>{s.onboarding.dlSize}</Text>
                 </>
               )}
 
               {(dataStatus.state === 'downloading' || dataStatus.state === 'importing') && (
                 <>
-                  <View style={s.statRow}>
+                  <View style={st.statRow}>
                     <ActivityIndicator size="small" color={scheme.primary} />
-                    <Text style={s.statText}>
+                    <Text style={st.statText}>
                       {dataStatus.state === 'downloading'
-                        ? `Pobieranie… ${Math.round(dataStatus.progress * 100)}%`
-                        : `${dataStatus.step} ${Math.round(dataStatus.progress * 100)}%`}
+                        ? s.onboarding.dlProgress(Math.round(dataStatus.progress * 100))
+                        : s.onboarding.dlStep(dataStatus.step, Math.round(dataStatus.progress * 100))}
                     </Text>
                   </View>
-                  <View style={s.bar}>
-                    <View style={[s.barFill, { width: `${Math.round(dataStatus.progress * 100)}%` }]} />
+                  <View style={st.bar}>
+                    <View style={[st.barFill, { width: `${Math.round(dataStatus.progress * 100)}%` }]} />
                   </View>
-                  <Text style={s.fine}>Nie zamykaj aplikacji w trakcie pobierania.</Text>
+                  <Text style={st.fine}>{s.onboarding.dlKeepOpen}</Text>
                 </>
               )}
 
               {gtfsReady && (
                 <>
-                  <View style={s.successRow}>
-                    <View style={s.successBadge}>
+                  <View style={st.successRow}>
+                    <View style={st.successBadge}>
                       <Check size={22} color={scheme.onSuccessContainer} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.cardTitle}>Rozkład gotowy.</Text>
-                      <Text style={s.cardBody}>
-                        {dataStatus.stops} przystanków • {dataStatus.trips} kursów.
+                      <Text style={st.cardTitle}>{s.onboarding.dlDone}</Text>
+                      <Text style={st.cardBody}>
+                        {s.onboarding.dlDoneSub(dataStatus.stops, dataStatus.trips)}
                       </Text>
                     </View>
                   </View>
@@ -584,15 +598,15 @@ export default function OnboardingScreen() {
 
               {dataStatus.state === 'error' && (
                 <>
-                  <Text style={s.cardTitle}>Coś poszło nie tak</Text>
-                  <Text style={s.cardBody}>{dataStatus.message}. Sprawdź internet i spróbuj ponownie.</Text>
+                  <Text style={st.cardTitle}>{s.onboarding.dlFail}</Text>
+                  <Text style={st.cardBody}>{s.onboarding.dlFailBody(dataStatus.message)}</Text>
                   <Pressable
                     onPress={() => void startDownload()}
                     disabled={busyGtfs}
-                    style={({ pressed }) => [s.allow, pressed && { opacity: 0.8 }]}
+                    style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
                   >
                     <Download size={17} color={scheme.onPrimary} />
-                    <Text style={s.allowText}>Spróbuj ponownie</Text>
+                    <Text style={st.allowText}>{s.onboarding.footerRetry}</Text>
                   </Pressable>
                 </>
               )}
@@ -609,50 +623,50 @@ export default function OnboardingScreen() {
           >
           <ScrollView
             ref={step3Scroll}
-            contentContainerStyle={[s.body, { paddingBottom: 240 }]}
+            contentContainerStyle={[st.body, { paddingBottom: 240 }]}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            <Text style={s.title}>Gdzie bywasz{'\n'}najczęściej?</Text>
-            <Text style={s.leadSmall}>
-              Zapisane miejsca przyspieszają wyszukiwanie. Ten krok można pominąć.
+            <Text style={st.title}>{s.onboarding.placesTitle}</Text>
+            <Text style={st.leadSmall}>
+              {s.onboarding.placesBody}
             </Text>
 
-            {PLACE_SLOTS.map((slot) => {
+            {placeSlots.map((slot) => {
               const Icon = slot.icon;
               const saved = slots.bySlot[slot.key];
               const open = slots.activeSlot === slot.key;
               return (
                 <View
                   key={slot.key}
-                  style={s.card}
+                  style={st.card}
                   onLayout={(e) => {
                     slotY.current[slot.key] = e.nativeEvent.layout.y;
                   }}
                 >
-                  <View style={s.slotRow}>
-                    <View style={s.cardIcon}>
+                  <View style={st.slotRow}>
+                    <View style={st.cardIcon}>
                       <Icon size={20} color={scheme.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.cardTitle}>{slot.name}</Text>
-                      <Text style={s.cardWhy} numberOfLines={1}>
+                      <Text style={st.cardTitle}>{slot.name}</Text>
+                      <Text style={st.cardWhy} numberOfLines={1}>
                         {saved ? saved.address : slot.hint}
                       </Text>
                     </View>
                     {saved ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={[s.pill, s.pillOk]}>
+                        <View style={[st.pill, st.pillOk]}>
                           <Check size={12} color={scheme.onSuccessContainer} />
-                          <Text style={[s.pillText, { color: scheme.onSuccessContainer }]}>Dodane</Text>
+                          <Text style={[st.pillText, { color: scheme.onSuccessContainer }]}>{s.onboarding.added}</Text>
                         </View>
                         <Pressable
                           onPress={() => void slots.remove(saved.id)}
                           hitSlop={8}
-                          style={s.miniX}
-                          accessibilityLabel={`Usuń ${slot.name}`}
+                          style={st.miniX}
+                          accessibilityLabel={s.onboarding.removeSlotA11y(slot.name)}
                         >
                           <X size={15} color={scheme.onSurfaceVariant} />
                         </Pressable>
@@ -663,24 +677,24 @@ export default function OnboardingScreen() {
                           slots.setActiveSlot(open ? null : slot.key);
                           slots.setQuery('');
                         }}
-                        style={({ pressed }) => [s.addPill, pressed && { opacity: 0.75 }]}
+                        style={({ pressed }) => [st.addPill, pressed && { opacity: 0.75 }]}
                       >
-                        <Text style={s.addPillText}>{open ? 'Zamknij' : '+ Dodaj'}</Text>
+                        <Text style={st.addPillText}>{open ? s.onboarding.closeAction : s.onboarding.addAction}</Text>
                       </Pressable>
                     )}
                   </View>
 
                   {open && !saved && (
                     <View style={{ marginTop: 12, gap: 8 }}>
-                      <View style={s.searchBox}>
+                      <View style={st.searchBox}>
                         <Search size={17} color={scheme.onSurfaceVariant} />
                         <TextInput
                           value={slots.query}
                           onChangeText={slots.setQuery}
                           onFocus={() => scrollSlotIntoView(slot.key)}
-                          placeholder={`Adres dla: ${slot.name}…`}
+                          placeholder={s.onboarding.addressFor(slot.name)}
                           placeholderTextColor={scheme.onSurfaceVariant}
-                          style={s.searchInput}
+                          style={st.searchInput}
                           autoFocus
                           returnKeyType="search"
                         />
@@ -692,10 +706,9 @@ export default function OnboardingScreen() {
                       {slots.results.length === 0 &&
                         !slots.searching &&
                         slots.query.trim().length >= 2 && (
-                          <View style={s.noResults}>
-                            <Text style={s.noResultsText}>
-                              Brak wyników dla „{slots.query.trim()}”. Przystanki
-                              szukamy offline, adresy wymagają internetu.
+                          <View style={st.noResults}>
+                            <Text style={st.noResultsText}>
+                              {s.onboarding.noResults(slots.query.trim())}
                             </Text>
                           </View>
                         )}
@@ -704,14 +717,14 @@ export default function OnboardingScreen() {
                           key={r.id}
                           onPress={() => void slots.saveForSlot(slot.key, r)}
                           disabled={slots.saving}
-                          style={({ pressed }) => [s.resultRow, pressed && { opacity: 0.7 }]}
+                          style={({ pressed }) => [st.resultRow, pressed && { opacity: 0.7 }]}
                         >
                           <MapPin size={16} color={scheme.primary} />
                           <View style={{ flex: 1 }}>
-                            <Text style={s.resultTitle} numberOfLines={1}>
+                            <Text style={st.resultTitle} numberOfLines={1}>
                               {r.title}
                             </Text>
-                            <Text style={s.resultSub} numberOfLines={1}>
+                            <Text style={st.resultSub} numberOfLines={1}>
                               {r.address}
                             </Text>
                           </View>
@@ -733,18 +746,18 @@ export default function OnboardingScreen() {
       </Animated.View>
 
       {/* Stopka */}
-      <View style={s.footer}>
+      <View style={st.footer}>
         {step === 0 && (
           <PrimaryBtn
-            label="Zaczynamy"
+            label={s.onboarding.start}
             onPress={next}
             icon={<ChevronRight size={18} color={scheme.onPrimary} />}
           />
         )}
         {step === 1 && (
           <>
-            <PrimaryBtn label="Dalej" onPress={next} icon={<ChevronRight size={18} color={scheme.onPrimary} />} />
-            <GhostBtn label="Później" onPress={next} />
+            <PrimaryBtn label={s.onboarding.next} onPress={next} icon={<ChevronRight size={18} color={scheme.onPrimary} />} />
+            <GhostBtn label={s.onboarding.later} onPress={next} />
           </>
         )}
         {step === 2 && (
@@ -752,12 +765,12 @@ export default function OnboardingScreen() {
             <PrimaryBtn
               label={
                 gtfsReady
-                  ? 'Dalej'
+                  ? s.onboarding.next
                   : dataStatus.state === 'error'
-                    ? 'Spróbuj ponownie'
+                    ? s.onboarding.footerRetry
                     : busyGtfs
-                      ? 'Pobieranie…'
-                      : 'Pobierz rozkład'
+                      ? s.onboarding.footerDownloading
+                      : s.onboarding.footerDownload
               }
               disabled={busyGtfs && !gtfsReady}
               onPress={() => {
@@ -773,18 +786,18 @@ export default function OnboardingScreen() {
               }
             />
             {!gtfsReady && (
-              <Text style={s.lockNote}>Bez rozkładu nie da się wyszukać połączeń.</Text>
+              <Text style={st.lockNote}>{s.onboarding.needTimetable}</Text>
             )}
           </>
         )}
         {step === 3 && (
           <>
             <PrimaryBtn
-              label={savedCount > 0 ? `Gotowe (${savedCount})` : 'Gotowe'}
+              label={savedCount > 0 ? s.onboarding.doneCount(savedCount) : s.onboarding.donePlain}
               onPress={() => void finish()}
               icon={<Check size={18} color={scheme.onPrimary} />}
             />
-            <GhostBtn label="Pomiń na razie" onPress={() => void finish()} />
+            <GhostBtn label={s.onboarding.skip} onPress={() => void finish()} />
           </>
         )}
       </View>
@@ -792,7 +805,7 @@ export default function OnboardingScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
   top: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, minHeight: 56 },
   back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },

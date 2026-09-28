@@ -75,6 +75,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon, Suggestion } from '../types/models';
 import { SearchService, fetchNearestStops, type NearestStop } from '../services';
 import { SuggestionRow } from './SuggestionRow';
+import { useStrings, type Strings } from '../i18n';
 
 export type PlaceIconCategory =
   | 'all'
@@ -94,6 +95,22 @@ export interface PlaceIconItem {
   keywords: string[];
 }
 
+const PLACE_ICON_CATEGORY_KEYS: PlaceIconCategory[] = [
+  'all',
+  'frequent',
+  'transit',
+  'food',
+  'health',
+  'culture',
+  'sport',
+  'services',
+];
+
+export function getPlaceIconCategories(s: Strings): { key: PlaceIconCategory; label: string }[] {
+  return PLACE_ICON_CATEGORY_KEYS.map((key) => ({ key, label: s.places.iconCategories[key] }));
+}
+
+/** Zachowane dla kompatybilności (etykiety PL); UI używa getPlaceIconCategories(s). */
 export const PLACE_ICON_CATEGORIES: { key: PlaceIconCategory; label: string }[] = [
   { key: 'all', label: 'Wszystkie' },
   { key: 'frequent', label: 'Częste' },
@@ -172,6 +189,11 @@ export const PLACE_ICON_OPTIONS: PlaceIconItem[] = [
   { key: 'mapPin', label: 'Inne', icon: MapPin, category: 'services', keywords: ['inne', 'punkt', 'adres', 'miejsce', 'cel'] },
 ];
 
+/** Wariant z etykietami w języku użytkownika (UI); keywords zostają wielojęzyczne jak wyżej. */
+export function getPlaceIconOptions(s: Strings): PlaceIconItem[] {
+  return PLACE_ICON_OPTIONS.map((o) => ({ ...o, label: s.places.iconName[o.key] ?? o.label }));
+}
+
 export function AddPlaceSheet({
   open = true,
   initialPlace,
@@ -201,6 +223,10 @@ export function AddPlaceSheet({
   // nawigacji i w dolnej połowie nie reaguje na dotknięcie.
   const insets = useSafeAreaInsets();
   const isEditing = Boolean(initialPlace);
+  const s = useStrings();
+  // Katalog ikon i kategorii w języku użytkownika (etykiety ze słownika).
+  const iconOptions = useMemo(() => getPlaceIconOptions(s), [s]);
+  const iconCategories = useMemo(() => getPlaceIconCategories(s), [s]);
 
   const [name, setName] = useState(initialPlace?.name || '');
   const [selectedIcon, setSelectedIcon] = useState<SavedPlaceIcon>(initialPlace?.icon || 'home');
@@ -400,23 +426,23 @@ export function AddPlaceSheet({
       'star',
     ];
     const items = primaryKeys
-      .map((k) => PLACE_ICON_OPTIONS.find((opt) => opt.key === k))
+      .map((k) => iconOptions.find((opt) => opt.key === k))
       .filter(Boolean) as PlaceIconItem[];
 
     // If currently selected icon is outside the top 12, prepend it so user sees it highlighted
     if (selectedIcon && !primaryKeys.includes(selectedIcon)) {
-      const custom = PLACE_ICON_OPTIONS.find((opt) => opt.key === selectedIcon);
+      const custom = iconOptions.find((opt) => opt.key === selectedIcon);
       if (custom) {
         return [custom, ...items];
       }
     }
     return items;
-  }, [selectedIcon]);
+  }, [selectedIcon, iconOptions]);
 
   // Filtered icons for full picker
   const filteredCatalogIcons = useMemo(() => {
     const q = iconQuery.trim().toLowerCase();
-    return PLACE_ICON_OPTIONS.filter((item) => {
+    return iconOptions.filter((item) => {
       if (selectedIconCategory !== 'all' && item.category !== selectedIconCategory) {
         return false;
       }
@@ -427,7 +453,7 @@ export function AddPlaceSheet({
         item.keywords.some((k) => k.toLowerCase().includes(q))
       );
     });
-  }, [iconQuery, selectedIconCategory]);
+  }, [iconQuery, selectedIconCategory, iconOptions]);
 
   return (
     <BottomSheet
@@ -459,9 +485,9 @@ export function AddPlaceSheet({
                 <ChevronLeft size={22} color={scheme.onSurface} />
               </Pressable>
               <View style={styles.headerLeft}>
-                <Text style={styles.title}>Wybierz ikonę</Text>
+                <Text style={styles.title}>{s.places.chooseIcon}</Text>
                 <Text style={styles.subtitle}>
-                  Symbol dla: {name.trim() || 'tego miejsca'}
+                  {s.places.iconFor(name.trim() || s.places.iconForFallback)}
                 </Text>
               </View>
               <Pressable
@@ -482,7 +508,7 @@ export function AddPlaceSheet({
               <TextInput
                 value={iconQuery}
                 onChangeText={setIconQuery}
-                placeholder="Szukaj ikony (np. pociąg, kawa, lekarz)…"
+                placeholder={s.places.searchIcon}
                 placeholderTextColor={scheme.onSurfaceVariant}
                 style={styles.searchInput}
                 autoFocus
@@ -502,7 +528,7 @@ export function AddPlaceSheet({
               style={styles.categoryScroll}
               contentContainerStyle={styles.categoryRow}
             >
-              {PLACE_ICON_CATEGORIES.map((cat) => {
+              {iconCategories.map((cat) => {
                 const isSelected = selectedIconCategory === cat.key;
                 return (
                   <Pressable
@@ -591,9 +617,9 @@ export function AddPlaceSheet({
                 <ChevronLeft size={22} color={scheme.onSurface} />
               </Pressable>
               <View style={styles.headerLeft}>
-                <Text style={styles.title}>Przystanek kotwiczenia</Text>
+                <Text style={styles.title}>{s.places.anchorTitle}</Text>
                 <Text style={styles.subtitle}>
-                  Wybierz przystanek odjazdu dla: {name || 'tego miejsca'}
+                  {s.places.anchorFor(name || s.places.iconForFallback)}
                 </Text>
               </View>
               <Pressable
@@ -614,7 +640,7 @@ export function AddPlaceSheet({
               <TextInput
                 value={anchorQuery}
                 onChangeText={handleAnchorQueryChange}
-                placeholder="Szukaj przystanku MPK…"
+                placeholder={s.places.searchStop}
                 placeholderTextColor={scheme.onSurfaceVariant}
                 style={styles.searchInput}
                 autoFocus
@@ -667,18 +693,18 @@ export function AddPlaceSheet({
               >
                 <Text style={styles.sectionHint}>
                   {nearestStops.length > 0
-                    ? 'Najbliższe przystanki wokół wybranego adresu:'
-                    : 'Wpisz nazwę przystanku powyżej, aby wyszukać.'}
+                    ? s.places.nearStops
+                    : s.places.typeStopAbove}
                 </Text>
-                {nearestStops.map((s) => (
+                {nearestStops.map((stop) => (
                   <Pressable
-                    key={s.id}
+                    key={stop.id}
                     onPress={() => {
                       setAnchorStop({
-                        id: s.id,
-                        name: s.name,
-                        lat: s.lat,
-                        lon: s.lon,
+                        id: stop.id,
+                        name: stop.name,
+                        lat: stop.lat,
+                        lon: stop.lon,
                       });
                       setIsPickingAnchor(false);
                       setAnchorQuery('');
@@ -691,14 +717,14 @@ export function AddPlaceSheet({
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text style={styles.nearestStopName} numberOfLines={1}>
-                        {s.name}
+                        {stop.name}
                       </Text>
                       <Text style={styles.nearestStopDist}>
-                        {s.distanceM} m od wybranego miejsca
+                        {s.places.metersAway(stop.distanceM)}
                       </Text>
                     </View>
                     <View style={styles.selectPill}>
-                      <Text style={styles.selectPillText}>Wybierz</Text>
+                      <Text style={styles.selectPillText}>{s.places.choose}</Text>
                     </View>
                   </Pressable>
                 ))}
@@ -711,10 +737,10 @@ export function AddPlaceSheet({
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <Text style={styles.title}>
-                  {isEditing ? 'Edytuj miejsce' : 'Nowe zapisane miejsce'}
+                  {isEditing ? s.places.editPlace : s.places.newPlace}
                 </Text>
                 <Text style={styles.subtitle}>
-                  Wybierz adres lub przystanek docelowy
+                  {s.places.chooseTarget}
                 </Text>
               </View>
               <Pressable
@@ -731,7 +757,7 @@ export function AddPlaceSheet({
               <TextInput
                 value={query}
                 onChangeText={handleQueryChange}
-                placeholder="Wpisz ulicę, przystanek lub obiekt…"
+                placeholder={s.places.queryHint}
                 placeholderTextColor={scheme.onSurfaceVariant}
                 style={styles.searchInput}
                 autoFocus
@@ -774,10 +800,10 @@ export function AddPlaceSheet({
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <Text style={styles.title}>
-                  {isEditing ? 'Edytuj miejsce' : 'Nowe zapisane miejsce'}
+                  {isEditing ? s.places.editPlace : s.places.newPlace}
                 </Text>
                 <Text style={styles.subtitle}>
-                  {isEditing ? 'Zmień nazwę, ikonę lub adres' : 'Wybierz cel i dodaj do szybkich tras'}
+                  {isEditing ? s.places.editHint : s.places.newHint}
                 </Text>
               </View>
               <Pressable
@@ -791,11 +817,11 @@ export function AddPlaceSheet({
 
             {/* Place Name Input */}
             <View style={styles.inputWrap}>
-              <Text style={styles.fieldLabel}>Nazwa miejsca</Text>
+              <Text style={styles.fieldLabel}>{s.places.nameLabel}</Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
-                placeholder="np. Dom, Uczelnia, Praca, Siłownia"
+                placeholder={s.places.nameHint}
                 placeholderTextColor={scheme.onSurfaceVariant}
                 style={styles.nameInput}
                 returnKeyType="done"
@@ -805,7 +831,7 @@ export function AddPlaceSheet({
             {/* Icon Picker Row */}
             <View style={styles.iconSection}>
               <View style={styles.sectionHeaderRow}>
-                <Text style={styles.fieldLabel}>Wybierz ikonę</Text>
+                <Text style={styles.fieldLabel}>{s.places.chooseIcon}</Text>
                 <Pressable
                   onPress={() => {
                     setIsPickingIcon(true);
@@ -816,7 +842,7 @@ export function AddPlaceSheet({
                 >
                   <Sparkles size={13} color={scheme.primary} />
                   <Text style={styles.moreIconsLinkText}>
-                    Więcej ikon ({PLACE_ICON_OPTIONS.length}) ›
+                    {s.places.moreIcons(iconOptions.length)}
                   </Text>
                 </Pressable>
               </View>
@@ -869,14 +895,14 @@ export function AddPlaceSheet({
                   ]}
                 >
                   <Sparkles size={15} color={scheme.primary} />
-                  <Text style={styles.moreIconChipText}>+ Więcej...</Text>
+                  <Text style={styles.moreIconChipText}>{s.places.moreIconsShort}</Text>
                 </Pressable>
               </ScrollView>
             </View>
 
             {/* Location Section */}
             <View style={styles.locSection}>
-              <Text style={styles.fieldLabel}>Adres lub przystanek docelowy</Text>
+              <Text style={styles.fieldLabel}>{s.places.addressLabel}</Text>
               {selectedLoc && !isChangingLoc ? (
                 <View style={styles.selectedCard}>
                   <View style={styles.selectedIconWrap}>
@@ -899,7 +925,7 @@ export function AddPlaceSheet({
                     style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.8 }]}
                   >
                     <Pencil size={14} color={scheme.primary} />
-                    <Text style={styles.changeBtnText}>Zmień</Text>
+                    <Text style={styles.changeBtnText}>{s.places.changeBtn}</Text>
                   </Pressable>
                 </View>
               ) : (
@@ -908,7 +934,7 @@ export function AddPlaceSheet({
                   <TextInput
                     value={query}
                     onChangeText={handleQueryChange}
-                    placeholder="Wpisz ulicę, przystanek lub obiekt…"
+                    placeholder={s.places.queryHint}
                     placeholderTextColor={scheme.onSurfaceVariant}
                     style={styles.searchInput}
                   />
@@ -930,7 +956,7 @@ export function AddPlaceSheet({
             {!isChangingLoc && selectedLoc && (
               <View style={styles.anchorSection}>
                 <View style={styles.anchorSectionHeader}>
-                  <Text style={styles.fieldLabel}>Przystanek kotwiczenia (opcjonalnie)</Text>
+                  <Text style={styles.fieldLabel}>{s.places.anchorOptional}</Text>
                 </View>
                 {anchorStop ? (
                   <View style={styles.selectedCard}>
@@ -942,7 +968,7 @@ export function AddPlaceSheet({
                         {anchorStop.name}
                       </Text>
                       <Text style={styles.selectedSub} numberOfLines={1}>
-                        Odjazdy z tego przystanku, gdy jesteś blisko
+                        {s.places.anchorHint}
                       </Text>
                     </View>
                     <Pressable
@@ -976,7 +1002,7 @@ export function AddPlaceSheet({
                     style={({ pressed }) => [styles.addAnchorBtn, pressed && { opacity: 0.8 }]}
                   >
                     <Anchor size={16} color={scheme.primary} />
-                    <Text style={styles.addAnchorBtnText}>+ Przypisz przystanek odjazdu</Text>
+                    <Text style={styles.addAnchorBtnText}>{s.places.assignAnchor}</Text>
                   </Pressable>
                 )}
               </View>
@@ -989,20 +1015,20 @@ export function AddPlaceSheet({
                   <View style={styles.confirmDeleteBox}>
                     <View style={styles.confirmDeleteTextGroup}>
                       <Trash2 size={18} color={scheme.error} />
-                      <Text style={styles.confirmDeleteText}>Usunąć to miejsce?</Text>
+                      <Text style={styles.confirmDeleteText}>{s.places.removeGeneric}</Text>
                     </View>
                     <View style={styles.confirmDeleteBtns}>
                       <Pressable
                         onPress={() => setConfirmDelete(false)}
                         style={({ pressed }) => [styles.cancelDeleteBtn, pressed && { opacity: 0.8 }]}
                       >
-                        <Text style={styles.cancelDeleteText}>Anuluj</Text>
+                        <Text style={styles.cancelDeleteText}>{s.common.cancel}</Text>
                       </Pressable>
                       <Pressable
                         onPress={handleDelete}
                         style={({ pressed }) => [styles.confirmDeleteBtn, pressed && { opacity: 0.8 }]}
                       >
-                        <Text style={styles.confirmDeleteBtnText}>Tak, usuń</Text>
+                        <Text style={styles.confirmDeleteBtnText}>{s.common.yesRemove}</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -1035,7 +1061,7 @@ export function AddPlaceSheet({
                           (!name.trim() || !selectedLoc) && styles.saveActionTextDisabled,
                         ]}
                       >
-                        {isEditing ? 'Zapisz zmiany' : 'Zapisz miejsce'}
+                        {isEditing ? s.places.saveChanges : s.places.savePlace}
                       </Text>
                     </Pressable>
                   </View>

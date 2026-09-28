@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { Bell, Settings2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
+import { useStrings } from '../src/i18n';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
@@ -44,17 +45,17 @@ import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 
-const GPS_ITEM: Suggestion = {
-  id: '__gps',
-  title: 'Moja lokalizacja (GPS)',
-  address: 'Bieżąca pozycja urządzenia',
-  kind: 'history',
-  lat: 0,
-  lon: 0,
-};
-
 export default function HomeScreen() {
+  const s = useStrings();
   const router = useRouter();
+  const GPS_ITEM: Suggestion = {
+    id: '__gps',
+    title: s.home.gpsTitle,
+    address: s.home.gpsAddressHome,
+    kind: 'history',
+    lat: 0,
+    lon: 0,
+  };
   const [saved, setSaved] = useState<SavedPlace[]>([]);
   const [smart, setSmart] = useState<SmartDestination[]>([]);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
@@ -423,7 +424,7 @@ export default function HomeScreen() {
     return list;
   }, [smart, recent]);
 
-  const recentWithGps = useMemo(() => [GPS_ITEM, ...recentFromSmart], [recentFromSmart]);
+  const recentWithGps = useMemo(() => [GPS_ITEM, ...recentFromSmart], [recentFromSmart, GPS_ITEM]);
 
   // Kolejność wyświetlania: najlepszy wynik na górze, najsłabszy na dole.
   // `smart` z rankera jest już posortowane malejąco po wyniku — nie odwracamy.
@@ -683,8 +684,8 @@ export default function HomeScreen() {
     } catch (err) {
       console.error('[handleSavePlace error]', err);
       Alert.alert(
-        'Brak połączenia z bazą',
-        'Nie udało się zapisać miejsca. Spróbuj ponownie.',
+        s.home.saveFailTitle,
+        s.home.saveFailBody,
       );
       return;
     }
@@ -727,7 +728,7 @@ export default function HomeScreen() {
         >
           {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
           <View style={styles.topBar}>
-            <Text style={styles.headerTitle}>Gdzie jedziemy?</Text>
+            <Text style={styles.headerTitle}>{s.home.title}</Text>
             <View style={styles.topActions}>
               <Pressable
                 style={styles.iconBtn}
@@ -737,7 +738,7 @@ export default function HomeScreen() {
                   void import('../src/services/mpkNews').then(({ markNewsSeen }) => markNewsSeen());
                   router.push('/news');
                 }}
-                accessibilityLabel={newsAlert ? 'Aktualności MPK — nowe utrudnienia' : 'Aktualności MPK'}
+                accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
                 accessibilityRole="button"
               >
                 <Bell size={20} color={scheme.onSurfaceVariant} />
@@ -757,7 +758,7 @@ export default function HomeScreen() {
             <View style={styles.importCard}>
               <ActivityIndicator size="small" color={scheme.primary} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.importTitle}>Pobieranie rozkładu Wrocławia…</Text>
+                <Text style={styles.importTitle}>{s.home.importingTitle}</Text>
                 <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
               </View>
             </View>
@@ -775,9 +776,9 @@ export default function HomeScreen() {
 
           {dataStatus.state === 'error' && (
             <Pressable style={styles.importCardError} onPress={() => void importGtfsFromNetwork()}>
-              <Text style={styles.importTitleError}>Błąd pobierania rozkładu</Text>
+              <Text style={styles.importTitleError}>{s.home.importErrorTitle}</Text>
               <Text style={styles.importSubError}>
-                {dataStatus.message}. {dataStatus.hint ?? 'Dotknij, aby spróbować ponowić.'}
+                {dataStatus.message}. {dataStatus.hint ?? s.home.importErrorRetry}
               </Text>
             </Pressable>
           )}
@@ -791,7 +792,7 @@ export default function HomeScreen() {
 
           <View style={{ height: 20 }} />
           <View style={styles.sectionHeader}>
-            <Text style={styles.section}>Zapisane miejsca</Text>
+            <Text style={styles.section}>{s.home.savedTitle}</Text>
           </View>
           <SavedPlacesRow
             places={saved}
@@ -832,7 +833,7 @@ export default function HomeScreen() {
           results={results}
           recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
           savedQuick={quick}
-          placeholder={sheetMode === 'start' ? 'Skąd wyruszasz?' : 'Dokąd jedziesz?'}
+          placeholder={sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
           originTitle={sheetMode === 'destination' ? locTitle : undefined}
           closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
           onChangeOrigin={
