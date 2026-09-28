@@ -13,9 +13,7 @@ import {
 } from 'lucide-react-native';
 import Animated, {
   Easing,
-  FadeIn,
   FadeInUp,
-  FadeOut,
   FadeOutUp,
   FlipInEasyX,
   interpolate,
@@ -60,7 +58,7 @@ import {
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
-import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
+import { DepartureTimeSheet, type TimeMode } from '../../src/components/DepartureTimeSheet';
 import {
   RoutesThumbBar,
   type ModePreference,
@@ -295,7 +293,14 @@ export default function RoutesScreen() {
     };
   }, []);
 
-  const queryAt = (depSec: number | undefined) => {
+  // Stan wyboru godziny/daty: „wyjdź o” (depart) albo „bądź na” (arrive).
+  // Nad queryAt, bo zapytanie mapuje czas na właściwy parametr silnika.
+  const [timeSheetOpen, setTimeSheetOpen] = useState(false);
+  const [departureTimeSec, setDepartureTimeSec] = useState<number | undefined>(undefined);
+  const [timeMode, setTimeMode] = useState<TimeMode>('depart');
+  const [timeLabel, setTimeLabel] = useState('Teraz');
+
+  const queryAt = (depSec: number | undefined, mode: TimeMode = timeMode) => {
     const s = getSettingsSync();
     return {
       fromTitle,
@@ -310,7 +315,8 @@ export default function RoutesScreen() {
       anchorStopId: activeAnchor?.stopId,
       anchorStopLat: activeAnchor?.lat,
       anchorStopLon: activeAnchor?.lon,
-      departureTimeSec: depSec,
+      departureTimeSec: mode === 'depart' ? depSec : undefined,
+      arriveBySec: mode === 'arrive' ? depSec : undefined,
       // Jednorazowe filtry nadpisują systemowe maxTransfers / typ pojazdów.
       maxTransfers: directOnly ? 0 : s.maxTransfers,
       modes: modeFilter,
@@ -326,11 +332,6 @@ export default function RoutesScreen() {
     const list = [...prev, ...fresh].sort((a, b) => a.departureSec - b.departureSec);
     return { list, added: fresh.length };
   };
-
-  // Stan wyboru godziny/daty odjazdu
-  const [timeSheetOpen, setTimeSheetOpen] = useState(false);
-  const [departureTimeSec, setDepartureTimeSec] = useState<number | undefined>(undefined);
-  const [timeLabel, setTimeLabel] = useState('Teraz');
 
   // Wyszukiwarka startu / celu — ta sama co na ekranie głównym
   const [sheetFor, setSheetFor] = useState<'from' | 'to' | null>(null);
@@ -486,7 +487,7 @@ export default function RoutesScreen() {
   // wyłapać import, który ruszył w trakcie zapytania).
   const noTimetable = () => getDataStatus().state !== 'ready';
 
-  const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
+  const fetchRoutes = async (targetDepSec?: number, seamless = false, mode: TimeMode = timeMode) => {
     const seq = ++fetchSeq.current;
     if (!seamless) {
       setLoading(true);
@@ -505,7 +506,7 @@ export default function RoutesScreen() {
         setLoadError(true);
         return;
       }
-      const q = queryAt(depSec);
+      const q = queryAt(depSec, mode);
       // Progresywne ładowanie "po kolei": pierwsze okno RAPTOR-a wpada szybko,
       // podmieniamy listę i gasimy pełny spinner od razu — reszta dociąga się
       // w tle bez migotania (stabilne klucze FlatList).
@@ -533,7 +534,7 @@ export default function RoutesScreen() {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
       // W trybie seamless nie czyścimy listy ani nie migoczemy spinnerem.
-      const cached = await loadConnections(queryAt(depSec));
+      const cached = await loadConnections(queryAt(depSec, mode));
       if (seq !== fetchSeq.current) return;
       if (cached) {
         setItems(applyLiveList(rehydrateConnections(cached), depSec));
@@ -898,11 +899,13 @@ export default function RoutesScreen() {
     setToLon(tempLon);
   };
 
-  const handleTimeSelect = (result: { departureTimeSec: number | undefined; label: string }) => {
-    setDepartureTimeSec(result.departureTimeSec);
+  const handleTimeSelect = (result: { timeSec: number | undefined; label: string; mode: TimeMode }) => {
+    setDepartureTimeSec(result.timeSec);
+    setTimeMode(result.mode);
     setTimeLabel(result.label);
-    // Lista już jest → zmiana czasu bez czyszczenia ekranu (seamless).
-    fetchRoutes(result.departureTimeSec, items.length > 0);
+    // Zmiana godziny przeładowuje praktycznie całą listę — pokazujemy pełny
+    // spinner zamiast cichej podmiany (seamless tylko dokładałby wiersze).
+    fetchRoutes(result.timeSec, false, result.mode);
   };
 
   const isCustomTime = departureTimeSec !== undefined;
@@ -1016,25 +1019,39 @@ export default function RoutesScreen() {
         <Pressable
           onPress={() => setSheetFor('from')}
           accessibilityRole="button"
-          accessibilityLabel={`Zmień miejsce startowe, obecnie ${fromTitle}`}
+          accessibilityLabel={
+            activeAnchor
+              ? `Zmień miejsce startowe, obecnie ${fromTitle}, odjazd z przystanku ${activeAnchor.stopName}`
+              : `Zmień miejsce startowe, obecnie ${fromTitle}`
+          }
           style={({ pressed }) => [styles.routeSide, pressed && { opacity: 0.6 }]}
           hitSlop={6}
         >
-          {activeAnchor ? (
+          {/* Tytuł startu zawsze ten sam co cel (ta sama rolka FadeInUp) —
+              kotwica to już tylko cicha dopiska pod spodem, nie osobny
+              pigułkowy świat. Cały slot dalej otwiera wyszukiwarkę startu. */}
+          <Animated.View
+            key={`from-${fromTitle}`}
+            entering={new FadeInUp().duration(240)}
+            exiting={new FadeOutUp().duration(200)}
+            style={styles.routeSlide}
+          >
+            <Text style={styles.routeText} numberOfLines={1}>
+              {fromTitle}
+            </Text>
+          </Animated.View>
+          {activeAnchor && (
             <Animated.View
-              entering={FadeIn.duration(160)}
-              exiting={FadeOut.duration(120)}
-              style={styles.anchorBadge}
+              key={`anchor-${activeAnchor.stopId ?? activeAnchor.stopName}`}
+              entering={new FadeInUp().duration(240)}
+              exiting={new FadeOutUp().duration(200)}
+              style={styles.anchorSub}
             >
-              <Anchor size={13} color={scheme.primary} />
-              <Text style={styles.anchorStopText} numberOfLines={1}>
+              <Anchor size={12} color={scheme.primary} />
+              <Text style={styles.anchorSubText} numberOfLines={1}>
                 {activeAnchor.stopName}
+                <Text style={styles.anchorSubPlace}> · {activeAnchor.placeName}</Text>
               </Text>
-              <View style={styles.anchorPlaceTag}>
-                <Text style={styles.anchorPlaceText} numberOfLines={1}>
-                  {activeAnchor.placeName}
-                </Text>
-              </View>
               <Pressable
                 onPress={(e) => {
                   e.stopPropagation();
@@ -1042,7 +1059,7 @@ export default function RoutesScreen() {
                 }}
                 hitSlop={10}
                 style={({ pressed }) => [
-                  styles.anchorCloseBtn,
+                  styles.anchorX,
                   pressed && { opacity: 0.6, transform: [{ scale: 0.88 }] },
                 ]}
                 accessibilityRole="button"
@@ -1050,21 +1067,6 @@ export default function RoutesScreen() {
               >
                 <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
               </Pressable>
-            </Animated.View>
-          ) : (
-            // Klucz po tytule: zmiana tekstu (swap / nowy wybór) rolkuje
-            // wiersz lokalnie jak tablicę odjazdów — stary odjeżdża lekko
-            // w górę z fade, nowy wjeżdża z dołu. Bez latania przez ekran
-            // (Fade, nie Slide — Slide startuje z krawędzi okna).
-            <Animated.View
-              key={`from-${fromTitle}`}
-              entering={new FadeInUp().duration(240)}
-              exiting={new FadeOutUp().duration(200)}
-              style={styles.routeSlide}
-            >
-              <Text style={styles.routeText} numberOfLines={1}>
-                {fromTitle}
-              </Text>
             </Animated.View>
           )}
         </Pressable>
@@ -1190,7 +1192,7 @@ export default function RoutesScreen() {
           ListHeaderComponent={
             <View style={styles.countRow}>
               <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(items.length)} • {isCustomTime ? `odjazd ${timeLabel}` : 'najbliższe odjazdy'}
+                {connectionsLabel(items.length)} • {isCustomTime ? `${timeMode === 'arrive' ? 'przyjazd' : 'odjazd'} ${timeLabel}` : 'najbliższe odjazdy'}
                 {directOnly ? ' • tylko bezpośrednie' : ''}
                 {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
                 {loadingEarlier ? ' • wczytuję wcześniejsze…' : ''}
@@ -1292,6 +1294,7 @@ export default function RoutesScreen() {
         <DepartureTimeSheet
           initialTimeSec={departureTimeSec}
           initialLabel={timeLabel}
+          initialMode={timeMode}
           onClose={() => setTimeSheetOpen(false)}
           onSelect={handleTimeSelect}
         />
@@ -1415,15 +1418,32 @@ const styles = StyleSheet.create({
   pinBtnActive: {
     backgroundColor: scheme.primaryContainer,
   },
-  // Zamknięcie zakotwiczenia (przystanek) w wierszu startu trasy.
-  anchorCloseBtn: {
+  // Dopiska kotwicy pod tytułem startu: ta sama typografia co nagłówek,
+  // tylko mniejsza i w kolorze primary — zero pigułek, zero tła.
+  anchorSub: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+    maxWidth: '100%',
+  },
+  anchorSubText: {
+    ...type.labelMedium,
+    fontWeight: '600',
+    color: scheme.primary,
+    flexShrink: 1,
+  },
+  anchorSubPlace: {
+    fontWeight: '500',
+    color: scheme.onSurfaceVariant,
+  },
+  // Cichy X bez kółka — dopiska ma wyglądać jak tekst, nie jak chip.
+  anchorX: {
     width: 20,
     height: 20,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 2,
+    flexShrink: 0,
   },
   // Nagłówek trasy w stylu One UI: bez tła, jedna linia.
   // Wysokość jak dawny box (~64), większy font, luźny oddech z boków.
@@ -1470,38 +1490,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     flexShrink: 0,
   },
-  anchorBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingLeft: 8,
-    paddingRight: 6,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    maxWidth: '92%',
-  },
-  anchorStopText: {
-    ...type.labelMedium,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    maxWidth: 130,
-  },
-  anchorPlaceTag: {
-    backgroundColor: scheme.secondaryContainer,
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: shape.full,
-  },
-  anchorPlaceText: {
-    ...type.labelSmall,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '600',
-    fontSize: 11,
-    maxWidth: 60,
-  },
+
   countRow: {
     flexDirection: 'row',
     alignItems: 'center',

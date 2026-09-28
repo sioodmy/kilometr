@@ -15,16 +15,21 @@ import {
   Calendar,
   Check,
   Clock,
+  Flag,
   Sparkles,
   X,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 
+/** „Wyjdź o” vs „bądź na” — tryb przekazywany do silnika (departureTimeSec / arriveBySec). */
+export type TimeMode = 'depart' | 'arrive';
+
 interface DepartureTimeSheetProps {
   initialTimeSec?: number;
   initialLabel?: string;
+  initialMode?: TimeMode;
   onClose: () => void;
-  onSelect: (result: { departureTimeSec: number | undefined; label: string }) => void;
+  onSelect: (result: { timeSec: number | undefined; label: string; mode: TimeMode }) => void;
 }
 
 function pad(n: number): string {
@@ -128,6 +133,7 @@ function WheelPicker({
 
 export function DepartureTimeSheet({
   initialTimeSec,
+  initialMode,
   onClose,
   onSelect,
 }: DepartureTimeSheetProps) {
@@ -176,6 +182,7 @@ export function DepartureTimeSheet({
   const [day, setDay] = useState<'today' | 'tomorrow'>(initDay);
   const [hour, setHour] = useState(initHour);
   const [minute, setMinute] = useState(initMin);
+  const [mode, setMode] = useState<TimeMode>(initialMode ?? 'depart');
 
   const handleQuickAdd = (addMinutes: number) => {
     setIsNow(false);
@@ -192,9 +199,17 @@ export function DepartureTimeSheet({
 
   const handleSetNow = () => {
     setIsNow(true);
+    setMode('depart');
     setDay('today');
     setHour(currentHour);
     setMinute(currentMinute);
+  };
+
+  const handleModeChange = (m: TimeMode) => {
+    setMode(m);
+    // „Teraz” ma sens tylko dla odjazdu — przejście na przyjazd od razu
+    // przełącza na konkretną godzinę (inaczej tryb nie miałby celu).
+    if (m === 'arrive' && isNow) setIsNow(false);
   };
 
   const setMinutePreset = (m: number) => {
@@ -205,25 +220,33 @@ export function DepartureTimeSheet({
   const handleConfirm = () => {
     if (isNow) {
       onSelect({
-        departureTimeSec: undefined,
+        timeSec: undefined,
         label: 'Teraz',
+        mode: 'depart',
       });
     } else {
       const baseSec = hour * 3600 + minute * 60;
       const totalSec = day === 'tomorrow' ? baseSec + 86400 : baseSec;
       const dayLabel = day === 'today' ? 'Dziś' : 'Jutro';
       onSelect({
-        departureTimeSec: totalSec,
+        timeSec: totalSec,
         label: `${dayLabel}, ${pad(hour)}:${pad(minute)}`,
+        mode,
       });
     }
     onClose();
   };
 
+  const confirmText = isNow
+    ? 'Wyszukaj od teraz'
+    : mode === 'arrive'
+      ? `Bądź na: ${day === 'today' ? 'dziś' : 'jutro'}, ${pad(hour)}:${pad(minute)}`
+      : `Zastosuj: ${day === 'today' ? 'dziś' : 'jutro'}, ${pad(hour)}:${pad(minute)}`;
+
   return (
     <BottomSheet
       index={0}
-      snapPoints={['64%']}
+      snapPoints={['74%']}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
@@ -238,11 +261,42 @@ export function DepartureTimeSheet({
         {/* Nagłówek */}
         <View style={styles.header}>
           <View style={styles.titleRow}>
-            <Clock size={20} color={scheme.primary} />
-            <Text style={styles.title}>Czas odjazdu</Text>
+            {mode === 'arrive' ? (
+              <Flag size={20} color={scheme.primary} />
+            ) : (
+              <Clock size={20} color={scheme.primary} />
+            )}
+            <Text style={styles.title}>{mode === 'arrive' ? 'Czas przyjazdu' : 'Czas odjazdu'}</Text>
           </View>
           <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
             <X size={20} color={scheme.onSurfaceVariant} />
+          </Pressable>
+        </View>
+
+        {/* Toggle odjazd / przyjazd — ten sam segmented co wybór dnia */}
+        <View style={styles.daySelector}>
+          <Pressable
+            onPress={() => handleModeChange('depart')}
+            style={[styles.dayTab, mode === 'depart' && styles.dayTabActive]}
+            accessibilityRole="button"
+            accessibilityLabel="Szukaj od podanej godziny"
+          >
+            <Clock size={14} color={mode === 'depart' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
+            <Text style={[styles.dayTabText, mode === 'depart' && styles.dayTabTextActive]}>
+              Odjazd
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => handleModeChange('arrive')}
+            style={[styles.dayTab, mode === 'arrive' && styles.dayTabActive]}
+            accessibilityRole="button"
+            accessibilityLabel="Bądź na miejscu o podanej godzinie"
+          >
+            <Flag size={14} color={mode === 'arrive' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
+            <Text style={[styles.dayTabText, mode === 'arrive' && styles.dayTabTextActive]}>
+              Przyjazd
+            </Text>
           </Pressable>
         </View>
 
@@ -365,9 +419,7 @@ export function DepartureTimeSheet({
         >
           <Check size={19} color={scheme.onPrimary} />
           <Text style={styles.confirmText}>
-            {isNow
-              ? 'Wyszukaj od teraz'
-              : `Zastosuj: ${day === 'today' ? 'dziś' : 'jutro'}, ${pad(hour)}:${pad(minute)}`}
+            {confirmText}
           </Text>
         </Pressable>
       </View>
@@ -471,8 +523,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   clockCard: {
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.large,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
     paddingVertical: 10,
     paddingHorizontal: 16,
     alignItems: 'center',
