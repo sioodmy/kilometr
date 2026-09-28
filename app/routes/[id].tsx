@@ -234,13 +234,16 @@ export default function RouteDetailsScreen() {
             </View>
           </View>
           <View style={styles.routeRow}>
-            <Text style={styles.routeStop} numberOfLines={1}>
+            {/* Dwie linie: nazwy przystanków bywają długie („DWORZEC GŁÓWNY
+                (Dworcowa)”) i przy jednej linii ucinały się obie naraz —
+                widać było „Twoja lokaliz...” → „DWORZEC GŁÓWNY (Dwo...”. */}
+            <Text style={styles.routeStop} numberOfLines={2}>
               {item.fromTitle}
             </Text>
             <View style={styles.routeArrowWrap}>
               <ArrowRight size={14} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
             </View>
-            <Text style={styles.routeStop} numberOfLines={1}>
+            <Text style={styles.routeStop} numberOfLines={2}>
               {item.toTitle}
             </Text>
           </View>
