@@ -8,7 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../theme/tokens';
-import type { Leg, LegStop, VehiclePosition } from '../types/models';
+import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { RoutingService } from '../services';
@@ -40,7 +40,76 @@ function cacheStops(key: string, stops: LegStop[]) {
   if (!oldest.done) stopsCache.delete(oldest.value);
 }
 
-// ─── Wiersz przystanku (memo = brak re-renderów listy przy ticku pojazdu) ─────
+function normalizeName(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l')
+    .trim();
+}
+
+function parseHMtoSec(hm: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(hm || '');
+  if (!m) return null;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60;
+}
+
+/**
+ * Awaryjna lista gdy backend nie zwrócił sekwencji i nie da się jej dociągnąć.
+ * Uczciwa: tylko znane końce odcinka (zero wymyślonych przystanków po drodze).
+ */
+export function buildFallbackStops(leg: Leg): LegStop[] {
+  if (leg.intermediateStops && leg.intermediateStops.length >= 2) {
+    return leg.intermediateStops;
+  }
+  const depSec = parseHMtoSec(leg.departAt);
+  const arrSec = parseHMtoSec(leg.arriveAt);
+  const mk = (
+    first: boolean,
+  ): LegStop => ({
+    stopId: first
+      ? leg.fromStopId || `fallback-${leg.id}-from`
+      : leg.toStopId || `fallback-${leg.id}-to`,
+    name: first ? leg.fromStop : leg.toStop,
+    lat: first ? leg.fromLat : leg.toLat,
+    lon: first ? leg.fromLon : leg.toLon,
+    seq: first ? 1 : 2,
+    arriveSec: first ? depSec ?? undefined : arrSec ?? undefined,
+    departSec: first ? depSec ?? undefined : arrSec ?? undefined,
+  });
+  return [mk(true), mk(false)];
+}
+
+/** Nasz odcinek (wsiadanie→wysiadanie) jako indeksy w pełnej liście kursu. */
+export function findUserSegment(stops: LegStop[], leg: Leg): { start: number; end: number } {
+  if (stops.length === 0) return { start: 0, end: 0 };
+  let start = -1;
+  let end = -1;
+  if (leg.fromStopId) start = stops.findIndex((s) => s.stopId === leg.fromStopId);
+  if (leg.toStopId) end = stops.findIndex((s) => s.stopId === leg.toStopId);
+  if (start < 0) {
+    const n = normalizeName(leg.fromStop);
+    start = stops.findIndex((s) => normalizeName(s.name) === n);
+  }
+  if (end < 0) {
+    const n = normalizeName(leg.toStop);
+    // ostatni match — nazwy przystanków potrafią się powtarzać na linii
+    for (let i = stops.length - 1; i >= 0; i--) {
+      if (normalizeName(stops[i].name) === n) {
+        end = i;
+        break;
+      }
+    }
+  }
+  // Fallback: syntetyczna lista = w całości nasz odcinek
+  if (start < 0) start = 0;
+  if (end < 0) end = stops.length - 1;
+  if (end < start) end = start;
+  return { start, end };
+}
+
+// ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
 // Rail ma KRESKĘ CIĄGŁĄ: kropka + łącznik flex:1 rozciągany na wysokość wiersza.
 // Dzięki temu linia jest rzeczywiście połączona przez wszystkie kropki.
 const StopRow = memo(function StopRow({
@@ -49,14 +118,12 @@ const StopRow = memo(function StopRow({
   inSegment,
   accent,
   connectorAccent,
-  vehicleHere,
 }: {
   stop: LegStop;
   isLast: boolean;
   inSegment: boolean;
   accent: string;
   connectorAccent: boolean;
-  vehicleHere: boolean;
 }) {
   return (
     <View style={s.stopRow}>
@@ -71,11 +138,6 @@ const StopRow = memo(function StopRow({
         />
         {!isLast && (
           <View style={[s.connector, { backgroundColor: connectorAccent ? accent : scheme.outlineVariant }]} />
-        )}
-        {vehicleHere && (
-          <View style={s.vehicleOnRail}>
-            <LiveDot color={scheme.primary} size={9} />
-          </View>
         )}
       </View>
       <View style={s.stopBody}>
@@ -92,7 +154,6 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
   const cacheKey = leg.tripId || leg.id;
   const [stops, setStops] = useState<LegStop[]>(() => stopsCache.get(cacheKey) ?? buildFallbackStops(leg));
   const [loading, setLoading] = useState(() => !stopsCache.has(cacheKey) && !!leg.tripId);
-  const [vehicle, setVehicle] = useState<VehiclePosition | null>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -159,44 +220,7 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
     );
   }, [cacheKey, leg]);
 
-  // Polling TYLKO konkretnego pojazdu tego kursu (match po tripId).
-  // Celowo BEZ fallbacku do pierwszego pojazdu linii — pokazujemy lokalizację
-  // tramwaju/busa, którym faktycznie jedziemy, a nie jakiegokolwiek.
-  // Bez tripId (mock) nie da się zidentyfikować pojazdu → sama estymacja.
-  useEffect(() => {
-    if (!leg.line || !leg.tripId) return;
-    let cancelled = false;
-    const line = leg.line;
-    const tripId = leg.tripId;
-    const lastSig = { current: '' };
-
-    const fetchOnce = async () => {
-      try {
-        const list = await RoutingService.getVehicles(line);
-        if (cancelled || !mounted.current) return;
-        const match = list.find((v) => v.matchedTripId === tripId) ?? null;
-        const sig = match
-          ? `${match.vehicleId}|${match.lat.toFixed(5)}|${match.lon.toFixed(5)}|${match.currentStopName}|${match.nextStopName}`
-          : 'none';
-        if (sig !== lastSig.current) {
-          lastSig.current = sig;
-          setVehicle(match);
-        }
-      } catch {
-        // offline — zostaje estymacja czasowa
-      }
-    };
-
-    fetchOnce();
-    const timer = setInterval(fetchOnce, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [leg.line, leg.tripId]);
-
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
-  const gap = useMemo(() => locateVehicle(stops, leg, vehicle), [stops, leg, vehicle]);
 
   if (loading) {
     return (
@@ -215,14 +239,6 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
 
   return (
     <View style={s.stopsWrap}>
-      {gap.isLive && (
-        <View style={[s.vehicleBanner, s.vehicleBannerLive]}>
-          <LiveDot color={scheme.primary} size={7} />
-          <Text style={s.vehicleText} numberOfLines={2}>
-            {gap.label}
-          </Text>
-        </View>
-      )}
       {stops.map((stop, i) => {
         const inSegment = i >= segment.start && i <= segment.end;
         const connectorAccent = i >= segment.start && i + 1 <= segment.end;
@@ -234,7 +250,6 @@ function LegStopsList({ leg, accent }: { leg: Leg; accent: string }) {
             inSegment={inSegment}
             accent={accent}
             connectorAccent={connectorAccent}
-            vehicleHere={gap.isLive && gap.gap === i}
           />
         );
       })}
@@ -424,28 +439,10 @@ const s = StyleSheet.create({
   // tutaj zwykły kontener bez własnych animacji wejścia/wyjścia
   stopsWrap: { marginTop: 8, gap: 0 },
   stopsCollapsed: { height: 0, opacity: 0, overflow: 'hidden', marginTop: 0 },
-  vehicleBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: shape.small,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  vehicleBannerLive: { backgroundColor: scheme.secondaryContainer },
-  vehicleText: { flex: 1, ...type.labelMedium, color: scheme.onSurfaceVariant },
   stopRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
   stopRail: { width: 22, alignItems: 'center', position: 'relative' },
   dot: { width: 13, height: 13, borderRadius: 99, borderWidth: 2, marginTop: 4, zIndex: 1 },
   connector: { width: 3, flex: 1, minHeight: 12, borderRadius: 99, marginTop: -1 },
-  vehicleOnRail: {
-    position: 'absolute',
-    top: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
   stopBody: { flex: 1, justifyContent: 'center', minHeight: 30, paddingBottom: 6 },
   stopName: { ...type.bodyMedium, color: scheme.onSurface },
   stopNameDim: { color: scheme.onSurfaceVariant },
