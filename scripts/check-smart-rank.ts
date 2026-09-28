@@ -78,6 +78,7 @@ const HOME = { lat: 51.1085, lon: 17.1021 };
 const MALL = { lat: 51.1015, lon: 17.0352 };
 const MARKET = { lat: 51.1079, lon: 17.0385 };
 const GYM = { lat: 51.1181, lon: 16.9946 };
+const WORK = { lat: 51.0938, lon: 17.0196 };
 
 function dest(id: string, title: string, at: { lat: number; lon: number }): TripDestinationInput {
   return { id, title, lat: at.lat, lon: at.lon };
@@ -150,6 +151,56 @@ describe('mergeTripSearch: to samo miejsce z innego startu');
   expectTrue('z Polbudy widać Dom', fromPwr.some((d) => d.id === 'swojczycka'));
   const fromMarket = rankSmartDestinations(history, [], MARKET.lat, MARKET.lon, NOW);
   expect('z Rynku widać swoje (uses = 1)', fromMarket[0].frequency, 1);
+}
+
+describe('mergeTripSearch: to samo miejsce z innymi współrzędnymi');
+{
+  // Geokoder potrafi przesunąć punkt o 200 m między wersjami danych, a
+  // użytkownik może też wybrać tę samą nazwę z innego miejsca. Sam promień
+  // 150 m wtedy nie wystarczy — liczy się jeszcze id i tytuł.
+  const history = [historyFrom(PWR, home, 3, NOW - 2 * DAY, 22)];
+  const driftedById = dest('swojczycka', 'Dom (Swojczycka 41)', { lat: HOME.lat + 0.002, lon: HOME.lon });
+  const mergedById = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', driftedById, 22, NOW);
+  expect('ten sam id wystarczy', mergedById.length, 1);
+  expect('uses policzone', tripUses(mergedById[0]), 4);
+
+  const mallHistory = [historyFrom(PWR, mall, 3, NOW - 2 * DAY, 12)];
+  const sameTitle = dest('inny-id', 'Galeria', { lat: MALL.lat + 0.002, lon: MALL.lon });
+  expect('ta sama nazwa wystarczy', mergeTripSearch(mallHistory, PWR.lat, PWR.lon, 'Polibuda', sameTitle, 12, NOW).length, 1);
+
+  // A różne id, różna nazwa i 200 m — to już inne miejsce.
+  const other = dest('osobny', 'Sklep', { lat: HOME.lat + 0.002, lon: HOME.lon });
+  expect('inny cel zostaje osobno', mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', other, 22, NOW).length, 2);
+}
+
+describe('Ranking: wykluczenie miejsca kontekstowego');
+{
+  // Stoimy przy przypiętym „Praca", a w historii jest wpis o tym samym id, ale
+  // ze współrzędnymi 2 km dalej. Promień 250 m go nie wyłapie — wyłapuje go
+  // dopasowanie do miejsca kontekstowego.
+  const work: SavedPlace = {
+    id: 'pin-work',
+    name: 'Praca',
+    icon: 'work',
+    placeId: 'sky-tower',
+    address: 'Powstańców Śląskich 95',
+    lat: WORK.lat,
+    lon: WORK.lon,
+  };
+  const stale = historyFrom(PWR, dest('sky-tower', 'Praca (budynek B)', { lat: WORK.lat + 0.02, lon: WORK.lon }), 6, NOW - HOUR, 20);
+  expectList('miejsce kontekstowe wypada mimo oddalonych współrzędnych', titles(rankSmartDestinations([stale], [work], WORK.lat, WORK.lon, NOW)), []);
+  // 2 km dalej od tego przypiętego miejsca ten sam wpis jest już normalnym celem.
+  expectList('z daleka wraca do listy', titles(rankSmartDestinations([stale], [work], PWR.lat, PWR.lon, NOW)), ['Praca (budynek B)']);
+}
+
+describe('Ranking: dwa przypięte miejsca blisko siebie zostają dwoma');
+{
+  // Świadoma decyzja #45: dwa pin-y 100 m od siebie to dwie różne sprawy.
+  const a: SavedPlace = { id: 'pin-a', name: 'Siłownia', icon: 'gym', placeId: 'gym-a', address: 'Legnicka 58', lat: GYM.lat, lon: GYM.lon };
+  const b: SavedPlace = { id: 'pin-b', name: 'Basen', icon: 'swimming', placeId: 'gym-b', address: 'Legnicka 60', lat: GYM.lat + 0.0006, lon: GYM.lon + 0.0006 };
+  // Przy identycznym wyniku (oba bez historii) kolejność rozstrzyga tytuł —
+  // deterministycznie, żeby wiersze nie skakały między renderami.
+  expectList('dwa pin-y = dwa wiersze', titles(rankSmartDestinations([], [a, b], PWR.lat, PWR.lon, NOW)), ['Basen', 'Siłownia']);
 }
 
 describe('mergeTripSearch: cel dwa metry od celu');
@@ -273,22 +324,40 @@ describe('Ranking: nawyk bije jednorazową świeżość (#2)');
   expect('zmierzony czas dojazdu', ranked[0].avgDurationMin, 22);
 }
 
-describe('Ranking: stary nawyk nie umiera, ale gaśnie (#11)');
+describe('Ranking: świeżość rozstrzyga tylko przy równej liczbie sprawdzeń');
 {
+  // Wszystkie przypadki trzymają się w oknie 30 dni, żeby wynik zależał od
+  // punktacji, a nie od tego, że stary wpis wypadł z filtra. Wcześniejsza
+  // wersja tego testu używała 40 dni — przechodziła nawet przy zepsutym gaszeniu.
+  const first = (homeUses: number, homeAgeDays: number, mallUses: number, mallAgeHours: number) =>
+    rankSmartDestinations(
+      [
+        historyFrom(PWR, home, homeUses, NOW - homeAgeDays * DAY, 22),
+        historyFrom(PWR, mall, mallUses, NOW - mallAgeHours * HOUR, 12),
+      ],
+      [],
+      PWR.lat,
+      PWR.lon,
+      NOW,
+    )[0].title;
+
+  expect('6 starych bije 2 świeże', first(6, 20, 2, 2), 'Dom');
+  expect('przy równych liczbach wygrywa świeższy', first(2, 20, 2, 2), 'Galeria');
+  expect('trzy świeże biją dwa stare', first(2, 20, 3, 2), 'Galeria');
+  // Gaszenie jest skończone, nie liniowe: 25 dni to ~2 pkt, a jeden nawyk to 10.
+  expect('gaszenie nie przerasta jednego sprawdzenia', first(3, 25, 2, 2), 'Dom');
+}
+
+describe('Ranking: nawyk spoza okna miesiąca wypada');
+{
+  // Osobno, bo to decyzja projektowa (nawyk porzucony miesiąc temu to nie
+  // jest nawyk), a nie gaszenie: wpis w ogóle nie wchodzi do rankingu.
   const history = [
-    historyFrom(PWR, home, 6, NOW - 20 * DAY, 22),
-    historyFrom(PWR, mall, 2, NOW - 2 * HOUR, 12),
+    historyFrom(PWR, home, 6, NOW - 40 * DAY, 22),
+    historyFrom(PWR, mall, 1, NOW - 2 * HOUR, 12),
   ];
   const ranked = rankSmartDestinations(history, [], PWR.lat, PWR.lon, NOW);
-  expect('nawyk z miesiąca temu wciąż pierwszy', ranked[0].title, 'Dom');
-  expect('ale świeżość nie ratuje świeżego strzału', ranked[0].frequency, 6);
-
-  // To samo, tylko nawyk wygasł: dwa świeże sprawdzenia wygrywają.
-  const faded = [
-    historyFrom(PWR, home, 6, NOW - 40 * DAY, 22),
-    historyFrom(PWR, mall, 3, NOW - 2 * HOUR, 12),
-  ];
-  expect('wygasły nawyk przegrywa', rankSmartDestinations(faded, [], PWR.lat, PWR.lon, NOW)[0].title, 'Galeria');
+  expectList('stary nawyk znika', titles(ranked), ['Galeria']);
 }
 
 describe('Ranking: te same cele z różnych startów to jeden cel');
@@ -369,13 +438,32 @@ describe('Ranking: przypięte miejsce i wykluczenia');
   expect('przypięty cel dostaje częstotliwość 1', ranked[1].frequency, 1);
 
   // Stoimy W domu: dom jest tu miejscem kontekstowym, więc nie proponujemy
-  // powrotu do domu (kiedyś pilnowało tego tylko 250 m od celu).
+  // powrotu do domu.
   const atHome = rankSmartDestinations(history, places, HOME.lat, HOME.lon, NOW);
   expectTrue('nie proponujemy miejsca, w którym stoimy', !atHome.some((d) => d.id === 'swojczycka'));
 
-  // Ten sam budynek z historii i z przypięcia = jeden wiersz (#45).
-  const bothSources = rankSmartDestinations(history, places, PWR.lat, PWR.lon, NOW, 4);
-  expectList('bez duplikatu po scaleniu po współrzędnych', titles(bothSources), ['Dom', 'Siłownia', 'Galeria']);
+  // To samo bez przypiętych miejsc: wyklucza to promień 250 m wokół użytkownika,
+  // a nie „miejsce kontekstowe" (to drugie pilnuje tylko przypiętych pinów).
+  const bystander = dest('dinozaur', 'Kino Dinozaur', { lat: HOME.lat + 0.0004, lon: HOME.lon + 0.0004 });
+  const withBystander = [
+    historyFrom(PWR, home, 5, NOW - DAY, 22),
+    historyFrom(PWR, mall, 1, NOW - HOUR, 12),
+    historyFrom(PWR, bystander, 4, NOW - HOUR, 5),
+  ];
+  expectList(
+    'cel 100 m od nas wypada (promień 250 m)',
+    titles(rankSmartDestinations(withBystander, [], HOME.lat, HOME.lon, NOW)),
+    ['Galeria'],
+  );
+
+  // Ten sam budynek z historii i z przypięcia = jeden wiersz (#45). Tu klucze są
+  // RÓŻNE — historia trzyma id z wyszukiwarki, przypięcie ma własny token — więc
+  // scalanie musi zadziałać po współrzędnych, a nie po kluczu.
+  const searchId = dest('osm:node/99887766', 'Magnolia Park', { lat: GYM.lat, lon: GYM.lon });
+  const withPin = [...history, historyFrom(PWR, searchId, 3, NOW - HOUR, 18)];
+  const merged = rankSmartDestinations(withPin, places, PWR.lat, PWR.lon, NOW, 4);
+  expectList('bez duplikatu po współrzędnych', titles(merged), ['Dom', 'Siłownia', 'Galeria']);
+  expect('scalony wiersz bierze nazwę i id z przypięcia', merged[1].id, 'magnolia');
 }
 
 describe('Ranking: pusto znaczy pusto');
@@ -424,6 +512,12 @@ describe('Punktacja: monotoniczność');
   expect('więcej sprawdzeń = więcej punktów', scoreCandidate(3, fresh, false, NOW) > scoreCandidate(2, fresh, false, NOW), true);
   expect('przypięte miejsce punktuje', scoreCandidate(1, fresh, true, NOW) > scoreCandidate(1, fresh, false, NOW), true);
   expect('wiek gasi, ale nie odwraca', scoreCandidate(4, NOW - 30 * DAY, false, NOW) > scoreCandidate(2, fresh, false, NOW), true);
+  // Samo gaszenie trzeba sprawdzić wprost na punktacji: przy równej liczbie
+  // sprawdzeń o wyniku decyduje gaszenie, ale wypadałoby wtedy to samo, co
+  // tie-break „nowszy wyżej", więc test kolejności tego nie wyłapie.
+  expect('starszy kandydat ma niżej', scoreCandidate(2, NOW - 20 * DAY, false, NOW) < scoreCandidate(2, fresh, false, NOW), true);
+  expect('nawet bardzo stary ma niżej niż świeży', scoreCandidate(1, NOW - 90 * DAY, false, NOW) < scoreCandidate(1, fresh, false, NOW), true);
+  expect('gaszone, ale nie zerowe', scoreCandidate(1, NOW - 90 * DAY, false, NOW) > 1 * 10, true);
   expect('okno powtórki to 5 minut', REPEAT_GAP_MS, 5 * MIN);
 }
 
