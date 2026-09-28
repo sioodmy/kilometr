@@ -28,6 +28,8 @@ import {
   rankSmartDestinations,
   scoreCandidate,
   tripUses,
+  typicalDurationMin,
+  findTripPair,
   type TripDestinationInput,
   type TripHistoryItem,
 } from '../src/services/smartRanking';
@@ -180,6 +182,24 @@ describe('mergeTripSearch: śmieci z deep linka');
   expect('historia bez zmian', history[0].dest_title, 'Dom');
 }
 
+describe('mergeTripSearch: klastr startów w promieniu 1,6 km');
+{
+  // Dwa wpisy o tym samym celu: nowszy ma uses = 1, starszy mocniejszy (uses = 5).
+  const older: TripHistoryItem = { ...historyFrom(PWR, home, 5, NOW - 5 * DAY, 22), id: 'strong' };
+  const newer: TripHistoryItem = { ...historyFrom(PWR, home, 1, NOW - HOUR, 22), id: 'weak' };
+  const history = [newer, older];
+
+  // Regression: `find` brał pierwszy wpis (nowszy, uses = 1), więc licznik +1
+  // trafiał do słabego, a mocniejszy nawyk zostawał w tyle.
+  const merged = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW + 6 * HOUR);
+  const pair = findTripPair(merged, PWR.lat, PWR.lon, home) as TripHistoryItem;
+  expect('increment idzie do najmocniejszego', tripUses(pair), 6);
+  expect('scalany jest mocniejszy wpis', pair.id, 'strong');
+  // Słabszy wpis zostaje w historii (to inna para: inny start), ale ranking
+  // widzi jedną destynację: 5 + 1 + 1 (nowe sprawdzenie) = 7 sprawdzeń.
+  expect('całość klastra to jedna destynacja', rankSmartDestinations(merged, [], PWR.lat, PWR.lon, NOW + 6 * HOUR)[0].frequency, 7);
+}
+
 describe('tripUses: stare wpisy bez pola');
 {
   const legacy: TripHistoryItem = {
@@ -244,8 +264,23 @@ describe('Ranking: te same cele z różnych startów to jeden cel');
   ];
   const ranked = rankSmartDestinations(history, [], PWR.lat, PWR.lon, NOW);
   expectList('brak duplikatu celu', titles(ranked), ['Siłownia', 'Rynek']);
-  // max(4, 3), nie suma — te same podejścia policzone dwa razy to szum.
-  expect('licznik z najmocniejszego wpisu, nie suma', ranked[0].frequency, 4);
+  // Regression: `max` gubiło wiedzę — z okolicy to jeden nawyk (promień 1,6 km),
+  // więc 4 + 3 sprawdzenia to siedem, a nie cztery.
+  expect('sprawdzenia z klastra sumują się', ranked[0].frequency, 7);
+}
+
+describe('Ranking: stare wpisy w klastrze też się sumują');
+{
+  // Dane sprzed pola `uses` (każdy wpis = jedno sprawdzenie) mogą dotrzeć do
+  // rankingu jako osobne wpisy o tym samym celu, bo stary kod porównywał
+  // tytuły, a nie współrzędne („Dom" i „Swojczycka 41" to ten sam budynek).
+  const legacy = (title: string, uses?: number): TripHistoryItem => {
+    const base = historyFrom(PWR, gym, 1, NOW - 2 * DAY, 20);
+    return { ...base, id: `legacy-${title}`, dest_title: title, dest_id: title, ...(uses === undefined ? {} : { uses }) };
+  };
+  const ranked = rankSmartDestinations([legacy('Siłownia'), legacy('Magnolia')], [], PWR.lat, PWR.lon, NOW);
+  expect('dwa stare wpisy to jeden nawyk', ranked.length, 1);
+  expect('stare wpisy sumują się po 1', ranked[0].frequency, 2);
 }
 
 describe('Ranking: przypięte miejsce i wykluczenia');
@@ -317,6 +352,17 @@ describe('Ranking: limity i promienie');
   expectList('daleki start wypada z rankingu', titles(rankSmartDestinations([...far, ...near], [], PWR.lat, PWR.lon, NOW)), ['Rynek']);
   expect('promień klastera to 1600 m', CLUSTER_RADIUS_M, 1600);
   expect('promień wykluczenia to 250 m', EXCLUSION_RADIUS_M, 250);
+}
+
+describe('Typowy czas dojazdu (mediana)');
+{
+  const conns = (...minutes: number[]) => minutes.map((durationMin) => ({ durationMin }));
+  expect('brak kursów = brak pomiaru', typicalDurationMin(conns()), undefined);
+  expect('nieparzysta to środkowy', typicalDurationMin(conns(30, 10, 20)), 20);
+  // Regression: dla dwóch kursów „mediana" brała ten dłuższy (20 zamiast 15).
+  expect('parzysta to średnia z dwóch środkowych', typicalDurationMin(conns(10, 20)), 15);
+  expect('jeden kurs', typicalDurationMin(conns(7)), 7);
+  expect('najdłuższy nie ciągnie', typicalDurationMin(conns(12, 12, 12, 180)), 12);
 }
 
 describe('Punktacja: monotoniczność');

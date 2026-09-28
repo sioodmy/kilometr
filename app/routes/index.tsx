@@ -36,6 +36,9 @@ import {
   recordTripSearch,
   type ActiveAnchor,
 } from '../../src/services';
+// Mediana czasu dojazdu jest czysta i idzie do nawyku w „Ostatnich miejscach",
+// więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
+import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings } from '../../src/services/settings';
 import {
   areNotificationsSupported,
@@ -89,18 +92,6 @@ function nowSeconds(): number {
 // Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
 const connectionKey = (item: Connection) => item.id;
-
-/**
- * Typowy czas dojazdu po tym kursie — mediana z pierwszego okna. Średnia
- * ciągnęłaby do jednego długiego kursu, a „najszybszy z listy" kłamałby przy
- * zmianie sortowania. Brak kursów = brak pomiaru (`undefined`), wtedy zostaje
- * wartość z poprzedniego sprawdzenia.
- */
-function medianDurationMin(list: Connection[]): number | undefined {
-  if (list.length === 0) return undefined;
-  const durations = list.map((c) => c.durationMin).sort((a, b) => a - b);
-  return durations[Math.floor(durations.length / 2)];
-}
 
 export default function RoutesScreen() {
   const router = useRouter();
@@ -594,7 +585,7 @@ export default function RoutesScreen() {
         title: q.toTitle,
         lat: q.toLat,
         lon: q.toLon,
-      }, medianDurationMin(c));
+      }, typicalDurationMin(c));
     } catch {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).

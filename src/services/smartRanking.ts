@@ -84,6 +84,12 @@ function isSameDestination(trip: TripHistoryItem, dest: TripDestinationInput): b
  * Wpis opisujący tę samą parę co teraz sprawdzana: ten sam cel (po id, nazwie
  * albo współrzędnych) w promieniu tego samego startu. Dzięki temu „z Polbudu
  * do domu" i „z Rynku do domu" to dwa osobne nawyki, a nie jeden.
+ *
+ * W klastrze może być więcej niż jeden wpis o tym samym celu (dwa starty po
+ * 1,6 km od siebie, albo dane sprzed zmiany formatu). Wybieramy wtedy
+ * **najmocniejszy** nawyk — nowe sprawdzenie musi dodać się do niego, inaczej
+ * licznik rozjeżdżałby się między wpisami i suma przestałaby znaczyć
+ * „tyle razy sprawdzałem stąd".
  */
 export function findTripPair(
   history: TripHistoryItem[],
@@ -91,11 +97,34 @@ export function findTripPair(
   originLon: number,
   dest: TripDestinationInput,
 ): TripHistoryItem | undefined {
-  return history.find(
-    (trip) =>
-      isSameDestination(trip, dest) &&
-      distanceMeters(originLat, originLon, trip.origin_lat, trip.origin_lon) <= CLUSTER_RADIUS_M,
-  );
+  let best: TripHistoryItem | undefined;
+  for (const trip of history) {
+    if (!isSameDestination(trip, dest)) continue;
+    if (distanceMeters(originLat, originLon, trip.origin_lat, trip.origin_lon) > CLUSTER_RADIUS_M) continue;
+    if (
+      !best ||
+      tripUses(trip) > tripUses(best) ||
+      (tripUses(trip) === tripUses(best) && trip.timestamp > best.timestamp)
+    ) {
+      best = trip;
+    }
+  }
+  return best;
+}
+
+/**
+ * Typowy czas dojazdu po tej trasie — mediana z pierwszego okna kursów.
+ * Średnia ciągnęłaby do jednego długiego kursu, a „najszybszy z listy" kłamałby
+ * przy zmianie sortowania. Parzysta liczba kursów to średnia z dwóch środkowych,
+ * bo dla dwóch kursów „mediana" to po prostu ten dłuższy.
+ */
+export function typicalDurationMin(list: { durationMin: number }[]): number | undefined {
+  if (list.length === 0) return undefined;
+  const durations = list.map((c) => c.durationMin).sort((a, b) => a - b);
+  const mid = Math.floor(durations.length / 2);
+  return durations.length % 2 === 1
+    ? durations[mid]
+    : Math.round((durations[mid - 1] + durations[mid]) / 2);
 }
 
 /**
@@ -182,10 +211,11 @@ interface CandidateStats {
   address: string;
   lat: number;
   lon: number;
-  /** Nawyk: ile razy sprawdzano ten cel stąd. */
+  /** Nawyk: ile razy sprawdzano ten cel z tej okolicy. */
   uses: number;
+  /** Suma `uses * duration_min` — średnia ważona wychodzi z niej przy renderze. */
+  durationSum: number;
   lastTimestamp: number;
-  avgDurationMin: number;
   isSavedPlace: boolean;
 }
 
@@ -254,7 +284,23 @@ export function rankSmartDestinations(
 
     const key = trip.dest_id || trip.dest_title;
     const uses = tripUses(trip);
+    const duration = trip.duration_min || FALLBACK_TRIP_MIN;
     let cand = candidateMap.get(key);
+    if (!cand) {
+      // Ten sam budynek pod dwiema nazwami (albo dwoma id) w danych sprzed
+      // zmiany: `recordTripSearch` porównywał tytuły, nie współrzędne, więc
+      // „Magnolia Park" i „Siłownia" mogły zostać w historii obok siebie.
+      // Jeden wiersz, inaczej limit 4 wyrzuci prawdziwą destynację — dokładnie
+      // powód, dla którego #45 scalało przypięte miejsce z historią.
+      for (const existing of candidateMap.values()) {
+        if (
+          distanceMeters(existing.lat, existing.lon, trip.dest_lat, trip.dest_lon) <= SAME_PLACE_RADIUS_M
+        ) {
+          cand = existing;
+          break;
+        }
+      }
+    }
     if (!cand) {
       candidateMap.set(key, {
         id: trip.dest_id,
@@ -263,19 +309,19 @@ export function rankSmartDestinations(
         lat: trip.dest_lat,
         lon: trip.dest_lon,
         uses,
+        durationSum: duration * uses,
         lastTimestamp: trip.timestamp,
-        avgDurationMin: trip.duration_min || FALLBACK_TRIP_MIN,
         isSavedPlace: false,
       });
       continue;
     }
-    // Dwa wpisy tego samego celu z różnych startów (oba w promieniu klastera)
-    // to wciąż ten sam nawyk — bierzemy większy licznik, nie sumę, inaczej
-    // te same podejścia policzyłyby się dwa razy.
-    if (uses > cand.uses) {
-      cand.uses = uses;
-      cand.avgDurationMin = trip.duration_min || cand.avgDurationMin;
-    }
+    // Kilka wpisów tego samego celu z okolicy to Z PUNKTU WIDZENIA RANKINGU jeden
+    // nawyk (promień 1,6 km to jedno miejsce), więc sumujemy sprawdzenia.
+    // `max` gubiłoby to, co wiemy: dwa wpisy po 2 to cztery sprawdzenia stąd,
+    // a nie dwa. Tytuł i współrzędne zostają z pierwszego (najświeższego) wpisu,
+    // bo `nearbyTrips` jest już posortowane od nowego do starego.
+    cand.uses += uses;
+    cand.durationSum += duration * uses;
     if (trip.timestamp > cand.lastTimestamp) cand.lastTimestamp = trip.timestamp;
   }
 
@@ -313,8 +359,8 @@ export function rankSmartDestinations(
         lat: place.lat,
         lon: place.lon,
         uses: 0,
+        durationSum: 0,
         lastTimestamp: now - 12 * 3600 * 1000,
-        avgDurationMin: FALLBACK_TRIP_MIN,
         isSavedPlace: true,
       });
       continue;
@@ -350,7 +396,8 @@ export function rankSmartDestinations(
     title: cand.title,
     address: cand.address,
     frequency: Math.max(1, cand.uses),
-    avgDurationMin: cand.avgDurationMin,
+    // Przypięte miejsce bez historii nie ma pomiaru — dostaje wartość domyślną.
+    avgDurationMin: cand.uses > 0 ? Math.max(1, Math.round(cand.durationSum / cand.uses)) : FALLBACK_TRIP_MIN,
     lat: cand.lat,
     lon: cand.lon,
     originId,
