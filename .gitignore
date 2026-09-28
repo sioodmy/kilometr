@@ -40,6 +40,12 @@ yarn-error.*
 /ios
 /android
 
+# build artifacts lokalnych modułów Expo (modules/*/android)
+modules/*/android/build/
+modules/*/android/.gradle/
+modules/*/android/.cxx/
+modules/*/ios/build/
+
 # generowane dane backendu (pobierane automatycznie: `npm run setup`
 # lub hooki predev/prestart w server/) — nigdy nie commitować
 server/data/

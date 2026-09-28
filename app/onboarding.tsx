@@ -35,6 +35,7 @@ import {
 import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { setOnboardingSeen } from '../src/services/onboarding';
+import { ensureNotificationPermission, hasNotificationPermission } from '../src/services/notifications';
 import {
   FavoritesService,
   SearchService,
@@ -106,7 +107,7 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
 
 // Push w Expo Go nie istnieje od SDK 53 (sam require + getPermissionsAsync
 // rzuca błąd do LogBoxa), więc nawet nie próbujemy — ten sam guard co
-// w pinnedConnection.getNotifications(). Powiadomienia działają w dev buildzie.
+// w notifications.getNotifications(). Powiadomienia działają w dev buildzie.
 const NOTIF_SUPPORTED = Constants.appOwnership !== 'expo';
 
 function usePermissionStates() {
@@ -126,11 +127,10 @@ function usePermissionStates() {
         setNotif('unknown');
         return;
       }
-      // Leniwie. Bezpośredni import expo-notifications potrafi wywalić Expo Go.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const N = require('expo-notifications');
-      const n = await N.getPermissionsAsync();
-      setNotif(n.granted ? 'granted' : n.status === 'denied' ? 'denied' : 'unknown');
+      // Przez serwis powiadomień, który ma własny guard na Expo Go i rozumie
+      // też iOS `provisional`. Dzięki temu onboarding nie duplikuje logiki
+      // uprawnień, którą ma już reszta aplikacji.
+      setNotif((await hasNotificationPermission()) ? 'granted' : 'unknown');
     } catch {
       setNotif('unknown');
     }
@@ -161,15 +161,7 @@ function usePermissionStates() {
     if (!NOTIF_SUPPORTED) return;
     setBusy('notif');
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const N = require('expo-notifications');
-      const cur = await N.getPermissionsAsync();
-      if (cur.granted) {
-        setNotif('granted');
-      } else {
-        const nxt = await N.requestPermissionsAsync();
-        setNotif(nxt.granted ? 'granted' : 'denied');
-      }
+      setNotif((await ensureNotificationPermission()) ? 'granted' : 'denied');
     } catch {
       setNotif('denied');
     } finally {

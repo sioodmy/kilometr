@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Kanał powiadomień musi istnieć, zanim poprosimy o POST_NOTIFICATIONS
+       (Android 13+): system pokazuje prompt dopiero po utworzeniu kanału. -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>

@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   Clock3,
   Pin,
+  Radio,
   Rocket,
   X,
 } from 'lucide-react-native';
@@ -37,15 +38,15 @@ import {
 } from '../../src/services';
 import { getSettingsSync, loadSettings } from '../../src/services/settings';
 import {
-  ensurePinPermissions,
-  getPinnedQuerySync,
-  isPinSupported,
+  areNotificationsSupported,
+  ensureNotificationPermission,
   isSameQuery,
-  pinConnection,
-  subscribePinned,
-  unpinConnection,
-  type PinnedQuery,
-} from '../../src/services/pinnedConnection';
+  permissionDeniedMessage,
+  startTracking,
+  stopTracking,
+  useTrackedTrip,
+  type TrackedTrip,
+} from '../../src/services/notifications';
 import {
   loadConnections,
   hasLocalTimetable,
@@ -60,6 +61,7 @@ import {
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
+import { ActiveTripCard } from '../../src/components/ActiveTripCard';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import {
   RoutesThumbBar,
@@ -99,6 +101,8 @@ export default function RoutesScreen() {
     toLon: string;
     directOnly?: string;
     modes?: string;
+    /** Dokładnie 'stop' po naciśnięciu „Zakończ” w powiadomieniu. */
+    action?: string;
   }>();
 
   const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
@@ -109,6 +113,17 @@ export default function RoutesScreen() {
   const [toLat, setToLat] = useState(Number(params.toLat ?? 0));
   const [toLon, setToLon] = useState(Number(params.toLon ?? 0));
   const [toId, setToId] = useState(String(params.toId ?? ''));
+
+  // Przycisk „Zakończ” w powiadomieniu to deep link z parametrem action=stop.
+  // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl
+  // renderów; zależność od params.action, bo ekspo-router podmienia
+  // parametry bez remountu, gdy ekran jest już otwarty.
+  const stopFromLinkRef = useRef(params.action === 'stop');
+  useEffect(() => {
+    if (!stopFromLinkRef.current) return;
+    stopFromLinkRef.current = false;
+    void stopTracking();
+  }, [params.action]);
 
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [activeAnchor, setActiveAnchor] = useState<ActiveAnchor | null>(null);
@@ -208,7 +223,10 @@ export default function RoutesScreen() {
     };
   });
 
-  // Toggle sortowania w topBar (iOS-style, z wczoraj): 0 = odjazd
+  // Aktywna podróż: ta sama karta, która zasila powiadomienie i Live Activity.
+  const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
+
+  // Toggle sortowania w topBar (iOS-style, z maina): 0 = odjazd
   // (zegar, lewo), 1 = przyjazd (rakieta, prawo). Kciuk dociąga timingiem —
   // spring overshootował i kciuk wyskakiwał poza tor w trakcie animacji.
   const SORT_TRACK_W = 78;
@@ -226,10 +244,6 @@ export default function RoutesScreen() {
     transform: [{ translateX: sortProgress.value * SORT_TRAVEL }],
   }));
 
-  // Przypięte połączenie (persistent notification)
-  const [pinnedQuery, setPinnedQuery] = useState<PinnedQuery | null>(() => getPinnedQuerySync());
-  useEffect(() => subscribePinned(setPinnedQuery), []);
-
   const currentQuery = useMemo(
     () => ({
       fromTitle,
@@ -245,30 +259,62 @@ export default function RoutesScreen() {
     }),
     [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
   );
-  const isPinned = pinnedQuery != null && isSameQuery(pinnedQuery, currentQuery);
 
-  const togglePin = async () => {
-    if (isPinned) {
-      await unpinConnection();
+  // Czy właśnie śledzimy tę trasę (niezależnie od wybranego kursu).
+  const isTrackingThisRoute = trackedTrip != null && isSameQuery(trackedTrip, currentQuery);
+
+  /**
+   * Śledzenie konkretnego kursu, a nie całego zapytania. Użytkownik widzi
+   * na liście godziny i linie — gdybyśmy śledzili zapytanie, powiadomienie
+   * mogłoby w międzyczasie przeskoczyć na inny kurs i kłamać.
+   */
+  const startTrackingConnection = useCallback(
+    async (conn: Connection) => {
+      if (!areNotificationsSupported()) {
+        Alert.alert(
+          'Śledzenie niedostępne',
+          'Powiadomienia wymagają builda deweloperskiego — Expo Go ich nie wspiera.',
+        );
+        return;
+      }
+      const ok = await ensureNotificationPermission();
+      if (!ok) {
+        Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
+        return;
+      }
+      const track: TrackedTrip = {
+        id: conn.id,
+        fromTitle,
+        fromLat,
+        fromLon,
+        toId,
+        toTitle,
+        toLat,
+        toLon,
+        anchorStopId: activeAnchor?.stopId,
+        anchorStopLat: activeAnchor?.lat,
+        anchorStopLon: activeAnchor?.lon,
+        connection: conn,
+        startedAt: Date.now(),
+      };
+      await startTracking(track);
+    },
+    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
+  );
+
+  /** Przycisk w pasku: śledzimy najbliższe połączenie z listy. */
+  const toggleTracking = useCallback(async () => {
+    if (isTrackingThisRoute) {
+      await stopTracking();
       return;
     }
-    if (!isPinSupported()) {
-      Alert.alert(
-        'Pinezka niedostępna',
-        'Przypięte powiadomienie wymaga builda deweloperskiego — Expo Go nie wspiera powiadomień.',
-      );
+    const next = displayed[0] ?? items[0];
+    if (!next) {
+      Alert.alert('Brak połączeń', 'Poczekaj aż pojawi się kurs na tej trasie.');
       return;
     }
-    const ok = await ensurePinPermissions();
-    if (!ok) {
-      Alert.alert(
-        'Powiadomienia wyłączone',
-        'Zezwól na powiadomienia w ustawieniach systemu, żeby przypiąć połączenie.',
-      );
-      return;
-    }
-    await pinConnection(currentQuery);
-  };
+    await startTrackingConnection(next);
+  }, [isTrackingThisRoute, displayed, items, startTrackingConnection]);
 
   // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
   const listRef = useRef<FlatList<Connection>>(null);
@@ -926,6 +972,7 @@ export default function RoutesScreen() {
       const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
       const stagger = Math.min(index * 55, 440);
       const freshSwap = Date.now() - swapAtRef.current < 2500;
+      const isTracked = isTrackingThisRoute && trackedTrip?.connection.id === item.id;
       return (
         <Animated.View
           entering={
@@ -935,10 +982,28 @@ export default function RoutesScreen() {
           }
         >
           <ConnectionCard item={item} dimmed={past} onPress={openConnection} />
+          {/* Śledzimy konkretny kurs, nie całe zapytanie. */}
+          {!past && isTracked ? (
+            <View style={styles.trackActive}>
+              <Radio size={13} color={scheme.primary} />
+              <Text style={styles.trackActiveText}>Śledzone</Text>
+            </View>
+          ) : !past ? (
+            <Pressable
+              onPress={() => void startTrackingConnection(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`Śledź połączenie o ${item.departAt}`}
+              style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}
+              hitSlop={6}
+            >
+              <Radio size={13} color={scheme.onSurfaceVariant} />
+              <Text style={styles.trackBtnText}>Śledź ten kurs</Text>
+            </Pressable>
+          ) : null}
         </Animated.View>
       );
     },
-    [openConnection],
+    [openConnection, isTrackingThisRoute, trackedTrip?.connection.id, startTrackingConnection],
   );
 
   return (
@@ -954,6 +1019,7 @@ export default function RoutesScreen() {
           Połączenia MPK
         </Text>
 
+        {/* Sortowanie z paska (z main): 0 = odjazd, 1 = przyjazd. */}
         <View style={styles.sortWrap}>
           <Pressable
             onPress={handleCycleSort}
@@ -987,26 +1053,35 @@ export default function RoutesScreen() {
           </Text>
         </View>
 
-        {/* Pinezka: zwykły przycisk-pasek, 1:1 ze strzałką wstecz. Bez podpisu —
-            opis zostaje w accessibilityLabel. */}
+        {/* Śledzenie podróży w slocie pinezki (którą ten PR zastępuje): ten sam
+            przycisk-pasek 1:1 ze strzałką wstecz i sortowaniem, tylko robi
+            coś innego. Opis zostaje w accessibilityLabel, bo nagłówek ma
+            już etykiety sąsiadów. */}
         <Pressable
-          onPress={togglePin}
+          onPress={toggleTracking}
           accessibilityRole="button"
+          accessibilityState={{ selected: isTrackingThisRoute }}
           accessibilityLabel={
-            isPinned ? 'Odepnij połączenie' : 'Przypnij najbliższe połączenie'
+            isTrackingThisRoute
+              ? 'Zatrzymaj śledzenie podróży'
+              : 'Śledź najbliższe połączenie'
           }
           style={({ pressed }) => [
             styles.pinBtn,
-            isPinned && styles.pinBtnActive,
+            isTrackingThisRoute && styles.pinBtnActive,
             pressed && { opacity: 0.7 },
           ]}
           hitSlop={8}
         >
-          <Pin
-            size={19}
-            color={isPinned ? scheme.onPrimaryContainer : scheme.onSurface}
-            fill={isPinned ? scheme.onPrimaryContainer : 'transparent'}
-          />
+          {isTrackingThisRoute ? (
+            <Radio size={19} color={scheme.onPrimaryContainer} />
+          ) : (
+            <Pin
+              size={19}
+              color={scheme.onSurface}
+              fill="transparent"
+            />
+          )}
         </Pressable>
       </View>
 
@@ -1412,6 +1487,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Karta aktywnej podróży nad listą połączeń
+  activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
+  // Akcja „Śledź ten kurs” pod kartą połączenia
+  trackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    marginLeft: 4,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    paddingHorizontal: 12,
+    height: 30,
+  },
+  trackBtnText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
+  trackActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    marginLeft: 4,
+    paddingHorizontal: 12,
+    height: 30,
+    justifyContent: 'center',
+  },
+  trackActiveText: { ...type.labelMedium, color: scheme.primary, fontWeight: '700' },
   pinBtnActive: {
     backgroundColor: scheme.primaryContainer,
   },

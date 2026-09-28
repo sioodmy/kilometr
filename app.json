@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "com.anonymous.kilometr",
       "supportsTablet": true
     },
     "android": {
@@ -42,6 +43,15 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji."
+        }
+      ],
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "com.anonymous.kilometr.widgets",
+          "groupIdentifier": "group.com.anonymous.kilometr",
+          "frequentUpdates": true,
+          "widgets": []
         }
       ]
     ]
