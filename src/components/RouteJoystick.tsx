@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Text,
   View,
-  type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
 import { SkipBack, SkipForward } from 'lucide-react-native';
@@ -203,13 +202,47 @@ export function RouteJoystick({
     }),
   ).current;
 
-  // Bezpośrednie kliknięcie / przeciągnięcie po pasku postępu trasy
-  const handleTrackTouch = (e: GestureResponderEvent) => {
-    const x = e.nativeEvent.locationX;
-    if (trackWidth > 0) {
-      const p = Math.max(0, Math.min(1, x / trackWidth));
-      onNavigate(p, zoomRef.current, 300);
-    }
+  // Przeciąganie palcem po pasku postępu trasy. Wcześniej obsługiwane było
+  // wyłącznie `onPress`, mimo że podpis pod sliderem obiecywał „przeciągnij” —
+  // mapa przeskakiwała dopiero po puszczeniu palca i to w miejscu, gdzie
+  // palec zaczął, a nie gdzie skończył.
+  //
+  // Szerokość paska i `onNavigate` idą przez refy, a nie z domknięcia. Dlaczego:
+  // `PanResponder.create` w `useRef` powstaje raz i na zawsze trzyma funkcje z
+  // pierwszego renderu, czyli sprzed `onLayout`. Bez refów `x` dzieliłby się
+  // przez zapamiętane `trackWidth = 240` zamiast przez zmierzone — kursor nie
+  // szedłby 1:1 za palcem, a w poziomie (szeroki pasek) nigdy nie doszedłby
+  // do końca trasy, bo 100 % wypadałoby na 35 % szerokości.
+  const trackWidthRef = useRef(trackWidth);
+  trackWidthRef.current = trackWidth;
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
+
+  const seekTo = useCallback((x: number, duration: number) => {
+    const w = trackWidthRef.current;
+    if (w <= 0) return;
+    const p = Math.max(0, Math.min(1, x / w));
+    progressRef.current = p;
+    onNavigateRef.current(p, zoomRef.current, duration);
+  }, []);
+
+  const trackPanResponder = useRef(
+    PanResponder.create({
+      // Przejmuje gest od razu, żeby już pierwszy ruch palca coś robił.
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => seekTo(e.nativeEvent.locationX, 90),
+      onPanResponderMove: (e) => seekTo(e.nativeEvent.locationX, 0),
+      onPanResponderTerminationRequest: () => false,
+    }),
+  ).current;
+
+  // SeekBar dla TalkBacka: rola „adjustable” bez `accessibilityValue` i bez
+  // `onAccessibilityAction` jest dla czytnika ekranu martwa.
+  const handleTrackA11y = (delta: number) => {
+    const next = Math.max(0, Math.min(1, progressRef.current + delta));
+    progressRef.current = next;
+    onNavigate(next, zoomRef.current, 160);
   };
 
   const handleTrackLayout = (e: LayoutChangeEvent) => {
@@ -280,18 +313,33 @@ export function RouteJoystick({
             <SkipBack size={16} color={scheme.onSurface} />
           </Pressable>
 
-          <Pressable
-            style={styles.track}
+          <View
+            style={styles.trackHit}
             onLayout={handleTrackLayout}
-            onPress={handleTrackTouch}
-            hitSlop={{ top: 10, bottom: 10 }}
+            // `box-only`, żeby `locationX` zawsze liczył się względem paska.
+            // Bez tego celem dotyku potrafi zostać wypełnienie albo uchwyt i
+            // przy przeciąganiu po nich pozycja skacze o kilkanaście pikseli.
+            pointerEvents="box-only"
+            {...trackPanResponder.panHandlers}
+            accessible
             accessibilityRole="adjustable"
             accessibilityLabel="Oś postępu trasy"
+            accessibilityHint="Przeciągnij palcem albo użyj strzałek, aby przesunąć widok wzdłuż trasy"
             accessibilityValue={{ min: 0, max: 100, now: percent }}
+            accessibilityActions={[
+              { name: 'increment', label: 'Dalej wzdłuż trasy' },
+              { name: 'decrement', label: 'Wstecz wzdłuż trasy' },
+            ]}
+            onAccessibilityAction={(e) => {
+              if (e.nativeEvent.actionName === 'increment') handleTrackA11y(0.05);
+              else if (e.nativeEvent.actionName === 'decrement') handleTrackA11y(-0.05);
+            }}
           >
-            <View style={[styles.trackFill, { width: `${percent}%` }]} />
-            <View style={[styles.thumb, { left: `${percent}%` }]} />
-          </Pressable>
+            <View style={styles.track}>
+              <View style={[styles.trackFill, { width: `${percent}%` }]} />
+              <View style={[styles.thumb, { left: `${percent}%` }]} />
+            </View>
+          </View>
 
           <Pressable
             onPress={onJumpFinish}
@@ -395,8 +443,17 @@ const styles = StyleSheet.create({
   jumpBtnPressed: {
     opacity: 0.7,
   },
-  track: {
+  // Cel dotyku szerszy niż widoczny pasek. `hitSlop` działa tylko na
+  // `Pressable`, więc na gołym `View` był martwy — wcześniejszy `Pressable`
+  // dawał ~28 px, a po zamianie na `View` zostało 8 px, czyli wąski pasek
+  // pod palcem. 32 px mieści się w wierszu bez zmiany wysokości (przyciski
+  // skokowe mają 40 px).
+  trackHit: {
     flex: 1,
+    height: 32,
+    justifyContent: 'center',
+  },
+  track: {
     height: 8,
     backgroundColor: scheme.surfaceContainerLowest,
     borderRadius: 4,
