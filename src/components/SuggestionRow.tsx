@@ -21,6 +21,7 @@ import {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Suggestion, SuggestionKind } from '../types/models';
 import { formatDistance } from '../services/settings';
+import { useStrings } from '../i18n';
 
 const KIND_META: Record<string, { Icon: any; bg: string; fg: string }> = {
   stop:          { Icon: BusFront,      bg: scheme.secondaryContainer,       fg: scheme.onSecondaryContainer },
@@ -56,6 +57,7 @@ export function getSuggestionIconMeta(
 }
 
 export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: () => void }) {
+  const s = useStrings();
   const meta = getSuggestionIconMeta(item);
   const Icon = meta.Icon;
   const iconBg = meta.bg;
@@ -68,7 +70,7 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
     .trim();
 
   if (!cleanAddress && item.kind === 'stop') {
-    cleanAddress = 'Przystanek';
+    cleanAddress = s.suggestion.stopFallback;
   }
 
   const distanceText = item.distanceM != null ? formatDistance(item.distanceM) : '';

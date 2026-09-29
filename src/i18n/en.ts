@@ -42,6 +42,9 @@ export const en: Strings = {
     editCard: 'Edit',
     editCardSub: 'saved places',
     historyTitle: 'Recent places',
+    historyEmptyTitle: 'No recent places',
+    historyEmptyBody: 'Search a connection and it will show up here as a quick destination.',
+    historyEmptyAction: 'Search connections',
     openConnA11y: (title: string, label: string) => `Open connection to ${title}, ${label}`,
     gpsTitle: 'My location (GPS)',
     gpsAddressHome: 'Current device position',
@@ -308,10 +311,12 @@ export const en: Strings = {
     emptyBody: 'Add home, work or favourite spots to check connections with one tap.',
     addNew: 'Add a new place',
     removeTitle: (name: string) => `Remove “${name}”?`,
+    removeGeneric: 'Remove this place?',
+    removeConfirm: 'Remove',
     iconCategories: {
       all: 'All',
       frequent: 'Frequent',
-      travel: 'Travel',
+      transit: 'Travel',
       food: 'Food',
       health: 'Health',
       culture: 'Culture',
@@ -447,7 +452,8 @@ export const en: Strings = {
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
     fromPrefix: 'from ',
     toPrefix: 'to ',
-    stopsSummary: (n: number, open: boolean) => `${n} stops • ${open ? 'collapse' : 'expand'} stops`,
+    stopsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} stops • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
   },
   compass: {
     ahead: 'Straight ahead',
@@ -480,7 +486,7 @@ export const en: Strings = {
     noGps: 'No GPS position',
     onTrack: 'You are on route',
     offTrack: (m: number) => `You: ${m} m off route`,
-    zoomUser: (label: string, z: number) => `${label} · Zoom ${z}`,
+    zoomUser: (label: string, z: string) => `${label} · Zoom ${z}`,
     goStartA11y: 'Go to route start',
     progressA11y: 'Route progress axis',
     goEndA11y: 'Go to route end',
@@ -488,6 +494,8 @@ export const en: Strings = {
   lastTrip: {
     backA11y: (from: string, to: string) => `Quick return: ${from} to ${to}. Release to search.`,
     lastA11y: (from: string, to: string) => `Last connection: ${from} to ${to}. Pull further to reverse.`,
+    pullHint: 'Last searched connection.\nRelease to search',
+    pullHintBack: 'Way back.\nRelease to search',
   },
   suggestion: {
     stopFallback: 'Stop',

@@ -20,6 +20,7 @@ import {
   TriangleAlert,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
+import { useStrings } from '../src/i18n';
 import { fetchMpkNews, markNewsSeen, type MpkNewsItem } from '../src/services/mpkNews';
 
 const NewsCard = memo(function NewsCard({
@@ -29,6 +30,7 @@ const NewsCard = memo(function NewsCard({
   item: MpkNewsItem;
   onOpen: (item: MpkNewsItem) => void;
 }) {
+  const s = useStrings();
   const urgent = item.urgent;
   return (
     <Pressable
@@ -49,7 +51,7 @@ const NewsCard = memo(function NewsCard({
           {urgent ? (
             <View style={styles.urgentChip}>
               <TriangleAlert size={11} color={scheme.onErrorContainer} />
-              <Text style={styles.urgentText}>Utrudnienia</Text>
+              <Text style={styles.urgentText}>{s.news.chip}</Text>
             </View>
           ) : null}
           <View style={styles.spacer} />
@@ -81,6 +83,7 @@ function SkeletonCard() {
 }
 
 export default function NewsScreen() {
+  const s = useStrings();
   const router = useRouter();
   const [items, setItems] = useState<MpkNewsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,12 +99,12 @@ export default function NewsScreen() {
       setItems(news);
       void markNewsSeen(news);
     } catch {
-      setError('Nie udało się pobrać aktualności. Sprawdź internet i spróbuj ponownie.');
+      setError(s.news.fetchFail);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void markNewsSeen();
@@ -129,20 +132,20 @@ export default function NewsScreen() {
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
         <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>Aktualności</Text>
+          <Text style={styles.headerTitle}>{s.news.title}</Text>
           <Text style={styles.headerSub}>
             {loading
-              ? 'MPK Wrocław'
+              ? s.news.sourceLoading
               : items.length === 0
-                ? 'MPK Wrocław • wroclaw.pl'
-                : `${items.length} wiadomości${urgentCount ? ` • ${urgentCount} pilne` : ''}`}
+                ? s.news.sourceEmpty
+                : s.news.count(items.length, urgentCount)}
           </Text>
         </View>
         <Pressable
           onPress={() => void load(true)}
           style={styles.iconBtn}
           hitSlop={10}
-          accessibilityLabel="Odśwież aktualności"
+          accessibilityLabel={s.news.refreshA11y}
         >
           <RefreshCw size={18} color={scheme.onSurfaceVariant} />
         </Pressable>
@@ -156,7 +159,7 @@ export default function NewsScreen() {
           <SkeletonCard />
           <View style={styles.loadingRow}>
             <ActivityIndicator size="small" color={scheme.primary} />
-            <Text style={styles.loadingText}>Pobieranie komunikatów…</Text>
+            <Text style={styles.loadingText}>{s.news.loading}</Text>
           </View>
         </View>
       ) : error && items.length === 0 ? (
@@ -164,13 +167,13 @@ export default function NewsScreen() {
           <View style={styles.stateIcon}>
             <Newspaper size={28} color={scheme.primary} />
           </View>
-          <Text style={styles.stateTitle}>Brak połączenia</Text>
+          <Text style={styles.stateTitle}>{s.news.noConnection}</Text>
           <Text style={styles.stateText}>{error}</Text>
           <Pressable
             onPress={() => void load(false)}
             style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
           >
-            <Text style={styles.retryText}>Spróbuj ponownie</Text>
+            <Text style={styles.retryText}>{s.common.retry}</Text>
           </Pressable>
         </View>
       ) : (
@@ -199,10 +202,9 @@ export default function NewsScreen() {
               <View style={styles.stateIcon}>
                 <Newspaper size={28} color={scheme.onSurfaceVariant} />
               </View>
-              <Text style={styles.stateTitle}>Brak komunikatów</Text>
+              <Text style={styles.stateTitle}>{s.news.emptyTitle}</Text>
               <Text style={styles.stateText}>
-                Wrocław nie opublikował teraz żadnego utrudnienia. Przeciągnij w dół,
-                żeby sprawdzić ponownie.
+                {s.news.emptyBody}
               </Text>
             </View>
           }

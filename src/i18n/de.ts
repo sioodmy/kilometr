@@ -42,6 +42,9 @@ export const de: Strings = {
     editCard: 'Bearbeiten',
     editCardSub: 'gespeicherte Orte',
     historyTitle: 'Letzte Orte',
+    historyEmptyTitle: 'Keine letzten Orte',
+    historyEmptyBody: 'Suche eine Verbindung — sie erscheint hier als Schnellziel.',
+    historyEmptyAction: 'Verbindung suchen',
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
     gpsTitle: 'Mein Standort (GPS)',
     gpsAddressHome: 'Aktuelle Geräteposition',
@@ -308,10 +311,12 @@ export const de: Strings = {
     emptyBody: 'Füge Zuhause, Arbeit oder Lieblingsorte hinzu, um Verbindungen mit einem Tipp zu prüfen.',
     addNew: 'Neuen Ort hinzufügen',
     removeTitle: (name: string) => `„${name}“ entfernen?`,
+    removeGeneric: 'Diesen Ort entfernen?',
+    removeConfirm: 'Entfernen',
     iconCategories: {
       all: 'Alle',
       frequent: 'Häufig',
-      travel: 'Reise',
+      transit: 'Reise',
       food: 'Essen',
       health: 'Gesundheit',
       culture: 'Kultur',
@@ -446,7 +451,8 @@ export const de: Strings = {
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
-    stopsSummary: (n: number, open: boolean) => `${n} Haltestellen • ${open ? 'ein' : 'aus'}klappen`,
+    stopsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} Haltestellen • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
   },
   compass: {
     ahead: 'Geradeaus',
@@ -479,7 +485,7 @@ export const de: Strings = {
     noGps: 'Keine GPS-Position',
     onTrack: 'Du bist auf der Route',
     offTrack: (m: number) => `Du: ${m} m neben der Route`,
-    zoomUser: (label: string, z: number) => `${label} · Zoom ${z}`,
+    zoomUser: (label: string, z: string) => `${label} · Zoom ${z}`,
     goStartA11y: 'Zum Routenstart springen',
     progressA11y: 'Routenfortschritt',
     goEndA11y: 'Zum Routenende springen',
@@ -487,6 +493,8 @@ export const de: Strings = {
   lastTrip: {
     backA11y: (from: string, to: string) => `Schnelle Rückkehr: ${from} nach ${to}. Zum Suchen loslassen.`,
     lastA11y: (from: string, to: string) => `Letzte Verbindung: ${from} nach ${to}. Weiter ziehen zum Umkehren.`,
+    pullHint: 'Zuletzt gesuchte Verbindung.\nZum Suchen loslassen',
+    pullHintBack: 'Rückweg.\nZum Suchen loslassen',
   },
   suggestion: {
     stopFallback: 'Haltestelle',

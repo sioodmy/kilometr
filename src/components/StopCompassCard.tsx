@@ -25,6 +25,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
 import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+import { useStrings, type Strings } from '../i18n';
 
 interface StopCompassCardProps {
   connection: Connection;
@@ -58,18 +59,19 @@ function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number
   return ((θ * 180) / Math.PI + 360) % 360;
 }
 
-function getDirectionLabel(relAngle: number): string {
-  if (relAngle <= 20 || relAngle >= 340) return 'Prosto przed Tobą';
-  if (relAngle < 70) return 'Lekko w prawo';
-  if (relAngle <= 110) return 'Po Twojej prawej';
-  if (relAngle < 160) return 'Za Tobą z prawej';
-  if (relAngle <= 200) return 'Za Twoimi plecami';
-  if (relAngle < 250) return 'Za Tobą z lewej';
-  if (relAngle <= 290) return 'Po Twojej lewej';
-  return 'Lekko w lewo';
+function getDirectionLabel(relAngle: number, s: Strings): string {
+  if (relAngle <= 20 || relAngle >= 340) return s.compass.ahead;
+  if (relAngle < 70) return s.compass.slightRight;
+  if (relAngle <= 110) return s.compass.right;
+  if (relAngle < 160) return s.compass.backRight;
+  if (relAngle <= 200) return s.compass.back;
+  if (relAngle < 250) return s.compass.backLeft;
+  if (relAngle <= 290) return s.compass.left;
+  return s.compass.slightLeft;
 }
 
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
+  const s = useStrings();
   // Czas dojścia liczony z tempem chodzenia ustawionym przez użytkownika,
   // a nie z wpisanych na sztywno 80 m/min.
   const walkMps = useWalkSpeedMps();
@@ -259,21 +261,13 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
   const compassReady = hasTarget && distanceM != null;
 
   const compassHint = !hasTarget
-    ? 'Ten przystanek nie ma współrzędnych w rozkładzie.'
+    ? s.compass.noCoords
     : locState === 'denied'
-      ? 'Lokalizacja jest wyłączona — bez niej nie pokażę kierunku do przystanku.'
-      : // Nagłówek karty już mówi „Brak pozycji GPS”, więc dolna linia tylko
-        // podpowiada wyjście — jedno, krótkie zdanie zamiast trzech.
-        'Kierunek i odległość pokażę, gdy znajdę sygnał GPS.';
+      ? s.compass.locOff
+      : s.compass.locWaiting;
 
   const walkMin = distanceM != null ? walkMinutesFor(distanceM, walkMps) : null;
-  const directionLabel = compassReady ? getDirectionLabel(relativeAngle) : compassHint;
-
-  // Bez fixa GPS nie ma kompasu, więc podpis „Kieruj się według kompasu” jest
-  // obietnicą, której karta nie spełnia. W zamian mówi wprost, czego brakuje,
-  // a wyjaśnienie u dołu zostaje jednolinijkowe — na ekranie w tramwaju
-  // liczy się każda linia pionu.
-  const noFix = !compassReady && locState !== 'denied' && hasTarget;
+  const directionLabel = compassReady ? getDirectionLabel(relativeAngle, s) : compassHint;
 
   return (
     <View style={styles.card}>
@@ -281,18 +275,16 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         <View style={styles.cardHeaderIcon}>
           <Navigation2 size={18} color={scheme.primary} />
         </View>
-        <View style={styles.cardHeaderText}>
-          <Text style={styles.cardTitle}>Lokalizacja przystanku</Text>
-          <Text style={styles.cardSubtitle} numberOfLines={1}>
-            {noFix ? 'Brak pozycji GPS' : 'Kieruj się według kompasu'}
-          </Text>
+        <View>
+          <Text style={styles.cardTitle}>{s.compass.title}</Text>
+          <Text style={styles.cardSubtitle}>{s.compass.followCompass}</Text>
         </View>
       </View>
       
       {/* Przełącznik etapów podróży */}
       {transitLegs.length > 1 && (
         <View style={styles.tabsSection}>
-          <Text style={styles.sectionLabel}>Wybierz przesiadkę:</Text>
+          <Text style={styles.sectionLabel}>{s.compass.chooseChange}</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -331,7 +323,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           {activeLeg && <LineBadge mode={activeLeg.mode} line={activeLeg.line} />}
           {activeLeg?.direction && (
             <Text style={styles.directionText} numberOfLines={1}>
-              kierunek {activeLeg.direction}
+              {s.compass.directionPrefix(activeLeg.direction)}
             </Text>
           )}
         </View>
@@ -380,11 +372,11 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
               {distanceM! >= 1000 ? `${(distanceM! / 1000).toFixed(1)} km` : `${distanceM} m`}
             </Text>
             <Text style={styles.distanceLabel} numberOfLines={1}>
-              w linii prostej
+              {s.compass.straight}
             </Text>
             {walkMin != null && (
               <View style={styles.walkBadge}>
-                <Text style={styles.walkEst}>~{walkMin} min pieszo</Text>
+                <Text style={styles.walkEst}>{s.compass.walkMins(walkMin)}</Text>
               </View>
             )}
           </View>
@@ -402,9 +394,9 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           onPress={() => void Linking.openSettings()}
           style={({ pressed }) => [styles.settingsBtn, pressed && { opacity: 0.8 }]}
           accessibilityRole="button"
-          accessibilityLabel="Otwórz ustawienia aplikacji"
+          accessibilityLabel={s.compass.openSettingsA11y}
         >
-          <Text style={styles.settingsBtnText}>Włącz lokalizację w ustawieniach</Text>
+          <Text style={styles.settingsBtnText}>{s.compass.enableLoc}</Text>
         </Pressable>
       )}
 
@@ -416,10 +408,10 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
             onPress={onOpenMap}
             style={({ pressed }) => [styles.mapBtn, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel="Pokaż trasę na mapie"
+            accessibilityLabel={s.compass.mapA11y}
           >
             <MapIcon size={18} color={scheme.onPrimary} />
-            <Text style={styles.mapBtnText}>Mapa trasy</Text>
+            <Text style={styles.mapBtnText}>{s.compass.mapTitle}</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -430,7 +422,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
             pressed && { opacity: 0.85 },
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Nawiguj do przystanku w Organic Maps"
+          accessibilityLabel={s.compass.navigateA11y}
         >
           <Navigation2
             size={18}
@@ -442,7 +434,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
               !onOpenMap && styles.navBtnTextSolo,
             ]}
           >
-            Nawiguj
+            {s.compass.navigate}
           </Text>
         </Pressable>
       </View>

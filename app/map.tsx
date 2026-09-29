@@ -52,6 +52,7 @@ import { formatWalkDistance } from '../src/services/settings';
 import { secondsToTimeString } from '../src/gtfs/geo';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
+import { useStrings, type Strings } from '../src/i18n';
 
 type Coord = [number, number];
 
@@ -66,6 +67,7 @@ function nowSec(): number {
 }
 
 export default function RouteMapScreen() {
+  const s = useStrings();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -387,18 +389,18 @@ export default function RouteMapScreen() {
           <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
-          <Text style={styles.headerTitle}>Mapa trasy</Text>
+          <Text style={styles.headerTitle}>{s.map.title}</Text>
         </View>
         <View style={styles.centered}>
-          <Text style={styles.centeredTitle}>Nie udało się wczytać połączenia</Text>
+          <Text style={styles.centeredTitle}>{s.map.loadFail}</Text>
           <Text style={styles.centeredSub}>
-            Mapa pokazuje konkretne połączenie, więc musi być dostępne w pamięci lub w cache.
+            {s.map.loadFailBody}
           </Text>
           <Pressable
             onPress={() => router.back()}
             style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
           >
-            <Text style={styles.primaryBtnText}>Wróć do szczegółów</Text>
+            <Text style={styles.primaryBtnText}>{s.map.backToDetails}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -412,11 +414,11 @@ export default function RouteMapScreen() {
           <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
-          <Text style={styles.headerTitle}>Mapa trasy</Text>
+          <Text style={styles.headerTitle}>{s.map.title}</Text>
         </View>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={scheme.primary} />
-          <Text style={styles.centeredSub}>Składam połączenie…</Text>
+          <Text style={styles.centeredSub}>{s.map.assembling}</Text>
         </View>
       </SafeAreaView>
     );
@@ -437,14 +439,14 @@ export default function RouteMapScreen() {
         paddingBottom={panelHeight + insets.bottom + 12}
         onReady={handleMapReady}
         onLegTap={handleSelectLeg}
-        onStopTap={(s) => setStopTap(s)}
+        onStopTap={(st) => setStopTap(st)}
         onUserMoved={() => setFollow(false)}
         onTilesStatus={(ok) => {
           setTilesDown(!ok);
           if (ok) setMapError(null);
         }}
-        onError={(message) => {
-          setMapError(message);
+        onError={() => {
+          setMapError(s.map.mapLoadFail);
           setTilesDown(true);
         }}
       />
@@ -456,7 +458,7 @@ export default function RouteMapScreen() {
             <View style={styles.chip}>
               <WifiOff size={13} color={scheme.onWarningContainer} />
               <Text style={styles.chipText}>
-                {mapError ? 'Mapa niedostępna — brak sieci' : 'Kafelki się nie ładują'}
+                {mapError ? s.map.offlineTitle : s.map.offlineSub}
               </Text>
             </View>
           ) : (
@@ -464,13 +466,13 @@ export default function RouteMapScreen() {
               {shaping && (
                 <View style={styles.chip}>
                   <RotateCw size={13} color={scheme.onSecondaryContainer} />
-                  <Text style={styles.chipText}>Uzupełniam przebieg ulic…</Text>
+                  <Text style={styles.chipText}>{s.map.fillingStreets}</Text>
                 </View>
               )}
               {schematic && (
                 <View style={styles.chip}>
                   <Info size={13} color={scheme.onSecondaryContainer} />
-                  <Text style={styles.chipText}>Trasa szkicowa — bez przebiegu ulic</Text>
+                  <Text style={styles.chipText}>{s.map.sketch}</Text>
                 </View>
               )}
             </>
@@ -487,7 +489,7 @@ export default function RouteMapScreen() {
             style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Wróć"
+            accessibilityLabel={s.map.backA11y}
           >
             <ChevronLeft size={22} color={scheme.onSurface} />
           </Pressable>
@@ -497,8 +499,8 @@ export default function RouteMapScreen() {
             </Text>
             <Text style={styles.headerSub} numberOfLines={1}>
               {item.departAt}–{item.arriveAt} • {item.durationMin} min
-              {item.transfers > 0 ? ` • ${item.transfers} przesiad.` : ''}
-              {delayMin !== 0 ? ` • ${delayMin > 0 ? '+' : ''}${delayMin} min` : ''}
+              {item.transfers > 0 ? s.map.transfersSuffix(item.transfers) : ''}
+              {delayMin !== 0 ? s.map.delaySuffix(delayMin) : ''}
             </Text>
           </View>
           {vehicle ? (
@@ -525,7 +527,7 @@ export default function RouteMapScreen() {
           <View style={styles.stopCard}>
             <View style={[styles.stopDot, stopDotStyle(stopTap.role)]} />
             <View style={styles.stopText}>
-              <Text style={styles.stopRole}>{stopRoleLabel(stopTap.role)}</Text>
+              <Text style={styles.stopRole}>{stopRoleLabel(stopTap.role, s)}</Text>
               <Text style={styles.stopName} numberOfLines={2}>
                 {stopTap.name}
               </Text>
@@ -538,7 +540,7 @@ export default function RouteMapScreen() {
               hitSlop={10}
               style={({ pressed }) => [styles.stopClose, pressed && { opacity: 0.6 }]}
               accessibilityRole="button"
-              accessibilityLabel="Zamknij informację o przystanku"
+              accessibilityLabel={s.map.closeStopInfoA11y}
             >
               <Text style={styles.stopCloseText}>✕</Text>
             </Pressable>
@@ -551,7 +553,7 @@ export default function RouteMapScreen() {
                   <LineBadge line={selectedLeg.line} mode={selectedLeg.mode} compact />
                   <Text style={styles.legMetaBold} numberOfLines={1}>
                     {selectedLeg.mode === 'walk'
-                      ? `Spacer ${formatWalkDistance(selectedLeg.walkM ?? 0)}`
+                      ? `${s.map.walkPrefix}${formatWalkDistance(selectedLeg.walkM ?? 0)}`
                       : `${selectedLeg.fromStop} → ${selectedLeg.toStop}`}
                   </Text>
                 </View>
@@ -559,20 +561,20 @@ export default function RouteMapScreen() {
                   <View style={styles.vehicleRow}>
                     <LiveDot color={vehicle.color} size={7} pulse={liveState === 'fresh'} />
                     <Text style={styles.vehicleText} numberOfLines={1}>
-                      Pojazd {vehicle.vehicleId ?? vehicle.line} •{' '}
+                      {s.map.vehiclePrefix(vehicle.vehicleId ?? vehicle.line ?? '')}
                       {vehicle.delaySec > 30
-                        ? `spóźniony +${Math.round(vehicle.delaySec / 60)} min`
+                        ? s.map.lateBy(Math.round(vehicle.delaySec / 60))
                         : vehicle.delaySec < -30
-                          ? `przed czasem ${Math.round(vehicle.delaySec / 60)} min`
-                          : 'punktualnie'}
+                          ? s.map.earlyBy(Math.round(vehicle.delaySec / 60))
+                          : s.map.onTime}
                     </Text>
                   </View>
                 ) : (
                   selectedLeg?.mode !== 'walk' && (
                     <Text style={styles.vehicleMuted} numberOfLines={1}>
                       {liveState === 'stale'
-                        ? 'Brak danych live z MPK — rozkład z wyliczonymi czasami.'
-                        : 'Pozycja pojazdu pojawi się, gdy MPK ją udostępni.'}
+                        ? s.map.noLiveBody
+                        : s.map.noLiveSub}
                     </Text>
                   )
                 )}
@@ -602,8 +604,8 @@ export default function RouteMapScreen() {
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={
                   leg.mode === 'walk'
-                    ? `Etap pieszy ${formatWalkDistance(leg.walkM ?? 0)}`
-                    : `Linia ${leg.line ?? ''} kierunek ${leg.direction ?? ''}`
+                    ? s.map.walkStageA11y(formatWalkDistance(leg.walkM ?? 0))
+                    : s.map.lineStageA11y(leg.line ?? '', leg.direction ?? '')
                 }
               >
                 {leg.mode === 'walk' ? (
@@ -613,7 +615,7 @@ export default function RouteMapScreen() {
                 )}
                 <View style={styles.legChipText}>
                   <Text style={[styles.legChipTitle, active && styles.legChipTitleActive]}>
-                    {leg.mode === 'walk' ? formatWalkDistance(leg.walkM ?? 0) : `Linia ${leg.line}`}
+                    {leg.mode === 'walk' ? formatWalkDistance(leg.walkM ?? 0) : s.map.lineLabel(leg.line ?? '')}
                   </Text>
                   <Text style={styles.legChipSub} numberOfLines={1}>
                     {leg.departAt}–{leg.arriveAt}
@@ -644,8 +646,8 @@ export default function RouteMapScreen() {
           <ThumbBarItem
             onPress={handleFit}
             icon={<Maximize size={19} color={scheme.onSurfaceVariant} />}
-            label="Dopasuj"
-            accessibilityLabel="Dopasuj widok do trasy"
+            label={s.map.fit}
+            accessibilityLabel={s.map.fitA11y}
           />
           <ThumbBarDivider />
           <ThumbBarItem
@@ -656,8 +658,8 @@ export default function RouteMapScreen() {
                 color={userLoc ? scheme.onSurfaceVariant : scheme.outline}
               />
             }
-            label="Moje"
-            accessibilityLabel="Pokaż moją pozycję"
+            label={s.map.mine}
+            accessibilityLabel={s.map.mineA11y}
           />
           <ThumbBarDivider />
           <ThumbBarItem
@@ -675,8 +677,8 @@ export default function RouteMapScreen() {
                 fill={follow ? scheme.onPrimaryContainer : 'transparent'}
               />
             }
-            label="Śledź"
-            accessibilityLabel={follow ? 'Wyłącz śledzenie pojazdu' : 'Śledź pojazd'}
+            label={s.map.follow}
+            accessibilityLabel={follow ? s.map.followOffA11y : s.map.followOnA11y}
           />
           <ThumbBarDivider />
           <ThumbBarItem
@@ -688,9 +690,9 @@ export default function RouteMapScreen() {
                 color={joystickOn ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
               />
             }
-            label="Trasa"
+            label={s.map.route}
             accessibilityLabel={
-              joystickOn ? 'Wyłącz sterowanie trasą' : 'Sterowanie trasą joystickiem'
+              joystickOn ? s.map.routeOffA11y : s.map.routeOnA11y
             }
           />
         </ThumbBar>
@@ -714,11 +716,11 @@ function aheadSlice(coords: Coord[], progress: number, maxM: number): Coord[] {
   return out;
 }
 
-function stopRoleLabel(role: MapStopTap['role']): string {
-  if (role === 'board') return 'Wsiadaj';
-  if (role === 'alight') return 'Wysiadaj';
-  if (role === 'walk') return 'Spacer';
-  return 'Przystanek';
+function stopRoleLabel(role: MapStopTap['role'], s: Strings): string {
+  if (role === 'board') return s.map.board;
+  if (role === 'alight') return s.map.alight;
+  if (role === 'walk') return s.map.walkRole;
+  return s.map.stopRole;
 }
 
 function stopDotStyle(role: MapStopTap['role']) {

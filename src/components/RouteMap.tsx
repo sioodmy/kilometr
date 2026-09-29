@@ -229,7 +229,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         androidLayerType="hardware"
         onContentProcessDidTerminate={restart}
         onRenderProcessGone={restart}
-        onError={() => onError?.('Nie udało się załadować mapy')}
+        // Kod, nie tekst dla użytkownika — odbiorca (app/map.tsx) ignoruje
+        // argument i pokazuje własny, tłumaczony komunikat ze słownika.
+        onError={() => onError?.('map-load-failed')}
         onHttpError={(e) => {
           // Główny dokument HTML nigdy nie idzie przez http://, więc każdy
           // błąd HTTP dotyczy zasobów (kafelki) — nie zabijamy całej mapy.

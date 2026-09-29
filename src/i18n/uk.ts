@@ -49,6 +49,9 @@ export const uk: Strings = {
     editCard: 'Редагувати',
     editCardSub: 'збережені місця',
     historyTitle: 'Останні місця',
+    historyEmptyTitle: 'Немає останніх місць',
+    historyEmptyBody: 'Знайди сполучення — і воно з’явиться тут як швидка ціль.',
+    historyEmptyAction: 'Шукати сполучення',
     openConnA11y: (title: string, label: string) => `Відкрити сполучення до ${title}, ${label}`,
     gpsTitle: 'Моя локація (GPS)',
     gpsAddressHome: 'Поточна позиція пристрою',
@@ -325,10 +328,12 @@ export const uk: Strings = {
     emptyBody: 'Додай дім, роботу чи улюблені точки, щоб перевіряти сполучення одним дотиком.',
     addNew: 'Додати нове місце',
     removeTitle: (name: string) => `Видалити „${name}”?`,
+    removeGeneric: 'Видалити це місце?',
+    removeConfirm: 'Видалити',
     iconCategories: {
       all: 'Усі',
       frequent: 'Часті',
-      travel: 'Подорожі',
+      transit: 'Подорожі',
       food: 'Їжа',
       health: 'Здоров’я',
       culture: 'Культура',
@@ -465,9 +470,9 @@ export const uk: Strings = {
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
-    stopsSummary: (n: number, open: boolean) => {
+    stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = n === 1 ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
-      return `${stops} • ${open ? 'згорнути' : 'розгорнути'}`;
+      return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
     },
   },
   compass: {
@@ -501,7 +506,7 @@ export const uk: Strings = {
     noGps: 'Немає GPS-позиції',
     onTrack: 'Ти на маршруті',
     offTrack: (m: number) => `Ти: ${m} м від маршруту`,
-    zoomUser: (label: string, z: number) => `${label} · Zoom ${z}`,
+    zoomUser: (label: string, z: string) => `${label} · Zoom ${z}`,
     goStartA11y: 'Перейти до старту маршруту',
     progressA11y: 'Вісь прогресу маршруту',
     goEndA11y: 'Перейти до кінця маршруту',
@@ -509,6 +514,8 @@ export const uk: Strings = {
   lastTrip: {
     backA11y: (from: string, to: string) => `Швидке повернення: ${from} до ${to}. Відпусти, щоб шукати.`,
     lastA11y: (from: string, to: string) => `Останнє сполучення: ${from} до ${to}. Тягни далі, щоб обернути.`,
+    pullHint: 'Останнє шукане сполучення.\nВідпусти, щоб шукати',
+    pullHintBack: 'Дорога назад.\nВідпусти, щоб шукати',
   },
   suggestion: {
     stopFallback: 'Зупинка',

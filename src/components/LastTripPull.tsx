@@ -13,6 +13,7 @@ import Animated, {
 import { ArrowRight, RotateCcw, Search } from 'lucide-react-native';
 import { elev, scheme, shape } from '../theme/tokens';
 import type { TripHistoryItem } from '../services/smartRanker';
+import { useStrings } from '../i18n';
 
 // Progi pulla (px): lupka od 70, a szybki powrót (reverse) dopiero od ~36%
 // wysokości ekranu — celowo głęboko, żeby nie dało się go zahaczyć
@@ -46,6 +47,7 @@ export function LastTripPull({
   option: LastTripOption;
   height: SharedValue<number>;
 }) {
+  const s = useStrings();
   const reversed = option === 2;
 
   // Strzałka: pełny obrót jak przy swapie na ekranie połączeń.
@@ -95,8 +97,8 @@ export function LastTripPull({
         accessibilityRole="text"
         accessibilityLabel={
           reversed
-            ? `Szybki powrót: ${from} do ${to}. Puść, aby wyszukać.`
-            : `Ostatnie połączenie: ${from} do ${to}. Ciągnij dalej, aby odwrócić.`
+            ? s.lastTrip.backA11y(from, to)
+            : s.lastTrip.lastA11y(from, to)
         }
       >
         <View style={styles.pill}>
@@ -141,6 +143,9 @@ export function LastTripPull({
             </Text>
           </Animated.View>
         </View>
+        <Text style={styles.hint} numberOfLines={2}>
+          {reversed ? s.lastTrip.pullHintBack : s.lastTrip.pullHint}
+        </Text>
       </View>
     </Animated.View>
   );
@@ -182,6 +187,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: scheme.onSurface,
     textAlign: 'center',
+  },
+  hint: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
   // Pionowy toggle w vibe docka: pigułka, tor, kciuk jak wczoraj.
   pill: {

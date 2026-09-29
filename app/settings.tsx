@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeftRight, ChevronLeft, Clock3, Database, Download, Footprints, Minus, Plus, RotateCcw, Activity, Anchor } from 'lucide-react-native';
+import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, RotateCcw, Activity, Anchor } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
+import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
 import {
   SETTINGS_LIMITS,
   formatTransferTime,
@@ -23,18 +24,19 @@ import {
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 
-function dataStatusLabel(s: DataStatus): string {
-  switch (s.state) {
+function dataStatusLabel(status: DataStatus): string {
+  const t = tr().settings;
+  switch (status.state) {
     case 'empty':
-      return 'Brak danych offline.';
+      return t.dataEmpty;
     case 'downloading':
-      return `Pobieranie… ${Math.round(s.progress * 100)}%`;
+      return t.dataDownloading(Math.round(status.progress * 100));
     case 'importing':
-      return `${s.step} ${Math.round(s.progress * 100)}%`;
+      return t.dataStep(status.step, Math.round(status.progress * 100));
     case 'ready':
-      return `Pełny rozkład: ${s.stops} przystanków, ${s.trips} kursów`;
+      return t.dataReady(status.stops, status.trips);
     case 'error':
-      return `Błąd: ${s.message}`;
+      return t.dataError(status.message);
   }
 }
 
@@ -87,9 +89,19 @@ function Stepper({
   );
 }
 
+const LANG_OPTIONS: { value: LocaleSetting; label: string }[] = [
+  { value: 'system', label: '' }, // label systemowy z słownika (langSystem)
+  { value: 'pl', label: 'Polski' },
+  { value: 'en', label: 'English' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'uk', label: 'Українська' },
+];
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { settings, update, reset } = useRoutingSettings();
+  const s = useStrings();
+  const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
 
   const maxT = SETTINGS_LIMITS.maxTransfers;
   const minT = SETTINGS_LIMITS.minTransferSec;
@@ -112,11 +124,11 @@ export default function SettingsScreen() {
     try {
       await importGtfsFromNetwork();
     } catch (err) {
-      // Powód z importu (po polsku) zamiast zawsze tego samego „sprawdź internet".
-      const reason = err instanceof Error ? err.message : 'Spróbuj ponownie za chwilę.';
+      // Powód z importu (w języku użytkownika) zamiast zawsze tego samego „sprawdź internet".
+      const reason = err instanceof Error ? err.message : s.settings.downloadFailFallback;
       Alert.alert(
-        'Nie udało się pobrać rozkładu',
-        `${reason}. Aplikacja pobiera dane prosto z Open Data Wrocław.`,
+        s.settings.downloadFailTitle,
+        s.settings.downloadFailBody(reason),
       );
     } finally {
       setImporting(false);
@@ -129,8 +141,8 @@ export default function SettingsScreen() {
         <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>Ustawienia trasy</Text>
-        <Pressable onPress={() => reset()} style={styles.iconBtn} hitSlop={10} accessibilityLabel="Przywróć domyślne">
+        <Text style={styles.headerTitle}>{s.settings.title}</Text>
+        <Pressable onPress={() => reset()} style={styles.iconBtn} hitSlop={10} accessibilityLabel={s.settings.resetA11y}>
           <RotateCcw size={18} color={scheme.onSurfaceVariant} />
         </Pressable>
       </View>
@@ -139,10 +151,10 @@ export default function SettingsScreen() {
         <Animated.View entering={FadeInDown.duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Database size={18} color={scheme.primary} />
-            <Text style={styles.cardTitle}>Dane offline (MPK Wrocław)</Text>
+            <Text style={styles.cardTitle}>{s.settings.dataTitle}</Text>
           </View>
           <Text style={styles.cardHint}>
-            Pełny rozkład z Open Data Wrocław. Pobierany raz. Działa offline.
+            {s.settings.dataHint}
           </Text>
           <Text style={styles.stepValueText}>{dataStatusLabel(dataStatus)}</Text>
           <Pressable
@@ -153,26 +165,57 @@ export default function SettingsScreen() {
               busy && styles.stepBtnDisabled,
               pressed && !busy && { opacity: 0.7 },
             ]}
-            accessibilityLabel="Pobierz rozkład MPK"
+            accessibilityLabel={s.settings.downloadA11y}
           >
             <Download size={18} color={scheme.onSecondaryContainer} />
             <Text style={styles.downloadText}>
-              {dataStatus.state === 'ready' ? 'Odśwież rozkład' : 'Pobierz pełny rozkład'}
+              {dataStatus.state === 'ready' ? s.settings.downloadReady : s.settings.downloadEmpty}
             </Text>
           </Pressable>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(10).duration(180)} style={styles.card}>
+          <View style={styles.cardTop}>
+            <Globe size={18} color={scheme.primary} />
+            <Text style={styles.cardTitle}>{s.settings.langTitle}</Text>
+          </View>
+          <View style={styles.langRow}>
+            {LANG_OPTIONS.map((opt) => {
+              const active = langSetting === opt.value;
+              const label = opt.value === 'system' ? s.settings.langSystem : opt.label;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => setLang(opt.value)}
+                  style={({ pressed }) => [
+                    styles.langChip,
+                    active && styles.langChipActive,
+                    pressed && !active && { opacity: 0.7 },
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                  accessibilityLabel={label}
+                >
+                  {active && <Check size={14} color={scheme.onPrimaryContainer} />}
+                  <Text style={[styles.langChipText, active && styles.langChipTextActive]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(20).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <ArrowLeftRight size={18} color={scheme.primary} />
-            <Text style={styles.cardTitle}>Maks. liczba przesiadek</Text>
+            <Text style={styles.cardTitle}>{s.settings.transfersTitle}</Text>
           </View>
           <Text style={styles.cardHint}>
-            Mniej przesiadek = wygodniej. Planer dolicza ~10 min „kary” za każdą przesiadkę, więc spacer 300 m do
-            przystanku z bezpośrednim kursem wygrywa z 3 przesiadkami z najbliższego słupka.
+            {s.settings.transfersHint}
           </Text>
           <Stepper
-            value={settings.maxTransfers === 0 ? 'Bezpośrednie' : transfersLabel(settings.maxTransfers)}
+            value={settings.maxTransfers === 0 ? s.settings.directValue : transfersLabel(settings.maxTransfers)}
             onMinus={() => update({ maxTransfers: settings.maxTransfers - maxT.step })}
             onPlus={() => update({ maxTransfers: settings.maxTransfers + maxT.step })}
             minusDisabled={settings.maxTransfers <= maxT.min}
@@ -183,11 +226,10 @@ export default function SettingsScreen() {
         <Animated.View entering={FadeInDown.delay(40).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Clock3 size={18} color={scheme.primary} />
-            <Text style={styles.cardTitle}>Minimalny czas na przesiadkę</Text>
+            <Text style={styles.cardTitle}>{s.settings.transferTimeTitle}</Text>
           </View>
           <Text style={styles.cardHint}>
-            Ile czasu rezerwujemy między wysiadką a kolejnym odjazdem. Większa wartość odrzuca ryzykowne,
-            minutowe przesiadki.
+            {s.settings.transferTimeHint}
           </Text>
           <Stepper
             value={formatTransferTime(settings.minTransferSec)}
@@ -201,11 +243,10 @@ export default function SettingsScreen() {
         <Animated.View entering={FadeInDown.delay(80).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Footprints size={18} color={scheme.primary} />
-            <Text style={styles.cardTitle}>Maks. dystans pieszo</Text>
+            <Text style={styles.cardTitle}>{s.settings.walkTitle}</Text>
           </View>
           <Text style={styles.cardHint}>
-            Jak daleko możesz podejść na przystanek początkowy i z końcowego do celu. Dalszy przystanek z
-            bezpośrednim tramwajem często bije najbliższy słupek.
+            {s.settings.walkHint}
           </Text>
           <Stepper
             value={formatWalkDistance(settings.maxWalkM, settings.walkSpeedMps)}
@@ -219,10 +260,10 @@ export default function SettingsScreen() {
         <Animated.View entering={FadeInDown.delay(120).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Activity size={18} color={scheme.primary} />
-            <Text style={styles.cardTitle}>Tempo chodzenia</Text>
+            <Text style={styles.cardTitle}>{s.settings.speedTitle}</Text>
           </View>
           <Text style={styles.cardHint}>
-            Dostosuj prędkość, aby lepiej obliczać czas przesiadek pieszych i dojścia do celu.
+            {s.settings.speedHint}
           </Text>
           <Stepper
             value={walkSpeedLabel(settings.walkSpeedMps)}
@@ -237,10 +278,10 @@ export default function SettingsScreen() {
         <Animated.View entering={FadeInDown.delay(160).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Anchor size={18} color={scheme.primary} />
-            <Text style={styles.cardTitle}>Promień kotwiczenia</Text>
+            <Text style={styles.cardTitle}>{s.settings.anchorTitle}</Text>
           </View>
           <Text style={styles.cardHint}>
-            Gdy jesteś w tym promieniu od zapisanego miejsca (np. Dom), nawigacja automatycznie zakotwiczy punkt startowy do przypisanego przystanku, niwelując niedokładności GPS.
+            {s.settings.anchorHint}
           </Text>
           <Stepper
             value={`${settings.anchorRadiusM} m`}
@@ -252,7 +293,7 @@ export default function SettingsScreen() {
         </Animated.View>
 
         <Text style={styles.foot}>
-          Ustawienia zapisują się automatycznie i dotyczą kolejnych wyszukiwań połączeń.
+          {s.settings.foot}
         </Text>
 
         <View style={styles.sectionLabel}>
@@ -288,6 +329,11 @@ const styles = StyleSheet.create({
   stepValueSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: scheme.secondaryContainer, borderRadius: shape.full, paddingVertical: 12 },
   downloadText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
+  langRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  langChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 14, paddingVertical: 10 },
+  langChipActive: { backgroundColor: scheme.primaryContainer },
+  langChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
+  langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
   foot: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 16 },
   sectionLabel: { marginTop: 10 },
   sectionLabelText: { ...type.titleSmall, color: scheme.onSurfaceVariant, fontWeight: '600' },

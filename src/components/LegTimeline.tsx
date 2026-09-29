@@ -19,6 +19,7 @@ import {
   locateVehicle,
   normalizeName,
 } from '../services/vehiclePosition';
+import { useStrings } from '../i18n';
 
 // Logika pozycji pojazdu mieszka w serwisie, bo korzysta z niej również
 // silnik powiadomień (nie chcemy, żeby serwis importował komponent).
@@ -37,76 +38,6 @@ function cacheStops(key: string, stops: LegStop[]) {
   stopsCache.set(key, stops);
   if (stopsCache.size <= STOPS_CACHE_MAX) return;
   const oldest = stopsCache.keys().next();
-  if (!oldest.done) stopsCache.delete(oldest.value);
-}
-
-function normalizeName(s: string): string {
-  return (s || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ł/g, 'l')
-    .trim();
-}
-
-function parseHMtoSec(hm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})/.exec(hm || '');
-  if (!m) return null;
-  return Number(m[1]) * 3600 + Number(m[2]) * 60;
-}
-
-/**
- * Awaryjna lista gdy backend nie zwrócił sekwencji i nie da się jej dociągnąć.
- * Uczciwa: tylko znane końce odcinka (zero wymyślonych przystanków po drodze).
- */
-export function buildFallbackStops(leg: Leg): LegStop[] {
-  if (leg.intermediateStops && leg.intermediateStops.length >= 2) {
-    return leg.intermediateStops;
-  }
-  const depSec = parseHMtoSec(leg.departAt);
-  const arrSec = parseHMtoSec(leg.arriveAt);
-  const mk = (
-    first: boolean,
-  ): LegStop => ({
-    stopId: first
-      ? leg.fromStopId || `fallback-${leg.id}-from`
-      : leg.toStopId || `fallback-${leg.id}-to`,
-    name: first ? leg.fromStop : leg.toStop,
-    lat: first ? leg.fromLat : leg.toLat,
-    lon: first ? leg.fromLon : leg.toLon,
-    seq: first ? 1 : 2,
-    arriveSec: first ? depSec ?? undefined : arrSec ?? undefined,
-    departSec: first ? depSec ?? undefined : arrSec ?? undefined,
-  });
-  return [mk(true), mk(false)];
-}
-
-/** Nasz odcinek (wsiadanie→wysiadanie) jako indeksy w pełnej liście kursu. */
-export function findUserSegment(stops: LegStop[], leg: Leg): { start: number; end: number } {
-  if (stops.length === 0) return { start: 0, end: 0 };
-  let start = -1;
-  let end = -1;
-  if (leg.fromStopId) start = stops.findIndex((s) => s.stopId === leg.fromStopId);
-  if (leg.toStopId) end = stops.findIndex((s) => s.stopId === leg.toStopId);
-  if (start < 0) {
-    const n = normalizeName(leg.fromStop);
-    start = stops.findIndex((s) => normalizeName(s.name) === n);
-  }
-  if (end < 0) {
-    const n = normalizeName(leg.toStop);
-    // ostatni match — nazwy przystanków potrafią się powtarzać na linii
-    for (let i = stops.length - 1; i >= 0; i--) {
-      if (normalizeName(stops[i].name) === n) {
-        end = i;
-        break;
-      }
-    }
-  }
-  // Fallback: syntetyczna lista = w całości nasz odcinek
-  if (start < 0) start = 0;
-  if (end < 0) end = stops.length - 1;
-  if (end < start) end = start;
-  return { start, end };
 }
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
@@ -270,6 +201,8 @@ function TransitLegCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
+  const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(false);
@@ -289,7 +222,7 @@ function TransitLegCard({
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={`${leg.line} kierunek ${leg.direction}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`}
+        accessibilityLabel={t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded)}
         style={({ pressed }) => [s.card, pressed && { opacity: 0.96 }]}
       >
         <View style={s.cardTop}>
@@ -303,14 +236,14 @@ function TransitLegCard({
           </Animated.View>
         </View>
         <Text style={s.stopBig}>
-          <Text style={s.stopPrefix}>z </Text>
+          <Text style={s.stopPrefix}>{t.leg.fromPrefix}</Text>
           {leg.fromStop} <Text style={s.hour}>{leg.departAt}</Text>
         </Text>
         <Text style={s.meta}>
-          {leg.stopsCount} przystanki • ~{leg.stopsCount * 2} min • {expanded ? 'zwiń' : 'rozwiń przystanki'}
+          {t.leg.stopsSummary(leg.stopsCount, leg.stopsCount * 2, expanded)}
         </Text>
         <Text style={s.stopBig}>
-          <Text style={s.stopPrefix}>do </Text>
+          <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
           {leg.toStop} <Text style={s.hour}>{leg.arriveAt}</Text>
         </Text>
         {hasOpened && (

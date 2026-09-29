@@ -53,7 +53,8 @@
           "frequentUpdates": true,
           "widgets": []
         }
-      ]
+      ],
+      "expo-localization"
     ]
   }
 }

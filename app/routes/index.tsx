@@ -70,15 +70,7 @@ import {
 } from '../../src/components/RoutesThumbBar';
 import { useThumbBarInset } from '../../src/components/ThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
-
-const GPS_ITEM: Suggestion = {
-  id: '__gps',
-  title: 'Moja lokalizacja (GPS)',
-  address: 'Użyj aktualnej pozycji',
-  kind: 'history',
-  lat: 0,
-  lon: 0,
-};
+import { useStrings } from '../../src/i18n';
 
 /** Sekundy od północy — jeden zegar dla całego ekranu. */
 function nowSeconds(): number {
@@ -91,6 +83,15 @@ function nowSeconds(): number {
 const connectionKey = (item: Connection) => item.id;
 
 export default function RoutesScreen() {
+  const s = useStrings();
+  const gpsItem: Suggestion = {
+    id: '__gps',
+    title: s.home.gpsTitle,
+    address: s.routes.gpsAddress,
+    kind: 'history',
+    lat: 0,
+    lon: 0,
+  };
   const router = useRouter();
   const params = useLocalSearchParams<{
     fromTitle?: string;
@@ -110,7 +111,7 @@ export default function RoutesScreen() {
   const [fromLat, setFromLat] = useState(Number(params.fromLat || DEFAULT_LOCATION.lat));
   const [fromLon, setFromLon] = useState(Number(params.fromLon || DEFAULT_LOCATION.lon));
 
-  const [toTitle, setToTitle] = useState(String(params.toTitle ?? 'Cel'));
+  const [toTitle, setToTitle] = useState(String(params.toTitle ?? s.routes.destFallback));
   const [toLat, setToLat] = useState(Number(params.toLat ?? 0));
   const [toLon, setToLon] = useState(Number(params.toLon ?? 0));
   const [toId, setToId] = useState(String(params.toId ?? ''));
@@ -343,10 +344,10 @@ export default function RoutesScreen() {
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
   const [departureTimeSec, setDepartureTimeSec] = useState<number | undefined>(undefined);
   const [timeMode, setTimeMode] = useState<TimeMode>('depart');
-  const [timeLabel, setTimeLabel] = useState('Teraz');
+  const [timeLabel, setTimeLabel] = useState(s.routes.now);
 
   const queryAt = (depSec: number | undefined, mode: TimeMode = timeMode) => {
-    const s = getSettingsSync();
+    const cfg = getSettingsSync();
     return {
       fromTitle,
       fromLat,
@@ -363,11 +364,11 @@ export default function RoutesScreen() {
       departureTimeSec: mode === 'depart' ? depSec : undefined,
       arriveBySec: mode === 'arrive' ? depSec : undefined,
       // Jednorazowe filtry nadpisują systemowe maxTransfers / typ pojazdów.
-      maxTransfers: directOnly ? 0 : s.maxTransfers,
+      maxTransfers: directOnly ? 0 : cfg.maxTransfers,
       modes: modeFilter,
-      minTransferSec: s.minTransferSec,
-      maxWalkM: s.maxWalkM,
-      walkSpeedMps: s.walkSpeedMps,
+      minTransferSec: cfg.minTransferSec,
+      maxWalkM: cfg.maxWalkM,
+      walkSpeedMps: cfg.walkSpeedMps,
     };
   };
 
@@ -391,13 +392,13 @@ export default function RoutesScreen() {
     Promise.all([FavoritesService.list(), loadSettings()]).then(([places, currentSettings]) => {
       setSavedPlaces(places);
       setSavedQuick(
-        places.slice(0, 3).map((s) => ({
-          id: s.placeId,
-          title: s.name,
-          address: s.address,
+        places.slice(0, 3).map((p) => ({
+          id: p.placeId,
+          title: p.name,
+          address: p.address,
           kind: 'history' as const,
-          lat: s.lat,
-          lon: s.lon,
+          lat: p.lat,
+          lon: p.lon,
         })),
       );
 
@@ -454,14 +455,14 @@ export default function RoutesScreen() {
   }, [query, sheetFor, fromLat, fromLon]);
 
   const recentWithGps = useMemo(
-    () => (sheetFor === 'from' ? [GPS_ITEM, ...recent] : recent),
-    [sheetFor, recent],
+    () => (sheetFor === 'from' ? [gpsItem, ...recent] : recent),
+    [sheetFor, recent, gpsItem],
   );
 
-  const handleSuggestionSelect = async (s: Suggestion) => {
+  const handleSuggestionSelect = async (sug: Suggestion) => {
     setQuery('');
     setSheetFor(null);
-    if (s.id === GPS_ITEM.id) {
+    if (sug.id === gpsItem.id) {
       // Start = aktualna pozycja GPS (nie zapisana wcześniej)
       try {
         const l = await LocationService.getCurrentLocation();
@@ -489,27 +490,27 @@ export default function RoutesScreen() {
       } catch (err) {
         console.warn('[handleSuggestionSelect] GPS error:', err);
         Alert.alert(
-          'Błąd lokalizacji',
-          'Nie udało się pobrać aktualnej pozycji GPS. Upewnij się, że lokalizacja w telefonie jest włączona.'
+          s.routes.gpsFailTitle,
+          s.routes.gpsFailBody
         );
       }
       return;
     }
 
-    void SearchService.recordRecent(s).then(() => {
+    void SearchService.recordRecent(sug).then(() => {
       SearchService.recent().then(setRecent);
     });
 
     if (sheetFor === 'from') {
       setActiveAnchor(null);
-      setFromTitle(s.title);
-      setFromLat(s.lat);
-      setFromLon(s.lon);
+      setFromTitle(sug.title);
+      setFromLat(sug.lat);
+      setFromLon(sug.lon);
     } else {
-      setToId(s.id);
-      setToTitle(s.title);
-      setToLat(s.lat);
-      setToLon(s.lon);
+      setToId(sug.id);
+      setToTitle(sug.title);
+      setToLat(sug.lat);
+      setToLon(sug.lon);
     }
   };
 
@@ -653,7 +654,9 @@ export default function RoutesScreen() {
     const seq = ++fetchSeq.current;
 
     try {
-      const c = await RoutingService.getConnections(queryAt(nextDeparture));
+      // Paginacja zawsze kotwiczy się do czasów ODJAZDÓW z krawędzi listy —
+      // nawet w trybie przyjazdu (tam arriveBySec dotyczył tylko startu).
+      const c = await RoutingService.getConnections(queryAt(nextDeparture, 'depart'));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
@@ -680,7 +683,8 @@ export default function RoutesScreen() {
     const seq = ++fetchSeq.current;
 
     try {
-      const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
+      // Jak wyżej: historia dokładana od czasu odjazdu, nie przyjazdu.
+      const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800, 'depart'));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
@@ -984,7 +988,7 @@ export default function RoutesScreen() {
         </Pressable>
 
         <Text style={styles.screenTitle} numberOfLines={1}>
-          Połączenia MPK
+          {s.routes.title}
         </Text>
 
         {/* Sortowanie z paska (z main): 0 = odjazd, 1 = przyjazd. */}
@@ -995,8 +999,8 @@ export default function RoutesScreen() {
             accessibilityState={{ checked: sortMode === 'fastest' }}
             accessibilityLabel={
               sortMode === 'fastest'
-                ? 'Sortowanie: przyjazd. Dotknij, aby przełączyć na odjazd.'
-                : 'Sortowanie: odjazd. Dotknij, aby przełączyć na przyjazd.'
+                ? s.routes.sortFastestA11y
+                : s.routes.sortEarliestA11y
             }
             style={({ pressed }) => [
               styles.sortToggle,
@@ -1017,7 +1021,7 @@ export default function RoutesScreen() {
             </View>
           </Pressable>
           <Text style={styles.sortLabel} numberOfLines={1}>
-            {sortMode === 'fastest' ? 'Przyjazd' : 'Odjazd'}
+            {sortMode === 'fastest' ? s.routes.sortFastest : s.routes.sortEarliest}
           </Text>
         </View>
 
@@ -1061,8 +1065,8 @@ export default function RoutesScreen() {
           accessibilityRole="button"
           accessibilityLabel={
             activeAnchor
-              ? `Zmień miejsce startowe, obecnie ${fromTitle}, odjazd z przystanku ${activeAnchor.stopName}`
-              : `Zmień miejsce startowe, obecnie ${fromTitle}`
+              ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
+              : s.routes.changeFromA11y(fromTitle)
           }
           style={({ pressed }) => [styles.routeSide, pressed && { opacity: 0.6 }]}
           hitSlop={6}
@@ -1103,7 +1107,7 @@ export default function RoutesScreen() {
                   pressed && { opacity: 0.6, transform: [{ scale: 0.88 }] },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Usuń zakotwiczenie przystanku i szukaj z GPS"
+                accessibilityLabel={s.routes.dismissAnchorA11y}
               >
                 <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
               </Pressable>
@@ -1114,7 +1118,7 @@ export default function RoutesScreen() {
         <Pressable
           onPress={handleSwap}
           accessibilityRole="button"
-          accessibilityLabel="Odwróć trasę: zamień punkt startowy z docelowym"
+          accessibilityLabel={s.routes.swapA11y}
           style={({ pressed }) => [
             styles.routeArrowBtn,
             pressed && { opacity: 0.6, transform: [{ scale: 0.9 }] },
@@ -1129,7 +1133,7 @@ export default function RoutesScreen() {
         <Pressable
           onPress={() => setSheetFor('to')}
           accessibilityRole="button"
-          accessibilityLabel={`Zmień cel, obecnie ${toTitle}`}
+          accessibilityLabel={s.routes.changeToA11y(toTitle)}
           style={({ pressed }) => [styles.routeSideGrow, pressed && { opacity: 0.6 }]}
           hitSlop={6}
         >
@@ -1150,17 +1154,17 @@ export default function RoutesScreen() {
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={scheme.primary} />
-          <Text style={styles.loadingText}>Szukam połączeń…</Text>
+          <Text style={styles.loadingText}>{s.routes.searching}</Text>
         </View>
       ) : loadError ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>
-            {timetableReady ? 'Nie udało się policzyć połączeń' : 'Brak rozkładu MPK'}
+            {timetableReady ? s.routes.calcFail : s.routes.noTimetable}
           </Text>
           <Text style={styles.emptySub}>
             {timetableReady
-              ? 'Planer liczy trasy na telefonie. Spróbuj ponownie — jeśli powtarza się to zawsze, odśwież rozkład w ustawieniach.'
-              : 'Aplikacja liczy trasy na telefonie z pełnego rozkładu MPK. Bez niego nie ma połączeń — pobierz go raz, potem działa offline.'}
+              ? s.routes.calcFailBody
+              : s.routes.noTimetableBody}
           </Text>
           {!timetableReady && (
             <Pressable
@@ -1172,18 +1176,18 @@ export default function RoutesScreen() {
                 pressed && !timetableBusy && { opacity: 0.8 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Pobierz rozkład MPK"
+              accessibilityLabel={s.routes.downloadA11y}
             >
               {timetableBusy ? (
                 <Text style={styles.retryText}>
                   {dataStatus.state === 'downloading'
-                    ? `Pobieranie… ${Math.round(dataStatus.progress * 100)}%`
+                    ? s.routes.downloading(Math.round(dataStatus.progress * 100))
                     : dataStatus.state === 'importing'
-                      ? `${dataStatus.step} ${Math.round(dataStatus.progress * 100)}%`
-                      : 'Pobieranie…'}
+                      ? s.routes.downloadingStep(dataStatus.step, Math.round(dataStatus.progress * 100))
+                      : s.routes.downloadingPlain}
                 </Text>
               ) : (
-                <Text style={styles.retryText}>Pobierz rozkład</Text>
+                <Text style={styles.retryText}>{s.routes.downloadAction}</Text>
               )}
             </Pressable>
           )}
@@ -1192,7 +1196,7 @@ export default function RoutesScreen() {
               onPress={() => fetchRoutes(departureTimeSec)}
               style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
             >
-              <Text style={styles.retryText}>Spróbuj ponownie</Text>
+              <Text style={styles.retryText}>{s.common.retry}</Text>
             </Pressable>
           )}
         </View>
@@ -1232,10 +1236,10 @@ export default function RoutesScreen() {
           ListHeaderComponent={
             <View style={styles.countRow}>
               <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(items.length)} • {isCustomTime ? `${timeMode === 'arrive' ? 'przyjazd' : 'odjazd'} ${timeLabel}` : 'najbliższe odjazdy'}
-                {directOnly ? ' • tylko bezpośrednie' : ''}
-                {modeFilter === 'tram' ? ' • tramwaje' : modeFilter === 'bus' ? ' • autobusy' : ''}
-                {loadingEarlier ? ' • wczytuję wcześniejsze…' : ''}
+                {connectionsLabel(items.length)} • {isCustomTime ? (timeMode === 'arrive' ? s.routes.countArrive(timeLabel) : s.routes.countDepart(timeLabel)) : s.routes.countNearest}
+                {directOnly ? s.routes.countDirect : ''}
+                {modeFilter === 'tram' ? s.routes.countTram : modeFilter === 'bus' ? s.routes.countBus : ''}
+                {loadingEarlier ? s.routes.countEarlier : ''}
               </Text>
               {offline && (
                 <Pressable
@@ -1243,16 +1247,16 @@ export default function RoutesScreen() {
                   style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
                   hitSlop={6}
                   accessibilityRole="button"
-                  accessibilityLabel="Ostatnie dane z cache. Dotknij, aby odświeżyć."
+                  accessibilityLabel={s.routes.offlineTapA11y}
                 >
                   <View style={styles.offlineDot} />
-                  <Text style={styles.offlineText}>offline</Text>
+                  <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
                 </Pressable>
               )}
               {liveStale && !offline && (
                 <View style={styles.offlineChip}>
                   <View style={styles.offlineDot} />
-                  <Text style={styles.offlineText}>brak danych live</Text>
+                  <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
                 </View>
               )}
             </View>
@@ -1271,19 +1275,19 @@ export default function RoutesScreen() {
                 ) : loadMoreFailed ? (
                   <>
                     <Text style={styles.footerText}>
-                      Nie udało się dociągnąć dalszych połączeń.
+                      {s.routes.moreFail}
                     </Text>
                     <Pressable
                       onPress={() => void handleLoadMore()}
                       style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
                       accessibilityRole="button"
-                      accessibilityLabel="Spróbuj dociągnąć dalsze połączenia"
+                      accessibilityLabel={s.routes.moreRetryA11y}
                     >
-                      <Text style={styles.retryText}>Spróbuj ponownie</Text>
+                      <Text style={styles.retryText}>{s.common.retry}</Text>
                     </Pressable>
                   </>
                 ) : (
-                  <Text style={styles.footerText}>To wszystkie odjazdy z tej trasy.</Text>
+                  <Text style={styles.footerText}>{s.routes.noMore}</Text>
                 )}
               </View>
             ) : null
@@ -1292,26 +1296,26 @@ export default function RoutesScreen() {
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyTitle}>
                 {directOnly || modeFilter !== 'all'
-                  ? 'Brak połączeń dla wybranych filtrów'
-                  : 'Nie znaleziono połączeń'}
+                  ? s.routes.emptyFiltered
+                  : s.routes.emptyNone}
               </Text>
               <Text style={styles.emptySub}>
                 {directOnly && modeFilter !== 'all'
-                  ? `Na tej trasie nie ma teraz kursu ${modeFilter === 'tram' ? 'tramwajem' : 'autobusem'} bez przesiadek. Poluzuj filtry albo sprawdź inną godzinę.`
+                  ? s.routes.emptyModeDirect(modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen)
                   : directOnly
-                    ? 'Na tej trasie nie ma teraz kursu bez przesiadek. Wyłącz filtr „Tylko bezpośrednie”, aby zobaczyć połączenia z przesiadkami, albo sprawdź inną godzinę.'
+                    ? s.routes.emptyDirect
                     : modeFilter !== 'all'
-                      ? `Na tej trasie nie ma teraz kursu ${modeFilter === 'tram' ? 'tramwajem' : 'autobusem'}. Przełącz na „Wszystkie”, aby zobaczyć resztę połączeń.`
-                      : 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.'}
+                      ? s.routes.emptyMode(modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen)
+                      : s.routes.emptyPlain}
               </Text>
               {directOnly && (
                 <Pressable
                   onPress={() => setDirectOnly(false)}
                   style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
                   accessibilityRole="button"
-                  accessibilityLabel="Pokaż połączenia z przesiadkami"
+                  accessibilityLabel={s.routes.showWithChangesA11y}
                 >
-                  <Text style={styles.retryText}>Pokaż z przesiadkami</Text>
+                  <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
                 </Pressable>
               )}
               {modeFilter !== 'all' && (
@@ -1319,9 +1323,9 @@ export default function RoutesScreen() {
                   onPress={() => setModeFilter('all')}
                   style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
                   accessibilityRole="button"
-                  accessibilityLabel="Pokaż wszystkie pojazdy"
+                  accessibilityLabel={s.routes.showAllVehiclesA11y}
                 >
-                  <Text style={styles.retryText}>Pokaż wszystkie pojazdy</Text>
+                  <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
                 </Pressable>
               )}
             </View>
@@ -1343,7 +1347,7 @@ export default function RoutesScreen() {
       {/* 5. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
-          placeholder={sheetFor === 'from' ? 'Skąd wyruszasz?' : 'Dokąd jedziesz?'}
+          placeholder={sheetFor === 'from' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
           query={query}
           loading={searchLoading}
           results={results}
@@ -1492,7 +1496,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 3,
+    marginTop: 4,
     maxWidth: '100%',
   },
   anchorSubText: {
@@ -1515,9 +1519,13 @@ const styles = StyleSheet.create({
   },
   // Nagłówek trasy w stylu One UI: bez tła, jedna linia.
   // Wysokość jak dawny box (~64), większy font, luźny oddech z boków.
+  // Wiersz startuje od góry (flex-start), a obie kolumny mają ten sam
+  // paddingTop — dzięki temu tytuły od→do stoją ZAWSZE w jednej linii,
+  // także z dopiską kotwicy (ona rośnie w dół, nie rozpycha środków).
+  // Matematyka jak stare centrowanie: tytuł od 21 px, strzałka od 16 px.
   routeHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     minHeight: 68,
     marginHorizontal: 2,
     marginTop: 4,
@@ -1529,10 +1537,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     maxWidth: '42%',
     justifyContent: 'center',
+    paddingTop: 9,
   },
   routeSideGrow: {
     flex: 1,
     justifyContent: 'center',
+    paddingTop: 9,
   },
   // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
   // nazwy dalej ucinały się z elipsą w jednej linii.
@@ -1541,11 +1551,13 @@ const styles = StyleSheet.create({
   },
   routeText: {
     fontSize: 20,
+    lineHeight: 26,
     fontWeight: '600',
     color: scheme.onSurfaceVariant,
   },
   routeTextStrong: {
     fontSize: 20,
+    lineHeight: 26,
     fontWeight: '700',
     color: scheme.onSurface,
   },
@@ -1556,6 +1568,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 8,
+    marginTop: 4,
     flexShrink: 0,
   },
 
