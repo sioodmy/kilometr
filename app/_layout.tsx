@@ -1,3 +1,5 @@
+import 'react-native-gesture-handler';
+import 'react-native-reanimated';
 import { LogBox } from 'react-native';
 import { useEffect, useState } from 'react';
 import { Stack, router } from 'expo-router';
