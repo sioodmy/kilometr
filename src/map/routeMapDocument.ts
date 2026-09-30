@@ -1,16 +1,12 @@
 // Dokument WebView z mapą: wektorowe kafelki OSM w ciemnym stylu M3 (patrz
 // `src/map/mapStyle.ts`), trasa, przystanki, start/cel i pojazd na żywo.
 //
-// Mapa żyje w WebView, bo tylko stąd da się naszpikować ją arkuszem stylów
-// w palecie aplikacji: natywne mapy (Google/Apple) mają obcy wygląd i na iOS
-// w ogóle nie przyjmują kafelków OSM.
-//
 // Komunikacja z aplikacją: RN → JS przez postMessage (MapInMessage),
 // JS → RN przez window.ReactNativeWebView.postMessage (MapOutMessage).
 
 import { scheme } from '../theme/tokens';
 import { MAP_ATTRIBUTION } from '../config';
-import { AHEAD_SOURCE_ID, buildMapStyle, MAP_COLORS, ROUTE_SOURCE_ID } from './mapStyle';
+import { buildMapStyle, MAP_COLORS, ROUTE_SOURCE_ID } from './mapStyle';
 import type { MapInMessage, MapOutMessage, MapRoute, MapVehicle } from './types';
 
 const MAPLIBRE_VERSION = '4.7.1';
@@ -22,7 +18,6 @@ const MAPLIBRE_CDNS = [
 export interface RouteMapDocumentOptions {
   route: MapRoute | null;
   vehicle?: MapVehicle | null;
-  follow?: boolean;
   user?: { lat: number; lon: number; heading: number | null } | null;
   selectedLegId?: string | null;
 }
@@ -81,7 +76,7 @@ const css = [
   'color:var(--k-on-surface-var) !important;}',
   '.maplibregl-ctrl-attrib a{color:var(--k-on-surface-var) !important;text-decoration:none;}',
   '.maplibregl-ctrl-attrib-button{display:none !important;}',
-  // ── pinezki startu i celu: goła pinezka, nazwy są w dolnym menu
+  // ── pinezki startu i celu
   '.k-pin{position:relative;width:18px;height:18px;}',
   '.k-pin i{position:absolute;inset:0;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);',
   'border:2px solid var(--k-land);box-shadow:0 2px 6px rgba(0,0,0,.55);}',
@@ -95,7 +90,7 @@ const css = [
   '.k-stop.board i,.k-stop.alight i{left:1px;top:1px;width:10px;height:10px;}',
   '.k-stop.board i{background:var(--k-primary);}',
   '.k-stop.alight i{background:var(--k-error);}',
-  // ── pojazd na żywo (kompaktowo: strzałka + punkt, bez etykiety)
+  // ── pojazd na żywo
   '.k-veh{position:relative;width:0;height:0;transition:transform 1.5s linear;}',
   '.k-veh.no-anim,.k-veh.no-anim *{transition:none !important;}',
   '.k-veh-halo{position:absolute;left:0;top:0;width:30px;height:30px;margin:-15px 0 0 -15px;',
@@ -109,7 +104,7 @@ const css = [
   '.k-veh-body{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;',
   'border-radius:7px;background:currentColor;border:2.5px solid var(--k-land);',
   'box-shadow:0 0 0 1.5px rgba(255,255,255,.85),0 2px 8px rgba(0,0,0,.6);}',
-  // ── pozycja użytkownika (stożek kursu pojawia się, gdy telefon go zna)
+  // ── pozycja użytkownika
   '.k-user{position:relative;width:0;height:0;}',
   '.k-user-halo{position:absolute;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;',
   'border-radius:14px;background:var(--k-tertiary);opacity:.16;}',
@@ -120,17 +115,10 @@ const css = [
   '.k-user-dot{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;',
   'border-radius:7px;background:var(--k-tertiary);border:2.5px solid var(--k-land);',
   'box-shadow:0 0 0 1.5px rgba(255,255,255,.7),0 2px 8px rgba(0,0,0,.5);}',
-  // ── kursor trasy + podświetlony odcinek przed nim
-  '.k-cursor{position:relative;width:0;height:0;}',
-  '.k-cursor-ring{position:absolute;left:0;top:0;width:26px;height:26px;margin:-13px 0 0 -13px;',
-  'border-radius:13px;border:2.5px solid var(--k-primary);background:rgba(92,219,190,0.2);',
-  'animation:k-pulse 1.8s infinite;}',
-  '.k-cursor-dot{position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;',
-  'border-radius:4px;background:var(--k-primary);box-shadow:0 0 6px var(--k-primary);}',
 ].join('\n');
 
-// Runtime MapLibre + komunikacja. Świadomie bez template literalów, bo całość
-// wplata się w template literal po stronie RN.
+// Runtime MapLibre + komunikacja — uproszczone: bez kursora, bez follow,
+// bez joysticka. Czysta mapa z trasą do przeglądania.
 const runtime = [
   '(function () {',
   "'use strict';",
@@ -175,20 +163,16 @@ const runtime = [
   '  return attempt();',
   '}',
   'var map = null;',
-  'var attribution = null;',
   'var route = null;',
   'var legGeom = {};',
   'var selectedLeg = null;',
-  'var following = false;',
   'var markers = [];',
   'var vehicleMarker = null;',
   'var userMarker = null;',
-  'var cursorMarker = null;',
   'var loadFailures = 0;',
   'var tilesDown = false;',
   'var styleReady = false;',
   'var BOOTSTRAP = P.route || null;',
-  '// Środek pinezki (18 px) przesunięty na koniec geograficzny punktu.',
   'var PIN_OFFSET = [-9, -17];',
   '',
   'function geom(leg) { return legGeom[leg.id] || []; }',
@@ -201,7 +185,6 @@ const runtime = [
   '  var node = attribNode();',
   '  if (!node) return;',
   '  var bottom = pad && pad.length === 4 ? pad[2] : (P.padding ? P.padding[2] : 0);',
-  '  // !important inline, bo arkusz stylów też ustawia margines atrybucji.',
   '  node.style.setProperty("margin-bottom", Math.max(0, bottom - 12) + "px", "important");',
   '}',
   '',
@@ -210,7 +193,6 @@ const runtime = [
   '  return { top: p[0], right: p[1], bottom: p[2], left: p[3] };',
   '}',
   '',
-  '// ── GeoJSON: linie nóg + punkty przystanków pośrednich w jednym źródle',
   'function featureCollection() {',
   '  var features = [];',
   '  if (!route) return { type: "FeatureCollection", features: features };',
@@ -282,8 +264,6 @@ const runtime = [
   '',
   'function drawRoute() {',
   '  var src = map.getSource(P.routeSourceId);',
-  '  // Przed wczytaniem stylu źródła nie ma — geometria czeka w legGeom,',
-  '  // a drawRoute() wróci po zdarzeniu style.load.',
   '  if (src) src.setData(featureCollection());',
   '  clearMarkers();',
   '  if (!route) return;',
@@ -297,8 +277,6 @@ const runtime = [
   '          if (stop.role !== "board" && stop.role !== "alight") return;',
   '          if (index === 0 && near(first, stop)) return;',
   '          if (index === stops.length - 1 && near(last, stop)) return;',
-  '          // Goły punkt: etykiety „Wsiadaj/Wysiadaj” zaśmiecały mapę, a',
-  '          // szczegóły i tak wypisuje dolne menu po dotknięciu.',
   '          var marker = addMarker(',
   '            [stop.lon, stop.lat],',
   '            \'<div class="k-stop \'+ stop.role +\'"><i></i></div>\',',
@@ -388,9 +366,6 @@ const runtime = [
   '      \'<div class="k-veh-arrow"></div>\' +',
   '      \'<div class="k-veh-body"></div>\';',
   '    vehicleMarker = new maplibregl.Marker({ element: el });',
-  '    vehicleMarker.getElement().addEventListener("click", function () {',
-  '      if (following) { following = false; post({ t: "userMoved" }); }',
-  '    });',
   '    vehicleMarker.setLngLat([v.lon, v.lat]).addTo(map);',
   '  } else {',
   '    vehicleMarker.setLngLat([v.lon, v.lat]);',
@@ -399,9 +374,6 @@ const runtime = [
   '  node.style.color = v.color || "var(--k-primary)";',
   '  var arrow = node.querySelector(".k-veh-arrow");',
   '  if (arrow) arrow.style.transform = "rotate(" + v.heading + "deg)";',
-  '  if (following) {',
-  '    map.easeTo({ center: [v.lon, v.lat], duration: 700 });',
-  '  }',
   '}',
   '',
   'function setUser(u) {',
@@ -420,8 +392,6 @@ const runtime = [
   '  } else {',
   '    userMarker.setLngLat([u.lon, u.lat]);',
   '  }',
-  '  // Stożek kursu pojawia się dopiero, gdy telefon zna kierunek — inaczej',
-  '  // kładłby strzałkę w losową stronę i wprowadzał(a) w błąd.',
   '  var cone = userMarker.getElement().querySelector(".k-user-cone");',
   '  if (cone) {',
   '    if (typeof u.heading === "number" && isFinite(u.heading)) {',
@@ -431,36 +401,6 @@ const runtime = [
   '      cone.style.display = "none";',
   '    }',
   '  }',
-  '}',
-  '',
-  'function setCursor(c) {',
-  '  if (!c) {',
-  '    if (cursorMarker) { cursorMarker.remove(); cursorMarker = null; }',
-  '    return;',
-  '  }',
-  '  if (!cursorMarker) {',
-  '    var el = document.createElement("div");',
-  '    el.className = "k-cursor";',
-  '    el.innerHTML = \'<div class="k-cursor-ring"></div><div class="k-cursor-dot"></div>\';',
-  '    cursorMarker = new maplibregl.Marker({ element: el });',
-  '    cursorMarker.setLngLat([c.lon, c.lat]).addTo(map);',
-  '  } else {',
-  '    cursorMarker.setLngLat([c.lon, c.lat]);',
-  '  }',
-  '}',
-  '',
-  'function setAhead(coords) {',
-  '  if (!map || !styleReady) return;',
-  '  var src = map.getSource(P.aheadSourceId);',
-  '  if (!src) return;',
-  '  if (!coords || coords.length < 2) {',
-  '    src.setData({ type: "FeatureCollection", features: [] });',
-  '    return;',
-  '  }',
-  '  src.setData({',
-  '    type: "FeatureCollection",',
-  '    features: [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } }],',
-  '  });',
   '}',
   '',
   'function applyRoute(next) {',
@@ -486,7 +426,6 @@ const runtime = [
   '    return;',
   '  }',
   '  if (msg.t === "geometry") {',
-  '    // Spóźniona wiadomość po zmianie trasy nie może malować obcej nogi.',
   '    if (!route || !legById(msg.legId) || !msg.coords || msg.coords.length < 2) return;',
   '    legGeom[msg.legId] = msg.coords;',
   '    drawRoute();',
@@ -506,32 +445,9 @@ const runtime = [
   '    return;',
   '  }',
   '  if (msg.t === "vehicle") { setVehicle(msg.vehicle); return; }',
-  '  if (msg.t === "follow") {',
-  '    following = !!msg.on;',
-  '    if (following) {',
-  '      if (vehicleMarker) map.easeTo({ center: vehicleMarker.getLngLat(), duration: 600 });',
-  '      else fitAll(null, true);',
-  '    }',
-  '    return;',
-  '  }',
   '  if (msg.t === "user") { setUser(msg); return; }',
-  '  if (msg.t === "center") {',
-  '    var dur = typeof msg.duration === "number" ? msg.duration : 600;',
-  '    if (dur <= 0) {',
-  '      map.jumpTo({ center: [msg.lon, msg.lat], zoom: msg.zoom || map.getZoom() });',
-  '    } else {',
-  '      map.easeTo({ center: [msg.lon, msg.lat], zoom: msg.zoom || Math.max(map.getZoom(), 16), duration: dur });',
-  '    }',
-  '    return;',
-  '  }',
-  '  if (msg.t === "cursor") { setCursor(msg); return; }',
-  '  if (msg.t === "clearCursor") { setCursor(null); return; }',
-  '  if (msg.t === "ahead") { setAhead(msg.coords); return; }',
-  '  if (msg.t === "clearAhead") { setAhead(null); return; }',
   '}',
   '',
-  '// Pierwsza klatka potrafi przyjść, zanim kontener dostanie rozmiar — wtedy',
-  '// fitBounds liczyłby zoom względem 0 px i trasa wylądowałaby poza ekranem.',
   '  var fitTries = 0;',
   '  function fitWhenSized() {',
   '    var el = map.getContainer();',
@@ -552,7 +468,6 @@ const runtime = [
   '      var leg = legById(f.properties.legId);',
   '      var stop = leg ? (leg.stops || []).filter(function (s) { return s.id === f.properties.stopId; })[0] : null;',
   '      if (!stop) return;',
-  '      // Bez popupu: szczegóły przystanku pokazuje dolne menu aplikacji.',
   '      post({ t: "stopTap", stopId: stop.id, legId: leg.id, name: stop.name, role: stop.role, arriveSec: stop.arriveSec });',
   '    });',
   '  }',
@@ -565,7 +480,6 @@ const runtime = [
   '      post({ t: "legTap", legId: selectedLeg });',
   '    });',
   '  }',
-  '  // Kursor wskaźnika nad trasą, inaczej mapa wygląda na martwą.',
   '  [P.hitLayerId, stopLayer].forEach(function (id) {',
   '    if (!map.getLayer(id)) return;',
   '    map.on("mouseenter", id, function () { map.getCanvas().style.cursor = "pointer"; });',
@@ -583,7 +497,6 @@ const runtime = [
   '    maxZoom: 19,',
   '    attributionControl: false,',
   '    fadeDuration: 120,',
-  '    // Mapa pod rozkład jazdy nie ma się kręcić — obrót myli kierunek kursu.',
   '    dragRotate: false,',
   '    pitchWithRotate: false,',
   '    touchPitch: false,',
@@ -592,7 +505,7 @@ const runtime = [
   '  map.touchZoomRotate.disableRotation();',
   '  map.keyboard.disable();',
   '  map.doubleClickZoom.disable();',
-  '  attribution = new maplibregl.AttributionControl({ compact: false, customAttribution: P.attribution });',
+  '  var attribution = new maplibregl.AttributionControl({ compact: false, customAttribution: P.attribution });',
   '  map.addControl(attribution, "bottom-right");',
   '  var attribEl = attribNode();',
   '  if (attribEl) attribEl.addEventListener("click", function (e) {',
@@ -602,18 +515,12 @@ const runtime = [
   '    post({ t: "open", url: a.href });',
   '  });',
   '  map.on("error", function (e) {',
-  '    // Liczymy tylko prawdziwe awarie sieci. 404 na pojedynczym kafelku',
-  '    // (np. kafelek poza maxzoom) jest normalny i nie znaczy, że mapa padła —',
-  '    // przy liczeniu wszystkiego komunikat „brak sieci" wyskakiwał na zdrowej mapie.',
   '    if (e && e.error && /Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_ADDRESS_UNREACHABLE/.test(String(e.error.message || e.error))) {',
   '      loadFailures++;',
   '      if (loadFailures >= 6 && !tilesDown) { tilesDown = true; post({ t: "tiles", ok: false }); }',
   '    }',
   '  });',
   '  map.on("idle", function () {',
-  '    // Zgłaszamy gotowość zawsze, nie tylko po własnym błędzie: inaczej',
-  '    // aplikacja zostawiałaby przeterminowany napis „brak sieci", gdy mapa',
-  '    // w końcu się doczytała (np. po powrocie łączności).',
   '    tilesDown = false; loadFailures = 0;',
   '    post({ t: "tiles", ok: true });',
   '  });',
@@ -623,16 +530,9 @@ const runtime = [
   '  map.on("moveend", function () {',
   '    if (vehicleMarker) vehicleMarker.getElement().classList.remove("no-anim");',
   '  });',
-  '  map.on("dragstart", function () {',
-  '    if (following) { following = false; post({ t: "userMoved" }); }',
-  '  });',
-  '  // Trasa jest częścią stylu, więc wystarczy wczytanie stylu (kafelki mogą',
-  '  // jeszcze dochodzić) — ekran pokazuje linię natychmiast, nie czekając na',
-  '  // pierwszą klatkę mapy.',
   '  map.on("style.load", function () {',
   '    styleReady = true;',
   '    bindLayerEvents();',
-  '    // Dopasowanie widoku: pierwsza klatka z gotowym rozmiarem kontenera.',
   '    map.once("render", function () {',
   '      map.resize();',
   '      fitWhenSized();',
@@ -641,12 +541,9 @@ const runtime = [
   '    if (BOOTSTRAP) applyRoute(BOOTSTRAP);',
   '    if (P.vehicle) setVehicle(P.vehicle);',
   '    if (P.user) setUser(P.user);',
-  '    following = !!P.follow;',
   '    setControlOffset(null);',
   '    post({ t: "ready" });',
   '  });',
-  '  // Bez WebGL albo bez sieci styl nie wczyta się wcale i widok zostaje',
-  '  // czarny — mówimy wprost, zamiast udawać, że wszystko gra.',
   '  setTimeout(function () {',
   '    if (!styleReady) postError("Mapa nie wczytała się — brak sieci lub brak WebGL");',
   '  }, 20000);',
@@ -673,7 +570,6 @@ function bootstrapPayload(opts: RouteMapDocumentOptions): string {
     cdns: MAPLIBRE_CDNS,
     style: buildMapStyle(),
     routeSourceId: ROUTE_SOURCE_ID,
-    aheadSourceId: AHEAD_SOURCE_ID,
     hitLayerId: 'trasa-chwyt',
     stopLayerId: 'przystanki-posrednie',
     attribution: MAP_ATTRIBUTION,
@@ -681,10 +577,8 @@ function bootstrapPayload(opts: RouteMapDocumentOptions): string {
     route: opts.route,
     vehicle: opts.vehicle ?? null,
     user: opts.user ?? null,
-    follow: !!opts.follow,
     selectedLegId: opts.selectedLegId ?? null,
   };
-  // Znak `<` w danych (nazwa przystanku) zamknąłby tag skryptu.
   return JSON.stringify(payload).replace(/</g, '\\u003c');
 }
 

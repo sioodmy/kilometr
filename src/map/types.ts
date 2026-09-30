@@ -75,8 +75,7 @@ export type MapOutMessage =
   | { t: 'stopTap'; stopId: string; legId: string; name: string; role: MapStopRole; arriveSec?: number }
   | { t: 'legTap'; legId: string }
   | { t: 'tiles'; ok: boolean }
-  | { t: 'open'; url: string }
-  | { t: 'userMoved' };
+  | { t: 'open'; url: string };
 
 /** Komunikat aplikacja → mapa (RouteMap -> WebView). */
 export type MapInMessage =
@@ -86,11 +85,5 @@ export type MapInMessage =
   | { t: 'select'; legId: string | null; pad?: [number, number, number, number] }
   | { t: 'fit'; pad?: [number, number, number, number] }
   | { t: 'vehicle'; vehicle: MapVehicle | null }
-  | { t: 'follow'; on: boolean }
-  | { t: 'user'; lat: number; lon: number; heading: number | null }
-  | { t: 'center'; lat: number; lon: number; zoom?: number; duration?: number }
-  | { t: 'cursor'; lat: number; lon: number }
-  | { t: 'clearCursor' }
-  /** Odcinek trasy przed kursorem (podświetlana „nitka dalej”). */
-  | { t: 'ahead'; coords: [number, number][] }
-  | { t: 'clearAhead' };
+  | { t: 'user'; lat: number; lon: number; heading: number | null };
+
