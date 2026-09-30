@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { BusFront, Footprints, TramFront } from 'lucide-react-native';
+import { BusFront, TramFront } from 'lucide-react-native';
+import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode } from '../types/models';
 import { getLineColors, inferTransitMode } from '../services/lineIdentity';
@@ -8,12 +9,25 @@ import { getLineColors, inferTransitMode } from '../services/lineIdentity';
 // powiadomień, a serwis nie może importować komponentu.
 export { getLineColors, inferTransitMode, TRANSIT_PALETTE } from '../services/lineIdentity';
 
-export function LineBadge({ mode, line, compact }: { mode?: LegMode; line?: string; compact?: boolean }) {
+export function LineBadge({
+  mode,
+  line,
+  compact,
+  active,
+}: {
+  mode?: LegMode;
+  line?: string;
+  compact?: boolean;
+  active?: boolean;
+}) {
   const resolved = inferTransitMode(mode, line);
   if (resolved === 'walk') {
     return (
-      <View style={[styles.badge, styles.walk]}>
-        <Footprints size={14} color={scheme.onSurfaceVariant} />
+      <View style={[styles.badge, styles.walk, active && styles.walkActive]}>
+        <DirectionsWalk
+          size={compact ? 14 : 16}
+          color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+        />
       </View>
     );
   }
@@ -42,6 +56,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   walk: { backgroundColor: scheme.surfaceContainerHighest, minWidth: 32 },
+  walkActive: { backgroundColor: scheme.secondaryContainer },
   compact: { paddingHorizontal: 6, minWidth: 36, gap: 4 },
   text: { ...type.labelLarge, fontWeight: '700' },
 });

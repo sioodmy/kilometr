@@ -380,11 +380,7 @@ export default function RouteMapScreen() {
                     : s.map.lineStageA11y(leg.line ?? '', leg.direction ?? '')
                 }
               >
-                {leg.mode === 'walk' ? (
-                  <Text style={styles.walkEmoji}>🚶</Text>
-                ) : (
-                  <LineBadge line={leg.line} mode={leg.mode} compact />
-                )}
+                <LineBadge line={leg.line} mode={leg.mode} compact active={active} />
                 <View style={styles.legPillInfo}>
                   <Text
                     style={[styles.legPillTitle, active && styles.legPillTitleActive]}
@@ -509,7 +505,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: scheme.primary,
   },
-  walkEmoji: { fontSize: 18 },
   legPillInfo: { flex: 1, minWidth: 0, gap: 2 },
   legPillTitle: {
     ...type.labelMedium,
