@@ -944,7 +944,6 @@ export default function RoutesScreen() {
       const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
       const stagger = Math.min(index * 55, 440);
       const freshSwap = Date.now() - swapAtRef.current < 2500;
-      const isTracked = isTrackingThisRoute && trackedTrip?.connection.id === item.id;
       return (
         <Animated.View
           entering={
@@ -954,28 +953,10 @@ export default function RoutesScreen() {
           }
         >
           <ConnectionCard item={item} dimmed={past} onPress={openConnection} />
-          {/* Śledzimy konkretny kurs, nie całe zapytanie. */}
-          {!past && isTracked ? (
-            <View style={styles.trackActive}>
-              <Radio size={13} color={scheme.primary} />
-              <Text style={styles.trackActiveText}>Śledzone</Text>
-            </View>
-          ) : !past ? (
-            <Pressable
-              onPress={() => void startTrackingConnection(item)}
-              accessibilityRole="button"
-              accessibilityLabel={`Śledź połączenie o ${item.departAt}`}
-              style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}
-              hitSlop={6}
-            >
-              <Radio size={13} color={scheme.onSurfaceVariant} />
-              <Text style={styles.trackBtnText}>Śledź ten kurs</Text>
-            </Pressable>
-          ) : null}
         </Animated.View>
       );
     },
-    [openConnection, isTrackingThisRoute, trackedTrip?.connection.id, startTrackingConnection],
+    [openConnection],
   );
 
   return (
@@ -1461,32 +1442,6 @@ const styles = StyleSheet.create({
   },
   // Karta aktywnej podróży nad listą połączeń
   activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
-  // Akcja „Śledź ten kurs” pod kartą połączenia
-  trackBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    marginTop: 6,
-    marginLeft: 4,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.full,
-    paddingHorizontal: 12,
-    height: 30,
-  },
-  trackBtnText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
-  trackActive: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    marginTop: 6,
-    marginLeft: 4,
-    paddingHorizontal: 12,
-    height: 30,
-    justifyContent: 'center',
-  },
-  trackActiveText: { ...type.labelMedium, color: scheme.primary, fontWeight: '700' },
   pinBtnActive: {
     backgroundColor: scheme.primaryContainer,
   },

@@ -40,22 +40,29 @@ export default function RouteDetailsScreen() {
 
   const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
 
-  // Ten ekran pokazuje dokładnie ten kurs, który jest śledzony (albo żaden).
   const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
+
+  const handleToggleTrack = async () => {
+    if (isTrackedThis) {
+      await stopTracking();
+      return;
+    }
+    await handleTrack();
+  };
 
   /** Śledzimy właśnie ten kurs, nie całe zapytanie — patrz ekran połączeń. */
   const handleTrack = async () => {
     if (!item) return;
     if (!areNotificationsSupported()) {
       Alert.alert(
-        'Śledzenie niedostępne',
-        'Powiadomienia wymagają builda deweloperskiego — Expo Go ich nie wspiera.',
+        s.routes.pinUnsupportedTitle,
+        s.routes.pinUnsupportedBody,
       );
       return;
     }
     const ok = await ensureNotificationPermission();
     if (!ok) {
-      Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
+      Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
       return;
     }
     // Współrzędne bierzemy z odcinków (Leg ma from/to lat/lon); fallback to
@@ -172,7 +179,37 @@ export default function RouteDetailsScreen() {
         <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {s.routeDetails.title}
+        </Text>
+        <Pressable
+          onPress={() => void handleToggleTrack()}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isTrackedThis }}
+          accessibilityLabel={
+            isTrackedThis ? s.routeDetails.stopTrackingA11y : s.routeDetails.trackA11y
+          }
+          style={({ pressed }) => [
+            styles.headerTrackBtn,
+            isTrackedThis && styles.headerTrackBtnActive,
+            pressed && { opacity: 0.7 },
+          ]}
+          hitSlop={8}
+        >
+          <Radio
+            size={14}
+            color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+          />
+          <Text
+            style={[
+              styles.headerTrackText,
+              isTrackedThis && styles.headerTrackTextActive,
+            ]}
+            numberOfLines={1}
+          >
+            {isTrackedThis ? s.routeDetails.tracking : s.routeDetails.trackCourse}
+          </Text>
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
@@ -257,17 +294,7 @@ export default function RouteDetailsScreen() {
               onStop={() => void stopTracking()}
             />
           </View>
-        ) : (
-          <Pressable
-            onPress={handleTrack}
-            accessibilityRole="button"
-            accessibilityLabel="Śledź to połączenie — odliczanie i postęp w powiadomieniu"
-            style={({ pressed }) => [styles.trackCta, pressed && { opacity: 0.8 }]}
-          >
-            <Radio size={17} color={scheme.onPrimaryContainer} />
-            <Text style={styles.trackCtaText}>Śledź to połączenie</Text>
-          </Pressable>
-        )}
+        ) : null}
 
         {noLegs ? (
           <View style={styles.emptyCard}>
@@ -315,17 +342,28 @@ const styles = StyleSheet.create({
   },
   retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
   trackSlot: { marginBottom: 12 },
-  trackCta: {
+  headerTrackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: scheme.primaryContainer,
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 36,
     borderRadius: shape.full,
-    paddingVertical: 13,
-    marginBottom: 12,
+    backgroundColor: scheme.surfaceContainerHigh,
+    flexShrink: 0,
   },
-  trackCtaText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimaryContainer },
+  headerTrackBtnActive: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  headerTrackText: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  headerTrackTextActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '700',
+  },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8 },
   iconBtn: { width: 40, height: 40, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
