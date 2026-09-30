@@ -269,6 +269,10 @@ export const de: Strings = {
     schedule: 'Fahrplan',
     noTrip: 'Kein Routenverlauf',
     noTripBody: 'Diese Verbindung hat keine gespeicherten Haltestellen, daher kann die Route nicht gezeichnet und die nächste Haltestelle nicht gezeigt werden. Geh zurück und wähle eine andere Verbindung.',
+    trackCourse: 'Fahrt verfolgen',
+    tracking: 'Wird verfolgt',
+    trackA11y: 'Diese Verbindung verfolgen — Countdown und Fortschritt in der Benachrichtigung',
+    stopTrackingA11y: 'Verfolgung der Verbindung beenden',
   },
   search: {
     defaultPlaceholder: 'In Wrocław suchen…',

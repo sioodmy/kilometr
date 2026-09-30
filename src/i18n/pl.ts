@@ -277,6 +277,10 @@ export const pl = {
     schedule: 'Rozkład',
     noTrip: 'Brak przebiegu trasy',
     noTripBody: 'To połączenie nie ma zapisanych przystanków, więc nie da się narysować trasy ani wskazać najbliższego przystanku. Wróć do listy i wybierz inne połączenie.',
+    trackCourse: 'Śledź ten kurs',
+    tracking: 'Śledzone',
+    trackA11y: 'Śledź to połączenie — odliczanie i postęp w powiadomieniu',
+    stopTrackingA11y: 'Zatrzymaj śledzenie połączenia',
   },
   search: {
     defaultPlaceholder: 'Szukaj we Wrocławiu…',

@@ -269,6 +269,10 @@ export const en: Strings = {
     schedule: 'Timetable',
     noTrip: 'No route geometry',
     noTripBody: 'This connection has no saved stops, so the route can’t be drawn and the nearest stop can’t be shown. Go back and pick another connection.',
+    trackCourse: 'Track this trip',
+    tracking: 'Tracked',
+    trackA11y: 'Track this connection — countdown and progress in notification',
+    stopTrackingA11y: 'Stop tracking connection',
   },
   search: {
     defaultPlaceholder: 'Search in Wrocław…',
