@@ -16,7 +16,8 @@ import Storage from 'expo-sqlite/kv-store';
 
 export async function kvGet(key: string): Promise<string | null> {
   try {
-    return await Storage.getItem(key);
+    const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('kvGet timeout')), 2000));
+    return await Promise.race([Storage.getItem(key), timeout]);
   } catch (err) {
     console.warn('[Storage] getItem failed:', err);
     return null;

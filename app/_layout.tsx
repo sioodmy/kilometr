@@ -37,26 +37,32 @@ export default function RootLayout() {
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu
   useEffect(() => {
-    loadSettings();
-    void initLocale();
-    // Powiadomienia ładowane leniwie w serwisie (guard na Expo Go)
-    void loadNotificationPreferences();
-    // Kanały muszą istnieć przed prośbą o uprawnienia (Android 13+), więc
-    // konfigurujemy je na starcie, a nie przy przypięciu trasy.
-    void setupNotifications();
-    // Pierwsze uruchomienie → onboarding (dostępy, rozkład offline, miejsca).
-    // .catch jest tu krytyczny: bez niego odrzucenie (np. uszkodzony KV po
-    // przywróceniu z backupu) zostawiałoby `ready === false` na zawsze, czyli
-    // biały ekran bez możliwości wyjścia. Odtąd startujemy, a problem
-    // zgłaszamy — ekran połączeń i tak pokaże pusty stan rozkładu.
-    hasSeenOnboarding()
-      .then((seen) => {
-        if (!seen) router.replace('/onboarding');
-      })
-      .catch((err) => {
+    let isMounted = true;
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) setReady(true);
+    }, 3000);
+
+    const initApp = async () => {
+      await loadSettings();
+      await initLocale();
+      await loadNotificationPreferences();
+      await setupNotifications();
+      
+      try {
+        const seen = await hasSeenOnboarding();
+        if (!seen && isMounted) router.replace('/onboarding');
+      } catch (err) {
         console.warn('[RootLayout] onboarding flag unreadable:', err);
-      })
-      .finally(() => setReady(true));
+      } finally {
+        if (isMounted) {
+          clearTimeout(safetyTimeout);
+          setReady(true);
+        }
+      }
+    };
+
+    initApp();
+    
     // Śledzenie podróży przeżywa restart telefonu, więc podnosimy je,
     // zanim użytkownik cokolwiek otworzy.
     void restoreTrackedTrip();
@@ -65,7 +71,11 @@ export default function RootLayout() {
     // Tap w powiadomienie lub przycisk akcji → ekran połączeń / koniec
     getLastTripResponse().then(navigateFromNotification);
     const remove = addTripResponseListener(navigateFromNotification);
-    return remove;
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimeout);
+      remove();
+    };
   }, []);
   if (!ready) {
     return <GestureHandlerRootView style={{ flex: 1, backgroundColor: scheme.surface }} />;
