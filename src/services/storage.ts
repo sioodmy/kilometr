@@ -8,51 +8,62 @@
 //    bo natywny shared object jest przedwcześnie zwalniany — znany bug
 //    expo-sqlite ≤57.0.3 na niektórych urządzeniach/Androidach).
 //
-// Zamiennik: prosty KV oparty na expo-file-system/legacy — jedno wywołanie
-// read/write per operację, zero natywnych obiektów współdzielonych, zero
-// bazy danych. Pliki JSON w documentDirectory/.kv/ .
-//
-// Trade-off: wolniejsze od SQLite przy dziesiątkach kluczy, ale w praktyce
-// app czyta/pisze ~15 kluczy i nigdy ich nie iteruje, więc różnica < 1 ms.
+// Zamiennik: prosty, bezpieczny KV oparty na expo-file-system/legacy + in-memory cache.
+// - Zero natywnych shared objects, zero ryzyka wycieku / zwolnienia uchwytu SQLite.
+// - Pamięć podręczna w RAM (memCache) daje natychmiastowe kolejne odczyty (< 1 ms).
+// - Pliki trzymane w documentDirectory/.kv/ (lub fallback cacheDirectory).
 
 import * as FileSystem from 'expo-file-system/legacy';
 
-const KV_DIR = `${FileSystem.documentDirectory}.kv/`;
-
+const memCache = new Map<string, string>();
 let dirReady = false;
 
-async function ensureDir(): Promise<void> {
-  if (dirReady) return;
+function getKvDir(): string | null {
+  const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+  if (!base) return null;
+  return base.endsWith('/') ? `${base}.kv/` : `${base}/.kv/`;
+}
+
+async function ensureDir(): Promise<string | null> {
+  const dir = getKvDir();
+  if (!dir) return null;
+  if (dirReady) return dir;
   try {
-    const info = await FileSystem.getInfoAsync(KV_DIR);
+    const info = await FileSystem.getInfoAsync(dir);
     if (!info.exists) {
-      await FileSystem.makeDirectoryAsync(KV_DIR, { intermediates: true });
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
     }
     dirReady = true;
+    return dir;
   } catch {
-    // Na wszelki wypadek — jeśli getInfoAsync padnie, próbujemy dalej.
-    // makeDirectoryAsync z intermediates:true jest idempotentne.
     try {
-      await FileSystem.makeDirectoryAsync(KV_DIR, { intermediates: true });
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
       dirReady = true;
+      return dir;
     } catch {
-      // nic — operacja r/w i tak spróbuje, a blad obsłuży caller
+      return dir;
     }
   }
 }
 
 /** Bezpieczna nazwa pliku z klucza (zastąp nielegalne znaki). */
-function keyToFile(key: string): string {
-  return KV_DIR + encodeURIComponent(key);
+function keyToFile(dir: string, key: string): string {
+  return `${dir}${encodeURIComponent(key)}`;
 }
 
 export async function kvGet(key: string): Promise<string | null> {
+  if (memCache.has(key)) {
+    return memCache.get(key) ?? null;
+  }
   try {
-    await ensureDir();
-    const path = keyToFile(key);
+    const dir = await ensureDir();
+    if (!dir) return null;
+    const path = keyToFile(dir, key);
     const info = await FileSystem.getInfoAsync(path);
     if (!info.exists) return null;
-    return await FileSystem.readAsStringAsync(path);
+    const val = await FileSystem.readAsStringAsync(path);
+    memCache.set(key, val);
+    return val;
   } catch (err) {
     console.warn('[Storage] getItem failed:', err);
     return null;
@@ -60,17 +71,22 @@ export async function kvGet(key: string): Promise<string | null> {
 }
 
 export async function kvSet(key: string, value: string): Promise<void> {
+  memCache.set(key, value);
   try {
-    await ensureDir();
-    await FileSystem.writeAsStringAsync(keyToFile(key), value);
+    const dir = await ensureDir();
+    if (!dir) return;
+    await FileSystem.writeAsStringAsync(keyToFile(dir, key), value);
   } catch (err) {
     console.warn('[Storage] setItem failed:', err);
   }
 }
 
 export async function kvRemove(key: string): Promise<void> {
+  memCache.delete(key);
   try {
-    const path = keyToFile(key);
+    const dir = await ensureDir();
+    if (!dir) return;
+    const path = keyToFile(dir, key);
     const info = await FileSystem.getInfoAsync(path);
     if (info.exists) {
       await FileSystem.deleteAsync(path, { idempotent: true });

@@ -15,56 +15,64 @@ import { kvGet, kvSet } from './storage';
 
 const MIGRATED_FLAG = '__kv_migrated_from_sqlite';
 
+async function performMigration(): Promise<void> {
+  // Czy już zmigrowano?
+  const flag = await kvGet(MIGRATED_FLAG);
+  if (flag === '1') return;
+
+  const docDir = FileSystem.documentDirectory;
+  if (!docDir) {
+    await kvSet(MIGRATED_FLAG, '1');
+    return;
+  }
+
+  const base = docDir.endsWith('/') ? docDir : `${docDir}/`;
+  const dbPath = `${base}SQLite/ExpoSQLiteStorage`;
+  const info = await FileSystem.getInfoAsync(dbPath);
+  if (!info.exists) {
+    // Fresh install — nie ma co migrować
+    await kvSet(MIGRATED_FLAG, '1');
+    return;
+  }
+
+  // Próba odczytu starej bazy SQLite
+  const { openDatabaseAsync } = await import('expo-sqlite');
+
+  // Otwieramy starą bazę z useNewConnection: true, żeby uniknąć konfliktu
+  // z ewentualnym singletonem.
+  const db = await openDatabaseAsync('ExpoSQLiteStorage', { useNewConnection: true });
+
+  try {
+    const rows = await db.getAllAsync<{ key: string; value: string }>(
+      'SELECT key, value FROM storage'
+    );
+    for (const row of rows) {
+      if (!row || typeof row.key !== 'string' || row.value == null) continue;
+      const existing = await kvGet(row.key);
+      if (existing === null) {
+        await kvSet(row.key, row.value);
+      }
+    }
+  } finally {
+    try {
+      await db.closeAsync();
+    } catch {}
+  }
+
+  await kvSet(MIGRATED_FLAG, '1');
+}
+
 export async function migrateFromSqliteKv(): Promise<void> {
   try {
-    // Czy już zmigrowano?
-    const flag = await kvGet(MIGRATED_FLAG);
-    if (flag === '1') return;
-
-    // Próba odczytu starej bazy SQLite
-    const { openDatabaseAsync } = await import('expo-sqlite');
-
-    // Sprawdź czy plik bazy w ogóle istnieje
-    const dbPath = `${FileSystem.documentDirectory}SQLite/ExpoSQLiteStorage`;
-    const info = await FileSystem.getInfoAsync(dbPath);
-    if (!info.exists) {
-      // Fresh install — nie ma co migrować
-      await kvSet(MIGRATED_FLAG, '1');
-      return;
-    }
-
-    // Otwieramy starą bazę z useNewConnection: true, żeby uniknąć konfliktu
-    // z singletonem expo-sqlite/kv-store (który może trzymać zamkniętą instancję).
-    const db = await openDatabaseAsync('ExpoSQLiteStorage', { useNewConnection: true });
-
-    try {
-      const rows = await db.getAllAsync<{ key: string; value: string }>(
-        'SELECT key, value FROM storage'
-      );
-      for (const row of rows) {
-        // Nie nadpisuj, jeśli nowy KV już ma wartość (np. użytkownik zdążył
-        // coś zapisać po upgrade).
-        const existing = await kvGet(row.key);
-        if (existing === null && row.value != null) {
-          await kvSet(row.key, row.value);
-        }
-      }
-    } finally {
-      await db.closeAsync();
-    }
-
-    await kvSet(MIGRATED_FLAG, '1');
+    // Limit czasowy 1.5s — migracja nigdy nie może zablokować startu apki
+    const timeout = new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('kvMigration timeout')), 1500)
+    );
+    await Promise.race([performMigration(), timeout]);
   } catch (err) {
-    // Migracja jest best-effort — jeśli expo-sqlite padnie (co jest powodem
-    // tej migracji!), po prostu kontynuujemy. Użytkownik zobaczy onboarding
-    // jeszcze raz, a reszta to cache/ustawienia wrócą do defaultów.
-    console.warn('[kvMigration] migration failed (expected on broken sqlite):', err);
-
-    // Oznaczamy jako zmigrowane, żeby nie próbować ponownie przy każdym starcie.
+    console.warn('[kvMigration] migration skipped or failed:', err);
     try {
       await kvSet(MIGRATED_FLAG, '1');
-    } catch {
-      // zapis flagi też padł — trudno, spróbujemy znów następnym razem
-    }
+    } catch {}
   }
 }
