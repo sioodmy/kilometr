@@ -11,6 +11,7 @@ import { initLocale } from '../src/i18n';
 import { loadSettings } from '../src/services/settings';
 import { hasSeenOnboarding } from '../src/services/onboarding';
 import { loadNotificationPreferences } from '../src/services/notifications/preferences';
+import { migrateFromSqliteKv } from '../src/services/kvMigration';
 import {
   addTripResponseListener,
   getLastTripResponse,
@@ -43,6 +44,7 @@ export default function RootLayout() {
     }, 3000);
 
     const initApp = async () => {
+      await migrateFromSqliteKv();
       await loadSettings();
       await initLocale();
       await loadNotificationPreferences();
