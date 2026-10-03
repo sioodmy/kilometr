@@ -510,6 +510,84 @@ export const pl = {
     hintLater: 'Spróbuj ponownie za jakiś czas.',
     noFile: 'Pobieranie GTFS nie zwróciło pliku',
   },
+  notification: {
+    // Kanały powiadomień — nazwy widoczne w ustawieniach systemu.
+    channelTracking: 'Śledzenie podróży',
+    channelTrackingDesc: 'Postęp podróży i odliczanie do odjazdu. Bez dźwięku.',
+    channelAlerts: 'Alerty odjazdu',
+    channelAlertsDesc: '„Wyjdź teraz”, opóźnienia i zmiany kursu. Z dźwiękiem.',
+    permDenied:
+      'Powiadomienia są wyłączone. Włącz je w ustawieniach systemu dla kilometr, żeby śledzić odjazd i postęp podróży.',
+    // Przyciski pod powiadomieniem. „Zakończ” jest krótkie celowo — Android
+    // pokazuje najwyżej trzy przyciski i skraca dłuższe tytuły.
+    actionStop: 'Zakończ',
+    actionRoute: 'Trasa',
+    showRoutes: 'Pokaż trasę',
+    actionOk: 'OK',
+    modeWalk: 'Pieszo',
+    modeTram: 'Tramwaj',
+    modeBus: 'Autobus',
+    // Podpis przy liczniku systemowym. Liczbę rysuje zegar systemowy, więc
+    // tekst pod nim musi być statyczny — inaczej po minucie kłamałby.
+    toDeparture: 'do odjazdu',
+    toArrival: 'do celu',
+    walkTitle: (dist: string) => `Idź na przystanek • ${dist}`,
+    walkTitlePlain: 'Idź na przystanek',
+    waitTitle: (service: string, at: string) => `${service} • odjazd ${at}`,
+    rideTitle: (service: string, at: string) => `${service} • na miejscu ${at}`,
+    transferTitle: (service: string, at: string) => `Przesiadka • ${service} • odjazd ${at}`,
+    arrivedTitle: 'Jesteś na miejscu',
+    arrivedBody: (at: string, dur: string) => `Na miejscu ${at} • podróż trwała ${dur}`,
+    nextStop: (name: string) => `następny ${name}`,
+    stopHere: (name: string) => `przystanek ${name}`,
+    directionTo: (dir: string) => `Do ${dir}`,
+    platform: (num: string) => `słup ${num}`,
+    walkApproach: (min: number) => `dojście ~${min} min`,
+    departAt: (at: string) => `odjazd ${at}`,
+    arriveAt: (at: string) => `na miejscu ${at}`,
+    delayLate: (min: number) => `opóźnienie +${Math.round(min)} min`,
+    delayEarly: (min: number) => `spieszy ${Math.abs(Math.round(min))} min`,
+    stops: (n: number) =>
+      n === 1 ? '1 przystanek' : isFew(n) ? `${n} przystanki` : `${n} przystanków`,
+    transfers: (n: number) =>
+      n === 1 ? '1 przesiadka' : isFew(n) ? `${n} przesiadki` : `${n} przesiadek`,
+    vehicleAt: (label: string) => `Pojazd: ${label}`,
+    // Alerty odjazdu — osobne, głośne powiadomienia przed podróżą.
+    leaveNow: (service: string, at: string) => `Wyjdź teraz • ${service} ${at}`,
+    leaveIn: (min: number, service: string, at: string) =>
+      `Wyjdź za ${min} ${min === 1 ? 'minutę' : isFew(min) ? 'minuty' : 'minut'} • ${service} ${at}`,
+    walkToStop: (dist: string) => `${dist} do przystanku`,
+    newDeparture: (at: string) => `nowy odjazd ${at}`,
+    delayTitle: (line: string, eta: string) => `Opóźnienie • ${line} • ${eta}`,
+    chipDepart: (at: string) => `odjazd ${at}`,
+    chipArrive: (at: string) => `na miejscu ${at}`,
+    chipDelay: (min: number) => `+${Math.round(min)} min`,
+  },
+  notificationPrefs: {
+    title: 'Powiadomienia',
+    devBuildWarn: 'Wymaga builda deweloperskiego. W Expo Go powiadomienia nie działają.',
+    unsupportedTitle: 'Powiadomienia niedostępne',
+    unsupportedBody:
+      'Śledzenie podróży wymaga builda deweloperskiego — Expo Go nie wspiera powiadomień.',
+    trackTitle: 'Śledzenie podróży',
+    trackHint: 'Trwałe powiadomienie z odliczaniem do odjazdu i postępem podróży.',
+    liveTitle: 'Pasek postępu i licznik',
+    liveHint: 'Pasek postępu i odliczanie liczone przez system, bez budzenia aplikacji.',
+    liveHintBasic: 'Postęp i odliczanie w treści powiadomienia.',
+    livePromoteHint:
+      'Powiadomienie działa, ale system nie wpuszcza go do strefy „Live Updates”. Włącz je w ustawieniach systemu dla kilometr, żeby było widoczne na ekranie blokady.',
+    leaveTitle: 'Alert „wyjdź”',
+    leaveHint:
+      'Głośne przypomnienie przed odjazdem. Planowane z wyprzedzeniem, więc działa też w tle.',
+    leadTitle: 'Ile wcześniej ostrzec',
+    leadHint: 'Ile minut przed odjazdem zadzwoni przypomnienie.',
+    leadLessA11y: 'Mniej minut ostrzeżenia',
+    leadMoreA11y: 'Więcej minut ostrzeżenia',
+    disruptionTitle: 'Ostrzeżenie o opóźnieniu',
+    disruptionHint: 'Gdy kurs spóźnia się wyraźnie ponad to, co pokazywał poprzednio.',
+    on: 'Wł.',
+    off: 'Wył.',
+  },
   pinned: {
     channel: 'Przypięte połączenie',
     nowText: 'odjazd teraz',

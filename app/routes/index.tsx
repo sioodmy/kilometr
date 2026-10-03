@@ -105,6 +105,8 @@ export default function RoutesScreen() {
     modes?: string;
     /** Dokładnie 'stop' po naciśnięciu „Zakończ” w powiadomieniu. */
     action?: string;
+    /** Id połączenia, do którego ma prowadzić przycisk „Trasa” w powiadomieniu. */
+    open?: string;
   }>();
 
   const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
@@ -126,6 +128,17 @@ export default function RoutesScreen() {
     stopFromLinkRef.current = false;
     void stopTracking();
   }, [params.action]);
+
+  // Przycisk „Trasa” pod powiadomieniem prowadzi prosto do szczegółów
+  // śledzonego kursu. Listę połączeń użytkownik już widział — teraz chce
+  // sprawdzić ten jeden kurs, więc oszczędzamy mu jedno przeskakiwanie ekranu.
+  const openFromLinkRef = useRef(params.open);
+  useEffect(() => {
+    const id = openFromLinkRef.current;
+    if (!id) return;
+    openFromLinkRef.current = undefined;
+    router.push({ pathname: '/routes/[id]', params: { id: String(id) } });
+  }, [params.open, router]);
 
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [activeAnchor, setActiveAnchor] = useState<ActiveAnchor | null>(null);
@@ -228,8 +241,8 @@ export default function RoutesScreen() {
     };
   });
 
-  // Aktywna podróż: ta sama karta, która zasila powiadomienie i Live Activity.
-  const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
+  // Aktywna podróż: ten sam plan, który zasila natywne Live Update.
+  const { trip: trackedTrip } = useTrackedTrip();
 
   // Toggle sortowania w topBar (iOS-style, z maina): 0 = odjazd
   // (zegar, lewo), 1 = przyjazd (rakieta, prawo). Kciuk dociąga timingiem —

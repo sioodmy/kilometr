@@ -1,10 +1,12 @@
 import { Platform } from 'react-native';
+import { tr } from '../../i18n';
 import { kvGet, kvRemove, kvSet } from '../storage';
 import { getNotifications, warnUnsupportedOnce } from './module';
 import { ALERT_CATEGORY } from './categories';
 import { ALERTS_CHANNEL_ID } from './channels';
 import { buildTripCopy, tripNotificationData } from './content';
-import { delayText, minutesText, plural } from './format';import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
+import { formatDistance } from './format';
+import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 
 // Alerty odjazdu — odpowiednik tego, co Mapy Google robią przed trasą:
 // „wyjdź za 5 minut”, potem „wyjdź teraz”, plus ostrzeżenie, gdy kurs się
@@ -129,17 +131,20 @@ function alertTrigger(atMs: number) {
 
 /** Zawartość alertu „wyjdź”. Świadomie krótka — to banner na ekranie blokady. */
 function leaveContent(p: TripProgress, trip: TrackedTrip, imminent: boolean, leadMin: number) {
-  const copy = buildTripCopy(p, trip.connection);
+  const s = tr();
+  const n = s.notification;
+  const copy = buildTripCopy(p, trip.connection, s);
+  const service = p.line || n.modeTram;
   const title = imminent
-    ? `Wyjdź teraz • ${p.line || 'pojazd'} ${p.departAt}`
-    : `Wyjdź za ${leadMin} ${plural(leadMin, 'minutę', 'minuty', 'minut')} • ${p.line} ${p.departAt}`;
+    ? n.leaveNow(service, p.departAt)
+    : n.leaveIn(leadMin, service, p.departAt);
   const walk =
     p.walkMeters != null && p.walkMeters > 0
-      ? `${Math.round(p.walkMeters)} ${p.walkMeters < 1000 ? 'm' : 'km'} do przystanku`
+      ? n.walkToStop(formatDistance(p.walkMeters))
       : null;
   return {
     title,
-    body: [p.leg ? `przystanek ${p.leg.fromStop}` : null, walk, copy.subtitle]
+    body: [p.leg ? n.stopHere(p.leg.fromStop) : null, walk, copy.subtitle]
       .filter(Boolean)
       .join(' • '),
     data: tripNotificationData(trip, imminent ? 'imminent' : 'lead'),
@@ -238,10 +243,11 @@ export async function sendDisruptionAlert(
   if (!prefs.disruptionAlertsEnabled) return false;
   const N = getNotifications();
   if (!N) return false;
+  const n = tr().notification;
   const body = [
-    p.leg ? `przystanek ${p.leg.fromStop}` : null,
-    `nowy odjazd ${p.departAt}`,
-    p.delayMin >= 1 ? delayText(p.delayMin) : null,
+    p.leg ? n.stopHere(p.leg.fromStop) : null,
+    n.newDeparture(p.departAt),
+    p.delayMin >= 2 ? n.delayLate(p.delayMin) : '',
   ]
     .filter(Boolean)
     .join(' • ');
@@ -249,7 +255,7 @@ export async function sendDisruptionAlert(
     await N.scheduleNotificationAsync({
       identifier: alertId('disruption', trip.id),
       content: {
-        title: `Opóźnienie • ${p.line} ${minutesText(Math.max(1, p.departInSec / 60))}`,
+        title: n.delayTitle(p.line, tr().common.durMin(Math.max(1, p.departInSec / 60))),
         body,
         data: tripNotificationData(trip, 'disruption'),
         sound: 'default',
@@ -273,13 +279,14 @@ export async function sendArrivedNotification(
 ): Promise<void> {
   const N = getNotifications();
   if (!N) return;
-  const copy = buildTripCopy(p, trip.connection);
+  const s = tr();
+  const copy = buildTripCopy(p, trip.connection, s);
   try {
     await N.scheduleNotificationAsync({
       identifier: alertId('arrived', trip.id),
       content: {
         title: copy.title,
-        body: `${copy.subtitle} • ${copy.body}`,
+        body: [copy.subtitle, copy.body].filter(Boolean).join(' • '),
         data: tripNotificationData(trip, 'arrived'),
         sound: 'default',
         categoryIdentifier: ALERT_CATEGORY,

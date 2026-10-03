@@ -17,13 +17,15 @@
  */
 
 import { computeTripProgress } from '../src/services/notifications/tripProgress';
-import { buildTripCopy, buildActivityProps, buildNativeState } from '../src/services/notifications/content';
+import { buildLivePlan, buildPhaseCopy } from '../src/services/notifications/content';
 import {
   matchTrackedConnection,
   resolveTrackedConnection,
 } from '../src/services/notifications/planMatch';
-import { countdownText, toAbsoluteMs, untilText } from '../src/services/notifications/format';
+import { clockFromMs, toAbsoluteMs } from '../src/services/notifications/format';
+import { pl } from '../src/i18n/pl';
 import type { Connection, Leg, LegStop } from '../src/types/models';
+import type { TrackedTrip } from '../src/services/notifications';
 
 // ─── Framework asercji ─────────────────────────────────────────────────────
 
@@ -66,16 +68,34 @@ function expectWithin(label: string, got: number, min: number, max: number): voi
   console.log(`   FAIL  ${label} = ${got} (oczekiwano ${min}…${max})`);
 }
 
-function dump(label: string, conn: Connection, at: Date): ReturnType<typeof computeTripProgress> {
-  const p = computeTripProgress(conn, { now: at });
-  const copy = buildTripCopy(p, conn);
+/** TrackedTrip na potrzeby planu — deep link musi być w każdym teście. */
+const tracked = (conn: Connection): TrackedTrip => ({
+  id: conn.id,
+  fromTitle: conn.fromTitle,
+  fromLat: 51.1,
+  fromLon: 17.0,
+  toId: conn.toTitle,
+  toTitle: conn.toTitle,
+  toLat: 51.11,
+  toLon: 17.02,
+  connection: conn,
+  startedAt: at(0, 0).getTime(),
+});
+
+const planOf = (progress: ReturnType<typeof computeTripProgress>, conn: Connection) =>
+  buildLivePlan(progress, conn, tracked(conn), pl);
+
+function dump(label: string, conn: Connection, atTime: Date): ReturnType<typeof computeTripProgress> {
+  const p = computeTripProgress(conn, { now: atTime });
+  const plan = planOf(p, conn);
+  const all = buildPhaseCopy(p, conn, pl);
   console.log(
     `   ${label.padEnd(22)} ${p.phase.padEnd(9)} postęp=${p.progress.toFixed(2)} ` +
       `eta=${p.etaMin.toFixed(0)}min zostało=${p.stopsLeft} następny=${p.nextStop ?? '-'} ` +
       `przystanek=${p.stopName}\n` +
-      `      T: ${copy.title}\n      S: ${copy.subtitle}\n      B: ${copy.body}\n` +
-      `      licznik→${hhmm(copy.countdownAtMs)} (${copy.countdownCaption}) ` +
-      `pasek=${copy.progressPermille} widoczny=${copy.showProgress}`,
+      `      teraz: ${all[p.phase].title} | ${all[p.phase].text}\n` +
+      `      chip: ${all[p.phase].criticalText} | licznik→${hhmm(plan.countdownAtMs)} ` +
+      `w dół=${plan.countdownDown} segmenty=${plan.segments.length}`,
   );
   return p;
 }
@@ -163,18 +183,10 @@ const night: Connection = {
 
 // ─── Formatowanie ─────────────────────────────────────────────────────────
 
-describe('Formatowanie po polsku');
-expect('1 minuta', countdownText(60), 'za 1 minutę');
-expect('2 minuty', countdownText(120), 'za 2 minuty');
-expect('5 minut', countdownText(300), 'za 5 minut');
-expect('12 minut', countdownText(700), 'za 12 minut');
-expect('tu i teraz', countdownText(20), 'odjazd teraz');
-expect('bez „za"', untilText(240), '4 minuty');
-expect('godziny', countdownText(2 * 3600), 'za 2 godziny');
-expect('jedna godzina', countdownText(3600), 'za 1 godzinę');
-
 describe('Północ: wybieramy wystąpienie najbliższe teraz');
 // 23:58 od 00:03 to 23:58 WCZORAJ, nie dzisiaj — inaczej ETA wynosiłoby 24 godziny.
+// Ta sama poprawka naprawiała `toAbsoluteMs` i po niej dziedziczy licznik
+// w powiadomieniu, bo i tak liczy się na bezwzględnych znacznikach ms.
 expect('od 00:03 do 23:58 wczoraj', hhmm(toAbsoluteMs(23 * 3600 + 58 * 60, at(0, 3))), '23:58');
 expect('od 14:00 do 14:10 dziś', hhmm(toAbsoluteMs(14 * 3600 + 10 * 60, at(14, 0))), '14:10');
 expect('od 23:57 do 14:10 dziś (9h wstecz)', hhmm(toAbsoluteMs(14 * 3600 + 10 * 60, at(23, 57))), '14:10');
@@ -187,15 +199,16 @@ let p = dump('14:00 jeszcze w domu', simple, at(14, 0));
 expect('faza', p.phase, 'walking');
 expect('linia to tramwaj, nie „Pieszo"', p.line, '4');
 expect('przystanek docelowy', p.stopName, 'HALDENA');
-// Przed startem spaceru nie wiemy, kiedy użytkownik ruszy, więc nie udajemy,
-// że postęp dojścia coś znaczy — zostaje sam licznik.
+// Przed startem spaceru `TripProgress.walkMeters` jest zerem, bo szuka tylko
+// odcinka, który już trwa. Tymczasem to jest właśnie chwila, w której dystans
+// jest najważniejszy — użytkownik stoi w domu i musi zdecydować, czy zdąży.
 expect('postęp dojścia nieznany', p.approachProgress, null);
-expect('bez paska postępu dojścia', buildTripCopy(p, simple).showProgress, false);
+expect('dystans dojścia w tytule', planOf(p, simple).copy.walking.title, 'Idź na przystanek • 320 m');
 
 p = dump('14:06 prawie na miejscu', simple, at(14, 6));
 expect('faza', p.phase, 'walking');
 expectWithin('dojście w toku', p.approachProgress ?? -1, 0.4, 0.7);
-expect('pasek postępu dojścia widoczny', buildTripCopy(p, simple).showProgress, true);
+expect('licznik celuje w odjazd', hhmm(planOf(p, simple).countdownAtMs), '14:10');
 
 p = dump('14:09 wciąż idę', simple, at(14, 9));
 expect('faza', p.phase, 'walking');
@@ -205,7 +218,7 @@ p = dump('14:10 wsiadam', simple, at(14, 10));
 expect('faza', p.phase, 'waiting');
 // Regression: raportowaliśmy następny przystanek, choć użytkownik już stoi na tym.
 expect('bez następnego przystanku', p.nextStop, null);
-expect('licznik celuje w odjazd', hhmm(buildTripCopy(p, simple).countdownAtMs), '14:10');
+expect('licznik celuje w odjazd', hhmm(planOf(p, simple).countdownAtMs), '14:10');
 
 p = dump('14:11 jadę', simple, at(14, 11));
 expect('faza', p.phase, 'riding');
@@ -227,11 +240,11 @@ expect('postęp domknięty', p.progress, 1);
 
 describe('Podróż przez północ');
 p = dump('23:55 przed odjazdem', night, at(23, 55));
-expect('licznik celuje w 23:58', hhmm(buildTripCopy(p, night).countdownAtMs), '23:58');
+expect('licznik celuje w 23:58', hhmm(planOf(p, night).countdownAtMs), '23:58');
 p = dump('00:03 w środku nocy', night, at(0, 3));
 // Regression: toAbsoluteMs zakładał „dziś", więc ETA wynosiło 1449 minut.
 expect('faza', p.phase, 'riding');
-expect('licznik celuje w 00:12', hhmm(buildTripCopy(p, night).countdownAtMs), '00:12');
+expect('licznik celuje w 00:12', hhmm(planOf(p, night).countdownAtMs), '00:12');
 expectWithin('ETA w minutach', p.etaMin, 5, 12);
 
 // ─── Przesiadka ───────────────────────────────────────────────────────────
@@ -244,7 +257,7 @@ expect('linia', p.line, '4');
 p = dump('14:26 przechodzę', transfer, at(14, 26));
 // Regression: licznik celował w pierwszy odjazd (14:10), który minął godzinę temu.
 expect('faza', p.phase, 'transfer');
-expect('licznik celuje w 14:30', hhmm(buildTripCopy(p, transfer).countdownAtMs), '14:30');
+expect('licznik celuje w 14:30', hhmm(planOf(p, transfer).countdownAtMs), '14:30');
 expect('przystanek przesiadki', p.stopName, 'Rondo');
 expect('następna linia', p.line, '12');
 
@@ -418,42 +431,65 @@ expect(
 );
 expect('pusty plan → null', resolveTrackedConnection([], tracked10, at0401, GRACE), null);
 
-// ─── Dane przekazywane do nośników ─────────────────────────────────────────
+// ─── Plan przekazywany do natywnego Live Update ────────────────────────────
 
-describe('Propsy do Live Activity');
-const props = buildActivityProps(computeTripProgress(simple, { now: at(14, 11) }));
-expect('faza', props.phase, 'riding');
-expect('linia', props.line, '4');
-expect('następny przystanek', props.nextStop, 'GÓRNOŚLĄSKA');
-expect('kolor linii to hex', /^#[0-9A-F]{6}$/i.test(props.lineColor), true);
-expect('liczby, nie Date (musi iść przez JSON do widgetu)', typeof props.departAtMs, 'number');
-expect('JSON-serializowalne', JSON.parse(JSON.stringify(props)).phase, 'riding');
+describe('Plan dla natywnego powiadomienia');
+const riding = computeTripProgress(simple, { now: at(14, 11) });
+const ridingPlan = planOf(riding, simple);
 
-describe('Stan dla natywnej powiadomienia');
-const native = buildNativeState(
-  computeTripProgress(simple, { now: at(14, 11) }),
-  simple,
-  'kilometr://routes?fromTitle=Dom&action=stop',
-  true,
-);
-expect('pasek widoczny', native.showProgress, true);
-// Regression: porównanie szło z Date.now(), a stan był liczony dla 14:11
-// w przeszłości → licznik znikał.
-expect('licznik w przyszłości względem computedAt', native.showCountdown, true);
-expect('licznik odlicza w dół', native.countdownDown, true);
-expect('computedAt to moment przeliczenia', native.countdownAtMs > 0, true);
+expect('faza zgłoszona dla wszystkich pięciu', Object.keys(ridingPlan.copy).length, 5);
+expect('segment dojścia + przejazd', ridingPlan.segments.length, 2);
+expect('dojście pieszo', ridingPlan.segments[0].mode, 'walk');
+expect('przejazd tramwajem', ridingPlan.segments[1].mode, 'tram');
+// Postęp liczy się na OKRES CAŁEJ podróży (z dojściem), inaczej pasek skacze
+// na starcie i na końcu ląduje nie tam, gdzie jest użytkownik.
+expect('początek podróży to start dojścia', hhmm(ridingPlan.startAtMs), '14:03');
+expect('koniec podróży to przyjazd', hhmm(ridingPlan.endAtMs), '14:25');
+expect('licznik odlicza w dół', ridingPlan.countdownDown, true);
+expect('licznik celuje w 14:25', hhmm(ridingPlan.countdownAtMs), '14:25');
+expect('dwa przyciski', ridingPlan.actions.length, 2);
+expect('przycisk stop ma id', ridingPlan.actions[0].id, 'stop');
+expect('w trasie przycisk brzmi „Zakończ”', ridingPlan.actions[0].title, 'Zakończ');
+expect('deep link do trasy', ridingPlan.deepLink.startsWith('kilometr://routes?'), true);
+// Wszystko idzie jako jeden JSON do Intent — mieszanie typów (Date, Color)
+// wybuchłoby przy marshallowaniu.
+expect('JSON-serializowalne', JSON.parse(JSON.stringify(ridingPlan)).segments.length, 2);
 
-const arrivedNative = buildNativeState(
-  computeTripProgress(simple, { now: at(14, 26) }),
-  simple,
-  'kilometr://routes?fromTitle=Dom',
-  true,
-);
-expect('po przyjeździe bez licznika', arrivedNative.showCountdown, false);
-expect('postęp w skali 0..1000', native.progress >= 0 && native.progress <= 1000, true);
-expect('dwa przyciski', native.actions.length, 2);
-expect('deep link zawiera akcję', native.deepLink.includes('action=stop'), true);
-expect('kolor linii to hex', /^#[0-9A-F]{6}$/i.test(native.lineColor), true);
+const arrivedProgress = computeTripProgress(simple, { now: at(14, 26) });
+const arrivedPlan = planOf(arrivedProgress, simple);
+expect('po przyjeździe licznik w górę', arrivedPlan.countdownDown, false);
+expect('licznik od godziny przyjazdu', hhmm(arrivedPlan.countdownAtMs), '14:25');
+// Po przyjeździe nie ma już czego kończyć — „Zakończ" byłoby kłamstwem.
+expect('po przyjeździe przycisk to „OK”', arrivedPlan.actions[0].title, 'OK');
+expect('serwis ma się zatrzymać po podanym czasie', arrivedPlan.stopAfterMs, 0);
+
+const walkingProgress = computeTripProgress(simple, { now: at(14, 6) });
+const walkingPlan = planOf(walkingProgress, simple);
+// Regression: plan liczony dla 14:06, a porównanie szło z Date.now() —
+// licznik wychodził „nie pokazuj".
+expect('licznik w przyszłości względem computedAt', walkingPlan.countdownAtMs > walkingProgress.computedAt, true);
+expect('licznik celuje w odjazd', hhmm(walkingPlan.countdownAtMs), '14:10');
+
+const delayedProgress = computeTripProgress({ ...simple, delayMin: 6 }, { now: at(14, 11) });
+const delayedPlan = planOf(delayedProgress, simple);
+// Chip w pasku stanu ma jedno miejsce — przy opóźnieniu ważniejsze jest
+// opóźnienie niż godzina przyjazdu.
+expect('opóźnienie w planie', delayedPlan.delayMin, 6);
+expect('chip pokazuje opóźnienie', delayedPlan.copy.riding.criticalText, '+6 min');
+
+const nightPlan = planOf(computeTripProgress(night, { now: at(0, 3) }), night);
+expect('przez północ licznik celuje w 00:12', hhmm(nightPlan.countdownAtMs), '00:12');
+expect('przez północ koniec po 00:12', hhmm(nightPlan.endAtMs), '00:12');
+
+// ─── Formatowanie absolutnego czasu dla powiadomienia ───────────────────────
+
+describe('Godzina z znacznika ms');
+// Powiadomienie nie może pokazywać „za 4 min" — tekst zestarzałby się przy
+// pierwszym odświeżeniu. Wszystko, co jest liczone co sekundę, robi zegar
+// systemowy, a my podajemy tylko bezwzględną godzinę.
+expect('godzina odjazdu', clockFromMs(at(14, 10).getTime()), '14:10');
+expect('po północy', clockFromMs(new Date(2026, 0, 16, 0, 12).getTime()), '00:12');
+expect('zero to pusty tekst, nie „00:00"', clockFromMs(0), '');
 
 // ─── Podsumowanie ─────────────────────────────────────────────────────────
 

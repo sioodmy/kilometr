@@ -9,7 +9,7 @@ import { nowSecOfDay } from '../vehiclePosition';
 import { getNotificationPreferencesSync, loadNotificationPreferences } from './preferences';
 import { computeTripProgress } from './tripProgress';
 import { resolveTrackedConnection } from './planMatch';
-import { presentTrip, dismissTracking } from './presenter';
+import { ARRIVED_LINGER_MS, presentTrip, dismissTracking } from './presenter';
 import {
   cancelScheduledAlerts,
   scheduleDepartureAlerts,
@@ -17,21 +17,20 @@ import {
   sendDisruptionAlert,
   shouldAlertDelay,
 } from './alerts';
-import { isLiveActivitySupported, adoptOrphanActivity } from './liveActivity/controller';
-import { areNotificationsSupported, warnUnsupportedOnce } from './module';
+import { areNotificationsSupported, getTrackingNative, warnUnsupportedOnce } from './module';
 import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 
 // Orkiestrator śledzenia podróży. Trzyma jedną aktywną podróż, cyklicznie
 // przelicza plan (żeby łapać opóźnienia i zmiany kursu), z tego wycieka
-// TripProgress i aktualizuje powiadomienie / Live Activity.
+// TripProgress i aktualizuje plan powiadomienia.
 //
-// Rytm jest adaptive: przed odjazdem i w trakcie jazdy odświeżamy częściej
-// (tu liczy się każda minuta), po przyjeździe rzadko. Zawsze dodatkowo
-// odświeżamy przy powrocie aplikacji na pierwszy plan.
+// Od planu liczb (godziny, odcinki) pilnuje `LiveTripService`, więc ten
+// ticker nie musi tykać co sekundę — wystarczy dowieźć zmiany z planera i
+// przeliczenia pozycji pojazdu. Rytm jest adaptive: przed odjazdem i w trakcie
+// jazdy częściej, po przyjeździe rzadko. Zawsze dodatkowo odświeżamy przy
+// powrocie aplikacji na pierwszy plan.
 
 const STORAGE_KEY = 'kilometr.trackedTrip.v2';
-/** Jak długo po przyjeździe zostawiamy powiadomienie „jesteś na miejscu”. */
-const ARRIVED_LINGER_MS = 3 * 60 * 1000;
 /** Ile po odjeździe kurs wciąż uznajemy za „swoje” połączenie. */
 const BOARDING_GRACE_SEC = 240;
 
@@ -138,6 +137,15 @@ async function refresh(): Promise<void> {
   refreshing = (async () => {
     const before = tracked;
     if (!before) return;
+
+    // Użytkownik wcisnął „Zakończ" pod powiadomieniem, a aplikacja dalej
+    // żyje w tle. Bez tego sprawdzenia następny tick wskrzesiłby powiadomienie
+    // i serwis, które właśnie zniknęły.
+    if (await consumeNativeStop()) {
+      await stopTracking();
+      return;
+    }
+
     const prefs: NotificationPreferences = getNotificationPreferencesSync();
 
     // Planujemy tylko do momentu odjazdu (patrz `planLocked`).
@@ -220,9 +228,10 @@ async function refresh(): Promise<void> {
 
 /**
  * Rytm odświeżania zależy od tego, jak daleko jesteśmy od odjazdu. Licznik
- * i pasek postępu i tak liczy system, więc JS nie musi tykać co sekundę —
- * wystarczy, że podajemy mu aktualny plan. Im bliżej odjazdu, tym częściej,
- * bo wtedy zmienia się to, co użytkownik realnie potrzebuje.
+ * i pasek postępu liczy serwis Androida z zegara, więc JS nie musi tykać co
+ * sekundę — wystarczy, że dowieziemy mu plan. Im bliżej odjazdu, tym
+ * częściej, bo wtedy zmienia się to, czego użytkownik realnie potrzebuje:
+ * pozycja pojazdu, liczba przystanków, opóźnienie.
  */
 const TICK_FAR_MS = 5 * 60_000;
 const TICK_APPROACH_MS = 20_000;
@@ -250,7 +259,7 @@ function rescheduleTicker(): void {
 
 // ─── Cykl życia ────────────────────────────────────────────────────────────
 
-/** Uruchamia śledzenie podróży: powiadomienie, Live Activity, alerty odjazdu. */
+/** Uruchamia śledzenie podróży: Live Update, alerty odjazdu, widgety. */
 export async function startTracking(trip: TrackedTrip): Promise<void> {
   if (!areNotificationsSupported()) {
     warnUnsupportedOnce('Śledzenie podróży');
@@ -268,11 +277,9 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
 }
 
 /**
- * Kończy śledzenie. `lingerSec` zostawia Live Activity / powiadomienie na
- * ekranie blokady jeszcze przez chwilę — używane po przyjeździe, żeby
- * „jesteś na miejscu" zdążyło się przeczytać.
+ * Kończy śledzenie: serwis, alerty, widgety i zapisany stan.
  */
-export async function stopTracking(lingerSec = 0): Promise<void> {
+export async function stopTracking(): Promise<void> {
   if (!tracked) return;
   tracked = null;
   progress = null;
@@ -284,7 +291,7 @@ export async function stopTracking(lingerSec = 0): Promise<void> {
     ticker = null;
   }
   await cancelScheduledAlerts();
-  await dismissTracking(lingerSec);
+  await dismissTracking();
   await kvRemove(STORAGE_KEY);
   await mergeWidgetSnapshot({ pinned: null });
   notify();
@@ -293,15 +300,19 @@ export async function stopTracking(lingerSec = 0): Promise<void> {
 /** Wznawia śledzenie po restarcie aplikacji (telefon zrestartowany, ubity proces). */
 export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
   if (tracked) return { ...tracked };
+  // Użytkownik mógł w międzyczasie wcisnąć „Zakończ" pod powiadomieniem —
+  // obsłużył to natywny odbiorca, więc myśląc o wznowieniu tylko byśmy
+  // odpalili śledzenie, które on właśnie zakończył.
+  if (await consumeNativeStop()) {
+    await kvRemove(STORAGE_KEY);
+    return null;
+  }
   try {
     const raw = await kvGet(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as TrackedTrip;
     if (!parsed?.connection) return null;
     tracked = parsed;
-    // Live Activity przeżywa proces aplikacji — podepnij się do istniejącej,
-    // inaczej po restarcie świecilibyśmy własnym stanem w martwą aktywność.
-    if (isLiveActivitySupported()) adoptOrphanActivity();
     progress = computeTripProgress(parsed.connection, {});
     notify();
     rescheduleTicker();
@@ -317,10 +328,33 @@ export function refreshTrackedTrip(): Promise<void> {
   return refresh();
 }
 
+/**
+ * Przycisk „Zakończ" pod powiadomieniem obsługuje `TripActionReceiver`
+ * natywnie — powiadomienie znika natychmiast, bez otwierania aplikacji. Do
+ * JS informacja wraca flagą w SharedPreferences, bo intencja do odbiorcy nie
+ * trafia do procesu aplikacji. Sprawdzamy ją przy każdym wyjściu na plan.
+ */
+async function consumeNativeStop(): Promise<boolean> {
+  const native = getTrackingNative();
+  if (!native) return false;
+  try {
+    return await native.consumeStopRequest();
+  } catch {
+    return false;
+  }
+}
+
 /** Idempotentny ticker globalny: odświeża przy powrocie na pierwszy plan. */
 export function startTrackedTripListener(): void {
   AppState.addEventListener('change', (state) => {
-    if (state === 'active' && tracked) void refresh();
+    if (state !== 'active' || !tracked) return;
+    void (async () => {
+      if (await consumeNativeStop()) {
+        await stopTracking();
+        return;
+      }
+      await refresh();
+    })();
   });
 }
 

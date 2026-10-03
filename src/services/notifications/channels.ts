@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { tr } from '../../i18n';
 import { getNotifications } from './module';
 
 // Kanały powiadomień na Androidzie.
@@ -8,12 +9,13 @@ import { getNotifications } from './module';
 // „śledzenie podróży” (cicha, trwała aktualizacja w trayu) od „alertów”
 // (głośne, przerywające) — inaczej użytkownik musiałby wybrać między
 // przydatnym odliczaniem a słyszeniem, kiedy wychodzić.
+//
+// Identyfikator `TRACKING_CHANNEL_ID` jest też używany po stronie natywnej
+// (`LiveUpdateFactory.CHANNEL_ID`) — ten sam kanał dla powiadomienia z
+// serwisu i dla wariantu awaryjnego z expo-notifications.
 
 export const TRACKING_CHANNEL_ID = 'kilometr.tracking';
 export const ALERTS_CHANNEL_ID = 'kilometr.alerts';
-
-const TRACKING_CHANNEL_NAME = 'Śledzenie podróży';
-const ALERTS_CHANNEL_NAME = 'Alerty odjazdu';
 
 /**
  * Kanały muszą istnieć ZANIM poprosimy o pozwolenie — na Androidzie 13+
@@ -23,10 +25,11 @@ const ALERTS_CHANNEL_NAME = 'Alerty odjazdu';
 export async function setupNotificationChannels(): Promise<void> {
   const N = getNotifications();
   if (!N || Platform.OS !== 'android') return;
+  const s = tr().notification;
   try {
     await N.setNotificationChannelAsync(TRACKING_CHANNEL_ID, {
-      name: TRACKING_CHANNEL_NAME,
-      description: 'Odliczanie do odjazdu i postęp podróży. Bez dźwięku.',
+      name: s.channelTracking,
+      description: s.channelTrackingDesc,
       importance: N.AndroidImportance.LOW,
       lockscreenVisibility: N.AndroidNotificationVisibility.PUBLIC,
       showBadge: false,
@@ -38,8 +41,8 @@ export async function setupNotificationChannels(): Promise<void> {
   }
   try {
     await N.setNotificationChannelAsync(ALERTS_CHANNEL_ID, {
-      name: ALERTS_CHANNEL_NAME,
-      description: '„Wyjdź teraz”, opóźnienia i zmiany kursu. Z dźwiękiem.',
+      name: s.channelAlerts,
+      description: s.channelAlertsDesc,
       importance: N.AndroidImportance.HIGH,
       lockscreenVisibility: N.AndroidNotificationVisibility.PUBLIC,
       showBadge: true,

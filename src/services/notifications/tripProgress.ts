@@ -324,10 +324,39 @@ export function computeTripProgress(
 }
 
 /**
+ * Odcinki z bezwzględnymi godzinami. Ten sam zegar, którego używa
+ * `computeTripProgress` — wydzielenie go tutaj pilnuje, że faza podróży
+ * i pasek postępu w powiadomieniu liczą się z tych samych liczb.
+ */
+export interface LegTimelineEntry {
+  leg: Leg;
+  index: number;
+  departMs: number;
+  arriveMs: number;
+}
+
+export function computeLegTimeline(
+  conn: Connection,
+  now: Date = new Date(),
+): LegTimelineEntry[] {
+  const legs = conn.legs;
+  const boardIndex = firstTransitLegIndex(legs);
+  const clock = legClock(legs, boardIndex, conn.departureSec);
+  const departMs = toMsAll(clock.departSec, now);
+  const arriveMs = toMsAll(clock.arriveSec, now);
+  return legs.map((leg, index) => ({
+    leg,
+    index,
+    departMs: departMs[index] ?? 0,
+    arriveMs: arriveMs[index] ?? 0,
+  }));
+}
+
+/**
  * Ile po odjeździe uznajemy, że użytkownik jest w pojeździe. Z rozkładu
  * nie da się tego ustalić (nie wiemy, czy zdążył do przystanku), więc
  * przyjmujemy krótką grzeczność: sekundy wokół odjazdu to jeszcze
- * „czekanie / wsiadanie", a nie „w trasie".
+ * „czekanie / wsiadanie”, a nie „w trasie”.
  */
 const BOARDING_GRACE_SEC = 45;
 

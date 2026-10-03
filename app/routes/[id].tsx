@@ -19,7 +19,6 @@ import type { Connection } from '../../src/types/models';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { LiveDot } from '../../src/components/LiveDot';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
-import { ActiveTripCard } from '../../src/components/ActiveTripCard';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -38,7 +37,7 @@ export default function RouteDetailsScreen() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
 
-  const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
+  const { trip: trackedTrip } = useTrackedTrip();
 
   const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
 
@@ -286,16 +285,6 @@ export default function RouteDetailsScreen() {
           )}
         </View>
 
-        {isTrackedThis && trackedProgress && trackedTrip ? (
-          <View style={styles.trackSlot}>
-            <ActiveTripCard
-              trip={trackedTrip}
-              progress={trackedProgress}
-              onStop={() => void stopTracking()}
-            />
-          </View>
-        ) : null}
-
         {noLegs ? (
           <View style={styles.emptyCard}>
             <RouteOff size={20} color={scheme.onSurfaceVariant} strokeWidth={2} />
@@ -341,7 +330,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
-  trackSlot: { marginBottom: 12 },
   headerTrackBtn: {
     flexDirection: 'row',
     alignItems: 'center',

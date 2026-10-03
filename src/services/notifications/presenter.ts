@@ -2,46 +2,42 @@ import { Platform } from 'react-native';
 import {
   getNotifications,
   getTrackingNative,
-  isNativeTrackingSupported,
   TRACKING_NOTIFICATION_ID,
+  warnUnsupportedOnce,
 } from './module';
 import { TRACKING_CHANNEL_ID } from './channels';
 import { TRIP_CATEGORY } from './categories';
-import {
-  buildActivityProps,
-  buildNativeState,
-  buildTripCopy,
-  buildTripLink,
-  tripNotificationData,
-} from './content';
-import {
-  dismissTripActivity,
-  isLiveActivitySupported,
-  presentTripActivity,
-} from './liveActivity/controller';
+import { tr } from '../../i18n';
+import { buildLivePlanJson, buildTripCopy, tripNotificationData } from './content';
 import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 
-// Wystawienie stanu podróży na wszystkich powierzchniach naraz. Wybór
-// nośnika jest automatyczny, ale z jawnym powodem: na Androidzie preferujemy
-// natywną powiadomienie (pasek postępu + chronometr liczony przez system),
-// a expo-notifications zostaje jako awaryjny wariant; na iOS to Live Activity.
+// Wywieszenie stanu podróży na powiadomieniu.
+//
+// Android dostaje natywne Live Update (`Notification.ProgressStyle` z
+// segmentami podróży + serwis w pierwszym planie), a JS wysyła plan i nie
+// dotyka go, dopóki planer nie zobaczy czegoś nowego. Licznik i pasek postępu
+// tykają po stronie serwisu, więc powiadomienie żyje tak samo jak
+// w nawigacji — także przy wyłączonym ekranie.
+//
+// `expo-notifications` zostaje wyłącznie jako wariant awaryjny: Expo Go,
+// brak zgody na powiadomienia albo sytuacja, w której serwisu nie udało się
+// podnieść. Wtedy pokazujemy zwykłe powiadomienie z tekstem — lepsze niż
+// cisza.
 
-// ─── Awaryjne powiadomienie przez expo-notifications ──────────────────────
-// Bez paska postępu i bez chronometru, ale z subtitle, wątkiem i kategorią —
-// działa zawsze tam, gdzie zadziała natywny kod.
+/**
+ * Ile zostawiamy „jesteś na miejscu" na ekranie blokady. Ten sam czas mierzy
+ * `tripMonitor` zanim odetnie śledzenie — muszą się zgadzać, inaczej
+ * powiadomienie zniknie w połowie komunikatu albo zostanie po nim.
+ */
+export const ARRIVED_LINGER_MS = 3 * 60 * 1000;
 
 async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void> {
   const N = getNotifications();
   if (!N) return;
-  const copy = buildTripCopy(p, trip.connection);
+  const copy = buildTripCopy(p, trip.connection, tr());
   try {
-    // iOS nie ma odpowiednika „update in place” dla lokalnych powiadomień —
-    // kolejne wywołania z tym samym identyfikatorem kumulowałyby się w
-    // Centrum powiadomień. Android nadpisuje pozycję sam, więc tam zostawiamy
-    // Update, żeby nie było okna bez powiadomienia.
-    if (Platform.OS === 'ios') {
-      await N.dismissNotificationAsync(TRACKING_NOTIFICATION_ID);
-    }
+    // Android nadpisuje pozycję sam, więc zostawiamy Update — nie chcemy okna
+    // bez powiadomienia między wywołaniami.
     await N.scheduleNotificationAsync({
       identifier: TRACKING_NOTIFICATION_ID,
       content: {
@@ -49,20 +45,14 @@ async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void
         subtitle: copy.subtitle,
         body: copy.body,
         categoryIdentifier: TRIP_CATEGORY,
-        // Wątek grupuje aktualizacje tej samej podróży zamiast mnożyć je
-        // na liście w Centrum powiadomień.
-        ...(Platform.OS === 'ios' ? { threadIdentifier: trip.id } : {}),
-        // Bez dźwięku: kanał śledzenia ma LOW, a banery przy każdym ticku
-        // odliczania byłyby upierkliwe.
         sound: false,
         data: tripNotificationData(trip),
         sticky: true,
-        ...(Platform.OS === 'android' ? { color: copy.accentColor } : {}),
+        ...(Platform.OS === 'android' ? { color: p.lineColor } : {}),
       },
       // Android: kanał bierze się z triggera, a `trigger: null` wylądowałby na
-      // domyślnym (głośnym) kanale „Miscellaneous”. Sekundowy interwał to
-      // najkrótszy niepowtarzalny trigger — wystarczy, żeby powiadomienie
-      // pokazało się od razu, ale w cichym kanale śledzenia.
+      // domyślnym (głośnym) kanale „Miscellaneous". Sekundowy interwał to
+      // najkrótszy niepowtarzalny trigger.
       trigger:
         Platform.OS === 'android'
           ? ({
@@ -93,9 +83,7 @@ async function dismissFallback(): Promise<void> {
   }
 }
 
-// ─── Publiczne API ─────────────────────────────────────────────────────────
-
-/** Wystawia / aktualizuje trwałą powiadomienie oraz Live Activity. */
+/** Wysyła plan podróży do natywnego Live Update. */
 export async function presentTrip(
   trip: TrackedTrip,
   p: TripProgress,
@@ -106,51 +94,47 @@ export async function presentTrip(
     return;
   }
 
-  const link = buildTripLink(trip);
-
-  // `liveProgressEnabled` to wspólny przełącznik dla obu nośników systemowych:
-  // paska postępu z chronometrem na Androidzie i Live Activity na iOS. Wyłączony
-  // = zostaje zwykłe powiadomienie z tekstem, bez modułu natywnego.
-  const wantSystemSurface = prefs.liveProgressEnabled;
-
-  if (Platform.OS === 'android' && wantSystemSurface) {
-    const native = getTrackingNative();
-    if (native) {
-      try {
-        const ok = await native.present(
-          buildNativeState(p, trip.connection, link, isNativeTrackingSupported()),
-        );
-        if (ok) return;
-      } catch (err) {
-        console.warn('[Powiadomienia] natywna powiadomienie nie wyszła:', err);
-      }
-    }
+  const native = Platform.OS === 'android' ? getTrackingNative() : null;
+  if (!native) {
+    if (Platform.OS === 'android') warnUnsupportedOnce('Live Update');
+    await presentFallback(p, trip);
+    return;
   }
 
-  if (isLiveActivitySupported() && wantSystemSurface) {
-    // `null` znaczy, że aktywności się nie udało otworzyć (użytkownik
-    // wyłączył Live Activities w Ustawieniach albo iOS odmówił) — wtedy
-    // lecimy zwykłym powiadomieniem, bo cisza byłaby gorsza niż prostsza
-    // prezentacja.
-    const activityId = presentTripActivity(buildActivityProps(p), link);
-    if (activityId != null) return;
-  }
-
-  await presentFallback(p, trip);
-}
-
-/** Zdejmuje powiadomienie śledzącą i kończy Live Activity. */
-export async function dismissTracking(lingerSec = 0): Promise<void> {
-  const native = getTrackingNative();
-  if (native) {
+  // `liveProgressEnabled` wyłącza pasek postępu i licznik, ale nie samo
+  // powiadomienie — zostaje wtedy zwykły banner z tekstem.
+  if (!prefs.liveProgressEnabled) {
     try {
-      await native.dismiss();
+      await native.stopTrip();
     } catch {
       // jw.
     }
+    await presentFallback(p, trip);
+    return;
   }
-  if (isLiveActivitySupported()) {
-    dismissTripActivity(undefined, lingerSec);
+
+  try {
+    // Po przyjeździe serwis dostaje `stopAfterMs` i sam się wyłącza, więc
+    // komunikat zostaje na ekranie blokady do końca, a nie znika z APK-iem.
+    const json = buildLivePlanJson(p, trip.connection, trip, tr(), {
+      stopAfterMs: p.phase === 'arrived' ? Date.now() + ARRIVED_LINGER_MS : 0,
+    });
+    if (await native.startTrip(json)) return;
+  } catch (err) {
+    console.warn('[Powiadomienia] natywne Live Update nie wystartowało:', err);
+  }
+  await presentFallback(p, trip);
+}
+
+/** Zdejmuje powiadomienie śledzące i zatrzymuje serwis. */
+export async function dismissTracking(): Promise<void> {
+  const native = getTrackingNative();
+  if (native) {
+    try {
+      await native.stopTrip();
+    } catch {
+      // jw.
+    }
   }
   await dismissFallback();
 }

@@ -3,9 +3,10 @@
 // kanale leci alert).
 
 export type {
-  NativeTrackingState,
+  LivePlan,
+  LivePlanPhaseCopy,
+  LivePlanSegment,
   NotificationPreferences,
-  TripActivityProps,
   TripLinkParams,
   TripPhase,
   TripProgress,
@@ -28,13 +29,15 @@ export {
 export { setupNotificationHandler, setupNotifications } from './setup';
 export {
   areNotificationsSupported,
+  getTrackingNative,
   isNativeTrackingSupported,
   TRACKING_NOTIFICATION_ID,
 } from './module';
 export {
+  canShowLiveUpdates,
   ensureNotificationPermission,
   hasNotificationPermission,
-  isDynamicIslandPlatform,
+  isTrackingPlatform,
   permissionDeniedMessage,
 } from './permissions';
 export {
@@ -43,14 +46,22 @@ export {
   saveNotificationPreferences,
   useNotificationPreferences,
 } from './preferences';
-export {
-  dismissTracking,
-  presentTrip,
-} from './presenter';
+export { dismissTracking, presentTrip } from './presenter';
 export { addTripResponseListener, getLastTripResponse, type TripResponse } from './response';
-export { computeTripProgress } from './tripProgress';
+export { computeTripProgress, computeLegTimeline, type LegTimelineEntry } from './tripProgress';
 export { matchTrackedConnection } from './planMatch';
-export { buildActivityProps, buildTripCopy, buildTripLink, type TripCopy } from './content';
+export {
+  buildLivePlan,
+  buildLivePlanJson,
+  buildPhaseCopy,
+  buildSegments,
+  buildTripCopy,
+  buildTripLink,
+  tripNotificationData,
+  WALK_SEGMENT_COLOR,
+  type BuildPlanOptions,
+  type TripCopy,
+} from './content';
 export {
   getTrackedTripSync,
   getTripProgressSync,
@@ -63,16 +74,9 @@ export {
   subscribeTracked,
 } from './tripMonitor';
 export {
-  countdownText,
-  delayText,
+  clockFromMs,
   formatClock,
   formatDistance,
-  minutesText,
-  plural,
   toAbsoluteMs,
-  transfersText,
-  untilText,
 } from './format';
-export { isLiveActivitySupported } from './liveActivity/controller';
 export { useTrackedTrip } from './useTrackedTrip';
-export { TRIP_ACTIVITY_NAME } from './liveActivity/KilometrTripActivity';

@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
-import { getNotifications } from './module';
+import { tr } from '../../i18n';
+import { getNotifications, getTrackingNative } from './module';
 
 // Uprawnienia. Prompt prosimy tylko wtedy, gdy użytkownik naprawdę włącza
 // funkcję (przypina trasę albo zmienia ustawienie), bo prośba „na starcie
@@ -41,13 +42,25 @@ export async function ensureNotificationPermission(): Promise<boolean> {
 
 /** Tekst do pokazania, gdy brak uprawnień — bez zaglądania w ustawienia systemu. */
 export function permissionDeniedMessage(): string {
-  if (Platform.OS === 'android') {
-    return 'Powiadomienia są wyłączone. Włącz je w ustawieniach systemu dla kilometr, żeby śledzić odjazd i postęp podróży.';
-  }
-  return 'Powiadomienia są wyłączone. Włącz je w Ustawieniach → kilometr → Powiadomienia, żeby śledzić odjazd i postęp podróży.';
+  return tr().notification.permDenied;
 }
 
-/** Czy na tej platformie w ogóle da się Live Activity (czyli iOS 16.1+). */
-export function isDynamicIslandPlatform(): boolean {
-  return Platform.OS === 'ios';
+/**
+ * Czy system wypuści powiadomienie do strefy „Live Updates" (Android 16.1+).
+ * Użytkownik może to wyłączyć per-apka; wtedy powiadomienie i tak działa,
+ * tylko nie dostanie wyróżnionego miejsca na ekranie blokady.
+ */
+export async function canShowLiveUpdates(): Promise<boolean> {
+  const native = getTrackingNative();
+  if (!native) return false;
+  try {
+    return await native.canPromote();
+  } catch {
+    return false;
+  }
+}
+
+/** Czy na tej platformie w ogóle da się śledzić podróżę powiadomieniem. */
+export function isTrackingPlatform(): boolean {
+  return Platform.OS === 'android';
 }

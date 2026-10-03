@@ -1,257 +1,289 @@
+import type { Strings } from '../../i18n/pl';
 import { getLineColors, inferTransitMode } from '../lineIdentity';
 import type { Connection } from '../../types/models';
-import {
-  countdownText,
-  formatDistance,
-  minutesText,
-  toPermille,
-  transfersText,
-  untilText,
-} from './format';
-import type {
-  NativeTrackingState,
-  TripActivityProps,
-  TripProgress,
-  TrackedTrip,
-} from './types';
+import { clockFromMs, formatDistance } from './format';
+import { computeLegTimeline } from './tripProgress';
+import type { LivePlan, LivePlanPhaseCopy, LivePlanSegment, TripPhase, TripProgress, TrackedTrip } from './types';
 
-// Tekst powiadomienia. Jedna funkcja → trzy miejsca docelowe (natywna
-// powiadomienie Androida, awaryjne expo-notifications, karta w aplikacji),
-// dzięki czemu nigdy nie zdarzy się, że tray mówi jedno, a ekran drugie.
+// Tekst powiadomienia — warstwa czysta.
 //
-// Hierarchia jest świadoma: tytuł = „co się dzieje teraz”, podtytuł = „gdzie
-// jedziemy / jaki jest następny krok”, treść = liczby, których użytkownik
-// naprawdę potrzebuje (dystans, ETA, opóźnienie). Nic więcej — powiadomienie
-// ma być czytelne jednym wzrokiem na ekranie blokady.
+// Zasada, która za tym stoi: liczbę, która zmienia się co sekundę, rysuje
+// system (chronometr `setWhen` + `setUsesChronometer`), a my dostarczamy
+// tekst, który z definicji nie zestarzeje — bezwzględne godziny („odjazd
+// 14:32”), kierunki, nazwy przystanków, liczby przystanków. Dzięki temu plan
+// można wysłać raz na fazę, a serwis Androida sam przelicza fazę i postęp co
+// sekundę, także wtedy, gdy proces aplikacji leży.
+//
+// Słownik dostajemy argumentem, nie przez `tr()`, i to celowo: moduł ma nie
+// ciągnąć `react-native` za sobą, bo `check:notifications` liczy te same
+// rzeczy w czystym node. Wywołujący (`presenter.ts`, `alerts.ts`) używają `tr()`.
+
+/** Neutralny kolor dojść i przesiadek — wspólny dla wszystkich linii. */
+export const WALK_SEGMENT_COLOR = '#8A8F98';
 
 export interface TripCopy {
   title: string;
   subtitle: string;
   body: string;
-  /** Tekst przy liczniku, np. 'do odjazdu'. */
-  countdownCaption: string;
-  countdownAtMs: number;
-  countdownDown: boolean;
-  /** Pasek postępu: 0..1000. */
-  progressPermille: number;
-  showProgress: boolean;
-  accentColor: string;
 }
 
-function lineLabel(p: TripProgress): string {
-  const kind = inferTransitMode(p.lineMode === 'walk' ? 'walk' : undefined, p.line);
-  if (kind === 'walk') return 'Pieszo';
-  return kind === 'tram' ? 'Tramwaj' : 'Autobus';
-}
-
-function chainLabel(conn: Connection): string {
-  const lines = conn.legs
-    .filter((l) => l.mode !== 'walk')
-    .map((l) => l.line)
-    .filter(Boolean);
-  // Jedna linia jest już w podtytule — nie powtarzamy jej w treści.
-  return lines.length > 1 ? lines.join(' → ') : '';
-}
-
-function stopsLabel(n: number | null): string {
-  if (n == null) return '';
-  if (n === 0) return 'ostatni przystanek';
-  if (n === 1) return '1 przystanek';
-  if (n < 5) return `${n} przystanki`;
-  return `${n} przystanków`;
-}
-
-/** Opóźnienie dopisane tylko wtedy, gdy faktycznie coś zmienia decyzję. */
-function delaySuffix(p: TripProgress): string {
-  if (p.delayMin >= 2) return ` • opóźnienie +${Math.round(p.delayMin)} min`;
-  if (p.delayMin <= -2) return ` • spieszy ${Math.abs(Math.round(p.delayMin))} min`;
-  return '';
-}
-
-export function buildTripCopy(p: TripProgress, conn: Connection): TripCopy {
-  const accent = p.lineColor || getLineColors(p.line || undefined, p.line?.length ? undefined : 'walk').bg;
-
-  switch (p.phase) {
-    case 'arrived':
-      return {
-        title: 'Jesteś na miejscu',
-        subtitle: `${p.toTitle} • ${p.arriveAt}`,
-        body: `Podróż trwała ${minutesText(conn.durationMin)}`,
-        countdownCaption: '',
-        countdownAtMs: p.arriveAtMs,
-        countdownDown: false,
-        progressPermille: 1000,
-        showProgress: false,
-        accentColor: accent,
-      };
-
-    case 'walking': {
-      const walk = p.walkMeters != null ? formatDistance(p.walkMeters) : '';
-      const walkMin = p.walkSec != null ? minutesText(p.walkSec / 60) : '';
-      const departIn = Math.max(0, p.departInSec);
-      // Pasek postępu pokazuje dojście do przystanku (p.approachProgress),
-      // a nie podróż — ta jeszcze się nie zaczęła.
-      const approach = p.approachProgress ?? 0;
-      return {
-        title: walk ? `Idź na przystanek • ${walk}` : 'Idź na przystanek',
-        subtitle: `${lineLabel(p)} ${p.line} o ${p.departAt}`,
-        body: [
-          walkMin ? `dojście ${walkMin}` : '',
-          `wyjście ${countdownText(departIn)}`,
-          chainLabel(conn),
-        ]
-          .filter(Boolean)
-          .join(' • '),
-        countdownCaption: 'do odjazdu',
-        countdownAtMs: p.boardAtMs,
-        countdownDown: true,
-        progressPermille: toPermille(approach),
-        showProgress: p.approachProgress != null,
-        accentColor: accent,
-      };
-    }
-
-    case 'waiting': {
-      const platform = p.leg?.platformCode ? ` • słup ${p.leg.platformCode}` : '';
-      return {
-        title: `${lineLabel(p)} ${p.line} • ${untilText(p.departInSec)}`,
-        subtitle: p.direction ? `Do ${p.direction}` : chainLabel(conn) || p.toTitle,
-        body: [
-          `odjazd ${p.departAt}`,
-          p.leg ? `przystanek ${p.leg.fromStop}` : '',
-          transfersText(p.transfers),
-          delaySuffix(p),
-          platform,
-        ]
-          .filter(Boolean)
-          .join(' • '),
-        countdownCaption: 'do odjazdu',
-        countdownAtMs: p.boardAtMs,
-        countdownDown: true,
-        progressPermille: 0,
-        showProgress: false,
-        accentColor: accent,
-      };
-    }
-
-    case 'transfer': {
-      const walk = p.walkMeters != null ? formatDistance(p.walkMeters) : '';
-      const next = p.leg ? `${lineLabel(p)} ${p.line}` : 'kolejny pojazd';
-      return {
-        title: `Przesiadka • ${next}`,
-        subtitle: p.interchange ?? (p.leg ? p.leg.fromStop : p.toTitle),
-        body: [
-          walk ? `dojście ${walk}` : '',
-          `${next} ${countdownText(p.boardInSec)}`,
-          stopsLabel(p.stopsLeft),
-        ]
-          .filter(Boolean)
-          .join(' • '),
-        countdownCaption: 'do odjazdu',
-        countdownAtMs: p.boardAtMs,
-        countdownDown: true,
-        progressPermille: toPermille(p.progress),
-        showProgress: p.progress > 0.02,
-        accentColor: accent,
-      };
-    }
-
-    case 'riding':
-    default: {
-      const eta = Math.max(0, p.etaMin);
-      const hops = stopsLabel(p.stopsLeft);
-      // Gdy plan nie ma listy przystanków, nazwy następnego nie zmyłamy —
-      // mówimy tylko, ile ich zostało.
-      const body = [
-        p.nextStop ? `następny ${p.nextStop}` : '',
-        hops,
-        `na miejscu ${p.arriveAt}`,
-        p.vehicleLabel ?? delaySuffix(p),
-      ]
-        .filter(Boolean)
-        .join(' • ');
-      return {
-        title: `${lineLabel(p)} ${p.line} • ${minutesText(eta)} do celu`,
-        subtitle: p.nextStop
-          ? `${hops ? `Za ${hops} • ` : ''}${p.nextStop}`
-          : p.direction
-            ? `Do ${p.direction}`
-            : p.toTitle,
-        body,
-        countdownCaption: 'do celu',
-        countdownAtMs: p.arriveAtMs,
-        countdownDown: p.etaMin > 0,
-        progressPermille: toPermille(p.progress),
-        showProgress: true,
-        accentColor: accent,
-      };
-    }
-  }
-}
-
-/** Props do Live Activity — ta sama informacja, tylko dla widgetu. */
-export function buildActivityProps(p: TripProgress): TripActivityProps {
-  return {
-    phase: p.phase,
-    line: p.line || '•',
-    lineColor: p.lineColor,
-    lineMode: p.lineMode,
-    direction: p.direction || '',
-    nextStop: p.nextStop ?? p.toTitle,
-    stopName: p.stopName || p.toTitle,
-    nextStopInMin: p.nextStopInMin ?? 0,
-    stopsLeft: p.stopsLeft ?? 0,
-    etaMin: Math.max(0, p.etaMin),
-    arriveAt: p.arriveAt,
-    departAt: p.departAt,
-    progress: p.progress,
-    delayMin: p.delayMin,
-    live: p.live,
-    vehicleTracked: p.vehicleTracked,
-    toTitle: p.toTitle,
-    nowMs: p.computedAt,
-    departAtMs: p.departAtMs,
-    arriveAtMs: p.arriveAtMs,
-    boardAtMs: p.boardAtMs,
-    walkMeters: p.walkMeters ?? 0,
-    transfers: p.transfers,
-  };
-}
-
-/** Stan dla natywnej powiadomienia śledzącej na Androidzie. */
-export function buildNativeState(
+/**
+ * Treść powiadomienia dla każdej fazy naraz. Serwis nie zna polskiej odmiany
+ * ani słownika, więc wybiera gotowy wariant na podstawie zegara — dzięki
+ * temu po zamknięciu aplikacji faza zmienia się dalej, a tekst wciąż jest
+ * przetłumaczony i poprawnie odmieniony.
+ */
+export function buildPhaseCopy(
   p: TripProgress,
   conn: Connection,
-  deepLink: string,
-  withActions: boolean,
-): NativeTrackingState {
-  const copy = buildTripCopy(p, conn);
+  s: Strings,
+): Record<TripPhase, LivePlanPhaseCopy> {
+  const n = s.notification;
+  const mode = modeLabel(p.lineMode, s);
+  const service = p.line ? `${mode} ${p.line}` : mode;
+  const boardAt = clockFromMs(p.boardAtMs);
+  const arriveAt = p.arriveAt;
+  const departAt = p.departAt;
+
+  const walkMeters = upcomingWalkMeters(p, conn);
+  const walkText = walkMeters != null && walkMeters > 0 ? formatDistance(walkMeters) : '';
+  const walkMin = p.walkSec != null ? Math.round(p.walkSec / 60) : null;
+  const stops = p.stopsLeft != null && p.stopsLeft > 0 ? n.stops(p.stopsLeft) : '';
+  const transfers = p.transfers > 0 ? n.transfers(p.transfers) : '';
+  const delay =
+    p.delayMin >= 2
+      ? n.delayLate(p.delayMin)
+      : p.delayMin <= -2
+        ? n.delayEarly(p.delayMin)
+        : '';
+  const vehicle = p.vehicleLabel ? n.vehicleAt(p.vehicleLabel) : '';
+
   return {
-    phase: p.phase,
-    title: copy.title,
-    text: copy.subtitle,
-    subText: copy.body,
-    lineColor: copy.accentColor,
-    progress: copy.progressPermille,
-    boardProgress: p.walkSec
-      ? toPermille(1 - p.walkSec / Math.max(1, p.departInSec))
-      : 0,
-    countdownAtMs: copy.countdownAtMs,
-    countdownLabel: copy.countdownCaption,
-    countdownDown: copy.countdownDown,
-    showProgress: copy.showProgress,
-    showCountdown: copy.countdownDown && copy.countdownAtMs > p.computedAt,
-    live: p.live,
-    delayMin: p.delayMin,
-    deepLink,
-    actions: withActions
-      ? [
-          { id: 'stop', title: 'Zakończ', destructive: true },
-          { id: 'routes', title: 'Trasa', destructive: false },
-        ]
-      : [],
+    walking: {
+      title: walkText ? n.walkTitle(walkText) : n.walkTitlePlain,
+      text: join(
+        p.direction ? n.directionTo(p.direction) : '',
+        p.leg ? n.stopHere(p.leg.fromStop) : '',
+        walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '',
+        transfers,
+      ),
+      subText: n.toDeparture,
+      criticalText: n.chipDepart(boardAt),
+    },
+
+    waiting: {
+      title: n.waitTitle(service, departAt),
+      text: join(
+        p.direction ? n.directionTo(p.direction) : p.toTitle,
+        stops,
+        p.leg ? n.stopHere(p.leg.fromStop) : '',
+        transfers,
+        delay,
+        p.leg?.platformCode ? n.platform(p.leg.platformCode) : '',
+      ),
+      subText: n.toDeparture,
+      criticalText: n.chipDepart(boardAt),
+    },
+
+    transfer: {
+      title: n.transferTitle(service, boardAt),
+      text: join(
+        p.interchange ?? (p.leg ? p.leg.fromStop : p.toTitle),
+        walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '',
+        stops,
+      ),
+      subText: n.toDeparture,
+      criticalText: n.chipDepart(boardAt),
+    },
+
+    riding: {
+      title: n.rideTitle(service, arriveAt),
+      // Godziny przyjazdu nie powtarzamy — jest już w tytule. Tu liczy się
+      // tylko to, czego tytuł nie mówi: gdzie dojeżdżamy i ile to potrwa.
+      text: join(p.nextStop ? n.nextStop(p.nextStop) : '', stops, delay || vehicle),
+      subText: n.toArrival,
+      criticalText: n.chipArrive(arriveAt),
+    },
+
+    arrived: {
+      title: n.arrivedTitle,
+      text: n.arrivedBody(arriveAt, s.common.durMin(conn.durationMin)),
+      subText: arriveAt,
+      criticalText: n.chipArrive(arriveAt),
+    },
   };
 }
+
+/**
+ * Trzy pola zamiast całego planu — tyle potrzebują alerty odjazdu („wyjdź za
+ * 5 minut", opóźnienie, „jesteś na miejscu"). Zdanie budujemy z bieżącej
+ * fazy, żeby banner i powiadomienie nie opowiadały o różnych rzeczach.
+ */
+export function buildTripCopy(p: TripProgress, conn: Connection, s: Strings): TripCopy {
+  const n = s.notification;
+  const current = buildPhaseCopy(p, conn, s)[p.phase];
+  return {
+    title: current.title,
+    subtitle: current.text,
+    // Tylko fakty, których nie ma ani w tytule, ani w podtitle — powtórzenie
+    // „na miejscu 14:25" w trzech miejscach wygląda jak błąd.
+    body: join(
+      p.leg?.platformCode ? n.platform(p.leg.platformCode) : '',
+      p.delayMin >= 2 ? n.delayLate(p.delayMin) : '',
+      p.vehicleLabel ? n.vehicleAt(p.vehicleLabel) : '',
+    ),
+  };
+}
+
+/**
+ * Odcinki na pasku postępu. Dojścia pieszo dostają kolor neutralny, żeby nie
+ * udawały linii, a przejazdy — kolor linii. Czasy przycinamy do okna
+ * podróży, bo ostatni odcinek bywa wyliczony z `durationMin`, nie z rozkładu.
+ */
+export function buildSegments(
+  timeline: ReturnType<typeof computeLegTimeline>,
+  startAtMs: number,
+  endAtMs: number,
+): LivePlanSegment[] {
+  const out: LivePlanSegment[] = [];
+  for (const entry of timeline) {
+    const from = Math.max(startAtMs, entry.departMs);
+    const to = Math.min(endAtMs, entry.arriveMs);
+    if (to <= from) continue;
+    const mode = inferTransitMode(entry.leg.mode, entry.leg.line);
+    out.push({
+      mode,
+      line: entry.leg.line ?? '',
+      color:
+        mode === 'walk'
+          ? WALK_SEGMENT_COLOR
+          : getLineColors(entry.leg.line || undefined, entry.leg.mode).bg,
+      startAtMs: from,
+      endAtMs: to,
+    });
+  }
+  return out;
+}
+
+export interface BuildPlanOptions {
+  /** Po tym czasie serwis ma przestać aktualizować powiadomienie (ms). */
+  stopAfterMs?: number;
+}
+
+/**
+ * Plan w całości — to leci do `LiveTripService` jako jeden JSON. Poza
+ * godzinami i listą odcinków serwis sam liczy fazę i postęp z zegara, więc
+ * tekst musi być bezwzględny: „odjazd 14:32" nie starzeje się, „za 4 min"
+ * starzeje się przy pierwszym odświeżeniu.
+ */
+export function buildLivePlan(
+  p: TripProgress,
+  conn: Connection,
+  trip: TrackedTrip,
+  s: Strings,
+  options: BuildPlanOptions = {},
+): LivePlan {
+  const timeline = computeLegTimeline(conn, new Date(p.computedAt));
+  // Pasek obejmuje CAŁĄ podróż razem z dojściem pieszo. Liczony od odjazdu
+  // pierwszego pojazdu dawałby pusty pasek przez całe oczekiwanie i skok
+  // w trakcie dojścia.
+  const startAtMs = timeline.length > 0 ? timeline[0].departMs : p.departAtMs;
+  const endAtMs = p.arriveAtMs;
+  // Do czego liczy zegar systemowy. Przed odjazdem (i przy przesiadce)
+  // użytkownik myśli o ODJEŹDZIE, w trakcie jazdy — o PRZYJEŹDZIE.
+  // `boardAtMs` w fazie „jadę" celuje w odjazd, który już był, więc licznik
+  // zamarzałby na tej samej wartości przez całą trasę.
+  const waiting =
+    p.phase === 'walking' || p.phase === 'waiting' || p.phase === 'transfer';
+  const countdownAtMs = waiting ? p.boardAtMs : p.arriveAtMs;
+  // Po przekroczeniu celu licznik liczy w górę („14:51 • 3 min") zamiast
+  // pokazywać ujemne minuty.
+  const countdownDown = countdownAtMs > p.computedAt;
+
+  return {
+    tripId: trip.id,
+    deepLink: buildTripLink(trip),
+    accentColor:
+      p.lineColor || getLineColors(p.line || undefined, p.lineMode === 'walk' ? 'walk' : undefined).bg,
+    startAtMs,
+    endAtMs,
+    countdownAtMs,
+    countdownDown,
+    delayMin: Math.round(p.delayMin),
+    stopAfterMs: options.stopAfterMs ?? 0,
+    segments: buildSegments(timeline, startAtMs, endAtMs),
+    copy: withDelayedChip(buildPhaseCopy(p, conn, s), p.delayMin, s),
+    // Po przyjeździe „Zakończ" nie ma już czego kończyć — przycisk zmienia się
+    // na potwierdzenie. Plan i tak przychodzi na każdą zmianę fazy, więc etykieta
+    // dojeżdża razem z resztą treści.
+    actions: [
+      {
+        id: 'stop',
+        title: p.phase === 'arrived' ? s.notification.actionOk : s.notification.actionStop,
+      },
+      { id: 'route', title: s.notification.actionRoute },
+    ],
+  };
+}
+
+/** Serializuje plan do JSON-u, który leci jako jeden intent do serwisu. */
+export function buildLivePlanJson(
+  p: TripProgress,
+  conn: Connection,
+  trip: TrackedTrip,
+  s: Strings,
+  options: BuildPlanOptions = {},
+): string {
+  return JSON.stringify(buildLivePlan(p, conn, trip, s, options));
+}
+
+/**
+ * Opóźnienie w kolorze i w chipie. Chip w pasku stanu ma jedno miejsce,
+ * a opóźnienie zmienia decyzję użytkownika bardziej niż godzina przyjazdu.
+ */
+function withDelayedChip(
+  copy: Record<TripPhase, LivePlanPhaseCopy>,
+  delayMin: number,
+  s: Strings,
+): Record<TripPhase, LivePlanPhaseCopy> {
+  if (delayMin < 2) return copy;
+  const chip = s.notification.chipDelay(delayMin);
+  return Object.fromEntries(
+    Object.entries(copy).map(([phase, value]) => [phase, { ...value, criticalText: chip }]),
+  ) as Record<TripPhase, LivePlanPhaseCopy>;
+}
+
+function modeLabel(mode: TripProgress['lineMode'], s: Strings): string {
+  return mode === 'walk'
+    ? s.notification.modeWalk
+    : mode === 'tram'
+      ? s.notification.modeTram
+      : s.notification.modeBus;
+}
+
+/**
+ * Ile trzeba dojść do pojazdu.
+ *
+ * `TripProgress.walkMeters` bywa zerem przed startem dojścia, bo `tripProgress`
+ * szuka tylko ODCINKA, który już trwa. Tymczasem to jest właśnie chwila, w
+ * której dystans jest najważniejszy — użytkownik stoi w domu i musi zdecydować,
+ * czy zdąży. Dlatego przy pierwszym wsiadaniu sięgamy po dojście stojące
+ * przed pierwszym pojazdem, nawet jeśli jeszcze nie ruszyliśmy.
+ */
+function upcomingWalkMeters(p: TripProgress, conn: Connection): number | null {
+  if (p.walkMeters != null) return p.walkMeters;
+  if (p.phase !== 'walking') return null;
+  const boardIndex = conn.legs.findIndex((l) => l.mode !== 'walk');
+  if (boardIndex <= 0) return null;
+  const prev = conn.legs[boardIndex - 1];
+  return prev.mode === 'walk' ? (prev.walkM ?? null) : null;
+}
+
+function join(...parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' • ');
+}
+
+// ─── Deep linki ────────────────────────────────────────────────────────────
 
 /** Deep link do ekranu połączeń — te same parametry co w buildRoutesLink. */
 export function buildTripLink(trip: TrackedTrip): string {

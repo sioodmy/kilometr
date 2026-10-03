@@ -1,63 +1,15 @@
-// Formatowanie czasu i odległości dla powiadomień. Trzymamy je w jednym
-// miejscu, bo ta sama liczba występuje w kilku kontekstach (tray, Dynamic
-// Island, pasek postępu) i różne sformułowania wyglądają jak błąd.
+// Formatowanie czasu i odległości dla powiadomień.
 //
-// Zasada: „za 4 min” w odliczaniu (zawsze mała litera, bez wielokropka),
-// „14:32” w bezwzględnych godzinach, liczby zawsze w tablicach.
+// Tu są WYŁĄCZNIE operacje językowo-neutralne: czasy bezwzględne, jednostki
+// metryczne i czysta arytmetyka. Wszystko, co ma być po polsku, angielsku,
+// niemiecku lub ukraińsku (jednostki po „min", liczby mnogie, nazwy faz),
+// żyje w słownikach `src/i18n` — patrz `buildPhaseCopy` w `content.ts`.
+//
+// Zasada: „14:32" w treści powiadomienia, a liczbę typu „4 min" rysuje zegar
+// systemowy przez `setUsesChronometer`. Dzięki temu tekst nie zestarzeje się
+// przy pierwszym odświeżeniu.
 
-/** Polska odmiana przez liczebniki: 1 minuta / 2 minuty / 5 minut. */
-export function plural(n: number, one: string, few: string, many: string): string {
-  const abs = Math.abs(Math.round(n));
-  if (abs === 1) return one;
-  const last = abs % 10;
-  const teen = abs % 100;
-  if (last >= 2 && last <= 4 && (teen < 12 || teen > 14)) return few;
-  return many;
-}
-
-export function minutesText(min: number): string {
-  const m = Math.max(0, Math.round(min));
-  return `${m} ${plural(m, 'minuta', 'minuty', 'minut')}`;
-}
-
-export function minutesShort(min: number): string {
-  return `${Math.max(0, Math.round(min))} min`;
-}
-
-/** Odliczanie do odjazdu. Prawdziwe „teraz”, a nie „za 0 min”. */
-export function countdownText(sec: number): string {
-  const s = Math.round(sec);
-  if (s <= 45) return 'odjazd teraz';
-  const min = Math.round(s / 60);
-  if (min < 60) return `za ${min} ${plural(min, 'minutę', 'minuty', 'minut')}`;
-  const h = Math.floor(min / 60);
-  const rest = min % 60;
-  return rest === 0
-    ? `za ${h} ${plural(h, 'godzinę', 'godziny', 'godzin')}`
-    : `za ${h} ${plural(h, 'godzinę', 'godziny', 'godzin')} ${rest} ${plural(rest, 'minutę', 'minuty', 'minut')}`;
-}
-
-/** Bez „za” — do tytułów typu „4 min do odjazdu”. */
-export function untilText(sec: number): string {
-  const s = Math.round(sec);
-  if (s <= 45) return 'odjazd teraz';
-  const min = Math.round(s / 60);
-  return `${min} ${plural(min, 'minuta', 'minuty', 'minut')}`;
-}
-
-/** Liczba przesiadek w powiadomieniu — 0 znika, bo „0 przesiadki” to szum. */
-export function transfersText(n: number): string {
-  if (n <= 0) return '';
-  return `${n} ${plural(n, 'przesiadka', 'przesiadki', 'przesiadek')}`;
-}
-
-/** Opóźnienie kursu: „+6 min”, „punktualnie”, „−2 min”. */
-export function delayText(delayMin: number): string {
-  if (delayMin >= 1) return `+${Math.round(delayMin)} min`;
-  if (delayMin <= -1) return `−${Math.abs(Math.round(delayMin))} min`;
-  return 'punktualnie';
-}
-
+/** Sekundy od północy → 'HH:MM'. */
 export function formatClock(sec: number): string {
   const s = ((Math.round(sec) % 86400) + 86400) % 86400;
   const h = Math.floor(s / 3600);
@@ -65,11 +17,22 @@ export function formatClock(sec: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-export function formatDistance(meters: number | null | undefined): string {
-  if (meters == null || !isFinite(meters) || meters < 0) return '';
-  if (meters < 50) return `${Math.max(5, Math.round(meters / 5) * 5)} m`;
-  if (meters < 1000) return `${Math.round(meters / 10) * 10} m`;
-  return `${(meters / 1000).toFixed(1)} km`;
+/**
+ * 'HH:MM' z bezwzględnego znacznika ms — do tekstu w powiadomieniu, nie do
+ * arytmetyki.
+ */
+export function clockFromMs(ms: number): string {
+  if (!isFinite(ms) || ms <= 0) return '';
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 'HH:MM' → liczba sekund od północy. Odwrotność formatClock. */
+export function parseClock(hm: string | undefined | null): number | null {
+  if (!hm) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(hm);
+  if (!m) return null;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60;
 }
 
 export function nowSecOfDay(d: Date = new Date()): number {
@@ -107,10 +70,10 @@ export function toPermille(v: number): number {
   return Math.round(clamp01(v) * 1000);
 }
 
-/** '14:32' → liczba sekund od północy. Odwrotność formatClock. */
-export function parseClock(hm: string | undefined | null): number | null {
-  if (!hm) return null;
-  const m = /^(\d{1,2}):(\d{2})/.exec(hm);
-  if (!m) return null;
-  return Number(m[1]) * 3600 + Number(m[2]) * 60;
+/** '320 m', '1.2 km' — międzynarodowe symbole jednostek, bez odmiany. */
+export function formatDistance(meters: number | null | undefined): string {
+  if (meters == null || !isFinite(meters) || meters < 0) return '';
+  if (meters < 50) return `${Math.max(5, Math.round(meters / 5) * 5)} m`;
+  if (meters < 1000) return `${Math.round(meters / 10) * 10} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
 }

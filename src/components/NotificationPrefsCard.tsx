@@ -1,18 +1,22 @@
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BellRing, Check, Minus, Navigation, Plus } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
+import { useStrings } from '../i18n';
 import {
   areNotificationsSupported,
-  isDynamicIslandPlatform,
-  isNativeTrackingSupported,
-  permissionDeniedMessage,
+  canShowLiveUpdates,
   ensureNotificationPermission,
+  isNativeTrackingSupported,
+  isTrackingPlatform,
+  permissionDeniedMessage,
   useNotificationPreferences,
 } from '../services/notifications';
 
 // Ustawienia powiadomień. Świadomie wyjaśniamy DLACZEGO coś jest włączone:
-// „pasek postępu" i „Dynamic Island" brzmią dla użytkownika jak gadżet,
-// a to są realne, mierzalne rzeczy (odliczanie bez budzenia aplikacji).
+// „pasek postępu" brzmi dla użytkownika jak gadżet, a to jest realna,
+// mierzalna rzecz — odliczanie liczone przez system, które działa, gdy
+// aplikacja jest zamknięta.
 //
 // Przełącznik to naciskany pill, nie M3 Switch — w dolnym menu aplikacji
 // (i przy okazji na ekranie tras) zrezygnowano z przełączników na rzecz
@@ -30,11 +34,15 @@ function Toggle({
   onChange,
   disabled,
   label,
+  onText,
+  offText,
 }: {
   value: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
   label: string;
+  onText: string;
+  offText: string;
 }) {
   return (
     <Pressable
@@ -57,7 +65,7 @@ function Toggle({
         <Minus size={14} color={scheme.onSurfaceVariant} strokeWidth={2.6} />
       )}
       <Text style={[styles.toggleText, value && styles.toggleTextOn]}>
-        {value ? 'Wł.' : 'Wył.'}
+        {value ? onText : offText}
       </Text>
     </Pressable>
   );
@@ -67,16 +75,22 @@ function ToggleRow({
   icon,
   title,
   hint,
+  hintExtra,
   value,
   onChange,
   disabled,
+  onText,
+  offText,
 }: {
   icon: React.ReactNode;
   title: string;
   hint: string;
+  hintExtra?: string | null;
   value: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
+  onText: string;
+  offText: string;
 }) {
   return (
     <View style={styles.row}>
@@ -84,27 +98,48 @@ function ToggleRow({
       <View style={styles.rowText}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowHint}>{hint}</Text>
+        {hintExtra ? <Text style={styles.rowHintExtra}>{hintExtra}</Text> : null}
       </View>
-      <Toggle value={value} onChange={onChange} disabled={disabled} label={title} />
+      <Toggle
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        label={title}
+        onText={onText}
+        offText={offText}
+      />
     </View>
   );
 }
 
 export function NotificationPrefsCard() {
+  const s = useStrings();
+  const p = s.notificationPrefs;
   const { prefs, update } = useNotificationPreferences();
   const supported = areNotificationsSupported();
+  // `null` = jeszcze nie wiadomo (odpytywanie jest asynchroniczne), więc
+  // podpowiedzi o braku promocji nie pokazujemy, zanim nie zajdzie potrzeba.
+  const [promotable, setPromotable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const ok = await canShowLiveUpdates();
+      if (alive) setPromotable(ok);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const requirePermission = async (next: boolean): Promise<boolean> => {
     if (!next) return true;
     if (!supported) {
-      Alert.alert(
-        'Powiadomienia niedostępne',
-        'Śledzenie podróży wymaga builda deweloperskiego — Expo Go nie wspiera powiadomień.',
-      );
+      Alert.alert(p.unsupportedTitle, p.unsupportedBody);
       return false;
     }
     const ok = await ensureNotificationPermission();
-    if (!ok) Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
+    if (!ok) Alert.alert(p.title, permissionDeniedMessage());
     return ok;
   };
 
@@ -119,54 +154,53 @@ export function NotificationPrefsCard() {
     <View style={styles.card}>
       <View style={styles.cardTop}>
         <BellRing size={18} color={scheme.primary} />
-        <Text style={styles.cardTitle}>Powiadomienia</Text>
+        <Text style={styles.cardTitle}>{p.title}</Text>
       </View>
 
-      {!supported ? (
-        <Text style={styles.warn}>
-          Wymaga builda deweloperskiego. W Expo Go powiadomienia nie działają.
-        </Text>
-      ) : null}
+      {!supported ? <Text style={styles.warn}>{p.devBuildWarn}</Text> : null}
 
       <ToggleRow
         icon={<Navigation size={17} color={scheme.onSurfaceVariant} />}
-        title="Śledzenie podróży"
-        hint="Trwała powiadomienie z odliczaniem do odjazdu i postępem podróży."
+        title={p.trackTitle}
+        hint={p.trackHint}
         value={prefs.trackingEnabled}
         onChange={guarded({ trackingEnabled: true })}
         disabled={!supported}
+        onText={p.on}
+        offText={p.off}
       />
 
       <ToggleRow
         icon={<Navigation size={17} color={scheme.onSurfaceVariant} />}
-        title="Pasek postępu i licznik"
-        hint={
-          isDynamicIslandPlatform()
-            ? 'Dynamic Island na ekranie blokady — licznik działa nawet przy uśpionej aplikacji.'
-            : isNativeTrackingSupported()
-              ? 'Pasek postępu i odliczanie liczone przez system, bez budzenia aplikacji.'
-              : 'Postęp i odliczanie w treści powiadomienia.'
+        title={p.liveTitle}
+        hint={isNativeTrackingSupported() ? p.liveHint : p.liveHintBasic}
+        hintExtra={
+          isTrackingPlatform() && promotable === false ? p.livePromoteHint : null
         }
         value={prefs.liveProgressEnabled}
         onChange={guarded({ liveProgressEnabled: true })}
         disabled={!supported}
+        onText={p.on}
+        offText={p.off}
       />
 
       <ToggleRow
         icon={<BellRing size={17} color={scheme.onSurfaceVariant} />}
-        title="Alert „wyjdź”"
-        hint="Głośny przypomnienie przed odjazdem. Planowane z wyprzedzeniem, więc działa też w tle."
+        title={p.leaveTitle}
+        hint={p.leaveHint}
         value={prefs.departureAlertsEnabled}
         onChange={guarded({ departureAlertsEnabled: true })}
         disabled={!supported}
+        onText={p.on}
+        offText={p.off}
       />
 
       {prefs.departureAlertsEnabled ? (
         <View style={styles.row}>
           <View style={styles.spacerIcon} />
           <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Ile wcześniej ostrzec</Text>
-            <Text style={styles.rowHint}>Ile minut przed odjazdem zadzwoni przypomnienie.</Text>
+            <Text style={styles.rowTitle}>{p.leadTitle}</Text>
+            <Text style={styles.rowHint}>{p.leadHint}</Text>
           </View>
           <View style={styles.stepper}>
             <Pressable
@@ -180,11 +214,11 @@ export function NotificationPrefsCard() {
                 pressed && { opacity: 0.7 },
               ]}
               hitSlop={6}
-              accessibilityLabel="Mniej minut ostrzeżenia"
+              accessibilityLabel={p.leadLessA11y}
             >
               <Minus size={15} color={scheme.onSecondaryContainer} />
             </Pressable>
-            <Text style={styles.stepValue}>{prefs.departureAlertLeadMin} min</Text>
+            <Text style={styles.stepValue}>{s.common.durMin(prefs.departureAlertLeadMin)}</Text>
             <Pressable
               onPress={() =>
                 update({ departureAlertLeadMin: LEAD_MIN[Math.min(LEAD_MIN.length - 1, leadIdx + 1)] })
@@ -196,7 +230,7 @@ export function NotificationPrefsCard() {
                 pressed && { opacity: 0.7 },
               ]}
               hitSlop={6}
-              accessibilityLabel="Więcej minut ostrzeżenia"
+              accessibilityLabel={p.leadMoreA11y}
             >
               <Plus size={15} color={scheme.onSecondaryContainer} />
             </Pressable>
@@ -206,11 +240,13 @@ export function NotificationPrefsCard() {
 
       <ToggleRow
         icon={<BellRing size={17} color={scheme.onSurfaceVariant} />}
-        title="Ostrzeżenie o opóźnieniu"
-        hint="Gdy kurs spóźnia się wyraźnie ponad to, co pokazywał poprzednio."
+        title={p.disruptionTitle}
+        hint={p.disruptionHint}
         value={prefs.disruptionAlertsEnabled}
         onChange={guarded({ disruptionAlertsEnabled: true })}
         disabled={!supported}
+        onText={p.on}
+        offText={p.off}
       />
     </View>
   );
@@ -259,6 +295,17 @@ const styles = StyleSheet.create({
   rowHint: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
+  },
+  // Podpowiedź o tym, czego powiadomienie NIE potrafi — inaczej użytkownik
+  // nie ma jak zrozumieć, dlaczego nic nie widać na ekranie blokady.
+  rowHintExtra: {
+    ...type.bodySmall,
+    color: scheme.onWarningContainer,
+    backgroundColor: scheme.warningContainer,
+    borderRadius: shape.small,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginTop: 3,
   },
   spacerIcon: {
     width: 17,

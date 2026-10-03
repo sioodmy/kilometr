@@ -2,7 +2,7 @@ import type { LegMode } from '../types/models';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
-// (kolor linii jako akcent powiadomienia i plakietka w Dynamic Island).
+// (kolor linii jako akcent powiadomienia i segmentu na pasku postępu).
 
 export const TRANSIT_PALETTE = [
   '#00897B', // Teal

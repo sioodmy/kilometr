@@ -1,10 +1,10 @@
 import type { Connection, Leg } from '../../types/models';
 
 // Model domenowy powiadomień. Wszystko, co leci do natywnego świata
-// (Notification, Live Activity, natywny moduł Androida), jest tutaj
-// sprowadzane do jednego strukturalnego opisu — dzięki temu treść
-// powiadomienia, Dynamic Island i pasek postępu na Androidzie zawsze
-// pokazują to samo, a formatowanie tekstu jest w jednym miejscu.
+// (Notification i serwis Androida), jest tutaj sprowadzane do jednego
+// strukturalnego opisu — dzięki temu plan powiadomienia, tekst alertu
+// odjazdu i pasek postępu zawsze opowiadają o tym samym kursie, a
+// formatowanie czasu jest w jednym miejscu.
 
 /** Faza podróży — steruje tym, co jest najważniejsze w danym momencie. */
 export type TripPhase =
@@ -61,7 +61,7 @@ export interface TripProgress {
   /** Linia pojazdu, którym wsiadasz / jedziesz. */
   line: string;
   lineMode: 'tram' | 'bus' | 'walk';
-  /** Kolor linii — akcent powiadomienia i plakietka w Dynamic Island. */
+  /** Kolor linii — akcent powiadomienia i segmentu na pasku postępu. */
   lineColor: string;
   /** Kierunek kursu (np. 'BISKUPIN'). */
   direction: string;
@@ -100,65 +100,59 @@ export interface TripProgress {
 }
 
 /**
- * Stan przekazywany do Live Activity (iOS). Musi być w pełni serializowalny —
- * leci przez mostek do izolowanego bundle'u widgetu. Dlatego same liczby
- * i stringi, nigdy Date/Color/Function.
+ * Stan, na którym budujemy natywne powiadomienie śledzące.
+ *
+ * Plan jest w całości przetłumaczony po stronie JS, a serwis Androida tylko
+ * przelicza fazę i postęp z zegara. Dzięki temu powiadomienie przeżywa
+ * zamknięcie aplikacji, a tekst wciąż jest po polsku / angielsku /
+ * niemiecku / ukraińsku.
  */
-export interface TripActivityProps {
-  phase: TripPhase;
-  line: string;
-  lineColor: string;
-  lineMode: 'tram' | 'bus' | 'walk';
-  direction: string;
-  nextStop: string;
-  /** Przystanek, na którym jesteśmy (albo do którego idziemy). */
-  stopName: string;
-  nextStopInMin: number;
-  stopsLeft: number;
-  etaMin: number;
-  arriveAt: string;
-  departAt: string;
-  progress: number;
+export interface LivePlan {
+  tripId: string;
+  /** Deep link po tapnięciu w powiadomienie. */
+  deepLink: string;
+  /** Kolor linii — akcent paska postępu i całego powiadomienia. */
+  accentColor: string;
+  /** Początek podróży razem z dojściem pieszo, ms. */
+  startAtMs: number;
+  /** Przyjazd na miejsce, ms. */
+  endAtMs: number;
+  /** Cel licznika systemowego, ms. */
+  countdownAtMs: number;
+  /** true → licznik w dół do `countdownAtMs`, false → od niego w górę. */
+  countdownDown: boolean;
   delayMin: number;
-  live: boolean;
-  vehicleTracked: boolean;
-  toTitle: string;
-  /** Znaczniki ms — widget sam tworzy z nich Date dla timera systemowego. */
-  nowMs: number;
-  departAtMs: number;
-  arriveAtMs: number;
-  boardAtMs: number;
-  walkMeters: number;
-  transfers: number;
+  /** Po tym czasie serwis sam przestanie aktualizować (0 = nie). */
+  stopAfterMs: number;
+  segments: LivePlanSegment[];
+  copy: Record<TripPhase, LivePlanPhaseCopy>;
+  actions: { id: 'stop' | 'route'; title: string }[];
 }
 
-/** Stan, na który budujemy natywną (Android) powiadomienie śledzące. */
-export interface NativeTrackingState {
-  phase: TripPhase;
+/** Odcinek na pasku postępu: dojście pieszo albo przejazd pojazdem. */
+export interface LivePlanSegment {
+  mode: TripProgress['lineMode'];
+  line: string;
+  color: string;
+  startAtMs: number;
+  endAtMs: number;
+}
+
+/** Treść powiadomienia dla jednej fazy podróży. */
+export interface LivePlanPhaseCopy {
+  /** Tytuł — warunek konieczny, żeby Android dopuścił Live Update. */
   title: string;
+  /** Linia pod tytułem. */
   text: string;
+  /** Podpis przy liczniku systemowym. */
   subText: string;
-  lineColor: string;
-  /** 0..1000 — tak oczekuje tego Notification.setProgress. */
-  progress: number;
-  /** 0..1000 — pasek „do przystanku”, osobny od postępu całej podróży. */
-  boardProgress: number;
-  /** ms — odlicza zegar systemowy (setWhen + chronometr). */
-  countdownAtMs: number;
-  countdownLabel: string;
-  /** true gdy licznik ma odliczać w dół do countdownAtMs. */
-  countdownDown: boolean;
-  showProgress: boolean;
-  showCountdown: boolean;
-  live: boolean;
-  delayMin: number;
-  deepLink: string;
-  actions: { id: string; title: string; destructive: boolean }[];
+  /** Chip w pasku stanu (Android 16.1+). */
+  criticalText: string;
 }
 
 /** Ustawienia powiadomień (osobne od ustawień trasowania). */
 export interface NotificationPreferences {
-  /** Ciche aktualizacje w trayu / Live Activity — główna funkcja. */
+  /** Ciche, trwałe powiadomienie w trayu — główna funkcja. */
   trackingEnabled: boolean;
   /** Powiadomienia dźwiękowe „wyjdź za 5 min”. */
   departureAlertsEnabled: boolean;
@@ -168,7 +162,7 @@ export interface NotificationPreferences {
   departureAlertLeadMin: number;
   /** Głośne ostrzeżenie w fazie oczekiwania (ostatnie minuty). */
   imminentAlert: boolean;
-  /** Live Activity / pasek postępu — iOS + Android. */
+  /** Pasek postępu i licznik systemowy (natywne Live Update). */
   liveProgressEnabled: boolean;
 }
 
@@ -199,7 +193,7 @@ export interface TrackedTrip {
   startedAt: number;
 }
 
-/** Dane do deep linku z powiadomienia / Live Activity. */
+/** Dane do deep linku z powiadomienia. */
 export interface TripLinkParams {
   fromTitle: string;
   fromLat: string;
