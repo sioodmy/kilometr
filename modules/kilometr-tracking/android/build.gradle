@@ -10,4 +10,13 @@ android {
     versionCode 1
     versionName '1.0.0'
   }
+  // `NotificationCompat.ProgressStyle` i `setRequestPromotedOngoing` (Android 16
+  // Live Updates) wymagają androidx.core 1.17+, który wymiaga compileSdk 36.
+  compileSdk 36
+}
+
+dependencies {
+  // ProgressStyle + promocja Live Updates. Wersja 1.17.0 to ta, z której
+  // korzysta już expo-modules-core, więc nie dokładamy nowej kopii.
+  implementation "androidx.core:core-ktx:1.17.0"
 }

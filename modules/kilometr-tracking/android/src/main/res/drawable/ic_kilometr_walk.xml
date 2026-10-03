@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ikona dojścia/przesiadki pieszo — pojawia się jako „tracker" na pasku
+  postępu, gdy użytkownik nie jedzie pojazdem.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:fillColor="#FFFFFFFF"
+      android:pathData="M13.5,5.5a2,2 0 1 0 0,-4a2,2 0 0 0 0,4zM9.8,8.8c0.5,-0.4 1.1,-0.7 1.8,-0.8c1.3,-0.2 2.6,0.3 3.4,1.4c0.5,0.7 0.8,1.6 1.4,2.2c0.5,0.5 1.2,0.6 1.9,0.4l0.7,-0.2l0.4,1.9l-0.9,0.3c-1.7,0.5 -3.4,0.1 -4.6,-1l-0.7,-0.7l0,2.2l2.6,2.6c0.5,0.5 0.8,1.1 1,1.8l0.8,3.2l-2,0.5l-0.7,-2.9c-0.1,-0.4 -0.3,-0.7 -0.6,-1l-2.4,-2.4l-2.5,5.9l-1.9,-0.8l3.6,-8.6l-1.2,0.9l-1.3,2.4l-1.8,-0.9l1.3,-2.4c0.2,-0.4 0.5,-0.7 0.9,-0.9z" />
+</vector>

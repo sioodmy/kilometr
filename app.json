@@ -20,7 +20,11 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+        "android.permission.POST_PROMOTED_NOTIFICATIONS"
       ],
       "package": "com.anonymous.kilometr"
     },
@@ -43,15 +47,6 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji."
-        }
-      ],
-      [
-        "expo-widgets",
-        {
-          "bundleIdentifier": "com.anonymous.kilometr.widgets",
-          "groupIdentifier": "group.com.anonymous.kilometr",
-          "frequentUpdates": true,
-          "widgets": []
         }
       ],
       "expo-localization"
