@@ -1,0 +1,21 @@
+body {
+  background-color: #0d100f;
+  color: #e5e7eb;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+.bg-grid {
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.04) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+}
+
+.phone-mock {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 20px 50px -10px rgba(0, 0, 0, 0.75),
+    0 0 60px -15px rgba(92, 219, 190, 0.15);
+}

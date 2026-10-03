@@ -8,127 +8,65 @@
   <meta name="description" content="Tym razem dojedziesz">
   <link rel="icon" type="image/png" href="favicon.png">
 
-  <!-- Typography: Geist & Geist Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
     href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap"
     rel="stylesheet">
 
-  <!-- Icons: Tabler Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="style.css">
 
-  <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              DEFAULT: '#5CDBBE',
-              hover: '#4ec7ab',
-              active: '#43b59a',
-              subtle: 'rgba(92, 219, 190, 0.12)',
-              border: 'rgba(92, 219, 190, 0.25)',
-            },
-            surface: {
-              950: '#0d100f',
-              900: '#131715',
-              850: '#181d1b',
-              800: '#202624',
-              700: '#2c3431'
-            }
-          },
-          fontFamily: {
-            sans: ['Geist', 'system-ui', '-apple-system', 'sans-serif'],
-            mono: ['Geist Mono', 'monospace'],
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body {
-      background-color: #0d100f;
-      color: #e5e7eb;
-      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-      -webkit-font-smoothing: antialiased;
-    }
-
-    .bg-grid {
-      background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-      background-size: 24px 24px;
-    }
-
-    .phone-mock {
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1),
-        0 20px 50px -10px rgba(0, 0, 0, 0.75),
-        0 0 60px -15px rgba(92, 219, 190, 0.15);
-    }
-  </style>
+  <script src="tailwind.config.js"></script>
 </head>
 
 <body
   class="min-h-[100dvh] bg-surface-950 bg-grid flex flex-col justify-between selection:bg-brand selection:text-surface-950">
 
-  <!-- Main Viewport Section (50/50 Split) -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-6 sm:px-12 lg:px-16 py-8 md:py-12 flex flex-col justify-center">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
 
-      <!-- LEFT COLUMN (50%): H1, Subtitle, Phone Screenshot (Centered) -->
       <div class="flex flex-col items-center justify-center text-center w-full px-4 sm:px-8">
-        <!-- H1 Header -->
         <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight text-white mb-1">
           Kilometr
         </h1>
 
-        <!-- Tagline -->
         <p class="text-base md:text-lg font-medium text-brand mb-6 tracking-tight">
           Tym razem dojedziesz.
         </p>
 
-        <!-- Phone Mockup (Centered horizontally) -->
         <div class="relative w-full max-w-[270px] sm:max-w-[300px] mx-auto">
           <div class="phone-mock relative bg-surface-900 rounded-[2.5rem] p-2.5 border border-white/10 overflow-hidden">
-            <!-- Dynamic Island / Speaker Pill -->
             <div
               class="absolute top-4 left-1/2 -translate-x-1/2 w-20 h-4 bg-surface-950 rounded-full z-20 flex items-center justify-center">
               <div class="w-2.5 h-2.5 rounded-full bg-surface-850"></div>
             </div>
-            <!-- Screen image -->
             <img src="example.png" alt="Zrzut ekranu aplikacji Kilometr"
               class="w-full h-auto max-h-[58vh] object-contain rounded-[2rem] block" loading="eager">
           </div>
         </div>
       </div>
 
-      <!-- RIGHT COLUMN (50%): Description & Download Buttons -->
       <div class="flex flex-col justify-center max-w-xl mx-auto lg:mx-0">
 
-        <!-- Headline -->
         <h2
           class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-3 leading-tight text-center lg:text-left">
           Sprawdź czym jedziesz.
         </h2>
 
-        <!-- Simple, direct copy without AI slop -->
         <p class="text-base sm:text-lg text-gray-300 leading-relaxed mb-8 text-center lg:text-left">
           Bez reklam, śledzenia i kapitalizmu.
         </p>
 
-        <!-- Download Buttons (Side-by-side, no subtext) -->
         <div class="flex flex-col sm:flex-row items-center gap-3 w-full">
 
-          <!-- 1. PRIMARY: Pobierz APK -->
           <a id="download-apk-btn" href="app-release.apk" download="kilometr.apk"
             class="w-full sm:w-auto flex-1 h-[52px] px-6 rounded-2xl bg-brand text-surface-950 font-semibold hover:bg-brand-hover active:bg-brand-active active:scale-[0.99] transition-all shadow-md shadow-brand/10 flex items-center justify-center gap-2.5 text-sm sm:text-base whitespace-nowrap">
             <i class="ti ti-download text-xl"></i>
             <span>Pobierz APK</span>
           </a>
 
-          <!-- 2. SECONDARY: Dodaj do Obtainium -->
           <a href="obtainium://app/https://github.com/sioodmy/kilometr"
             class="w-full sm:w-auto flex-1 h-[52px] px-6 rounded-2xl bg-surface-900 hover:bg-surface-850 active:scale-[0.99] border border-white/10 hover:border-brand-border text-white font-semibold transition-all flex items-center justify-center gap-2.5 text-sm sm:text-base whitespace-nowrap">
             <i class="ti ti-refresh text-xl text-brand"></i>
@@ -137,7 +75,6 @@
 
         </div>
 
-        <!-- Links -->
         <div
           class="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 pt-4 border-t border-white/5">
           <a href="https://github.com/sioodmy/kilometr" target="_blank" rel="noopener noreferrer"
@@ -157,14 +94,12 @@
     </div>
   </main>
 
-  <!-- Footer -->
   <footer
     class="w-full max-w-7xl mx-auto px-6 py-6 text-center text-xs text-gray-600 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-white/5">
     <div>Kilometr</div>
     <div class="font-mono text-[11px] text-gray-500">Socjalizm albo barbarzyństwo</div>
   </footer>
 
-  <!-- Script: Fallback do Releases -->
   <script>
     (async function initApkLink() {
       const btn = document.getElementById('download-apk-btn');
