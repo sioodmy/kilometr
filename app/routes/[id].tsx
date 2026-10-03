@@ -22,6 +22,7 @@ import { StopCompassCard } from '../../src/components/StopCompassCard';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
+  getTrackedTripSync,
   permissionDeniedMessage,
   startTracking,
   stopTracking,
@@ -98,6 +99,19 @@ export default function RouteDetailsScreen() {
       // a wcześniejsza wersja zostawiała spinner na ekranie na zawsze.
       const load = async () => {
         try {
+          // Przycisk „Trasa” pod powiadomieniem ma otwierać Szczegóły kursu,
+          // który właśnie śledzimy — a ten plan po odjeździe nie wraca już
+          // z planera (śledzenie jest zablokowane) i po północy w ogóle
+          // wypada z bazy. Bez tego cofnięcie na ekran listy wyglądało jak
+          // awaria. Dane śledzonej podróży mamy w pamięci, więc najpierw
+          // sprawdzamy je, a dopiero potem idziemy po plan i dysk.
+          const trackedHit = getTrackedTripSync();
+          if (trackedHit && trackedHit.connection.id === String(id)) {
+            if (cancelled) return;
+            setItem(trackedHit.connection);
+            setOffline(false);
+            return;
+          }
           const hit = await RoutingService.getConnectionById(String(id));
           if (cancelled) return;
           if (hit) {

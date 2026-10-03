@@ -18,28 +18,37 @@ import {
   TreePine,
   Utensils,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type, type SchemeKey } from '../theme/tokens';
 import type { Suggestion, SuggestionKind } from '../types/models';
 import { formatDistance } from '../services/settings';
 import { useStrings } from '../i18n';
 
-const KIND_META: Record<string, { Icon: any; bg: string; fg: string }> = {
-  stop:          { Icon: BusFront,      bg: scheme.secondaryContainer,       fg: scheme.onSecondaryContainer },
-  address:       { Icon: MapPin,        bg: scheme.tertiaryContainer,        fg: scheme.onTertiaryContainer },
-  history:       { Icon: Clock3,        bg: scheme.surfaceContainerHighest,  fg: scheme.onSurfaceVariant },
-  // Nominatim category icons (M3 dark tonal containers):
-  shop:          { Icon: Store,         bg: scheme.primaryContainer,         fg: scheme.onPrimaryContainer },
-  restaurant:    { Icon: Utensils,      bg: '#4E2600',                       fg: '#FFB68F' },
-  medical:       { Icon: Pill,          bg: '#0F381E',                       fg: '#81C784' },
-  school:        { Icon: GraduationCap, bg: '#0D3559',                       fg: '#90CAF9' },
-  entertainment: { Icon: Film,          bg: '#381A4C',                       fg: '#CE93D8' },
-  fuel:          { Icon: Fuel,          bg: '#422C00',                       fg: '#FFD54F' },
-  train:         { Icon: Train,         bg: '#00363A',                       fg: '#80DEEA' },
-  tourism:       { Icon: Hotel,         bg: '#3E1C14',                       fg: '#FF8A65' },
-  sport:         { Icon: Dumbbell,      bg: '#1A237E',                       fg: '#9FA8DA' },
-  bank:          { Icon: Landmark,      bg: '#263238',                       fg: '#B0BEC5' },
-  church:        { Icon: Church,        bg: '#333816',                       fg: '#DCE775' },
-  place:         { Icon: ShoppingBag,   bg: scheme.primaryContainer,         fg: scheme.onPrimaryContainer },
+/**
+ * Rodzaje wierszy z motywem aplikacji. Trzymamy tu **nazwy ról**, a nie same
+ * kolory: na Androidzie 12+ paleta pochodzi z tapety i podmienia się po
+ * imporcie modułu, więc kolory czytamy dopiero przy rysowaniu wiersza.
+ */
+const KIND_TONES: Record<string, { Icon: any; bg: SchemeKey; fg: SchemeKey }> = {
+  stop: { Icon: BusFront, bg: 'secondaryContainer', fg: 'onSecondaryContainer' },
+  address: { Icon: MapPin, bg: 'tertiaryContainer', fg: 'onTertiaryContainer' },
+  history: { Icon: Clock3, bg: 'surfaceContainerHighest', fg: 'onSurfaceVariant' },
+  // Nominatim category icons (M3 dark tonal containers)
+  shop: { Icon: Store, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
+  place: { Icon: ShoppingBag, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
+};
+
+/** Kategorie Nominatim — kolory stałe, bo są poza skalą motywu. */
+const KIND_LITERALS: Record<string, { Icon: any; bg: string; fg: string }> = {
+  restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
+  medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
+  school: { Icon: GraduationCap, bg: '#0D3559', fg: '#90CAF9' },
+  entertainment: { Icon: Film, bg: '#381A4C', fg: '#CE93D8' },
+  fuel: { Icon: Fuel, bg: '#422C00', fg: '#FFD54F' },
+  train: { Icon: Train, bg: '#00363A', fg: '#80DEEA' },
+  tourism: { Icon: Hotel, bg: '#3E1C14', fg: '#FF8A65' },
+  sport: { Icon: Dumbbell, bg: '#1A237E', fg: '#9FA8DA' },
+  bank: { Icon: Landmark, bg: '#263238', fg: '#B0BEC5' },
+  church: { Icon: Church, bg: '#333816', fg: '#DCE775' },
 };
 
 export interface SuggestionIconMeta { Icon: any; bg: string; fg: string; }
@@ -52,8 +61,11 @@ export function getSuggestionIconMeta(
     return { Icon: LocateFixed, bg: scheme.primaryContainer, fg: scheme.onPrimaryContainer };
   }
   const key = item.category || item.kind;
-  const meta = KIND_META[key] || KIND_META['place'];
-  return { Icon: meta.Icon, bg: meta.bg, fg: meta.fg };
+  const toned = KIND_TONES[key];
+  if (toned) return { Icon: toned.Icon, bg: scheme[toned.bg], fg: scheme[toned.fg] };
+  const literal = KIND_LITERALS[key];
+  if (literal) return { Icon: literal.Icon, bg: literal.bg, fg: literal.fg };
+  return { Icon: ShoppingBag, bg: scheme.primaryContainer, fg: scheme.onPrimaryContainer };
 }
 
 export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: () => void }) {

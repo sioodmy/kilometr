@@ -203,7 +203,18 @@ expect('przystanek docelowy', p.stopName, 'HALDENA');
 // odcinka, który już trwa. Tymczasem to jest właśnie chwila, w której dystans
 // jest najważniejszy — użytkownik stoi w domu i musi zdecydować, czy zdąży.
 expect('postęp dojścia nieznany', p.approachProgress, null);
-expect('dystans dojścia w tytule', planOf(p, simple).copy.walking.title, 'Idź na przystanek • 320 m');
+// Tytuł mówi kurs i godzinę odjazdu w jednej linii (etykieta „odjazd” razem
+// z czasem), a „Idź na przystanek” zniknęło — nie odpowiadało na pytanie
+// „czy zdążę i na który kurs”.
+expect('tytuł przy dojściu', planOf(p, simple).copy.walking.title, 'Tramwaj 4 • odjazd 14:10');
+// Przy dojściu odpowiadamy, na który przystanek i w jakim kierunku.
+expect('tekst przy dojściu', planOf(p, simple).copy.walking.text, 'przystanek HALDENA • Do BISKUPIN');
+// Dystans dojścia zostaje, ale w podpisie, nie w tytule.
+expect(
+  'dystans i czas dojścia w podpisie',
+  planOf(p, simple).copy.walking.subText,
+  '320 m • dojście ~4 min',
+);
 
 p = dump('14:06 prawie na miejscu', simple, at(14, 6));
 expect('faza', p.phase, 'walking');
@@ -222,6 +233,12 @@ expect('licznik celuje w odjazd', hhmm(planOf(p, simple).countdownAtMs), '14:10'
 
 p = dump('14:11 jadę', simple, at(14, 11));
 expect('faza', p.phase, 'riding');
+// W trakcie jazdy najważniejsze pytanie to „gdzie wysiadam” — bez tego
+// użytkownik musiał otwierać aplikację, żeby nie przegapić przystanku.
+expect('tekst w trakcie jazdy', planOf(p, simple).copy.riding.text, 'wysiadź: ZACHEBNIA • Do BISKUPIN');
+expect('podpis w trakcie jazdy', planOf(p, simple).copy.riding.subText, 'następny GÓRNOŚLĄSKA • 7 przystanków');
+// Po przyjeździe podpis wraca do treści tytułu — nie powtarzamy godziny.
+expect('bez podpisu po przyjeździe', planOf(computeTripProgress(simple, { now: at(14, 26) }), simple).copy.arrived.subText, '');
 // Regression: następny przystanek był przesunięty o jeden, więc tu wychodził
 // ten, z którego właśnie ruszyliśmy.
 expect('następny przystanek', p.nextStop, 'GÓRNOŚLĄSKA');

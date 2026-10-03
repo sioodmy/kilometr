@@ -1,6 +1,27 @@
 // Material 3 (Material You) Dark scheme — seed: Wrocław MPK teal (#006A60).
 // Hand-built M3 Dark tonal palette with deep surfaces and vibrant tonal containers.
-export const scheme = {
+//
+// Paleta jest zmienna, bo na Androidzie 12+ podmieniamy ją na kolory z tapety
+// (patrz `dynamic.ts`). Role, których nie da się przeliczyć z tapety (błędy,
+// ostrzeżenia, kolory linii), zostają statyczne — kolor linii to informacja,
+// a nie dekoracja.
+import { StyleSheet } from 'react-native';
+
+export type SchemeKey =
+  | 'primary' | 'onPrimary' | 'primaryContainer' | 'onPrimaryContainer'
+  | 'secondary' | 'onSecondary' | 'secondaryContainer' | 'onSecondaryContainer'
+  | 'tertiary' | 'onTertiary' | 'tertiaryContainer' | 'onTertiaryContainer'
+  | 'error' | 'onError' | 'errorContainer' | 'onErrorContainer'
+  | 'surface' | 'onSurface' | 'onSurfaceVariant'
+  | 'surfaceDim' | 'surfaceBright'
+  | 'surfaceContainerLowest' | 'surfaceContainerLow' | 'surfaceContainer'
+  | 'surfaceContainerHigh' | 'surfaceContainerHighest'
+  | 'outline' | 'outlineVariant'
+  | 'inverseSurface' | 'inverseOnSurface' | 'inversePrimary' | 'scrim'
+  | 'success' | 'onSuccess' | 'successContainer' | 'onSuccessContainer'
+  | 'warning' | 'onWarning' | 'warningContainer' | 'onWarningContainer';
+
+export const scheme: Record<SchemeKey, string> = {
   // Primary (vibrant teal in dark mode for high accessibility and contrast)
   primary: '#5CDBBE',
   onPrimary: '#003831',
@@ -57,10 +78,84 @@ export const scheme = {
   onWarning: '#452B00',
   warningContainer: '#633F00',
   onWarningContainer: '#FFDDB5',
-} as const;
+};
+
+// ─── Skąd braliśmy kolory ────────────────────────────────────────────────────
+//
+// `StyleSheet.create` w dev zamraża obiekty, które mu podamy, więc nie możemy
+// dołożyć do nich kolorów po fakcie. Dlatego przy rejestrowaniu arkusza
+// zostawiamy sobie OryGINAŁ, a React Native'owi oddajemy jego kopię. Dzięki
+// temu `applyScheme` przemalowuje style powstałe na starcie modułu, a zachowanie
+// dev i release jest identyczne.
+type StyleSheetLike = Record<string, Record<string, unknown> | undefined>;
+const createdSheets: StyleSheetLike[] = [];
+let hookInstalled = false;
+
+function installStyleSheetHook(): void {
+  if (hookInstalled) return;
+  hookInstalled = true;
+  const original = StyleSheet.create.bind(StyleSheet) as (
+    obj: StyleSheetLike,
+  ) => StyleSheetLike;
+  (StyleSheet as unknown as { create: (obj: StyleSheetLike) => StyleSheetLike }).create = (
+    obj,
+  ) => {
+    const copy: StyleSheetLike = {};
+    for (const key in obj) copy[key] = { ...obj[key] };
+    try {
+      original(copy);
+    } catch {
+      // Arkusz spoza naszego motywu — zostawiamy go w spokoju.
+    }
+    createdSheets.push(obj);
+    return obj;
+  };
+}
+installStyleSheetHook();
+
+/** Wartości startowe — na nich opieramy podmianę hexów w stylach. */
+const seedScheme: Record<string, string> = { ...scheme };
+
+/** Przemalowuje wcześniej utworzone arkusze stylów na nową paletę. */
+function repaintStyles(next: Record<SchemeKey, string>): void {
+  const from = new Map<string, string>();
+  for (const key of Object.keys(seedScheme) as SchemeKey[]) {
+    const before = seedScheme[key];
+    const after = next[key];
+    if (before !== after) from.set(before.toLowerCase(), after);
+  }
+  if (from.size === 0) return;
+  const swap = (value: unknown): unknown => {
+    if (typeof value === 'string') return from.get(value.toLowerCase()) ?? value;
+    if (Array.isArray(value)) return value.map(swap);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const key in value as Record<string, unknown>) out[key] = swap((value as Record<string, unknown>)[key]);
+      return out;
+    }
+    return value;
+  };
+  for (const sheet of createdSheets) {
+    for (const key in sheet) {
+      const style = sheet[key];
+      if (!style || typeof style !== 'object') continue;
+      const swapped = swap(style) as Record<string, unknown>;
+      for (const prop in swapped) delete (style as Record<string, unknown>)[prop];
+      Object.assign(style as Record<string, unknown>, swapped);
+    }
+  }
+}
 
 // ─── Back-compat aliases ─────────────────────────────────────────────────────
-export const colors = {
+type ColorKey =
+  | 'bg' | 'card' | 'ink' | 'muted' | 'faint' | 'line'
+  | 'primary' | 'primaryDark' | 'primarySoft'
+  | 'accent' | 'accentSoft'
+  | 'success' | 'successSoft' | 'danger' | 'dangerSoft'
+  | 'warning' | 'warningSoft'
+  | 'lineTram' | 'lineBus' | 'lineNight' | 'walk';
+
+export const colors: Record<ColorKey, string> = {
   bg: scheme.surface,
   card: scheme.surfaceContainer,
   ink: scheme.onSurface,
@@ -83,7 +178,40 @@ export const colors = {
   lineBus: '#2979FF',
   lineNight: '#B39DDB',
   walk: scheme.onSurfaceVariant,
-} as const;
+};
+
+/**
+ * Podmienia paletę na kolory z tapety (Material You).
+ *
+ * Robimy to PRZED pierwszym renderem (`initDynamicColors` w `_layout`), więc
+ * nie ma potrzeby przerysowywać drzewa — wystarczy zaktualizować obiekty
+ * motywu i arkusze stylów powstałe przy imporcie modułów.
+ */
+export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
+  for (const key of Object.keys(next) as SchemeKey[]) {
+    const value = next[key];
+    if (typeof value === 'string' && value) scheme[key] = value;
+  }
+  colors.bg = scheme.surface;
+  colors.card = scheme.surfaceContainer;
+  colors.ink = scheme.onSurface;
+  colors.muted = scheme.onSurfaceVariant;
+  colors.faint = scheme.outline;
+  colors.line = scheme.outlineVariant;
+  colors.primary = scheme.primary;
+  colors.primaryDark = scheme.primaryContainer;
+  colors.primarySoft = scheme.secondaryContainer;
+  colors.accent = scheme.tertiary;
+  colors.accentSoft = scheme.tertiaryContainer;
+  colors.success = scheme.success;
+  colors.successSoft = scheme.successContainer;
+  colors.danger = scheme.error;
+  colors.dangerSoft = scheme.errorContainer;
+  colors.warning = scheme.warning;
+  colors.warningSoft = scheme.warningContainer;
+  colors.walk = scheme.onSurfaceVariant;
+  repaintStyles(scheme);
+}
 
 // ─── M3 shape scale ──────────────────────────────────────────────────────────
 export const shape = {

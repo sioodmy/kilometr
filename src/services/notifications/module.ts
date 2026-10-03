@@ -18,6 +18,11 @@ export interface TrackingNativeModule {
   ensureChannels(): Promise<void>;
   /** Czy system dopuści powiadomienie do strefy Live Updates. */
   canPromote(): Promise<boolean>;
+  /**
+   * Surowa paleta Material You z tapety (`rodzina_ton` → `#RRGGBBAA`).
+   * Pusta na Androidzie 11 i starszych.
+   */
+  getSystemPalette?(): Promise<Record<string, string>>;
   /** Przekazuje plan podróży do serwisu, który sam aktualizuje powiadomienie. */
   startTrip(planJson: string): Promise<boolean>;
   /** Zatrzymuje serwis i zdejmuje powiadomienie. */
