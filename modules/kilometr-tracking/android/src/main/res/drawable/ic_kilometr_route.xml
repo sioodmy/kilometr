@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Ikona przycisku otwierającego trasę / szczegóły kursu.
+  Ikona przycisku otwierającego trasę / szczegóły kursu. Material Symbols Rounded.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -9,5 +9,5 @@
     android:viewportHeight="24">
   <path
       android:fillColor="#FFFFFFFF"
-      android:pathData="M12,2L4.5,20.3l1.9,0.7L6.7,17h10.6l0.3,4l1.9,-0.7L12,2zM8.1,15l3.9,-9.3L15.9,15h-7.8z" />
+      android:pathData="M6.175 19.825 q-1.175 -1.175 -1.175 -2.825 v q-0.875 -0.325 -1.438 -1.088 T3 6 q0 -1.25 0.875 -2.125 t2.125 -0.875 q1.25 0 2.125 0.875 t0.875 2.125 q0 0.975 -0.562 1.738 T7 8.825 v q0 0.825 0.588 1.413 T9 19 q0.825 0 1.413 -0.588 T11 17 v q0 -1.65 1.175 -2.825 t2.825 -1.175 q1.65 0 2.825 1.175 t1.175 2.825 v q0.875 0.325 1.438 1.088 T21 18 q0 1.25 -0.875 2.125 t-2.125 0.875 q-1.25 0 -2.125 -0.875 t-0.875 -2.125 q0 -0.975 0.562 -1.75 t1.438 -1.075 v q0 -0.825 -0.588 -1.413 T15 5 q-0.825 0 -1.413 0.588 T13 7 v q0 1.65 -1.175 2.825 t-2.825 1.175 q-1.65 0 -2.825 -1.175 Z" />
 </vector>

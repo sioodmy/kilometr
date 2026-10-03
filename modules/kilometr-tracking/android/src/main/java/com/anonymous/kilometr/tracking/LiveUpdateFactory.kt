@@ -154,8 +154,12 @@ internal object LiveUpdateFactory {
 
   /**
    * Pasek podróży jako segmenty: dojścia pieszo w kolorze neutralnym, przejazdy
-   * w kolorze linii, granice przesiadek jako punkty, a nad paskiem ikona tego,
+   * w kolorze linii, granice przesiadek jako punkty, a na pasku ikona tego,
    * czym jedziemy.
+   *
+   * Lewego końca paska celowo nie opisujemy — flaga odjazdu tylko zabierała
+   * miejsce i myliła się z paskiem postępu, bo wyglądała jak kolejny punkt
+   * trasy. Z prawej zostaje flaga z metra: mówi „jeszcze tu są przystanki”.
    */
   private fun progressStyle(
     context: Context,
@@ -166,8 +170,7 @@ internal object LiveUpdateFactory {
     val style = NotificationCompat.ProgressStyle()
       .setStyledByProgress(false)
       .setProgressTrackerIcon(IconCompat.createWithResource(context, plan.trackerIconFor(nowMs)))
-      .setProgressStartIcon(IconCompat.createWithResource(context, R.drawable.ic_kilometr_start))
-      .setProgressEndIcon(IconCompat.createWithResource(context, R.drawable.ic_kilometr_pin))
+      .setProgressEndIcon(IconCompat.createWithResource(context, R.drawable.ic_kilometr_flag2))
 
     // `ProgressStyle` wylicza `progressMax` z sumy długości segmentów, więc
     // albo domykamy sumę do 1000, albo dostajemy pasek przesunięty o kilka
