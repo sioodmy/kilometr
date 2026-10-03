@@ -1,7 +1,6 @@
 package com.anonymous.kilometr.tracking
 
 import android.content.Context
-import android.content.res.Resources
 import android.os.Build
 
 /**
@@ -10,7 +9,7 @@ import android.os.Build
  * Android udostępnia pięć palet tonalnych (`system_accent1_*`,
  * `system_accent2_*`, `system_accent3_*`, `system_neutral1_*`,
  * `system_neutral2_*`), w których nazwa zasobu koduje ton: `accent1_200` to
- * ton 20, `accent1_900` — ton 90. Nie robimy tu żadnej paletowania ani
+ * ton 20, `accent1_900` — ton 90. Nie budujemy tu palety ani nie liczymy
  * kontrastu — dostarczamy surowe tony do JS, który przypisuje je do ról
  * motywu (`src/theme/dynamic.ts`).
  *
