@@ -2,6 +2,15 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Architektura procesora (arm64-v8a to 99% nowoczesnych telefonów)'
+        required: true
+        default: 'arm64-v8a'
+        type: choice
+        options:
+          - 'arm64-v8a'
+          - 'all'
   push:
     branches:
       - main
@@ -27,6 +36,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -43,9 +55,18 @@ jobs:
 
       - name: Build Android Release APK
         run: |
+          ARCH_FLAG=""
+          TARGET_ARCH="${{ github.event.inputs.arch || 'arm64-v8a' }}"
+          if [ "$TARGET_ARCH" = "arm64-v8a" ]; then
+            echo "⚡ Szybki build: kompilacja tylko pod arm64-v8a"
+            ARCH_FLAG="-PreactNativeArchitectures=arm64-v8a"
+          else
+            echo "🌍 Pełny build: wszystkie architektury"
+          fi
+
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease -x lint --no-daemon --console=plain
+          ./gradlew assembleRelease -x lint --no-daemon --console=plain $ARCH_FLAG
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
