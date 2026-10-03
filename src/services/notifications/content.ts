@@ -93,7 +93,9 @@ export function buildPhaseCopy(
     waiting: {
       title: n.departTitle(service, boardAt),
       text: boarding,
-      subText: join(stops, ride, delay),
+      // Przy oczekiwaniu liczy się jeszcze, ile potrwa sam przejazd i czy
+      // trzeba będzie gdzieś przesiadać.
+      subText: join(stops, ride, transfers, delay),
       criticalText: n.chipDepart(boardAt),
     },
 
