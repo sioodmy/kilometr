@@ -1,0 +1,54 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-apk:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platforms and build-tools
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build Android Release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease -x lint --no-daemon --console=plain
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kilometr-release-apk
+          path: android/app/build/outputs/apk/release/*.apk

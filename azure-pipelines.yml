@@ -1,0 +1,80 @@
+# Azure DevOps Pipeline - Kompilacja APK (Release) dla aplikacji Kilometr
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+      - master
+
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: ANDROID_SDK_ROOT
+    value: '/usr/local/lib/android/sdk'
+  - name: GRADLE_OPTS
+    value: '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=512m"'
+
+steps:
+  - checkout: self
+    displayName: 'Pobierz kod źródłowy'
+
+  - task: NodeTool@0
+    displayName: 'Zainstaluj Node.js 20'
+    inputs:
+      versionSpec: '20.x'
+
+  - bash: |
+      set -euo pipefail
+      echo "Konfiguracja JAVA_HOME na Java 17..."
+      if [ -n "${JAVA_HOME_17_X64:-}" ] && [ -d "$JAVA_HOME_17_X64" ]; then
+        echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_HOME_17_X64"
+        echo "##vso[task.setvariable variable=PATH]$JAVA_HOME_17_X64/bin:$PATH"
+      fi
+    displayName: 'Ustawienie JDK 17'
+
+  - bash: |
+      set -euo pipefail
+      echo "Akceptacja licencji Android SDK..."
+      yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+      echo "Instalacja wymaganych platform (Android 35, 36) i build-tools..."
+      "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" || true
+    displayName: 'Przygotowanie Android SDK'
+
+  - bash: |
+      set -euo pipefail
+      echo "Instalacja zależności Node..."
+      npm ci
+    displayName: 'npm ci'
+
+  - bash: |
+      set -euo pipefail
+      echo "Generowanie natywnych plików Android (Expo prebuild)..."
+      npx expo prebuild --platform android --clean --no-install
+    displayName: 'Expo Prebuild'
+
+  - bash: |
+      set -euo pipefail
+      cd android
+      chmod +x gradlew
+      echo "Budowanie Release APK..."
+      ./gradlew assembleRelease -x lint --no-daemon --console=plain
+    displayName: 'Gradle: assembleRelease'
+
+  - task: CopyFiles@2
+    displayName: 'Kopiowanie wygenerowanego pliku APK'
+    inputs:
+      SourceFolder: 'android/app/build/outputs/apk/release'
+      Contents: '**/*.apk'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+      flattenFolders: true
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publikacja artefaktu (pobierz APK po zakończeniu)'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'kilometr-release-apk'
+      publishLocation: 'Container'
