@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
+import { initDynamicColors } from '../src/theme/dynamic';
 import { initLocale } from '../src/i18n';
 import { loadSettings } from '../src/services/settings';
 import { hasSeenOnboarding } from '../src/services/onboarding';
@@ -44,6 +45,10 @@ export default function RootLayout() {
     }, 3000);
 
     const initApp = async () => {
+      // Kolory Material You z tapety muszą być w motywie zanim cokolwiek
+      // się wyrysuje — inaczej pierwsze arkusze stylów powstałyby na starym
+      // seedzie, a ekran przez sekundę migotałby między dwiema paletami.
+      await initDynamicColors();
       await migrateFromSqliteKv();
       await loadSettings();
       await initLocale();
