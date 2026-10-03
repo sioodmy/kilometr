@@ -101,7 +101,9 @@ export function buildPhaseCopy(
 
     transfer: {
       title: n.transferTitle(service, boardAt),
-      text: join(p.interchange ?? '', boarding),
+      // Nazwa przesiadki już mówi, na którym przystanku przesiadam — nie
+      // powtarzamy jej w „przystanek X".
+      text: p.interchange ?? boarding,
       subText: join(walk, stops, delay),
       criticalText: n.chipDepart(boardAt),
     },
