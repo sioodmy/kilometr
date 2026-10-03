@@ -84,10 +84,21 @@ jobs:
 
       - name: Tune Gradle for CI
         run: |
+          set -euo pipefail
+          GP=android/gradle.properties
           # Domyślne 2 GB JVM za mało dla równoległej kompilacji C++ (RN 0.86, new arch).
-          cat >> android/gradle.properties <<'EOF'
+          # org.gradle.parallel=true już jest w pliku generowanym przez prebuild.
+          #
+          # UWAGA: `expo prebuild` generuje gradle.properties BEZ znaku nowej linii na
+          # końcu, więc `cat >>` sklejałoby doklejaną właściwość z ostatnią istniejącą
+          # ("expo.inlineModules.watchedDirectories=[]org.gradle.jvmargs=..."). Gradle
+          # czyta wtedy tę wartość jako "[]org.gradle.jvmargs=..." i przekazuje ją do
+          # `node ... mirror-kotlin-inline-modules --watched-directories-serialized`,
+          # gdzie JSON.parse() pada → build wywala się na
+          # "Process 'command 'node'' finished with non-zero exit value 1".
+          printf '\n' >> "$GP"
+          cat >> "$GP" <<'EOF'
           org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
-          org.gradle.parallel=true
           org.gradle.caching=true
           EOF
 
