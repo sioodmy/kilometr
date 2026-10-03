@@ -103,7 +103,7 @@ export function buildPhaseCopy(
       title: n.transferTitle(service, boardAt),
       // Nazwa przesiadki już mówi, na którym przystanku przesiadam — nie
       // powtarzamy jej w „przystanek X".
-      text: p.interchange ?? boarding,
+      text: interchangeName(p.interchange) ?? boarding,
       subText: join(walk, stops, delay),
       criticalText: n.chipDepart(boardAt),
     },
@@ -127,6 +127,19 @@ export function buildPhaseCopy(
       criticalText: n.chipArrive(arriveAt),
     },
   };
+}
+
+/**
+ * Nazwa przesiadki bez etykiety. Planer często zwraca „Przesiadka: Rondo”,
+ * a tytuł i tak zaczyna się od słowa „Przesiadka” — zdejmujemy wyłącznie
+ * powtórzony wyraz, a jak nazwa jest nietypowa, zostawiamy ją w całości.
+ */
+function interchangeName(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const match = /^(przesiadka|przeładunek|zmiana|transfer|umstieg|пересадка)\s*[:\-]\s*(.+)$/i.exec(
+    raw.trim(),
+  );
+  return match ? match[2] : raw;
 }
 
 /**
