@@ -22,7 +22,12 @@ export interface RouteMapDocumentOptions {
   selectedLegId?: string | null;
 }
 
-const theme = {
+/**
+ * Motyw WebView czytamy przy każdym otwarciu mapy, nie raz przy imporcie —
+ * paleta aplikacji na Androidzie 12+ pochodzi z tapety i podmienia się po
+ * zaimportowaniu modułu (`src/theme/dynamic.ts`).
+ */
+const theme = () => ({
   surface: scheme.surface,
   surfaceContainerHigh: scheme.surfaceContainerHigh,
   surfaceContainerHighest: scheme.surfaceContainerHighest,
@@ -38,25 +43,25 @@ const theme = {
   success: scheme.success,
   warning: scheme.warning,
   error: scheme.error,
-};
+});
 
-const css = [
+const css = () => [
   ':root{',
-  '--k-surface:' + theme.surface + ';',
-  '--k-surface-high:' + theme.surfaceContainerHigh + ';',
-  '--k-surface-highest:' + theme.surfaceContainerHighest + ';',
-  '--k-on-surface:' + theme.onSurface + ';',
-  '--k-on-surface-var:' + theme.onSurfaceVariant + ';',
-  '--k-outline:' + theme.outline + ';',
-  '--k-outline-var:' + theme.outlineVariant + ';',
-  '--k-primary:' + theme.primary + ';',
-  '--k-on-primary:' + theme.onPrimary + ';',
-  '--k-primary-container:' + theme.primaryContainer + ';',
-  '--k-on-primary-container:' + theme.onPrimaryContainer + ';',
-  '--k-tertiary:' + theme.tertiary + ';',
-  '--k-success:' + theme.success + ';',
-  '--k-warning:' + theme.warning + ';',
-  '--k-error:' + theme.error + ';',
+  '--k-surface:' + theme().surface + ';',
+  '--k-surface-high:' + theme().surfaceContainerHigh + ';',
+  '--k-surface-highest:' + theme().surfaceContainerHighest + ';',
+  '--k-on-surface:' + theme().onSurface + ';',
+  '--k-on-surface-var:' + theme().onSurfaceVariant + ';',
+  '--k-outline:' + theme().outline + ';',
+  '--k-outline-var:' + theme().outlineVariant + ';',
+  '--k-primary:' + theme().primary + ';',
+  '--k-on-primary:' + theme().onPrimary + ';',
+  '--k-primary-container:' + theme().primaryContainer + ';',
+  '--k-on-primary-container:' + theme().onPrimaryContainer + ';',
+  '--k-tertiary:' + theme().tertiary + ';',
+  '--k-success:' + theme().success + ';',
+  '--k-warning:' + theme().warning + ';',
+  '--k-error:' + theme().error + ';',
   '--k-land:' + MAP_COLORS.land + ';',
   '}',
   '*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}',
