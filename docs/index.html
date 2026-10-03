@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kilometr — Tym razem dojedziesz</title>
+  <meta name="description" content="Lekka, szybka aplikacja do transportu publicznego. Bez reklam, bez śledzenia, bez mikropłatności.">
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <!-- Typography: Geist & Geist Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Icons: Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              DEFAULT: '#5CDBBE',
+              hover: '#4ec7ab',
+              active: '#43b59a',
+              subtle: 'rgba(92, 219, 190, 0.12)',
+              border: 'rgba(92, 219, 190, 0.25)',
+            },
+            surface: {
+              950: '#0d100f',
+              900: '#131715',
+              850: '#181d1b',
+              800: '#202624',
+              700: '#2c3431'
+            }
+          },
+          fontFamily: {
+            sans: ['Geist', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['Geist Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0d100f;
+      color: #e5e7eb;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+      -webkit-font-smoothing: antialiased;
+    }
+    .bg-grid {
+      background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .phone-mock {
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1),
+                  0 20px 50px -10px rgba(0, 0, 0, 0.75),
+                  0 0 60px -15px rgba(92, 219, 190, 0.15);
+    }
+  </style>
+</head>
+<body class="min-h-[100dvh] bg-surface-950 bg-grid flex flex-col justify-between selection:bg-brand selection:text-surface-950">
+
+  <!-- Main Viewport Section (50/50 Split) -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-8 md:py-12 flex flex-col justify-center">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+
+      <!-- LEFT COLUMN (50%): H1, Logo, Phone Screenshot -->
+      <div class="flex flex-col items-center lg:items-start text-center lg:text-left">
+        <!-- Brand Header: Logo + H1 -->
+        <div class="flex items-center gap-3.5 mb-2">
+          <img src="icon.png" alt="Kilometr Logo" class="w-12 h-12 rounded-2xl shadow-md border border-white/10 object-cover">
+          <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight text-white">
+            Kilometr
+          </h1>
+        </div>
+
+        <!-- Tagline -->
+        <p class="text-base md:text-lg font-medium text-brand mb-6 tracking-tight">
+          Tym razem dojedziesz.
+        </p>
+
+        <!-- Phone Mockup -->
+        <div class="relative w-full max-w-[270px] sm:max-w-[300px] mx-auto lg:mx-0">
+          <div class="phone-mock relative bg-surface-900 rounded-[2.5rem] p-2.5 border border-white/10 overflow-hidden">
+            <!-- Dynamic Island / Speaker Pill -->
+            <div class="absolute top-4 left-1/2 -translate-x-1/2 w-20 h-4 bg-surface-950 rounded-full z-20 flex items-center justify-center">
+              <div class="w-2.5 h-2.5 rounded-full bg-surface-850"></div>
+            </div>
+            <!-- Screen image -->
+            <img
+              src="example.png"
+              alt="Zrzut ekranu aplikacji Kilometr"
+              class="w-full h-auto max-h-[58vh] object-contain rounded-[2rem] block"
+              loading="eager"
+            >
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN (50%): Value Prop & Download CTAs -->
+      <div class="flex flex-col justify-center max-w-xl mx-auto lg:mx-0">
+
+        <!-- Eyebrow Tag -->
+        <div class="inline-flex items-center gap-2 self-center lg:self-start px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-brand-subtle text-brand border border-brand-border mb-4">
+          <i class="ti ti-sparkles text-sm"></i>
+          Nowoczesny rozkład jazdy
+        </div>
+
+        <!-- Section Title -->
+        <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4 leading-tight text-center lg:text-left">
+          Szybki transport.<br>
+          <span class="text-gray-400 font-normal">Czysto i bez zbędnych opłat.</span>
+        </h2>
+
+        <!-- Subtext (Brief & disciplined: <= 20 words) -->
+        <p class="text-base sm:text-lg text-gray-300 leading-relaxed mb-6 text-center lg:text-left">
+          Lekka aplikacja do transportu publicznego i śledzenia połączeń. Szanuje Twój czas, prywatność oraz baterię.
+        </p>
+
+        <!-- Feature Pills -->
+        <div class="flex flex-wrap gap-2 justify-center lg:justify-start mb-8">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-surface-900 border border-white/10 text-gray-200">
+            <i class="ti ti-bolt text-brand text-sm"></i> Błyskawicznie
+          </span>
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-surface-900 border border-white/10 text-gray-200">
+            <i class="ti ti-shield-check text-brand text-sm"></i> Zero reklam
+          </span>
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-surface-900 border border-white/10 text-gray-200">
+            <i class="ti ti-coin-off text-brand text-sm"></i> Bez mikropłatności
+          </span>
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-surface-900 border border-white/10 text-gray-200">
+            <i class="ti ti-brand-github text-brand text-sm"></i> 100% Open Source
+          </span>
+        </div>
+
+        <!-- Download Action Block -->
+        <div class="flex flex-col gap-3.5 w-full">
+
+          <!-- 1. PRIMARY CTA: Pobierz APK -->
+          <a
+            id="download-apk-btn"
+            href="app-release.apk"
+            download="kilometr.apk"
+            class="group relative flex items-center justify-between w-full p-4 rounded-2xl bg-brand text-surface-950 font-semibold hover:bg-brand-hover active:bg-brand-active active:scale-[0.99] transition-all shadow-lg shadow-brand/10"
+          >
+            <div class="flex items-center gap-3.5">
+              <div class="w-10 h-10 rounded-xl bg-surface-950/10 flex items-center justify-center text-surface-950">
+                <i class="ti ti-download text-2xl group-hover:translate-y-0.5 transition-transform"></i>
+              </div>
+              <div class="text-left">
+                <div class="text-base font-bold text-surface-950 leading-tight">
+                  Pobierz APK (Release)
+                </div>
+                <div class="text-xs font-medium text-surface-950/70 mt-0.5">
+                  Najnowszy build z GitHub Actions • Android 8.0+
+                </div>
+              </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-1 text-xs font-mono font-semibold px-2.5 py-1 rounded-lg bg-surface-950/10 text-surface-950">
+              <span id="version-label">Pobierz</span>
+              <i class="ti ti-arrow-right text-xs"></i>
+            </div>
+          </a>
+
+          <!-- 2. SECONDARY CTA: Dodaj do Obtainium -->
+          <div class="relative flex items-center w-full">
+            <a
+              href="obtainium://app/https://github.com/sioodmy/kilometr"
+              class="group flex-1 flex items-center justify-between p-4 rounded-2xl bg-surface-900 hover:bg-surface-850 active:scale-[0.99] border border-white/10 hover:border-brand-border transition-all"
+            >
+              <div class="flex items-center gap-3.5">
+                <div class="w-10 h-10 rounded-xl bg-brand-subtle text-brand flex items-center justify-center border border-brand-border">
+                  <i class="ti ti-refresh text-xl group-hover:rotate-45 transition-transform duration-300"></i>
+                </div>
+                <div class="text-left">
+                  <div class="text-base font-bold text-white leading-tight">
+                    Dodaj do Obtainium
+                  </div>
+                  <div class="text-xs font-medium text-gray-400 mt-0.5">
+                    Automatyczne aktualizacje bezpośrednio z GitHuba
+                  </div>
+                </div>
+              </div>
+              <div class="hidden sm:flex items-center gap-1 text-xs font-mono font-semibold text-brand">
+                <span>Auto-update</span>
+                <i class="ti ti-external-link text-xs"></i>
+              </div>
+            </a>
+            <!-- Szybki przycisk kopiowania URL repozytorium do Obtainium -->
+            <button
+              id="copy-repo-btn"
+              title="Kopiuj adres repozytorium do schowka"
+              onclick="copyRepoUrl()"
+              class="ml-2 h-[68px] px-3.5 rounded-2xl bg-surface-900 hover:bg-surface-850 border border-white/10 hover:border-brand-border text-gray-400 hover:text-white transition-all flex items-center justify-center active:scale-95"
+            >
+              <i id="copy-icon" class="ti ti-copy text-lg"></i>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Micro Info & Fallback Links -->
+        <div class="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 pt-4 border-t border-white/5">
+          <a
+            href="https://github.com/sioodmy/kilometr"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors"
+          >
+            <i class="ti ti-brand-github text-sm"></i>
+            <span>Repozytorium na GitHubie</span>
+          </a>
+          <a
+            href="https://github.com/sioodmy/kilometr/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 text-gray-400 hover:text-white transition-colors"
+          >
+            <span>Wszystkie wersje</span>
+            <i class="ti ti-chevron-right text-xs"></i>
+          </a>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Minimal Footer -->
+  <footer class="w-full max-w-7xl mx-auto px-6 py-6 text-center text-xs text-gray-600 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-white/5">
+    <div>Kilometr © 2026. Wolne i otwarte oprogramowanie.</div>
+    <div class="font-mono text-[11px] text-gray-500">Zbudowano automatycznie przez GitHub Actions</div>
+  </footer>
+
+  <!-- Script: Fallback do Releases & Kopiowanie do Schowka -->
+  <script>
+    // 1. Sprawdzenie, czy plik APK istnieje lokalnie (GitHub Pages), a jeśli nie — fallback do GitHub Releases
+    (async function initApkLink() {
+      const btn = document.getElementById('download-apk-btn');
+      try {
+        const res = await fetch('app-release.apk', { method: 'HEAD' });
+        if (!res.ok) {
+          btn.href = 'https://github.com/sioodmy/kilometr/releases/latest/download/app-release.apk';
+        }
+      } catch (e) {
+        btn.href = 'https://github.com/sioodmy/kilometr/releases/latest/download/app-release.apk';
+      }
+
+      // Opcjonalne pobranie najnowszego tagu z API
+      try {
+        const resApi = await fetch('https://api.github.com/repos/sioodmy/kilometr/releases/latest');
+        if (resApi.ok) {
+          const data = await resApi.json();
+          if (data && data.tag_name) {
+            const label = document.getElementById('version-label');
+            if (label) label.textContent = data.tag_name;
+          }
+        }
+      } catch (e) {}
+    })();
+
+    // 2. Kopiowanie adresu repozytorium do Obtainium
+    function copyRepoUrl() {
+      const url = 'https://github.com/sioodmy/kilometr';
+      navigator.clipboard.writeText(url).then(() => {
+        const icon = document.getElementById('copy-icon');
+        icon.className = 'ti ti-check text-brand text-lg';
+        setTimeout(() => {
+          icon.className = 'ti ti-copy text-lg';
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
