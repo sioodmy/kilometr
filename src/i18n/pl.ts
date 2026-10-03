@@ -527,22 +527,24 @@ export const pl = {
     modeWalk: 'Pieszo',
     modeTram: 'Tramwaj',
     modeBus: 'Autobus',
-    // Podpis przy liczniku systemowym. Liczbę rysuje zegar systemowy, więc
-    // tekst pod nim musi być statyczny — inaczej po minucie kłamałby.
-    toDeparture: 'do odjazdu',
-    toArrival: 'do celu',
-    walkTitle: (dist: string) => `Idź na przystanek • ${dist}`,
-    walkTitlePlain: 'Idź na przystanek',
-    waitTitle: (service: string, at: string) => `${service} • odjazd ${at}`,
+    // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii —
+    // zegar systemowy tyka w nagłówku i sam z siebie nie wie, do czego liczy.
+    // Względne „za 4 min” w treści zestarzałoby się przy pierwszym
+    // odświeżeniu, więc go tu nie ma w ogóle.
+    departTitle: (service: string, at: string) => `${service} • odjazd ${at}`,
     rideTitle: (service: string, at: string) => `${service} • na miejscu ${at}`,
     transferTitle: (service: string, at: string) => `Przesiadka • ${service} • odjazd ${at}`,
     arrivedTitle: 'Jesteś na miejscu',
     arrivedBody: (at: string, dur: string) => `Na miejscu ${at} • podróż trwała ${dur}`,
     nextStop: (name: string) => `następny ${name}`,
     stopHere: (name: string) => `przystanek ${name}`,
+    // Najważniejsze pytanie w trakcie jazdy: gdzie wysiadam. Bez tego
+    // użytkownik musiał zaglądać do aplikacji, żeby nie przegapić przystanku.
+    alightAt: (name: string) => `wysiadź: ${name}`,
     directionTo: (dir: string) => `Do ${dir}`,
     platform: (num: string) => `słup ${num}`,
     walkApproach: (min: number) => `dojście ~${min} min`,
+    rideLength: (min: number) => `przejazd ${min} min`,
     departAt: (at: string) => `odjazd ${at}`,
     arriveAt: (at: string) => `na miejscu ${at}`,
     delayLate: (min: number) => `opóźnienie +${Math.round(min)} min`,
