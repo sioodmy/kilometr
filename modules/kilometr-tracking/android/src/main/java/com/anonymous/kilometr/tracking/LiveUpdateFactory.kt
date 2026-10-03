@@ -211,7 +211,9 @@ internal object LiveUpdateFactory {
   ): PendingIntent? {
     if (action.id == ACTION_STOP) {
       val intent = Intent(context, TripActionReceiver::class.java).apply {
-        action = TripActionReceiver.ACTION_STOP
+        // `this.action` — bez `this.` resolver sięgnąłby do parametru
+        // `action: TripAction`, który jest val.
+        this.action = TripActionReceiver.ACTION_STOP
       }
       return PendingIntent.getBroadcast(
         context,

@@ -218,7 +218,7 @@ internal data class LiveTripPlan(
         }
       }
 
-      LiveTripPlan(
+      return LiveTripPlan(
         tripId = root.optString("tripId", ""),
         deepLink = root.optString("deepLink", ""),
         accentColor = parseColor(root.optString("accentColor", ""), FALLBACK_COLOR),
