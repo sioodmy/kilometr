@@ -24,6 +24,15 @@ concurrency:
   group: "pages-and-build"
   cancel-in-progress: false
 
+env:
+  # Wersje muszą być zgodne z node_modules/react-native/gradle/libs.versions.toml
+  # (compileSdk/targetSdk=36, buildTools=36.0.0, ndkVersion=27.1.12297006)
+  # oraz z CMAKE_VERSION używanym przez react-native (3.30.5).
+  ANDROID_COMPILE_SDK: '36'
+  ANDROID_BUILD_TOOLS: '36.0.0'
+  ANDROID_NDK: '27.1.12297006'
+  ANDROID_CMAKE: '3.30.5'
+
 jobs:
   build-apk:
     name: Build Release APK
@@ -48,13 +57,24 @@ jobs:
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
 
+      # Uwaga: NIE podawaj `packages` domyślnie. Domyślna wartość akcji to
+      # "tools platform-tools", a pakiet `tools` został usunięty z repozytorium
+      # Google — sdkmanager kończy się błędem "Failed to find package 'tools'".
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
-      - name: Install Android SDK platforms and build-tools
+      - name: Install Android SDK platforms, build-tools, NDK and CMake
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_COMPILE_SDK}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK}" \
+            "cmake;${ANDROID_CMAKE}"
 
       - name: Install Node dependencies
         run: npm ci
@@ -62,30 +82,67 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Tune Gradle for CI
+        run: |
+          # Domyślne 2 GB JVM za mało dla równoległej kompilacji C++ (RN 0.86, new arch).
+          cat >> android/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          org.gradle.parallel=true
+          org.gradle.caching=true
+          EOF
+
       - name: Build Android Release APK
         run: |
+          set -euo pipefail
           ARCH_FLAG=""
-          TARGET_ARCH="${{ github.event.inputs.arch || 'arm64-v8a' }}"
+          TARGET_ARCH="${{ inputs.arch || 'arm64-v8a' }}"
           if [ "$TARGET_ARCH" = "arm64-v8a" ]; then
-            echo "⚡ Szybki build: kompilacja tylko pod arm64-v8a"
+            echo "Szybki build: kompilacja tylko pod arm64-v8a"
             ARCH_FLAG="-PreactNativeArchitectures=arm64-v8a"
           else
-            echo "🌍 Pełny build: wszystkie architektury"
+            echo "Pełny build: wszystkie architektury"
           fi
 
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease -x lint --no-daemon --console=plain $ARCH_FLAG
+          ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace $ARCH_FLAG
 
-      - name: Copy APK to docs for GitHub Pages hosting
+      - name: Verify and stage APK
         run: |
-          cp android/app/build/outputs/apk/release/*.apk docs/app-release.apk
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "Nie znaleziono żadnego APK w android/app/build/outputs/apk/release"
+            exit 1
+          fi
+          echo "Zbudowano: $APK ($(du -h "$APK" | cut -f1))"
+          cp "$APK" docs/app-release.apk
+          (cd docs && sha256sum app-release.apk > app-release.apk.sha256)
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: kilometr-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            docs/app-release.apk.sha256
+
+      - name: Publish APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # docs/index.js szuka /app-release.apk, a jako fallback linkuje
+          # https://github.com/<repo>/releases/latest/download/app-release.apk
+          TAG=latest
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Kilometr ${{ github.sha }}" \
+              --notes "Automatyczny build z gałęzi main (\`${{ github.ref_name }}\`, commit \`${{ github.sha }}\`)." \
+              --target "${{ github.sha }}"
+          fi
+          gh release upload "$TAG" docs/app-release.apk#app-release.apk --clobber
+          gh release upload "$TAG" docs/app-release.apk.sha256#app-release.apk.sha256 --clobber
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
