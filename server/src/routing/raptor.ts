@@ -1,5 +1,6 @@
 import { DayIndex, GtfsStore, TripPattern } from '../gtfs/store';
 import { JourneySegment, RawJourney, TransitModePreference } from './types';
+import { classifyVehicle } from '../gtfs/transitMode';
 
 const INF = 1e9;
 
@@ -38,17 +39,18 @@ interface RaptorOptions {
 }
 
 /**
- * Klasyfikacja linii na tramwaj/autobus — ta sama heurystyka co w backtrack
- * (Wrocław: route_type 0 albo numer 1–33 to tramwaj).
+ * Klasyfikacja linii na tramwaj/autobus po `route_type` z feedu.
+ *
+ * Numeracja `route_type` zależy od operatora: Wrocław używa `0`, Kraków
+ * (extended GTFS) `900` — patrz `gtfs/transitMode`. Świadomie nie zgadujemy
+ * po numerze linii: heurystyka „1–33 = tramwaj” pominęła 7 z 23 linii
+ * tramwajowych Krakowa (49, 62, 69, 70, 74, 76, 77) i wrocławską linię „0”.
  */
 export function classifyTransitMode(
   routeType: number | undefined,
   shortName: string | undefined,
 ): 'tram' | 'bus' {
-  if (routeType === 0) return 'tram';
-  const lineNum = parseInt((shortName || '').trim(), 10);
-  if (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33) return 'tram';
-  return 'bus';
+  return classifyVehicle({ routeType, line: shortName });
 }
 
 const TRANSFER_PENALTY_SEC = 600; // 10 min kary za każdą przesiadkę — spacer 300 m się opłaca
@@ -414,9 +416,7 @@ function backtrackJourney(
       const stopsCount = Math.max(0, alightIdx - boardIdx);
 
       const lineName = route?.route_short_name || '';
-      const lineNum = parseInt(lineName, 10);
-      const isTram = route?.route_type === 0 || (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33);
-      const mode = isTram ? 'tram' : 'bus';
+      const mode = classifyVehicle({ routeType: route?.route_type, line: lineName });
 
       segments.unshift({
         type: 'transit',

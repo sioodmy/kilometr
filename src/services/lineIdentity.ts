@@ -1,4 +1,5 @@
 import type { LegMode } from '../types/models';
+import { classifyVehicle } from '../gtfs/transitMode';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
@@ -31,18 +32,22 @@ export const TRANSIT_PALETTE = [
   '#1A237E', // Midnight Blue
 ];
 
-/** Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy). */
+/**
+ * Rozpoznaje typ pojazdu.
+ *
+ * Kolejność: jawny tryb z planera (`LegMode`) → `route_type` z feedu.
+ * Świadomie NIE zgadujemy po numerze linii — numeracja tramwajów różni się
+ * między miastami (Wrocław 0–24, Kraków 1–22 plus 49/62/69/70/74/76/77), a
+ * heurystyka „1–33 = tramwaj” myliła się w obu. Szczegóły i tabela
+ * `route_type` (0 = tram, 900 = tram w extended GTFS) w `gtfs/transitMode`.
+ *
+ * Bez żadnego sygnału zwracamy `bus`, jak przed refaktorem.
+ */
 export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'walk' {
   if (mode === 'walk') return 'walk';
   if (mode === 'tram') return 'tram';
   if (mode === 'bus') return 'bus';
-  if (!line) return 'bus';
-  const clean = line.trim();
-  const num = parseInt(clean, 10);
-  if (!isNaN(num) && num >= 1 && num <= 33) {
-    return 'tram';
-  }
-  return 'bus';
+  return classifyVehicle({ line });
 }
 
 /** Oblicza stabilny, zharmonizowany kolor linii z gwarantowanym kontrastem tekstu. */

@@ -43,6 +43,7 @@
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
+    "check:transit-mode": "tsx scripts/check-transit-mode.ts",
     "typecheck": "tsc --noEmit"
   },
   "private": true,
