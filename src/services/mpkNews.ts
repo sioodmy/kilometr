@@ -1,6 +1,7 @@
 // Czytnik aktualności MPK / wroclaw.pl (RSS) — bez dodatkowych zależności.
 // Feed: https://www.wroclaw.pl/komunikacja/rss (RSS 2.0, opis w CDATA z <img> + tekst).
 import { withTimeout } from './net';
+import { getActiveCitySync } from '../cities/active';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -24,7 +25,14 @@ export type MpkNewsItem = {
   dateLabel: string;
 };
 
-export const MPK_NEWS_URL = 'https://www.wroclaw.pl/komunikacja/rss';
+/**
+ * RSS z aktualnościami komunikacji dla AKTYWNEGO MIASTA (adres w definicji
+ * miasta). Miasto bez feedu zwraca null — ekran pokaże wtedy stan pusty,
+ * zamiast odpytuje cudzy serwis.
+ */
+export function newsFeedUrl(): string | null {
+  return getActiveCitySync().newsFeedUrl;
+}
 
 /** RSS bywa wolny; po 12 s uznajemy pobieranie za nieudane, żeby ekran nie wisiał. */
 const NEWS_TIMEOUT_MS = 12000;
@@ -156,7 +164,9 @@ export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]>
   // „Pobieranie komunikatów…” na zawsze i blokowało odświeżenie plakietki.
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
-    const res = await fetch(MPK_NEWS_URL, {
+    const url = newsFeedUrl();
+    if (!url) return [];
+    const res = await fetch(url, {
       headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
       signal: scope.signal,
     });

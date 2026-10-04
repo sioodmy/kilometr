@@ -11,7 +11,7 @@
 //
 // Bez OSRM zostaje prosta wersja — wolniej, ale zawsze pokazuje trasę.
 
-import { OSRM_BASE_URL } from '../config';
+import { OSRM_BASE_URL, cityCenter } from '../config';
 import { kvGet, kvSet } from './storage';
 import { getLineColors } from '../components/LineBadge';
 import { timeStringToSeconds } from '../gtfs/geo';
@@ -426,8 +426,12 @@ export function interpolateRoute(
   coords: Coord[],
   progress: number,
 ): { point: Coord; heading: number; index: number } {
+  // Brak geometrii trasy: wracamy do środka aktywnego miasta. Współrzędne
+  // z definicji miasta, nie literał — inaczej w Krakowie mapa skakałaby do
+  // Wrocławia przy każdej trasie bez shape.
   if (!coords || coords.length === 0) {
-    return { point: [51.1079, 17.0385], heading: 0, index: 0 };
+    const { lat, lon } = cityCenter();
+    return { point: [lat, lon], heading: 0, index: 0 };
   }
   if (coords.length === 1) {
     return { point: coords[0], heading: 0, index: 0 };

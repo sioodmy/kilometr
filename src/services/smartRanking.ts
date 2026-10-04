@@ -167,6 +167,15 @@ export function mergeTripSearch(
   dest: TripDestinationInput,
   measuredMinutes: number | undefined,
   now: number,
+  /**
+   * Etykieta zapasowa, gdy brak tytułu/adresu (np. „Wrocław", „Kraków").
+   *
+   * Przekazujemy ją z zewnątrz zamiast czytać tu z słownika: ten moduł ma
+   * zostać czystym TS bez zależności React Native, żeby dało się go
+   * policzyć w Node (`npm run check:smart-rank`). Nazwa miasta zależy też od
+   * języka interfejsu, którego tu nie znamy.
+   */
+  fallbackLabel = '',
 ): TripHistoryItem[] {
   // Wpis bez poprawnych współrzędnych jest bezużyteczny: ranking odsiewa go
   // po `distanceMeters` (NaN nie mieści się w żadnym promieniu), więc trafiłby
@@ -214,12 +223,12 @@ export function mergeTripSearch(
     // Losowy sufiks zawsze niepusty (`slice` potrafi oddać „i”, a w skrajnym
     // razie pusty string — dokładnie ten sam problem co w `newId()`).
     id: `trip-${now}-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`,
-    origin_title: originTitle || 'Wrocław',
+    origin_title: originTitle || fallbackLabel,
     origin_lat: originLat,
     origin_lon: originLon,
     dest_id: dest.id || dest.title,
     dest_title: dest.title,
-    dest_address: dest.address || 'Wrocław',
+    dest_address: dest.address || fallbackLabel,
     dest_lat: dest.lat,
     dest_lon: dest.lon,
     duration_min: measured ?? FALLBACK_TRIP_MIN,

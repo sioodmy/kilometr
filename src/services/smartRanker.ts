@@ -1,5 +1,6 @@
 import { kvGet, kvSet } from './storage';
-import { DEFAULT_LOCATION } from '../config';
+import { defaultLocation } from '../config';
+import { tr } from '../i18n';
 import {
   mergeTripSearch,
   rankSmartDestinations,
@@ -12,145 +13,6 @@ import type { SavedPlace, SmartDestination } from '../types/models';
 // zależności (`npm run check:smart-rank` policzy je bez telefonu).
 export type { TripHistoryItem } from './smartRanking';
 
-export const INITIAL_SAVED_PLACES: SavedPlace[] = [
-  {
-    id: 'home',
-    name: 'Dom',
-    icon: 'home',
-    placeId: 'swojczycka',
-    address: 'Swojczycka 41, Wrocław',
-    lat: 51.1085,
-    lon: 17.1021,
-  },
-  {
-    id: 'school',
-    name: 'Szkoła',
-    icon: 'school',
-    placeId: 'pwr',
-    address: 'Politechnika Wrocławska, Wybrzeże Wyspiańskiego',
-    lat: 51.1079,
-    lon: 17.0617,
-  },
-  {
-    id: 'work',
-    name: 'Praca',
-    icon: 'work',
-    placeId: 'sky-tower',
-    address: 'Sky Tower, Powstańców Śląskich 95',
-    lat: 51.0938,
-    lon: 17.0196,
-  },
-  {
-    id: 'gym',
-    name: 'Siłownia',
-    icon: 'gym',
-    placeId: 'magnolia',
-    address: 'Magnolia Park, Legnicka 58',
-    lat: 51.1181,
-    lon: 16.9946,
-  },
-];
-
-export const SEED_TRIPS: TripHistoryItem[] = [
-  // Z pracy (Sky Tower: 51.0938, 17.0196) -> Dom (Swojczyce)
-  ...Array.from({ length: 12 }).map((_, i) => ({
-    id: `seed-work-home-${i}`,
-    origin_title: 'Praca (Sky Tower)',
-    origin_lat: 51.0938,
-    origin_lon: 17.0196,
-    dest_id: 'swojczycka',
-    dest_title: 'Dom',
-    dest_address: 'Swojczycka 41, Wrocław',
-    dest_lat: 51.1085,
-    dest_lon: 17.1021,
-    duration_min: 22,
-    timestamp: Date.now() - i * 18 * 3600 * 1000,
-  })),
-  // Z pracy -> Siłownia (Magnolia)
-  ...Array.from({ length: 6 }).map((_, i) => ({
-    id: `seed-work-gym-${i}`,
-    origin_title: 'Praca (Sky Tower)',
-    origin_lat: 51.0938,
-    origin_lon: 17.0196,
-    dest_id: 'magnolia',
-    dest_title: 'Siłownia',
-    dest_address: 'Magnolia Park, Legnicka 58',
-    dest_lat: 51.1181,
-    dest_lon: 16.9946,
-    duration_min: 18,
-    timestamp: Date.now() - i * 36 * 3600 * 1000,
-  })),
-  // Z domu (Swojczyce: 51.1085, 17.1021) -> Praca
-  ...Array.from({ length: 14 }).map((_, i) => ({
-    id: `seed-home-work-${i}`,
-    origin_title: 'Dom (Swojczyce)',
-    origin_lat: 51.1085,
-    origin_lon: 17.1021,
-    dest_id: 'sky-tower',
-    dest_title: 'Praca',
-    dest_address: 'Sky Tower, Powstańców Śląskich 95',
-    dest_lat: 51.0938,
-    dest_lon: 17.0196,
-    duration_min: 25,
-    timestamp: Date.now() - i * 16 * 3600 * 1000,
-  })),
-  // Z domu -> Uczelnia (PWr)
-  ...Array.from({ length: 8 }).map((_, i) => ({
-    id: `seed-home-pwr-${i}`,
-    origin_title: 'Dom (Swojczyce)',
-    origin_lat: 51.1085,
-    origin_lon: 17.1021,
-    dest_id: 'pwr',
-    dest_title: 'Szkoła',
-    dest_address: 'Politechnika Wrocławska, Wybrzeże Wyspiańskiego',
-    dest_lat: 51.1079,
-    dest_lon: 17.0617,
-    duration_min: 16,
-    timestamp: Date.now() - i * 24 * 3600 * 1000,
-  })),
-  // Z Dworca Głównego (51.0997, 17.0364) -> Rynek
-  ...Array.from({ length: 9 }).map((_, i) => ({
-    id: `seed-dworzec-rynek-${i}`,
-    origin_title: 'Dworzec Główny',
-    origin_lat: 51.0997,
-    origin_lon: 17.0364,
-    dest_id: 'poi-rynek',
-    dest_title: 'Rynek',
-    dest_address: 'Rynek, Wrocław',
-    dest_lat: 51.1079,
-    dest_lon: 17.0385,
-    duration_min: 10,
-    timestamp: Date.now() - i * 20 * 3600 * 1000,
-  })),
-  // Z Rynku -> Dworzec Główny
-  ...Array.from({ length: 7 }).map((_, i) => ({
-    id: `seed-rynek-dworzec-${i}`,
-    origin_title: 'Rynek',
-    origin_lat: 51.1079,
-    origin_lon: 17.0385,
-    dest_id: 'seed-dworzec',
-    dest_title: 'Dworzec Główny',
-    dest_address: 'Piłsudskiego 105, Wrocław',
-    dest_lat: 51.0997,
-    dest_lon: 17.0364,
-    duration_min: 12,
-    timestamp: Date.now() - i * 28 * 3600 * 1000,
-  })),
-  // Z Placu Grunwaldzkiego (51.1120, 17.0640) -> Rynek
-  ...Array.from({ length: 6 }).map((_, i) => ({
-    id: `seed-grunwald-rynek-${i}`,
-    origin_title: 'Pl. Grunwaldzki',
-    origin_lat: 51.1120,
-    origin_lon: 17.0640,
-    dest_id: 'poi-rynek',
-    dest_title: 'Rynek',
-    dest_address: 'Rynek, Wrocław',
-    dest_lat: 51.1079,
-    dest_lon: 17.0385,
-    duration_min: 12,
-    timestamp: Date.now() - i * 32 * 3600 * 1000,
-  })),
-];
 
 const STORAGE_KEYS = {
   TRIP_HISTORY: 'kilometr.trip_history',
@@ -198,12 +60,15 @@ export async function recordTripSearch(
   const history = await loadTripHistory();
   const updated = mergeTripSearch(
     history,
-    originLat || DEFAULT_LOCATION.lat,
-    originLon || DEFAULT_LOCATION.lon,
+    originLat || defaultLocation().lat,
+    originLon || defaultLocation().lon,
     originTitle,
     dest,
     measuredMinutes,
     Date.now(),
+    // Nazwa aktywnego miasta w bieżącym języku — zamiast literału
+    // „Wrocław", który w Krakowie podpisywałby historię złym miastem.
+    tr().cityName,
   );
   await saveTripHistory(updated);
 }

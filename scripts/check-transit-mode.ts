@@ -60,10 +60,18 @@ function parseCsv(content: string): string[][] {
 }
 
 /** Ściąga zip i rozpakowuje TYLKO routes.txt (plik jest śmiesznie mały
- *  wobec ~180 MB stop_times, a my i tak nie chcemy go w pamięci). */
+ *  wobec ~180 MB stop_times, a my i tak nie chcemy go w pamięci).
+ *
+ *  Sprawdza też `Content-Type`: adres Wrocławia nie kończy się na `.zip`,
+ *  tylko jest endpointem zasobu (`…/download/136/`), więc jedynym sposobem
+ *  pewności, że telefon dostanie archiwum, jest sprawdzenie nagłówka. */
 async function fetchRoutes(url: string): Promise<string> {
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
+  const contentType = res.headers.get('content-type') || '';
+  if (!/zip|octet-stream/i.test(contentType)) {
+    throw new Error(`${url} → Content-Type ${contentType} (oczekiwano archiwum zip)`);
+  }
   const zip = new Uint8Array(await res.arrayBuffer());
   const entries = unzipSync(zip, {
     filter: (file) => file.name.split('/').pop() === 'routes.txt',

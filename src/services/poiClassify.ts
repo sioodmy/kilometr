@@ -43,7 +43,13 @@ export function classifyPoi(tags: Record<string, string>): { category: string; l
   return null;
 }
 
-/** Linia adresu: "Label • Osiedle, Ulica Nr" (bez miasta — tylko Wrocław). */
+/**
+ * Linia adresu: "Label • Osiedle, Ulica Nr".
+ *
+ * Miasta celowo nie dokładamy — bierzemy wyłącznie neutralne tagi OSM
+ * (`addr:*`), więc ta sama funkcja obsługuje każde wspierane miasto, a
+ * nazwę miejscowości dokleja Nominatim przy odwrotnym geokodowaniu.
+ */
 export function buildPoiAddress(
   label: string,
   tags: Record<string, string>,

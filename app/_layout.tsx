@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
 import { initLocale } from '../src/i18n';
 import { loadSettings } from '../src/services/settings';
+import { loadActiveCity } from '../src/cities/active';
 import { hasSeenOnboarding } from '../src/services/onboarding';
 import { loadNotificationPreferences } from '../src/services/notifications/preferences';
 import { migrateFromSqliteKv } from '../src/services/kvMigration';
@@ -45,6 +46,11 @@ export default function RootLayout() {
 
     const initApp = async () => {
       await migrateFromSqliteKv();
+      // Miasto wczytujemy PRZED wszystkim, co pyta o rozkład: baza SQLite,
+      // ścieżki plików i granice wyszukiwania są zależne od miasta. Robimy to
+      // tylko raz, przy starcie — przy zwykłym uruchomieniu NIE odpytujemy
+      // GPS, tylko czytamy ostatnio użyte miasto (patrz cities/active).
+      await loadActiveCity();
       await loadSettings();
       await initLocale();
       await loadNotificationPreferences();

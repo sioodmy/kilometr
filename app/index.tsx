@@ -6,7 +6,7 @@ import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { Bell, History, Settings2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
-import { DEFAULT_LOCATION } from '../src/config';
+import { defaultLocation } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
 import {
@@ -42,10 +42,13 @@ import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
+import { useActiveCity } from '../src/cities/useActiveCity';
 
 export default function HomeScreen() {
   const s = useStrings();
   const router = useRouter();
+  const city = useActiveCity();
+  const activeCityName = s.cities[city.nameKey];
   const GPS_ITEM: Suggestion = {
     id: '__gps',
     title: s.home.gpsTitle,
@@ -73,10 +76,10 @@ export default function HomeScreen() {
   const [results, setResults] = useState<Suggestion[]>([]);
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
-  const [locTitle, setLocTitle] = useState(DEFAULT_LOCATION.title);
+  const [locTitle, setLocTitle] = useState(defaultLocation().title);
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lon: number }>({
-    lat: DEFAULT_LOCATION.lat,
-    lon: DEFAULT_LOCATION.lon,
+    lat: defaultLocation().lat,
+    lon: defaultLocation().lon,
   });
   const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
@@ -714,7 +717,7 @@ export default function HomeScreen() {
             <View style={styles.importCard}>
               <ActivityIndicator size="small" color={scheme.primary} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.importTitle}>{s.home.importingTitle}</Text>
+                <Text style={styles.importTitle}>{s.cities.importingTitle(activeCityName)}</Text>
                 <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
               </View>
             </View>

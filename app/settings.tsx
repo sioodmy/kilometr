@@ -1,11 +1,32 @@
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, RotateCcw, Activity, Anchor } from 'lucide-react-native';
+import {
+  ArrowLeftRight,
+  Check,
+  ChevronLeft,
+  Clock3,
+  Database,
+  Download,
+  Footprints,
+  Globe,
+  LocateFixed,
+  MapPin,
+  Minus,
+  Plus,
+  RotateCcw,
+  Activity,
+  Anchor,
+} from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
+import { CITIES } from '../src/cities/registry';
+import { detectCityFromGps } from '../src/cities/active';
+import { switchCity } from '../src/cities/switch';
+import { useActiveCity } from '../src/cities/useActiveCity';
+import type { CityId } from '../src/cities/types';
 import {
   SETTINGS_LIMITS,
   formatTransferTime,
@@ -97,12 +118,117 @@ const LANG_OPTIONS: { value: LocaleSetting; label: string }[] = [
   { value: 'uk', label: 'Українська' },
 ];
 
+/**
+ * Karta wyboru miasta.
+ *
+ * Miasto zmienia CAŁY zestaw danych (rozkład, przystanki, granice
+ * wyszukiwania), więc przełączenie czyści stan i trzeba o nim uprzedzić
+ * oraz podać rozmiar pobierania. Wykrywanie z GPS jest tu wyraźnym
+ * żądaniem użytkownika (przycisk), a nie automatyczne — przy zwykłym
+ * uruchomieniu aplikacji GPS nie jest w ogóle pytany.
+ */
+function CityCard() {
+  const s = useStrings();
+  const city = useActiveCity();
+  const [detecting, setDetecting] = useState(false);
+  const t = s.cities;
+
+  const pick = useCallback(
+    async (id: CityId) => {
+      if (id === city.id) return;
+      Alert.alert(t.switchConfirmTitle, t.switchConfirmBody(s.cities[id]), [
+        { text: s.common.cancel, style: 'cancel' },
+        {
+          text: t.switchConfirmYes,
+          onPress: () => {
+            void switchCity(id).catch((err) => {
+              console.warn('[Settings] city switch failed:', err);
+            });
+          },
+        },
+      ]);
+    },
+    [city.id, s, t],
+  );
+
+  const detect = useCallback(async () => {
+    if (detecting) return;
+    setDetecting(true);
+    try {
+      const found = await detectCityFromGps();
+      if (!found) {
+        // Brak pozwolenia albo punkt poza wszystkimi miastami — zostawiamy
+        // wybór ręczny, bez zmiany ustawień.
+        Alert.alert(t.sectionTitle, t.detectFailed);
+        return;
+      }
+      await pick(found);
+    } finally {
+      setDetecting(false);
+    }
+  }, [detecting, pick, t]);
+
+  return (
+    <Animated.View entering={FadeInDown.duration(180)} style={styles.card}>
+      <View style={styles.cardTop}>
+        <MapPin size={18} color={scheme.primary} />
+        <Text style={styles.cardTitle}>{t.sectionTitle}</Text>
+      </View>
+      <Text style={styles.cardHint}>{t.hint}</Text>
+      <View style={styles.cityRow}>
+        {CITIES.map((c) => {
+          const active = c.id === city.id;
+          return (
+            <Pressable
+              key={c.id}
+              onPress={() => void pick(c.id)}
+              style={({ pressed }) => [
+                styles.cityChip,
+                active && styles.cityChipActive,
+                pressed && !active && { opacity: 0.7 },
+              ]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: active }}
+              accessibilityLabel={s.cities[c.nameKey]}
+            >
+              {active && <Check size={14} color={scheme.onPrimaryContainer} />}
+              <Text style={[styles.cityChipText, active && styles.cityChipTextActive]}>
+                {s.cities[c.nameKey]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Pressable
+        onPress={() => void detect()}
+        disabled={detecting}
+        style={({ pressed }) => [
+          styles.detectBtn,
+          detecting && styles.stepBtnDisabled,
+          pressed && !detecting && { opacity: 0.7 },
+        ]}
+        accessibilityLabel={t.detectA11y}
+      >
+        {detecting ? (
+          <ActivityIndicator size="small" color={scheme.onSecondaryContainer} />
+        ) : (
+          <LocateFixed size={16} color={scheme.onSecondaryContainer} />
+        )}
+        <Text style={styles.downloadText}>{detecting ? t.detecting : t.detectAction}</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { settings, update, reset } = useRoutingSettings();
   const s = useStrings();
+  const city = useActiveCity();
   const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
 
+  const activeCityName = s.cities[city.nameKey];
   const maxT = SETTINGS_LIMITS.maxTransfers;
   const minT = SETTINGS_LIMITS.minTransferSec;
   const walk = SETTINGS_LIMITS.maxWalkM;
@@ -128,7 +254,7 @@ export default function SettingsScreen() {
       const reason = err instanceof Error ? err.message : s.settings.downloadFailFallback;
       Alert.alert(
         s.settings.downloadFailTitle,
-        s.settings.downloadFailBody(reason),
+        s.cities.downloadFailBody(reason),
       );
     } finally {
       setImporting(false);
@@ -148,13 +274,15 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
-        <Animated.View entering={FadeInDown.duration(180)} style={styles.card}>
+        <CityCard />
+
+        <Animated.View entering={FadeInDown.delay(10).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Database size={18} color={scheme.primary} />
             <Text style={styles.cardTitle}>{s.settings.dataTitle}</Text>
           </View>
           <Text style={styles.cardHint}>
-            {s.settings.dataHint}
+            {s.cities.dataForCity(activeCityName)}
           </Text>
           <Text style={styles.stepValueText}>{dataStatusLabel(dataStatus)}</Text>
           <Pressable
@@ -165,7 +293,7 @@ export default function SettingsScreen() {
               busy && styles.stepBtnDisabled,
               pressed && !busy && { opacity: 0.7 },
             ]}
-            accessibilityLabel={s.settings.downloadA11y}
+            accessibilityLabel={s.cities.dataDownloadA11y}
           >
             <Download size={18} color={scheme.onSecondaryContainer} />
             <Text style={styles.downloadText}>
@@ -174,7 +302,7 @@ export default function SettingsScreen() {
           </Pressable>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(10).duration(180)} style={styles.card}>
+        <Animated.View entering={FadeInDown.delay(20).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Globe size={18} color={scheme.primary} />
             <Text style={styles.cardTitle}>{s.settings.langTitle}</Text>
@@ -334,6 +462,12 @@ const styles = StyleSheet.create({
   langChipActive: { backgroundColor: scheme.primaryContainer },
   langChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
+  cityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  cityChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 16, paddingVertical: 11 },
+  cityChipActive: { backgroundColor: scheme.primaryContainer },
+  cityChipText: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '600' },
+  cityChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
+  detectBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: scheme.secondaryContainer, borderRadius: shape.full, paddingVertical: 11 },
   foot: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 16 },
   sectionLabel: { marginTop: 10 },
   sectionLabelText: { ...type.titleSmall, color: scheme.onSurfaceVariant, fontWeight: '600' },

@@ -26,6 +26,40 @@ export const en: Strings = {
     add15: '+15 min',
     add30: '+30 min',
     add60: '+1 hr',
+    yourLocation: 'Your location',
+    stop: 'Stop',
+  },
+  // Active city name. Services use it as a fallback address when Nominatim
+  // returns no town; screens use it as a label. Key = `nameKey` in the city
+  // definition (`src/cities`), so a new city without these entries fails to
+  // compile.
+  cityName: 'Wrocław',
+  cities: {
+    wroclaw: 'Wrocław',
+    krakow: 'Kraków',
+    sectionTitle: 'City',
+    // ── Settings ──
+    hint: 'Timetables, stops and offline data belong to the selected city.',
+    detectA11y: 'Detect city from GPS location',
+    detectAction: 'Detect from GPS',
+    detecting: 'Detecting…',
+    detectFailed: 'Could not detect your city from location. Pick it from the list.',
+    detectUnsupported: 'This build cannot read your location — pick a city from the list.',
+    switchConfirmTitle: 'Change city',
+    switchConfirmBody: (name: string) =>
+      `Switch to ${name}? You will need to download its timetable — roughly 100 MB. The current city's timetable stays on your phone, so switching back is instant.`,
+    switchConfirmYes: 'Switch',
+    // ── Onboarding ──
+    onbTitle: 'Which city do you commute in?',
+    onbBody:
+      'The app will download the timetable, stop list and place map for your city. You can change this later in Settings.',
+    onbDetected: (name: string) => `Detected your city: ${name}`,
+    onbDetectedBody: (name: string) => `We will download the timetable for: ${name}.`,
+    onbPickOther: 'Another city',
+    dataForCity: (name: string) => `Full timetable for: ${name}`,
+    dataDownloadA11y: 'Download transit timetable',
+    downloadFailBody: (reason: string) => `${reason}. We download the timetable straight from the city's transit operator.`,
+    importingTitle: (name: string) => `Downloading timetable: ${name}…`,
   },
   home: {
     title: 'Where to?',
@@ -48,7 +82,6 @@ export const en: Strings = {
     openConnA11y: (title: string, label: string) => `Open connection to ${title}, ${label}`,
     gpsTitle: 'My location (GPS)',
     gpsAddressHome: 'Current device position',
-    importingTitle: 'Downloading the Wrocław timetable…',
     importErrorTitle: 'Timetable download error',
     importErrorRetry: 'Tap to retry.',
     saveFailTitle: 'No database connection',
@@ -98,7 +131,7 @@ export const en: Strings = {
     langSystem: 'System',
   },
   onboarding: {
-    steps: ['Welcome', 'Permissions', 'Timetable', 'Places'],
+    steps: ['Welcome', 'Permissions', 'City', 'Timetable', 'Places'],
     granted: 'On',
     denied: 'Off',
     toEnable: 'To enable',

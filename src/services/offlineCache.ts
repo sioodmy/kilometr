@@ -21,13 +21,27 @@ export async function hasLocalTimetable(): Promise<boolean> {
 // Offline-first cache (kv-store): trasy, podpowiedzi, recent.
 // Gdy backend nie odpowiada, ekrany serwują ostatnie prawdziwe dane
 // zamiast pustki — a po powrocie sieci cicho podmieniają na świeże.
+//
+// Klucze zawierają miasto. Cache connections trzyma `tripId` i `stopId` z
+// rozkładu, a te identyfikatory są ważne tylko w jednym mieście: bez sufiksu
+// po przełączeniu na Kraków pokazalibyśmy trasę z wrocławskimi przystankami,
+// których w nowym rozkładzie nie ma. Zgubienie starego cache przy zmianie
+// miasta jest najlepszym możliwym wyjściem — odtwarza się z sieci.
+
+import { getActiveCityIdSync } from '../cities/active';
 
 const KEYS = {
-  connections: 'kilometr.cache.connections.v1',
-  suggestions: 'kilometr.cache.suggestions.v1',
-  recent: 'kilometr.cache.recent.v1',
-  location: 'kilometr.cache.location.v1',
+  connections: 'connections',
+  suggestions: 'suggestions',
+  recent: 'recent',
+  location: 'location',
 } as const;
+
+type CacheName = (typeof KEYS)[keyof typeof KEYS];
+
+function cacheKey(name: CacheName): string {
+  return `kilometr.cache.${name}.${getActiveCityIdSync()}.v1`;
+}
 
 const CONNECTIONS_TTL_MS = 6 * 3600 * 1000;
 const SUGGESTIONS_TTL_MS = 7 * 24 * 3600 * 1000;
@@ -73,7 +87,7 @@ export function connectionCacheKey(q: RouteQuery): string {
 
 export async function saveConnections(query: RouteQuery, list: Connection[]): Promise<void> {
   try {
-    const all = (await readJSON<Record<string, Stamped<Connection[]>>>(KEYS.connections)) ?? {};
+    const all = (await readJSON<Record<string, Stamped<Connection[]>>>(cacheKey(KEYS.connections))) ?? {};
     all[connectionCacheKey(query)] = { savedAt: Date.now(), data: list };
     // LRU: wywal najstarsze nad limit
     const keys = Object.keys(all);
@@ -83,14 +97,14 @@ export async function saveConnections(query: RouteQuery, list: Connection[]): Pr
         .slice(0, keys.length - MAX_CACHED_QUERIES)
         .forEach((k) => delete all[k]);
     }
-    await kvSet(KEYS.connections, JSON.stringify(all));
+    await kvSet(cacheKey(KEYS.connections), JSON.stringify(all));
   } catch {
     // cache best-effort
   }
 }
 
 export async function loadConnections(query: RouteQuery): Promise<Connection[] | null> {
-  const all = await readJSON<Record<string, Stamped<Connection[]>>>(KEYS.connections);
+  const all = await readJSON<Record<string, Stamped<Connection[]>>>(cacheKey(KEYS.connections));
   const entry = all?.[connectionCacheKey(query)];
   if (!entry || Date.now() - entry.savedAt > CONNECTIONS_TTL_MS) return null;
   if (!Array.isArray(entry.data) || entry.data.length === 0) return null;
@@ -99,7 +113,7 @@ export async function loadConnections(query: RouteQuery): Promise<Connection[] |
 
 /** Szuka połączenia po id we WSZYSTKICH cachowanych zapytaniach (dla szczegółów offline). */
 export async function findCachedConnection(id: string): Promise<Connection | null> {
-  const all = await readJSON<Record<string, Stamped<Connection[]>>>(KEYS.connections);
+  const all = await readJSON<Record<string, Stamped<Connection[]>>>(cacheKey(KEYS.connections));
   if (!all) return null;
   for (const key of Object.keys(all)) {
     const entry = all[key];
@@ -137,7 +151,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
   const key = normQuery(query);
   if (!key || results.length === 0) return;
   try {
-    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(KEYS.suggestions)) ?? {};
+    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(cacheKey(KEYS.suggestions))) ?? {};
     all[key] = { savedAt: Date.now(), data: results };
     const keys = Object.keys(all);
     if (keys.length > MAX_SUGGESTION_ENTRIES) {
@@ -146,7 +160,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
         .slice(0, keys.length - MAX_SUGGESTION_ENTRIES)
         .forEach((k) => delete all[k]);
     }
-    await kvSet(KEYS.suggestions, JSON.stringify(all));
+    await kvSet(cacheKey(KEYS.suggestions), JSON.stringify(all));
   } catch {
     // best-effort
   }
@@ -156,7 +170,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
 export async function loadSuggestions(query: string): Promise<Suggestion[]> {
   const key = normQuery(query);
   if (!key) return [];
-  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(KEYS.suggestions);
+  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(cacheKey(KEYS.suggestions));
   if (!all) return [];
   const fresh = (e: Stamped<Suggestion[]> | undefined) =>
     e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS ? e.data : null;
@@ -183,14 +197,14 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
 
 export async function saveRecent(items: Suggestion[]): Promise<void> {
   try {
-    await kvSet(KEYS.recent, JSON.stringify({ savedAt: Date.now(), data: items }));
+    await kvSet(cacheKey(KEYS.recent), JSON.stringify({ savedAt: Date.now(), data: items }));
   } catch {
     // best-effort
   }
 }
 
 export async function loadRecent(): Promise<Suggestion[]> {
-  const entry = await readJSON<Stamped<Suggestion[]>>(KEYS.recent);
+  const entry = await readJSON<Stamped<Suggestion[]>>(cacheKey(KEYS.recent));
   if (!entry || Date.now() - entry.savedAt > SUGGESTIONS_TTL_MS) return [];
   return Array.isArray(entry.data) ? entry.data : [];
 }
@@ -230,7 +244,7 @@ export async function saveLastLocation(loc: {
 }): Promise<void> {
   try {
     await kvSet(
-      KEYS.location,
+      cacheKey(KEYS.location),
       JSON.stringify({ ...loc, savedAt: Date.now() }),
     );
   } catch {
@@ -239,7 +253,7 @@ export async function saveLastLocation(loc: {
 }
 
 export async function loadLastLocation(): Promise<LastLocation | null> {
-  const entry = await readJSON<LastLocation>(KEYS.location);
+  const entry = await readJSON<LastLocation>(cacheKey(KEYS.location));
   if (!entry || typeof entry.lat !== 'number') return null;
   return entry;
 }

@@ -26,6 +26,40 @@ export const de: Strings = {
     add15: '+15 Min.',
     add30: '+30 Min.',
     add60: '+1 Std.',
+    yourLocation: 'Dein Standort',
+    stop: 'Haltestelle',
+  },
+  // Name der aktiven Stadt. Dienste nutzen sie als Ersatzadresse, wenn
+  // Nominatim keinen Ort liefert; Screens als Beschriftung. Schlüssel =
+  // `nameKey` aus der Stadtdefinition (`src/cities`) — eine neue Stadt ohne
+  // diese Einträge lässt den Build scheitern.
+  cityName: 'Breslau',
+  cities: {
+    wroclaw: 'Breslau',
+    krakow: 'Krakau',
+    sectionTitle: 'Stadt',
+    // ── Einstellungen ──
+    hint: 'Fahrplan, Haltestellen und Offline-Daten gehören zur gewählten Stadt.',
+    detectA11y: 'Stadt per GPS-Standort erkennen',
+    detectAction: 'Per GPS erkennen',
+    detecting: 'Suche…',
+    detectFailed: 'Die Stadt konnte nicht vom Standort ermittelt werden. Wähle sie aus der Liste.',
+    detectUnsupported: 'Dieser Build kann deinen Standort nicht lesen — wähle eine Stadt aus der Liste.',
+    switchConfirmTitle: 'Stadt wechseln',
+    switchConfirmBody: (name: string) =>
+      `Zu ${name} wechseln? Der Fahrplan der neuen Stadt muss heruntergeladen werden — rund 100 MB. Der Fahrplan der bisherigen Stadt bleibt auf dem Telefon, die Rückkehr ist also sofort möglich.`,
+    switchConfirmYes: 'Wechseln',
+    // ── Onboarding ──
+    onbTitle: 'In welcher Stadt fährst du?',
+    onbBody:
+      'Die App lädt Fahrplan, Haltestellenliste und Ortekarte für deine Stadt herunter. Du kannst das später in den Einstellungen ändern.',
+    onbDetected: (name: string) => `Stadt erkannt: ${name}`,
+    onbDetectedBody: (name: string) => `Wir laden den Fahrplan für: ${name}.`,
+    onbPickOther: 'Andere Stadt',
+    dataForCity: (name: string) => `Vollständiger Fahrplan für: ${name}`,
+    dataDownloadA11y: 'Fahrplan herunterladen',
+    downloadFailBody: (reason: string) => `${reason}. Den Fahrplan laden wir direkt beim Verkehrsbetrieb der Stadt.`,
+    importingTitle: (name: string) => `Fahrplan wird geladen: ${name}…`,
   },
   home: {
     title: 'Wohin geht’s?',
@@ -48,7 +82,6 @@ export const de: Strings = {
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
     gpsTitle: 'Mein Standort (GPS)',
     gpsAddressHome: 'Aktuelle Geräteposition',
-    importingTitle: 'Fahrplan für Wrocław wird geladen…',
     importErrorTitle: 'Fehler beim Laden des Fahrplans',
     importErrorRetry: 'Tippen zum Wiederholen.',
     saveFailTitle: 'Keine Datenbankverbindung',
@@ -98,7 +131,7 @@ export const de: Strings = {
     langSystem: 'System',
   },
   onboarding: {
-    steps: ['Willkommen', 'Berechtigungen', 'Fahrplan', 'Orte'],
+    steps: ['Willkommen', 'Berechtigungen', 'Stadt', 'Fahrplan', 'Orte'],
     granted: 'An',
     denied: 'Aus',
     toEnable: 'Zu aktivieren',

@@ -22,9 +22,23 @@ const OVERPASS_FILTERS = [
   'node["leisure"~"^(park|garden|stadium|swimming_pool|sports_centre|fitness_centre)$"]',
   'node["railway"="station"]',
   'node["amenity"="fuel"]',
-].map((f) => `${f}(${OVERPASS.bbox});`).join('\n  ');
+];
 
-const POI_QUERY = `[out:json][timeout:30];\n(\n  ${OVERPASS_FILTERS}\n);\nout center;`;
+/**
+ * Zapytanie do Overpass budujemy przy każdym wywołaniu, a nie raz przy
+ * imporcie modułu.
+ *
+ * Bbox bierze z definicji aktywnego miasta, a import modułu zdarza się
+ * przed `loadActiveCity()` — stała zbudowana na starcie miałaby wtedy
+ * granice miasta domyślnego, a po przełączeniu miasta zostałaaby już
+ * zamrożona na poprzednim. Skutek: w Krakowie pytaliśmybyśmy o POI
+ * wrocławskie (albo odwrotnie) i indeks nigdy by się nie odświeżył.
+ */
+function buildPoiQuery(): string {
+  const bbox = OVERPASS.bbox;
+  const filters = OVERPASS_FILTERS.map((f) => `${f}(${bbox});`).join('\n  ');
+  return `[out:json][timeout:30];\n(\n  ${filters}\n);\nout center;`;
+}
 
 let refreshInFlight = false;
 
@@ -48,7 +62,7 @@ export async function refreshPoiIndex(): Promise<number> {
           'User-Agent': OVERPASS.userAgent,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: 'data=' + encodeURIComponent(POI_QUERY),
+        body: 'data=' + encodeURIComponent(buildPoiQuery()),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

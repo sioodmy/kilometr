@@ -1,4 +1,6 @@
 import Constants from 'expo-constants';
+import { getActiveCitySync } from './cities/active';
+import { tr } from './i18n';
 
 function extractHost(candidate?: string | null): string | null {
   if (!candidate) return null;
@@ -56,11 +58,26 @@ export const MAP_ATTRIBUTION =
 // OSRM — nadpisywalny własnym, np. w sieci firmowej.
 export const OSRM_BASE_URL = process.env.EXPO_PUBLIC_OSRM_URL ?? 'https://router.project-osrm.org';
 
-// Neutralny placeholder zanim GPS zwróci pozycję (prawdziwe współrzędne
-// centrum Wrocławia, nie mock danych). Nadpisywany przez LocationService.
-export const DEFAULT_LOCATION = {
-  title: 'Twoja lokalizacja',
-  address: 'Wrocław',
-  lat: 51.1079,
-  lon: 17.0385,
-};
+/**
+ * Neutralny placeholder zanim GPS zwróci pozycję: środek aktywnego miasta
+ * (prawdziwe współrzędne, nie mock danych). Nadpisywany przez LocationService.
+ *
+ * Dziś eksportujemy tylko tekst — współrzędne czytają konsumenci przez
+ * `defaultLocation()`, żeby wiersz poniżej nie rozjazdł się z resztą
+ * aplikacji przy zmianie zdania.
+ */
+export function defaultLocation(): { title: string; address: string; lat: number; lon: number } {
+  const { center } = getActiveCitySync();
+  const s = tr();
+  return {
+    title: s.common.yourLocation,
+    address: s.cityName,
+    lat: center.lat,
+    lon: center.lon,
+  };
+}
+
+/** Współrzędne środka aktywnego miasta. */
+export function cityCenter(): { lat: number; lon: number } {
+  return getActiveCitySync().center;
+}

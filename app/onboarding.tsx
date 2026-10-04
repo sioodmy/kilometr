@@ -36,6 +36,10 @@ import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { setOnboardingSeen } from '../src/services/onboarding';
+import { CITIES } from '../src/cities/registry';
+import { detectCityFromGps } from '../src/cities/active';
+import { switchCity } from '../src/cities/switch';
+import { useActiveCity } from '../src/cities/useActiveCity';
 import { ensureNotificationPermission, hasNotificationPermission } from '../src/services/notifications';
 import {
   FavoritesService,
@@ -195,6 +199,106 @@ function StatusPill({ v }: { v: 'unknown' | 'granted' | 'denied' }) {
   );
 }
 
+// ─── Krok: wybór miasta ─────────────────────────────────────────────────────
+//
+// To JEDYNE miejsce w aplikacji, w którym miasto jest rozpoznawane z GPS.
+// Działa dlatego, że poprzedni krok (uprawnienia) już o lokalizację
+// zapytał, więc nie prosimy o drugie zgody.
+//
+// Później miasto jest już ustalone i przy zwykłym uruchomieniu aplikacji GPS
+// nie jest pytany w ogóle — `_layout` czyta ostatnio użyte miasto z dysku.
+
+function CityStep() {
+  const s = useStrings();
+  const city = useActiveCity();
+  const t = s.cities;
+  const [detecting, setDetecting] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  // Automatyczne rozpoznanie przy wejściu na krok. `switchCity` jest
+  // potrzebny, bo samo ustawienie id w pamięci nie zresetowałoby uchwytu do
+  // bazy poprzedniego miasta.
+  const runDetection = useCallback(async () => {
+    const found = await detectCityFromGps();
+    if (!found) {
+      setFailed(true);
+      return;
+    }
+    setFailed(false);
+    await switchCity(found);
+  }, []);
+
+  useEffect(() => {
+    void runDetection();
+  }, [runDetection]);
+
+  return (
+    <ScrollView
+      contentContainerStyle={st.body}
+      showsVerticalScrollIndicator={false}
+      overScrollMode="never"
+    >
+      <View style={st.heroMarkSmall}>
+        <MapPin size={30} color={scheme.onPrimaryContainer} />
+      </View>
+      <Text style={st.title}>{t.onbTitle}</Text>
+      <Text style={st.leadSmall}>{t.onbBody}</Text>
+
+      <View style={st.card}>
+        <View style={st.slotRow}>
+          <View style={st.cardIcon}>
+            <LocateFixed size={20} color={scheme.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={st.cardTitle}>
+              {detecting ? t.detecting : t.onbDetected(s.cities[city.nameKey])}
+            </Text>
+            <Text style={st.cardBody} numberOfLines={2}>
+              {failed
+                ? t.detectFailed
+                : t.onbDetectedBody(s.cities[city.nameKey])}
+            </Text>
+          </View>
+          {detecting ? (
+            <ActivityIndicator size="small" color={scheme.primary} />
+          ) : (
+            <StatusPill v={failed ? 'denied' : 'granted'} />
+          )}
+        </View>
+      </View>
+
+      <Text style={st.fine}>{t.onbPickOther}</Text>
+      <View style={st.cityRow}>
+        {CITIES.map((c) => {
+          const active = c.id === city.id;
+          return (
+            <Pressable
+              key={c.id}
+              onPress={() => {
+                setFailed(false);
+                void switchCity(c.id);
+              }}
+              style={({ pressed }) => [
+                st.cityChip,
+                active && st.cityChipActive,
+                pressed && !active && { opacity: 0.75 },
+              ]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: active }}
+              accessibilityLabel={s.cities[c.nameKey]}
+            >
+              {active && <Check size={14} color={scheme.onPrimaryContainer} />}
+              <Text style={[st.cityChipText, active && st.cityChipTextActive]}>
+                {s.cities[c.nameKey]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+}
+
 // ─── Krok 3: zapisane miejsca ────────────────────────────────────────────────
 
 type SlotKey = 'home' | 'work' | 'school';
@@ -338,7 +442,7 @@ export default function OnboardingScreen() {
 
   // Na kroku rozkładu od razu odśwież status.
   useEffect(() => {
-    if (step === 2) void refreshDataStatus().catch(() => {});
+    if (step === 3) void refreshDataStatus().catch(() => {});
   }, [step ]);
 
   const finish = useCallback(async () => {
@@ -522,8 +626,11 @@ export default function OnboardingScreen() {
           </ScrollView>
         )}
 
-        {/* ── 2 · Rozkład ───────────────────────────────────────────── */}
-        {step === 2 && (
+        {/* ── 2 · Miasto ────────────────────────────────────────────── */}
+        {step === 2 && <CityStep />}
+
+        {/* ── 3 · Rozkład ───────────────────────────────────────────── */}
+        {step === 3 && (
           <ScrollView
             contentContainerStyle={st.body}
             showsVerticalScrollIndicator={false}
@@ -606,8 +713,8 @@ export default function OnboardingScreen() {
           </ScrollView>
         )}
 
-        {/* ── 3 · Miejsca (pomijalne) ───────────────────────────────── */}
-        {step === 3 && (
+        {/* ── 4 · Miejsca (pomijalne) ───────────────────────────────── */}
+        {step === 4 && (
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -755,6 +862,15 @@ export default function OnboardingScreen() {
         {step === 2 && (
           <>
             <PrimaryBtn
+              label={s.onboarding.next}
+              onPress={next}
+              icon={<ChevronRight size={18} color={scheme.onPrimary} />}
+            />
+          </>
+        )}
+        {step === 3 && (
+          <>
+            <PrimaryBtn
               label={
                 gtfsReady
                   ? s.onboarding.next
@@ -782,7 +898,7 @@ export default function OnboardingScreen() {
             )}
           </>
         )}
-        {step === 3 && (
+        {step === 4 && (
           <>
             <PrimaryBtn
               label={savedCount > 0 ? s.onboarding.doneCount(savedCount) : s.onboarding.donePlain}
@@ -919,6 +1035,11 @@ const st = StyleSheet.create({
     justifyContent: 'center',
   },
   slotRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  cityChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHigh, paddingHorizontal: 18, paddingVertical: 12 },
+  cityChipActive: { backgroundColor: scheme.primaryContainer },
+  cityChipText: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '700' },
+  cityChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '800' },
   addPill: {
     backgroundColor: scheme.secondaryContainer,
     borderRadius: shape.full,

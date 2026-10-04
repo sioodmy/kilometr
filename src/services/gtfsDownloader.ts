@@ -1,18 +1,24 @@
-// Pobieranie GTFS bezpośrednio na telefon (Open Data Wrocław).
+// Pobieranie GTFS bezpośrednio na telefon, dla AKTYWNEGO MIASTA.
 // Używa legacy FileSystem (documentDirectory + downloadAsync), bo ten sam
 // mechanizm obsługuje już widgetSnapshot — nowy File API przejdzie w etapie 2.
 //
-// Strategia pamięciowa (ważne przy stop_times.txt ~46 MB):
-// - zip (~12 MB) ląduje jako plik, nie w RAM,
+// Strategia pamięciowa (ważne przy stop_times.txt ~140 MB dla Krakowa):
+// - zip ląduje jako plik, nie w RAM,
 // - rozpakowanie przez fflate na Uint8Array + zapis plików po kolei,
 // - małe pliki (stops/routes/trips/calendar) parsujemy w całości,
 // - stop_times importujemy batched do SQLite (patrz gtfsDatabase).
 // Nie trzymamy całego rozkładu w Mapach jak serwer — telefon pyta SQLite.
+//
+// Miasto może wystawiać WIELE archiwów (Kraków: tramwaje + dwa przewoźnicy
+// autobusowych), dlatego wszystko niżej operuje na `feed.id`, nie na jednej
+// stałej nazwie pliku.
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { strFromU8, unzipSync } from 'fflate';
-import { GTFS } from './gtfsConfig';
 import { API_URL } from '../config';
+import { getActiveCityIdSync, getActiveCitySync } from '../cities/active';
+import { DEFAULT_CITY_ID } from '../cities/registry';
+import type { CityFeed } from '../cities/types';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -42,18 +48,28 @@ function parseEffectiveDate(name: string): number | null {
   return Date.UTC(year, month - 1, day);
 }
 
+/**
+ * Katalog bazowy danych GTFS na telefonie.
+ *
+ * Ułożenie: `kilometr/<cityId>/<feedId>.zip` oraz `kilometr/<cityId>/<feedId>/`.
+ * Rozdzielenie po mieście jest konieczne, bo aktywne miasto może się zmienić
+ * w trakcie życia aplikacji, a rozkładu nie chcemy nadpisywać — powrót do
+ * poprzedniego miasta ma działać natychmiast, bez ponownego pobierania.
+ */
 function baseDir(): string {
   const base = FileSystem.documentDirectory;
   if (!base) throw new Error('Brak documentDirectory (expo-file-system)');
-  return `${base}kilometr/`;
+  return `${base}kilometr/${getActiveCityIdSync()}/`;
 }
 
-export function gtfsZipUri(): string {
-  return `${baseDir()}${GTFS.cacheFile}`;
+/** Katalog jednej części rozkładu (`gtfsDir('tram')` → katalog z feedu tramwajowego). */
+export function gtfsDir(feedId?: string): string {
+  return `${baseDir()}${feedId ?? 'all'}/`;
 }
 
-export function gtfsDir(): string {
-  return `${baseDir()}${GTFS.extractedDir}/`;
+/** Ścieżka archiwum jednej części. */
+export function gtfsZipUri(feedId?: string): string {
+  return `${baseDir()}${feedId ?? 'all'}.zip`;
 }
 
 export async function ensureBaseDir(): Promise<void> {
@@ -64,13 +80,38 @@ export async function ensureBaseDir(): Promise<void> {
   }
 }
 
-/** Wybiera najnowszy obowiązujący archiwum GTFS z katalogu Open Data. */
+/**
+ * Usuwa pliki z poprzedniej wersji aplikacji, która trzymała rozkład w
+ * `kilometr/gtfs.zip` i `kilometr/gtfs/`. Bez tego upgrade zostawiałby
+ * ~75 MB śmieci. Najlepsza robota, brak błędu do zgłoszenia.
+ */
+async function removeLegacyPaths(): Promise<void> {
+  const base = FileSystem.documentDirectory;
+  if (!base) return;
+  for (const legacy of [`${base}kilometr/gtfs.zip`, `${base}kilometr/gtfs/`]) {
+    try {
+      await FileSystem.deleteAsync(legacy, { idempotent: true });
+    } catch {
+      // najgorszy wypadek to pozostawienie pliku
+    }
+  }
+}
+
+/**
+ * Wybiera najnowszy obowiązujący archiwum GTFS z katalogu danych.
+ *
+ * Tylko Wrocław publikuje katalog z listą wydań (Open Data). Pozostałe miasta
+ * wystawiają pliki pod stałym adresem, nadpisywane w miejscu — dla nich
+ * discovery nie ma czego szukać i zwracamy pierwszy feed wprost.
+ */
 export async function discoverBestArchiveUrl(): Promise<string> {
+  const city = getActiveCitySync();
+  if (!city.catalogueUrl) return city.fallbackDownloadUrl ?? city.feeds[0].url;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
     try {
-      const res = await fetch(GTFS.catalogueUrl, {
+      const res = await fetch(city.catalogueUrl, {
         headers: { Accept: 'application/json' },
         signal: ctrl.signal,
       });
@@ -80,7 +121,7 @@ export async function discoverBestArchiveUrl(): Promise<string> {
         const candidates: GtfsArchiveCandidate[] = [];
         const now = Date.now();
         for (const id of fileIds) {
-          const url = `${GTFS.downloadBase}/${id}/`;
+          const url = `${city.downloadBase}/${id}/`;
           try {
             const headCtrl = new AbortController();
             const headTimer = setTimeout(() => headCtrl.abort(), 5000);
@@ -114,7 +155,7 @@ export async function discoverBestArchiveUrl(): Promise<string> {
   } catch (err) {
     console.warn('[GtfsDownloader] discovery failed, fallback:', err);
   }
-  return GTFS.fallbackDirectUrl;
+  return city.fallbackDownloadUrl ?? city.feeds[0].url;
 }
 
 export interface DownloadProgress {
@@ -171,34 +212,76 @@ export function describeDownloadError(err: unknown): GtfsDownloadError {
 
 export type ArchiveSource = 'catalogue' | 'direct' | 'mirror';
 
-export interface ArchiveDownload {
-  uri: string;
-  source: ArchiveSource;
+
+/** Pobiera gtfs.zip do documentDirectory. Zwraca lokalne URI. */
+export async function downloadGtfsZip(
+  url: string,
+  feedId: string,
+  onProgress?: (p: DownloadProgress) => void,
+): Promise<string> {
+  await ensureBaseDir();
+  const dest = gtfsZipUri(feedId);
+  // Wyczyść ewentualny stary/niekompletny plik zip przed startem pobierania
+  await FileSystem.deleteAsync(dest, { idempotent: true });
+  const task = FileSystem.createDownloadResumable(
+    url,
+    dest,
+    { headers: { 'User-Agent': 'Mozilla/5.0' } },
+    (progress) => {
+      onProgress?.({
+        bytesWritten: progress.totalBytesWritten,
+        totalBytes: progress.totalBytesExpectedToWrite,
+      });
+    },
+  );
+  const result = await task.downloadAsync();
+  if (!result?.uri) throw new Error(dlTr().noFile);
+  return result.uri;
 }
 
 /**
  * Lustro: to samo archiwum, które backend dev już trzyma na dysku. W buildzie
  * release (bez skonfigurowanego API_URL) nie ma do kogo sięgać, więc wtedy
  * pomijamy kandydata zamiast marnować czasu na martwe połączenie.
+ *
+ * Uwaga: lustro ma sens tylko dla miasta, które backend zna. Backend dev
+ * trzyma Wrocław, więc dla innych miast lustro celowo pomijamy — inaczej
+ * telefon w Krakowie ściągnąłby wrocławski rozkład pod nazwą krakowskiego.
  */
-function mirrorArchiveUrl(): string | null {
+function mirrorArchiveUrl(cityId: string): string | null {
   if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) return null;
+  if (cityId !== DEFAULT_CITY_ID) return null;
   return `${API_URL}/api/gtfs/archive`;
 }
 
+export interface FeedDownload {
+  feedId: string;
+  uri: string;
+  source: ArchiveSource;
+}
+
 /**
- * Pobiera archiwum, próbując po kolei: katalog Open Data → adres bezpośredni
- * → lustro backendu. Każde źródło dostaje świeży postęp (restart od zera),
- * a użytkownik widzi komunikat dopiero po wyczerpaniu wszystkich opcji.
+ * Pobiera JEDEN feed miasta, próbując po kolei: katalog danych → adres
+ * bezpośredni → lustro backendu. Każde źródło dostaje świeży postęp (restart
+ * od zera), a użytkownik widzi komunikat dopiero po wyczerpaniu wszystkich opcji.
  */
-export async function downloadArchiveWithFallback(
+export async function downloadFeedWithFallback(
+  feed: CityFeed,
   onProgress?: (p: DownloadProgress, source: ArchiveSource) => void,
-): Promise<ArchiveDownload> {
-  const mirror = mirrorArchiveUrl();
-  const candidates: { url: string; source: ArchiveSource }[] = [
-    { url: await discoverBestArchiveUrl(), source: 'catalogue' },
-    { url: GTFS.fallbackDirectUrl, source: 'direct' },
-  ];
+): Promise<FeedDownload> {
+  const city = getActiveCitySync();
+  const mirror = mirrorArchiveUrl(city.id);
+  const candidates: { url: string; source: ArchiveSource }[] = [];
+
+  // Katalog (albo discovery) ma sens tylko dla miasta, które go wystawia.
+  // Dla reszty pierwszym kandydatem jest po prostu adres feedu.
+  if (city.catalogueUrl) {
+    candidates.push({ url: await discoverBestArchiveUrl(), source: 'catalogue' });
+  }
+  candidates.push({ url: feed.url, source: 'direct' });
+  if (city.fallbackDownloadUrl && city.fallbackDownloadUrl !== feed.url) {
+    candidates.push({ url: city.fallbackDownloadUrl, source: 'direct' });
+  }
   if (mirror) candidates.push({ url: mirror, source: 'mirror' });
 
   const failures: GtfsDownloadError[] = [];
@@ -208,8 +291,8 @@ export async function downloadArchiveWithFallback(
     if (seen.has(candidate.url)) continue;
     seen.add(candidate.url);
     try {
-      const uri = await downloadGtfsZip(candidate.url, (p) => onProgress?.(p, candidate.source));
-      return { uri, source: candidate.source };
+      const uri = await downloadGtfsZip(candidate.url, feed.id, (p) => onProgress?.(p, candidate.source));
+      return { feedId: feed.id, uri, source: candidate.source };
     } catch (err) {
       const failure = describeDownloadError(err);
       console.warn(`[GtfsDownloader] źródło ${candidate.source} zawiodło:`, failure.detail);
@@ -230,40 +313,26 @@ export async function downloadArchiveWithFallback(
   throw failures[failures.length - 1] ?? new GtfsDownloadError(T.failed, 'brak kandydatów', T.hintTouch, 'unknown');
 }
 
-/** Pobiera gtfs.zip do documentDirectory. Zwraca lokalne URI. */
-export async function downloadGtfsZip(
-  url: string,
-  onProgress?: (p: DownloadProgress) => void,
-): Promise<string> {
-  await ensureBaseDir();
-  const dest = gtfsZipUri();
-  // Wyczyść ewentualny stary/niekompletny plik zip przed startem pobierania
-  await FileSystem.deleteAsync(dest, { idempotent: true });
-  const task = FileSystem.createDownloadResumable(
-    url,
-    dest,
-    { headers: { 'User-Agent': 'Mozilla/5.0' } },
-    (progress) => {
-      onProgress?.({
-        bytesWritten: progress.totalBytesWritten,
-        totalBytes: progress.totalBytesExpectedToWrite,
-      });
-    },
-  );
-  const result = await task.downloadAsync();
-  if (!result?.uri) throw new Error(dlTr().noFile);
-  return result.uri;
-}
-
-/** Sprawdza czy kompletny rozpakowany GTFS już istnieje na telefonie. */
+/**
+ * Sprawdza czy kompletny rozpakowany GTFS aktywnego miasta już istnieje.
+ *
+ * Wymagamy, by każdy feed dał `stops.txt` i `stop_times.txt`. Feed opcjonalny
+ * (Mobilis w Krakowie) pomijamy, gdy go nie ma — inaczej awaria jednego
+ * przewoźnika prywatnego blokowałaby dostęp do całego rozkładu miasta.
+ */
 export async function hasExtractedGtfs(): Promise<boolean> {
-  try {
-    const stopsInfo = await FileSystem.getInfoAsync(`${gtfsDir()}stops.txt`);
-    const timesInfo = await FileSystem.getInfoAsync(`${gtfsDir()}stop_times.txt`);
-    return stopsInfo.exists && timesInfo.exists;
-  } catch {
-    return false;
+  for (const feed of getActiveCitySync().feeds) {
+    try {
+      const stopsInfo = await FileSystem.getInfoAsync(`${gtfsDir(feed.id)}stops.txt`);
+      const timesInfo = await FileSystem.getInfoAsync(`${gtfsDir(feed.id)}stop_times.txt`);
+      const present = stopsInfo.exists && timesInfo.exists;
+      if (feed.optional && !present) continue;
+      if (!present) return false;
+    } catch {
+      return false;
+    }
   }
+  return true;
 }
 
 const NEEDED_GTFS_FILES = new Set([
@@ -277,11 +346,11 @@ const NEEDED_GTFS_FILES = new Set([
 
 /**
  * Rozpakowuje gtfs.zip (fflate, w JS) do plików documentDirectory.
- * Pliki GTFS Wrocławia po rozpakowaniu: stops/routes/trips/calendar/
+ * Pliki GTFS po rozpakowaniu: stops/routes/trips/calendar/
  * calendar_dates/stop_times. Zwraca listę wypakowanych nazw.
  */
-export async function unzipGtfs(zipUri: string): Promise<string[]> {
-  const dir = gtfsDir();
+export async function unzipGtfs(zipUri: string, feedId: string): Promise<string[]> {
+  const dir = gtfsDir(feedId);
   const dirInfo = await FileSystem.getInfoAsync(dir);
   if (!dirInfo.exists) {
     await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
@@ -297,7 +366,7 @@ export async function unzipGtfs(zipUri: string): Promise<string[]> {
     binary[i] = binStr.charCodeAt(i);
   }
 
-  // Filtr w unzipSync zapobiega dekompresji niepotrzebnych shapes.txt (~15 MB) i innych do RAM
+  // Filtr w unzipSync zapobiega dekompresji niepotrzebnych shapes.txt (~30 MB) i innych do RAM
   const entries = unzipSync(binary, {
     filter(file) {
       const short = file.name.split('/').pop() || file.name;
@@ -317,25 +386,50 @@ export async function unzipGtfs(zipUri: string): Promise<string[]> {
   return names;
 }
 
-/** Czyta mały plik GTFS (stops/routes/trips/calendar) jako tekst. */
-export async function readGtfsText(name: string): Promise<string | null> {
-  try {
-    return await FileSystem.readAsStringAsync(`${gtfsDir()}${name}`);
-  } catch {
-    return null;
+export interface ExtractedGtfsFile {
+  feedId: string;
+  content: string;
+}
+
+/**
+ * Czyta plik GTFS ze WSZYSTKICH feedów aktywnego miasta.
+ *
+ * Zwracamy listę osobno dla każdego feedu, a nie jeden sklejony tekst, i to
+ * z konkretnego powodu: szerokość kolumn różni się między plikami. Tramwaje
+ * ZTP Krakowa mają w routes.txt 9 kolumn, a autobusy 12 (`route_sort_order`,
+ * `continuous_pickup`…). Sklejenia ciał plików pod jeden nagłówek dałoby
+ * przesunięcie kolumn i cichą katastrofę: numery linii czytane z innego miejsca
+ * niż `route_type`. Każdy feed ma więc własny nagłówek i własny parser.
+ *
+ * Feed, którego nie ma na dysku (opcjonalny), jest pomijany.
+ */
+export async function readGtfsFiles(name: string): Promise<ExtractedGtfsFile[]> {
+  const out: ExtractedGtfsFile[] = [];
+  for (const feed of getActiveCitySync().feeds) {
+    try {
+      const content = await FileSystem.readAsStringAsync(`${gtfsDir(feed.id)}${name}`);
+      out.push({ feedId: feed.id, content });
+    } catch {
+      // Brak pliku w feedzie opcjonalnym jest normalny — pomijamy.
+      if (!feed.optional) out.push({ feedId: feed.id, content: '' });
+    }
   }
+  return out;
 }
 
 /** Usuwa zip + rozpakowane txt (po imporcie do SQLite zwalniamy ~75 MB). */
 export async function cleanupRawGtfs(): Promise<void> {
-  try {
-    await FileSystem.deleteAsync(gtfsZipUri(), { idempotent: true });
-  } catch {
-    // best-effort
+  for (const feed of getActiveCitySync().feeds) {
+    try {
+      await FileSystem.deleteAsync(gtfsZipUri(feed.id), { idempotent: true });
+    } catch {
+      // best-effort
+    }
+    try {
+      await FileSystem.deleteAsync(gtfsDir(feed.id), { idempotent: true });
+    } catch {
+      // best-effort
+    }
   }
-  try {
-    await FileSystem.deleteAsync(gtfsDir(), { idempotent: true });
-  } catch {
-    // best-effort
-  }
+  await removeLegacyPaths();
 }

@@ -6,18 +6,16 @@
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { fuzzyMatch } from '../gtfs/fuzzy';
 import type { Suggestion } from '../types/models';
-import { BOUNDS } from './gtfsConfig';
+import { inActiveCity } from './gtfsConfig';
 
-/** Ścisły filtr: obsługujemy tylko Wrocław. Viewbox Nominatim nie wystarcza. */
-export function inWroclaw(lat: number, lon: number): boolean {
-  return (
-    Number.isFinite(lat) &&
-    Number.isFinite(lon) &&
-    lat >= BOUNDS.minLat &&
-    lat <= BOUNDS.maxLat &&
-    lon >= BOUNDS.minLon &&
-    lon <= BOUNDS.maxLon
-  );
+/**
+ * Ścisły filtr: wynik musi leżeć w granicach aktywnego miasta. Sam viewbox
+ * Nominatim jest za mało precyzyjny — przepuszczałby wyniki z sąsiednich
+ * miejscowości. Granice bierze z definicji miasta (`src/cities`), więc filtr
+ * sam zmienia się po przełączeniu miasta.
+ */
+export function inCity(lat: number, lon: number): boolean {
+  return inActiveCity(lat, lon);
 }
 
 /** Odległości liczone na końcu (cache trzyma surowe wyniki bez pozycji usera). */

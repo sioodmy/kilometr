@@ -11,7 +11,7 @@ import {
   RouteOff,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
-import { DEFAULT_LOCATION } from '../../src/config';
+import { defaultLocation } from '../../src/config';
 import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
 import { liveTracker } from '../../src/services/liveTracker';
@@ -72,12 +72,12 @@ export default function RouteDetailsScreen() {
     const track: TrackedTrip = {
       id: item.id,
       fromTitle: item.fromTitle,
-      fromLat: firstLeg?.fromLat ?? DEFAULT_LOCATION.lat,
-      fromLon: firstLeg?.fromLon ?? DEFAULT_LOCATION.lon,
+      fromLat: firstLeg?.fromLat ?? defaultLocation().lat,
+      fromLon: firstLeg?.fromLon ?? defaultLocation().lon,
       toId: item.toTitle,
       toTitle: item.toTitle,
-      toLat: lastLeg?.toLat ?? DEFAULT_LOCATION.lat,
-      toLon: lastLeg?.toLon ?? DEFAULT_LOCATION.lon,
+      toLat: lastLeg?.toLat ?? defaultLocation().lat,
+      toLon: lastLeg?.toLon ?? defaultLocation().lon,
       connection: item,
       startedAt: Date.now(),
     };

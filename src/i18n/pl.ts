@@ -31,6 +31,40 @@ export const pl = {
     add15: '+15 min',
     add30: '+30 min',
     add60: '+1 godz.',
+    yourLocation: 'Twoja lokalizacja',
+    stop: 'Przystanek',
+  },
+  // Nazwa aktywnego miasta. Serwisy używają jej jako adresu zastępczego,
+  // gdy Nominatim nie zwróci nazwy miejscowości, a ekrany jako etykiety.
+  // Klucz = `nameKey` z definicji miasta (`src/cities`), więc nowe miasto
+  // bez tych wpisów nie skompiluje się.
+  cityName: 'Wrocław',
+  cities: {
+    wroclaw: 'Wrocław',
+    krakow: 'Kraków',
+    sectionTitle: 'Miasto',
+    // ── Ustawienia ──
+    hint: 'Rozkład jazdy, przystanki i dane offline dotyczą wybranego miasta.',
+    detectA11y: 'Wykryj miasto z lokalizacji GPS',
+    detectAction: 'Wykryj z GPS',
+    detecting: 'Szukamy…',
+    detectFailed: 'Nie udało się ustalić miasta z lokalizacji. Wybierz je z listy.',
+    detectUnsupported: 'Ta wersja nie umie czytać lokalizacji — wybierz miasto z listy.',
+    switchConfirmTitle: 'Zmiana miasta',
+    switchConfirmBody: (name: string) =>
+      `Przełączyć na ${name}? Rozkład nowego miasta trzeba będzie pobrać — około 100 MB. Rozkład obecnego zostaje w pamięci telefonu, więc powrót będzie natychmiastowy.`,
+    switchConfirmYes: 'Przełącz',
+    // ── Onboarding ──
+    onbTitle: 'W którym mieście jeździsz?',
+    onbBody:
+      'Aplikacja pobierze rozkład jazdy, listę przystanków i mapę miejsc dla wybranego miasta. Możesz to później zmienić w Ustawieniach.',
+    onbDetected: (name: string) => `Rozpoznaliśmy miasto: ${name}`,
+    onbDetectedBody: (name: string) => `Pobierzemy rozkład: ${name}.`,
+    onbPickOther: 'Inne miasto',
+    dataForCity: (name: string) => `Pełny rozkład dla: ${name}`,
+    dataDownloadA11y: 'Pobierz rozkład komunikacji',
+    downloadFailBody: (reason: string) => `${reason}. Rozkład pobieramy wprost od przewoźnika miasta.`,
+    importingTitle: (name: string) => `Pobieranie rozkładu: ${name}…`,
   },
   home: {
     title: 'Gdzie jedziemy?',
@@ -53,7 +87,6 @@ export const pl = {
     openConnA11y: (title: string, label: string) => `Otwórz połączenie do ${title}, ${label}`,
     gpsTitle: 'Moja lokalizacja (GPS)',
     gpsAddressHome: 'Bieżąca pozycja urządzenia',
-    importingTitle: 'Pobieranie rozkładu Wrocławia…',
     importErrorTitle: 'Błąd pobierania rozkładu',
     importErrorRetry: 'Dotknij, aby spróbować ponowić.',
     saveFailTitle: 'Brak połączenia z bazą',
@@ -104,7 +137,7 @@ export const pl = {
     langSystem: 'Systemowy',
   },
   onboarding: {
-    steps: ['Witaj', 'Uprawnienia', 'Rozkład', 'Miejsca'] as string[],
+    steps: ['Witaj', 'Uprawnienia', 'Miasto', 'Rozkład', 'Miejsca'] as string[] as string[],
     granted: 'Włączone',
     denied: 'Wyłączone',
     toEnable: 'Do włączenia',

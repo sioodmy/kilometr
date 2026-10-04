@@ -24,7 +24,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { scheme, shape, type } from '../../src/theme/tokens';
-import { DEFAULT_LOCATION } from '../../src/config';
+import { defaultLocation } from '../../src/config';
 import {
   FavoritesService,
   LocationService,
@@ -109,9 +109,9 @@ export default function RoutesScreen() {
     open?: string;
   }>();
 
-  const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
-  const [fromLat, setFromLat] = useState(Number(params.fromLat || DEFAULT_LOCATION.lat));
-  const [fromLon, setFromLon] = useState(Number(params.fromLon || DEFAULT_LOCATION.lon));
+  const [fromTitle, setFromTitle] = useState(params.fromTitle || defaultLocation().title);
+  const [fromLat, setFromLat] = useState(Number(params.fromLat || defaultLocation().lat));
+  const [fromLon, setFromLon] = useState(Number(params.fromLon || defaultLocation().lon));
 
   const [toTitle, setToTitle] = useState(String(params.toTitle ?? s.routes.destFallback));
   const [toLat, setToLat] = useState(Number(params.toLat ?? 0));
@@ -417,9 +417,9 @@ export default function RoutesScreen() {
 
       if (!initialAnchorCheckedRef.current) {
         initialAnchorCheckedRef.current = true;
-        const startLat = Number(params.fromLat || DEFAULT_LOCATION.lat);
-        const startLon = Number(params.fromLon || DEFAULT_LOCATION.lon);
-        const startTitle = params.fromTitle || DEFAULT_LOCATION.title;
+        const startLat = Number(params.fromLat || defaultLocation().lat);
+        const startLon = Number(params.fromLon || defaultLocation().lon);
+        const startTitle = params.fromTitle || defaultLocation().title;
         const anchor = findAnchorForLocation(
           startLat,
           startLon,

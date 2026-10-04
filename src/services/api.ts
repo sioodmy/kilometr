@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { kvGet, kvSet } from './storage';
-import { DEFAULT_LOCATION } from '../config';
+import { defaultLocation } from '../config';
+import { tr } from '../i18n';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService } from './types';
 import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
@@ -75,8 +76,8 @@ export const LocationService: ILocationService = {
         }
 
         cachedLocation = {
-          title: 'Twoja lokalizacja',
-          address: 'Wrocław',
+          title: tr().common.yourLocation,
+          address: tr().cityName,
           lat,
           lon,
         };
@@ -86,7 +87,7 @@ export const LocationService: ILocationService = {
       console.warn('[LocationService] Failed to acquire device location:', err);
     }
 
-    return { ...DEFAULT_LOCATION };
+    return defaultLocation();
   },
 };
 
@@ -364,8 +365,8 @@ export const FavoritesService: IFavoritesService = {
       // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS — a
       // ranking na `NaN` wypadałby z każdego promienia, czyli pokazałby
       // historię z całego miasta jako „w okolicy".
-      const lat = Number.isFinite(coords?.lat) ? coords!.lat! : DEFAULT_LOCATION.lat;
-      const lon = Number.isFinite(coords?.lon) ? coords!.lon! : DEFAULT_LOCATION.lon;
+      const lat = Number.isFinite(coords?.lat) ? coords!.lat! : defaultLocation().lat;
+      const lon = Number.isFinite(coords?.lon) ? coords!.lon! : defaultLocation().lon;
       return await getSmartDestinationsForLocation(lat, lon);
     } catch (err) {
       console.warn('[FavoritesService] smartFromOrigin failed:', err);

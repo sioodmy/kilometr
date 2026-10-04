@@ -5,7 +5,7 @@
 // JS → RN przez window.ReactNativeWebView.postMessage (MapOutMessage).
 
 import { scheme } from '../theme/tokens';
-import { MAP_ATTRIBUTION } from '../config';
+import { MAP_ATTRIBUTION, cityCenter } from '../config';
 import { buildMapStyle, MAP_COLORS, ROUTE_SOURCE_ID } from './mapStyle';
 import type { MapInMessage, MapOutMessage, MapRoute, MapVehicle } from './types';
 
@@ -491,7 +491,7 @@ const runtime = [
   '  map = new maplibregl.Map({',
   '    container: "map",',
   '    style: P.style,',
-  '    center: [17.0385, 51.1079],',
+  '    center: P.initialCenter,',
   '    zoom: 13,',
   '    minZoom: 9,',
   '    maxZoom: 19,',
@@ -574,6 +574,9 @@ function bootstrapPayload(opts: RouteMapDocumentOptions): string {
     stopLayerId: 'przystanki-posrednie',
     attribution: MAP_ATTRIBUTION,
     padding: [42, 42, 190, 42],
+    // Środek aktywnego miasta na start mapy. Literał z Wrocławia otwierał
+    // mapę Krakowa o 300 km od trasy, zanim dobiło się do .
+    initialCenter: cityCenter(),
     route: opts.route,
     vehicle: opts.vehicle ?? null,
     user: opts.user ?? null,

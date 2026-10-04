@@ -1,70 +1,74 @@
-// Bezpośrednie źródła danych — telefon gada z publicznymi API, bez pośrednika.
-// - Rozkład GTFS: Open Data Wrocław (katalog + zip)
-// - Pozycje pojazdów: mpk.wroc.pl/bus_position (POST, bez klucza)
-// - Adresy/POI: Nominatim + Overpass (HTTPS, z nagłówkiem User-Agent)
+// Konfiguracja sieciowa — adaptujaca definicję aktywnego miasta.
 //
-// Limity: GTFS-RT nie istnieje dla Wrocławia — opóźnienia liczymy sami,
-// dopasowując GPS z bus_position do rozkładu (matcher w realtimeClient).
+// Dawniej ten plik trzymał wartości wrocławskie w stałych (`GTFS`, `MPK`,
+// `NOMINATIM`, `OVERPASS`, `BOUNDS`). Teraz są to gettery czytające definicję
+// aktywnego miasta, więc podmiana miasta przebiega bez zmian w żadnym z 7
+// serwisów, które stąd korzystają. Same wartości dla konkretnego miasta żyją
+// w `src/cities/*`.
+//
+// Zachowujemy tu wyłącznie adresy i timeouty wspólne dla wszystkich miast
+// (serwery Nominatim i Overpass są te same — to globalne usługi OSM). Adresy
+// zależne od miasta: adresy rozkładów, bbox-y granic, endpoint pozycji
+// pojazdów.
+//
+// UWAGA na `get`: wartości czytamy dopiero przy dostępie. Zwykły `const`
+// zamroziłby miasto w chwili wczytania modułu, czyli przed `loadActiveCity()`.
 
-export const GTFS = {
-  catalogueUrl: 'https://api.open-data.cui.wroclaw.pl/od2/6/',
-  downloadBase: 'https://open-data.cui.wroclaw.pl/hdb/download',
-  fallbackDirectUrl: 'https://open-data.cui.wroclaw.pl/hdb/download/136/',
-  cacheFile: 'gtfs.zip',
-  extractedDir: 'gtfs',
-  refreshHours: 24,
-  timeoutMs: 60000,
-} as const;
+import { getActiveCitySync } from '../cities/active';
+import type { Bounds, CityRealtime } from '../cities/types';
 
-export const MPK = {
-  busPositionUrl: 'https://mpk.wroc.pl/bus_position',
-  pollIntervalMs: 12000,
-  timeoutMs: 8000,
-} as const;
-
+// ─── Nominatim (globalny serwer, viewbox zależny od miasta) ────────────────
 export const NOMINATIM = {
   baseUrl: 'https://nominatim.openstreetmap.org/search',
   reverseUrl: 'https://nominatim.openstreetmap.org/reverse',
   userAgent: 'KilometrTransitApp/1.0 (contact: dev@kilometr.local)',
-  // Wrocław bbox: minLon, maxLat, maxLon, minLat
-  wroclawBbox: '16.7,51.25,17.25,50.95',
   cacheTtlMs: 24 * 60 * 60 * 1000,
+  /** Granice aktywnego miasta w formacie Nominatim: left,top,right,bottom. */
+  get viewbox(): string {
+    return getActiveCitySync().nominatimBbox;
+  },
 } as const;
 
+// ─── Overpass (globalny serwer, bbox zależny od miasta) ────────────────────
 export const OVERPASS = {
   baseUrl: 'https://overpass-api.de/api/interpreter',
   userAgent: 'KilometrTransitApp/1.0 (contact: dev@kilometr.local)',
-  // Wrocław: south,west,north,east
-  bbox: '50.95,16.70,51.25,17.25',
   timeoutMs: 45000,
   refreshDays: 7,
+  /** Granice aktywnego miasta w formacie Overpass: south,west,north,east. */
+  get bbox(): string {
+    return getActiveCitySync().overpassBbox;
+  },
 } as const;
 
-export const BOUNDS = {
-  minLat: 50.95,
-  maxLat: 51.25,
-  minLon: 16.7,
-  maxLon: 17.25,
-} as const;
+/** Granice aktywnego miasta — ścisły filtr wyników wyszukiwania. */
+export function activeBounds(): Bounds {
+  return getActiveCitySync().bounds;
+}
 
-export const WROCLAW_TRAM_LINES = [
-  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10',
-  '11', '12', '13', '14', '15', '16', '17', '18', '19', '20',
-  '21', '22', '23', '24', '70', '72', '74',
-] as const;
+/** Czy punkt mieści się w granicach aktywnego miasta. */
+export function inActiveCity(lat: number, lon: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  const { bounds } = getActiveCitySync();
+  return (
+    lat >= bounds.minLat &&
+    lat <= bounds.maxLat &&
+    lon >= bounds.minLon &&
+    lon <= bounds.maxLon
+  );
+}
 
-export const WROCLAW_BUS_LINES = [
-  'A', 'C', 'D', 'K', 'N',
-  '100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '110',
-  '111', '112', '113', '114', '115', '116', '117', '118', '119', '120', '121', '122',
-  '123', '124', '125', '126', '127', '128', '129', '130', '131', '132', '133', '134',
-  '136', '137', '138', '140', '142', '143', '144', '145', '146', '147', '148', '149',
-  '150', '151', '152', '153',
-  '206', '240', '241', '242', '243', '244', '245', '246', '247', '248', '249',
-  '250', '251', '253', '255', '257', '259',
-  '306', '310', '315', '319', '343', '345',
-  '602', '607', '612',
-  '704', '715', '747',
-  '903', '904', '905', '906', '907', '908', '909', '911', '914', '920', '921',
-  '924', '927', '930', '931', '934', '936', '947', '948', '955', '958', '967',
-] as const;
+/** Ile godzin między sprawdzeniem nowego wydania rozkładu. */
+export function refreshHours(): number {
+  return getActiveCitySync().refreshHours;
+}
+
+/**
+ * Źródło pozycji pojazdów na żywo albo `null`, gdy dane miasto go nie ma.
+ * Wrocław ma własne MPK, Kraków ma GTFS-RT, którego jeszcze nie parsujemy —
+ * wtedy `null` i usługa mówi wprost, że danych nie ma, zamiast odpytywać
+ * cudzy endpoint.
+ */
+export function activeRealtime(): CityRealtime | null {
+  return getActiveCitySync().realtime ?? null;
+}

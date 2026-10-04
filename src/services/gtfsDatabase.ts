@@ -8,14 +8,27 @@
 import * as SQLite from 'expo-sqlite';
 import { distanceMeters } from '../gtfs/geo';
 import { fuzzyMatch } from '../gtfs/fuzzy';
+import { getActiveCityIdSync } from '../cities/active';
+import { DEFAULT_CITY_ID } from '../cities/registry';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../gtfs/types';
 
-export const GTFS_DB_NAME = 'kilometr-gtfs.db';
+/**
+ * Nazwa pliku bazy rozkładu — jedna na miasto.
+ *
+ * Domyślne miasto (Wrocław) zachowuje starą nazwę bez sufiksu. To celowe:
+ * użytkownicy aplikacji przed dodaniem wielu miast mają już pobrany i
+ * zaimportowany rozkład w `kilometr-gtfs.db`. Podmiana nazwy zmusiłaby ich do
+ * ponownego pobrania ~46 MB, a nic w tym rozkładzie nie przestał być aktualny.
+ * Nowe miasta dostają bazę z sufiksem.
+ */
+export function gtfsDbName(cityId: string): string {
+  return cityId === DEFAULT_CITY_ID ? 'kilometr-gtfs.db' : `kilometr-gtfs-${cityId}.db`;
+}
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 async function initDb(): Promise<SQLite.SQLiteDatabase> {
-      const db = await SQLite.openDatabaseAsync(GTFS_DB_NAME);
+      const db = await SQLite.openDatabaseAsync(gtfsDbName(getActiveCityIdSync()));
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
         PRAGMA busy_timeout = 15000;
@@ -131,6 +144,22 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
     });
   }
   return dbPromise;
+}
+
+/**
+ * Zapomnij uchwyt do bazy. Wywoływane przy zmianie miasta — inaczej
+ * `getGtfsDb()` zwróciłby uchwyt do bazy poprzedniego miasta i planer
+ * planowałby trasy po wrocławskich przystankach w aplikacji ustawionej na
+ * Kraków. Stary uchwyt zostaje do zamknięcia przez SQLite (drobnym zwrotem).
+ */
+export function resetGtfsDb(): void {
+  const p = dbPromise;
+  dbPromise = null;
+  void p
+    ?.then((db) => db.closeAsync())
+    .catch(() => {
+      // uchwyt mógł być już zamknięty — nic nie zgłaszamy
+    });
 }
 
 export async function setMeta(key: string, value: string): Promise<void> {
@@ -258,7 +287,11 @@ export async function importCalendarDates(rows: { service_id: string; date: stri
   const db = await getGtfsDb();
   const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
-    await db.runAsync('DELETE FROM calendar_dates');
+    // UWAGA: celowo bez `DELETE` przed wstawieniem. Ta funkcja bywa wołana
+    // raz na feed, a import miasta czyści tabele RAZ na początku
+    // (`clearGtfsTables`). Kasowanie tutaj gubiłoby wyjątki kalendarza
+    // poprzednich feedów — przy Krakowie (3 feedy) zostałyby tylko
+    // wyjątki z ostatniego archiwum.
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');

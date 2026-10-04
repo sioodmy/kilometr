@@ -1,12 +1,16 @@
-// Lokalny tracker pojazdów MPK: poll bus_position + dopasowanie kursów do
-// rozkładu (opóźnienia). Zasilanie RAPTOR-a (tripDelays) i flag live w UI.
+// Lokalny tracker pojazdów: poll u operatora + dopasowanie kursów do rozkładu
+// (opóźnienia). Zasilanie RAPTOR-a (tripDelays) i flag live w UI.
 // Działa w całości na telefonie — bez serwera pośredniczącego.
+//
+// Źródło pozycji należy do definicji miasta (`src/cities`); dziś obsługujemy
+// Wrocław (MPK, POST formularzowy). Miasto bez źródła na żywo nie odpytuje niczego
+// i udaje, że opóźnień nie ma.
 //
 // Matcher rzutuje pozycję GPS na geometrię trasy kursu (odcinki między
 // kolejnymi przystankami) oraz sprawdza oczekiwany czas w rozkładzie.
 // Eliminuje to błędy pojazdów w ruchu między przystankami i fałszywe dopasowania.
 
-import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
+import { activeRealtime } from './gtfsConfig';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import type { VehiclePosition } from '../types/models';
@@ -175,13 +179,16 @@ class LiveTracker {
   }
 
   private async fetchAll(): Promise<RawVehicleRow[] | null> {
+    const rt = activeRealtime();
+    // Miasto bez źródła na żywo: brak danych, nie błąd.
+    if (!rt || rt.kind !== 'mpk-form') return null;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), MPK.timeoutMs);
+    const timer = setTimeout(() => ctrl.abort(), rt.timeoutMs);
     try {
       const body = new URLSearchParams();
-      for (const t of WROCLAW_TRAM_LINES) body.append('busList[tram][]', t);
-      for (const b of WROCLAW_BUS_LINES) body.append('busList[bus][]', b);
-      const res = await fetch(MPK.busPositionUrl, {
+      for (const t of rt.tramLines) body.append('busList[tram][]', t);
+      for (const b of rt.busLines) body.append('busList[bus][]', b);
+      const res = await fetch(rt.endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -190,11 +197,11 @@ class LiveTracker {
         body: body.toString(),
         signal: ctrl.signal,
       });
-      if (!res.ok) throw new Error(`MPK HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`realtime HTTP ${res.status}`);
       const rows = (await res.json()) as RawVehicleRow[];
       return Array.isArray(rows) ? rows : null;
     } catch (err) {
-      console.warn('[LiveTracker] MPK direct fetch failed:', err);
+      console.warn('[LiveTracker] direct fetch failed:', err);
       return null;
     } finally {
       clearTimeout(timer);
