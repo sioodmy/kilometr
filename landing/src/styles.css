@@ -1,4 +1,4 @@
-/* Kilometr landing — ciemny motyw na stałe, jeden akcent (#5CDBBE).
+/* Kilometr landing: ciemny motyw na stałe, jeden akcent (#5CDBBE).
    Kanciastość: karty 16–20px, przyciski 14px. Zero fioletów, zero poświat. */
 
 :root {
@@ -38,7 +38,7 @@ body {
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
   /* Statyczna siatka kropeczek. Wersja interaktywna (kropki zapalające się
-     pod kursorem) została wywalona — wyglądała tanio. */
+     pod kursorem) została wywalona, wyglądała tanio. */
   background-image: radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px);
   background-size: 24px 24px;
 }
@@ -72,7 +72,7 @@ body {
   grid-template-columns: 1.05fr 0.95fr;
   gap: 56px;
   align-items: center;
-  /* Górny padding bez navbara — wykorzystujemy cały pierwszy ekran. */
+  /* Górny padding bez navbara: wykorzystujemy cały pierwszy ekran. */
   padding: 96px 0 88px;
   animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -198,7 +198,7 @@ body {
    stanu, więc wszystko liczone jest w dp.
 
    Skala: 1 dp = szerokość obudowy / 458. Dzięki temu mock skaluje się czystym
-   CSS — bez transformów i bez pomiarów w JS (oba psuły się przy resize).
+   CSS, bez transformów i bez pomiarów w JS (oba psuły się przy resize).
    Telefon nigdy nie wypycha CTA poza pierwszy ekran: szerokość jest
    dodatkowo ograniczona wysokością viewportu (nav 68 + paddingi hero
    zostawione w rezerwie 188 px). */
@@ -209,7 +209,7 @@ body {
   --bezel-bottom: 32;
   --radius: 62;
   /* Szerokość telefonu w CSS px. Wysokość wynika z aspect-ratio, a te
-     liczby (458 × 958 dp) ustawia Phone.tsx — jedno źródło prawdy. */
+     liczby (458 × 958 dp) ustawia Phone.tsx, jedno źródło prawdy. */
   --pixel-w: min(306px, 74vw, calc((100dvh - 188px) * 458 / 958));
   --dp: calc(var(--pixel-w) / var(--device-w));
   position: relative;
@@ -219,7 +219,7 @@ body {
      ekran). */
   aspect-ratio: var(--device-w) / var(--device-h);
   border-radius: calc(var(--radius) * var(--dp));
-  /* Aluminium widoczne tylko jako cienka obrączka przy krawędzi obudowy —
+  /* Aluminium widoczne tylko jako cienka obrączka przy krawędzi obudowy,
      z przodu telefon to czarne szkło (Gorilla Glass 3), nie metal. */
   background: linear-gradient(
     145deg,
@@ -231,6 +231,10 @@ body {
     #3f4745 86%,
     #7b8684 100%
   );
+  /* Ramka to 28/33/32 dp OD KRAWĘDZI obudowy do krawędzi ekranu, a obraczka
+     aluminiowa (--rim) siedzi w jej skrajnej części, dlatego `::before` jest
+     inset o --rim, a padding jest samą ramką. Dopisanie tu --rim dawało pole
+     treści 397 dp zamiast 402, czyli kanwa wychodziła poza ekran. */
   padding:
     calc(var(--bezel-top) * var(--dp))
     calc(var(--bezel-x) * var(--dp))
@@ -241,7 +245,7 @@ body {
     0 0 calc(90 * var(--dp)) calc(-30 * var(--dp)) rgba(92, 219, 190, 0.35);
 }
 
-/* Czarne szkło wypełnia wnętrze obrączki — dlatego aluminium z .pixel
+/* Czarne szkło wypełnia wnętrze obrączki: dlatego aluminium z .pixel
    widać tylko jako wąski pas 2,5 dp przy krawędzi. */
 .pixel::before {
   content: '';
@@ -253,13 +257,31 @@ body {
   z-index: 0;
 }
 
-/* Wariant przycięty: telefon ucięty w dolną stronę, bez dolnego bezelu. */
+/* Wariant przycięty: telefon ucięty w dolną stronę, bez dolnego bezelu.
+     Wysokość = górna ramka + pokazany kawałek ekranu. */
 .pixel--crop {
   height: calc((var(--crop-dp) + var(--bezel-top)) * var(--dp));
   aspect-ratio: auto;
   padding-bottom: 0;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
+  /* Obrączka z box-shadow rysowałaby się również na cięciu, więc w tym
+     wariancie zastępuje ją ::after i to on ma tylko trzy boki. */
+  box-shadow:
+    0 calc(30 * var(--dp)) calc(70 * var(--dp)) calc(-20 * var(--dp)) rgba(0, 0, 0, 0.85),
+    0 0 calc(90 * var(--dp)) calc(-30 * var(--dp)) rgba(92, 219, 190, 0.35);
+}
+
+.pixel--crop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-top: calc(0.5 * var(--dp)) solid rgba(255, 255, 255, 0.12);
+  border-left: calc(0.5 * var(--dp)) solid rgba(255, 255, 255, 0.12);
+  border-right: calc(0.5 * var(--dp)) solid rgba(255, 255, 255, 0.12);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 5;
 }
 
 .pixel--crop::before {
@@ -267,7 +289,7 @@ body {
   border-bottom-right-radius: 0;
 }
 
-/* Fizyczne przyciski — Pixel 8a ma je po obu stronach. Wychodzą poza
+/* Fizyczne przyciski: Pixel 8a ma je po obu stronach. Wychodzą poza
    obudowę, bo aluminiowa ramka jest płaska i przyciski są wtopione. */
 .pixel-btn {
   position: absolute;
@@ -294,7 +316,7 @@ body {
 
 /* Szkło: odstęp od krawędzi obudowy to prawdziwe ramki 8a (28/33/32 dp
    padding wyżej). Promień ekranu musi być KONCENTRYCZNY z narożnikiem szkła,
-   inaczej czarna ramka ma różną szerokość w rogu i w boku — ekran wygląda
+   inaczej czarna ramka ma różną szerokość w rogu i w boku, ekran wygląda
    wtedy jak wklejony, a nie wsadzony. Stąd dwie wartości:
    poziomo 59,5 − 28 = 31,5 dp, pionowo 59,5 − 33 ≈ 27 dp. */
 .pixel-screen {
@@ -344,7 +366,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Systemowy pasek stanu — poza aplikacją (nie jest częścią mocka).
+/* Systemowy pasek stanu: poza aplikacją (nie jest częścią mocka).
    `padding-top` odpowiada odstępowi, jaki Android trzyma między paskiem a
    szkłem na Pixelu (punch-hole występuje dokładnie w tym pasku). */
 .rn-status {
@@ -373,7 +395,7 @@ body {
   gap: calc(6 * var(--dp));
 }
 
-/* Gestowy pasek nawigacji Androida — też poza aplikacją. */
+/* Gestowy pasek nawigacji Androida: też poza aplikacją. */
 .rn-nav {
   position: absolute;
   left: 0;
@@ -476,7 +498,7 @@ body {
   box-shadow: 0 calc(1 * var(--dp)) calc(3 * var(--dp)) rgba(0, 0, 0, 0.08);
 }
 
-/* icon: 42 × 42 — dla kind 'history' bg surfaceContainerHighest */
+/* icon: 42 × 42: dla kind 'history' bg surfaceContainerHighest */
 .rn-row-icon {
   width: calc(42 * var(--dp));
   height: calc(42 * var(--dp));
@@ -943,12 +965,17 @@ body {
   width: 100%;
 }
 
-/* Wskazówka goni kurs (jak animAngle w StopCompassCard) — kołysze się
+/* Wskazówka goni kurs (jak animAngle w StopCompassCard), kołysze się
    ±6° wokół kierunku do słupka, znacznik kręci się w drugą stronę,
    żeby ikonka stała prosto. */
 /* Kolejność warstw w radarze (jak w StopCompassCard): belka pod znacznikiem
-   słupka, obie pod pulsującym punktem „ty”. Bez jawnych z-indexów przeglądarka
-   układa je po DOM i belka ginie pod krzyżem. */
+   słupka, obie pod pulsującym punktem „ty". Bez jawnych z-indexów przeglądarka
+   układa je po DOM i belka ginie pod krzyżem.
+
+   `left: 50%` + `translateX(-50%)` jest tu obowiązkowe: bezwzględnie
+   pozycjonowany element bez `left` przyjmuje pozycję statyczną, a w kontenerze
+   flex to lewy krawędź, belka i badge lądowały na obwodzie zamiast na osi
+   (i badge wychodził pod zaokrąglenie). */
 .cp-pointer {
   position: absolute;
   width: var(--dial);
@@ -963,9 +990,11 @@ body {
 
 .cp-beam {
   position: absolute;
+  left: 50%;
   top: 26px;
   width: 2.5px;
   height: 34px;
+  margin-left: -1.25px;
   border-radius: 2px;
   opacity: 0.75;
   z-index: 1;
@@ -973,9 +1002,11 @@ body {
 
 .cp-target {
   position: absolute;
+  left: 50%;
   top: 4px;
   width: 32px;
   height: 32px;
+  margin-left: -16px;
   border-radius: 16px;
   border: 2px solid #111414;
   display: flex;
@@ -983,10 +1014,18 @@ body {
   justify-content: center;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   z-index: 2;
+}
+
+/* Kontr-obrót na ikonce, nie na całej plakietce: `transform` na rodzicu
+   nadpisałby jego wyśrodkowanie, a w RN kręci się sam `TargetIcon`. */
+.cp-target-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   animation: cp-counter 5.2s ease-in-out infinite;
 }
 
-/* userPulse ma w RN zIndex 2 — zawsze na wierzchu wskazówki. */
+/* userPulse ma w RN zIndex 2: zawsze na wierzchu wskazówki. */
 .cp-pulse {
   position: absolute;
   width: 20px;
@@ -1352,7 +1391,7 @@ body {
   color: #bfc9c5;
 }
 
-/* Pierwsza karta listy — ConnectionCard: radius 16, padding 14, gap 10 */
+/* Pierwsza karta listy: ConnectionCard: radius 16, padding 14, gap 10 */
 .rt-card {
   margin: 0 calc(14 * var(--dp));
   padding: calc(14 * var(--dp));
@@ -1439,7 +1478,7 @@ body {
 
 /* ── Powiadomienie Live Update ──────────────────────────────
    Layout odwzorowuje szablon systemowy Android 16 dla
-   Notification.ProgressStyle (bez własnych RemoteViews — to warunek
+   Notification.ProgressStyle (bez własnych RemoteViews, to warunek
    Live Update). Elementy i kolejność są 1:1 z LiveUpdateFactory.kt:
    ikona → tytuł → tekst → pasek z segmentami → dwa przyciski. */
 .live {
@@ -1464,12 +1503,23 @@ body {
   }
 }
 
+@keyframes live-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .live-card-wrap {
   display: flex;
   justify-content: center;
 }
 
-/* Karta powiadomienia na ciemnym tle — jak w szufladzie Androida. */
+/* Karta powiadomienia na ciemnym tle: jak w szufladzie Androida. */
 .live-card {
   width: min(420px, 100%);
   display: flex;
@@ -1511,11 +1561,12 @@ body {
   color: #dfe3e8;
 }
 
-/* ProgressStyle: pasek z segmentami, punkt przesiadki, ikony na końcach. */
+/* ProgressStyle: pasek z segmentami, punkt przesiadki, ikona pojazdu.
+   Odsuw boczny jest celowy: system nie przykleja paska do krawędzi karty. */
 .live-bar {
   position: relative;
   height: 20px;
-  margin-top: 6px;
+  margin: 6px 10px 0;
   display: flex;
   align-items: center;
   gap: 3px;
@@ -1527,7 +1578,7 @@ body {
   flex: none;
 }
 
-/* addProgressPoint — punkt w kolorze akcentu linii. */
+/* addProgressPoint: punkt w kolorze akcentu linii. */
 .live-point {
   position: absolute;
   top: 50%;
@@ -1556,7 +1607,7 @@ body {
   right: -2px;
 }
 
-/* setProgressTrackerIcon — iconka pojazdu stoi na bieżącym postępie
+/* setProgressTrackerIcon: iconka pojazdu stoi na bieżącym postępie
    (plan.progressPermille), więc przesuwa się razem z paskiem. */
 .live-tracker {
   position: absolute;
@@ -1579,17 +1630,17 @@ body {
   align-items: center;
 }
 
-/* Przyciski akcji (stop / route): obwódka, tekst jasny, wysokość 34. */
+/* Przyciski akcji (stop / route): obwódka, tekst jasny, wyższy i szerszy,
+   bo bez ikon to same etykiety. */
 .live-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 14px;
-  border-radius: 17px;
+  height: 40px;
+  padding: 0 26px;
+  border-radius: 20px;
   border: 1px solid rgba(196, 202, 214, 0.28);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #c4cad6;
   white-space: nowrap;
@@ -1616,14 +1667,30 @@ body {
   line-height: 1.55 !important;
 }
 
-@keyframes live-card-in {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
+/* Subtelne unoszenie powiadomienia, tylko na desktopie: na wąskim ekranie
+   sekcja jest już przewijana i krótkie unoszenie tylko drażni. Wstrzymujemy
+   je przy `:hover`, żeby karta nie uciekała spod kursora. */
+@media (min-width: 901px) and (prefers-reduced-motion: no-preference) {
+  .live .live-card {
+    animation:
+      live-card-in linear both,
+      live-float 7s ease-in-out 0.9s infinite;
+    animation-timeline: view(), auto;
+    animation-range: entry 0% entry 36%, normal;
   }
-  to {
-    opacity: 1;
-    transform: none;
+
+  .live .live-card:hover {
+    animation-play-state: running, paused;
+  }
+}
+
+@keyframes live-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
   }
 }
 
@@ -1670,7 +1737,7 @@ body {
 /* ── Mobilnie ──────────────────────────────────────────── */
 /* Na wąskim ekranie sekcje idą jedna pod drugim i mają się PRZEMIENIAĆ:
    tekst → demo → tekst → demo. Każda sekcja ma więc tekst pierwszy, a
-   telefon/karta drugi — inaczej demo i tekst sklejają się w pary
+   telefon/karta drugi, inaczej demo i tekst sklejają się w pary
    „demo, tekst, demo, tekst”. */
 @media (max-width: 900px) {
   .hero {
@@ -1731,14 +1798,18 @@ body {
     gap: 12px;
   }
 
-  /* Przycięty telefon schodzi do pełnej szerokości, żeby ekran
-     pozostał czytelny na wąskim viewportcie. Proporcje obudowy 8a. */
+  /* Przycięty telefon schodzi do pełnej szerokości, żeby ekran pozostał
+     czytelny na wąskim viewportcie.
+     UWAGA: nadpisujemy `--pixel-w`, nie `width`. Z `--pixel-w` liczona jest
+     jednostka `--dp` (skala całej kanwy), więc nadpisanie samego `width`
+     rozjeżdżało skalowanie z szerokością obudowy i kanwa nie wypełniała
+     ekranu. Proporcje obudowy Pixel 8a: 458 × 958 dp. */
   .anchor {
     gap: 24px;
   }
 
   .anchor-phone .pixel {
-    width: min(100%, calc((100dvh - 120px) * 458 / 958));
+    --pixel-w: min(100%, calc((100dvh - 120px) * 458 / 958));
   }
 
   .cta {

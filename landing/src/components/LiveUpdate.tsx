@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Flag, Footprints, Square, TramFront } from 'lucide-react';
+import { Flag, TramFront } from 'lucide-react';
 import { TramMark } from './TramMark';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Powiadomienie Live Update w wersji z Android 16 `Notification.ProgressStyle`
 // (modules/kilometr-tracking/.../LiveUpdateFactory.kt). Android nie pozwala na
-// RemoteViews przy Live Update, więc wygląd jest szablonem systemu — my
+// RemoteViews przy Live Update, więc wygląd jest szablonem systemu, my
 // odpowiadamy tylko za treść, segmenty i ikony, a landowanie odwzorowuje to,
 // co robi system:
 //
@@ -17,21 +17,21 @@ import { TramMark } from './TramMark';
 //  - licznik systemowy (setWhen + setUsesChronometer) liczy do przyjazdu.
 //
 // Treść z buildPhaseCopy (src/services/notifications/content.ts, faza „riding")
-// i buildLivePlan — tekst jest bezwzględny („na miejscu 22:44"), bo liczbę
+// i buildLivePlan: tekst jest bezwzględny („na miejscu 22:44"), bo liczbę
 // rysuje zegar systemowy, a nie my.
 //
-// Dane: tramwaj 4 do BISKUPIN, wysiadź Arkady (Capitol) — z zrzutu ekranu
+// Dane: tramwaj 4 do BISKUPIN, wysiadź Arkady (Capitol), z zrzutu ekranu
 // powiadomienia na telefonie. Pasek startuje w 62%, a iconka pojazdu przesuwa
 // się zgodnie z postępem (plan.progress), więc animacja jest prawdziwym
 // odwzorowaniem zachowania, a nie dekoracją.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** WALK_SEGMENT_COLOR — src/services/notifications/content.ts */
+/** WALK_SEGMENT_COLOR: src/services/notifications/content.ts */
 const WALK_COLOR = '#8A8F98';
 /** getLineColors('4', 'tram') → TRANSIT_PALETTE[4] */
 const LINE_COLOR = '#F57C00';
 
-// Zawartość powiadomienia — faza „riding" (buildPhaseCopy.riding).
+// Zawartość powiadomienia: faza „riding" (buildPhaseCopy.riding).
 const COPY = {
   /** n.rideTitle(service, arriveAt) → „Tramwaj 4 • na miejscu 22:44” */
   title: 'Tramwaj 4 • na miejscu 20:28 • 22:44',
@@ -56,9 +56,9 @@ const SEGMENTS = [
   { mode: 'tram', width: 24, color: LINE_COLOR },
 ] as const;
 
-/** Punkt przesiadki — addProgressPoint, w kolorze akcentu. */
+/** Punkt przesiadki: addProgressPoint, w kolorze akcentu. */
 const TRANSFER_AT = 70;
-/** Startowy postęp (plan.progressPermille) — 62%. */
+/** Startowy postęp (plan.progressPermille): 62%. */
 const PROGRESS_START = 62;
 
 export function LiveUpdateSection() {
@@ -84,7 +84,7 @@ export function LiveUpdateSection() {
         <p>
           Przypięte połączenie wraca do ekranu blokady i trzyma się w strefie
           Live Updates. Pasek pokazuje dojście, przejazdy i przesiadki, a
-          licznik sam odlicza do przyjazdu — także wtedy, gdy aplikacja jest
+          licznik sam odlicza do przyjazdu, także wtedy, gdy aplikacja jest
           zamknięta.
         </p>
         <p className="live-note">
@@ -117,9 +117,9 @@ export function LiveUpdateSection() {
               className="live-point"
               style={{ left: `${TRANSFER_AT}%`, background: LINE_COLOR }}
             />
-            <span className="live-start">
-              <Footprints size={11} color="#B9BFC4" strokeWidth={2.4} />
-            </span>
+            {/* setProgressStartIcon ic_kilometr_start: tu zostawiamy sam
+                początek paska, bez ikony: nie mamy odpowiednika w Lucide
+                i domyślna ikona stóp myliła się z dojściem. */}
             <span
               className="live-tracker"
               style={{ left: `${progress}%`, background: LINE_COLOR }}
@@ -131,17 +131,12 @@ export function LiveUpdateSection() {
             </span>
           </span>
 
-          {/* Akcje w poziomie pod paskiem — Android trzyma je na dole
-              powiadomienia, nigdy z boku. */}
+          {/* Akcje w poziomie pod paskiem. Android trzyma je na dole
+              powiadomienia, nigdy z boku. Bez ikon: w szablonie systemowym
+              to zwykłe etykiety z obwódką. */}
           <span className="live-actions">
-            <span className="live-btn">
-              <Square size={13} color="#C4CAD6" strokeWidth={2.4} />
-              {ACTIONS.stop}
-            </span>
-            <span className="live-btn">
-              <TramFront size={14} color="#C4CAD6" strokeWidth={2} />
-              {ACTIONS.route}
-            </span>
+            <span className="live-btn">{ACTIONS.stop}</span>
+            <span className="live-btn">{ACTIONS.route}</span>
           </span>
         </div>
       </div>

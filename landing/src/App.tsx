@@ -59,7 +59,7 @@ export default function App() {
       <main id="top">
         <section className="hero">
           <div className="hero-copy">
-            {/* Nazwa marki to nagłówek, hasło schodzi niżej — inaczej
+            {/* Nazwa marki to nagłówek, hasło schodzi niżej: inaczej
                 „Tym razem dojedziesz" zajmowałoby pierwszy ekran. */}
             <div className="hero-brand">
               <TramMark size={54} />
@@ -96,7 +96,7 @@ export default function App() {
             <h2>Zanim wyjdziesz z domu, już wiesz.</h2>
             <p>
               Najbliższe odjazdy z Twojego przystanku, czas dojścia pieszo
-              i cała trasa z przesiadkami — policzone w sekundę, na miejscu
+              i cała trasa z przesiadkami, policzone w sekundę, na miejscu
               w telefonie.
             </p>
           </div>

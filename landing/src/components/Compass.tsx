@@ -28,10 +28,10 @@ const TARGET = {
   subtitle: 'Kieruj się według kompasu',
   /** s.compass.directionPrefix(leg.direction) */
   direction: 'kierunek Wrocław Nowy Dwór (P+R)',
-  /** activeLeg.fromStop — realna nazwa przystanku ze screenów */
+  /** activeLeg.fromStop: realna nazwa przystanku ze screenów */
   stop: 'DWORZEC GŁÓWNY (Dworcowa)',
   line: CONFIRMED.connection.line,
-  /** s.compass.getDirectionLabel — kąt 12° → „Prosto przed Tobą” */
+  /** s.compass.getDirectionLabel: kąt 12° → „Prosto przed Tobą” */
   guide: 'Prosto przed Tobą',
   /** s.compass.straight */
   straight: 'w linii prostej',
@@ -44,19 +44,19 @@ const TARGET = {
 // Dystans schodzi z 80 m do 60 m w tempie chodzenia: 1,3 m/s (domyślne
 // `DEFAULT_SETTINGS.walkSpeedMps`) to 78 m/min, więc 20 m ≈ 15 s. Ten sam
 // wzór liczy `walkMinutesFor`, a `formatDistance` z settings zaokrąglania do
-// 5 m poniżej 100 m — dlatego kroki wychodzą 80 → 75 → 70 → 65 → 60.
+// 5 m poniżej 100 m: dlatego kroki wychodzą 80 → 75 → 70 → 65 → 60.
 const DIST_START_M = 80;
 const DIST_END_M = 60;
 const WALK_MPS = 1.3;
 const WALK_M_PER_MIN = WALK_MPS * 60;
 const WALK_SECONDS = (DIST_START_M - DIST_END_M) / WALK_MPS;
 
-/** 'NN m' — jak formatDistance ze settings: poniżej 100 m do 5 m. */
+/** 'NN m': jak formatDistance ze settings: poniżej 100 m do 5 m. */
 function formatMeters(m: number): string {
   return `${Math.round(m / 5) * 5} m`;
 }
 
-/** Zegar systemowy w sekundach — CSS nie policzy „od startu strony". */
+/** Zegar systemowy w sekundach: CSS nie policzy „od startu strony". */
 function useWalkedSeconds(paused: boolean) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
@@ -80,14 +80,14 @@ function prefersReducedMotion(): boolean {
 }
 
 // Wejście animacji obsługuje CSS `animation-timeline: view()` (patrz
-// .compass w styles.css) — animacja startuje dokładnie wtedy, gdy sekcja
+// .compass w styles.css): animacja startuje dokładnie wtedy, gdy sekcja
 // wjeżdża w kadr, bez IntersectionObservera i bez liczenia pozycji w JS.
 
 export function CompassSection() {
   const reduce = prefersReducedMotion();
   const walked = useWalkedSeconds(reduce);
   const meters = DIST_START_M - walked * WALK_MPS;
-  // s.compass.walkMins — minuty z tego samego wzoru co walkMinutesFor.
+  // s.compass.walkMins: minuty z tego samego wzoru co walkMinutesFor.
   const walkMin = Math.max(1, Math.round(meters / WALK_M_PER_MIN));
   return (
     <section className="compass">

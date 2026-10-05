@@ -1,4 +1,4 @@
-// Dane do mocków UI — TYLKO rzeczy potwierdzone screenami z prawdziwego
+// Dane do mocków UI: TYLKO rzeczy potwierdzone screenami z prawdziwego
 // telefonu (docs/screenshots/) albo stringami z src/i18n/pl.ts.
 // Nie dopisuj tu nowych linii/przystanków bez dowodu z aplikacji.
 export const CONFIRMED = {
@@ -9,21 +9,22 @@ export const CONFIRMED = {
   startFrom: 'z: Twoja lokalizacja', // s.home.startFrom('Twoja lokalizacja')
   savedTitle: 'Zapisane miejsca', // s.home.savedTitle
   recentTitle: 'Ostatnie miejsca', // s.home.historyTitle
-  // Ostatnie miejsca z pr-45-szybkie-cele-bez-duplikatu.png, czasy odjazdu
+  // Ostatnie miejsca z pr-45-szykkie-cele-bez-duplikatu.png, czasy odjazdu
   // z tego samego screena.
   //
-  // `kind` decyduje o ikonce wiersza — tak samo jak w aplikacji, gdzie
+  // `kind` decyduje o ikonce wiersza, tak samo jak w aplikacji, gdzie
   // `getSuggestionIconMeta` patrzy na rodzaj wyniku wyszukiwarki:
-  // `stop` → BusFront, `address` → MapPin (niebieski tertiaryContainer).
+  // `stop` -> BusFront, `address` -> MapPin (niebieski tertiaryContainer).
   //
-  // `line` to badge pierwszej linii z `lineBadges`. Uzupełniamy tylko tam,
-  // gdzie kurs jest potwierdzony w ekranach aplikacji (tramwaj 23 do
-  // Nowego Dworu); pozostałe wiersze zostawiają pusty slot, bo planer ich
-  // jeszcze nie dogrzał.
+  // `line` to badge pierwszej linii z `lineBadges`. Linie są prawdziwe:
+  // tramwaj 23 do Nowego Dworu widać na ekranach aplikacji, a 5 i 3 stawiają
+  // na tych przystankach w rozkładach MPK. Kolory pochodzą z deterministycznego
+  // hasza w `getLineColors` (src/services/lineIdentity.ts), więc wiersz ma
+  // dokładnie ten sam kolor co badge w aplikacji.
   recent: [
-    { name: 'DWORZEC GŁÓWNY', dep: 'za 5 min', kind: 'stop', line: '23' },
-    { name: 'Hala Targowa', dep: 'za chwilę', kind: 'stop', line: undefined },
-    { name: 'Rynek', dep: 'za chwilę', kind: 'address', line: undefined },
+    { name: 'DWORZEC GŁÓWNY', dep: 'za 5 min', kind: 'stop', line: '23', color: '#E64A19' },
+    { name: 'Hala Targowa', dep: 'za chwilę', kind: 'stop', line: '5', color: '#BF360C' },
+    { name: 'Rynek', dep: 'za chwilę', kind: 'address', line: '3', color: '#0288D1' },
   ],
   // Połączenie z pr-43-lista-bez-regresji.png (tramwaj 23 istnieje w GTFS)
   connection: {

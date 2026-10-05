@@ -19,7 +19,7 @@ import {
 import { CONFIRMED } from '../data';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mock ekranu głównego przepisany z prawdziwego kodu React Native —
+// Mock ekranu głównego przepisany z prawdziwego kodu React Native,
 // app/index.tsx + src/components/{SmartHistoryList,SavedPlacesRow,HomeThumbBar,
 // ThumbBar}.tsx, z tokenami z src/theme/tokens.ts.
 //
@@ -29,7 +29,7 @@ import { CONFIRMED } from '../data';
 //
 // Treść pochodzi ze screenshotów prawdziwego telefonu (docs/screenshots/).
 // Badge linii w wierszach celu celowo BRAK: w kodzie pojawia się dopiero, gdy
-// planer zna pierwszą linię do danego celu — nie zmyślamy, która to jest.
+// planer zna pierwszą linię do danego celu: nie zmyślamy, która to jest.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Geometria Google Pixel 8a ───────────────────────────────────────────────
@@ -48,16 +48,16 @@ const SCREEN_W = 402;
 const SCREEN_H = 893;
 const DEVICE_W = 458;
 const DEVICE_H = 958;
-/** Aluminiowa obrączka wokół szkła — cienka, bo to framka, nie bezel. */
+/** Aluminiowa obrączka wokół szkła: cienka, bo to framka, nie bezel. */
 const RIM_DP = 3;
 
 const STATUS_H = 26; // systemowy pasek stanu Androida, poza aplikacją
 const NAV_H = 22; // gestowy pasek nawigacji, poza aplikacją
-/** Rozmiar ikony w dp — w CSS to calc(N * var(--dp)), bo kanwa jest przeskalowana. */
+/** Rozmiar ikony w dp: w CSS to calc(N * var(--dp)), bo kanwa jest przeskalowana. */
 const ic = (n: number) => `calc(${n} * var(--dp))`;
 
 /**
- * Ostatnie miejsce — wiersz SmartHistoryList.
+ * Ostatnie miejsce: wiersz SmartHistoryList.
  *
  * Ikona nie jest już domyślnym zegarem: `smartIcons` w app/index.tsx bierze ją
  * z `getSuggestionIconMeta` wiersza z historii wyszukiwania, więc przystanek
@@ -65,7 +65,7 @@ const ic = (n: number) => `calc(${n} * var(--dp))`;
  * `tertiaryContainer` (kolor niebieski). Zegar zostaje tylko dla wpisów
  * bez dopasowania.
  *
- * `badge` to badge pierwszej linii z `lineBadges` — w kodzie pojawia się
+ * `badge` to badge pierwszej linii z `lineBadges`: w kodzie pojawia się
  * dopiero, gdy planer zna kurs, więc pusty slot na górze wiersza jest
  * normalnym stanem, a nie brakiem.
  */
@@ -92,7 +92,7 @@ function HomeRow({
         <b>{place}</b>
         <i>Przystanek</i>
       </div>
-      {/* badgeSlot 28 dp — LineBadge albo pusty slot */}
+      {/* badgeSlot 28 dp: LineBadge albo pusty slot */}
       <div className="rn-row-badge">
         {badge ? <LineBadge line={badge} color="#E64A19" /> : null}
       </div>
@@ -196,7 +196,7 @@ export { StatusBar };
 
 /**
  * Obudowa Google Pixela 8a. `cropDp` przycina telefon w dolną stronę (bez
- * dolnego bezela i zaokrągleń) — używane przez sekcję z kotwiczeniem, gdzie
+ * dolnego bezela i zaokrągleń): używane przez sekcję z kotwiczeniem, gdzie
  * ekran jest ucięty i pokazujemy tylko jego górną część.
  *
  * Proporcje z karty technicznej, nie z okularu: szkło 402 × 893 dp w ramce
@@ -243,7 +243,7 @@ export function PixelFrame({
   );
 }
 
-/** Pełny telefon z ekranem głównym — sekcja hero. */
+/** Pełny telefon z ekranem głównym: sekcja hero. */
 export function PixelPhone() {
   return (
     <PixelFrame>

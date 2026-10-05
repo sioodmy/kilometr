@@ -3,7 +3,7 @@ import { PixelFrame, StatusBar } from './Phone';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Kotwiczenie przystanku w miejscu, w którym naprawdę działa: górny pasek
-// ekranu „Połączenia MPK” (app/routes/index.tsx) — Wstecz + pinezka śledzenia,
+// ekranu „Połączenia MPK” (app/routes/index.tsx): Wstecz + pinezka śledzenia,
 // a pod nim nagłówek trasy „Start → Cel” z dopiską kotwicy (Anchor 12,
 // nazwa przystanku, „· miejsce”, krzyżyk) i licznik połączeń z chipem.
 //
@@ -11,11 +11,11 @@ import { PixelFrame, StatusBar } from './Phone';
 // przyciski 40), routeHeader (minHeight 68, padding 16/12), routeText 20/26,
 // routeSide maxWidth 42 %, routeArrowBtn 36, countRow, offlineChip.
 //
-// Animacje startują dopiero po przewinięciu — CSS `animation-timeline: view()`.
+// Animacje startują dopiero po przewinięciu: CSS `animation-timeline: view()`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Ile dp ekranu pokazujemy: treść kończy się ~333 dp, więc 380 z małym
- *  zapasem — inaczej pod cięciem zostaje pusty pas ekranu. */
+ *  zapasem: inaczej pod cięciem zostaje pusty pas ekranu. */
 const CROP_DP = 380;
 
 const ROUTES = {
@@ -25,9 +25,9 @@ const ROUTES = {
   count: '11 połączeń • najbliższe odjazdy',
   /** s.routes.noLiveChip */
   noLive: 'brak danych live',
-  /** routeText (start) — kolor onSurfaceVariant */
+  /** routeText (start): kolor onSurfaceVariant */
   from: 'Twoja lokalizacja',
-  /** routeTextStrong (cel) — kolor onSurface */
+  /** routeTextStrong (cel): kolor onSurface */
   to: 'DWORZEC GŁÓWNY (Dworcowa)',
   /** activeAnchor.stopName */
   anchorStop: 'Dworzec Świebodzki',
@@ -35,7 +35,7 @@ const ROUTES = {
   anchorPlace: 'Praca',
   /** s.connection.transfers(0) */
   transfers: 'bezpośrednio',
-  /** Pierwsza karta listy — ConnectionCard. */
+  /** Pierwsza karta listy: ConnectionCard. */
   card: {
     depart: 'za 4 min',
     hours: '12:07 → 12:15',
@@ -101,7 +101,7 @@ export function AnchorSection() {
               </span>
             </div>
 
-            {/* Pierwsza karta z listy — żeby było widać, że to ekran połączeń. */}
+            {/* Pierwsza karta z listy: żeby było widać, że to ekran połączeń. */}
             <div className="rt-card">
               <div className="rt-card-top">
                 <b>{card.depart}</b>

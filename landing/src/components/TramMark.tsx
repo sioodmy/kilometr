@@ -1,7 +1,7 @@
 import { TramFront } from 'lucide-react';
 
 /**
- * Ikona aplikacji — ta sama, którą system pokazuje przy powiadomieniu:
+ * Ikona aplikacji: ta sama, którą system pokazuje przy powiadomieniu:
  * sylwet frontu tramwaju w kółku (R.drawable.ic_kilometr_tram, tintonane przez
  * `setColor(plan.accentColor)`).
  *
