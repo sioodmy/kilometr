@@ -41,6 +41,14 @@ class KilometrTrackingModule : Module() {
       appContextOrNull?.let { LiveUpdateFactory.canPromote(it) } ?: false
     }
 
+    /**
+     * Surowa paleta Material You z tapety (`rodzina_ton` → `#RRGGBBAA`).
+     * Pusta na Androidzie 11 i starszych — wtedy zostaje własna paleta.
+     */
+    AsyncFunction("getSystemPalette") {
+      appContextOrNull?.let { DynamicColors.read(it) } ?: emptyMap<String, String>()
+    }
+
     /** Wysyła plan do serwisu: startuje go albo aktualizuje w locie. */
     AsyncFunction("startTrip") { json: String ->
       val context = appContextOrNull ?: return@AsyncFunction false

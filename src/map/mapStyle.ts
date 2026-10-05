@@ -32,15 +32,23 @@ export const MAP_COLORS = {
   // Tekst
   roadLabel: '#9BA5A2',
   waterLabel: '#7FB6C8',
-  placeCity: scheme.onSurface,
-  placeTown: scheme.onSurfaceVariant,
-  placeSmall: colors.faint,
   halo: '#101413',
   // Trasa
   routeCasing: '#080C0B',
+} as const;
+
+/**
+ * Kolory zależne od motywu. Czytamy je w funkcjach budujących styl, a nie
+ * raz przy imporcie: na Androidzie 12+ paleta pochodzi z tapety i jest
+ * podmieniana po zaimportowaniu modułu (`src/theme/dynamic.ts`).
+ */
+const motif = () => ({
+  placeCity: scheme.onSurface,
+  placeTown: scheme.onSurfaceVariant,
+  placeSmall: colors.faint,
   walk: scheme.onSurfaceVariant,
   stopMid: scheme.onSurface,
-} as const;
+});
 
 const C = MAP_COLORS;
 
@@ -271,7 +279,7 @@ function baseLayers() {
       'miejsce-miasto',
       'place',
       ['==', ['get', 'class'], 'city'],
-      C.placeCity,
+      motif().placeCity,
       ['interpolate', ['exponential', 1.2], ['zoom'], 5, 12, 9, 16],
       { 'text-font': ['Noto Sans Bold'], 'text-max-width': 8 },
       1.5,
@@ -280,7 +288,7 @@ function baseLayers() {
       'miejsce-inne',
       'place',
       ['match', ['get', 'class'], ['town', 'village', 'suburb', 'neighbourhood'], true, false],
-      C.placeTown,
+      motif().placeTown,
       ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 14],
       { 'text-font': ['Noto Sans Regular'], 'text-max-width': 8 },
       1.3,
@@ -289,7 +297,7 @@ function baseLayers() {
       'miejsce-kraj',
       'place',
       ['all', ['==', ['get', 'class'], 'country'], ['==', ['get', 'rank'], 1]],
-      C.placeSmall,
+      motif().placeSmall,
       ['interpolate', ['linear'], ['zoom'], 3, 10, 7, 15],
       { 'text-font': ['Noto Sans Regular'], 'text-max-width': 6 },
     ),
@@ -336,7 +344,7 @@ export function buildRouteLayers() {
       source: ROUTE_SOURCE_ID,
       filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'walk'], 1]] as never,
       paint: {
-        'line-color': C.walk,
+        'line-color': motif().walk,
         'line-width': bySel(4.5, 4, 4),
         'line-opacity': bySel(0.9, 0.35, 0.85),
         'line-dasharray': [1, 3.2],
@@ -370,7 +378,7 @@ export function buildRouteLayers() {
       filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'role'], 'intermediate']] as never,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 16, 4, 19, 6],
-        'circle-color': C.stopMid,
+        'circle-color': motif().stopMid,
         'circle-stroke-color': C.land,
         'circle-stroke-width': 1.5,
         'circle-opacity': bySel(0.9, 0.35, 0.95),

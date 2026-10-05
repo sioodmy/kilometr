@@ -1,7 +1,7 @@
 import type { Strings } from '../../i18n/pl';
 import { getLineColors, inferTransitMode } from '../lineIdentity';
 import type { Connection } from '../../types/models';
-import { clockFromMs, formatDistance } from './format';
+import { clockFromMs, formatDistance, parseClock } from './format';
 import { computeLegTimeline } from './tripProgress';
 import type { LivePlan, LivePlanPhaseCopy, LivePlanSegment, TripPhase, TripProgress, TrackedTrip } from './types';
 
@@ -32,6 +32,15 @@ export interface TripCopy {
  * ani słownika, więc wybiera gotowy wariant na podstawie zegara — dzięki
  * temu po zamknięciu aplikacji faza zmienia się dalej, a tekst wciąż jest
  * przetłumaczony i poprawnie odmieniony.
+ *
+ * Układ jest jednolity i odpowiada na jedno pytanie: „co teraz robię?”.
+ * Tytuł zawsze niesie kurs i GODZINĘ BEZWZGLĘDNĄ (razem z etykietą „odjazd”
+ * w jednej linii — zegar systemowy tyka obok, ale sam nie wie, do czego
+ * liczy), a pod spodem stoją odpowiedzi na pytania właściwe dla fazy:
+ * przy dojściu — który przystanek i w jakim kierunku, przy przesiadce — to
+ * samo plus ile dojścia, w trakcie jazdy — gdzie wysiadam i ile przystanków
+ * zostało. Nigdzie nie ma czasu względnego („za 4 min”), bo zamarzałby po
+ * zamknięciu aplikacji.
  */
 export function buildPhaseCopy(
   p: TripProgress,
@@ -41,13 +50,25 @@ export function buildPhaseCopy(
   const n = s.notification;
   const mode = modeLabel(p.lineMode, s);
   const service = p.line ? `${mode} ${p.line}` : mode;
+  // Godzina z tego samego znacznika, na który celuje licznik systemowy —
+  // inaczej tytuł obiecywałby jeden odjazd, a odliczanie szło do drugiego.
   const boardAt = clockFromMs(p.boardAtMs);
   const arriveAt = p.arriveAt;
-  const departAt = p.departAt;
+  // Przystanek, na którym wsiadamy (albo do którego idziemy) i kierunek.
+  const boardStop = p.leg?.fromStop ?? '';
+  const boarding = join(
+    boardStop ? n.stopHere(boardStop) : '',
+    p.direction ? n.directionTo(p.direction) : '',
+    p.leg?.platformCode ? n.platform(p.leg.platformCode) : '',
+  );
 
   const walkMeters = upcomingWalkMeters(p, conn);
   const walkText = walkMeters != null && walkMeters > 0 ? formatDistance(walkMeters) : '';
   const walkMin = p.walkSec != null ? Math.round(p.walkSec / 60) : null;
+  const walk = join(
+    walkText,
+    walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '',
+  );
   const stops = p.stopsLeft != null && p.stopsLeft > 0 ? n.stops(p.stopsLeft) : '';
   const transfers = p.transfers > 0 ? n.transfers(p.transfers) : '';
   const delay =
@@ -57,42 +78,33 @@ export function buildPhaseCopy(
         ? n.delayEarly(p.delayMin)
         : '';
   const vehicle = p.vehicleLabel ? n.vehicleAt(p.vehicleLabel) : '';
+  // Ile trwa przejazd kursem, na którym czekamy. Liczba z rozkładu, więc nie
+  // zestarzeje się przy zamkniętej aplikacji.
+  const ride = rideLengthMin(p, s);
 
   return {
     walking: {
-      title: walkText ? n.walkTitle(walkText) : n.walkTitlePlain,
-      text: join(
-        p.direction ? n.directionTo(p.direction) : '',
-        p.leg ? n.stopHere(p.leg.fromStop) : '',
-        walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '',
-        transfers,
-      ),
-      subText: n.toDeparture,
+      title: n.departTitle(service, boardAt),
+      text: boarding,
+      subText: join(walk, transfers),
       criticalText: n.chipDepart(boardAt),
     },
 
     waiting: {
-      title: n.waitTitle(service, departAt),
-      text: join(
-        p.direction ? n.directionTo(p.direction) : p.toTitle,
-        stops,
-        p.leg ? n.stopHere(p.leg.fromStop) : '',
-        transfers,
-        delay,
-        p.leg?.platformCode ? n.platform(p.leg.platformCode) : '',
-      ),
-      subText: n.toDeparture,
+      title: n.departTitle(service, boardAt),
+      text: boarding,
+      // Przy oczekiwaniu liczy się jeszcze, ile potrwa sam przejazd i czy
+      // trzeba będzie gdzieś przesiadać.
+      subText: join(stops, ride, transfers, delay),
       criticalText: n.chipDepart(boardAt),
     },
 
     transfer: {
       title: n.transferTitle(service, boardAt),
-      text: join(
-        p.interchange ?? (p.leg ? p.leg.fromStop : p.toTitle),
-        walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '',
-        stops,
-      ),
-      subText: n.toDeparture,
+      // Nazwa przesiadki już mówi, na którym przystanku przesiadam — nie
+      // powtarzamy jej w „przystanek X".
+      text: interchangeName(p.interchange) ?? boarding,
+      subText: join(walk, stops, delay),
       criticalText: n.chipDepart(boardAt),
     },
 
@@ -100,18 +112,49 @@ export function buildPhaseCopy(
       title: n.rideTitle(service, arriveAt),
       // Godziny przyjazdu nie powtarzamy — jest już w tytule. Tu liczy się
       // tylko to, czego tytuł nie mówi: gdzie dojeżdżamy i ile to potrwa.
-      text: join(p.nextStop ? n.nextStop(p.nextStop) : '', stops, delay || vehicle),
-      subText: n.toArrival,
+      text: join(
+        p.leg?.toStop ? n.alightAt(p.leg.toStop) : '',
+        p.direction ? n.directionTo(p.direction) : '',
+      ),
+      subText: join(p.nextStop ? n.nextStop(p.nextStop) : '', stops, delay || vehicle),
       criticalText: n.chipArrive(arriveAt),
     },
 
     arrived: {
       title: n.arrivedTitle,
       text: n.arrivedBody(arriveAt, s.common.durMin(conn.durationMin)),
-      subText: arriveAt,
+      subText: '',
       criticalText: n.chipArrive(arriveAt),
     },
   };
+}
+
+/**
+ * Nazwa przesiadki bez etykiety. Planer często zwraca „Przesiadka: Rondo”,
+ * a tytuł i tak zaczyna się od słowa „Przesiadka” — zdejmujemy wyłącznie
+ * powtórzony wyraz, a jak nazwa jest nietypowa, zostawiamy ją w całości.
+ */
+function interchangeName(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const match = /^(przesiadka|przeładunek|zmiana|transfer|umstieg|пересадка)\s*[:\-]\s*(.+)$/i.exec(
+    raw.trim(),
+  );
+  return match ? match[2] : raw;
+}
+
+/**
+ * Ile minut trwa przejazd pojazdem, na którym użytkownik czeka. Bierzemy
+ * różnicę godzin odcinka, a nie `durationMin` całej podróży — przy
+ * przesiadce to dwie różne liczby, a myślimy o tym, co zaraz się ruszy.
+ */
+function rideLengthMin(p: TripProgress, s: Strings): string {
+  if (!p.leg) return '';
+  const depart = parseClock(p.leg.departAt);
+  const arrive = parseClock(p.leg.arriveAt);
+  if (depart == null || arrive == null) return '';
+  const span = ((arrive - depart + 86400) % 86400) / 60;
+  const min = Math.round(span);
+  return min > 0 && min < 12 * 60 ? s.notification.rideLength(min) : '';
 }
 
 /**
