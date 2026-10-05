@@ -94,7 +94,7 @@ function HomeRow({
       </div>
       {/* badgeSlot 28 dp: LineBadge albo pusty slot */}
       <div className="rn-row-badge">
-        {badge ? <LineBadge line={badge} color="#E64A19" /> : null}
+        {badge ? <LineBadge line={badge} /> : null}
       </div>
       <div className="rn-row-depart">{depart}</div>
     </div>
@@ -102,7 +102,13 @@ function HomeRow({
 }
 
 /** LineBadge: radius 8, minWidth 44, height 28, padding 9/4, TramFront 13. */
-function LineBadge({ line, color }: { line: string; color: string }) {
+function LineBadge({ line }: { line: string }) {
+  const colors: Record<string, string> = {
+    '23': '#E64A19',
+    '5': '#BF360C',
+    '3': '#0288D1',
+  };
+  const color = colors[line] ?? '#E64A19';
   return (
     <span className="rn-linebadge" style={{ background: color }}>
       <TramFront size={ic(13)} color="#fff" strokeWidth={2} />
