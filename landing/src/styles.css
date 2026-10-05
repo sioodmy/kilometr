@@ -37,6 +37,8 @@ body {
   color: var(--ink);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
+  /* Statyczna siatka kropeczek. Wersja interaktywna (kropki zapalające się
+     pod kursorem) została wywalona — wyglądała tanio. */
   background-image: radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px);
   background-size: 24px 24px;
 }
