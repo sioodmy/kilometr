@@ -778,6 +778,18 @@ body {
   max-width: 46ch;
 }
 
+/* ── Sekcja kompasu ────────────────────────────────────────
+   Tekst po lewej, karta StopCompassCard po prawej. Wartości
+   przekopiowane ze StopCompassCard.tsx + src/theme/tokens.ts.
+   Karta jest tu w skali 1:1 (dp = px), bo nie siedzi w telefonie. */
+.compass {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+  padding: 8px 0 88px;
+}
+
 /* Wejście po przewinięciu: `animation-timeline: view()` uruchamia animację
    dokładnie wtedy, gdy sekcja wjeżdża w kadr. Bez IntersectionObservera
    i bez liczenia pozycji w JS. Przeglądarki bez scroll-driven animations
