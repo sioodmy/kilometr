@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Ten sam znaczek co w naglowku strony (TramMark): kolo #00a884
+       z frontem tramwaju #04362c. Geometria glyfu 1:1 z lucide TramFront
+       (viewBox 24), skala 46% jak w komponencie. -->
+  <circle cx="32" cy="32" r="32" fill="#00a884"/>
+  <g transform="translate(17.28 17.28) scale(1.2266667)" fill="none" stroke="#04362c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="16" height="16" x="4" y="3" rx="2"/>
+    <path d="M4 11h16"/>
+    <path d="M12 3v8"/>
+    <path d="m8 19-2 3"/>
+    <path d="m18 22-2-3"/>
+    <path d="M8 15h.01"/>
+    <path d="M16 15h.01"/>
+  </g>
+</svg>
