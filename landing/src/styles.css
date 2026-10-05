@@ -301,6 +301,15 @@ body {
   border-bottom-right-radius: 0;
 }
 
+/* Ekran w cieciu ma proste dolne rogi: przy zaokraglonych w dolnych
+   naroznikach spod ekranu wystawaly kliny aluminium (ramka ma w cieciu
+   promien 0, wiec miedzy lukiem ekranu a prostym cieciem bylo widac tlo
+   .pixel). Gorne rogi zostaja jak w calym telefonie. */
+.pixel--crop .pixel-screen {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 /* Fizyczne przyciski: Pixel 8a ma je po obu stronach. Wychodzą poza
    obudowę, bo aluminiowa ramka jest płaska i przyciski są wtopione. */
 .pixel-btn {
