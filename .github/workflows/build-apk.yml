@@ -79,6 +79,12 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Build landing page (React → docs/)
+        run: |
+          set -euo pipefail
+          npm --prefix landing ci
+          npm --prefix landing run build
+
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --clean --no-install
 
@@ -143,7 +149,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # docs/index.js szuka /app-release.apk, a jako fallback linkuje
+          # Przycisk „Pobierz APK" w landingu (React) bierze ./app-release.apk,
+          # a jako fallback linkuje
           # https://github.com/<repo>/releases/latest/download/app-release.apk
           TAG=latest
           if ! gh release view "$TAG" > /dev/null 2>&1; then
