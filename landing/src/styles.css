@@ -1,0 +1,1855 @@
+/* Kilometr landing: ciemny motyw na stałe, jeden akcent (#5CDBBE).
+   Kanciastość: karty 16–20px, przyciski 14px. Zero fioletów, zero poświat. */
+
+:root {
+  --bg: #0d100f;
+  --bg-soft: #131715;
+  --card: #1b2120;
+  --card-high: #252b2a;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(255, 255, 255, 0.05);
+  --ink: #eef2f0;
+  --muted: #b9c4c0;
+  --faint: #7d8884;
+  --brand: #5cdbbe;
+  --brand-ink: #06302a;
+  --brand-hover: #4ec7ab;
+  --brand-active: #43b59a;
+  --chip: #005047;
+  --chip-ink: #7df8de;
+  --radius: 18px;
+  --font: "Geist", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  /* Statyczna siatka kropeczek. Wersja interaktywna (kropki zapalające się
+     pod kursorem) została wywalona, wyglądała tanio. */
+  background-image: radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+::selection {
+  background: var(--brand);
+  color: var(--bg);
+}
+
+.page {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 24px;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Wspólna ikona: sylwet tramwaju w kółku, ta sama co w powiadomieniu. */
+.tram-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+/* ── Hero ──────────────────────────────────────────────── */
+.hero {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 56px;
+  align-items: center;
+  /* Górny padding bez navbara: wykorzystujemy cały pierwszy ekran. */
+  padding: 96px 0 88px;
+  animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Nagłówek marki: ikona po lewej, nazwa obok. */
+.hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.hero-brand h1 {
+  font-size: clamp(44px, 5.6vw, 66px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+}
+
+/* Hasło schodzi niżej jako podtytuł. */
+.hero-tagline {
+  margin-top: 16px;
+  font-size: clamp(19px, 2.1vw, 23px);
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--brand);
+}
+
+.hero-copy > p {
+  margin-top: 14px;
+  font-size: 17.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 44ch;
+}
+
+.cta-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 30px;
+  flex-wrap: wrap;
+}
+
+.cta {
+  flex: 1 1 200px;
+  min-height: 54px;
+  padding: 0 22px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 15.5px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.cta:active {
+  transform: scale(0.98);
+}
+
+.cta-primary {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+.cta-primary:hover {
+  background: var(--brand-hover);
+}
+
+.cta-ghost {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.cta-ghost:hover {
+  border-color: rgba(92, 219, 190, 0.4);
+  background: var(--card-high);
+}
+
+/* ── Pixel ─────────────────────────────────────────────── */
+.pixel-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: rise 0.7s 0.12s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.pixel-glow {
+  position: absolute;
+  inset: 8% 12%;
+  background: radial-gradient(closest-side, rgba(92, 219, 190, 0.14), transparent);
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+/* ── Obudowa Google Pixela 8a ────────────────────────────────────────────
+   Wymiary z karty technicznej (152,1 × 72,7 × 8,9 mm, ekran 1080 × 2400 przy
+   ~430 ppi), przeliczone na dp (430 ppi / 160 → 6,299 dp na milimetr):
+
+     obudowa  72,7 mm  → 458 dp        ekran  63,8 mm  → 402 dp
+              152,1 mm → 958 dp               141,8 mm  → 893 dp
+     → ramka boczna 28 dp, górna 33 dp, podbródkowa 32 dp.
+
+   Grube ramki to nie wada mocka, tylko cecha rozpoznawalna tego modelu
+   (recenzje Pixel 8a wprost narzekają na „3,5 mm bezel" i pół-centymetrową
+   brodę). Stałe px przy mniejszym telefonie zjadały narożniki i ucinały pasek
+   stanu, więc wszystko liczone jest w dp.
+
+   Skala: 1 dp = szerokość obudowy / 458. Dzięki temu mock skaluje się czystym
+   CSS, bez transformów i bez pomiarów w JS (oba psuły się przy resize).
+   Telefon nigdy nie wypycha CTA poza pierwszy ekran: szerokość jest
+   dodatkowo ograniczona wysokością viewportu (nav 68 + paddingi hero
+   zostawione w rezerwie 188 px). */
+.pixel {
+  /* Ramka Pixela 8a liczona z wymiarów (458 − 402)/2 i (958 − 893)/2. */
+  --bezel-x: 28;
+  --bezel-top: 33;
+  --bezel-bottom: 32;
+  --radius: 62;
+  /* Szerokość telefonu w CSS px. Wysokość wynika z aspect-ratio, a te
+     liczby (458 × 958 dp) ustawia Phone.tsx, jedno źródło prawdy. */
+  --pixel-w: min(306px, 74vw, calc((100dvh - 188px) * 458 / 958));
+  --dp: calc(var(--pixel-w) / var(--device-w));
+  position: relative;
+  width: var(--pixel-w);
+  /* aspect-ratio + asymetryczny padding: ramka 8a jest 28/33/32 dp, więc
+     padding-top/bottom muszą się różnić (symetryczny padding dałby inny
+     ekran). */
+  aspect-ratio: var(--device-w) / var(--device-h);
+  border-radius: calc(var(--radius) * var(--dp));
+  /* Aluminium widoczne tylko jako cienka obrączka przy krawędzi obudowy,
+     z przodu telefon to czarne szkło (Gorilla Glass 3), nie metal.
+     Ogon gradientu jest płaski (50-100% ten sam kolor): diagonalny
+     gradient 145deg kończy się ZAWSZE w dolnym-prawym rogu pudełka, więc
+     jasny stop na 100% dawałby jasny pas dokładnie na krawędzi cięcia
+     wariantu .pixel--crop (policzone: dolny-prawy róg mapuje się na
+     t=100%). Dół ramki jest ciemny, góra bez zmian. */
+  background: linear-gradient(
+    145deg,
+    #9aa5a3 0%,
+    #55605d 10%,
+    #333b39 26%,
+    #262d2b 50%,
+    #262d2b 100%
+  );
+  /* Ramka to 28/33/32 dp OD KRAWĘDZI obudowy do krawędzi ekranu, a obraczka
+     aluminiowa (--rim) siedzi w jej skrajnej części, dlatego `::before` jest
+     inset o --rim, a padding jest samą ramką. Dopisanie tu --rim dawało pole
+     treści 397 dp zamiast 402, czyli kanwa wychodziła poza ekran. */
+  padding:
+    calc(var(--bezel-top) * var(--dp))
+    calc(var(--bezel-x) * var(--dp))
+    calc(var(--bezel-bottom) * var(--dp));
+  box-shadow:
+    0 0 0 calc(0.5 * var(--dp)) rgba(255, 255, 255, 0.12),
+    0 calc(30 * var(--dp)) calc(70 * var(--dp)) calc(-20 * var(--dp)) rgba(0, 0, 0, 0.85),
+    0 0 calc(90 * var(--dp)) calc(-30 * var(--dp)) rgba(92, 219, 190, 0.35);
+}
+
+/* Czarne szkło wypełnia wnętrze obrączki: dlatego aluminium z .pixel
+   widać tylko jako wąski pas 2,5 dp przy krawędzi. */
+.pixel::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--rim) * var(--dp));
+  border-radius: calc((var(--radius) - var(--rim)) * var(--dp));
+  background: linear-gradient(180deg, #101413 0%, #0a0d0c 55%, #0c100f 100%);
+  box-shadow: inset 0 0 calc(3 * var(--dp)) rgba(255, 255, 255, 0.05);
+  z-index: 0;
+}
+
+/* Wariant przycięty: telefon ucięty w dolną stronę, bez dolnego bezelu.
+     Wysokość = górna ramka + pokazany kawałek ekranu.
+
+     `background-size` na pełną wysokość obudowy (958 dp) + `position: top`
+     sprawia, że gradient aluminium jest liczony dla całego telefonu, a nie dla
+     uciętego pudełka, więc górna część cięcia ma identyczne kolory co pełny
+     telefon. Dolna krawędź cięcia jest ciemna dzięki płaskiemu ogonowi
+     gradientu (patrz komentarz przy .pixel). */
+.pixel--crop {
+  height: calc((var(--crop-dp) + var(--bezel-top)) * var(--dp));
+  aspect-ratio: auto;
+  padding-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background-size: 100% calc(958 * var(--dp));
+  background-position: top center;
+  background-repeat: no-repeat;
+  /* Obrączka z box-shadow rysowałaby się również na cięciu, więc w tym
+     wariancie zastępuje ją ::after i to on ma tylko trzy boki. */
+  box-shadow:
+    0 calc(30 * var(--dp)) calc(70 * var(--dp)) calc(-20 * var(--dp)) rgba(0, 0, 0, 0.85),
+    0 0 calc(90 * var(--dp)) calc(-30 * var(--dp)) rgba(92, 219, 190, 0.35);
+}
+
+.pixel--crop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-top: calc(0.5 * var(--dp)) solid rgba(255, 255, 255, 0.12);
+  border-left: calc(0.5 * var(--dp)) solid rgba(255, 255, 255, 0.12);
+  border-right: calc(0.5 * var(--dp)) solid rgba(255, 255, 255, 0.12);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pixel--crop::before {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Ekran w cieciu ma proste dolne rogi: przy zaokraglonych w dolnych
+   naroznikach spod ekranu wystawaly kliny aluminium (ramka ma w cieciu
+   promien 0, wiec miedzy lukiem ekranu a prostym cieciem bylo widac tlo
+   .pixel). Gorne rogi zostaja jak w calym telefonie. */
+.pixel--crop .pixel-screen {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Fizyczne przyciski: Pixel 8a ma je po obu stronach. Wychodzą poza
+   obudowę, bo aluminiowa ramka jest płaska i przyciski są wtopione. */
+.pixel-btn {
+  position: absolute;
+  z-index: 4;
+  border-radius: calc(2 * var(--dp));
+  box-shadow: 0 0 0 calc(0.5 * var(--dp)) rgba(0, 0, 0, 0.6);
+}
+
+.pixel-btn-power {
+  right: calc(-2.5 * var(--dp));
+  top: 30%;
+  width: calc(3 * var(--dp));
+  height: 11%;
+  background: linear-gradient(90deg, #6a7472, #262b2a 70%, #171b1a);
+}
+
+.pixel-btn-vol {
+  left: calc(-2.5 * var(--dp));
+  top: 25%;
+  width: calc(3 * var(--dp));
+  height: 17%;
+  background: linear-gradient(90deg, #171b1a 30%, #262b2a, #6a7472);
+}
+
+/* Szkło: odstęp od krawędzi obudowy to prawdziwe ramki 8a (28/33/32 dp
+   padding wyżej). Promień ekranu musi być KONCENTRYCZNY z narożnikiem szkła,
+   inaczej czarna ramka ma różną szerokość w rogu i w boku, ekran wygląda
+   wtedy jak wklejony, a nie wsadzony. Stąd dwie wartości:
+   poziomo 59,5 − 28 = 31,5 dp, pionowo 59,5 − 33 ≈ 27 dp. */
+.pixel-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: calc(31.5 * var(--dp)) / calc(27 * var(--dp));
+  overflow: hidden;
+  background: #111414;
+  /* Rumień wokół szkła: ciemna krawędź, którą widać na prawdziwym Pixelu. */
+  box-shadow:
+    0 0 0 calc(0.5 * var(--dp)) rgba(0, 0, 0, 0.8),
+    inset 0 0 calc(1 * var(--dp)) rgba(0, 0, 0, 0.9);
+}
+
+/* Punch-hole: to otwór w szkle, więc leży na ekranie, a nie na ramce. */
+.pixel-camera {
+  position: absolute;
+  top: calc(9 * var(--dp));
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(13 * var(--dp));
+  height: calc(13 * var(--dp));
+  border-radius: 50%;
+  background: #000;
+  box-shadow:
+    inset 0 0 calc(2 * var(--dp)) calc(1 * var(--dp)) rgba(60, 90, 120, 0.85),
+    0 0 0 calc(0.5 * var(--dp)) rgba(255, 255, 255, 0.06);
+  z-index: 3;
+}
+
+/* ── Mock ekranu głównego ────────────────────────────────────────────────
+   Kanonia 402 × 893 dp (ekran Pixela 8a). Każda wartość poniżej jest
+   skopiowana z React Native: src/theme/tokens.ts oraz stylów w app/index.tsx
+   i src/components/*.tsx. Jednostka dp jest liczona w CSS (--dp na .pixel),
+   więc mock ma te same proporcje co telefon. */
+.rn-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(402 * var(--dp));
+  height: calc(893 * var(--dp));
+  font-family: Roboto, "Noto Sans", system-ui, sans-serif;
+  font-size: calc(16 * var(--dp));
+  color: #e0e3e1;
+  background: #111414;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Systemowy pasek stanu: poza aplikacją (nie jest częścią mocka).
+   `padding-top` odpowiada odstępowi, jaki Android trzyma między paskiem a
+   szkłem na Pixelu (punch-hole występuje dokładnie w tym pasku). */
+.rn-status {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(26 * var(--dp));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* Odsuw musi być większy niż promień narożnika ekranu w tym miejscu,
+     inaczej ikony po prawej wchodzą pod zaokrąglenie. */
+  padding: 0 calc(30 * var(--dp)) 0 calc(30 * var(--dp));
+  color: #e0e3e1;
+}
+
+.rn-status-time {
+  font-size: calc(14 * var(--dp));
+  font-weight: 600;
+}
+
+.rn-status-icons {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--dp));
+}
+
+/* Gestowy pasek nawigacji Androida: też poza aplikacją. */
+.rn-nav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(22 * var(--dp));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rn-nav-pill {
+  width: calc(104 * var(--dp));
+  height: calc(4 * var(--dp));
+  border-radius: calc(2 * var(--dp));
+  background: rgba(224, 227, 225, 0.85);
+}
+
+/* styles.body: paddingHorizontal 16, paddingTop 6 (app/index.tsx) */
+.rn-app {
+  position: absolute;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  padding: calc(6 * var(--dp)) calc(16 * var(--dp)) 0;
+}
+
+/* topBar: height 44, gap 8 */
+.rn-topbar {
+  height: calc(44 * var(--dp));
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--dp));
+}
+
+/* type.headlineSmall 24 + fontWeight 700 */
+.rn-h1 {
+  flex: 1;
+  font-size: calc(24 * var(--dp));
+  line-height: calc(30 * var(--dp));
+  font-weight: 700;
+  letter-spacing: calc(-0.2 * var(--dp));
+  color: #e0e3e1;
+}
+
+.rn-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--dp));
+}
+
+/* iconBtn: 40 × 40, radius full, surfaceContainerHigh */
+.rn-iconbtn {
+  width: calc(40 * var(--dp));
+  height: calc(40 * var(--dp));
+  border-radius: 999px;
+  background: #252b2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rn-gap {
+  height: calc(12 * var(--dp));
+}
+
+.rn-gap-lg {
+  height: calc(20 * var(--dp));
+}
+
+/* SmartHistoryList: kontener gap 8 */
+.rn-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8 * var(--dp));
+}
+
+/* header: gap 8, marginTop 4, marginBottom 2, type.titleSmall */
+.rn-list-header {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--dp));
+  margin-top: calc(4 * var(--dp));
+  margin-bottom: calc(2 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  line-height: calc(17 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
+}
+
+/* card: surfaceContainer, radius 16, padding 10/14, minHeight 72, gap 14 */
+.rn-row {
+  display: flex;
+  align-items: center;
+  gap: calc(14 * var(--dp));
+  min-height: calc(72 * var(--dp));
+  padding: calc(10 * var(--dp)) calc(14 * var(--dp));
+  border-radius: calc(16 * var(--dp));
+  background: #1b2120;
+  box-shadow: 0 calc(1 * var(--dp)) calc(3 * var(--dp)) rgba(0, 0, 0, 0.08);
+}
+
+/* icon: 42 × 42: dla kind 'history' bg surfaceContainerHighest */
+.rn-row-icon {
+  width: calc(42 * var(--dp));
+  height: calc(42 * var(--dp));
+  flex: none;
+  border-radius: 999px;
+  background: #303635;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rn-row-mid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--dp));
+}
+
+/* type.bodyLarge 16 / type.bodyMedium 14 */
+.rn-row-mid b {
+  font-size: calc(16 * var(--dp));
+  line-height: calc(21 * var(--dp));
+  font-weight: 400;
+  color: #e0e3e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rn-row-mid i {
+  font-style: normal;
+  font-size: calc(14 * var(--dp));
+  line-height: calc(19 * var(--dp));
+  color: #bfc9c5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Prawa kolumna: badgeSlot 28 px nad „za x min” (titleSmall, lineHeight 20) */
+.rn-row-badge {
+  height: calc(28 * var(--dp));
+  flex: none;
+}
+
+.rn-row-depart {
+  flex: none;
+  min-width: calc(64 * var(--dp));
+  text-align: center;
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
+}
+
+/* section: type.titleMedium + marginBottom 10 */
+.rn-section {
+  font-size: calc(16 * var(--dp));
+  line-height: calc(24 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
+  margin-bottom: calc(10 * var(--dp));
+}
+
+/* LineBadge: radius 8, minWidth 44, height 28, padding 9/4, TramFront 13 */
+.rn-linebadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(5 * var(--dp));
+  height: calc(28 * var(--dp));
+  min-width: calc(44 * var(--dp));
+  padding: 0 calc(9 * var(--dp));
+  border-radius: calc(8 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  font-weight: 700;
+  color: #fff;
+}
+
+/* SavedPlacesRow: gap 10, karty 116 × 116 (aspectRatio 1), padding 12 */
+.rn-places {
+  display: flex;
+  gap: calc(10 * var(--dp));
+  padding: calc(4 * var(--dp)) 0;
+}
+
+.rn-place {
+  width: calc(116 * var(--dp));
+  height: calc(116 * var(--dp));
+  flex: none;
+  border-radius: calc(16 * var(--dp));
+  background: #1b2120;
+  padding: calc(12 * var(--dp));
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 calc(1 * var(--dp)) calc(3 * var(--dp)) rgba(0, 0, 0, 0.08);
+}
+
+/* icon: 40 × 40, radius full, secondaryContainer, marginBottom 8 */
+.rn-place-icon {
+  width: calc(40 * var(--dp));
+  height: calc(40 * var(--dp));
+  border-radius: 999px;
+  background: #334b46;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: calc(8 * var(--dp));
+}
+
+.rn-place-icon-edit {
+  background: #005047;
+}
+
+.rn-place b {
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
+}
+
+.rn-place i {
+  font-style: normal;
+  font-size: calc(12 * var(--dp));
+  line-height: calc(16 * var(--dp));
+  color: #bfc9c5;
+}
+
+/* ThumbBar: absolutny left/right 12, surfaceContainerHigh, radius full,
+   border 1 px outlineVariant, padding 4, minHeight 58 */
+.rn-thumb {
+  position: absolute;
+  left: calc(12 * var(--dp));
+  right: calc(12 * var(--dp));
+  display: flex;
+  align-items: stretch;
+  padding: calc(4 * var(--dp));
+  min-height: calc(58 * var(--dp));
+  border-radius: 999px;
+  border: calc(1 * var(--dp)) solid #3f4946;
+  background: #252b2a;
+  box-shadow: 0 calc(5 * var(--dp)) calc(12 * var(--dp)) rgba(0, 0, 0, 0.12);
+}
+
+/* ThumbBarItem horizontal: padding 6/12, minHeight 50, gap 8 */
+.rn-thumb-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--dp));
+  padding: calc(6 * var(--dp)) calc(12 * var(--dp));
+  min-height: calc(50 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #bfc9c5;
+}
+
+/* divider: width 1, marginVertical 12, outlineVariant opacity .5 */
+.rn-thumb-divider {
+  width: calc(1 * var(--dp));
+  align-self: center;
+  margin: calc(12 * var(--dp)) 0;
+  background: rgba(63, 73, 70, 0.5);
+}
+
+/* startItem: maxWidth 45%, padding 6/12, minHeight 50, gap 8, justify flex-end */
+.rn-thumb-start {
+  flex: 1;
+  min-width: 0;
+  max-width: 45%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(8 * var(--dp));
+  padding: calc(6 * var(--dp)) calc(12 * var(--dp));
+  min-height: calc(50 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #bfc9c5;
+}
+
+.rn-thumb-start span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ── Połączenie ────────────────────────────────────────── */
+.conn {
+  display: grid;
+  grid-template-columns: 0.95fr 1.05fr;
+  gap: 48px;
+  align-items: center;
+  padding: 40px 0 88px;
+}
+
+.conn-card {
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: 20px;
+  padding: 26px;
+  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+}
+
+.conn-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.conn-top b {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+
+.conn-dur {
+  background: var(--chip);
+  color: var(--chip-ink);
+  border-radius: 999px;
+  padding: 7px 15px;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.conn-time {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 15.5px;
+}
+
+.conn-line {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.conn-badge {
+  background: #d84315;
+  color: #fff;
+  font-weight: 800;
+  font-size: 16px;
+  border-radius: 10px;
+  padding: 7px 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.conn-head {
+  color: var(--muted);
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-copy h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  font-weight: 750;
+}
+
+.conn-copy p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 16.5px;
+  line-height: 1.6;
+  max-width: 46ch;
+}
+
+/* ── Sekcja kompasu ────────────────────────────────────────
+   Tekst po lewej, karta StopCompassCard po prawej. Wartości
+   przekopiowane ze StopCompassCard.tsx + src/theme/tokens.ts.
+   Karta jest tu w skali 1:1 (dp = px), bo nie siedzi w telefonie. */
+.compass {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+  padding: 8px 0 88px;
+}
+
+/* Wejście po przewinięciu: `animation-timeline: view()` uruchamia animację
+   dokładnie wtedy, gdy sekcja wjeżdża w kadr. Bez IntersectionObservera
+   i bez liczenia pozycji w JS. Przeglądarki bez scroll-driven animations
+   pokazują sekcję po prostu od razu (animate() = none). */
+@supports (animation-timeline: view()) {
+  .compass .cp-card {
+    animation: cp-card-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 42%;
+  }
+
+  .compass .compass-copy {
+    animation: cp-copy-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 55%;
+  }
+}
+
+@keyframes cp-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+}
+
+@keyframes cp-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+.compass-copy h2,
+.anchor-copy h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  font-weight: 750;
+}
+
+.compass-copy p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 16.5px;
+  line-height: 1.6;
+  max-width: 44ch;
+}
+
+.cp-card {
+  background: #252b2a;
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+}
+
+.cp-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.cp-header-icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  background: #334b46;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cp-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cp-header-text b {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e0e3e1;
+}
+
+.cp-header-text i {
+  font-style: normal;
+  font-size: 12px;
+  color: #bfc9c5;
+}
+
+.cp-stop {
+  background: #303635;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 4px;
+}
+
+.cp-badgerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-linebadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  min-width: 44px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: #e64a19;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  justify-content: center;
+}
+
+.cp-direction {
+  font-size: 12px;
+  color: #bfc9c5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-stopname {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #e0e3e1;
+}
+
+.cp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.cp-dial {
+  --dial: 120px;
+  position: relative;
+  width: var(--dial);
+  height: var(--dial);
+  flex: none;
+  border-radius: calc(var(--dial) / 2);
+  background: #303635;
+  border: 1.5px solid #3f4946;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cp-ring {
+  position: absolute;
+  width: 68px;
+  height: 68px;
+  border-radius: 34px;
+  border: 1px solid #3f4946;
+  opacity: 0.6;
+  z-index: 1;
+}
+
+.cp-cross {
+  position: absolute;
+  background: #3f4946;
+  opacity: 0.35;
+  z-index: 1;
+}
+
+.cp-cross-v {
+  width: 1px;
+  height: 100%;
+}
+
+.cp-cross-h {
+  height: 1px;
+  width: 100%;
+}
+
+/* Wskazówka goni kurs (jak animAngle w StopCompassCard), kołysze się
+   ±6° wokół kierunku do słupka, znacznik kręci się w drugą stronę,
+   żeby ikonka stała prosto. */
+/* Kolejność warstw w radarze (jak w StopCompassCard): belka pod znacznikiem
+   słupka, obie pod pulsującym punktem „ty". Bez jawnych z-indexów przeglądarka
+   układa je po DOM i belka ginie pod krzyżem.
+
+   `left: 50%` + `translateX(-50%)` jest tu obowiązkowe: bezwzględnie
+   pozycjonowany element bez `left` przyjmuje pozycję statyczną, a w kontenerze
+   flex to lewy krawędź, belka i badge lądowały na obwodzie zamiast na osi
+   (i badge wychodził pod zaokrąglenie). */
+.cp-pointer {
+  position: absolute;
+  width: var(--dial);
+  height: var(--dial);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  transform-origin: 50% 50%;
+  z-index: 2;
+  animation: cp-sway 5.2s ease-in-out infinite;
+}
+
+.cp-beam {
+  position: absolute;
+  left: 50%;
+  top: 26px;
+  width: 2.5px;
+  height: 34px;
+  margin-left: -1.25px;
+  border-radius: 2px;
+  opacity: 0.75;
+  z-index: 1;
+}
+
+.cp-target {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  border-radius: 16px;
+  border: 2px solid #111414;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  z-index: 2;
+}
+
+/* Kontr-obrót na ikonce, nie na całej plakietce: `transform` na rodzicu
+   nadpisałby jego wyśrodkowanie, a w RN kręci się sam `TargetIcon`. */
+.cp-target-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: cp-counter 5.2s ease-in-out infinite;
+}
+
+/* userPulse ma w RN zIndex 2: zawsze na wierzchu wskazówki. */
+.cp-pulse {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(0, 168, 132, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  animation: cp-pulse 3.4s ease-in-out infinite;
+}
+
+.cp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: #5cdbbe;
+}
+
+.cp-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.cp-guide {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5cdbbe;
+}
+
+.cp-distance {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #e0e3e1;
+}
+
+.cp-straight {
+  font-size: 12px;
+  color: #bfc9c5;
+}
+
+.cp-walk {
+  margin-top: 2px;
+  background: #334b46;
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #cde8e1;
+}
+
+.cp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.cp-btn {
+  flex: 1;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cp-btn-primary {
+  background: #5cdbbe;
+  color: #003831;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.cp-btn-secondary {
+  background: #334b46;
+  color: #cde8e1;
+}
+
+@keyframes cp-sway {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes cp-counter {
+  0%,
+  100% {
+    transform: rotate(6deg);
+  }
+  50% {
+    transform: rotate(-6deg);
+  }
+}
+
+@keyframes cp-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+}
+
+/* ── Sekcja kotwiczenia ────────────────────────────────────
+   Przycięty telefon po lewej, tekst po prawej. Wszystko w dp
+   (kanwa 412 × 915), więc te same wartości co w ekranie głównym. */
+.anchor {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+  padding: 8px 0 88px;
+}
+
+.anchor-phone {
+  display: flex;
+  justify-content: center;
+}
+
+/* Telefon wjeżdża dopiero po przewinięciu do sekcji. */
+@supports (animation-timeline: view()) {
+  .anchor .anchor-phone {
+    animation: an-phone-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 34%;
+  }
+
+  /* Dopiska kotwicy rozjaśnia się jak FadeInUp w aplikacji. */
+  .anchor .rt-anchor {
+    animation: an-anchor-in linear both;
+    animation-timeline: view();
+    animation-range: entry 12% entry 46%;
+  }
+
+  .anchor .rt-card {
+    animation: an-card-in linear both;
+    animation-timeline: view();
+    animation-range: entry 26% entry 60%;
+  }
+}
+
+.anchor-copy p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 16.5px;
+  line-height: 1.6;
+  max-width: 46ch;
+}
+
+@keyframes an-phone-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes an-anchor-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(10 * var(--dp)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes an-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(16 * var(--dp)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Ekran „Połączenia MPK” (app/routes/index.tsx) ────────
+   Wartości w dp, bo kanwa Pixela ma 412 dp szerokości. */
+.rt-topbar {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(10 * var(--dp));
+  padding: calc(8 * var(--dp)) calc(14 * var(--dp));
+}
+
+.rt-back,
+.rt-pin {
+  width: calc(40 * var(--dp));
+  height: calc(40 * var(--dp));
+  flex: none;
+  border-radius: 50%;
+  background: #252b2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rt-title {
+  flex: 1;
+  padding-top: calc(8 * var(--dp));
+  font-size: calc(16 * var(--dp));
+  line-height: calc(24 * var(--dp));
+  font-weight: 700;
+  color: #e0e3e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* routeHeader: minHeight 68, marginTop 4, marginBottom 6, padding 12/16 */
+.rt-routehead {
+  display: flex;
+  align-items: flex-start;
+  min-height: calc(68 * var(--dp));
+  margin: calc(4 * var(--dp)) calc(2 * var(--dp)) calc(6 * var(--dp));
+  padding: calc(12 * var(--dp)) calc(16 * var(--dp));
+}
+
+.rt-side {
+  flex-shrink: 1;
+  max-width: 42%;
+  padding-top: calc(9 * var(--dp));
+  min-width: 0;
+}
+
+.rt-side-grow {
+  flex: 1;
+  max-width: none;
+}
+
+.rt-text {
+  font-size: calc(20 * var(--dp));
+  line-height: calc(26 * var(--dp));
+  font-weight: 600;
+  color: #bfc9c5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rt-text-strong {
+  color: #e0e3e1;
+  font-weight: 700;
+}
+
+/* routeArrowBtn: 36 × 36, marginHorizontal 8, marginTop 4 */
+.rt-arrow {
+  width: calc(36 * var(--dp));
+  height: calc(36 * var(--dp));
+  flex: none;
+  margin: calc(4 * var(--dp)) calc(8 * var(--dp)) 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* anchorSub: gap 4, marginTop 4 */
+.rt-anchor {
+  display: flex;
+  align-items: center;
+  gap: calc(4 * var(--dp));
+  margin-top: calc(4 * var(--dp));
+  max-width: 100%;
+}
+
+.rt-anchor-text {
+  font-size: calc(12 * var(--dp));
+  font-weight: 600;
+  color: #5cdbbe;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rt-anchor-place {
+  font-size: calc(12 * var(--dp));
+  font-weight: 500;
+  color: #bfc9c5;
+  white-space: nowrap;
+}
+
+.rt-anchor-x {
+  width: calc(20 * var(--dp));
+  height: calc(20 * var(--dp));
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* countRow: gap 8, marginBottom 8, paddingHorizontal 4 */
+.rt-countrow {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--dp));
+  margin-bottom: calc(8 * var(--dp));
+  padding: 0 calc(18 * var(--dp));
+}
+
+.rt-count {
+  flex-shrink: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--dp));
+  font-size: calc(12 * var(--dp));
+  line-height: calc(16 * var(--dp));
+  color: #bfc9c5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* offlineChip: surfaceContainerHighest, radius full, padding 8/3 */
+.rt-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--dp));
+  background: #303635;
+  border-radius: 999px;
+  padding: calc(3 * var(--dp)) calc(8 * var(--dp));
+}
+
+.rt-chip-dot {
+  width: calc(7 * var(--dp));
+  height: calc(7 * var(--dp));
+  border-radius: 50%;
+  background: #ffb957;
+}
+
+.rt-chip {
+  font-size: calc(11 * var(--dp));
+  line-height: calc(14 * var(--dp));
+  font-weight: 700;
+  color: #bfc9c5;
+}
+
+/* Pierwsza karta listy: ConnectionCard: radius 16, padding 14, gap 10 */
+.rt-card {
+  margin: 0 calc(14 * var(--dp));
+  padding: calc(14 * var(--dp));
+  border-radius: calc(16 * var(--dp));
+  background: #1b2120;
+  display: flex;
+  flex-direction: column;
+  gap: calc(10 * var(--dp));
+  box-shadow: 0 calc(1 * var(--dp)) calc(3 * var(--dp)) rgba(0, 0, 0, 0.08);
+}
+
+.rt-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rt-card-top b {
+  font-size: calc(22 * var(--dp));
+  line-height: calc(28 * var(--dp));
+  font-weight: 700;
+  color: #e0e3e1;
+}
+
+.rt-card-dur {
+  background: #334b46;
+  color: #cde8e1;
+  border-radius: 999px;
+  padding: calc(5 * var(--dp)) calc(12 * var(--dp));
+  font-size: calc(12 * var(--dp));
+  font-weight: 600;
+}
+
+.rt-card-hours {
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  color: #bfc9c5;
+}
+
+.rt-card-legs {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--dp));
+  flex-wrap: nowrap;
+}
+
+.rt-walk {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(4 * var(--dp));
+  background: #252b2a;
+  border-radius: calc(8 * var(--dp));
+  padding: calc(3 * var(--dp)) calc(7 * var(--dp));
+  font-size: calc(11 * var(--dp));
+  font-weight: 600;
+  color: #bfc9c5;
+}
+
+.rt-line {
+  flex-shrink: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--dp));
+  font-size: calc(12 * var(--dp));
+  color: #bfc9c5;
+  min-width: 0;
+}
+
+/* LineBadge: radius 8, minWidth 44, height 28, padding 9/4 */
+.rt-line-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(44 * var(--dp));
+  height: calc(28 * var(--dp));
+  padding: 0 calc(9 * var(--dp));
+  border-radius: calc(8 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ── Powiadomienie Live Update ──────────────────────────────
+   Layout odwzorowuje szablon systemowy Android 16 dla
+   Notification.ProgressStyle (bez własnych RemoteViews, to warunek
+   Live Update). Elementy i kolejność są 1:1 z LiveUpdateFactory.kt:
+   ikona → tytuł → tekst → pasek z segmentami → dwa przyciski. */
+.live {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+  padding: 8px 0 88px;
+}
+
+@supports (animation-timeline: view()) {
+  .live .live-card {
+    animation: live-card-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 36%;
+  }
+
+  .live .live-copy {
+    animation: live-copy-in linear both;
+    animation-timeline: view();
+    animation-range: entry 4% entry 50%;
+  }
+}
+
+@keyframes live-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.live-card-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+/* Karta powiadomienia na ciemnym tle: jak w szufladzie Androida. */
+.live-card {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px 14px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, #1c1f22 0%, #14171a 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 24px 60px -30px rgba(0, 0, 0, 0.9);
+}
+
+/* Wiersz: ikona powiadomienia (ta sama co nagłówek strony) + treść. */
+.live-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.live-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.live-title {
+  font-size: 17px;
+  line-height: 23px;
+  font-weight: 500;
+  color: #e3e6ea;
+}
+
+.live-text {
+  font-size: 16px;
+  line-height: 22px;
+  color: #dfe3e8;
+}
+
+/* ProgressStyle: pasek z segmentami, punkt przesiadki, ikona pojazdu.
+   Odsuw boczny jest celowy: system nie przykleja paska do krawędzi karty. */
+.live-bar {
+  position: relative;
+  height: 20px;
+  margin: 6px 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.live-seg {
+  height: 8px;
+  border-radius: 4px;
+  flex: none;
+}
+
+/* addProgressPoint: punkt w kolorze akcentu linii. */
+.live-point {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 14px;
+  border-radius: 3px;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.live-start,
+.live-end {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  z-index: 3;
+}
+
+.live-start {
+  left: -2px;
+}
+
+.live-end {
+  right: -2px;
+}
+
+/* setProgressTrackerIcon: iconka pojazdu stoi na bieżącym postępie
+   (plan.progressPermille), więc przesuwa się razem z paskiem. */
+.live-tracker {
+  position: absolute;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px rgba(20, 23, 26, 0.9);
+  z-index: 4;
+  transition: left 0.25s linear;
+}
+
+.live-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Przyciski akcji (stop / route): obwódka, tekst jasny, wyższy i szerszy,
+   bo bez ikon to same etykiety. */
+.live-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 26px;
+  border-radius: 20px;
+  border: 1px solid rgba(196, 202, 214, 0.28);
+  font-size: 14px;
+  font-weight: 500;
+  color: #c4cad6;
+  white-space: nowrap;
+}
+
+.live-copy h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  font-weight: 750;
+}
+
+.live-copy p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 16.5px;
+  line-height: 1.6;
+  max-width: 44ch;
+}
+
+/* Animacja wejścia karty po przewinięciu jest wyżej, w bloku @supports. */
+
+@keyframes live-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Stopka ────────────────────────────────────────────── */
+.foot {
+  border-top: 1px solid var(--line-soft);
+  padding: 22px 0 30px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--faint);
+}
+
+.foot-motto {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.foot a {
+  margin-left: auto;
+  color: var(--muted);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.foot a:hover {
+  color: var(--ink);
+}
+
+/* ── Mobilnie ──────────────────────────────────────────── */
+/* Na wąskim ekranie sekcje idą jedna pod drugim i mają się PRZEMIENIAĆ:
+   tekst → demo → tekst → demo. Każda sekcja ma więc tekst pierwszy, a
+   telefon/karta drugi, inaczej demo i tekst sklejają się w pary
+   „demo, tekst, demo, tekst”. */
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 48px;
+    padding: 56px 0 64px;
+  }
+
+  .conn {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .compass,
+  .anchor,
+  .live {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  /* Kolejność: tekst najpierw, demo pod nim. Dotyczy też sekcji
+     „Połączenie", inaczej sekwencja wygląda T D | D T | T D… */
+  .conn-copy,
+  .compass-copy,
+  .anchor-copy,
+  .live-copy {
+    order: 1;
+  }
+
+  .conn-card,
+  .cp-card,
+  .anchor-phone,
+  .live-card-wrap {
+    order: 2;
+  }
+
+  /* Radar i dane obok siebie zostają, bo to czytelniejsze niż pod sobą. */
+  .cp-row {
+    gap: 12px;
+  }
+
+  /* Powiadomienie na wąskim ekranie: treść pod ikoną, pasek i akcje pod spodem. */
+  .live-card {
+    padding: 14px 16px 12px;
+  }
+
+  .live-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 0 18px;
+  }
+
+  .hero-brand {
+    gap: 12px;
+  }
+
+  /* Przycięty telefon schodzi do pełnej szerokości, żeby ekran pozostał
+     czytelny na wąskim viewportcie.
+     UWAGA: nadpisujemy `--pixel-w`, nie `width`. Z `--pixel-w` liczona jest
+     jednostka `--dp` (skala całej kanwy), więc nadpisanie samego `width`
+     rozjeżdżało skalowanie z szerokością obudowy i kanwa nie wypełniała
+     ekranu. Proporcje obudowy Pixel 8a: 458 × 958 dp. */
+  .anchor {
+    gap: 24px;
+  }
+
+  .anchor-phone .pixel {
+    --pixel-w: min(100%, calc((100dvh - 120px) * 458 / 958));
+  }
+
+  .cta {
+    flex: 1 1 100%;
+  }
+
+  .foot {
+    flex-wrap: wrap;
+  }
+
+  .cp-dial {
+    --dial: 104px;
+  }
+
+  .cp-distance {
+    font-size: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .hero,
+  .pixel-wrap,
+  .cp-pointer,
+  .cp-target,
+  .cp-pulse,
+  .anchor .anchor-phone,
+  .anchor .rt-anchor,
+  .anchor .rt-card,
+  .compass .cp-card,
+  .compass .compass-copy,
+  .live .live-card,
+  .live .live-copy {
+    animation: none;
+  }
+
+  .live-tracker {
+    transition: none;
+  }
+
+  .cta {
+    transition: none;
+  }
+}
