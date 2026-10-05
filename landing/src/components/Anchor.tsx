@@ -139,11 +139,7 @@ export function AnchorSection() {
         <p>
           Przypisz do miejsca jeden przystanek odjazdu. Gdy jesteś w jego
           okolicy, planer zakotwicza punkt startowy właśnie tam, zamiast liczyć
-          do najbliższego słupka w promieniu kilkuset metrów.
-        </p>
-        <p className="anchor-note">
-          Nazwa przystanku pochodzi z wyników wyszukiwarki w aplikacji.
-          Reszta tego widoku to realny interfejs ekranu „Połączenia MPK”.
+          do najbliższego przystanku w promieniu kilkuset metrów.
         </p>
       </div>
     </section>

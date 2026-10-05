@@ -94,9 +94,8 @@ export function CompassSection() {
       <div className="compass-copy">
         <h2>5 przystanków o tej samej nazwie?</h2>
         <p>
-          Kompas prowadzi do właściwego słupka, a pod nim wypisuje, ile
-          minut dojścia zostało. Nie musisz szukać przystanku o tej nazwie
-          na mapie.
+          Kompas prowadzi do właściwego przystanku, a pod nim wypisuje, ile
+          minut dojścia zostało. Nie musisz go szukać na mapie.
         </p>
       </div>
 

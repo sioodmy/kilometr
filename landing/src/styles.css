@@ -258,13 +258,21 @@ body {
 }
 
 /* Wariant przycięty: telefon ucięty w dolną stronę, bez dolnego bezelu.
-     Wysokość = górna ramka + pokazany kawałek ekranu. */
+     Wysokość = górna ramka + pokazany kawałek ekranu.
+
+     `background-size` na pełną wysokość obudowy (958 dp) + `position: top`
+     sprawia, że gradient aluminium jest liczony dla całego telefonu, a nie dla
+     uciętego pudełka. Bez tego jasny koniec gradientu (#7b8684) lądował
+     dokładnie na krawędzi cięcia i wyglądał jak biała obwódka. */
 .pixel--crop {
   height: calc((var(--crop-dp) + var(--bezel-top)) * var(--dp));
   aspect-ratio: auto;
   padding-bottom: 0;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
+  background-size: 100% calc(958 * var(--dp));
+  background-position: top center;
+  background-repeat: no-repeat;
   /* Obrączka z box-shadow rysowałaby się również na cięciu, więc w tym
      wariancie zastępuje ją ::after i to on ma tylko trzy boki. */
   box-shadow:
@@ -1202,12 +1210,6 @@ body {
   max-width: 46ch;
 }
 
-.anchor-note {
-  font-size: 13.5px !important;
-  color: var(--faint) !important;
-  line-height: 1.55 !important;
-}
-
 @keyframes an-phone-in {
   from {
     opacity: 0;
@@ -1671,12 +1673,6 @@ body {
   font-size: 16.5px;
   line-height: 1.6;
   max-width: 44ch;
-}
-
-.live-note {
-  font-size: 13.5px !important;
-  color: var(--faint) !important;
-  line-height: 1.55 !important;
 }
 
 /* Subtelne unoszenie powiadomienia, tylko na desktopie: na wąskim ekranie

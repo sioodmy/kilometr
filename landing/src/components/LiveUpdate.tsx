@@ -87,10 +87,6 @@ export function LiveUpdateSection() {
           licznik sam odlicza do przyjazdu, także wtedy, gdy aplikacja jest
           zamknięta.
         </p>
-        <p className="live-note">
-          Wygląd powiadomienia rysuje Android 16 (to warunek Live Update, więc
-          bez własnych widoków). Treść, segmenty i ikony są nasze.
-        </p>
       </div>
 
       <div className="live-card-wrap">
