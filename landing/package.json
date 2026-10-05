@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "clean": "node -e \"require('fs').rmSync('../docs/assets', { recursive: true, force: true })\"",
+    "prebuild": "npm run clean",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
