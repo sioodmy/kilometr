@@ -64,6 +64,38 @@ export const pl = {
   settings: {
     title: 'Ustawienia trasy',
     resetA11y: 'Przywróć domyślne',
+    notificationsSection: 'Powiadomienia i śledzenie',
+    notificationsFoot: 'Powiadomienia działają w buildzie deweloperskim. Expo Go ich nie obsługuje.',
+    backupTitle: 'Twoje dane',
+    backupHint:
+      'Zapisane miejsca, ostatnie przejazdy i ustawienia w jednym pliku. Wyeksportuj przed zmianą telefonu albo zrób kopię na wszelki wypadek.',
+    backupExcludeHint: 'Rozkład MPK, cache i dane o śledzeniu kursu pozostają na urządzeniu.',
+    backupExport: 'Eksportuj do pliku',
+    backupImport: 'Wczytaj z pliku',
+    backupExportA11y: 'Eksportuj swoje dane do pliku',
+    backupImportA11y: 'Wczytaj dane z pliku',
+    backupEmpty: 'Nie ma jeszcze nic do zapisania.',
+    backupCurrent: (places: number, routes: number, trips: number) =>
+      `${places === 1 ? 'miejsce' : isFew(places) ? `${places} miejsca` : `${places} miejsc`} • ` +
+      `${routes === 1 ? 'zapisana trasa' : isFew(routes) ? `${routes} zapisane trasy` : `${routes} zapisanych tras`} • ` +
+      `${trips === 1 ? 'przejazd' : isFew(trips) ? `${trips} przejazdy` : `${trips} przejazdów`}`,
+    backupExportDoneTitle: 'Gotowe',
+    backupExportDoneBody: (path: string) => `Plik zapisany w ${path}`,
+    backupExportFailTitle: 'Nie udało się zapisać pliku',
+    backupExportFailBody: (reason: string) => `${reason}. Sprawdź wolne miejsce i spróbuj ponownie.`,
+    backupExportFailFallback: 'Spróbuj ponownie za chwilę.',
+    backupImportConfirmTitle: 'Wczytać te dane?',
+    backupImportConfirmBody: (summary: string) =>
+      `${summary}\n\nZapisane miejsca i przejazdy zostaną scalone z obecnymi — nic nie zniknie. Ustawienia zostaną nadpisane.`,
+    backupImportAction: 'Wczytaj',
+    backupImportCancel: 'Anuluj',
+    backupImportDoneTitle: 'Dane wczytane',
+    backupImportDoneBody: (summary: string) => `Scalono: ${summary}`,
+    backupImportNothing: 'Ta kopia nie zawiera Twoich danych.',
+    backupFailNoFile: 'Nie znaleziono pliku.',
+    backupFailUnreadable: 'Nie udało się odczytać pliku.',
+    backupFailNotBackup: 'To nie jest kopia zapasowa Kilometr.',
+    backupFailSchemaTooNew: 'Ta kopia jest z nowszej wersji aplikacji.',
     dataTitle: 'Dane offline (MPK Wrocław)',
     dataHint: 'Pełny rozkład z Open Data Wrocław. Pobierany raz. Działa offline.',
     dataEmpty: 'Brak danych offline.',

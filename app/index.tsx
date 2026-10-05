@@ -17,6 +17,7 @@ import {
   subscribeDataStatus,
 } from '../src/services/dataManager';
 import { getSettingsSync } from '../src/services/settings';
+import { subscribeBackupApplied } from '../src/services/backup';
 import { loadCachedSmartDestinations, loadTripHistory, saveCachedSmartDestinations, type TripHistoryItem } from '../src/services/smartRanker';
 
 import {
@@ -655,7 +656,7 @@ export default function HomeScreen() {
     FavoritesService.smartFromOrigin(locTitle, currentCoords).then(applySmart);
   };
 
-  // Ostatnie połączenie świeże po powrocie (pull może odpalić nową trasę).
+// Ostatnie połączenie świeże po powrocie (pull może odpalić nową trasę).
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -667,6 +668,19 @@ export default function HomeScreen() {
       };
     }, [])
   );
+
+  // Wczytanie kopii zapasowej podmienia miejsca i historię w KV, ale `saved`
+  // i `smart` to useState — bez tego powiadomienia ekran pokazywałby stan
+  // sprzed importu aż do restartu aplikacji.
+  useEffect(() => subscribeBackupApplied(() => {
+    refreshPlaces();
+    // Ranking liczymy tylko przy znanej pozycji: `smartFromOrigin` i tak
+    // podpada pod DEFAULT_LOCATION, a „ostatnie miejsca" z innego miasta
+    // to kłamstwo.
+    if (currentCoords) {
+      FavoritesService.smartFromOrigin(locTitle, currentCoords).then(applySmart);
+    }
+  }), [currentCoords, locTitle, applySmart]);
 
   return (
     <View style={styles.root} {...pullResponder.panHandlers}>
