@@ -94,6 +94,13 @@ export interface SavedPlace {
   anchorStopLon?: number;
 }
 
+/** Połączenie przypięte przez użytkownika (trzymane w kv, nie w cache). */
+export interface SavedRoute {
+  id: string;
+  savedAt: number;
+  connection: Connection;
+}
+
 export interface SmartDestination extends LatLon {
   id: string;
   title: string;

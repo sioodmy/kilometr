@@ -66,6 +66,38 @@ export const uk: Strings = {
   settings: {
     title: 'Налаштування маршруту',
     resetA11y: 'Відновити типові',
+    notificationsSection: 'Сповіщення та відстеження',
+    notificationsFoot: 'Сповіщення працюють у dev-збірці. Expo Go їх не підтримує.',
+    backupTitle: 'Ваші дані',
+    backupHint:
+      'Збережені місця, останні поїздки та налаштування в одному файлі. Експортуйте перед зміною телефона — або просто для надійності.',
+    backupExcludeHint: 'Розклад МПК, кеш і дані відстеження курсу залишаються на пристрої.',
+    backupExport: 'Експорт у файл',
+    backupImport: 'Імпорт із файлу',
+    backupExportA11y: 'Експортувати дані у файл',
+    backupImportA11y: 'Імпортувати дані з файлу',
+    backupEmpty: 'Поки що немає чого зберігати.',
+    backupCurrent: (places: number, routes: number, trips: number) =>
+      `${places} ${places === 1 ? 'місце' : isFew(places) ? `${places} місця` : `${places} місць`} • ` +
+      `${routes} ${routes === 1 ? 'збережена траса' : isFew(routes) ? `${routes} збережені траси` : `${routes} збережених трас`} • ` +
+      `${trips} ${trips === 1 ? 'поїздка' : isFew(trips) ? `${trips} поїздки` : `${trips} поїздок`}`,
+    backupExportDoneTitle: 'Готово',
+    backupExportDoneBody: (path: string) => `Файл збережено в ${path}`,
+    backupExportFailTitle: 'Не вдалося зберегти файл',
+    backupExportFailBody: (reason: string) => `${reason}. Перевірте вільне місце та спробуйте ще раз.`,
+    backupExportFailFallback: 'Спробуйте ще раз за хвилину.',
+    backupImportConfirmTitle: 'Імпортувати ці дані?',
+    backupImportConfirmBody: (summary: string) =>
+      `${summary}\n\nЗбережені місця та поїздки буде об’єднано з наявними — нічого не зникне. Налаштування буде перезаписано.`,
+    backupImportAction: 'Імпортувати',
+    backupImportCancel: 'Скасувати',
+    backupImportDoneTitle: 'Дані імпортовано',
+    backupImportDoneBody: (summary: string) => `Об’єднано: ${summary}`,
+    backupImportNothing: 'Ця копія не містить ваших даних.',
+    backupFailNoFile: 'Файл не знайдено.',
+    backupFailUnreadable: 'Не вдалося прочитати файл.',
+    backupFailNotBackup: 'Це не копія Kilometr.',
+    backupFailSchemaTooNew: 'Ця копія з новішої версії застосунку.',
     dataTitle: 'Офлайн-дані (MPK Wrocław)',
     dataHint: 'Повний розклад з Open Data Wrocław. Завантажується раз. Працює офлайн.',
     dataEmpty: 'Немає офлайн-даних.',

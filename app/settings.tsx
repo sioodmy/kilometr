@@ -23,6 +23,7 @@ import {
 } from '../src/services/dataManager';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
+import { BackupCard } from '../src/components/BackupCard';
 
 function dataStatusLabel(status: DataStatus): string {
   const t = tr().settings;
@@ -297,13 +298,18 @@ export default function SettingsScreen() {
         </Text>
 
         <View style={styles.sectionLabel}>
-          <Text style={styles.sectionLabelText}>Powiadomienia i śledzenie</Text>
+          <Text style={styles.sectionLabelText}>{s.settings.notificationsSection}</Text>
         </View>
         <NotificationPrefsCard />
 
         <Text style={styles.foot}>
-          Powiadomienia działają w buildzie deweloperskim. Expo Go ich nie obsługuje.
+          {s.settings.notificationsFoot}
         </Text>
+
+        <View style={styles.sectionLabel}>
+          <Text style={styles.sectionLabelText}>{s.settings.backupTitle}</Text>
+        </View>
+        <BackupCard />
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
