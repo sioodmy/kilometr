@@ -12,6 +12,8 @@ import {
   TramFront,
 } from 'lucide-react';
 import { PixelPhone } from './components/Phone';
+import { CompassSection } from './components/Compass';
+import { AnchorSection } from './components/Anchor';
 import {
   APK_FALLBACK,
   APK_FILE,
@@ -71,8 +73,8 @@ export default function App() {
         </a>
         <nav className="nav-links" aria-label="Nawigacja">
           <a href="#polaczenie">Połączenie</a>
+          <a href="#kompas">Kompas</a>
           <a href="#offline">Offline</a>
-          <a href="#pobierz">Pobierz</a>
         </nav>
         <a
           className="nav-gh"
@@ -137,6 +139,10 @@ export default function App() {
           </div>
         </section>
 
+        <CompassSection />
+
+        <AnchorSection />
+
         <section className="bento" id="offline">
           <h2>Cały rozkład w kieszeni.</h2>
           <div className="bento-grid">
@@ -178,44 +184,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="steps" id="pobierz">
-          <h2>Na telefonie w trzy minuty.</h2>
-          <ol>
-            <li>
-              <span className="step-n">1</span>
-              <div>
-                <b>Pobierz APK</b>
-                <p>
-                  Przyciskiem powyżej albo jednym tapnięciem
-                  przez Obtainium — aktualizacje same Cię znajdą.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span className="step-n">2</span>
-              <div>
-                <b>Zezwól na instalację</b>
-                <p>
-                  Android zapyta o instalowanie z tego źródła.
-                  To normalne poza Sklepem Play — plik jest
-                  z oficjalnego kanału wydań.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span className="step-n">3</span>
-              <div>
-                <b>Pobierz rozkład</b>
-                <p>
-                  Za pierwszym razem aplikacja dociągnie rozkład
-                  Wrocławia. Raz, potem już tylko jeździsz.
-                </p>
-              </div>
-            </li>
-          </ol>
-          <DownloadButtons apkHref={apkHref} />
-        </section>
-      </main>
+        </main>
 
       <footer className="foot">
         <span>Kilometr</span>

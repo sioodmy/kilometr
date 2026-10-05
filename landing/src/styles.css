@@ -233,12 +233,23 @@ body {
   pointer-events: none;
 }
 
+/* Telefon nigdy nie może wypchnąć CTA poza pierwszy ekran: szerokość
+   jest dodatkowo ograniczona wysokością viewportu (nav 68 + paddingi
+   hero 56/64 zostawione w rezerwie 188 px). */
 .pixel {
+  --bezel: 11px;
+  --pixel-w: min(306px, 74vw, calc((100dvh - 188px) * 412 / 937));
+  /* 1 dp = szerokość ekranu / 412. Dzięki temu cały mock skaluje się czystym
+     CSS: wszystkie wartości to calc(N * --dp), a do obudowy nie wchodzi ani
+     transform, ani pomiar w JS (oba psuły się przy resize). */
+  --dp: calc((var(--pixel-w) - 2 * var(--bezel)) / 412);
   position: relative;
-  width: min(300px, 72vw);
-  aspect-ratio: 9 / 19.2;
-  border-radius: 52px;
-  padding: 11px;
+  width: var(--pixel-w);
+  padding: var(--bezel);
+  /* Promienie w dp, nie w px — przy mniejszym telefonie stałe 52 px zjadało
+     narożniki i ucinało pasek stanu. 44 dp to realny zaokrąglenie obudowy
+     Pixela 8 (przeliczone z 1080 px na 412 dp). */
+  border-radius: calc(44 * var(--dp));
   background: linear-gradient(145deg, #4a5150 0%, #232827 18%, #101415 55%, #2b3130 100%);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.14),
@@ -246,285 +257,394 @@ body {
     0 0 90px -30px rgba(92, 219, 190, 0.35);
 }
 
+/* Wariant przycięty: telefon ucięty w dolną stronę, bez dolnego bezela. */
+.pixel--crop {
+  height: calc(var(--crop-dp) * var(--dp) + 2 * var(--bezel));
+  padding-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.pixel--crop .pixel-screen {
+  aspect-ratio: auto;
+  height: calc(var(--crop-dp) * var(--dp));
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 .pixel-btn {
   position: absolute;
   background: linear-gradient(90deg, #3a4040, #191d1d);
-  border-radius: 3px;
+  border-radius: calc(3 * var(--dp));
 }
 
 .pixel-btn-power {
-  right: -3px;
-  top: 190px;
-  width: 3px;
-  height: 64px;
+  right: calc(-3 * var(--dp));
+  top: 24%;
+  width: calc(3 * var(--dp));
+  height: 9%;
 }
 
 .pixel-btn-vol {
-  left: -3px;
-  top: 150px;
-  width: 3px;
-  height: 104px;
+  left: calc(-3 * var(--dp));
+  top: 19%;
+  width: calc(3 * var(--dp));
+  height: 15%;
 }
 
 .pixel-screen {
   position: relative;
   width: 100%;
-  height: 100%;
-  border-radius: 42px;
+  /* Proporcja 1:1 z kanwą 412 × 915 dp — inaczej kanwa nie wypełnia
+     ekranu i pod gestowym paskiem zostaje czarny pas. */
+  aspect-ratio: 412 / 915;
+  /* Zaokrąglenie ekranu mniejsze niż obudowy i mniejsze niż narożnik, pod
+     który wchodzi pasek stanu — inaczej ikony z prawej są ucinane. */
+  border-radius: calc(38 * var(--dp));
   overflow: hidden;
   background: #111414;
 }
 
 .pixel-camera {
   position: absolute;
-  top: 12px;
+  top: calc(19 * var(--dp));
   left: 50%;
   transform: translateX(-50%);
-  width: 13px;
-  height: 13px;
+  width: calc(13 * var(--dp));
+  height: calc(13 * var(--dp));
   border-radius: 50%;
   background: #000;
   box-shadow: inset 0 0 3px 1px rgba(70, 110, 140, 0.9);
   z-index: 3;
 }
 
-.pixel-caption {
-  margin-top: 16px;
-  font-size: 12.5px;
-  color: var(--faint);
-}
-
-/* ── Mock ekranu głównego ──────────────────────────────── */
-.mock {
-  height: 100%;
-  padding: 38px 14px 12px;
-  display: flex;
-  flex-direction: column;
-  font-size: 12px;
+/* ── Mock ekranu głównego ────────────────────────────────────────────────
+   Kanonia 412 × 915 dp (Pixel 8). Każda wartość poniżej jest skopiowana
+   z React Native: src/theme/tokens.ts oraz stylów w app/index.tsx i
+   src/components/*.tsx. Jednostka dp jest liczona w CSS (--dp na .pixel),
+   więc mock ma te same proporcje co telefon, a całość skaluje się bez
+   transformów i bez pomiarów w JS. */
+.rn-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(412 * var(--dp));
+  height: calc(915 * var(--dp));
+  font-family: Roboto, "Noto Sans", system-ui, sans-serif;
+  font-size: calc(16 * var(--dp));
   color: #e0e3e1;
+  background: #111414;
+  -webkit-font-smoothing: antialiased;
 }
 
-.mock-status {
+/* Systemowy pasek stanu — poza aplikacją (nie jest częścią mocka). */
+.rn-status {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(26 * var(--dp));
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding: 0 8px;
+  /* Wystarczający odsuw od krawędzi, żeby godzina i ikony nie wchodziły pod
+     zaokrąglony narożnik ekranu (zwłaszcza ikony po prawej). */
+  padding: 0 calc(28 * var(--dp)) 0 calc(28 * var(--dp));
   color: #e0e3e1;
 }
 
-.mock-time {
-  font-size: 12px;
+.rn-status-time {
+  font-size: calc(14 * var(--dp));
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
-.mock-sicons {
+.rn-status-icons {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: calc(6 * var(--dp));
 }
 
-.mock-top {
-  display: flex;
-  gap: 7px;
-  margin-top: 12px;
-}
-
-.mock-origin {
-  flex: 1;
+/* Gestowy pasek nawigacji Androida — też poza aplikacją. */
+.rn-nav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(22 * var(--dp));
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: #334b46;
-  color: #cde8e1;
-  border-radius: 999px;
-  padding: 9px 12px;
-  font-size: 12.5px;
-  font-weight: 600;
-  min-width: 0;
+  justify-content: center;
 }
 
-.mock-origin span {
+.rn-nav-pill {
+  width: calc(104 * var(--dp));
+  height: calc(4 * var(--dp));
+  border-radius: calc(2 * var(--dp));
+  background: rgba(224, 227, 225, 0.85);
+}
+
+/* styles.body: paddingHorizontal 16, paddingTop 6 (app/index.tsx) */
+.rn-app {
+  position: absolute;
+  left: 0;
+  right: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: calc(6 * var(--dp)) calc(16 * var(--dp)) 0;
 }
 
-.mock-ibtn {
-  width: 34px;
-  height: 34px;
-  flex: none;
-  border-radius: 50%;
+/* topBar: height 44, gap 8 */
+.rn-topbar {
+  height: calc(44 * var(--dp));
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--dp));
+}
+
+/* type.headlineSmall 24 + fontWeight 700 */
+.rn-h1 {
+  flex: 1;
+  font-size: calc(24 * var(--dp));
+  line-height: calc(30 * var(--dp));
+  font-weight: 700;
+  letter-spacing: calc(-0.2 * var(--dp));
+  color: #e0e3e1;
+}
+
+.rn-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--dp));
+}
+
+/* iconBtn: 40 × 40, radius full, surfaceContainerHigh */
+.rn-iconbtn {
+  width: calc(40 * var(--dp));
+  height: calc(40 * var(--dp));
+  border-radius: 999px;
   background: #252b2a;
-  color: #bfc9c5;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.mock-h1 {
-  font-size: 21px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  margin: 14px 2px 0;
+.rn-gap {
+  height: calc(12 * var(--dp));
 }
 
-.mock-sect {
-  margin: 14px 2px 8px;
-  font-size: 13.5px;
-  font-weight: 600;
+.rn-gap-lg {
+  height: calc(20 * var(--dp));
 }
 
-.mock-recent {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #5cdbbe;
-}
-
-.mock-saved {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.mock-place {
-  background: #1b2120;
-  border-radius: 16px;
-  padding: 12px;
+/* SmartHistoryList: kontener gap 8 */
+.rn-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: calc(8 * var(--dp));
 }
 
-.mock-place b {
-  font-size: 13px;
-  margin-top: 8px;
-}
-
-.mock-place i {
-  font-style: normal;
-  font-size: 11px;
-  color: #bfc9c5;
-}
-
-.mock-add {
-  border: 1.5px dashed #3f4946;
-  background: transparent;
-}
-
-.mock-pic {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: #334b46;
-  color: #7df8de;
+/* header: gap 8, marginTop 4, marginBottom 2, type.titleSmall */
+.rn-list-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: calc(8 * var(--dp));
+  margin-top: calc(4 * var(--dp));
+  margin-bottom: calc(2 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  line-height: calc(17 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
 }
 
-.mock-list {
+/* card: surfaceContainer, radius 16, padding 10/14, minHeight 72, gap 14 */
+.rn-row {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mock-row {
+  align-items: center;
+  gap: calc(14 * var(--dp));
+  min-height: calc(72 * var(--dp));
+  padding: calc(10 * var(--dp)) calc(14 * var(--dp));
+  border-radius: calc(16 * var(--dp));
   background: #1b2120;
-  border-radius: 16px;
-  padding: 11px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  box-shadow: 0 calc(1 * var(--dp)) calc(3 * var(--dp)) rgba(0, 0, 0, 0.08);
 }
 
-.mock-ric {
-  width: 32px;
-  height: 32px;
+/* icon: 42 × 42 — dla kind 'history' bg surfaceContainerHighest */
+.rn-row-icon {
+  width: calc(42 * var(--dp));
+  height: calc(42 * var(--dp));
   flex: none;
-  border-radius: 50%;
-  background: #334b46;
-  color: #cde8e1;
+  border-radius: 999px;
+  background: #303635;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.mock-rmain {
+.rn-row-mid {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  gap: calc(2 * var(--dp));
 }
 
-.mock-rmain b {
-  font-size: 12.5px;
+/* type.bodyLarge 16 / type.bodyMedium 14 */
+.rn-row-mid b {
+  font-size: calc(16 * var(--dp));
+  line-height: calc(21 * var(--dp));
+  font-weight: 400;
+  color: #e0e3e1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.mock-rmain i {
+.rn-row-mid i {
   font-style: normal;
-  font-size: 11px;
+  font-size: calc(14 * var(--dp));
+  line-height: calc(19 * var(--dp));
   color: #bfc9c5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.mock-reta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+/* Prawa kolumna: badgeSlot 28 px nad „za x min” (titleSmall, lineHeight 20) */
+.rn-row-badge {
+  height: calc(28 * var(--dp));
   flex: none;
 }
 
-.mock-reta b {
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
+.rn-row-depart {
+  flex: none;
+  min-width: calc(64 * var(--dp));
+  text-align: center;
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
 }
 
-.mock-reta i {
+/* section: type.titleMedium + marginBottom 10 */
+.rn-section {
+  font-size: calc(16 * var(--dp));
+  line-height: calc(24 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
+  margin-bottom: calc(10 * var(--dp));
+}
+
+/* SavedPlacesRow: gap 10, karty 116 × 116 (aspectRatio 1), padding 12 */
+.rn-places {
+  display: flex;
+  gap: calc(10 * var(--dp));
+  padding: calc(4 * var(--dp)) 0;
+}
+
+.rn-place {
+  width: calc(116 * var(--dp));
+  height: calc(116 * var(--dp));
+  flex: none;
+  border-radius: calc(16 * var(--dp));
+  background: #1b2120;
+  padding: calc(12 * var(--dp));
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 calc(1 * var(--dp)) calc(3 * var(--dp)) rgba(0, 0, 0, 0.08);
+}
+
+/* icon: 40 × 40, radius full, secondaryContainer, marginBottom 8 */
+.rn-place-icon {
+  width: calc(40 * var(--dp));
+  height: calc(40 * var(--dp));
+  border-radius: 999px;
+  background: #334b46;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: calc(8 * var(--dp));
+}
+
+.rn-place-icon-edit {
+  background: #005047;
+}
+
+.rn-place b {
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
+}
+
+.rn-place i {
   font-style: normal;
-  font-size: 10.5px;
+  font-size: calc(12 * var(--dp));
+  line-height: calc(16 * var(--dp));
   color: #bfc9c5;
 }
 
-.mock-thumb {
-  margin-top: auto;
-  background: #1b2120;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  padding: 6px;
+/* ThumbBar: absolutny left/right 12, surfaceContainerHigh, radius full,
+   border 1 px outlineVariant, padding 4, minHeight 58 */
+.rn-thumb {
+  position: absolute;
+  left: calc(12 * var(--dp));
+  right: calc(12 * var(--dp));
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: stretch;
+  padding: calc(4 * var(--dp));
+  min-height: calc(58 * var(--dp));
+  border-radius: 999px;
+  border: calc(1 * var(--dp)) solid #3f4946;
+  background: #252b2a;
+  box-shadow: 0 calc(5 * var(--dp)) calc(12 * var(--dp)) rgba(0, 0, 0, 0.12);
 }
 
-.mock-chip {
-  background: var(--chip);
-  color: var(--chip-ink);
-  border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mock-ask {
+/* ThumbBarItem horizontal: padding 6/12, minHeight 50, gap 8 */
+.rn-thumb-search {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #7df8de;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 0 10px;
+  gap: calc(8 * var(--dp));
+  padding: calc(6 * var(--dp)) calc(12 * var(--dp));
+  min-height: calc(50 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #bfc9c5;
+}
+
+/* divider: width 1, marginVertical 12, outlineVariant opacity .5 */
+.rn-thumb-divider {
+  width: calc(1 * var(--dp));
+  align-self: center;
+  margin: calc(12 * var(--dp)) 0;
+  background: rgba(63, 73, 70, 0.5);
+}
+
+/* startItem: maxWidth 45%, padding 6/12, minHeight 50, gap 8, justify flex-end */
+.rn-thumb-start {
+  flex: 1;
+  min-width: 0;
+  max-width: 45%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(8 * var(--dp));
+  padding: calc(6 * var(--dp)) calc(12 * var(--dp));
+  min-height: calc(50 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #bfc9c5;
+}
+
+.rn-thumb-start span {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
-
 /* ── Połączenie ────────────────────────────────────────── */
 .conn {
   display: grid;
@@ -598,8 +718,7 @@ body {
 }
 
 .conn-copy h2,
-.bento h2,
-.steps h2 {
+.bento h2 {
   font-size: clamp(28px, 3.4vw, 40px);
   letter-spacing: -0.025em;
   line-height: 1.05;
@@ -674,57 +793,579 @@ body {
   font-weight: 600;
   color: var(--muted);
 }
-
-/* ── Kroki ─────────────────────────────────────────────── */
-.steps {
+/* ── Sekcja kompasu ────────────────────────────────────────
+   Tekst po lewej, karta StopCompassCard po prawej. Wartości
+   przekopiowane ze StopCompassCard.tsx + src/theme/tokens.ts.
+   Karta jest tu w skali 1:1 (dp = px), bo nie siedzi w telefonie. */
+.compass {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: center;
   padding: 8px 0 88px;
-  max-width: 720px;
 }
 
-.steps ol {
-  list-style: none;
-  margin-top: 26px;
-  border-top: 1px solid var(--line);
+/* Wejście po przewinięciu: `animation-timeline: view()` uruchamia animację
+   dokładnie wtedy, gdy sekcja wjeżdża w kadr. Bez IntersectionObservera
+   i bez liczenia pozycji w JS. Przeglądarki bez scroll-driven animations
+   pokazują sekcję po prostu od razu (animate() = none). */
+@supports (animation-timeline: view()) {
+  .compass .cp-card {
+    animation: cp-card-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 42%;
+  }
+
+  .compass .compass-copy {
+    animation: cp-copy-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 55%;
+  }
 }
 
-.steps li {
+@keyframes cp-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+}
+
+@keyframes cp-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+.compass-copy h2,
+.anchor-copy h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  font-weight: 750;
+}
+
+.compass-copy p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 16.5px;
+  line-height: 1.6;
+  max-width: 44ch;
+}
+
+.cp-card {
+  background: #252b2a;
+  border-radius: 18px;
+  padding: 16px;
   display: flex;
-  gap: 18px;
-  padding: 20px 4px;
-  border-bottom: 1px solid var(--line);
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
 }
 
-.step-n {
+.cp-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.cp-header-icon {
+  width: 36px;
+  height: 36px;
   flex: none;
-  width: 34px;
-  height: 34px;
   border-radius: 50%;
-  background: var(--chip);
-  color: var(--chip-ink);
-  font-weight: 800;
-  font-size: 15px;
+  background: #334b46;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-variant-numeric: tabular-nums;
 }
 
-.steps li b {
-  font-size: 16.5px;
+.cp-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.steps li p {
-  margin-top: 5px;
+.cp-header-text b {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e0e3e1;
+}
+
+.cp-header-text i {
+  font-style: normal;
+  font-size: 12px;
+  color: #bfc9c5;
+}
+
+.cp-stop {
+  background: #303635;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 4px;
+}
+
+.cp-badgerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-linebadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  min-width: 44px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: #e64a19;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  justify-content: center;
+}
+
+.cp-direction {
+  font-size: 12px;
+  color: #bfc9c5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-stopname {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #e0e3e1;
+}
+
+.cp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.cp-dial {
+  --dial: 120px;
+  position: relative;
+  width: var(--dial);
+  height: var(--dial);
+  flex: none;
+  border-radius: calc(var(--dial) / 2);
+  background: #303635;
+  border: 1.5px solid #3f4946;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cp-ring {
+  position: absolute;
+  width: 68px;
+  height: 68px;
+  border-radius: 34px;
+  border: 1px solid #3f4946;
+  opacity: 0.6;
+}
+
+.cp-cross {
+  position: absolute;
+  background: #3f4946;
+  opacity: 0.35;
+}
+
+.cp-cross-v {
+  width: 1px;
+  height: 100%;
+}
+
+.cp-cross-h {
+  height: 1px;
+  width: 100%;
+}
+
+/* Wskazówka goni kurs (jak animAngle w StopCompassCard) — kołysze się
+   ±6° wokół kierunku do słupka, znacznik kręci się w drugą stronę,
+   żeby ikonka stała prosto. */
+.cp-pointer {
+  position: absolute;
+  width: var(--dial);
+  height: var(--dial);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  transform-origin: 50% 50%;
+  animation: cp-sway 5.2s ease-in-out infinite;
+}
+
+.cp-beam {
+  position: absolute;
+  top: 26px;
+  width: 2.5px;
+  height: 34px;
+  border-radius: 2px;
+  opacity: 0.75;
+}
+
+.cp-target {
+  position: absolute;
+  top: 4px;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  border: 2px solid #111414;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  animation: cp-counter 5.2s ease-in-out infinite;
+}
+
+.cp-pulse {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(0, 168, 132, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: cp-pulse 3.4s ease-in-out infinite;
+}
+
+.cp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: #5cdbbe;
+}
+
+.cp-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.cp-guide {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5cdbbe;
+}
+
+.cp-distance {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #e0e3e1;
+}
+
+.cp-straight {
+  font-size: 12px;
+  color: #bfc9c5;
+}
+
+.cp-walk {
+  margin-top: 2px;
+  background: #334b46;
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #cde8e1;
+}
+
+.cp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.cp-btn {
+  flex: 1;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cp-btn-primary {
+  background: #5cdbbe;
+  color: #003831;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.cp-btn-secondary {
+  background: #334b46;
+  color: #cde8e1;
+}
+
+@keyframes cp-sway {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes cp-counter {
+  0%,
+  100% {
+    transform: rotate(6deg);
+  }
+  50% {
+    transform: rotate(-6deg);
+  }
+}
+
+@keyframes cp-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+}
+
+/* ── Sekcja kotwiczenia ────────────────────────────────────
+   Przycięty telefon po lewej, tekst po prawej. Wszystko w dp
+   (kanwa 412 × 915), więc te same wartości co w ekranie głównym. */
+.anchor {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+  padding: 8px 0 88px;
+}
+
+.anchor-phone {
+  display: flex;
+  justify-content: center;
+}
+
+/* Arkusz: surfaceContainer, promień extraLarge 28, uchwyt 44 px. */
+.an-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: #1b2120;
+  border-top-left-radius: calc(28 * var(--dp));
+  border-top-right-radius: calc(28 * var(--dp));
+  padding: calc(4 * var(--dp)) calc(16 * var(--dp)) 0;
+  box-shadow: 0 calc(5 * var(--dp)) calc(12 * var(--dp)) rgba(0, 0, 0, 0.12);
+}
+
+/* Arkusz wjeżdża z dołu po przewinięciu (jak BottomSheet). */
+@supports (animation-timeline: view()) {
+  .anchor .an-sheet {
+    animation: an-sheet-in linear both;
+    animation-timeline: view();
+    animation-range: entry 8% entry 50%;
+  }
+
+  .anchor .anchor-phone {
+    animation: an-phone-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 38%;
+  }
+
+  /* Wiersze kaskadowo, jak SlideIn w SmartHistoryList. */
+  .anchor .an-row {
+    animation: an-row-in linear both;
+    animation-timeline: view();
+    animation-range: entry calc(22% + var(--i) * 9%) entry calc(52% + var(--i) * 9%);
+  }
+}
+
+.an-handle {
+  display: block;
+  width: calc(44 * var(--dp));
+  height: calc(4 * var(--dp));
+  margin: calc(10 * var(--dp)) auto calc(10 * var(--dp));
+  border-radius: 2px;
+  background: #3f4946;
+}
+
+/* header: alignItems flex-start, marginBottom 12 */
+.an-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: calc(12 * var(--dp));
+}
+
+.an-backbtn,
+.an-closebtn {
+  width: calc(36 * var(--dp));
+  height: calc(36 * var(--dp));
+  flex: none;
+  border-radius: 50%;
+  background: #252b2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.an-backbtn {
+  margin-right: calc(6 * var(--dp));
+}
+
+.an-header-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--dp));
+}
+
+.an-header-text b {
+  font-size: calc(22 * var(--dp));
+  line-height: calc(28 * var(--dp));
+  font-weight: 600;
+  color: #e0e3e1;
+}
+
+.an-header-text i {
+  font-style: normal;
+  font-size: calc(12 * var(--dp));
+  line-height: calc(16 * var(--dp));
+  color: #bfc9c5;
+}
+
+/* searchBox: height 48, radius 16, border 1 px outlineVariant */
+.an-search {
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--dp));
+  height: calc(48 * var(--dp));
+  padding: 0 calc(14 * var(--dp));
+  border-radius: calc(16 * var(--dp));
+  background: #252b2a;
+  border: calc(1 * var(--dp)) solid #3f4946;
+  font-size: calc(14 * var(--dp));
+  color: #bfc9c5;
+}
+
+/* sectionHint: labelSmall, marginTop 4, marginBottom 10 */
+.an-hint {
+  margin-top: calc(4 * var(--dp));
+  margin-bottom: calc(10 * var(--dp));
+  font-size: calc(11 * var(--dp));
+  line-height: calc(15 * var(--dp));
+  color: #bfc9c5;
+}
+
+/* nearestStopRow: paddingVertical 10, hairline pod spodem */
+.an-row {
+  display: flex;
+  align-items: center;
+  gap: calc(12 * var(--dp));
+  padding: calc(10 * var(--dp)) 0;
+  border-bottom: 1px solid rgba(63, 73, 70, 0.5);
+}
+
+.an-row-icon {
+  width: calc(36 * var(--dp));
+  height: calc(36 * var(--dp));
+  flex: none;
+  border-radius: 50%;
+  background: #334b46;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.an-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--dp));
+}
+
+.an-row-text b {
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  font-weight: 500;
+  color: #e0e3e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.an-row-text i {
+  font-style: normal;
+  font-size: calc(12 * var(--dp));
+  line-height: calc(16 * var(--dp));
+  color: #bfc9c5;
+}
+
+/* selectPill: primaryContainer, radius full */
+.an-pill {
+  flex: none;
+  background: #005047;
+  border-radius: 999px;
+  padding: calc(4 * var(--dp)) calc(10 * var(--dp));
+  font-size: calc(11 * var(--dp));
+  font-weight: 600;
+  color: #7df8de;
+}
+
+.anchor-copy p {
+  margin-top: 14px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 16.5px;
   line-height: 1.6;
+  max-width: 46ch;
 }
 
-.steps .cta-row {
-  margin-top: 28px;
+.anchor-note {
+  font-size: 13.5px !important;
+  color: var(--faint) !important;
+  line-height: 1.55 !important;
 }
 
-/* ── Stopka ────────────────────────────────────────────── */
+@keyframes an-phone-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes an-sheet-in {
+  from {
+    transform: translateY(calc(60 * var(--dp)));
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes an-row-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}/* ── Stopka ────────────────────────────────────────────── */
 .foot {
   border-top: 1px solid var(--line-soft);
   padding: 22px 0 30px;
@@ -769,6 +1410,28 @@ body {
   .bento-grid {
     grid-template-columns: 1fr;
   }
+
+  /* Na wąskim ekranie telefon i tekst idą jedna pod drugim; przycięty
+     telefon zostaje, bo to nadal najczytelniejsza wersja tej sekcji. */
+  .compass,
+  .anchor {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .anchor {
+    /* Telefon pierwszy, potem tekst — czytamy od góry. */
+    order: 0;
+  }
+
+  .anchor-copy {
+    order: 1;
+  }
+
+  /* Radar i dane obok siebie zostają, bo to czytelniejsze niż pod sobą. */
+  .cp-row {
+    gap: 12px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -787,6 +1450,24 @@ body {
   .foot {
     flex-wrap: wrap;
   }
+
+  /* Przycięty telefon schodzi do pełnej szerokości, żeby arkusz
+     pozostał czytelny na wąskim ekranie. */
+  .anchor {
+    gap: 24px;
+  }
+
+  .anchor-phone .pixel {
+    width: min(100%, calc((100dvh - 120px) * 412 / 937));
+  }
+
+  .cp-dial {
+    --dial: 104px;
+  }
+
+  .cp-distance {
+    font-size: 30px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -795,7 +1476,15 @@ body {
   }
 
   .hero,
-  .pixel-wrap {
+  .pixel-wrap,
+  .cp-pointer,
+  .cp-target,
+  .cp-pulse,
+  .anchor .anchor-phone,
+  .anchor .an-sheet,
+  .anchor .an-row,
+  .compass .cp-card,
+  .compass .compass-copy {
     animation: none;
   }
 
