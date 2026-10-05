@@ -57,61 +57,13 @@ body {
   flex-direction: column;
 }
 
-/* ── Nawigacja ─────────────────────────────────────────── */
-.nav {
-  height: 68px;
-  display: flex;
+/* Wspólna ikona: sylwet tramwaju w kółku, ta sama co w powiadomieniu. */
+.tram-mark {
+  flex: none;
+  display: inline-flex;
   align-items: center;
-  gap: 28px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--ink);
-  text-decoration: none;
-  font-weight: 700;
-  font-size: 17px;
-  letter-spacing: -0.01em;
-}
-
-.brand-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  display: block;
-}
-
-.nav-links {
-  display: flex;
-  gap: 22px;
-  margin-left: 8px;
-}
-
-.nav-links a {
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 14.5px;
-  font-weight: 500;
-}
-
-.nav-links a:hover {
-  color: var(--ink);
-}
-
-.nav-gh {
-  margin-left: auto;
-  color: var(--muted);
-  display: flex;
-  padding: 8px;
-  border-radius: 10px;
-}
-
-.nav-gh:hover {
-  color: var(--ink);
-  background: var(--card);
+  justify-content: center;
+  border-radius: 50%;
 }
 
 /* ── Hero ──────────────────────────────────────────────── */
@@ -120,7 +72,8 @@ body {
   grid-template-columns: 1.05fr 0.95fr;
   gap: 56px;
   align-items: center;
-  padding: 72px 0 88px;
+  /* Górny padding bez navbara — wykorzystujemy cały pierwszy ekran. */
+  padding: 96px 0 88px;
   animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -135,15 +88,32 @@ body {
   }
 }
 
-.hero-copy h1 {
-  font-size: clamp(44px, 5.6vw, 68px);
-  line-height: 0.98;
+/* Nagłówek marki: ikona po lewej, nazwa obok. */
+.hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.hero-brand h1 {
+  font-size: clamp(44px, 5.6vw, 66px);
+  line-height: 1;
   letter-spacing: -0.035em;
   font-weight: 800;
 }
 
+/* Hasło schodzi niżej jako podtytuł. */
+.hero-tagline {
+  margin-top: 16px;
+  font-size: clamp(19px, 2.1vw, 23px);
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--brand);
+}
+
 .hero-copy > p {
-  margin-top: 18px;
+  margin-top: 14px;
   font-size: 17.5px;
   line-height: 1.55;
   color: var(--muted);
@@ -195,27 +165,6 @@ body {
 .cta-ghost:hover {
   border-color: rgba(92, 219, 190, 0.4);
   background: var(--card-high);
-}
-
-.hero-meta {
-  margin-top: 18px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  color: var(--faint);
-}
-
-.hero-meta a {
-  color: var(--muted);
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.hero-meta a:hover {
-  color: var(--brand);
 }
 
 /* ── Pixel ─────────────────────────────────────────────── */
@@ -344,13 +293,15 @@ body {
 }
 
 /* Szkło: odstęp od krawędzi obudowy to prawdziwe ramki 8a (28/33/32 dp
-   padding wyżej), a jego zaokrąglenie idzie 6 dp mniejsze niż narożnik
-   obudowy — inaczej ekran wychodziłby poza szkło. */
+   padding wyżej). Promień ekranu musi być KONCENTRYCZNY z narożnikiem szkła,
+   inaczej czarna ramka ma różną szerokość w rogu i w boku — ekran wygląda
+   wtedy jak wklejony, a nie wsadzony. Stąd dwie wartości:
+   poziomo 59,5 − 28 = 31,5 dp, pionowo 59,5 − 33 ≈ 27 dp. */
 .pixel-screen {
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: calc(56 * var(--dp));
+  border-radius: calc(31.5 * var(--dp)) / calc(27 * var(--dp));
   overflow: hidden;
   background: #111414;
   /* Rumień wokół szkła: ciemna krawędź, którą widać na prawdziwym Pixelu. */
@@ -591,6 +542,21 @@ body {
   margin-bottom: calc(10 * var(--dp));
 }
 
+/* LineBadge: radius 8, minWidth 44, height 28, padding 9/4, TramFront 13 */
+.rn-linebadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(5 * var(--dp));
+  height: calc(28 * var(--dp));
+  min-width: calc(44 * var(--dp));
+  padding: 0 calc(9 * var(--dp));
+  border-radius: calc(8 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  font-weight: 700;
+  color: #fff;
+}
+
 /* SavedPlacesRow: gap 10, karty 116 × 116 (aspectRatio 1), padding 12 */
 .rn-places {
   display: flex;
@@ -775,8 +741,7 @@ body {
   white-space: nowrap;
 }
 
-.conn-copy h2,
-.bento h2 {
+.conn-copy h2 {
   font-size: clamp(28px, 3.4vw, 40px);
   letter-spacing: -0.025em;
   line-height: 1.05;
@@ -789,78 +754,6 @@ body {
   font-size: 16.5px;
   line-height: 1.6;
   max-width: 46ch;
-}
-
-/* ── Bento offline ─────────────────────────────────────── */
-.bento {
-  padding: 8px 0 88px;
-}
-
-.bento-grid {
-  margin-top: 28px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.tile {
-  background: var(--card);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  padding: 26px;
-  color: var(--brand);
-}
-
-.tile-wide {
-  grid-column: 1 / -1;
-  background:
-    radial-gradient(120% 160% at 100% 0%, rgba(92, 219, 190, 0.12), transparent 55%),
-    var(--card);
-}
-
-.tile h3 {
-  margin-top: 14px;
-  color: var(--ink);
-  font-size: 19px;
-  letter-spacing: -0.01em;
-}
-
-.tile p {
-  margin-top: 8px;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.6;
-  max-width: 62ch;
-}
-
-.bento-foot {
-  margin-top: 14px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.bento-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 9px 16px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--muted);
-}
-/* ── Sekcja kompasu ────────────────────────────────────────
-   Tekst po lewej, karta StopCompassCard po prawej. Wartości
-   przekopiowane ze StopCompassCard.tsx + src/theme/tokens.ts.
-   Karta jest tu w skali 1:1 (dp = px), bo nie siedzi w telefonie. */
-.compass {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 48px;
-  align-items: center;
-  padding: 8px 0 88px;
 }
 
 /* Wejście po przewinięciu: `animation-timeline: view()` uruchamia animację
@@ -1580,8 +1473,8 @@ body {
 .live-card {
   width: min(420px, 100%);
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
+  flex-direction: column;
+  gap: 12px;
   padding: 16px 18px 14px;
   border-radius: 26px;
   background: linear-gradient(180deg, #1c1f22 0%, #14171a 100%);
@@ -1590,16 +1483,11 @@ body {
     0 24px 60px -30px rgba(0, 0, 0, 0.9);
 }
 
-/* setSmallIcon(ic_kilometr_tram) w kolorze akcentu linii. */
-.live-icon {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: #00a884;
+/* Wiersz: ikona powiadomienia (ta sama co nagłówek strony) + treść. */
+.live-head {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  gap: 14px;
 }
 
 .live-body {
@@ -1687,11 +1575,8 @@ body {
 
 .live-actions {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: none;
-  align-self: stretch;
-  justify-content: center;
+  gap: 10px;
+  align-items: center;
 }
 
 /* Przyciski akcji (stop / route): obwódka, tekst jasny, wysokość 34. */
@@ -1783,11 +1668,15 @@ body {
 }
 
 /* ── Mobilnie ──────────────────────────────────────────── */
+/* Na wąskim ekranie sekcje idą jedna pod drugim i mają się PRZEMIENIAĆ:
+   tekst → demo → tekst → demo. Każda sekcja ma więc tekst pierwszy, a
+   telefon/karta drugi — inaczej demo i tekst sklejają się w pary
+   „demo, tekst, demo, tekst”. */
 @media (max-width: 900px) {
   .hero {
     grid-template-columns: 1fr;
     gap: 48px;
-    padding: 48px 0 64px;
+    padding: 56px 0 64px;
   }
 
   .conn {
@@ -1795,26 +1684,27 @@ body {
     gap: 28px;
   }
 
-  .bento-grid {
-    grid-template-columns: 1fr;
-  }
-
-  /* Na wąskim ekranie telefon i tekst idą jedna pod drugim; przycięty
-     telefon zostaje, bo to nadal najczytelniejsza wersja tej sekcji. */
   .compass,
   .anchor,
   .live {
     grid-template-columns: 1fr;
-    gap: 32px;
+    gap: 28px;
   }
 
-  /* Telefon pierwszy, potem tekst — czytamy od góry. */
-  .anchor {
-    order: 0;
-  }
-
-  .anchor-copy {
+  /* Kolejność: tekst najpierw, demo pod nim. Dotyczy też sekcji
+     „Połączenie", inaczej sekwencja wygląda T D | D T | T D… */
+  .conn-copy,
+  .compass-copy,
+  .anchor-copy,
+  .live-copy {
     order: 1;
+  }
+
+  .conn-card,
+  .cp-card,
+  .anchor-phone,
+  .live-card-wrap {
+    order: 2;
   }
 
   /* Radar i dane obok siebie zostają, bo to czytelniejsze niż pod sobą. */
@@ -1822,17 +1712,13 @@ body {
     gap: 12px;
   }
 
-  /* Powiadomienie na wąskim ekranie: ikona i treść zostają w rzędzie,
-     a przyciski schodzą pod pasek postępu (w pionie nie mieściłyby się). */
+  /* Powiadomienie na wąskim ekranie: treść pod ikoną, pasek i akcje pod spodem. */
   .live-card {
-    flex-wrap: wrap;
     padding: 14px 16px 12px;
   }
 
   .live-actions {
-    flex-direction: row;
     width: 100%;
-    justify-content: flex-end;
   }
 }
 
@@ -1841,8 +1727,18 @@ body {
     padding: 0 18px;
   }
 
-  .nav-links {
-    display: none;
+  .hero-brand {
+    gap: 12px;
+  }
+
+  /* Przycięty telefon schodzi do pełnej szerokości, żeby ekran
+     pozostał czytelny na wąskim viewportcie. Proporcje obudowy 8a. */
+  .anchor {
+    gap: 24px;
+  }
+
+  .anchor-phone .pixel {
+    width: min(100%, calc((100dvh - 120px) * 458 / 958));
   }
 
   .cta {
@@ -1851,16 +1747,6 @@ body {
 
   .foot {
     flex-wrap: wrap;
-  }
-
-  /* Przycięty telefon schodzi do pełnej szerokości, żeby arkusz
-     pozostał czytelny na wąskim ekranie. */
-  .anchor {
-    gap: 24px;
-  }
-
-  .anchor-phone .pixel {
-    width: min(100%, calc((100dvh - 120px) * 412 / 937));
   }
 
   .cp-dial {

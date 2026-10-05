@@ -9,14 +9,21 @@ export const CONFIRMED = {
   startFrom: 'z: Twoja lokalizacja', // s.home.startFrom('Twoja lokalizacja')
   savedTitle: 'Zapisane miejsca', // s.home.savedTitle
   recentTitle: 'Ostatnie miejsca', // s.home.historyTitle
-  // Ostatnie miejsca z pr-45-szybkie-cele-bez-duplikatu.png.
-  // Czas odjazdu z tego samego screena; badge linii nie jest znany, więc
-  // wiersz renderuje się bez niego — dokładnie jak stan, gdy planer jeszcze
-  // nie dogrzał połączenia (pusty badgeSlot 28 px).
+  // Ostatnie miejsca z pr-45-szybkie-cele-bez-duplikatu.png, czasy odjazdu
+  // z tego samego screena.
+  //
+  // `kind` decyduje o ikonce wiersza — tak samo jak w aplikacji, gdzie
+  // `getSuggestionIconMeta` patrzy na rodzaj wyniku wyszukiwarki:
+  // `stop` → BusFront, `address` → MapPin (niebieski tertiaryContainer).
+  //
+  // `line` to badge pierwszej linii z `lineBadges`. Uzupełniamy tylko tam,
+  // gdzie kurs jest potwierdzony w ekranach aplikacji (tramwaj 23 do
+  // Nowego Dworu); pozostałe wiersze zostawiają pusty slot, bo planer ich
+  // jeszcze nie dogrzał.
   recent: [
-    { name: 'DWORZEC GŁÓWNY', dep: 'za 5 min' },
-    { name: 'Hala Targowa', dep: 'za chwilę' },
-    { name: 'Rynek', dep: 'za chwilę' },
+    { name: 'DWORZEC GŁÓWNY', dep: 'za 5 min', kind: 'stop', line: '23' },
+    { name: 'Hala Targowa', dep: 'za chwilę', kind: 'stop', line: undefined },
+    { name: 'Rynek', dep: 'za chwilę', kind: 'address', line: undefined },
   ],
   // Połączenie z pr-43-lista-bez-regresji.png (tramwaj 23 istnieje w GTFS)
   connection: {

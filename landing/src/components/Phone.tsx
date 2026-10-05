@@ -3,14 +3,16 @@ import {
   BatteryFull,
   Bell,
   Briefcase,
-  Clock3,
+  BusFront,
   History,
   Home,
   LocateFixed,
+  MapPin,
   Pencil,
   Search,
   Settings2,
   Signal,
+  TramFront,
   University,
   Wifi,
 } from 'lucide-react';
@@ -54,21 +56,58 @@ const NAV_H = 22; // gestowy pasek nawigacji, poza aplikacją
 /** Rozmiar ikony w dp — w CSS to calc(N * var(--dp)), bo kanwa jest przeskalowana. */
 const ic = (n: number) => `calc(${n} * var(--dp))`;
 
-function HomeRow({ place, depart }: { place: string; depart: string }) {
+/**
+ * Ostatnie miejsce — wiersz SmartHistoryList.
+ *
+ * Ikona nie jest już domyślnym zegarem: `smartIcons` w app/index.tsx bierze ją
+ * z `getSuggestionIconMeta` wiersza z historii wyszukiwania, więc przystanek
+ * dostaje BusFront na `secondaryContainer`, a adres MapPin na
+ * `tertiaryContainer` (kolor niebieski). Zegar zostaje tylko dla wpisów
+ * bez dopasowania.
+ *
+ * `badge` to badge pierwszej linii z `lineBadges` — w kodzie pojawia się
+ * dopiero, gdy planer zna kurs, więc pusty slot na górze wiersza jest
+ * normalnym stanem, a nie brakiem.
+ */
+function HomeRow({
+  place,
+  depart,
+  icon,
+  badge,
+}: {
+  place: string;
+  depart: string;
+  icon: 'stop' | 'address';
+  badge?: string;
+}) {
+  const Icon = icon === 'stop' ? BusFront : MapPin;
+  const bg = icon === 'stop' ? '#334B46' : '#244C63';
+  const fg = icon === 'stop' ? '#CDE8E1' : '#C4E7FF';
   return (
     <div className="rn-row">
-      <div className="rn-row-icon">
-        {/* KIND_META.history → surfaceContainerHighest / onSurfaceVariant */}
-        <Clock3 size={ic(19)} color="#BFC9C5" strokeWidth={2} />
+      <div className="rn-row-icon" style={{ background: bg }}>
+        <Icon size={ic(19)} color={fg} strokeWidth={2} />
       </div>
       <div className="rn-row-mid">
         <b>{place}</b>
         <i>Przystanek</i>
       </div>
-      {/* badgeSlot 28 dp — pusty, dopóki planer nie zna pierwszej linii */}
-      <div className="rn-row-badge" />
+      {/* badgeSlot 28 dp — LineBadge albo pusty slot */}
+      <div className="rn-row-badge">
+        {badge ? <LineBadge line={badge} color="#E64A19" /> : null}
+      </div>
       <div className="rn-row-depart">{depart}</div>
     </div>
+  );
+}
+
+/** LineBadge: radius 8, minWidth 44, height 28, padding 9/4, TramFront 13. */
+function LineBadge({ line, color }: { line: string; color: string }) {
+  return (
+    <span className="rn-linebadge" style={{ background: color }}>
+      <TramFront size={ic(13)} color="#fff" strokeWidth={2} />
+      {line}
+    </span>
   );
 }
 
@@ -232,7 +271,13 @@ export function PixelPhone() {
             <span>{CONFIRMED.recentTitle}</span>
           </div>
           {CONFIRMED.recent.map((r) => (
-            <HomeRow key={r.name} place={r.name} depart={r.dep} />
+            <HomeRow
+              key={r.name}
+              place={r.name}
+              depart={r.dep}
+              icon={r.kind}
+              badge={r.line}
+            />
           ))}
         </div>
 

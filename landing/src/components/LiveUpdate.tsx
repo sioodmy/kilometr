@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Flag, Footprints, TramFront } from 'lucide-react';
+import { Flag, Footprints, Square, TramFront } from 'lucide-react';
+import { TramMark } from './TramMark';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Powiadomienie Live Update w wersji z Android 16 `Notification.ProgressStyle`
@@ -78,58 +79,6 @@ export function LiveUpdateSection() {
 
   return (
     <section className="live">
-      <div className="live-card-wrap">
-        <div className="live-card">
-          <span className="live-icon">
-            <TramFront size={20} color="#003831" strokeWidth={2} />
-          </span>
-
-          <span className="live-body">
-            <b className="live-title">{COPY.title}</b>
-            <span className="live-text">{COPY.stops}</span>
-            <span className="live-text">{COPY.alight}</span>
-
-            {/* ProgressStyle: pasek z segmentami + punkty + ikona pojazdu. */}
-            <span className="live-bar">
-              {SEGMENTS.map((s, i) => (
-                <span
-                  className="live-seg"
-                  key={`${s.mode}-${i}`}
-                  style={{ width: `${s.width}%`, background: s.color }}
-                />
-              ))}
-              <span
-                className="live-point"
-                style={{ left: `${TRANSFER_AT}%`, background: LINE_COLOR }}
-              />
-              <span className="live-start">
-                <Footprints size={11} color="#B9BFC4" strokeWidth={2.4} />
-              </span>
-              <span
-                className="live-tracker"
-                style={{ left: `${progress}%`, background: LINE_COLOR }}
-              >
-                <TramFront size={13} color="#fff" strokeWidth={2.2} />
-              </span>
-              <span className="live-end">
-                <Flag size={13} color="#fff" strokeWidth={2.2} fill="#fff" />
-              </span>
-            </span>
-          </span>
-
-          <span className="live-actions">
-            <span className="live-btn">
-              <Footprints size={15} color="#C4CAD6" strokeWidth={2} />
-              {ACTIONS.stop}
-            </span>
-            <span className="live-btn">
-              <TramFront size={15} color="#C4CAD6" strokeWidth={2} />
-              {ACTIONS.route}
-            </span>
-          </span>
-        </div>
-      </div>
-
       <div className="live-copy">
         <h2>Powiadomienie, które liczy za Ciebie.</h2>
         <p>
@@ -142,6 +91,59 @@ export function LiveUpdateSection() {
           Wygląd powiadomienia rysuje Android 16 (to warunek Live Update, więc
           bez własnych widoków). Treść, segmenty i ikony są nasze.
         </p>
+      </div>
+
+      <div className="live-card-wrap">
+        <div className="live-card">
+          <div className="live-head">
+            <TramMark size={40} />
+            <span className="live-body">
+              <b className="live-title">{COPY.title}</b>
+              <span className="live-text">{COPY.stops}</span>
+              <span className="live-text">{COPY.alight}</span>
+            </span>
+          </div>
+
+          {/* ProgressStyle: pasek z segmentami + punkty + ikona pojazdu. */}
+          <span className="live-bar">
+            {SEGMENTS.map((s, i) => (
+              <span
+                className="live-seg"
+                key={`${s.mode}-${i}`}
+                style={{ width: `${s.width}%`, background: s.color }}
+              />
+            ))}
+            <span
+              className="live-point"
+              style={{ left: `${TRANSFER_AT}%`, background: LINE_COLOR }}
+            />
+            <span className="live-start">
+              <Footprints size={11} color="#B9BFC4" strokeWidth={2.4} />
+            </span>
+            <span
+              className="live-tracker"
+              style={{ left: `${progress}%`, background: LINE_COLOR }}
+            >
+              <TramFront size={13} color="#fff" strokeWidth={2.2} />
+            </span>
+            <span className="live-end">
+              <Flag size={13} color="#fff" strokeWidth={2.2} fill="#fff" />
+            </span>
+          </span>
+
+          {/* Akcje w poziomie pod paskiem — Android trzyma je na dole
+              powiadomienia, nigdy z boku. */}
+          <span className="live-actions">
+            <span className="live-btn">
+              <Square size={13} color="#C4CAD6" strokeWidth={2.4} />
+              {ACTIONS.stop}
+            </span>
+            <span className="live-btn">
+              <TramFront size={14} color="#C4CAD6" strokeWidth={2} />
+              {ACTIONS.route}
+            </span>
+          </span>
+        </div>
       </div>
     </section>
   );
