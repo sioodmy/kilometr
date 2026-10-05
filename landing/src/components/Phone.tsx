@@ -21,8 +21,8 @@ import { CONFIRMED } from '../data';
 // app/index.tsx + src/components/{SmartHistoryList,SavedPlacesRow,HomeThumbBar,
 // ThumbBar}.tsx, z tokenami z src/theme/tokens.ts.
 //
-// Kanonia to 412 × 915 dp (Pixel 8), a każda wartość w mocku jest liczona
-// w jednostce --dp zdefiniowanej w CSS (.pixel), więc proporcje są 1:1
+// Kanonia to 402 × 893 dp (ekran Pixela 8a), a każda wartość w mocku jest
+// liczona w jednostce --dp zdefiniowanej w CSS (.pixel), więc proporcje są 1:1
 // z telefonem i skalują się bez transformów oraz bez pomiarów w JS.
 //
 // Treść pochodzi ze screenshotów prawdziwego telefonu (docs/screenshots/).
@@ -30,9 +30,28 @@ import { CONFIRMED } from '../data';
 // planer zna pierwszą linię do danego celu — nie zmyślamy, która to jest.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Geometria Google Pixel 8a ───────────────────────────────────────────────
+// Wymiary z karty technicznej: 152,1 × 72,7 × 8,9 mm, ekran 6,1" 1080 × 2400
+// przy ~430 ppi. Przeliczenie na dp (430 ppi / 160 → 2,6875 dp/px, czyli
+// 6,299 dp na milimetr):
+//
+//   obudowa  72,7 mm  → 458 dp     ekran  63,8 mm  → 402 dp
+//            152,1 mm → 958 dp             141,8 mm  → 893 dp
+//   → ramka boczna 28 dp, górna 33 dp, podbródkowa 32 dp.
+//
+// Uwaga na „ramkę": to nie ozdobne 11 px. Pixel 8a ma wyraźnie grube ramki
+// (recenzje wprost o tym mówią) i właśnie one rozpoznawalnie identyfikują
+// ten model, więc_mock musi pokazywać dokładnie takie proporcje.
+const SCREEN_W = 402;
+const SCREEN_H = 893;
+const DEVICE_W = 458;
+const DEVICE_H = 958;
+/** Aluminiowa obrączka wokół szkła — cienka, bo to framka, nie bezel. */
+const RIM_DP = 3;
+
 const STATUS_H = 26; // systemowy pasek stanu Androida, poza aplikacją
 const NAV_H = 22; // gestowy pasek nawigacji, poza aplikacją
-/** Rozmiar ikony w dp — w CSS to calc(N * --dp), bo kanwa jest przeskalowana. */
+/** Rozmiar ikony w dp — w CSS to calc(N * var(--dp)), bo kanwa jest przeskalowana. */
 const ic = (n: number) => `calc(${n} * var(--dp))`;
 
 function HomeRow({ place, depart }: { place: string; depart: string }) {
@@ -67,37 +86,41 @@ function StatusBar() {
 }
 
 /** Wiersz „Zapisane miejsca” + karta edycji (SavedPlacesRow). */
+/** Jedna karta zapisanego miejsca (SavedPlacesRow): kwadrat 116 × 116. */
+function PlaceCard({
+  name,
+  addr,
+  Icon,
+  edit = false,
+}: {
+  name: string;
+  addr: string;
+  Icon: typeof Home;
+  edit?: boolean;
+}) {
+  return (
+    <div className="rn-place">
+      <span className={`rn-place-icon${edit ? ' rn-place-icon-edit' : ''}`}>
+        {edit ? (
+          <Pencil size={ic(20)} color="#5CDBBE" strokeWidth={2} />
+        ) : (
+          <Icon size={ic(20)} color="#CDE8E1" strokeWidth={2} />
+        )}
+      </span>
+      <b>{name}</b>
+      <i>{addr}</i>
+    </div>
+  );
+}
+
+/** Wiersz „Zapisane miejsca” + karta edycji (SavedPlacesRow). */
 export function SavedPlaces({ className }: { className?: string }) {
   return (
     <div className={className}>
-      <div className="rn-place">
-        <span className="rn-place-icon">
-          <Home size={ic(20)} color="#CDE8E1" strokeWidth={2} />
-        </span>
-        <b>Dom</b>
-        <i>Przystanek</i>
-      </div>
-      <div className="rn-place">
-        <span className="rn-place-icon">
-          <Briefcase size={ic(20)} color="#CDE8E1" strokeWidth={2} />
-        </span>
-        <b>Praca</b>
-        <i>Sky Tower</i>
-      </div>
-      <div className="rn-place">
-        <span className="rn-place-icon">
-          <University size={ic(20)} color="#CDE8E1" strokeWidth={2} />
-        </span>
-        <b>Uczelnia</b>
-        <i>Politechnika Wrocławska</i>
-      </div>
-      <div className="rn-place">
-        <span className="rn-place-icon rn-place-icon-edit">
-          <Pencil size={ic(20)} color="#5CDBBE" strokeWidth={2} />
-        </span>
-        <b>Edytuj</b>
-        <i>zapisane miejsca</i>
-      </div>
+      <PlaceCard name="Dom" addr="Swojczycka 41" Icon={Home} />
+      <PlaceCard name="Praca" addr="Sky Tower" Icon={Briefcase} />
+      <PlaceCard name="Uczelnia" addr="Politechnika" Icon={University} />
+      <PlaceCard name="Edytuj" addr="zapisane miejsca" Icon={Pencil} edit />
     </div>
   );
 }
@@ -133,9 +156,12 @@ function NavBar() {
 export { StatusBar };
 
 /**
- * Obudowa Pixela. `cropDp` przycina telefon w dolną stronę (bez dolnego bezela
- * i zaokrągleń) — używane przez sekcję z kotwiczeniem, gdzie arkusz zajmuje
- * 92% wysokości i pokazujemy tylko jego górną część.
+ * Obudowa Google Pixela 8a. `cropDp` przycina telefon w dolną stronę (bez
+ * dolnego bezela i zaokrągleń) — używane przez sekcję z kotwiczeniem, gdzie
+ * ekran jest ucięty i pokazujemy tylko jego górną część.
+ *
+ * Proporcje z karty technicznej, nie z okularu: szkło 402 × 893 dp w ramce
+ * 458 × 958 dp, z aluminium i grubymi czarnymi bezlami (patrz stałe wyżej).
  */
 export function PixelFrame({
   children,
@@ -149,17 +175,30 @@ export function PixelFrame({
       <div className="pixel-glow" aria-hidden="true" />
       <div
         className={`pixel${cropDp ? ' pixel--crop' : ''}`}
-        style={cropDp ? ({ '--crop-dp': cropDp } as React.CSSProperties) : undefined}
+        // Geometria idzie z JS, żeby CSS nie trzymał własnej kopii liczb.
+        style={
+          {
+            '--device-w': DEVICE_W,
+            '--device-h': DEVICE_H,
+            '--screen-w': SCREEN_W,
+            '--screen-h': SCREEN_H,
+            '--rim': RIM_DP,
+            ...(cropDp ? { '--crop-dp': cropDp } : null),
+          } as React.CSSProperties
+        }
       >
+        {/* Fizyczne przyciski: Pixel 8a ma je po obu stronach. */}
         <span className="pixel-btn pixel-btn-power" aria-hidden="true" />
         <span className="pixel-btn pixel-btn-vol" aria-hidden="true" />
+
         <div className="pixel-screen">
+          {/* Punch-hole: otwór w szkle, więc musi leżeć NAD ekranem. */}
+          <span className="pixel-camera" aria-hidden="true" />
           <div className="rn-canvas">
             <StatusBar />
             {children}
           </div>
         </div>
-        <span className="pixel-camera" aria-hidden="true" />
       </div>
     </div>
   );

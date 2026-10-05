@@ -233,103 +233,157 @@ body {
   pointer-events: none;
 }
 
-/* Telefon nigdy nie może wypchnąć CTA poza pierwszy ekran: szerokość
-   jest dodatkowo ograniczona wysokością viewportu (nav 68 + paddingi
-   hero 56/64 zostawione w rezerwie 188 px). */
+/* ── Obudowa Google Pixela 8a ────────────────────────────────────────────
+   Wymiary z karty technicznej (152,1 × 72,7 × 8,9 mm, ekran 1080 × 2400 przy
+   ~430 ppi), przeliczone na dp (430 ppi / 160 → 6,299 dp na milimetr):
+
+     obudowa  72,7 mm  → 458 dp        ekran  63,8 mm  → 402 dp
+              152,1 mm → 958 dp               141,8 mm  → 893 dp
+     → ramka boczna 28 dp, górna 33 dp, podbródkowa 32 dp.
+
+   Grube ramki to nie wada mocka, tylko cecha rozpoznawalna tego modelu
+   (recenzje Pixel 8a wprost narzekają na „3,5 mm bezel" i pół-centymetrową
+   brodę). Stałe px przy mniejszym telefonie zjadały narożniki i ucinały pasek
+   stanu, więc wszystko liczone jest w dp.
+
+   Skala: 1 dp = szerokość obudowy / 458. Dzięki temu mock skaluje się czystym
+   CSS — bez transformów i bez pomiarów w JS (oba psuły się przy resize).
+   Telefon nigdy nie wypycha CTA poza pierwszy ekran: szerokość jest
+   dodatkowo ograniczona wysokością viewportu (nav 68 + paddingi hero
+   zostawione w rezerwie 188 px). */
 .pixel {
-  --bezel: 11px;
-  --pixel-w: min(306px, 74vw, calc((100dvh - 188px) * 412 / 937));
-  /* 1 dp = szerokość ekranu / 412. Dzięki temu cały mock skaluje się czystym
-     CSS: wszystkie wartości to calc(N * --dp), a do obudowy nie wchodzi ani
-     transform, ani pomiar w JS (oba psuły się przy resize). */
-  --dp: calc((var(--pixel-w) - 2 * var(--bezel)) / 412);
+  /* Ramka Pixela 8a liczona z wymiarów (458 − 402)/2 i (958 − 893)/2. */
+  --bezel-x: 28;
+  --bezel-top: 33;
+  --bezel-bottom: 32;
+  --radius: 62;
+  /* Szerokość telefonu w CSS px. Wysokość wynika z aspect-ratio, a te
+     liczby (458 × 958 dp) ustawia Phone.tsx — jedno źródło prawdy. */
+  --pixel-w: min(306px, 74vw, calc((100dvh - 188px) * 458 / 958));
+  --dp: calc(var(--pixel-w) / var(--device-w));
   position: relative;
   width: var(--pixel-w);
-  padding: var(--bezel);
-  /* Promienie w dp, nie w px — przy mniejszym telefonie stałe 52 px zjadało
-     narożniki i ucinało pasek stanu. 44 dp to realny zaokrąglenie obudowy
-     Pixela 8 (przeliczone z 1080 px na 412 dp). */
-  border-radius: calc(44 * var(--dp));
-  background: linear-gradient(145deg, #4a5150 0%, #232827 18%, #101415 55%, #2b3130 100%);
+  /* aspect-ratio + asymetryczny padding: ramka 8a jest 28/33/32 dp, więc
+     padding-top/bottom muszą się różnić (symetryczny padding dałby inny
+     ekran). */
+  aspect-ratio: var(--device-w) / var(--device-h);
+  border-radius: calc(var(--radius) * var(--dp));
+  /* Aluminium widoczne tylko jako cienka obrączka przy krawędzi obudowy —
+     z przodu telefon to czarne szkło (Gorilla Glass 3), nie metal. */
+  background: linear-gradient(
+    145deg,
+    #9aa5a3 0%,
+    #55605d 10%,
+    #333b39 26%,
+    #262d2b 50%,
+    #1c2221 68%,
+    #3f4745 86%,
+    #7b8684 100%
+  );
+  padding:
+    calc(var(--bezel-top) * var(--dp))
+    calc(var(--bezel-x) * var(--dp))
+    calc(var(--bezel-bottom) * var(--dp));
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 30px 70px -20px rgba(0, 0, 0, 0.85),
-    0 0 90px -30px rgba(92, 219, 190, 0.35);
+    0 0 0 calc(0.5 * var(--dp)) rgba(255, 255, 255, 0.12),
+    0 calc(30 * var(--dp)) calc(70 * var(--dp)) calc(-20 * var(--dp)) rgba(0, 0, 0, 0.85),
+    0 0 calc(90 * var(--dp)) calc(-30 * var(--dp)) rgba(92, 219, 190, 0.35);
 }
 
-/* Wariant przycięty: telefon ucięty w dolną stronę, bez dolnego bezela. */
+/* Czarne szkło wypełnia wnętrze obrączki — dlatego aluminium z .pixel
+   widać tylko jako wąski pas 2,5 dp przy krawędzi. */
+.pixel::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--rim) * var(--dp));
+  border-radius: calc((var(--radius) - var(--rim)) * var(--dp));
+  background: linear-gradient(180deg, #101413 0%, #0a0d0c 55%, #0c100f 100%);
+  box-shadow: inset 0 0 calc(3 * var(--dp)) rgba(255, 255, 255, 0.05);
+  z-index: 0;
+}
+
+/* Wariant przycięty: telefon ucięty w dolną stronę, bez dolnego bezelu. */
 .pixel--crop {
-  height: calc(var(--crop-dp) * var(--dp) + 2 * var(--bezel));
+  height: calc((var(--crop-dp) + var(--bezel-top)) * var(--dp));
+  aspect-ratio: auto;
   padding-bottom: 0;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-.pixel--crop .pixel-screen {
-  aspect-ratio: auto;
-  height: calc(var(--crop-dp) * var(--dp));
+.pixel--crop::before {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
 
+/* Fizyczne przyciski — Pixel 8a ma je po obu stronach. Wychodzą poza
+   obudowę, bo aluminiowa ramka jest płaska i przyciski są wtopione. */
 .pixel-btn {
   position: absolute;
-  background: linear-gradient(90deg, #3a4040, #191d1d);
-  border-radius: calc(3 * var(--dp));
+  z-index: 4;
+  border-radius: calc(2 * var(--dp));
+  box-shadow: 0 0 0 calc(0.5 * var(--dp)) rgba(0, 0, 0, 0.6);
 }
 
 .pixel-btn-power {
-  right: calc(-3 * var(--dp));
-  top: 24%;
+  right: calc(-2.5 * var(--dp));
+  top: 30%;
   width: calc(3 * var(--dp));
-  height: 9%;
+  height: 11%;
+  background: linear-gradient(90deg, #6a7472, #262b2a 70%, #171b1a);
 }
 
 .pixel-btn-vol {
-  left: calc(-3 * var(--dp));
-  top: 19%;
+  left: calc(-2.5 * var(--dp));
+  top: 25%;
   width: calc(3 * var(--dp));
-  height: 15%;
+  height: 17%;
+  background: linear-gradient(90deg, #171b1a 30%, #262b2a, #6a7472);
 }
 
+/* Szkło: odstęp od krawędzi obudowy to prawdziwe ramki 8a (28/33/32 dp
+   padding wyżej), a jego zaokrąglenie idzie 6 dp mniejsze niż narożnik
+   obudowy — inaczej ekran wychodziłby poza szkło. */
 .pixel-screen {
   position: relative;
   width: 100%;
-  /* Proporcja 1:1 z kanwą 412 × 915 dp — inaczej kanwa nie wypełnia
-     ekranu i pod gestowym paskiem zostaje czarny pas. */
-  aspect-ratio: 412 / 915;
-  /* Zaokrąglenie ekranu mniejsze niż obudowy i mniejsze niż narożnik, pod
-     który wchodzi pasek stanu — inaczej ikony z prawej są ucinane. */
-  border-radius: calc(38 * var(--dp));
+  height: 100%;
+  border-radius: calc(56 * var(--dp));
   overflow: hidden;
   background: #111414;
+  /* Rumień wokół szkła: ciemna krawędź, którą widać na prawdziwym Pixelu. */
+  box-shadow:
+    0 0 0 calc(0.5 * var(--dp)) rgba(0, 0, 0, 0.8),
+    inset 0 0 calc(1 * var(--dp)) rgba(0, 0, 0, 0.9);
 }
 
+/* Punch-hole: to otwór w szkle, więc leży na ekranie, a nie na ramce. */
 .pixel-camera {
   position: absolute;
-  top: calc(19 * var(--dp));
+  top: calc(9 * var(--dp));
   left: 50%;
   transform: translateX(-50%);
   width: calc(13 * var(--dp));
   height: calc(13 * var(--dp));
   border-radius: 50%;
   background: #000;
-  box-shadow: inset 0 0 3px 1px rgba(70, 110, 140, 0.9);
+  box-shadow:
+    inset 0 0 calc(2 * var(--dp)) calc(1 * var(--dp)) rgba(60, 90, 120, 0.85),
+    0 0 0 calc(0.5 * var(--dp)) rgba(255, 255, 255, 0.06);
   z-index: 3;
 }
 
 /* ── Mock ekranu głównego ────────────────────────────────────────────────
-   Kanonia 412 × 915 dp (Pixel 8). Każda wartość poniżej jest skopiowana
-   z React Native: src/theme/tokens.ts oraz stylów w app/index.tsx i
-   src/components/*.tsx. Jednostka dp jest liczona w CSS (--dp na .pixel),
-   więc mock ma te same proporcje co telefon, a całość skaluje się bez
-   transformów i bez pomiarów w JS. */
+   Kanonia 402 × 893 dp (ekran Pixela 8a). Każda wartość poniżej jest
+   skopiowana z React Native: src/theme/tokens.ts oraz stylów w app/index.tsx
+   i src/components/*.tsx. Jednostka dp jest liczona w CSS (--dp na .pixel),
+   więc mock ma te same proporcje co telefon. */
 .rn-canvas {
   position: absolute;
   top: 0;
   left: 0;
-  width: calc(412 * var(--dp));
-  height: calc(915 * var(--dp));
+  width: calc(402 * var(--dp));
+  height: calc(893 * var(--dp));
   font-family: Roboto, "Noto Sans", system-ui, sans-serif;
   font-size: calc(16 * var(--dp));
   color: #e0e3e1;
@@ -337,7 +391,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Systemowy pasek stanu — poza aplikacją (nie jest częścią mocka). */
+/* Systemowy pasek stanu — poza aplikacją (nie jest częścią mocka).
+   `padding-top` odpowiada odstępowi, jaki Android trzyma między paskiem a
+   szkłem na Pixelu (punch-hole występuje dokładnie w tym pasku). */
 .rn-status {
   position: absolute;
   top: 0;
@@ -347,9 +403,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* Wystarczający odsuw od krawędzi, żeby godzina i ikony nie wchodziły pod
-     zaokrąglony narożnik ekranu (zwłaszcza ikony po prawej). */
-  padding: 0 calc(28 * var(--dp)) 0 calc(28 * var(--dp));
+  /* Odsuw musi być większy niż promień narożnika ekranu w tym miejscu,
+     inaczej ikony po prawej wchodzą pod zaokrąglenie. */
+  padding: 0 calc(30 * var(--dp)) 0 calc(30 * var(--dp));
   color: #e0e3e1;
 }
 
@@ -972,12 +1028,14 @@ body {
   border-radius: 34px;
   border: 1px solid #3f4946;
   opacity: 0.6;
+  z-index: 1;
 }
 
 .cp-cross {
   position: absolute;
   background: #3f4946;
   opacity: 0.35;
+  z-index: 1;
 }
 
 .cp-cross-v {
@@ -993,6 +1051,9 @@ body {
 /* Wskazówka goni kurs (jak animAngle w StopCompassCard) — kołysze się
    ±6° wokół kierunku do słupka, znacznik kręci się w drugą stronę,
    żeby ikonka stała prosto. */
+/* Kolejność warstw w radarze (jak w StopCompassCard): belka pod znacznikiem
+   słupka, obie pod pulsującym punktem „ty”. Bez jawnych z-indexów przeglądarka
+   układa je po DOM i belka ginie pod krzyżem. */
 .cp-pointer {
   position: absolute;
   width: var(--dial);
@@ -1001,6 +1062,7 @@ body {
   align-items: center;
   justify-content: flex-start;
   transform-origin: 50% 50%;
+  z-index: 2;
   animation: cp-sway 5.2s ease-in-out infinite;
 }
 
@@ -1011,6 +1073,7 @@ body {
   height: 34px;
   border-radius: 2px;
   opacity: 0.75;
+  z-index: 1;
 }
 
 .cp-target {
@@ -1024,9 +1087,11 @@ body {
   align-items: center;
   justify-content: center;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  z-index: 2;
   animation: cp-counter 5.2s ease-in-out infinite;
 }
 
+/* userPulse ma w RN zIndex 2 — zawsze na wierzchu wskazówki. */
 .cp-pulse {
   position: absolute;
   width: 20px;
@@ -1036,6 +1101,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 3;
   animation: cp-pulse 3.4s ease-in-out infinite;
 }
 
@@ -1160,172 +1226,26 @@ body {
   justify-content: center;
 }
 
-/* Arkusz: surfaceContainer, promień extraLarge 28, uchwyt 44 px. */
-.an-sheet {
-  position: absolute;
-  left: 0;
-  right: 0;
-  background: #1b2120;
-  border-top-left-radius: calc(28 * var(--dp));
-  border-top-right-radius: calc(28 * var(--dp));
-  padding: calc(4 * var(--dp)) calc(16 * var(--dp)) 0;
-  box-shadow: 0 calc(5 * var(--dp)) calc(12 * var(--dp)) rgba(0, 0, 0, 0.12);
-}
-
-/* Arkusz wjeżdża z dołu po przewinięciu (jak BottomSheet). */
+/* Telefon wjeżdża dopiero po przewinięciu do sekcji. */
 @supports (animation-timeline: view()) {
-  .anchor .an-sheet {
-    animation: an-sheet-in linear both;
-    animation-timeline: view();
-    animation-range: entry 8% entry 50%;
-  }
-
   .anchor .anchor-phone {
     animation: an-phone-in linear both;
     animation-timeline: view();
-    animation-range: entry 0% entry 38%;
+    animation-range: entry 0% entry 34%;
   }
 
-  /* Wiersze kaskadowo, jak SlideIn w SmartHistoryList. */
-  .anchor .an-row {
-    animation: an-row-in linear both;
+  /* Dopiska kotwicy rozjaśnia się jak FadeInUp w aplikacji. */
+  .anchor .rt-anchor {
+    animation: an-anchor-in linear both;
     animation-timeline: view();
-    animation-range: entry calc(22% + var(--i) * 9%) entry calc(52% + var(--i) * 9%);
+    animation-range: entry 12% entry 46%;
   }
-}
 
-.an-handle {
-  display: block;
-  width: calc(44 * var(--dp));
-  height: calc(4 * var(--dp));
-  margin: calc(10 * var(--dp)) auto calc(10 * var(--dp));
-  border-radius: 2px;
-  background: #3f4946;
-}
-
-/* header: alignItems flex-start, marginBottom 12 */
-.an-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: calc(12 * var(--dp));
-}
-
-.an-backbtn,
-.an-closebtn {
-  width: calc(36 * var(--dp));
-  height: calc(36 * var(--dp));
-  flex: none;
-  border-radius: 50%;
-  background: #252b2a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.an-backbtn {
-  margin-right: calc(6 * var(--dp));
-}
-
-.an-header-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: calc(2 * var(--dp));
-}
-
-.an-header-text b {
-  font-size: calc(22 * var(--dp));
-  line-height: calc(28 * var(--dp));
-  font-weight: 600;
-  color: #e0e3e1;
-}
-
-.an-header-text i {
-  font-style: normal;
-  font-size: calc(12 * var(--dp));
-  line-height: calc(16 * var(--dp));
-  color: #bfc9c5;
-}
-
-/* searchBox: height 48, radius 16, border 1 px outlineVariant */
-.an-search {
-  display: flex;
-  align-items: center;
-  gap: calc(10 * var(--dp));
-  height: calc(48 * var(--dp));
-  padding: 0 calc(14 * var(--dp));
-  border-radius: calc(16 * var(--dp));
-  background: #252b2a;
-  border: calc(1 * var(--dp)) solid #3f4946;
-  font-size: calc(14 * var(--dp));
-  color: #bfc9c5;
-}
-
-/* sectionHint: labelSmall, marginTop 4, marginBottom 10 */
-.an-hint {
-  margin-top: calc(4 * var(--dp));
-  margin-bottom: calc(10 * var(--dp));
-  font-size: calc(11 * var(--dp));
-  line-height: calc(15 * var(--dp));
-  color: #bfc9c5;
-}
-
-/* nearestStopRow: paddingVertical 10, hairline pod spodem */
-.an-row {
-  display: flex;
-  align-items: center;
-  gap: calc(12 * var(--dp));
-  padding: calc(10 * var(--dp)) 0;
-  border-bottom: 1px solid rgba(63, 73, 70, 0.5);
-}
-
-.an-row-icon {
-  width: calc(36 * var(--dp));
-  height: calc(36 * var(--dp));
-  flex: none;
-  border-radius: 50%;
-  background: #334b46;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.an-row-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: calc(2 * var(--dp));
-}
-
-.an-row-text b {
-  font-size: calc(14 * var(--dp));
-  line-height: calc(20 * var(--dp));
-  font-weight: 500;
-  color: #e0e3e1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.an-row-text i {
-  font-style: normal;
-  font-size: calc(12 * var(--dp));
-  line-height: calc(16 * var(--dp));
-  color: #bfc9c5;
-}
-
-/* selectPill: primaryContainer, radius full */
-.an-pill {
-  flex: none;
-  background: #005047;
-  border-radius: 999px;
-  padding: calc(4 * var(--dp)) calc(10 * var(--dp));
-  font-size: calc(11 * var(--dp));
-  font-weight: 600;
-  color: #7df8de;
+  .anchor .rt-card {
+    animation: an-card-in linear both;
+    animation-timeline: view();
+    animation-range: entry 26% entry 60%;
+  }
 }
 
 .anchor-copy p {
@@ -1343,29 +1263,495 @@ body {
 }
 
 @keyframes an-phone-in {
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes an-sheet-in {
   from {
-    transform: translateY(calc(60 * var(--dp)));
     opacity: 0;
+    transform: translateY(28px);
   }
   to {
-    transform: none;
     opacity: 1;
+    transform: none;
   }
 }
 
-@keyframes an-row-in {
+@keyframes an-anchor-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(10 * var(--dp)));
+  }
   to {
     opacity: 1;
     transform: none;
   }
-}/* ── Stopka ────────────────────────────────────────────── */
+}
+
+@keyframes an-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(16 * var(--dp)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Ekran „Połączenia MPK” (app/routes/index.tsx) ────────
+   Wartości w dp, bo kanwa Pixela ma 412 dp szerokości. */
+.rt-topbar {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(10 * var(--dp));
+  padding: calc(8 * var(--dp)) calc(14 * var(--dp));
+}
+
+.rt-back,
+.rt-pin {
+  width: calc(40 * var(--dp));
+  height: calc(40 * var(--dp));
+  flex: none;
+  border-radius: 50%;
+  background: #252b2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rt-title {
+  flex: 1;
+  padding-top: calc(8 * var(--dp));
+  font-size: calc(16 * var(--dp));
+  line-height: calc(24 * var(--dp));
+  font-weight: 700;
+  color: #e0e3e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* routeHeader: minHeight 68, marginTop 4, marginBottom 6, padding 12/16 */
+.rt-routehead {
+  display: flex;
+  align-items: flex-start;
+  min-height: calc(68 * var(--dp));
+  margin: calc(4 * var(--dp)) calc(2 * var(--dp)) calc(6 * var(--dp));
+  padding: calc(12 * var(--dp)) calc(16 * var(--dp));
+}
+
+.rt-side {
+  flex-shrink: 1;
+  max-width: 42%;
+  padding-top: calc(9 * var(--dp));
+  min-width: 0;
+}
+
+.rt-side-grow {
+  flex: 1;
+  max-width: none;
+}
+
+.rt-text {
+  font-size: calc(20 * var(--dp));
+  line-height: calc(26 * var(--dp));
+  font-weight: 600;
+  color: #bfc9c5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rt-text-strong {
+  color: #e0e3e1;
+  font-weight: 700;
+}
+
+/* routeArrowBtn: 36 × 36, marginHorizontal 8, marginTop 4 */
+.rt-arrow {
+  width: calc(36 * var(--dp));
+  height: calc(36 * var(--dp));
+  flex: none;
+  margin: calc(4 * var(--dp)) calc(8 * var(--dp)) 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* anchorSub: gap 4, marginTop 4 */
+.rt-anchor {
+  display: flex;
+  align-items: center;
+  gap: calc(4 * var(--dp));
+  margin-top: calc(4 * var(--dp));
+  max-width: 100%;
+}
+
+.rt-anchor-text {
+  font-size: calc(12 * var(--dp));
+  font-weight: 600;
+  color: #5cdbbe;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rt-anchor-place {
+  font-size: calc(12 * var(--dp));
+  font-weight: 500;
+  color: #bfc9c5;
+  white-space: nowrap;
+}
+
+.rt-anchor-x {
+  width: calc(20 * var(--dp));
+  height: calc(20 * var(--dp));
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* countRow: gap 8, marginBottom 8, paddingHorizontal 4 */
+.rt-countrow {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--dp));
+  margin-bottom: calc(8 * var(--dp));
+  padding: 0 calc(18 * var(--dp));
+}
+
+.rt-count {
+  flex-shrink: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--dp));
+  font-size: calc(12 * var(--dp));
+  line-height: calc(16 * var(--dp));
+  color: #bfc9c5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* offlineChip: surfaceContainerHighest, radius full, padding 8/3 */
+.rt-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--dp));
+  background: #303635;
+  border-radius: 999px;
+  padding: calc(3 * var(--dp)) calc(8 * var(--dp));
+}
+
+.rt-chip-dot {
+  width: calc(7 * var(--dp));
+  height: calc(7 * var(--dp));
+  border-radius: 50%;
+  background: #ffb957;
+}
+
+.rt-chip {
+  font-size: calc(11 * var(--dp));
+  line-height: calc(14 * var(--dp));
+  font-weight: 700;
+  color: #bfc9c5;
+}
+
+/* Pierwsza karta listy — ConnectionCard: radius 16, padding 14, gap 10 */
+.rt-card {
+  margin: 0 calc(14 * var(--dp));
+  padding: calc(14 * var(--dp));
+  border-radius: calc(16 * var(--dp));
+  background: #1b2120;
+  display: flex;
+  flex-direction: column;
+  gap: calc(10 * var(--dp));
+  box-shadow: 0 calc(1 * var(--dp)) calc(3 * var(--dp)) rgba(0, 0, 0, 0.08);
+}
+
+.rt-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rt-card-top b {
+  font-size: calc(22 * var(--dp));
+  line-height: calc(28 * var(--dp));
+  font-weight: 700;
+  color: #e0e3e1;
+}
+
+.rt-card-dur {
+  background: #334b46;
+  color: #cde8e1;
+  border-radius: 999px;
+  padding: calc(5 * var(--dp)) calc(12 * var(--dp));
+  font-size: calc(12 * var(--dp));
+  font-weight: 600;
+}
+
+.rt-card-hours {
+  font-size: calc(14 * var(--dp));
+  line-height: calc(20 * var(--dp));
+  color: #bfc9c5;
+}
+
+.rt-card-legs {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--dp));
+  flex-wrap: nowrap;
+}
+
+.rt-walk {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(4 * var(--dp));
+  background: #252b2a;
+  border-radius: calc(8 * var(--dp));
+  padding: calc(3 * var(--dp)) calc(7 * var(--dp));
+  font-size: calc(11 * var(--dp));
+  font-weight: 600;
+  color: #bfc9c5;
+}
+
+.rt-line {
+  flex-shrink: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--dp));
+  font-size: calc(12 * var(--dp));
+  color: #bfc9c5;
+  min-width: 0;
+}
+
+/* LineBadge: radius 8, minWidth 44, height 28, padding 9/4 */
+.rt-line-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(44 * var(--dp));
+  height: calc(28 * var(--dp));
+  padding: 0 calc(9 * var(--dp));
+  border-radius: calc(8 * var(--dp));
+  font-size: calc(14 * var(--dp));
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ── Powiadomienie Live Update ──────────────────────────────
+   Layout odwzorowuje szablon systemowy Android 16 dla
+   Notification.ProgressStyle (bez własnych RemoteViews — to warunek
+   Live Update). Elementy i kolejność są 1:1 z LiveUpdateFactory.kt:
+   ikona → tytuł → tekst → pasek z segmentami → dwa przyciski. */
+.live {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+  padding: 8px 0 88px;
+}
+
+@supports (animation-timeline: view()) {
+  .live .live-card {
+    animation: live-card-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 36%;
+  }
+
+  .live .live-copy {
+    animation: live-copy-in linear both;
+    animation-timeline: view();
+    animation-range: entry 4% entry 50%;
+  }
+}
+
+.live-card-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+/* Karta powiadomienia na ciemnym tle — jak w szufladzie Androida. */
+.live-card {
+  width: min(420px, 100%);
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px 14px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, #1c1f22 0%, #14171a 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 24px 60px -30px rgba(0, 0, 0, 0.9);
+}
+
+/* setSmallIcon(ic_kilometr_tram) w kolorze akcentu linii. */
+.live-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #00a884;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.live-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.live-title {
+  font-size: 17px;
+  line-height: 23px;
+  font-weight: 500;
+  color: #e3e6ea;
+}
+
+.live-text {
+  font-size: 16px;
+  line-height: 22px;
+  color: #dfe3e8;
+}
+
+/* ProgressStyle: pasek z segmentami, punkt przesiadki, ikony na końcach. */
+.live-bar {
+  position: relative;
+  height: 20px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.live-seg {
+  height: 8px;
+  border-radius: 4px;
+  flex: none;
+}
+
+/* addProgressPoint — punkt w kolorze akcentu linii. */
+.live-point {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 14px;
+  border-radius: 3px;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.live-start,
+.live-end {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  z-index: 3;
+}
+
+.live-start {
+  left: -2px;
+}
+
+.live-end {
+  right: -2px;
+}
+
+/* setProgressTrackerIcon — iconka pojazdu stoi na bieżącym postępie
+   (plan.progressPermille), więc przesuwa się razem z paskiem. */
+.live-tracker {
+  position: absolute;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px rgba(20, 23, 26, 0.9);
+  z-index: 4;
+  transition: left 0.25s linear;
+}
+
+.live-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  align-self: stretch;
+  justify-content: center;
+}
+
+/* Przyciski akcji (stop / route): obwódka, tekst jasny, wysokość 34. */
+.live-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 17px;
+  border: 1px solid rgba(196, 202, 214, 0.28);
+  font-size: 13px;
+  font-weight: 500;
+  color: #c4cad6;
+  white-space: nowrap;
+}
+
+.live-copy h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  font-weight: 750;
+}
+
+.live-copy p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 16.5px;
+  line-height: 1.6;
+  max-width: 44ch;
+}
+
+.live-note {
+  font-size: 13.5px !important;
+  color: var(--faint) !important;
+  line-height: 1.55 !important;
+}
+
+@keyframes live-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes live-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Stopka ────────────────────────────────────────────── */
 .foot {
   border-top: 1px solid var(--line-soft);
   padding: 22px 0 30px;
@@ -1414,13 +1800,14 @@ body {
   /* Na wąskim ekranie telefon i tekst idą jedna pod drugim; przycięty
      telefon zostaje, bo to nadal najczytelniejsza wersja tej sekcji. */
   .compass,
-  .anchor {
+  .anchor,
+  .live {
     grid-template-columns: 1fr;
     gap: 32px;
   }
 
+  /* Telefon pierwszy, potem tekst — czytamy od góry. */
   .anchor {
-    /* Telefon pierwszy, potem tekst — czytamy od góry. */
     order: 0;
   }
 
@@ -1431,6 +1818,19 @@ body {
   /* Radar i dane obok siebie zostają, bo to czytelniejsze niż pod sobą. */
   .cp-row {
     gap: 12px;
+  }
+
+  /* Powiadomienie na wąskim ekranie: ikona i treść zostają w rzędzie,
+     a przyciski schodzą pod pasek postępu (w pionie nie mieściłyby się). */
+  .live-card {
+    flex-wrap: wrap;
+    padding: 14px 16px 12px;
+  }
+
+  .live-actions {
+    flex-direction: row;
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 
@@ -1481,11 +1881,17 @@ body {
   .cp-target,
   .cp-pulse,
   .anchor .anchor-phone,
-  .anchor .an-sheet,
-  .anchor .an-row,
+  .anchor .rt-anchor,
+  .anchor .rt-card,
   .compass .cp-card,
-  .compass .compass-copy {
+  .compass .compass-copy,
+  .live .live-card,
+  .live .live-copy {
     animation: none;
+  }
+
+  .live-tracker {
+    transition: none;
   }
 
   .cta {

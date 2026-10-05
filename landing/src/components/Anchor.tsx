@@ -1,115 +1,134 @@
-import { Anchor, ChevronLeft, Search, X } from 'lucide-react';
-import { PixelFrame } from './Phone';
+import { Anchor, ArrowRight, ChevronLeft, Footprints, Pin, X } from 'lucide-react';
+import { PixelFrame, StatusBar } from './Phone';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Kotwiczenie przystanku — widok „Przystanek kotwiczenia” z AddPlaceSheet.tsx
-// (VIEW 2: PICK ANCHOR STOP). Elementy 1:1: uchwyt arkusza, przycisk cofnięcia,
-// nagłówek z „Przystanek odjazdu dla: …”, pole wyszukiwania 48 dp, podpowiedź
-// sekcji i wiersze „najbliższych przystanków” z kotwicą oraz pigułką „Wybierz”.
+// Kotwiczenie przystanku w miejscu, w którym naprawdę działa: górny pasek
+// ekranu „Połączenia MPK” (app/routes/index.tsx) — Wstecz + pinezka śledzenia,
+// a pod nim nagłówek trasy „Start → Cel” z dopiską kotwicy (Anchor 12,
+// nazwa przystanku, „· miejsce”, krzyżyk) i licznik połączeń z chipem.
 //
-// Telefon jest przycięty do górnej części: arkusz zajmuje 92% wysokości ekranu
-// (snapPoints AddPlaceSheet), więc dolna krawędź to cięcie, nie zaokrąglenie.
+// Wartości skopiowane z app/routes/index.tsx: topBar (padding 14/8, gap 10,
+// przyciski 40), routeHeader (minHeight 68, padding 16/12), routeText 20/26,
+// routeSide maxWidth 42 %, routeArrowBtn 36, countRow, offlineChip.
 //
-// Animacje startują dopiero po przewinięciu do sekcji (IntersectionObserver):
-//  - telefon wjeżdża delikatnie w górę i jaśnieje,
-//  - arkusz wysuwa się z dołu (jak BottomSheet),
-//  - wiersze pojawiają się kaskadowo (jak SlideIn w SmartHistoryList).
-// Wszystko wyłączone przy prefers-reduced-motion.
+// Animacje startują dopiero po przewinięciu — CSS `animation-timeline: view()`.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Ile dp ekranu pokazujemy: 8% arkusza + nagłówek + pole + 4 wiersze. */
-const CROP_DP = 556;
-/** snapPoints ['65%','92%'] → arkusz zaczyna się 8% od góry ekranu. */
-const SHEET_TOP_DP = 73;
+/** Ile dp ekranu pokazujemy: treść kończy się ~333 dp, więc 380 z małym
+ *  zapasem — inaczej pod cięciem zostaje pusty pas ekranu. */
+const CROP_DP = 380;
 
-const SHEET = {
-  /** s.places.anchorTitle */
-  title: 'Przystanek kotwiczenia',
-  /** s.places.anchorFor('Praca') */
-  subtitle: 'Przystanek odjazdu dla: Praca',
-  /** s.places.searchStop */
-  placeholder: 'Szukaj przystanku MPK…',
-  /** s.places.nearStops */
-  hint: 'Najbliższe przystanki wokół wybranego adresu:',
-  /** s.places.choose */
-  choose: 'Wybierz',
-  /** Prawdziwe nazwy przystanków MPK z wyników wyszukiwarki w aplikacji
-   *  (docs/screenshots/pr-41-szukanie-kotwicy.png); dystanse poglądowe. */
-  stops: [
-    { name: 'Dworzec Świebodzki', dist: '160 m' },
-    { name: 'DWORZEC GŁÓWNY (Dworcowa)', dist: '350 m' },
-    { name: 'Dworzec Główny (MDK)', dist: '470 m' },
-    { name: 'DWORZEC AUTOBUSOWY', dist: '620 m' },
-  ],
+const ROUTES = {
+  /** s.routes.title */
+  title: 'Połączenia MPK',
+  /** s.routes.countNearest + connectionsLabel */
+  count: '11 połączeń • najbliższe odjazdy',
+  /** s.routes.noLiveChip */
+  noLive: 'brak danych live',
+  /** routeText (start) — kolor onSurfaceVariant */
+  from: 'Twoja lokalizacja',
+  /** routeTextStrong (cel) — kolor onSurface */
+  to: 'DWORZEC GŁÓWNY (Dworcowa)',
+  /** activeAnchor.stopName */
+  anchorStop: 'Dworzec Świebodzki',
+  /** activeAnchor.placeName */
+  anchorPlace: 'Praca',
+  /** s.connection.transfers(0) */
+  transfers: 'bezpośrednio',
+  /** Pierwsza karta listy — ConnectionCard. */
+  card: {
+    depart: 'za 4 min',
+    hours: '12:07 → 12:15',
+    walkIn: '1m',
+    /** getLineColors('23', 'tram') → TRANSIT_PALETTE[9] */
+    line: '23',
+    lineColor: '#E64A19',
+    headsign: 'Wrocław Nowy Dwór (P+R)',
+    walkOut: '3m',
+    duration: '9 min',
+  },
 } as const;
-
-// Animacje startują dopiero po przewinięciu — obsługuje je CSS
-// `animation-timeline: view()` (patrz .anchor w styles.css). Dzięki temu
-// sekcja jest widoczna z definicji, a animacja po prostu startuje przy
-// wjeździe w kadr: bez IntersectionObservera i bez liczenia pozycji w JS.
 
 const ic = (n: number) => `calc(${n} * var(--dp))`;
 
 export function AnchorSection() {
+  const card = ROUTES.card;
   return (
     <section className="anchor">
       <div className="anchor-phone">
         <PixelFrame cropDp={CROP_DP}>
-          {/* Wierzch ekranu głównego wystaje spod arkusza (8% wysokości). */}
-          <div className="rn-app" style={{ top: 'calc(26 * var(--dp))' }}>
-            <div className="rn-topbar">
-              <h3 className="rn-h1">Gdzie jedziemy?</h3>
-              <div className="rn-topbar-actions">
-                <span className="rn-iconbtn">
-                  <X size={ic(20)} color="#BFC9C5" strokeWidth={2} />
+          <div className="rn-app" style={{ top: `calc(26 * var(--dp))` }}>
+            {/* 1. Górny pasek: Wstecz (40), tytuł, pinezka śledzenia (40). */}
+            <div className="rt-topbar">
+              <span className="rt-back">
+                <ChevronLeft size={ic(23)} color="#E0E3E1" strokeWidth={2} />
+              </span>
+              <span className="rt-title">{ROUTES.title}</span>
+              <span className="rt-pin">
+                <Pin size={ic(19)} color="#E0E3E1" strokeWidth={2} />
+              </span>
+            </div>
+
+            {/* 2. Nagłówek „Start → Cel” z dopiską kotwicy pod startem. */}
+            <div className="rt-routehead">
+              <span className="rt-side">
+                <span className="rt-text">{ROUTES.from}</span>
+                <span className="rt-anchor">
+                  <Anchor size={ic(12)} color="#5CDBBE" strokeWidth={2} />
+                  <span className="rt-anchor-text">{ROUTES.anchorStop}</span>
+                  <span className="rt-anchor-place"> · {ROUTES.anchorPlace}</span>
+                  <span className="rt-anchor-x">
+                    <X size={ic(12)} color="#BFC9C5" strokeWidth={2.5} />
+                  </span>
+                </span>
+              </span>
+
+              <span className="rt-arrow">
+                <ArrowRight size={ic(21)} color="#5CDBBE" strokeWidth={2.5} />
+              </span>
+
+              <span className="rt-side rt-side-grow">
+                <span className="rt-text rt-text-strong">{ROUTES.to}</span>
+              </span>
+            </div>
+
+            {/* 3. Licznik połączeń + chip „brak danych live”. */}
+            <div className="rt-countrow">
+              <span className="rt-count">{ROUTES.count}</span>
+              <span className="rt-chip">
+                <span className="rt-chip-dot" />
+                {ROUTES.noLive}
+              </span>
+            </div>
+
+            {/* Pierwsza karta z listy — żeby było widać, że to ekran połączeń. */}
+            <div className="rt-card">
+              <div className="rt-card-top">
+                <b>{card.depart}</b>
+                <span className="rt-card-dur">{card.duration}</span>
+              </div>
+              <p className="rt-card-hours">
+                {card.hours} · {ROUTES.transfers}
+              </p>
+              <div className="rt-card-legs">
+                <span className="rt-walk">
+                  <Footprints size={ic(12)} color="#BFC9C5" strokeWidth={2.2} />
+                  {card.walkIn}
+                </span>
+                <span className="rt-line">
+                  <span
+                    className="rt-line-badge"
+                    style={{ background: card.lineColor }}
+                  >
+                    {card.line}
+                  </span>
+                  {card.headsign}
+                </span>
+                <span className="rt-walk">
+                  <Footprints size={ic(12)} color="#BFC9C5" strokeWidth={2.2} />
+                  {card.walkOut}
                 </span>
               </div>
-            </div>
-          </div>
-
-          <div
-            className="an-sheet"
-            style={{ top: `calc(${SHEET_TOP_DP} * var(--dp))` }}
-          >
-            <span className="an-handle" />
-
-            <div className="an-header">
-              <span className="an-backbtn">
-                <ChevronLeft size={ic(22)} color="#E0E3E1" strokeWidth={2} />
-              </span>
-              <span className="an-header-text">
-                <b>{SHEET.title}</b>
-                <i>{SHEET.subtitle}</i>
-              </span>
-              <span className="an-closebtn">
-                <X size={ic(20)} color="#BFC9C5" strokeWidth={2} />
-              </span>
-            </div>
-
-            <div className="an-search">
-              <Search size={ic(18)} color="#BFC9C5" strokeWidth={2} />
-              <span>{SHEET.placeholder}</span>
-            </div>
-
-            <div className="an-hint">{SHEET.hint}</div>
-
-            <div className="an-stops">
-              {SHEET.stops.map((s, i) => (
-                <div
-                  className="an-row"
-                  key={s.name}
-                  style={{ '--i': i } as React.CSSProperties}
-                >
-                  <span className="an-row-icon">
-                    <Anchor size={ic(17)} color="#5CDBBE" strokeWidth={2} />
-                  </span>
-                  <span className="an-row-text">
-                    <b>{s.name}</b>
-                    <i>{s.dist} od wybranego miejsca</i>
-                  </span>
-                  <span className="an-pill">{SHEET.choose}</span>
-                </div>
-              ))}
             </div>
           </div>
         </PixelFrame>
@@ -123,10 +142,12 @@ export function AnchorSection() {
           do najbliższego słupka w promieniu kilkuset metrów.
         </p>
         <p className="anchor-note">
-          Nazwy przystanków są prawdziwe, z wyników wyszukiwarki w aplikacji.
-          Dystanse są przykładowe, tak jak cały ten widok.
+          Nazwa przystanku pochodzi z wyników wyszukiwarki w aplikacji.
+          Reszta tego widoku to realny interfejs ekranu „Połączenia MPK”.
         </p>
       </div>
     </section>
   );
 }
+
+export { StatusBar };

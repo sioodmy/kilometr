@@ -14,6 +14,7 @@ import {
 import { PixelPhone } from './components/Phone';
 import { CompassSection } from './components/Compass';
 import { AnchorSection } from './components/Anchor';
+import { LiveUpdateSection } from './components/LiveUpdate';
 import {
   APK_FALLBACK,
   APK_FILE,
@@ -142,6 +143,8 @@ export default function App() {
         <CompassSection />
 
         <AnchorSection />
+
+        <LiveUpdateSection />
 
         <section className="bento" id="offline">
           <h2>Cały rozkład w kieszeni.</h2>
