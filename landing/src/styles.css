@@ -220,16 +220,19 @@ body {
   aspect-ratio: var(--device-w) / var(--device-h);
   border-radius: calc(var(--radius) * var(--dp));
   /* Aluminium widoczne tylko jako cienka obrączka przy krawędzi obudowy,
-     z przodu telefon to czarne szkło (Gorilla Glass 3), nie metal. */
+     z przodu telefon to czarne szkło (Gorilla Glass 3), nie metal.
+     Ogon gradientu jest płaski (50-100% ten sam kolor): diagonalny
+     gradient 145deg kończy się ZAWSZE w dolnym-prawym rogu pudełka, więc
+     jasny stop na 100% dawałby jasny pas dokładnie na krawędzi cięcia
+     wariantu .pixel--crop (policzone: dolny-prawy róg mapuje się na
+     t=100%). Dół ramki jest ciemny, góra bez zmian. */
   background: linear-gradient(
     145deg,
     #9aa5a3 0%,
     #55605d 10%,
     #333b39 26%,
     #262d2b 50%,
-    #1c2221 68%,
-    #3f4745 86%,
-    #7b8684 100%
+    #262d2b 100%
   );
   /* Ramka to 28/33/32 dp OD KRAWĘDZI obudowy do krawędzi ekranu, a obraczka
      aluminiowa (--rim) siedzi w jej skrajnej części, dlatego `::before` jest
@@ -262,8 +265,9 @@ body {
 
      `background-size` na pełną wysokość obudowy (958 dp) + `position: top`
      sprawia, że gradient aluminium jest liczony dla całego telefonu, a nie dla
-     uciętego pudełka. Bez tego jasny koniec gradientu (#7b8684) lądował
-     dokładnie na krawędzi cięcia i wyglądał jak biała obwódka. */
+     uciętego pudełka, więc górna część cięcia ma identyczne kolory co pełny
+     telefon. Dolna krawędź cięcia jest ciemna dzięki płaskiemu ogonowi
+     gradientu (patrz komentarz przy .pixel). */
 .pixel--crop {
   height: calc((var(--crop-dp) + var(--bezel-top)) * var(--dp));
   aspect-ratio: auto;
@@ -1675,32 +1679,7 @@ body {
   max-width: 44ch;
 }
 
-/* Subtelne unoszenie powiadomienia, tylko na desktopie: na wąskim ekranie
-   sekcja jest już przewijana i krótkie unoszenie tylko drażni. Wstrzymujemy
-   je przy `:hover`, żeby karta nie uciekała spod kursora. */
-@media (min-width: 901px) and (prefers-reduced-motion: no-preference) {
-  .live .live-card {
-    animation:
-      live-card-in linear both,
-      live-float 7s ease-in-out 0.9s infinite;
-    animation-timeline: view(), auto;
-    animation-range: entry 0% entry 36%, normal;
-  }
-
-  .live .live-card:hover {
-    animation-play-state: running, paused;
-  }
-}
-
-@keyframes live-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-7px);
-  }
-}
+/* Animacja wejścia karty po przewinięciu jest wyżej, w bloku @supports. */
 
 @keyframes live-copy-in {
   from {
