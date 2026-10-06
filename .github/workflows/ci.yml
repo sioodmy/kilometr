@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-app:
+    name: App Typecheck & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (App & i18n)
+        run: npm run typecheck
+
+      - name: Run logic tests (Backup format)
+        run: npm run check:backup
+
+      - name: Run logic tests (Notifications)
+        run: npm run check:notifications
+
+      - name: Run logic tests (Smart rank)
+        run: npm run check:smart-rank
+
+      - name: Expo Doctor (Advisory)
+        run: npx expo-doctor || true
+
+  verify-subprojects:
+    name: Verify Server & Landing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build & typecheck server
+        run: |
+          npm --prefix server ci
+          npm --prefix server run build
+
+      - name: Build & typecheck landing
+        run: |
+          npm --prefix landing ci
+          npm --prefix landing run build
