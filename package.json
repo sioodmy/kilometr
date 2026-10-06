@@ -5,7 +5,7 @@
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "babel-preset-expo": "~57.0.0",
+    "babel-preset-expo": "~57.0.13",
     "expo": "~57.0.24",
     "expo-constants": "~57.0.19",
     "expo-document-picker": "~57.0.3",
