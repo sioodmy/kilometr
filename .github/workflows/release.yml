@@ -1,0 +1,131 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "release-apk"
+  cancel-in-progress: false
+
+env:
+  ANDROID_COMPILE_SDK: '36'
+  ANDROID_BUILD_TOOLS: '36.0.0'
+  ANDROID_NDK: '27.1.12297006'
+  ANDROID_CMAKE: '3.30.5'
+
+jobs:
+  release:
+    name: Build & Publish Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android SDK platforms, build-tools, NDK and CMake
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_COMPILE_SDK}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK}" \
+            "cmake;${ANDROID_CMAKE}"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Tune Gradle for CI
+        run: |
+          set -euo pipefail
+          GP=android/gradle.properties
+          printf '\n' >> "$GP"
+          cat >> "$GP" <<'EOF'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          org.gradle.caching=true
+          EOF
+
+      - name: Build Android Release APK (All Architectures)
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace
+
+      - name: Verify and stage APK
+        run: |
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "Nie znaleziono żadnego APK w android/app/build/outputs/apk/release"
+            exit 1
+          fi
+          echo "Zbudowano: $APK ($(du -h "$APK" | cut -f1))"
+          TAG="${GITHUB_REF#refs/tags/}"
+          mkdir -p apk-dist
+          cp "$APK" "apk-dist/kilometr-${TAG}.apk"
+          cp "$APK" "apk-dist/app-release.apk"
+          (cd apk-dist && sha256sum "kilometr-${TAG}.apk" > "kilometr-${TAG}.apk.sha256")
+          (cd apk-dist && sha256sum "app-release.apk" > "app-release.apk.sha256")
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kilometr-release-apk
+          path: apk-dist/*
+
+      - name: Create Tagged GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Kilometr $TAG" \
+              --generate-notes \
+              "apk-dist/kilometr-${TAG}.apk#kilometr-${TAG}.apk" \
+              "apk-dist/kilometr-${TAG}.apk.sha256#kilometr-${TAG}.apk.sha256"
+          else
+            gh release upload "$TAG" "apk-dist/kilometr-${TAG}.apk#kilometr-${TAG}.apk" --clobber
+            gh release upload "$TAG" "apk-dist/kilometr-${TAG}.apk.sha256#kilometr-${TAG}.apk.sha256" --clobber
+          fi
+
+          # Zaktualizuj także release 'latest' dla pobierania z landing page
+          if ! gh release view latest > /dev/null 2>&1; then
+            gh release create latest \
+              --title "Kilometr $TAG (latest)" \
+              --notes "Najnowsza wersja: $TAG"
+          fi
+          gh release upload latest apk-dist/app-release.apk#app-release.apk --clobber
+          gh release upload latest apk-dist/app-release.apk.sha256#app-release.apk.sha256 --clobber
