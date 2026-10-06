@@ -1,4 +1,4 @@
-name: Build Android APK & Deploy Pages
+name: Build Android APK
 
 on:
   workflow_dispatch:
@@ -17,11 +17,9 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "pages-and-build"
+  group: "build-apk"
   cancel-in-progress: false
 
 env:
@@ -79,12 +77,6 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Build landing page (React → docs/)
-        run: |
-          set -euo pipefail
-          npm --prefix landing ci
-          npm --prefix landing run build
-
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --clean --no-install
 
@@ -133,20 +125,20 @@ jobs:
             exit 1
           fi
           echo "Zbudowano: $APK ($(du -h "$APK" | cut -f1))"
-          cp "$APK" docs/app-release.apk
-          (cd docs && sha256sum app-release.apk > app-release.apk.sha256)
+          mkdir -p apk-dist
+          cp "$APK" apk-dist/app-release.apk
+          (cd apk-dist && sha256sum app-release.apk > app-release.apk.sha256)
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: kilometr-release-apk
-          path: |
-            android/app/build/outputs/apk/release/*.apk
-            docs/app-release.apk.sha256
+          path: apk-dist/*
 
       - name: Publish APK to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # Przycisk „Pobierz APK" w landingu (React) bierze ./app-release.apk,
@@ -159,22 +151,5 @@ jobs:
               --notes "Automatyczny build z gałęzi main (\`${{ github.ref_name }}\`, commit \`${{ github.sha }}\`)." \
               --target "${{ github.sha }}"
           fi
-          gh release upload "$TAG" docs/app-release.apk#app-release.apk --clobber
-          gh release upload "$TAG" docs/app-release.apk.sha256#app-release.apk.sha256 --clobber
-
-      - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: 'docs'
-
-  deploy-pages:
-    name: Deploy to GitHub Pages
-    runs-on: ubuntu-latest
-    needs: build-apk
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          gh release upload "$TAG" apk-dist/app-release.apk#app-release.apk --clobber
+          gh release upload "$TAG" apk-dist/app-release.apk.sha256#app-release.apk.sha256 --clobber
