@@ -55,6 +55,19 @@ export const en: Strings = {
     saveFailBody: 'Could not save the place. Try again.',
     searchPlaceholderTo: 'Where are you going?',
     searchPlaceholderFrom: 'Where are you starting from?',
+    unsupportedTitle: 'Unsupported city',
+    unsupportedBody: (city: string) =>
+      `Your GPS location points to ${city}. We currently serve only Wrocław.`,
+    unsupportedBodyUnknown:
+      'Your GPS location is outside the supported area. We currently serve only Wrocław.',
+    unsupportedHint: 'Pick a start point manually to search connections.',
+    unsupportedAction: 'Pick a start point',
+    pickStart: 'Pick a start point',
+    gpsBlockedTitle: 'GPS start unavailable',
+    gpsBlockedBody: (city: string) =>
+      `You are outside Wrocław (${city}), so GPS routes will not work. Pick a start point manually.`,
+    gpsBlockedBodyUnknown:
+      'You are outside Wrocław, so GPS routes will not work. Pick a start point manually.',
   },
   settings: {
     title: 'Route settings',
@@ -317,6 +330,7 @@ export const en: Strings = {
     searching: 'Searching Wrocław…',
     noResults: 'No results',
     noResultsHint: 'Try: “arkady”, “biskupin”, “zoo”, “swojczycka” — works without Polish characters too.',
+    gpsOutsideNotice: 'GPS is outside Wrocław — pick a point manually.',
   },
   places: {
     manageTitle: 'Saved places',

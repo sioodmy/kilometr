@@ -9,6 +9,7 @@ import { useStrings } from '../src/i18n';
 import { DEFAULT_LOCATION } from '../src/config';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
+import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
   type DataStatus,
   getDataStatus,
@@ -43,6 +44,7 @@ import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
+import { UnsupportedCityCard } from '../src/components/UnsupportedCityCard';
 
 export default function HomeScreen() {
   const s = useStrings();
@@ -65,8 +67,12 @@ export default function HomeScreen() {
   // Zapas na dole zamiast wpisanych 90 px — wysokość paska kciuka mierzy się
   // w trakcie layoutu, a na telefonach z paskiem nawigacji jest wyższy.
   const thumbInset = useThumbBarInset();
-  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string } | null>(null);
+  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string; city?: string | null } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
+  // GPS poza strefą (> 15 km od Wrocławia): tras z GPS nie liczymy,
+  // start trzeba wybrać ręcznie. Miasto z reverse-geocode do komunikatu.
+  const [gpsUnsupported, setGpsUnsupported] = useState(false);
+  const [gpsCity, setGpsCity] = useState<string | null>(null);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [manageSheetOpen, setManageSheetOpen] = useState(false);
   const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
@@ -204,7 +210,21 @@ export default function HomeScreen() {
     liveTracker.start();
 
     LocationService.getCurrentLocation().then((l) => {
-      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title });
+      const outside = isOutsideServiceArea(l.lat, l.lon);
+      const city = (l as { city?: string | null }).city ?? null;
+      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
+      if (outside) {
+        // Poza Wrocławiem: GPS zostaje tylko jako informacja do karty,
+        // a ranking i trasy liczymy z centrum — start i tak trzeba
+        // wybrać ręcznie, więc nie podstawiamy pozycji spoza strefy.
+        setGpsUnsupported(true);
+        setGpsCity(city);
+        FavoritesService.smartFromOrigin(DEFAULT_LOCATION.title, {
+          lat: DEFAULT_LOCATION.lat,
+          lon: DEFAULT_LOCATION.lon,
+        }).then(applySmart);
+        return;
+      }
       setLocTitle(l.title);
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
@@ -223,6 +243,7 @@ export default function HomeScreen() {
       refreshPlaces();
       if (!isCustomStart) {
         LocationService.getCurrentLocation().then((l) => {
+          if (isOutsideServiceArea(l.lat, l.lon)) return;
           const coords = { lat: l.lat, lon: l.lon };
           FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(applySmart);
         });
@@ -381,7 +402,10 @@ export default function HomeScreen() {
     return list;
   }, [smart, recent]);
 
-  const recentWithGps = useMemo(() => [GPS_ITEM, ...recentFromSmart], [recentFromSmart, GPS_ITEM]);
+  const recentWithGps = useMemo(
+    () => (gpsUnsupported ? recentFromSmart : [GPS_ITEM, ...recentFromSmart]),
+    [recentFromSmart, GPS_ITEM, gpsUnsupported],
+  );
 
   // Kolejność wyświetlania: najlepszy wynik na górze, najsłabszy na dole.
   // `smart` z rankera jest już posortowane malejąco po wyniku — nie odwracamy.
@@ -408,7 +432,31 @@ export default function HomeScreen() {
     return map;
   }, [smart, saved, recent]);
 
+  // GPS spoza strefy nie może być startem trasy — zamiast nawigacji
+  // pokazujemy wyjaśnienie i otwieramy ręczny wybór punktu startowego.
+  const blockGpsStart = () => {
+    Alert.alert(
+      s.home.gpsBlockedTitle,
+      gpsCity ? s.home.gpsBlockedBody(gpsCity) : s.home.gpsBlockedBodyUnknown,
+      [
+        { text: s.common.cancel, style: 'cancel' },
+        {
+          text: s.home.unsupportedAction,
+          onPress: () => {
+            setReturnToDestinationAfterStart(false);
+            setQuery('');
+            setSheetMode('start');
+          },
+        },
+      ],
+    );
+  };
+
   const resetToGps = async () => {
+    if (gpsUnsupported) {
+      blockGpsStart();
+      return;
+    }
     setIsCustomStart(false);
     if (gpsLocation) {
       setLocTitle(gpsLocation.title);
@@ -418,7 +466,17 @@ export default function HomeScreen() {
     }
     try {
       const l = await LocationService.getCurrentLocation();
-      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title });
+      const outside = isOutsideServiceArea(l.lat, l.lon);
+      const city = (l as { city?: string | null }).city ?? null;
+      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
+      if (outside) {
+        setGpsUnsupported(true);
+        setGpsCity(city);
+        blockGpsStart();
+        return;
+      }
+      setGpsUnsupported(false);
+      setGpsCity(null);
       setLocTitle(l.title);
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
@@ -428,9 +486,19 @@ export default function HomeScreen() {
     }
   };
 
-  const handleStartSelect = async (s: Suggestion) => {
+  const handleStartSelect = async (sel: Suggestion) => {
     setQuery('');
-    if (s.id === GPS_ITEM.id) {
+    if (sel.id === GPS_ITEM.id) {
+      if (gpsUnsupported) {
+        // Pozycja GPS spoza strefy: nie zamykamy arkusza, żeby użytkownik
+        // od razu wybrał punkt ręcznie; sam alert by go wyrzucał z flow.
+        Alert.alert(
+          s.home.gpsBlockedTitle,
+          gpsCity ? s.home.gpsBlockedBody(gpsCity) : s.home.gpsBlockedBodyUnknown,
+        );
+        setQuery('');
+        return;
+      }
       await resetToGps();
       if (returnToDestinationAfterStart) {
         setReturnToDestinationAfterStart(false);
@@ -442,11 +510,11 @@ export default function HomeScreen() {
     }
 
     setIsCustomStart(true);
-    setLocTitle(s.title);
-    const coords = { lat: s.lat, lon: s.lon };
+    setLocTitle(sel.title);
+    const coords = { lat: sel.lat, lon: sel.lon };
     setCurrentCoords(coords);
-    FavoritesService.smartFromOrigin(s.id || s.title, coords).then(applySmart);
-    void SearchService.recordRecent(s).then(() => {
+    FavoritesService.smartFromOrigin(sel.id || sel.title, coords).then(applySmart);
+    void SearchService.recordRecent(sel).then(() => {
       SearchService.recent().then(setRecent);
     });
 
@@ -513,6 +581,12 @@ export default function HomeScreen() {
   };
 
   const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number }) => {
+    // GPS spoza strefy nie może być startem: zamiast puszczać trasę
+    // z pozycji spoza Wrocławia prosimy o ręczny wybór startu.
+    if (gpsUnsupported && !isCustomStart) {
+      blockGpsStart();
+      return;
+    }
     // Własna trasa użytkownika ma priorytet — stopujemy dogrzewanie reszty.
     routeSearchGen.current++;
     void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
@@ -753,6 +827,17 @@ export default function HomeScreen() {
             </Pressable>
           )}
 
+          {gpsUnsupported && (
+            <UnsupportedCityCard
+              city={gpsCity}
+              onPickStart={() => {
+                setReturnToDestinationAfterStart(false);
+                setQuery('');
+                setSheetMode('start');
+              }}
+            />
+          )}
+
           {/* Listy tuż pod nagłówkiem, bez wypychania na dół. */}
           <View style={{ height: 12 }} />
 
@@ -814,6 +899,7 @@ export default function HomeScreen() {
             setSheetMode('start');
           }}
           onResetStart={() => void resetToGps()}
+          gpsUnsupported={gpsUnsupported}
         />
       )}
 
@@ -827,6 +913,7 @@ export default function HomeScreen() {
           placeholder={sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
           originTitle={sheetMode === 'destination' ? locTitle : undefined}
           closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
+          notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
           onChangeOrigin={
             sheetMode === 'destination'
               ? () => {

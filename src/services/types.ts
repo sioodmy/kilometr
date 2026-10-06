@@ -38,7 +38,7 @@ export interface IRoutingService {
 }
 
 export interface ILocationService {
-  getCurrentLocation(): Promise<{ title: string; address: string; lat: number; lon: number; stopId?: string }>;
+  getCurrentLocation(): Promise<{ title: string; address: string; lat: number; lon: number; stopId?: string; city?: string | null }>;
 }
 
 export interface IFavoritesService {

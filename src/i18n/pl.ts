@@ -60,6 +60,19 @@ export const pl = {
     saveFailBody: 'Nie udało się zapisać miejsca. Spróbuj ponownie.',
     searchPlaceholderTo: 'Dokąd jedziesz?',
     searchPlaceholderFrom: 'Skąd wyruszasz?',
+    unsupportedTitle: 'Nieobsługiwane miasto',
+    unsupportedBody: (city: string) =>
+      `Twoja lokalizacja GPS wskazuje na ${city}. Aktualnie obsługujemy tylko Wrocław.`,
+    unsupportedBodyUnknown:
+      'Twoja lokalizacja GPS jest poza obsługiwanym obszarem. Aktualnie obsługujemy tylko Wrocław.',
+    unsupportedHint: 'Wybierz punkt startowy manualnie, aby wyszukać połączenie.',
+    unsupportedAction: 'Wybierz punkt startowy',
+    pickStart: 'Wybierz punkt startowy',
+    gpsBlockedTitle: 'Start z GPS niedostępny',
+    gpsBlockedBody: (city: string) =>
+      `Jesteś poza Wrocławiem (${city}), więc trasy z GPS nie zadziałają. Wybierz punkt startowy manualnie.`,
+    gpsBlockedBodyUnknown:
+      'Jesteś poza Wrocławiem, więc trasy z GPS nie zadziałają. Wybierz punkt startowy manualnie.',
   },
   settings: {
     title: 'Ustawienia trasy',
@@ -327,6 +340,7 @@ export const pl = {
     searching: 'Szukam we Wrocławiu…',
     noResults: 'Brak wyników',
     noResultsHint: 'Spróbuj: „arkady”, „biskupin”, „zoo”, „swojczycka” — działa też bez polskich znaków.',
+    gpsOutsideNotice: 'GPS poza Wrocławiem — wybierz punkt manualnie.',
   },
   places: {
     manageTitle: 'Zapisane miejsca',

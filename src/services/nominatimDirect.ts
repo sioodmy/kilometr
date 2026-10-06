@@ -135,8 +135,11 @@ export async function searchNominatimDirect(
   }
 }
 
-/** Reverse-geocode prosto z telefonu (ulica dla GPS). */
-export async function reverseNominatimDirect(lat: number, lon: number): Promise<{ title: string; address: string } | null> {
+/** Reverse-geocode prosto z telefonu (ulica dla GPS + miejscowość do karty strefy). */
+export async function reverseNominatimDirect(
+  lat: number,
+  lon: number,
+): Promise<{ title: string; address: string; city: string | null } | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 6000);
   try {
@@ -152,10 +155,30 @@ export async function reverseNominatimDirect(lat: number, lon: number): Promise<
       signal: ctrl.signal,
     });
     if (!res.ok) return null;
-    const row = (await res.json()) as { display_name?: string; address?: Record<string, string> };
+    const row = (await res.json()) as {
+      display_name?: string;
+      address?: Record<string, string>;
+    };
     if (!row?.display_name) return null;
     const parts = row.display_name.split(',').map((p) => p.trim()).filter(Boolean);
-    return { title: parts[0] || 'Twoja lokalizacja', address: parts.slice(1, 3).join(', ') || 'Wrocław' };
+    const addr = row.address ?? {};
+    // Miejscowość do komunikatu „Twoja lokalizacja GPS wskazuje na …":
+    // pierwsze trafienie z hierarchii OSM, z pominięciem dzielnic/przedmieść.
+    const city =
+      addr.city ||
+      addr.town ||
+      addr.village ||
+      addr.municipality ||
+      addr.city_district ||
+      addr.suburb ||
+      addr.county ||
+      addr.state ||
+      null;
+    return {
+      title: parts[0] || 'Twoja lokalizacja',
+      address: parts.slice(1, 3).join(', ') || 'Wrocław',
+      city,
+    };
   } catch {
     return null;
   } finally {

@@ -62,6 +62,19 @@ export const uk: Strings = {
     saveFailBody: 'Не вдалося зберегти місце. Спробуй знову.',
     searchPlaceholderTo: 'Куди їдеш?',
     searchPlaceholderFrom: 'Звідки вирушаєш?',
+    unsupportedTitle: 'Місто не підтримується',
+    unsupportedBody: (city: string) =>
+      `Твоя GPS-локація вказує на ${city}. Наразі обслуговуємо лише Вроцлав.`,
+    unsupportedBodyUnknown:
+      'Твоя GPS-локація поза зоною обслуговування. Наразі обслуговуємо лише Вроцлав.',
+    unsupportedHint: 'Вибери початок вручну, щоб знайти сполучення.',
+    unsupportedAction: 'Вибрати початок',
+    pickStart: 'Вибери початок',
+    gpsBlockedTitle: 'Старт із GPS недоступний',
+    gpsBlockedBody: (city: string) =>
+      `Ти поза Вроцлавом (${city}), тож маршрути з GPS не працюватимуть. Вибери початок вручну.`,
+    gpsBlockedBodyUnknown:
+      'Ти поза Вроцлавом, тож маршрути з GPS не працюватимуть. Вибери початок вручну.',
   },
   settings: {
     title: 'Налаштування маршруту',
@@ -337,6 +350,7 @@ export const uk: Strings = {
     searching: 'Шукаю у Вроцлаві…',
     noResults: 'Немає результатів',
     noResultsHint: 'Спробуй: „arkady”, „biskupin”, „zoo”, „swojczycka” — працює й без польських літер.',
+    gpsOutsideNotice: 'GPS поза Вроцлавом — вибери точку вручну.',
   },
   places: {
     manageTitle: 'Збережені місця',

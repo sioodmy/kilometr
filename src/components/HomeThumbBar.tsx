@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { LocateFixed, Search, X } from 'lucide-react-native';
+import { LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
 import { scheme, type } from '../theme/tokens';
 import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
 import { useStrings } from '../i18n';
@@ -12,6 +12,8 @@ interface HomeThumbBarProps {
   isCustomStart: boolean;
   onOpenStart: () => void;
   onResetStart: () => void;
+  /** GPS poza Wrocławiem: start wymaga ręcznego wyboru. */
+  gpsUnsupported?: boolean;
 }
 
 /**
@@ -25,6 +27,7 @@ export function HomeThumbBar({
   isCustomStart,
   onOpenStart,
   onResetStart,
+  gpsUnsupported = false,
 }: HomeThumbBarProps) {
   const s = useStrings();
   return (
@@ -52,11 +55,11 @@ export function HomeThumbBar({
         }
       >
         <Text
-          style={[styles.startText, isCustomStart && styles.startTextCustom]}
+          style={[styles.startText, isCustomStart && styles.startTextCustom, gpsUnsupported && styles.startTextWarn]}
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          {s.home.startFrom(startTitle)}
+          {gpsUnsupported && !isCustomStart ? s.home.pickStart : s.home.startFrom(startTitle)}
         </Text>
         {isCustomStart ? (
           <Pressable
@@ -71,6 +74,8 @@ export function HomeThumbBar({
           >
             <X size={14} color={scheme.onSurfaceVariant} />
           </Pressable>
+        ) : gpsUnsupported ? (
+          <MapPinOff size={18} color={scheme.warning} />
         ) : (
           <LocateFixed size={18} color={scheme.onSurfaceVariant} />
         )}
@@ -118,6 +123,10 @@ const styles = StyleSheet.create({
   startTextCustom: {
     color: scheme.onSurface,
     fontWeight: '600',
+  },
+  startTextWarn: {
+    color: scheme.warning,
+    fontWeight: '700',
   },
   startResetBtn: {
     width: 24,

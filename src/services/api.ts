@@ -7,7 +7,7 @@ import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, reh
 import { planConnections, buildTripStops } from './routing/engine';
 import { fetchVehiclesDirect } from './realtimeClient';
 
-let cachedLocation: { title: string; address: string; lat: number; lon: number; stopId?: string } | null = null;
+let cachedLocation: { title: string; address: string; lat: number; lon: number; stopId?: string; city?: string | null } | null = null;
 
 function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6371000;
@@ -39,6 +39,38 @@ export const LocationService: ILocationService = {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
+        // Miejscowość z reverse-geocode trzymamy od razu — karta
+        // „Nieobsługiwane miasto" pokazuje ją bez drugiego zapytania.
+        let city: string | null = null;
+        try {
+          const { reverseNominatimDirect } = await import('./nominatimDirect');
+          const rev = await reverseNominatimDirect(lat, lon);
+          city = rev?.city ?? null;
+          if (rev) {
+            cachedLocation = { title: rev.title, address: rev.address, lat, lon, city };
+            // Blisko Wrocławia (< 500 m od słupka) tytuł zamieniamy na
+            // przystanek — dalej od miasta sam adres wystarczy.
+            try {
+              const { findNearestStops } = await import('./gtfsDatabase');
+              const nearest = await findNearestStops(lat, lon, 500, 1);
+              if (nearest.length > 0) {
+                const n = nearest[0];
+                cachedLocation = {
+                  title: n.name,
+                  address: 'Przystanek',
+                  lat,
+                  lon,
+                  stopId: n.stop_id,
+                  city,
+                };
+                void saveLastLocation(cachedLocation);
+                return cachedLocation;
+              }
+            } catch {}
+            return cachedLocation;
+          }
+        } catch {}
+
         try {
           const { findNearestStops } = await import('./gtfsDatabase');
           const nearest = await findNearestStops(lat, lon, 500, 1);
@@ -50,14 +82,9 @@ export const LocationService: ILocationService = {
               lat,
               lon,
               stopId: n.stop_id,
+              city,
             };
             void saveLastLocation(cachedLocation);
-            return cachedLocation;
-          }
-          const { reverseNominatimDirect } = await import('./nominatimDirect');
-          const rev = await reverseNominatimDirect(lat, lon);
-          if (rev) {
-            cachedLocation = { title: rev.title, address: rev.address, lat, lon };
             return cachedLocation;
           }
         } catch {}
