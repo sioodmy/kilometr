@@ -218,6 +218,7 @@ export interface LastLocation {
   lat: number;
   lon: number;
   stopId?: string;
+  city?: string | null;
   savedAt: number;
 }
 
@@ -227,6 +228,7 @@ export async function saveLastLocation(loc: {
   lat: number;
   lon: number;
   stopId?: string;
+  city?: string | null;
 }): Promise<void> {
   try {
     await kvSet(

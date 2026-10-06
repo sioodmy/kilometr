@@ -55,6 +55,19 @@ export const de: Strings = {
     saveFailBody: 'Ort konnte nicht gespeichert werden. Versuch es erneut.',
     searchPlaceholderTo: 'Wohin fährst du?',
     searchPlaceholderFrom: 'Wo startest du?',
+    unsupportedTitle: 'Nicht unterstützte Stadt',
+    unsupportedBody: (city: string) =>
+      `Dein GPS-Standort zeigt auf ${city}. Aktuell bedienen wir nur Wrocław.`,
+    unsupportedBodyUnknown:
+      'Dein GPS-Standort liegt außerhalb des unterstützten Gebiets. Aktuell bedienen wir nur Wrocław.',
+    unsupportedHint: 'Wähle den Start manuell, um Verbindungen zu suchen.',
+    unsupportedAction: 'Startpunkt wählen',
+    pickStart: 'Startpunkt wählen',
+    gpsBlockedTitle: 'GPS-Start nicht verfügbar',
+    gpsBlockedBody: (city: string) =>
+      `Du bist außerhalb von Wrocław (${city}), GPS-Routen funktionieren daher nicht. Wähle den Start manuell.`,
+    gpsBlockedBodyUnknown:
+      'Du bist außerhalb von Wrocław, GPS-Routen funktionieren daher nicht. Wähle den Start manuell.',
   },
   settings: {
     title: 'Routeneinstellungen',
@@ -317,6 +330,7 @@ export const de: Strings = {
     searching: 'Wrocław wird durchsucht…',
     noResults: 'Keine Ergebnisse',
     noResultsHint: 'Versuch: „arkady“, „biskupin“, „zoo“, „swojczycka“ — geht auch ohne polnische Zeichen.',
+    gpsOutsideNotice: 'GPS außerhalb von Wrocław — Punkt manuell wählen.',
   },
   places: {
     manageTitle: 'Gespeicherte Orte',

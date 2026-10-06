@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import BottomSheet, { BottomSheetFlatList, TouchableOpacity } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, X } from 'lucide-react-native';
+import { ArrowLeft, MapPinOff, X } from 'lucide-react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
@@ -27,6 +27,7 @@ export function SearchSheet({
   originTitle,
   onChangeOrigin,
   closeOnSelect = true,
+  notice,
 }: {
   open?: boolean;
   query: string;
@@ -41,6 +42,8 @@ export function SearchSheet({
   originTitle?: string;
   onChangeOrigin?: () => void;
   closeOnSelect?: boolean;
+  /** Informacyjny pasek nad listą (np. „GPS poza Wrocławiem"). */
+  notice?: string;
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
@@ -177,6 +180,12 @@ export function SearchSheet({
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={{ gap: 6 }}>
+            {notice ? (
+              <View style={styles.notice}>
+                <MapPinOff size={15} color={scheme.onWarningContainer} />
+                <Text style={styles.noticeText}>{notice}</Text>
+              </View>
+            ) : null}
             {/* Nagłówek tylko tam, gdzie coś jest */}
             {(hasResults || displayData.length > 0) && (
               <Text style={styles.section}>
@@ -332,5 +341,22 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.warningContainer,
+  },
+  noticeText: {
+    ...type.labelMedium,
+    color: scheme.onWarningContainer,
+    fontWeight: '600',
+    flex: 1,
   },
 });

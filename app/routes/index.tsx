@@ -60,6 +60,7 @@ import {
   type DataStatus,
 } from '../../src/services/dataManager';
 import { liveTracker } from '../../src/services/liveTracker';
+import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { DepartureTimeSheet, type TimeMode } from '../../src/components/DepartureTimeSheet';
@@ -399,6 +400,9 @@ export default function RoutesScreen() {
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [savedQuick, setSavedQuick] = useState<Suggestion[]>([]);
+  // GPS spoza strefy (> 15 km od Wrocławia) nie może być startem trasy.
+  const [gpsOutside, setGpsOutside] = useState(false);
+  const [gpsOutsideCity, setGpsOutsideCity] = useState<string | null>(null);
 
   useEffect(() => {
     SearchService.recent().then(setRecent);
@@ -468,8 +472,13 @@ export default function RoutesScreen() {
   }, [query, sheetFor, fromLat, fromLon]);
 
   const recentWithGps = useMemo(
-    () => (sheetFor === 'from' ? [gpsItem, ...recent] : recent),
-    [sheetFor, recent, gpsItem],
+    () =>
+      sheetFor === 'from'
+        ? gpsOutside
+          ? recent
+          : [gpsItem, ...recent]
+        : recent,
+    [sheetFor, recent, gpsItem, gpsOutside],
   );
 
   const handleSuggestionSelect = async (sug: Suggestion) => {
@@ -479,6 +488,27 @@ export default function RoutesScreen() {
       // Start = aktualna pozycja GPS (nie zapisana wcześniej)
       try {
         const l = await LocationService.getCurrentLocation();
+        if (isOutsideServiceArea(l.lat, l.lon)) {
+          const city = (l as { city?: string | null }).city ?? null;
+          setGpsOutside(true);
+          setGpsOutsideCity(city);
+          Alert.alert(
+            s.home.gpsBlockedTitle,
+            city ? s.home.gpsBlockedBody(city) : s.home.gpsBlockedBodyUnknown,
+            [
+              {
+                text: s.home.unsupportedAction,
+                onPress: () => {
+                  setQuery('');
+                  setSheetFor('from');
+                },
+              },
+            ],
+          );
+          return;
+        }
+        setGpsOutside(false);
+        setGpsOutsideCity(null);
         const currentSettings = getSettingsSync();
         dismissedAnchorsRef.current.clear();
         const anchor = findAnchorForLocation(
@@ -1347,6 +1377,7 @@ export default function RoutesScreen() {
           results={results}
           recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}
+          notice={sheetFor === 'from' && gpsOutside ? s.search.gpsOutsideNotice : undefined}
           onQuery={setQuery}
           onSelect={handleSuggestionSelect}
           onClose={() => {
