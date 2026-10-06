@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag wydania (np. v1.1.0)'
+        required: false
 
 permissions:
   contents: write
@@ -26,6 +33,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -81,7 +90,23 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace
 
+      - name: Resolve Release Tag
+        id: vars
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "v$(node -p 'require("./package.json").version')")"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: $TAG"
+
       - name: Verify and stage APK
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
         run: |
           set -euo pipefail
           APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
@@ -90,12 +115,23 @@ jobs:
             exit 1
           fi
           echo "Zbudowano: $APK ($(du -h "$APK" | cut -f1))"
-          TAG="${GITHUB_REF#refs/tags/}"
           mkdir -p apk-dist
           cp "$APK" "apk-dist/kilometr-${TAG}.apk"
           cp "$APK" "apk-dist/app-release.apk"
           (cd apk-dist && sha256sum "kilometr-${TAG}.apk" > "kilometr-${TAG}.apk.sha256")
           (cd apk-dist && sha256sum "app-release.apk" > "app-release.apk.sha256")
+
+      - name: Generate Release Notes from Conventional Commits
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/generate-release-notes.mjs \
+            --tag "$TAG" \
+            --output "apk-dist/release-notes.md" \
+            --sha-file "apk-dist/kilometr-${TAG}.apk.sha256"
+          echo "--- Wygenerowane Release Notes ---"
+          cat apk-dist/release-notes.md
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -103,29 +139,43 @@ jobs:
           name: kilometr-release-apk
           path: apk-dist/*
 
-      - name: Create Tagged GitHub Release
+      - name: Publish to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.vars.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
+          echo "Publikowanie release dla tagu: $TAG"
+
           if ! gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Tworzenie nowego GitHub Release: $TAG"
             gh release create "$TAG" \
               --title "Kilometr $TAG" \
-              --generate-notes \
+              --notes-file "apk-dist/release-notes.md" \
               "apk-dist/kilometr-${TAG}.apk#kilometr-${TAG}.apk" \
               "apk-dist/kilometr-${TAG}.apk.sha256#kilometr-${TAG}.apk.sha256"
           else
-            gh release upload "$TAG" "apk-dist/kilometr-${TAG}.apk#kilometr-${TAG}.apk" --clobber
-            gh release upload "$TAG" "apk-dist/kilometr-${TAG}.apk.sha256#kilometr-${TAG}.apk.sha256" --clobber
+            echo "Release $TAG już istnieje, aktualizacja assetów i notatek"
+            gh release upload "$TAG" \
+              "apk-dist/kilometr-${TAG}.apk#kilometr-${TAG}.apk" \
+              "apk-dist/kilometr-${TAG}.apk.sha256#kilometr-${TAG}.apk.sha256" \
+              --clobber
+            gh release edit "$TAG" \
+              --title "Kilometr $TAG" \
+              --notes-file "apk-dist/release-notes.md"
           fi
 
-          # Zaktualizuj także release 'latest' dla pobierania z landing page
+          echo "Synchronizacja release 'latest'..."
           if ! gh release view latest > /dev/null 2>&1; then
             gh release create latest \
               --title "Kilometr $TAG (latest)" \
-              --notes "Najnowsza wersja: $TAG"
+              --notes "Najnowsza wersja: [$TAG](https://github.com/${GH_REPO}/releases/tag/$TAG)"
+          else
+            gh release edit latest \
+              --title "Kilometr $TAG (latest)" \
+              --notes "Najnowsza wersja: [$TAG](https://github.com/${GH_REPO}/releases/tag/$TAG)"
           fi
-          gh release upload latest apk-dist/app-release.apk#app-release.apk --clobber
-          gh release upload latest apk-dist/app-release.apk.sha256#app-release.apk.sha256 --clobber
+          gh release upload latest "apk-dist/app-release.apk#app-release.apk" --clobber
+          gh release upload latest "apk-dist/app-release.apk.sha256#app-release.apk.sha256" --clobber
+          echo "Sukces: APK i suma SHA256 zostały opublikowane w GitHub Release!"
