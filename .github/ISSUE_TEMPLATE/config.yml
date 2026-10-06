@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📱 Pobierz najnowsze wydanie APK
+    url: https://github.com/sioodmy/kilometr/releases/latest
+    about: Sprawdź najnowszą wersję aplikacji przed zgłoszeniem błędu.
+  - name: 💬 Dołącz do dyskusji
+    url: https://github.com/sioodmy/kilometr/discussions
+    about: Masz pytanie, pomysł lub chcesz porozmawiać o projekcie?

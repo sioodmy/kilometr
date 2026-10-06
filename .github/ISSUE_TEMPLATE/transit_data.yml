@@ -1,0 +1,68 @@
+name: "🚍 Błąd rozkładu jazdy / trasy / GTFS"
+description: Zgłoś błąd w rozkładzie jazdy, nieprawidłową trasę, brakujący kurs lub błędną lokalizację przystanku
+title: "[Transit]: "
+labels: ["transit-data"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kilometr korzysta z danych rozkładowych oraz GTFS dla Wrocławia. Jeśli zauważysz rozbieżność między rzeczywistym kursem/tablicą przystankową a informacjami w aplikacji, opisz ją poniżej.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Typ problemu transportowego
+      description: Czego dotyczy rozbieżność?
+      options:
+        - "Niepoprawne godziny odjazdu / brakujący kurs w rozkładzie"
+        - "Niemożliwa lub absurdalna trasa / błąd przesiadki (silnik wyznaczania tras)"
+        - "Błędna lokalizacja lub nieaktualna nazwa przystanku"
+        - "Nieprawidłowe pozycje pojazdów na mapie (live tracking)"
+        - "Problem z bazą danych offline / aktualizacją rozkładów"
+        - "Inne"
+    validations:
+      required: true
+
+  - type: input
+    id: line_and_stops
+    attributes:
+      label: Linia i Przystanki
+      description: Podaj numer linii i/lub nazwy przystanków (początkowy, przesiadkowy, końcowy).
+      placeholder: np. Tramwaj 10, przystanki Rynek -> Plac Grunwaldzki
+    validations:
+      required: true
+
+  - type: input
+    id: datetime
+    attributes:
+      label: Data i godzina podróży
+      description: Kiedy wystąpił problem? Rozkłady różnią się w dni robocze, soboty i niedziele.
+      placeholder: np. 2026-10-06 ok. godz. 14:30
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Opis rozbieżności
+      description: Co wyświetliła aplikacja, a jak wygląda sytuacja w rzeczywistości (np. na tablicy przystankowej MPK / tabliczkach rozkładowych)?
+      placeholder: Kilometr sugerował odjazd o 14:32, jednak w rzeczywistym rozkładzie ten kurs nie istnieje...
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Zrzuty ekranu / Zdjęcia tablicy
+      description: Przeciągnij i upuść zrzut ekranu z aplikacji lub zdjęcie rozkładu z przystanku.
+      placeholder: Przeciągnij pliki tutaj...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Potwierdzenie
+      options:
+        - label: Sprawdziłem/am, czy rozbieżność nie wynika z doraźnej awarii lub tymczasowego objazdu (np. zatrzymanie ruchu, awaria trakcji).
+          required: false

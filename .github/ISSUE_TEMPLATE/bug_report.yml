@@ -1,0 +1,112 @@
+name: "🐛 Zgłoszenie błędu / Bug Report"
+description: Zgłoś błąd, niespodziewane zachowanie lub awarię (crash) w aplikacji Kilometr
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dziękujemy za chęć zgłoszenia błędu! Przed wysłaniem upewnij się, że problem nie został już wcześniej zgłoszony w zakładce [Issues](https://github.com/sioodmy/kilometr/issues).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Opis błędu
+      description: Jasny i zwięzły opis tego, co poszło nie tak.
+      placeholder: Po wybraniu trasy i zablokowaniu ekranu widżet nie aktualizuje najbliższego odjazdu...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Kroki do odtworzenia
+      description: Jak wywołać ten błąd krok po kroku?
+      placeholder: |
+        1. Uruchom aplikację na telefonie
+        2. Przejdź do zakładki ...
+        3. Wyszukaj połączenie z ... do ...
+        4. Kliknij na ...
+        5. Zauważ błąd: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Oczekiwane zachowanie
+      description: Co powinno się wydarzyć według Ciebie?
+      placeholder: Aplikacja powinna płynnie otworzyć szczegóły kursu bez zawieszenia ekranu.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Aktualne zachowanie
+      description: Co wydarzyło się w rzeczywistości?
+      placeholder: Aplikacja zamknęła się niespodziewanie / wyświetlił się biały ekran / brak reakcji na kliknięcie.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Środowisko uruchomieniowe
+      description: Gdzie wystąpił błąd?
+      options:
+        - "Fizyczny telefon z Androidem (Real Device)"
+        - "Emulator Android"
+        - "Przeglądarka / Web Landing"
+        - "Serwer GTFS / API"
+        - "Inne"
+    validations:
+      required: true
+
+  - type: input
+    id: device_info
+    attributes:
+      label: Model urządzenia i wersja systemu
+      description: Podaj model telefonu oraz wersję systemu Android (np. Google Pixel 8, Android 15 / Samsung Galaxy S23, OneUI 6).
+      placeholder: np. Google Pixel 8, Android 15
+    validations:
+      required: false
+
+  - type: input
+    id: app_version
+    attributes:
+      label: Wersja aplikacji / Commit
+      description: Wersja pobrana z Releases (lub hash commita / gałąź).
+      placeholder: np. najnowsze APK z Releases / commit 9b14eec / main
+    validations:
+      required: false
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Zrzuty ekranu / Wideo
+      description: Przeciągnij i upuść zrzuty ekranu lub nagrania wideo obrazujące problem (bardzo ułatwia diagnozę!).
+      placeholder: Przeciągnij pliki tutaj...
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logi z aplikacji / konsoli
+      description: Wklej odpowiednie logi (z `adb logcat`, terminala lub konsoli błędów).
+      render: shell
+      placeholder: |
+        adb logcat | grep -i kilometr
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Weryfikacja wstępna
+      options:
+        - label: Sprawdziłem/am, czy ten błąd nie został już wcześniej zgłoszony.
+          required: true
+        - label: Problem występuje na najnowszej wersji aplikacji z gałęzi `main` / najnowszego wydania APK.
+          required: false
