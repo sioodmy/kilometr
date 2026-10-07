@@ -53,9 +53,9 @@ const WEEKDAY_FIELDS: (keyof Pick<GtfsCalendar, 'monday' | 'tuesday' | 'wednesda
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry pieszych (footpaths i access/egress)
 // ────────────────────────────────────────────────────────────────────────────
-const WALK_SPEED_MPS = 1.3;          // 1.3 m/s (~4.7 km/h) — trochę szybciej niż 1.2
-const WALK_DETOUR_FACTOR = 1.3;      // ulice nie biegną po prostej — mnożnik ~30%
-const MAX_TRANSFER_METERS = 400;     // footpath do 400 m (Jakdojade: ~350-400m)
+const WALK_SPEED_MPS = 1.45;          // 1.45 m/s (~5.2 km/h) — jak Jakdojade, żwawy marsz
+const WALK_DETOUR_FACTOR = 1.2;      // ulice nie biegną po prostej — mnożnik ~20%
+const MAX_TRANSFER_METERS = 800;     // footpath do 800 m — węzły przesiadkowe (jakdojade grupuje perony w promieniu ~1 km i liczy czas, nie dystans)
 const MIN_FOOTPATH_SEC = 45;         // minimum 45s na przesiadkę pieszo
 
 export class GtfsStore {
@@ -302,8 +302,8 @@ export class GtfsStore {
       cell.push(s);
     }
 
-    // Promień 400m = ~4 kratki w każdą stronę
-    const SEARCH_RADIUS = 4;
+    // Promień 800m = ~8 kratek w każdą stronę (węzły przesiadkowe)
+    const SEARCH_RADIUS = 8;
 
     for (const s1 of stopArray) {
       const paths: Footpath[] = [];

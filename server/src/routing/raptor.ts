@@ -6,8 +6,8 @@ const INF = 1e9;
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z store.ts)
 // ────────────────────────────────────────────────────────────────────────────
-const WALK_SPEED_MPS = 1.3;
-const WALK_DETOUR_FACTOR = 1.3;
+const WALK_SPEED_MPS = 1.45;
+const WALK_DETOUR_FACTOR = 1.2;
 
 interface BoardingStop {
   stopId: string;
@@ -35,6 +35,57 @@ interface RaptorOptions {
       RAPTOR w ogóle nie skanuje wzorców niedozwolonych linii, więc pruning
       globalBestArrival nie wycina dozwolonych alternatyw. */
   allowedModes?: TransitModePreference;
+  /**
+   * Przesunięcie czasu wszystkich odczytów GTFS (sekundy). Używane przy
+   * nocnych kursach po północy: w GTFS należą do wczorajszego dnia
+   * serwisowego z godzinami 24:xx+, więc uruchamiamy RAPTOR-a na wczorajszym
+   * indeksie z offsetem -86400 i czasy lądują w zegarze dzisiejszym
+   * (24:34 → 00:34). Domyślnie 0.
+   */
+  timeOffsetSec?: number;
+  /**
+   * Zegar per wzorzec (patternId → przesunięcie w sekundach) dla ZUNIFIKOWANEGO
+   * indeksu nocnego (patrz mergeDayIndexes): tripy dziś (brak wpisu = timeOffsetSec)
+   * + tripy wczoraj (wpis -86400). RAPTOR łączy wtedy nogi z obu dni
+   * serwisowych w jednej podróży (np. 145 dziś + 255 wczoraj o 04:30).
+   */
+  patternTimeOffsets?: Map<string, number>;
+}
+
+/**
+ * Unifikacja indeksu nocnego: wzorce dziś + wzorce wczoraj (te drugie pod
+ * prefiksem, np. `y_`) w JEDNEJ mapie + mapa przesunięć zegara per wzorzec.
+ * Tripy 24:xx+ wczoraj lądują w zegarze dzisiejszym i łączą się z nogami
+ * dzisiejszymi. Mapy kopiowane płytko (współdzielą departures/trips), zbiory
+ * stopRoutes kopiowane — cache'owany indeks dzienny pozostaje nietknięty.
+ */
+export function mergeDayIndexes(
+  primary: DayIndex,
+  secondary: DayIndex,
+  prefix: string,
+  offsetSec: number,
+): { index: DayIndex; offsets: Map<string, number> } {
+  const index: DayIndex = {
+    stopRoutes: new Map(),
+    routeStops: new Map(primary.routeStops),
+    routeTrips: new Map(primary.routeTrips),
+    patterns: new Map(primary.patterns),
+  };
+  const offsets = new Map<string, number>();
+  for (const [pid, seq] of secondary.routeStops) index.routeStops.set(`${prefix}${pid}`, seq);
+  for (const [pid, trips] of secondary.routeTrips) index.routeTrips.set(`${prefix}${pid}`, trips);
+  for (const [pid, pat] of secondary.patterns) {
+    const npid = `${prefix}${pid}`;
+    index.patterns.set(npid, pat);
+    offsets.set(npid, offsetSec);
+  }
+  const allStops = new Set<string>([...primary.stopRoutes.keys(), ...secondary.stopRoutes.keys()]);
+  for (const stopId of allStops) {
+    const merged = new Set<string>(primary.stopRoutes.get(stopId) ?? []);
+    for (const pid of secondary.stopRoutes.get(stopId) ?? []) merged.add(`${prefix}${pid}`);
+    index.stopRoutes.set(stopId, merged);
+  }
+  return { index, offsets };
 }
 
 /**
@@ -51,6 +102,29 @@ export function classifyTransitMode(
   return 'bus';
 }
 
+/**
+ * Beznsensowna podróż: "wsiądź i wysiądź po ≤1 przystanku, resztę idź z buta"
+ * albo kurs bez przystanków (błąd danych). Takie podróże odrzucamy już
+ * w runRaptor przy zapisie destynacji — gdyby ustawiły globalBestArrival,
+ * ucinałyby później dobre podróże, a same i tak wypadają na mapowaniu.
+ */
+export function isPointlessShortRide(rj: RawJourney): boolean {
+  const transitSegs = rj.segments.filter((s) => s.type === 'transit');
+  for (const t of transitSegs) {
+    if (t.stopsCount <= 0) return true;
+  }
+  if (transitSegs.length === 1 && transitSegs[0].stopsCount <= 1) {
+    let totalWalkM = 0;
+    for (const s of rj.segments) {
+      if (s.type === 'walk') totalWalkM += s.walkMeters ?? 0;
+    }
+    const last = rj.segments[rj.segments.length - 1];
+    const egressWalkM = last && last.type === 'walk' ? (last.walkMeters ?? 0) : 0;
+    if (totalWalkM > 500 || egressWalkM > 350) return true;
+  }
+  return false;
+}
+
 const TRANSFER_PENALTY_SEC = 600; // 10 min kary za każdą przesiadkę — spacer 300 m się opłaca
 
 export function runRaptor(
@@ -63,7 +137,7 @@ export function runRaptor(
   if (!origins.length || !destinations.length) return [];
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(opts.maxTransfers ?? 2)));
-  const minTransferSec = Math.max(0, Math.min(600, Math.round(opts.minTransferSec ?? 90)));
+  const minTransferSec = Math.max(0, Math.min(600, Math.round(opts.minTransferSec ?? 60)));
   const MAX_ROUNDS = maxTransfers + 1;
 
   // Indeks dzienny — bez niego RAPTOR nie ma po czym jeździć
@@ -72,6 +146,12 @@ export function runRaptor(
 
   // Opóźnienie kursu w sekundach (0 = wg rozkładu)
   const delayOf = (tripId: string): number => opts.tripDelays?.get(tripId) ?? 0;
+
+  // Przesunięcie dni serwisowych (24:xx+ po północy → zegar dzisiejszy)
+  const timeOff = Math.round(opts.timeOffsetSec ?? 0);
+
+  // Zapas na dojściu początkowym (patrz Round 0) — patrz wyżej.
+  const CATCH_SLACK_SEC = 60;
 
   // Maks. moduł opóźnienia w mapie — do okna poszukiwań przy wsiadaniu.
   // (matcher capuje do 1800 s, ale liczymy z danych na wypadek braku capa).
@@ -113,7 +193,12 @@ export function runRaptor(
 
   // Round 0: Initialize with origins
   for (const orig of origins) {
-    const arrSec = departureTimeSec + orig.walkSec;
+    // Szansa na złapanie kursu odjeżdżającego tuż po godzinie zapytania:
+    // szacunek dojścia jest ostrożny (detour ×1.25, min 30 s), więc odejmujemy
+    // do 60 s. Bez tego kurs dokładnie o godzinie zapytania (np. 15:00 co 30 min,
+    // użytkownik 20 m od przystanku) nigdy nie zostanie złapany, choć
+    // jakdojade go pokazuje. Nigdy nie schodzimy poniżej godziny zapytania.
+    const arrSec = departureTimeSec + Math.max(0, orig.walkSec - CATCH_SLACK_SEC);
     const prev = tau[0].get(orig.stopId) ?? INF;
     if (arrSec < prev) {
       tau[0].set(orig.stopId, arrSec);
@@ -166,6 +251,9 @@ export function runRaptor(
       const pattern = idx.patterns.get(patternId);
       if (!pattern) continue;
 
+      // Zegar tego wzorca (unified overnight index): tripy wczoraj -86400.
+      const po = opts.patternTimeOffsets?.get(patternId) ?? timeOff;
+
       // Jednorazowy filtr pojazdów: wzorzec niedozwolonej linii pomijamy
       // w całości (brak wsiadania = brak przesiadek przez ten pojazd).
       if (opts.allowedModes && opts.allowedModes !== 'all') {
@@ -193,15 +281,17 @@ export function runRaptor(
         if (currentTripId && currentTripTimes && sIdx < currentTripTimes.length) {
           const st = currentTripTimes[sIdx];
           if (st && st.stop_id === stopId) {
-            const arrTime = st.arrival_sec + delayOf(currentTripId);
+            const arrTime = st.arrival_sec + delayOf(currentTripId) + po;
 
-            // Global pruning: nie rozwijaj jeśli już jest za późno
-            if (arrTime >= globalBestArrival) continue;
+            // Global pruning dotyczy tylko ZAPISU przyjazdu — wsiadanie
+            // sprawdzamy ZAWSZE (dawny `continue` pomijał też boarding:
+            // wolny kurs dojeżdża za późno, ale szybki kurs z tego samego
+            // przystanku zdążyłby przed globalBest — gubiliśmy przesiadki).
+            if (arrTime < globalBestArrival) {
+              const prevBest = tau[k].get(stopId) ?? INF;
+              const prevGlobal = tauBest.get(stopId) ?? INF;
 
-            const prevBest = tau[k].get(stopId) ?? INF;
-            const prevGlobal = tauBest.get(stopId) ?? INF;
-
-            if (arrTime < prevBest) {
+              if (arrTime < prevBest) {
               tau[k].set(stopId, arrTime);
               if (arrTime < prevGlobal) {
                 tauBest.set(stopId, arrTime);
@@ -215,12 +305,10 @@ export function runRaptor(
               });
               newMarkedStops.add(stopId);
 
-              // Check if this stop is one of our target destinations
+              // Check if this stop is one of our target destinations.
+              // Bezsens (1 przystanek + długi spacer) nie ustawia globalBest
+              // i nie trafia na listę — patrz isPointlessShortRide.
               if (destStopSet.has(stopId)) {
-                const totalArr = arrTime + destStopSet.get(stopId)!.walkSec;
-                if (totalArr < globalBestArrival) {
-                  globalBestArrival = totalArr;
-                }
                 const destInfo = destStopSet.get(stopId)!;
                 const journey = backtrackJourney(
                   store,
@@ -231,8 +319,15 @@ export function runRaptor(
                   destInfo,
                   departureTimeSec
                 );
-                if (journey) completedJourneys.push(journey);
+                if (journey && !isPointlessShortRide(journey)) {
+                  completedJourneys.push(journey);
+                  const totalArr = arrTime + destInfo.walkSec;
+                  if (totalArr < globalBestArrival) {
+                    globalBestArrival = totalArr;
+                  }
+                }
               }
+            }
             }
           }
         }
@@ -252,17 +347,20 @@ export function runRaptor(
           const depArr = pattern.departures[sIdx];
           const idxArr = pattern.tripIndices[sIdx];
           if (depArr && depArr.length > 0) {
-            const startIdx = maxDelayAbs > 0 ? lowerBound(depArr, minBoardSec - maxDelayAbs) : lowerBound(depArr, minBoardSec);
+            // depArr trzyma surowe czasy GTFS, a minBoardSec jest już
+            // w zegarze zapytania → odjęcie offsetu wzorca przy porównaniach.
+            const boardTarget = minBoardSec - po;
+            const startIdx = maxDelayAbs > 0 ? lowerBound(depArr, boardTarget - maxDelayAbs) : lowerBound(depArr, boardTarget);
             let bestEff = Infinity;
             let bestTripIdx = -1;
             for (let di = startIdx; di < depArr.length; di++) {
               const schedDep = depArr[di];
               // Dalsze kursy nie pobiją bestEff nawet przy maks. przyśpieszeniu.
               // Bez opóźnień (maxDelayAbs = 0) kończy się na pierwszym pasującym,
-              // czyli dokładnie jak poprzednie binary-search.
-              if (schedDep - maxDelayAbs > bestEff) break;
+              // czyli dokładnie jak poprzedni binary-search.
+              if (schedDep + po - maxDelayAbs > bestEff) break;
               const candTrip = trips[idxArr[di]];
-              const eff = schedDep + delayOf(candTrip.trip_id);
+              const eff = schedDep + delayOf(candTrip.trip_id) + po;
               if (eff >= minBoardSec && eff < bestEff) {
                 bestEff = eff;
                 bestTripIdx = idxArr[di];
@@ -272,8 +370,13 @@ export function runRaptor(
               const foundTrip = trips[bestTripIdx];
               const depTime = bestEff;
 
-              // Only switch if this trip departs earlier or current onboard trip cannot reach
-              if (!currentTripId || depTime < currentBoardDepTime) {
+              // Przełączamy się na wcześniejszy KURS (niższy indeks = wcześniejszy
+              // odjazd z początku trasy = przy FIFO dominuje dalej na trasie).
+              // Porównywanie czasów wsiadania z różnych przystanków było błędne:
+              // późniejsze wsiadanie DALEJ na trasie bywa lepsze (pomija wolny
+              // odcinek, np. 21 do Prudnickiej + 16 dalej zamiast wolnej 16
+              // od początku).
+              if (!currentTripId || bestTripIdx < currentTripIdx) {
                 currentTripIdx = bestTripIdx;
                 currentTripId = foundTrip.trip_id;
                 currentBoardStopId = stopId;
@@ -314,12 +417,9 @@ export function runRaptor(
             });
             footpathUpdated.add(fp.to_stop_id);
 
-            // Check if footpath target is destination
+            // Check if footpath target is destination (bezsens nie ustawia
+            // globalBest ani nie trafia na listę — patrz isPointlessShortRide).
             if (destStopSet.has(fp.to_stop_id)) {
-              const totalArr = arrAtTarget + destStopSet.get(fp.to_stop_id)!.walkSec;
-              if (totalArr < globalBestArrival) {
-                globalBestArrival = totalArr;
-              }
               const destInfo = destStopSet.get(fp.to_stop_id)!;
               const journey = backtrackJourney(
                 store,
@@ -330,7 +430,13 @@ export function runRaptor(
                 destInfo,
                 departureTimeSec
               );
-              if (journey) completedJourneys.push(journey);
+              if (journey && !isPointlessShortRide(journey)) {
+                completedJourneys.push(journey);
+                const totalArr = arrAtTarget + destInfo.walkSec;
+                if (totalArr < globalBestArrival) {
+                  globalBestArrival = totalArr;
+                }
+              }
             }
           }
         }
@@ -589,6 +695,17 @@ export function filterParetoJourneys(journeys: RawJourney[], departureTimeSec = 
   // Najtańsze najpierw — bezpośrednie z dłuższym spacerem wygrywają
   // z wieloprzesiadkowymi z najbliższego słupka.
   result.sort((a, b) => journeyCost(a, departureTimeSec) - journeyCost(b, departureTimeSec));
+
+  // Najwcześniejszy przyjazd zawsze na liście: sort po koszcie mógłby odciąć
+  // najszybszą podróż, gdyby było ≥10 tańszych-wolniejszych (kara za przesiadki).
+  let bestIdx = 0;
+  for (let i = 1; i < result.length; i++) {
+    if (result[i].arrivalSec < result[bestIdx].arrivalSec) bestIdx = i;
+  }
+  if (bestIdx >= 10) {
+    const [best] = result.splice(bestIdx, 1);
+    result.unshift(best);
+  }
 
   return result.slice(0, 10);
 }
