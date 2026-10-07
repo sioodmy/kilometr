@@ -56,6 +56,33 @@ w wersji, która nie wybucha na limitach.
 \* `/api/kd/*` woła PDP **tylko na żądanie** (cache 120 s / 1 h).
 Aplikacja na razie tego nie używa (gotowość na przyszłość) → 0 req/dzień.
 
+## Strażnik 0 zł (jak spać spokojnie)
+
+**GitHub Actions (prywatne repo: 2000 min/mies. gratis):**
+- Nasze zużycie: rozkłady ~2–5 min/dobę (zwykle ~1 min — skip przy braku
+  zmian), APK ~20 min tylko przy pushu z kodem aplikacji, CI ~3 min.
+  Razem grubo poniżej limitu.
+- Twarda gwarancja: dopóki nie podepniesz karty i nie podniesiesz limitu
+  (Settings → Billing and plans → Spending limit, domyślnie **$0**),
+  GitHub NIE MA jak Cię obciążyć. Po wyczerpaniu minut joby po prostu
+  stają — rachunek nie przyjdzie.
+- Dependabot: jego PR-y odpalają tylko lekkie CI (typecheck). Ciężki build
+  APK pomija pushy z `dependabot` w tytule commita (`if` w build-apk.yml);
+  release poczeka na push z kodem albo ręczny Run workflow.
+
+**Cloudflare (R2 + Worker):**
+- Architektura jest z natury tania: Worker nie ma płatnych bindingów
+  (bez D1/KV/Queues), egress z R2 jest darmowy, odczyty idą w tysiące
+  wobec 10M limitu, a PDP wołamy kilka razy dziennie z cache.
+- Token w GitHub Secrets ma TYLKO zapis do jednego bucketa R2 — nawet
+  wyciek nie pozwala naklikać płatnych usług.
+- Włącz alerty: Dashboard → Manage Account → Notifications → usage
+  alerts dla Workers i R2 (mail przy przekroczeniu progów) + raz
+  w miesiącu rzuć okiem na metryki (Workers → Metrics, R2 → Metrics).
+- Uczciwie: Cloudflare nie ma twardego kill-switcha $0 — alerty
+  + monitoring to Twoja gwarancja. Przy naszym zużyciu jesteś ~100×
+  poniżej progów płatnych.
+
 ## Setup krok po kroku (reproducible)
 
 Wszystkie sekrety trzymamy **poza repo**: ani klucz PDP, ani tokeny
