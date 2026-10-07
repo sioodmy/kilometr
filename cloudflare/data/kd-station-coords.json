@@ -1,0 +1,4 @@
+{
+  "_note": "Cache współrzędnych stacji KD we Wrocławiu. Klucz = liczbowe ID stacji z PDP API. Uzupełniane komendą `node scripts/build-timetable.mjs --write-coords` (Nominatim, viewbox Wrocławia) + ręczna weryfikacja przed commitem. Bez wpisu stacja jest pomijana w buildzie (warning, nie błąd).",
+  "stations": {}
+}
