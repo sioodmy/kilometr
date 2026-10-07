@@ -3,7 +3,7 @@ import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
 
 const WALK_SPEED_MPS = 1.45;
-const WALK_DETOUR_FACTOR = 1.2;
+const WALK_DETOUR_FACTOR = 1.15;
 const MAX_TRANSFER_METERS = 800;
 const MIN_FOOTPATH_SEC = 45;
 

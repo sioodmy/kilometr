@@ -7,7 +7,7 @@ const INF = 1e9;
 // Parametry spacerowe (spójne z store.ts)
 // ────────────────────────────────────────────────────────────────────────────
 const WALK_SPEED_MPS = 1.45;
-const WALK_DETOUR_FACTOR = 1.2;
+const WALK_DETOUR_FACTOR = 1.15;
 
 interface BoardingStop {
   stopId: string;

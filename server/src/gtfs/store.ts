@@ -54,7 +54,7 @@ const WEEKDAY_FIELDS: (keyof Pick<GtfsCalendar, 'monday' | 'tuesday' | 'wednesda
 // Parametry pieszych (footpaths i access/egress)
 // ────────────────────────────────────────────────────────────────────────────
 const WALK_SPEED_MPS = 1.45;          // 1.45 m/s (~5.2 km/h) — jak Jakdojade, żwawy marsz
-const WALK_DETOUR_FACTOR = 1.2;      // ulice nie biegną po prostej — mnożnik ~20%
+const WALK_DETOUR_FACTOR = 1.15;     // ulice nie biegną po prostej — mnożnik ~15%
 const MAX_TRANSFER_METERS = 800;     // footpath do 800 m — węzły przesiadkowe (jakdojade grupuje perony w promieniu ~1 km i liczy czas, nie dystans)
 const MIN_FOOTPATH_SEC = 45;         // minimum 45s na przesiadkę pieszo
 
