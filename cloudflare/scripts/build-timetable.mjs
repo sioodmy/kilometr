@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
 const DATA = join(ROOT, 'data');
-const COORDS_FILE = join(DATA, 'kd-station-coords.json');
+const COORDS_FILE = process.env.KD_COORDS_FILE || join(DATA, 'kd-station-coords.json');
 const DB_FILE = join(DIST, 'kilometr-gtfs.db');
 const MANIFEST_FILE = join(DIST, 'manifest.json');
 
@@ -38,7 +38,7 @@ const MPK_DOWNLOAD_BASE = 'https://open-data.cui.wroclaw.pl/hdb/download';
 const MPK_FALLBACK_URL = 'https://open-data.cui.wroclaw.pl/hdb/download/136/';
 const MPK_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
-const PDP_BASE = 'https://pdp-api.plk-sa.pl';
+const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
 const KD_CARRIER = 'KD';
 

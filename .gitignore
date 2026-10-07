@@ -49,3 +49,10 @@ modules/*/ios/build/
 # generowane dane backendu (pobierane automatycznie: `npm run setup`
 # lub hooki predev/prestart w server/) — nigdy nie commitować
 server/data/
+
+# lokalne sekrety i artefakty pipeline'u rozkładów (klucz PDP API tylko
+# w sekretach: `wrangler secret put` + GitHub Actions Secrets)
+.env
+cloudflare/dist/
+cloudflare/.dev.vars
+cloudflare/node_modules/
