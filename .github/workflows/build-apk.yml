@@ -149,7 +149,7 @@ jobs:
           (cd apk-dist && sha256sum app-release.apk > app-release.apk.sha256)
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: kilometr-release-apk
           path: apk-dist/*

@@ -68,7 +68,7 @@ jobs:
 
       - name: Artefakt (7 dni, do podejrzenia)
         if: steps.build.outputs.exit == '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: kilometr-timetable
           path: |
