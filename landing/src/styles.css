@@ -1893,8 +1893,16 @@ body {
 .duel-head h2 {
   font-size: clamp(30px, 3.6vw, 44px);
   letter-spacing: -0.03em;
-  line-height: 1.02;
+  line-height: 1.08;
   font-weight: 800;
+}
+
+.duel-grad {
+  background: linear-gradient(92deg, var(--brand) 10%, #d9fff3 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 /* Graficzny baner trasy: wielka godzina + dzień i wielkie przystanki. */

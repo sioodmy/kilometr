@@ -168,7 +168,11 @@ export function DuelSection() {
   return (
     <section className="duel" id="porownanie" aria-labelledby="duel-h">
       <div className="duel-head">
-        <h2 id="duel-h">Najlepsze rozwiązanie na rynku.</h2>
+        <h2 id="duel-h">
+          Najlepsze rozwiązanie na rynku.
+          <br />
+          <span className="duel-grad">Totalna deklasacja.</span>
+        </h2>
       </div>
       <div className="duel-route" role="img" aria-label={`Trasa ${DUEL.from} do ${DUEL.to}, ${DUEL.queryDay} o ${DUEL.queryTime}`}>
         <div className="duel-route-places">
