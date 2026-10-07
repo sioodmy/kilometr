@@ -48,6 +48,12 @@ jobs:
   build-apk:
     name: Build Release APK
     runs-on: ubuntu-latest
+    # EXPO_PUBLIC_* jest wpieczone w bundla JS w trakcie assembleRelease,
+    # więc URL musi być w env na runnerze. Ten sam sekret, którego używa
+    # workflow timetable.yml — nic nowego nie trzeba dodawać w Settings.
+    # Pusty sekret = aplikacja wraca na starą ścieżkę ZIP (fallback).
+    env:
+      EXPO_PUBLIC_TIMETABLE_URL: ${{ secrets.TIMETABLE_PUBLIC_URL }}
 
     steps:
       - name: Checkout repo
