@@ -16,6 +16,20 @@ export const GTFS = {
   timeoutMs: 60000,
 } as const;
 
+/**
+ * Gotowa baza z serwera Kilometr (Cloudflare R2 + Worker) — telefon pobiera
+ * prebuilt SQLite zamiast parsować ZIP-a w pamięci (OOM na słabszych
+ * urządzeniach). Pusty baseUrl = stara ścieżka: ZIP → unzip → import.
+ * Ustawiane przez EXPO_PUBLIC_TIMETABLE_URL (nigdy żaden sekret — manifest
+ * i baza są publiczne, klucz PDP API siedzi tylko w Workerze).
+ */
+export const TIMETABLE = {
+  baseUrl: (process.env.EXPO_PUBLIC_TIMETABLE_URL ?? '').replace(/\/$/, ''),
+  dbFile: 'kilometr-gtfs.db',
+  refreshHours: 24,
+  timeoutMs: 15000,
+} as const;
+
 export const MPK = {
   busPositionUrl: 'https://mpk.wroc.pl/bus_position',
   pollIntervalMs: 12000,
