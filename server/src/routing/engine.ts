@@ -1,5 +1,5 @@
 import { gtfsStore } from '../gtfs/store';
-import { filterParetoJourneys, runRaptor } from './raptor';
+import { filterParetoJourneys, isPointlessShortRide, mergeDayIndexes, runRaptor } from './raptor';
 import { Connection, Leg, LegStop, RawJourney, TransitModePreference } from './types';
 import { distanceMeters, secondsToTimeString } from '../gtfs/geo';
 import { vehicleTracker } from '../realtime/tracker';
@@ -7,8 +7,8 @@ import { vehicleTracker } from '../realtime/tracker';
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z raptor.ts i store.ts)
 // ────────────────────────────────────────────────────────────────────────────
-const WALK_SPEED_MPS = 1.3;
-const WALK_DETOUR_FACTOR = 1.3;
+const WALK_SPEED_MPS = 1.45;
+const WALK_DETOUR_FACTOR = 1.15;
 const MIN_WALK_LEG_METERS = 50;
 
 /** Pełna sekwencja przystanków kursu (cała linia) z GTFS stop_times + stops. */
@@ -78,23 +78,6 @@ export interface PlanOptions {
  * absurdalnie ("wsiądź i od razu wysiądź") i przegrywa z samym spacerem
  * albo z dłuższą jazdą — więc w ogóle go nie proponujemy.
  */
-function isPointlessShortRide(rj: RawJourney): boolean {
-  const transitSegs = rj.segments.filter((s) => s.type === 'transit');
-  for (const t of transitSegs) {
-    if (t.stopsCount <= 0) return true;
-  }
-  if (transitSegs.length === 1 && transitSegs[0].stopsCount <= 1) {
-    let totalWalkM = 0;
-    for (const s of rj.segments) {
-      if (s.type === 'walk') totalWalkM += s.walkMeters ?? 0;
-    }
-    const last = rj.segments[rj.segments.length - 1];
-    const egressWalkM = last && last.type === 'walk' ? (last.walkMeters ?? 0) : 0;
-    if (totalWalkM > 500 || egressWalkM > 350) return true;
-  }
-  return false;
-}
-
 /** Formatuj datę do YYYYMMDD (dla calendar_dates.txt). */
 function toDateStr(date: Date): string {
   const y = date.getFullYear();
@@ -124,7 +107,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));
   const modes: TransitModePreference =
     options.modes === 'tram' || options.modes === 'bus' ? options.modes : 'all';
-  const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 90)));
+  const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 60)));
   const maxWalkM = Math.max(100, Math.min(2000, Math.round(options.maxWalkM ?? 800)));
   const userWalkSpeed = Math.max(0.8, Math.min(2.0, options.walkSpeedMps ?? WALK_SPEED_MPS));
 
@@ -200,25 +183,55 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const rawJourneys: RawJourney[] = [];
   const timeWindows = [0, 300, 600, 900, 1200, 1800, 2700, 3600];
 
+  // Nocny indeks ZUNIFIKOWANY (mergeDayIndexes): po północy (do ~07:00)
+  // kursy 24:xx+ należą do wczorajszego dnia serwisowego, ale nogi z obu dni
+  // muszą łączyć się w JEDNEJ podróży (np. 145 dziś + 255 wczoraj o 04:30).
+  // Dawne dwa osobne przebiegi tego nie potrafiły.
+  let searchIndex = dayIndex;
+  let patternOffsets: Map<string, number> | undefined;
+  if (departureSec < 7 * 3600) {
+    const yDate = new Date(targetDate);
+    yDate.setDate(yDate.getDate() - 1);
+    const merged = mergeDayIndexes(
+      dayIndex,
+      gtfsStore.getDayIndex(yDate.getDay(), toDateStr(yDate)),
+      'y_',
+      -86400,
+    );
+    searchIndex = merged.index;
+    patternOffsets = merged.offsets;
+  }
+
   for (const offsetSec of timeWindows) {
     const batch = runRaptor(gtfsStore, origins, destinations, departureSec + offsetSec, {
       maxTransfers,
       minTransferSec,
-      dayIndex,
+      dayIndex: searchIndex,
       tripDelays,
       allowedModes: modes,
+      patternTimeOffsets: patternOffsets,
     });
     for (const j of batch) {
       if (j.transfers <= maxTransfers) rawJourneys.push(j);
     }
   }
 
+  // Brak górnego limitu wsiadania w RAPTOR-ze: „pierwszy kurs po przybyciu"
+  // bywa wiele godzin później (np. zapytanie 07:20 → wsiadanie 23:29, bo to
+  // pierwszy kurs danego wzorca na tym przystanku). Wszystko ponad +2 h od
+  // zapytania to nie propozycja dla użytkownika — wyrzucamy przed Pareto,
+  // żeby takie kursy nie psuły listy wariantów.
+  const MAX_BOARD_AHEAD_SEC = 7200;
+  const journeysInHorizon = rawJourneys.filter(
+    (j) => j.departureSec <= departureSec + MAX_BOARD_AHEAD_SEC,
+  );
+
   // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
   // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
   const modeJourneys =
     modes === 'all'
-      ? rawJourneys
-      : rawJourneys.filter((j) =>
+      ? journeysInHorizon
+      : journeysInHorizon.filter((j) =>
           j.segments
             .filter((s) => s.type === 'transit')
             .every((s) => s.mode === modes),

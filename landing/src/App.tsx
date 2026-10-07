@@ -5,6 +5,8 @@ import { TramMark } from './components/TramMark';
 import { CompassSection } from './components/Compass';
 import { AnchorSection } from './components/Anchor';
 import { LiveUpdateSection } from './components/LiveUpdate';
+import { DuelSection } from './components/Duel';
+import { Report } from './components/Report';
 import {
   APK_FALLBACK,
   APK_FILE,
@@ -53,6 +55,37 @@ function DownloadButtons({ apkHref }: { apkHref: string }) {
 export default function App() {
   const apkHref = useApkHref();
   const conn = CONFIRMED.connection;
+  const [isReport, setIsReport] = useState(() => window.location.hash === '#raport');
+  useEffect(() => {
+    const onHash = () => {
+      setIsReport(window.location.hash === '#raport');
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  useEffect(() => {
+    document.title = isReport ? 'Raport z benchmarku: Kilometr' : 'Kilometr: Tym razem dojedziesz';
+  }, [isReport]);
+
+  if (isReport) {
+    return (
+      <div className="page">
+        <main>
+          <Report />
+        </main>
+
+        <footer className="foot">
+          <span>Kilometr</span>
+          <span className="foot-motto">Socjalizm albo barbarzyństwo</span>
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+            <Github size={15} strokeWidth={2} />
+            Kod źródłowy
+          </a>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -107,6 +140,8 @@ export default function App() {
         <AnchorSection />
 
         <LiveUpdateSection />
+
+        <DuelSection />
       </main>
 
       <footer className="foot">

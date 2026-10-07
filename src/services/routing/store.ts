@@ -2,9 +2,9 @@ import { awaitImportSettled, importInProgress } from '../dataManager';
 import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
 
-const WALK_SPEED_MPS = 1.3;
-const WALK_DETOUR_FACTOR = 1.3;
-const MAX_TRANSFER_METERS = 400;
+const WALK_SPEED_MPS = 1.45;
+const WALK_DETOUR_FACTOR = 1.15;
+const MAX_TRANSFER_METERS = 800;
 const MIN_FOOTPATH_SEC = 45;
 
 export interface DayIndex {
@@ -107,7 +107,7 @@ export class LocalGtfsStore {
       cell.push(s);
     }
 
-    const SEARCH_RADIUS = 4;
+    const SEARCH_RADIUS = 8;
 
     for (const s1 of stopArray) {
       const paths: any[] = [];

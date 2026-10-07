@@ -1,0 +1,76 @@
+name: "✨ Propozycja funkcji / Feature Request"
+description: Zaproponuj nową funkcję, ulepszenie UI/UX lub pomysł na rozwój Kilometra
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dziękujemy za chęć rozwijania Kilometra! Każdy pomysł na ułatwienie podróżowania po Wrocławiu jest mile widziany.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Podsumowanie propozycji
+      description: Jedno- lub dwuzdaniowy opis nowej funkcji lub ulepszenia.
+      placeholder: Dodanie widgetu z odjazdami ulubionej linii na pulpit telefonu...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Jaki problem rozwiązuje ta funkcja?
+      description: Z jakim problemem lub ograniczeniem spotykasz się obecnie jako użytkownik?
+      placeholder: Często stoję na przystanku i muszę odblokowywać telefon oraz otwierać aplikację, by sprawdzić za ile minut przyjedzie tramwaj...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proponowane rozwiązanie
+      description: Jak ta funkcja powinna działać w praktyce?
+      placeholder: Na ekranie głównym aplikacji dodać przycisk "Dodaj do ulubionych", a w systemowym menu widgetów udostępnić kafelek pokazujący najbliższy odjazd z odświeżaniem w tle...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: areas
+    attributes:
+      label: Dotyczy modułu
+      description: Zaznacz obszary, których dotyczy Twoja propozycja.
+      options:
+        - label: Interfejs aplikacji mobilnej (UI / UX / Ekrany)
+        - label: Wyszukiwarka tras & nawigacja (Raptor / przesiadki)
+        - label: Widgety na ekranie głównym Androida
+        - label: Powiadomienia i śledzenie na żywo (Live tracking)
+        - label: Dostępność / Tłumaczenia (i18n)
+        - label: Serwer backendowy / Przetwarzanie danych GTFS
+        - label: Strona landingowa (Web)
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Rozważane alternatywy
+      description: Czy rozważałeś/aś inne sposoby rozwiązania tego problemu lub istniejące obejścia?
+      placeholder: Obecnie sprawdzam to w oficjalnej aplikacji iMPK lub w Jakdojade, ale...
+    validations:
+      required: false
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Makiety, szkice lub inspiracje
+      description: Przeciągnij i upuść szkice, screenshoty z innych aplikacji lub makiety UI/UX.
+      placeholder: Przeciągnij pliki graficzne tutaj...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Weryfikacja
+      options:
+        - label: Sprawdziłem/am, czy podobna propozycja nie została już zgłoszona w Issues.
+          required: true
