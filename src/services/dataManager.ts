@@ -7,7 +7,7 @@
 // stop_times jest ~46 MB — importujemy batched po 5000 rekordów w transakcjach.
 
 import { parseCalendarContent, parseCalendarDatesContent, parseRoutesContent, parseStopsContent, parseTripsContent, parseStopTimesBatched } from '../gtfs/csv';
-import { GTFS } from './gtfsConfig';
+import { GTFS, TIMETABLE } from './gtfsConfig';
 import {
   cleanupRawGtfs,
   downloadArchiveWithFallback,
@@ -17,6 +17,7 @@ import {
   readGtfsText,
   unzipGtfs,
 } from './gtfsDownloader';
+import { downloadPrebuiltDb, fetchManifest, getLocalTimetableVersion } from './timetableSync';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -180,19 +181,100 @@ export function awaitImportSettled(timeoutMs = 180000): Promise<void> {
   });
 }
 
-/** Pełny import: katalog → zip → unzip → SQLite. Długie, z progresem. */
+/** Pełny import: gotowa baza z serwera, w ostateczności klasyczny ZIP. */
 export async function importGtfsFromNetwork(): Promise<void> {
   if (importInProgress) return;
   importInProgress = true;
   try {
-    emit({ state: 'downloading', progress: 0 });
-    const { uri: zipUri } = await downloadArchiveWithFallback((p) => {
-      const progress = p.totalBytes > 0 ? p.bytesWritten / p.totalBytes : 0;
-      emit({ state: 'downloading', progress });
-    });
+    // Ścieżka 1 (domyślna po skonfigurowaniu serwera): prebuilt SQLite.
+    // Brak parsowania na telefonie — download strumieniem + podmiana pliku.
+    if (TIMETABLE.baseUrl) {
+      const prebuiltOk = await tryImportPrebuilt().catch((err) => {
+        console.warn('[DataManager] prebuilt sync failed:', err instanceof Error ? err.message : String(err));
+        return false;
+      });
+      if (prebuiltOk) {
+        // Flaga w dół przed końcowym odświeżeniem (ten sam powód co niżej).
+        importInProgress = false;
+        await refreshDataStatus();
+        return;
+      }
+      // Nieudany sync, ale baza działa? Nie psujemy jej i nie męczymy
+      // użytkownika importem ZIP na siłę. Pusta baza → fallback do ZIP.
+      const stats = await getGtfsStats().catch(() => null);
+      if (stats && stats.stops > 0 && stats.trips > 0 && stats.stopTimes > 0) {
+        importInProgress = false;
+        await refreshDataStatus();
+        return;
+      }
+    }
 
-    const T = dataTr();
-    emit({ state: 'importing', step: T.stepUnpack, progress: 0 });
+    // Ścieżka 2 (fallback): katalog → zip → unzip → SQLite, jak dawniej.
+    await importGtfsLegacy();
+    // Flaga w dół przed końcowym odświeżeniem — inaczej refresh uzna, że
+    // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
+    importInProgress = false;
+    await refreshDataStatus();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
+    // do UI — pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
+    const Terr = dataTr();
+    const message =
+      err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
+    console.warn('[DataManager] import failed:', detail);
+    emit({
+      state: 'error',
+      message,
+      hint: err instanceof GtfsDownloadError ? err.hint : Terr.retryHint,
+      detail,
+    });
+    try {
+      await finishBulkImport();
+    } catch {}
+    throw err;
+  } finally {
+    importInProgress = false;
+  }
+}
+
+/**
+ * Sync z serwera: manifest → przy nowej wersji download + podmiana bazy.
+ * True = baza aktualna (świeżo pobrana albo już była). Rzuca przy problemach,
+ * wtedy caller decyduje o fallbacku do ZIP.
+ */
+async function tryImportPrebuilt(): Promise<boolean> {
+  const manifest = await fetchManifest();
+  const local = await getLocalTimetableVersion();
+  if (local && local === manifest.version) {
+    await setMeta('gtfs_last_check', new Date().toISOString());
+    return true;
+  }
+  emit({ state: 'downloading', progress: 0 });
+  await downloadPrebuiltDb(manifest, (written, total) => {
+    emit({ state: 'downloading', progress: total > 0 ? written / total : 0 });
+  });
+  const T = dataTr();
+  emit({ state: 'importing', step: T.stepVerify, progress: 0.97 });
+  await setMeta('gtfs_last_check', new Date().toISOString());
+  await resetRoutingStore();
+  return true;
+}
+
+/**
+ * Stara ścieżka: katalog Open Data → zip → unzip → SQLite w transakcjach.
+ * Fallback, gdy serwer nieskonfigurowany albo sync padł przy pustej bazie.
+ * (To ona potrafiła powodować OOM przy unzip na słabszych telefonach.)
+ */
+async function importGtfsLegacy(): Promise<void> {
+  emit({ state: 'downloading', progress: 0 });
+  const { uri: zipUri } = await downloadArchiveWithFallback((p) => {
+    const progress = p.totalBytes > 0 ? p.bytesWritten / p.totalBytes : 0;
+    emit({ state: 'downloading', progress });
+  });
+
+  const T = dataTr();
+  emit({ state: 'importing', step: T.stepUnpack, progress: 0 });
     await unzipGtfs(zipUri);
 
     await clearGtfsTables();
@@ -245,34 +327,13 @@ export async function importGtfsFromNetwork(): Promise<void> {
     await setMeta('gtfs_source', 'network');
     await cleanupRawGtfs();
     await resetRoutingStore();
-    // Flaga w dół przed końcowym odświeżeniem — inaczej refresh uzna, że
-    // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
-    importInProgress = false;
-    await refreshDataStatus();
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
-    // do UI — pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
-    const Terr = dataTr();
-    const message =
-      err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
-    console.warn('[DataManager] import failed:', detail);
-    emit({
-      state: 'error',
-      message,
-      hint: err instanceof GtfsDownloadError ? err.hint : Terr.retryHint,
-      detail,
-    });
-    try {
-      await finishBulkImport();
-    } catch {}
-    throw err;
-  } finally {
-    importInProgress = false;
-  }
 }
 
-/** Sprawdza katalog raz dziennie — jak jest nowy rozkład, importuje w tle. */
+/**
+ * Sprawdza manifest raz dziennie — true, gdy na serwerze czeka nowsza baza.
+ * Bez skonfigurowanego serwera (pusty TIMETABLE.baseUrl) zawsze false.
+ * Uwaga: NIE pobiera automatycznie (~80 MB) — decyzję zostawia UI.
+ */
 export async function checkForGtfsUpdate(): Promise<boolean> {
   try {
     const lastCheck = await getMeta('gtfs_last_check');
@@ -280,9 +341,11 @@ export async function checkForGtfsUpdate(): Promise<boolean> {
       return false;
     }
     await setMeta('gtfs_last_check', new Date().toISOString());
-    // Etap 2: porównanie effectiveDate z katalogu z zapisaną wersją.
-    // Na razie zwracamy false — pełny auto-update po podpięciu RAPTOR-a.
-    return false;
+    if (!TIMETABLE.baseUrl) return false;
+    const manifest = await fetchManifest().catch(() => null);
+    if (!manifest) return false;
+    const local = await getLocalTimetableVersion();
+    return manifest.version !== local;
   } catch {
     return false;
   }

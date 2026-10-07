@@ -3,5 +3,5 @@
   "compilerOptions": {
     "strict": true
   },
-  "exclude": ["server", "landing"]
+  "exclude": ["server", "landing", "cloudflare"]
 }

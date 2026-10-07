@@ -133,6 +133,24 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   return dbPromise;
 }
 
+/**
+ * Zamyka uchwyt bazy (przed podmianą pliku .db na nowy z serwera).
+ * Po replace plik trzeba otworzyć od nowa — zrobi to getGtfsDb().
+ * Bez zamknięcia nadpisany plik = `database disk image is malformed`
+ * albo blokada na Androidzie.
+ */
+export async function closeGtfsDb(): Promise<void> {
+  const p = dbPromise;
+  dbPromise = null;
+  if (!p) return;
+  try {
+    const db = await p;
+    await db.closeAsync();
+  } catch {
+    // best-effort: plik i tak podmieniamy, a initDb otworzy od nowa
+  }
+}
+
 export async function setMeta(key: string, value: string): Promise<void> {
   const db = await getGtfsDb();
   await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', key, value);

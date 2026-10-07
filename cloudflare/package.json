@@ -6,9 +6,11 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "build": "node scripts/build-timetable.mjs"
+    "build": "node scripts/build-timetable.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251001.0",
     "wrangler": "^3.114.0"
   }
 }
