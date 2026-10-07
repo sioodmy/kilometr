@@ -160,15 +160,24 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # Przycisk „Pobierz APK" w landingu (React) bierze ./app-release.apk,
-          # a jako fallback linkuje
+          # Nazwa assetu (app-release.apk) jest kontraktem: przycisk „Pobierz APK"
+          # w landingu bierze ./app-release.apk, a jako fallback linkuje
           # https://github.com/<repo>/releases/latest/download/app-release.apk
+          # Uwaga: w --notes NIE używaj backticków — bash wykonałby ich
+          # zawartość jako komendy i poszatkował notkę (stary bug).
           TAG=latest
           if ! gh release view "$TAG" > /dev/null 2>&1; then
             gh release create "$TAG" \
               --title "Kilometr ${{ github.sha }}" \
-              --notes "Automatyczny build z gałęzi main (\`${{ github.ref_name }}\`, commit \`${{ github.sha }}\`)." \
+              --notes "Automatyczny build z gałęzi main ('${{ github.ref_name }}', commit '${{ github.sha }}')." \
               --target "${{ github.sha }}"
           fi
           gh release upload "$TAG" apk-dist/app-release.apk#app-release.apk --clobber
           gh release upload "$TAG" apk-dist/app-release.apk.sha256#app-release.apk.sha256 --clobber
+          # Głośna weryfikacja: zielony run = release naprawdę istnieje.
+          echo "--- Weryfikacja release '$TAG' ---"
+          gh release view "$TAG" --json tagName,assets --jq '{tag: .tagName, assets: [.assets[] | .name]}'
+          URL="https://github.com/${GH_REPO}/releases/download/${TAG}/app-release.apk"
+          echo "APK do pobrania: $URL"
+          echo "### APK opublikowane" >> "$GITHUB_STEP_SUMMARY"
+          echo "[app-release.apk]($URL)" >> "$GITHUB_STEP_SUMMARY"
