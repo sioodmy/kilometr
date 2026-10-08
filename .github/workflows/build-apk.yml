@@ -52,12 +52,9 @@ jobs:
     # nie palą ~20 min builda — release poczeka na push z kodem albo ręczny
     # Run workflow. Ręczne odpalenie (workflow_dispatch) działa zawsze.
     if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, 'dependabot')
-    # EXPO_PUBLIC_* jest wpieczone w bundla JS w trakcie assembleRelease,
-    # więc URL musi być w env na runnerze. Ten sam sekret, którego używa
-    # workflow timetable.yml — nic nowego nie trzeba dodawać w Settings.
-    # Pusty sekret = aplikacja wraca na starą ścieżkę ZIP (fallback).
-    env:
-      EXPO_PUBLIC_TIMETABLE_URL: ${{ secrets.TIMETABLE_PUBLIC_URL }}
+    # URL rozkładu jest wpieczony w kodzie (src/services/gtfsConfig.ts,
+    # data.kilometr.wroclaw.pl), więc build nie potrzebuje żadnego sekretu.
+    # Nadpisanie lokalnie: EXPO_PUBLIC_TIMETABLE_URL w .env.
 
     steps:
       - name: Checkout repo
@@ -68,6 +65,30 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
+
+      # Bramka: APK pobiera bazę z R2 przy starcie, więc nie wypuszczamy
+      # wydania wskazującego na serwer bez realnego KD (MPK-only/atrapa).
+      # Manifest niedostępny = ostrzeżenie (R2 może leżeć); manifest
+      # osiągalny bez KD = twardy błąd.
+      - name: Verify timetable has real KD
+        run: |
+          set -euo pipefail
+          URL="${TIMETABLE_URL:-https://data.kilometr.wroclaw.pl}/manifest.json"
+          if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
+            echo "::warning::Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
+            exit 0
+          fi
+          node -e '
+            const m = require("/tmp/timetable-manifest.json");
+            const kd = (m.sources && m.sources.kd) || {};
+            const stations = Number(kd.stations || 0);
+            const trips = Number(kd.trips || 0);
+            if (kd.skippedReason || stations <= 0 || trips <= 0) {
+              console.error("::error::Manifest bez realnego KD (skippedReason=" + (kd.skippedReason || "null") + ", stations=" + stations + ", trips=" + trips + "). Nie buduję APK na bazie bez KD.");
+              process.exit(1);
+            }
+            console.log("KD OK: stations=" + stations + ", routes=" + (kd.routes || 0) + ", trips=" + trips + ", interchanges=" + (kd.interchanges || 0));
+          '
 
       - name: Setup Java 17
         uses: actions/setup-java@v4

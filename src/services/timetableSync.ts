@@ -37,7 +37,7 @@ export interface TimetableManifest {
   stats: { stops: number; routes: number; trips: number; stopTimes: number };
 }
 
-/** Pusty baseUrl = serwer nieskonfigurowany → stara ścieżka ZIP. */
+/** Adres ma zawsze default z gtfsConfig, więc to dziś zawsze true. */
 export function timetableEnabled(): boolean {
   return TIMETABLE.baseUrl.length > 0;
 }

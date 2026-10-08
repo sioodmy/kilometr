@@ -50,6 +50,13 @@ const WRO_BBOX = { minLon: 16.7, maxLat: 51.25, maxLon: 17.25, minLat: 50.95 };
 const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
+/**
+ * Realne KD jest DOMYŚLNIE wymagane: build bez KD albo z niepełnym KD kończy
+ * się błędem, żeby do R2 (a więc i do APK) nigdy nie trafiła baza MPK-only
+ * ani atrapa. Jedyny świadomy wyjątek to jawne --allow-mpk-only (lokalne
+ * testy / diagnostyka), które nigdy nie leci w cronie.
+ */
+const ALLOW_MPK_ONLY = args.has('--allow-mpk-only') || process.env.ALLOW_MPK_ONLY === '1';
 const PDP_API_KEY = process.env.PDP_API_KEY || '';
 const PUBLIC_URL = (process.env.TIMETABLE_PUBLIC_URL || '').replace(/\/$/, '');
 
@@ -338,19 +345,35 @@ async function pdpKdSchedules(stationIds) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function geocodeStation(name) {
-  const q = new URLSearchParams({
+  const pick = (res) => {
+    if (!Array.isArray(res) || res.length === 0) return null;
+    const hit = res.find((r) => {
+      const lat = Number(r.lat), lon = Number(r.lon);
+      return lat >= WRO_BBOX.minLat && lat <= WRO_BBOX.maxLat && lon >= WRO_BBOX.minLon && lon <= WRO_BBOX.maxLon;
+    }) || res[0];
+    return { lat: Number(hit.lat), lon: Number(hit.lon), display: hit.display_name || '' };
+  };
+
+  // 1. Najpierw Wrocław (viewbox + bounded): najcelniejsze trafienie.
+  const inWro = new URLSearchParams({
     q: `${name}, Wrocław, Polska`,
     format: 'json', limit: '3', addressdetails: '0',
     viewbox: `${WRO_BBOX.minLon},${WRO_BBOX.maxLat},${WRO_BBOX.maxLon},${WRO_BBOX.minLat}`,
     bounded: '1',
   });
-  const res = await fetchJson(`${NOMINATIM}?${q}`, { 'User-Agent': NOMINATIM_UA }, 20000);
-  if (!Array.isArray(res) || res.length === 0) return null;
-  const hit = res.find((r) => {
-    const lat = Number(r.lat), lon = Number(r.lon);
-    return lat >= WRO_BBOX.minLat && lat <= WRO_BBOX.maxLat && lon >= WRO_BBOX.minLon && lon <= WRO_BBOX.maxLon;
-  }) || res[0];
-  return { lat: Number(hit.lat), lon: Number(hit.lon), display: hit.display_name || '' };
+  const resWro = await fetchJson(`${NOMINATIM}?${inWro}`, { 'User-Agent': NOMINATIM_UA }, 20000);
+  const hitWro = pick(resWro);
+  if (hitWro) return hitWro;
+
+  // 2. Fallback: stacje końcowe/pośrednie KD poza Wrocławiem (region, Polska).
+  // Bez tego pociąg z/do stacji spoza miasta był cały pomijany.
+  const inPl = new URLSearchParams({
+    q: `${name}, Polska`,
+    format: 'json', limit: '3', addressdetails: '0',
+    countrycodes: 'pl',
+  });
+  const resPl = await fetchJson(`${NOMINATIM}?${inPl}`, { 'User-Agent': NOMINATIM_UA }, 20000);
+  return pick(resPl);
 }
 
 /* ─── Build ───────────────────────────────────────────────────────────── */
@@ -360,6 +383,11 @@ function todayCompact() {
 }
 
 async function main() {
+  // Realne KD jest wymagane, chyba że jawnie --allow-mpk-only. Fail-fast
+  // zamiast pobierać MPK i dopiero potem odkryć brak klucza.
+  if (!PDP_API_KEY && !ALLOW_MPK_ONLY) {
+    throw new Error('brak PDP_API_KEY: build wymaga realnych danych KD. Ustaw sekret PDP_API_KEY albo jawnie --allow-mpk-only (tylko diagnostyka).');
+  }
   mkdirSync(DIST, { recursive: true });
   const work = join(tmpdir(), `kilometr-gtfs-${Date.now()}`);
   mkdirSync(work, { recursive: true });
@@ -381,20 +409,27 @@ async function main() {
     try {
       kdVersion = await pdpDataVersion();
     } catch (e) {
-      warn('PDP /data-version failed:', String(e), '— KD może być nieaktualne.');
+      warn('PDP /data-version failed:', String(e), ', KD może być nieaktualne.');
       kdVersion = 'unknown';
     }
-  } else {
-    warn('brak PDP_API_KEY — sekcja KD zostanie pominięta (build MPK-only).');
   }
   log('KD schedulesVersion:', kdVersion);
 
   if (!FORCE && remote?.sources
     && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
     && (remote.sources.kd?.schedulesVersion || 'none') === kdVersion) {
-    log('brak zmian (MPK + KD) — skip buildu.');
-    rmSync(work, { recursive: true, force: true });
-    process.exit(2);
+    // Gdy KD jest wymagane, skip tylko jeśli zdalna baza faktycznie je ma.
+    // Inaczej wymuszamy przebudowę (stary manifest mógł być MPK-only/mock).
+    const remoteKdReal = !ALLOW_MPK_ONLY
+      && !remote.sources.kd?.skippedReason
+      && Number(remote.sources.kd?.stations || 0) > 0
+      && Number(remote.sources.kd?.trips || 0) > 0;
+    if (ALLOW_MPK_ONLY || remoteKdReal) {
+      log('brak zmian (MPK + KD), skip buildu.');
+      rmSync(work, { recursive: true, force: true });
+      process.exit(2);
+    }
+    warn('zdalny manifest bez realnego KD, przebudowuję zamiast skipować.');
   }
 
   // 3. Pobieranie ZIP-a MPK + rozpakowanie (unzip z systemu — Node nie ma wbudowanego).
@@ -539,8 +574,10 @@ async function main() {
   }
   log(`MPK: stops=${counts.stops} routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
 
-  // 6. KD z PDP API (pomijane bez klucza — build MPK-only).
+  // 6. KD z PDP API. Domyślnie WYMAGANE (patrz fail-fast na starcie main).
   let kdInfo = { kind: 'pdp-api', skippedReason: PDP_API_KEY ? null : 'no-key' };
+  /** Liczba stacji KD bez współrzędnych (kursy z nimi są pomijane). */
+  let unresolvedCount = 0;
   /** Stacje KD ze współrzędnymi (do przesiadek w kroku 6b). */
   const kdGeo = new Map();
   if (PDP_API_KEY) {
@@ -645,8 +682,8 @@ async function main() {
       if (WRITE_COORDS) {
         writeFileSync(COORDS_FILE, JSON.stringify(coords, null, 2) + '\n');
         log('zapisano cache współrzędnych →', COORDS_FILE, '(przejrzyj diffa przed commitem!)');
-      } else if (Object.keys(coords.stations).length === 0) {
-        warn('brak cache współrzędnych i brak --write-coords — stacje KD pominięte; uruchom lokalnie z --write-coords i commituj data/kd-station-coords.json');
+      } else {
+        log(`współrzędne KD: ${Object.keys(coords.stations).length} z cache/geokodowania (nie zapisuję pliku bez --write-coords).`);
       }
       kdInfo = {
         kind: 'pdp-api', carrier: KD_CARRIER, windowFrom: from, windowTo: to,
@@ -654,6 +691,7 @@ async function main() {
         stopTimes: counts.kdStopTimes, schedulesVersion: kdVersion,
         unresolvedStations: unresolved,
       };
+      unresolvedCount = unresolved.length;
       log(`KD: stations=${seenStops.size} routes=${seenRoutes.size} trips=${counts.kdTrips} stopTimes=${counts.kdStopTimes}`);
     } catch (e) {
       try { db.exec('ROLLBACK'); } catch {}
@@ -707,6 +745,24 @@ async function main() {
     }
   }
   if (kdInfo && !kdInfo.skippedReason) kdInfo.interchanges = interchangeCount;
+
+  // 6c. Twarda bramka: bez pełnego, realnego KD nie nadpisujemy R2.
+  // Baza MPK-only albo z niekompletnym KD to dokładnie ta atrapa, której
+  // nie chcemy w APK. Wszystkie cztery sekcje muszą być niepuste.
+  if (!ALLOW_MPK_ONLY) {
+    const problems = [];
+    if (counts.kdStations === 0) problems.push('0 stacji KD');
+    if (counts.kdRoutes === 0) problems.push('0 tras KD');
+    if (counts.kdTrips === 0) problems.push('0 kursów KD');
+    if (interchangeCount === 0) problems.push('0 przesiadek MPK<->KD');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełne realne KD (${problems.join(', ')}): nie publikuję bazy. Napraw źródło KD (klucz/współrzędne) albo użyj --allow-mpk-only tylko do diagnostyki.`);
+    }
+    if (unresolvedCount > 0) {
+      warn(`KD: ${unresolvedCount} stacji bez współrzędnych, część kursów pominięta (uzupełnij cache: --write-coords).`);
+    }
+  }
 
   // 7. Wagi, indeksy, meta, porządki.
   db.exec('PRAGMA synchronous = NORMAL;');
