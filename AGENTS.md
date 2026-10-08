@@ -20,6 +20,11 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease, asset `kilometr-nightly.apk`.
   - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
 - Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
+- Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie.
+- W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature.
+- Zmergowanie feature branchu do `dev` MUSI dopisać nowy element `- [ ]` do tej listy.
+- PR `dev` -> `main` służy do manualnych testów tylko przez człowieka
+- NIGDY nie merguj automatycznie żadnego PR do `nightly` ani `prod`. Merge do `nightly`/`prod` wykonuje wyłącznie człowiek, ręcznie.
 
 ## CRITICAL: NIE OVERTHINKUJ
 
