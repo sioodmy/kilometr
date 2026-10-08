@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import BottomSheet, { BottomSheetFlatList, BottomSheetScrollView } from '@gorhom/bottom-sheet';
@@ -222,6 +223,8 @@ export function AddPlaceSheet({
   // Formularz kończy się przyciskiem „Zapisz”; bez insetu jest pod paskiem
   // nawigacji i w dolnej połowie nie reaguje na dotknięcie.
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const iconGridItemSize = (width - 32) / 4;
   const isEditing = Boolean(initialPlace);
   const s = useStrings();
   // Katalog ikon i kategorii w języku użytkownika (etykiety ze słownika).
@@ -572,7 +575,7 @@ export function AddPlaceSheet({
                     }}
                     style={({ pressed }) => [
                       styles.gridItem,
-                      isSelected && styles.gridItemSelected,
+                      { width: iconGridItemSize, height: iconGridItemSize },
                       pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
                     ]}
                   >
@@ -1490,21 +1493,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   gridItem: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    margin: 4,
     paddingVertical: 10,
     paddingHorizontal: 4,
     borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-  },
-  gridItemSelected: {
-    backgroundColor: scheme.primaryContainer,
-    borderColor: scheme.primary,
-    borderWidth: 1.5,
   },
   gridIconWrap: {
     width: 38,
