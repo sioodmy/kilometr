@@ -17,10 +17,12 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Język: `expo-localization` (locale systemowe Androida) + nadpisanie per-app w Ustawieniach → Język (Systemowy/PL/EN/DE/UK), persist w kv-store (`initLocale()` w `_layout`).
 - Dodając string: dopisz klucz do `pl.ts`, przetłumacz w `en/de/uk.ts`, użyj w UI. `npx tsc --noEmit` wyłapie braki.
 
-## Anti-Slop — OBOWIĄZKOWE (UI / teksty / docs / git messages)
+## Anti-Slop - OBOWIĄZKOWE (UI / teksty / docs / git messages)
 
+- NIGDY PRZENIGDY NIE UŻYWAJ EM DASHES
+- NIE UŻYWAJ LIVE BADGES TYPU MIGAJĄCA KROPECZKA I PILL CHYBA ŻE CIE O TO POPROSZE
 - Lokalne skille (werbowane 1:1 z upstream): `.agents/skills/antislop/` (core, v3.2.20) + `antislop-ui`, `antislop-copywriting`, `antislop-human`, `antislop-layoutmobile`, `antislop-code`. Upstream MIT: `https://github.com/miqdadbadjuber/Anti-Slop`. Update = przekopiuj foldery `skills/*` z release i podbij wersję tutaj.
-- KIEDY: ZAWSZE, gdy dotykasz CZEGOKOLWIEK co widzi użytkownik/inni ludzie — bez wyjątków i bez pytania o tryb:
+- KIEDY: ZAWSZE, gdy dotykasz CZEGOKOLWIEK co widzi użytkownik/inni ludzie - bez wyjątków i bez pytania o tryb:
   - UI aplikacji (`app/`, `src/components/`, style, animacje, stany puste/błędy/loading),
   - landing (`landing/`),
   - docs (`docs/`, `*.md`, komentarze w kodzie widoczne w review),
@@ -33,12 +35,13 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - dostępność (kontrast, klawiatura, focus, stany): `antislop-human`,
   - mobile / responsive (breakpointy, grid, overflow, tap targety): `antislop-layoutmobile`,
   - komentarze w kodzie: `antislop-code` (czyści tylko komentarze, nigdy kodu).
-- Relacja z resztą AGENTS.md: anti-slop to FILTR, nie style guide (R-37). Kierunek wizualny/kopia pochodzi z briefu użytkownika; bez kierunku UI oznacz jako draft. Teksty PL/EN/DE/UK dalej MUSZĄ iść przez `src/i18n` (pl.ts = wzorzec, `useStrings()` / `tr()` w serwisach) — copywriting-skill nie omija i18n. Nie wymyślaj faktów/liczb/testimoniali (R-17/R-18/R-36/R-38).
+- Relacja z resztą AGENTS.md: anti-slop to FILTR, nie style guide (R-37). Kierunek wizualny/kopia pochodzi z briefu użytkownika; bez kierunku UI oznacz jako draft. Teksty PL/EN/DE/UK dalej MUSZĄ iść przez `src/i18n` (pl.ts = wzorzec, `useStrings()` / `tr()` w serwisach) - copywriting-skill nie omija i18n. Nie wymyślaj faktów/liczb/testimoniali (R-17/R-18/R-36/R-38).
 
 ## Commity na bieżąco
 
 - Commituj zmiany na bieżąco, w małych logicznych porcjach, zamiast odkładać wszystko na koniec sesji.
 - Przed commitem sprawdź `git status --short`, `git diff` oraz `git log --oneline -10`, stage'uj tylko zamierzone pliki, nigdy nie commituj sekretów.
-- Pisz dobre, zwięzłe commit messages w stylu repo (krótki tytuł + ewentualnie `Co:` / `Dlaczego:` w opisie). Nie używaj wulgarnych ani pustych wiadomości.
+- używaj conventional commits po polsku
+- NIGDY PRZENIGDY NIE COMMITUJ NA MAIN BRANCH.
 - Nie amenduj nieudanych commitów po hookach — napraw problem i zrób nowy commit.
 - Nie pushuj, nie twórz PR-ów i nie zmieniaj remote'ów, chyba że użytkownik wyraźnie o to poprosi.
