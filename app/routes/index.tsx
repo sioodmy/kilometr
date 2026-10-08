@@ -381,6 +381,8 @@ export default function RoutesScreen() {
       maxTransfers: directOnly ? 0 : cfg.maxTransfers,
       modes: modeFilter,
       minTransferSec: cfg.minTransferSec,
+      trainsEnabled: cfg.trainsEnabled,
+      trainMinTransferSec: cfg.trainMinTransferSec,
       maxWalkM: cfg.maxWalkM,
       walkSpeedMps: cfg.walkSpeedMps,
     };

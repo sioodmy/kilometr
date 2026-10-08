@@ -270,6 +270,8 @@ export const RoutingService: IRoutingService = {
         maxTransfers: query.maxTransfers,
         modes: query.modes,
         minTransferSec: query.minTransferSec,
+        trainsEnabled: query.trainsEnabled,
+        trainMinTransferSec: query.trainMinTransferSec,
         maxWalkM: query.maxWalkM,
         walkSpeedMps: query.walkSpeedMps,
         anchorStopId: query.anchorStopId,

@@ -84,6 +84,9 @@ export class LocalGtfsStore {
     // 3. Build footpaths
     this.buildFootpaths();
 
+    // 4. Przesiadki na pociągi (tabela z prebuilt; brak = baza bez KD)
+    await this.loadInterchanges().catch(() => {});
+
     this.isLoaded = true;
     console.log(`[LocalGtfsStore] Loaded ${this.stops.size} stops, ${this.routes.size} routes.`);
   }
@@ -139,6 +142,40 @@ export class LocalGtfsStore {
         this.footpaths.set(s1.stop_id, paths);
       }
     }
+  }
+
+  /**
+   * Przesiadki MPK<->KD z tabeli `interchanges` (liczone w buildzie, bo
+   * stacja kolejowa to nie słupek: perony, hala, schody). Doklejamy je do
+   * footpaths i ZASTĘPUJEMY nimi gridowe linki między tymi samymi parami —
+   * grid liczy sam dystans w linii prostej, bez zapasu na peron.
+   * Stare bazy (legacy ZIP, bez tabeli i bez pociągów) przechodzą cicho.
+   */
+  private async loadInterchanges(): Promise<void> {
+    let rows: { from_stop_id: string; to_stop_id: string; walk_sec: number }[] = [];
+    try {
+      const db = await getGtfsDb();
+      rows = await db.getAllAsync('SELECT from_stop_id, to_stop_id, walk_sec FROM interchanges');
+    } catch {
+      return;
+    }
+    let applied = 0;
+    for (const r of rows) {
+      if (!this.stops.has(r.from_stop_id) || !this.stops.has(r.to_stop_id)) continue;
+      const dur = Math.max(30, Math.round(r.walk_sec));
+      const distM = Math.round(dur * 1.3);
+      for (const [from, to] of [
+        [r.from_stop_id, r.to_stop_id],
+        [r.to_stop_id, r.from_stop_id],
+      ] as const) {
+        const list = this.footpaths.get(from) ?? [];
+        const filtered = list.filter((fp: any) => fp.to_stop_id !== to);
+        filtered.push({ from_stop_id: from, to_stop_id: to, distance_m: distM, duration_sec: dur });
+        this.footpaths.set(from, filtered);
+      }
+      applied++;
+    }
+    if (applied > 0) console.log(`[LocalGtfsStore] Interchanges MPK<->KD: ${applied}.`);
   }
 
   /** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */

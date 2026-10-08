@@ -32,9 +32,10 @@ export const TRANSIT_PALETTE = [
 ];
 
 /** Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy). */
-export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'walk' {
+export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'train' | 'walk' {
   if (mode === 'walk') return 'walk';
   if (mode === 'tram') return 'tram';
+  if (mode === 'train') return 'train';
   if (mode === 'bus') return 'bus';
   if (!line) return 'bus';
   const clean = line.trim();
@@ -45,17 +46,27 @@ export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' 
   return 'bus';
 }
 
+/**
+ * Pociągi KD mają STAŁY kolor (granat kolejowy) zamiast losowanego z palety —
+ * na liście połączeń widać od razu, że to pociąg, nie kolejny autobus.
+ * Jasność policzona pod biały tekst (lum ~59, próg to 145).
+ */
+export const TRAIN_BADGE_BG = '#1E3A8A';
+
 /** Oblicza stabilny, zharmonizowany kolor linii z gwarantowanym kontrastem tekstu. */
 export function getLineColors(
   line?: string,
   mode?: LegMode,
-): { bg: string; fg: string; isTram: boolean } {
+): { bg: string; fg: string; isTram: boolean; isTrain: boolean } {
   const resolved = inferTransitMode(mode, line);
+  if (resolved === 'train') {
+    return { bg: TRAIN_BADGE_BG, fg: '#FFFFFF', isTram: false, isTrain: true };
+  }
   const isTram = resolved === 'tram';
   const clean = (line || '').trim().toUpperCase();
 
   if (!clean) {
-    return { bg: isTram ? '#00897B' : '#1976D2', fg: '#FFFFFF', isTram };
+    return { bg: isTram ? '#00897B' : '#1976D2', fg: '#FFFFFF', isTram, isTrain: false };
   }
 
   let hash = 0;
@@ -74,5 +85,5 @@ export function getLineColors(
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
   const fg = lum > 145 ? '#0A1210' : '#FFFFFF';
 
-  return { bg, fg, isTram };
+  return { bg, fg, isTram, isTrain: false };
 }

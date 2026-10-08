@@ -1,6 +1,6 @@
-export type LegMode = 'tram' | 'bus' | 'walk';
+export type LegMode = 'tram' | 'bus' | 'train' | 'walk';
 
-/** Jednorazowy filtr pojazdów: 'all' = tramwaje + autobusy (default). */
+/** Jednorazowy filtr pojazdów: 'all' = tramwaje + autobusy + pociągi KD (default). */
 export type TransitModePreference = 'all' | 'tram' | 'bus';
 
 export interface LegStop {

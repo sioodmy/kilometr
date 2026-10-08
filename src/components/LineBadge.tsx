@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { BusFront, TramFront } from 'lucide-react-native';
+import { BusFront, TrainFront, TramFront } from 'lucide-react-native';
 import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode } from '../types/models';
@@ -32,8 +32,8 @@ export function LineBadge({
     );
   }
 
-  const { bg, fg, isTram } = getLineColors(line, mode);
-  const Icon = isTram ? TramFront : BusFront;
+  const { bg, fg } = getLineColors(line, mode);
+  const Icon = resolved === 'train' ? TrainFront : resolved === 'tram' ? TramFront : BusFront;
 
   return (
     <View style={[styles.badge, compact && styles.compact, { backgroundColor: bg }]}>
