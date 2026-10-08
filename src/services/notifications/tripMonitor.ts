@@ -120,6 +120,8 @@ async function planTracked(): Promise<Connection | null> {
     anchorStopLon: tracked.anchorStopLon,
     maxTransfers: s.maxTransfers,
     minTransferSec: s.minTransferSec,
+    trainsEnabled: s.trainsEnabled,
+    trainMinTransferSec: s.trainMinTransferSec,
     maxWalkM: s.maxWalkM,
     walkSpeedMps: s.walkSpeedMps,
   });

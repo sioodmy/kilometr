@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, RotateCcw, Activity, Anchor } from 'lucide-react-native';
+import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, RotateCcw, Activity, Anchor, TrainFront } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
@@ -22,8 +22,9 @@ import {
   type DataStatus,
 } from '../src/services/dataManager';
 import { transfersLabel } from '../src/components/ConnectionCard';
-import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
+import { NotificationPrefsCard, PrefsToggle } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
+import { hasTrainRoutes } from '../src/services/gtfsDatabase';
 
 function dataStatusLabel(status: DataStatus): string {
   const t = tr().settings;
@@ -106,16 +107,30 @@ export default function SettingsScreen() {
 
   const maxT = SETTINGS_LIMITS.maxTransfers;
   const minT = SETTINGS_LIMITS.minTransferSec;
+  const trainBuf = SETTINGS_LIMITS.trainMinTransferSec;
   const walk = SETTINGS_LIMITS.maxWalkM;
   const speed = SETTINGS_LIMITS.walkSpeedMps;
   const anchor = SETTINGS_LIMITS.anchorRadiusM;
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [importing, setImporting] = useState(false);
+  // Czy rozkład w ogóle ma pociągi (route_type 2 z prebuilt). Bez nich
+  // przełącznik KD gaśnie z podpowiedzią o odświeżeniu danych.
+  const [hasTrains, setHasTrains] = useState(true);
 
   useEffect(() => {
     refreshDataStatus().then(setDataStatus);
     return subscribeDataStatus(setDataStatus);
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    hasTrainRoutes().then((v) => {
+      if (alive) setHasTrains(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [dataStatus.state]);
 
   const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
 
@@ -241,6 +256,42 @@ export default function SettingsScreen() {
           />
         </Animated.View>
 
+        <Animated.View entering={FadeInDown.delay(60).duration(180)} style={styles.card}>
+          <View style={styles.cardTop}>
+            <TrainFront size={18} color={scheme.primary} />
+            <Text style={styles.cardTitle}>{s.settings.trainTitle}</Text>
+          </View>
+          <Text style={styles.cardHint}>
+            {s.settings.trainHint}
+          </Text>
+          <View style={styles.trainRow}>
+            <PrefsToggle
+              value={settings.trainsEnabled}
+              onChange={(v) => update({ trainsEnabled: v })}
+              disabled={!hasTrains}
+              label={s.settings.trainTitle}
+              onText={s.notificationPrefs.on}
+              offText={s.notificationPrefs.off}
+            />
+          </View>
+          {!hasTrains ? (
+            <Text style={styles.cardHint}>
+              {s.settings.trainNoData}
+            </Text>
+          ) : null}
+          <Text style={styles.bufferLabel}>{s.settings.trainBufferTitle}</Text>
+          <Text style={styles.cardHint}>
+            {s.settings.trainBufferHint}
+          </Text>
+          <Stepper
+            value={formatTransferTime(settings.trainMinTransferSec)}
+            onMinus={() => update({ trainMinTransferSec: settings.trainMinTransferSec - trainBuf.step })}
+            onPlus={() => update({ trainMinTransferSec: settings.trainMinTransferSec + trainBuf.step })}
+            minusDisabled={!settings.trainsEnabled || !hasTrains || settings.trainMinTransferSec <= trainBuf.min}
+            plusDisabled={!settings.trainsEnabled || !hasTrains || settings.trainMinTransferSec >= trainBuf.max}
+          />
+        </Animated.View>
+
         <Animated.View entering={FadeInDown.delay(80).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Footprints size={18} color={scheme.primary} />
@@ -327,6 +378,8 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   cardTitle: { ...type.titleSmall, color: scheme.onSurface },
   cardHint: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
+  trainRow: { flexDirection: 'row', alignItems: 'center' },
+  bufferLabel: { ...type.labelLarge, color: scheme.onSurface, fontWeight: '600' },
   stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: scheme.surfaceContainerHighest, borderRadius: shape.full, padding: 6 },
   stepBtn: { width: 44, height: 44, borderRadius: shape.full, backgroundColor: scheme.secondaryContainer, alignItems: 'center', justifyContent: 'center' },
   stepBtnDisabled: { backgroundColor: scheme.surfaceContainerHigh, opacity: 0.6 },

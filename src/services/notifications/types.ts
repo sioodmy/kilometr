@@ -60,7 +60,7 @@ export interface TripProgress {
 
   /** Linia pojazdu, którym wsiadasz / jedziesz. */
   line: string;
-  lineMode: 'tram' | 'bus' | 'walk';
+  lineMode: 'tram' | 'bus' | 'train' | 'walk';
   /** Kolor linii — akcent powiadomienia i segmentu na pasku postępu. */
   lineColor: string;
   /** Kierunek kursu (np. 'BISKUPIN'). */

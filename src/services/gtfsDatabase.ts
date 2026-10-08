@@ -540,3 +540,17 @@ export async function getGtfsStats(): Promise<{ stops: number; routes: number; t
   const st = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stop_times');
   return { stops: s?.n ?? 0, routes: r?.n ?? 0, trips: t?.n ?? 0, stopTimes: st?.n ?? 0 };
 }
+
+/**
+ * Czy baza zawiera pociągi (route_type 2 = KD z prebuilt). Przełącznik
+ * w ustawieniach gaśnie, gdy rozkład nie ma pociągów (stara baza z ZIP-a).
+ */
+export async function hasTrainRoutes(): Promise<boolean> {
+  try {
+    const db = await getGtfsDb();
+    const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routes WHERE type = 2');
+    return (row?.n ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}

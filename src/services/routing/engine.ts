@@ -113,6 +113,10 @@ export interface PlanOptions {
   maxTransfers?: number;
   /** Jednorazowy filtr pojazdów, default 'all'. Wpuszczane tylko kursy danego typu. */
   modes?: TransitModePreference;
+  /** Pociągi KD w trybie 'all' (default true). Szybki filtr ich nie rusza. */
+  trainsEnabled?: boolean;
+  /** sekundy, default 300. Minimalny zapas na wsiadanie do pociągu po przesiadce. */
+  trainMinTransferSec?: number;
   /** sekundy, default 90. Minimalny czas na przesiadkę. */
   minTransferSec?: number;
   /** metry, default 800. Jak daleko wolno iść na przystanek / z przystanku. */
@@ -361,6 +365,8 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const modes: TransitModePreference =
     options.modes === 'tram' || options.modes === 'bus' ? options.modes : 'all';
   const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 60)));
+  const trainsEnabled = options.trainsEnabled ?? true;
+  const trainMinTransferSec = Math.max(0, Math.min(1200, Math.round(options.trainMinTransferSec ?? 300)));
   const maxWalkM = Math.max(100, Math.min(2000, Math.round(options.maxWalkM ?? 800)));
   const userWalkSpeed = Math.max(0.8, Math.min(2.0, options.walkSpeedMps ?? WALK_SPEED_MPS));
 
@@ -448,6 +454,8 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
   // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
+  // Pociągi (mode 'train') wypadają z wąskich filtrów same — nigdy nie są
+  // równe 'tram' ani 'bus'.
   const applyModeFilter = (list: RawJourney[]) =>
     modes === 'all'
       ? list
@@ -475,6 +483,8 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     const batch = runRaptor(gtfsStore, origins, destinations, searchStartSec + offsetSec, {
       maxTransfers,
       minTransferSec,
+      trainsEnabled,
+      trainMinTransferSec,
       dayIndex: searchIndex,
       tripDelays,
       allowedModes: modes,

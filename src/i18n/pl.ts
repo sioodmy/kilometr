@@ -129,6 +129,13 @@ export const pl = {
     transferTimeTitle: 'Minimalny czas na przesiadkę',
     transferTimeHint:
       'Ile czasu rezerwujemy między wysiadką a kolejnym odjazdem. Większa wartość odrzuca ryzykowne, minutowe przesiadki.',
+    trainTitle: 'Pociągi KD',
+    trainHint:
+      'Przesiadki na Koleje Dolnośląskie (m.in. Dworzec Główny). Działają tylko w trybie „Wszystkie” — szybki filtr tramwaj/autobus ich nie rusza.',
+    trainBufferTitle: 'Zapas na przesiadkę na pociąg',
+    trainBufferHint:
+      'Minimalny czas na dojście na peron po przesiadce. Stacje kolejowe to nie słupki — np. na Dworcu Głównym droga z przystanku na peron idzie przez halę.',
+    trainNoData: 'Pobrany rozkład nie ma pociągów. Odśwież dane powyżej, żeby włączyć przesiadki na KD.',
     walkTitle: 'Maks. dystans pieszo',
     walkHint:
       'Jak daleko możesz podejść na przystanek początkowy i z końcowego do celu. Dalszy przystanek z bezpośrednim tramwajem często bije najbliższy słupek.',
@@ -575,6 +582,7 @@ export const pl = {
     modeWalk: 'Pieszo',
     modeTram: 'Tramwaj',
     modeBus: 'Autobus',
+    modeTrain: 'Pociąg',
     // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii —
     // zegar systemowy tyka w nagłówku i sam z siebie nie wie, do czego liczy.
     // Względne „za 4 min” w treści zestarzałoby się przy pierwszym

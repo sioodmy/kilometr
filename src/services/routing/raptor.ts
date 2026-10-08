@@ -36,6 +36,17 @@ interface RaptorOptions {
       globalBestArrival nie wycina dozwolonych alternatyw. */
   allowedModes?: TransitModePreference;
   /**
+   * Czy pociągi KD biorą udział (tylko w trybie 'all'). Default true
+   * (w bazie bez pociągów flaga nie ma znaczenia).
+   */
+  trainsEnabled?: boolean;
+  /**
+   * Minimalny zapas na wsiadanie do pociągu PO przesiadce (dojście na peron
+   * itp.). Doklejany do zwykłego minTransferSec: max(z nich). Default 300.
+   * Pierwszego wsiadania (z domu) nie dotyczy — tam liczy się spacer.
+   */
+  trainMinTransferSec?: number;
+  /**
    * Przesunięcie czasu wszystkich odczytów GTFS (sekundy). Używane przy
    * nocnych kursach po północy: w GTFS należą do wczorajszego dnia
    * serwisowego z godzinami 24:xx+, więc uruchamiamy RAPTOR-a na wczorajszym
@@ -53,13 +64,15 @@ interface RaptorOptions {
 }
 
 /**
- * Klasyfikacja linii na tramwaj/autobus — ta sama heurystyka co w backtrack
- * i LineBadge (Wrocław: route_type 0 albo numer 1–33 to tramwaj).
+ * Klasyfikacja linii na tramwaj/pociąg/autobus — ta sama heurystyka co w backtrack
+ * i LineBadge (Wrocław: route_type 0 albo numer 1–33 to tramwaj,
+ * route_type 2 to pociąg KD, reszta to autobus).
  */
 export function classifyTransitMode(
   routeType: number | undefined,
   shortName: string | undefined,
-): 'tram' | 'bus' {
+): 'tram' | 'bus' | 'train' {
+  if (routeType === 2) return 'train';
   if (routeType === 0) return 'tram';
   const lineNum = parseInt((shortName || '').trim(), 10);
   if (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33) return 'tram';
@@ -138,6 +151,8 @@ export function runRaptor(
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(opts.maxTransfers ?? 2)));
   const minTransferSec = Math.max(0, Math.min(600, Math.round(opts.minTransferSec ?? 60)));
+  const trainsEnabled = opts.trainsEnabled ?? true;
+  const trainMinTransferSec = Math.max(0, Math.min(1200, Math.round(opts.trainMinTransferSec ?? 300)));
   const MAX_ROUNDS = maxTransfers + 1;
 
   // Indeks dzienny — bez niego RAPTOR nie ma po czym jeździć
@@ -256,11 +271,15 @@ export function runRaptor(
 
       // Jednorazowy filtr pojazdów: wzorzec niedozwolonej linii pomijamy
       // w całości (brak wsiadania = brak przesiadek przez ten pojazd).
-      if (opts.allowedModes && opts.allowedModes !== 'all') {
-        const route = store.routes.get(pattern.routeId);
-        if (classifyTransitMode(route?.route_type, route?.route_short_name) !== opts.allowedModes) {
-          continue;
-        }
+      // Pociągi KD jeżdżą tylko w trybie 'all' (szybki filtr tramwaj/autobus
+      // ich nie rusza — pociągi włącza się wyłącznie w ustawieniach).
+      const patternRoute = store.routes.get(pattern.routeId);
+      const routeKind = classifyTransitMode(patternRoute?.route_type, patternRoute?.route_short_name);
+      if (routeKind === 'train') {
+        if (!trainsEnabled) continue;
+        if (opts.allowedModes && opts.allowedModes !== 'all') continue;
+      } else if (opts.allowedModes && opts.allowedModes !== 'all' && routeKind !== opts.allowedModes) {
+        continue;
       }
 
       const stopSeq = pattern.stopSequence;
@@ -333,10 +352,12 @@ export function runRaptor(
         }
 
         // Can we board an earlier or new trip at this stop?
-        // Od 2. rundy wymagamy minimalnego czasu na przesiadkę.
+        // Od 2. rundy wymagamy minimalnego czasu na przesiadkę; na pociąg
+        // doklejamy zapas na dojście na peron (ustawienie użytkownika).
         const earliestArr = tau[k - 1].get(stopId);
         if (earliestArr !== undefined) {
-          const minBoardSec = earliestArr + (k > 1 ? minTransferSec : 0);
+          const needSec = k > 1 ? (routeKind === 'train' ? Math.max(minTransferSec, trainMinTransferSec) : minTransferSec) : 0;
+          const minBoardSec = earliestArr + needSec;
 
           // ── Wsiadanie wg czasów EFEKTYWNYCH (rozkład + opóźnienie GPS).
           // Opóźniony kurs, który planowo odjechał 2 min temu, ale ma +20 min,
@@ -520,9 +541,7 @@ function backtrackJourney(
       const stopsCount = Math.max(0, alightIdx - boardIdx);
 
       const lineName = route?.route_short_name || '';
-      const lineNum = parseInt(lineName, 10);
-      const isTram = route?.route_type === 0 || (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33);
-      const mode = isTram ? 'tram' : 'bus';
+      const mode = classifyTransitMode(route?.route_type, lineName);
 
       segments.unshift({
         type: 'transit',

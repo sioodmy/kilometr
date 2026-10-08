@@ -104,6 +104,29 @@ function normalizePolish(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'l').trim();
 }
 
+/** 'WROCŁAW GŁÓWNY' → 'Wrocław Główny' (PDP zwraca nazwy caps-lockiem). */
+function titleCasePl(s) {
+  return String(s || '').toLowerCase().replace(/(^|[\s\-/()])([a-ząćęłńóśźż])/g, (m, pre, ch) => pre + ch.toUpperCase());
+}
+
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Przesiadki MPK<->KD (te same stałe co store.ts w aplikacji).
+const INTERCHANGE_RADIUS_M = 600;
+const INTERCHANGE_MIN_SEC = 120;
+const IX_WALK_DETOUR = 1.15;
+const IX_WALK_SPEED_MPS = 1.45;
+/** Dworzec Główny: słupek jest ciutkę dalej od peronów (hala + schody),
+ *  więc gwarantujemy link z zapasem, nawet spoza standardowego promienia. */
+const GLOWNY_OVERRIDE_SEC = 600;
+const GLOWNY_OVERRIDE_RADIUS_M = 1500;
+
 function hmsToSec(hms) {
   const p = String(hms || '00:00:00').trim().split(':');
   return (Number(p[0]) || 0) * 3600 + (Number(p[1]) || 0) * 60 + (Number(p[2]) || 0);
@@ -204,6 +227,16 @@ CREATE TABLE calendar_dates (
   exc INTEGER NOT NULL
 );
 CREATE INDEX idx_caldate_date ON calendar_dates (date);
+/* Przesiadki MPK<->KD liczone w buildzie (stacja kolejowa to nie słupek:
+   dojście na peron, schody, hala — patrz INTERCHANGE_* niżej). Aplikacja
+   dokleja je do footpaths przy starcie (loadInterchanges). */
+CREATE TABLE interchanges (
+  from_stop_id TEXT NOT NULL,
+  to_stop_id TEXT NOT NULL,
+  walk_sec INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'mpk-kd'
+);
+CREATE INDEX idx_interchanges_from ON interchanges (from_stop_id);
 CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
 CREATE TABLE pois (
   osm_id TEXT PRIMARY KEY NOT NULL,
@@ -393,6 +426,8 @@ async function main() {
   db.exec('PRAGMA synchronous = OFF;');
 
   const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0 };
+  /** Przystanki MPK w pamięci (do liczenia przesiadek na KD w kroku 6b). */
+  const mpkStops = [];
 
   // 5. MPK → tabele.
   const stopsTxt = readTxt('stops.txt');
@@ -405,8 +440,11 @@ async function main() {
       const id = (c[idx.stop_id] || '').trim();
       const name = (c[idx.stop_name] || '').trim();
       if (!id || !name) return;
-      ins.run(id, (c[idx.stop_code] || '').trim(), name,
-        Number(c[idx.stop_lat]) || 0, Number(c[idx.stop_lon]) || 0, normalizePolish(name));
+      const lat = Number(c[idx.stop_lat]) || 0;
+      const lon = Number(c[idx.stop_lon]) || 0;
+      const norm = normalizePolish(name);
+      ins.run(id, (c[idx.stop_code] || '').trim(), name, lat, lon, norm);
+      if (lat && lon) mpkStops.push({ id, norm, lat, lon });
       if (++i % 2000 === 0) { db.exec('COMMIT'); db.exec('BEGIN'); }
       counts.stops++;
     });
@@ -503,6 +541,8 @@ async function main() {
 
   // 6. KD z PDP API (pomijane bez klucza — build MPK-only).
   let kdInfo = { kind: 'pdp-api', skippedReason: PDP_API_KEY ? null : 'no-key' };
+  /** Stacje KD ze współrzędnymi (do przesiadek w kroku 6b). */
+  const kdGeo = new Map();
   if (PDP_API_KEY) {
     try {
       const wro = await pdpWroclawStationIds();
@@ -510,7 +550,7 @@ async function main() {
       const { from, to, routes, dict } = await pdpKdSchedules(wro.stationIds);
       const stationNames = {};
       for (const [k, v] of Object.entries(dict.stations || {})) {
-        stationNames[k] = v.nm || v.name || `Stacja ${k}`;
+        stationNames[k] = titleCasePl(v.nm || v.name || `Stacja ${k}`);
       }
       // Współrzędne: cache w repo + Nominatim dla brakujących.
       let coords = { stations: {} };
@@ -564,6 +604,7 @@ async function main() {
             if (!geo) { ok = false; break; }
             insStop.run(`KD:S:${id}`, id, nm, geo.lat, geo.lon, normalizePolish(nm));
             seenStops.add(id);
+            kdGeo.set(id, { name: nm, lat: geo.lat, lon: geo.lon });
             counts.stops++;
             counts.kdStations++;
           }
@@ -621,12 +662,63 @@ async function main() {
     }
   }
 
+  // 6b. Przesiadki MPK<->KD. Stacja kolejowa to nie słupek przy torach:
+  // perony bywają schowane (Dworzec Główny: przystanek ~300 m od peronów
+  // + hala i schody), więc linki liczymy hojnie. Aplikacja dokleja je do
+  // footpaths i ZASTĘPUJE nimi gridowe linki między tymi samymi parami
+  // (grid liczy sam dystans w linii prostej — bez zapasu na peron).
+  let interchangeCount = 0;
+  if (kdGeo.size > 0 && mpkStops.length > 0) {
+    const links = new Map(); // "a|b" (posortowane) -> { a, b, walkSec }
+    const link = (a, b, walkSec) => {
+      const [x, y] = a < b ? [a, b] : [b, a];
+      const k = `${x}|${y}`;
+      const prev = links.get(k);
+      if (!prev || walkSec > prev.walkSec) links.set(k, { a: x, b: y, walkSec });
+    };
+    const computed = (distM) => Math.max(INTERCHANGE_MIN_SEC, Math.round(distM * IX_WALK_DETOUR / IX_WALK_SPEED_MPS));
+    for (const [kid, g] of kdGeo) {
+      const kStopId = `KD:S:${kid}`;
+      const isGlowny = normalizePolish(g.name).includes('glowny');
+      for (const m of mpkStops) {
+        const dist = haversineM(g.lat, g.lon, m.lat, m.lon);
+        if (dist <= INTERCHANGE_RADIUS_M) {
+          // Dworzec Główny: słupki są blisko w linii prostej (~150 m), ale
+          // pieszo to hala + przejście podziemne na perony — twardy zapas.
+          const floor = isGlowny && m.norm.includes('dworzec glowny') ? GLOWNY_OVERRIDE_SEC : INTERCHANGE_MIN_SEC;
+          link(kStopId, m.id, Math.max(floor, computed(dist)));
+        } else if (isGlowny && dist <= GLOWNY_OVERRIDE_RADIUS_M && m.norm.includes('dworzec glowny')) {
+          // Dalsze słupki Głównego (Dworcowa/Stawowa/MDK) — gwarantowany link
+          // z zapasem, nawet spoza standardowego promienia.
+          link(kStopId, m.id, Math.max(GLOWNY_OVERRIDE_SEC, computed(dist)));
+        }
+      }
+    }
+    if (links.size > 0) {
+      const ins = db.prepare('INSERT INTO interchanges (from_stop_id, to_stop_id, walk_sec, kind) VALUES (?, ?, ?, ?)');
+      db.exec('BEGIN');
+      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, 'mpk-kd');
+      db.exec('COMMIT');
+      interchangeCount = links.size;
+    }
+    log(`interchanges MPK<->KD: ${interchangeCount} (stacji KD: ${kdGeo.size})`);
+    if (kdGeo.size > 0 && interchangeCount === 0) {
+      warn('zero linków przesiadkowych — stacje KD bez połączenia z MPK (sprawdź współrzędne w cache!)');
+    }
+  }
+  if (kdInfo && !kdInfo.skippedReason) kdInfo.interchanges = interchangeCount;
+
   // 7. Wagi, indeksy, meta, porządki.
   db.exec('PRAGMA synchronous = NORMAL;');
   db.exec('CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_stoptimes_stop ON stop_times (stop_id, dep_sec)');
   log('wagi przystanków…');
   db.exec('UPDATE stops SET weight = (SELECT COUNT(*) FROM stop_times WHERE stop_times.stop_id = stops.stop_id)');
+  // Statystyki planisty (sqlite_stat1): świeży plik nie ma historii zapytań,
+  // więc PRAGMA optimize nic by nie dał — jawny ANALYZE robi to deterministycznie.
+  // Na telefonie tego nie powtarzamy (import i tak jest ciężki, a indeksy wystarczą).
+  log('analyze…');
+  db.exec('ANALYZE');
   const version = `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);

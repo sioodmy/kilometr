@@ -112,7 +112,7 @@ export interface SmartDestination extends LatLon {
   originId: string;
 }
 
-export type LegMode = 'tram' | 'bus' | 'walk';
+export type LegMode = 'tram' | 'bus' | 'train' | 'walk';
 
 export interface LegStop {
   stopId: string;
@@ -208,9 +208,13 @@ export interface RouteQuery {
   arriveBySec?: number;
   /** 0–3, default 2 */
   maxTransfers?: number;
-  /** Jednorazowy filtr pojazdów ('all' = tramwaje + autobusy, default).
+  /** Jednorazowy filtr pojazdów ('all' = tramwaje + autobusy + pociągi KD, default).
       Trzymaj w sync z TransitModePreference w services/routing/types. */
   modes?: 'all' | 'tram' | 'bus';
+  /** Pociągi KD w trybie 'all' (default true). Szybki filtr ich nie rusza. */
+  trainsEnabled?: boolean;
+  /** Minimalny zapas na wsiadanie do pociągu po przesiadce (default 300). */
+  trainMinTransferSec?: number;
   /** sekundy, default 120 */
   minTransferSec?: number;
   /** metry, default 800 */

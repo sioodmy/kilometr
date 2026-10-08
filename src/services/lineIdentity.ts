@@ -1,4 +1,5 @@
 import type { LegMode } from '../types/models';
+import { colors } from '../theme/tokens';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
@@ -32,9 +33,10 @@ export const TRANSIT_PALETTE = [
 ];
 
 /** Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy). */
-export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'walk' {
+export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'train' | 'walk' {
   if (mode === 'walk') return 'walk';
   if (mode === 'tram') return 'tram';
+  if (mode === 'train') return 'train';
   if (mode === 'bus') return 'bus';
   if (!line) return 'bus';
   const clean = line.trim();
@@ -45,17 +47,38 @@ export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' 
   return 'bus';
 }
 
+/**
+ * Pociągi KD mają STAŁY kolor linii z motywu (`colors.lineTrain`, bursztyn)
+ * zamiast losowanego z palety — na liście połączeń widać od razu, że to
+ * pociąg, nie kolejny autobus. Tekst liczy ta sama reguła kontrastu co niżej
+ * (na bursztynie wychodzi ciemny).
+ */
+export const TRAIN_BADGE_BG = colors.lineTrain;
+
+/** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
+function contrastFg(bg: string): string {
+  const hex = bg.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  return lum > 145 ? '#0A1210' : '#FFFFFF';
+}
+
 /** Oblicza stabilny, zharmonizowany kolor linii z gwarantowanym kontrastem tekstu. */
 export function getLineColors(
   line?: string,
   mode?: LegMode,
-): { bg: string; fg: string; isTram: boolean } {
+): { bg: string; fg: string; isTram: boolean; isTrain: boolean } {
   const resolved = inferTransitMode(mode, line);
+  if (resolved === 'train') {
+    return { bg: TRAIN_BADGE_BG, fg: contrastFg(TRAIN_BADGE_BG), isTram: false, isTrain: true };
+  }
   const isTram = resolved === 'tram';
   const clean = (line || '').trim().toUpperCase();
 
   if (!clean) {
-    return { bg: isTram ? '#00897B' : '#1976D2', fg: '#FFFFFF', isTram };
+    return { bg: isTram ? '#00897B' : '#1976D2', fg: '#FFFFFF', isTram, isTrain: false };
   }
 
   let hash = 0;
@@ -65,14 +88,7 @@ export function getLineColors(
   }
   const idx = Math.abs(hash * 7) % TRANSIT_PALETTE.length;
   const bg = TRANSIT_PALETTE[idx];
+  const fg = contrastFg(bg);
 
-  // WCAG AA kontrast: oblicz luminancję tła
-  const hex = bg.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  const fg = lum > 145 ? '#0A1210' : '#FFFFFF';
-
-  return { bg, fg, isTram };
+  return { bg, fg, isTram, isTrain: false };
 }

@@ -24,6 +24,10 @@ export interface RoutingSettings {
   walkSpeedMps: number;
   /** metry, default 300. Promień kotwiczenia lokalizacji/przystanku. */
   anchorRadiusM: number;
+  /** Czy RAPTOR uwzględnia pociągi KD w trybie 'all'. Default true. */
+  trainsEnabled: boolean;
+  /** Minimalny zapas na wsiadanie do pociągu po przesiadce. Default 300. */
+  trainMinTransferSec: number;
 }
 
 export const DEFAULT_SETTINGS: RoutingSettings = {
@@ -32,6 +36,8 @@ export const DEFAULT_SETTINGS: RoutingSettings = {
   maxWalkM: 800,
   walkSpeedMps: 1.3,
   anchorRadiusM: 300,
+  trainsEnabled: true,
+  trainMinTransferSec: 300,
 };
 
 export const SETTINGS_LIMITS = {
@@ -40,6 +46,7 @@ export const SETTINGS_LIMITS = {
   maxWalkM: { min: 200, max: 1500, step: 100 },
   walkSpeedMps: { min: 0.8, max: 2.0, step: 0.1 },
   anchorRadiusM: { min: 100, max: 800, step: 50 },
+  trainMinTransferSec: { min: 120, max: 1200, step: 60 },
 } as const;
 
 const STORAGE_KEY = 'kilometr.routingSettings.v1';
@@ -66,6 +73,11 @@ function clampSettings(s: Partial<RoutingSettings>): RoutingSettings {
     anchorRadiusM: Math.max(
       SETTINGS_LIMITS.anchorRadiusM.min,
       Math.min(SETTINGS_LIMITS.anchorRadiusM.max, Math.round(s.anchorRadiusM ?? DEFAULT_SETTINGS.anchorRadiusM)),
+    ),
+    trainsEnabled: s.trainsEnabled ?? DEFAULT_SETTINGS.trainsEnabled,
+    trainMinTransferSec: Math.max(
+      SETTINGS_LIMITS.trainMinTransferSec.min,
+      Math.min(SETTINGS_LIMITS.trainMinTransferSec.max, Math.round(s.trainMinTransferSec ?? DEFAULT_SETTINGS.trainMinTransferSec)),
     ),
   };
 }

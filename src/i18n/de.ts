@@ -122,6 +122,13 @@ export const de: Strings = {
     transferTimeTitle: 'Mindest-Umsteigezeit',
     transferTimeHint:
       'Wie viel Zeit wir zwischen Ausstieg und nächster Abfahrt einplanen. Höhere Werte schließen riskante Minuten-Umstiege aus.',
+    trainTitle: 'KD-Züge',
+    trainHint:
+      'Umstiege zu Koleje Dolnośląskie (z. B. Hauptbahnhof). Nur im Modus „Alle“ — der Tram/Bus-Schnellfilter rührt sie nicht an.',
+    trainBufferTitle: 'Puffer für Bahn-Umstiege',
+    trainBufferHint:
+      'Mindestzeit für den Weg zum Bahnsteig nach dem Umstieg. Bahnhöfe sind keine Haltestellen — z. B. am Hauptbahnhof geht es vom Halt durch die Halle.',
+    trainNoData: 'Der geladene Fahrplan enthält keine Züge. Aktualisiere die Daten oben, um KD-Umstiege zu aktivieren.',
     walkTitle: 'Max. Fußweg',
     walkHint:
       'Wie weit du zur Starthaltestelle und vom Ziel weg laufen kannst. Eine weitere Haltestelle mit direkter Tram schlägt oft die nächste Stange.',
@@ -560,6 +567,7 @@ export const de: Strings = {
     modeWalk: 'Zu Fuß',
     modeTram: 'Straßenbahn',
     modeBus: 'Bus',
+    modeTrain: 'Zug',
     departTitle: (service: string, at: string) => `${service} • ab ${at}`,
     rideTitle: (service: string, at: string) => `${service} • an ${at}`,
     transferTitle: (service: string, at: string) => `Umsteigen • ${service} • ab ${at}`,
