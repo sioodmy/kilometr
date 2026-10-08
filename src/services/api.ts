@@ -254,7 +254,7 @@ export const SearchService: ISearchService = {
       if (!isCurrent()) throw new SearchAbortedError();
       const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
         id: `stop-${h.stop_id}`,
-        title: h.name,
+        title: h.name.toUpperCase(),
         address: 'Przystanek',
         kind: 'stop' as const,
         lat: h.lat,
