@@ -63,4 +63,5 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Przed commitem sprawdź `git status --short`, `git diff` oraz `git log --oneline -10`, stage'uj tylko zamierzone pliki, nigdy nie commituj sekretów.
 - używaj conventional commits po polsku
 - NIGDY PRZENIGDY NIE COMMITUJ NA MAIN BRANCH.
+- Jedna sesja/chat -> jeden branch (tworzysz osobny branch chyba że powiem ci inaczej). Nie spamujemy róznych featurów na jednym branchu. Tworzymy PR na bieżąco
 - Nie amenduj nieudanych commitów po hookach, napraw problem i zrób nowy commit.
