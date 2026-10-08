@@ -126,9 +126,11 @@ Workera, a Worker dokleja klucz po stronie serwera.
 | `CLOUDFLARE_ACCOUNT_ID` | Dashboard → adres w URL / `wrangler whoami`       |
 | `TIMETABLE_PUBLIC_URL`  | `https://data.kilometr.wroclaw.pl` (tylko do pomijania buildów w timetable.yml; build APK nie używa tego sekretu) |
 
-Bez `PDP_API_KEY` build działa dalej, ale **bez danych KD** (ostrzeżenie
-w logu). Bez tokenów Cloudflare workflow kończy się po zbudowaniu bazy
-(artefakt do pobrania z Actions).
+Bez `PDP_API_KEY` build **przerywa się błędem**, bo realne KD jest domyślnie
+wymagane (żadnej bazy MPK-only do R2). Jedyny wyjątek to jawne
+`--allow-mpk-only` (tylko lokalna diagnostyka, nigdy w cronie). Bez tokenów
+Cloudflare workflow kończy się po zbudowaniu bazy (artefakt do pobrania
+z Actions).
 
 ### 5. Podpięcie aplikacji
 
@@ -158,14 +160,21 @@ importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
   miasto `WROCŁAW` → jego `stationIds` (dynamicznie, bez hardkodu ID).
 - Rozkład: `GET /schedules/shortened?stations=<ids>&carriersInclude=KD
   &dateFrom=<dziś>&dateTo=<dziś+13>`, `dictionaries=true` (nazwy stacji).
-- PDP **nie zwraca współrzędnych stacji**, więc build dociąga je
-  z Nominatim (viewbox Wrocławia, cache w `data/kd-station-coords.json`):
+- PDP **nie zwraca współrzędnych stacji**, więc build dociąga je z Nominatim
+  i zapisuje w `data/kd-station-coords.json`. Geokodowanie szuka najpierw
+  w bbox Wrocławia, a gdy stacja jest poza miastem (stacje końcowe/pośrednie
+  kursów), robi fallback na całą Polskę. Dzięki temu żaden kurs KD nie jest
+  po cichu pomijany.
   ```bash
   PDP_API_KEY=... node scripts/build-timetable.mjs --write-coords
   ```
-  Uruchom lokalnie raz, **przejrzyj diffa** (`git diff data/…`) i commituj.
-  W CI flaga jest wyłączona — brak współrzędnych = stacja pominięta
-  z ostrzeżeniem (rozkład dalej się buduje).
+  Cron w CI odpala build z `--write-coords` i dołącza zaktualizowany
+  `data/kd-station-coords.json` do artefaktu Actions. Uruchom lokalnie raz,
+  **przejrzyj diffa** (`git diff data/…`) i commituj. Zcommitowany cache
+  oznacza, że CI nie zależy już od dostępności Nominatim.
+- Bramka jakości: gdy KD jest wymagane, build kończy się **błędem**, jeśli
+  któraś sekcja jest pusta (`0 stacji / 0 tras / 0 kursów / 0 przesiadek`).
+  Baza MPK-only albo z niekompletnym KD nigdy nie trafia do R2.
 - W bazie KD ląduje w tych samych tabelach co MPK, z prefiksami ID:
   przystanki `KD:S:<id>`, trasy `KD:R:<sid>:<oid>`,
   kursy `KD:T:<sid>:<oid>:<YYYYMMDD>`, serwisy `KD:svc:<sid>:<oid>`
@@ -210,4 +219,5 @@ cloudflare/
 
 Skrypt kończy się `PRAGMA integrity_check` + wypisuje statystyki
 (przystanki/trasy/kursy/czasy MPK vs KD). Pusta któraś z sekcji MPK =
-błąd i brak uploadu. Puste KD = tylko warning (np. brak klucza).
+błąd i brak uploadu. Puste albo niepełne KD = **błąd i brak uploadu**
+(realne KD jest wymagane; `--allow-mpk-only` tylko do diagnostyki).

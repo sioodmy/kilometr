@@ -66,6 +66,30 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      # Bramka: APK pobiera bazę z R2 przy starcie, więc nie wypuszczamy
+      # wydania wskazującego na serwer bez realnego KD (MPK-only/atrapa).
+      # Manifest niedostępny = ostrzeżenie (R2 może leżeć); manifest
+      # osiągalny bez KD = twardy błąd.
+      - name: Verify timetable has real KD
+        run: |
+          set -euo pipefail
+          URL="${TIMETABLE_URL:-https://data.kilometr.wroclaw.pl}/manifest.json"
+          if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
+            echo "::warning::Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
+            exit 0
+          fi
+          node -e '
+            const m = require("/tmp/timetable-manifest.json");
+            const kd = (m.sources && m.sources.kd) || {};
+            const stations = Number(kd.stations || 0);
+            const trips = Number(kd.trips || 0);
+            if (kd.skippedReason || stations <= 0 || trips <= 0) {
+              console.error("::error::Manifest bez realnego KD (skippedReason=" + (kd.skippedReason || "null") + ", stations=" + stations + ", trips=" + trips + "). Nie buduję APK na bazie bez KD.");
+              process.exit(1);
+            }
+            console.log("KD OK: stations=" + stations + ", routes=" + (kd.routes || 0) + ", trips=" + trips + ", interchanges=" + (kd.interchanges || 0));
+          '
+
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:

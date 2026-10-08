@@ -47,7 +47,7 @@ jobs:
         id: build
         run: |
           set +e
-          node cloudflare/scripts/build-timetable.mjs
+          node cloudflare/scripts/build-timetable.mjs --write-coords
           code=$?
           echo "exit=$code" >> "$GITHUB_OUTPUT"
           if [ "$code" -eq 2 ]; then
@@ -74,6 +74,7 @@ jobs:
           path: |
             cloudflare/dist/kilometr-gtfs.db
             cloudflare/dist/manifest.json
+            cloudflare/data/kd-station-coords.json
           retention-days: 7
 
       - name: Upload manifest → R2
