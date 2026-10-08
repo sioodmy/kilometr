@@ -17,6 +17,24 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Język: `expo-localization` (locale systemowe Androida) + nadpisanie per-app w Ustawieniach → Język (Systemowy/PL/EN/DE/UK), persist w kv-store (`initLocale()` w `_layout`).
 - Dodając string: dopisz klucz do `pl.ts`, przetłumacz w `en/de/uk.ts`, użyj w UI. `npx tsc --noEmit` wyłapie braki.
 
+## Anti-Slop — OBOWIĄZKOWE (UI / teksty / docs / git messages)
+
+- Lokalne skille (werbowane 1:1 z upstream): `.agents/skills/antislop/` (core, v3.2.20) + `antislop-ui`, `antislop-copywriting`, `antislop-human`, `antislop-layoutmobile`, `antislop-code`. Upstream MIT: `https://github.com/miqdadbadjuber/Anti-Slop`. Update = przekopiuj foldery `skills/*` z release i podbij wersję tutaj.
+- KIEDY: ZAWSZE, gdy dotykasz CZEGOKOLWIEK co widzi użytkownik/inni ludzie — bez wyjątków i bez pytania o tryb:
+  - UI aplikacji (`app/`, `src/components/`, style, animacje, stany puste/błędy/loading),
+  - landing (`landing/`),
+  - docs (`docs/`, `*.md`, komentarze w kodzie widoczne w review),
+  - teksty user-facing: `src/i18n/*`, alerty, powiadomienia, accessibility labels,
+  - git messages, opisy PR, review comments.
+- CO (tryb ZAWSZE `during`, nie pytaj `during/after`): przed edytą przeczytaj przez Read tool core `.agents/skills/antislop/SKILL.md` + skill(e) z mapowania poniżej, stosuj zasady W TRAKCIE pisania, przed oddaniem przejdź Delivery Gate z core (raport PASS/FAIL w 4 blokach).
+- Mapowanie (ładuj core + każdy pasujący):
+  - UI / visual (kolor, layout, komponenty, dekoracje, motion): `antislop-ui`,
+  - copy / tekst (nagłówki, CTA, tone, landing, PR/opis, docs): `antislop-copywriting`,
+  - dostępność (kontrast, klawiatura, focus, stany): `antislop-human`,
+  - mobile / responsive (breakpointy, grid, overflow, tap targety): `antislop-layoutmobile`,
+  - komentarze w kodzie: `antislop-code` (czyści tylko komentarze, nigdy kodu).
+- Relacja z resztą AGENTS.md: anti-slop to FILTR, nie style guide (R-37). Kierunek wizualny/kopia pochodzi z briefu użytkownika; bez kierunku UI oznacz jako draft. Teksty PL/EN/DE/UK dalej MUSZĄ iść przez `src/i18n` (pl.ts = wzorzec, `useStrings()` / `tr()` w serwisach) — copywriting-skill nie omija i18n. Nie wymyślaj faktów/liczb/testimoniali (R-17/R-18/R-36/R-38).
+
 ## Commity na bieżąco
 
 - Commituj zmiany na bieżąco, w małych logicznych porcjach, zamiast odkładać wszystko na koniec sesji.
