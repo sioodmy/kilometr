@@ -87,12 +87,13 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
 
   const distanceText = item.distanceM != null ? formatDistance(item.distanceM) : '';
   const subtitle = [cleanAddress, distanceText].filter(Boolean).join(' • ');
+  const displayTitle = item.kind === 'stop' ? item.title.toUpperCase() : item.title;
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${item.title}${subtitle ? `, ${subtitle}` : ''}`}
+      accessibilityLabel={`${displayTitle}${subtitle ? `, ${subtitle}` : ''}`}
       style={({ pressed }) => [
         styles.row,
         pressed && { backgroundColor: scheme.surfaceContainerHighest, opacity: 0.9 },
@@ -102,7 +103,7 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
         <Icon size={19} color={iconFg} />
       </View>
       <View style={styles.mid}>
-        <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.title} numberOfLines={1}>{displayTitle}</Text>
         {subtitle ? (
           <Text style={styles.sub} numberOfLines={1}>
             {subtitle}
