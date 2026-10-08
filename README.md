@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" width="120" alt="Logo Kilometr" />
+  <img src="docs/favicon.svg" width="120" alt="Logo Kilometr" />
 </p>
 
 <h1 align="center">Kilometr</h1>
