@@ -1,8 +1,11 @@
 version: 2
 updates:
+  # Bumpy zależności wpadają przez gałąź integracyjną `dev`,
+  # potem promocja PR-ami: dev -> main -> nightly -> prod.
   # Zależności aplikacji mobilnej
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -10,6 +13,7 @@ updates:
   # Zależności backendu (server)
   - package-ecosystem: "npm"
     directory: "/server"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -17,6 +21,7 @@ updates:
   # Zależności landing page
   - package-ecosystem: "npm"
     directory: "/landing"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -24,6 +29,7 @@ updates:
   # Aktualizacje GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
