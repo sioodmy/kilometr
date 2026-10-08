@@ -100,8 +100,13 @@ cd cloudflare
 npm install                 # tylko wrangler (devDependency)
 npx wrangler login
 npx wrangler r2 bucket create kilometr-timetable
-npx wrangler deploy         # → https://kilometr-timetable.<sub>.workers.dev
+npx wrangler deploy         # → https://data.kilometr.wroclaw.pl (+ workers.dev jako zapas)
 ```
+
+Route `data.kilometr.wroclaw.pl` siedzi w `wrangler.toml` jako
+`custom_domain`, więc wrangler sam tworzy rekord DNS w strefie
+`kilometr.wroclaw.pl` (ta strefa musi być na tym samym koncie) i podpina
+certyfikat. Nic ręcznie w dashboardzie nie trzeba klikać.
 
 ### 3. Sekret PDP w Workerze (NIE do repo, NIE do kodu aplikacji!)
 
@@ -119,7 +124,7 @@ Workera, a Worker dokleja klucz po stronie serwera.
 | `PDP_API_KEY`           | klucz z https://pdp-api.plk-sa.pl (ten sam)       |
 | `CLOUDFLARE_API_TOKEN`  | Dashboard → My Profile → API Tokens → template „Workers R2” na bucket `kilometr-timetable` (min. uprawnienia: R2 write na ten bucket) |
 | `CLOUDFLARE_ACCOUNT_ID` | Dashboard → adres w URL / `wrangler whoami`       |
-| `TIMETABLE_PUBLIC_URL`  | URL Workera z kroku 2 (do pomijania buildów bez zmian) |
+| `TIMETABLE_PUBLIC_URL`  | `https://data.kilometr.wroclaw.pl` (tylko do pomijania buildów w timetable.yml; build APK nie używa tego sekretu) |
 
 Bez `PDP_API_KEY` build działa dalej, ale **bez danych KD** (ostrzeżenie
 w logu). Bez tokenów Cloudflare workflow kończy się po zbudowaniu bazy
@@ -127,14 +132,18 @@ w logu). Bez tokenów Cloudflare workflow kończy się po zbudowaniu bazy
 
 ### 5. Podpięcie aplikacji
 
+Adres jest wpieczony w kodzie (`src/services/gtfsConfig.ts`):
+`https://data.kilometr.wroclaw.pl`. Build APK w GitHub Actions nie
+potrzebuje żadnej zmiennej środowiskowej ani sekretu.
+
 ```bash
-# .env (lokalnie / w EAS — nigdy do gita)
-EXPO_PUBLIC_TIMETABLE_URL=https://kilometr-timetable.<sub>.workers.dev
+# tylko do nadpisania (lokalny Worker, testy):
+EXPO_PUBLIC_TIMETABLE_URL=http://127.0.0.1:8787
 ```
 
-Aplikacja pobiera `${EXPO_PUBLIC_TIMETABLE_URL}/manifest.json`, porównuje
+Aplikacja pobiera `${baseUrl}/manifest.json`, porównuje
 `version` z lokalną metą `timetable_version` i ściąga bazę tylko przy
-zmianie. Gdy zmienna pusta albo manifest nieosiągalny — wraca do starego
+zmianie. Gdy manifest nieosiągalny, wraca do starego
 importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
 
 ### 6. Harmonogram
