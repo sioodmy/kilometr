@@ -162,8 +162,17 @@ importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
   kursy `KD:T:<sid>:<oid>:<YYYYMMDD>`, serwisy `KD:svc:<sid>:<oid>`
   (wiersz kalendarza same zera + `calendar_dates` per data kursowania —
   `getActiveServices()` w aplikacji to rozumie).
-  `route_type = 2` (kolej). Klasyfikator tramwaj/autobus w RAPTOR-ze
-  pokaże pociągi jako „bus” (znane uproszczenie v1, bez zmian w UI).
+  `route_type = 2` (kolej). Nazwy stacji title-case (`WROCŁAW GŁÓWNY` →
+  `Wrocław Główny`), bo PDP zwraca caps-lock.
+- Przesiadki piesze stacja KD ↔ słupki MPK liczy build (tabela
+  `interchanges`, promień 600 m, hojny czas): stacja to nie słupek.
+  Dworzec Główny ma twardy override **600 s** na wszystkie słupki
+  `Dworzec Główny*` — w linii prostej to ~150 m, ale pieszo idzie się
+  przez halę i przejście podziemne na perony. Aplikacja podmienia tymi
+  linkami gridowe footpathy między tymi samymi parami.
+- Na końcu buildu leci jawny `ANALYZE` (statystyki planisty `sqlite_stat1`
+  — świeży plik nie ma historii zapytań, więc `PRAGMA optimize` nic by nie
+  dał) i `VACUUM`, potem `integrity_check`.
 - Okno 14 dni: jeden request na build (limit `dateTo ≤ dateFrom+31d`).
   Przy ~100 pociągach KD dziennie we Wrocławiu to kilka tysięcy kursów —
   ułamek 1,5M wierszy MPK.
