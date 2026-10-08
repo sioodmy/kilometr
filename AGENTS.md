@@ -2,11 +2,16 @@
 
 Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
 
-## Testowanie PR na prawdziwym urządzeniu
+## Buildy
 
-- Zawsze testuj PR na prawdziwym urządzeniu (symulator/emulator to za mało): zbuduj apk z gałęzi PR, zainstaluj i sprawdź kluczowe ścieżki.
-- Każda zmiana UI musi zostać udokumentowana screenshotami z prawdziwego urządzenia, dołączonymi do opisu PR (before/after).
-- Nie oznaczaj PR jako gotowy do merge bez realnego uruchomienia na urządzeniu i bez screenshotów dla zmian UI.
+- Nie builduj apk lokalnie o ile nie dostaniesz na to pozwolenia
+
+## CRITICAL: NIE OVERTHINKUJ
+
+- Nie rozpisuj się, po prostu rób
+- Nie wypisuj planów, kroków postępowania, ani nie opisuj swoich działań
+- Używaj prostych rozwiązań, który doprowadzają do celu. Nie rozmyślaj o edge caseach jeżeli cie o to nie proszę
+- Jeżeli dostałeś proste zadanie to nie pytaj o szczegóły, po prostu rób.
 
 ## Tłumaczenia (i18n) — OBOWIĄZKOWE
 
