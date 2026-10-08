@@ -1,4 +1,5 @@
 import type { LegMode } from '../types/models';
+import { colors } from '../theme/tokens';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
@@ -47,11 +48,22 @@ export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' 
 }
 
 /**
- * Pociągi KD mają STAŁY kolor (granat kolejowy) zamiast losowanego z palety —
- * na liście połączeń widać od razu, że to pociąg, nie kolejny autobus.
- * Jasność policzona pod biały tekst (lum ~59, próg to 145).
+ * Pociągi KD mają STAŁY kolor linii z motywu (`colors.lineTrain`, bursztyn)
+ * zamiast losowanego z palety — na liście połączeń widać od razu, że to
+ * pociąg, nie kolejny autobus. Tekst liczy ta sama reguła kontrastu co niżej
+ * (na bursztynie wychodzi ciemny).
  */
-export const TRAIN_BADGE_BG = '#1E3A8A';
+export const TRAIN_BADGE_BG = colors.lineTrain;
+
+/** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
+function contrastFg(bg: string): string {
+  const hex = bg.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  return lum > 145 ? '#0A1210' : '#FFFFFF';
+}
 
 /** Oblicza stabilny, zharmonizowany kolor linii z gwarantowanym kontrastem tekstu. */
 export function getLineColors(
@@ -60,7 +72,7 @@ export function getLineColors(
 ): { bg: string; fg: string; isTram: boolean; isTrain: boolean } {
   const resolved = inferTransitMode(mode, line);
   if (resolved === 'train') {
-    return { bg: TRAIN_BADGE_BG, fg: '#FFFFFF', isTram: false, isTrain: true };
+    return { bg: TRAIN_BADGE_BG, fg: contrastFg(TRAIN_BADGE_BG), isTram: false, isTrain: true };
   }
   const isTram = resolved === 'tram';
   const clean = (line || '').trim().toUpperCase();
@@ -76,14 +88,7 @@ export function getLineColors(
   }
   const idx = Math.abs(hash * 7) % TRANSIT_PALETTE.length;
   const bg = TRANSIT_PALETTE[idx];
-
-  // WCAG AA kontrast: oblicz luminancję tła
-  const hex = bg.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  const fg = lum > 145 ? '#0A1210' : '#FFFFFF';
+  const fg = contrastFg(bg);
 
   return { bg, fg, isTram, isTrain: false };
 }
