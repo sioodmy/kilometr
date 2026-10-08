@@ -52,12 +52,9 @@ jobs:
     # nie palą ~20 min builda — release poczeka na push z kodem albo ręczny
     # Run workflow. Ręczne odpalenie (workflow_dispatch) działa zawsze.
     if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, 'dependabot')
-    # EXPO_PUBLIC_* jest wpieczone w bundla JS w trakcie assembleRelease,
-    # więc URL musi być w env na runnerze. Ten sam sekret, którego używa
-    # workflow timetable.yml — nic nowego nie trzeba dodawać w Settings.
-    # Pusty sekret = aplikacja wraca na starą ścieżkę ZIP (fallback).
-    env:
-      EXPO_PUBLIC_TIMETABLE_URL: ${{ secrets.TIMETABLE_PUBLIC_URL }}
+    # URL rozkładu jest wpieczony w kodzie (src/services/gtfsConfig.ts,
+    # data.kilometr.wroclaw.pl), więc build nie potrzebuje żadnego sekretu.
+    # Nadpisanie lokalnie: EXPO_PUBLIC_TIMETABLE_URL w .env.
 
     steps:
       - name: Checkout repo

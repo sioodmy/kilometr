@@ -17,14 +17,16 @@ export const GTFS = {
 } as const;
 
 /**
- * Gotowa baza z serwera Kilometr (Cloudflare R2 + Worker) — telefon pobiera
+ * Gotowa baza z serwera Kilometr (Cloudflare R2 + Worker): telefon pobiera
  * prebuilt SQLite zamiast parsować ZIP-a w pamięci (OOM na słabszych
- * urządzeniach). Pusty baseUrl = stara ścieżka: ZIP → unzip → import.
- * Ustawiane przez EXPO_PUBLIC_TIMETABLE_URL (nigdy żaden sekret — manifest
- * i baza są publiczne, klucz PDP API siedzi tylko w Workerze).
+ * urządzeniach). Domyślny adres to publiczna subdomena, więc build APK
+ * działa bez zmiennej środowiskowej. EXPO_PUBLIC_TIMETABLE_URL nadpisuje
+ * adres (np. do testów lokalnego Workera); to nie jest sekret, manifest
+ * i baza są publiczne, klucz PDP API siedzi tylko w Workerze. Gdy serwer
+ * nieosiągalny, aplikacja wraca do starego importu z ZIP-a.
  */
 export const TIMETABLE = {
-  baseUrl: (process.env.EXPO_PUBLIC_TIMETABLE_URL ?? '').replace(/\/$/, ''),
+  baseUrl: (process.env.EXPO_PUBLIC_TIMETABLE_URL || 'https://data.kilometr.wroclaw.pl').replace(/\/$/, ''),
   dbFile: 'kilometr-gtfs.db',
   refreshHours: 24,
   timeoutMs: 15000,
