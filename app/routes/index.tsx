@@ -28,11 +28,14 @@ import { DEFAULT_LOCATION } from '../../src/config';
 import {
   FavoritesService,
   LocationService,
+  LOCATION_REFINE_DELTA_M,
   RoutingService,
   SearchService,
+  distanceMeters,
   findAnchorForLocation,
   recordTripSearch,
   type ActiveAnchor,
+  type LocationResult,
 } from '../../src/services';
 // Mediana czasu dojazdu jest czysta i idzie do nawyku w „Ostatnich miejscach",
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
@@ -98,6 +101,8 @@ export default function RoutesScreen() {
     fromTitle?: string;
     fromLat?: string;
     fromLon?: string;
+    /** '1', gdy start pochodzi z GPS — wtedy wolno go doprecyzować fixem w tle. */
+    fromGps?: string;
     toId?: string;
     toTitle: string;
     toLat: string;
@@ -113,6 +118,9 @@ export default function RoutesScreen() {
   const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
   const [fromLat, setFromLat] = useState(Number(params.fromLat || DEFAULT_LOCATION.lat));
   const [fromLon, setFromLon] = useState(Number(params.fromLon || DEFAULT_LOCATION.lon));
+  // Czy start nadal jest GPS-em (a nie ręcznie wybranym punktem). Zmiana na
+  // custom wyłącza doprecyzowanie w tle i odwrotnie.
+  const [gpsOrigin, setGpsOrigin] = useState(params.fromGps === '1');
 
   const [toTitle, setToTitle] = useState(String(params.toTitle ?? s.routes.destFallback));
   const [toLat, setToLat] = useState(Number(params.toLat ?? 0));
@@ -146,6 +154,12 @@ export default function RoutesScreen() {
   const dismissedAnchorsRef = useRef<Set<string>>(new Set());
   const fetchSeq = useRef(0);
   const initialAnchorCheckedRef = useRef(false);
+  // Podmiana originu na dokładniejszy fix odpala się raz na wybór startu.
+  const refineAppliedRef = useRef(false);
+  const originCoordsRef = useRef({ lat: fromLat, lon: fromLon });
+  originCoordsRef.current = { lat: fromLat, lon: fromLon };
+  const activeAnchorRef = useRef<ActiveAnchor | null>(activeAnchor);
+  activeAnchorRef.current = activeAnchor;
 
   const handleDismissAnchor = () => {
     if (!activeAnchor) return;
@@ -447,6 +461,33 @@ export default function RoutesScreen() {
     });
   }, []);
 
+  // Start z GPS bez kotwicy liczy się z fixu, który mógł być słaby (Balanced
+  // potrafi trafić o setki metrów i wybrać przystanek po złej stronie osiedla).
+  // Po wyszukaniu bierzemy dokładniejszy fix w tle; gdy pozycja faktycznie się
+  // przesunęła, podmieniamy origin, a lista odświeża się seamless, bez spinnera.
+  useEffect(() => {
+    if (!gpsOrigin || activeAnchor) return;
+    let cancelled = false;
+    const apply = (loc: LocationResult) => {
+      if (cancelled || refineAppliedRef.current || activeAnchorRef.current) return;
+      if (isOutsideServiceArea(loc.lat, loc.lon)) return;
+      const origin = originCoordsRef.current;
+      if (distanceMeters(loc.lat, loc.lon, origin.lat, origin.lon) < LOCATION_REFINE_DELTA_M) return;
+      refineAppliedRef.current = true;
+      setFromTitle(loc.title);
+      setFromLat(loc.lat);
+      setFromLon(loc.lon);
+    };
+    const unsubscribe = LocationService.subscribe(apply);
+    void LocationService.refineLocation().then((loc) => {
+      if (loc) apply(loc);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [gpsOrigin, activeAnchor]);
+
   // Debounced search (jak na głównym), bias wg aktualnego startu
   const searchSeq = useRef(0);
   useEffect(() => {
@@ -511,6 +552,8 @@ export default function RoutesScreen() {
         }
         setGpsOutside(false);
         setGpsOutsideCity(null);
+        setGpsOrigin(true);
+        refineAppliedRef.current = false;
         const currentSettings = getSettingsSync();
         dismissedAnchorsRef.current.clear();
         const anchor = findAnchorForLocation(
@@ -547,6 +590,7 @@ export default function RoutesScreen() {
     });
 
     if (sheetFor === 'from') {
+      setGpsOrigin(false);
       setActiveAnchor(null);
       setFromTitle(sug.title);
       setFromLat(sug.lat);
@@ -944,6 +988,8 @@ export default function RoutesScreen() {
     });
     // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    // Start = stary cel (ręczny punkt), więc doprecyzowanie GPS już nie dotyczy.
+    setGpsOrigin(false);
     setActiveAnchor(null);
     const tempTitle = fromTitle;
     const tempLat = fromLat;

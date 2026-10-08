@@ -7,7 +7,7 @@ import { Bell, History, Settings2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { DEFAULT_LOCATION } from '../src/config';
-import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch } from '../src/services';
+import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch, type LocationResult } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
@@ -69,6 +69,9 @@ export default function HomeScreen() {
   const thumbInset = useThumbBarInset();
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string; city?: string | null } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
+  // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
+  const isCustomStartRef = useRef(isCustomStart);
+  isCustomStartRef.current = isCustomStart;
   // GPS poza strefą (> 15 km od Wrocławia): tras z GPS nie liczymy,
   // start trzeba wybrać ręcznie. Miasto z reverse-geocode do komunikatu.
   const [gpsUnsupported, setGpsUnsupported] = useState(false);
@@ -209,9 +212,12 @@ export default function HomeScreen() {
     // Live GPS od startu (ticker w tle) — opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
 
-    LocationService.getCurrentLocation().then((l) => {
+    // Jeden sposób aplikowania fixu: pierwszy szybki odczyt i każdy późniejszy
+    // (dokładniejszy w tle) przechodzą tędy, żeby ranking i start tras zawsze
+    // używały najlepszej znanej pozycji.
+    const applyGpsFix = (l: LocationResult) => {
       const outside = isOutsideServiceArea(l.lat, l.lon);
-      const city = (l as { city?: string | null }).city ?? null;
+      const city = l.city ?? null;
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
       if (outside) {
         // Poza Wrocławiem: GPS zostaje tylko jako informacja do karty,
@@ -219,22 +225,31 @@ export default function HomeScreen() {
         // wybrać ręcznie, więc nie podstawiamy pozycji spoza strefy.
         setGpsUnsupported(true);
         setGpsCity(city);
-        FavoritesService.smartFromOrigin(DEFAULT_LOCATION.title, {
-          lat: DEFAULT_LOCATION.lat,
-          lon: DEFAULT_LOCATION.lon,
-        }).then(applySmart);
+        if (!isCustomStartRef.current) {
+          FavoritesService.smartFromOrigin(DEFAULT_LOCATION.title, {
+            lat: DEFAULT_LOCATION.lat,
+            lon: DEFAULT_LOCATION.lon,
+          }).then(applySmart);
+        }
         return;
       }
+      setGpsUnsupported(false);
+      setGpsCity(null);
+      if (isCustomStartRef.current) return;
       setLocTitle(l.title);
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
       FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(applySmart);
-    }).catch(() => {
+    };
+
+    LocationService.getCurrentLocation().then(applyGpsFix).catch(() => {
       // Brak GPS (brak zgody / emulator): lista zostaje z cache, a flaga
       // gotowości pozwala pokazać uczciwy pusty stan zamiast wiecznej dziury.
       setSmartReady(true);
     });
+    const unsubscribeGps = LocationService.subscribe(applyGpsFix);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => unsubscribeGps();
   }, []);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy
@@ -467,7 +482,7 @@ export default function HomeScreen() {
       FavoritesService.smartFromOrigin(gpsLocation.title, coords).then(applySmart);
     }
     try {
-      const l = await LocationService.getCurrentLocation();
+      const l = await LocationService.getCurrentLocation({ force: true });
       const outside = isOutsideServiceArea(l.lat, l.lon);
       const city = (l as { city?: string | null }).city ?? null;
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
@@ -601,6 +616,8 @@ export default function HomeScreen() {
         fromTitle: locTitle,
         fromLat: String(currentCoords.lat),
         fromLon: String(currentCoords.lon),
+        // Start z GPS: ekran tras może go po cichu podmienić na dokładniejszy fix.
+        fromGps: isCustomStart ? '0' : '1',
         toId: to.id,
         toTitle: to.title,
         toLat: String(to.lat),

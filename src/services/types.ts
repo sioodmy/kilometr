@@ -37,8 +37,28 @@ export interface IRoutingService {
   getVehicles(line: string): Promise<VehiclePosition[]>;
 }
 
+export interface LocationResult {
+  title: string;
+  address: string;
+  lat: number;
+  lon: number;
+  stopId?: string;
+  city?: string | null;
+  /** Promień niepewności fixu w metrach z systemu (null na webe). */
+  accuracyM?: number | null;
+}
+
 export interface ILocationService {
-  getCurrentLocation(): Promise<{ title: string; address: string; lat: number; lon: number; stopId?: string; city?: string | null }>;
+  /**
+   * Pozycja „na teraz": świeży cache, ostatni znany fix albo szybki odczyt
+   * Balanced. Nigdy nie czeka na precyzyjny fix, ten dociąga `refineLocation`
+   * już po oddaniu wyniku. `force` pomija cache (ręczne „użyj GPS").
+   */
+  getCurrentLocation(options?: { force?: boolean }): Promise<LocationResult>;
+  /** Dokładniejszy odczyt (Accuracy.High) w tle; null, gdy się nie udało. */
+  refineLocation(): Promise<LocationResult | null>;
+  /** Powiadomienie o istotnie innym fixie; zwraca unsubscribe. */
+  subscribe(listener: (loc: LocationResult) => void): () => void;
 }
 
 export interface IFavoritesService {
