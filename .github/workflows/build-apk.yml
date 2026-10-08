@@ -1,6 +1,13 @@
-name: Build Android APK
+name: Build & Release APK
 
+# Build APK uruchamia się WYŁĄCZNIE przy pushu do kanałów nightly/prod.
+# `main` i `dev` nie budują APK — promocja kodu robi się PR-ami, a build
+# startuje dopiero na wyraźnym kanale wydawniczym.
 on:
+  push:
+    branches:
+      - nightly
+      - prod
   workflow_dispatch:
     inputs:
       arch:
@@ -11,28 +18,20 @@ on:
         options:
           - 'arm64-v8a'
           - 'all'
-  push:
-    branches:
-      - main
-    paths:
-      - 'android/**'
-      - 'app/**'
-      - 'assets/**'
-      - 'modules/**'
-      - 'plugins/**'
-      - 'src/**'
-      - 'app.json'
-      - 'babel.config.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - '.github/workflows/build-apk.yml'
+      channel:
+        description: 'Kanał wydania'
+        required: true
+        default: 'nightly'
+        type: choice
+        options:
+          - 'nightly'
+          - 'prod'
 
 permissions:
   contents: write
 
 concurrency:
-  group: "build-apk"
+  group: "build-apk-${{ github.ref_name }}"
   cancel-in-progress: false
 
 env:
@@ -46,19 +45,19 @@ env:
 
 jobs:
   build-apk:
-    name: Build Release APK
+    name: Build & Release APK
     runs-on: ubuntu-latest
-    # Oszczędność minut: mergi Dependabota (same bumpki wersji w locku)
-    # nie palą ~20 min builda — release poczeka na push z kodem albo ręczny
-    # Run workflow. Ręczne odpalenie (workflow_dispatch) działa zawsze.
-    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, 'dependabot')
     # URL rozkładu jest wpieczony w kodzie (src/services/gtfsConfig.ts,
     # data.kilometr.wroclaw.pl), więc build nie potrzebuje żadnego sekretu.
     # Nadpisanie lokalnie: EXPO_PUBLIC_TIMETABLE_URL w .env.
 
     steps:
+      # Pełna historia + tagi: potrzebne do auto-semver i notek z conventional
+      # commitów (zakres od ostatniego tagu danej gałęzi).
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -118,6 +117,47 @@ jobs:
             "ndk;${ANDROID_NDK}" \
             "cmake;${ANDROID_CMAKE}"
 
+      # Kanał decyduje o tagu, nazwie assetu, architekturze i fladze prerelease.
+      # prod: nowa wersja semver z conventional commitów, nie-prerelease (ląduje
+      # jako GitHub "latest"). nightly: unikalny tag z datą i SHA, prerelease.
+      - name: Resolve channel, tag, version and asset name
+        id: release
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CHANNEL="${{ inputs.channel }}"
+            ARCH="${{ inputs.arch }}"
+          else
+            CHANNEL="${GITHUB_REF_NAME}"
+            ARCH=""
+          fi
+
+          case "$CHANNEL" in
+            nightly|prod) ;;
+            *) echo "::error::Nieznany kanał: $CHANNEL (dozwolone: nightly, prod)"; exit 1 ;;
+          esac
+
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+
+          if [ "$CHANNEL" = "prod" ]; then
+            TAG="$(node .github/scripts/next-version.mjs)"
+            APK_NAME="kilometr-prod.apk"
+            PRERELEASE="false"
+            [ -n "$ARCH" ] || ARCH="all"
+          else
+            TAG="nightly-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+            APK_NAME="kilometr-nightly.apk"
+            PRERELEASE="true"
+            [ -n "$ARCH" ] || ARCH="arm64-v8a"
+          fi
+
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "Resolved: channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE"
+
       - name: Install Node dependencies
         run: npm ci
 
@@ -145,10 +185,11 @@ jobs:
           EOF
 
       - name: Build Android Release APK
+        env:
+          TARGET_ARCH: ${{ steps.release.outputs.arch }}
         run: |
           set -euo pipefail
           ARCH_FLAG=""
-          TARGET_ARCH="${{ inputs.arch || 'arm64-v8a' }}"
           if [ "$TARGET_ARCH" = "arm64-v8a" ]; then
             echo "Szybki build: kompilacja tylko pod arm64-v8a"
             ARCH_FLAG="-PreactNativeArchitectures=arm64-v8a"
@@ -161,6 +202,9 @@ jobs:
           ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace $ARCH_FLAG
 
       - name: Verify and stage APK
+        env:
+          APK_NAME: ${{ steps.release.outputs.apk_name }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
         run: |
           set -euo pipefail
           APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
@@ -170,39 +214,94 @@ jobs:
           fi
           echo "Zbudowano: $APK ($(du -h "$APK" | cut -f1))"
           mkdir -p apk-dist
-          cp "$APK" apk-dist/app-release.apk
-          (cd apk-dist && sha256sum app-release.apk > app-release.apk.sha256)
+          cp "$APK" "apk-dist/$APK_NAME"
+          (cd apk-dist && sha256sum "$APK_NAME" > "$APK_NAME.sha256")
+
+          # Kontrakt landingu: przycisk bierze app-release.apk z release "latest".
+          # Prod wystawia więc dodatkowo alias o tej nazwie, żeby landing działał
+          # zanim podłączymy dwie osobne opcje pobierania (nightly/prod).
+          if [ "$CHANNEL" = "prod" ]; then
+            cp "apk-dist/$APK_NAME" "apk-dist/app-release.apk"
+            (cd apk-dist && sha256sum app-release.apk > app-release.apk.sha256)
+          fi
+
+          ls -lh apk-dist
+
+      - name: Generate Release Notes from Conventional Commits
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          APK_NAME: ${{ steps.release.outputs.apk_name }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/generate-release-notes.mjs \
+            --tag "$TAG" \
+            --channel "$CHANNEL" \
+            --apk-name "$APK_NAME" \
+            --output "apk-dist/release-notes.md" \
+            --sha-file "apk-dist/${APK_NAME}.sha256"
+          echo "--- Wygenerowane Release Notes ---"
+          cat apk-dist/release-notes.md
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kilometr-release-apk
+          name: kilometr-${{ steps.release.outputs.channel }}-apk
           path: apk-dist/*
 
-      - name: Publish APK to GitHub Release
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          APK_NAME: ${{ steps.release.outputs.apk_name }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
         run: |
           set -euo pipefail
-          # Nazwa assetu (app-release.apk) jest kontraktem: przycisk „Pobierz APK"
-          # w landingu bierze ./app-release.apk, a jako fallback linkuje
-          # https://github.com/<repo>/releases/latest/download/app-release.apk
-          # Uwaga: w --notes NIE używaj backticków — bash wykonałby ich
-          # zawartość jako komendy i poszatkował notkę (stary bug).
-          TAG=latest
-          if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" \
-              --title "Kilometr ${{ github.sha }}" \
-              --notes "Automatyczny build z gałęzi main ('${{ github.ref_name }}', commit '${{ github.sha }}')." \
-              --target "${{ github.sha }}"
+          # Build → zawsze nowy release z autogenerowanymi notkami. Bez
+          # artefaktów do ręcznego szukania: APK jest assetem release'u.
+          if [ "$CHANNEL" = "prod" ]; then
+            TITLE="Kilometr $TAG"
+          else
+            TITLE="Kilometr nightly $TAG"
           fi
-          gh release upload "$TAG" apk-dist/app-release.apk#app-release.apk --clobber
-          gh release upload "$TAG" apk-dist/app-release.apk.sha256#app-release.apk.sha256 --clobber
-          # Głośna weryfikacja: zielony run = release naprawdę istnieje.
+
+          PRERELEASE_FLAG=""
+          if [ "$PRERELEASE" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          ASSETS=(
+            "apk-dist/${APK_NAME}#${APK_NAME}"
+            "apk-dist/${APK_NAME}.sha256#${APK_NAME}.sha256"
+          )
+          if [ "$CHANNEL" = "prod" ]; then
+            ASSETS+=(
+              "apk-dist/app-release.apk#app-release.apk"
+              "apk-dist/app-release.apk.sha256#app-release.apk.sha256"
+            )
+          fi
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG już istnieje — aktualizacja assetów i notek"
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file apk-dist/release-notes.md
+          else
+            echo "Tworzenie nowego GitHub Release: $TAG"
+            gh release create "$TAG" \
+              --title "$TITLE" \
+              --notes-file apk-dist/release-notes.md \
+              --target "${{ github.sha }}" \
+              $PRERELEASE_FLAG \
+              "${ASSETS[@]}"
+          fi
+
           echo "--- Weryfikacja release '$TAG' ---"
-          gh release view "$TAG" --json tagName,assets --jq '{tag: .tagName, assets: [.assets[] | .name]}'
-          URL="https://github.com/${GH_REPO}/releases/download/${TAG}/app-release.apk"
+          gh release view "$TAG" --json tagName,isPrerelease,assets \
+            --jq '{tag: .tagName, prerelease: .isPrerelease, assets: [.assets[] | .name]}'
+
+          URL="https://github.com/${GH_REPO}/releases/download/${TAG}/${APK_NAME}"
           echo "APK do pobrania: $URL"
-          echo "### APK opublikowane" >> "$GITHUB_STEP_SUMMARY"
-          echo "[app-release.apk]($URL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### APK opublikowane ($CHANNEL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "[${APK_NAME}]($URL)" >> "$GITHUB_STEP_SUMMARY"

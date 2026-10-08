@@ -6,6 +6,21 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 - Nie builduj apk lokalnie o ile nie dostaniesz na to pozwolenia
 
+## Model branchy i promocja kodu (OBOWIĄZKOWE)
+
+- Przepływ: `feature/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok to PR, nigdy direct push.
+- `dev` - integracja/experimental: nowe feature branche bazujesz na `dev` i PR-ujesz do `dev`.
+- `main` - scalony, jeszcze nie sprawdzony na urządzeniu kod.
+- `nightly` - buildy używalne jako daily driver, mogą być niestabilne; nie są prod ready.
+- `prod` - przetestowane manualnie na realnym urządzeniu, gotowe dla end userów; czeka na feedback testerów.
+- Wszystkie cztery (`dev`, `main`, `nightly`, `prod`) są chronione (ruleset): zakaz direct pushy, tylko PR.
+- APK buduje się WYŁĄCZNIE na push do `nightly` i `prod` (`.github/workflows/build-apk.yml`). Push do `dev`/`main` nie triggeruje builda.
+- Każdy build `nightly`/`prod` od razu tworzy nowy GitHub Release z notkami z conventional commitów (bez ręcznego szukania artefaktów).
+  - `prod`: tag `vX.Y.Z` (auto-semver z commitów), nie-prerelease, asset `kilometr-prod.apk`.
+  - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease, asset `kilometr-nightly.apk`.
+  - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
+- Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
+
 ## CRITICAL: NIE OVERTHINKUJ
 
 - Nie rozpisuj się, po prostu rób

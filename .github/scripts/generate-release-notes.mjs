@@ -9,6 +9,8 @@ function parseArgs() {
     from: '',
     output: '',
     shaFile: '',
+    apkName: '',
+    channel: process.env.CHANNEL || '',
     repo: process.env.GITHUB_REPOSITORY || 'sioodmy/kilometr',
   };
 
@@ -21,6 +23,10 @@ function parseArgs() {
       params.output = args[++i];
     } else if (args[i] === '--sha-file' && args[i + 1]) {
       params.shaFile = args[++i];
+    } else if (args[i] === '--apk-name' && args[i + 1]) {
+      params.apkName = args[++i];
+    } else if (args[i] === '--channel' && args[i + 1]) {
+      params.channel = args[++i];
     } else if (args[i] === '--repo' && args[i + 1]) {
       params.repo = args[++i];
     }
@@ -38,7 +44,11 @@ function runGit(command) {
 }
 
 function findPreviousTag(currentTag) {
-  const allTagsOutput = runGit('git tag -l "v*" --sort=-v:refname');
+  // Kanał nightly ma własną historię tagów (`nightly-*`), prod używa `v*`.
+  // Bez rozdzielenia nightly porównywałby się do ostatniego produkcyjnego
+  // wydania i wciągał cały backlog zmian do notki.
+  const prefix = currentTag.startsWith('nightly-') ? 'nightly-' : 'v';
+  const allTagsOutput = runGit(`git tag -l "${prefix}*" --sort=-v:refname`);
   if (!allTagsOutput) return '';
   const tags = allTagsOutput.split('\n').map((t) => t.trim()).filter(Boolean);
 
@@ -160,10 +170,17 @@ function categorizeCommits(commits) {
 
 function formatReleaseNotes(params, groups, fromTag, commitsCount) {
   const { tag, repo } = params;
+  const apkName = params.apkName || `kilometr-${tag}.apk`;
+  const isNightly = params.channel === 'nightly' || tag.startsWith('nightly-');
   const lines = [];
 
-  lines.push(`## Wydanie Kilometr ${tag}`);
+  lines.push(`## ${isNightly ? 'Nightly' : 'Wydanie'} Kilometr ${tag}`);
   lines.push('');
+
+  if (isNightly) {
+    lines.push('> Kanał **nightly**: świeży build, używalny jako daily driver, ale bez gwarancji stabilności.');
+    lines.push('');
+  }
 
   const today = new Date().toISOString().split('T')[0];
   lines.push(`_Data wydania: ${today}_`);
@@ -199,11 +216,11 @@ function formatReleaseNotes(params, groups, fromTag, commitsCount) {
   lines.push('### 📱 Instalacja (Android)');
   lines.push('');
   lines.push(
-    `Pobierz uniwersalną paczkę **\`kilometr-${tag}.apk\`** kompatybilną z architekturami \`arm64-v8a\`, \`armeabi-v7a\` oraz \`x86_64\`.`
+    `Pobierz paczkę **\`${apkName}\`** kompatybilną z architekturami \`arm64-v8a\`, \`armeabi-v7a\` oraz \`x86_64\`.`
   );
   lines.push('');
   lines.push(
-    `- [Pobierz kilometr-${tag}.apk](https://github.com/${repo}/releases/download/${tag}/kilometr-${tag}.apk)`
+    `- [Pobierz ${apkName}](https://github.com/${repo}/releases/download/${tag}/${apkName})`
   );
 
   if (params.shaFile) {

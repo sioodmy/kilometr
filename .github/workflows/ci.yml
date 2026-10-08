@@ -3,10 +3,16 @@ name: CI
 on:
   pull_request:
     branches:
+      - dev
       - main
+      - nightly
+      - prod
   push:
     branches:
+      - dev
       - main
+      - nightly
+      - prod
 
 concurrency:
   group: ci-${{ github.ref }}
