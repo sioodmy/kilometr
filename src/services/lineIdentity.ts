@@ -1,5 +1,4 @@
 import type { LegMode } from '../types/models';
-import { colors } from '../theme/tokens';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
@@ -48,12 +47,12 @@ export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' 
 }
 
 /**
- * Pociągi KD mają STAŁY kolor linii z motywu (`colors.lineTrain`, bursztyn)
- * zamiast losowanego z palety — na liście połączeń widać od razu, że to
- * pociąg, nie kolejny autobus. Tekst liczy ta sama reguła kontrastu co niżej
- * (na bursztynie wychodzi ciemny).
+ * Pociągi KD mają STAŁY kolor zamiast losowanego z palety: bursztyn z motywu
+ * (#FFB957, rodzina warning). Stała leży tutaj, a nie w theme/tokens, bo
+ * lineIdentity musi się dać importować w Node (skrypty check:*), a tokens
+ * ciągnie react-native. Tekst na badgu liczy reguła kontrastu niżej.
  */
-export const TRAIN_BADGE_BG = colors.lineTrain;
+export const TRAIN_BADGE_BG = '#FFB957';
 
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
 function contrastFg(bg: string): string {

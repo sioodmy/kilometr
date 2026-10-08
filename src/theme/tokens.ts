@@ -153,7 +153,7 @@ type ColorKey =
   | 'accent' | 'accentSoft'
   | 'success' | 'successSoft' | 'danger' | 'dangerSoft'
   | 'warning' | 'warningSoft'
-  | 'lineTram' | 'lineBus' | 'lineTrain' | 'lineNight' | 'walk';
+  | 'lineTram' | 'lineBus' | 'lineNight' | 'walk';
 
 export const colors: Record<ColorKey, string> = {
   bg: scheme.surface,
@@ -176,9 +176,6 @@ export const colors: Record<ColorKey, string> = {
   // Functional transit line coding (high legibility on dark surfaces)
   lineTram: '#00A896',
   lineBus: '#2979FF',
-  // Pociągi KD: bursztyn z motywu (czytelny na ciemnym, w rodzinie warning),
-  // kiwający w stronę żółci brandingu KD. Statyczny jak reszta linii.
-  lineTrain: '#FFB957',
   lineNight: '#B39DDB',
   walk: scheme.onSurfaceVariant,
 };
