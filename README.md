@@ -12,7 +12,7 @@
   <a href="https://github.com/sioodmy/kilometr/releases/latest"><img src="https://img.shields.io/github/v/release/sioodmy/kilometr?label=prod" alt="Aktualne wydanie prod" /></a>
   <a href="https://github.com/sioodmy/kilometr/releases"><img src="https://img.shields.io/github/release-date-pre/sioodmy/kilometr?label=nightly" alt="Nightly" /></a>
   <img src="https://img.shields.io/badge/Expo-57-00a884" alt="Expo 57" />
-  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84" alt="Android 8.0+" />
+  <img src="https://img.shields.io/badge/Android-7.0%2B-3DDC84" alt="Android 7.0+" />
   <a href="LICENSE"><img src="https://img.shields.io/github/license/sioodmy/kilometr" alt="Licencja" /></a>
 </p>
 
