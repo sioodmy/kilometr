@@ -69,3 +69,4 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - używaj conventional commits po polsku
 - NIGDY PRZENIGDY NIE COMMITUJ NA MAIN BRANCH.
 - Nie amenduj nieudanych commitów po hookach, napraw problem i zrób nowy commit.
+- Nie pushuj, nie twórz PR-ów i nie zmieniaj remote'ów, chyba że użytkownik wyraźnie o to poprosi.
