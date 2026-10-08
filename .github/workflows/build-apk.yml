@@ -1,7 +1,7 @@
 name: Build & Release APK
 
 # Build APK uruchamia się WYŁĄCZNIE przy pushu do kanałów nightly/prod.
-# `main` i `dev` nie budują APK — promocja kodu robi się PR-ami, a build
+# `main` i `dev` nie budują APK, promocja kodu robi się PR-ami, a build
 # startuje dopiero na wyraźnym kanale wydawniczym.
 on:
   push:
@@ -100,7 +100,7 @@ jobs:
 
       # Uwaga: NIE podawaj `packages` domyślnie. Domyślna wartość akcji to
       # "tools platform-tools", a pakiet `tools` został usunięty z repozytorium
-      # Google — sdkmanager kończy się błędem "Failed to find package 'tools'".
+      # Google, sdkmanager kończy się błędem "Failed to find package 'tools'".
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -284,7 +284,7 @@ jobs:
           fi
 
           if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "Release $TAG już istnieje — aktualizacja assetów i notek"
+            echo "Release $TAG już istnieje, aktualizacja assetów i notek"
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
             gh release edit "$TAG" --title "$TITLE" --notes-file apk-dist/release-notes.md
           else

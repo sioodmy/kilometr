@@ -2,12 +2,24 @@ import * as Location from 'expo-location';
 import { kvGet, kvSet } from './storage';
 import { DEFAULT_LOCATION } from '../config';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
-import { IFavoritesService, ILocationService, IRoutingService, ISearchService } from './types';
+import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
 import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
 import { planConnections, buildTripStops } from './routing/engine';
 import { fetchVehiclesDirect } from './realtimeClient';
 
-let cachedLocation: { title: string; address: string; lat: number; lon: number; stopId?: string; city?: string | null } | null = null;
+let cachedLocation: LocationResult | null = null;
+let cachedAt = 0;
+let cacheWriteSeq = 0;
+let refineInFlight: Promise<LocationResult | null> | null = null;
+let lastRefineAt = 0;
+const locationListeners = new Set<(loc: LocationResult) => void>();
+
+/** Fix starszy niż tyle ms nie wystarcza jako „aktualna" pozycja przy wejściu. */
+const FRESH_FIX_MS = 45_000;
+/** Minimalny odstęp między odczytami High, chroni GPS i sieć przed młynkiem. */
+const REFINE_MIN_INTERVAL_MS = 15_000;
+/** Ruch o tyle metrów (albo zmiana przystanku) znaczy fix istotnie lepszy. */
+export const LOCATION_REFINE_DELTA_M = 25;
 
 function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6371000;
@@ -28,93 +40,133 @@ function newId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Współrzędne na czytelny tytuł i przystanek w promieniu 500 m. Cache zapisuje
+ * tylko wtedy, gdy ten odczyt wciąż jest najnowszy, więc wolniejszy reverse-geocode
+ * słabego fixu nie może nadpisać późniejszego, precyzyjnego wyniku.
+ */
+async function resolveLocation(lat: number, lon: number, accuracyM?: number | null): Promise<LocationResult> {
+  const seq = ++cacheWriteSeq;
+  let result: LocationResult = { title: 'Twoja lokalizacja', address: 'Wrocław', lat, lon, accuracyM };
+  let city: string | null = null;
+  let foundStop = false;
+  let hadReverse = false;
+
+  // Miejscowość z reverse-geocode trzymamy od razu, bo karta
+  // „Nieobsługiwane miasto" pokazuje ją bez drugiego zapytania.
+  try {
+    const { reverseNominatimDirect } = await import('./nominatimDirect');
+    const rev = await reverseNominatimDirect(lat, lon);
+    city = rev?.city ?? null;
+    if (rev) {
+      result = { title: rev.title, address: rev.address, lat, lon, city, accuracyM };
+      hadReverse = true;
+    }
+  } catch {}
+
+  // Blisko słupka (< 500 m) tytuł zamieniamy na przystanek.
+  try {
+    const { findNearestStops } = await import('./gtfsDatabase');
+    const nearest = await findNearestStops(lat, lon, 500, 1);
+    if (nearest.length > 0) {
+      const n = nearest[0];
+      result = { title: n.name, address: 'Przystanek', lat, lon, stopId: n.stop_id, city, accuracyM };
+      foundStop = true;
+    }
+  } catch {}
+
+  if (!foundStop && !hadReverse) {
+    const last = await loadLastLocation();
+    if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
+      result = { title: last.title, address: last.address, lat, lon, stopId: last.stopId, accuracyM };
+    }
+  }
+
+  if (seq === cacheWriteSeq) {
+    cachedLocation = result;
+    cachedAt = Date.now();
+    if (foundStop) void saveLastLocation(result);
+  }
+  return result;
+}
+
+/**
+ * Dokładniejszy fix (GPS, nie sieć) w tle. Jeden odczyt naraz: równoległe
+ * wołania dostają ten sam promise. Słuchaczy powiadamiamy tylko, gdy pozycja
+ * realnie się przesunęła albo zmienił się najbliższy przystanek; drobny szum
+ * nie może restartować wyszukiwania tras.
+ */
+async function refineLocation(): Promise<LocationResult | null> {
+  if (refineInFlight) return refineInFlight;
+  // Kolejne przebudzenia stanu nie mogą mielić odczytami High co chwilę.
+  if (cachedLocation && Date.now() - lastRefineAt < REFINE_MIN_INTERVAL_MS) return cachedLocation;
+  refineInFlight = (async () => {
+    lastRefineAt = Date.now();
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') return null;
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const prev = cachedLocation;
+      const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      const movedM = prev ? distanceM(prev.lat, prev.lon, loc.lat, loc.lon) : Infinity;
+      if (movedM >= LOCATION_REFINE_DELTA_M || prev?.stopId !== loc.stopId) {
+        for (const listener of locationListeners) {
+          try {
+            listener(loc);
+          } catch {}
+        }
+      }
+      return loc;
+    } catch (err) {
+      console.warn('[LocationService] Refine failed:', err);
+      return null;
+    } finally {
+      refineInFlight = null;
+    }
+  })();
+  return refineInFlight;
+}
+
+function subscribe(listener: (loc: LocationResult) => void): () => void {
+  locationListeners.add(listener);
+  return () => {
+    locationListeners.delete(listener);
+  };
+}
+
 export const LocationService: ILocationService = {
-  async getCurrentLocation() {
+  async getCurrentLocation(options) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
+      if (status !== 'granted') return { ...DEFAULT_LOCATION };
 
-        // Miejscowość z reverse-geocode trzymamy od razu — karta
-        // „Nieobsługiwane miasto" pokazuje ją bez drugiego zapytania.
-        let city: string | null = null;
-        try {
-          const { reverseNominatimDirect } = await import('./nominatimDirect');
-          const rev = await reverseNominatimDirect(lat, lon);
-          city = rev?.city ?? null;
-          if (rev) {
-            cachedLocation = { title: rev.title, address: rev.address, lat, lon, city };
-            // Blisko Wrocławia (< 500 m od słupka) tytuł zamieniamy na
-            // przystanek — dalej od miasta sam adres wystarczy.
-            try {
-              const { findNearestStops } = await import('./gtfsDatabase');
-              const nearest = await findNearestStops(lat, lon, 500, 1);
-              if (nearest.length > 0) {
-                const n = nearest[0];
-                cachedLocation = {
-                  title: n.name,
-                  address: 'Przystanek',
-                  lat,
-                  lon,
-                  stopId: n.stop_id,
-                  city,
-                };
-                void saveLastLocation(cachedLocation);
-                return cachedLocation;
-              }
-            } catch {}
-            return cachedLocation;
-          }
-        } catch {}
-
-        try {
-          const { findNearestStops } = await import('./gtfsDatabase');
-          const nearest = await findNearestStops(lat, lon, 500, 1);
-          if (nearest.length > 0) {
-            const n = nearest[0];
-            cachedLocation = {
-              title: n.name,
-              address: 'Przystanek',
-              lat,
-              lon,
-              stopId: n.stop_id,
-              city,
-            };
-            void saveLastLocation(cachedLocation);
-            return cachedLocation;
-          }
-        } catch {}
-
-        const last = await loadLastLocation();
-        if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
-          cachedLocation = {
-            title: last.title,
-            address: last.address,
-            lat,
-            lon,
-            stopId: last.stopId,
-          };
+      if (!options?.force) {
+        // Świeży fix oddajemy od razu; precyzja dociąga się w tle i sama
+        // powiadomi subskrybentów, więc UI nigdy nie czeka na GPS.
+        if (cachedLocation && Date.now() - cachedAt < FRESH_FIX_MS) {
+          void refineLocation();
           return cachedLocation;
         }
-
-        cachedLocation = {
-          title: 'Twoja lokalizacja',
-          address: 'Wrocław',
-          lat,
-          lon,
-        };
-        return cachedLocation;
+        const last = await Location.getLastKnownPositionAsync({ maxAge: 120_000, requiredAccuracy: 300 });
+        if (last) {
+          const loc = await resolveLocation(last.coords.latitude, last.coords.longitude, last.coords.accuracy);
+          void refineLocation();
+          return loc;
+        }
       }
+
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      void refineLocation();
+      return loc;
     } catch (err) {
       console.warn('[LocationService] Failed to acquire device location:', err);
     }
 
     return { ...DEFAULT_LOCATION };
   },
+  refineLocation,
+  subscribe,
 };
 
 /**
