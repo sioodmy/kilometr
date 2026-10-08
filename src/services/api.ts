@@ -16,7 +16,7 @@ const locationListeners = new Set<(loc: LocationResult) => void>();
 
 /** Fix starszy niż tyle ms nie wystarcza jako „aktualna" pozycja przy wejściu. */
 const FRESH_FIX_MS = 45_000;
-/** Minimalny odstęp między odczytami High — chroni GPS i sieć przed młynkiem. */
+/** Minimalny odstęp między odczytami High, chroni GPS i sieć przed młynkiem. */
 const REFINE_MIN_INTERVAL_MS = 15_000;
 /** Ruch o tyle metrów (albo zmiana przystanku) znaczy fix istotnie lepszy. */
 export const LOCATION_REFINE_DELTA_M = 25;
@@ -42,7 +42,7 @@ function newId(): string {
 
 /**
  * Współrzędne na czytelny tytuł i przystanek w promieniu 500 m. Cache zapisuje
- * tylko wtedy, gdy ten odczyt wciąż jest najnowszy — wolniejszy reverse-geocode
+ * tylko wtedy, gdy ten odczyt wciąż jest najnowszy, więc wolniejszy reverse-geocode
  * słabego fixu nie może nadpisać późniejszego, precyzyjnego wyniku.
  */
 async function resolveLocation(lat: number, lon: number, accuracyM?: number | null): Promise<LocationResult> {
@@ -52,7 +52,7 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
   let foundStop = false;
   let hadReverse = false;
 
-  // Miejscowość z reverse-geocode trzymamy od razu — karta
+  // Miejscowość z reverse-geocode trzymamy od razu, bo karta
   // „Nieobsługiwane miasto" pokazuje ją bez drugiego zapytania.
   try {
     const { reverseNominatimDirect } = await import('./nominatimDirect');
@@ -91,7 +91,7 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
 }
 
 /**
- * Dokładniejszy fix (GPS, nie sieć) w tle. Jeden odczyt naraz — równoległe
+ * Dokładniejszy fix (GPS, nie sieć) w tle. Jeden odczyt naraz: równoległe
  * wołania dostają ten sam promise. Słuchaczy powiadamiamy tylko, gdy pozycja
  * realnie się przesunęła albo zmienił się najbliższy przystanek; drobny szum
  * nie może restartować wyszukiwania tras.

@@ -101,7 +101,7 @@ export default function RoutesScreen() {
     fromTitle?: string;
     fromLat?: string;
     fromLon?: string;
-    /** '1', gdy start pochodzi z GPS — wtedy wolno go doprecyzować fixem w tle. */
+    /** '1', gdy start pochodzi z GPS; wtedy wolno go doprecyzować fixem w tle. */
     fromGps?: string;
     toId?: string;
     toTitle: string;
