@@ -114,7 +114,7 @@ const FULL: BackupData = {
       uses: 3,
     },
   ],
-  routingSettings: { maxTransfers: 1, minTransferSec: 180, maxWalkM: 600, walkSpeedMps: 1.4, anchorRadiusM: 400 },
+  routingSettings: { maxTransfers: 1, minTransferSec: 180, maxWalkM: 600, walkSpeedMps: 1.4, anchorRadiusM: 400, trainsEnabled: false, trainMinTransferSec: 420 },
   notificationPrefs: {
     trackingEnabled: true,
     departureAlertsEnabled: true,

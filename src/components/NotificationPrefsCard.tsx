@@ -29,7 +29,8 @@ function leadIndex(min: number): number {
   return i >= 0 ? i : LEAD_MIN.indexOf(5);
 }
 
-function Toggle({
+/** Pill-toggle współdzielony z ekranem Ustawień (ten sam wzorzec, nie M3 Switch). */
+export function PrefsToggle({
   value,
   onChange,
   disabled,
@@ -100,7 +101,7 @@ function ToggleRow({
         <Text style={styles.rowHint}>{hint}</Text>
         {hintExtra ? <Text style={styles.rowHintExtra}>{hintExtra}</Text> : null}
       </View>
-      <Toggle
+      <PrefsToggle
         value={value}
         onChange={onChange}
         disabled={disabled}

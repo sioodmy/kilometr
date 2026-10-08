@@ -122,6 +122,13 @@ export const en: Strings = {
     transferTimeTitle: 'Minimum transfer time',
     transferTimeHint:
       'How much time we reserve between getting off and the next departure. Higher values reject risky one-minute transfers.',
+    trainTitle: 'KD trains',
+    trainHint:
+      'Transfers to Koleje Dolnośląskie (e.g. Główny station). Only in “All” mode — the tram/bus quick filter never touches them.',
+    trainBufferTitle: 'Buffer for train transfers',
+    trainBufferHint:
+      'Minimum time to reach the platform after a transfer. Railway stations are not plain stops — e.g. at Główny the walk from the stop to the platform goes through the hall.',
+    trainNoData: 'The downloaded timetable has no trains. Refresh the data above to enable KD transfers.',
     walkTitle: 'Max walking distance',
     walkHint:
       'How far you can walk to the first stop and from the last one to your destination. A farther stop with a direct tram often beats the nearest pole.',
@@ -561,6 +568,7 @@ export const en: Strings = {
     modeWalk: 'Walk',
     modeTram: 'Tram',
     modeBus: 'Bus',
+    modeTrain: 'Train',
     departTitle: (service: string, at: string) => `${service} • departs ${at}`,
     rideTitle: (service: string, at: string) => `${service} • arrives ${at}`,
     transferTitle: (service: string, at: string) => `Change • ${service} • departs ${at}`,

@@ -27,7 +27,7 @@ import {
   mergeWidgetSnapshot,
   type WidgetQuickItem,
 } from '../src/services/widgetSnapshot';
-import type { Connection, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
+import type { Connection, LegMode, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
 import { SavedPlacesRow, SAVED_PLACE_ICONS } from '../src/components/SavedPlacesRow';
 import { getSuggestionIconMeta, type SuggestionIconMeta } from '../src/components/SuggestionRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
@@ -87,7 +87,7 @@ export default function HomeScreen() {
   });
   const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
-  const [firstLegs, setFirstLegs] = useState<Record<string, { mode?: 'tram' | 'bus' | 'walk'; line?: string }>>({});
+  const [firstLegs, setFirstLegs] = useState<Record<string, { mode?: LegMode; line?: string }>>({});
   // Generacja wyszukiwania tras w tle — przerwanie (np. użytkownik zaczął
   // własną trasę) to po prostu podbicie licznika, pętla sama się zatrzyma.
   const routeSearchGen = useRef(0);
