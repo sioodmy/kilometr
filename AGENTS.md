@@ -28,10 +28,10 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Używaj prostych rozwiązań, który doprowadzają do celu. Nie rozmyślaj o edge caseach jeżeli cie o to nie proszę
 - Jeżeli dostałeś proste zadanie to nie pytaj o szczegóły, po prostu rób.
 
-## Tłumaczenia (i18n) — OBOWIĄZKOWE
+## Tłumaczenia (i18n) - OBOWIĄZKOWE
 
 - Każdy tekst widoczny dla użytkownika (UI, alerty, powiadomienia, accessibility labels) MUSI pochodzić ze słownika `src/i18n`. Zero hardcodu PL w komponentach/ekranach/serwisach.
-- Wspierane języki: polski, angielski, niemiecki, ukraiński (`pl` / `en` / `de` / `uk`). `pl.ts` jest WZORCEM typów (`Strings = typeof pl`) — brak klucza w en/de/uk to błąd kompilacji, nie pusty label.
+- Wspierane języki: polski, angielski, niemiecki, ukraiński (`pl` / `en` / `de` / `uk`). `pl.ts` jest WZORCEM typów (`Strings = typeof pl`): brak klucza w en/de/uk to błąd kompilacji, nie pusty label.
 - Komponenty: `const s = useStrings()` z `src/i18n` (re-render przy zmianie języka za darmo). Synchroniczne helpery/serwisy: `tr()` (wewnątrz funkcji!) albo `getLocaleSync()` + statyczny import słowników. Nigdy `require()` i nigdy cache'owanie słownika na module.
 - Liczby mnogie i interpolacje to FUNKCJE w słowniku (pl/uk: 1 / 2–4 / 5+, en/de: 1 / reszta). Nie pisz własnych reguł mnogości w komponentach.
 - Język: `expo-localization` (locale systemowe Androida) + nadpisanie per-app w Ustawieniach → Język (Systemowy/PL/EN/DE/UK), persist w kv-store (`initLocale()` w `_layout`).
@@ -63,5 +63,5 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Przed commitem sprawdź `git status --short`, `git diff` oraz `git log --oneline -10`, stage'uj tylko zamierzone pliki, nigdy nie commituj sekretów.
 - używaj conventional commits po polsku
 - NIGDY PRZENIGDY NIE COMMITUJ NA MAIN BRANCH.
-- Nie amenduj nieudanych commitów po hookach — napraw problem i zrób nowy commit.
+- Nie amenduj nieudanych commitów po hookach, napraw problem i zrób nowy commit.
 - Nie pushuj, nie twórz PR-ów i nie zmieniaj remote'ów, chyba że użytkownik wyraźnie o to poprosi.
