@@ -70,12 +70,36 @@ export async function kvGet(key: string): Promise<string | null> {
   }
 }
 
+/**
+ * Jak kvGet, ale błąd odczytu rzuca zamiast zwracać null. Do read-modify-write
+ * (np. lista miejsc): pusta lista po błędzie nie może nadpisać prawdziwych danych.
+ * Brak klucza nadal zwraca null.
+ */
+export async function kvGetStrict(key: string): Promise<string | null> {
+  if (memCache.has(key)) {
+    return memCache.get(key) ?? null;
+  }
+  const dir = await ensureDir();
+  if (!dir) throw new Error('kv storage directory unavailable');
+  const path = keyToFile(dir, key);
+  const info = await FileSystem.getInfoAsync(path);
+  if (!info.exists) return null;
+  const val = await FileSystem.readAsStringAsync(path);
+  memCache.set(key, val);
+  return val;
+}
+
 export async function kvSet(key: string, value: string): Promise<void> {
-  memCache.set(key, value);
   try {
     const dir = await ensureDir();
-    if (!dir) return;
-    await FileSystem.writeAsStringAsync(keyToFile(dir, key), value);
+    if (!dir) throw new Error('kv storage directory unavailable');
+    const path = keyToFile(dir, key);
+    // Zapis atomowy: najpierw plik tymczasowy, potem podmiana. Przerwany
+    // zapis nie zostawi wtedy uciętego JSON-a, który kasowałby całą listę.
+    const tmp = `${path}.tmp`;
+    await FileSystem.writeAsStringAsync(tmp, value);
+    await FileSystem.moveAsync({ from: tmp, to: path });
+    memCache.set(key, value);
   } catch (err) {
     console.warn('[Storage] setItem failed:', err);
   }

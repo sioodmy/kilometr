@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { kvGet, kvSet } from './storage';
+import { kvGet, kvGetStrict, kvSet } from './storage';
 import { DEFAULT_LOCATION } from '../config';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
@@ -427,16 +427,25 @@ async function getSavedRoutes(): Promise<{id: string, savedAt: number, connectio
   return [];
 }
 
+// Odczyt listy miejsc do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
+// żeby add/update/delete nie nadpisały prawdziwych danych pustą listą.
+// Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
+async function readPlaces(): Promise<SavedPlace[]> {
+  const raw = await kvGetStrict('kilometr.places');
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('kilometr.places is not an array');
+  return parsed as SavedPlace[];
+}
+
 export const FavoritesService: IFavoritesService = {
   async list(): Promise<SavedPlace[]> {
     try {
-      const raw = await kvGet('kilometr.places');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return [];
+      return await readPlaces();
+    } catch (err) {
+      console.warn('[FavoritesService] list failed:', err);
+      return [];
+    }
   },
 
   async smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]> {
@@ -465,7 +474,7 @@ export const FavoritesService: IFavoritesService = {
     anchorStopLat?: number | null;
     anchorStopLon?: number | null;
   }): Promise<SavedPlace> {
-    const places = await this.list();
+    const places = await readPlaces();
     // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
     // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
     // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
@@ -491,7 +500,7 @@ export const FavoritesService: IFavoritesService = {
   },
 
   async updatePlace(id: string, updates: Partial<SavedPlace>): Promise<SavedPlace | null> {
-    const places = await this.list();
+    const places = await readPlaces();
     const idx = places.findIndex(p => p.id === id);
     if (idx === -1) return null;
     places[idx] = { ...places[idx], ...updates };
@@ -500,8 +509,16 @@ export const FavoritesService: IFavoritesService = {
   },
 
   async deletePlace(id: string): Promise<boolean> {
-    const places = await this.list();
+    let places: SavedPlace[];
+    try {
+      places = await readPlaces();
+    } catch (err) {
+      // Błąd odczytu: NIE nadpisujemy listy pustką, tylko zgłaszamy porażkę.
+      console.warn('[FavoritesService] deletePlace read failed:', err);
+      return false;
+    }
     const filtered = places.filter(p => p.id !== id);
+    if (filtered.length === places.length) return false;
     await kvSet('kilometr.places', JSON.stringify(filtered));
     return true;
   },
