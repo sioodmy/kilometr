@@ -831,7 +831,6 @@ export function AddPlaceSheet({
                   hitSlop={8}
                   style={({ pressed }) => [styles.moreIconsLink, pressed && { opacity: 0.7 }]}
                 >
-                  <Sparkles size={13} color={scheme.primary} />
                   <Text style={styles.moreIconsLinkText}>
                     {s.places.moreIcons(iconOptions.length)}
                   </Text>
@@ -1451,8 +1450,7 @@ const styles = StyleSheet.create({
   },
   categoryPill: {
     paddingHorizontal: 18,
-    paddingVertical: 14,
-    minHeight: 46,
+    height: 46,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: shape.full,
