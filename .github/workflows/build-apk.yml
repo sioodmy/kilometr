@@ -125,7 +125,7 @@ jobs:
           INPUT_ARCH: ${{ inputs.arch }}
         run: |
           set -euo pipefail
-          # Kanał ZAWSZE z gałęzi. Nawet przy workflow_dispatch — dzięki temu
+          # Kanał ZAWSZE z gałęzi. Nawet przy workflow_dispatch, dzięki temu
           # nie da się odpalić builda „prod" z dev/feature brancha.
           CHANNEL="${GITHUB_REF_NAME}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
