@@ -1,6 +1,7 @@
-// Lokalny tracker pojazdów MPK: poll bus_position + dopasowanie kursów do
+// Lokalny tracker pojazdów MPK: poll pozycji + dopasowanie kursów do
 // rozkładu (opóźnienia). Zasilanie RAPTOR-a (tripDelays) i flag live w UI.
-// Działa w całości na telefonie — bez serwera pośredniczącego.
+// Działa w całości na telefonie, bez serwera pośredniczącego. Uzasadnienie
+// przy fetchAll.
 //
 // Matcher rzutuje pozycję GPS na geometrię trasy kursu (odcinki między
 // kolejnymi przystankami) oraz sprawdza oczekiwany czas w rozkładzie.
@@ -9,13 +10,30 @@
 import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
+import { kvGet, kvSet } from './storage';
 import type { VehiclePosition } from '../types/models';
 
-const POLL_MS = 30000;
-const FRESH_MS = 30000;
+/** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
+const POLL_MS = 20000;
+/**
+ * Dane uznajemy za wartościowe tak długo, ile minęło od ostatniego sukcesu.
+ *
+ * Wcześniej okno świeżości stało równe interwałowi pollingu (30 s = 30 s), a
+ * odstęp między udanymi pollami to POLL_MS plus czas dopasowania. Stan
+ * przeskakiwał więc w „stale” tuż przed każdym kolejnym sukcesem i aplikacja
+ * regularnie pokazywała „brak danych live”, choć dane były. Teraz granica jest
+ * niezależna od interwału i do tego dużo wyższa, więc toleruje kilka zawodnych
+ * polli z rzędu zamiast gasić live po pierwszym potknięciu.
+ */
+const GIVE_UP_MS = 150000;
+/** Ile sekund w tył i przód wokół „teraz" bierzemy kursy z rozkładu. */
 const WINDOW_SEC = 1800;
 const MAX_CORRIDOR_DIST_M = 350;
 const DELAY_CAP_SEC = 1800;
+/** Ostatni udany snapshot na dysku, żeby restart apki nie startował od zera. */
+const SNAPSHOT_KEY = 'live.snapshot.v1';
+/** Ile wytrzymujemy snapshot z dysku bez odświeżenia. */
+const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000;
 
 export interface RawVehicleRow {
   name: string;
@@ -43,25 +61,33 @@ function toDateStr(date: Date): string {
   return `${y}${m}${d}`;
 }
 
+/** Snapshot przeżywa restart aplikacji, więc format weryfikujemy przy odczycie. */
+interface StoredSnapshot {
+  at: number;
+  rows: RawVehicleRow[];
+}
+
 class LiveTracker {
   private byId = new Map<string, TrackedVehicle>();
   private byLine = new Map<string, TrackedVehicle[]>();
   private tripDelays = new Map<string, number>();
+  /** Kiedy ostatni raz przyszły dane (albo odtwarzamy je z dysku). 0 = jeszcze nigdy. */
   private lastOk = 0;
-  private failed = false;
   private inFlight = false;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private restored = false;
 
   /**
-   * Stan danych live: 'fresh' (mamy świeże opóźnienia), 'stale' (poll
-   * nie działa — opóźnień nie będzie), 'unknown' (jeszcze nie wiadomo).
-   * Bez tego użytkownik widzi połączenia bez żadnej informacji, dlaczego
-   * nie ma ani kropki, ani opóźnienia.
+   * Stan danych live: 'fresh' (mamy świeże opóźnienia), 'stale' (od dawna
+   * nie ma udanego response'a, więc opóźnień nie będzie), 'unknown' (jeszcze
+   * nie wiadomo). Bez tego użytkownik widzi połączenia bez żadnej informacji,
+   * dlaczego nie ma ani kropki, ani opóźnienia.
    */
   getLiveState(): 'fresh' | 'stale' | 'unknown' {
-    if (Date.now() - this.lastOk < FRESH_MS) return 'fresh';
-    if (this.failed || this.lastOk > 0) return 'stale';
-    return 'unknown';
+    if (this.lastOk === 0) return 'unknown';
+    // Dane przestają być „na żywo” dopiero po GIVE_UP_MS bez sukcesu. Jeden
+    // przeterminowany poll nie znaczy, że feed umarł.
+    return Date.now() - this.lastOk < GIVE_UP_MS ? 'fresh' : 'stale';
   }
 
   /** Czyści stan trackera (np. po resecie bazy lub nowym imporcie). */
@@ -70,7 +96,7 @@ class LiveTracker {
     this.byLine.clear();
     this.tripDelays.clear();
     this.lastOk = 0;
-    this.failed = false;
+    void kvSet(SNAPSHOT_KEY, JSON.stringify({ at: 0, rows: [] } satisfies StoredSnapshot));
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -85,17 +111,23 @@ class LiveTracker {
   /**
    * Szybka ścieżka przed planowaniem: gdy snapshot świeży — nic nie robi,
    * w przeciwnym razie odpala poll W TLE i wraca od razu (planowanie nigdy
-   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤30 s).
+   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤20 s).
    */
   async ensureFresh(): Promise<void> {
     this.start();
-    if (Date.now() - this.lastOk < FRESH_MS || this.inFlight) return;
+    void this.restoreSnapshot();
+    if (this.lastOk > 0 || this.inFlight) return;
     void this.poll();
   }
 
-  /** Opóźnienia kursów: tripId -> sekundy. Do RAPTOR-a. */
+  /**
+   * Opóźnienia kursów: tripId -> sekundy. Do RAPTOR-a.
+   *
+   * Kopia, nie referencja: konsument dostaje stan, którego nie może zepsuć
+   * następny poll (matchSingle pisał do tej samej mapy co poprzedni snapshot).
+   */
   getTripDelays(): Map<string, number> {
-    return this.tripDelays;
+    return new Map(this.tripDelays);
   }
 
   /** Ostatni snapshot (np. do spinania pozycji z kartą przejazdu). */
@@ -116,14 +148,14 @@ class LiveTracker {
       if (rows && rows.length > 0) {
         await this.matchAll(rows);
         this.lastOk = Date.now();
-        this.failed = false;
+        void this.persistSnapshot(rows);
       } else {
-        // Pusta odpowiedź to też brak danych — np. w nocy albo przy błędzie.
-        this.failed = true;
+        // Pusta odpowiedź to nie awaria: po północy Wrocław milknie. Ostatni
+        // dobry snapshot zostaje w pamięci, a stan przejdzie na „stale” dopiero
+        // po GIVE_UP_MS, więc noc nie miga komunikatem o braku danych.
       }
     } catch (err) {
       console.warn('[LiveTracker] poll failed:', err);
-      this.failed = true;
     } finally {
       this.inFlight = false;
     }
@@ -174,7 +206,22 @@ class LiveTracker {
     }
   }
 
+  /**
+   * Pozycje pojazdów wprost z MPK, z jednym ponowieniem.
+   *
+   * Świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby 100k
+   * requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK i tak
+   * odpowiada w 291 ms medianowo i nie zawodzi. Jedno ponowienie po krótkiej
+   * przerwie wystarczy na przejściowy timeout.
+   */
   private async fetchAll(): Promise<RawVehicleRow[] | null> {
+    const first = await this.fetchDirect();
+    if (first) return first;
+    await new Promise((r) => setTimeout(r, 1200));
+    return this.fetchDirect();
+  }
+
+  private async fetchDirect(): Promise<RawVehicleRow[] | null> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), MPK.timeoutMs);
     try {
@@ -190,14 +237,54 @@ class LiveTracker {
         body: body.toString(),
         signal: ctrl.signal,
       });
-      if (!res.ok) throw new Error(`MPK HTTP ${res.status}`);
-      const rows = (await res.json()) as RawVehicleRow[];
-      return Array.isArray(rows) ? rows : null;
-    } catch (err) {
-      console.warn('[LiveTracker] MPK direct fetch failed:', err);
+      if (!res.ok) return null;
+      return this.parseRows(await res.text());
+    } catch {
       return null;
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Pusta odpowiedź (noc) to nie błąd, więc rozróżniamy „nic nie jeździ”
+   * od „serwer zwrócił śmieci”. W obu przypadkach nie psujemy poprzedniego
+   * snapshotu.
+   */
+  private parseRows(text: string): RawVehicleRow[] | null {
+    if (!text.trim()) return [];
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(parsed)) return null;
+    return parsed as RawVehicleRow[];
+  }
+
+  private persistSnapshot(rows: RawVehicleRow[]): void {
+    void kvSet(SNAPSHOT_KEY, JSON.stringify({ at: Date.now(), rows } satisfies StoredSnapshot));
+  }
+
+  /**
+   * Po restarcie apki mamy zero danych, dopóki pierwszy poll nie wróci (~8 s).
+   * Odtwarzamy więc ostatni udany snapshot z dysku: opóźnione dane są lepsze
+   * niż „brak danych live”. Świeży poll i tak nadpisze je w tle.
+   */
+  private async restoreSnapshot(): Promise<void> {
+    if (this.restored) return;
+    this.restored = true;
+    try {
+      const raw = await kvGet(SNAPSHOT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as StoredSnapshot;
+      if (!parsed || !Array.isArray(parsed.rows) || parsed.rows.length === 0) return;
+      if (Date.now() - parsed.at > SNAPSHOT_MAX_AGE_MS) return;
+      await this.matchAll(parsed.rows);
+      this.lastOk = Date.now();
+    } catch (err) {
+      console.warn('[LiveTracker] snapshot restore failed:', err);
     }
   }
 
@@ -415,6 +502,9 @@ class LiveTracker {
     const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
 
     for (const row of rows) {
+      // MPK potrafi w odpowiedzi umieścić wiersz z zerowymi współrzędnymi
+      // (zdarza się np. dla linii 153). Taki wiersz nie ma pozycji, więc
+      // dopasowanie do kursu byłoby zmyślone.
       if (!row.x || !row.y || !row.name) continue;
       matched.set(row.name.trim().toUpperCase() + '-' + row.k, this.matchRow(row, dayIndex, nowSec, patternPolylines));
     }
