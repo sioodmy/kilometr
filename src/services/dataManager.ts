@@ -348,10 +348,12 @@ export async function checkForGtfsUpdate(): Promise<boolean> {
     if (lastCheck && Date.now() - new Date(lastCheck).getTime() < GTFS.refreshHours * 3600 * 1000) {
       return false;
     }
-    await setMeta('gtfs_last_check', new Date().toISOString());
     if (!TIMETABLE.baseUrl) return false;
     const manifest = await fetchManifest().catch(() => null);
     if (!manifest) return false;
+    // Znacznik zapisujemy DOPIERO po udanym manifescie: nieudane sprawdzenie
+    // (brak sieci) nie może zablokować kolejnej próby na refreshHours.
+    await setMeta('gtfs_last_check', new Date().toISOString());
     const local = await getLocalTimetableVersion();
     return manifest.version !== local;
   } catch {

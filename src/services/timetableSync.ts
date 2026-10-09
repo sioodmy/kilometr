@@ -12,7 +12,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
 import { TIMETABLE } from './gtfsConfig';
-import { GTFS_DB_NAME, closeGtfsDb, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
+import { GTFS_DB_NAME, beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -185,16 +185,22 @@ export async function downloadPrebuiltDb(
   }
 
   // Podmiana: zamknij działającą bazę, podmień plik atomowo (w ramach katalogu).
-  await closeGtfsDb();
+  // Bramka blokuje równoległe getGtfsDb() z UI, żeby nie otworzyły usuwanego pliku.
+  beginGtfsSwap();
   const mainUri = await sqliteUri(GTFS_DB_NAME);
   try {
-    await FileSystem.deleteAsync(mainUri, { idempotent: true });
-  } catch {
-    // best-effort
+    await closeGtfsDb();
+    try {
+      await FileSystem.deleteAsync(mainUri, { idempotent: true });
+    } catch {
+      // best-effort
+    }
+    await deleteSidecars(mainUri);
+    await FileSystem.moveAsync({ from: dest, to: mainUri });
+    await deleteSidecars(mainUri);
+  } finally {
+    endGtfsSwap();
   }
-  await deleteSidecars(mainUri);
-  await FileSystem.moveAsync({ from: dest, to: mainUri });
-  await deleteSidecars(mainUri);
 
   // Reopen (initDb robi CREATE IF NOT EXISTS — na gotowej bazie to no-op)
   // i zapisz mety wersji, żeby manifest nie ściągał w kółko tego samego.
