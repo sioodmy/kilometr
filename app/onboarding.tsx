@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -284,6 +285,8 @@ function useOnboardingPlaces() {
         setActiveSlot(null);
         setQuery('');
         setResults([]);
+      } catch {
+        Alert.alert(s.onboarding.saveFail, s.onboarding.saveFailBody);
       } finally {
         setSaving(false);
       }

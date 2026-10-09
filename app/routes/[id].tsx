@@ -274,14 +274,14 @@ export default function RouteDetailsScreen() {
             <View style={[styles.statusBadge, { backgroundColor: scheme.errorContainer }]}>
               <LiveDot color={scheme.error} size={7} />
               <Text style={[styles.statusText, { color: scheme.onErrorContainer }]}>
-                +{item.delayMin} min
+                +{s.common.durMin(item.delayMin)}
               </Text>
             </View>
           ) : early ? (
             <View style={[styles.statusBadge, { backgroundColor: scheme.warningContainer }]}>
               <LiveDot color={scheme.warning} size={7} />
               <Text style={[styles.statusText, { color: scheme.onWarningContainer }]}>
-                {item.delayMin} min
+                {s.common.durMin(item.delayMin)}
               </Text>
             </View>
           ) : onTime ? (

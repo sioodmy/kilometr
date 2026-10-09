@@ -66,7 +66,10 @@ export default function RouteMapScreen() {
 
   // ─── Połączenie ─────────────────────────────────────────────
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoadFailed(true);
+      return;
+    }
     const connectionId = String(id);
     let cancelled = false;
     (async () => {
@@ -210,10 +213,11 @@ export default function RouteMapScreen() {
   // ─── Pozycja użytkownika ────────────────────────────────────
   useEffect(() => {
     let sub: Location.LocationSubscription | null = null;
+    let cancelled = false;
     (async () => {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== Location.PermissionStatus.GRANTED) return;
-      sub = await Location.watchPositionAsync(
+      const s = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
           distanceInterval: LOCATION_MIN_MOVE_M,
@@ -228,8 +232,16 @@ export default function RouteMapScreen() {
           });
         },
       );
+      // Ekran zdążył się odmontować, zanim watchPosition się rozwiązał:
+      // nie zapisujemy subskrypcji, tylko od razu ją zdejmujemy.
+      if (cancelled) {
+        s.remove();
+        return;
+      }
+      sub = s;
     })();
     return () => {
+      cancelled = true;
       sub?.remove();
     };
   }, []);
@@ -331,7 +343,7 @@ export default function RouteMapScreen() {
               {item.fromTitle} → {item.toTitle}
             </Text>
             <Text style={styles.headerSub} numberOfLines={1}>
-              {item.departAt}–{item.arriveAt} • {item.durationMin} min
+              {item.departAt}–{item.arriveAt} • {s.common.durMin(item.durationMin)}
               {item.transfers > 0 ? s.map.transfersSuffix(item.transfers) : ''}
               {delayMin !== 0 ? s.map.delaySuffix(delayMin) : ''}
             </Text>
