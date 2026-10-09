@@ -438,6 +438,15 @@ async function readPlaces(): Promise<SavedPlace[]> {
   return parsed as SavedPlace[];
 }
 
+// Serializuje read-modify-write listy miejsc: dwa równoległe addPlace nie mogą
+// zgubić jednego wpisu (każdy czyta-i-zapisuje całą listę).
+let placesLock: Promise<unknown> = Promise.resolve();
+function withPlacesLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = placesLock.then(fn, fn);
+  placesLock = run.catch(() => {});
+  return run;
+}
+
 export const FavoritesService: IFavoritesService = {
   async list(): Promise<SavedPlace[]> {
     try {
@@ -474,53 +483,59 @@ export const FavoritesService: IFavoritesService = {
     anchorStopLat?: number | null;
     anchorStopLon?: number | null;
   }): Promise<SavedPlace> {
-    const places = await readPlaces();
-    // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
-    // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
-    // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
-    // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
-    // obcinamy dopiero na jego końcu — długość jest wtedy stała.
-    const id = newId();
-    const newPlace: SavedPlace = {
-      id,
-      placeId: id,
-      name: place.name,
-      icon: place.icon,
-      address: place.address,
-      lat: place.lat,
-      lon: place.lon,
-      anchorStopId: place.anchorStopId || undefined,
-      anchorStopName: place.anchorStopName || undefined,
-      anchorStopLat: place.anchorStopLat || undefined,
-      anchorStopLon: place.anchorStopLon || undefined,
-    };
-    places.push(newPlace);
-    await kvSet('kilometr.places', JSON.stringify(places));
-    return newPlace;
+    return withPlacesLock(async () => {
+      const places = await readPlaces();
+      // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
+      // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
+      // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
+      // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
+      // obcinamy dopiero na jego końcu — długość jest wtedy stała.
+      const id = newId();
+      const newPlace: SavedPlace = {
+        id,
+        placeId: id,
+        name: place.name,
+        icon: place.icon,
+        address: place.address,
+        lat: place.lat,
+        lon: place.lon,
+        anchorStopId: place.anchorStopId || undefined,
+        anchorStopName: place.anchorStopName || undefined,
+        anchorStopLat: place.anchorStopLat || undefined,
+        anchorStopLon: place.anchorStopLon || undefined,
+      };
+      places.push(newPlace);
+      await kvSet('kilometr.places', JSON.stringify(places));
+      return newPlace;
+    });
   },
 
   async updatePlace(id: string, updates: Partial<SavedPlace>): Promise<SavedPlace | null> {
-    const places = await readPlaces();
-    const idx = places.findIndex(p => p.id === id);
-    if (idx === -1) return null;
-    places[idx] = { ...places[idx], ...updates };
-    await kvSet('kilometr.places', JSON.stringify(places));
-    return places[idx];
+    return withPlacesLock(async () => {
+      const places = await readPlaces();
+      const idx = places.findIndex(p => p.id === id);
+      if (idx === -1) return null;
+      places[idx] = { ...places[idx], ...updates };
+      await kvSet('kilometr.places', JSON.stringify(places));
+      return places[idx];
+    });
   },
 
   async deletePlace(id: string): Promise<boolean> {
-    let places: SavedPlace[];
-    try {
-      places = await readPlaces();
-    } catch (err) {
-      // Błąd odczytu: NIE nadpisujemy listy pustką, tylko zgłaszamy porażkę.
-      console.warn('[FavoritesService] deletePlace read failed:', err);
-      return false;
-    }
-    const filtered = places.filter(p => p.id !== id);
-    if (filtered.length === places.length) return false;
-    await kvSet('kilometr.places', JSON.stringify(filtered));
-    return true;
+    return withPlacesLock(async () => {
+      let places: SavedPlace[];
+      try {
+        places = await readPlaces();
+      } catch (err) {
+        // Błąd odczytu: NIE nadpisujemy listy pustką, tylko zgłaszamy porażkę.
+        console.warn('[FavoritesService] deletePlace read failed:', err);
+        return false;
+      }
+      const filtered = places.filter(p => p.id !== id);
+      if (filtered.length === places.length) return false;
+      await kvSet('kilometr.places', JSON.stringify(filtered));
+      return true;
+    });
   },
 };
 
