@@ -1,154 +1,83 @@
 import * as Location from 'expo-location';
 import type { TrackedTrip, TripProgress } from './notifications/types';
-import { recordWalkSample } from './walkPace';
-import { haversineM } from './walkPaceMath';
+import { recordWalkSample, type WalkSample } from './walkPace';
+import { createWalkEpisodeMachine, type WalkEpisodeMachine, type WalkSampleOut } from './walkEpisode';
 
 /**
  * Pomiar tempa chodzenia podczas śledzenia kursu.
  *
  * „Śledź ten kurs" trzyma już foreground service z trwałym powiadomieniem,
  * więc dokładamy do niego obserwator GPS (tylko foreground, bez nowych
- * uprawnień w manifeście). Gdy faza podróży to dojście piesze, zbieramy
- * punkty i liczymy efektywne tempo: dystans z GPS przez czas, razem
- * z postojami na światłach. Postój nie dokłada metrów, ale dokłada sekundy,
- * więc dojście ze światłami wychodzi wolniej z natury, bez osobnego modelu.
+ * uprawnień w manifeście). Gdy faza podróży to dojście piesze, zbieramy fixy
+ * i liczymy efektywne tempo: dystans z GPS przez czas, razem z postojami na
+ * światłach. Przerwy, rezygnację użytkownika i kryteria akceptacji obsługuje
+ * maszyna `walkEpisode`, tutaj zostaje tylko pomost na `expo-location`.
  *
  * Czujniki: prędkość z `coords.speed` daje system (GPS + IMU), a koprocesor
  * ruchu (`watchMotionActivityAsync`) odcina jazdę pojazdem, żeby tramwaj nie
  * wszedł do statystyki spaceru. Oba best effort: bez nich działa sam GPS.
+ *
+ * Rezygnacja: użytkownik może wcisnąć „Zakończ" w połowie dojścia albo nie
+ * iść na przystanek wcale. Zapisujemy wtedy to, co przeszło filtry maszyny;
+ * co nie przeszło, ginie. Ochroną są kryteria akceptacji, a nie odrzucenie
+ * połówki, bo prawdziwy spacer zasługuje na pomiar niezależnie od tego, czy
+ * user dojechał.
  */
 
-const ACCURACY_GATE_M = 25;
-const NOISE_GATE_M = 3;
-const MAX_SEGMENT_MPS = 3.5;
-const OS_SPEED_VEHICLE_MPS = 4.0;
-const STALE_GAP_MS = 180_000;
-
-interface Episode {
-  originLat: number;
-  originLon: number;
-  dest: string | null;
-  startTs: number;
-  lastLat: number;
-  lastLon: number;
-  lastTs: number;
-  distanceM: number;
-  fixes: number;
-}
-
-let active = false;
-let episode: Episode | null = null;
+let machine: WalkEpisodeMachine | null = null;
 let lastFix: { lat: number; lon: number } | null = null;
-let motion: 'unknown' | 'onFoot' | 'vehicle' = 'unknown';
+let inVehicle = false;
 let locSub: Location.LocationSubscription | null = null;
 let motionSub: Location.LocationSubscription | null = null;
 
-function isVehicleActivity(a: Location.MotionActivityObject): boolean {
+/** W tramwaju, aucie lub na rowerze nie mierzymy spaceru. */
+function vehicleActivity(a: Location.MotionActivityObject): boolean {
   const acts = a.activities as Record<string, { detected?: boolean } | undefined>;
   const vehicle = acts.automotive?.detected === true || acts.cycling?.detected === true;
   const onFoot = acts.walking?.detected === true || acts.running?.detected === true;
   return vehicle && !onFoot;
 }
 
+function remember(sample: WalkSampleOut | null) {
+  if (!sample) return;
+  void recordWalkSample(sample as WalkSample);
+}
+
 function onLocation(loc: Location.LocationObject) {
   const { latitude, longitude, accuracy, speed } = loc.coords;
-  if (loc.mocked === true) return;
-  if (accuracy != null && accuracy > ACCURACY_GATE_M) return;
-  const ts = loc.timestamp ?? Date.now();
   lastFix = { lat: latitude, lon: longitude };
-  if (!active || !episode) return;
-  if (motion === 'vehicle') return;
-  if (speed != null && speed > OS_SPEED_VEHICLE_MPS) {
-    episode.lastLat = latitude;
-    episode.lastLon = longitude;
-    episode.lastTs = ts;
-    return;
-  }
-  if (ts - episode.lastTs > STALE_GAP_MS) {
-    void finishEpisode(true);
-    return;
-  }
-  const dt = (ts - episode.lastTs) / 1000;
-  if (dt <= 0) return;
-  const d = haversineM(episode.lastLat, episode.lastLon, latitude, longitude);
-  if (d < NOISE_GATE_M) {
-    // Szum albo stanie (światła): czas leci, metry nie. Dokładnie tego chcemy.
-    episode.lastTs = ts;
-    episode.fixes += 1;
-    return;
-  }
-  if (d / dt > MAX_SEGMENT_MPS) {
-    // Skok GPS albo pojazd: synchronizuj bez dokładania metrów.
-    episode.lastLat = latitude;
-    episode.lastLon = longitude;
-    episode.lastTs = ts;
-    return;
-  }
-  episode.distanceM += d;
-  episode.lastLat = latitude;
-  episode.lastLon = longitude;
-  episode.lastTs = ts;
-  episode.fixes += 1;
-}
-
-function ensureEpisode(originHint: { lat: number; lon: number }, dest: string | null) {
-  if (episode) {
-    if (dest && episode.dest !== dest) {
-      // Nowe dojście (przesiadka): zamknij poprzednie, otwórz kolejne.
-      void finishEpisode(true);
-    } else {
-      return;
-    }
-  }
-  const origin = lastFix ?? originHint;
-  const now = Date.now();
-  episode = {
-    originLat: origin.lat,
-    originLon: origin.lon,
-    dest,
-    startTs: now,
-    lastLat: origin.lat,
-    lastLon: origin.lon,
-    lastTs: now,
-    distanceM: 0,
-    fixes: 0,
-  };
-}
-
-async function finishEpisode(record: boolean) {
-  const ep = episode;
-  episode = null;
-  if (!record || !ep) return;
-  const durationSec = Math.round((ep.lastTs - ep.startTs) / 1000);
-  if (ep.fixes < 4 || ep.distanceM < 40 || durationSec < 30 || durationSec > 1800) return;
-  const effective = ep.distanceM / Math.max(1, durationSec);
-  if (effective < 0.4 || effective > 2.8) return;
-  await recordWalkSample({
-    originLat: ep.originLat,
-    originLon: ep.originLon,
-    dest: ep.dest,
-    speedMps: effective,
-    distanceM: Math.round(ep.distanceM),
-    durationSec,
-  });
+  if (!machine) return;
+  remember(
+    machine.feed(
+      {
+        lat: latitude,
+        lon: longitude,
+        ts: loc.timestamp ?? Date.now(),
+        accuracyM: accuracy ?? null,
+        speedMps: speed ?? null,
+        mocked: loc.mocked === true,
+      },
+      inVehicle,
+    ),
+  );
 }
 
 /**
- * Wołane z tickera śledzenia po każdym przeliczeniu postępu. Granice
- * epizodu wyznacza faza: dojście piesze otwiera, reszta zamyka z zapisem.
+ * Wołane z tickera śledzenia po każdym przeliczeniu postępu. Granice dojścia
+ * wyznacza faza: dojście otwiera, wszystko inne zamyka.
  */
 export function walkPaceTick(p: TripProgress, trip: TrackedTrip) {
-  if (!active) return;
+  if (!machine) return;
   if (p.phase === 'walking' || p.phase === 'transfer') {
-    ensureEpisode({ lat: trip.fromLat, lon: trip.fromLon }, p.stopName ?? null);
+    remember(machine.begin(p.stopName ?? null, trip.fromLat, trip.fromLon));
   } else {
-    void finishEpisode(true);
+    remember(machine.end());
   }
 }
 
 /** Start obserwatora na czas śledzenia. False gdy brak zgody na lokalizację. */
 export async function startWalkPaceTracking(): Promise<boolean> {
-  if (active) return true;
+  if (machine) return true;
   try {
     const current = await Location.getForegroundPermissionsAsync();
     if (current.status !== 'granted') {
@@ -159,8 +88,8 @@ export async function startWalkPaceTracking(): Promise<boolean> {
   } catch {
     return false;
   }
-  active = true;
-  motion = 'unknown';
+  machine = createWalkEpisodeMachine(Date.now());
+  inVehicle = false;
   try {
     locSub = await Location.watchPositionAsync(
       {
@@ -171,14 +100,14 @@ export async function startWalkPaceTracking(): Promise<boolean> {
       onLocation,
     );
   } catch {
-    active = false;
+    machine = null;
     return false;
   }
   try {
     const motionPerm = await Location.requestMotionActivityPermissionsAsync();
     if (motionPerm.granted) {
       motionSub = await Location.watchMotionActivityAsync((a) => {
-        motion = isVehicleActivity(a) ? 'vehicle' : 'onFoot';
+        inVehicle = vehicleActivity(a);
       });
     }
   } catch {
@@ -187,10 +116,14 @@ export async function startWalkPaceTracking(): Promise<boolean> {
   return true;
 }
 
-/** Stop obserwatora. Niedokończony epizod odrzucamy, nie zapisujemy połówki. */
+/**
+ * Stop obserwatora. Dojście w połowie przechodzi te same filtry co każde
+ * inne: prawdziwy spacer jest wart pomiaru, nawet bez dojechania do przystanku.
+ */
 export async function stopWalkPaceTracking(): Promise<void> {
-  active = false;
-  await finishEpisode(false);
+  const current = machine;
+  machine = null;
+  if (current) await recordWalkSampleOrIgnore(current.end());
   try {
     locSub?.remove();
   } catch {
@@ -204,5 +137,10 @@ export async function stopWalkPaceTracking(): Promise<void> {
   locSub = null;
   motionSub = null;
   lastFix = null;
-  motion = 'unknown';
+  inVehicle = false;
+}
+
+async function recordWalkSampleOrIgnore(sample: WalkSampleOut | null) {
+  if (!sample) return;
+  await recordWalkSample(sample as WalkSample);
 }

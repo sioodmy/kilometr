@@ -143,7 +143,7 @@ export const pl = {
     walkHint:
       'Jak daleko możesz podejść na przystanek początkowy i z końcowego do celu. Dalszy przystanek z bezpośrednim tramwajem często bije najbliższy słupek.',
     speedTitle: 'Tempo chodzenia',
-    speedHint: 'Aplikacja mierzy Twoje tempo, gdy śledzisz kurs w drodze na przystanek, i dopasowuje je do okolicy. Profil poniżej to zapas na miejsca bez pomiarów.',
+    speedHint: 'Aplikacja mierzy tempo, gdy śledzisz kurs do przystanku. Postój dłuższy niż minutę, na przykład zakupy, dzieli dojście na kawałki, więc sklep nie zniekształca wyniku. Poniżej profil na nowe miejsca, bez pomiarów.',
     paceSlow: 'Wolno',
     paceNormal: 'Normalnie',
     paceFast: 'Szybko',

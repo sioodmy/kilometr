@@ -136,7 +136,7 @@ export const en: Strings = {
     walkHint:
       'How far you can walk to the first stop and from the last one to your destination. A farther stop with a direct tram often beats the nearest pole.',
     speedTitle: 'Walking speed',
-    speedHint: 'The app measures your pace while you track a trip on the way to the stop, and tunes it per area. The profile below is the fallback for places with no walks yet.',
+    speedHint: 'The app measures your pace while you track a trip to the stop. A stop longer than a minute, such as a shop, splits the walk into pieces, so a detour does not distort the result. The profile below covers new places with no walks yet.',
     paceSlow: 'Slow',
     paceNormal: 'Normal',
     paceFast: 'Fast',

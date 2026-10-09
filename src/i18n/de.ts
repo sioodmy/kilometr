@@ -136,7 +136,7 @@ export const de: Strings = {
     walkHint:
       'Wie weit du zur Starthaltestelle und vom Ziel weg laufen kannst. Eine weitere Haltestelle mit direkter Tram schlägt oft die nächste Stange.',
     speedTitle: 'Gehtempo',
-    speedHint: 'Die App misst dein Tempo, während du eine Fahrt auf dem Weg zur Haltestelle verfolgst, und stimmt es je nach Gegend ab. Das Profil unten ist die Reserve für Orte ohne Messungen.',
+    speedHint: 'Die App misst dein Tempo, wenn du eine Fahrt zur Haltestelle verfolgst. Ein Stillstand über eine Minute, etwa ein Einkauf, teilt den Weg in Abschnitte, damit der Umweg das Ergebnis nicht verfälscht. Das Profil unten gilt für neue Orte ohne Messungen.',
     paceSlow: 'Langsam',
     paceNormal: 'Normal',
     paceFast: 'Schnell',

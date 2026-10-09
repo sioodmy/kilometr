@@ -45,6 +45,7 @@
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
+    "check:walk-pace": "tsx scripts/check-walk-pace.ts",
     "check:backup": "tsx scripts/check-backup.ts",
     "typecheck": "tsc --noEmit"
   },
