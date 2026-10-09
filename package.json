@@ -47,7 +47,8 @@
     "check:live": "tsx --require ./scripts/stub-expo.cjs scripts/check-live.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "check:backup": "tsx scripts/check-backup.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:nav": "tsx scripts/check-nav.ts"
   },
   "private": true,
   "overrides": {
