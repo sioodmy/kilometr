@@ -115,6 +115,9 @@ export const de: Strings = {
     downloadFailTitle: 'Fahrplan konnte nicht geladen werden',
     downloadFailBody: (reason: string) => `${reason}. Die App lädt eine fertige Datenbank vom Kilometr-Server oder klassisch von Open Data Wrocław.`,
     downloadFailFallback: 'Versuch es gleich erneut.',
+    downloadDone: 'Fahrplan aktualisiert.',
+    downloadUpToDate: 'Der Fahrplan ist schon aktuell.',
+    downloadKeptLocal: 'Die neue Version konnte nicht geladen werden. Es bleibt der Fahrplan vom Telefon.',
     transfersTitle: 'Max. Umstiege',
     transfersHint:
       'Weniger Umstiege = bequemer. Der Planer rechnet ~10 Min. „Strafe“ pro Umstieg, also schlägt 300 m Fußweg zu einer Haltestelle mit Direktverbindung 3 Umstiege ab der nächsten Stange.',

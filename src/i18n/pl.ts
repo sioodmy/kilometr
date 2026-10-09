@@ -122,6 +122,9 @@ export const pl = {
     downloadFailTitle: 'Nie udało się pobrać rozkładu',
     downloadFailBody: (reason: string) => `${reason}. Aplikacja pobiera gotową bazę z serwera Kilometr albo klasycznie z Open Data Wrocław.`,
     downloadFailFallback: 'Spróbuj ponownie za chwilę.',
+    downloadDone: 'Rozkład odświeżony.',
+    downloadUpToDate: 'Rozkład jest już aktualny.',
+    downloadKeptLocal: 'Nie udało się pobrać nowej wersji. Zostaje ta, która już jest na telefonie.',
     transfersTitle: 'Maks. liczba przesiadek',
     transfersHint:
       'Mniej przesiadek = wygodniej. Planer dolicza ~10 min „kary” za każdą przesiadkę, więc spacer 300 m do przystanku z bezpośrednim kursem wygrywa z 3 przesiadkami z najbliższego słupka.',

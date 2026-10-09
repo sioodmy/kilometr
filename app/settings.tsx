@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, RotateCcw, Activity, Anchor, TrainFront } from 'lucide-react-native';
@@ -20,6 +20,7 @@ import {
   refreshDataStatus,
   subscribeDataStatus,
   type DataStatus,
+  type ImportOutcome,
 } from '../src/services/dataManager';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard, PrefsToggle } from '../src/components/NotificationPrefsCard';
@@ -113,9 +114,14 @@ export default function SettingsScreen() {
   const anchor = SETTINGS_LIMITS.anchorRadiusM;
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [importing, setImporting] = useState(false);
+  const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
   // Czy rozkład w ogóle ma pociągi (route_type 2 z prebuilt). Bez nich
   // przełącznik KD gaśnie z podpowiedzią o odświeżeniu danych.
   const [hasTrains, setHasTrains] = useState(true);
+  // Licznik ruchów bazy. Sam `dataStatus.state` nie wystarczy: po świeżym
+  // pobraniu wraca 'ready' → 'ready', efekt by się drugi raz nie wykonał
+  // i podpowiedź o braku pociągów zostawałaby na ekranie w nieskończoność.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     refreshDataStatus().then(setDataStatus);
@@ -130,15 +136,16 @@ export default function SettingsScreen() {
     return () => {
       alive = false;
     };
-  }, [dataStatus.state]);
+  }, [dataStatus.state, reloadKey]);
 
   const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
 
   const handleDownload = async () => {
     if (busy) return;
     setImporting(true);
+    setOutcome(null);
     try {
-      await importGtfsFromNetwork();
+      setOutcome(await importGtfsFromNetwork());
     } catch (err) {
       // Powód z importu (w języku użytkownika) zamiast zawsze tego samego „sprawdź internet".
       const reason = err instanceof Error ? err.message : s.settings.downloadFailFallback;
@@ -148,8 +155,15 @@ export default function SettingsScreen() {
       );
     } finally {
       setImporting(false);
+      setReloadKey((k) => k + 1);
     }
   };
+
+  const outcomeLabel =
+    outcome === 'updated' ? s.settings.downloadDone
+      : outcome === 'upToDate' ? s.settings.downloadUpToDate
+        : outcome === 'keptLocal' ? s.settings.downloadKeptLocal
+          : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -182,12 +196,29 @@ export default function SettingsScreen() {
               pressed && !busy && { opacity: 0.7 },
             ]}
             accessibilityLabel={s.settings.downloadA11y}
+            accessibilityState={{ busy, disabled: busy }}
           >
-            <Download size={18} color={scheme.onSecondaryContainer} />
+            {busy ? (
+              <ActivityIndicator size="small" color={scheme.onSecondaryContainer} />
+            ) : (
+              <Download size={18} color={scheme.onSecondaryContainer} />
+            )}
             <Text style={styles.downloadText}>
-              {dataStatus.state === 'ready' ? s.settings.downloadReady : s.settings.downloadEmpty}
+              {busy
+                ? dataStatusLabel(dataStatus)
+                : dataStatus.state === 'ready' ? s.settings.downloadReady : s.settings.downloadEmpty}
             </Text>
           </Pressable>
+          {outcomeLabel ? (
+            <Text
+              style={[
+                styles.outcomeText,
+                outcome === 'keptLocal' && { color: scheme.warning },
+              ]}
+            >
+              {outcomeLabel}
+            </Text>
+          ) : null}
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(10).duration(180)} style={styles.card}>
@@ -388,6 +419,7 @@ const styles = StyleSheet.create({
   stepValueSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: scheme.secondaryContainer, borderRadius: shape.full, paddingVertical: 12 },
   downloadText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
+  outcomeText: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
   langRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   langChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 14, paddingVertical: 10 },
   langChipActive: { backgroundColor: scheme.primaryContainer },

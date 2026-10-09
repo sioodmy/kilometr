@@ -85,21 +85,31 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
 
 const TEMP_DB_NAME = 'kilometr-gtfs.new.db';
 
+// Ścieżka bez ukośnika na końcu: expo-file-system traktuje ją inaczej przy
+// sprawdzaniu uprawnień niż z ogonkiem.
 function sqliteDirUri(): string {
   const raw = String((SQLite as unknown as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory ?? '');
-  if (raw) return raw.endsWith('/') ? raw : `${raw}/`;
+  if (raw) return raw.endsWith('/') ? raw.slice(0, -1) : raw;
   const base = FileSystem.documentDirectory;
   if (!base) throw new Error('Brak documentDirectory (expo-file-system)');
-  return `${base}SQLite/`;
+  return `${base}SQLite`;
 }
 
 async function sqliteUri(name: string): Promise<string> {
   const dir = sqliteDirUri();
-  const info = await FileSystem.getInfoAsync(dir);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  // Katalog tworzy samo expo-sqlite przy pierwszym openDatabaseAsync. Na
+  // części urządzeń getInfoAsync mimo to zgłasza go jako nieistniejący, a
+  // makeDirectoryAsync odrzuca z "isn't writable", bo uprawnienia liczone
+  // są w stosunku do innej ścieżki niż ta z logu. Wyjątek tutaj nie może
+  // wywracać całego syncu: jeśli katalogu naprawdę zabrakło, download zgłosi
+  // to dalej własnym komunikatem, a użytkownik zobaczy błąd zamiast ciszy.
+  try {
+    const info = await FileSystem.getInfoAsync(dir);
+    if (!info.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  } catch (err) {
+    console.warn('[Timetable] katalog bazy niedostępny:', dir, err);
   }
-  return `${dir}${name}`;
+  return `${dir}/${name}`;
 }
 
 async function deleteSidecars(uri: string): Promise<void> {
