@@ -3,6 +3,10 @@ name: Build & Release APK
 # Build APK uruchamia się WYŁĄCZNIE przy pushu do kanałów nightly/prod.
 # `main` i `dev` nie budują APK, promocja kodu robi się PR-ami, a build
 # startuje dopiero na wyraźnym kanale wydawniczym.
+#
+# Ręczne uruchomienie (workflow_dispatch) też jest dozwolone TYLKO z gałęzi
+# nightly lub prod: kanał wynika z gałęzi, nie z pola formularza, więc nie da
+# się zbudować „prod" z nieaudytowanego brancha.
 on:
   push:
     branches:
@@ -18,14 +22,6 @@ on:
         options:
           - 'arm64-v8a'
           - 'all'
-      channel:
-        description: 'Kanał wydania'
-        required: true
-        default: 'nightly'
-        type: choice
-        options:
-          - 'nightly'
-          - 'prod'
 
 permissions:
   contents: write
@@ -70,6 +66,9 @@ jobs:
       # Manifest niedostępny = ostrzeżenie (R2 może leżeć); manifest
       # osiągalny bez KD = twardy błąd.
       - name: Verify timetable has real KD
+        env:
+          # Opcjonalne nadpisanie hosta rozkładu (repository variable), domyślnie produkcja.
+          TIMETABLE_URL: ${{ vars.TIMETABLE_URL }}
         run: |
           set -euo pipefail
           URL="${TIMETABLE_URL:-https://data.kilometr.wroclaw.pl}/manifest.json"
@@ -122,19 +121,22 @@ jobs:
       # jako GitHub "latest"). nightly: unikalny tag z datą i SHA, prerelease.
       - name: Resolve channel, tag, version and asset name
         id: release
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           set -euo pipefail
+          # Kanał ZAWSZE z gałęzi. Nawet przy workflow_dispatch — dzięki temu
+          # nie da się odpalić builda „prod" z dev/feature brancha.
+          CHANNEL="${GITHUB_REF_NAME}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            CHANNEL="${{ inputs.channel }}"
-            ARCH="${{ inputs.arch }}"
+            ARCH="${INPUT_ARCH:-}"
           else
-            CHANNEL="${GITHUB_REF_NAME}"
             ARCH=""
           fi
 
           case "$CHANNEL" in
             nightly|prod) ;;
-            *) echo "::error::Nieznany kanał: $CHANNEL (dozwolone: nightly, prod)"; exit 1 ;;
+            *) echo "::error::Build APK dozwolony tylko z gałęzi nightly lub prod (jest: $CHANNEL)"; exit 1 ;;
           esac
 
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
@@ -211,7 +213,7 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
           AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
           BADGING="$("$AAPT" dump badging "$APK")"
           APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
@@ -227,7 +229,7 @@ jobs:
           CHANNEL: ${{ steps.release.outputs.channel }}
         run: |
           set -euo pipefail
-          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
           if [ -z "$APK" ]; then
             echo "Nie znaleziono żadnego APK w android/app/build/outputs/apk/release"
             exit 1
