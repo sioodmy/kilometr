@@ -48,7 +48,8 @@
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "check:backup": "tsx scripts/check-backup.ts",
     "typecheck": "tsc --noEmit",
-    "check:nav": "tsx scripts/check-nav.ts"
+    "check:nav": "tsx scripts/check-nav.ts",
+    "check:minimap": "tsx scripts/check-minimap.ts"
   },
   "private": true,
   "overrides": {
