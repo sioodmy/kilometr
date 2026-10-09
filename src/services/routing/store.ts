@@ -25,6 +25,13 @@ export class LocalGtfsStore {
   /** Wycinki horyzontu (szybkie): klucz dzien+kubelki godzin, max 4 w pamięci. */
   private sliceIndexes = new Map<string, DayIndex>();
   private slicePromises = new Map<string, Promise<DayIndex>>();
+  // Liczenie referencji kursów per wycinek: kurs bywa we wielu wycinkach, więc
+  // `trips`/`stopTimes` zwalniamy dopiero, gdy ostatni wycinek go puści.
+  private sliceTripIds = new Map<string, string[]>();
+  private tripRefs = new Map<string, Set<string>>();
+  // Kursy z pełnego indeksu dnia trzymamy na stałe (nie są zwalniane przez
+  // ewangelizację wycinków, która dotyczy wyłącznie sliceIndexes).
+  private retainedTrips = new Set<string>();
   isLoaded = false;
 
   /**
@@ -40,6 +47,9 @@ export class LocalGtfsStore {
     this.dayIndexes.clear();
     this.sliceIndexes.clear();
     this.slicePromises.clear();
+    this.sliceTripIds.clear();
+    this.tripRefs.clear();
+    this.retainedTrips.clear();
     this.isLoaded = false;
   }
 
@@ -239,20 +249,22 @@ export class LocalGtfsStore {
     if (importInProgress) return emptyIdx;
     const activeServices = await getActiveServices(day, dateStr);
     const db = await getGtfsDb();
-    const serviceList = Array.from(activeServices).map((s) => `'${s.replace(/'/g, "''")}'`).join(',');
-    if (!serviceList) {
+    const serviceIds = Array.from(activeServices);
+    if (serviceIds.length === 0) {
       this.rememberSlice(cacheKey, emptyIdx);
       return emptyIdx;
     }
+    const servicePlaceholders = serviceIds.map(() => '?').join(',');
 
     // 1. Kursy nachodzące na horyzont (agregacja natywnie w SQL — lecą tylko id).
     const overlapping = await db.getAllAsync<{ trip_id: string }>(
       `SELECT st.trip_id AS trip_id
        FROM stop_times st
        JOIN trips t ON st.trip_id = t.trip_id
-       WHERE t.service_id IN (${serviceList})
+       WHERE t.service_id IN (${servicePlaceholders})
        GROUP BY st.trip_id
        HAVING MIN(st.dep_sec) <= ? AND MAX(st.arr_sec) >= ?`,
+      ...serviceIds,
       bTo,
       bFrom,
     );
@@ -267,9 +279,10 @@ export class LocalGtfsStore {
     const CHUNK = 400;
     for (let i = 0; i < tripIds.length; i += CHUNK) {
       const chunk = tripIds.slice(i, i + CHUNK);
-      const list = chunk.map((id) => `'${id.replace(/'/g, "''")}'`).join(',');
+      const placeholders = chunk.map(() => '?').join(',');
       const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
-        `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${list})`
+        `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${placeholders})`,
+        ...chunk,
       );
       for (const r of tripsRows) {
         const t = {
@@ -289,7 +302,8 @@ export class LocalGtfsStore {
         group.push(t);
       }
       const stRows = await db.getAllAsync<{trip_id: string, stop_id: string, arr_sec: number, dep_sec: number, seq: number}>(
-        `SELECT trip_id, stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id IN (${list}) ORDER BY trip_id, seq`
+        `SELECT trip_id, stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id IN (${placeholders}) ORDER BY trip_id, seq`,
+        ...chunk,
       );
       // Zastępujemy, nie dopisujemy: te same kursy trafiają do kolejnych
       // wycinków (o innej godzinie), a dopisanie duplikowało wiersze
@@ -317,16 +331,52 @@ export class LocalGtfsStore {
     }
 
     const idx = this.buildPatterns(tripsByRouteId);
+    this.registerSliceTrips(cacheKey, tripIds);
     this.rememberSlice(cacheKey, idx);
     console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length}`);
     return idx;
+  }
+
+  /** Rejestruje kursy wycinka w liczeniu referencji (patrz releaseSlice). */
+  private registerSliceTrips(key: string, tripIds: string[]): void {
+    this.sliceTripIds.set(key, tripIds);
+    for (const id of tripIds) {
+      let refs = this.tripRefs.get(id);
+      if (!refs) {
+        refs = new Set();
+        this.tripRefs.set(id, refs);
+      }
+      refs.add(key);
+    }
+  }
+
+  /** Zwalnia kursy wycinka; usuwa je dopiero, gdy żaden wycinek ich nie trzyma. */
+  private releaseSlice(key: string): void {
+    const ids = this.sliceTripIds.get(key);
+    if (!ids) return;
+    this.sliceTripIds.delete(key);
+    for (const id of ids) {
+      const refs = this.tripRefs.get(id);
+      if (!refs) continue;
+      refs.delete(key);
+      if (refs.size === 0) {
+        this.tripRefs.delete(id);
+        if (!this.retainedTrips.has(id)) {
+          this.trips.delete(id);
+          this.stopTimes.delete(id);
+        }
+      }
+    }
   }
 
   private rememberSlice(key: string, idx: DayIndex): void {
     this.sliceIndexes.set(key, idx);
     if (this.sliceIndexes.size > 4) {
       const oldest = this.sliceIndexes.keys().next().value;
-      if (oldest) this.sliceIndexes.delete(oldest);
+      if (oldest) {
+        this.sliceIndexes.delete(oldest);
+        this.releaseSlice(oldest);
+      }
     }
   }
 
@@ -413,19 +463,21 @@ export class LocalGtfsStore {
     };
     if (importInProgress) return emptyIdx;
     const db = await getGtfsDb();
-    
-    const serviceList = Array.from(activeServices).map(s => `'${s.replace(/'/g, "''")}'`).join(',');
-    if (!serviceList) {
+
+    const serviceIds = Array.from(activeServices);
+    if (serviceIds.length === 0) {
        console.warn('[LocalGtfsStore] No active services found for the day.');
        this.dayIndexes.set(cacheKey, emptyIdx);
        return emptyIdx;
     }
+    const servicePlaceholders = serviceIds.map(() => '?').join(',');
 
     const t0 = performance.now();
 
     // Fetch active trips
     const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
-      `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE service_id IN (${serviceList})`
+      `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE service_id IN (${servicePlaceholders})`,
+      ...serviceIds,
     );
 
     const activeTripsById = new Map<string, any>();
@@ -441,6 +493,9 @@ export class LocalGtfsStore {
         shape_id: r.shape
       };
       this.trips.set(r.trip_id, t);
+      // Pełny indeks dnia trzyma kursy na stałe — ewangelizacja wycinków nie
+      // może ich usunąć.
+      this.retainedTrips.add(r.trip_id);
       activeTripsById.set(r.trip_id, t);
       let group = tripsByRouteId.get(r.route_id);
       if (!group) {
@@ -455,8 +510,9 @@ export class LocalGtfsStore {
       `SELECT st.trip_id, st.stop_id, st.arr_sec, st.dep_sec, st.seq 
        FROM stop_times st
        JOIN trips t ON st.trip_id = t.trip_id
-       WHERE t.service_id IN (${serviceList})
-       ORDER BY st.trip_id, st.seq`
+       WHERE t.service_id IN (${servicePlaceholders})
+       ORDER BY st.trip_id, st.seq`,
+      ...serviceIds,
     );
 
     for (const r of stRows) {
