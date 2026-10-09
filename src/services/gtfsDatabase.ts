@@ -120,6 +120,11 @@ async function initDb(): Promise<SQLite.SQLiteDatabase> {
 }
 
 export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
+  // W trakcie podmiany pliku (delete+move) nie wolno otwierać bazy: uchwyt
+  // trafiłby w usunięty plik. Czekamy na bramkę, potem otwieramy świeży plik.
+  if (swapGate) {
+    return swapGate.then(() => getGtfsDb());
+  }
   if (!dbPromise) {
     const p = initDb();
     dbPromise = p;
@@ -131,6 +136,25 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
     });
   }
   return dbPromise;
+}
+
+// Bramka podmiany pliku bazy. Ustawiana na czas close→delete→move, żeby żaden
+// równoległy getGtfsDb() (np. z UI) nie otworzył usuwanego pliku.
+let swapGate: Promise<void> | null = null;
+let releaseSwapGate: (() => void) | null = null;
+
+export function beginGtfsSwap(): void {
+  if (swapGate) return;
+  swapGate = new Promise<void>((resolve) => {
+    releaseSwapGate = resolve;
+  });
+}
+
+export function endGtfsSwap(): void {
+  const release = releaseSwapGate;
+  swapGate = null;
+  releaseSwapGate = null;
+  release?.();
 }
 
 /**

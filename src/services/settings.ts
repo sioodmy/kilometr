@@ -67,6 +67,11 @@ export const SETTINGS_LIMITS = {
 
 const STORAGE_KEY = 'kilometr.routingSettings.v1';
 
+function clampInt(value: unknown, def: number, min: number, max: number): number {
+  const n = Number(value);
+  return Math.max(min, Math.min(max, Math.round(Number.isFinite(n) ? n : def)));
+}
+
 const WALK_PACES: readonly WalkPaceProfile[] = ['slow', 'normal', 'fast'];
 
 /** Stare tempo (m/s) na profil: migracja jednorazowa przy wczytaniu. */
@@ -83,31 +88,16 @@ function clampSettings(s: Partial<RoutingSettings>): RoutingSettings {
       ? paceFromLegacyMps(s.walkSpeedMps)
       : DEFAULT_SETTINGS.walkPace;
   return {
-    maxTransfers: Math.max(
-      SETTINGS_LIMITS.maxTransfers.min,
-      Math.min(SETTINGS_LIMITS.maxTransfers.max, Math.round(s.maxTransfers ?? DEFAULT_SETTINGS.maxTransfers)),
-    ),
-    minTransferSec: Math.max(
-      SETTINGS_LIMITS.minTransferSec.min,
-      Math.min(SETTINGS_LIMITS.minTransferSec.max, Math.round(s.minTransferSec ?? DEFAULT_SETTINGS.minTransferSec)),
-    ),
-    maxWalkM: Math.max(
-      SETTINGS_LIMITS.maxWalkM.min,
-      Math.min(SETTINGS_LIMITS.maxWalkM.max, Math.round(s.maxWalkM ?? DEFAULT_SETTINGS.maxWalkM)),
-    ),
+    maxTransfers: clampInt(s.maxTransfers, DEFAULT_SETTINGS.maxTransfers, SETTINGS_LIMITS.maxTransfers.min, SETTINGS_LIMITS.maxTransfers.max),
+    minTransferSec: clampInt(s.minTransferSec, DEFAULT_SETTINGS.minTransferSec, SETTINGS_LIMITS.minTransferSec.min, SETTINGS_LIMITS.minTransferSec.max),
+    maxWalkM: clampInt(s.maxWalkM, DEFAULT_SETTINGS.maxWalkM, SETTINGS_LIMITS.maxWalkM.min, SETTINGS_LIMITS.maxWalkM.max),
     walkPace,
     // Zapas synchronizowany z profilem, żeby stare odczyty (backup, silnik)
     // dostawały sensowną liczbę nawet bez pomiarów.
     walkSpeedMps: profileWalkSpeedMps(walkPace),
-    anchorRadiusM: Math.max(
-      SETTINGS_LIMITS.anchorRadiusM.min,
-      Math.min(SETTINGS_LIMITS.anchorRadiusM.max, Math.round(s.anchorRadiusM ?? DEFAULT_SETTINGS.anchorRadiusM)),
-    ),
-    trainsEnabled: s.trainsEnabled ?? DEFAULT_SETTINGS.trainsEnabled,
-    trainMinTransferSec: Math.max(
-      SETTINGS_LIMITS.trainMinTransferSec.min,
-      Math.min(SETTINGS_LIMITS.trainMinTransferSec.max, Math.round(s.trainMinTransferSec ?? DEFAULT_SETTINGS.trainMinTransferSec)),
-    ),
+    anchorRadiusM: clampInt(s.anchorRadiusM, DEFAULT_SETTINGS.anchorRadiusM, SETTINGS_LIMITS.anchorRadiusM.min, SETTINGS_LIMITS.anchorRadiusM.max),
+    trainsEnabled: typeof s.trainsEnabled === 'boolean' ? s.trainsEnabled : DEFAULT_SETTINGS.trainsEnabled,
+    trainMinTransferSec: clampInt(s.trainMinTransferSec, DEFAULT_SETTINGS.trainMinTransferSec, SETTINGS_LIMITS.trainMinTransferSec.min, SETTINGS_LIMITS.trainMinTransferSec.max),
   };
 }
 

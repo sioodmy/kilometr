@@ -134,15 +134,19 @@ export default function SettingsScreen() {
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    refreshDataStatus().then(setDataStatus);
+    refreshDataStatus().then(setDataStatus).catch(() => {});
     return subscribeDataStatus(setDataStatus);
   }, []);
 
   useEffect(() => {
     let alive = true;
-    hasTrainRoutes().then((v) => {
-      if (alive) setHasTrains(v);
-    });
+    hasTrainRoutes()
+      .then((v) => {
+        if (alive) setHasTrains(v);
+      })
+      .catch(() => {
+        if (alive) setHasTrains(false);
+      });
     return () => {
       alive = false;
     };

@@ -138,13 +138,18 @@ export const ConnectionCard = memo(function ConnectionCard({
   item,
   onPress,
   dimmed = false,
+  tick = 0,
 }: {
   item: Connection;
   onPress: (item: Connection) => void;
   /** historyczne (przeszłe) połączenie — przygaszony wygląd */
   dimmed?: boolean;
+  /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
+  tick?: number;
 }) {
   const walkMps = useEffectiveWalkSpeedMps();
+  // `tick` jest tylko wyzwalaczem: czas liczymy świeżo przy każdym jego skoku.
+  const now = useMemo(() => nowSec(), [tick]);
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
   const segments = useMemo(() => buildLegSegments(item.legs, walkMps), [item.legs, walkMps]);
@@ -183,7 +188,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 
   // Historyczne: odjechało ≥1 min temu — szary badge zamiast czasu odjazdu
   const minsAgo =
-    item.departureSec > 0 ? Math.round((nowSec() - item.departureSec) / 60) : -1;
+    item.departureSec > 0 ? Math.round((now - item.departureSec) / 60) : -1;
   const historical = minsAgo >= 1;
 
   // Dokładne reguły:
@@ -198,7 +203,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   // lista może być otwarta kilkanaście minut, a „za 4 min” w międzyczasie
   // przestałoby być prawdą (i odjechane połączenie wyglądałoby jak aktualne).
   const effectiveMin =
-    item.departureSec > 0 ? Math.round((item.departureSec - nowSec()) / 60) : item.departInMin;
+    item.departureSec > 0 ? Math.round((item.departureSec - now) / 60) : item.departInMin;
 
   if (item.live) {
     if (item.delayMin > 0) {

@@ -547,8 +547,27 @@ function backtrackJourney(
 
   if (segments.length === 0) return null;
 
-  // Find origin walk
-  const originMatch = origins.find((o) => o.stopId === currStopId);
+  // Find origin walk. Autobus/tram mógł zostać złapany na przystanku X, do
+  // którego doszliśmy footpathem z origin-stopu O — wtedy backtracking kończy
+  // się na X, bo round 0 nie zapisuje rodzica. Bez tego brakowało odcinka
+  // pieszego do pierwszego przystanku i czasy/metry były zaniżone.
+  let originMatch = origins.find((o) => o.stopId === currStopId);
+  if (!originMatch) {
+    let best: { walkM: number; walkSec: number } | null = null;
+    for (const o of origins) {
+      const paths = store.footpaths.get(o.stopId);
+      if (!paths) continue;
+      const fp = paths.find((p) => p.to_stop_id === currStopId);
+      if (!fp) continue;
+      if (!best || fp.duration_sec < best.walkSec) {
+        best = {
+          walkM: Math.max(20, Math.round(fp.duration_sec * WALK_SPEED_MPS)),
+          walkSec: fp.duration_sec,
+        };
+      }
+    }
+    if (best) originMatch = { stopId: currStopId, walkM: best.walkM, walkSec: best.walkSec };
+  }
   const firstTransitDep = segments[0]?.departSec ?? departureTimeSec;
   const originWalkM = originMatch ? originMatch.walkM : 0;
   const originWalkSec = originMatch ? originMatch.walkSec : 0;

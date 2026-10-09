@@ -184,6 +184,9 @@ async function refresh(): Promise<void> {
           }
           return;
         }
+        // „Zakończ" mógł trafić w trakcie await planera i wyzerować `tracked`.
+        // Bez tego strażnika odświeżenie wskrzesiłoby zatrzymaną podróż.
+        if (tracked !== before) return;
         tracked = { ...before, connection: fresh };
       } catch {
         // offline — zostaje ostatni plan
@@ -221,6 +224,8 @@ async function refresh(): Promise<void> {
     lastDelayMin = p.delayMin;
 
     await presentTrip(trip, p, prefs);
+    // Jak wyżej: stop w trakcie publikacji nie może pozwolić na dalsze alerty.
+    if (tracked !== before) return;
     await scheduleDepartureAlerts(p, trip, prefs);
 
     if (p.phase === 'arrived') {
@@ -370,7 +375,10 @@ async function consumeNativeStop(): Promise<boolean> {
 }
 
 /** Idempotentny ticker globalny: odświeża przy powrocie na pierwszy plan. */
+let trackedTripListenerAttached = false;
 export function startTrackedTripListener(): void {
+  if (trackedTripListenerAttached) return;
+  trackedTripListenerAttached = true;
   AppState.addEventListener('change', (state) => {
     if (state !== 'active' || !tracked) return;
     void (async () => {

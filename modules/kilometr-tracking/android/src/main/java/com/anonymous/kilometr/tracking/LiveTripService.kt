@@ -89,7 +89,10 @@ class LiveTripService : Service() {
     isRunning = true
     // startForeground musi zadziałać w ciągu 5 s od startForegroundService,
     // więc renderujemy natychmiast, a dopiero potem wchodzi pętla.
-    publish(current, System.currentTimeMillis())
+    if (!publish(current, System.currentTimeMillis())) {
+      // Bez działającego FGS nie ma po co żyć: publish() już zatrzymał usługę.
+      return START_NOT_STICKY
+    }
 
     handler.removeCallbacks(tick)
     handler.postDelayed(tick, TICK_IDLE_MS)
@@ -105,8 +108,10 @@ class LiveTripService : Service() {
     super.onDestroy()
   }
 
-  /** Render i publikacja. Zawsze przez startForeground, żeby FGS żyło dalej. */
-  private fun publish(current: LiveTripPlan, nowMs: Long) {
+  /** Render i publikacja. Zawsze przez startForeground, żeby FGS żyło dalej.
+   *  Zwraca false, gdy startForeground się nie powiódł (usługa została wtedy
+   *  zatrzymana, bo bez FGS system ubija proces po 5 s). */
+  private fun publish(current: LiveTripPlan, nowMs: Long): Boolean {
     val notification = LiveUpdateFactory.build(this, current, nowMs)
     try {
       ServiceCompat.startForeground(
@@ -119,14 +124,18 @@ class LiveTripService : Service() {
           0
         },
       )
+      return true
     } catch (_: Throwable) {
-      // Android 12+ blokuje start FGS z tła. Zamiast zgubić powiadomienie
-      // pokazujemy je zwykłym notify — przynajmniej użytkownik je zobaczy.
+      // Android 12+ blokuje start FGS z tła. Pokazujemy zwykłe powiadomienie,
+      // ale usługa MUSI się zatrzymać: gdy startForeground nigdy nie zadziała,
+      // system i tak ubija proces wyjątkiem ForegroundServiceDidNotStartInTimeException.
       try {
         NotificationManagerCompat.from(this).notify(LiveUpdateFactory.NOTIFICATION_ID, notification)
       } catch (_: Throwable) {
         // brak POST_NOTIFICATIONS — JS dostało wtedy false przy starcie
       }
+      shutdown()
+      return false
     }
   }
 

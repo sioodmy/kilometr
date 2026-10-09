@@ -1,7 +1,7 @@
 import { gtfsStore } from '../gtfs/store';
 import { filterParetoJourneys, isPointlessShortRide, mergeDayIndexes, runRaptor } from './raptor';
 import { Connection, Leg, LegStop, RawJourney, TransitModePreference } from './types';
-import { distanceMeters, secondsToTimeString } from '../gtfs/geo';
+import { distanceMeters, secondsToTimeString, utcDateStr, warsawNow } from '../gtfs/geo';
 import { vehicleTracker } from '../realtime/tracker';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -78,19 +78,13 @@ export interface PlanOptions {
  * absurdalnie ("wsiądź i od razu wysiądź") i przegrywa z samym spacerem
  * albo z dłuższą jazdą — więc w ogóle go nie proponujemy.
  */
-/** Formatuj datę do YYYYMMDD (dla calendar_dates.txt). */
-function toDateStr(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
 
 export async function planConnections(options: PlanOptions): Promise<Connection[]> {
   await gtfsStore.load();
 
-  const now = new Date();
-  const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  // Czas i dzień tygodnia liczone w strefie Wrocławia, niezależnie od TZ serwera.
+  const clock = warsawNow();
+  const currentSec = clock.sec;
 
   // departureTimeSec może wskazywać jutro (DepartureTimeSheet dodaje +86400).
   // RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.
@@ -98,10 +92,12 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const dayOffsetSec = Math.floor(rawDep / 86400) * 86400;
   const departureSec = rawDep % 86400;
   const dayOffsetDays = Math.round(dayOffsetSec / 86400);
-  const targetDate = new Date(now);
-  targetDate.setDate(targetDate.getDate() + dayOffsetDays);
-  const weekday = targetDate.getDay();
-  const dateStr = toDateStr(targetDate);
+  // Baza "dziś" w Warszawie jako UTC-midnight, żeby przesunięcie o dni i
+  // wyliczenie dnia tygodnia nie zależały od lokalnego TZ procesu.
+  const baseUtc = Date.UTC(clock.year, clock.month - 1, clock.day);
+  const targetUtc = new Date(baseUtc + dayOffsetDays * 86400000);
+  const weekday = targetUtc.getUTCDay();
+  const dateStr = utcDateStr(targetUtc);
   const dayIndex = gtfsStore.getDayIndex(weekday, dateStr);
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));
@@ -171,7 +167,12 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   });
 
   if (!origins.length || !destinations.length) {
-    return [];
+    // Brak przystanków w zasięgu: RAPTOR nie ma czego liczyć, ale blisko
+    // położony cel nadal zasługuje na opcję "na piechotę" (dodawaną niżej).
+    const walkM = Math.round(
+      distanceMeters(options.fromLat, options.fromLon, options.toLat, options.toLon),
+    );
+    if (!(walkM <= maxWalkM && walkM > 0)) return [];
   }
 
   // 3. Run RAPTOR (z limitami z ustawień, na rozkładzie właściwego dnia).
@@ -190,11 +191,10 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   let searchIndex = dayIndex;
   let patternOffsets: Map<string, number> | undefined;
   if (departureSec < 7 * 3600) {
-    const yDate = new Date(targetDate);
-    yDate.setDate(yDate.getDate() - 1);
+    const yUtc = new Date(targetUtc.getTime() - 86400000);
     const merged = mergeDayIndexes(
       dayIndex,
-      gtfsStore.getDayIndex(yDate.getDay(), toDateStr(yDate)),
+      gtfsStore.getDayIndex(yUtc.getUTCDay(), utcDateStr(yUtc)),
       'y_',
       -86400,
     );
@@ -243,6 +243,11 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   // 4. Map into Connection model
   const connections: Connection[] = [];
+  // Klucz zapytania w ID: poprzednio `conn-${idx}-${dep}` powtarzało się między
+  // wyszukiwaniami i zapis trasy z jednego zapytania nadpisywał inną trasę.
+  const queryKey = `${Math.round(options.fromLat * 1e4)}_${Math.round(options.fromLon * 1e4)}_${Math.round(
+    options.toLat * 1e4,
+  )}_${Math.round(options.toLon * 1e4)}`;
 
   for (let idx = 0; idx < filtered.length; idx++) {
     const rj = filtered[idx];
@@ -341,7 +346,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     }
 
     connections.push({
-      id: `conn-${idx + 1}-${rj.departureSec + dayOffsetSec}`,
+      id: `conn-${queryKey}-${adjDepartureSec}-${idx + 1}`,
       fromTitle: options.fromTitle,
       toTitle: options.toTitle,
       departInMin,
@@ -369,7 +374,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     const walkArrSec = walkDepSec + walkSec;
     const walkInMin = Math.max(0, Math.round((walkDepSec - currentSec) / 60));
     connections.push({
-      id: `walk-only-${walkDepSec}`,
+      id: `walk-only-${queryKey}-${walkDepSec}`,
       fromTitle: options.fromTitle,
       toTitle: options.toTitle,
       departInMin: walkInMin,
