@@ -9,7 +9,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 ## Model branchy i promocja kodu (OBOWIĄZKOWE)
 
 - Przepływ: `feature/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok to PR, nigdy direct push.
-- `dev` - integracja/experimental: nowe feature branche bazujesz na `dev` i PR-ujesz do `dev`.
+- `dev` - integracja/experimental: nowe feature branche bazujesz na `dev` i PR-ujesz do `dev`. Automatycznie twórz PR nowych features do tego brancha
 - `main` - scalony, jeszcze nie sprawdzony na urządzeniu kod.
 - `nightly` - buildy używalne jako daily driver, mogą być niestabilne; nie są prod ready.
 - `prod` - przetestowane manualnie na realnym urządzeniu, gotowe dla end userów; czeka na feedback testerów.
@@ -20,6 +20,11 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease, asset `kilometr-nightly.apk`.
   - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
 - Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
+- Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie.
+- W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature.
+- Zmergowanie feature brancha do `dev` dopisuje nowy element `- [ ]` do tej listy TYLKO jeśli feature wymaga manualnych testów (UI, funkcjonalność, landing, aplikacja). Drobnostek bez funkcjonalności (np. aktualizacja README, docs, komentarze) nie dopisuj.
+- PR `dev` -> `main` służy do manualnych testów tylko przez człowieka
+- NIGDY nie merguj automatycznie żadnego PR do `nightly` ani `prod`. Merge do `nightly`/`prod` wykonuje wyłącznie człowiek, ręcznie.
 
 ## CRITICAL: NIE OVERTHINKUJ
 

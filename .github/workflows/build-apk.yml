@@ -153,6 +153,7 @@ jobs:
 
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
           echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
           echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
@@ -162,6 +163,10 @@ jobs:
         run: npm ci
 
       - name: Expo Prebuild
+        env:
+          # Wersja w metadanych APK (versionName/versionCode) zależy od tagu
+          # release'u; app.config.js czyta APP_VERSION.
+          APP_VERSION: ${{ steps.release.outputs.version }}
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Tune Gradle for CI
@@ -200,6 +205,21 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace $ARCH_FLAG
+
+      - name: Verify APK version matches release tag
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
+          AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
+          echo "APK versionName=$APK_VERSION, release tag=$TAG"
+          if [ "$APK_VERSION" != "$TAG" ]; then
+            echo "::error::Wersja APK ($APK_VERSION) nie zgadza się z tagiem release ($TAG)"
+            exit 1
+          fi
 
       - name: Verify and stage APK
         env:
