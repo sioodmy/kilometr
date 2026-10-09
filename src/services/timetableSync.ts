@@ -85,14 +85,19 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
 
 const TEMP_DB_NAME = 'kilometr-gtfs.new.db';
 
-// Ścieżka bez ukośnika na końcu: expo-file-system traktuje ją inaczej przy
-// sprawdzaniu uprawnień niż z ogonkiem.
+// Katalog bazy z documentDirectory (file:///data/user/0/…/files/SQLite).
+// expo-file-system przyznaje zapis po kanonicznej ścieżce względem filesDir,
+// czyli /data/user/0/…. SQLite.defaultDatabaseDirectory zwraca /data/data/…:
+// to ten sam katalog (bind mount, nie symlink), ale inna ścieżka, więc
+// sprawdzenie nie przechodzi. Stąd „isn't writable" przy mkdir i downloadzie,
+// a sync po cichu zostawał przy starej bazie bez pociągów. expo-sqlite i tak
+// trzyma plik w tym samym miejscu, więc podmiana trafia w bazę, której używa.
 function sqliteDirUri(): string {
-  const raw = String((SQLite as unknown as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory ?? '');
-  if (raw) return raw.endsWith('/') ? raw.slice(0, -1) : raw;
   const base = FileSystem.documentDirectory;
-  if (!base) throw new Error('Brak documentDirectory (expo-file-system)');
-  return `${base}SQLite`;
+  if (base) return `${base.replace(/\/+$/, '')}/SQLite`;
+  const raw = String((SQLite as unknown as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory ?? '').replace(/\/+$/, '');
+  if (!raw) throw new Error('Brak katalogu bazy (expo-file-system/expo-sqlite)');
+  return raw.startsWith('file://') ? raw : `file://${raw}`;
 }
 
 async function sqliteUri(name: string): Promise<string> {
