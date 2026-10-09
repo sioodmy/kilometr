@@ -45,6 +45,17 @@ export interface LocationResult {
   accuracyM?: number | null;
 }
 
+export interface LocationResult {
+  title: string;
+  address: string;
+  lat: number;
+  lon: number;
+  stopId?: string;
+  city?: string | null;
+  /** Promień niepewności fixu w metrach z systemu (null na webe). */
+  accuracyM?: number | null;
+}
+
 export interface ILocationService {
   /**
    * Pozycja „na teraz": świeży cache, ostatni znany fix albo szybki odczyt
