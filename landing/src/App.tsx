@@ -43,6 +43,7 @@ function DownloadButtons({ apkHref }: { apkHref: string }) {
       >
         <Download size={19} strokeWidth={2.2} />
         <span>Pobierz APK</span>
+        <span className="cta-tag">NIGHTLY</span>
       </a>
       <a className="cta cta-ghost" href={OBTAINIUM_URL}>
         <RefreshCw size={19} strokeWidth={2.2} />
