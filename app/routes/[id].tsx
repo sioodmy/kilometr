@@ -37,6 +37,16 @@ export default function RouteDetailsScreen() {
   const [item, setItem] = useState<Connection | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
+  // Stan feedu live zmienia się w tle, a ten ekran nie odświeża się sam z
+  // powodu danych. Bez tickera baner „brak danych” był zamrożony w stanie z
+  // chwili renderu i pojawiał się dopiero przy jakiejś przypadkowej
+  // przerysowie całego ekranu.
+  const [liveStale, setLiveStale] = useState(() => liveTracker.getLiveState() !== 'fresh');
+  useEffect(() => {
+    const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
+    const t = setInterval(check, 15000);
+    return () => clearInterval(t);
+  }, []);
 
   const { trip: trackedTrip } = useTrackedTrip();
 
@@ -175,7 +185,6 @@ export default function RouteDetailsScreen() {
   const early = item.live && item.delayMin < 0;
   const onTime = item.live && item.delayMin === 0;
   const noLegs = item.legs.length === 0;
-  const liveStale = liveTracker.getLiveState() !== 'fresh';
 
   // Treść komunikatu o źródle danych. Kolejność ma znaczenie: połączenie
   // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
