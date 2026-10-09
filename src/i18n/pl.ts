@@ -143,7 +143,21 @@ export const pl = {
     walkHint:
       'Jak daleko możesz podejść na przystanek początkowy i z końcowego do celu. Dalszy przystanek z bezpośrednim tramwajem często bije najbliższy słupek.',
     speedTitle: 'Tempo chodzenia',
-    speedHint: 'Dostosuj prędkość, aby lepiej obliczać czas przesiadek pieszych i dojścia do celu.',
+    speedHint: 'Aplikacja mierzy Twoje tempo, gdy śledzisz kurs w drodze na przystanek, i dopasowuje je do okolicy. Profil poniżej to zapas na miejsca bez pomiarów.',
+    paceSlow: 'Wolno',
+    paceNormal: 'Normalnie',
+    paceFast: 'Szybko',
+    paceSlowDesc: 'Spokojny spacer',
+    paceNormalDesc: 'Zwykły chód miejski',
+    paceFastDesc: 'Żwawy krok',
+    paceMeasuredTitle: 'Zmierzone tempo',
+    paceMeasuredEmpty: 'Brak pomiarów. Włącz „Śledź ten kurs” w drodze na przystanek, a aplikacja nauczy się Twojego tempa w tej okolicy.',
+    paceOverallLabel: 'Twoje średnie tempo',
+    paceWalks: (n: number) =>
+      n === 1 ? '1 spacer' : isFew(n) ? `${n} spacery` : `${n} spacerów`,
+    pacePlaces: (n: number) =>
+      n === 1 ? '1 okolica' : isFew(n) ? `${n} okolice` : `${n} okolic`,
+    paceAutoNote: 'Planer bierze tempo zmierzone przy starcie, gdy ma stamtąd dość spacerów. Profil to zapas na nowe miejsca.',
     anchorTitle: 'Promień kotwiczenia',
     anchorHint:
       'Gdy jesteś w tym promieniu od zapisanego miejsca (np. Dom), nawigacja automatycznie zakotwiczy punkt startowy do przypisanego przystanku, niwelując niedokładności GPS.',
