@@ -174,12 +174,15 @@ importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
 - Stacje: resolve przez `GET /dictionaries/cities?search=WROC` →
   miasto `WROCŁAW` → jego `stationIds` (dynamicznie, bez hardkodu ID).
 - Rozkład: `GET /schedules/shortened?stations=<ids>&carriersInclude=KD
-  &dateFrom=<dziś>&dateTo=<dziś+13>`, `dictionaries=true` (nazwy stacji).
+  &dateFrom=<dziś>&dateTo=<dziś+13>`, `dictionaries=true`. Nazwy stacji są
+  w `dc.st` (`{ "60103": "Wrocław Główny" }`, ten sam kształt co `st` w
+  `/operations`). Czasy: `atm` przyjazd, `dtm` odjazd, `ady`/`ddy` przesunięcie
+  dnia (kursy przez północ). Stacja końcowa ma tylko jedną godzinę.
 - PDP **nie zwraca współrzędnych stacji**, więc build dociąga je z Nominatim
-  i zapisuje w `data/kd-station-coords.json`. Geokodowanie szuka najpierw
-  w bbox Wrocławia, a gdy stacja jest poza miastem (stacje końcowe/pośrednie
-  kursów), robi fallback na całą Polskę. Dzięki temu żaden kurs KD nie jest
-  po cichu pomijany.
+  i zapisuje w `data/kd-station-coords.json` (cache trzyma też nazwy).
+  Geokodowanie przyjmuje tylko wyniki w bbox Wrocławia, najwyżej dworzec
+  kolejowy. Wynik spoza miasta jest odrzucany, a nie brany na ślepo.
+  Kurs z postojem bez nazwy albo z jednym postojem jest pomijany.
   ```bash
   PDP_API_KEY=... node scripts/build-timetable.mjs --write-coords
   ```
@@ -188,7 +191,9 @@ importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
   **przejrzyj diffa** (`git diff data/…`) i commituj. Zcommitowany cache
   oznacza, że CI nie zależy już od dostępności Nominatim.
 - Bramka jakości: gdy KD jest wymagane, build kończy się **błędem**, jeśli
-  któraś sekcja jest pusta (`0 stacji / 0 tras / 0 kursów / 0 przesiadek`).
+  któraś sekcja jest pusta (`0 stacji / 0 tras / 0 kursów / 0 przesiadek`),
+  współrzędne są zdegenerowane (dawniej 30 stacji w 4 punktach), albo
+  stacja ma zastępczą nazwę `Stacja NNN`.
   Baza MPK-only albo z niekompletnym KD nigdy nie trafia do R2.
 - W bazie KD ląduje w tych samych tabelach co MPK, z prefiksami ID:
   przystanki `KD:S:<id>`, trasy `KD:R:<sid>:<oid>`,
