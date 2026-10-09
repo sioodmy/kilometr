@@ -517,6 +517,17 @@ export const pl = {
       `${dep}, czas jazdy ${dur} min, odjazd ${depAt}, przyjazd ${arrAt}, ${via}${lines ? `, linie ${lines}` : ''}`,
     walkRoute: 'trasa piesza',
   },
+  vehiclePos: {
+    noRoute: 'Brak danych o trasie',
+    liveBetween: (from: string, to: string) => `Pojazd: ${from} → ${to} • live`,
+    liveBefore: (stop: string) => `Pojazd: przed ${stop} • live`,
+    liveAt: (stop: string) => `Pojazd: ${stop} • live`,
+    liveNear: (stop: string) => `Pojazd: okolice ${stop} • live`,
+    estRoute: (from: string, to: string) => `Pozycja szacowana: ${from} → ${to}`,
+    estBefore: (at: string) => `Przed odjazdem (${at}) • pozycja szacowana`,
+    estDone: 'Kurs zakończony • pozycja szacowana',
+    estBetween: (from: string, to: string) => `Pojazd (szac.): ${from} → ${to}`,
+  },
   leg: {
     noData: 'Brak danych o trasie',
     expandA11y: (line: string, dir: string, expanded: boolean) =>

@@ -503,6 +503,17 @@ export const de: Strings = {
       `${dep}, Fahrzeit ${dur} Min., Abfahrt ${depAt}, Ankunft ${arrAt}, ${via}${lines ? `, Linien ${lines}` : ''}`,
     walkRoute: 'Fußweg',
   },
+  vehiclePos: {
+    noRoute: 'Keine Routendaten',
+    liveBetween: (from: string, to: string) => `Fahrzeug: ${from} → ${to} • live`,
+    liveBefore: (stop: string) => `Fahrzeug: vor ${stop} • live`,
+    liveAt: (stop: string) => `Fahrzeug: ${stop} • live`,
+    liveNear: (stop: string) => `Fahrzeug: in der Nähe von ${stop} • live`,
+    estRoute: (from: string, to: string) => `Geschätzte Position: ${from} → ${to}`,
+    estBefore: (at: string) => `Vor Abfahrt (${at}) • geschätzte Position`,
+    estDone: `Fahrt beendet • geschätzte Position`,
+    estBetween: (from: string, to: string) => `Fahrzeug (geschätzt): ${from} → ${to}`,
+  },
   leg: {
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
