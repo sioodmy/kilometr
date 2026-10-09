@@ -52,7 +52,7 @@ import {
   type TrackedTrip,
 } from '../../src/services/notifications';
 import {
-  loadConnections,
+  loadCachedConnections,
   hasLocalTimetable,
   rehydrateConnections,
 } from '../../src/services/offlineCache';
@@ -678,10 +678,10 @@ export default function RoutesScreen() {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
       // W trybie seamless nie czyścimy listy ani nie migoczemy spinnerem.
-      const cached = await loadConnections(queryAt(depSec, mode));
+      const cached = await loadCachedConnections(queryAt(depSec, mode));
       if (seq !== fetchSeq.current) return;
       if (cached) {
-        setItems(applyLiveList(rehydrateConnections(cached), depSec));
+        setItems(applyLiveList(rehydrateConnections(cached.list, cached.savedAt), depSec));
         setOffline(true);
         setNoMoreEarlier(true);
         setNoMoreLater(true);

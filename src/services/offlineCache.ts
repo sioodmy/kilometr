@@ -49,9 +49,10 @@ async function readJSON<T>(key: string): Promise<T | null> {
   }
 }
 
-function nowSec(): number {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+function dayStartMs(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
 }
 
 // ─── Połączenia ──────────────────────────────────────────────────────────────
@@ -89,12 +90,19 @@ export async function saveConnections(query: RouteQuery, list: Connection[]): Pr
   }
 }
 
-export async function loadConnections(query: RouteQuery): Promise<Connection[] | null> {
+export async function loadCachedConnections(
+  query: RouteQuery,
+): Promise<{ list: Connection[]; savedAt: number } | null> {
   const all = await readJSON<Record<string, Stamped<Connection[]>>>(KEYS.connections);
   const entry = all?.[connectionCacheKey(query)];
   if (!entry || Date.now() - entry.savedAt > CONNECTIONS_TTL_MS) return null;
   if (!Array.isArray(entry.data) || entry.data.length === 0) return null;
-  return entry.data;
+  return { list: entry.data, savedAt: entry.savedAt };
+}
+
+export async function loadConnections(query: RouteQuery): Promise<Connection[] | null> {
+  const cached = await loadCachedConnections(query);
+  return cached ? cached.list : null;
 }
 
 /** Szuka połączenia po id we WSZYSTKICH cachowanych zapytaniach (dla szczegółów offline). */
@@ -118,11 +126,16 @@ export async function findCachedConnection(id: string): Promise<Connection | nul
  * „20 min temu”, a nie „za chwilę”. Docięcie zamieniało nieodejazd w najbliższy
  * odjazd, czyli informację odwrotną do prawdy.
  */
-export function rehydrateConnections(list: Connection[]): Connection[] {
-  const now = nowSec();
+export function rehydrateConnections(list: Connection[], savedAtMs = Date.now()): Connection[] {
+  // departureSec to pora dnia na DZIEŃ ZAPISU. Absolutny odjazd liczymy więc od
+  // północy dnia zapisu (start + departureSec), a nie od „teraz": inaczej cache
+  // zapisany przed północą pokazywał „za 23 h" zamiast „40 min temu".
+  const baseMs = dayStartMs(savedAtMs);
+  const nowMs = Date.now();
   return list.map((c) => ({
     ...c,
-    departInMin: c.departureSec > 0 ? Math.round((c.departureSec - now) / 60) : c.departInMin,
+    departInMin:
+      c.departureSec > 0 ? Math.round((baseMs + c.departureSec * 1000 - nowMs) / 60000) : c.departInMin,
     live: false,
   }));
 }
