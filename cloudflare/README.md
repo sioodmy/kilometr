@@ -56,6 +56,21 @@ w wersji, która nie wybucha na limitach.
 \* `/api/kd/*` woła PDP **tylko na żądanie** (cache 120 s / 1 h).
 Aplikacja na razie tego nie używa (gotowość na przyszłość) → 0 req/dzień.
 
+### Pozycje pojazdów celowo omijają Worker
+
+Feed live (`mpk.wroc.pl/bus_position`) jest odpytywany **wprost z telefonu**,
+nie przez `/api/vehicles`. Powód to rachunek: Worker Free ma limit 100k
+requestów na dobę, a pojedynczy użytkownik odpytuje feed co 20 s, czyli
+**4 320 requestów na dobę**. Dwudziestu trzech aktywnych użytkowników
+dobijałoby limit i wyłączyło Worker dla pozostałych, w tym pobieranie bazy
+rozkładu.
+
+Dodatkowo pomiary (2026-10) pokazują, że cache nie jest tu potrzebny:
+68 z 68 zapytań do MPK powiodło się, mediana 291 ms. Awarię robiła logika
+świeżości w `liveTracker`, nie endpoint. Dodanie proxy nie leczyłooby
+przyczyny, a wprowadzałoby realny limit. Jeśli kiedyś wrócimy do tego pomysłu,
+to z cache'em w R2 odczytywanym raz na dobę, nie z proxy na każdy poll.
+
 ## Strażnik 0 zł (jak spać spokojnie)
 
 **GitHub Actions (prywatne repo: 2000 min/mies. gratis):**
