@@ -144,10 +144,12 @@ export function NotificationPrefsCard() {
     return ok;
   };
 
-  const guarded = (patch: Parameters<typeof update>[0]) => async (next: boolean) => {
-    if (!(await requirePermission(next))) return;
-    await update(patch);
-  };
+  const guarded =
+    (makePatch: (next: boolean) => Parameters<typeof update>[0]) =>
+    async (next: boolean) => {
+      if (!(await requirePermission(next))) return;
+      await update(makePatch(next));
+    };
 
   const leadIdx = leadIndex(prefs.departureAlertLeadMin);
 
@@ -165,7 +167,7 @@ export function NotificationPrefsCard() {
         title={p.trackTitle}
         hint={p.trackHint}
         value={prefs.trackingEnabled}
-        onChange={guarded({ trackingEnabled: true })}
+        onChange={guarded((v) => ({ trackingEnabled: v }))}
         disabled={!supported}
         onText={p.on}
         offText={p.off}
@@ -179,7 +181,7 @@ export function NotificationPrefsCard() {
           isTrackingPlatform() && promotable === false ? p.livePromoteHint : null
         }
         value={prefs.liveProgressEnabled}
-        onChange={guarded({ liveProgressEnabled: true })}
+        onChange={guarded((v) => ({ liveProgressEnabled: v }))}
         disabled={!supported}
         onText={p.on}
         offText={p.off}
@@ -190,7 +192,7 @@ export function NotificationPrefsCard() {
         title={p.leaveTitle}
         hint={p.leaveHint}
         value={prefs.departureAlertsEnabled}
-        onChange={guarded({ departureAlertsEnabled: true })}
+        onChange={guarded((v) => ({ departureAlertsEnabled: v }))}
         disabled={!supported}
         onText={p.on}
         offText={p.off}
@@ -244,7 +246,7 @@ export function NotificationPrefsCard() {
         title={p.disruptionTitle}
         hint={p.disruptionHint}
         value={prefs.disruptionAlertsEnabled}
-        onChange={guarded({ disruptionAlertsEnabled: true })}
+        onChange={guarded((v) => ({ disruptionAlertsEnabled: v }))}
         disabled={!supported}
         onText={p.on}
         offText={p.off}
