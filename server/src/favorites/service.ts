@@ -60,6 +60,18 @@ export const FavoritesService = {
     anchorStopLon?: number;
   }): SavedPlace {
     const db = getDb();
+    // place_id jest stabilnym kluczem z klienta: jeśli już istnieje, aktualizujemy
+    // zamiast wstawiać duplikat. Inaczej usuwanie po place_id kaskadowałoby na
+    // wiele wierszy, a updatePlace trafiałby w losowy.
+    if (place.placeId) {
+      const existing = db.prepare('SELECT id FROM saved_places WHERE place_id = ?').get(place.placeId) as
+        | { id: string }
+        | undefined;
+      if (existing) {
+        const updated = this.updatePlace(existing.id, place);
+        if (updated) return updated;
+      }
+    }
     const id = `place-${Date.now()}`;
     const placeId = place.placeId || id;
     const now = Date.now();
@@ -167,8 +179,20 @@ export const FavoritesService = {
 
   deletePlace(id: string): boolean {
     const db = getDb();
-    const res = db.prepare('DELETE FROM saved_places WHERE id = ? OR place_id = ?').run(id, id);
-    return res.changes > 0;
+    // Najpierw dokładnie po id (unikalne). Dopiero gdy takiego nie ma,
+    // próbujemy po place_id i tylko wtedy, gdy wskazuje jeden wiersz —
+    // inaczej usunęlibyśmy kilka miejsc naraz.
+    const byId = db.prepare('SELECT id FROM saved_places WHERE id = ?').get(id) as { id: string } | undefined;
+    if (byId) {
+      return db.prepare('DELETE FROM saved_places WHERE id = ?').run(id).changes > 0;
+    }
+    const match = db
+      .prepare('SELECT COUNT(*) AS n FROM saved_places WHERE place_id = ?')
+      .get(id) as { n: number };
+    if (match.n === 1) {
+      return db.prepare('DELETE FROM saved_places WHERE place_id = ?').run(id).changes > 0;
+    }
+    return false;
   },
 
   // Saved Routes
