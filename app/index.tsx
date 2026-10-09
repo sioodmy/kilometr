@@ -18,6 +18,7 @@ import {
   subscribeDataStatus,
 } from '../src/services/dataManager';
 import { getSettingsSync } from '../src/services/settings';
+import { getEffectiveWalkSpeedSync } from '../src/services/walkPace';
 import { subscribeBackupApplied } from '../src/services/backup';
 import { loadCachedSmartDestinations, loadTripHistory, saveCachedSmartDestinations, type TripHistoryItem } from '../src/services/smartRanker';
 
@@ -368,7 +369,11 @@ export default function HomeScreen() {
             trainsEnabled: s.trainsEnabled,
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
-            walkSpeedMps: s.walkSpeedMps,
+            walkSpeedMps: getEffectiveWalkSpeedSync({
+              fromLat: currentCoords.lat,
+              fromLon: currentCoords.lon,
+              profile: s.walkPace,
+            }),
           });
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
