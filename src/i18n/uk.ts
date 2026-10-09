@@ -124,6 +124,9 @@ export const uk: Strings = {
     downloadFailTitle: 'Не вдалося завантажити розклад',
     downloadFailBody: (reason: string) => `${reason}. Застосунок бере готову базу із сервера Kilometr або класично з Open Data Wrocław.`,
     downloadFailFallback: 'Спробуй за мить.',
+    downloadDone: 'Розклад оновлено.',
+    downloadUpToDate: 'Розклад уже актуальний.',
+    downloadKeptLocal: 'Не вдалося завантажити нову версію. Залишаємо ту, що вже є на телефоні.',
     transfersTitle: 'Макс. пересадок',
     transfersHint:
       'Менше пересадок = зручніше. Планувальник додає ~10 хв „штрафу“ за кожну пересадку, тож 300 м пішки до зупинки з прямим рейсом виграють у 3 пересадок з найближчого стовпа.',

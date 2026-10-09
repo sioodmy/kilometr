@@ -181,23 +181,26 @@ export function awaitImportSettled(timeoutMs = 180000): Promise<void> {
   });
 }
 
+/** Co faktycznie zrobiło ostatnie odświeżenie, żeby UI mogło to pokazać. */
+export type ImportOutcome = 'updated' | 'upToDate' | 'keptLocal';
+
 /** Pełny import: gotowa baza z serwera, w ostateczności klasyczny ZIP. */
-export async function importGtfsFromNetwork(): Promise<void> {
-  if (importInProgress) return;
+export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
+  if (importInProgress) return 'upToDate';
   importInProgress = true;
   try {
     // Ścieżka 1 (domyślna po skonfigurowaniu serwera): prebuilt SQLite.
     // Brak parsowania na telefonie — download strumieniem + podmiana pliku.
     if (TIMETABLE.baseUrl) {
-      const prebuiltOk = await tryImportPrebuilt().catch((err) => {
+      const synced = await tryImportPrebuilt().catch((err) => {
         console.warn('[DataManager] prebuilt sync failed:', err instanceof Error ? err.message : String(err));
-        return false;
+        return null;
       });
-      if (prebuiltOk) {
+      if (synced) {
         // Flaga w dół przed końcowym odświeżeniem (ten sam powód co niżej).
         importInProgress = false;
         await refreshDataStatus();
-        return;
+        return synced;
       }
       // Nieudany sync, ale baza działa? Nie psujemy jej i nie męczymy
       // użytkownika importem ZIP na siłę. Pusta baza → fallback do ZIP.
@@ -205,7 +208,7 @@ export async function importGtfsFromNetwork(): Promise<void> {
       if (stats && stats.stops > 0 && stats.trips > 0 && stats.stopTimes > 0) {
         importInProgress = false;
         await refreshDataStatus();
-        return;
+        return 'keptLocal';
       }
     }
 
@@ -215,6 +218,7 @@ export async function importGtfsFromNetwork(): Promise<void> {
     // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
     importInProgress = false;
     await refreshDataStatus();
+    return 'updated';
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
@@ -240,15 +244,15 @@ export async function importGtfsFromNetwork(): Promise<void> {
 
 /**
  * Sync z serwera: manifest → przy nowej wersji download + podmiana bazy.
- * True = baza aktualna (świeżo pobrana albo już była). Rzuca przy problemach,
- * wtedy caller decyduje o fallbacku do ZIP.
+ * 'upToDate' gdy telefon ma już tę wersję, 'updated' gdy baza właśnie wjechała.
+ * Rzuca przy problemach, wtedy caller decyduje o fallbacku do ZIP.
  */
-async function tryImportPrebuilt(): Promise<boolean> {
+async function tryImportPrebuilt(): Promise<'updated' | 'upToDate'> {
   const manifest = await fetchManifest();
   const local = await getLocalTimetableVersion();
   if (local && local === manifest.version) {
     await setMeta('gtfs_last_check', new Date().toISOString());
-    return true;
+    return 'upToDate';
   }
   emit({ state: 'downloading', progress: 0 });
   await downloadPrebuiltDb(manifest, (written, total) => {
@@ -258,7 +262,7 @@ async function tryImportPrebuilt(): Promise<boolean> {
   emit({ state: 'importing', step: T.stepVerify, progress: 0.97 });
   await setMeta('gtfs_last_check', new Date().toISOString());
   await resetRoutingStore();
-  return true;
+  return 'updated';
 }
 
 /**

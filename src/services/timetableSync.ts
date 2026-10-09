@@ -85,21 +85,32 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
 
 const TEMP_DB_NAME = 'kilometr-gtfs.new.db';
 
+// Katalog bazy musi być podany BEZ ukośnika na końcu. expo-file-system
+// parsuje URI natywnie i ścieżka z ogonkiem potrafiła zostać uznana za
+// nieistniejącą albo niepisaną, mimo że katalog stoi od pierwszego
+// openDatabaseAsync. Stąd mkdir poniżej leciał wyjątkiem, a cały sync
+// kończył się cicho, zostawiając telefon na starej bazie.
 function sqliteDirUri(): string {
   const raw = String((SQLite as unknown as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory ?? '');
-  if (raw) return raw.endsWith('/') ? raw : `${raw}/`;
+  if (raw) return raw.endsWith('/') ? raw.slice(0, -1) : raw;
   const base = FileSystem.documentDirectory;
   if (!base) throw new Error('Brak documentDirectory (expo-file-system)');
-  return `${base}SQLite/`;
+  return `${base}SQLite`;
 }
 
 async function sqliteUri(name: string): Promise<string> {
   const dir = sqliteDirUri();
-  const info = await FileSystem.getInfoAsync(dir);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  // Katalog tworzy samo expo-sqlite przy pierwszym openDatabaseAsync, więc
+  // mkdir jest tylko siatką bezpieczeństwa. Nie może wywrócić syncu: gdyby
+  // katalogu faktycznie zabrakło, download i tak zgłosi to dalej własnym
+  // komunikatem, a użytkownik dostanie błąd zamiast cichego „nic się nie stało”.
+  try {
+    const info = await FileSystem.getInfoAsync(dir);
+    if (!info.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  } catch (err) {
+    console.warn('[Timetable] katalog bazy niedostępny:', dir, err);
   }
-  return `${dir}${name}`;
+  return `${dir}/${name}`;
 }
 
 async function deleteSidecars(uri: string): Promise<void> {

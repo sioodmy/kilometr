@@ -115,6 +115,9 @@ export const en: Strings = {
     downloadFailTitle: 'Could not download the timetable',
     downloadFailBody: (reason: string) => `${reason}. The app fetches a ready database from the Kilometr server, or the classic way from Open Data Wrocław.`,
     downloadFailFallback: 'Try again in a moment.',
+    downloadDone: 'Timetable refreshed.',
+    downloadUpToDate: 'The timetable is already up to date.',
+    downloadKeptLocal: 'Could not download the new version. Keeping the one already on the phone.',
     transfersTitle: 'Max transfers',
     transfersHint:
       'Fewer transfers = more comfort. The planner adds a ~10 min penalty per transfer, so a 300 m walk to a stop with a direct line beats 3 transfers from the nearest pole.',
