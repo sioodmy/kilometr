@@ -32,7 +32,8 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
-    if (req.method !== 'GET') return json({ error: 'method-not-allowed' }, 405);
+    // HEAD działa jak GET (Runtime sam ucina body) — klient sprawdza rozmiar/ETag.
+    if (req.method !== 'GET' && req.method !== 'HEAD') return json({ error: 'method-not-allowed' }, 405);
 
     if (url.pathname === '/health') {
       return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString() });
@@ -127,7 +128,13 @@ async function proxyPdp(req: Request, env: Env, ctx: ExecutionContext, kind: 'op
   if (!/^[0-9, ]{1,200}$/.test(stations) || !/\d/.test(stations)) {
     return json({ error: 'bad-stations', hint: 'Podaj stations=jako ID po przecinku, np. ?stations=33506,33512.' }, 400);
   }
-  const ids = stations.replace(/\s+/g, '');
+  // Deduplikacja + sortowanie normalizuje klucz cache: ta sama lista w innej
+  // kolejności trafia w ten sam wpis, zamiast omijać cache i palić limit PDP.
+  const idList = Array.from(new Set(stations.split(',').map((s) => s.trim()).filter(Boolean)));
+  if (idList.length === 0 || idList.length > 30) {
+    return json({ error: 'bad-stations', hint: 'Podaj od 1 do 30 unikalnych ID stacji.' }, 400);
+  }
+  const ids = idList.join(',');
 
   const upstream = new URL(PDP_BASE + (kind === 'operations' ? '/api/v1/operations/shortened' : '/api/v1/schedules/shortened'));
   upstream.searchParams.set('stations', ids);
