@@ -239,6 +239,10 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
     throw err;
   } finally {
     importInProgress = false;
+    // Ścieżka błędu emituje status PRZED wyzerowaniem flagi, więc watch z
+    // awaitImportSettled nie zdążył zauważyć końca importu. Powiadamiamy tu,
+    // po zgaszeniu flagi, żeby oczekujący nie wisieli do timeoutu.
+    for (const l of listeners) l(status);
   }
 }
 

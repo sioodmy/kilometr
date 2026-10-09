@@ -392,13 +392,14 @@ class LiveTracker {
   private async matchAll(rows: RawVehicleRow[]): Promise<void> {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
-    } catch {
-      return;
+    } catch (err) {
+      // Rzucamy dalej: poll() ustawi wtedy failed i NIE oznaczy danych jako świeże.
+      throw new Error(`gtfs load failed: ${String(err)}`);
     }
     const now = new Date();
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
-    let dayIndex: DayIndex | null = null;
+    let dayIndex: DayIndex;
     try {
       dayIndex = await gtfsStore.getDayIndexSlice(
         now.getDay(),
@@ -406,8 +407,8 @@ class LiveTracker {
         nowSec - WINDOW_SEC,
         nowSec + 3600,
       );
-    } catch {
-      return;
+    } catch (err) {
+      throw new Error(`day index failed: ${String(err)}`);
     }
 
     const patternPolylines = new Map<string, PatternPolylineNode[]>();
