@@ -12,7 +12,8 @@ import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { RoutingService } from '../services';
-import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+import { formatWalkTime, walkMinutesFor } from '../services/settings';
+import { useEffectiveWalkSpeedMps } from '../services/walkPace';
 import {
   buildFallbackStops,
   findUserSegment,
@@ -262,7 +263,7 @@ function TransitLegCard({
 /** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
 export function LegTimeline({ legs }: { legs: Leg[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const walkMps = useWalkSpeedMps();
+  const walkMps = useEffectiveWalkSpeedMps();
 
   return (
     <View style={s.list}>

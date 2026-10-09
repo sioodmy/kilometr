@@ -5,7 +5,8 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
-import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+import { formatWalkTime, walkMinutesFor } from '../services/settings';
+import { useEffectiveWalkSpeedMps } from '../services/walkPace';
 import { tr } from '../i18n';
 
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2–4 / 5+). */
@@ -143,7 +144,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   /** historyczne (przeszłe) połączenie — przygaszony wygląd */
   dimmed?: boolean;
 }) {
-  const walkMps = useWalkSpeedMps();
+  const walkMps = useEffectiveWalkSpeedMps();
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
   const segments = useMemo(() => buildLegSegments(item.legs, walkMps), [item.legs, walkMps]);

@@ -41,6 +41,7 @@ import {
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
 import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings } from '../../src/services/settings';
+import { getEffectiveWalkSpeedSync } from '../../src/services/walkPace';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -398,7 +399,8 @@ export default function RoutesScreen() {
       trainsEnabled: cfg.trainsEnabled,
       trainMinTransferSec: cfg.trainMinTransferSec,
       maxWalkM: cfg.maxWalkM,
-      walkSpeedMps: cfg.walkSpeedMps,
+      // Tempo z pomiarów w tej okolicy, inaczej mediana overall, na końcu profil.
+      walkSpeedMps: getEffectiveWalkSpeedSync({ fromLat, fromLon, profile: cfg.walkPace }),
     };
   };
 
