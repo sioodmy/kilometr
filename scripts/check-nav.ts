@@ -29,9 +29,9 @@ function dist(p: Coord, q: Coord): number {
 let failures = 0;
 function check(label: string, cond: boolean, detail = '') {
   if (cond) {
-    console.log(`  PASS ${label}${detail ? ` — ${detail}` : ''}`);
+    console.log(`  PASS ${label}${detail ? `: ${detail}` : ''}`);
   } else {
-    console.log(`  FAIL ${label}${detail ? ` — ${detail}` : ''}`);
+    console.log(`  FAIL ${label}${detail ? `: ${detail}` : ''}`);
     failures++;
   }
 }
@@ -126,7 +126,7 @@ async function testProjection() {
   check('środek odcinka daje offset ~0', pMid !== null && pMid.offsetM < 1, `${pMid?.offsetM.toFixed(2)} m`);
   check('środek odcinka wskazuje ten odcinek', pMid?.index === li, `index ${pMid?.index}, oczekiwany ${li}`);
 
-  // Punkt daleko od trasy — rzut nadal daje najbliższy wierzchołek sensownie.
+  // Punkt daleko od trasy: rzut nadal daje najbliższy wierzchołek sensownie.
   const far: Coord = [51.16, 17.10];
   const p3 = projectOnPath(coords, far);
   check('daleki punkt też się rzutuje', p3 != null, `progress ${p3?.progress.toFixed(2)}`);

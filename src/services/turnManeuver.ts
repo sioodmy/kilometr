@@ -434,7 +434,7 @@ export function nextGuidance(
 }
 
 /**
- * Kolejny manewr po już wykonanym — do linijki „potem” pod główną instrukcją.
+ * Kolejny manewr po już wykonanym, do linijki „potem” pod instrukcją.
  * Zwraca null, gdy kolejny manewr jest tak blisko, że zabrzmi jak duplikat.
  */
 export function nextGuidanceAfter(
