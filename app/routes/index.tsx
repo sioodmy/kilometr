@@ -191,11 +191,13 @@ export default function RoutesScreen() {
   const timetableReady = dataStatus.state === 'ready';
   // Brak sieci = brak opóźnień z MPK. Bez komunikatu użytkownik myśli,
   // że planer po prostu nie umie opóźnień.
+  // `unknown` też oznacza brak danych: przed pierwszym udanym pollem (albo przy
+  // starcie apki) nie mamy żadnego opóźnienia, więc cisza była kłamstwem.
   const [liveStale, setLiveStale] = useState(false);
   useEffect(() => {
-    const check = () => setLiveStale(liveTracker.getLiveState() === 'stale');
+    const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
     check();
-    const t = setInterval(check, 30000);
+    const t = setInterval(check, 15000);
     return () => clearInterval(t);
   }, []);
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie

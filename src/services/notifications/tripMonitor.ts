@@ -90,18 +90,22 @@ export function isSameQuery(a: RouteQuery, b: RouteQuery): boolean {
 
 // ─── Pojazd ────────────────────────────────────────────────────────────────
 
-/** Pojazd dopasowany do odcinka, na którym właśnie jesteśmy. */
+/**
+ * Pojazd dopasowany do odcinka, na którym właśnie jesteśmy.
+ *
+ * Bez dopasowania po `tripId` zwracamy null zamiast pierwszego pojazdu z
+ * linii. `rows[0]` to dowolny autobus tej linii, więc przy trzech pojazdach na
+ * przystanku użytkownik dostawał w powiadomieniu cudzy pojazd i opóźnienie
+ * z nieznanego kursu. Brak informacji jest tu uczciwszy niż zła.
+ */
 function vehicleForTrip(p: TripProgress): VehiclePosition | null {
   if (!p.leg || p.leg.mode === 'walk') return null;
   const tripId = p.leg.tripId;
+  if (!tripId) return null;
   const line = (p.leg.line || '').trim().toUpperCase();
   const rows = liveTracker.snapshot(line || undefined);
   if (rows.length === 0) return null;
-  if (tripId) {
-    const byTrip = rows.find((v) => v.matchedTripId === tripId);
-    if (byTrip) return byTrip;
-  }
-  return rows[0] ?? null;
+  return rows.find((v) => v.matchedTripId === tripId) ?? null;
 }
 
 // ─── Odświeżenie ───────────────────────────────────────────────────────────

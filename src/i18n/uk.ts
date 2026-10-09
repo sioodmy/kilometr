@@ -527,6 +527,17 @@ export const uk: Strings = {
       `${dep}, час їзди ${dur} хв, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
     walkRoute: 'піший маршрут',
   },
+  vehiclePos: {
+    noRoute: 'Немає даних про маршрут',
+    liveBetween: (from: string, to: string) => `Транспорт: ${from} → ${to} • live`,
+    liveBefore: (stop: string) => `Транспорт: перед ${stop} • live`,
+    liveAt: (stop: string) => `Транспорт: ${stop} • live`,
+    liveNear: (stop: string) => `Транспорт: поблизу ${stop} • live`,
+    estRoute: (from: string, to: string) => `Орієнтовна позиція: ${from} → ${to}`,
+    estBefore: (at: string) => `До від'їзду (${at}) • орієнтовна позиція`,
+    estDone: 'Рейс завершено • орієнтовна позиція',
+    estBetween: (from: string, to: string) => `Транспорт (орієнт.): ${from} → ${to}`,
+  },
   leg: {
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>

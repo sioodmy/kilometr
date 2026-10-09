@@ -1,11 +1,10 @@
 import * as Location from 'expo-location';
 import { kvGet, kvGetStrict, kvSet } from './storage';
 import { DEFAULT_LOCATION } from '../config';
-import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
+import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
 import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
 import { planConnections, buildTripStops } from './routing/engine';
-import { fetchVehiclesDirect } from './realtimeClient';
 
 let cachedLocation: LocationResult | null = null;
 let cachedAt = 0;
@@ -414,9 +413,6 @@ export const RoutingService: IRoutingService = {
     }
   },
 
-  async getVehicles(line: string): Promise<VehiclePosition[]> {
-    return fetchVehiclesDirect(line);
-  },
 };
 
 async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {

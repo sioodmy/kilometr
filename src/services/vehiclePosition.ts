@@ -1,3 +1,6 @@
+// `../i18n/locale`, nie `../i18n`: ten plik to czysta logika używana też przez
+// skrypty testowe, a barrel i18n importuje `expo-localization`.
+import { tr } from '../i18n/locale';
 import type { Leg, LegStop, VehiclePosition } from '../types/models';
 
 // Czysta logika „gdzie jest pojazd". Wydzielona z komponentu LegTimeline,
@@ -93,8 +96,11 @@ export function locateVehicle(
   vehicle: VehiclePosition | null,
   now: Date = new Date(),
 ): VehicleGap {
+  // Teksty idą do powiadomienia na ekranie blokady, więc muszą być z i18n.
+  // Inaczej użytkownik w EN/DE/UK dostawał polską treść.
+  const s = tr().vehiclePos;
   const n = stops.length;
-  if (n < 2) return { gap: -1, isLive: false, label: 'Brak danych o trasie' };
+  if (n < 2) return { gap: -1, isLive: false, label: s.noRoute };
 
   if (vehicle) {
     const cur = vehicle.currentStopName ? normalizeName(vehicle.currentStopName) : '';
@@ -113,21 +119,21 @@ export function locateVehicle(
       return {
         gap: curIdx,
         isLive: true,
-        label: `Pojazd: ${stops[curIdx].name} → ${stops[nxtIdx].name} • live`,
+        label: s.liveBetween(stops[curIdx].name, stops[nxtIdx].name),
       };
     }
     if (nxtIdx > 0) {
       return {
         gap: Math.min(n - 2, Math.max(0, nxtIdx - 1)),
         isLive: true,
-        label: `Pojazd: przed ${stops[nxtIdx].name} • live`,
+        label: s.liveBefore(stops[nxtIdx].name),
       };
     }
     if (curIdx >= 0) {
       return {
         gap: Math.min(n - 2, curIdx),
         isLive: true,
-        label: `Pojazd: ${stops[curIdx].name} • live`,
+        label: s.liveAt(stops[curIdx].name),
       };
     }
     // GPS coords: najbliższy przystanek, pojazd jedzie "do przodu" trasy
@@ -145,7 +151,7 @@ export function locateVehicle(
       }
       if (bestD < Infinity) {
         const gap = Math.min(n - 2, Math.max(0, best >= n - 1 ? n - 2 : best));
-        return { gap, isLive: true, label: `Pojazd: okolice ${stops[best].name} • live` };
+        return { gap, isLive: true, label: s.liveNear(stops[best].name) };
       }
     }
   }
@@ -157,15 +163,15 @@ export function locateVehicle(
     return {
       gap: 0,
       isLive: false,
-      label: `Pozycja szacowana: ${stops[0].name} → ${stops[n - 1].name}`,
+      label: s.estRoute(stops[0].name, stops[n - 1].name),
     };
   }
   const t = nowSecOfDay(now);
   if (t < depSec) {
-    return { gap: -1, isLive: false, label: `Przed odjazdem (${leg.departAt}) • pozycja szacowana` };
+    return { gap: -1, isLive: false, label: s.estBefore(leg.departAt) };
   }
   if (t > arrSec) {
-    return { gap: -2, isLive: false, label: 'Kurs zakończony • pozycja szacowana' };
+    return { gap: -2, isLive: false, label: s.estDone };
   }
   const progress = (t - depSec) / (arrSec - depSec);
   const floatIdx = progress * (n - 1);
@@ -173,6 +179,6 @@ export function locateVehicle(
   return {
     gap,
     isLive: false,
-    label: `Pojazd (szac.): ${stops[gap].name} → ${stops[gap + 1].name}`,
+    label: s.estBetween(stops[gap].name, stops[gap + 1].name),
   };
 }
