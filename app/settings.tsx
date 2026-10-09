@@ -2,18 +2,20 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, RotateCcw, Activity, Anchor, TrainFront } from 'lucide-react-native';
+import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, Rabbit, RotateCcw, Activity, Anchor, TrainFront, Turtle } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
 import {
   SETTINGS_LIMITS,
+  WALK_PACE_DEFAULTS_MPS,
   formatTransferTime,
   formatWalkDistance,
   formatWalkSpeed,
-  walkSpeedLabel,
   useRoutingSettings,
+  type WalkPaceProfile,
 } from '../src/services/settings';
+import { useWalkPaceStats, useEffectiveWalkSpeedMps } from '../src/services/walkPace';
 import {
   getDataStatus,
   importGtfsFromNetwork,
@@ -105,12 +107,20 @@ export default function SettingsScreen() {
   const { settings, update, reset } = useRoutingSettings();
   const s = useStrings();
   const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
+  const paceStats = useWalkPaceStats();
+  const walkMps = useEffectiveWalkSpeedMps();
+  // Ikony żółwia i królika to konwencja tempa (wolno/szybko), odcisk stopy to
+  // dosłowny spacer. Trzy opcje zamiast suwaka: profil to zapas, nie pomiar.
+  const paceOptions: { value: WalkPaceProfile; icon: typeof Turtle; label: string; desc: string }[] = [
+    { value: 'slow', icon: Turtle, label: s.settings.paceSlow, desc: s.settings.paceSlowDesc },
+    { value: 'normal', icon: Footprints, label: s.settings.paceNormal, desc: s.settings.paceNormalDesc },
+    { value: 'fast', icon: Rabbit, label: s.settings.paceFast, desc: s.settings.paceFastDesc },
+  ];
 
   const maxT = SETTINGS_LIMITS.maxTransfers;
   const minT = SETTINGS_LIMITS.minTransferSec;
   const trainBuf = SETTINGS_LIMITS.trainMinTransferSec;
   const walk = SETTINGS_LIMITS.maxWalkM;
-  const speed = SETTINGS_LIMITS.walkSpeedMps;
   const anchor = SETTINGS_LIMITS.anchorRadiusM;
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [importing, setImporting] = useState(false);
@@ -332,7 +342,7 @@ export default function SettingsScreen() {
             {s.settings.walkHint}
           </Text>
           <Stepper
-            value={formatWalkDistance(settings.maxWalkM, settings.walkSpeedMps)}
+            value={formatWalkDistance(settings.maxWalkM, walkMps)}
             onMinus={() => update({ maxWalkM: settings.maxWalkM - walk.step })}
             onPlus={() => update({ maxWalkM: settings.maxWalkM + walk.step })}
             minusDisabled={settings.maxWalkM <= walk.min}
@@ -348,14 +358,59 @@ export default function SettingsScreen() {
           <Text style={styles.cardHint}>
             {s.settings.speedHint}
           </Text>
-          <Stepper
-            value={walkSpeedLabel(settings.walkSpeedMps)}
-            display={formatWalkSpeed(settings.walkSpeedMps)}
-            onMinus={() => update({ walkSpeedMps: settings.walkSpeedMps - speed.step })}
-            onPlus={() => update({ walkSpeedMps: settings.walkSpeedMps + speed.step })}
-            minusDisabled={settings.walkSpeedMps <= speed.min}
-            plusDisabled={settings.walkSpeedMps >= speed.max}
-          />
+          <Text style={styles.measuredTitle}>{s.settings.paceMeasuredTitle}</Text>
+          {paceStats.loaded ? (
+            paceStats.overallMedian != null ? (
+              <View style={styles.measuredBox}>
+                <Text style={styles.measuredValue}>{formatWalkSpeed(paceStats.overallMedian)}</Text>
+                <View style={styles.measuredMeta}>
+                  <Text style={styles.measuredLabel}>{s.settings.paceOverallLabel}</Text>
+                  <Text style={styles.measuredSub}>
+                    {s.settings.paceWalks(paceStats.overallCount)} • {s.settings.pacePlaces(paceStats.placeCount)}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.cardHint}>{s.settings.paceMeasuredEmpty}</Text>
+            )
+          ) : (
+            <ActivityIndicator size="small" color={scheme.primary} />
+          )}
+          <View style={styles.paceRow}>
+            {paceOptions.map((opt) => {
+              const active = settings.walkPace === opt.value;
+              const Icon = opt.icon;
+              const a11y = `${opt.label}, ${opt.desc}, ${formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}`;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => update({ walkPace: opt.value })}
+                  style={({ pressed }) => [
+                    styles.paceOpt,
+                    active && styles.paceOptActive,
+                    pressed && !active && { opacity: 0.7 },
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                  accessibilityLabel={a11y}
+                >
+                  <Icon size={22} color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
+                  <Text style={[styles.paceLabel, active && styles.paceLabelActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.paceDesc, active && styles.paceDescActive]} numberOfLines={2}>
+                    {opt.desc}
+                  </Text>
+                  <Text style={[styles.paceKmh, active && styles.paceKmhActive]}>
+                    {formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.cardHint}>
+            {s.settings.paceAutoNote}
+          </Text>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(160).duration(180)} style={styles.card}>
@@ -425,6 +480,21 @@ const styles = StyleSheet.create({
   langChipActive: { backgroundColor: scheme.primaryContainer },
   langChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
+  measuredTitle: { ...type.labelLarge, color: scheme.onSurface, fontWeight: '600' },
+  measuredBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: scheme.surfaceContainerHighest, borderRadius: shape.medium, paddingHorizontal: 14, paddingVertical: 12 },
+  measuredValue: { ...type.headlineSmall, color: scheme.onSurface, fontWeight: '800' },
+  measuredMeta: { flex: 1, gap: 2 },
+  measuredLabel: { ...type.labelLarge, color: scheme.onSurface, fontWeight: '600' },
+  measuredSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  paceRow: { flexDirection: 'row', gap: 8 },
+  paceOpt: { flex: 1, alignItems: 'center', gap: 2, borderRadius: shape.medium, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 6, paddingVertical: 12, minHeight: 108 },
+  paceOptActive: { backgroundColor: scheme.primaryContainer },
+  paceLabel: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '700', textAlign: 'center' },
+  paceLabelActive: { color: scheme.onPrimaryContainer },
+  paceDesc: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center', lineHeight: 16 },
+  paceDescActive: { color: scheme.onPrimaryContainer },
+  paceKmh: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600', marginTop: 2 },
+  paceKmhActive: { color: scheme.onPrimaryContainer },
   foot: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 16 },
   sectionLabel: { marginTop: 10 },
   sectionLabelText: { ...type.titleSmall, color: scheme.onSurfaceVariant, fontWeight: '600' },
