@@ -111,18 +111,6 @@ export function getPlaceIconCategories(s: Strings): { key: PlaceIconCategory; la
   return PLACE_ICON_CATEGORY_KEYS.map((key) => ({ key, label: s.places.iconCategories[key] }));
 }
 
-/** Zachowane dla kompatybilności (etykiety PL); UI używa getPlaceIconCategories(s). */
-export const PLACE_ICON_CATEGORIES: { key: PlaceIconCategory; label: string }[] = [
-  { key: 'all', label: 'Wszystkie' },
-  { key: 'frequent', label: 'Częste' },
-  { key: 'transit', label: 'Podróż' },
-  { key: 'food', label: 'Jedzenie' },
-  { key: 'health', label: 'Zdrowie' },
-  { key: 'culture', label: 'Kultura' },
-  { key: 'sport', label: 'Sport' },
-  { key: 'services', label: 'Usługi' },
-];
-
 export const PLACE_ICON_OPTIONS: PlaceIconItem[] = [
   // Codzienne / Częste
   { key: 'home', label: 'Dom', icon: Home, category: 'frequent', keywords: ['dom', 'mieszkanie', 'pokój', 'chata', 'house'] },
@@ -984,7 +972,7 @@ export function AddPlaceSheet({
                       style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.8 }]}
                     >
                       <Pencil size={14} color={scheme.primary} />
-                      <Text style={styles.changeBtnText}>Zmień</Text>
+                      <Text style={styles.changeBtnText}>{s.places.changeBtn}</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => setAnchorStop(null)}

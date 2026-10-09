@@ -264,6 +264,12 @@ export const pl = {
   routes: {
     gpsAddress: 'Użyj aktualnej pozycji',
     destFallback: 'Cel',
+    trackUnsupportedTitle: 'Śledzenie niedostępne',
+    trackUnsupportedBody: 'Powiadomienia wymagają builda deweloperskiego. Expo Go ich nie wspiera.',
+    noConnectionsTitle: 'Brak połączeń',
+    noConnectionsBody: 'Poczekaj aż pojawi się kurs na tej trasie.',
+    stopTrackingTripA11y: 'Zatrzymaj śledzenie podróży',
+    trackNearestA11y: 'Śledź najbliższe połączenie',
     pinUnsupportedTitle: 'Pinezka niedostępna',
     pinUnsupportedBody: 'Przypięte powiadomienie wymaga builda deweloperskiego — Expo Go nie wspiera powiadomień.',
     notifOffTitle: 'Powiadomienia wyłączone',

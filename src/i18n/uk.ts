@@ -274,6 +274,12 @@ export const uk: Strings = {
   routes: {
     gpsAddress: 'Використати поточну позицію',
     destFallback: 'Ціль',
+    trackUnsupportedTitle: 'Відстеження недоступне',
+    trackUnsupportedBody: 'Сповіщення потребують dev-збірки. Expo Go їх не підтримує.',
+    noConnectionsTitle: 'Немає сполучень',
+    noConnectionsBody: 'Зачекайте, поки на цьому маршруті з’явиться рейс.',
+    stopTrackingTripA11y: 'Зупинити відстеження подорожі',
+    trackNearestA11y: 'Відстежувати найближчий рейс',
     pinUnsupportedTitle: 'Закріплення недоступне',
     pinUnsupportedBody: 'Закріплені сповіщення потребують dev-збірки — Expo Go не підтримує сповіщень.',
     notifOffTitle: 'Сповіщення вимкнено',

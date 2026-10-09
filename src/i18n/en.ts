@@ -254,6 +254,12 @@ export const en: Strings = {
   routes: {
     gpsAddress: 'Use current position',
     destFallback: 'Destination',
+    trackUnsupportedTitle: 'Tracking unavailable',
+    trackUnsupportedBody: 'Notifications require a development build. Expo Go does not support them.',
+    noConnectionsTitle: 'No connections',
+    noConnectionsBody: 'Wait for a departure to appear on this route.',
+    stopTrackingTripA11y: 'Stop tracking the trip',
+    trackNearestA11y: 'Track the nearest connection',
     pinUnsupportedTitle: 'Pin unavailable',
     pinUnsupportedBody: 'Pinned notifications require a development build — Expo Go does not support notifications.',
     notifOffTitle: 'Notifications off',
