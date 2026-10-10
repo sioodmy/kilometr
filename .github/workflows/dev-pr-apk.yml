@@ -1,0 +1,221 @@
+name: Dev PR APK Preview (Self-hosted)
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Runner'
+        required: true
+        default: 'self-hosted'
+        type: choice
+        options:
+          - 'self-hosted'
+          - 'ubuntu-latest'
+      pr_number:
+        description: 'Numer PR do skomentowania'
+        required: false
+        default: '129'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: 'dev-pr-apk-preview'
+  cancel-in-progress: true
+
+env:
+  ANDROID_COMPILE_SDK: '36'
+  ANDROID_BUILD_TOOLS: '36.0.0'
+  ANDROID_NDK: '27.1.12297006'
+  ANDROID_CMAKE: '3.30.5'
+
+jobs:
+  build-preview:
+    name: Build Dev PR APK
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.head_ref == 'dev')
+    runs-on: ${{ inputs.runner || 'self-hosted' }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 0
+
+      - name: Extract Git metadata
+        id: git-meta
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          COMMIT_MSG="$(git log -1 --pretty=%s | tr '"' "'" | head -c 80)"
+          VERSION="dev-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "commit_msg=$COMMIT_MSG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Resolve Android SDK
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_HOME:-}" ]; then
+            if [ -d "$HOME/android-sdk" ]; then
+              export ANDROID_HOME="$HOME/android-sdk"
+            elif [ -d "$HOME/Android/Sdk" ]; then
+              export ANDROID_HOME="$HOME/Android/Sdk"
+            elif [ -d "/usr/lib/android-sdk" ]; then
+              export ANDROID_HOME="/usr/lib/android-sdk"
+            fi
+          fi
+
+          if [ -n "${ANDROID_HOME:-}" ]; then
+            echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+            echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+            if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+              echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+            fi
+            if [ -d "$ANDROID_HOME/platform-tools" ]; then
+              echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+            fi
+          fi
+
+      - name: Install Android SDK packages if missing
+        run: |
+          set -euo pipefail
+          if command -v sdkmanager >/dev/null 2>&1; then
+            yes | sdkmanager --licenses >/dev/null 2>&1 || true
+            sdkmanager \
+              "platform-tools" \
+              "platforms;android-${ANDROID_COMPILE_SDK}" \
+              "build-tools;${ANDROID_BUILD_TOOLS}" \
+              "ndk;${ANDROID_NDK}" \
+              "cmake;${ANDROID_CMAKE}" || true
+          fi
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Expo Prebuild
+        env:
+          APP_VERSION: ${{ steps.git-meta.outputs.version }}
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Tune Gradle
+        run: |
+          set -euo pipefail
+          GP=android/gradle.properties
+          printf '\n' >> "$GP"
+          cat >> "$GP" <<'EOF'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          org.gradle.caching=true
+          EOF
+
+      - name: Build Android Release APK (arm64-v8a)
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace -PreactNativeArchitectures=arm64-v8a
+
+      - name: Prepare APK artifact
+        run: |
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
+          if [ -z "$APK" ]; then
+            echo "::error::Nie znaleziono pliku APK w android/app/build/outputs/apk/release"
+            exit 1
+          fi
+          mkdir -p apk-dist
+          cp "$APK" apk-dist/kilometr-dev-arm64.apk
+          (cd apk-dist && sha256sum kilometr-dev-arm64.apk > kilometr-dev-arm64.apk.sha256)
+          ls -lh apk-dist
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kilometr-dev-arm64-apk
+          path: apk-dist/*
+          retention-days: 14
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number || '129' }}
+          SHORT_SHA: ${{ steps.git-meta.outputs.short_sha }}
+          COMMIT_MSG: ${{ steps.git-meta.outputs.commit_msg }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ARTIFACT_NAME: 'kilometr-dev-arm64-apk'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = process.env.PR_NUMBER ? Number(process.env.PR_NUMBER) : null;
+            if (!prNumber) {
+              console.log('Brak numeru PR, pomijam dodanie komentarza.');
+              return;
+            }
+
+            const shortSha = process.env.SHORT_SHA || context.sha.substring(0, 7);
+            const commitMsg = process.env.COMMIT_MSG || '';
+            const runUrl = process.env.RUN_URL;
+            const artifactName = process.env.ARTIFACT_NAME;
+            const directDownload = `https://nightly.link/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/${artifactName}.zip`;
+
+            const marker = '<!-- dev-preview-apk-comment -->';
+            const body = [
+              marker,
+              '### 📱 Dev Preview APK gotowy do testow',
+              '',
+              `- **Commit:** [\`${shortSha}\`](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/commit/${shortSha}) ${commitMsg ? `(${commitMsg})` : ''}`,
+              `- **Data:** ${new Date().toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}`,
+              '- **Architektura:** `arm64-v8a`',
+              '',
+              '#### 📥 Pobierz APK',
+              `- **[Bezposrednie pobranie (ZIP z APK)](${directDownload})** *(1 klikniecie przez nightly.link, bez logowania)*`,
+              `- **[Szczegoly uruchomienia i artefakty](${runUrl})**`,
+              '',
+              '> Zainstaluj bezposrednio na telefonie z Androidem.'
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+              console.log(`Zaktualizowano istniejacy komentarz #${existing.id} w PR #${prNumber}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: body,
+              });
+              console.log(`Dodano nowy komentarz w PR #${prNumber}`);
+            }
