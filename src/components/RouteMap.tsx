@@ -45,6 +45,11 @@ interface RouteMapProps {
   vehicle?: MapVehicle | null;
   user?: { lat: number; lon: number; heading: number | null } | null;
   selectedLegId?: string | null;
+  /**
+   * Bazowy URL lokalnego serwera mapy. Gdy podany, kafle, glify i silnik
+   * mapy idą z telefonu, więc mapa działa bez internetu.
+   */
+  offlineBase?: string | null;
   /** Wysokość panelu pod mapą — tyle marginesu zostawiamy przy dopasowaniu. */
   paddingBottom?: number;
   /** Pasek u góry zasłania trasę, więc dopasowanie musi go zostawić. */
@@ -71,6 +76,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     vehicle = null,
     user = null,
     selectedLegId = null,
+    offlineBase = null,
     paddingBottom = 190,
     paddingTop = 42,
     onReady,
@@ -89,8 +95,8 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   const [attempt, setAttempt] = useState(0);
 
   const html = useMemo(
-    () => buildRouteMapDocument({ route, vehicle, user, selectedLegId }),
-    [route?.id, attempt],
+    () => buildRouteMapDocument({ route, vehicle, user, selectedLegId, offlineBase }),
+    [route?.id, attempt, offlineBase],
   );
 
   const send = useCallback((msg: MapInMessage) => {

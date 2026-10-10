@@ -27,6 +27,7 @@ import {
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard, PrefsToggle } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
+import { OfflineMapCard } from '../src/components/OfflineMapCard';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
 
 function dataStatusLabel(status: DataStatus): string {
@@ -451,6 +452,11 @@ export default function SettingsScreen() {
           <Text style={styles.sectionLabelText}>{s.settings.backupTitle}</Text>
         </View>
         <BackupCard />
+
+        <View style={styles.sectionLabel}>
+          <Text style={styles.sectionLabelText}>{s.settings.offlineMapTitle}</Text>
+        </View>
+        <OfflineMapCard />
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>

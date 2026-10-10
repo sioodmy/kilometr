@@ -29,6 +29,7 @@ import {
 } from '../src/services/routeGeometry';
 import { RouteMap, type RouteMapHandle } from '../src/components/RouteMap';
 import { getLineColors, inferTransitMode, LineBadge } from '../src/components/LineBadge';
+import { hasTilePack, startMapServer, stopMapServer } from '../modules/kilometr-maps';
 import { LiveDot } from '../src/components/LiveDot';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
@@ -111,6 +112,25 @@ export default function RouteMapScreen() {
   const pushGeometry = useCallback((legId: string, coords: Coord[]) => {
     geometryRef.current.set(legId, coords);
     mapRef.current?.setGeometry(legId, coords);
+  }, []);
+
+  // ─── Zestaw mapy offline ────────────────────────────────────
+  // Gdy pakiet kafelków jest na telefonie, startujemy lokalny serwer i mapa
+  // idzie z niego zamiast z sieci. Bez pakietu `offlineBase` zostaje null
+  // i wszystko działa jak dotąd (online).
+  const [offlineBase, setOfflineBase] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!(await hasTilePack())) return;
+      const base = await startMapServer();
+      if (!cancelled && base) setOfflineBase(base);
+    })();
+    return () => {
+      cancelled = true;
+      // Serwer żyje tylko na ekranie mapy; przy wyjściu gasimy go.
+      void stopMapServer();
+    };
   }, []);
 
   useEffect(() => {
@@ -306,6 +326,7 @@ export default function RouteMapScreen() {
         vehicle={vehicle}
         user={userLoc}
         selectedLegId={selectedLegId}
+        offlineBase={offlineBase}
         paddingTop={insets.top + 72}
         paddingBottom={panelHeight + insets.bottom + 16}
         onReady={handleMapReady}
