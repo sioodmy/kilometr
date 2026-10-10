@@ -41,7 +41,15 @@ env:
 jobs:
   build-preview:
     name: Build Dev PR APK
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.head_ref == 'dev')
+    # Twarde zabezpieczenie runnera self-hosted przed kodem z zewnatrz:
+    # 1. PR musi pochodzic bezposrednio z glownego repo (nie z forka)
+    # 2. Tylko dla galezi zrodlowej 'dev'
+    # 3. Dla recznego wywolania (workflow_dispatch) tylko wlasciciel repozytorium
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'dev') ||
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner)
     runs-on: ${{ inputs.runner || 'self-hosted' }}
 
     steps:
