@@ -121,11 +121,16 @@ export function NavMiniMap({
 
   return (
     <View
-      style={[styles.frame, { width: size, height: size, borderRadius: size / 2 }]}
+      style={[
+        styles.frame,
+        { width: size, height: size, borderRadius: size / 2 },
+      ]}
       accessible={false}
       importantForAccessibility="no-hide-descendants"
     >
       <Svg width={size} height={size}>
+        {/* Podkład: bez niego koło zlewa się z kolorem karty. */}
+        <Circle cx={geometry.c} cy={geometry.c} r={geometry.c} fill={scheme.surfaceContainerLow} />
         <Path
           d={geometry.d}
           stroke={scheme.surfaceContainerHighest}
@@ -160,7 +165,7 @@ export function NavMiniMap({
 const styles = StyleSheet.create({
   frame: {
     overflow: 'hidden',
-    backgroundColor: scheme.surfaceContainerLowest,
+    backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.full,
   },
 });

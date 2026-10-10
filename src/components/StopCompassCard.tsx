@@ -61,8 +61,16 @@ interface StopCompassCardProps {
 
 /** Poniżej tej odległości do przystanku radar był czytelniejszy niż mapa. */
 const COMPASS_ONLY_M = 100;
-/** Fixy gorsze niż to odrzucamy: GPS w budynku kłamie o kilkadziesiąt metrów. */
+/**
+ * Fixy gorsze niż to odrzucamy: GPS w budynku kłamie o kilkadziesiąt metrów.
+ */
 const MAX_ACCURACY_M = 60;
+/**
+ * Dalej niż to od trasy nie prowadzimy po manewrach. Rzut na linię i tak
+ * coś znajdzie, ale to będzie przypadkowy punkt: „wysiadaj 5,4 km” stojąc
+ * 4 km od trasy jest kłamstwem, które gorsze od braku instrukcji.
+ */
+const OFF_ROUTE_M = 45;
 
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3;
@@ -309,17 +317,21 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
 
   const drawPath = realPath ?? coords;
 
-  const guidance: Guidance | null = useMemo(() => {
+  // Surowa instrukcja liczona zawsze, żeby znać odległość od trasy. Poniżej
+  // progu nie pokazujemy jej wcale, bo rzut jest wtedy zmyślony.
+  const rawGuidance: Guidance | null = useMemo(() => {
     if (!userLocation) return null;
     const pos: Coord = [userLocation.lat, userLocation.lon];
-    // Na prawdziwej geometrii liczymy od nowa; spany nóg pasują, bo
-    // budowa ścieżki pomija duplikaty w tych samych miejscach.
     if (realPath && realPath.length > 1) {
       const g = nextGuidance(realPath, spans, pos);
       if (g) return g;
     }
     return nextGuidance(coords, spans, pos);
   }, [userLocation, realPath, coords, spans]);
+
+  const offRouteM = rawGuidance?.offsetM ?? null;
+  const offRoute = offRouteM != null && offRouteM > OFF_ROUTE_M;
+  const guidance = offRoute ? null : rawGuidance;
 
   const nextUp = useMemo(() => {
     if (!userLocation) return null;
