@@ -392,6 +392,67 @@ export default function HomeScreen() {
     };
   }, [smart, currentCoords, locTitle, warmupNonce]);
 
+  // Prawe strony wierszy liczymy raz — po odjeździe kursu trzeba je przeliczyć,
+  // żeby pokazywały następny pojazd, a nie „X min temu". Ticker (homeTick) co
+  // 30 s wyłapuje cele, którym właśnie uciekł pierwszy kurs z linią, i dociąga
+  // im świeżą trasę per cel (bez mielenia spacerów i całej listy naraz).
+  const quickRefreshGen = useRef(0);
+  useEffect(() => {
+    if (sheetMode !== null || smart.length === 0) return;
+    const nowS = (() => {
+      const d = new Date();
+      return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    })();
+    const expired = smart.filter((d) => {
+      const c = firstConns[d.id];
+      if (!c || c.departureSec <= 0 || c.departureSec > nowS) return false;
+      return c.legs.some((l) => l.mode !== 'walk' && l.line);
+    });
+    if (expired.length === 0) return;
+    const gen = ++quickRefreshGen.current;
+    const s = getSettingsSync();
+    void (async () => {
+      for (const d of expired) {
+        if (quickRefreshGen.current !== gen) return;
+        try {
+          const conns = await RoutingService.getConnections({
+            fromTitle: locTitle,
+            fromLat: currentCoords.lat,
+            fromLon: currentCoords.lon,
+            toId: d.id,
+            toTitle: d.title,
+            toLat: d.lat,
+            toLon: d.lon,
+            maxTransfers: s.maxTransfers,
+            minTransferSec: s.minTransferSec,
+            trainsEnabled: s.trainsEnabled,
+            trainMinTransferSec: s.trainMinTransferSec,
+            maxWalkM: s.maxWalkM,
+            walkSpeedMps: profileWalkSpeedMps(s.walkPace),
+          });
+          if (quickRefreshGen.current !== gen) return;
+          const first = conns.length ? conns[0] : undefined;
+          if (!first) continue;
+          setNextDepart((prev) =>
+            prev[d.id] === first.departInMin ? prev : { ...prev, [d.id]: first.departInMin },
+          );
+          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
+          const transitLeg = first.legs.find((l) => l.mode !== 'walk' && l.line);
+          if (transitLeg?.line) {
+            setFirstLegs((prev) => ({
+              ...prev,
+              [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
+            }));
+          }
+        } catch {
+          // Brak trasy do celu — wiersz zostaje bez prawej strony.
+        }
+      }
+    })();
+    // Świeży `firstConns` łapiemy z bieżącego renderu (homeTick go wymusza).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeTick]);
+
   // Użytkownik zaczął szukać własnej trasy — tniemy dogrzewanie ostatnich
   // miejsc i skupiamy silnik tylko na trasie wybranej przez użytkownika.
   // Po zamknięciu arkusza dogrzewanie rusza od nowa (warmupNonce).
