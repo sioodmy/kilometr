@@ -283,8 +283,6 @@ export const en: Strings = {
       in: 'in',
       onStop: 'at the stop',
       detailA11y: (what: string, dist: string) => `${what}, ${dist}`,
-      miniMapA11y: (what: string, dist: string) =>
-        `Route mini-map. ${what}, ${dist}. Tap to open the full map.`,
     },
   },
   routes: {
@@ -556,7 +554,7 @@ export const en: Strings = {
     left: 'On your left',
     slightLeft: 'Slightly left',
     noCoords: 'This stop has no coordinates in the timetable.',
-    locOff: 'Location is off — without it I can’t show the direction to the stop.',
+    locOff: 'Location is off. Without it I can’t show the direction to the stop.',
     locWaiting: 'No position yet. Wait for GPS or open the full map.',
     title: 'Stop location',
     followCompass: 'Follow the compass',
@@ -565,6 +563,9 @@ export const en: Strings = {
     straight: 'as the crow flies',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`),
     walkMins: (m: number) => `~${m} min on foot`,
+    headToStop: 'Head toward the stop',
+    navToStop: (dist: string) => `${dist} to the stop`,
+    navA11y: (what: string, dist: string) => `${what}, ${dist}. Tap to open the full map.`,
     openSettingsA11y: 'Open app settings',
     enableLoc: 'Enable location in settings',
   },

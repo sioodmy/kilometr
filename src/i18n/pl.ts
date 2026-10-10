@@ -292,8 +292,6 @@ export const pl = {
       in: 'za',
       onStop: 'na przystanku',
       detailA11y: (what: string, dist: string) => `${what}, ${dist}`,
-      miniMapA11y: (what: string, dist: string) =>
-        `Mini-mapa trasy. ${what}, ${dist}. Dotknij, aby otworzyć pełną mapę.`,
     },
   },
   routes: {
@@ -566,7 +564,7 @@ export const pl = {
     left: 'Po Twojej lewej',
     slightLeft: 'Lekko w lewo',
     noCoords: 'Ten przystanek nie ma współrzędnych w rozkładzie.',
-    locOff: 'Lokalizacja jest wyłączona — bez niej nie pokażę kierunku do przystanku.',
+    locOff: 'Lokalizacja jest wyłączona. Bez niej nie pokażę kierunku do przystanku.',
     locWaiting: 'Nie mam jeszcze Twojej pozycji. Poczekaj na sygnał GPS albo skorzystaj z pełnej mapy.',
     title: 'Lokalizacja przystanku',
     followCompass: 'Kieruj się według kompasu',
@@ -575,6 +573,10 @@ export const pl = {
     straight: 'w linii prostej',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`),
     walkMins: (m: number) => `~${m} min pieszo`,
+    headToStop: 'Idź w stronę przystanku',
+    navToStop: (dist: string) => `${dist} do przystanku`,
+    navA11y: (what: string, dist: string) =>
+      `${what}, ${dist}. Dotknij, aby otworzyć pełną mapę.`,
     openSettingsA11y: 'Otwórz ustawienia aplikacji',
     enableLoc: 'Włącz lokalizację w ustawieniach',
     },

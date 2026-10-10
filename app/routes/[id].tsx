@@ -327,8 +327,8 @@ export default function RouteDetailsScreen() {
             <LegTimeline legs={item.legs} />
 
             {/* Nawigacja do przystanku siedzi na dole ekranu, tam, gdzie
-                sięga kciuk. Mini-mapka w środku jest klikalna i otwiera
-                pełną mapę trasy. */}
+                sięga kciuk. Cały widget jest klikalny i otwiera pełną
+                mapę trasy. */}
             <StopCompassCard
               connection={item}
               onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
