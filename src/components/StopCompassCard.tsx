@@ -36,10 +36,9 @@ import {
   Signpost,
   TramFront,
   TrainFront,
-  TriangleAlert,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
-import type { Connection, LatLon } from '../types/models';
+import type { Connection } from '../types/models';
 import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
 import { walkMinutesFor } from '../services/settings';
 import { useEffectiveWalkSpeedMps } from '../services/walkPace';
