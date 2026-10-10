@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { kvGet, kvSet } from './storage';
-import { WALK_PACE_DEFAULTS_MPS, type WalkPaceProfile } from './walkPaceMath';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -14,7 +13,19 @@ function tr(): Strings {
   return SETTINGS_DICTS[getLocaleSync()] ?? pl;
 }
 
-export { WALK_PACE_DEFAULTS_MPS, type WalkPaceProfile };
+/** Wariant tempa chodzenia wybierany w ustawieniach. */
+export type WalkPaceProfile = 'slow' | 'normal' | 'fast';
+
+/**
+ * Tempo (m/s) dla każdego profilu: spokojny spacer ok. 3,6 km/h, typowy chód
+ * miejski ok. 4,8 km/h, szybki marsz ok. 6,0 km/h. To jedyne źródło tempa dla
+ * planera, kart i powiadomień.
+ */
+export const WALK_PACE_DEFAULTS_MPS: Record<WalkPaceProfile, number> = {
+  slow: 1.0,
+  normal: 1.34,
+  fast: 1.67,
+};
 
 export function profileWalkSpeedMps(pace: WalkPaceProfile): number {
   return WALK_PACE_DEFAULTS_MPS[pace] ?? WALK_PACE_DEFAULTS_MPS.normal;
@@ -27,16 +38,8 @@ export interface RoutingSettings {
   minTransferSec: number;
   /** metry, default 800 */
   maxWalkM: number;
-  /**
-   * Profil tempa chodzenia (wolno/normalnie/szybko). Zapas, gdy nie ma
-   * pomiarów z `walkPace`. Efektywne tempo liczy `resolveWalkSpeedSync`.
-   */
+  /** Profil tempa chodzenia. Planer i czasy dojścia liczy `profileWalkSpeedMps`. */
   walkPace: WalkPaceProfile;
-  /**
-   * @deprecated Zastąpione przez `walkPace` + pomiary. Trzymane dla zgodności
-   * ze starymi kopiami zapasowymi i synchronizowane z domyślną profila.
-   */
-  walkSpeedMps: number;
   /** metry, default 300. Promień kotwiczenia lokalizacji/przystanku. */
   anchorRadiusM: number;
   /** Czy RAPTOR uwzględnia pociągi KD w trybie 'all'. Default true. */
@@ -50,7 +53,6 @@ export const DEFAULT_SETTINGS: RoutingSettings = {
   minTransferSec: 120,
   maxWalkM: 800,
   walkPace: 'normal',
-  walkSpeedMps: WALK_PACE_DEFAULTS_MPS.normal,
   anchorRadiusM: 300,
   trainsEnabled: true,
   trainMinTransferSec: 300,
@@ -60,7 +62,6 @@ export const SETTINGS_LIMITS = {
   maxTransfers: { min: 0, max: 3, step: 1 },
   minTransferSec: { min: 60, max: 600, step: 30 },
   maxWalkM: { min: 200, max: 1500, step: 100 },
-  walkSpeedMps: { min: 0.8, max: 2.0, step: 0.1 },
   anchorRadiusM: { min: 100, max: 800, step: 50 },
   trainMinTransferSec: { min: 120, max: 1200, step: 60 },
 } as const;
@@ -74,17 +75,22 @@ function clampInt(value: unknown, def: number, min: number, max: number): number
 
 const WALK_PACES: readonly WalkPaceProfile[] = ['slow', 'normal', 'fast'];
 
-/** Stare tempo (m/s) na profil: migracja jednorazowa przy wczytaniu. */
+/** Stare tempo (m/s) na profil: migracja danych z wcześniejszych wersji. */
 function paceFromLegacyMps(mps: number): WalkPaceProfile {
   if (mps <= 1.1) return 'slow';
   if (mps <= 1.5) return 'normal';
   return 'fast';
 }
 
-function clampSettings(s: Partial<RoutingSettings>): RoutingSettings {
+/** Wpis, który mógł przyjść ze starego zapisu albo kopii: ma jeszcze walkSpeedMps. */
+type StoredSettings = Partial<RoutingSettings> & { walkSpeedMps?: number };
+
+function clampSettings(s: StoredSettings): RoutingSettings {
+  // Profile nie było wcześniej, tylko tempo w m/s. Mapujemy je raz przy
+  // wczytaniu, żeby użytkownik nie stracił ustawienia po aktualizacji.
   const walkPace: WalkPaceProfile = WALK_PACES.includes(s.walkPace as WalkPaceProfile)
     ? (s.walkPace as WalkPaceProfile)
-    : s.walkSpeedMps != null && s.walkSpeedMps !== DEFAULT_SETTINGS.walkSpeedMps
+    : s.walkSpeedMps != null
       ? paceFromLegacyMps(s.walkSpeedMps)
       : DEFAULT_SETTINGS.walkPace;
   return {
@@ -92,9 +98,6 @@ function clampSettings(s: Partial<RoutingSettings>): RoutingSettings {
     minTransferSec: clampInt(s.minTransferSec, DEFAULT_SETTINGS.minTransferSec, SETTINGS_LIMITS.minTransferSec.min, SETTINGS_LIMITS.minTransferSec.max),
     maxWalkM: clampInt(s.maxWalkM, DEFAULT_SETTINGS.maxWalkM, SETTINGS_LIMITS.maxWalkM.min, SETTINGS_LIMITS.maxWalkM.max),
     walkPace,
-    // Zapas synchronizowany z profilem, żeby stare odczyty (backup, silnik)
-    // dostawały sensowną liczbę nawet bez pomiarów.
-    walkSpeedMps: profileWalkSpeedMps(walkPace),
     anchorRadiusM: clampInt(s.anchorRadiusM, DEFAULT_SETTINGS.anchorRadiusM, SETTINGS_LIMITS.anchorRadiusM.min, SETTINGS_LIMITS.anchorRadiusM.max),
     trainsEnabled: typeof s.trainsEnabled === 'boolean' ? s.trainsEnabled : DEFAULT_SETTINGS.trainsEnabled,
     trainMinTransferSec: clampInt(s.trainMinTransferSec, DEFAULT_SETTINGS.trainMinTransferSec, SETTINGS_LIMITS.trainMinTransferSec.min, SETTINGS_LIMITS.trainMinTransferSec.max),
@@ -114,7 +117,7 @@ export async function loadSettings(): Promise<RoutingSettings> {
   try {
     const raw = await kvGet(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<RoutingSettings>;
+      const parsed = JSON.parse(raw) as StoredSettings;
       cached = clampSettings(parsed);
     }
   } catch {
@@ -158,15 +161,14 @@ export function useRoutingSettings() {
 }
 
 /**
- * Zapasowe tempo profilu (m/s) — lekka subskrypcja dla miejsc, które nie
- * znają pomiarów. Efektywne tempo (pomiary + profil) daje
- * `useEffectiveWalkSpeedMps` z `walkPace`.
+ * Tempo chodzenia (m/s) z aktualnego profilu. Lekka subskrypcja dla kart
+ * połączeń, osi czasu i kompasu, które przeliczają metry na minuty.
  */
 export function useWalkSpeedMps(): number {
-  const [mps, setMps] = useState(cached.walkSpeedMps);
+  const [mps, setMps] = useState(() => profileWalkSpeedMps(cached.walkPace));
 
   useEffect(() => {
-    const onChange = (s: RoutingSettings) => setMps(s.walkSpeedMps);
+    const onChange = (s: RoutingSettings) => setMps(profileWalkSpeedMps(s.walkPace));
     listeners.add(onChange);
     return () => {
       listeners.delete(onChange);
@@ -176,7 +178,7 @@ export function useWalkSpeedMps(): number {
   return mps;
 }
 
-/** Metry przechodzone w minucie dla danego tempa (1.34 m/s to ok. 80 m/min). */
+/** Metry przechodzone w minucie dla danego tempa (1,34 m/s to ok. 80 m/min). */
 export function walkMetersPerMinute(speedMps: number = WALK_PACE_DEFAULTS_MPS.normal): number {
   return Math.max(1, speedMps * 60);
 }
@@ -221,13 +223,4 @@ export function formatDistance(meters: number): string {
 export function formatWalkSpeed(mps: number): string {
   const kmh = mps * 3.6;
   return tr().common.kmh(kmh.toFixed(1));
-}
-
-export function walkSpeedLabel(mps: number): string {
-  const s = tr().settings;
-  if (mps <= 0.9) return s.speedSlow;
-  if (mps <= 1.1) return s.speedCalm;
-  if (mps <= 1.4) return s.speedNormal;
-  if (mps <= 1.7) return s.speedFast;
-  return s.speedVeryFast;
 }

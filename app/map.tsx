@@ -214,7 +214,7 @@ export default function RouteMapScreen() {
         vehicleId: match.vehicle.vehicleId,
         legId: leg.id,
         line: match.vehicle.line,
-        mode: inferTransitMode(leg.mode, match.vehicle.line) === 'tram' ? 'tram' : 'bus',
+        mode: inferTransitMode(leg.mode, match.vehicle.line) === 'tram' ? 'tram' : leg.mode === 'train' ? 'train' : 'bus',
         color: bg,
         lat: match.vehicle.lat,
         lon: match.vehicle.lon,

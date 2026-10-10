@@ -40,8 +40,8 @@ import {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
-import { walkMinutesFor } from '../services/settings';
-import { useEffectiveWalkSpeedMps } from '../services/walkPace';
+import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+
 import { useStrings, type Strings } from '../i18n';
 import { NavMiniMap } from './NavMiniMap';
 import { buildMapRoute, fetchLegGeometry, type Coord } from '../services/routeGeometry';
@@ -146,11 +146,12 @@ function normalizeAngle(a: number): number {
 
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
   const s = useStrings();
-  const walkMps = useEffectiveWalkSpeedMps();
-  const transitLegs = useMemo(
-    () => connection.legs.filter((l) => l.mode !== 'walk'),
-    [connection.legs],
-  );
+  // Czas dojścia liczony z tempa wybranego profilu w ustawieniach.
+  const walkMps = useWalkSpeedMps();
+  // Znajdź etapy podróży
+  const transitLegs = useMemo(() => {
+    return connection.legs.filter((l) => l.mode !== 'walk');
+  }, [connection.legs]);
 
   const [selectedLegIdx, setSelectedLegIdx] = useState(0);
 

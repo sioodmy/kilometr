@@ -40,8 +40,7 @@ import {
 // Mediana czasu dojazdu jest czysta i idzie do nawyku w „Ostatnich miejscach",
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
 import { typicalDurationMin } from '../../src/services/smartRanking';
-import { getSettingsSync, loadSettings } from '../../src/services/settings';
-import { getEffectiveWalkSpeedSync } from '../../src/services/walkPace';
+import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -406,8 +405,8 @@ export default function RoutesScreen() {
       trainsEnabled: cfg.trainsEnabled,
       trainMinTransferSec: cfg.trainMinTransferSec,
       maxWalkM: cfg.maxWalkM,
-      // Tempo z pomiarów w tej okolicy, inaczej mediana overall, na końcu profil.
-      walkSpeedMps: getEffectiveWalkSpeedSync({ fromLat, fromLon, profile: cfg.walkPace }),
+      // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).
+      walkSpeedMps: profileWalkSpeedMps(cfg.walkPace),
     };
   };
 

@@ -51,6 +51,11 @@ const KIND_LITERALS: Record<string, { Icon: any; bg: string; fg: string }> = {
   church: { Icon: Church, bg: '#333816', fg: '#DCE775' },
 };
 
+/** Tytuł do wyświetlenia: przystanki w ALL CAPS (odróżnia je od adresów/POI). */
+export function suggestionDisplayTitle(item: Pick<Suggestion, 'title' | 'kind'>): string {
+  return item.kind === 'stop' ? item.title.toUpperCase() : item.title;
+}
+
 export interface SuggestionIconMeta { Icon: any; bg: string; fg: string; }
 
 /** Ta sama ikonka co w wierszu wyszukiwarki — po kategorii, inaczej po rodzaju. */
@@ -87,7 +92,7 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
 
   const distanceText = item.distanceM != null ? formatDistance(item.distanceM) : '';
   const subtitle = [cleanAddress, distanceText].filter(Boolean).join(' • ');
-  const displayTitle = item.kind === 'stop' ? item.title.toUpperCase() : item.title;
+  const displayTitle = suggestionDisplayTitle(item);
 
   return (
     <Pressable
