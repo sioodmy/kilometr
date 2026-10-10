@@ -5,6 +5,7 @@ import Svg, { Circle } from 'react-native-svg';
 import type { Coord } from '../services/routeGeometry';
 import { buildNavMapDocument } from '../map/navMapDocument';
 import { acquireMapServer } from '../services/mapServerLease';
+import { scheme } from '../theme/tokens';
 
 interface NavMiniMapProps {
   path: Coord[];
@@ -109,6 +110,7 @@ export function NavMiniMap({
   }, []);
 
   const accuracyRadius = accuracyM != null ? Math.min(40, Math.max(6, accuracyM * 0.8)) : 0;
+  const userColor = scheme.primary;
 
   return (
     <View style={[styles.frame, style]}>
@@ -139,15 +141,15 @@ export function NavMiniMap({
               cx="50%"
               cy="50%"
               r={accuracyRadius}
-              fill={accent}
+              fill={userColor}
               fillOpacity={0.13}
-              stroke={accent}
+              stroke={userColor}
               strokeOpacity={0.3}
               strokeWidth={1}
             />
           ) : null}
-          <Circle cx="50%" cy="50%" r={10} fill={accent} fillOpacity={0.22} />
-          <Circle cx="50%" cy="50%" r={5} fill={accent} stroke="#FFFFFF" strokeWidth={2} />
+          <Circle cx="50%" cy="50%" r={10} fill={userColor} fillOpacity={0.22} />
+          <Circle cx="50%" cy="50%" r={5} fill={userColor} stroke="#FFFFFF" strokeWidth={2} />
         </Svg>
       ) : null}
     </View>
