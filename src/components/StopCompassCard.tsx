@@ -66,6 +66,12 @@ const REROUTE_MIN_MOVE_M = 25;
 const REROUTE_MAX_DIST_M = 10000;
 const ON_TRANSIT_MPS = 4;
 
+// Zwykły View/Pressable nie przyjmie Animated.Value w stylu (na Fabric kończy
+// się to twardym crashem `opacity: ReadableNativeMap cannot be cast to Double`
+// przy pierwszym renderze). Cały widget nawigacji jest klikalny, więc animowane
+// krycie dostaje przez animowany Pressable.
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3;
   const φ1 = (lat1 * Math.PI) / 180;
@@ -535,7 +541,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           karta skakała w momencie fixu GPS. */}
       {showNav && userPos ? (
         // Cały widget jest jednym przyciskiem: dotknięcie otwiera pełną mapę.
-        <Pressable
+        <AnimatedPressable
           onPress={openMap}
           style={({ pressed }) => [styles.navWidget, styles.navSlot, { opacity: navOpacity }, pressed && styles.navWidgetPressed]}
           accessibilityRole="button"
@@ -584,10 +590,10 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
             </Text>
             <Maximize2 size={16} color={scheme.onSurfaceVariant} />
           </View>
-        </Pressable>
+        </AnimatedPressable>
       ) : compassReady ? (
         /* Do 100 m pokazujemy kompas. */
-        <View style={[styles.compassRow, styles.navSlot, { opacity: navOpacity }]}>
+        <Animated.View style={[styles.compassRow, styles.navSlot, { opacity: navOpacity }]}>
           <View style={styles.dialContainer}>
             <View style={styles.dial}>
               <View style={styles.innerRing} />
@@ -616,12 +622,12 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
               </View>
             )}
           </View>
-        </View>
+        </Animated.View>
       ) : (
-        <View style={[styles.hintRow, styles.navSlot, styles.navSlotHint, { opacity: navOpacity }]}>
+        <Animated.View style={[styles.hintRow, styles.navSlot, styles.navSlotHint, { opacity: navOpacity }]}>
           <LocateFixed size={18} color={scheme.onSurfaceVariant} />
           <Text style={styles.hintText}>{directionLabel}</Text>
-        </View>
+        </Animated.View>
       )}
 
       {locState === 'denied' && hasTarget && (
