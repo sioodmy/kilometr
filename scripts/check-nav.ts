@@ -269,6 +269,16 @@ async function testGuidance() {
   const atBoard = nextGuidance(coords, spans, coords[spans[1].end]);
   check('na samym przystanku wysiadania: wysiadaj', atBoard?.maneuver.kind === 'alight', atBoard?.maneuver.kind);
 
+  // Spacer dojrzedl do przystanku, na ktorym zaczyna sie kurs: to nie
+  // „dotarlismy”, tylko „wsiadaj”, bo celem jest dopiero koniec trasy.
+  const gBoard = nextGuidance(coords, spans, coords[spans[0].end]);
+  check('na koncu nogi pieszej przed kursem: wsiadaj', gBoard?.maneuver.kind === 'board', gBoard?.maneuver.kind);
+  check('wsiadanie dotyczy nogi pieszej', gBoard?.leg.id === 'l1', gBoard?.leg.id);
+
+  // Ostatnia noga piesza kończy sie w celu, tam „dotarlismy” jest wlasciwe.
+  const gArrive = nextGuidance(coords, spans, coords[spans[2].end - 1]);
+  check('na koncu ostatniej nogi: dotarcie', gArrive?.maneuver.kind === 'arrive', gArrive?.maneuver.kind);
+
   // Cel -> dotarliśmy.
   const g4 = nextGuidance(coords, spans, coords[coords.length - 1]);
   check('na końcu trasy: dotarcie', g4?.maneuver.kind === 'arrive', g4?.maneuver.kind);

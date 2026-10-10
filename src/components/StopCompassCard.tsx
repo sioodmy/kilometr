@@ -381,12 +381,18 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
   const ManeuverIcon = useMemo(() => {
     if (!guidance) return null;
     const kind = guidance.maneuver.kind;
-    if (kind === 'board' || kind === 'alight') {
+    if (kind === 'alight') {
       return legIcon(guidance.leg.mode, guidance.leg.line);
+    }
+    if (kind === 'board') {
+      // Wsiadasz w to, co jest dalej, a nie w to, po czym idziesz.
+      const i = mapRoute.legs.findIndex((l) => l.id === guidance.leg.id);
+      const next = mapRoute.legs[i + 1];
+      return legIcon(next?.mode ?? guidance.leg.mode, next?.line);
     }
     if (kind === 'arrive') return Footprints;
     return maneuverIcon(kind);
-  }, [guidance]);
+  }, [guidance, mapRoute]);
 
   const maneuverLabel = useMemo(() => {
     if (!guidance) return null;

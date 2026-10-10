@@ -335,9 +335,15 @@ export interface Guidance {
   overshot: boolean;
 }
 
-/** Na końcu nogi kursowej zaczyna się przyjazd albo trzeba wysiąść. */
-function legEndAction(leg: MapLeg): ManeuverKind {
-  return leg.mode === 'walk' ? 'arrive' : 'alight';
+/** Co robisz na końcu nogi: albo wsiadasz w następny pojazd, albo dotarłeś. */
+function legEndAction(leg: MapLeg, spans: LegSpan[], span: LegSpan): ManeuverKind {
+  if (leg.mode !== 'walk') return 'alight';
+  // Skończył się spacer. Jeśli dalej jest kurs, to nie „dotarłeś”, tylko
+  // „wsiadaj”: koniec nogi pieszej na trasie wieloprzystankowej jest
+  // przystankiem, a nie celem.
+  const next = spans[spans.indexOf(span) + 1];
+  if (next && next.leg.mode !== 'walk') return 'board';
+  return 'arrive';
 }
 
 /** Na początku nogi kursowej trzeba wsiąść. */
@@ -425,7 +431,7 @@ export function nextGuidance(
   const endIsCloser = legEndDist <= (turn ? turn.alongM - progressM : Infinity);
 
   if (endIsCloser) {
-    return base(legEndAction(leg), span.end, legEndDist);
+    return base(legEndAction(leg, spans, span), span.end, legEndDist);
   }
   if (!turn) {
     return base('straight', span.end, legEndDist);
