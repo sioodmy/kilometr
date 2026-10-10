@@ -568,12 +568,12 @@ export const pl = {
     locWaiting: 'Nie mam jeszcze Twojej pozycji. Poczekaj na sygnał GPS albo skorzystaj z pełnej mapy.',
     title: 'Lokalizacja przystanku',
     followCompass: 'Kieruj się według kompasu',
-    chooseChange: 'Wybierz przesiadkę:',
     directionPrefix: (d: string) => `kierunek ${d}`,
     straight: 'w linii prostej',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`),
     walkMins: (m: number) => `~${m} min pieszo`,
     headToStop: 'Idź w stronę przystanku',
+    nextStop: 'Następny przystanek',
     navToStop: (dist: string) => `${dist} do przystanku`,
     navA11y: (what: string, dist: string) =>
       `${what}, ${dist}. Dotknij, aby otworzyć pełną mapę.`,
