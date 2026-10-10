@@ -283,8 +283,6 @@ export const de: Strings = {
       in: 'in',
       onStop: 'an der Haltestelle',
       detailA11y: (what: string, dist: string) => `${what}, ${dist}`,
-      miniMapA11y: (what: string, dist: string) =>
-        `Mini-Karte der Route. ${what}, ${dist}. Tippen für die volle Karte.`,
     },
   },
   routes: {
@@ -555,7 +553,7 @@ export const de: Strings = {
     left: 'Links von dir',
     slightLeft: 'Leicht links',
     noCoords: 'Diese Haltestelle hat keine Koordinaten im Fahrplan.',
-    locOff: 'Standort ist aus — ohne ihn kann ich die Richtung zur Haltestelle nicht zeigen.',
+    locOff: 'Standort ist aus. Ohne ihn kann ich die Richtung zur Haltestelle nicht zeigen.',
     locWaiting: 'Noch keine Position. Warte auf GPS oder öffne die volle Karte.',
     title: 'Haltestellenstandort',
     followCompass: 'Folge dem Kompass',
@@ -564,6 +562,10 @@ export const de: Strings = {
     straight: 'Luftlinie',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`),
     walkMins: (m: number) => `~${m} Min. zu Fuß`,
+    headToStop: 'Richtung Haltestelle gehen',
+    navToStop: (dist: string) => `${dist} bis zur Haltestelle`,
+    navA11y: (what: string, dist: string) =>
+      `${what}, ${dist}. Tippen, um die volle Karte zu öffnen.`,
     openSettingsA11y: 'App-Einstellungen öffnen',
     enableLoc: 'Standort in den Einstellungen aktivieren',
   },

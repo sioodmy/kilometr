@@ -303,8 +303,6 @@ export const uk: Strings = {
       in: 'за',
       onStop: 'на зупинці',
       detailA11y: (what: string, dist: string) => `${what}, ${dist}`,
-      miniMapA11y: (what: string, dist: string) =>
-        `Мінімапа маршруту. ${what}, ${dist}. Торкнись, щоб відкрити повну мапу.`,
     },
   },
   routes: {
@@ -579,7 +577,7 @@ export const uk: Strings = {
     left: 'Ліворуч від тебе',
     slightLeft: 'Трохи ліворуч',
     noCoords: 'Ця зупинка не має координат у розкладі.',
-    locOff: 'Локацію вимкнено — без неї не покажу напрямок до зупинки.',
+    locOff: 'Локацію вимкнено. Без неї не покажу напрямок до зупинки.',
     locWaiting: 'Позиції ще немає. Зачекай на GPS або відкрий повну мапу.',
     title: 'Локація зупинки',
     followCompass: 'Орієнтуйся за компасом',
@@ -588,6 +586,9 @@ export const uk: Strings = {
     straight: 'по прямій',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} км` : `${m} м`),
     walkMins: (m: number) => `~${m} хв пішки`,
+    headToStop: 'Іди до зупинки',
+    navToStop: (dist: string) => `${dist} до зупинки`,
+    navA11y: (what: string, dist: string) => `${what}, ${dist}. Торкнись, щоб відкрити повну мапу.`,
     openSettingsA11y: 'Відкрити налаштування застосунку',
     enableLoc: 'Увімкни локацію в налаштуваннях',
   },
