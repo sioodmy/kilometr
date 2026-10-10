@@ -1,30 +1,23 @@
-// Statyczna mapka nawigacyjna widgetu: kawałek trasy wokół użytkownika,
-// obrócony kompasem tak, że kierunek jazdy jest zawsze w górze.
+// Mapka widgetu nawigacji: prawdziwe kafle OSM z trasą, obrócone tak, że
+// kierunek jazdy jest zawsze w górze.
 //
-// Świadomie bez WebView i bez kafelków: w promieniu kilkudziesięciu metrów
-// kafelki tylko szumią, a drugi silnik MapLibre na karcie kosztuje baterię.
-// Wszystko rysujemy wektorowo (react-native-svg), więc mapka jest ostra na
-// każdej gęstości ekranu, działa bez sieci i nie ma gestów: nie da się jej
-// przybliżyć ani przewinąć, a dotknięcie trafia w cały widget nad nią.
+// Drugi silnik MapLibre na karcie byłby za ciężki, więc tło to kilka
+// rastrowych kafli OSM (zwykłe <Image>, cache na dysku), a trasa leży na nich
+// wektorem. Nie ma gestów: nie da się przybliżyć ani przewinąć, a dotknięcie
+// trafia w cały widget nad mapką.
 //
-// Skala jest STAŁA. Zmienna skala skakała przy każdym kroku, a właśnie przy
-// podchodzeniu do przystanku instrukcja jest najważniejsza.
+// Obrót NIE przerysowuje komponentu. Kafle i trasę rysujemy raz w układzie
+// „północ w górę”, a obraca je transform na wątku UI (Reanimated). Kurs z
+// kompasu ląduje w shared value bez setState, więc magnetometr nie mieli
+// JS-a i mapa nie laguje. Skala jest STAŁA.
 
-import React, { useId, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
-import Svg, {
-  Circle,
-  ClipPath,
-  Defs,
-  G,
-  Path,
-  Polygon,
-  RadialGradient,
-  Stop,
-  Text as SvgText,
-} from 'react-native-svg';
-import { scheme, shape } from '../theme/tokens';
+import React, { useMemo } from 'react';
+import { Image, StyleSheet, Text, View } from 'react-native';
+import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import Svg, { Circle, Path, Polygon, Text as SvgText } from 'react-native-svg';
+import { shape } from '../theme/tokens';
 import type { Coord } from '../services/routeGeometry';
+import { OSM_ATTRIBUTION, OSM_ATTRIBUTION_LONG, useNavTiles } from '../services/navTiles';
 
 interface NavMiniMapProps {
   /** cała trasa ([lat, lon]); mapka sama wycina odcinek przed użytkownikiem */
@@ -35,8 +28,14 @@ interface NavMiniMapProps {
   maneuverAt?: Coord | null;
   /** przystanek, do którego idziemy */
   stop?: Coord | null;
-  /** kurs urządzenia w stopniach (0 = północ). null = mapa ustawiona na północ */
+  /** kurs urządzenia w stopniach (0 = północ). null = brak kompasu */
   headingDeg?: number | null;
+  /**
+   * Obrót tarczy w stopniach (0 = północ w górze, znormalizowane do
+   * -180..180, żeby nie kręciła przy przejściu przez północ). Ustawiany z
+   * kompasu BEZ re-renderu, więc mapa obraca się płynnie.
+   */
+  rotationSV: SharedValue<number>;
   /** kolor trasy i przystanku */
   accent: string;
   size?: number;
@@ -52,6 +51,13 @@ interface Pt {
 }
 
 const DEG = Math.PI / 180;
+
+// Kafle OSM są zawsze jasne, więc znaczniki muszą być ciemne niezależnie od
+// motywu aplikacji. To celowy wyjątek od tokenów (czytelność mapy).
+const PAPER = '#F2EFE9';
+const INK = '#201D19';
+const ROUTE_CASING = '#33302B';
+const USER_FILL = '#0B7A75';
 
 /** Płaska projekcja wokół użytkownika w metrach. Oś y rośnie w dół, jak na ekranie. */
 function toMeters(origin: Coord, p: Coord): Pt {
@@ -116,18 +122,18 @@ export function NavMiniMap({
   maneuverAt = null,
   stop = null,
   headingDeg = null,
+  rotationSV,
   accent,
   size = 108,
   radiusM = 120,
   lookaheadM = 260,
 }: NavMiniMapProps) {
-  // Id do ClipPath musi być unikalne, gdy na ekranie stoi więcej mapek.
-  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
-  const clipId = `navClip${uid}`;
-  const gradId = `navFill${uid}`;
+  const c = size / 2;
+  // Ekranowych pikseli na metr. Ta sama skala dla kafli i trasy.
+  const sppm = c / radiusM;
 
-  // Rzut całej trasy na metry to najcięższa część. Liczymy ją tylko przy
-  // zmianie pozycji lub trasy, a nie przy każdym obrocie kompasu.
+  // Rzut całej trasy na metry liczymy tylko przy zmianie pozycji lub trasy,
+  // nigdy przy obrocie (ten robi transform).
   const ahead = useMemo(() => {
     const local = path.map((p) => toMeters(user, p));
     return routeAhead(local, lookaheadM);
@@ -139,16 +145,8 @@ export function NavMiniMap({
   );
   const stopM = useMemo(() => (stop ? toMeters(user, stop) : null), [stop, user]);
 
-  const c = size / 2;
-  const scale = c / radiusM;
-  const rot = headingDeg == null ? 0 : -headingDeg * DEG;
-  const cos = Math.cos(rot);
-  const sin = Math.sin(rot);
-
-  const toScreen = (p: Pt): Pt => ({
-    x: c + (p.x * cos - p.y * sin) * scale,
-    y: c + (p.x * sin + p.y * cos) * scale,
-  });
+  // Północ w górze, bez obrotu. Obraca cała warstwa przez transform.
+  const toScreen = (p: Pt): Pt => ({ x: c + p.x * sppm, y: c + p.y * sppm });
   const inFrame = (p: Pt, margin: number) => Math.hypot(p.x - c, p.y - c) <= c - margin;
 
   /** Punkt na krawędzi mapki w kierunku `s` oraz kąt tego kierunku. */
@@ -167,18 +165,6 @@ export function NavMiniMap({
     })
     .join(' ');
 
-  // Kierunek jazdy zawsze w górę, więc stożek „patrzenia” ma stały kształt.
-  const cone = (() => {
-    if (headingDeg == null) return null;
-    const L = c * 0.78;
-    const a = 28 * DEG;
-    return [
-      `${c},${c}`,
-      `${(c - Math.sin(a) * L).toFixed(1)},${(c - Math.cos(a) * L).toFixed(1)}`,
-      `${(c + Math.sin(a) * L).toFixed(1)},${(c - Math.cos(a) * L).toFixed(1)}`,
-    ].join(' ');
-  })();
-
   // Strzałka manewru tylko wtedy, gdy mieści się w kadrze. Poza kadrem
   // kierunek i tak pokazuje ikona nad mapką.
   const maneuver = (() => {
@@ -189,6 +175,7 @@ export function NavMiniMap({
   })();
 
   // Przystanek: kropka, gdy jest w kadrze; poza kadrem trójkąt na krawędzi.
+  // Leży w obracanej warstwie, więc krawędź sama podąża za kompasem.
   const stopMarker = (() => {
     if (!stopM) return null;
     const s = toScreen(stopM);
@@ -197,9 +184,24 @@ export function NavMiniMap({
     return { kind: 'edge' as const, points: arrowPoints(edge.x, edge.y, edge.angle, 6, 5) };
   })();
 
-  // Literka N na krawędzi pokazuje, gdzie jest północ, także gdy mapa
-  // jest obrócona kompasem.
-  const north = onRim(toScreen({ x: 0, y: -radiusM }));
+  // Kafle w metrach względem użytkownika; na ekran tą samą skalą co trasa.
+  const tiles = useNavTiles(user[0], user[1], radiusM);
+
+  const rotStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotationSV.value}deg` }],
+  }));
+
+  // Literka N pokazuje północ. Pozycję liczymy ze stanu kompasu (rzadkie
+  // aktualizacje), a nie z shared value, żeby nie przerysowywać przy obrocie.
+  const north = (() => {
+    if (headingDeg == null) return null;
+    const r = ((-headingDeg % 360) + 360) % 360;
+    const rad = r * DEG;
+    // Północ w układzie północ-w-górze to góra tarczy; obracamy o ten sam kąt
+    // co warstwę i przyciskamy do krawędzi.
+    const e = onRim({ x: c + Math.sin(rad) * c, y: c - Math.cos(rad) * c });
+    return e;
+  })();
 
   return (
     <View
@@ -207,37 +209,42 @@ export function NavMiniMap({
       accessible={false}
       importantForAccessibility="no-hide-descendants"
     >
-      <Svg width={size} height={size}>
-        <Defs>
-          <ClipPath id={clipId}>
-            <Circle cx={c} cy={c} r={c} />
-          </ClipPath>
-          <RadialGradient id={gradId} cx="50%" cy="50%" rx="50%" ry="50%">
-            <Stop offset="0" stopColor={scheme.surfaceContainer} />
-            <Stop offset="1" stopColor={scheme.surfaceContainerLowest} />
-          </RadialGradient>
-        </Defs>
-
-        <G clipPath={`url(#${clipId})`}>
-          <Circle cx={c} cy={c} r={c} fill={`url(#${gradId})`} />
+      {/* Obracana warstwa: kafle + trasa w układzie północ-w-górze. */}
+      <Animated.View style={[{ width: size, height: size }, rotStyle]}>
+        {tiles.map((t) =>
+          t.uri ? (
+            <Image
+              key={`${t.x}/${t.y}`}
+              source={{ uri: t.uri }}
+              fadeDuration={0}
+              style={{
+                position: 'absolute',
+                left: c + t.dxM * sppm,
+                top: c + t.dyM * sppm,
+                width: t.sizeM * sppm,
+                height: t.sizeM * sppm,
+              }}
+            />
+          ) : null,
+        )}
+        <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
           {/* Pierścień w połowie zasięgu: skala bez podpisów. */}
           <Circle
             cx={c}
             cy={c}
             r={c / 2}
             fill="none"
-            stroke={scheme.outlineVariant}
-            strokeOpacity={0.5}
+            stroke={ROUTE_CASING}
+            strokeOpacity={0.35}
             strokeWidth={1}
             strokeDasharray="2 3"
           />
-
           {routeD ? (
             <>
               <Path
                 d={routeD}
-                stroke={scheme.surfaceContainerHighest}
-                strokeWidth={8}
+                stroke={ROUTE_CASING}
+                strokeWidth={7}
                 fill="none"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -245,54 +252,50 @@ export function NavMiniMap({
               <Path
                 d={routeD}
                 stroke={accent}
-                strokeWidth={4}
+                strokeWidth={3.5}
                 fill="none"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </>
           ) : null}
-
-          {cone ? <Polygon points={cone} fill={scheme.primary} fillOpacity={0.16} /> : null}
-
-          {maneuver ? <Polygon points={maneuver} fill={scheme.onSurface} /> : null}
-
+          {maneuver ? <Polygon points={maneuver} fill={INK} /> : null}
           {stopMarker?.kind === 'dot' ? (
-            <Circle
-              cx={stopMarker.x}
-              cy={stopMarker.y}
-              r={6.5}
-              fill={accent}
-              stroke={scheme.surfaceContainerLowest}
-              strokeWidth={2}
-            />
+            <Circle cx={stopMarker.x} cy={stopMarker.y} r={6.5} fill={accent} stroke="#fff" strokeWidth={2} />
           ) : stopMarker?.kind === 'edge' ? (
-            <Polygon points={stopMarker.points} fill={accent} />
+            <Polygon points={stopMarker.points} fill={accent} stroke="#fff" strokeWidth={1} />
           ) : null}
+        </Svg>
+      </Animated.View>
 
-          {/* Użytkownik zawsze w środku, niezależnie od kadru. */}
-          <Circle cx={c} cy={c} r={11} fill={scheme.primary} fillOpacity={0.18} />
-          <Circle
-            cx={c}
-            cy={c}
-            r={5.5}
-            fill={scheme.primary}
-            stroke={scheme.surfaceContainerLowest}
-            strokeWidth={2}
+      {/* Stałe nakładki: nie obracają się z mapą. */}
+      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+        {headingDeg != null ? (
+          <Polygon
+            points={`${c},${c} ${(c - Math.sin(28 * DEG) * c * 0.78).toFixed(1)},${(c - Math.cos(28 * DEG) * c * 0.78).toFixed(1)} ${(c + Math.sin(28 * DEG) * c * 0.78).toFixed(1)},${(c - Math.cos(28 * DEG) * c * 0.78).toFixed(1)}`}
+            fill={USER_FILL}
+            fillOpacity={0.2}
           />
-
+        ) : null}
+        <Circle cx={c} cy={c} r={11} fill={USER_FILL} fillOpacity={0.22} />
+        <Circle cx={c} cy={c} r={5.5} fill={USER_FILL} stroke="#fff" strokeWidth={2} />
+        {north ? (
           <SvgText
             x={north.x}
             y={north.y + 3}
-            fill={scheme.onSurfaceVariant}
+            fill={INK}
             fontSize={9}
             fontWeight="700"
             textAnchor="middle"
           >
             N
           </SvgText>
-        </G>
+        ) : null}
       </Svg>
+
+      <Text style={styles.credit} accessibilityLabel={OSM_ATTRIBUTION_LONG}>
+        {OSM_ATTRIBUTION}
+      </Text>
     </View>
   );
 }
@@ -300,8 +303,22 @@ export function NavMiniMap({
 const styles = StyleSheet.create({
   frame: {
     overflow: 'hidden',
-    backgroundColor: scheme.surfaceContainerLowest,
+    backgroundColor: PAPER,
     borderRadius: shape.full,
+  },
+  credit: {
+    position: 'absolute',
+    bottom: 5,
+    alignSelf: 'center',
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '600',
+    color: INK,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    overflow: 'hidden',
   },
 });
 

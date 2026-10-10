@@ -351,6 +351,36 @@ export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promi
   return chunks;
 }
 
+/**
+ * Trasa piesza między dwoma dowolnymi punktami. Używa jej tylko widget
+ * nawigacji, gdy użytkownik zgubi trasę (przerouting nie rusza pełnej mapy).
+ * Jedno zapytanie do OSRM foot, ten sam cache i timeout co nogi. Null bez
+ * sieci albo po błędzie. Wtedy widget mówi „idź w stronę przystanku”.
+ */
+export async function fetchFootRoute(
+  from: Coord,
+  to: Coord,
+  signal?: AbortSignal,
+): Promise<Coord[] | null> {
+  // Siatka ok. 11 m (jak waypointKey): powtórzone pytania o prawie to samo
+  // miejsce trafiają w cache, a nie w publiczny serwer.
+  const r = (v: number) => Math.round(v * 1e4) / 1e4;
+  const points: Coord[] = [
+    [r(from[0]), r(from[1])],
+    [r(to[0]), r(to[1])],
+  ];
+  if (points[0][0] === points[1][0] && points[0][1] === points[1][1]) return null;
+  const key = `foot:${points[0][0]},${points[0][1]}>${points[1][0]},${points[1][1]}`;
+  const cache = await readCache();
+  const hit = cache.get(key);
+  if (hit && hit.length > 1) return hit;
+  if (signal?.aborted) return null;
+  const path = await fetchChunk(points, 'foot', signal);
+  if (!path || path.length < 2 || signal?.aborted) return null;
+  void writeCache(key, path);
+  return path;
+}
+
 /** Prosty odcinek przez przystanki — natychmiastowa wersja trasy. */
 export function straightGeometry(leg: MapLeg): Coord[] {
   return legWaypoints(leg);

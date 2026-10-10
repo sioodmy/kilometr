@@ -566,6 +566,7 @@ export const en: Strings = {
     headToStop: 'Head toward the stop',
     navToStop: (dist: string) => `${dist} to the stop`,
     navA11y: (what: string, dist: string) => `${what}, ${dist}. Tap to open the full map.`,
+    rerouting: 'Finding a new route',
     openSettingsA11y: 'Open app settings',
     enableLoc: 'Enable location in settings',
   },

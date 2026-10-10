@@ -589,6 +589,7 @@ export const uk: Strings = {
     headToStop: 'Іди до зупинки',
     navToStop: (dist: string) => `${dist} до зупинки`,
     navA11y: (what: string, dist: string) => `${what}, ${dist}. Торкнись, щоб відкрити повну мапу.`,
+    rerouting: 'Шукаю новий маршрут',
     openSettingsA11y: 'Відкрити налаштування застосунку',
     enableLoc: 'Увімкни локацію в налаштуваннях',
   },
