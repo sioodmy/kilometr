@@ -9,6 +9,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Linking,
   Pressable,
   ScrollView,
@@ -174,6 +175,21 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
   const headingVec = useRef<{ x: number; y: number } | null>(null);
   const lastAppliedHeading = useRef(0);
   const lastLoc = useRef<{ lat: number; lon: number } | null>(null);
+  // Jednorazowe pojawienie się treści nawigacji po pierwszym fixie GPS.
+  // Powód: fix i geometria schodzą asynchronicznie, więc zamiast skoku
+  // layoutu jest krótki fade. Tylko raz, nie przy każdej zmianie pozycji.
+  const navOpacity = useRef(new Animated.Value(0)).current;
+  const navFaded = useRef(false);
+  useEffect(() => {
+    if (userLocation && !navFaded.current) {
+      navFaded.current = true;
+      Animated.timing(navOpacity, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [userLocation, navOpacity]);
 
   useEffect(() => {
     let locSub: Location.LocationSubscription | null = null;
@@ -547,10 +563,18 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       </View>
 
       {/* ─── Nawigacja ─────────────────────────────────────── */}
-      {useMiniMap && guidance && ManeuverIcon && maneuverLabel && userLocation ? (
+      {/* Slot rezerwuje wysokość minimapy od pierwszego renderu. Powód:
+          stany oczekiwanie/radar/mapa mają różne wysokości i bez tego
+          karta skakała w momencie fixu GPS. */}
+      {!userLocation ? (
+        <View style={[styles.hintRow, styles.navSlot, styles.navSlotHint]}>
+          <LocateFixed size={18} color={scheme.onSurfaceVariant} />
+          <Text style={styles.hintText}>{directionLabel}</Text>
+        </View>
+      ) : useMiniMap && guidance && ManeuverIcon && maneuverLabel ? (
         <Pressable
           onPress={openMap}
-          style={({ pressed }) => [styles.navBlock, pressed && { opacity: 0.9 }]}
+          style={({ pressed }) => [styles.navBlock, styles.navSlot, { opacity: navOpacity }, pressed && { opacity: 0.9 }]}
           accessibilityRole="button"
           accessibilityLabel={s.map.maneuver.miniMapA11y(maneuverLabel, distText ?? '')}
         >
@@ -593,7 +617,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         </Pressable>
       ) : compassReady ? (
         /* Do 100 m do przystanku radar jest czytelniejszy niż mapa. */
-        <View style={styles.compassRow}>
+        <View style={[styles.compassRow, styles.navSlot, { opacity: navOpacity }]}>
           <View style={styles.dialContainer}>
             <View style={styles.dial}>
               <View style={styles.innerRing} />
@@ -624,7 +648,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           </View>
         </View>
       ) : (
-        <View style={styles.hintRow}>
+        <View style={[styles.hintRow, styles.navSlot, styles.navSlotHint, { opacity: navOpacity }]}>
           <LocateFixed size={18} color={scheme.onSurfaceVariant} />
           <Text style={styles.hintText}>{directionLabel}</Text>
         </View>
@@ -753,6 +777,17 @@ const styles = StyleSheet.create({
   },
 
   // ─── Nawigacja ─────────────────────────────────────────────
+  // Slot ma wysokość docelowej minimapy (124 + padding 24), żeby przejście
+  // oczekiwanie → radar/mapa nie przesuwało reszty ekranu.
+  navSlot: {
+    minHeight: 148,
+  },
+  // Wiersz oczekiwania wyśrodkowany w slocie, żeby pusty obszar nie
+  // wyglądał na ucięty layout.
+  navSlotHint: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   navBlock: {
     backgroundColor: scheme.surfaceContainerLowest,
     borderRadius: shape.medium,
