@@ -557,12 +557,12 @@ export const de: Strings = {
     locWaiting: 'Noch keine Position. Warte auf GPS oder öffne die volle Karte.',
     title: 'Haltestellenstandort',
     followCompass: 'Folge dem Kompass',
-    chooseChange: 'Umstieg wählen:',
     directionPrefix: (d: string) => `Richtung ${d}`,
     straight: 'Luftlinie',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`),
     walkMins: (m: number) => `~${m} Min. zu Fuß`,
     headToStop: 'Richtung Haltestelle gehen',
+    nextStop: 'Nächste Haltestelle',
     navToStop: (dist: string) => `${dist} bis zur Haltestelle`,
     navA11y: (what: string, dist: string) =>
       `${what}, ${dist}. Tippen, um die volle Karte zu öffnen.`,
