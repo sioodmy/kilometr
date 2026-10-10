@@ -5,8 +5,8 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
-import { formatWalkTime, walkMinutesFor } from '../services/settings';
-import { useEffectiveWalkSpeedMps } from '../services/walkPace';
+import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+
 import { tr } from '../i18n';
 
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2–4 / 5+). */
@@ -147,7 +147,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;
 }) {
-  const walkMps = useEffectiveWalkSpeedMps();
+  const walkMps = useWalkSpeedMps();
   // `tick` jest tylko wyzwalaczem: czas liczymy świeżo przy każdym jego skoku.
   const now = useMemo(() => nowSec(), [tick]);
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);

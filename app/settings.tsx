@@ -13,9 +13,9 @@ import {
   formatWalkDistance,
   formatWalkSpeed,
   useRoutingSettings,
+  useWalkSpeedMps,
   type WalkPaceProfile,
 } from '../src/services/settings';
-import { useWalkPaceStats, useEffectiveWalkSpeedMps } from '../src/services/walkPace';
 import {
   getDataStatus,
   importGtfsFromNetwork,
@@ -107,10 +107,10 @@ export default function SettingsScreen() {
   const { settings, update, reset } = useRoutingSettings();
   const s = useStrings();
   const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
-  const paceStats = useWalkPaceStats();
-  const walkMps = useEffectiveWalkSpeedMps();
+  const walkMps = useWalkSpeedMps();
   // Ikony żółwia i królika to konwencja tempa (wolno/szybko), odcisk stopy to
-  // dosłowny spacer. Trzy opcje zamiast suwaka: profil to zapas, nie pomiar.
+  // dosłowny spacer. Trzy warianty zamiast suwaka: profil ustawia tempo dla
+  // planera i wszystkich czasów dojścia.
   const paceOptions: { value: WalkPaceProfile; icon: typeof Turtle; label: string; desc: string }[] = [
     { value: 'slow', icon: Turtle, label: s.settings.paceSlow, desc: s.settings.paceSlowDesc },
     { value: 'normal', icon: Footprints, label: s.settings.paceNormal, desc: s.settings.paceNormalDesc },
@@ -362,24 +362,6 @@ export default function SettingsScreen() {
           <Text style={styles.cardHint}>
             {s.settings.speedHint}
           </Text>
-          <Text style={styles.measuredTitle}>{s.settings.paceMeasuredTitle}</Text>
-          {paceStats.loaded ? (
-            paceStats.overallMedian != null ? (
-              <View style={styles.measuredBox}>
-                <Text style={styles.measuredValue}>{formatWalkSpeed(paceStats.overallMedian)}</Text>
-                <View style={styles.measuredMeta}>
-                  <Text style={styles.measuredLabel}>{s.settings.paceOverallLabel}</Text>
-                  <Text style={styles.measuredSub}>
-                    {s.settings.paceWalks(paceStats.overallCount)} • {s.settings.pacePlaces(paceStats.placeCount)}
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              <Text style={styles.cardHint}>{s.settings.paceMeasuredEmpty}</Text>
-            )
-          ) : (
-            <ActivityIndicator size="small" color={scheme.primary} />
-          )}
           <View style={styles.paceRow}>
             {paceOptions.map((opt) => {
               const active = settings.walkPace === opt.value;
@@ -412,9 +394,6 @@ export default function SettingsScreen() {
               );
             })}
           </View>
-          <Text style={styles.cardHint}>
-            {s.settings.paceAutoNote}
-          </Text>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(160).duration(180)} style={styles.card}>
@@ -484,12 +463,6 @@ const styles = StyleSheet.create({
   langChipActive: { backgroundColor: scheme.primaryContainer },
   langChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
-  measuredTitle: { ...type.labelLarge, color: scheme.onSurface, fontWeight: '600' },
-  measuredBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: scheme.surfaceContainerHighest, borderRadius: shape.medium, paddingHorizontal: 14, paddingVertical: 12 },
-  measuredValue: { ...type.headlineSmall, color: scheme.onSurface, fontWeight: '800' },
-  measuredMeta: { flex: 1, gap: 2 },
-  measuredLabel: { ...type.labelLarge, color: scheme.onSurface, fontWeight: '600' },
-  measuredSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   paceRow: { flexDirection: 'row', gap: 8 },
   paceOpt: { flex: 1, alignItems: 'center', gap: 2, borderRadius: shape.medium, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 6, paddingVertical: 12, minHeight: 108 },
   paceOptActive: { backgroundColor: scheme.primaryContainer },
