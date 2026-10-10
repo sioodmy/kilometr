@@ -25,6 +25,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
 import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+
 import { useStrings, type Strings } from '../i18n';
 
 interface StopCompassCardProps {
@@ -72,8 +73,7 @@ function getDirectionLabel(relAngle: number, s: Strings): string {
 
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
   const s = useStrings();
-  // Czas dojścia liczony z tempem chodzenia ustawionym przez użytkownika,
-  // a nie z wpisanych na sztywno 80 m/min.
+  // Czas dojścia liczony z tempa wybranego profilu w ustawieniach.
   const walkMps = useWalkSpeedMps();
   // Znajdź etapy podróży
   const transitLegs = useMemo(() => {
@@ -162,6 +162,12 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
             setLocState('ok');
           }
         );
+        // Komponent zdążył się odmontować zanim subskrypcja wróciła: nie
+        // zostawiamy jej w tle, bo cleanup widział już tylko null.
+        if (!isMounted) {
+          locSub.remove();
+          return;
+        }
 
         headingSub = await Location.watchHeadingAsync((h) => {
           if (!isMounted) return;
@@ -170,6 +176,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
             applyHeading(trueH);
           }
         });
+        if (!isMounted) headingSub.remove();
       } catch (err) {
         console.log('[StopCompassCard] Tracking error:', err);
         if (isMounted) setLocState('noFix');
@@ -369,7 +376,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           <View style={styles.distanceInfo}>
             <Text style={styles.directionGuide}>{directionLabel}</Text>
             <Text style={styles.distanceNumber}>
-              {distanceM! >= 1000 ? `${(distanceM! / 1000).toFixed(1)} km` : `${distanceM} m`}
+              {s.compass.distanceText(distanceM!)}
             </Text>
             <Text style={styles.distanceLabel} numberOfLines={1}>
               {s.compass.straight}

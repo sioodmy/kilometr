@@ -61,7 +61,7 @@ export async function searchSuggestions(
   const stopMatches = gtfsStore.searchStops(q, 6);
   const stopSuggestions: Suggestion[] = stopMatches.map(({ stop, weight }) => ({
     id: `stop-${stop.stop_id}`,
-    title: stop.stop_name,
+    title: stop.stop_name.toUpperCase(),
     address: `Przystanek • ${stop.stop_code ? `słup. ${stop.stop_code}` : 'Wrocław'}`,
     kind: 'stop' as const,
     weight,

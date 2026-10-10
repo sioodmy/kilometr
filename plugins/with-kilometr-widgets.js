@@ -476,6 +476,12 @@ class QuickWidgetProvider : AppWidgetProvider() {
             for (row in 0 until 3) {
                 if (row < count) {
                     val item = arr!!.optJSONObject(row)
+                    if (item == null) {
+                        // Element nie jest obiektem (np. null w tablicy) — chowamy
+                        // wiersz zamiast wywalać NPE w procesie aplikacji.
+                        views.setViewVisibility(rowRoots[row], View.GONE)
+                        continue
+                    }
                     val title = item.optString("title", "")
                     val departInMin = if (item.has("departInMin")) item.optInt("departInMin", -1) else -1
                     val link = item.optString("deepLink", FALLBACK_LINK)

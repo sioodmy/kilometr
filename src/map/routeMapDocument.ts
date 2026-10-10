@@ -596,7 +596,7 @@ export function buildRouteMapDocument(opts: RouteMapDocumentOptions): string {
     '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">',
     '<meta name="color-scheme" content="dark">',
     '<title>Mapa trasy</title>',
-    '<style>' + css + '</style>',
+    '<style>' + css() + '</style>',
     '</head>',
     '<body>',
     '<div id="map"></div>',

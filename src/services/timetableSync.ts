@@ -12,7 +12,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
 import { TIMETABLE } from './gtfsConfig';
-import { GTFS_DB_NAME, closeGtfsDb, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
+import { GTFS_DB_NAME, beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -85,21 +85,36 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
 
 const TEMP_DB_NAME = 'kilometr-gtfs.new.db';
 
+// Katalog bazy z documentDirectory (file:///data/user/0/…/files/SQLite).
+// expo-file-system przyznaje zapis po kanonicznej ścieżce względem filesDir,
+// czyli /data/user/0/…. SQLite.defaultDatabaseDirectory zwraca /data/data/…:
+// to ten sam katalog (bind mount, nie symlink), ale inna ścieżka, więc
+// sprawdzenie nie przechodzi. Stąd „isn't writable" przy mkdir i downloadzie,
+// a sync po cichu zostawał przy starej bazie bez pociągów. expo-sqlite i tak
+// trzyma plik w tym samym miejscu, więc podmiana trafia w bazę, której używa.
 function sqliteDirUri(): string {
-  const raw = String((SQLite as unknown as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory ?? '');
-  if (raw) return raw.endsWith('/') ? raw : `${raw}/`;
   const base = FileSystem.documentDirectory;
-  if (!base) throw new Error('Brak documentDirectory (expo-file-system)');
-  return `${base}SQLite/`;
+  if (base) return `${base.replace(/\/+$/, '')}/SQLite`;
+  const raw = String((SQLite as unknown as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory ?? '').replace(/\/+$/, '');
+  if (!raw) throw new Error('Brak katalogu bazy (expo-file-system/expo-sqlite)');
+  return raw.startsWith('file://') ? raw : `file://${raw}`;
 }
 
 async function sqliteUri(name: string): Promise<string> {
   const dir = sqliteDirUri();
-  const info = await FileSystem.getInfoAsync(dir);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  // Katalog tworzy samo expo-sqlite przy pierwszym openDatabaseAsync. Na
+  // części urządzeń getInfoAsync mimo to zgłasza go jako nieistniejący, a
+  // makeDirectoryAsync odrzuca z "isn't writable", bo uprawnienia liczone
+  // są w stosunku do innej ścieżki niż ta z logu. Wyjątek tutaj nie może
+  // wywracać całego syncu: jeśli katalogu naprawdę zabrakło, download zgłosi
+  // to dalej własnym komunikatem, a użytkownik zobaczy błąd zamiast ciszy.
+  try {
+    const info = await FileSystem.getInfoAsync(dir);
+    if (!info.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  } catch (err) {
+    console.warn('[Timetable] katalog bazy niedostępny:', dir, err);
   }
-  return `${dir}${name}`;
+  return `${dir}/${name}`;
 }
 
 async function deleteSidecars(uri: string): Promise<void> {
@@ -175,16 +190,22 @@ export async function downloadPrebuiltDb(
   }
 
   // Podmiana: zamknij działającą bazę, podmień plik atomowo (w ramach katalogu).
-  await closeGtfsDb();
+  // Bramka blokuje równoległe getGtfsDb() z UI, żeby nie otworzyły usuwanego pliku.
+  beginGtfsSwap();
   const mainUri = await sqliteUri(GTFS_DB_NAME);
   try {
-    await FileSystem.deleteAsync(mainUri, { idempotent: true });
-  } catch {
-    // best-effort
+    await closeGtfsDb();
+    try {
+      await FileSystem.deleteAsync(mainUri, { idempotent: true });
+    } catch {
+      // best-effort
+    }
+    await deleteSidecars(mainUri);
+    await FileSystem.moveAsync({ from: dest, to: mainUri });
+    await deleteSidecars(mainUri);
+  } finally {
+    endGtfsSwap();
   }
-  await deleteSidecars(mainUri);
-  await FileSystem.moveAsync({ from: dest, to: mainUri });
-  await deleteSidecars(mainUri);
 
   // Reopen (initDb robi CREATE IF NOT EXISTS — na gotowej bazie to no-op)
   // i zapisz mety wersji, żeby manifest nie ściągał w kółko tego samego.

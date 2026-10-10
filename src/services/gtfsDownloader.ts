@@ -252,6 +252,12 @@ export async function downloadGtfsZip(
   );
   const result = await task.downloadAsync();
   if (!result?.uri) throw new Error(dlTr().noFile);
+  // downloadAsync rozwiązuje się także dla 4xx/5xx — bez tego strony błędu
+  // (404/503, captive portal) trafiały do gtfs.zip jako „sukces".
+  if (result.status < 200 || result.status >= 300) {
+    await FileSystem.deleteAsync(dest, { idempotent: true });
+    throw new Error(`HTTP response status code ${result.status}`);
+  }
   return result.uri;
 }
 

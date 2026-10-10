@@ -52,9 +52,14 @@ apiRouter.get('/gtfs/archive', (req, res) => {
 
 // Smart location-ranked destinations ("Częste z tej lokalizacji")
 apiRouter.get('/destinations/smart', (req, res) => {
-  const lat = Number(req.query.lat ?? 51.0997);
-  const lon = Number(req.query.lon ?? 17.0364);
-  const limit = req.query.limit ? Number(req.query.limit) : 5;
+  const lat = req.query.lat !== undefined ? Number(req.query.lat) : 51.0997;
+  const lon = req.query.lon !== undefined ? Number(req.query.lon) : 17.0364;
+  const limit = req.query.limit !== undefined ? Number(req.query.limit) : 5;
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(limit)) {
+    res.status(400).json({ error: 'Valid lat, lon and limit query parameters required' });
+    return;
+  }
 
   const destinations = FavoritesService.getSmartDestinations(lat, lon, limit);
   res.json(destinations);
@@ -63,16 +68,18 @@ apiRouter.get('/destinations/smart', (req, res) => {
 // Record a trip search into history
 apiRouter.post('/history/trip', (req, res) => {
   const { originLat, originLon, originTitle, dest, durationMin } = req.body;
-  if (!dest || !originLat || !originLon) {
-    res.status(400).json({ error: 'Missing required trip fields' });
+  const lat = Number(originLat);
+  const lon = Number(originLon);
+  if (!dest || !dest.id || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    res.status(400).json({ error: 'Missing required trip fields (dest.id, originLat, originLon)' });
     return;
   }
   FavoritesService.recordTrip(
-    Number(originLat),
-    Number(originLon),
+    lat,
+    lon,
     originTitle || 'Twoja lokalizacja',
     dest,
-    durationMin || 15
+    Number.isFinite(Number(durationMin)) ? Number(durationMin) : 15
   );
   res.json({ success: true });
 });
@@ -120,6 +127,14 @@ apiRouter.get('/routes', async (req, res) => {
     res.status(400).json({ error: 'Missing destination coordinates (toLat, toLon)' });
     return;
   }
+  if (!Number.isFinite(fromLat) || !Number.isFinite(fromLon) || !Number.isFinite(toLat) || !Number.isFinite(toLon)) {
+    res.status(400).json({ error: 'Coordinates must be valid numbers' });
+    return;
+  }
+  if (departureTimeSec !== undefined && (!Number.isFinite(departureTimeSec) || departureTimeSec < 0)) {
+    res.status(400).json({ error: 'departureTimeSec must be a non-negative number' });
+    return;
+  }
 
   try {
     const connections = await planConnections({
@@ -144,6 +159,12 @@ apiRouter.get('/routes', async (req, res) => {
     // Cache connections in memory so /api/routes/:id can retrieve them
     for (const c of connections) {
       recentPlannedConnections.set(c.id, c);
+    }
+    // Limit cache: długo działający serwer nie może rosnąć bez końca.
+    while (recentPlannedConnections.size > 500) {
+      const oldest = recentPlannedConnections.keys().next();
+      if (oldest.done) break;
+      recentPlannedConnections.delete(oldest.value);
     }
 
     // Automatically record trip search into smart history
@@ -234,13 +255,18 @@ apiRouter.get('/location/reverse', async (req, res) => {
   const lat = Number(req.query.lat);
   const lon = Number(req.query.lon);
 
-  if (isNaN(lat) || isNaN(lon)) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     res.status(400).json({ error: 'Valid lat and lon query parameters required' });
     return;
   }
 
-  const info = await reverseGeocodeLocation(lat, lon);
-  res.json(info);
+  try {
+    const info = await reverseGeocodeLocation(lat, lon);
+    res.json(info);
+  } catch (err: any) {
+    console.error('[API /location/reverse error]', err);
+    res.status(500).json({ error: err?.message || 'Reverse geocode error' });
+  }
 });
 
 // Nearest GTFS stops to a coordinate
@@ -250,23 +276,28 @@ apiRouter.get('/stops/nearest', async (req, res) => {
   const limit = req.query.limit ? Number(req.query.limit) : 5;
   const maxDistance = req.query.maxDistance ? Number(req.query.maxDistance) : 1000;
 
-  if (isNaN(lat) || isNaN(lon)) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     res.status(400).json({ error: 'Valid lat and lon query parameters required' });
     return;
   }
 
-  await gtfsStore.load();
-  const nearest = gtfsStore.findNearestStops(lat, lon, maxDistance, limit);
-  res.json(
-    nearest.map((n) => ({
-      id: n.stop.stop_id,
-      name: n.stop.stop_name,
-      code: n.stop.stop_code,
-      lat: n.stop.stop_lat,
-      lon: n.stop.stop_lon,
-      distanceM: Math.round(n.distanceM),
-    }))
-  );
+  try {
+    await gtfsStore.load();
+    const nearest = gtfsStore.findNearestStops(lat, lon, maxDistance, limit);
+    res.json(
+      nearest.map((n) => ({
+        id: n.stop.stop_id,
+        name: n.stop.stop_name,
+        code: n.stop.stop_code,
+        lat: n.stop.stop_lat,
+        lon: n.stop.stop_lon,
+        distanceM: Math.round(n.distanceM),
+      }))
+    );
+  } catch (err: any) {
+    console.error('[API /stops/nearest error]', err);
+    res.status(500).json({ error: err?.message || 'Nearest stops error' });
+  }
 });
 
 // Saved places CRUD
@@ -276,16 +307,18 @@ apiRouter.get('/places', (req, res) => {
 
 apiRouter.post('/places', (req, res) => {
   const { name, icon, address, lat, lon, placeId, anchorStopId, anchorStopName, anchorStopLat, anchorStopLon } = req.body;
-  if (!name || lat === undefined || lon === undefined) {
-    res.status(400).json({ error: 'Missing name or coordinates' });
+  const latN = Number(lat);
+  const lonN = Number(lon);
+  if (!name || lat === undefined || lon === undefined || !Number.isFinite(latN) || !Number.isFinite(lonN)) {
+    res.status(400).json({ error: 'Missing name or valid coordinates' });
     return;
   }
   const created = FavoritesService.addPlace({
     name,
     icon: icon || 'star',
     address: address || 'Wrocław',
-    lat: Number(lat),
-    lon: Number(lon),
+    lat: latN,
+    lon: lonN,
     placeId,
     anchorStopId,
     anchorStopName,

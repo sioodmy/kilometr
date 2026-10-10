@@ -8,8 +8,8 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 ## Model branchy i promocja kodu (OBOWIĄZKOWE)
 
-- Przepływ: `feature/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok to PR, nigdy direct push.
-- `dev` - integracja/experimental: nowe feature branche bazujesz na `dev` i PR-ujesz do `dev`.
+- Przepływ: `feature/*` lub `fix/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok to PR, nigdy direct push.
+- `dev` - integracja/experimental: nowe feature branche bazujesz na `dev` i PR-ujesz do `dev`. Automatycznie twórz PR nowych features do tego brancha
 - `main` - scalony, jeszcze nie sprawdzony na urządzeniu kod.
 - `nightly` - buildy używalne jako daily driver, mogą być niestabilne; nie są prod ready.
 - `prod` - przetestowane manualnie na realnym urządzeniu, gotowe dla end userów; czeka na feedback testerów.
@@ -20,6 +20,11 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease, asset `kilometr-nightly.apk`.
   - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
 - Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
+- Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie. Jeśli dev jest do przodu ze zmianami w stosunku do main, a PR nie istnieje, to utwórz PR z tą todo listą
+- W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature.
+- Zmergowanie feature brancha do `dev` dopisuje nowy element `- [ ]` do tej listy TYLKO jeśli feature wymaga manualnych testów (UI, funkcjonalność, landing, aplikacja). Drobnostek bez funkcjonalności (np. aktualizacja README, docs, komentarze) nie dopisuj.
+- PR `dev` -> `main` służy do manualnych testów tylko przez człowieka
+- NIGDY nie merguj automatycznie żadnego PR do `nightly` ani `prod`. Merge do `nightly`/`prod` wykonuje wyłącznie człowiek, ręcznie.
 
 ## CRITICAL: NIE OVERTHINKUJ
 
@@ -28,10 +33,10 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Używaj prostych rozwiązań, który doprowadzają do celu. Nie rozmyślaj o edge caseach jeżeli cie o to nie proszę
 - Jeżeli dostałeś proste zadanie to nie pytaj o szczegóły, po prostu rób.
 
-## Tłumaczenia (i18n) — OBOWIĄZKOWE
+## Tłumaczenia (i18n) - OBOWIĄZKOWE
 
 - Każdy tekst widoczny dla użytkownika (UI, alerty, powiadomienia, accessibility labels) MUSI pochodzić ze słownika `src/i18n`. Zero hardcodu PL w komponentach/ekranach/serwisach.
-- Wspierane języki: polski, angielski, niemiecki, ukraiński (`pl` / `en` / `de` / `uk`). `pl.ts` jest WZORCEM typów (`Strings = typeof pl`) — brak klucza w en/de/uk to błąd kompilacji, nie pusty label.
+- Wspierane języki: polski, angielski, niemiecki, ukraiński (`pl` / `en` / `de` / `uk`). `pl.ts` jest WZORCEM typów (`Strings = typeof pl`): brak klucza w en/de/uk to błąd kompilacji, nie pusty label.
 - Komponenty: `const s = useStrings()` z `src/i18n` (re-render przy zmianie języka za darmo). Synchroniczne helpery/serwisy: `tr()` (wewnątrz funkcji!) albo `getLocaleSync()` + statyczny import słowników. Nigdy `require()` i nigdy cache'owanie słownika na module.
 - Liczby mnogie i interpolacje to FUNKCJE w słowniku (pl/uk: 1 / 2–4 / 5+, en/de: 1 / reszta). Nie pisz własnych reguł mnogości w komponentach.
 - Język: `expo-localization` (locale systemowe Androida) + nadpisanie per-app w Ustawieniach → Język (Systemowy/PL/EN/DE/UK), persist w kv-store (`initLocale()` w `_layout`).
@@ -62,6 +67,6 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Commituj zmiany na bieżąco, w małych logicznych porcjach, zamiast odkładać wszystko na koniec sesji.
 - Przed commitem sprawdź `git status --short`, `git diff` oraz `git log --oneline -10`, stage'uj tylko zamierzone pliki, nigdy nie commituj sekretów.
 - używaj conventional commits po polsku
-- NIGDY PRZENIGDY NIE COMMITUJ NA MAIN BRANCH.
-- Nie amenduj nieudanych commitów po hookach — napraw problem i zrób nowy commit.
+- NIGDY PRZENIGDY NIE COMMITUJ NA BRANCHACH dev, main, nightly i prod bezpośrednio.
+- Nie amenduj nieudanych commitów po hookach, napraw problem i zrób nowy commit.
 - Nie pushuj, nie twórz PR-ów i nie zmieniaj remote'ów, chyba że użytkownik wyraźnie o to poprosi.
