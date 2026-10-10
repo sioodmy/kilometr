@@ -114,7 +114,7 @@ const FULL: BackupData = {
       uses: 3,
     },
   ],
-  routingSettings: { maxTransfers: 1, minTransferSec: 180, maxWalkM: 600, walkSpeedMps: 1.4, anchorRadiusM: 400, trainsEnabled: false, trainMinTransferSec: 420 },
+  routingSettings: { maxTransfers: 1, minTransferSec: 180, maxWalkM: 600, walkPace: 'normal', anchorRadiusM: 400, trainsEnabled: false, trainMinTransferSec: 420 },
   notificationPrefs: {
     trackingEnabled: true,
     departureAlertsEnabled: true,
@@ -334,12 +334,15 @@ describe('Pusty eksport to poprawna kopia');
 describe('Nazwa pliku');
 {
   const name = backupFileName(new Date(2026, 9, 5, 18, 42));
-  expect('data i godzina w nazwie', name, 'kilometr-backup-2026-10-05-1842.json');
+  expect('data i godzina w nazwie', name, 'kilometr-backup-2026-10-05-184200.json');
   // Sortowanie po nazwie ma dawać chronologię, a to wymaga zer wiodących.
   const early = backupFileName(new Date(2026, 0, 2, 3, 4));
   const late = backupFileName(new Date(2026, 0, 2, 3, 5));
-  expectTrue('miesiąc i dzień z zerami', early.startsWith('kilometr-backup-2026-01-02-0304'));
+  expectTrue('miesiąc i dzień z zerami', early.startsWith('kilometr-backup-2026-01-02-030400'));
   expectTrue('sortowanie po nazwie = chronologia', early < late);
+  const sameMinuteA = backupFileName(new Date(2026, 0, 2, 3, 4, 10));
+  const sameMinuteB = backupFileName(new Date(2026, 0, 2, 3, 4, 40));
+  expectTrue('dwa eksporty w tej samej minucie się nie nadpisują', sameMinuteA !== sameMinuteB);
 }
 
 // ─── Podsumowanie ─────────────────────────────────────────────────────────

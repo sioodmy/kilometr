@@ -30,7 +30,7 @@ fi
 
 DEVICE_ID="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
 if [ -z "$DEVICE_ID" ]; then
-  if adb devices | awk 'NR>1 && $2=="unauthorized"' | grep -q .; then
+  if adb devices | awk 'NR>1 && $2=="unauthorized" {found=1} END {exit found?0:1}'; then
     fail "Telefon wymaga autoryzacji debugowania USB. Odblokuj ekran i kliknij 'Zezwalaj zawsze z tego komputera'."
   fi
   fail "Nie wykryto podłączonego telefonu przez USB! Sprawdź: kabel, opcje programisty + debugowanie USB, autoryzację komputera na telefonie."
@@ -83,7 +83,7 @@ adb -s "$DEVICE_ID" reverse tcp:3000 tcp:3000
 adb -s "$DEVICE_ID" reverse --list
 
 # Expo Go musi być zainstalowane, inaczej intent ginie po cichu.
-if ! adb -s "$DEVICE_ID" shell pm list packages 2>/dev/null | grep -q "$EXPO_GO_PKG"; then
+if ! adb -s "$DEVICE_ID" shell pm list packages 2>/dev/null | awk -v pkg="$EXPO_GO_PKG" 'index($0,pkg){found=1} END{exit found?0:1}'; then
   fail "Na telefonie nie ma Expo Go ($EXPO_GO_PKG). Zainstaluj je ze Sklepu Play i spróbuj ponownie."
 fi
 

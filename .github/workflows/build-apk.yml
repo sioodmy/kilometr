@@ -3,6 +3,15 @@ name: Build & Release APK
 # Build APK uruchamia się WYŁĄCZNIE przy pushu do kanałów nightly/prod.
 # `main` i `dev` nie budują APK, promocja kodu robi się PR-ami, a build
 # startuje dopiero na wyraźnym kanale wydawniczym.
+#
+# Ręczne uruchomienie (workflow_dispatch) ma dwa tryby:
+#
+# - `release` (domyślny): jak push. Kanał wynika z gałęzi (nightly/prod),
+#   więc nie da się zbudować „prod" z nieaudytowanego brancha. Publikuje
+#   GitHub Release z APK jako assetem.
+# - `artifact-only`: buduje APK z DOWOLNEJ gałęzi i tylko dołącza go jako
+#   artefakt Actions. Nic nie publikuje, żadnego release ani tagu. Do tego
+#   służy, żeby pobrać APK do testów na urządzeniu bez zaśmiecania wydań.
 on:
   push:
     branches:
@@ -18,14 +27,14 @@ on:
         options:
           - 'arm64-v8a'
           - 'all'
-      channel:
-        description: 'Kanał wydania'
+      mode:
+        description: 'Tryb: release (jak push, publikuje wydanie) albo artifact-only (tylko APK do pobrania)'
         required: true
-        default: 'nightly'
+        default: 'release'
         type: choice
         options:
-          - 'nightly'
-          - 'prod'
+          - 'release'
+          - 'artifact-only'
 
 permissions:
   contents: write
@@ -70,6 +79,9 @@ jobs:
       # Manifest niedostępny = ostrzeżenie (R2 może leżeć); manifest
       # osiągalny bez KD = twardy błąd.
       - name: Verify timetable has real KD
+        env:
+          # Opcjonalne nadpisanie hosta rozkładu (repository variable), domyślnie produkcja.
+          TIMETABLE_URL: ${{ vars.TIMETABLE_URL }}
         run: |
           set -euo pipefail
           URL="${TIMETABLE_URL:-https://data.kilometr.wroclaw.pl}/manifest.json"
@@ -120,35 +132,54 @@ jobs:
       # Kanał decyduje o tagu, nazwie assetu, architekturze i fladze prerelease.
       # prod: nowa wersja semver z conventional commitów, nie-prerelease (ląduje
       # jako GitHub "latest"). nightly: unikalny tag z datą i SHA, prerelease.
+      # artifact-only (tylko ręcznie): z dowolnej gałęzi, bez wydania i tagu.
       - name: Resolve channel, tag, version and asset name
         id: release
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+          INPUT_MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
+          # Kanał ZAWSZE z gałęzi. Nawet przy workflow_dispatch, dzięki temu
+          # nie da się odpalić builda „prod" z dev/feature brancha.
+          CHANNEL="${GITHUB_REF_NAME}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            CHANNEL="${{ inputs.channel }}"
-            ARCH="${{ inputs.arch }}"
+            ARCH="${INPUT_ARCH:-}"
+            MODE="${INPUT_MODE:-release}"
           else
-            CHANNEL="${GITHUB_REF_NAME}"
             ARCH=""
+            MODE="release"
           fi
 
-          case "$CHANNEL" in
-            nightly|prod) ;;
-            *) echo "::error::Nieznany kanał: $CHANNEL (dozwolone: nightly, prod)"; exit 1 ;;
-          esac
-
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          PUBLISH="true"
 
-          if [ "$CHANNEL" = "prod" ]; then
-            TAG="$(node .github/scripts/next-version.mjs)"
-            APK_NAME="kilometr-prod.apk"
-            PRERELEASE="false"
-            [ -n "$ARCH" ] || ARCH="all"
-          else
-            TAG="nightly-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
-            APK_NAME="kilometr-nightly.apk"
+          if [ "$MODE" = "artifact-only" ]; then
+            # Buduje z dowolnej gałęzi i tylko dołącza APK jako artefakt.
+            # Żadnego tagu ani wydania, więc nie wolno zależeć od channela.
+            CHANNEL="artifact-only"
+            TAG="test-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+            APK_NAME="kilometr-test.apk"
             PRERELEASE="true"
+            PUBLISH="false"
             [ -n "$ARCH" ] || ARCH="arm64-v8a"
+          else
+            case "$CHANNEL" in
+              nightly|prod) ;;
+              *) echo "::error::Build APK dozwolony tylko z gałęzi nightly lub prod (jest: $CHANNEL). Do builda testowego wybierz tryb artifact-only."; exit 1 ;;
+            esac
+
+            if [ "$CHANNEL" = "prod" ]; then
+              TAG="$(node .github/scripts/next-version.mjs)"
+              APK_NAME="kilometr-prod.apk"
+              PRERELEASE="false"
+              [ -n "$ARCH" ] || ARCH="all"
+            else
+              TAG="nightly-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+              APK_NAME="kilometr-nightly.apk"
+              PRERELEASE="true"
+              [ -n "$ARCH" ] || ARCH="arm64-v8a"
+            fi
           fi
 
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
@@ -157,7 +188,8 @@ jobs:
           echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
           echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
-          echo "Resolved: channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "Resolved: channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE publish=$PUBLISH"
 
       - name: Install Node dependencies
         run: npm ci
@@ -211,7 +243,7 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
           AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
           BADGING="$("$AAPT" dump badging "$APK")"
           APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
@@ -227,7 +259,7 @@ jobs:
           CHANNEL: ${{ steps.release.outputs.channel }}
         run: |
           set -euo pipefail
-          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
           if [ -z "$APK" ]; then
             echo "Nie znaleziono żadnego APK w android/app/build/outputs/apk/release"
             exit 1
@@ -247,7 +279,10 @@ jobs:
 
           ls -lh apk-dist
 
+      # Notki i wydanie tylko w trybie release. artifact-only kończy na
+      # artefakcie Actions i nie tworzy tagu ani wydania.
       - name: Generate Release Notes from Conventional Commits
+        if: steps.release.outputs.publish == 'true'
         env:
           TAG: ${{ steps.release.outputs.tag }}
           CHANNEL: ${{ steps.release.outputs.channel }}
@@ -269,7 +304,23 @@ jobs:
           name: kilometr-${{ steps.release.outputs.channel }}-apk
           path: apk-dist/*
 
+      # W trybie artifact-only nie ma wydania, więc podpowiadamy w podsumowaniu
+      # runu, gdzie zabrać APK (Actions → ten run → Artifacts).
+      - name: Summarize artifact-only build
+        if: steps.release.outputs.publish != 'true'
+        env:
+          APK_NAME: ${{ steps.release.outputs.apk_name }}
+        run: |
+          set -euo pipefail
+          echo "### APK testowy (bez wydania)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pobierz z dołu tej strony, sekcja Artifacts: \`kilometr-artifact-only-apk\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "W środku: \`$APK_NAME\` oraz \`$APK_NAME.sha256\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Wersja w APK: \`${{ steps.release.outputs.version }}\`." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish GitHub Release
+        if: steps.release.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}

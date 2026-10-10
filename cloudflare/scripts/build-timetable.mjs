@@ -116,6 +116,35 @@ function titleCasePl(s) {
   return String(s || '').toLowerCase().replace(/(^|[\s\-/()])([a-ząćęłńóśźż])/g, (m, pre, ch) => pre + ch.toUpperCase());
 }
 
+/**
+ * Słownik stacji z odpowiedzi schedules: `dc.st` = { "60103": "Wrocław Główny" }
+ * (ten sam kształt co `st` w /operations). Akceptujemy też `dc.stations`
+ * i wartości-obiekty { nm | name }, bo PDP nie ma publicznego schematu `dc`.
+ */
+function stationNamesFromDict(dc) {
+  const out = {};
+  const raw = dc?.st || dc?.stations || {};
+  for (const [id, v] of Object.entries(raw)) {
+    const name = typeof v === 'string' ? v : (v?.nm || v?.name || '');
+    if (name) out[id] = titleCasePl(name);
+  }
+  return out;
+}
+
+/**
+ * Czas postoju z pól PDP (atm = przyjazd, dtm = odjazd, ady/ddy = przesunięcie
+ * dnia). Stacja końcowa ma tylko jedną godzinę, więc brakującą bierzemy z
+ * drugiej razem z jej dniem. Brak obu godzin = postój nieużywalny.
+ */
+function stopTimesOf(s) {
+  const arrHms = s.atm ?? s.arrivalTime;
+  const depHms = s.dtm ?? s.departureTime;
+  if (!arrHms && !depHms) return null;
+  const arr = arrHms ? hmsToSec(arrHms) + (Number(s.ady ?? s.arrivalDay) || 0) * 86400 : null;
+  const dep = depHms ? hmsToSec(depHms) + (Number(s.ddy ?? s.departureDay) || 0) * 86400 : null;
+  return { arr: arr ?? dep, dep: dep ?? arr };
+}
+
 function haversineM(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -344,36 +373,33 @@ async function pdpKdSchedules(stationIds) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Współrzędne stacji KD z Nominatim. Tylko wyniki w bboxie Wrocławia:
+ * PDP nie podaje lokalizacji, a stacje w zapytaniu są wyłącznie miejskie.
+ * Wynik spoza bboxa to śmieć (kiedyś każda stacja dostała ten sam punkt),
+ * więc go odrzucamy zamiast brać pierwszy z listy.
+ */
 async function geocodeStation(name) {
-  const pick = (res) => {
-    if (!Array.isArray(res) || res.length === 0) return null;
-    const hit = res.find((r) => {
-      const lat = Number(r.lat), lon = Number(r.lon);
-      return lat >= WRO_BBOX.minLat && lat <= WRO_BBOX.maxLat && lon >= WRO_BBOX.minLon && lon <= WRO_BBOX.maxLon;
-    }) || res[0];
-    return { lat: Number(hit.lat), lon: Number(hit.lon), display: hit.display_name || '' };
+  const inBbox = (r) => {
+    const lat = Number(r.lat), lon = Number(r.lon);
+    return lat >= WRO_BBOX.minLat && lat <= WRO_BBOX.maxLat && lon >= WRO_BBOX.minLon && lon <= WRO_BBOX.maxLon;
   };
-
-  // 1. Najpierw Wrocław (viewbox + bounded): najcelniejsze trafienie.
   const inWro = new URLSearchParams({
     q: `${name}, Wrocław, Polska`,
-    format: 'json', limit: '3', addressdetails: '0',
+    format: 'json', limit: '5', addressdetails: '0',
     viewbox: `${WRO_BBOX.minLon},${WRO_BBOX.maxLat},${WRO_BBOX.maxLon},${WRO_BBOX.minLat}`,
     bounded: '1',
   });
-  const resWro = await fetchJson(`${NOMINATIM}?${inWro}`, { 'User-Agent': NOMINATIM_UA }, 20000);
-  const hitWro = pick(resWro);
-  if (hitWro) return hitWro;
-
-  // 2. Fallback: stacje końcowe/pośrednie KD poza Wrocławiem (region, Polska).
-  // Bez tego pociąg z/do stacji spoza miasta był cały pomijany.
-  const inPl = new URLSearchParams({
-    q: `${name}, Polska`,
-    format: 'json', limit: '3', addressdetails: '0',
-    countrycodes: 'pl',
-  });
-  const resPl = await fetchJson(`${NOMINATIM}?${inPl}`, { 'User-Agent': NOMINATIM_UA }, 20000);
-  return pick(resPl);
+  const res = await fetchJson(`${NOMINATIM}?${inWro}`, { 'User-Agent': NOMINATIM_UA }, 20000);
+  const hits = Array.isArray(res) ? res.filter(inBbox) : [];
+  // Dworzec to railway=station/halt, nie słupek bus_stop; preferujemy kolej.
+  const rank = (r) => {
+    const i = ['railway/station', 'railway/halt', 'railway/stop', 'railway/platform', 'railway/junction'].indexOf(`${r.class}/${r.type}`);
+    return i === -1 ? 50 : i;
+  };
+  const hit = [...hits].sort((a, b) => rank(a) - rank(b))[0];
+  if (!hit) return null;
+  return { lat: Number(hit.lat), lon: Number(hit.lon), display: hit.display_name || '' };
 }
 
 /* ─── Build ───────────────────────────────────────────────────────────── */
@@ -585,18 +611,22 @@ async function main() {
       const wro = await pdpWroclawStationIds();
       log(`WROCŁAW: ${wro.stationIds.length} stacji w PDP`);
       const { from, to, routes, dict } = await pdpKdSchedules(wro.stationIds);
-      const stationNames = {};
-      for (const [k, v] of Object.entries(dict.stations || {})) {
-        stationNames[k] = titleCasePl(v.nm || v.name || `Stacja ${k}`);
-      }
-      // Współrzędne: cache w repo + Nominatim dla brakujących.
+      // Współrzędne: cache w repo (trzyma też nazwy) + Nominatim dla brakujących.
       let coords = { stations: {} };
       try {
         const raw = readFileSync(COORDS_FILE, 'utf8');
         coords = JSON.parse(raw);
         if (!coords.stations) coords.stations = {};
       } catch {}
+      // Nazwa: słownik z odpowiedzi PDP, a gdy go brak, nazwa z cache.
+      const stationNames = stationNamesFromDict(dict);
+      for (const [id, c] of Object.entries(coords.stations)) {
+        if (!stationNames[id] && c?.name) stationNames[id] = c.name;
+      }
+      log(`KD: nazwy stacji: ${Object.keys(stationNames).length} (ze słownika PDP + cache)`);
       const unresolved = [];
+      const unnamed = new Set();
+      let skippedNoTimes = 0;
       const ensureCoords = async (id, name) => {
         if (coords.stations[id]?.lat) return coords.stations[id];
         await sleep(1100); // uprzejmie dla Nominatim (max 1 req/s)
@@ -628,14 +658,21 @@ async function main() {
         if ((r.cc || r.carrierCode || '') !== KD_CARRIER) continue;
         const sid = r.sid ?? r.scheduleId;
         const oid = r.oid ?? r.orderId;
-        const stops = r.st || r.stations || [];
         const dates = r.od || r.operatingDates || [];
-        if (sid == null || oid == null || stops.length === 0 || dates.length === 0) continue;
-        // Wszystkie postoje muszą mieć współrzędne, inaczej kurs bezużyteczny dla RAPTOR-a.
+        // Kolejność postojów wg numeru z PDP, nie wg kolejności w tablicy.
+        const stops = [...(r.st || r.stations || [])]
+          .sort((a, b) => (Number(a.ord ?? a.orderNumber) || 0) - (Number(b.ord ?? b.orderNumber) || 0));
+        if (sid == null || oid == null || dates.length === 0) continue;
+        // Kurs z jednym postojem albo z postojem bez godziny nie da się przejechać w RAPTOR-ze.
+        const times = stops.map(stopTimesOf);
+        if (stops.length < 2 || times.some((t) => t === null)) { skippedNoTimes++; continue; }
+        // Postój bez nazwy (brak w słowniku i cache) nie dostaje współrzędnych: kurs pomijamy.
+        // Postój bez współrzędnych też wyklucza kurs.
         let ok = true;
         for (const s of stops) {
           const id = String(s.id ?? s.stationId);
-          const nm = stationNames[id] || `Stacja ${id}`;
+          const nm = stationNames[id];
+          if (!nm) { unnamed.add(id); ok = false; break; }
           if (!seenStops.has(id)) {
             const geo = await ensureCoords(id, nm);
             if (!geo) { ok = false; break; }
@@ -649,29 +686,25 @@ async function main() {
         if (!ok) continue;
         const num = String(r.nn ?? r.nationalNumber ?? r.nm ?? r.name ?? `${sid}/${oid}`);
         const routeId = `KD:R:${sid}:${oid}`;
+        const svc = `KD:svc:${sid}:${oid}`;
+        const firstName = stationNames[String(stops[0].id ?? stops[0].stationId)];
+        const lastName = stationNames[String(stops[stops.length - 1].id ?? stops[stops.length - 1].stationId)];
         if (!seenRoutes.has(routeId)) {
-          const first = stationNames[String(stops[0].id ?? stops[0].stationId)] || '';
-          const last = stationNames[String(stops[stops.length - 1].id ?? stops[stops.length - 1].stationId)] || '';
-          insRoute.run(routeId, num, first && last ? `${first} – ${last}` : `Koleje Dolnośląskie ${num}`, 2);
+          insRoute.run(routeId, num, `${firstName} – ${lastName}`, 2);
           seenRoutes.add(routeId);
           counts.routes++;
           counts.kdRoutes++;
-          const svc = `KD:svc:${sid}:${oid}`;
           insCal.run(svc, 0, 0, 0, 0, 0, 0, 0, '', '');
         }
-        const svc = `KD:svc:${sid}:${oid}`;
-        const headsign = stationNames[String(stops[stops.length - 1].id ?? stops[stops.length - 1].stationId)] || '';
         for (const d of dates) {
           const dc = ymdCompact(d);
           const tripId = `KD:T:${sid}:${oid}:${dc}`;
-          insTrip.run(tripId, routeId, svc, headsign, 0, '');
+          insTrip.run(tripId, routeId, svc, lastName, 0, '');
           counts.trips++;
           counts.kdTrips++;
-          for (const s of stops) {
-            const id = String(s.id ?? s.stationId);
-            const arr = hmsToSec(s.atm ?? s.arrivalTime ?? '00:00:00') + (Number(s.ady ?? s.arrivalDay) || 0) * 86400;
-            const dep = hmsToSec(s.dtm ?? s.departureTime ?? s.atm ?? s.arrivalTime ?? '00:00:00') + (Number(s.ddy ?? s.departureDay) || 0) * 86400;
-            insSt.run(tripId, `KD:S:${id}`, arr, dep, Number(s.ord ?? s.orderNumber) || 0);
+          for (let i = 0; i < stops.length; i++) {
+            const id = String(stops[i].id ?? stops[i].stationId);
+            insSt.run(tripId, `KD:S:${id}`, times[i].arr, times[i].dep, i + 1);
             counts.stopTimes++;
             counts.kdStopTimes++;
           }
@@ -679,6 +712,8 @@ async function main() {
         }
       }
       db.exec('COMMIT');
+      if (unnamed.size > 0) warn(`KD: ${unnamed.size} stacji bez nazwy (brak w słowniku PDP i cache): ${[...unnamed].join(', ')}`);
+      if (skippedNoTimes > 0) log(`KD: pominięto ${skippedNoTimes} kursów bez pełnych czasów (<2 postoje albo brak godziny)`);
       if (WRITE_COORDS) {
         writeFileSync(COORDS_FILE, JSON.stringify(coords, null, 2) + '\n');
         log('zapisano cache współrzędnych →', COORDS_FILE, '(przejrzyj diffa przed commitem!)');
@@ -690,6 +725,8 @@ async function main() {
         stations: seenStops.size, routes: seenRoutes.size, trips: counts.kdTrips,
         stopTimes: counts.kdStopTimes, schedulesVersion: kdVersion,
         unresolvedStations: unresolved,
+        unnamedStations: [...unnamed],
+        skippedTripsNoTimes: skippedNoTimes,
       };
       unresolvedCount = unresolved.length;
       log(`KD: stations=${seenStops.size} routes=${seenRoutes.size} trips=${counts.kdTrips} stopTimes=${counts.kdStopTimes}`);
@@ -755,6 +792,13 @@ async function main() {
     if (counts.kdRoutes === 0) problems.push('0 tras KD');
     if (counts.kdTrips === 0) problems.push('0 kursów KD');
     if (interchangeCount === 0) problems.push('0 przesiadek MPK<->KD');
+    // Zdegenerowane współrzędne (dawniej: 30 stacji w 4 punktach) psują przesiadki.
+    const uniqueKdCoords = new Set([...kdGeo.values()].map((g) => `${g.lat.toFixed(5)},${g.lon.toFixed(5)}`)).size;
+    if (kdGeo.size >= 2 && uniqueKdCoords < kdGeo.size * 0.9) {
+      problems.push(`współrzędne KD zdegenerowane (${uniqueKdCoords} różnych punktów dla ${kdGeo.size} stacji)`);
+    }
+    const kdPlaceholderNames = [...kdGeo.values()].filter((g) => /^Stacja \d+$/.test(g.name)).length;
+    if (kdPlaceholderNames > 0) problems.push(`${kdPlaceholderNames} stacji KD z zastępczą nazwą "Stacja NNN"`);
     if (problems.length > 0) {
       rmSync(work, { recursive: true, force: true });
       throw new Error(`niepełne realne KD (${problems.join(', ')}): nie publikuję bazy. Napraw źródło KD (klucz/współrzędne) albo użyj --allow-mpk-only tylko do diagnostyki.`);

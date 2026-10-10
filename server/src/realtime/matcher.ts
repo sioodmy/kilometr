@@ -1,5 +1,5 @@
 import { GtfsStore } from '../gtfs/store';
-import { bearingDegrees, projectPointToPolyline } from '../gtfs/geo';
+import { bearingDegrees, projectPointToPolyline, warsawNow } from '../gtfs/geo';
 
 export interface VehicleMatch {
   vehicleId: string;
@@ -25,8 +25,9 @@ export function matchVehicleToSchedule(
   const lat = raw.x;
   const lon = raw.y;
   const vehicleId = `${line}-${raw.k}`;
-  const now = new Date();
-  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  // Czas i dzień tygodnia w strefie Wrocławia (niezależnie od TZ serwera).
+  const clock = warsawNow();
+  const nowSec = clock.sec;
 
   let heading: number | undefined;
   if (prevLat !== undefined && prevLon !== undefined) {
@@ -53,7 +54,7 @@ export function matchVehicleToSchedule(
   let bestExpectedSec = 0;
 
   // Tylko kursy z dzisiejszego rozkładu (routeTrips trzyma wszystkie dni).
-  const todayServices = store.getActiveServices(now.getDay());
+  const todayServices = store.getActiveServices(clock.weekday);
 
   for (const routeId of candidateRouteIds) {
     const trips = store.routeTrips.get(routeId);

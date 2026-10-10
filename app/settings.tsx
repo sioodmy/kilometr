@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, RotateCcw, Activity, Anchor, TrainFront } from 'lucide-react-native';
+import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, Rabbit, RotateCcw, Activity, Anchor, TrainFront, Turtle } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
 import {
   SETTINGS_LIMITS,
+  WALK_PACE_DEFAULTS_MPS,
   formatTransferTime,
   formatWalkDistance,
   formatWalkSpeed,
-  walkSpeedLabel,
   useRoutingSettings,
+  useWalkSpeedMps,
+  type WalkPaceProfile,
 } from '../src/services/settings';
 import {
   getDataStatus,
@@ -20,6 +22,7 @@ import {
   refreshDataStatus,
   subscribeDataStatus,
   type DataStatus,
+  type ImportOutcome,
 } from '../src/services/dataManager';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard, PrefsToggle } from '../src/components/NotificationPrefsCard';
@@ -104,41 +107,59 @@ export default function SettingsScreen() {
   const { settings, update, reset } = useRoutingSettings();
   const s = useStrings();
   const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
+  const walkMps = useWalkSpeedMps();
+  // Ikony żółwia i królika to konwencja tempa (wolno/szybko), odcisk stopy to
+  // dosłowny spacer. Trzy warianty zamiast suwaka: profil ustawia tempo dla
+  // planera i wszystkich czasów dojścia.
+  const paceOptions: { value: WalkPaceProfile; icon: typeof Turtle; label: string; desc: string }[] = [
+    { value: 'slow', icon: Turtle, label: s.settings.paceSlow, desc: s.settings.paceSlowDesc },
+    { value: 'normal', icon: Footprints, label: s.settings.paceNormal, desc: s.settings.paceNormalDesc },
+    { value: 'fast', icon: Rabbit, label: s.settings.paceFast, desc: s.settings.paceFastDesc },
+  ];
 
   const maxT = SETTINGS_LIMITS.maxTransfers;
   const minT = SETTINGS_LIMITS.minTransferSec;
   const trainBuf = SETTINGS_LIMITS.trainMinTransferSec;
   const walk = SETTINGS_LIMITS.maxWalkM;
-  const speed = SETTINGS_LIMITS.walkSpeedMps;
   const anchor = SETTINGS_LIMITS.anchorRadiusM;
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [importing, setImporting] = useState(false);
+  const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
   // Czy rozkład w ogóle ma pociągi (route_type 2 z prebuilt). Bez nich
   // przełącznik KD gaśnie z podpowiedzią o odświeżeniu danych.
   const [hasTrains, setHasTrains] = useState(true);
+  // Licznik ruchów bazy. Sam `dataStatus.state` nie wystarczy: po świeżym
+  // pobraniu wraca 'ready' → 'ready', efekt by się drugi raz nie wykonał
+  // i podpowiedź o braku pociągów zostawałaby na ekranie w nieskończoność.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    refreshDataStatus().then(setDataStatus);
+    refreshDataStatus().then(setDataStatus).catch(() => {});
     return subscribeDataStatus(setDataStatus);
   }, []);
 
   useEffect(() => {
     let alive = true;
-    hasTrainRoutes().then((v) => {
-      if (alive) setHasTrains(v);
-    });
+    hasTrainRoutes()
+      .then((v) => {
+        if (alive) setHasTrains(v);
+      })
+      .catch(() => {
+        if (alive) setHasTrains(false);
+      });
     return () => {
       alive = false;
     };
-  }, [dataStatus.state]);
+  }, [dataStatus.state, reloadKey]);
 
   const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
 
   const handleDownload = async () => {
     if (busy) return;
     setImporting(true);
+    setOutcome(null);
     try {
-      await importGtfsFromNetwork();
+      setOutcome(await importGtfsFromNetwork());
     } catch (err) {
       // Powód z importu (w języku użytkownika) zamiast zawsze tego samego „sprawdź internet".
       const reason = err instanceof Error ? err.message : s.settings.downloadFailFallback;
@@ -148,8 +169,15 @@ export default function SettingsScreen() {
       );
     } finally {
       setImporting(false);
+      setReloadKey((k) => k + 1);
     }
   };
+
+  const outcomeLabel =
+    outcome === 'updated' ? s.settings.downloadDone
+      : outcome === 'upToDate' ? s.settings.downloadUpToDate
+        : outcome === 'keptLocal' ? s.settings.downloadKeptLocal
+          : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -182,12 +210,29 @@ export default function SettingsScreen() {
               pressed && !busy && { opacity: 0.7 },
             ]}
             accessibilityLabel={s.settings.downloadA11y}
+            accessibilityState={{ busy, disabled: busy }}
           >
-            <Download size={18} color={scheme.onSecondaryContainer} />
+            {busy ? (
+              <ActivityIndicator size="small" color={scheme.onSecondaryContainer} />
+            ) : (
+              <Download size={18} color={scheme.onSecondaryContainer} />
+            )}
             <Text style={styles.downloadText}>
-              {dataStatus.state === 'ready' ? s.settings.downloadReady : s.settings.downloadEmpty}
+              {busy
+                ? dataStatusLabel(dataStatus)
+                : dataStatus.state === 'ready' ? s.settings.downloadReady : s.settings.downloadEmpty}
             </Text>
           </Pressable>
+          {outcomeLabel ? (
+            <Text
+              style={[
+                styles.outcomeText,
+                outcome === 'keptLocal' && { color: scheme.warning },
+              ]}
+            >
+              {outcomeLabel}
+            </Text>
+          ) : null}
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(10).duration(180)} style={styles.card}>
@@ -301,7 +346,7 @@ export default function SettingsScreen() {
             {s.settings.walkHint}
           </Text>
           <Stepper
-            value={formatWalkDistance(settings.maxWalkM, settings.walkSpeedMps)}
+            value={formatWalkDistance(settings.maxWalkM, walkMps)}
             onMinus={() => update({ maxWalkM: settings.maxWalkM - walk.step })}
             onPlus={() => update({ maxWalkM: settings.maxWalkM + walk.step })}
             minusDisabled={settings.maxWalkM <= walk.min}
@@ -317,14 +362,38 @@ export default function SettingsScreen() {
           <Text style={styles.cardHint}>
             {s.settings.speedHint}
           </Text>
-          <Stepper
-            value={walkSpeedLabel(settings.walkSpeedMps)}
-            display={formatWalkSpeed(settings.walkSpeedMps)}
-            onMinus={() => update({ walkSpeedMps: settings.walkSpeedMps - speed.step })}
-            onPlus={() => update({ walkSpeedMps: settings.walkSpeedMps + speed.step })}
-            minusDisabled={settings.walkSpeedMps <= speed.min}
-            plusDisabled={settings.walkSpeedMps >= speed.max}
-          />
+          <View style={styles.paceRow}>
+            {paceOptions.map((opt) => {
+              const active = settings.walkPace === opt.value;
+              const Icon = opt.icon;
+              const a11y = `${opt.label}, ${opt.desc}, ${formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}`;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => update({ walkPace: opt.value })}
+                  style={({ pressed }) => [
+                    styles.paceOpt,
+                    active && styles.paceOptActive,
+                    pressed && !active && { opacity: 0.7 },
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                  accessibilityLabel={a11y}
+                >
+                  <Icon size={22} color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
+                  <Text style={[styles.paceLabel, active && styles.paceLabelActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.paceDesc, active && styles.paceDescActive]} numberOfLines={2}>
+                    {opt.desc}
+                  </Text>
+                  <Text style={[styles.paceKmh, active && styles.paceKmhActive]}>
+                    {formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(160).duration(180)} style={styles.card}>
@@ -388,11 +457,21 @@ const styles = StyleSheet.create({
   stepValueSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: scheme.secondaryContainer, borderRadius: shape.full, paddingVertical: 12 },
   downloadText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
+  outcomeText: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
   langRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   langChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 14, paddingVertical: 10 },
   langChipActive: { backgroundColor: scheme.primaryContainer },
   langChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
+  paceRow: { flexDirection: 'row', gap: 8 },
+  paceOpt: { flex: 1, alignItems: 'center', gap: 2, borderRadius: shape.medium, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 6, paddingVertical: 12, minHeight: 108 },
+  paceOptActive: { backgroundColor: scheme.primaryContainer },
+  paceLabel: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '700', textAlign: 'center' },
+  paceLabelActive: { color: scheme.onPrimaryContainer },
+  paceDesc: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center', lineHeight: 16 },
+  paceDescActive: { color: scheme.onPrimaryContainer },
+  paceKmh: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600', marginTop: 2 },
+  paceKmhActive: { color: scheme.onPrimaryContainer },
   foot: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 16 },
   sectionLabel: { marginTop: 10 },
   sectionLabelText: { ...type.titleSmall, color: scheme.onSurfaceVariant, fontWeight: '600' },

@@ -325,11 +325,12 @@ export function buildBackupFile(data: BackupData, appVersion: string | null): st
   return JSON.stringify(envelope, null, 2);
 }
 
-/** `kilometr-backup-2026-10-05-1842.json` — sortowanie po nazwie daje chronologię. */
+/** `kilometr-backup-2026-10-05-184205.json` — sortowanie po nazwie daje chronologię.
+ *  Sekundy w nazwie: dwa eksporty w tej samej minucie nie nadpisują się. */
 export function backupFileName(now: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return (
     `kilometr-backup-${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}` +
-    `-${p(now.getHours())}${p(now.getMinutes())}.${BACKUP_EXTENSION}`
+    `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}.${BACKUP_EXTENSION}`
   );
 }

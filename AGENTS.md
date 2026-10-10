@@ -8,7 +8,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 ## Model branchy i promocja kodu (OBOWIĄZKOWE)
 
-- Przepływ: `feature/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok to PR, nigdy direct push.
+- Przepływ: `feature/*` lub `fix/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok to PR, nigdy direct push.
 - `dev` - integracja/experimental: nowe feature branche bazujesz na `dev` i PR-ujesz do `dev`. Automatycznie twórz PR nowych features do tego brancha
 - `main` - scalony, jeszcze nie sprawdzony na urządzeniu kod.
 - `nightly` - buildy używalne jako daily driver, mogą być niestabilne; nie są prod ready.
@@ -20,7 +20,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease, asset `kilometr-nightly.apk`.
   - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
 - Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
-- Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie.
+- Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie. Jeśli dev jest do przodu ze zmianami w stosunku do main, a PR nie istnieje, to utwórz PR z tą todo listą
 - W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature.
 - Zmergowanie feature brancha do `dev` dopisuje nowy element `- [ ]` do tej listy TYLKO jeśli feature wymaga manualnych testów (UI, funkcjonalność, landing, aplikacja). Drobnostek bez funkcjonalności (np. aktualizacja README, docs, komentarze) nie dopisuj.
 - PR `dev` -> `main` służy do manualnych testów tylko przez człowieka
@@ -67,6 +67,6 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - Commituj zmiany na bieżąco, w małych logicznych porcjach, zamiast odkładać wszystko na koniec sesji.
 - Przed commitem sprawdź `git status --short`, `git diff` oraz `git log --oneline -10`, stage'uj tylko zamierzone pliki, nigdy nie commituj sekretów.
 - używaj conventional commits po polsku
-- NIGDY PRZENIGDY NIE COMMITUJ NA MAIN BRANCH.
+- NIGDY PRZENIGDY NIE COMMITUJ NA BRANCHACH dev, main, nightly i prod bezpośrednio.
 - Nie amenduj nieudanych commitów po hookach, napraw problem i zrób nowy commit.
 - Nie pushuj, nie twórz PR-ów i nie zmieniaj remote'ów, chyba że użytkownik wyraźnie o to poprosi.

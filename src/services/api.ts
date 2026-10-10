@@ -1,11 +1,10 @@
 import * as Location from 'expo-location';
-import { kvGet, kvSet } from './storage';
+import { kvGet, kvGetStrict, kvSet } from './storage';
 import { DEFAULT_LOCATION } from '../config';
-import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion, VehiclePosition } from '../types/models';
+import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
 import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
 import { planConnections, buildTripStops } from './routing/engine';
-import { fetchVehiclesDirect } from './realtimeClient';
 
 let cachedLocation: LocationResult | null = null;
 let cachedAt = 0;
@@ -414,9 +413,6 @@ export const RoutingService: IRoutingService = {
     }
   },
 
-  async getVehicles(line: string): Promise<VehiclePosition[]> {
-    return fetchVehiclesDirect(line);
-  },
 };
 
 async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
@@ -427,16 +423,34 @@ async function getSavedRoutes(): Promise<{id: string, savedAt: number, connectio
   return [];
 }
 
+// Odczyt listy miejsc do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
+// żeby add/update/delete nie nadpisały prawdziwych danych pustą listą.
+// Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
+async function readPlaces(): Promise<SavedPlace[]> {
+  const raw = await kvGetStrict('kilometr.places');
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('kilometr.places is not an array');
+  return parsed as SavedPlace[];
+}
+
+// Serializuje read-modify-write listy miejsc: dwa równoległe addPlace nie mogą
+// zgubić jednego wpisu (każdy czyta-i-zapisuje całą listę).
+let placesLock: Promise<unknown> = Promise.resolve();
+function withPlacesLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = placesLock.then(fn, fn);
+  placesLock = run.catch(() => {});
+  return run;
+}
+
 export const FavoritesService: IFavoritesService = {
   async list(): Promise<SavedPlace[]> {
     try {
-      const raw = await kvGet('kilometr.places');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return [];
+      return await readPlaces();
+    } catch (err) {
+      console.warn('[FavoritesService] list failed:', err);
+      return [];
+    }
   },
 
   async smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]> {
@@ -465,45 +479,59 @@ export const FavoritesService: IFavoritesService = {
     anchorStopLat?: number | null;
     anchorStopLon?: number | null;
   }): Promise<SavedPlace> {
-    const places = await this.list();
-    // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
-    // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
-    // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
-    // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
-    // obcinamy dopiero na jego końcu — długość jest wtedy stała.
-    const id = newId();
-    const newPlace: SavedPlace = {
-      id,
-      placeId: id,
-      name: place.name,
-      icon: place.icon,
-      address: place.address,
-      lat: place.lat,
-      lon: place.lon,
-      anchorStopId: place.anchorStopId || undefined,
-      anchorStopName: place.anchorStopName || undefined,
-      anchorStopLat: place.anchorStopLat || undefined,
-      anchorStopLon: place.anchorStopLon || undefined,
-    };
-    places.push(newPlace);
-    await kvSet('kilometr.places', JSON.stringify(places));
-    return newPlace;
+    return withPlacesLock(async () => {
+      const places = await readPlaces();
+      // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
+      // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
+      // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
+      // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
+      // obcinamy dopiero na jego końcu — długość jest wtedy stała.
+      const id = newId();
+      const newPlace: SavedPlace = {
+        id,
+        placeId: id,
+        name: place.name,
+        icon: place.icon,
+        address: place.address,
+        lat: place.lat,
+        lon: place.lon,
+        anchorStopId: place.anchorStopId || undefined,
+        anchorStopName: place.anchorStopName || undefined,
+        anchorStopLat: place.anchorStopLat || undefined,
+        anchorStopLon: place.anchorStopLon || undefined,
+      };
+      places.push(newPlace);
+      await kvSet('kilometr.places', JSON.stringify(places));
+      return newPlace;
+    });
   },
 
   async updatePlace(id: string, updates: Partial<SavedPlace>): Promise<SavedPlace | null> {
-    const places = await this.list();
-    const idx = places.findIndex(p => p.id === id);
-    if (idx === -1) return null;
-    places[idx] = { ...places[idx], ...updates };
-    await kvSet('kilometr.places', JSON.stringify(places));
-    return places[idx];
+    return withPlacesLock(async () => {
+      const places = await readPlaces();
+      const idx = places.findIndex(p => p.id === id);
+      if (idx === -1) return null;
+      places[idx] = { ...places[idx], ...updates };
+      await kvSet('kilometr.places', JSON.stringify(places));
+      return places[idx];
+    });
   },
 
   async deletePlace(id: string): Promise<boolean> {
-    const places = await this.list();
-    const filtered = places.filter(p => p.id !== id);
-    await kvSet('kilometr.places', JSON.stringify(filtered));
-    return true;
+    return withPlacesLock(async () => {
+      let places: SavedPlace[];
+      try {
+        places = await readPlaces();
+      } catch (err) {
+        // Błąd odczytu: NIE nadpisujemy listy pustką, tylko zgłaszamy porażkę.
+        console.warn('[FavoritesService] deletePlace read failed:', err);
+        return false;
+      }
+      const filtered = places.filter(p => p.id !== id);
+      if (filtered.length === places.length) return false;
+      await kvSet('kilometr.places', JSON.stringify(filtered));
+      return true;
+    });
   },
 };
 

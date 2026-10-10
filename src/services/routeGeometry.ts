@@ -9,9 +9,11 @@
 //  3. wynik trzymamy w cache, więc drugie otwarcie mapy jest natychmiastowe
 //     i działa offline.
 //
-// Bez OSRM zostaje prosta wersja — wolniej, ale zawsze pokazuje trasę.
+// Spacer idzie tym samym kanałem co kurs, ale po profilu pieszym: bez niego
+// noga piesza dostawałaby dwa punkty i rysowała się w linii prostej przez
+// budynki. Bez routera zostaje wersja prosta, wolna, ale zawsze pokazuje trasę.
 
-import { OSRM_BASE_URL } from '../config';
+import { OSRM_BASE_URL, OSRM_FOOT_BASE_URL } from '../config';
 import { kvGet, kvSet } from './storage';
 import { getLineColors } from '../components/LineBadge';
 import { timeStringToSeconds } from '../gtfs/geo';
@@ -21,9 +23,20 @@ import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
 const CACHE_KEY = 'kilometr.map_geometry.v1';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 60;
-/** OSRM demo jest wolne przy dużej liczbie waypointów — dzielimy nogi na porcje. */
+/** OSRM demo jest wolne przy dużej liczbie waypointów, dzielimy nogi na porcje. */
 const WAYPOINTS_PER_REQUEST = 20;
 const REQUEST_TIMEOUT_MS = 8000;
+
+/** Profil routera: kurs jedzie po jezdni, spacer po chodnikach. */
+type RouteProfile = 'driving' | 'foot';
+
+function legProfile(leg: MapLeg): RouteProfile {
+  return leg.mode === 'walk' ? 'foot' : 'driving';
+}
+
+function profileUrl(profile: RouteProfile): string {
+  return profile === 'foot' ? OSRM_FOOT_BASE_URL : OSRM_BASE_URL;
+}
 
 export type Coord = [number, number];
 
@@ -184,10 +197,14 @@ async function writeCache(key: string, coords: Coord[]): Promise<void> {
   await kvSet(CACHE_KEY, JSON.stringify(entries));
 }
 
-async function fetchChunk(points: Coord[], signal?: AbortSignal): Promise<Coord[] | null> {
+async function fetchChunk(
+  points: Coord[],
+  profile: RouteProfile,
+  signal?: AbortSignal,
+): Promise<Coord[] | null> {
   if (points.length < 2) return null;
   const coordsParam = points.map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
-  const url = `${OSRM_BASE_URL}/route/v1/driving/${coordsParam}?overview=full&geometries=geojson`;
+  const url = `${profileUrl(profile)}/route/v1/${profile}/${coordsParam}?overview=full&geometries=geojson`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   // Anulowanie z ekranu ma przerwać także żądanie w locie, nie tylko pętlę.
@@ -223,7 +240,10 @@ export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promi
   );
   if (points.length < 2) return null;
 
-  const key = waypointKey(points);
+  const profile = legProfile(leg);
+  // Profil wchodzi do klucza: te same dwa punkty pieszo i autem to dwie
+  // różne trasy, więc jedna nie może podmienić drugiej w cache.
+  const key = `${profile}:${waypointKey(points)}`;
   const cache = await readCache();
   const hit = cache.get(key);
   if (hit) return hit;
@@ -232,7 +252,7 @@ export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promi
   for (let i = 0; i < points.length - 1; i += WAYPOINTS_PER_REQUEST - 1) {
     if (signal?.aborted) return null;
     const slice = points.slice(i, i + WAYPOINTS_PER_REQUEST);
-    const part = await fetchChunk(slice, signal);
+    const part = await fetchChunk(slice, profile, signal);
     if (!part) return null;
     // Sklej bez powtórzenia punktu granicznego.
     chunks.push(...(chunks.length > 0 ? part.slice(1) : part));
@@ -262,7 +282,6 @@ export async function resolveGeometry(
 ): Promise<void> {
   for (const leg of route.legs) {
     if (signal?.aborted) return;
-    if (leg.mode === 'walk') continue;
     if (leg.stops.length < 2) continue;
     const coords = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;

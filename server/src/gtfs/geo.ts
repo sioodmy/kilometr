@@ -59,6 +59,52 @@ export function secondsToTimeString(totalSec: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+export interface WarsawClock {
+  /** sekundy od północy w strefie Europe/Warsaw */
+  sec: number;
+  /** 0 = niedziela ... 6 = sobota */
+  weekday: number;
+  year: number;
+  /** 1-12 */
+  month: number;
+  day: number;
+}
+
+// Rozkład GTFS jest w czasie Wrocławia, a serwer bywa w UTC. Liczymy dobę
+// i dzień tygodnia jawnie w Europe/Warsaw, żeby nie zależeć od TZ procesu.
+const WARSAW_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Warsaw',
+  hour12: false,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  weekday: 'short',
+});
+const WARSAW_WEEKDAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+export function warsawNow(date: Date = new Date()): WarsawClock {
+  const parts = WARSAW_FMT.formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0';
+  const hour = Number(get('hour')) % 24;
+  return {
+    sec: hour * 3600 + Number(get('minute')) * 60 + Number(get('second')),
+    weekday: WARSAW_WEEKDAYS[get('weekday')] ?? 0,
+    year: Number(get('year')),
+    month: Number(get('month')),
+    day: Number(get('day')),
+  };
+}
+
+/** YYYYMMDD z obiektu daty opartego na UTC (patrz Date.UTC + offset dni). */
+export function utcDateStr(date: Date): string {
+  return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, '0')}${String(
+    date.getUTCDate(),
+  ).padStart(2, '0')}`;
+}
+
 /** Project a point onto a polyline of {lat, lon} coordinates */
 export function projectPointToPolyline(
   lat: number,

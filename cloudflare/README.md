@@ -56,6 +56,21 @@ w wersji, która nie wybucha na limitach.
 \* `/api/kd/*` woła PDP **tylko na żądanie** (cache 120 s / 1 h).
 Aplikacja na razie tego nie używa (gotowość na przyszłość) → 0 req/dzień.
 
+### Pozycje pojazdów celowo omijają Worker
+
+Feed live (`mpk.wroc.pl/bus_position`) jest odpytywany **wprost z telefonu**,
+nie przez `/api/vehicles`. Powód to rachunek: Worker Free ma limit 100k
+requestów na dobę, a pojedynczy użytkownik odpytuje feed co 20 s, czyli
+**4 320 requestów na dobę**. Dwudziestu trzech aktywnych użytkowników
+dobijałoby limit i wyłączyło Worker dla pozostałych, w tym pobieranie bazy
+rozkładu.
+
+Dodatkowo pomiary (2026-10) pokazują, że cache nie jest tu potrzebny:
+68 z 68 zapytań do MPK powiodło się, mediana 291 ms. Awarię robiła logika
+świeżości w `liveTracker`, nie endpoint. Dodanie proxy nie leczyłooby
+przyczyny, a wprowadzałoby realny limit. Jeśli kiedyś wrócimy do tego pomysłu,
+to z cache'em w R2 odczytywanym raz na dobę, nie z proxy na każdy poll.
+
 ## Strażnik 0 zł (jak spać spokojnie)
 
 **GitHub Actions (prywatne repo: 2000 min/mies. gratis):**
@@ -159,12 +174,15 @@ importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
 - Stacje: resolve przez `GET /dictionaries/cities?search=WROC` →
   miasto `WROCŁAW` → jego `stationIds` (dynamicznie, bez hardkodu ID).
 - Rozkład: `GET /schedules/shortened?stations=<ids>&carriersInclude=KD
-  &dateFrom=<dziś>&dateTo=<dziś+13>`, `dictionaries=true` (nazwy stacji).
+  &dateFrom=<dziś>&dateTo=<dziś+13>`, `dictionaries=true`. Nazwy stacji są
+  w `dc.st` (`{ "60103": "Wrocław Główny" }`, ten sam kształt co `st` w
+  `/operations`). Czasy: `atm` przyjazd, `dtm` odjazd, `ady`/`ddy` przesunięcie
+  dnia (kursy przez północ). Stacja końcowa ma tylko jedną godzinę.
 - PDP **nie zwraca współrzędnych stacji**, więc build dociąga je z Nominatim
-  i zapisuje w `data/kd-station-coords.json`. Geokodowanie szuka najpierw
-  w bbox Wrocławia, a gdy stacja jest poza miastem (stacje końcowe/pośrednie
-  kursów), robi fallback na całą Polskę. Dzięki temu żaden kurs KD nie jest
-  po cichu pomijany.
+  i zapisuje w `data/kd-station-coords.json` (cache trzyma też nazwy).
+  Geokodowanie przyjmuje tylko wyniki w bbox Wrocławia, najwyżej dworzec
+  kolejowy. Wynik spoza miasta jest odrzucany, a nie brany na ślepo.
+  Kurs z postojem bez nazwy albo z jednym postojem jest pomijany.
   ```bash
   PDP_API_KEY=... node scripts/build-timetable.mjs --write-coords
   ```
@@ -173,7 +191,9 @@ importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
   **przejrzyj diffa** (`git diff data/…`) i commituj. Zcommitowany cache
   oznacza, że CI nie zależy już od dostępności Nominatim.
 - Bramka jakości: gdy KD jest wymagane, build kończy się **błędem**, jeśli
-  któraś sekcja jest pusta (`0 stacji / 0 tras / 0 kursów / 0 przesiadek`).
+  któraś sekcja jest pusta (`0 stacji / 0 tras / 0 kursów / 0 przesiadek`),
+  współrzędne są zdegenerowane (dawniej 30 stacji w 4 punktach), albo
+  stacja ma zastępczą nazwę `Stacja NNN`.
   Baza MPK-only albo z niekompletnym KD nigdy nie trafia do R2.
 - W bazie KD ląduje w tych samych tabelach co MPK, z prefiksami ID:
   przystanki `KD:S:<id>`, trasy `KD:R:<sid>:<oid>`,

@@ -5,7 +5,6 @@ import type {
   SavedPlace,
   SmartDestination,
   Suggestion,
-  VehiclePosition,
 } from '../types/models';
 
 export interface ISearchService {
@@ -33,8 +32,17 @@ export interface IRoutingService {
   isRouteSaved(id: string): Promise<boolean>;
   /** Pełna sekwencja przystanków kursu (cała linia). Zwraca [] gdy brak danych. */
   getTripStops(tripId: string): Promise<LegStop[]>;
-  /** Live pojazdy danej linii (GTFS-RT match). Zwraca [] gdy brak. */
-  getVehicles(line: string): Promise<VehiclePosition[]>;
+}
+
+export interface LocationResult {
+  title: string;
+  address: string;
+  lat: number;
+  lon: number;
+  stopId?: string;
+  city?: string | null;
+  /** Promień niepewności fixu w metrach z systemu (null na webe). */
+  accuracyM?: number | null;
 }
 
 export interface LocationResult {

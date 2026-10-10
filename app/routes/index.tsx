@@ -40,7 +40,7 @@ import {
 // Mediana czasu dojazdu jest czysta i idzie do nawyku w „Ostatnich miejscach",
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
 import { typicalDurationMin } from '../../src/services/smartRanking';
-import { getSettingsSync, loadSettings } from '../../src/services/settings';
+import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -52,7 +52,7 @@ import {
   type TrackedTrip,
 } from '../../src/services/notifications';
 import {
-  loadConnections,
+  loadCachedConnections,
   hasLocalTimetable,
   rehydrateConnections,
 } from '../../src/services/offlineCache';
@@ -131,21 +131,29 @@ export default function RoutesScreen() {
   // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl
   // renderów; zależność od params.action, bo ekspo-router podmienia
   // parametry bez remountu, gdy ekran jest już otwarty.
-  const stopFromLinkRef = useRef(params.action === 'stop');
+  const handledStopRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!stopFromLinkRef.current) return;
-    stopFromLinkRef.current = false;
+    if (params.action !== 'stop') {
+      handledStopRef.current = null;
+      return;
+    }
+    if (handledStopRef.current === 'stop') return;
+    handledStopRef.current = 'stop';
     void stopTracking();
   }, [params.action]);
 
   // Przycisk „Trasa” pod powiadomieniem prowadzi prosto do szczegółów
   // śledzonego kursu. Listę połączeń użytkownik już widział — teraz chce
   // sprawdzić ten jeden kurs, więc oszczędzamy mu jedno przeskakiwanie ekranu.
-  const openFromLinkRef = useRef(params.open);
+  const handledOpenRef = useRef<string | null>(null);
   useEffect(() => {
-    const id = openFromLinkRef.current;
-    if (!id) return;
-    openFromLinkRef.current = undefined;
+    const id = params.open;
+    if (!id) {
+      handledOpenRef.current = null;
+      return;
+    }
+    if (handledOpenRef.current === String(id)) return;
+    handledOpenRef.current = String(id);
     router.push({ pathname: '/routes/[id]', params: { id: String(id) } });
   }, [params.open, router]);
 
@@ -182,11 +190,13 @@ export default function RoutesScreen() {
   const timetableReady = dataStatus.state === 'ready';
   // Brak sieci = brak opóźnień z MPK. Bez komunikatu użytkownik myśli,
   // że planer po prostu nie umie opóźnień.
+  // `unknown` też oznacza brak danych: przed pierwszym udanym pollem (albo przy
+  // starcie apki) nie mamy żadnego opóźnienia, więc cisza była kłamstwem.
   const [liveStale, setLiveStale] = useState(false);
   useEffect(() => {
-    const check = () => setLiveStale(liveTracker.getLiveState() === 'stale');
+    const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
     check();
-    const t = setInterval(check, 30000);
+    const t = setInterval(check, 15000);
     return () => clearInterval(t);
   }, []);
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
@@ -304,15 +314,12 @@ export default function RoutesScreen() {
   const startTrackingConnection = useCallback(
     async (conn: Connection) => {
       if (!areNotificationsSupported()) {
-        Alert.alert(
-          'Śledzenie niedostępne',
-          'Powiadomienia wymagają builda deweloperskiego — Expo Go ich nie wspiera.',
-        );
+        Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
         return;
       }
       const ok = await ensureNotificationPermission();
       if (!ok) {
-        Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
+        Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
         return;
       }
       const track: TrackedTrip = {
@@ -332,7 +339,7 @@ export default function RoutesScreen() {
       };
       await startTracking(track);
     },
-    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
+    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor, s],
   );
 
   /** Przycisk w pasku: śledzimy najbliższe połączenie z listy. */
@@ -343,11 +350,11 @@ export default function RoutesScreen() {
     }
     const next = displayed[0] ?? items[0];
     if (!next) {
-      Alert.alert('Brak połączeń', 'Poczekaj aż pojawi się kurs na tej trasie.');
+      Alert.alert(s.routes.noConnectionsTitle, s.routes.noConnectionsBody);
       return;
     }
     await startTrackingConnection(next);
-  }, [isTrackingThisRoute, displayed, items, startTrackingConnection]);
+  }, [isTrackingThisRoute, displayed, items, startTrackingConnection, s]);
 
   // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
   const listRef = useRef<FlatList<Connection>>(null);
@@ -398,7 +405,8 @@ export default function RoutesScreen() {
       trainsEnabled: cfg.trainsEnabled,
       trainMinTransferSec: cfg.trainMinTransferSec,
       maxWalkM: cfg.maxWalkM,
-      walkSpeedMps: cfg.walkSpeedMps,
+      // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).
+      walkSpeedMps: profileWalkSpeedMps(cfg.walkPace),
     };
   };
 
@@ -673,10 +681,10 @@ export default function RoutesScreen() {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
       // W trybie seamless nie czyścimy listy ani nie migoczemy spinnerem.
-      const cached = await loadConnections(queryAt(depSec, mode));
+      const cached = await loadCachedConnections(queryAt(depSec, mode));
       if (seq !== fetchSeq.current) return;
       if (cached) {
-        setItems(applyLiveList(rehydrateConnections(cached), depSec));
+        setItems(applyLiveList(rehydrateConnections(cached.list, cached.savedAt), depSec));
         setOffline(true);
         setNoMoreEarlier(true);
         setNoMoreLater(true);
@@ -716,6 +724,11 @@ export default function RoutesScreen() {
   // cache na świeże dane. Bez spinnerów i skoków scrolla.
   const offlineRef = useRef(offline);
   offlineRef.current = offline;
+  // Ref na najświeższy quietRefresh: interwał nie może domykać się nad
+  // filtrami z chwili przejścia w offline, bo po powrocie sieci podmieniłby
+  // listę wynikiem starego zapytania.
+  const quietRefreshRef = useRef(quietRefresh);
+  quietRefreshRef.current = quietRefresh;
   useEffect(() => {
     if (!offline) return;
     let cancelled = false;
@@ -723,7 +736,7 @@ export default function RoutesScreen() {
       if (cancelled || !offlineRef.current) return;
       if (await hasLocalTimetable()) {
         if (cancelled) return;
-        await quietRefresh();
+        await quietRefreshRef.current();
       }
     };
     const timer = setInterval(beat, 15000);
@@ -756,9 +769,9 @@ export default function RoutesScreen() {
       console.warn('[Routes] load more failed:', err);
       if (seq === fetchSeq.current) setLoadMoreFailed(true);
     } finally {
-      if (seq === fetchSeq.current) {
-        setLoadingMore(false);
-      }
+      // Zawsze gasimy spinner: jeśli w trakcie zapytania filtr podbił fetchSeq,
+      // wynik i tak odpadnie po seq, ale flaga nie może zostać true na zawsze.
+      setLoadingMore(false);
     }
   };
 
@@ -791,9 +804,9 @@ export default function RoutesScreen() {
     } catch {
       // po cichu — lista zostaje
     } finally {
-      if (seq === fetchSeq.current) {
-        setLoadingEarlier(false);
-      }
+      // Jak w handleLoadMore: spinner gaśnie nawet gdy zapytanie zostało
+      // unieważnione przez nowszy fetchSeq.
+      setLoadingEarlier(false);
     }
   };
 
@@ -1043,11 +1056,11 @@ export default function RoutesScreen() {
               : new FadeInUp().duration(280).delay(stagger)
           }
         >
-          <ConnectionCard item={item} dimmed={past} onPress={openConnection} />
+          <ConnectionCard item={item} dimmed={past} onPress={openConnection} tick={nowTick} />
         </Animated.View>
       );
     },
-    [openConnection],
+    [openConnection, nowTick],
   );
 
   return (
@@ -1107,8 +1120,8 @@ export default function RoutesScreen() {
           accessibilityState={{ selected: isTrackingThisRoute }}
           accessibilityLabel={
             isTrackingThisRoute
-              ? 'Zatrzymaj śledzenie podróży'
-              : 'Śledź najbliższe połączenie'
+              ? s.routes.stopTrackingTripA11y
+              : s.routes.trackNearestA11y
           }
           style={({ pressed }) => [
             styles.pinBtn,

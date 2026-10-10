@@ -13,6 +13,7 @@ import { getLineColors, LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+
 import {
   buildFallbackStops,
   findUserSegment,
@@ -36,8 +37,11 @@ const stopsPromise = new Map<string, Promise<LegStop[]>>();
 
 function cacheStops(key: string, stops: LegStop[]) {
   stopsCache.set(key, stops);
-  if (stopsCache.size <= STOPS_CACHE_MAX) return;
-  const oldest = stopsCache.keys().next();
+  while (stopsCache.size > STOPS_CACHE_MAX) {
+    const oldest = stopsCache.keys().next();
+    if (oldest.done) break;
+    stopsCache.delete(oldest.value);
+  }
 }
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────

@@ -17,7 +17,7 @@ import {
   refreshDataStatus,
   subscribeDataStatus,
 } from '../src/services/dataManager';
-import { getSettingsSync } from '../src/services/settings';
+import { getSettingsSync, profileWalkSpeedMps } from '../src/services/settings';
 import { subscribeBackupApplied } from '../src/services/backup';
 import { loadCachedSmartDestinations, loadTripHistory, saveCachedSmartDestinations, type TripHistoryItem } from '../src/services/smartRanker';
 
@@ -91,11 +91,34 @@ export default function HomeScreen() {
   const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [firstLegs, setFirstLegs] = useState<Record<string, { mode?: LegMode; line?: string }>>({});
+  // Odliczanie „za X min" musi tykać: bez tego etykieta zapisana przy fetchu
+  // zostaje zamrożona do następnego wyszukiwania.
+  const [homeTick, setHomeTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setHomeTick(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+  // Minuty do odjazdu liczone na bieżąco z zapisanych sekund (homeTick wymusza
+  // przeliczenie). Wartości <= 0 (np. trasa piesza) zostają jak z backendu.
+  const liveDepartures = useMemo(() => {
+    const d = new Date();
+    const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    const out: Record<string, number> = {};
+    for (const [id, c] of Object.entries(firstConns)) {
+      out[id] = c.departureSec > 0 ? Math.round((c.departureSec - nowS) / 60) : c.departInMin;
+    }
+    return out;
+  }, [firstConns, homeTick]);
   // Generacja wyszukiwania tras w tle — przerwanie (np. użytkownik zaczął
   // własną trasę) to po prostu podbicie licznika, pętla sama się zatrzyma.
   const routeSearchGen = useRef(0);
   // Ostatni origin dogrzewania — reset prawych stron tylko przy jego zmianie.
   const lastOriginRef = useRef<string | null>(null);
+  // Po zamknięciu arkusza wznawiamy dogrzewanie odjazdów: przerwanie podbiło
+  // routeSearchGen, ale sam efekt ma inne zależności, więc bez tego licznika
+  // wiersze poniżej nie dostałyby już prawej strony.
+  const [warmupNonce, setWarmupNonce] = useState(0);
+  const sheetWasOpenRef = useRef(false);
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
 
@@ -197,6 +220,24 @@ export default function HomeScreen() {
     void saveCachedSmartDestinations(list);
   }, []);
 
+  // Unieważnianie spóźnionych rankingów: zapytanie wysłane dla starego originu
+  // (np. poprzednia pozycja GPS) nie może nadpisać świeższego wyniku.
+  // Origin trzymamy jako stop-id, tak jak zapisuje go GPS, a nie sam tytuł —
+  // inaczej ranking po zapisie miejsca liczyłby się z innego klucza.
+  const smartGen = useRef(0);
+  const originStopRef = useRef<string>(DEFAULT_LOCATION.title);
+  const requestSmart = useCallback(
+    (originStop: string, coords: { lat: number; lon: number }) => {
+      originStopRef.current = originStop;
+      const gen = ++smartGen.current;
+      FavoritesService.smartFromOrigin(originStop, coords).then((list) => {
+        if (gen !== smartGen.current) return;
+        applySmart(list);
+      });
+    },
+    [applySmart],
+  );
+
   useEffect(() => {
     refreshPlaces();
     SearchService.recent().then(setRecent);
@@ -226,10 +267,10 @@ export default function HomeScreen() {
         setGpsUnsupported(true);
         setGpsCity(city);
         if (!isCustomStartRef.current) {
-          FavoritesService.smartFromOrigin(DEFAULT_LOCATION.title, {
+          requestSmart(DEFAULT_LOCATION.title, {
             lat: DEFAULT_LOCATION.lat,
             lon: DEFAULT_LOCATION.lon,
-          }).then(applySmart);
+          });
         }
         return;
       }
@@ -239,7 +280,7 @@ export default function HomeScreen() {
       setLocTitle(l.title);
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
-      FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(applySmart);
+      requestSmart(l.stopId || l.title, coords);
     };
 
     LocationService.getCurrentLocation().then(applyGpsFix).catch(() => {
@@ -260,13 +301,13 @@ export default function HomeScreen() {
         LocationService.getCurrentLocation().then((l) => {
           if (isOutsideServiceArea(l.lat, l.lon)) return;
           const coords = { lat: l.lat, lon: l.lon };
-          FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(applySmart);
+          requestSmart(l.stopId || l.title, coords);
         });
       } else {
-        FavoritesService.smartFromOrigin(locTitle, currentCoords).then(applySmart);
+        requestSmart(originStopRef.current, currentCoords);
       }
     }
-  }, [dataStatus.state, isCustomStart, locTitle, currentCoords]);
+  }, [dataStatus.state, isCustomStart, locTitle, currentCoords, requestSmart]);
 
   // Po jednej trasie do każdego ostatniego miejsca, sekwencyjnie od góry do dołu
   // (kolejność = kolejność wyświetlania, najlepszy na górze). Każdy wynik
@@ -327,7 +368,7 @@ export default function HomeScreen() {
             trainsEnabled: s.trainsEnabled,
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
-            walkSpeedMps: s.walkSpeedMps,
+            walkSpeedMps: profileWalkSpeedMps(s.walkPace),
           });
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
@@ -349,12 +390,19 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [smart, currentCoords, locTitle]);
+  }, [smart, currentCoords, locTitle, warmupNonce]);
 
   // Użytkownik zaczął szukać własnej trasy — tniemy dogrzewanie ostatnich
   // miejsc i skupiamy silnik tylko na trasie wybranej przez użytkownika.
+  // Po zamknięciu arkusza dogrzewanie rusza od nowa (warmupNonce).
   useEffect(() => {
-    if (sheetMode !== null) routeSearchGen.current++;
+    const open = sheetMode !== null;
+    if (open) {
+      routeSearchGen.current++;
+    } else if (sheetWasOpenRef.current) {
+      setWarmupNonce((n) => n + 1);
+    }
+    sheetWasOpenRef.current = open;
   }, [sheetMode]);
 
   // Snapshot dla widgetów z ekranu głównego (next / szybkie cele / przypięte).
@@ -479,7 +527,7 @@ export default function HomeScreen() {
       setLocTitle(gpsLocation.title);
       const coords = { lat: gpsLocation.lat, lon: gpsLocation.lon };
       setCurrentCoords(coords);
-      FavoritesService.smartFromOrigin(gpsLocation.title, coords).then(applySmart);
+      requestSmart(gpsLocation.title, coords);
     }
     try {
       const l = await LocationService.getCurrentLocation({ force: true });
@@ -497,7 +545,7 @@ export default function HomeScreen() {
       setLocTitle(l.title);
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
-      FavoritesService.smartFromOrigin(l.stopId || l.title, coords).then(applySmart);
+      requestSmart(l.stopId || l.title, coords);
     } catch (err) {
       console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
     }
@@ -530,7 +578,7 @@ export default function HomeScreen() {
     setLocTitle(sel.title);
     const coords = { lat: sel.lat, lon: sel.lon };
     setCurrentCoords(coords);
-    FavoritesService.smartFromOrigin(sel.id || sel.title, coords).then(applySmart);
+    requestSmart(sel.id || sel.title, coords);
     void SearchService.recordRecent(sel).then(() => {
       SearchService.recent().then(setRecent);
     });
@@ -740,13 +788,13 @@ export default function HomeScreen() {
       return;
     }
     refreshPlaces();
-    FavoritesService.smartFromOrigin(locTitle, currentCoords).then(applySmart);
+    requestSmart(originStopRef.current, currentCoords);
   };
 
   const handleDeletePlace = async (id: string) => {
     await FavoritesService.deletePlace(id);
     refreshPlaces();
-    FavoritesService.smartFromOrigin(locTitle, currentCoords).then(applySmart);
+    requestSmart(originStopRef.current, currentCoords);
   };
 
 // Ostatnie połączenie świeże po powrocie (pull może odpalić nową trasę).
@@ -771,9 +819,9 @@ export default function HomeScreen() {
     // podpada pod DEFAULT_LOCATION, a „ostatnie miejsca" z innego miasta
     // to kłamstwo.
     if (currentCoords) {
-      FavoritesService.smartFromOrigin(locTitle, currentCoords).then(applySmart);
+      requestSmart(originStopRef.current, currentCoords);
     }
-  }), [currentCoords, locTitle, applySmart]);
+  }), [currentCoords, locTitle, applySmart, requestSmart]);
 
   return (
     <View style={styles.root} {...pullResponder.panHandlers}>
@@ -882,7 +930,7 @@ export default function HomeScreen() {
               </Pressable>
             </View>
           ) : (
-            <SmartHistoryList items={smartOrdered} departures={nextDepart} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
+            <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
           )}
 
           <View style={{ height: 20 }} />
