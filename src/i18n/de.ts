@@ -538,6 +538,7 @@ export const de: Strings = {
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
+    vehicleBetween: (mode: string, from: string, to: string) => `${mode} zwischen ${from} und ${to}`,
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
     stopsSummary: (n: number, mins: number, open: boolean) =>

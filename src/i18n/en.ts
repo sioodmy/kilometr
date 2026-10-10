@@ -539,6 +539,7 @@ export const en: Strings = {
     noData: 'No route data',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
+    vehicleBetween: (mode: string, from: string, to: string) => `${mode} between ${from} and ${to}`,
     fromPrefix: 'from ',
     toPrefix: 'to ',
     stopsSummary: (n: number, mins: number, open: boolean) =>

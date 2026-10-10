@@ -560,6 +560,7 @@ export const uk: Strings = {
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
+    vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
     stopsSummary: (n: number, mins: number, open: boolean) => {
