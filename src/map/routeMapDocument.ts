@@ -20,6 +20,12 @@ export interface RouteMapDocumentOptions {
   vehicle?: MapVehicle | null;
   user?: { lat: number; lon: number; heading: number | null } | null;
   selectedLegId?: string | null;
+  /**
+   * Bazowy URL lokalnego serwera mapy (np. `http://127.0.0.1:45999`). Gdy
+   * podany, kafle, glify i sam silnik mapy idą z telefonu, więc mapa działa
+   * bez internetu. Bez niego wszystko leci z CDN-ów jak dotąd.
+   */
+  offlineBase?: string | null;
 }
 
 /**
@@ -571,9 +577,13 @@ const runtime = [
 ].join('\n');
 
 function bootstrapPayload(opts: RouteMapDocumentOptions): string {
+  const base = opts.offlineBase ?? null;
+  // Offline silnik mapy też musi iść z telefonu: z CDN-u nie pobierzemy go
+  // bez sieci, a bez niego nie ma czego rysować.
+  const cdns = base ? [`${base}/assets`] : MAPLIBRE_CDNS;
   const payload = {
-    cdns: MAPLIBRE_CDNS,
-    style: buildMapStyle(),
+    cdns,
+    style: buildMapStyle(base),
     routeSourceId: ROUTE_SOURCE_ID,
     hitLayerId: 'trasa-chwyt',
     stopLayerId: 'przystanki-posrednie',

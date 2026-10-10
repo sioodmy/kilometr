@@ -1,0 +1,20 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'com.anonymous.kilometr.maps'
+version = '1.0.0'
+
+android {
+  namespace "com.anonymous.kilometr.maps"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+  compileSdk 36
+}
+
+dependencies {
+  // NanoHTTPD (~60 kB) jako jedyna zależność: lokalny serwer HTTP dla kafelków
+  // i glifów mapy. Działa na Androidzie od API 21, więc bez dodatkowych prógów.
+  implementation "org.nanohttpd:nanohttpd:2.3.1"
+}
