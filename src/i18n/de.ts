@@ -566,6 +566,7 @@ export const de: Strings = {
     navToStop: (dist: string) => `${dist} bis zur Haltestelle`,
     navA11y: (what: string, dist: string) =>
       `${what}, ${dist}. Tippen, um die volle Karte zu öffnen.`,
+    rerouting: 'Neue Route wird gesucht',
     openSettingsA11y: 'App-Einstellungen öffnen',
     enableLoc: 'Standort in den Einstellungen aktivieren',
   },

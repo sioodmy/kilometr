@@ -577,6 +577,7 @@ export const pl = {
     navToStop: (dist: string) => `${dist} do przystanku`,
     navA11y: (what: string, dist: string) =>
       `${what}, ${dist}. Dotknij, aby otworzyć pełną mapę.`,
+    rerouting: 'Wyznaczam nową trasę',
     openSettingsA11y: 'Otwórz ustawienia aplikacji',
     enableLoc: 'Włącz lokalizację w ustawieniach',
     },

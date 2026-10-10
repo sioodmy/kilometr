@@ -19,6 +19,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
+import { useSharedValue } from 'react-native-reanimated';
 import {
   ArrowUp,
   ArrowUpLeft,
@@ -45,14 +46,22 @@ import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { useStrings, type Strings } from '../i18n';
 import { NavMiniMap } from './NavMiniMap';
-import { buildMapRoute, fetchLegGeometry, type Coord } from '../services/routeGeometry';
+import {
+  buildMapRoute,
+  fetchFootRoute,
+  fetchLegGeometry,
+  projectRoutePoint,
+  type Coord,
+} from '../services/routeGeometry';
 import {
   buildRoutePath,
   nextGuidance,
   nextGuidanceAfter,
   type Guidance,
+  type LegSpan,
   type ManeuverKind,
 } from '../services/turnManeuver';
+import type { MapLeg } from '../map/types';
 
 interface StopCompassCardProps {
   connection: Connection;
@@ -81,6 +90,26 @@ const MAX_STALE_ACCURACY_M = 150;
  * 4 km od trasy jest kłamstwem, które gorsze od braku instrukcji.
  */
 const OFF_ROUTE_M = 45;
+/**
+ * Przyciąganie kropki do trasy (map matching do wyświetlania). Dopóki jesteś
+ * w tym pasie, kropka siedzi na linii trasy zamiast skakać po chodniku.
+ * Pomiar (odległość, offset) idzie z surowego GPS, żeby snap niczego nie
+ * maskował.
+ */
+const SNAP_M = 25;
+/** Przerouting widgetu: nie częściej niż tyle i tylko po takim ruchu. */
+const REROUTE_COOLDOWN_MS = 30000;
+const REROUTE_MIN_MOVE_M = 25;
+/**
+ * Przerouting ma sens tylko w strefie dojścia. Dalej niż to od przystanku
+ * albo z większym zboczeniem prawdopodobnie jedziesz (a nie idziesz) albo
+ * jesteś bardzo daleko. Wtedy nie palimy OSRM, tylko mówimy „idź do
+ * przystanku”. Chroni też przed przeroutingiem pieszo, gdy siedzisz w busie.
+ */
+const REROUTE_MAX_DIST_M = 1500;
+const REROUTE_MAX_OFFSET_M = 300;
+/** Powyżej tego tempa (szybki bieg) nie przeroutowujemy, bo to nie spacer. */
+const REROUTE_MAX_SPEED_MPS = 3.5;
 
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3;
@@ -205,6 +234,18 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
   const lastAppliedHeading = useRef(0);
   const lastLoc = useRef<{ lat: number; lon: number } | null>(null);
   const lastGoodAt = useRef(0);
+  // Obrót mapki na wątku UI. Kompas ustawia tylko tę wartość (bez setState),
+  // więc magnetometr nie przerysowuje karty i mapa nie laguje.
+  const rotationSV = useSharedValue(0);
+  // Wygładzone tempo [m/s] do bramki przeroutingu (pieszo vs pojazd).
+  const speedRef = useRef<{ v: number; at: number } | null>(null);
+  const lastLocAt = useRef(0);
+  // Świeża trasa piesza do przystanku, gdy zgubisz trasę. Tylko widget;
+  // pełna mapa jej nie widzi i nie zmienia się.
+  const [reroutePath, setReroutePath] = useState<Coord[] | null>(null);
+  const [rerouting, setRerouting] = useState(false);
+  const rerouteMeta = useRef<{ targetKey: string; at: number } | null>(null);
+  const lastRerouteAttempt = useRef<{ at: number; lat: number; lon: number } | null>(null);
   // Użytkownik wraca z ustawień (np. włączył lokalizację), a karta miała
   // zostać na „wyłączona” aż do ponownego otwarcia ekranu. Po powrocie na
   // pierwszy plan podpinamy GPS od nowa.
@@ -242,6 +283,10 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       const sy = prev ? prev.y + (vy - prev.y) * HEADING_ALPHA : vy;
       headingVec.current = { x: sx, y: sy };
       const deg = normalizeAngle((Math.atan2(sx, sy) * 180) / Math.PI);
+      // Obrót warstwy idzie od razu na wątek UI (płynnie, bez renderu).
+      // Normalizacja do -180..180, żeby przy przejściu przez północ mapa nie
+      // kręciła pełnego koła (180° i -180° to to samo ułożenie).
+      rotationSV.value = ((-deg + 540) % 360) - 180;
       let diff = Math.abs(deg - lastAppliedHeading.current) % 360;
       if (diff > 180) diff = 360 - diff;
       if (diff >= HEADING_HYSTERESIS_DEG) {
@@ -292,6 +337,18 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
               lastGoodAt.current = Date.now();
               const moved = calculateDistanceMeters(prev.lat, prev.lon, next.lat, next.lon);
               if (moved < MIN_MOVE_M) return; // szum GPS, nie ruszaj UI
+              // Wygładzone tempo do bramki przeroutingu (spacer vs pojazd).
+              const nowMs = Date.now();
+              const dtS = lastLocAt.current > 0 ? (nowMs - lastLocAt.current) / 1000 : 0;
+              if (dtS > 0) {
+                const inst = Math.min(30, moved / dtS);
+                const prevSp = speedRef.current;
+                speedRef.current = {
+                  v: prevSp ? prevSp.v + (inst - prevSp.v) * 0.4 : inst,
+                  at: nowMs,
+                };
+              }
+              lastLocAt.current = nowMs;
               // Gdy telefon nie daje kursu (silny magnes, wnętrze auta),
               // bierzemy kierunek z samego ruchu.
               if (!hasDeviceHeading.current && moved >= Math.max(8, acc)) {
@@ -303,6 +360,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
             // że lokalizacja działała; koleje fixy same się poprawiają.
             lastLoc.current = next;
             lastGoodAt.current = Date.now();
+            if (lastLocAt.current === 0) lastLocAt.current = Date.now();
             hasFix = true;
             setUserLocation(next);
             setLocState('ok');
@@ -384,11 +442,11 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     };
   }, [mapRoute]);
 
-  const drawPath = realPath ?? coords;
+  // Ścieżka bazowa (cała trasa). Surową instrukcję liczymy zawsze na surowym
+  // GPS, żeby znać PRAWDZIWY offset od trasy. Snap jest tylko do wyświetlania.
+  const basePath = realPath ?? coords;
 
-  // Surowa instrukcja liczona zawsze, żeby znać odległość od trasy. Poniżej
-  // progu nie pokazujemy jej wcale, bo rzut jest wtedy zmyślony.
-  const rawGuidance: Guidance | null = useMemo(() => {
+  const baseGuidance: Guidance | null = useMemo(() => {
     if (!userLocation) return null;
     const pos: Coord = [userLocation.lat, userLocation.lon];
     if (realPath && realPath.length > 1) {
@@ -398,16 +456,75 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     return nextGuidance(coords, spans, pos);
   }, [userLocation, realPath, coords, spans]);
 
-  const offRouteM = rawGuidance?.offsetM ?? null;
-  const offRoute = offRouteM != null && offRouteM > OFF_ROUTE_M;
-  const guidance = offRoute ? null : rawGuidance;
+  const baseOffM = baseGuidance?.offsetM ?? null;
+  const offRoute = baseOffM != null && baseOffM > OFF_ROUTE_M;
 
-  const nextUp = useMemo(() => {
+  const targetKey =
+    targetLat != null && targetLon != null
+      ? `${targetLat.toFixed(5)},${targetLon.toFixed(5)}`
+      : null;
+
+  // Jedna syntetyczna noga piesza na świeżej trasie. Samotny spacer kończy
+  // się 'arrive', więc skręty i „potem” liczą się same, bez nowych funkcji.
+  const rerouteSpans = useMemo<LegSpan[]>(() => {
+    if (!reroutePath || reroutePath.length < 2) return [];
+    const leg: MapLeg = {
+      id: 'widget-reroute',
+      mode: 'walk',
+      color: lineAccent,
+      fromStop: '',
+      toStop: stopName,
+      departAt: '',
+      arriveAt: '',
+      stopsCount: 0,
+      live: false,
+      stops: [],
+      approx: false,
+    };
+    return [{ leg, start: 0, end: reroutePath.length - 1 }];
+  }, [reroutePath, lineAccent, stopName]);
+
+  const rerouteFresh =
+    reroutePath != null &&
+    reroutePath.length > 1 &&
+    targetKey != null &&
+    rerouteMeta.current?.targetKey === targetKey;
+
+  // Aktywna ścieżka widgetu: świeży przerouting albo cała trasa.
+  const activePath = rerouteFresh && reroutePath ? reroutePath : basePath;
+  const activeSpans = rerouteFresh ? rerouteSpans : spans;
+
+  // Kropka przyciągnięta do trasy, gdy jesteś blisko. Sam pomiar zostaje
+  // surowy (powyżej), więc snap niczego nie maskuje, tylko uspokaja obraz.
+  const displayPos: Coord | null = useMemo(() => {
+    if (!userLocation) return null;
+    const raw: Coord = [userLocation.lat, userLocation.lon];
+    const p = projectRoutePoint(activePath, raw[0], raw[1]);
+    if (p && p.offsetM <= SNAP_M) return [p.lat, p.lon];
+    return raw;
+  }, [userLocation, activePath]);
+
+  const activeGuidance: Guidance | null = useMemo(() => {
     if (!userLocation) return null;
     const pos: Coord = [userLocation.lat, userLocation.lon];
-    const src = realPath && realPath.length > 1 ? realPath : coords;
-    return nextGuidanceAfter(src, spans, pos);
-  }, [userLocation, realPath, coords, spans]);
+    return nextGuidance(activePath, activeSpans, pos);
+  }, [userLocation, activePath, activeSpans]);
+
+  // Świeży przerouting, z którego też zboczyliśmy: czyścimy go w efekcie, a
+  // tu pokazujemy zapas („idź do przystanku”), nie zmyśloną instrukcję.
+  const rerouteLost =
+    rerouteFresh && activeGuidance != null && activeGuidance.offsetM > REROUTE_MAX_OFFSET_M;
+  const guidance = rerouteFresh
+    ? (rerouteLost ? null : activeGuidance)
+    : offRoute
+      ? null
+      : activeGuidance;
+
+  const nextUp = useMemo(() => {
+    if (!userLocation || !guidance) return null;
+    const pos: Coord = [userLocation.lat, userLocation.lon];
+    return nextGuidanceAfter(activePath, activeSpans, pos);
+  }, [userLocation, guidance, activePath, activeSpans]);
 
   const { distanceM, relativeAngle } = useMemo(() => {
     if (!userLocation || targetLat == null || targetLon == null) {
@@ -432,11 +549,9 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
   const hasTarget = targetLat != null && targetLon != null;
   const compassReady = hasTarget && distanceM != null;
 
-  // Stabilne referencje dla mapki: bez tego każdy render liczyłby trasę od nowa.
-  const userPos = useMemo<Coord | null>(
-    () => (userLocation ? [userLocation.lat, userLocation.lon] : null),
-    [userLocation],
-  );
+  // Pozycja do mapki: przyciągnięta do trasy (displayPos jest memoizowane,
+  // więc referencja jest stabilna i mapka nie liczy trasy od nowa co render).
+  const userPos = displayPos;
   const stopPos = useMemo<Coord | null>(
     () => (targetLat != null && targetLon != null ? [targetLat, targetLon] : null),
     [targetLat, targetLon],
@@ -459,6 +574,71 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     if (nextNav !== navMode) setNavMode(nextNav);
   }
   const showNav = navMode && distanceM != null;
+
+  // Przerouting tylko w widgecie. Gdy zgubisz trasę w strefie dojścia i idziesz
+  // pieszo, dociągamy świeżą trasę do przystanku. Pełna mapa tego nie widzi.
+  useEffect(() => {
+    // Cel się zmienił (inna przesiadka): stara trasa jest nieaktualna.
+    if (rerouteMeta.current && rerouteMeta.current.targetKey !== targetKey) {
+      rerouteMeta.current = null;
+      setReroutePath(null);
+    }
+    if (rerouteLost) {
+      // Zboczyliśmy i ze świeżej trasy: czyścimy, żeby nie prowadzić po zmyłce.
+      // Trigger poniżej dociągnie kolejną, gdy minie cooldown i będzie ruch.
+      rerouteMeta.current = null;
+      setReroutePath(null);
+      return;
+    }
+    if (!navMode || !hasTarget || !userLocation || !stopPos || !targetKey) return;
+    if (!offRoute && baseGuidance) return; // na trasie, nie ma czego naprawiać
+    if (rerouteFresh) return; // mamy świeżą
+    if (distanceM == null || distanceM > REROUTE_MAX_DIST_M) return;
+    if (baseOffM != null && baseOffM > REROUTE_MAX_OFFSET_M) return;
+    const now = Date.now();
+    const sp = speedRef.current;
+    // Zastane tempo traktujemy jak stanie w miejscu (pieszo), nie jak jazdę.
+    if (sp && now - sp.at <= 15000 && sp.v > REROUTE_MAX_SPEED_MPS) return;
+    const last = lastRerouteAttempt.current;
+    if (last && now - last.at < REROUTE_COOLDOWN_MS) return;
+    if (
+      last &&
+      calculateDistanceMeters(last.lat, last.lon, userLocation.lat, userLocation.lon) <
+        REROUTE_MIN_MOVE_M
+    ) {
+      return;
+    }
+    lastRerouteAttempt.current = { at: now, lat: userLocation.lat, lon: userLocation.lon };
+    setRerouting(true);
+    let cancelled = false;
+    const ctrl = new AbortController();
+    void fetchFootRoute([userLocation.lat, userLocation.lon], stopPos, ctrl.signal)
+      .then((path) => {
+        if (cancelled || !path || path.length < 2) return;
+        rerouteMeta.current = { targetKey, at: Date.now() };
+        setReroutePath(path);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setRerouting(false);
+      });
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [
+    navMode,
+    hasTarget,
+    userLocation,
+    stopPos,
+    targetKey,
+    distanceM,
+    offRoute,
+    baseGuidance,
+    baseOffM,
+    rerouteFresh,
+    rerouteLost,
+  ]);
 
   // Przy wsiadaniu i wysiadaniu liczy się środek transportu, przy skręcie
   // kierunek zawrotu. Jedna ikona na instrukcję, żeby rzecz nie migotała.
@@ -643,11 +823,12 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         >
           <View style={styles.navRow}>
             <NavMiniMap
-              path={drawPath}
+              path={activePath}
               user={userPos}
               maneuverAt={guidance?.maneuver.at ?? null}
               stop={stopPos}
               headingDeg={deviceHeading}
+              rotationSV={rotationSV}
               accent={guidance?.leg.color || lineAccent}
               size={navMapSize}
             />
@@ -671,7 +852,11 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
                   </Text>
                 </View>
               </View>
-              {nextUpText ? (
+              {rerouting ? (
+                <Text style={styles.navNext} numberOfLines={1}>
+                  {s.compass.rerouting}
+                </Text>
+              ) : nextUpText ? (
                 <Text style={styles.navNext} numberOfLines={1}>
                   {nextUpText}
                 </Text>
