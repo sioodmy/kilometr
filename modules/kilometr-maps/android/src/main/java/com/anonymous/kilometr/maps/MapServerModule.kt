@@ -1,10 +1,8 @@
 package com.anonymous.kilometr.maps
 
 import android.content.Context
-import com.facebook.react.bridge.Promise
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
+import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.modules.ModuleDefinition
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
 
@@ -18,58 +16,63 @@ import java.io.File
  * nawigację główną, a nie odpowiedź na zasób.
  *
  * Jedynym sposobem, żeby MapLibre zobaczył lokalne kafle, jest prawdziwy serwer.
- * Dlatego kafle i glify idą z 127.0.0.1, a dokument mapy dostaje bazowy URL
- * zamiast `about:blank`.
+ * Dlatego kafle, glify i silnik mapy idą z 127.0.0.1, a dokument mapy dostaje
+ * bazowy URL zamiast `about:blank`.
  *
  * Serwer nasłuchuje tylko wtedy, gdy ekran mapy jest otwarty.
  */
-class MapServerModule(reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+class MapServerModule : Module() {
 
     private var server: NanoHTTPD? = null
     private var pack: TilePack? = null
 
-    override fun getName(): String = NAME
+    /** filesDir/maps — ten sam katalog, do którego pisze JS przy pobieraniu. */
+    private val mapsDir: File?
+        get() = appContext.reactContext?.applicationContext?.let { File(it.filesDir, "maps") }
 
-    /** Czy pakiet kafelków jest już na telefonie. */
-    @ReactMethod
-    fun hasTilePack(promise: Promise) {
-        val f = packFile(reactApplicationContext)
-        promise.resolve(f.exists() && f.length() > 1024)
-    }
+    private fun packFile(): File? = mapsDir?.let { File(it, "wroclaw-tiles.ktp") }
 
-    /** Startuje serwer i zwraca bazowy URL; odrzuca, gdy brak pakietu. */
-    @ReactMethod
-    fun start(promise: Promise) {
-        if (server != null) {
-            promise.resolve("http://127.0.0.1:${server!!.listeningPort}")
-            return
-        }
-        val p = openPack()
-        if (p == null) {
-            promise.reject("no_pack", "Pakiet kafelków nie jest pobrany")
-            return
-        }
-        pack = p
-        try {
-            val s = MapRequestHandler(p, reactApplicationContext)
-            s.start(SOCKET_READ_TIMEOUT, false)
-            server = s
-            promise.resolve("http://127.0.0.1:${s.listeningPort}")
+    private fun openPack(): TilePack? {
+        val f = packFile() ?: return null
+        if (!f.exists() || f.length() < 1024) return null
+        return try {
+            TilePack(f)
         } catch (e: Exception) {
-            promise.reject("server_failed", e.message, e)
+            null
         }
     }
 
-    @ReactMethod
-    fun stop(promise: Promise) {
-        stopServer()
-        promise.resolve(null)
-    }
+    override fun definition() = ModuleDefinition {
+        Name("KilometrMapServer")
 
-    override fun invalidate() {
-        stopServer()
-        super.invalidate()
+        /** Czy pakiet kafelków jest już na telefonie. */
+        AsyncFunction("hasTilePack") {
+            val f = packFile() ?: return@AsyncFunction false
+            f.exists() && f.length() > 1024
+        }
+
+        /** Startuje serwer, zwraca bazowy URL; null gdy brak pakietu. */
+        AsyncFunction("start") {
+            server?.let { return@AsyncFunction "http://127.0.0.1:${it.listeningPort}" }
+            val p = openPack() ?: return@AsyncFunction null
+            pack = p
+            try {
+                val s = MapRequestHandler(p, mapsDir)
+                s.start(SOCKET_READ_TIMEOUT, false)
+                server = s
+                "http://127.0.0.1:${s.listeningPort}"
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        AsyncFunction("stop") {
+            stopServer()
+        }
+
+        OnDestroy {
+            stopServer()
+        }
     }
 
     private fun stopServer() {
@@ -79,20 +82,7 @@ class MapServerModule(reactContext: ReactApplicationContext) :
         pack = null
     }
 
-    private fun openPack(): TilePack? {
-        val f = packFile(reactApplicationContext)
-        if (!f.exists() || f.length() < 1024) return null
-        return try {
-            TilePack(f)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
     private companion object {
-        const val NAME = "KilometrMapServer"
         const val SOCKET_READ_TIMEOUT = 30_000
-
-        fun packFile(ctx: Context): File = File(ctx.filesDir, "maps/wroclaw-tiles.ktp")
     }
 }

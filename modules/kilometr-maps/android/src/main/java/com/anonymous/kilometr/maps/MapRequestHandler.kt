@@ -1,6 +1,5 @@
 package com.anonymous.kilometr.maps
 
-import android.content.Context
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -8,13 +7,14 @@ import java.io.File
 /**
  * Obsługuje żądania mapy:
  *   `/tiles/z/x/y.pbf` kafel z archiwum KMTP,
- *   `/assets/...`      silnik mapy i glify z katalogu assets albo filesDir.
+ *   `/assets/...`      silnik mapy, style i glify z filesDir/maps.
  *
  * Wszystko idzie z 127.0.0.1, więc przeglądarka nie pyta o CORS.
+ * `assetsRoot` to katalog pobranego zestawu (filesDir/maps).
  */
 class MapRequestHandler(
     private val pack: TilePack,
-    private val ctx: Context,
+    private val assetsRoot: File? = null,
 ) : NanoHTTPD(ANY_PORT) {
 
     override fun serve(session: IHTTPSession): Response {
@@ -44,14 +44,20 @@ class MapRequestHandler(
         )
     }
 
-    /** Silnik mapy, style, glify. Ścieżki z assets albo filesDir/maps. */
+    /** Silnik mapy, glify. Ścieżki z katalogu pobranego zestawu. */
     private fun serveAsset(path: String): Response {
         val name = path.removePrefix("/assets/").substringBefore('?')
-        // Nie wychodzimy poza katalogi aplikacji.
+        // Nie wychodzimy poza katalog zestawu.
         if (name.isEmpty() || name.contains("..")) return notFound()
-        val f = listOf(File(ctx.assets, name), File(ctx.filesDir, "maps/$name"))
-            .firstOrNull { it.exists() } ?: return notFound()
-        return newFixedLengthResponse(Response.Status.OK, mimeOf(name), f.inputStream())
+        val root = assetsRoot ?: return notFound()
+        val f = File(root, name)
+        if (!f.exists()) return notFound()
+        return newFixedLengthResponse(
+            Response.Status.OK,
+            mimeOf(name),
+            f.inputStream(),
+            f.length(),
+        )
     }
 
     private fun mimeOf(path: String): String = when {
