@@ -303,8 +303,6 @@ export const uk: Strings = {
       in: 'за',
       onStop: 'на зупинці',
       detailA11y: (what: string, dist: string) => `${what}, ${dist}`,
-      miniMapA11y: (what: string, dist: string) =>
-        `Мінімапа маршруту. ${what}, ${dist}. Торкнись, щоб відкрити повну мапу.`,
     },
   },
   routes: {
@@ -562,6 +560,7 @@ export const uk: Strings = {
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
+    vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
     stopsSummary: (n: number, mins: number, open: boolean) => {
@@ -579,15 +578,19 @@ export const uk: Strings = {
     left: 'Ліворуч від тебе',
     slightLeft: 'Трохи ліворуч',
     noCoords: 'Ця зупинка не має координат у розкладі.',
-    locOff: 'Локацію вимкнено — без неї не покажу напрямок до зупинки.',
+    locOff: 'Локацію вимкнено. Без неї не покажу напрямок до зупинки.',
     locWaiting: 'Позиції ще немає. Зачекай на GPS або відкрий повну мапу.',
     title: 'Локація зупинки',
     followCompass: 'Орієнтуйся за компасом',
-    chooseChange: 'Вибери пересадку:',
     directionPrefix: (d: string) => `напрямок ${d}`,
     straight: 'по прямій',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} км` : `${m} м`),
     walkMins: (m: number) => `~${m} хв пішки`,
+    headToStop: 'Іди до зупинки',
+    nextStop: 'Наступна зупинка',
+    navToStop: (dist: string) => `${dist} до зупинки`,
+    navA11y: (what: string, dist: string) => `${what}, ${dist}. Торкнись, щоб відкрити повну мапу.`,
+    rerouting: 'Шукаю новий маршрут',
     openSettingsA11y: 'Відкрити налаштування застосунку',
     enableLoc: 'Увімкни локацію в налаштуваннях',
   },

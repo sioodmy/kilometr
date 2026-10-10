@@ -20,6 +20,8 @@
 import { liveTracker } from '../src/services/liveTracker';
 import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from '../src/services/zbiorkom';
 import { gtfsStore } from '../src/services/routing/store';
+import { locateLiveStopPosition } from '../src/services/vehiclePosition';
+import type { Leg, LegStop } from '../src/types/models';
 
 // ─── Framework asercji ─────────────────────────────────────────────────────
 
@@ -97,6 +99,78 @@ expect('nieznana linia = pusta lista', liveTracker.snapshot('ZZZ'), []);
 expect('snapshot bez argumentu to tablica', Array.isArray(liveTracker.snapshot()), true);
 expect('lookup nieznanego id = undefined', liveTracker.lookup('nope'), undefined);
 expect('mała litera linii = wielka', liveTracker.snapshot('a'), liveTracker.snapshot('A'));
+
+describe('Pozycja na rozwijanej liście przystanków');
+const routeStops: LegStop[] = [
+  { stopId: 'a', name: 'Start', lat: 51.1, lon: 17, seq: 1 },
+  { stopId: 'b', name: 'Środek', lat: 51.105, lon: 17, seq: 2 },
+  { stopId: 'c', name: 'Koniec', lat: 51.11, lon: 17, seq: 3 },
+];
+const routeLeg: Leg = {
+  id: 'route-test',
+  mode: 'tram',
+  line: '4',
+  fromStop: 'Start',
+  toStop: 'Koniec',
+  departAt: '09:55',
+  arriveAt: '10:15',
+  stopsCount: 2,
+  live: true,
+  fromStopId: 'a',
+  toStopId: 'c',
+};
+const routeNow = new Date(2026, 9, 10, 10, 0).getTime();
+expect(
+  'świeży pojazd po nazwach przystanków wskazuje właściwą przerwę',
+  locateLiveStopPosition(routeStops, routeLeg, {
+    vehicleId: '4-1',
+    line: '4',
+    lat: 51.1075,
+    lon: 17,
+    delaySec: 0,
+    currentStopName: 'Środek',
+    nextStopName: 'Koniec',
+    matchedTripId: 'trip-4',
+    updatedAt: routeNow,
+  }, null, routeNow),
+  { gap: 1, source: 'vehicle' },
+);
+expect(
+  'dokładny, poruszający się GPS na trasie koryguje brak pozycji API',
+  locateLiveStopPosition(routeStops, routeLeg, null, {
+    lat: 51.1075,
+    lon: 17,
+    accuracy: 8,
+    speed: 6,
+    heading: 0,
+    timestamp: routeNow,
+  }, routeNow),
+  { gap: 1, source: 'device' },
+);
+expect(
+  'niedokładny GPS poza trasą jest odrzucony',
+  locateLiveStopPosition(routeStops, routeLeg, null, {
+    lat: 51.1075,
+    lon: 17.001,
+    accuracy: 8,
+    speed: 6,
+    heading: 0,
+    timestamp: routeNow,
+  }, routeNow),
+  null,
+);
+expect(
+  'wolny GPS nie udaje pozycji jadącego pojazdu',
+  locateLiveStopPosition(routeStops, routeLeg, null, {
+    lat: 51.1075,
+    lon: 17,
+    accuracy: 8,
+    speed: 0.5,
+    heading: 0,
+    timestamp: routeNow,
+  }, routeNow),
+  null,
+);
 
 // ─── zbiorkom.live: mapowanie odpowiedzi ─────────────────────────────────
 

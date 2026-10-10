@@ -283,8 +283,6 @@ export const de: Strings = {
       in: 'in',
       onStop: 'an der Haltestelle',
       detailA11y: (what: string, dist: string) => `${what}, ${dist}`,
-      miniMapA11y: (what: string, dist: string) =>
-        `Mini-Karte der Route. ${what}, ${dist}. Tippen für die volle Karte.`,
     },
   },
   routes: {
@@ -540,6 +538,7 @@ export const de: Strings = {
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
+    vehicleBetween: (mode: string, from: string, to: string) => `${mode} zwischen ${from} und ${to}`,
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
@@ -555,15 +554,20 @@ export const de: Strings = {
     left: 'Links von dir',
     slightLeft: 'Leicht links',
     noCoords: 'Diese Haltestelle hat keine Koordinaten im Fahrplan.',
-    locOff: 'Standort ist aus — ohne ihn kann ich die Richtung zur Haltestelle nicht zeigen.',
+    locOff: 'Standort ist aus. Ohne ihn kann ich die Richtung zur Haltestelle nicht zeigen.',
     locWaiting: 'Noch keine Position. Warte auf GPS oder öffne die volle Karte.',
     title: 'Haltestellenstandort',
     followCompass: 'Folge dem Kompass',
-    chooseChange: 'Umstieg wählen:',
     directionPrefix: (d: string) => `Richtung ${d}`,
     straight: 'Luftlinie',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`),
     walkMins: (m: number) => `~${m} Min. zu Fuß`,
+    headToStop: 'Richtung Haltestelle gehen',
+    nextStop: 'Nächste Haltestelle',
+    navToStop: (dist: string) => `${dist} bis zur Haltestelle`,
+    navA11y: (what: string, dist: string) =>
+      `${what}, ${dist}. Tippen, um die volle Karte zu öffnen.`,
+    rerouting: 'Neue Route wird gesucht',
     openSettingsA11y: 'App-Einstellungen öffnen',
     enableLoc: 'Standort in den Einstellungen aktivieren',
   },

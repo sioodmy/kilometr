@@ -283,8 +283,6 @@ export const en: Strings = {
       in: 'in',
       onStop: 'at the stop',
       detailA11y: (what: string, dist: string) => `${what}, ${dist}`,
-      miniMapA11y: (what: string, dist: string) =>
-        `Route mini-map. ${what}, ${dist}. Tap to open the full map.`,
     },
   },
   routes: {
@@ -541,6 +539,7 @@ export const en: Strings = {
     noData: 'No route data',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
+    vehicleBetween: (mode: string, from: string, to: string) => `${mode} between ${from} and ${to}`,
     fromPrefix: 'from ',
     toPrefix: 'to ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
@@ -556,15 +555,19 @@ export const en: Strings = {
     left: 'On your left',
     slightLeft: 'Slightly left',
     noCoords: 'This stop has no coordinates in the timetable.',
-    locOff: 'Location is off — without it I can’t show the direction to the stop.',
+    locOff: 'Location is off. Without it I can’t show the direction to the stop.',
     locWaiting: 'No position yet. Wait for GPS or open the full map.',
     title: 'Stop location',
     followCompass: 'Follow the compass',
-    chooseChange: 'Choose a transfer:',
     directionPrefix: (d: string) => `towards ${d}`,
     straight: 'as the crow flies',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`),
     walkMins: (m: number) => `~${m} min on foot`,
+    headToStop: 'Head toward the stop',
+    nextStop: 'Next stop',
+    navToStop: (dist: string) => `${dist} to the stop`,
+    navA11y: (what: string, dist: string) => `${what}, ${dist}. Tap to open the full map.`,
+    rerouting: 'Finding a new route',
     openSettingsA11y: 'Open app settings',
     enableLoc: 'Enable location in settings',
   },
