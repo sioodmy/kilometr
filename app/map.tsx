@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 import { ChevronLeft, WifiOff } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
@@ -25,9 +24,12 @@ import {
   buildMapRoute,
   resolveGeometry,
   straightGeometry,
+  pinRouteGeometry,
 } from '../src/services/routeGeometry';
 import { RouteMap, type RouteMapHandle } from '../src/components/RouteMap';
 import { getLineColors, inferTransitMode, LineBadge } from '../src/components/LineBadge';
+import { acquireMapServer } from '../src/services/mapServerLease';
+import { useCurrentLocation } from '../src/services/currentLocation';
 import { LiveDot } from '../src/components/LiveDot';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
@@ -37,7 +39,6 @@ import { useStrings } from '../src/i18n';
 type Coord = [number, number];
 
 const VEHICLE_POLL_MS = 6000;
-const LOCATION_MIN_MOVE_M = 6;
 
 function nowSec(): number {
   const d = new Date();
@@ -56,7 +57,10 @@ export default function RouteMapScreen() {
   const [selectedLegId, setSelectedLegId] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<MapVehicle | null>(null);
   const [liveState, setLiveState] = useState<'fresh' | 'stale' | 'unknown'>('unknown');
-  const [userLoc, setUserLoc] = useState<{ lat: number; lon: number; heading: number | null } | null>(null);
+  const { location: gpsLocation } = useCurrentLocation();
+  const userLoc = gpsLocation
+    ? { lat: gpsLocation.lat, lon: gpsLocation.lon, heading: gpsLocation.heading }
+    : null;
   const [tilesDown, setTilesDown] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
@@ -112,6 +116,27 @@ export default function RouteMapScreen() {
     mapRef.current?.setGeometry(legId, coords);
   }, []);
 
+  // ─── Zestaw mapy offline ────────────────────────────────────
+  // Mapa główna i mini mapa współdzielą lease serwera kafelków.
+  const [offlineBase, setOfflineBase] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let release: (() => void) | null = null;
+    (async () => {
+      const lease = await acquireMapServer();
+      if (cancelled) {
+        lease.release();
+        return;
+      }
+      release = lease.release;
+      setOfflineBase(lease.base);
+    })();
+    return () => {
+      cancelled = true;
+      release?.();
+    };
+  }, []);
+
   useEffect(() => {
     if (!route) return;
     let cancelled = false;
@@ -130,6 +155,9 @@ export default function RouteMapScreen() {
         },
         abort.signal,
       );
+      // Trasa, którą użytkownik właśnie otworzył, zostaje w cache na stałe:
+      // to ona najczęściej przyda się offline.
+      if (!cancelled) void pinRouteGeometry(route);
     })();
     return () => {
       cancelled = true;
@@ -210,42 +238,6 @@ export default function RouteMapScreen() {
     };
   }, [item, route]);
 
-  // ─── Pozycja użytkownika ────────────────────────────────────
-  useEffect(() => {
-    let sub: Location.LocationSubscription | null = null;
-    let cancelled = false;
-    (async () => {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== Location.PermissionStatus.GRANTED) return;
-      const s = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: LOCATION_MIN_MOVE_M,
-        },
-        (loc) => {
-          const heading =
-            loc.coords.heading != null && isFinite(loc.coords.heading) ? loc.coords.heading : null;
-          setUserLoc({
-            lat: loc.coords.latitude,
-            lon: loc.coords.longitude,
-            heading,
-          });
-        },
-      );
-      // Ekran zdążył się odmontować, zanim watchPosition się rozwiązał:
-      // nie zapisujemy subskrypcji, tylko od razu ją zdejmujemy.
-      if (cancelled) {
-        s.remove();
-        return;
-      }
-      sub = s;
-    })();
-    return () => {
-      cancelled = true;
-      sub?.remove();
-    };
-  }, []);
-
   // ─── Akcje ──────────────────────────────────────────────────
   const handleSelectLeg = (legId: string) => {
     setSelectedLegId(legId);
@@ -302,6 +294,7 @@ export default function RouteMapScreen() {
         vehicle={vehicle}
         user={userLoc}
         selectedLegId={selectedLegId}
+        offlineBase={offlineBase}
         paddingTop={insets.top + 72}
         paddingBottom={panelHeight + insets.bottom + 16}
         onReady={handleMapReady}

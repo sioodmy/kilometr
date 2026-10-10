@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BellRing, Check, Minus, Navigation, Plus } from 'lucide-react-native';
+import { BellRing, Check, Clock, Minus, Navigation, Plus } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
@@ -200,7 +200,7 @@ export function NotificationPrefsCard() {
 
       {prefs.departureAlertsEnabled ? (
         <View style={styles.row}>
-          <View style={styles.spacerIcon} />
+          <Clock size={17} color={scheme.onSurfaceVariant} />
           <View style={styles.rowText}>
             <Text style={styles.rowTitle}>{p.leadTitle}</Text>
             <Text style={styles.rowHint}>{p.leadHint}</Text>
@@ -309,9 +309,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     marginTop: 3,
-  },
-  spacerIcon: {
-    width: 17,
   },
   toggle: {
     flexDirection: 'row',
