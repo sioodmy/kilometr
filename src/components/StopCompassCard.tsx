@@ -24,8 +24,8 @@ import {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
-import { walkMinutesFor } from '../services/settings';
-import { useEffectiveWalkSpeedMps } from '../services/walkPace';
+import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
+
 import { useStrings, type Strings } from '../i18n';
 
 interface StopCompassCardProps {
@@ -73,8 +73,8 @@ function getDirectionLabel(relAngle: number, s: Strings): string {
 
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
   const s = useStrings();
-  // Czas dojścia liczy efektywne tempo: pomiary z okolicy albo profil.
-  const walkMps = useEffectiveWalkSpeedMps();
+  // Czas dojścia liczony z tempa wybranego profilu w ustawieniach.
+  const walkMps = useWalkSpeedMps();
   // Znajdź etapy podróży
   const transitLegs = useMemo(() => {
     return connection.legs.filter((l) => l.mode !== 'walk');

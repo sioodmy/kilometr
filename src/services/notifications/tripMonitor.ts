@@ -1,15 +1,13 @@
 import { AppState } from 'react-native';
 import { kvGet, kvRemove, kvSet } from '../storage';
 import { RoutingService } from '../api';
-import { getSettingsSync } from '../settings';
+import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
 import type { Connection, RouteQuery, VehiclePosition } from '../../types/models';
 import { buildRoutesLink, mergeWidgetSnapshot, type WidgetPinned } from '../widgetSnapshot';
 import { nowSecOfDay } from '../vehiclePosition';
 import { getNotificationPreferencesSync, loadNotificationPreferences } from './preferences';
 import { computeTripProgress } from './tripProgress';
-import { getEffectiveWalkSpeedSync } from '../walkPace';
-import { startWalkPaceTracking, stopWalkPaceTracking, walkPaceTick } from '../walkTracking';
 import { resolveTrackedConnection } from './planMatch';
 import { ARRIVED_LINGER_MS, presentTrip, dismissTracking } from './presenter';
 import {
@@ -110,25 +108,10 @@ function vehicleForTrip(p: TripProgress): VehiclePosition | null {
 
 // ─── Odświeżenie ───────────────────────────────────────────────────────────
 
-/**
- * Tempo do planera i ETA: zmierzone w tej okolicy, gdy mamy dość pomiarów,
- * inaczej mediana overall, na końcu profil z ustawień.
- */
-function tripWalkSpeedMps(trip: TrackedTrip): number {
-  const s = getSettingsSync();
-  const firstTransit = trip.connection.legs.find((l) => l.mode !== 'walk');
-  return getEffectiveWalkSpeedSync({
-    fromLat: trip.fromLat,
-    fromLon: trip.fromLon,
-    dest: firstTransit?.fromStop ?? null,
-    profile: s.walkPace,
-  });
-}
-
 async function planTracked(): Promise<Connection | null> {
   if (!tracked) return null;
   const s = getSettingsSync();
-  const walkSpeedMps = tripWalkSpeedMps(tracked);
+  const walkSpeedMps = profileWalkSpeedMps(s.walkPace);
   const conns = await RoutingService.getConnections({
     fromTitle: tracked.fromTitle,
     fromLat: tracked.fromLat,
@@ -209,14 +192,13 @@ async function refresh(): Promise<void> {
 
     const conn = trip.connection;
 
-    const walkSpeedMps = tripWalkSpeedMps(trip);
+    const walkSpeedMps = profileWalkSpeedMps(getSettingsSync().walkPace);
     const base = computeTripProgress(conn, { walkSpeedMps });
     const vehicle = vehicleForTrip(base);
     // Drugi przelot z pojazdem: GPS potrafi wskazać przystanek dokładniej
     // niż interpolacja po czasie, a wynik różni się w tym, ile zostało.
     const p = vehicle ? computeTripProgress(conn, { vehicle, walkSpeedMps }) : base;
     progress = p;
-    walkPaceTick(p, trip);
     if (!planLocked && p.phase !== 'walking' && p.phase !== 'waiting') {
       planLocked = true;
     }
@@ -300,8 +282,9 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   arrivedAt = 0;
   planLocked = false;
   lastDelayMin = trip.connection.delayMin;
-  progress = computeTripProgress(trip.connection, { walkSpeedMps: tripWalkSpeedMps(trip) });
-  void startWalkPaceTracking();
+  progress = computeTripProgress(trip.connection, {
+    walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
+  });
   notify();
   rescheduleTicker();
   await refresh();
@@ -318,7 +301,6 @@ export async function stopTracking(): Promise<void> {
   arrivedAt = 0;
   planLocked = false;
   lastDelayMin = 0;
-  await stopWalkPaceTracking();
   if (ticker) {
     clearInterval(ticker);
     ticker = null;
@@ -346,8 +328,9 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     const parsed = JSON.parse(raw) as TrackedTrip;
     if (!parsed?.connection) return null;
     tracked = parsed;
-    progress = computeTripProgress(parsed.connection, { walkSpeedMps: tripWalkSpeedMps(parsed) });
-    void startWalkPaceTracking();
+    progress = computeTripProgress(parsed.connection, {
+      walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
+    });
     notify();
     rescheduleTicker();
     await refresh();
