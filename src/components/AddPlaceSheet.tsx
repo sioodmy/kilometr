@@ -2,15 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
-import BottomSheet, { BottomSheetFlatList, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import BottomSheet, {
+  BottomSheetFlatList,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Anchor,
@@ -213,6 +217,11 @@ export function AddPlaceSheet({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const iconGridItemSize = (width - 32) / 4;
+  // Wysokość okna z momentu montowania (klawiatura jeszcze zamknięta). Trzymamy
+  // ją na stałe, bo Android w trybie "resize" kurczy okno przy klawiaturze, co
+  // przesuwało górną krawędź arkusza (i pigułki kategorii) przy każdym znaku.
+  // Ekran jest zablokowany w pionie, więc wartość się nie zmienia.
+  const [sheetWindowHeight] = useState(() => Dimensions.get('window').height);
   const isEditing = Boolean(initialPlace);
   const s = useStrings();
   // Katalog ikon i kategorii w języku użytkownika (etykiety ze słownika).
@@ -447,6 +456,18 @@ export function AddPlaceSheet({
   }, [iconQuery, selectedIconCategory, iconOptions]);
 
   return (
+    // Stała wysokość kontenera: izoluje arkusz od kurczenia okna przez
+    // klawiaturę, dzięki czemu górna krawędź (a więc i pigułki) się nie rusza.
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: sheetWindowHeight,
+      }}
+    >
     <BottomSheet
       ref={sheetRef}
       index={isEditing ? 0 : 1}
@@ -454,6 +475,8 @@ export function AddPlaceSheet({
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
+      android_keyboardInputMode="adjustPan"
+      keyboardBehavior="extend"
       onChange={(idx) => {
         if (idx === -1) onClose();
       }}
@@ -496,7 +519,7 @@ export function AddPlaceSheet({
             {/* Icon Search Box */}
             <View style={styles.searchBox}>
               <Search size={18} color={scheme.onSurfaceVariant} />
-              <TextInput
+              <BottomSheetTextInput
                 value={iconQuery}
                 onChangeText={setIconQuery}
                 placeholder={s.places.searchIcon}
@@ -628,7 +651,7 @@ export function AddPlaceSheet({
 
             <View style={styles.searchBox}>
               <Search size={18} color={scheme.onSurfaceVariant} />
-              <TextInput
+              <BottomSheetTextInput
                 value={anchorQuery}
                 onChangeText={handleAnchorQueryChange}
                 placeholder={s.places.searchStop}
@@ -745,7 +768,7 @@ export function AddPlaceSheet({
 
             <View style={styles.searchBox}>
               <Search size={18} color={scheme.onSurfaceVariant} />
-              <TextInput
+              <BottomSheetTextInput
                 value={query}
                 onChangeText={handleQueryChange}
                 placeholder={s.places.queryHint}
@@ -809,7 +832,7 @@ export function AddPlaceSheet({
             {/* Place Name Input */}
             <View style={styles.inputWrap}>
               <Text style={styles.fieldLabel}>{s.places.nameLabel}</Text>
-              <TextInput
+              <BottomSheetTextInput
                 value={name}
                 onChangeText={setName}
                 placeholder={s.places.nameHint}
@@ -921,7 +944,7 @@ export function AddPlaceSheet({
               ) : (
                 <View style={styles.searchBox}>
                   <Search size={18} color={scheme.onSurfaceVariant} />
-                  <TextInput
+                  <BottomSheetTextInput
                     value={query}
                     onChangeText={handleQueryChange}
                     placeholder={s.places.queryHint}
@@ -1062,6 +1085,7 @@ export function AddPlaceSheet({
         )}
       </View>
     </BottomSheet>
+    </View>
   );
 }
 
