@@ -21,11 +21,46 @@ export interface Env {
 const PDP_BASE = 'https://pdp-api.plk-sa.pl';
 const DB_KEY = 'db/kilometr-gtfs.db';
 const MANIFEST_KEY = 'manifest.json';
+/**
+ * Pakiet kafelków mapy offline (Wrocław). Buduje go workflow map-tiles.yml,
+ * a telefon pobiera raz i trzyma lokalnie.
+ */
+const MAP_PACK_KEY = 'maps/wroclaw-tiles.ktp';
 
 function json(data: unknown, status = 200, cacheSeconds = 0): Response {
   const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' };
   if (cacheSeconds > 0) headers['Cache-Control'] = `public, max-age=${cacheSeconds}`;
   return new Response(JSON.stringify(data), { status, headers });
+}
+
+/**
+ * Strumieniuje obiekt z R2 z ETag i cache. Wspólne dla pakietu mapy i innych
+ * dużych plików: telefon pobiera całość, ale ETag pozwala sprawdzić, czy nie
+ * ma już tej samej wersji.
+ */
+async function serveObject(
+  env: Env,
+  key: string,
+  contentType: string,
+  workflowName: string,
+): Promise<Response> {
+  const obj = await env.TIMETABLE_BUCKET.get(key);
+  if (!obj) {
+    return json(
+      {
+        error: 'not-built-yet',
+        hint: `Build jeszcze nie wystartował — odpal workflow ${workflowName} (workflow_dispatch).`,
+      },
+      404,
+    );
+  }
+  const headers = new Headers();
+  headers.set('Content-Type', contentType);
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Content-Length', String(obj.size));
+  if (obj.etag) headers.set('ETag', obj.etag);
+  headers.set('Cache-Control', 'public, max-age=300');
+  return new Response(obj.body, { headers });
 }
 
 export default {
@@ -108,6 +143,10 @@ export default {
 
     if (url.pathname === '/api/kd/departures' || url.pathname === '/api/kd/schedule') {
       return proxyPdp(req, env, ctx, url.pathname === '/api/kd/departures' ? 'operations' : 'schedules');
+    }
+
+    if (url.pathname === '/maps/wroclaw-tiles.ktp') {
+      return serveObject(env, MAP_PACK_KEY, 'application/octet-stream', 'map-tiles.yml');
     }
 
     return json({ error: 'not-found' }, 404);
