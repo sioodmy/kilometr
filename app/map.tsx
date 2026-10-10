@@ -25,6 +25,7 @@ import {
   buildMapRoute,
   resolveGeometry,
   straightGeometry,
+  pinRouteGeometry,
 } from '../src/services/routeGeometry';
 import { RouteMap, type RouteMapHandle } from '../src/components/RouteMap';
 import { getLineColors, inferTransitMode, LineBadge } from '../src/components/LineBadge';
@@ -130,6 +131,9 @@ export default function RouteMapScreen() {
         },
         abort.signal,
       );
+      // Trasa, którą użytkownik właśnie otworzył, zostaje w cache na stałe:
+      // to ona najczęściej przyda się offline.
+      if (!cancelled) void pinRouteGeometry(route);
     })();
     return () => {
       cancelled = true;
