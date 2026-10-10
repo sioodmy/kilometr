@@ -37,6 +37,7 @@ import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { setOnboardingSeen } from '../src/services/onboarding';
+import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
 import { ensureNotificationPermission, hasNotificationPermission } from '../src/services/notifications';
 import {
   FavoritesService,
@@ -717,7 +718,7 @@ export default function OnboardingScreen() {
                           <MapPin size={16} color={scheme.primary} />
                           <View style={{ flex: 1 }}>
                             <Text style={st.resultTitle} numberOfLines={1}>
-                              {r.title}
+                              {suggestionDisplayTitle(r)}
                             </Text>
                             <Text style={st.resultSub} numberOfLines={1}>
                               {r.address}
