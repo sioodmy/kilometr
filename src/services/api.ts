@@ -346,6 +346,9 @@ export const RoutingService: IRoutingService = {
 
       if (!query.departureTimeSec && !query.arriveBySec) {
         void saveConnections(query, connections);
+        // Zawczasu pobierz i przypnij przebieg ulic kilku najlepszych
+        // połączeń, żeby ostatnie trasy działały offline.
+        void import('./geometryWarmup').then((m) => m.warmConnections(connections));
       }
       return connections;
     } catch (err) {

@@ -393,16 +393,23 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
  * Pełny styl mapy: podkład OSM + warstwy trasy. Trasa siedzi w tym samym
  * stylu, więc WebView nie musi nic doklejać po wczytaniu — wystarczy
  * `setData` na źródle GeoJSON.
+ *
+ * `base` (opcjonalnie) przestawia kafle i glify na lokalny serwer mapy:
+ * `base` to np. `http://127.0.0.1:45999`. Schemat kafli jest ten sam co
+ * online (OpenMapTiles), więc warstwy poniżej nie wymagają żadnych zmian.
  */
-export function buildMapStyle() {
+export function buildMapStyle(base?: string | null) {
+  const tiles = base
+    ? { type: 'vector' as const, tiles: [`${base}/tiles/{z}/{x}/{y}.pbf`], minzoom: 0, maxzoom: 14 }
+    : { type: 'vector' as const, url: MAP_SOURCE_URL };
   return {
     version: 8,
     name: 'kilometr-ciemna',
     sources: {
-      openmaptiles: { type: 'vector', url: MAP_SOURCE_URL, attribution: '' },
+      openmaptiles: { ...tiles, attribution: '' },
       [ROUTE_SOURCE_ID]: { type: 'geojson', data: EMPTY },
     },
-    glyphs: MAP_GLYPHS_URL,
+    glyphs: base ? `${base}/assets/fonts/{fontstack}/{range}.pbf` : MAP_GLYPHS_URL,
     layers: [
       ...baseLayers(),
       ...buildRouteLayers(),

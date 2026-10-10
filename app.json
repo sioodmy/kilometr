@@ -37,6 +37,7 @@
       "expo-status-bar",
       "expo-sqlite",
       "./plugins/with-kilometr-widgets",
+      "./plugins/with-map-server",
       [
         "expo-notifications",
         {
