@@ -182,6 +182,13 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     const HEADING_ALPHA = 0.12;
     const HEADING_HYSTERESIS_DEG = 2;
     const MIN_MOVE_M = 4;
+    // Ten efekt NIE może zależeć od deviceHeading: applyHeading ustawia ten
+    // stan, więc zależność od niego kasowała i odtwarzała subskrypcję GPS przy
+    // każdej zmianie kursu, czyli praktycznie non stop w ruchu. Efektem było
+    // „nie mam jeszcze Twojej pozycji", mimo działającego GPS.
+    // Fakt, że mamy kurs urządzenia, trzymamy w ref-ie.
+    const hasDeviceHeading = { current: false };
+    let hasFix = false;
 
     function applyHeading(rawDeg: number) {
       if (!isMounted) return;
@@ -220,27 +227,27 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           },
           (loc) => {
             if (!isMounted) return;
-            // Fix w budynku bywa zmyślony o kilkadziesiąt metrów. Taki
-            // sygnał nie może sterować strzałką, więc go wyrzucamy.
-            if (loc.coords.accuracy != null && loc.coords.accuracy > MAX_ACCURACY_M) return;
-
+            const acc = loc.coords.accuracy ?? 0;
             const next = { lat: loc.coords.latitude, lon: loc.coords.longitude };
             const prev = lastLoc.current;
+
             if (prev) {
+              // Mamy już pozycję, więc odrzucamy słabe fixy: inaczej strzałka
+              // skacze o dziesiątki metrów, gdy telefon łapie fix w budynku.
+              if (acc > MAX_ACCURACY_M) return;
               const moved = calculateDistanceMeters(prev.lat, prev.lon, next.lat, next.lon);
               if (moved < MIN_MOVE_M) return; // szum GPS, nie ruszaj UI
-              // Gdy telefon nie daje kursu (w silnym magnesie, w środku
-              // auta), bierzemy kierunek z samego ruchu.
-              if (
-                deviceHeading == null &&
-                moved >= Math.max(8, loc.coords.accuracy ?? 0)
-              ) {
-                applyHeading(
-                  calculateBearing(prev.lat, prev.lon, next.lat, next.lon),
-                );
+              // Gdy telefon nie daje kursu (silny magnes, wnętrze auta),
+              // bierzemy kierunek z samego ruchu.
+              if (!hasDeviceHeading.current && moved >= Math.max(8, acc)) {
+                applyHeading(calculateBearing(prev.lat, prev.lon, next.lat, next.lon));
               }
             }
+            // Pierwszy fix przyjmujemy nawet ze słabą dokładnością. Bez tego
+            // przy gorszym sygnale ekran wisiał na „czekam na pozycję" mimo
+            // że lokalizacja działała; koleje fixy same się poprawiają.
             lastLoc.current = next;
+            hasFix = true;
             setUserLocation(next);
             setLocState('ok');
           },
@@ -253,7 +260,10 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         headingSub = await Location.watchHeadingAsync((h) => {
           if (!isMounted) return;
           const trueH = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
-          if (trueH >= 0) applyHeading(trueH);
+          if (trueH >= 0) {
+            hasDeviceHeading.current = true;
+            applyHeading(trueH);
+          }
         });
         if (!isMounted) headingSub.remove();
       } catch (err) {
@@ -264,9 +274,12 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
 
     startTracking();
 
+    // Po 12 s bez fixu pokazujemy realny stan. Bez GPS na zimno (zimny start,
+    // słaby widok nieba) pierwszy fix potrafi zająć kilkanaście sekund, więc
+    // dajemy mu na to czas, zamiast zamykać temat po 8 s.
     const noFixTimer = setTimeout(() => {
-      if (isMounted) setLocState((prev) => (prev === 'seeking' ? 'noFix' : prev));
-    }, 8000);
+      if (isMounted && !hasFix) setLocState((prev) => (prev === 'seeking' ? 'noFix' : prev));
+    }, 12000);
 
     return () => {
       isMounted = false;
@@ -274,7 +287,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       locSub?.remove();
       headingSub?.remove();
     };
-  }, [deviceHeading]);
+  }, []);
 
   // ─── Geometria trasy ─────────────────────────────────────────
   // Nogi sklejone w jeden ciąg wierzchołków; proste odcinki jako zapas,

@@ -243,7 +243,10 @@ export default function RouteMapScreen() {
       if (status !== Location.PermissionStatus.GRANTED) return;
       const s = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
+          // High zamiast Balanced: punkt użytkownika na mapie ma pokazywać
+          // realne miejsce, a nie kwartał. BestForNavigation byłby tu
+          // przesadą (mapa to podgląd, nie nawigacja zakrętowa).
+          accuracy: Location.Accuracy.High,
           distanceInterval: LOCATION_MIN_MOVE_M,
         },
         (loc) => {
