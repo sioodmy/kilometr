@@ -5,8 +5,9 @@
 //   na dobę, a pojedynczy użytkownik generowałby 4 tys. samym pollingiem.
 // - Adresy/POI: Nominatim + Overpass (HTTPS, z nagłówkiem User-Agent)
 //
-// Limity: GTFS-RT nie istnieje dla Wrocławia — opóźnienia liczymy sami,
-// dopasowując GPS z bus_position do rozkładu (matcher w liveTracker).
+// Limity: GTFS-RT nie istnieje dla wrocławskiego MPK — opóźnienia liczymy
+// sami, dopasowując GPS z bus_position do rozkładu (matcher w liveTracker).
+// Pociągi KD i awaryjny fallback MPK idą przez zbiorkom.live (ZBIORKOM niżej).
 //
 // Linie dla bus_position. Lista zgagała się z rozkładem: MPK wprowadziło 76
 // oraz 913/917/923/928/933/937/938/941/944/945/961/964, których tu nie było,
@@ -44,6 +45,21 @@ export const MPK = {
   busPositionUrl: 'https://mpk.wroc.pl/bus_position',
   pollIntervalMs: 20000,
   timeoutMs: 8000,
+} as const;
+
+/**
+ * ZbiorKom.live Open Data API (https://api.zbiorkom.live, bez klucza).
+ * Dwa zastosowania:
+ * - miasto `pkp`, agencja `KD`: pozycje i opóźnienia pociągów KD
+ *   (nasz rozkład nie ma dla nich żadnego feedu live),
+ * - miasto `wroclaw`: fallback pozycji autobusów i tramwajów, gdy
+ *   bezpośredni `bus_position` MPK nie odpowiada.
+ * Bbox w ścieżce to minLon,minLat,maxLon,maxLat (cały Wrocław).
+ */
+export const ZBIORKOM = {
+  baseUrl: 'https://api.zbiorkom.live',
+  wroclawBbox: '16.7,50.95,17.25,51.25',
+  timeoutMs: 10000,
 } as const;
 
 export const NOMINATIM = {

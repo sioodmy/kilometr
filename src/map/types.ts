@@ -58,7 +58,7 @@ export interface MapVehicle extends LatLon {
   vehicleId: string;
   legId: string;
   line: string;
-  mode: 'bus' | 'tram';
+  mode: 'bus' | 'tram' | 'train';
   color: string;
   /** kurs pojazdu w stopniach (0 = północ) */
   heading: number;
