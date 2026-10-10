@@ -7,6 +7,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Linking,
   Pressable,
   StyleSheet,
@@ -191,6 +192,22 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
   // wygładzamy low-pass na wektorze + histereza, żeby kompas nie migotał.
   const headingVec = useRef<{ x: number; y: number } | null>(null);
   const lastAppliedHeading = useRef(0);
+  // Jednorazowe pojawienie się treści nawigacji po pierwszym fixie GPS.
+  // Powód: fix i geometria schodzą asynchronicznie, więc zamiast skoku
+  // layoutu jest krótki fade. Tylko raz, nie przy każdej zmianie pozycji.
+  const navOpacity = useRef(new Animated.Value(0)).current;
+  const navFaded = useRef(false);
+  useEffect(() => {
+    if (userLocation && !navFaded.current) {
+      navFaded.current = true;
+      Animated.timing(navOpacity, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [userLocation, navOpacity]);
+
   const [navigationRoute, setNavigationRoute] = useState<{ targetKey: string; path: Coord[] } | null>(
     null,
   );
@@ -513,11 +530,14 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       </View>
 
       {/* ─── Nawigacja ─────────────────────────────────────── */}
+      {/* Slot rezerwuje wysokość docelowego widgetu od pierwszego renderu.
+          Powód: stany oczekiwanie/radar/mapa mają różne wysokości i bez tego
+          karta skakała w momencie fixu GPS. */}
       {showNav && userPos ? (
         // Cały widget jest jednym przyciskiem: dotknięcie otwiera pełną mapę.
         <Pressable
           onPress={openMap}
-          style={({ pressed }) => [styles.navWidget, pressed && styles.navWidgetPressed]}
+          style={({ pressed }) => [styles.navWidget, styles.navSlot, { opacity: navOpacity }, pressed && styles.navWidgetPressed]}
           accessibilityRole="button"
           accessibilityLabel={s.compass.navA11y(headLabel, headDist)}
         >
@@ -567,7 +587,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         </Pressable>
       ) : compassReady ? (
         /* Do 100 m pokazujemy kompas. */
-        <View style={styles.compassRow}>
+        <View style={[styles.compassRow, styles.navSlot, { opacity: navOpacity }]}>
           <View style={styles.dialContainer}>
             <View style={styles.dial}>
               <View style={styles.innerRing} />
@@ -598,7 +618,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           </View>
         </View>
       ) : (
-        <View style={styles.hintRow}>
+        <View style={[styles.hintRow, styles.navSlot, styles.navSlotHint, { opacity: navOpacity }]}>
           <LocateFixed size={18} color={scheme.onSurfaceVariant} />
           <Text style={styles.hintText}>{directionLabel}</Text>
         </View>
@@ -687,6 +707,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // ─── Nawigacja ─────────────────────────────────────────────
+  // Slot rezerwuje wysokość docelowego widgetu, żeby przejście
+  // oczekiwanie → radar/mapa nie przesuwało reszty ekranu.
+  navSlot: {
+    minHeight: 148,
+  },
+  // Wiersz oczekiwania wyśrodkowany w slocie, żeby pusty obszar nie
+  // wyglądał na ucięty layout.
+  navSlotHint: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   navWidget: {
     backgroundColor: scheme.surfaceContainerLowest,
     borderRadius: shape.large,
