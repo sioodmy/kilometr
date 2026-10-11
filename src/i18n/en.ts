@@ -145,6 +145,9 @@ export const en: Strings = {
     trainBufferHint:
       'Minimum time to reach the platform after a transfer. Railway stations are not plain stops — e.g. at Główny the walk from the stop to the platform goes through the hall.',
     trainNoData: 'The downloaded timetable has no trains. Refresh the data above to enable KD transfers.',
+    cableTitle: 'Polinka',
+    cableHint:
+      'The Wrocław University of Science and Technology cable car over the Odra, between Wyspiański embankment and Na Grobli street. Runs on weekdays 7:00–21:00, with a 13:30–14:00 break, every 5 minutes. Closed at weekends. Only in “All” mode.',
     walkTitle: 'Max walking distance',
     walkHint:
       'How far you can walk to the first stop and from the last one to your destination. A farther stop with a direct tram often beats the nearest pole.',
@@ -346,6 +349,8 @@ export const en: Strings = {
     emptyPlain: 'Try a different destination or check another departure time.',
     vehicleTramGen: 'by tram',
     vehicleBusGen: 'by bus',
+    vehicleTrainGen: 'by train',
+    vehicleCableGen: 'by cable car',
     showWithChangesA11y: 'Show connections with transfers',
     showWithChanges: 'Show with transfers',
     showAllVehiclesA11y: 'Show all vehicles',
@@ -621,6 +626,7 @@ export const en: Strings = {
     modeTram: 'Tram',
     modeBus: 'Bus',
     modeTrain: 'Train',
+    modeCable: 'Cable car',
     departTitle: (service: string, at: string) => `${service} • departs ${at}`,
     rideTitle: (service: string, at: string) => `${service} • arrives ${at}`,
     transferTitle: (service: string, at: string) => `Change • ${service} • departs ${at}`,

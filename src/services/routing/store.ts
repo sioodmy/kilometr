@@ -1,6 +1,12 @@
 import { awaitImportSettled, importInProgress } from '../dataManager';
 import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
+import {
+  POLINKA_ROUTE_ID,
+  polinkaRoute,
+  polinkaStops,
+  polinkaTripsOverlapping,
+} from '../../data/polinka';
 
 const WALK_SPEED_MPS = 1.45;
 const WALK_DETOUR_FACTOR = 1.15;
@@ -12,6 +18,19 @@ export interface DayIndex {
   routeStops: Map<string, string[]>;
   routeTrips: Map<string, any[]>;
   patterns: Map<string, any>;
+}
+
+/** Dokłada kursy Polinki do mapy kursów wycinka (własna linia, brak konfliktu id). */
+function mergePolinkaTrips(
+  tripsByRouteId: Map<string, any[]>,
+  extra: Map<string, any[]>,
+): Map<string, any[]> {
+  for (const [routeId, group] of extra) {
+    const existing = tripsByRouteId.get(routeId);
+    if (existing) existing.push(...group);
+    else tripsByRouteId.set(routeId, group);
+  }
+  return tripsByRouteId;
 }
 
 export class LocalGtfsStore {
@@ -91,14 +110,67 @@ export class LocalGtfsStore {
       });
     }
 
-    // 3. Build footpaths
+    // 3. Kolej linowa Polinka: stacje i linia zanim powstaną przesiadki
+    this.injectPolinkaStopsAndRoute();
+
+    // 4. Build footpaths
     this.buildFootpaths();
 
-    // 4. Przesiadki na pociągi (tabela z prebuilt; brak = baza bez KD)
+    // 5. Przesiadki na pociągi (tabela z prebuilt; brak = baza bez KD)
     await this.loadInterchanges().catch(() => {});
 
     this.isLoaded = true;
     console.log(`[LocalGtfsStore] Loaded ${this.stops.size} stops, ${this.routes.size} routes.`);
+  }
+
+/**
+   * Polinka to kolej uczelniana, nie MPK, więc nie ma jej w GTFS i dokładamy
+   * stacje i linię syntetycznie. Wstrzyknięcie PRZED buildFootpaths jest
+   * kluczowe: grid przesiadek traktuje stacje Polinki jak zwykłe przystanki
+   * i sam podepina pod nie najbliższe słupki MPK (przy Urzędzie Wojewódzkim
+   * i Poczcie Głównej obok Na Grobli, przy Wyspiańskiego przy C-13) w realnych
+   * odległościach, bez ręcznie spisanych linków.
+   */
+  private injectPolinkaStopsAndRoute(): void {
+    for (const s of polinkaStops()) {
+      if (this.stops.has(s.stop_id)) continue;
+      this.stops.set(s.stop_id, s);
+    }
+    if (!this.routes.has(POLINKA_ROUTE_ID)) {
+      this.routes.set(POLINKA_ROUTE_ID, polinkaRoute());
+    }
+  }
+
+  /**
+   * Kursy Polinki nachodzące na horyzont [fromSec, toSec], w formacie GTFS,
+   * więc buildPatterns traktuje je jak każdy inny wzorzec i RAPTOR nie wie,
+   * że to nie MPK.
+   *
+   * Dni: Polinka jeździ pon.–pt. W dni bez aktywnego serwisu MPK (święta)
+   * wycnek kończy się wcześniej, więc Polinka też nie wjeżdża. Wyjątek
+   * świąteczny, na który MPK uruchamia kursy dodatkowe, zostaje pominięty:
+   * bez kalendarza świątecznego w bazie nie odróżnimy go od dnia zwykłego.
+   */
+  private injectPolinkaTrips(
+    day: number,
+    fromSec: number,
+    toSec: number,
+  ): { tripIds: string[]; byRouteId: Map<string, any[]> } {
+    const empty = { tripIds: [] as string[], byRouteId: new Map<string, any[]>() };
+    if (day < 1 || day > 5) return empty;
+
+    const bundles = polinkaTripsOverlapping(fromSec, toSec);
+    if (bundles.length === 0) return empty;
+
+    const group: any[] = [];
+    const tripIds: string[] = [];
+    for (const b of bundles) {
+      this.trips.set(b.trip.trip_id, b.trip);
+      this.stopTimes.set(b.trip.trip_id, b.times);
+      group.push(b.trip);
+      tripIds.push(b.trip.trip_id);
+    }
+    return { tripIds, byRouteId: new Map([[POLINKA_ROUTE_ID, group]]) };
   }
 
   private buildFootpaths() {
@@ -257,6 +329,8 @@ export class LocalGtfsStore {
     const servicePlaceholders = serviceIds.map(() => '?').join(',');
 
     // 1. Kursy nachodzące na horyzont (agregacja natywnie w SQL — lecą tylko id).
+    // Polinkę dokładamy obok: ten sam warunek przecięcia horyzontu, bez SQL-a.
+    const polinka = this.injectPolinkaTrips(day, bFrom, bTo);
     const overlapping = await db.getAllAsync<{ trip_id: string }>(
       `SELECT st.trip_id AS trip_id
        FROM stop_times st
@@ -268,7 +342,7 @@ export class LocalGtfsStore {
       bTo,
       bFrom,
     );
-    if (overlapping.length === 0) {
+    if (overlapping.length === 0 && polinka.tripIds.length === 0) {
       this.rememberSlice(cacheKey, emptyIdx);
       return emptyIdx;
     }
@@ -330,10 +404,10 @@ export class LocalGtfsStore {
       }
     }
 
-    const idx = this.buildPatterns(tripsByRouteId);
-    this.registerSliceTrips(cacheKey, tripIds);
+    const idx = this.buildPatterns(mergePolinkaTrips(tripsByRouteId, polinka.byRouteId));
+    this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
     this.rememberSlice(cacheKey, idx);
-    console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length}`);
+    console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length + polinka.tripIds.length}`);
     return idx;
   }
 
@@ -530,9 +604,13 @@ export class LocalGtfsStore {
       });
     }
 
-    const idx = this.buildPatterns(tripsByRouteId);
+    const polinka = this.injectPolinkaTrips(day, 0, 86400);
+    // Jak kursy z bazy: pełny indeks dnia trzyma je na stałe, bo backtrack
+    // szuka ich stop_times po wsiadaniu, a wycinek mógłby je zwolnić.
+    for (const id of polinka.tripIds) this.retainedTrips.add(id);
+    const idx = this.buildPatterns(mergePolinkaTrips(tripsByRouteId, polinka.byRouteId));
     this.dayIndexes.set(cacheKey, idx);
-    console.log(`[LocalGtfsStore] DayIndex built in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${activeTripsById.size}`);
+    console.log(`[LocalGtfsStore] DayIndex built in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${activeTripsById.size + polinka.tripIds.length}`);
     return idx;
   }
 

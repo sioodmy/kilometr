@@ -114,7 +114,8 @@ export interface SmartDestination extends LatLon {
   originId: string;
 }
 
-export type LegMode = 'tram' | 'bus' | 'train' | 'walk';
+/** 'cable' = kolej linowa / powietrzna (Polinka przy Politechnice Wrocławskiej). */
+export type LegMode = 'tram' | 'bus' | 'train' | 'cable' | 'walk';
 
 export interface LegStop {
   stopId: string;
@@ -215,6 +216,8 @@ export interface RouteQuery {
   modes?: 'all' | 'tram' | 'bus';
   /** Pociągi KD w trybie 'all' (default true). Szybki filtr ich nie rusza. */
   trainsEnabled?: boolean;
+  /** Koleje linowe (Polinka) w trybie 'all' (default true). Jak trainsEnabled. */
+  cableEnabled?: boolean;
   /** Minimalny zapas na wsiadanie do pociągu po przesiadce (default 300). */
   trainMinTransferSec?: number;
   /** sekundy, default 120 */

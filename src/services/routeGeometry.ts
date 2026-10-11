@@ -39,9 +39,13 @@ const REQUEST_TIMEOUT_MS = 8000;
 /** Profil routera: kurs jedzie po jezdni, spacer po chodnikach. */
 type RouteProfile = 'driving' | 'foot';
 
-/** Tory nie leżą na jezdni, więc router samochodowy robi pętelki i objazdy. */
+/**
+ * Tory nie leżą na jezdni, więc router samochodowy robi pętelki i objazdy.
+ * Kolej linowa tym bardziej: Polinka leci nad Odrą wprost, a OSRM po jezdni
+ * objechałby rzekę mostem Grunwaldzkim i narysowała 2 km zamiast 400 m.
+ */
 export function isRailLeg(leg: MapLeg): boolean {
-  return leg.mode === 'tram' || leg.mode === 'train';
+  return leg.mode === 'tram' || leg.mode === 'train' || leg.mode === 'cable';
 }
 
 function legProfile(leg: MapLeg): RouteProfile {
