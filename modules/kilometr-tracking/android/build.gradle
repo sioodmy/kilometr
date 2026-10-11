@@ -1,11 +1,11 @@
 apply plugin: 'com.android.library'
 apply plugin: 'expo-module-gradle-plugin'
 
-group = 'com.anonymous.kilometr.tracking'
+group = 'pl.wroclaw.kilometr.tracking'
 version = '1.0.0'
 
 android {
-  namespace "com.anonymous.kilometr.tracking"
+  namespace "pl.wroclaw.kilometr.tracking"
   defaultConfig {
     versionCode 1
     versionName '1.0.0'

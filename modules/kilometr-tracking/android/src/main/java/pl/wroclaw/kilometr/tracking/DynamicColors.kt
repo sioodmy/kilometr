@@ -1,4 +1,4 @@
-package com.anonymous.kilometr.tracking
+package pl.wroclaw.kilometr.tracking
 
 import android.content.Context
 import android.os.Build

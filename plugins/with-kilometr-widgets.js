@@ -51,7 +51,7 @@ function withWidgetFiles(config) {
     'android',
     async (config) => {
       const root = config.modRequest.platformProjectRoot;
-      const pkg = (config.android && config.android.package) || 'com.anonymous.kilometr';
+      const pkg = (config.android && config.android.package) || 'pl.wroclaw.kilometr';
       const javaDir = path.join(root, 'app/src/main/java', ...pkg.split('.'));
       const resDir = path.join(root, 'app/src/main/res');
       fs.mkdirSync(javaDir, { recursive: true });
