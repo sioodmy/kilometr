@@ -1,4 +1,4 @@
-package com.anonymous.kilometr.maps
+package pl.wroclaw.kilometr.maps
 
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream

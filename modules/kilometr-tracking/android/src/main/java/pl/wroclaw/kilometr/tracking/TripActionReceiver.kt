@@ -1,4 +1,4 @@
-package com.anonymous.kilometr.tracking
+package pl.wroclaw.kilometr.tracking
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -32,7 +32,7 @@ class TripActionReceiver : BroadcastReceiver() {
   }
 
   companion object {
-    const val ACTION_STOP = "com.anonymous.kilometr.tracking.action.STOP"
+    const val ACTION_STOP = "pl.wroclaw.kilometr.tracking.action.STOP"
   }
 }
 
