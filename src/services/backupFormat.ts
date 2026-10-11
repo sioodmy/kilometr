@@ -138,7 +138,9 @@ function readPlace(v: unknown): SavedPlace | null {
   };
 }
 
-const LEG_MODES: readonly string[] = ['tram', 'bus', 'walk'];
+// 'train' i 'cable' też warto tu wpisać: bez nich przywracanie zapisanej trasy
+// po cichu gubiło nogi pociągowe (i teraz Polinki), zostawiając dziurę w rozkładzie.
+const LEG_MODES: readonly string[] = ['tram', 'bus', 'train', 'cable', 'walk'];
 
 function readLeg(v: unknown): Leg | null {
   if (!isRecord(v)) return null;

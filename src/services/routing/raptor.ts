@@ -41,6 +41,12 @@ interface RaptorOptions {
    */
   trainsEnabled?: boolean;
   /**
+   * Czy kolej linowa (Polinka) bierze udział (tylko w trybie 'all'). Default true.
+   * Jej kursy są w sklepie zawsze, bo to dane statyczne: wyłącznik działa
+   * na poziomie wzorca, tak jak przy pociągach.
+   */
+  cableEnabled?: boolean;
+  /**
    * Minimalny zapas na wsiadanie do pociągu PO przesiadce (dojście na peron
    * itp.). Doklejany do zwykłego minTransferSec: max(z nich). Default 300.
    * Pierwszego wsiadania (z domu) nie dotyczy — tam liczy się spacer.
@@ -64,15 +70,17 @@ interface RaptorOptions {
 }
 
 /**
- * Klasyfikacja linii na tramwaj/pociąg/autobus — ta sama heurystyka co w backtrack
- * i LineBadge (Wrocław: route_type 0 albo numer 1–33 to tramwaj,
- * route_type 2 to pociąg KD, reszta to autobus).
+ * Klasyfikacja linii na tramwaj/pociąg/kolej linową/autobus: ta sama heurystyka
+ * co w backtrack i LineBadge (Wrocław: route_type 0 albo numer 1–33 to tramwaj,
+ * route_type 2 to pociąg KD, route_type 6 i 7 to kolej powietrzna i funicular,
+ * reszta to autobus).
  */
 export function classifyTransitMode(
   routeType: number | undefined,
   shortName: string | undefined,
-): 'tram' | 'bus' | 'train' {
+): 'tram' | 'bus' | 'train' | 'cable' {
   if (routeType === 2) return 'train';
+  if (routeType === 6 || routeType === 7) return 'cable';
   if (routeType === 0) return 'tram';
   const lineNum = parseInt((shortName || '').trim(), 10);
   if (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33) return 'tram';
@@ -120,10 +128,15 @@ export function mergeDayIndexes(
  * albo kurs bez przystanków (błąd danych). Takie podróże odrzucamy już
  * w runRaptor przy zapisie destynacji — gdyby ustawiły globalBestArrival,
  * ucinałyby później dobre podróże, a same i tak wypadają na mapowaniu.
+ *
+ * Wyjątek: kolej linowa. Polinka to z definicji dwa przystanki i ~400 m nad
+ * Odrą; bez zastrzeżenia „wsiądź i wysiądź" planer odrzucałby przejazd przez
+ * rzekę jako krótszy niż dojście do przystanku MPK.
  */
 export function isPointlessShortRide(rj: RawJourney): boolean {
   const transitSegs = rj.segments.filter((s) => s.type === 'transit');
   for (const t of transitSegs) {
+    if (t.mode === 'cable') continue;
     if (t.stopsCount <= 0) return true;
   }
   if (transitSegs.length === 1 && transitSegs[0].stopsCount <= 1) {
@@ -152,6 +165,7 @@ export function runRaptor(
   const maxTransfers = Math.max(0, Math.min(3, Math.round(opts.maxTransfers ?? 2)));
   const minTransferSec = Math.max(0, Math.min(600, Math.round(opts.minTransferSec ?? 60)));
   const trainsEnabled = opts.trainsEnabled ?? true;
+  const cableEnabled = opts.cableEnabled ?? true;
   const trainMinTransferSec = Math.max(0, Math.min(1200, Math.round(opts.trainMinTransferSec ?? 300)));
   const MAX_ROUNDS = maxTransfers + 1;
 
@@ -271,12 +285,15 @@ export function runRaptor(
 
       // Jednorazowy filtr pojazdów: wzorzec niedozwolonej linii pomijamy
       // w całości (brak wsiadania = brak przesiadek przez ten pojazd).
-      // Pociągi KD jeżdżą tylko w trybie 'all' (szybki filtr tramwaj/autobus
-      // ich nie rusza — pociągi włącza się wyłącznie w ustawieniach).
+      // Pociągi KD i kolej linowa jeżdżą tylko w trybie 'all' (szybki filtr
+      // tramwaj/autobus ich nie rusza, włącza się je wyłącznie w ustawieniach).
       const patternRoute = store.routes.get(pattern.routeId);
       const routeKind = classifyTransitMode(patternRoute?.route_type, patternRoute?.route_short_name);
       if (routeKind === 'train') {
         if (!trainsEnabled) continue;
+        if (opts.allowedModes && opts.allowedModes !== 'all') continue;
+      } else if (routeKind === 'cable') {
+        if (!cableEnabled) continue;
         if (opts.allowedModes && opts.allowedModes !== 'all') continue;
       } else if (opts.allowedModes && opts.allowedModes !== 'all' && routeKind !== opts.allowedModes) {
         continue;

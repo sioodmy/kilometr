@@ -154,6 +154,9 @@ export const uk: Strings = {
     trainBufferHint:
       'Мінімальний час, щоб дійти до перону після пересадки. Вокзали — не звичайні зупинки: напр., на Головному шлях від зупинки до перону йде через хол.',
     trainNoData: 'У завантаженому розкладі немає потягів. Онови дані вище, щоб увімкнути пересадки на KD.',
+    cableTitle: 'Polinka',
+    cableHint:
+      'Канатна дорога Полтехніки Вроцлава через Одру, між набережною Висп\'янського та вулицею На Гроблі. Курює у будні 7:00–21:00 з перервою 13:30–14:00, кожні 5 хвилин. У вихідні не курює. Лише в режимі «Транспорт».',
     walkTitle: 'Макс. відстань пішки',
     walkHint:
       'Як далеко можеш підійти до початкової зупинки та від кінцевої до цілі. Дальша зупинка з прямим трамваєм часто б’є найближчий стовп.',
@@ -366,6 +369,8 @@ export const uk: Strings = {
     emptyPlain: 'Спробуй іншу ціль або перевір інший час відправлення.',
     vehicleTramGen: 'трамваєм',
     vehicleBusGen: 'автобусом',
+    vehicleTrainGen: 'потягом',
+    vehicleCableGen: 'канатною дорогою',
     showWithChangesA11y: 'Показати сполучення з пересадками',
     showWithChanges: 'Показати з пересадками',
     showAllVehiclesA11y: 'Показати весь транспорт',
@@ -644,6 +649,7 @@ export const uk: Strings = {
     modeTram: 'Трамвай',
     modeBus: 'Автобус',
     modeTrain: 'Потяг',
+    modeCable: 'Канатна дорога',
     departTitle: (service: string, at: string) => `${service} • відправлення о ${at}`,
     rideTitle: (service: string, at: string) => `${service} • прибуття о ${at}`,
     transferTitle: (service: string, at: string) =>

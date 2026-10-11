@@ -238,6 +238,7 @@ export const SearchService: ISearchService = {
       const { searchStops } = await import('./gtfsDatabase');
       const { searchPois, ensurePoiIndex } = await import('./poiIndex');
       const { searchPwrBuildings } = await import('./pwrBuildings');
+      const { searchPolinkaStops } = await import('./polinkaSearch');
       const { searchNominatimDirect } = await import('./nominatimDirect');
       const { dedupeAndSort } = await import('./searchRank');
       const { distanceMeters } = await import('../gtfs/geo');
@@ -268,6 +269,7 @@ export const SearchService: ISearchService = {
       }));
       const localSuggestions = [
         ...stopSuggestions,
+        ...searchPolinkaStops(q, coords?.lat, coords?.lon),
         ...poiHits,
         ...searchPwrBuildings(q, coords?.lat, coords?.lon, 8),
       ];
@@ -328,6 +330,7 @@ export const RoutingService: IRoutingService = {
         modes: query.modes,
         minTransferSec: query.minTransferSec,
         trainsEnabled: query.trainsEnabled,
+        cableEnabled: query.cableEnabled,
         trainMinTransferSec: query.trainMinTransferSec,
         maxWalkM: query.maxWalkM,
         walkSpeedMps: query.walkSpeedMps,

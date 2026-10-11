@@ -145,6 +145,9 @@ export const de: Strings = {
     trainBufferHint:
       'Mindestzeit für den Weg zum Bahnsteig nach dem Umstieg. Bahnhöfe sind keine Haltestellen — z. B. am Hauptbahnhof geht es vom Halt durch die Halle.',
     trainNoData: 'Der geladene Fahrplan enthält keine Züge. Aktualisiere die Daten oben, um KD-Umstiege zu aktivieren.',
+    cableTitle: 'Polinka',
+    cableHint:
+      'Die Seilbahn der Technischen Universität Breslau über die Oder, zwischen Wyspiański-Ufer und der Na-Grobli-Straße. Fährt werktags 7:00–21:00 mit einer Pause von 13:30–14:00, alle 5 Minuten. Am Wochenende geschlossen. Nur im Modus „Fahrzeuge”.',
     walkTitle: 'Max. Fußweg',
     walkHint:
       'Wie weit du zur Starthaltestelle und vom Ziel weg laufen kannst. Eine weitere Haltestelle mit direkter Tram schlägt oft die nächste Stange.',
@@ -346,6 +349,8 @@ export const de: Strings = {
     emptyPlain: 'Versuch ein anderes Ziel oder prüfe eine andere Abfahrtszeit.',
     vehicleTramGen: 'mit der Tram',
     vehicleBusGen: 'mit dem Bus',
+    vehicleTrainGen: 'mit dem Zug',
+    vehicleCableGen: 'mit der Seilbahn',
     showWithChangesA11y: 'Verbindungen mit Umstieg zeigen',
     showWithChanges: 'Mit Umstieg zeigen',
     showAllVehiclesA11y: 'Alle Fahrzeuge zeigen',
@@ -621,6 +626,7 @@ export const de: Strings = {
     modeTram: 'Straßenbahn',
     modeBus: 'Bus',
     modeTrain: 'Zug',
+    modeCable: 'Seilbahn',
     departTitle: (service: string, at: string) => `${service} • ab ${at}`,
     rideTitle: (service: string, at: string) => `${service} • an ${at}`,
     transferTitle: (service: string, at: string) => `Umsteigen • ${service} • ab ${at}`,

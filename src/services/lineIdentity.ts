@@ -32,10 +32,11 @@ export const TRANSIT_PALETTE = [
 ];
 
 /** Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy). */
-export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'train' | 'walk' {
+export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'train' | 'cable' | 'walk' {
   if (mode === 'walk') return 'walk';
   if (mode === 'tram') return 'tram';
   if (mode === 'train') return 'train';
+  if (mode === 'cable') return 'cable';
   if (mode === 'bus') return 'bus';
   if (!line) return 'bus';
   const clean = line.trim();
@@ -54,6 +55,13 @@ export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' 
  */
 export const TRAIN_BADGE_BG = '#FFB957';
 
+/**
+ * Polinka dostaje drugą stałą, niebieską z motywu (tertiary #A5CCE8): gondola
+ * nad rzeką nie może wyglądać jak tramwaj z palety, a odcień musi być odrębny
+ * od bursztynu pociągów. Jasne tło → ciemny tekst, kontrast ~11:1.
+ */
+export const CABLE_BADGE_BG = '#A5CCE8';
+
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
 function contrastFg(bg: string): string {
   const hex = bg.replace('#', '');
@@ -68,16 +76,19 @@ function contrastFg(bg: string): string {
 export function getLineColors(
   line?: string,
   mode?: LegMode,
-): { bg: string; fg: string; isTram: boolean; isTrain: boolean } {
+): { bg: string; fg: string; isTram: boolean; isTrain: boolean; isCable: boolean } {
   const resolved = inferTransitMode(mode, line);
   if (resolved === 'train') {
-    return { bg: TRAIN_BADGE_BG, fg: contrastFg(TRAIN_BADGE_BG), isTram: false, isTrain: true };
+    return { bg: TRAIN_BADGE_BG, fg: contrastFg(TRAIN_BADGE_BG), isTram: false, isTrain: true, isCable: false };
+  }
+  if (resolved === 'cable') {
+    return { bg: CABLE_BADGE_BG, fg: contrastFg(CABLE_BADGE_BG), isTram: false, isTrain: false, isCable: true };
   }
   const isTram = resolved === 'tram';
   const clean = (line || '').trim().toUpperCase();
 
   if (!clean) {
-    return { bg: isTram ? '#00897B' : '#1976D2', fg: '#FFFFFF', isTram, isTrain: false };
+    return { bg: isTram ? '#00897B' : '#1976D2', fg: '#FFFFFF', isTram, isTrain: false, isCable: false };
   }
 
   let hash = 0;
@@ -89,5 +100,5 @@ export function getLineColors(
   const bg = TRANSIT_PALETTE[idx];
   const fg = contrastFg(bg);
 
-  return { bg, fg, isTram, isTrain: false };
+  return { bg, fg, isTram, isTrain: false, isCable: false };
 }

@@ -23,7 +23,16 @@ import {
   locateLiveStopPosition,
   normalizeName,
 } from '../services/vehiclePosition';
-import { useStrings } from '../i18n';
+import { useStrings, type Strings } from '../i18n';
+
+// Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
+// pociągi i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
+function genericModeGen(t: Strings, mode: Leg['mode']): string {
+  if (mode === 'tram') return t.routes.vehicleTramGen;
+  if (mode === 'train') return t.routes.vehicleTrainGen;
+  if (mode === 'cable') return t.routes.vehicleCableGen;
+  return t.routes.vehicleBusGen;
+}
 
 // Logika pozycji pojazdu mieszka w serwisie, bo korzysta z niej również
 // silnik powiadomień (nie chcemy, żeby serwis importował komponent).
@@ -271,11 +280,7 @@ function LegStopsList({
             accent={accent}
             connectorAccent={connectorAccent}
             vehicleGap={livePosition?.gap ?? null}
-            vehicleLabel={t.leg.vehicleBetween(
-              leg.mode === 'tram' ? t.routes.vehicleTramGen : t.routes.vehicleBusGen,
-              stop.name,
-              stops[i + 1]?.name ?? stop.name,
-            )}
+            vehicleLabel={t.leg.vehicleBetween(genericModeGen(t, leg.mode), stop.name, stops[i + 1]?.name ?? stop.name)}
           />
         );
       })}

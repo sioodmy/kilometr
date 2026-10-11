@@ -46,6 +46,12 @@ export interface RoutingSettings {
   trainsEnabled: boolean;
   /** Minimalny zapas na wsiadanie do pociągu po przesiadce. Default 300. */
   trainMinTransferSec: number;
+  /**
+   * Czy RAPTOR uwzglnia koleje linowe (Polinka) w trybie 'all'. Default true.
+   * Działa jak trainsEnabled: kursy są w sklepie zawsze, wyłącznik odcina
+   * wzorce na poziomie skanowania.
+   */
+  cableEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: RoutingSettings = {
@@ -56,6 +62,7 @@ export const DEFAULT_SETTINGS: RoutingSettings = {
   anchorRadiusM: 300,
   trainsEnabled: true,
   trainMinTransferSec: 300,
+  cableEnabled: true,
 };
 
 export const SETTINGS_LIMITS = {
@@ -101,6 +108,7 @@ function clampSettings(s: StoredSettings): RoutingSettings {
     anchorRadiusM: clampInt(s.anchorRadiusM, DEFAULT_SETTINGS.anchorRadiusM, SETTINGS_LIMITS.anchorRadiusM.min, SETTINGS_LIMITS.anchorRadiusM.max),
     trainsEnabled: typeof s.trainsEnabled === 'boolean' ? s.trainsEnabled : DEFAULT_SETTINGS.trainsEnabled,
     trainMinTransferSec: clampInt(s.trainMinTransferSec, DEFAULT_SETTINGS.trainMinTransferSec, SETTINGS_LIMITS.trainMinTransferSec.min, SETTINGS_LIMITS.trainMinTransferSec.max),
+    cableEnabled: typeof s.cableEnabled === 'boolean' ? s.cableEnabled : DEFAULT_SETTINGS.cableEnabled,
   };
 }
 

@@ -151,6 +151,9 @@ export const pl = {
     trainBufferHint:
       'Minimalny czas na dojście na peron po przesiadce. Stacje kolejowe to nie słupki — np. na Dworcu Głównym droga z przystanku na peron idzie przez halę.',
     trainNoData: 'Pobrany rozkład nie ma pociągów. Odśwież dane powyżej, żeby włączyć przesiadki na KD.',
+    cableTitle: 'Polinka',
+    cableHint:
+      'Kolejka linowa Politechniki Wrocławskiej nad Odrą, między wybrzeżem Wyspiańskiego a ulicą Na Grobli. Kursuje w dni robocze 7:00–21:00, z przerwą 13:30–14:00, co 5 minut. W weekendy nie jeździ. Działa tylko w trybie „Wszystkie”.',
     walkTitle: 'Maks. dystans pieszo',
     walkHint:
       'Jak daleko możesz podejść na przystanek początkowy i z końcowego do celu. Dalszy przystanek z bezpośrednim tramwajem często bije najbliższy słupek.',
@@ -355,6 +358,8 @@ export const pl = {
     emptyPlain: 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.',
     vehicleTramGen: 'tramwajem',
     vehicleBusGen: 'autobusem',
+    vehicleTrainGen: 'pociągiem',
+    vehicleCableGen: 'koleją linową',
     showWithChangesA11y: 'Pokaż połączenia z przesiadkami',
     showWithChanges: 'Pokaż z przesiadkami',
     showAllVehiclesA11y: 'Pokaż wszystkie pojazdy',
@@ -635,6 +640,7 @@ export const pl = {
     modeTram: 'Tramwaj',
     modeBus: 'Autobus',
     modeTrain: 'Pociąg',
+    modeCable: 'Kolej linowa',
     // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii —
     // zegar systemowy tyka w nagłówku i sam z siebie nie wie, do czego liczy.
     // Względne „za 4 min” w treści zestarzałoby się przy pierwszym
