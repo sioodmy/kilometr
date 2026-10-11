@@ -56,6 +56,7 @@ const StopRow = memo(function StopRow({
   index,
   vehicleMode,
   inSegment,
+  emphasis,
   accent,
   connectorAccent,
   vehicleGap,
@@ -66,13 +67,18 @@ const StopRow = memo(function StopRow({
   index: number;
   vehicleMode: Leg['mode'];
   inSegment: boolean;
+  /** Przystanek startowy albo końcowy odcinka — wyróżniony wagą. */
+  emphasis: boolean;
   accent: string;
   connectorAccent: boolean;
   vehicleGap: number | null;
   vehicleLabel: string;
 }) {
   const passed = vehicleGap != null && index <= vehicleGap;
-  const markerHere = vehicleGap === index;
+  // Pojazd stojący przed pierwszym przystankiem listy nie ma własnego wiersza,
+  // więc ikonę wieszamy na górze listy zamiast gubić ją poza ekranem.
+  const markerHere =
+    vehicleGap != null && (vehicleGap === index || (vehicleGap < 0 && index === 0));
   const VehicleIcon = vehicleMode === 'tram' ? TramFront : BusFront;
   return (
     <View style={s.stopRow}>
@@ -114,7 +120,10 @@ const StopRow = memo(function StopRow({
         )}
       </View>
       <View style={s.stopBody}>
-        <Text style={[s.stopName, passed ? s.stopNamePassed : !inSegment && s.stopNameDim]} numberOfLines={1}>
+        <Text
+          style={[s.stopName, emphasis && s.stopNameStrong, passed ? s.stopNamePassed : !inSegment && s.stopNameDim]}
+          numberOfLines={1}
+        >
           {stop.name}
         </Text>
       </View>
@@ -258,6 +267,7 @@ function LegStopsList({
             index={i}
             vehicleMode={leg.mode}
             inSegment={inSegment}
+            emphasis={i === segment.start || i === segment.end}
             accent={accent}
             connectorAccent={connectorAccent}
             vehicleGap={livePosition?.gap ?? null}
@@ -481,6 +491,7 @@ const s = StyleSheet.create({
   connector: { width: 3, flex: 1, minHeight: 12, borderRadius: 99, marginTop: -1 },
   stopBody: { flex: 1, justifyContent: 'center', minHeight: 30, paddingBottom: 6 },
   stopName: { ...type.bodyMedium, color: scheme.onSurface },
+  stopNameStrong: { fontWeight: '700' },
   stopNameDim: { color: scheme.onSurfaceVariant },
   stopNamePassed: { color: scheme.outline },
   skeletonDot: { borderColor: scheme.outlineVariant, backgroundColor: scheme.surfaceContainerHighest },
