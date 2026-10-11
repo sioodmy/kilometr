@@ -18,6 +18,8 @@ export interface Suggestion extends LatLon {
   address: string;
   kind: SuggestionKind;
   category?: string;
+  /** dodatkowe warianty nazwy do rankingu (np. kod bez myślnika: "D21") */
+  aliases?: string[];
   /** metres from current location, if known */
   distanceM?: number;
   /** stop popularity: departures served (drives stop ranking) */

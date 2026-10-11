@@ -237,6 +237,7 @@ export const SearchService: ISearchService = {
     try {
       const { searchStops } = await import('./gtfsDatabase');
       const { searchPois, ensurePoiIndex } = await import('./poiIndex');
+      const { searchPwrBuildings } = await import('./pwrBuildings');
       const { searchNominatimDirect } = await import('./nominatimDirect');
       const { dedupeAndSort } = await import('./searchRank');
       const { distanceMeters } = await import('../gtfs/geo');
@@ -245,7 +246,8 @@ export const SearchService: ISearchService = {
       // Lokalny indeks POI odświeża się w tle, nigdy nie blokuje.
       ensurePoiIndex();
 
-      // 1. Lokalne źródła (szybkie, offline): przystanki GTFS + indeks POI.
+      // 1. Lokalne źródła (szybkie, offline): przystanki GTFS + indeks POI
+      // + statyczna lista budynków PWr.
       const [stopHits, poiHits] = await Promise.all([
         searchStops(q, 12).catch(() => []),
         searchPois(q, coords?.lat, coords?.lon, 8).catch(() => []),
@@ -264,7 +266,11 @@ export const SearchService: ISearchService = {
             : undefined,
         weight: h.weight,
       }));
-      const localSuggestions = [...stopSuggestions, ...poiHits];
+      const localSuggestions = [
+        ...stopSuggestions,
+        ...poiHits,
+        ...searchPwrBuildings(q, coords?.lat, coords?.lon, 8),
+      ];
 
       // 2. Sieć (Nominatim) tylko gdy lokalnie za mało albo to adres z numerem.
       // Adresy z numerami są domeną Nominatim — lokalny indeks ich nie ma.

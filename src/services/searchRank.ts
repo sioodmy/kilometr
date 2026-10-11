@@ -45,6 +45,10 @@ export function nameScore(s: Suggestion, normQ: string): number {
   if (!normQ) return 0;
   const match = fuzzyMatch(normQ, s.title);
   if (match.matches) return match.score;
+  for (const alias of s.aliases ?? []) {
+    const aliasMatch = fuzzyMatch(normQ, alias);
+    if (aliasMatch.matches) return aliasMatch.score;
+  }
   if (s.address) {
     const addrMatch = fuzzyMatch(normQ, s.address);
     if (addrMatch.matches) return Math.max(30, addrMatch.score - 15);
