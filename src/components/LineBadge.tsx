@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { BusFront, TrainFront, TramFront } from 'lucide-react-native';
+import { BusFront, CableCar, TrainFront, TramFront } from 'lucide-react-native';
 import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode } from '../types/models';
@@ -7,7 +7,12 @@ import { getLineColors, inferTransitMode } from '../services/lineIdentity';
 
 // Kolor i typ linii żyją w serwisie — korzysta z nich również silnik
 // powiadomień, a serwis nie może importować komponentu.
-export { getLineColors, inferTransitMode, TRANSIT_PALETTE } from '../services/lineIdentity';
+export {
+  getLineColors,
+  inferTransitMode,
+  TRANSIT_PALETTE,
+  CABLE_BADGE_BG,
+} from '../services/lineIdentity';
 
 export function LineBadge({
   mode,
@@ -33,7 +38,8 @@ export function LineBadge({
   }
 
   const { bg, fg } = getLineColors(line, mode);
-  const Icon = resolved === 'train' ? TrainFront : resolved === 'tram' ? TramFront : BusFront;
+  const Icon =
+    resolved === 'cable' ? CableCar : resolved === 'train' ? TrainFront : resolved === 'tram' ? TramFront : BusFront;
 
   return (
     <View style={[styles.badge, compact && styles.compact, { backgroundColor: bg }]}>

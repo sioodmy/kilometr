@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeftRight, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, Rabbit, RotateCcw, Activity, Anchor, TrainFront, Turtle } from 'lucide-react-native';
+import { ArrowLeftRight, CableCar, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, Rabbit, RotateCcw, Activity, Anchor, TrainFront, Turtle } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
@@ -339,6 +339,25 @@ export default function SettingsScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(80).duration(180)} style={styles.card}>
+          <View style={styles.cardTop}>
+            <CableCar size={18} color={scheme.primary} />
+            <Text style={styles.cardTitle}>{s.settings.cableTitle}</Text>
+          </View>
+          <Text style={styles.cardHint}>
+            {s.settings.cableHint}
+          </Text>
+          <View style={styles.trainRow}>
+            <PrefsToggle
+              value={settings.cableEnabled}
+              onChange={(v) => update({ cableEnabled: v })}
+              label={s.settings.cableTitle}
+              onText={s.notificationPrefs.on}
+              offText={s.notificationPrefs.off}
+            />
+          </View>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(100).duration(180)} style={styles.card}>
           <View style={styles.cardTop}>
             <Footprints size={18} color={scheme.primary} />
             <Text style={styles.cardTitle}>{s.settings.walkTitle}</Text>

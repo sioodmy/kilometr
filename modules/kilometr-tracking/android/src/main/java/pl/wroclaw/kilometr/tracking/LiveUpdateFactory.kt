@@ -1,4 +1,4 @@
-package com.anonymous.kilometr.tracking
+package pl.wroclaw.kilometr.tracking
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -34,24 +34,22 @@ internal object LiveUpdateFactory {
   /** Android 16 — `ProgressStyle` i Live Updates. */
   private const val ANDROID_16 = 36
 
-  private const val CHANNEL_NAME = "Śledzenie podróży"
-  private const val CHANNEL_DESCRIPTION = "Postęp podróży i odliczanie do odjazdu. Bez dźwięku."
-
   /** Akcent powiadomienia, gdy kurs się spóźnia. */
   private val DELAY_COLOR = Color.parseColor("#E5484D")
 
-  fun ensureChannel(context: Context) {
+  fun ensureChannel(context: Context, name: String, description: String) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    if (name.isBlank()) return
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (manager.getNotificationChannel(CHANNEL_ID) != null) return
     val channel = NotificationChannel(
       CHANNEL_ID,
-      CHANNEL_NAME,
+      name,
       // LOW: postęp przesuwa się co sekundę, więc dźwięk i wibracje były
       // uciążliwe. Alerty odjazdu mają osobny, głośny kanał.
       NotificationManager.IMPORTANCE_LOW,
     ).apply {
-      description = CHANNEL_DESCRIPTION
+      this.description = description
       setShowBadge(false)
       enableVibration(false)
       enableLights(false)
@@ -100,12 +98,7 @@ internal object LiveUpdateFactory {
       builder.setProgress(progress, LiveTripPlan.PROGRESS_MAX, false)
     }
 
-    // Live Update: musi być trwałe, mieć tytuł i nie używać RemoteViews —
-    // wszystkie trzy warunki spełniamy. Chip w pasku stanu to informacja
-    // priorytetowa, więc opóźnienie wygrywa z godziną (patrz `buildLivePlan`).
-    if (Build.VERSION.SDK_INT >= ANDROID_16 && copy.criticalText.isNotBlank()) {
-      builder.setShortCriticalText(copy.criticalText)
-    }
+    // Pusty `shortCriticalText` pozwala chipowi pokazać aktualny licznik.
     builder.setRequestPromotedOngoing(true)
 
     for (action in plan.actions) {

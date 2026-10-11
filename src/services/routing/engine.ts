@@ -115,6 +115,8 @@ export interface PlanOptions {
   modes?: TransitModePreference;
   /** Pociągi KD w trybie 'all' (default true). Szybki filtr ich nie rusza. */
   trainsEnabled?: boolean;
+  /** Koleje linowe (Polinka) w trybie 'all' (default true). Jak trainsEnabled. */
+  cableEnabled?: boolean;
   /** sekundy, default 300. Minimalny zapas na wsiadanie do pociągu po przesiadce. */
   trainMinTransferSec?: number;
   /** sekundy, default 90. Minimalny czas na przesiadkę. */
@@ -366,6 +368,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     options.modes === 'tram' || options.modes === 'bus' ? options.modes : 'all';
   const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 60)));
   const trainsEnabled = options.trainsEnabled ?? true;
+  const cableEnabled = options.cableEnabled ?? true;
   const trainMinTransferSec = Math.max(0, Math.min(1200, Math.round(options.trainMinTransferSec ?? 300)));
   const maxWalkM = Math.max(100, Math.min(2000, Math.round(options.maxWalkM ?? 800)));
   const userWalkSpeed = Math.max(0.8, Math.min(2.0, options.walkSpeedMps ?? WALK_SPEED_MPS));
@@ -484,6 +487,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       maxTransfers,
       minTransferSec,
       trainsEnabled,
+      cableEnabled,
       trainMinTransferSec,
       dayIndex: searchIndex,
       tripDelays,

@@ -12,9 +12,10 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 
 export interface KilometrTrackingNativeModule {
   isAvailable(): boolean;
-  ensureChannels(): Promise<void>;
+  ensureChannels(name: string, description: string): Promise<void>;
   /** Czy Android 16.1+ pozwoli wypchnąć powiadomienie do Live Updates. */
   canPromote(): Promise<boolean>;
+  openNotificationSettings(): Promise<boolean>;
   /** Startuje albo aktualizuje plan. Zwraca false, gdy brak zgody na powiadomienia. */
   startTrip(planJson: string): Promise<boolean>;
   /** Zatrzymuje serwis i zdejmuje powiadomienie. */
@@ -29,12 +30,16 @@ export function isAvailable(): boolean {
   return native != null && native.isAvailable();
 }
 
-export function ensureChannels(): Promise<void> {
-  return native ? native.ensureChannels() : Promise.resolve();
+export function ensureChannels(name: string, description: string): Promise<void> {
+  return native ? native.ensureChannels(name, description) : Promise.resolve();
 }
 
 export function canPromote(): Promise<boolean> {
   return native ? native.canPromote() : Promise.resolve(false);
+}
+
+export function openNotificationSettings(): Promise<boolean> {
+  return native ? native.openNotificationSettings() : Promise.resolve(false);
 }
 
 export function startTrip(planJson: string): Promise<boolean> {
@@ -49,4 +54,12 @@ export function consumeStopRequest(): Promise<boolean> {
   return native ? native.consumeStopRequest() : Promise.resolve(false);
 }
 
-export default { isAvailable, ensureChannels, canPromote, startTrip, stopTrip, consumeStopRequest };
+export default {
+  isAvailable,
+  ensureChannels,
+  canPromote,
+  openNotificationSettings,
+  startTrip,
+  stopTrip,
+  consumeStopRequest,
+};

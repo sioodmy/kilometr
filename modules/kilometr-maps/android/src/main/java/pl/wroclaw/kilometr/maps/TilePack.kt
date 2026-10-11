@@ -1,4 +1,4 @@
-package com.anonymous.kilometr.maps
+package pl.wroclaw.kilometr.maps
 
 import java.io.File
 import java.io.RandomAccessFile

@@ -148,7 +148,7 @@ expect(
   { gap: 1, source: 'device' },
 );
 expect(
-  'niedokładny GPS poza trasą jest odrzucony',
+  'GPS poza trasą zostaje odrzucony i spada na szacunek z rozkładu',
   locateLiveStopPosition(routeStops, routeLeg, null, {
     lat: 51.1075,
     lon: 17.001,
@@ -157,10 +157,10 @@ expect(
     heading: 0,
     timestamp: routeNow,
   }, routeNow),
-  null,
+  { gap: 0, source: 'estimate' },
 );
 expect(
-  'wolny GPS nie udaje pozycji jadącego pojazdu',
+  'wolny GPS nie udaje pozycji jadącego pojazdu (leci szacunek z rozkładu)',
   locateLiveStopPosition(routeStops, routeLeg, null, {
     lat: 51.1075,
     lon: 17,
@@ -169,6 +169,44 @@ expect(
     heading: 0,
     timestamp: routeNow,
   }, routeNow),
+  { gap: 0, source: 'estimate' },
+);
+expect(
+  'bez API i bez GPS zostaje szacunek z rozkładu (1/4 kursu = gap 0)',
+  locateLiveStopPosition(routeStops, routeLeg, null, null, routeNow),
+  { gap: 0, source: 'estimate' },
+);
+expect(
+  'szacunek w połowie kursu wskazuje środkową przerwę',
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    null,
+    null,
+    new Date(2026, 9, 10, 10, 5).getTime(),
+  ),
+  { gap: 1, source: 'estimate' },
+);
+expect(
+  'szacunek przed odjazdem stawia ikonę przed przystankiem startowym (gap -1)',
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    null,
+    null,
+    new Date(2026, 9, 10, 9, 50).getTime(),
+  ),
+  { gap: -1, source: 'estimate' },
+);
+expect(
+  'szacunek dawno po odjeździe nie udaje pozycji (kurs za 3 godziny)',
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    null,
+    null,
+    new Date(2026, 9, 10, 7, 0).getTime(),
+  ),
   null,
 );
 

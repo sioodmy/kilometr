@@ -12,6 +12,11 @@
 // Spacer idzie tym samym kanałem co kurs, ale po profilu pieszym: bez niego
 // noga piesza dostawałaby dwa punkty i rysowała się w linii prostej przez
 // budynki. Bez routera zostaje wersja prosta, wolna, ale zawsze pokazuje trasę.
+//
+// Nogi szynowe (tramwaj, pociąg) nigdy nie idą do OSRM. Router samochodowy
+// prowadzi po jezdni, więc na torowisku wydzielonym albo w strefie bez aut
+// dokładał pętelki i objazdy. Takie nogi zostają na prostych między
+// przystankami, czyli czysto i blisko torów.
 
 import { OSRM_BASE_URL, OSRM_FOOT_BASE_URL } from '../config';
 import { kvGet, kvSet } from './storage';
@@ -33,6 +38,15 @@ const REQUEST_TIMEOUT_MS = 8000;
 
 /** Profil routera: kurs jedzie po jezdni, spacer po chodnikach. */
 type RouteProfile = 'driving' | 'foot';
+
+/**
+ * Tory nie leżą na jezdni, więc router samochodowy robi pętelki i objazdy.
+ * Kolej linowa tym bardziej: Polinka leci nad Odrą wprost, a OSRM po jezdni
+ * objechałby rzekę mostem Grunwaldzkim i narysowała 2 km zamiast 400 m.
+ */
+export function isRailLeg(leg: MapLeg): boolean {
+  return leg.mode === 'tram' || leg.mode === 'train' || leg.mode === 'cable';
+}
 
 function legProfile(leg: MapLeg): RouteProfile {
   return leg.mode === 'walk' ? 'foot' : 'driving';
@@ -251,7 +265,7 @@ async function writeCache(key: string, coords: Coord[]): Promise<void> {
  */
 export async function pinRouteGeometry(route: MapRoute): Promise<void> {
   for (const leg of route.legs) {
-    if (leg.stops.length < 2) continue;
+    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
     const key = `${legProfile(leg)}:${waypointKey(legWaypoints(leg))}`;
     await pinKey(key);
   }
@@ -269,7 +283,7 @@ export async function warmRouteGeometry(
   let warmed = 0;
   for (const leg of route.legs) {
     if (signal?.aborted) break;
-    if (leg.stops.length < 2) continue;
+    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
     const coords = await fetchLegGeometry(leg, signal).catch(() => null);
     if (!coords || coords.length < 2) continue;
     const profile = legProfile(leg);
@@ -319,10 +333,11 @@ async function fetchChunk(
 
 /**
  * Geometria jednej nogi: waypointy po przystankach, jedno zapytanie (albo kilka
- * po 20 waypointów) i sklejone w jeden ciąg. Zwraca null, gdy sieć zawodzi —
- * wtedy noga zostaje prosta, a mapa i tak pokazuje trasę.
+ * po 20 waypointów) i sklejone w jeden ciąg. Zwraca null dla nóg szynowych
+ * oraz gdy sieć zawodzi, wtedy noga zostaje prosta.
  */
 export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
+  if (isRailLeg(leg)) return null;
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
   );
@@ -400,7 +415,7 @@ export async function resolveGeometry(
 ): Promise<void> {
   for (const leg of route.legs) {
     if (signal?.aborted) return;
-    if (leg.stops.length < 2) continue;
+    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
     const coords = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
     if (coords && coords.length > 1) onLeg(leg.id, coords);

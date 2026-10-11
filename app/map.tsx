@@ -97,6 +97,46 @@ export default function RouteMapScreen() {
     };
   }, [id]);
 
+  // Stare połączenia bywają bez stacji (kurs spoza wycinka). Bez nich noga
+  // to dwa punkty, czyli kreska cięciem zamiast wzdłuż torów. Dociągamy
+  // sekwencję tym samym kanałem co LegTimeline.
+  useEffect(() => {
+    if (!item) return;
+    const connId = item.id;
+    const legs = item.legs;
+    if (
+      !legs.some((l) => l.mode !== 'walk' && l.tripId && (!l.intermediateStops || l.intermediateStops.length < 2))
+    ) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const enriched = await Promise.all(
+        legs.map(async (l) => {
+          if (l.mode === 'walk' || !l.tripId || (l.intermediateStops && l.intermediateStops.length >= 2)) return l;
+          try {
+            const full = await RoutingService.getTripStops(l.tripId);
+            if (!full || full.length < 2) return l;
+            const b = full.findIndex((s) => s.stopId === l.fromStopId);
+            const a = full.findIndex((s) => s.stopId === l.toStopId);
+            const slice = b >= 0 && a >= 0 && b < a ? full.slice(b, a + 1) : full;
+            return slice.length >= 2 ? { ...l, intermediateStops: slice } : l;
+          } catch {
+            return l;
+          }
+        }),
+      );
+      if (!cancelled && enriched.some((l, i) => l !== legs[i])) {
+        setItem((prev) => (prev && prev.id === connId ? { ...prev, legs: enriched } : prev));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Raz na połączenie: po wzbogaceniu id bez zmian, więc bez pętli.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
+
   const route: MapRoute | null = useMemo(() => (item ? buildMapRoute(item) : null), [item]);
 
   const selectedLeg: MapLeg | null = useMemo(
@@ -218,7 +258,13 @@ export default function RouteMapScreen() {
         vehicleId: match.vehicle.vehicleId,
         legId: leg.id,
         line: match.vehicle.line,
-        mode: inferTransitMode(leg.mode, match.vehicle.line) === 'tram' ? 'tram' : leg.mode === 'train' ? 'train' : 'bus',
+        mode: inferTransitMode(leg.mode, match.vehicle.line) === 'tram'
+          ? 'tram'
+          : leg.mode === 'train'
+            ? 'train'
+            : leg.mode === 'cable'
+              ? 'cable'
+              : 'bus',
         color: bg,
         lat: match.vehicle.lat,
         lon: match.vehicle.lon,
