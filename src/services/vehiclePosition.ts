@@ -92,9 +92,14 @@ export interface VehicleGap {
 }
 
 export interface LiveStopPosition {
-  /** Przerwa między stops[gap] a stops[gap + 1]. */
+  /**
+   * Przerwa, na której stoi pojazd: gap i oznacza "między stops[i] a
+   * stops[i + 1]". Wartości spoza [0, n - 2] są dozwolone i opisują pozycję
+   * przed pierwszym albo za ostatnim przystankiem listy (np. -1 = tramwaj jeszcze
+   * nie dotarł do początku listy).
+   */
   gap: number;
-  source: 'vehicle' | 'device';
+  source: 'vehicle' | 'device' | 'estimate';
 }
 
 interface StopProjection {
@@ -141,10 +146,38 @@ function adjacentStopGap(stops: LegStop[], currentName?: string, nextName?: stri
   return -1;
 }
 
+interface LegWindow {
+  start: number;
+  end: number;
+}
+
+/**
+ * Ostatni fallback: postęp kursu policzony z samego rozkładu. Świadomie
+ * niekorzystamy z czasów przystanków z bazy (albo ich braku), bo dla
+ * szacunku wystarczy liniowy postęp pomiędzy odjazdem a przyjazdem.
+ *
+ * Poza oknem +/- około godziny wokół odjazdu nie zwracamy nic: przystanek
+ * odjeżdżający za trzy godziny nie ma „pozycji pojazdu" i nie zasługuje na
+ * ikonę, która sugerowałaby, że tramwaj już jest w drodze.
+ */
+function estimateGap(leg: Leg, window: LegWindow, now: number): number | null {
+  const departure = parseHMtoSec(leg.departAt);
+  const arrival = parseHMtoSec(leg.arriveAt);
+  if (departure == null || arrival == null || arrival <= departure) return null;
+  const current = nowSecOfDay(new Date(now));
+  if (current < departure - 3600 || current > arrival + 600) return null;
+  if (current < departure) return window.start - 1;
+  if (current > arrival) return window.end;
+  const progress = (current - departure) / (arrival - departure);
+  const floatIdx = window.start + progress * (window.end - window.start);
+  return Math.min(window.end, Math.max(window.start, Math.floor(floatIdx)));
+}
+
 /**
  * Pozycja do rozwijanej osi przystanków. API wygrywa, gdy pojazd jest świeży
  * i przypisany do tego kursu. GPS telefonu koryguje brak feedu tylko wtedy,
  * gdy fix jest dokładny, świeży, wskazuje jazdę i leży na odcinku tej nogi.
+ * Gdy ani jedno ani drugie nic nie daje, zostaje szacunek z rozkładu.
  */
 export function locateLiveStopPosition(
   stops: LegStop[],
@@ -165,30 +198,49 @@ export function locateLiveStopPosition(
     }
   }
 
-  if (!location || location.accuracy == null || location.accuracy > 25) return null;
-  if (now - location.timestamp < 0 || now - location.timestamp > 15_000) return null;
-  if (location.speed == null || location.speed < 2.2 || location.speed > 25) return null;
+  const window = findUserSegment(stops, leg);
 
-  const { start, end } = findUserSegment(stops, leg);
-  if (end <= start) return null;
-  const departure = parseHMtoSec(leg.departAt);
-  const arrival = parseHMtoSec(leg.arriveAt);
-  if (departure == null || arrival == null || arrival <= departure) return null;
-  const current = nowSecOfDay(new Date(now));
-  if (current < departure - 180 || current > arrival + 180) return null;
+  if (location && location.accuracy != null && location.accuracy <= 25) {
+    const fresh = now - location.timestamp >= 0 && now - location.timestamp <= 15_000;
+    const moving = location.speed != null && location.speed >= 2.2 && location.speed <= 25;
+    if (fresh && moving && window.end > window.start) {
+      const departure = parseHMtoSec(leg.departAt);
+      const arrival = parseHMtoSec(leg.arriveAt);
+      const current = nowSecOfDay(new Date(now));
+      const withinLeg =
+        departure != null && arrival != null && arrival > departure
+          ? current >= departure - 180 && current <= arrival + 180
+          : true;
 
-  const projection = projectToStops(stops, location.lat, location.lon, start, end);
-  if (!projection || projection.distanceM > Math.max(18, location.accuracy + 5)) return null;
-  if (location.heading != null && location.speed >= 3.5) {
-    const from = stops[projection.gap];
-    const to = stops[projection.gap + 1];
-    if (from.lat != null && from.lon != null && to.lat != null && to.lon != null) {
-      const routeHeading = bearingDegrees(from.lat, from.lon, to.lat, to.lon);
-      const headingDifference = Math.abs(((location.heading - routeHeading + 540) % 360) - 180);
-      if (headingDifference > 65) return null;
+      if (withinLeg) {
+        const projection = projectToStops(stops, location.lat, location.lon, window.start, window.end);
+        if (projection && projection.distanceM <= Math.max(18, location.accuracy + 5)) {
+          const headingFits = headingMatchesRoute(stops, projection.gap, location.heading, location.speed);
+          if (headingFits) return { gap: projection.gap, source: 'device' };
+        }
+      }
     }
   }
-  return { gap: projection.gap, source: 'device' };
+
+  const estimate = estimateGap(leg, window, now);
+  if (estimate == null) return null;
+  return { gap: estimate, source: 'estimate' };
+}
+
+/** Kierunek jazdy musi zgadzać się z odcinkiem, o ile GPS w ogóle go podaje. */
+function headingMatchesRoute(
+  stops: LegStop[],
+  gap: number,
+  heading: number | null,
+  speed: number | null,
+): boolean {
+  if (heading == null || speed == null || speed < 3.5) return true;
+  const from = stops[gap];
+  const to = stops[gap + 1];
+  if (from.lat == null || from.lon == null || to.lat == null || to.lon == null) return true;
+  const routeHeading = bearingDegrees(from.lat, from.lon, to.lat, to.lon);
+  const difference = Math.abs(((heading - routeHeading + 540) % 360) - 180);
+  return difference <= 65;
 }
 
 /** Gdzie jest pojazd: GPS (current/next stop lub coords) albo estymacja czasowa. */
