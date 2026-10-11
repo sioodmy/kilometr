@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["com.anonymous.kilometr.tracking.KilometrTrackingModule"]
+    "modules": ["pl.wroclaw.kilometr.tracking.KilometrTrackingModule"]
   }
 }

@@ -1,7 +1,8 @@
-package com.anonymous.kilometr.tracking
+package pl.wroclaw.kilometr.tracking
 
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
@@ -32,13 +33,27 @@ class KilometrTrackingModule : Module() {
 
     Function("isAvailable") { true }
 
-    AsyncFunction("ensureChannels") {
-      appContextOrNull?.let { LiveUpdateFactory.ensureChannel(it) }
+    AsyncFunction("ensureChannels") { name: String, description: String ->
+      appContextOrNull?.let { LiveUpdateFactory.ensureChannel(it, name, description) }
     }
 
     /** Czy system dopuści powiadomienie do strefy Live Updates. */
     AsyncFunction("canPromote") {
       appContextOrNull?.let { LiveUpdateFactory.canPromote(it) } ?: false
+    }
+
+    AsyncFunction("openNotificationSettings") {
+      val context = appContextOrNull ?: return@AsyncFunction false
+      try {
+        context.startActivity(
+          Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        true
+      } catch (_: Throwable) {
+        false
+      }
     }
 
     /**
@@ -52,8 +67,8 @@ class KilometrTrackingModule : Module() {
     /** Wysyła plan do serwisu: startuje go albo aktualizuje w locie. */
     AsyncFunction("startTrip") { json: String ->
       val context = appContextOrNull ?: return@AsyncFunction false
-      LiveTripPlan.fromJson(json) ?: return@AsyncFunction false
-      LiveUpdateFactory.ensureChannel(context)
+      val plan = LiveTripPlan.fromJson(json) ?: return@AsyncFunction false
+      LiveUpdateFactory.ensureChannel(context, plan.channelName, plan.channelDescription)
       val manager = NotificationManagerCompat.from(context)
       if (!manager.areNotificationsEnabled()) return@AsyncFunction false
 

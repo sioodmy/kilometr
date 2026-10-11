@@ -1,4 +1,4 @@
-package com.anonymous.kilometr.maps
+package pl.wroclaw.kilometr.maps
 
 import android.content.Context
 import expo.modules.kotlin.modules.Module

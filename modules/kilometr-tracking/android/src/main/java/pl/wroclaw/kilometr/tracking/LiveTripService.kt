@@ -1,4 +1,4 @@
-package com.anonymous.kilometr.tracking
+package pl.wroclaw.kilometr.tracking
 
 import android.app.Service
 import android.content.Context
@@ -153,8 +153,8 @@ class LiveTripService : Service() {
   }
 
   companion object {
-    const val ACTION_START = "com.anonymous.kilometr.tracking.START"
-    const val ACTION_STOP = "com.anonymous.kilometr.tracking.STOP"
+    const val ACTION_START = "pl.wroclaw.kilometr.tracking.START"
+    const val ACTION_STOP = "pl.wroclaw.kilometr.tracking.STOP"
     const val EXTRA_PLAN = "plan"
 
     /** 1 Hz w trasie — pasek postępu ma płynąć tak jak w nawigacji. */

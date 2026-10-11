@@ -23,7 +23,16 @@ import {
   locateLiveStopPosition,
   normalizeName,
 } from '../services/vehiclePosition';
-import { useStrings } from '../i18n';
+import { useStrings, type Strings } from '../i18n';
+
+// Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
+// pociągi i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
+function genericModeGen(t: Strings, mode: Leg['mode']): string {
+  if (mode === 'tram') return t.routes.vehicleTramGen;
+  if (mode === 'train') return t.routes.vehicleTrainGen;
+  if (mode === 'cable') return t.routes.vehicleCableGen;
+  return t.routes.vehicleBusGen;
+}
 
 // Logika pozycji pojazdu mieszka w serwisie, bo korzysta z niej również
 // silnik powiadomień (nie chcemy, żeby serwis importował komponent).
@@ -56,6 +65,7 @@ const StopRow = memo(function StopRow({
   index,
   vehicleMode,
   inSegment,
+  emphasis,
   accent,
   connectorAccent,
   vehicleGap,
@@ -66,13 +76,18 @@ const StopRow = memo(function StopRow({
   index: number;
   vehicleMode: Leg['mode'];
   inSegment: boolean;
+  /** Przystanek startowy albo końcowy odcinka — wyróżniony wagą. */
+  emphasis: boolean;
   accent: string;
   connectorAccent: boolean;
   vehicleGap: number | null;
   vehicleLabel: string;
 }) {
   const passed = vehicleGap != null && index <= vehicleGap;
-  const markerHere = vehicleGap === index;
+  // Pojazd stojący przed pierwszym przystankiem listy nie ma własnego wiersza,
+  // więc ikonę wieszamy na górze listy zamiast gubić ją poza ekranem.
+  const markerHere =
+    vehicleGap != null && (vehicleGap === index || (vehicleGap < 0 && index === 0));
   const VehicleIcon = vehicleMode === 'tram' ? TramFront : BusFront;
   return (
     <View style={s.stopRow}>
@@ -114,7 +129,10 @@ const StopRow = memo(function StopRow({
         )}
       </View>
       <View style={s.stopBody}>
-        <Text style={[s.stopName, passed ? s.stopNamePassed : !inSegment && s.stopNameDim]} numberOfLines={1}>
+        <Text
+          style={[s.stopName, emphasis && s.stopNameStrong, passed ? s.stopNamePassed : !inSegment && s.stopNameDim]}
+          numberOfLines={1}
+        >
           {stop.name}
         </Text>
       </View>
@@ -258,14 +276,11 @@ function LegStopsList({
             index={i}
             vehicleMode={leg.mode}
             inSegment={inSegment}
+            emphasis={i === segment.start || i === segment.end}
             accent={accent}
             connectorAccent={connectorAccent}
             vehicleGap={livePosition?.gap ?? null}
-            vehicleLabel={t.leg.vehicleBetween(
-              leg.mode === 'tram' ? t.routes.vehicleTramGen : t.routes.vehicleBusGen,
-              stop.name,
-              stops[i + 1]?.name ?? stop.name,
-            )}
+            vehicleLabel={t.leg.vehicleBetween(genericModeGen(t, leg.mode), stop.name, stops[i + 1]?.name ?? stop.name)}
           />
         );
       })}
@@ -481,6 +496,7 @@ const s = StyleSheet.create({
   connector: { width: 3, flex: 1, minHeight: 12, borderRadius: 99, marginTop: -1 },
   stopBody: { flex: 1, justifyContent: 'center', minHeight: 30, paddingBottom: 6 },
   stopName: { ...type.bodyMedium, color: scheme.onSurface },
+  stopNameStrong: { fontWeight: '700' },
   stopNameDim: { color: scheme.onSurfaceVariant },
   stopNamePassed: { color: scheme.outline },
   skeletonDot: { borderColor: scheme.outlineVariant, backgroundColor: scheme.surfaceContainerHighest },
