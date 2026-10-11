@@ -18,6 +18,8 @@ import org.json.JSONObject
 internal data class LiveTripPlan(
   val tripId: String,
   val deepLink: String,
+  val channelName: String,
+  val channelDescription: String,
   /** Kolor linii / pasa postępu. */
   val accentColor: Int,
   /** Początek podróży (z dojściem pieszo), ms. */
@@ -157,7 +159,7 @@ internal data class LiveTripPlan(
 
     const val FALLBACK_COLOR = "#5CDBBE"
 
-    private val EMPTY_COPY = PhaseCopy("", "", "", "")
+    private val EMPTY_COPY = PhaseCopy("", "", "")
 
     /** Kolor dojścia/przesiadki pieszo — neutralny, żeby nie udawał linii. */
     const val WALK_COLOR = "#8A8F98"
@@ -201,7 +203,6 @@ internal data class LiveTripPlan(
             title = o.optString("title", ""),
             text = o.optString("text", ""),
             subText = o.optString("subText", ""),
-            criticalText = o.optString("criticalText", ""),
           )
         }
       }
@@ -221,6 +222,8 @@ internal data class LiveTripPlan(
       return LiveTripPlan(
         tripId = root.optString("tripId", ""),
         deepLink = root.optString("deepLink", ""),
+        channelName = root.optString("channelName", ""),
+        channelDescription = root.optString("channelDescription", ""),
         accentColor = parseColor(root.optString("accentColor", ""), FALLBACK_COLOR),
         startAtMs = root.optLong("startAtMs", 0L),
         endAtMs = root.optLong("endAtMs", 0L),
@@ -253,16 +256,10 @@ internal data class LiveSegment(
   val endAtMs: Long,
 )
 
-/**
- * Treść powiadomienia dla jednej fazy. `criticalText` trafia na chip w pasku
- * stanu (Android 16.1+) — tam liczy się absolutna godzina, a nie „za 4 min",
- * bo chip nie odświeża się sam i szybko zacząłby kłamać.
- */
 internal data class PhaseCopy(
   val title: String,
   val text: String,
   val subText: String,
-  val criticalText: String,
 )
 
 /** Przycisk pod powiadomieniem. */
