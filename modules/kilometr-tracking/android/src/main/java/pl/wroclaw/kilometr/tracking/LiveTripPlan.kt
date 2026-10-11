@@ -159,7 +159,7 @@ internal data class LiveTripPlan(
 
     const val FALLBACK_COLOR = "#5CDBBE"
 
-    private val EMPTY_COPY = PhaseCopy("", "", "", "")
+    private val EMPTY_COPY = PhaseCopy("", "", "")
 
     /** Kolor dojścia/przesiadki pieszo — neutralny, żeby nie udawał linii. */
     const val WALK_COLOR = "#8A8F98"
