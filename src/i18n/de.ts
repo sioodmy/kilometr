@@ -613,7 +613,7 @@ export const de: Strings = {
   },
   notification: {
     channelTracking: 'Fahrtverfolgung',
-    channelTrackingDesc: 'Fahrtfortschritt und Countdown zur Abfahrt. Ohne Ton.',
+    channelTrackingDesc: 'Stiller Fahrtfortschritt mit Countdown bis zur Abfahrt oder Ankunft.',
     channelAlerts: 'Abfahrtswarnungen',
     channelAlertsDesc: '„Jetzt los“, Verspätungen und Linienänderungen. Mit Ton.',
     permDenied:
@@ -633,8 +633,9 @@ export const de: Strings = {
     arrivedTitle: 'Du bist angekommen',
     arrivedBody: (at: string, dur: string) => `Ankunft ${at} • Fahrt dauerte ${dur}`,
     nextStop: (name: string) => `nächste ${name}`,
+    estimatedNextStop: (name: string) => `Voraussichtlich nächste Haltestelle: ${name}`,
     stopHere: (name: string) => `Haltestelle ${name}`,
-    alightAt: (name: string) => `aussteigen: ${name}`,
+    alightAt: (name: string) => `Ausstieg: ${name}`,
     directionTo: (dir: string) => `Richtung ${dir}`,
     platform: (num: string) => `Gleis ${num}`,
     walkApproach: (min: number) => `~${min} Min. zu Fuß`,
@@ -645,15 +646,11 @@ export const de: Strings = {
     delayEarly: (min: number) => `${Math.abs(Math.round(min))} Min. früher`,
     stops: (n: number) => `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'}`,
     transfers: (n: number) => `${n} ${n === 1 ? 'Umstieg' : 'Umstiege'}`,
-    vehicleAt: (label: string) => `Fahrzeug: ${label}`,
     leaveNow: (service: string, at: string) => `Jetzt los • ${service} ${at}`,
     leaveIn: (min: number, service: string, at: string) => `In ${min} Min. los • ${service} ${at}`,
     walkToStop: (dist: string) => `${dist} zur Haltestelle`,
     newDeparture: (at: string) => `neue Abfahrt ${at}`,
     delayTitle: (line: string, eta: string) => `Verspätung • ${line} • ${eta}`,
-    chipDepart: (at: string) => `ab ${at}`,
-    chipArrive: (at: string) => `an ${at}`,
-    chipDelay: (min: number) => `+${Math.round(min)} Min.`,
   },
   notificationPrefs: {
     title: 'Benachrichtigungen',
@@ -661,15 +658,16 @@ export const de: Strings = {
       'Benötigt einen Development-Build. In Expo Go funktionieren Benachrichtigungen nicht.',
     unsupportedTitle: 'Benachrichtigungen nicht verfügbar',
     unsupportedBody:
-      'Fahrtverfolgung benötigt einen Development-Build — Expo Go unterstützt keine Benachrichtigungen.',
+      'Fahrtverfolgung braucht einen Development-Build. Expo Go unterstützt keine Benachrichtigungen.',
     trackTitle: 'Fahrtverfolgung',
-    trackHint:
-      'Eine dauerhafte Benachrichtigung mit Countdown zur Abfahrt und Fahrtfortschritt.',
-    liveTitle: 'Fortschrittsbalken und Timer',
-    liveHint: 'Fortschritt und Countdown zeichnet das System, ohne die App zu wecken.',
-    liveHintBasic: 'Fortschritt und Countdown im Text der Benachrichtigung.',
+    trackHint: 'Eine Benachrichtigung mit aktueller Fahrtphase und Verbindungsdetails.',
+    liveTitle: 'Fortschritt und Timer',
+    liveHint: 'Das System aktualisiert den Streckenbalken und Timer bei geschlossener App.',
+    liveHintBasic:
+      'Diese Version unterstützt keinen Live-Fortschritt. Die Mitteilung zeigt weiterhin Fahrtphase und Verbindungsdetails.',
     livePromoteHint:
-      'Die Benachrichtigung funktioniert, das System zeigt sie aber nicht im Bereich „Live Updates“. Aktiviere sie in den Systemeinstellungen für kilometr, damit sie auf dem Sperrbildschirm erscheint.',
+      'Das System zeigt diese Benachrichtigung nicht unter Live Updates. Erlaube Live Updates in den Benachrichtigungseinstellungen von kilometr.',
+    openNotificationSettings: 'Benachrichtigungseinstellungen öffnen',
     leaveTitle: '„Jetzt los“-Warnung',
     leaveHint:
       'Lauter Hinweis vor der Abfahrt. Wird im Voraus geplant und funktioniert daher auch im Hintergrund.',
@@ -677,6 +675,7 @@ export const de: Strings = {
     leadHint: 'Wie viele Minuten vor der Abfahrt der Hinweis ertönt.',
     leadLessA11y: 'Weniger Minuten Vorwarnzeit',
     leadMoreA11y: 'Mehr Minuten Vorwarnzeit',
+    alertsTitle: 'Warnungen',
     disruptionTitle: 'Verspätungswarnung',
     disruptionHint: 'Wenn die Verbindung deutlich später fährt als zuvor gemeldet.',
     on: 'An',

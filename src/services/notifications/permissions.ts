@@ -60,6 +60,21 @@ export async function canShowLiveUpdates(): Promise<boolean> {
   }
 }
 
+/** Systemowe Live Updates są dostępne od API 36. */
+export function isLiveUpdatesSupported(): boolean {
+  return Platform.OS === 'android' && Number(Platform.Version) >= 36 && getTrackingNative() != null;
+}
+
+export async function openNotificationSettings(): Promise<boolean> {
+  const native = getTrackingNative();
+  if (!native?.openNotificationSettings) return false;
+  try {
+    return await native.openNotificationSettings();
+  } catch {
+    return false;
+  }
+}
+
 /** Czy na tej platformie w ogóle da się śledzić podróżę powiadomieniem. */
 export function isTrackingPlatform(): boolean {
   return Platform.OS === 'android';

@@ -77,7 +77,12 @@ export function buildPhaseCopy(
       : p.delayMin <= -2
         ? n.delayEarly(p.delayMin)
         : '';
-  const vehicle = p.vehicleLabel ? n.vehicleAt(p.vehicleLabel) : '';
+  const position =
+    p.vehicleTracked && p.vehicleLabel
+      ? p.vehicleLabel
+      : p.nextStop
+        ? n.estimatedNextStop(p.nextStop)
+        : '';
   // Ile trwa przejazd kursem, na którym czekamy. Liczba z rozkładu, więc nie
   // zestarzeje się przy zamkniętej aplikacji.
   const ride = rideLengthMin(p, s);
@@ -87,7 +92,6 @@ export function buildPhaseCopy(
       title: n.departTitle(service, boardAt),
       text: boarding,
       subText: join(walk, transfers),
-      criticalText: n.chipDepart(boardAt),
     },
 
     waiting: {
@@ -96,7 +100,6 @@ export function buildPhaseCopy(
       // Przy oczekiwaniu liczy się jeszcze, ile potrwa sam przejazd i czy
       // trzeba będzie gdzieś przesiadać.
       subText: join(stops, ride, transfers, delay),
-      criticalText: n.chipDepart(boardAt),
     },
 
     transfer: {
@@ -105,7 +108,6 @@ export function buildPhaseCopy(
       // powtarzamy jej w „przystanek X".
       text: interchangeName(p.interchange) ?? boarding,
       subText: join(walk, stops, delay),
-      criticalText: n.chipDepart(boardAt),
     },
 
     riding: {
@@ -116,15 +118,15 @@ export function buildPhaseCopy(
         p.leg?.toStop ? n.alightAt(p.leg.toStop) : '',
         p.direction ? n.directionTo(p.direction) : '',
       ),
-      subText: join(p.nextStop ? n.nextStop(p.nextStop) : '', stops, delay || vehicle),
-      criticalText: n.chipArrive(arriveAt),
+      // Pozycja pojazdu mówi, czy to GPS, czy szacunek z rozkładu. Nie chowamy
+      // jej, gdy kurs ma opóźnienie; treść pokazuje pozycję i opóźnienie razem.
+      subText: join(position, stops, delay),
     },
 
     arrived: {
       title: n.arrivedTitle,
       text: n.arrivedBody(arriveAt, s.common.durMin(conn.durationMin)),
       subText: '',
-      criticalText: n.chipArrive(arriveAt),
     },
   };
 }
@@ -173,7 +175,7 @@ export function buildTripCopy(p: TripProgress, conn: Connection, s: Strings): Tr
     body: join(
       p.leg?.platformCode ? n.platform(p.leg.platformCode) : '',
       p.delayMin >= 2 ? n.delayLate(p.delayMin) : '',
-      p.vehicleLabel ? n.vehicleAt(p.vehicleLabel) : '',
+      p.vehicleLabel ?? '',
     ),
   };
 }
@@ -246,6 +248,8 @@ export function buildLivePlan(
   return {
     tripId: trip.id,
     deepLink: buildTripLink(trip),
+    channelName: s.notification.channelTracking,
+    channelDescription: s.notification.channelTrackingDesc,
     accentColor:
       p.lineColor || getLineColors(p.line || undefined, p.lineMode === 'walk' ? 'walk' : undefined).bg,
     startAtMs,
@@ -255,16 +259,16 @@ export function buildLivePlan(
     delayMin: Math.round(p.delayMin),
     stopAfterMs: options.stopAfterMs ?? 0,
     segments: buildSegments(timeline, startAtMs, endAtMs),
-    copy: withDelayedChip(buildPhaseCopy(p, conn, s), p.delayMin, s),
+    copy: buildPhaseCopy(p, conn, s),
     // Po przyjeździe „Zakończ" nie ma już czego kończyć — przycisk zmienia się
     // na potwierdzenie. Plan i tak przychodzi na każdą zmianę fazy, więc etykieta
     // dojeżdża razem z resztą treści.
     actions: [
+      { id: 'route', title: s.notification.actionRoute },
       {
         id: 'stop',
         title: p.phase === 'arrived' ? s.notification.actionOk : s.notification.actionStop,
       },
-      { id: 'route', title: s.notification.actionRoute },
     ],
   };
 }
@@ -278,22 +282,6 @@ export function buildLivePlanJson(
   options: BuildPlanOptions = {},
 ): string {
   return JSON.stringify(buildLivePlan(p, conn, trip, s, options));
-}
-
-/**
- * Opóźnienie w kolorze i w chipie. Chip w pasku stanu ma jedno miejsce,
- * a opóźnienie zmienia decyzję użytkownika bardziej niż godzina przyjazdu.
- */
-function withDelayedChip(
-  copy: Record<TripPhase, LivePlanPhaseCopy>,
-  delayMin: number,
-  s: Strings,
-): Record<TripPhase, LivePlanPhaseCopy> {
-  if (delayMin < 2) return copy;
-  const chip = s.notification.chipDelay(delayMin);
-  return Object.fromEntries(
-    Object.entries(copy).map(([phase, value]) => [phase, { ...value, criticalText: chip }]),
-  ) as Record<TripPhase, LivePlanPhaseCopy>;
 }
 
 function modeLabel(mode: TripProgress['lineMode'], s: Strings): string {

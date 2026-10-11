@@ -94,7 +94,7 @@ function dump(label: string, conn: Connection, atTime: Date): ReturnType<typeof 
       `eta=${p.etaMin.toFixed(0)}min zostało=${p.stopsLeft} następny=${p.nextStop ?? '-'} ` +
       `przystanek=${p.stopName}\n` +
       `      teraz: ${all[p.phase].title} | ${all[p.phase].text}\n` +
-      `      chip: ${all[p.phase].criticalText} | licznik→${hhmm(plan.countdownAtMs)} ` +
+      `      timer: ${hhmm(plan.countdownAtMs)} ` +
       `w dół=${plan.countdownDown} segmenty=${plan.segments.length}`,
   );
   return p;
@@ -235,8 +235,12 @@ p = dump('14:11 jadę', simple, at(14, 11));
 expect('faza', p.phase, 'riding');
 // W trakcie jazdy najważniejsze pytanie to „gdzie wysiadam” — bez tego
 // użytkownik musiał otwierać aplikację, żeby nie przegapić przystanku.
-expect('tekst w trakcie jazdy', planOf(p, simple).copy.riding.text, 'wysiadź: ZACHEBNIA • Do BISKUPIN');
-expect('podpis w trakcie jazdy', planOf(p, simple).copy.riding.subText, 'następny GÓRNOŚLĄSKA • 7 przystanków');
+expect('tekst w trakcie jazdy', planOf(p, simple).copy.riding.text, 'Wysiądź na: ZACHEBNIA • Do BISKUPIN');
+expect(
+  'podpis pokazuje estymowaną pozycję i przystanki',
+  planOf(p, simple).copy.riding.subText,
+  'Szacowany następny: GÓRNOŚLĄSKA • 7 przystanków',
+);
 // Po przyjeździe podpis wraca do treści tytułu — nie powtarzamy godziny.
 expect('bez podpisu po przyjeździe', planOf(computeTripProgress(simple, { now: at(14, 26) }), simple).copy.arrived.subText, '');
 // Regression: następny przystanek był przesunięty o jeden, więc tu wychodził
@@ -309,7 +313,20 @@ const live = computeTripProgress(simple, {
 });
 expect('pojazd rozpoznany', live.vehicleTracked, true);
 expect('następny przystanek z GPS', live.nextStop, 'ŚCIEGNY');
-expect('opis pozycji zawiera „live"', (live.vehicleLabel ?? '').includes('live'), true);
+expect('opis pozycji oznacza dane na żywo', (live.vehicleLabel ?? '').includes('na żywo'), true);
+
+const delayedLive = computeTripProgress({ ...simple, delayMin: 6 }, {
+  now: at(14, 15),
+  vehicle: {
+    vehicleId: '4-1', line: '4', lat: 51.1, lon: 17.0, delaySec: 120,
+    currentStopName: 'GALERIA DOMINIKAŃSKA', nextStopName: 'ŚCIEGNY',
+    updatedAt: Date.now(), matchedTripId: 'trip-1',
+  },
+});
+const delayedLiveText = buildPhaseCopy(delayedLive, { ...simple, delayMin: 6 }, pl).riding.subText;
+expect('opóźnienie nie ukrywa live pozycji', delayedLiveText.includes('na żywo'), true);
+expect('opóźnienie nie ukrywa następnego przystanku', delayedLiveText.includes('ŚCIEGNY'), true);
+expect('opóźnienie zostaje w treści', delayedLiveText.includes('opóźnienie +6 min'), true);
 
 const wrongVehicle = computeTripProgress(simple, {
   now: at(14, 15),
@@ -464,9 +481,17 @@ expect('początek podróży to start dojścia', hhmm(ridingPlan.startAtMs), '14:
 expect('koniec podróży to przyjazd', hhmm(ridingPlan.endAtMs), '14:25');
 expect('licznik odlicza w dół', ridingPlan.countdownDown, true);
 expect('licznik celuje w 14:25', hhmm(ridingPlan.countdownAtMs), '14:25');
+expect('nazwa kanału pochodzi z wybranego języka', ridingPlan.channelName, pl.notification.channelTracking);
+expect(
+  'opis kanału pochodzi z wybranego języka',
+  ridingPlan.channelDescription,
+  pl.notification.channelTrackingDesc,
+);
+expect('tekst chipu nie zastępuje licznika systemowego', 'criticalText' in ridingPlan.copy.riding, false);
 expect('dwa przyciski', ridingPlan.actions.length, 2);
-expect('przycisk stop ma id', ridingPlan.actions[0].id, 'stop');
-expect('w trasie przycisk brzmi „Zakończ”', ridingPlan.actions[0].title, 'Zakończ');
+expect('akcja trasy jest pierwsza', ridingPlan.actions[0].id, 'route');
+expect('zakończenie jest drugą akcją', ridingPlan.actions[1].id, 'stop');
+expect('w trasie przycisk brzmi „Zakończ”', ridingPlan.actions[1].title, 'Zakończ');
 expect('deep link do trasy', ridingPlan.deepLink.startsWith('kilometr://routes?'), true);
 // Wszystko idzie jako jeden JSON do Intent — mieszanie typów (Date, Color)
 // wybuchłoby przy marshallowaniu.
@@ -477,7 +502,7 @@ const arrivedPlan = planOf(arrivedProgress, simple);
 expect('po przyjeździe licznik w górę', arrivedPlan.countdownDown, false);
 expect('licznik od godziny przyjazdu', hhmm(arrivedPlan.countdownAtMs), '14:25');
 // Po przyjeździe nie ma już czego kończyć — „Zakończ" byłoby kłamstwem.
-expect('po przyjeździe przycisk to „OK”', arrivedPlan.actions[0].title, 'OK');
+expect('po przyjeździe przycisk to „OK”', arrivedPlan.actions[1].title, 'OK');
 expect('serwis ma się zatrzymać po podanym czasie', arrivedPlan.stopAfterMs, 0);
 
 const walkingProgress = computeTripProgress(simple, { now: at(14, 6) });
@@ -489,10 +514,12 @@ expect('licznik celuje w odjazd', hhmm(walkingPlan.countdownAtMs), '14:10');
 
 const delayedProgress = computeTripProgress({ ...simple, delayMin: 6 }, { now: at(14, 11) });
 const delayedPlan = planOf(delayedProgress, simple);
-// Chip w pasku stanu ma jedno miejsce — przy opóźnieniu ważniejsze jest
-// opóźnienie niż godzina przyjazdu.
 expect('opóźnienie w planie', delayedPlan.delayMin, 6);
-expect('chip pokazuje opóźnienie', delayedPlan.copy.riding.criticalText, '+6 min');
+expect(
+  'opóźnienie zostaje w treści powiadomienia',
+  delayedPlan.copy.riding.subText.includes('opóźnienie +6 min'),
+  true,
+);
 
 const nightPlan = planOf(computeTripProgress(night, { now: at(0, 3) }), night);
 expect('przez północ licznik celuje w 00:12', hhmm(nightPlan.countdownAtMs), '00:12');

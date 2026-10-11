@@ -537,10 +537,10 @@ export const pl = {
   },
   vehiclePos: {
     noRoute: 'Brak danych o trasie',
-    liveBetween: (from: string, to: string) => `Pojazd: ${from} → ${to} • live`,
-    liveBefore: (stop: string) => `Pojazd: przed ${stop} • live`,
-    liveAt: (stop: string) => `Pojazd: ${stop} • live`,
-    liveNear: (stop: string) => `Pojazd: okolice ${stop} • live`,
+    liveBetween: (from: string, to: string) => `Pojazd: ${from} → ${to} • na żywo`,
+    liveBefore: (stop: string) => `Pojazd: przed ${stop} • na żywo`,
+    liveAt: (stop: string) => `Pojazd: ${stop} • na żywo`,
+    liveNear: (stop: string) => `Pojazd: okolice ${stop} • na żywo`,
     estRoute: (from: string, to: string) => `Pozycja szacowana: ${from} → ${to}`,
     estBefore: (at: string) => `Przed odjazdem (${at}) • pozycja szacowana`,
     estDone: 'Kurs zakończony • pozycja szacowana',
@@ -625,7 +625,7 @@ export const pl = {
   notification: {
     // Kanały powiadomień — nazwy widoczne w ustawieniach systemu.
     channelTracking: 'Śledzenie podróży',
-    channelTrackingDesc: 'Postęp podróży i odliczanie do odjazdu. Bez dźwięku.',
+    channelTrackingDesc: 'Ciche powiadomienie z postępem i licznikiem do odjazdu lub przyjazdu.',
     channelAlerts: 'Alerty odjazdu',
     channelAlertsDesc: '„Wyjdź teraz”, opóźnienia i zmiany kursu. Z dźwiękiem.',
     permDenied:
@@ -651,10 +651,11 @@ export const pl = {
     arrivedTitle: 'Jesteś na miejscu',
     arrivedBody: (at: string, dur: string) => `Na miejscu ${at} • podróż trwała ${dur}`,
     nextStop: (name: string) => `następny ${name}`,
+    estimatedNextStop: (name: string) => `Szacowany następny: ${name}`,
     stopHere: (name: string) => `przystanek ${name}`,
     // Najważniejsze pytanie w trakcie jazdy: gdzie wysiadam. Bez tego
     // użytkownik musiał zaglądać do aplikacji, żeby nie przegapić przystanku.
-    alightAt: (name: string) => `wysiadź: ${name}`,
+    alightAt: (name: string) => `Wysiądź na: ${name}`,
     directionTo: (dir: string) => `Do ${dir}`,
     platform: (num: string) => `słup ${num}`,
     walkApproach: (min: number) => `dojście ~${min} min`,
@@ -667,7 +668,6 @@ export const pl = {
       n === 1 ? '1 przystanek' : isFew(n) ? `${n} przystanki` : `${n} przystanków`,
     transfers: (n: number) =>
       n === 1 ? '1 przesiadka' : isFew(n) ? `${n} przesiadki` : `${n} przesiadek`,
-    vehicleAt: (label: string) => `Pojazd: ${label}`,
     // Alerty odjazdu — osobne, głośne powiadomienia przed podróżą.
     leaveNow: (service: string, at: string) => `Wyjdź teraz • ${service} ${at}`,
     leaveIn: (min: number, service: string, at: string) =>
@@ -675,23 +675,22 @@ export const pl = {
     walkToStop: (dist: string) => `${dist} do przystanku`,
     newDeparture: (at: string) => `nowy odjazd ${at}`,
     delayTitle: (line: string, eta: string) => `Opóźnienie • ${line} • ${eta}`,
-    chipDepart: (at: string) => `odjazd ${at}`,
-    chipArrive: (at: string) => `na miejscu ${at}`,
-    chipDelay: (min: number) => `+${Math.round(min)} min`,
   },
   notificationPrefs: {
     title: 'Powiadomienia',
     devBuildWarn: 'Wymaga builda deweloperskiego. W Expo Go powiadomienia nie działają.',
     unsupportedTitle: 'Powiadomienia niedostępne',
     unsupportedBody:
-      'Śledzenie podróży wymaga builda deweloperskiego — Expo Go nie wspiera powiadomień.',
+      'Śledzenie podróży wymaga builda deweloperskiego. Expo Go nie obsługuje powiadomień.',
     trackTitle: 'Śledzenie podróży',
-    trackHint: 'Trwałe powiadomienie z odliczaniem do odjazdu i postępem podróży.',
-    liveTitle: 'Pasek postępu i licznik',
-    liveHint: 'Pasek postępu i odliczanie liczone przez system, bez budzenia aplikacji.',
-    liveHintBasic: 'Postęp i odliczanie w treści powiadomienia.',
+    trackHint: 'Powiadomienie pokazujące bieżący etap podróży i dane kursu.',
+    liveTitle: 'Postęp i licznik',
+    liveHint: 'System aktualizuje pasek trasy i licznik także po zamknięciu aplikacji.',
+    liveHintBasic:
+      'Ta wersja nie obsługuje paska live. Powiadomienie nadal pokazuje etap podróży i dane kursu.',
     livePromoteHint:
-      'Powiadomienie działa, ale system nie wpuszcza go do strefy „Live Updates”. Włącz je w ustawieniach systemu dla kilometr, żeby było widoczne na ekranie blokady.',
+      'System nie pokazuje powiadomienia w sekcji Live Updates. Włącz Live Updates w ustawieniach powiadomień Kilometra.',
+    openNotificationSettings: 'Otwórz ustawienia powiadomień',
     leaveTitle: 'Alert „wyjdź”',
     leaveHint:
       'Głośne przypomnienie przed odjazdem. Planowane z wyprzedzeniem, więc działa też w tle.',
@@ -699,6 +698,7 @@ export const pl = {
     leadHint: 'Ile minut przed odjazdem zadzwoni przypomnienie.',
     leadLessA11y: 'Mniej minut ostrzeżenia',
     leadMoreA11y: 'Więcej minut ostrzeżenia',
+    alertsTitle: 'Alerty',
     disruptionTitle: 'Ostrzeżenie o opóźnieniu',
     disruptionHint: 'Gdy kurs spóźnia się wyraźnie ponad to, co pokazywał poprzednio.',
     on: 'Wł.',

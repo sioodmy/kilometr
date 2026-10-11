@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BellRing, Check, Clock, Minus, Navigation, Plus } from 'lucide-react-native';
+import { Activity, BellRing, Check, Clock, Minus, Navigation, Plus } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
@@ -8,7 +8,8 @@ import {
   canShowLiveUpdates,
   ensureNotificationPermission,
   isNativeTrackingSupported,
-  isTrackingPlatform,
+  isLiveUpdatesSupported,
+  openNotificationSettings,
   permissionDeniedMessage,
   useNotificationPreferences,
 } from '../services/notifications';
@@ -35,6 +36,7 @@ export function PrefsToggle({
   onChange,
   disabled,
   label,
+  hint,
   onText,
   offText,
 }: {
@@ -42,6 +44,7 @@ export function PrefsToggle({
   onChange: (next: boolean) => void;
   disabled?: boolean;
   label: string;
+  hint?: string;
   onText: string;
   offText: string;
 }) {
@@ -51,6 +54,7 @@ export function PrefsToggle({
       disabled={disabled}
       accessibilityRole="switch"
       accessibilityLabel={label}
+      accessibilityHint={hint}
       accessibilityState={{ checked: value, disabled: !!disabled }}
       hitSlop={8}
       style={({ pressed }) => [
@@ -76,7 +80,6 @@ function ToggleRow({
   icon,
   title,
   hint,
-  hintExtra,
   value,
   onChange,
   disabled,
@@ -86,7 +89,6 @@ function ToggleRow({
   icon: React.ReactNode;
   title: string;
   hint: string;
-  hintExtra?: string | null;
   value: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
@@ -94,18 +96,18 @@ function ToggleRow({
   offText: string;
 }) {
   return (
-    <View style={styles.row}>
-      {icon}
+    <View style={[styles.row, disabled && styles.rowDisabled]}>
+      <View style={styles.rowIcon}>{icon}</View>
       <View style={styles.rowText}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowHint}>{hint}</Text>
-        {hintExtra ? <Text style={styles.rowHintExtra}>{hintExtra}</Text> : null}
       </View>
       <PrefsToggle
         value={value}
         onChange={onChange}
         disabled={disabled}
         label={title}
+        hint={hint}
         onText={onText}
         offText={offText}
       />
@@ -118,11 +120,15 @@ export function NotificationPrefsCard() {
   const p = s.notificationPrefs;
   const { prefs, update } = useNotificationPreferences();
   const supported = areNotificationsSupported();
-  // `null` = jeszcze nie wiadomo (odpytywanie jest asynchroniczne), więc
-  // podpowiedzi o braku promocji nie pokazujemy, zanim nie zajdzie potrzeba.
+  const nativeTrackingSupported = isNativeTrackingSupported();
+  const liveUpdatesSupported = isLiveUpdatesSupported();
   const [promotable, setPromotable] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!liveUpdatesSupported) {
+      setPromotable(null);
+      return;
+    }
     let alive = true;
     void (async () => {
       const ok = await canShowLiveUpdates();
@@ -131,7 +137,12 @@ export function NotificationPrefsCard() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [liveUpdatesSupported]);
+
+  const openSystemNotificationSettings = async () => {
+    const opened = await openNotificationSettings();
+    if (!opened) Alert.alert(p.title, p.livePromoteHint);
+  };
 
   const requirePermission = async (next: boolean): Promise<boolean> => {
     if (!next) return true;
@@ -162,33 +173,63 @@ export function NotificationPrefsCard() {
 
       {!supported ? <Text style={styles.warn}>{p.devBuildWarn}</Text> : null}
 
-      <ToggleRow
-        icon={<Navigation size={17} color={scheme.onSurfaceVariant} />}
-        title={p.trackTitle}
-        hint={p.trackHint}
-        value={prefs.trackingEnabled}
-        onChange={guarded((v) => ({ trackingEnabled: v }))}
-        disabled={!supported}
-        onText={p.on}
-        offText={p.off}
-      />
+      <View style={styles.trackingGroup}>
+        <ToggleRow
+          icon={<Navigation size={18} color={scheme.onSurfaceVariant} />}
+          title={p.trackTitle}
+          hint={p.trackHint}
+          value={prefs.trackingEnabled}
+          onChange={guarded((v) => ({ trackingEnabled: v }))}
+          disabled={!supported}
+          onText={p.on}
+          offText={p.off}
+        />
+
+        <View style={styles.liveGroup}>
+          {nativeTrackingSupported ? (
+            <ToggleRow
+              icon={<Activity size={18} color={scheme.onSurfaceVariant} />}
+              title={p.liveTitle}
+              hint={p.liveHint}
+              value={prefs.liveProgressEnabled}
+              onChange={guarded((v) => ({ liveProgressEnabled: v }))}
+              disabled={!supported || !prefs.trackingEnabled}
+              onText={p.on}
+              offText={p.off}
+            />
+          ) : (
+            <View style={styles.row}>
+              <View style={styles.rowIcon}>
+                <Activity size={18} color={scheme.onSurfaceVariant} />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>{p.liveTitle}</Text>
+                <Text style={styles.rowHint}>{p.liveHintBasic}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {liveUpdatesSupported && promotable === false ? (
+          <View style={styles.liveWarning}>
+            <Text style={styles.liveWarningText}>{p.livePromoteHint}</Text>
+            <Pressable
+              onPress={openSystemNotificationSettings}
+              style={({ pressed }) => [styles.settingsAction, pressed && { opacity: 0.75 }]}
+              accessibilityRole="button"
+              accessibilityLabel={p.openNotificationSettings}
+            >
+              <Text style={styles.settingsActionText}>{p.openNotificationSettings}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.divider} />
+      <Text style={styles.groupTitle}>{p.alertsTitle}</Text>
 
       <ToggleRow
-        icon={<Navigation size={17} color={scheme.onSurfaceVariant} />}
-        title={p.liveTitle}
-        hint={isNativeTrackingSupported() ? p.liveHint : p.liveHintBasic}
-        hintExtra={
-          isTrackingPlatform() && promotable === false ? p.livePromoteHint : null
-        }
-        value={prefs.liveProgressEnabled}
-        onChange={guarded((v) => ({ liveProgressEnabled: v }))}
-        disabled={!supported}
-        onText={p.on}
-        offText={p.off}
-      />
-
-      <ToggleRow
-        icon={<BellRing size={17} color={scheme.onSurfaceVariant} />}
+        icon={<BellRing size={18} color={scheme.onSurfaceVariant} />}
         title={p.leaveTitle}
         hint={p.leaveHint}
         value={prefs.departureAlertsEnabled}
@@ -199,11 +240,15 @@ export function NotificationPrefsCard() {
       />
 
       {prefs.departureAlertsEnabled ? (
-        <View style={styles.row}>
-          <Clock size={17} color={scheme.onSurfaceVariant} />
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>{p.leadTitle}</Text>
-            <Text style={styles.rowHint}>{p.leadHint}</Text>
+        <View style={styles.leadSetting}>
+          <View style={styles.row}>
+            <View style={styles.rowIcon}>
+              <Clock size={18} color={scheme.onSurfaceVariant} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>{p.leadTitle}</Text>
+              <Text style={styles.rowHint}>{p.leadHint}</Text>
+            </View>
           </View>
           <View style={styles.stepper}>
             <Pressable
@@ -214,12 +259,13 @@ export function NotificationPrefsCard() {
               style={({ pressed }) => [
                 styles.stepBtn,
                 leadIdx <= 0 && styles.stepBtnDisabled,
-                pressed && { opacity: 0.7 },
+                pressed && leadIdx > 0 && { opacity: 0.7 },
               ]}
-              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: leadIdx <= 0 }}
               accessibilityLabel={p.leadLessA11y}
             >
-              <Minus size={15} color={scheme.onSecondaryContainer} />
+              <Minus size={18} color={leadIdx <= 0 ? scheme.outline : scheme.onSecondaryContainer} />
             </Pressable>
             <Text style={styles.stepValue}>{s.common.durMin(prefs.departureAlertLeadMin)}</Text>
             <Pressable
@@ -230,19 +276,20 @@ export function NotificationPrefsCard() {
               style={({ pressed }) => [
                 styles.stepBtn,
                 leadIdx >= LEAD_MIN.length - 1 && styles.stepBtnDisabled,
-                pressed && { opacity: 0.7 },
+                pressed && leadIdx < LEAD_MIN.length - 1 && { opacity: 0.7 },
               ]}
-              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: leadIdx >= LEAD_MIN.length - 1 }}
               accessibilityLabel={p.leadMoreA11y}
             >
-              <Plus size={15} color={scheme.onSecondaryContainer} />
+              <Plus size={18} color={leadIdx >= LEAD_MIN.length - 1 ? scheme.outline : scheme.onSecondaryContainer} />
             </Pressable>
           </View>
         </View>
       ) : null}
 
       <ToggleRow
-        icon={<BellRing size={17} color={scheme.onSurfaceVariant} />}
+        icon={<BellRing size={18} color={scheme.onSurfaceVariant} />}
         title={p.disruptionTitle}
         hint={p.disruptionHint}
         value={prefs.disruptionAlertsEnabled}
@@ -259,8 +306,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.large,
-    padding: 14,
-    gap: 12,
+    padding: 16,
+    gap: 14,
     ...elev.level1,
   },
   cardTop: {
@@ -281,14 +328,68 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
+  trackingGroup: {
+    gap: 12,
+  },
+  liveGroup: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.medium,
+    padding: 10,
+  },
+  liveWarning: {
+    gap: 10,
+    backgroundColor: scheme.warningContainer,
+    borderRadius: shape.medium,
+    padding: 12,
+  },
+  liveWarningText: {
+    ...type.bodySmall,
+    color: scheme.onWarningContainer,
+    lineHeight: 18,
+  },
+  settingsAction: {
+    maxWidth: '100%',
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: scheme.secondaryContainer,
+    borderRadius: shape.medium,
+    paddingHorizontal: 14,
+  },
+  settingsActionText: {
+    ...type.labelMedium,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: scheme.outlineVariant,
+    marginVertical: 2,
+  },
+  groupTitle: {
+    ...type.titleSmall,
+    color: scheme.onSurface,
+    fontWeight: '700',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
+  },
+  rowDisabled: {
+    opacity: 0.6,
+  },
+  rowIcon: {
+    width: 20,
+    alignItems: 'center',
   },
   rowText: {
     flex: 1,
-    gap: 2,
+    minWidth: 0,
+    gap: 3,
   },
   rowTitle: {
     ...type.bodyLarge,
@@ -298,17 +399,7 @@ const styles = StyleSheet.create({
   rowHint: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-  },
-  // Podpowiedź o tym, czego powiadomienie NIE potrafi — inaczej użytkownik
-  // nie ma jak zrozumieć, dlaczego nic nie widać na ekranie blokady.
-  rowHintExtra: {
-    ...type.bodySmall,
-    color: scheme.onWarningContainer,
-    backgroundColor: scheme.warningContainer,
-    borderRadius: shape.small,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    marginTop: 3,
+    lineHeight: 17,
   },
   toggle: {
     flexDirection: 'row',
@@ -317,7 +408,8 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.full,
     paddingHorizontal: 11,
-    height: 34,
+    minHeight: 44,
+    minWidth: 56,
   },
   toggleOn: {
     backgroundColor: scheme.primaryContainer,
@@ -336,15 +428,19 @@ const styles = StyleSheet.create({
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
     backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
-    paddingHorizontal: 4,
-    height: 34,
+    borderRadius: shape.medium,
+    padding: 6,
+    minHeight: 56,
+    gap: 6,
+  },
+  leadSetting: {
+    gap: 10,
+    marginLeft: 32,
   },
   stepBtn: {
-    width: 28,
-    height: 28,
+    width: 44,
+    height: 44,
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -355,7 +451,7 @@ const styles = StyleSheet.create({
   stepValue: {
     ...type.labelLarge,
     color: scheme.onSecondaryContainer,
-    minWidth: 48,
+    flex: 1,
     textAlign: 'center',
     fontVariant: ['tabular-nums'],
   },
