@@ -58,7 +58,7 @@ Wymagane: Node 20, Expo SDK 57. Powiadomienia i śledzenie działają w buildzie
 
 ## Wydania
 
-Kod płynie `feature/*` → `dev` → `main` → `nightly` → `prod`, każdy krok jako PR. APK buduje się tylko na push do `nightly` (`kilometr-nightly.apk`, prerelease) i `prod` (`kilometr-prod.apk`, tag `vX.Y.Z`). Strona ląduje na GitHub Pages z `main`.
+Kod płynie `feature/*` → `dev` → `main` → `nightly` → `prod`, każdy krok jako PR. APK buduje się tylko na push do `nightly` (`kilometr-nightly.apk`, prerelease) i `prod` (`kilometr-prod.apk`, tag `vX.Y.Z`). Strona ląduje na GitHub Pages z `main`. Awaryjnie (gdy GitHub Actions leży) ten sam APK zbuduje `azure-pipelines.yml`: tryb `artifact-only` bez dodatkowej konfiguracji, tryb `release` po dodaniu sekretnej zmiennej `GITHUB_TOKEN`.
 
 ## Licencja
 
