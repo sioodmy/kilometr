@@ -24,6 +24,7 @@ import {
   type DataStatus,
   type ImportOutcome,
 } from '../src/services/dataManager';
+import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard, PrefsToggle } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
@@ -133,6 +134,7 @@ export default function SettingsScreen() {
   // pobraniu wraca 'ready' → 'ready', efekt by się drugi raz nie wykonał
   // i podpowiedź o braku pociągów zostawałaby na ekranie w nieskończoność.
   const [reloadKey, setReloadKey] = useState(0);
+  const [cooldownHours, setCooldownHours] = useState(1);
 
   useEffect(() => {
     refreshDataStatus().then(setDataStatus).catch(() => {});
@@ -154,13 +156,19 @@ export default function SettingsScreen() {
   }, [dataStatus.state, reloadKey]);
 
   const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+  const hasTimetable = dataStatus.state === 'ready';
 
   const handleDownload = async () => {
     if (busy) return;
     setImporting(true);
     setOutcome(null);
     try {
-      setOutcome(await importGtfsFromNetwork());
+      const result = await importGtfsFromNetwork();
+      if (result === 'cooldown') {
+        const gate = await getTimetableDownloadGate();
+        setCooldownHours(gate.allowed ? 1 : remainingHours(gate.retryAfterMs));
+      }
+      setOutcome(result);
     } catch (err) {
       // Powód z importu (w języku użytkownika) zamiast zawsze tego samego „sprawdź internet".
       const reason = err instanceof Error ? err.message : s.settings.downloadFailFallback;
@@ -178,7 +186,9 @@ export default function SettingsScreen() {
     outcome === 'updated' ? s.settings.downloadDone
       : outcome === 'upToDate' ? s.settings.downloadUpToDate
         : outcome === 'keptLocal' ? s.settings.downloadKeptLocal
-          : null;
+          : outcome === 'cooldown'
+            ? s.settings.downloadCooldown(cooldownHours)
+            : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -206,29 +216,39 @@ export default function SettingsScreen() {
             onPress={handleDownload}
             disabled={busy}
             style={({ pressed }) => [
-              styles.downloadBtn,
+              hasTimetable ? styles.checkBtn : styles.downloadBtn,
               busy && styles.stepBtnDisabled,
               pressed && !busy && { opacity: 0.7 },
             ]}
-            accessibilityLabel={s.settings.downloadA11y}
+            accessibilityLabel={
+              hasTimetable ? s.settings.downloadCheckA11y : s.settings.downloadA11y
+            }
             accessibilityState={{ busy, disabled: busy }}
           >
             {busy ? (
-              <ActivityIndicator size="small" color={scheme.onSecondaryContainer} />
+              <ActivityIndicator
+                size="small"
+                color={hasTimetable ? scheme.onSurfaceVariant : scheme.onSecondaryContainer}
+              />
             ) : (
-              <Download size={18} color={scheme.onSecondaryContainer} />
+              <Download
+                size={18}
+                color={hasTimetable ? scheme.onSurfaceVariant : scheme.onSecondaryContainer}
+              />
             )}
-            <Text style={styles.downloadText}>
+            <Text style={hasTimetable ? styles.checkText : styles.downloadText}>
               {busy
                 ? dataStatusLabel(dataStatus)
-                : dataStatus.state === 'ready' ? s.settings.downloadReady : s.settings.downloadEmpty}
+                : hasTimetable
+                  ? s.settings.downloadReady
+                  : s.settings.downloadEmpty}
             </Text>
           </Pressable>
           {outcomeLabel ? (
             <Text
               style={[
                 styles.outcomeText,
-                outcome === 'keptLocal' && { color: scheme.warning },
+                (outcome === 'keptLocal' || outcome === 'cooldown') && { color: scheme.warning },
               ]}
             >
               {outcomeLabel}
@@ -482,6 +502,16 @@ const styles = StyleSheet.create({
   stepValueSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: scheme.secondaryContainer, borderRadius: shape.full, paddingVertical: 12 },
   downloadText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
+  checkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.full,
+    paddingVertical: 12,
+  },
+  checkText: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '600' },
   outcomeText: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
   langRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   langChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 14, paddingVertical: 10 },

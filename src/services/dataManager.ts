@@ -18,6 +18,7 @@ import {
   unzipGtfs,
 } from './gtfsDownloader';
 import { downloadPrebuiltDb, fetchManifest, getLocalTimetableVersion } from './timetableSync';
+import { getTimetableDownloadGate, markTimetableDownloaded } from './downloadLimits';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -182,7 +183,7 @@ export function awaitImportSettled(timeoutMs = 180000): Promise<void> {
 }
 
 /** Co faktycznie zrobiło ostatnie odświeżenie, żeby UI mogło to pokazać. */
-export type ImportOutcome = 'updated' | 'upToDate' | 'keptLocal';
+export type ImportOutcome = 'updated' | 'upToDate' | 'keptLocal' | 'cooldown';
 
 /** Pełny import: gotowa baza z serwera, w ostateczności klasyczny ZIP. */
 export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
@@ -213,7 +214,18 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
     }
 
     // Ścieżka 2 (fallback): katalog → zip → unzip → SQLite, jak dawniej.
+    // Też objęta limitem, żeby nie palić Open Data / R2 przy spamie przycisku.
+    const gate = await getTimetableDownloadGate();
+    const localStats = await getGtfsStats().catch(() => null);
+    const hasLocal =
+      !!localStats && localStats.stops > 0 && localStats.trips > 0 && localStats.stopTimes > 0;
+    if (!gate.allowed && hasLocal) {
+      importInProgress = false;
+      await refreshDataStatus();
+      return 'cooldown';
+    }
     await importGtfsLegacy();
+    await markTimetableDownloaded();
     // Flaga w dół przed końcowym odświeżeniem — inaczej refresh uzna, że
     // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
     importInProgress = false;
@@ -248,16 +260,25 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
 
 /**
  * Sync z serwera: manifest → przy nowej wersji download + podmiana bazy.
- * 'upToDate' gdy telefon ma już tę wersję, 'updated' gdy baza właśnie wjechała.
+ * 'upToDate' gdy telefon ma już tę wersję, 'updated' gdy baza właśnie wjechała,
+ * 'cooldown' gdy jest nowsza wersja, ale pełne pobranie było za niedawno.
  * Rzuca przy problemach, wtedy caller decyduje o fallbacku do ZIP.
  */
-async function tryImportPrebuilt(): Promise<'updated' | 'upToDate'> {
+async function tryImportPrebuilt(): Promise<'updated' | 'upToDate' | 'cooldown'> {
   const manifest = await fetchManifest();
   const local = await getLocalTimetableVersion();
   if (local && local === manifest.version) {
     await setMeta('gtfs_last_check', new Date().toISOString());
     return 'upToDate';
   }
+
+  // Nowa wersja na serwerze, ale lokalna baza jest: szanujemy limit R2.
+  const gate = await getTimetableDownloadGate();
+  if (!gate.allowed && local) {
+    await setMeta('gtfs_last_check', new Date().toISOString());
+    return 'cooldown';
+  }
+
   emit({ state: 'downloading', progress: 0 });
   await downloadPrebuiltDb(manifest, (written, total) => {
     emit({ state: 'downloading', progress: total > 0 ? written / total : 0 });
@@ -265,6 +286,7 @@ async function tryImportPrebuilt(): Promise<'updated' | 'upToDate'> {
   const T = dataTr();
   emit({ state: 'importing', step: T.stepVerify, progress: 0.97 });
   await setMeta('gtfs_last_check', new Date().toISOString());
+  await markTimetableDownloaded();
   await resetRoutingStore();
   return 'updated';
 }
