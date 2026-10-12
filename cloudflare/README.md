@@ -25,13 +25,18 @@ OOM na słabszych urządzeniach).
 │  tylko przy nowej wersji):                                │
 │   GET /manifest.json        → manifest z R2 (cache 5 min)  │
 │   GET /db/kilometr-gtfs.db  → baza z R2 (Range, cache 5min)│
+│   GET /maps/wroclaw-tiles.ktp → pakiet kafelków offline    │
 │   GET /api/kd/departures    → PDP /operations, cache 120 s │
 │   GET /api/kd/schedule      → PDP /schedules, cache 1 h    │
 │   GET /health                                              │
 └───────────────────────────┬───────────────────────────────┘
-                            ▼ telefon pobiera .db → podmiana
-                              pliku (bez parsowania, bez OOM)
+                            ▼ telefon pobiera .db / .ktp →
+                              lokalna podmiana pliku
 ```
+
+Pakiet mapy buduje ręczny workflow `map-tiles.yml` i wrzuca go do R2.
+Po zmianie tras Workera trzeba `npx wrangler deploy` w `cloudflare/` —
+sam upload do R2 nie wystarczy.
 
 ### Dlaczego parsowanie NIE jest w Workerze
 

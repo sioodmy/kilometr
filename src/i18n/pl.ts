@@ -82,15 +82,20 @@ export const pl = {
     offlineMapHint: 'Pobierz kafle mapy Wrocławia (ok. 31 MB), żeby trasa działała bez internetu.',
     offlineMapReady: 'Mapa Wrocławia jest na telefonie. Trasa działa bez internetu.',
     offlineMapDownload: 'Pobierz mapę',
-    offlineMapRefresh: 'Pobierz ponownie',
     offlineMapDownloadA11y: 'Pobierz mapę Wrocławia do trybu offline',
     offlineMapDownloading: (pct: number) => `Pobieram… ${pct}%`,
     offlineMapDelete: 'Usuń',
     offlineMapDeleteA11y: 'Usuń mapę offline',
     offlineMapDeleteTitle: 'Usunąć mapę offline?',
-    offlineMapDeleteBody: 'Zwolni się około 31 MB. Mapa nadal będzie działać w trybie online.',
+    offlineMapDeleteBody:
+      'Zwolni się około 31 MB. Mapa nadal będzie działać online. Ponowne pobranie będzie możliwe dopiero za miesiąc.',
     offlineMapFailTitle: 'Nie udało się pobrać mapy',
     offlineMapFailBody: 'Sprawdź połączenie i spróbuj ponownie. Reszta aplikacji działa normalnie.',
+    offlineMapCooldownTitle: 'Mapa już była pobierana',
+    offlineMapCooldownBody: (days: number) =>
+      days <= 1
+        ? 'Ponowne pobranie mapy będzie możliwe jutro. Raz pobrana starczy na długo.'
+        : `Ponowne pobranie mapy będzie możliwe za ${days} dni. Raz pobrana starczy na długo.`,
     backupTitle: 'Twoje dane',
     backupHint:
       'Zapisane miejsca, ostatnie przejazdy i ustawienia w jednym pliku. Wyeksportuj przed zmianą telefonu albo zrób kopię na wszelki wypadek.',
@@ -129,7 +134,8 @@ export const pl = {
     dataReady: (stops: number, trips: number) => `Pełny rozkład: ${stops} przystanków, ${trips} kursów`,
     dataError: (msg: string) => `Błąd: ${msg}`,
     downloadA11y: 'Pobierz rozkład MPK',
-    downloadReady: 'Odśwież rozkład',
+    downloadCheckA11y: 'Sprawdź, czy jest nowszy rozkład',
+    downloadReady: 'Sprawdź aktualizacje',
     downloadEmpty: 'Pobierz pełny rozkład',
     downloadFailTitle: 'Nie udało się pobrać rozkładu',
     downloadFailBody: (reason: string) => `${reason}. Aplikacja pobiera gotową bazę z serwera Kilometr albo klasycznie z Open Data Wrocław.`,
@@ -137,6 +143,10 @@ export const pl = {
     downloadDone: 'Rozkład odświeżony.',
     downloadUpToDate: 'Rozkład jest już aktualny.',
     downloadKeptLocal: 'Nie udało się pobrać nowej wersji. Zostaje ta, która już jest na telefonie.',
+    downloadCooldown: (hours: number) =>
+      hours <= 1
+        ? 'Rozkład był niedawno pobrany. Kolejne pełne pobranie będzie możliwe za około godzinę.'
+        : `Rozkład był niedawno pobrany. Kolejne pełne pobranie będzie możliwe za ${hours} h.`,
     transfersTitle: 'Maks. liczba przesiadek',
     transfersHint:
       'Mniej przesiadek = wygodniej. Planer dolicza ~10 min „kary” za każdą przesiadkę, więc spacer 300 m do przystanku z bezpośrednim kursem wygrywa z 3 przesiadkami z najbliższego słupka.',
@@ -150,7 +160,7 @@ export const pl = {
     trainBufferTitle: 'Zapas na przesiadkę na pociąg',
     trainBufferHint:
       'Minimalny czas na dojście na peron po przesiadce. Stacje kolejowe to nie słupki — np. na Dworcu Głównym droga z przystanku na peron idzie przez halę.',
-    trainNoData: 'Pobrany rozkład nie ma pociągów. Odśwież dane powyżej, żeby włączyć przesiadki na KD.',
+    trainNoData: 'Pobrany rozkład nie ma pociągów. Sprawdź aktualizacje powyżej, żeby włączyć przesiadki na KD.',
     cableTitle: 'Polinka',
     cableHint:
       'Kolejka linowa Politechniki Wrocławskiej nad Odrą, między wybrzeżem Wyspiańskiego a ulicą Na Grobli. Kursuje w dni robocze 7:00–21:00, z przerwą 13:30–14:00, co 5 minut. W weekendy nie jeździ. Działa tylko w trybie „Wszystkie”.',

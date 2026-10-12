@@ -78,15 +78,20 @@ export const de: Strings = {
     offlineMapHint: 'Lade die Kartenkacheln von Wrocław (etwa 31 MB), damit Routen ohne Internet funktionieren.',
     offlineMapReady: 'Die Wrocław-Karte ist auf dem Telefon. Routen funktionieren ohne Internet.',
     offlineMapDownload: 'Karte laden',
-    offlineMapRefresh: 'Erneut laden',
     offlineMapDownloadA11y: 'Die Wrocław-Karte für offline laden',
     offlineMapDownloading: (pct: number) => `Lädt… ${pct}%`,
     offlineMapDelete: 'Löschen',
     offlineMapDeleteA11y: 'Offline-Karte löschen',
     offlineMapDeleteTitle: 'Offline-Karte löschen?',
-    offlineMapDeleteBody: 'Das gibt etwa 31 MB frei. Die Karte funktioniert weiterhin online.',
+    offlineMapDeleteBody:
+      'Das gibt etwa 31 MB frei. Die Karte funktioniert weiterhin online. Erneut laden geht erst nach einem Monat.',
     offlineMapFailTitle: 'Karte konnte nicht geladen werden',
     offlineMapFailBody: 'Prüfe die Verbindung und versuche es erneut. Der Rest der App funktioniert normal.',
+    offlineMapCooldownTitle: 'Karte schon geladen',
+    offlineMapCooldownBody: (days: number) =>
+      days <= 1
+        ? 'Die Karte kannst du morgen erneut laden. Einmal geladen reicht lange.'
+        : `Die Karte kannst du in ${days} Tagen erneut laden. Einmal geladen reicht lange.`,
     backupTitle: 'Deine Daten',
     backupHint:
       'Gespeicherte Orte, letzte Fahrten und Einstellungen in einer Datei. Exportiere vor dem Handywechsel — oder einfach zur Sicherheit.',
@@ -123,7 +128,8 @@ export const de: Strings = {
     dataReady: (stops: number, trips: number) => `Vollständiger Fahrplan: ${stops} Haltestellen, ${trips} Fahrten`,
     dataError: (msg: string) => `Fehler: ${msg}`,
     downloadA11y: 'MPK-Fahrplan laden',
-    downloadReady: 'Fahrplan aktualisieren',
+    downloadCheckA11y: 'Prüfen, ob es einen neueren Fahrplan gibt',
+    downloadReady: 'Auf Updates prüfen',
     downloadEmpty: 'Vollständigen Fahrplan laden',
     downloadFailTitle: 'Fahrplan konnte nicht geladen werden',
     downloadFailBody: (reason: string) => `${reason}. Die App lädt eine fertige Datenbank vom Kilometr-Server oder klassisch von Open Data Wrocław.`,
@@ -131,6 +137,10 @@ export const de: Strings = {
     downloadDone: 'Fahrplan aktualisiert.',
     downloadUpToDate: 'Der Fahrplan ist schon aktuell.',
     downloadKeptLocal: 'Die neue Version konnte nicht geladen werden. Es bleibt der Fahrplan vom Telefon.',
+    downloadCooldown: (hours: number) =>
+      hours <= 1
+        ? 'Der Fahrplan wurde gerade erst geladen. Ein erneutes volles Laden ist in etwa einer Stunde möglich.'
+        : `Der Fahrplan wurde gerade erst geladen. Ein erneutes volles Laden ist in ${hours} h möglich.`,
     transfersTitle: 'Max. Umstiege',
     transfersHint:
       'Weniger Umstiege = bequemer. Der Planer rechnet ~10 Min. „Strafe“ pro Umstieg, also schlägt 300 m Fußweg zu einer Haltestelle mit Direktverbindung 3 Umstiege ab der nächsten Stange.',
@@ -144,7 +154,7 @@ export const de: Strings = {
     trainBufferTitle: 'Puffer für Bahn-Umstiege',
     trainBufferHint:
       'Mindestzeit für den Weg zum Bahnsteig nach dem Umstieg. Bahnhöfe sind keine Haltestellen — z. B. am Hauptbahnhof geht es vom Halt durch die Halle.',
-    trainNoData: 'Der geladene Fahrplan enthält keine Züge. Aktualisiere die Daten oben, um KD-Umstiege zu aktivieren.',
+    trainNoData: 'Der geladene Fahrplan enthält keine Züge. Prüfe oben auf Updates, um KD-Umstiege zu aktivieren.',
     cableTitle: 'Polinka',
     cableHint:
       'Die Seilbahn der Technischen Universität Breslau über die Oder, zwischen Wyspiański-Ufer und der Na-Grobli-Straße. Fährt werktags 7:00–21:00 mit einer Pause von 13:30–14:00, alle 5 Minuten. Am Wochenende geschlossen. Nur im Modus „Fahrzeuge”.',

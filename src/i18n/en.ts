@@ -78,15 +78,20 @@ export const en: Strings = {
     offlineMapHint: 'Download Wrocław map tiles (about 31 MB) so routes work without internet.',
     offlineMapReady: 'The Wrocław map is on your phone. Routes work without internet.',
     offlineMapDownload: 'Download map',
-    offlineMapRefresh: 'Download again',
     offlineMapDownloadA11y: 'Download the Wrocław map for offline use',
     offlineMapDownloading: (pct: number) => `Downloading… ${pct}%`,
     offlineMapDelete: 'Delete',
     offlineMapDeleteA11y: 'Delete the offline map',
     offlineMapDeleteTitle: 'Delete the offline map?',
-    offlineMapDeleteBody: 'This frees about 31 MB. The map will still work online.',
+    offlineMapDeleteBody:
+      'This frees about 31 MB. The map will still work online. You can download it again only after a month.',
     offlineMapFailTitle: 'Could not download the map',
     offlineMapFailBody: 'Check your connection and try again. The rest of the app works normally.',
+    offlineMapCooldownTitle: 'Map already downloaded',
+    offlineMapCooldownBody: (days: number) =>
+      days <= 1
+        ? 'You can download the map again tomorrow. One copy lasts a long time.'
+        : `You can download the map again in ${days} days. One copy lasts a long time.`,
     backupTitle: 'Your data',
     backupHint:
       'Saved places, recent trips and settings in one file. Export before switching phones, or just to be safe.',
@@ -123,7 +128,8 @@ export const en: Strings = {
     dataReady: (stops: number, trips: number) => `Full timetable: ${stops} stops, ${trips} trips`,
     dataError: (msg: string) => `Error: ${msg}`,
     downloadA11y: 'Download MPK timetable',
-    downloadReady: 'Refresh timetable',
+    downloadCheckA11y: 'Check for a newer timetable',
+    downloadReady: 'Check for updates',
     downloadEmpty: 'Download full timetable',
     downloadFailTitle: 'Could not download the timetable',
     downloadFailBody: (reason: string) => `${reason}. The app fetches a ready database from the Kilometr server, or the classic way from Open Data Wrocław.`,
@@ -131,6 +137,10 @@ export const en: Strings = {
     downloadDone: 'Timetable refreshed.',
     downloadUpToDate: 'The timetable is already up to date.',
     downloadKeptLocal: 'Could not download the new version. Keeping the one already on the phone.',
+    downloadCooldown: (hours: number) =>
+      hours <= 1
+        ? 'The timetable was downloaded recently. Another full download will be available in about an hour.'
+        : `The timetable was downloaded recently. Another full download will be available in ${hours} h.`,
     transfersTitle: 'Max transfers',
     transfersHint:
       'Fewer transfers = more comfort. The planner adds a ~10 min penalty per transfer, so a 300 m walk to a stop with a direct line beats 3 transfers from the nearest pole.',
@@ -144,7 +154,7 @@ export const en: Strings = {
     trainBufferTitle: 'Buffer for train transfers',
     trainBufferHint:
       'Minimum time to reach the platform after a transfer. Railway stations are not plain stops — e.g. at Główny the walk from the stop to the platform goes through the hall.',
-    trainNoData: 'The downloaded timetable has no trains. Refresh the data above to enable KD transfers.',
+    trainNoData: 'The downloaded timetable has no trains. Check for updates above to enable KD transfers.',
     cableTitle: 'Polinka',
     cableHint:
       'The Wrocław University of Science and Technology cable car over the Odra, between Wyspiański embankment and Na Grobli street. Runs on weekdays 7:00–21:00, with a 13:30–14:00 break, every 5 minutes. Closed at weekends. Only in “All” mode.',
