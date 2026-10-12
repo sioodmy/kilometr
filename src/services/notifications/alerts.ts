@@ -255,7 +255,7 @@ export async function sendDisruptionAlert(
     await N.scheduleNotificationAsync({
       identifier: alertId('disruption', trip.id),
       content: {
-        title: n.delayTitle(p.line, tr().common.durMin(Math.max(1, p.departInSec / 60))),
+        title: n.delayTitle(p.line, tr().common.durMin(Math.max(1, Math.round(p.departInSec / 60)))),
         body,
         data: tripNotificationData(trip, 'disruption'),
         sound: 'default',
