@@ -39,6 +39,8 @@ import { useStrings } from '../src/i18n';
 type Coord = [number, number];
 
 const VEHICLE_POLL_MS = 6000;
+/** Grace przed żółtym pillem — kafle lokalne/CDN czasem padają przy starcie. */
+const OFFLINE_PILL_MS = 2500;
 
 function nowSec(): number {
   const d = new Date();
@@ -62,11 +64,42 @@ export default function RouteMapScreen() {
     ? { lat: gpsLocation.lat, lon: gpsLocation.lon, heading: gpsLocation.heading }
     : null;
   const [tilesDown, setTilesDown] = useState(false);
+  const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const offlinePillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mapRef = useRef<RouteMapHandle>(null);
   const geometryRef = useRef(new Map<string, Coord[]>());
   const shownVehicleRef = useRef<string | null>(null);
+
+  const clearOfflinePillTimer = useCallback(() => {
+    if (offlinePillTimer.current) {
+      clearTimeout(offlinePillTimer.current);
+      offlinePillTimer.current = null;
+    }
+  }, []);
+
+  const markTilesOk = useCallback(() => {
+    clearOfflinePillTimer();
+    setTilesDown(false);
+    setShowOfflinePill(false);
+    setMapError(null);
+  }, [clearOfflinePillTimer]);
+
+  const markTilesDown = useCallback(
+    (errorMsg?: string | null) => {
+      setTilesDown(true);
+      if (errorMsg) setMapError(errorMsg);
+      if (offlinePillTimer.current) return;
+      offlinePillTimer.current = setTimeout(() => {
+        offlinePillTimer.current = null;
+        setShowOfflinePill(true);
+      }, OFFLINE_PILL_MS);
+    },
+    [],
+  );
+
+  useEffect(() => () => clearOfflinePillTimer(), [clearOfflinePillTimer]);
 
   // ─── Połączenie ─────────────────────────────────────────────
   useEffect(() => {
@@ -172,14 +205,13 @@ export default function RouteMapScreen() {
       }
       release = lease.release;
       setOfflineBase(lease.base);
-      setTilesDown(false);
-      setMapError(null);
+      markTilesOk();
     })();
     return () => {
       cancelled = true;
       release?.();
     };
-  }, []);
+  }, [markTilesOk]);
 
   useEffect(() => {
     if (!route) return;
@@ -351,20 +383,17 @@ export default function RouteMapScreen() {
           onReady={handleMapReady}
           onLegTap={handleSelectLeg}
           onTilesStatus={(ok) => {
-            setTilesDown(!ok);
-            if (ok) setMapError(null);
+            if (ok) markTilesOk();
+            else markTilesDown();
           }}
-          onError={() => {
-            setMapError(s.map.mapLoadFail);
-            setTilesDown(true);
-          }}
+          onError={() => markTilesDown(s.map.mapLoadFail)}
         />
       ) : (
         <View style={styles.mapPlaceholder} />
       )}
 
-      {/* Offline chip — dopiero po starcie WebView, nie w trakcie lease */}
-      {offlineBase !== undefined && tilesDown && (
+      {/* Offline chip — po grace, żeby start lokalnych kafelków nie migał */}
+      {offlineBase !== undefined && tilesDown && showOfflinePill && (
         <View style={[styles.offlineChip, { top: insets.top + 72 }]} pointerEvents="none">
           <WifiOff size={13} color={scheme.onWarningContainer} />
           <Text style={styles.offlineText}>
