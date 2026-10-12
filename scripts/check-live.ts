@@ -210,6 +210,62 @@ expect(
   null,
 );
 
+describe('Szacunek z rozkładu pełnego kursu');
+const H = (h: number, m: number) => h * 3600 + m * 60;
+const tripStops = (prefix: string, startMin: number): LegStop[] =>
+  Array.from({ length: 8 }, (_, i) => ({
+    stopId: `${prefix}${i}`,
+    name: `${prefix} ${i}`,
+    lat: 51.1 + i * 0.003,
+    lon: 17,
+    seq: i + 1,
+    arriveSec: H(9, startMin + i * 2),
+    departSec: H(9, startMin + i * 2),
+  }));
+const firstTrip = tripStops('A', 40);
+const secondTrip = tripStops('B', 50);
+const firstLeg: Leg = {
+  ...routeLeg,
+  id: 'transfer-1',
+  fromStop: 'A 2',
+  toStop: 'A 6',
+  fromStopId: 'A2',
+  toStopId: 'A6',
+  departAt: '09:44',
+  arriveAt: '09:52',
+};
+const secondLeg: Leg = {
+  ...routeLeg,
+  id: 'transfer-2',
+  fromStop: 'B 4',
+  toStop: 'B 7',
+  fromStopId: 'B4',
+  toStopId: 'B7',
+  departAt: '09:58',
+  arriveAt: '10:04',
+};
+const transferNow = new Date(2026, 9, 10, 9, 47).getTime();
+expect(
+  'pierwsza noga w trakcie jazdy: pojazd za przystankiem A 3',
+  locateLiveStopPosition(firstTrip, firstLeg, null, null, transferNow),
+  { gap: 3, source: 'estimate' },
+);
+expect(
+  'druga noga przed odjazdem: kurs jeszcze nie ruszył',
+  locateLiveStopPosition(secondTrip, secondLeg, null, null, transferNow),
+  { gap: -1, source: 'estimate' },
+);
+expect(
+  'druga noga: pojazd dwa przystanki przed wsiadaniem',
+  locateLiveStopPosition(secondTrip, secondLeg, null, null, new Date(2026, 9, 10, 9, 55).getTime()),
+  { gap: 2, source: 'estimate' },
+);
+expect(
+  'opóźnienie z efektywnego odjazdu przesuwa szacunek',
+  locateLiveStopPosition(secondTrip, { ...secondLeg, departAt: '10:02' }, null, null, new Date(2026, 9, 10, 9, 55).getTime()),
+  { gap: 0, source: 'estimate' },
+);
+
 // ─── zbiorkom.live: mapowanie odpowiedzi ─────────────────────────────────
 
 async function main(): Promise<void> {
