@@ -39,13 +39,17 @@ export function NavMiniMap({
 }: NavMiniMapProps) {
   const webRef = useRef<WebView>(null);
   const ready = useRef(false);
-  const [offlineBase, setOfflineBase] = useState<string | null>(null);
+  // undefined = czekamy na lokalny serwer; nie ładuj CDN zanim wiemy.
+  const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   const latestRoute = useRef<NavMapRouteUpdate>({ path, stop, accent });
   const latestCamera = useRef<NavMapCameraUpdate>({ user, heading: headingDeg });
   latestRoute.current = { path, stop, accent };
   latestCamera.current = { user, heading: headingDeg };
 
-  const html = useMemo(() => buildNavMapDocument({ offlineBase }), [offlineBase]);
+  const html = useMemo(
+    () => (offlineBase === undefined ? null : buildNavMapDocument({ offlineBase })),
+    [offlineBase],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -114,26 +118,28 @@ export function NavMiniMap({
 
   return (
     <View style={[styles.frame, style]}>
-      <WebView
-        ref={webRef}
-        style={styles.web}
-        pointerEvents="none"
-        source={offlineBase ? { html, baseUrl: `${offlineBase}/` } : { html }}
-        originWhitelist={['*']}
-        onMessage={onMessage}
-        onLoadStart={onLoadStart}
-        onError={onError}
-        scrollEnabled={false}
-        bounces={false}
-        overScrollMode="never"
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
-        setSupportMultipleWindows={false}
-        javaScriptCanOpenWindowsAutomatically={false}
-        setBuiltInZoomControls={false}
-        androidLayerType="hardware"
-        allowsBackForwardNavigationGestures={false}
-      />
+      {html ? (
+        <WebView
+          ref={webRef}
+          style={styles.web}
+          pointerEvents="none"
+          source={offlineBase ? { html, baseUrl: `${offlineBase}/` } : { html }}
+          originWhitelist={['*']}
+          onMessage={onMessage}
+          onLoadStart={onLoadStart}
+          onError={onError}
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+          setSupportMultipleWindows={false}
+          javaScriptCanOpenWindowsAutomatically={false}
+          setBuiltInZoomControls={false}
+          androidLayerType="hardware"
+          allowsBackForwardNavigationGestures={false}
+        />
+      ) : null}
       {user ? (
         <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
           {accuracyRadius > 0 ? (
