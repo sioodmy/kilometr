@@ -148,16 +148,64 @@ expect(
   { gap: 1, source: 'device' },
 );
 expect(
-  'GPS poza trasą zostaje odrzucony i spada na szacunek z rozkładu',
+  'GPS daleko od trasy zostaje odrzucony i spada na szacunek z rozkładu',
   locateLiveStopPosition(routeStops, routeLeg, null, {
     lat: 51.1075,
-    lon: 17.001,
+    lon: 17.003,
     accuracy: 8,
     speed: 6,
     heading: 0,
     timestamp: routeNow,
   }, routeNow),
   { gap: 0, source: 'estimate' },
+);
+expect(
+  'pasażer w jadącym tramwaju wygrywa z feedem twierdzącym co innego',
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    {
+      vehicleId: '4-2',
+      line: '4',
+      lat: 51.1025,
+      lon: 17,
+      delaySec: 0,
+      currentStopName: 'Start',
+      nextStopName: 'Środek',
+      matchedTripId: 'trip-4',
+      updatedAt: routeNow,
+    },
+    {
+      // Łuk torowiska: ~70 m od prostej między słupkami, wciąż w korytarzu.
+      lat: 51.1075,
+      lon: 17.001,
+      accuracy: 8,
+      speed: 6,
+      heading: 0,
+      timestamp: routeNow,
+    },
+    routeNow,
+  ),
+  { gap: 1, source: 'device' },
+);
+const lateNow = new Date(2026, 9, 10, 10, 24).getTime();
+expect(
+  'opóźniony pasażer nie wypada z okna własnej nogi',
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    null,
+    {
+      lat: 51.1075,
+      lon: 17,
+      accuracy: 8,
+      speed: 6,
+      heading: 0,
+      timestamp: lateNow,
+    },
+    lateNow,
+  ),
+  { gap: 1, source: 'device' },
 );
 expect(
   'wolny GPS nie udaje pozycji jadącego pojazdu (leci szacunek z rozkładu)',
