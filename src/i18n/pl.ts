@@ -147,9 +147,20 @@ export const pl = {
       hours <= 1
         ? 'Rozkład był niedawno pobrany. Kolejne pełne pobranie będzie możliwe za około godzinę.'
         : `Rozkład był niedawno pobrany. Kolejne pełne pobranie będzie możliwe za ${hours} h.`,
+    routeStyleTitle: 'Styl trasy',
+    routeStyleHint:
+      'Decyduje, co wygrywa, gdy trasy różnią się o kilka minut: szybszy przyjazd, krótszy spacer czy mniej przesiadek. Limity poniżej obowiązują przy każdym stylu.',
+    styleFastest: 'Najszybciej',
+    styleFastestDesc: 'Najwcześniejszy przyjazd',
+    styleBalanced: 'Zrównoważony',
+    styleBalancedDesc: 'Minuta za mniej chodzenia',
+    styleLessWalking: 'Mniej pieszo',
+    styleLessWalkingDesc: 'Krótkie dojścia i przesiadki',
+    styleFewerTransfers: 'Mniej przesiadek',
+    styleFewerTransfersDesc: 'Bezpośrednio, nawet dłużej',
     transfersTitle: 'Maks. liczba przesiadek',
     transfersHint:
-      'Mniej przesiadek = wygodniej. Planer dolicza ~10 min „kary” za każdą przesiadkę, więc spacer 300 m do przystanku z bezpośrednim kursem wygrywa z 3 przesiadkami z najbliższego słupka.',
+      'Górny limit przesiadek w jednej trasie. Karę za każdą przesiadkę ustawia styl trasy, więc spacer 300 m do przystanku z bezpośrednim kursem zwykle wygrywa z przesiadkami z najbliższego słupka.',
     directValue: 'Bezpośrednie',
     transferTimeTitle: 'Minimalny czas na przesiadkę',
     transferTimeHint:

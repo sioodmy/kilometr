@@ -390,6 +390,7 @@ export default function HomeScreen() {
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
+            routeStyle: s.routeStyle,
           });
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
@@ -450,6 +451,7 @@ export default function HomeScreen() {
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
+            routeStyle: s.routeStyle,
           });
           if (quickRefreshGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;

@@ -408,6 +408,7 @@ export default function RoutesScreen() {
       maxWalkM: cfg.maxWalkM,
       // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).
       walkSpeedMps: profileWalkSpeedMps(cfg.walkPace),
+      routeStyle: cfg.routeStyle,
     };
   };
 

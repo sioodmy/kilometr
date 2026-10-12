@@ -69,6 +69,7 @@ export function connectionCacheKey(q: RouteQuery): string {
     q.modes ?? '',
     q.maxWalkM ?? '',
     q.anchorStopId ?? '',
+    q.routeStyle ?? '',
   ].join('|');
 }
 

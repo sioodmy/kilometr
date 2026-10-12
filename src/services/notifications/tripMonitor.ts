@@ -136,6 +136,7 @@ async function planTracked(): Promise<Connection | null> {
     trainMinTransferSec: s.trainMinTransferSec,
     maxWalkM: s.maxWalkM,
     walkSpeedMps,
+    routeStyle: s.routeStyle,
   });
   if (conns.length === 0) return null;
 

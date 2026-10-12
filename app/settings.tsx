@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeftRight, CableCar, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, Rabbit, RotateCcw, Activity, Anchor, TrainFront, Turtle } from 'lucide-react-native';
+import { ArrowLeftRight, CableCar, Check, ChevronLeft, Clock3, Database, Download, Footprints, Globe, Minus, Plus, Rabbit, RotateCcw, Route, Activity, Anchor, TrainFront, Turtle } from 'lucide-react-native';
+import type { RouteStyle } from '../src/services/routing/types';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
@@ -117,6 +118,12 @@ export default function SettingsScreen() {
     { value: 'slow', icon: Turtle, label: s.settings.paceSlow, desc: s.settings.paceSlowDesc },
     { value: 'normal', icon: Footprints, label: s.settings.paceNormal, desc: s.settings.paceNormalDesc },
     { value: 'fast', icon: Rabbit, label: s.settings.paceFast, desc: s.settings.paceFastDesc },
+  ];
+  const styleOptions: { value: RouteStyle; label: string; desc: string }[] = [
+    { value: 'fastest', label: s.settings.styleFastest, desc: s.settings.styleFastestDesc },
+    { value: 'balanced', label: s.settings.styleBalanced, desc: s.settings.styleBalancedDesc },
+    { value: 'lessWalking', label: s.settings.styleLessWalking, desc: s.settings.styleLessWalkingDesc },
+    { value: 'fewerTransfers', label: s.settings.styleFewerTransfers, desc: s.settings.styleFewerTransfersDesc },
   ];
 
   const maxT = SETTINGS_LIMITS.maxTransfers;
@@ -281,6 +288,42 @@ export default function SettingsScreen() {
                   {active && <Check size={14} color={scheme.onPrimaryContainer} />}
                   <Text style={[styles.langChipText, active && styles.langChipTextActive]}>
                     {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(10).duration(180)} style={styles.card}>
+          <View style={styles.cardTop}>
+            <Route size={18} color={scheme.primary} />
+            <Text style={styles.cardTitle}>{s.settings.routeStyleTitle}</Text>
+          </View>
+          <Text style={styles.cardHint}>
+            {s.settings.routeStyleHint}
+          </Text>
+          <View style={styles.styleGrid}>
+            {styleOptions.map((opt) => {
+              const active = settings.routeStyle === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => update({ routeStyle: opt.value })}
+                  style={({ pressed }) => [
+                    styles.styleOpt,
+                    active && styles.paceOptActive,
+                    pressed && !active && { opacity: 0.7 },
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                  accessibilityLabel={`${opt.label}, ${opt.desc}`}
+                >
+                  <Text style={[styles.styleLabel, active && styles.paceLabelActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.styleDesc, active && styles.paceDescActive]} numberOfLines={2}>
+                    {opt.desc}
                   </Text>
                 </Pressable>
               );
@@ -519,6 +562,10 @@ const styles = StyleSheet.create({
   langChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
   paceRow: { flexDirection: 'row', gap: 8 },
+  styleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  styleOpt: { flexBasis: '45%', flexGrow: 1, gap: 2, borderRadius: shape.medium, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 12, paddingVertical: 12, minHeight: 72 },
+  styleLabel: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '700' },
+  styleDesc: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 16 },
   paceOpt: { flex: 1, alignItems: 'center', gap: 2, borderRadius: shape.medium, backgroundColor: scheme.surfaceContainerHighest, paddingHorizontal: 6, paddingVertical: 12, minHeight: 108 },
   paceOptActive: { backgroundColor: scheme.primaryContainer },
   paceLabel: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '700', textAlign: 'center' },

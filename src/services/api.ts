@@ -334,6 +334,7 @@ export const RoutingService: IRoutingService = {
         trainMinTransferSec: query.trainMinTransferSec,
         maxWalkM: query.maxWalkM,
         walkSpeedMps: query.walkSpeedMps,
+        routeStyle: query.routeStyle,
         anchorStopId: query.anchorStopId,
         anchorStopLat: query.anchorStopLat,
         anchorStopLon: query.anchorStopLon,
