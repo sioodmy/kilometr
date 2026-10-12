@@ -96,10 +96,17 @@ jobs:
         displayName: Verify timetable has real KD
         condition: and(succeeded(), eq('${{ parameters.mode }}', 'release'))
 
-      # Domyślny pakiet na obrazie to "tools platform-tools", a `tools` zniknął
+      # Obraz hostowany trzyma SDK w $ANDROID_SDK_ROOT, ale cmdline-tools nie ma
+      # na PATH, więc dopisujemy go ręcznie. Domyślny pakiet "tools" zniknął
       # z repozytorium Google i psuje instalację, więc podajemy pakiety wprost.
       - bash: |
           set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$PATH"
+          if ! command -v sdkmanager >/dev/null 2>&1; then
+            echo "##vso[task.logissue type=error]Brak sdkmanager w $SDK/cmdline-tools/latest/bin"
+            exit 1
+          fi
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager \
             "platform-tools" \
