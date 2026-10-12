@@ -134,16 +134,67 @@ function projectToStops(
   return best;
 }
 
-function adjacentStopGap(stops: LegStop[], currentName?: string, nextName?: string): number {
+/**
+ * Para „bieżący → następny” z matchera. Na liniach z pętlą ta sama para nazw
+ * potrafi wystąpić dwa razy, więc przy kilku kandydatach wygrywa ten bliższy
+ * współrzędnym pojazdu.
+ */
+function adjacentStopGap(
+  stops: LegStop[],
+  currentName: string | undefined,
+  nextName: string | undefined,
+  lat: number,
+  lon: number,
+): number {
   if (!currentName || !nextName) return -1;
   const current = normalizeName(currentName);
   const next = normalizeName(nextName);
+  let best = -1;
+  let bestDistance = Infinity;
   for (let i = 0; i < stops.length - 1; i++) {
-    if (normalizeName(stops[i].name) === current && normalizeName(stops[i + 1].name) === next) {
-      return i;
+    if (normalizeName(stops[i].name) !== current || normalizeName(stops[i + 1].name) !== next) continue;
+    const projection = projectToStops(stops, lat, lon, i, i + 1);
+    const distance = projection?.distanceM ?? Number.MAX_VALUE;
+    if (best < 0 || distance < bestDistance) {
+      best = i;
+      bestDistance = distance;
     }
   }
-  return -1;
+  return best;
+}
+
+/** Czas odjazdu z przystanku według rozkładu (GTFS potrafi przekraczać 24:00). */
+function stopTimeSec(stop: LegStop): number | undefined {
+  return stop.departSec ?? stop.arriveSec;
+}
+
+/**
+ * Szacunek z rozkładu całego kursu: pojazd jest za ostatnim przystankiem,
+ * którego odjazd już minął. Przesunięcie o różnicę między efektywnym odjazdem
+ * nogi (z opóźnieniem) a rozkładowym odjazdem z przystanku wsiadania.
+ */
+function estimateGapFromStopTimes(stops: LegStop[], leg: Leg, window: LegWindow, now: number): number | null {
+  const times = stops.map(stopTimeSec);
+  if (times.some((t) => t == null)) return null;
+  const boardingDeparture = parseHMtoSec(leg.departAt);
+  const scheduledBoarding = times[window.start]!;
+  let offset = 0;
+  if (boardingDeparture != null) {
+    const diff = ((boardingDeparture - (scheduledBoarding % 86400) + 129600) % 86400) - 43200;
+    if (Math.abs(diff) <= 1800) offset = diff;
+  }
+  let current = nowSecOfDay(new Date(now));
+  if (times[0]! >= 86400 && current < 43200) current += 86400;
+  const first = times[0]! + offset;
+  const boarding = scheduledBoarding + offset;
+  const last = times[times.length - 1]! + offset;
+  if (current < boarding - 3600 || current > last + 600) return null;
+  if (current < first) return -1;
+  let gap = 0;
+  for (let i = 0; i < times.length; i++) {
+    if (times[i]! + offset <= current) gap = i;
+  }
+  return gap;
 }
 
 interface LegWindow {
@@ -189,7 +240,13 @@ export function locateLiveStopPosition(
   if (stops.length < 2 || (leg.mode !== 'tram' && leg.mode !== 'bus')) return null;
 
   if (vehicle && now - vehicle.updatedAt >= 0 && now - vehicle.updatedAt <= 120_000) {
-    const namedGap = adjacentStopGap(stops, vehicle.currentStopName, vehicle.nextStopName);
+    const namedGap = adjacentStopGap(
+      stops,
+      vehicle.currentStopName,
+      vehicle.nextStopName,
+      vehicle.lat,
+      vehicle.lon,
+    );
     if (namedGap >= 0) return { gap: namedGap, source: 'vehicle' };
 
     const projection = projectToStops(stops, vehicle.lat, vehicle.lon);
@@ -222,7 +279,10 @@ export function locateLiveStopPosition(
     }
   }
 
-  const estimate = estimateGap(leg, window, now);
+  const hasStopTimes = stops.length > 2 && stops.every((stop) => stopTimeSec(stop) != null);
+  const estimate = hasStopTimes
+    ? estimateGapFromStopTimes(stops, leg, window, now)
+    : estimateGap(leg, window, now);
   if (estimate == null) return null;
   return { gap: estimate, source: 'estimate' };
 }
