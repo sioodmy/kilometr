@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paleta widgetów = ciemny motyw aplikacji (src/theme/tokens.ts). Na Androidzie
+  12+ values-v31 podmienia role na kolory z tapety, tak jak robi to apka.
+  Statusy (na czas / opóźnienie) zostają stałe: to informacja, nie dekoracja.
+-->
+<resources>
+    <color name="kw_surface">#1B2120</color>
+    <color name="kw_surface_high">#303635</color>
+    <color name="kw_on_surface">#E0E3E1</color>
+    <color name="kw_on_surface_variant">#BFC9C5</color>
+    <color name="kw_primary">#5CDBBE</color>
+    <color name="kw_primary_container">#005047</color>
+    <color name="kw_on_primary_container">#7DF8DE</color>
+    <color name="kw_success">#7DD895</color>
+    <color name="kw_warning">#FFB957</color>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pasek wyszukiwania ma kształt systemowego paska wyszukiwarki, żeby od razu czytał się jako pole do kliknięcia. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="999dp" />
+    <solid android:color="@color/kw_surface" />
+</shape>

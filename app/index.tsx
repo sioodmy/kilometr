@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { Bell, History, Settings2 } from 'lucide-react-native';
@@ -23,8 +23,11 @@ import { loadCachedSmartDestinations, loadTripHistory, saveCachedSmartDestinatio
 
 import {
   buildRoutesLink,
-  connectionToWidgetNext,
+  departureTs,
+  firstRideBadge,
   mergeWidgetSnapshot,
+  type WidgetNext,
+  type WidgetPlace,
   type WidgetQuickItem,
 } from '../src/services/widgetSnapshot';
 import type { Connection, LegMode, SavedPlace, SmartDestination, Suggestion } from '../src/types/models';
@@ -135,6 +138,24 @@ export default function HomeScreen() {
   lastTripRef.current = lastTrip;
   const sheetsOpenRef = useRef(false);
   sheetsOpenRef.current = sheetMode !== null || manageSheetOpen || addPlaceOpen;
+
+  // Widgety mogą otworzyć wyszukiwarkę albo zarządzanie zapisanymi miejscami.
+  // Parametry czyścimy, żeby powrót na ekran nie otwierał arkusza ponownie.
+  const { search: searchParam, places: placesParam } = useLocalSearchParams<{
+    search?: string;
+    places?: string;
+  }>();
+  useEffect(() => {
+    if (searchParam === '1') {
+      setQuery('');
+      setSheetMode('destination');
+      router.setParams({ search: undefined });
+    }
+    if (placesParam === '1') {
+      setManageSheetOpen(true);
+      router.setParams({ places: undefined });
+    }
+  }, [placesParam, searchParam, router]);
 
   useEffect(() => {
     return subscribeDataStatus(setDataStatus);
@@ -466,47 +487,67 @@ export default function HomeScreen() {
     sheetWasOpenRef.current = open;
   }, [sheetMode]);
 
-  // Snapshot dla widgetów z ekranu głównego (next / szybkie cele / przypięte).
+  // Snapshot dla widgetów z ekranu głównego. Sekcję `pinned` pisze monitor
+  // podróży (ma przeliczony plan), home odpowiada za odjazdy do celów i skróty
+  // do zapisanych miejsc. Widgety pokazują trasy z GPS, więc ręcznie wybrany
+  // start ich nie nadpisuje.
   useEffect(() => {
     if (isCustomStart) return;
-    let cancelled = false;
-    const from = { title: locTitle, lat: currentCoords.lat, lon: currentCoords.lon };
-    const withConns = smart.filter((d) => firstConns[d.id]);
-    const ranked = [...withConns].sort(
-      (a, b) => (firstConns[a.id].departureSec - firstConns[b.id].departureSec),
-    );
-    const best = ranked.length ? firstConns[ranked[0].id] : null;
-    const bestDest = ranked[0];
-    const quick: WidgetQuickItem[] = ranked.slice(0, 3).map((d) => ({
-      id: d.id,
-      title: d.title,
-      departInMin: firstConns[d.id].departInMin,
-      deepLink: buildRoutesLink({
-        fromTitle: from.title,
-        fromLat: from.lat,
-        fromLon: from.lon,
-        toId: d.id,
-        toTitle: d.title,
-        toLat: d.lat,
-        toLon: d.lon,
-      }),
+    if (!smartReady && smart.length === 0) return;
+    const from = { fromTitle: locTitle, fromLat: currentCoords.lat, fromLon: currentCoords.lon, fromGps: true };
+    const linkTo = (d: { id: string; title: string; lat: number; lon: number }) =>
+      buildRoutesLink({ ...from, toId: d.id, toTitle: d.title, toLat: d.lat, toLon: d.lon });
+
+    const savedById = new Map(saved.map((p) => [p.placeId, p]));
+    const quick: WidgetQuickItem[] = smart.slice(0, 4).map((d) => {
+      const conn = firstConns[d.id];
+      const badge = conn ? firstRideBadge(conn) : null;
+      return {
+        id: d.id,
+        title: savedById.get(d.id)?.name || d.title,
+        icon: savedById.get(d.id)?.icon ?? 'history',
+        deepLink: linkTo(d),
+        ...(conn
+          ? {
+              departTs: departureTs(conn),
+              departAt: conn.departAt,
+              delayMin: conn.delayMin,
+              live: conn.live,
+            }
+          : {}),
+        ...(badge?.line ? { line: badge.line, mode: badge.mode, lineBg: badge.bg, lineFg: badge.fg } : {}),
+      };
+    });
+
+    const next: WidgetNext[] = smart
+      .filter((d) => firstConns[d.id])
+      .map((d) => ({ d, conn: firstConns[d.id], badge: firstRideBadge(firstConns[d.id]) }))
+      .filter((x): x is typeof x & { badge: NonNullable<typeof x.badge> } => x.badge != null)
+      .map(({ d, conn, badge }) => ({
+        line: badge.line ?? '',
+        mode: badge.mode,
+        lineBg: badge.bg ?? '',
+        lineFg: badge.fg ?? '',
+        dest: savedById.get(d.id)?.name || d.title,
+        departTs: departureTs(conn),
+        departAt: conn.departAt,
+        delayMin: conn.delayMin,
+        live: conn.live,
+        deepLink: linkTo(d),
+      }))
+      .sort((a, b) => a.departTs - b.departTs)
+      .slice(0, 6);
+
+    const places: WidgetPlace[] = saved.slice(0, 12).map((p) => ({
+      name: p.name,
+      icon: p.icon,
+      deepLink: linkTo({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon }),
     }));
 
-    // Sekcję `pinned` w snapshocie widgetów pisze teraz monitor podróży
-    // (src/services/notifications) — ma już przeliczony plan i godziny, więc
-    // nie dublujemy tu zapytania do RAPTOR-a. Home odpowiada tylko za `next`
-    // i `quick`, i robi to merge'em, żeby go nie wyzerować.
-    if (cancelled) return;
-    void mergeWidgetSnapshot({
-      next: best && bestDest ? connectionToWidgetNext(best, from, bestDest) : null,
-      quick,
-    });
-    return () => {
-      cancelled = true;
-    };
-    // firstConns zmienia referencję razem z nextDepart — snapshot po świeżych danych.
+    void mergeWidgetSnapshot({ origin: locTitle, next, quick, places });
+    // firstConns zmienia referencję razem z nextDepart, więc snapshot idzie po świeżych danych.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstConns, locTitle]);
+  }, [firstConns, locTitle, saved, smart, smartReady]);
 
   // Ostatnie przejazdy w identycznej kolejności co na ekranie głównym (smart history)
   const recentFromSmart: Suggestion[] = useMemo(() => {

@@ -725,6 +725,28 @@ export const pl = {
     titleLine: (mode: string, line: string, time: string) => `${mode} ${line} • ${time}`,
     titlePlain: (time: string) => `Połączenie • ${time}`,
   },
+  // Widgety z ekranu głównego. Interpolacje dostają placeholder ('{n}', '{t}'),
+  // bo minuty liczy widget natywnie przy każdym tyknięciu.
+  widgets: {
+    now: 'teraz',
+    min: 'min',
+    onTime: 'Na czas',
+    timetable: 'Rozkład',
+    late: (n: string) => `+${n} min`,
+    departAt: (t: string) => `odjazd ${t}`,
+    departIn: (n: string) => `odjazd za ${n} min`,
+    departNow: 'odjazd teraz',
+    arriveIn: (n: string) => `przyjazd za ${n} min`,
+    arrived: 'Na miejscu',
+    updated: (t: string) => `stan z ${t}`,
+    stale: 'Kurs odjechał. Dotknij, żeby sprawdzić następny.',
+    nextEmpty: 'Brak odjazdów do Twoich celów. Otwórz Kilometr, żeby je wczytać.',
+    destEmpty: 'Tu pojawią się cele, do których jeździsz najczęściej. Wyszukaj trasę w Kilometrze.',
+    tripEmptyTitle: 'Nie śledzisz podróży',
+    tripEmptyBody: 'Włącz śledzenie przy połączeniu, a tu pojawi się odliczanie i przesiadki.',
+    placesEmpty: 'Zapisz miejsce w Kilometrze, żeby dodać tu skrót.',
+    search: 'Dokąd jedziesz?',
+  },
 };
 
 export type Strings = typeof pl;

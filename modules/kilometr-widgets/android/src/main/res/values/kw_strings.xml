@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tylko teksty, które system pokazuje, zanim apka cokolwiek zapisze (lista
+  widgetów, pierwszy stan). Resztę etykiet apka wkłada do snapshotu ze
+  słownika src/i18n, więc język z Ustawień apki działa też w widgetach.
+-->
+<resources>
+    <string name="kw_next_label">Najbliższy odjazd</string>
+    <string name="kw_next_desc">Odliczanie do pierwszego kursu w stronę Twoich celów</string>
+    <string name="kw_dest_label">Odjazdy do celów</string>
+    <string name="kw_dest_desc">Do 4 częstych celów z najbliższą linią i czasem</string>
+    <string name="kw_trip_label">Śledzona podróż</string>
+    <string name="kw_trip_desc">Godziny, przesiadki i postęp włączonej podróży</string>
+    <string name="kw_search_label">Wyszukiwarka połączeń</string>
+    <string name="kw_search_desc">Pasek wyszukiwania i skróty do zapisanych miejsc</string>
+    <string name="kw_saved_label">Zapisane miejsca</string>
+    <string name="kw_saved_desc">Skróty do tras z bieżącej lokalizacji do zapisanych miejsc</string>
+    <string name="kw_saved_empty">Zapisz miejsce w Kilometrze, żeby dodać tu skrót</string>
+    <string name="kw_open_app">Otwórz Kilometr, żeby wczytać odjazdy</string>
+    <string name="kw_search_hint">Dokąd jedziesz?</string>
+    <string name="kw_sample_place">Dom</string>
+</resources>

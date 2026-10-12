@@ -1,0 +1,14 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'pl.wroclaw.kilometr.widgets'
+version = '1.0.0'
+
+android {
+  namespace "pl.wroclaw.kilometr.widgets"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+  compileSdk 36
+}
