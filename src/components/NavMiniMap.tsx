@@ -118,7 +118,7 @@ export function NavMiniMap({
         ref={webRef}
         style={styles.web}
         pointerEvents="none"
-        source={{ html }}
+        source={offlineBase ? { html, baseUrl: `${offlineBase}/` } : { html }}
         originWhitelist={['*']}
         onMessage={onMessage}
         onLoadStart={onLoadStart}
