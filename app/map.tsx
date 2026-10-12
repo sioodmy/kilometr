@@ -157,8 +157,10 @@ export default function RouteMapScreen() {
   }, []);
 
   // ─── Zestaw mapy offline ────────────────────────────────────
-  // Mapa główna i mini mapa współdzielą lease serwera kafelków.
-  const [offlineBase, setOfflineBase] = useState<string | null>(null);
+  // undefined = jeszcze sprawdzamy lokalny serwer; null = brak pakietu (CDN);
+  // string = kafle z telefonu. WebView montujemy dopiero po decyzji, inaczej
+  // mapa chwilę ładuje CDN, pada bez sieci i miga żółtym „offline".
+  const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
     let release: (() => void) | null = null;
@@ -170,6 +172,8 @@ export default function RouteMapScreen() {
       }
       release = lease.release;
       setOfflineBase(lease.base);
+      setTilesDown(false);
+      setMapError(null);
     })();
     return () => {
       cancelled = true;
@@ -334,29 +338,33 @@ export default function RouteMapScreen() {
 
   return (
     <View style={styles.root}>
-      <RouteMap
-        ref={mapRef}
-        route={route}
-        vehicle={vehicle}
-        user={userLoc}
-        selectedLegId={selectedLegId}
-        offlineBase={offlineBase}
-        paddingTop={insets.top + 72}
-        paddingBottom={panelHeight + insets.bottom + 16}
-        onReady={handleMapReady}
-        onLegTap={handleSelectLeg}
-        onTilesStatus={(ok) => {
-          setTilesDown(!ok);
-          if (ok) setMapError(null);
-        }}
-        onError={() => {
-          setMapError(s.map.mapLoadFail);
-          setTilesDown(true);
-        }}
-      />
+      {offlineBase !== undefined ? (
+        <RouteMap
+          ref={mapRef}
+          route={route}
+          vehicle={vehicle}
+          user={userLoc}
+          selectedLegId={selectedLegId}
+          offlineBase={offlineBase}
+          paddingTop={insets.top + 72}
+          paddingBottom={panelHeight + insets.bottom + 16}
+          onReady={handleMapReady}
+          onLegTap={handleSelectLeg}
+          onTilesStatus={(ok) => {
+            setTilesDown(!ok);
+            if (ok) setMapError(null);
+          }}
+          onError={() => {
+            setMapError(s.map.mapLoadFail);
+            setTilesDown(true);
+          }}
+        />
+      ) : (
+        <View style={styles.mapPlaceholder} />
+      )}
 
-      {/* Offline chip */}
-      {tilesDown && (
+      {/* Offline chip — dopiero po starcie WebView, nie w trakcie lease */}
+      {offlineBase !== undefined && tilesDown && (
         <View style={[styles.offlineChip, { top: insets.top + 72 }]} pointerEvents="none">
           <WifiOff size={13} color={scheme.onWarningContainer} />
           <Text style={styles.offlineText}>
@@ -507,6 +515,8 @@ const styles = StyleSheet.create({
     maxWidth: 74,
   },
   livePillText: { ...type.labelSmall, fontWeight: '700', color: scheme.onSurface },
+
+  mapPlaceholder: { flex: 1, backgroundColor: scheme.surface },
 
   // ─── Offline chip ─────────────────────────────────────────
   offlineChip: {
