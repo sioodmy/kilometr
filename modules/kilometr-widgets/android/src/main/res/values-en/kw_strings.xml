@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kw_next_label">Next departure</string>
+    <string name="kw_next_desc">Countdown to the first ride towards your places</string>
+    <string name="kw_dest_label">Departures to your places</string>
+    <string name="kw_dest_desc">Up to 4 frequent places with the next line and time</string>
+    <string name="kw_trip_label">Tracked trip</string>
+    <string name="kw_trip_desc">Times, transfers and progress of the trip you track</string>
+    <string name="kw_search_label">Trip search</string>
+    <string name="kw_search_desc">Search bar with shortcuts to saved places</string>
+    <string name="kw_open_app">Open Kilometr to load departures</string>
+    <string name="kw_search_hint">Where to?</string>
+    <string name="kw_sample_place">Home</string>
+</resources>

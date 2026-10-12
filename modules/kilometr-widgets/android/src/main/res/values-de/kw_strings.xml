@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kw_next_label">Nächste Abfahrt</string>
+    <string name="kw_next_desc">Countdown bis zur ersten Fahrt zu deinen Zielen</string>
+    <string name="kw_dest_label">Abfahrten zu deinen Zielen</string>
+    <string name="kw_dest_desc">Bis zu 4 häufige Ziele mit nächster Linie und Zeit</string>
+    <string name="kw_trip_label">Verfolgte Fahrt</string>
+    <string name="kw_trip_desc">Zeiten, Umstiege und Fortschritt der verfolgten Fahrt</string>
+    <string name="kw_search_label">Verbindungssuche</string>
+    <string name="kw_search_desc">Suchleiste mit Kurzwahl zu gespeicherten Orten</string>
+    <string name="kw_open_app">Öffne Kilometr, um Abfahrten zu laden</string>
+    <string name="kw_search_hint">Wohin?</string>
+    <string name="kw_sample_place">Zuhause</string>
+</resources>

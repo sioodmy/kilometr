@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Badge linii jak LineBadge w apce: ikona pojazdu + numer na kolorze linii. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <ImageView
+        android:id="@+id/kw_badge_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/kw_badge" />
+
+    <LinearLayout
+        android:id="@+id/kw_badge_body"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="26dp"
+        android:orientation="horizontal"
+        android:paddingStart="7dp"
+        android:paddingEnd="8dp">
+
+        <ImageView
+            android:id="@+id/kw_badge_icon"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/kw_ic_bus" />
+
+        <TextView
+            android:id="@+id/kw_badge_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</FrameLayout>

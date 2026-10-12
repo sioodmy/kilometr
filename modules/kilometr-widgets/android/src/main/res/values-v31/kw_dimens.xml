@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Na Androidzie 12+ zaokrąglenia bierzemy z launchera, żeby widget pasował do reszty ekranu. -->
+<resources>
+    <dimen name="kw_radius">@android:dimen/system_app_widget_background_radius</dimen>
+    <dimen name="kw_inner_radius">@android:dimen/system_app_widget_inner_radius</dimen>
+</resources>
