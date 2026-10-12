@@ -39,7 +39,8 @@ internal fun openLink(context: Context, link: String?, requestCode: Int): Pendin
 }
 
 /** Unikalny requestCode, żeby PendingIntenty wierszy się nie nadpisywały. */
-internal fun requestCode(widgetId: Int, kind: Int, slot: Int = 0): Int = widgetId * 32 + kind * 8 + slot
+internal fun requestCode(widgetId: Int, kind: Int, slot: Int = 0): Int =
+  widgetId * 128 + kind * 16 + slot
 
 internal fun minutesUntil(ts: Long, now: Long): Int = ((ts - now) / 60_000.0).roundToInt()
 

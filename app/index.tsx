@@ -139,15 +139,23 @@ export default function HomeScreen() {
   const sheetsOpenRef = useRef(false);
   sheetsOpenRef.current = sheetMode !== null || manageSheetOpen || addPlaceOpen;
 
-  // Pasek wyszukiwania z widgetu otwiera apkę linkiem kilometr://?search=1.
-  // Parametr czyścimy, żeby powrót na ekran nie otwierał arkusza ponownie.
-  const { search: searchParam } = useLocalSearchParams<{ search?: string }>();
+  // Widgety mogą otworzyć wyszukiwarkę albo zarządzanie zapisanymi miejscami.
+  // Parametry czyścimy, żeby powrót na ekran nie otwierał arkusza ponownie.
+  const { search: searchParam, places: placesParam } = useLocalSearchParams<{
+    search?: string;
+    places?: string;
+  }>();
   useEffect(() => {
-    if (searchParam !== '1') return;
-    setQuery('');
-    setSheetMode('destination');
-    router.setParams({ search: undefined });
-  }, [searchParam, router]);
+    if (searchParam === '1') {
+      setQuery('');
+      setSheetMode('destination');
+      router.setParams({ search: undefined });
+    }
+    if (placesParam === '1') {
+      setManageSheetOpen(true);
+      router.setParams({ places: undefined });
+    }
+  }, [placesParam, searchParam, router]);
 
   useEffect(() => {
     return subscribeDataStatus(setDataStatus);
@@ -530,7 +538,7 @@ export default function HomeScreen() {
       .sort((a, b) => a.departTs - b.departTs)
       .slice(0, 6);
 
-    const places: WidgetPlace[] = saved.slice(0, 2).map((p) => ({
+    const places: WidgetPlace[] = saved.slice(0, 12).map((p) => ({
       name: p.name,
       icon: p.icon,
       deepLink: linkTo({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon }),

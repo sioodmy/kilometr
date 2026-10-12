@@ -50,6 +50,18 @@
           android:resource="@xml/kw_search_info" />
     </receiver>
 
+    <receiver
+        android:name="pl.wroclaw.kilometr.widgets.SavedPlacesWidget"
+        android:exported="false"
+        android:label="@string/kw_saved_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/kw_saved_info" />
+    </receiver>
+
     <!-- Minutowe tyknięcie odliczania oraz przeliczenie po zmianie zegara
          albo aktualizacji apki (te broadcasty są zwolnione z limitów Androida 8+). -->
     <receiver

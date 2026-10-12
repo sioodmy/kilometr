@@ -744,6 +744,7 @@ export const pl = {
     destEmpty: 'Tu pojawią się cele, do których jeździsz najczęściej. Wyszukaj trasę w Kilometrze.',
     tripEmptyTitle: 'Nie śledzisz podróży',
     tripEmptyBody: 'Włącz śledzenie przy połączeniu, a tu pojawi się odliczanie i przesiadki.',
+    placesEmpty: 'Zapisz miejsce w Kilometrze, żeby dodać tu skrót.',
     search: 'Dokąd jedziesz?',
   },
 };

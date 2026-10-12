@@ -718,6 +718,7 @@ export const en: Strings = {
     destEmpty: 'Places you travel to most will show up here. Search for a route in Kilometr.',
     tripEmptyTitle: 'No trip tracked',
     tripEmptyBody: 'Turn on tracking for a connection to see the countdown and transfers here.',
+    placesEmpty: 'Save a place in Kilometr to add a shortcut here.',
     search: 'Where to?',
   },
 };

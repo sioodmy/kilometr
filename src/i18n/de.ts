@@ -719,6 +719,7 @@ export const de: Strings = {
     destEmpty: 'Hier erscheinen die Ziele, zu denen du am häufigsten fährst. Suche eine Route in Kilometr.',
     tripEmptyTitle: 'Keine Fahrt verfolgt',
     tripEmptyBody: 'Schalte die Verfolgung für eine Verbindung ein, dann siehst du hier Countdown und Umstiege.',
+    placesEmpty: 'Speichere einen Ort in Kilometr, um hier eine Kurzwahl hinzuzufügen.',
     search: 'Wohin?',
   },
 };

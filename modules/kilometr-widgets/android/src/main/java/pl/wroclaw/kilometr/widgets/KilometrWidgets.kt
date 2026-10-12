@@ -31,7 +31,11 @@ internal object KilometrWidgets {
       } catch (_: Throwable) {
         IntArray(0)
       }
-      if (ids.isNotEmpty() && cls != SearchWidget::class.java) countdownShown = true
+      if (
+        ids.isNotEmpty() &&
+        cls != SearchWidget::class.java &&
+        cls != SavedPlacesWidget::class.java
+      ) countdownShown = true
       for (id in ids) {
         try {
           manager.updateAppWidget(id, render(id, manager.getAppWidgetOptions(id)))
@@ -45,6 +49,7 @@ internal object KilometrWidgets {
     each(DestinationsWidget::class.java) { id, opts -> WidgetRenderers.destinations(app, snap, id, opts, now) }
     each(TripWidget::class.java) { id, _ -> WidgetRenderers.trip(app, snap, id, now) }
     each(SearchWidget::class.java) { id, opts -> WidgetRenderers.search(app, snap, id, opts) }
+    each(SavedPlacesWidget::class.java) { id, opts -> WidgetRenderers.savedPlaces(app, snap, id, opts) }
 
     WidgetTicker.schedule(app, countdownShown && hasUpcoming(snap, now))
   }
@@ -116,3 +121,4 @@ class NextDepartureWidget : KilometrWidgetProvider()
 class DestinationsWidget : KilometrWidgetProvider()
 class TripWidget : KilometrWidgetProvider()
 class SearchWidget : KilometrWidgetProvider()
+class SavedPlacesWidget : KilometrWidgetProvider()

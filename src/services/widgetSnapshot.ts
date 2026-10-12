@@ -127,6 +127,7 @@ function widgetLabels(): Record<string, string> {
     destEmpty: w.destEmpty,
     tripEmptyTitle: w.tripEmptyTitle,
     tripEmptyBody: w.tripEmptyBody,
+    placesEmpty: w.placesEmpty,
     search: w.search,
   };
 }

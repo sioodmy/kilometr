@@ -8,6 +8,9 @@
     <string name="kw_trip_desc">Times, transfers and progress of the trip you track</string>
     <string name="kw_search_label">Trip search</string>
     <string name="kw_search_desc">Search bar with shortcuts to saved places</string>
+    <string name="kw_saved_label">Saved places</string>
+    <string name="kw_saved_desc">Shortcuts from your current location to saved places</string>
+    <string name="kw_saved_empty">Save a place in Kilometr to add a shortcut here</string>
     <string name="kw_open_app">Open Kilometr to load departures</string>
     <string name="kw_search_hint">Where to?</string>
     <string name="kw_sample_place">Home</string>

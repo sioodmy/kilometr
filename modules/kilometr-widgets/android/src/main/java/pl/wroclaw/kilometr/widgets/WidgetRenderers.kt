@@ -11,8 +11,10 @@ private const val KIND_NEXT = 0
 private const val KIND_DEST = 1
 private const val KIND_TRIP = 2
 private const val KIND_SEARCH = 3
+private const val KIND_SAVED = 4
 
 private const val SEARCH_LINK = "kilometr://?search=1"
+private const val PLACES_LINK = "kilometr://?places=1"
 
 /** Podróż kończy się w widgecie 20 min po planowanym przyjeździe. */
 private const val TRIP_LINGER_MS = 20 * 60_000L
@@ -242,6 +244,69 @@ internal object WidgetRenderers {
         openLink(context, place.optString("deepLink"), requestCode(widgetId, KIND_SEARCH, index + 1)),
       )
       views.addView(R.id.kw_places, button)
+    }
+    return views
+  }
+
+  fun savedPlaces(context: Context, snap: JSONObject?, widgetId: Int, options: Bundle?): RemoteViews {
+    val views = RemoteViews(context.packageName, R.layout.kw_saved_places)
+    val labels = Labels(snap?.optJSONObject("labels"))
+    val places = snap?.optJSONArray("places").objects()
+    val rowIds = intArrayOf(R.id.kw_saved_row_0, R.id.kw_saved_row_1, R.id.kw_saved_row_2)
+
+    views.setOnClickPendingIntent(
+      android.R.id.background,
+      openLink(context, PLACES_LINK, requestCode(widgetId, KIND_SAVED)),
+    )
+    rowIds.forEach {
+      views.removeAllViews(it)
+      views.setViewVisibility(it, View.GONE)
+    }
+
+    if (places.isEmpty()) {
+      views.setViewVisibility(R.id.kw_saved_content, View.GONE)
+      views.setViewVisibility(R.id.kw_saved_empty, View.VISIBLE)
+      views.setTextViewText(
+        R.id.kw_saved_empty_text,
+        labels.get("placesEmpty") ?: context.getString(R.string.kw_saved_empty),
+      )
+      return views
+    }
+
+    views.setViewVisibility(R.id.kw_saved_content, View.VISIBLE)
+    views.setViewVisibility(R.id.kw_saved_empty, View.GONE)
+
+    val columns = if (widthDp(options, 110) >= 250) 4 else 2
+    val maxRows = if (heightDp(options, 110) >= 180) 3 else 2
+    val visible = places.take(columns * maxRows)
+    val rows = ((visible.size + columns - 1) / columns).coerceAtLeast(1)
+
+    for (rowIndex in 0 until rows) {
+      val rowId = rowIds[rowIndex]
+      views.setViewVisibility(rowId, View.VISIBLE)
+      for (column in 0 until columns) {
+        val index = rowIndex * columns + column
+        val tile = RemoteViews(context.packageName, R.layout.kw_saved_place)
+        if (index >= visible.size) {
+          // Niewidoczny wypełniacz zachowuje szerokość kolumn ostatniego rzędu.
+          tile.setViewVisibility(R.id.kw_saved_place, View.INVISIBLE)
+        } else {
+          val place = visible[index]
+          val name = place.optString("name")
+          tile.setImageViewResource(R.id.kw_saved_place_icon, placeIcon(place.optString("icon")))
+          tile.setTextViewText(R.id.kw_saved_place_name, name)
+          tile.setContentDescription(R.id.kw_saved_place, name)
+          tile.setOnClickPendingIntent(
+            R.id.kw_saved_place,
+            openLink(
+              context,
+              place.optString("deepLink"),
+              requestCode(widgetId, KIND_SAVED, index + 1),
+            ),
+          )
+        }
+        views.addView(rowId, tile)
+      }
     }
     return views
   }

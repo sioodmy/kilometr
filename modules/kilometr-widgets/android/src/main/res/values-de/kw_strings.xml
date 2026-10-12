@@ -8,6 +8,9 @@
     <string name="kw_trip_desc">Zeiten, Umstiege und Fortschritt der verfolgten Fahrt</string>
     <string name="kw_search_label">Verbindungssuche</string>
     <string name="kw_search_desc">Suchleiste mit Kurzwahl zu gespeicherten Orten</string>
+    <string name="kw_saved_label">Gespeicherte Orte</string>
+    <string name="kw_saved_desc">Kurzwahl vom aktuellen Standort zu gespeicherten Orten</string>
+    <string name="kw_saved_empty">Speichere einen Ort in Kilometr, um hier eine Kurzwahl hinzuzufügen</string>
     <string name="kw_open_app">Öffne Kilometr, um Abfahrten zu laden</string>
     <string name="kw_search_hint">Wohin?</string>
     <string name="kw_sample_place">Zuhause</string>
