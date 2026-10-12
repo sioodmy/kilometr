@@ -16,8 +16,8 @@ import java.io.File
  * nawigację główną, a nie odpowiedź na zasób.
  *
  * Jedynym sposobem, żeby MapLibre zobaczył lokalne kafle, jest prawdziwy serwer.
- * Dlatego kafle, glify i silnik mapy idą z 127.0.0.1, a dokument mapy dostaje
- * bazowy URL zamiast `about:blank`.
+ * Dlatego kafle, glify i silnik mapy idą z 127.0.0.1, a WebView dostaje
+ * `baseUrl` tego serwera (origin zamiast `about:blank`) plus CORS na odpowiedziach.
  *
  * Serwer nasłuchuje tylko wtedy, gdy ekran mapy jest otwarty.
  */
