@@ -226,6 +226,8 @@ export interface RouteQuery {
   maxWalkM?: number;
   /** m/s, default 1.3. Tempo chodzenia. */
   walkSpeedMps?: number;
+  /** Styl trasy z ustawień (default 'balanced'). Trzymaj w sync z RouteStyle w services/routing/types. */
+  routeStyle?: 'fastest' | 'balanced' | 'lessWalking' | 'fewerTransfers';
   /**
    * Preferowany przystanek startowy (kotwica miejsca).
    * Ułatwienie, NIE sztywne nadpisanie pozycji: routing liczy prawdziwy

@@ -141,9 +141,20 @@ export const en: Strings = {
       hours <= 1
         ? 'The timetable was downloaded recently. Another full download will be available in about an hour.'
         : `The timetable was downloaded recently. Another full download will be available in ${hours} h.`,
+    routeStyleTitle: 'Route style',
+    routeStyleHint:
+      'Decides what wins when routes differ by a few minutes: earlier arrival, shorter walk or fewer transfers. The limits below apply to every style.',
+    styleFastest: 'Fastest',
+    styleFastestDesc: 'Earliest arrival',
+    styleBalanced: 'Balanced',
+    styleBalancedDesc: 'A minute for less walking',
+    styleLessWalking: 'Less walking',
+    styleLessWalkingDesc: 'Short walks and transfers',
+    styleFewerTransfers: 'Fewer transfers',
+    styleFewerTransfersDesc: 'Direct, even if slower',
     transfersTitle: 'Max transfers',
     transfersHint:
-      'Fewer transfers = more comfort. The planner adds a ~10 min penalty per transfer, so a 300 m walk to a stop with a direct line beats 3 transfers from the nearest pole.',
+      'The most transfers one route may have. The route style sets the penalty for each transfer, so a 300 m walk to a stop with a direct line usually beats changing from the nearest pole.',
     directValue: 'Direct only',
     transferTimeTitle: 'Minimum transfer time',
     transferTimeHint:

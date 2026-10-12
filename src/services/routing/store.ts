@@ -252,7 +252,7 @@ export class LocalGtfsStore {
       ] as const) {
         const list = this.footpaths.get(from) ?? [];
         const filtered = list.filter((fp: any) => fp.to_stop_id !== to);
-        filtered.push({ from_stop_id: from, to_stop_id: to, distance_m: distM, duration_sec: dur });
+        filtered.push({ from_stop_id: from, to_stop_id: to, distance_m: distM, duration_sec: dur, fixed: true });
         this.footpaths.set(from, filtered);
       }
       applied++;

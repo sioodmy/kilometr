@@ -141,9 +141,20 @@ export const de: Strings = {
       hours <= 1
         ? 'Der Fahrplan wurde gerade erst geladen. Ein erneutes volles Laden ist in etwa einer Stunde möglich.'
         : `Der Fahrplan wurde gerade erst geladen. Ein erneutes volles Laden ist in ${hours} h möglich.`,
+    routeStyleTitle: 'Routenstil',
+    routeStyleHint:
+      'Bestimmt, was gewinnt, wenn sich Verbindungen um wenige Minuten unterscheiden: frühere Ankunft, kürzerer Fußweg oder weniger Umstiege. Die Grenzen unten gelten für jeden Stil.',
+    styleFastest: 'Am schnellsten',
+    styleFastestDesc: 'Früheste Ankunft',
+    styleBalanced: 'Ausgewogen',
+    styleBalancedDesc: 'Eine Minute für weniger Gehen',
+    styleLessWalking: 'Weniger Gehen',
+    styleLessWalkingDesc: 'Kurze Wege und Umstiege',
+    styleFewerTransfers: 'Weniger Umstiege',
+    styleFewerTransfersDesc: 'Direkt, auch wenn länger',
     transfersTitle: 'Max. Umstiege',
     transfersHint:
-      'Weniger Umstiege = bequemer. Der Planer rechnet ~10 Min. „Strafe“ pro Umstieg, also schlägt 300 m Fußweg zu einer Haltestelle mit Direktverbindung 3 Umstiege ab der nächsten Stange.',
+      'Höchstzahl der Umstiege pro Verbindung. Den Aufschlag pro Umstieg legt der Routenstil fest, deshalb schlagen 300 m Fußweg zu einer Direktverbindung meist das Umsteigen ab der nächsten Haltestelle.',
     directValue: 'Direkt',
     transferTimeTitle: 'Mindest-Umsteigezeit',
     transferTimeHint:
