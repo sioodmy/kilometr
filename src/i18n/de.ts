@@ -540,6 +540,8 @@ export const de: Strings = {
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} zwischen ${from} und ${to}`,
+    vehicleFarBack: 'Fahrzeug ist weiter hinten auf der Strecke',
+    vehicleNotStarted: 'Die Fahrt hat noch nicht begonnen',
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
