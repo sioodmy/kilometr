@@ -1,17 +1,22 @@
-# Awaryjny build APK na Azure Pipelines. Główny kanał wydawniczy to
-# .github/workflows/build-apk.yml; ten plik wchodzi w grę, gdy GitHub Actions leży.
+# Buildy APK na Azure Pipelines (zastępuje dev-pr-apk.yml z GitHub Actions,
+# który stał na self-hosted runnerze).
+# - push do `dev`: tryb preview, APK leci jako GitHub prerelease `dev-...`,
+#   a link ląduje w komentarzu PR `dev` -> `main` (jeden komentarz, aktualizowany)
+# - ręcznie: tryb `preview` (dowolny branch), `artifact-only` (tylko artefakt runu)
+#   albo `release` (nightly/prod, publikuje GitHub Release)
 #
 # Konfiguracja jednorazowa w Azure DevOps (Pipelines -> New pipeline -> GitHub):
-# - tryb `release` publikuje GitHub Release i wymaga zmiennej sekretnej
-#   `GITHUB_TOKEN` (PAT z uprawnieniem repo), inaczej krok kończy się błędem
-# - tryb `artifact-only` nie wymaga niczego: APK ląduje w Artifacts runu
+# - zmienna sekretna `GITHUB_TOKEN`: PAT klasyczny z zakresem `repo` (albo
+#   fine-grained: Contents + Issues + Pull requests, zapis); bez niej tryby
+#   preview/release padają
 # - opcjonalna zmienna `TIMETABLE_URL` nadpisuje host rozkładu (domyślnie produkcja)
-#
-# Pipeline startuje tylko ręcznie (trigger: none), żeby nie dublować release'ów
-# z GitHub Actions.
 name: kilometr-apk-$(Date:yyyyMMdd).$(Rev:r)
 
-trigger: none
+trigger:
+  batch: true
+  branches:
+    include:
+      - dev
 pr: none
 
 parameters:
@@ -23,10 +28,11 @@ parameters:
       - arm64-v8a
       - all
   - name: mode
-    displayName: Tryb (release publikuje GitHub Release, wymaga zmiennej GITHUB_TOKEN)
+    displayName: Tryb (preview buduje dev i komentuje PR, release publikuje wydanie nightly/prod)
     type: string
-    default: artifact-only
+    default: preview
     values:
+      - preview
       - artifact-only
       - release
 
@@ -88,6 +94,7 @@ jobs:
             console.log("KD OK: stations=" + stations + ", routes=" + (kd.routes || 0) + ", trips=" + trips + ", interchanges=" + (kd.interchanges || 0));
           '
         displayName: Verify timetable has real KD
+        condition: and(succeeded(), eq('${{ parameters.mode }}', 'release'))
 
       # Domyślny pakiet na obrazie to "tools platform-tools", a `tools` zniknął
       # z repozytorium Google i psuje instalację, więc podajemy pakiety wprost.
@@ -102,44 +109,57 @@ jobs:
             "cmake;$(ANDROID_CMAKE)"
         displayName: Install Android SDK platforms, build-tools, NDK and CMake
 
-      # Kanał ZAWSZE z gałęzi, więc nie da się zbudować "prod" z innego brancha.
-      # prod: nowa wersja semver z conventional commitów (nie-prerelease).
-      # nightly: unikalny tag z datą i SHA (prerelease).
-      # artifact-only: z dowolnej gałęzi, bez wydania i tagu.
+      # Tryby:
+      # preview: tag dev-YYYYMMDD-HHMM-<sha>, prerelease plus komentarz w PR dev -> main.
+      # artifact-only: z dowolnej gałęzi, bez wydania i tagu, tylko artefakt runu.
+      # release: kanał ZAWSZE z gałęzi (nightly/prod), więc nie da się zbudować
+      # "prod" z innego brancha; nowa wersja semver z conventional commitów.
       - bash: |
           set -euo pipefail
           CHANNEL="$(Build.SourceBranchName)"
           ARCH="${{ parameters.arch }}"
+          MODE="${{ parameters.mode }}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
 
-          if [ "${{ parameters.mode }}" = "artifact-only" ]; then
-            TAG="test-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
-            APK_NAME="kilometr-test.apk"
-            PRERELEASE="true"
-          else
-            case "$CHANNEL" in
-              nightly|prod) ;;
-              *) echo "##vso[task.logissue type=error]Tryb release dozwolony tylko z gałęzi nightly lub prod (jest: $CHANNEL)."; exit 1 ;;
-            esac
-
-            if [ "$CHANNEL" = "prod" ]; then
-              TAG="$(node .github/scripts/next-version.mjs)"
-              APK_NAME="kilometr-prod.apk"
-              PRERELEASE="false"
-            else
-              TAG="nightly-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
-              APK_NAME="kilometr-nightly.apk"
+          case "$MODE" in
+            preview)
+              CHANNEL="dev"
+              TAG="dev-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+              APK_NAME="kilometr-dev-${ARCH}.apk"
               PRERELEASE="true"
-            fi
-          fi
+              ;;
+            artifact-only)
+              CHANNEL="artifact-only"
+              TAG="test-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+              APK_NAME="kilometr-test.apk"
+              PRERELEASE="true"
+              ;;
+            release)
+              case "$CHANNEL" in
+                nightly|prod) ;;
+                *) echo "##vso[task.logissue type=error]Tryb release dozwolony tylko z gałęzi nightly lub prod (jest: $CHANNEL)."; exit 1 ;;
+              esac
+
+              if [ "$CHANNEL" = "prod" ]; then
+                TAG="$(node .github/scripts/next-version.mjs)"
+                APK_NAME="kilometr-prod.apk"
+                PRERELEASE="false"
+              else
+                TAG="nightly-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+                APK_NAME="kilometr-nightly.apk"
+                PRERELEASE="true"
+              fi
+              ;;
+          esac
 
           echo "##vso[task.setvariable variable=channel]$CHANNEL"
+          echo "##vso[task.setvariable variable=mode]$MODE"
           echo "##vso[task.setvariable variable=tag]$TAG"
           echo "##vso[task.setvariable variable=apk_name]$APK_NAME"
           echo "##vso[task.setvariable variable=arch]$ARCH"
           echo "##vso[task.setvariable variable=prerelease]$PRERELEASE"
-          echo "Resolved: channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE"
-        displayName: Resolve channel, tag, version and asset name
+          echo "Resolved: mode=$MODE channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE"
+        displayName: Resolve mode, channel, tag, version and asset name
 
       - task: Cache@2
         displayName: Cache npm
@@ -256,14 +276,29 @@ jobs:
       - bash: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ] || [ "${GH_TOKEN:0:2}" = '$(' ]; then
-            echo "##vso[task.logissue type=error]Tryb release wymaga zmiennej GITHUB_TOKEN (PAT z uprawnieniem repo). Dodaj ją jako sekret w ustawieniach pipeline'u."
+            echo "##vso[task.logissue type=error]Tryby preview/release wymagają zmiennej GITHUB_TOKEN (PAT z uprawnieniem repo). Dodaj ją jako sekret w ustawieniach pipeline'u."
             exit 1
           fi
 
+          DIST="$(Build.ArtifactStagingDirectory)/apk-dist"
+          NOTES="$DIST/release-notes.md"
+
           if [ "$(channel)" = "prod" ]; then
             TITLE="Kilometr $(tag)"
-          else
+          elif [ "$(channel)" = "nightly" ]; then
             TITLE="Kilometr nightly $(tag)"
+          else
+            TITLE="Kilometr dev $(tag)"
+            MSG="$(git log -1 --pretty=%s)"
+            SHORT="$(git rev-parse --short=7 HEAD)"
+            RUN_URL="$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)"
+            {
+              echo "Dev preview z commita \`${SHORT}\`."
+              echo ""
+              echo "$MSG"
+              echo ""
+              echo "[Szczegóły builda w Azure](${RUN_URL})"
+            } > "$NOTES"
           fi
 
           PRERELEASE_FLAG=""
@@ -271,8 +306,6 @@ jobs:
             PRERELEASE_FLAG="--prerelease"
           fi
 
-          NOTES="$(Build.ArtifactStagingDirectory)/apk-dist/release-notes.md"
-          DIST="$(Build.ArtifactStagingDirectory)/apk-dist"
           ASSETS=(
             "${DIST}/$(apk_name)#$(apk_name)"
             "${DIST}/$(apk_name).sha256#$(apk_name).sha256"
@@ -301,7 +334,50 @@ jobs:
           gh release view "$(tag)" --json tagName,isPrerelease,assets \
             --jq '{tag: .tagName, prerelease: .isPrerelease, assets: [.assets[] | .name]}'
         displayName: Publish GitHub Release
-        condition: and(succeeded(), eq('${{ parameters.mode }}', 'release'))
+        condition: and(succeeded(), or(eq('${{ parameters.mode }}', 'preview'), eq('${{ parameters.mode }}', 'release')))
+        env:
+          GH_TOKEN: $(GITHUB_TOKEN)
+          GH_REPO: $(Build.Repository.Name)
+
+      # Komentarz jest jeden na PR: kolejne buildy aktualizują ten sam wpis,
+      # więc wątek nie zamienia się w spam. Marker musi być identyczny co w starym
+      # dev-pr-apk.yml, żeby kolejne buildy podmieniały istniejący komentarz.
+      - bash: |
+          set -euo pipefail
+          PR_NUMBER="$(gh pr list --head dev --base main --state open --json number --jq '.[0].number // empty' || true)"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Brak otwartego PR dev -> main, pomijam komentarz."
+            exit 0
+          fi
+
+          SHORT="$(git rev-parse --short=7 HEAD)"
+          MSG="$(git log -1 --pretty=%s)"
+          REPO="$(Build.Repository.Name)"
+          RUN_URL="$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)"
+          DOWNLOAD="https://github.com/${REPO}/releases/download/$(tag)/$(apk_name)"
+          MARKER="<!-- dev-preview-apk-comment -->"
+
+          BODY="$(printf '%s\n' \
+            "$MARKER" \
+            "### Dev preview \`${SHORT}\`" \
+            "" \
+            "$MSG" \
+            "" \
+            "- Wersja: \`$(tag)\`" \
+            "- Architektura: \`$(arch)\`" \
+            "- [Pobierz APK](${DOWNLOAD}) (bez logowania)" \
+            "- [Szczegóły builda w Azure](${RUN_URL})")"
+
+          COMMENT_ID="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" | head -n 1 || true)"
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -f body="$BODY" > /dev/null
+            echo "Zaktualizowano komentarz #${COMMENT_ID} w PR #${PR_NUMBER}"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$BODY" > /dev/null
+            echo "Dodano komentarz do PR #${PR_NUMBER}"
+          fi
+        displayName: Comment on dev -> main PR
+        condition: and(succeeded(), eq('${{ parameters.mode }}', 'preview'))
         env:
           GH_TOKEN: $(GITHUB_TOKEN)
           GH_REPO: $(Build.Repository.Name)
