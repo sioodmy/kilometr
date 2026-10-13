@@ -1,25 +1,25 @@
+import {
+  runRaptorQueryAsync,
+  runRaptorQuerySync,
+  warmupRaptorNetworkAsync,
+} from '../../../modules/kilometr-raptor';
 import { DayIndex, LocalGtfsStore as GtfsStore } from './store';
 import { JourneySegment, RawJourney, RouteStyle, TransitModePreference } from './types';
-import { classifyTransitMode, footDurations, getRaptorNet, type CompiledPattern, type RaptorNet } from './network';
-import { predictDelaySec } from './delays';
+import {
+  classifyTransitMode,
+  getRaptorNet,
+  packRaptorNet,
+  type RaptorNet,
+} from './network';
 
 export { classifyTransitMode };
 
 const INF = 0x3fffffff;
+const QUERY_MAGIC = 0x52515231;
 
 const DEFAULT_WALK_SPEED_MPS = 1.34;
-/** Spójne z engine.ts: odległość w linii prostej razy objazd ulicami. */
-const WALK_DETOUR_FACTOR = 1.15;
 /** Najdłuższa piesza przesiadka między przystankami (siatka w store.ts sięga 800 m). */
 const MAX_TRANSFER_WALK_M = 800;
-/** Szacunek dojścia jest ostrożny (objazd ×1,15, min. 30 s), więc kurs minutę „za wcześnie” wciąż łapiemy. */
-const CATCH_SLACK_SEC = 60;
-/** Zapas ponad sam czas przejścia przy przesiadce z dojściem (światła, przejścia). */
-const TRANSFER_WALK_SLACK_SEC = 60;
-/** Dopracowanie przystanków może opóźnić przyjazd najwyżej o tyle. */
-const MAX_REFINE_LATER_SEC = 480;
-/** Ile najtańszych kandydatów przechodzi przez dopracowanie przystanków. */
-const REFINE_LIMIT = 48;
 
 interface BoardingStop {
   stopId: string;
@@ -53,7 +53,7 @@ export function costParamsFor(style: RouteStyle | undefined): CostParams {
   return ROUTE_STYLE_COSTS[style ?? 'balanced'] ?? ROUTE_STYLE_COSTS.balanced;
 }
 
-interface RaptorOptions {
+export interface RaptorOptions {
   /** maksymalna liczba przesiadek (0 = tylko bezpośrednie). Default 2. */
   maxTransfers?: number;
   /** minimalny odstęp między przyjazdem a kolejnym odjazdem w sekundach. Default 60. */
@@ -158,796 +158,328 @@ export function isPointlessShortRide(rj: RawJourney): boolean {
     for (const s of rj.segments) {
       if (s.type === 'walk') totalWalkM += s.walkMeters ?? 0;
     }
-    const last = rj.segments[rj.segments.length - 1];
-    const egressWalkM = last && last.type === 'walk' ? (last.walkMeters ?? 0) : 0;
-    if (totalWalkM > 500 || egressWalkM > 350) return true;
+    if (totalWalkM >= 250) return true;
   }
   return false;
 }
 
-/** Noga kandydata: wzorzec, kurs, pozycje wsiadania/wysiadania, dojście przed nią. */
-interface ILeg {
-  p: number;
-  j: number;
-  b: number;
-  a: number;
-  /** Przejście piesze od poprzedniej nogi (sekundy, 0 = ten sam słupek). */
-  walkIn: number;
+function allowedModeToCode(mode: TransitModePreference | undefined): number {
+  if (mode === 'tram') return 1;
+  if (mode === 'bus') return 2;
+  return 0;
 }
 
-interface ICand {
-  legs: ILeg[];
-  /** Przystanek wysiadania ostatniej nogi (dojście do celu). */
-  dest: number;
-}
+function packRaptorQuery(
+  net: RaptorNet,
+  origins: BoardingStop[],
+  destinations: AlightingStop[],
+  departureTimeSec: number,
+  options: RaptorOptions,
+): Uint8Array | null {
+  const stopIdx = net.base.stopIndex;
 
-interface CandInfo {
-  c: ICand;
-  dep: number;
-  arr: number;
-  walkSec: number;
-  cost: number;
-}
-
-/** Binary search: indeks pierwszego kursu z odjazdem >= target na pozycji pos. */
-function lowerBoundTrips(dep: Int32Array, n: number, nTrips: number, pos: number, target: number): number {
-  let lo = 0;
-  let hi = nTrips;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (dep[mid * n + pos] < target) lo = mid + 1;
-    else hi = mid;
+  const validOrigins: Array<[number, number, number]> = [];
+  for (let i = 0; i < origins.length; i++) {
+    const o = origins[i];
+    const s = stopIdx.get(o.stopId);
+    if (s !== undefined) {
+      validOrigins.push([s, Math.max(0, Math.round(o.walkSec)), Math.max(0, Math.round(o.walkM))]);
+    }
   }
-  return lo;
+
+  const validDests: Array<[number, number, number]> = [];
+  for (let i = 0; i < destinations.length; i++) {
+    const d = destinations[i];
+    const s = stopIdx.get(d.stopId);
+    if (s !== undefined) {
+      validDests.push([s, Math.max(0, Math.round(d.walkSec)), Math.max(0, Math.round(d.walkM))]);
+    }
+  }
+
+  if (validOrigins.length === 0 || validDests.length === 0) {
+    return null;
+  }
+
+  const delayEntries: Array<[number, number, number]> = [];
+  if (options.tripDelays && options.tripDelays.size > 0) {
+    for (const [tripId, raw] of options.tripDelays) {
+      const d0 = Math.round(raw);
+      if (!d0) continue;
+      const loc = net.tripLoc.get(tripId);
+      if (loc) {
+        delayEntries.push([loc[0], loc[1], d0]);
+      }
+    }
+  }
+
+  const maxTransfers = Math.max(0, Math.min(3, options.maxTransfers ?? 2));
+  const minT = Math.max(0, Math.min(600, options.minTransferSec ?? 120));
+  const trainNeed = Math.max(minT, Math.min(1200, options.trainMinTransferSec ?? 300));
+  const trainsEnabled = (options.trainsEnabled ?? true) ? 1 : 0;
+  const cableEnabled = (options.cableEnabled ?? true) ? 1 : 0;
+  const allowedMode = allowedModeToCode(options.allowedModes);
+  const windowSec = Math.max(0, Math.round(options.windowSec ?? 0));
+  const speedMps = Math.max(0.5, Math.min(3, options.walkSpeedMps ?? DEFAULT_WALK_SPEED_MPS));
+  const maxTransferWalkM = Math.max(
+    0,
+    Math.min(MAX_TRANSFER_WALK_M, Math.round(options.maxTransferWalkM ?? MAX_TRANSFER_WALK_M)),
+  );
+  const cost = options.cost ?? ROUTE_STYLE_COSTS.balanced;
+  const wr = Math.max(1, cost.walkReluctance);
+  const transferPenaltySec = Math.round(cost.transferPenaltySec);
+  const latestArr =
+    options.latestArrivalSec !== undefined ? Math.round(options.latestArrivalSec) : INF;
+  const hasNow = options.nowSec !== undefined ? 1 : 0;
+  const nowVal = options.nowSec !== undefined ? Math.round(options.nowSec) : 0;
+  const t0 = Math.round(departureTimeSec);
+
+  const headerWords = 22;
+  const totalWords =
+    headerWords + validOrigins.length * 3 + validDests.length * 3 + delayEntries.length * 3;
+  const buf = new ArrayBuffer(totalWords * 4);
+  const view = new DataView(buf);
+  let pos = 0;
+
+  const writeI32 = (v: number) => {
+    view.setInt32(pos, v | 0, true);
+    pos += 4;
+  };
+  const writeF64 = (v: number) => {
+    view.setFloat64(pos, v, true);
+    pos += 8;
+  };
+
+  writeI32(QUERY_MAGIC);
+  writeI32(net.id);
+  writeI32(t0);
+  writeI32(windowSec);
+  writeI32(maxTransfers);
+  writeI32(minT);
+  writeI32(trainNeed);
+  writeI32(trainsEnabled);
+  writeI32(cableEnabled);
+  writeI32(allowedMode);
+  writeF64(speedMps);
+  writeI32(maxTransferWalkM);
+  writeF64(wr);
+  writeI32(transferPenaltySec);
+  writeI32(latestArr);
+  writeI32(hasNow);
+  writeI32(nowVal);
+  writeI32(validOrigins.length);
+  writeI32(validDests.length);
+  writeI32(delayEntries.length);
+
+  for (let i = 0; i < validOrigins.length; i++) {
+    const [s, ws, wm] = validOrigins[i];
+    writeI32(s);
+    writeI32(ws);
+    writeI32(wm);
+  }
+  for (let i = 0; i < validDests.length; i++) {
+    const [s, ws, wm] = validDests[i];
+    writeI32(s);
+    writeI32(ws);
+    writeI32(wm);
+  }
+  for (let i = 0; i < delayEntries.length; i++) {
+    const [p, j, d0] = delayEntries[i];
+    writeI32(p);
+    writeI32(j);
+    writeI32(d0);
+  }
+
+  return new Uint8Array(buf);
 }
 
-/**
- * Range RAPTOR (Delling i in.) na skompilowanej sieci.
- *
- * Odjazdy z przystanków startowych w oknie przetwarzamy od najpóźniejszego,
- * a etykiety zostają między przebiegami: późniejszy odjazd to zawsze górne
- * ograniczenie dla wcześniejszego. W kolejnym przebiegu znakujemy tylko
- * przystanek, z którego ten odjazd wynika, więc praca rośnie z liczbą odjazdów,
- * a nie z liczbą przebiegów razy cała sieć.
- *
- * Cel oceniamy dwiema miarami: najwcześniejszy przyjazd i przyjazd z karą za
- * dojście (koszt uogólniony). Kandydaci przechodzą potem przez dopracowanie
- * przystanków na tych samych kursach (refine), więc „wysiądź wcześniej i idź”
- * przegrywa z jazdą pod sam cel, jeśli różnica w czasie jest mała.
- */
+function unpackJourneys(
+  store: GtfsStore,
+  net: RaptorNet,
+  t0: number,
+  bytes: Uint8Array | null,
+): RawJourney[] {
+  if (!bytes || bytes.byteLength < 4) return [];
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let pos = 0;
+  const readI32 = (): number => {
+    const v = view.getInt32(pos, true);
+    pos += 4;
+    return v;
+  };
+
+  const count = readI32();
+  if (count <= 0) return [];
+
+  const P = net.patterns;
+  const ids = net.base.stopIds;
+  const stopName = (s: number) => store.stops.get(ids[s])?.stop_name || ids[s];
+  const out: RawJourney[] = [];
+
+  for (let c = 0; c < count; c++) {
+    if (pos + 28 > bytes.byteLength) break;
+    const dest = readI32();
+    const firstStop = readI32();
+    const accessSec = readI32();
+    const accessM = readI32();
+    const egressSec = readI32();
+    const egressM = readI32();
+    const nLegs = readI32();
+
+    if (nLegs <= 0 || pos + nLegs * 32 > bytes.byteLength) break;
+
+    const segments: JourneySegment[] = [];
+    let prevStop = -1;
+    let prevArr = 0;
+
+    for (let li = 0; li < nLegs; li++) {
+      const pIdx = readI32();
+      const jIdx = readI32();
+      const bPos = readI32();
+      const aPos = readI32();
+      const walkIn = readI32();
+      const walkInM = readI32();
+      const depSec = readI32();
+      const arrSec = readI32();
+
+      const pat = P[pIdx];
+      if (!pat) continue;
+      const from = pat.stops[bPos];
+      const to = pat.stops[aPos];
+
+      if (li === 0 && accessM > 50) {
+        segments.push({
+          type: 'walk',
+          fromStopId: 'origin',
+          fromStopName: 'Punkt startowy',
+          toStopId: ids[firstStop],
+          toStopName: stopName(firstStop),
+          departSec: Math.max(t0, depSec - accessSec),
+          arriveSec: depSec,
+          stopsCount: 0,
+          walkMeters: accessM,
+        });
+      }
+
+      if (prevStop >= 0 && prevStop !== from) {
+        segments.push({
+          type: 'walk',
+          fromStopId: ids[prevStop],
+          fromStopName: stopName(prevStop),
+          toStopId: ids[from],
+          toStopName: stopName(from),
+          departSec: prevArr,
+          arriveSec: prevArr + walkIn,
+          stopsCount: 0,
+          walkMeters: walkInM,
+        });
+      }
+
+      const tripId = pat.tripIds[jIdx];
+      const trip = store.trips.get(tripId);
+      const route = store.routes.get(trip?.route_id ?? pat.routeId);
+      const line = route?.route_short_name || 'MPK';
+      segments.push({
+        type: 'transit',
+        tripId,
+        routeId: route?.route_id ?? pat.routeId,
+        line,
+        mode: classifyTransitMode(route?.route_type, line),
+        direction: trip?.trip_headsign || '',
+        fromStopId: ids[from],
+        fromStopName: stopName(from),
+        toStopId: ids[to],
+        toStopName: stopName(to),
+        departSec: depSec,
+        arriveSec: arrSec,
+        stopsCount: aPos - bPos,
+      });
+
+      prevStop = to;
+      prevArr = arrSec;
+    }
+
+    if (segments.length === 0) continue;
+
+    if (egressM > 50) {
+      segments.push({
+        type: 'walk',
+        fromStopId: ids[dest],
+        fromStopName: stopName(dest),
+        toStopId: 'destination',
+        toStopName: 'Cel podróży',
+        departSec: prevArr,
+        arriveSec: prevArr + egressSec,
+        stopsCount: 0,
+        walkMeters: egressM,
+      });
+    }
+
+    const rj: RawJourney = {
+      departureSec: segments[0].departSec,
+      arrivalSec: segments[segments.length - 1].arriveSec,
+      transfers: nLegs - 1,
+      segments,
+    };
+    if (!isPointlessShortRide(rj)) {
+      out.push(rj);
+    }
+  }
+
+  return out;
+}
+
+export async function warmupRaptorNet(
+  store: GtfsStore,
+  dayIndex: DayIndex,
+  patternTimeOffsets?: Map<string, number>,
+  timeOffsetSec = 0,
+): Promise<void> {
+  const net = getRaptorNet(store, dayIndex, patternTimeOffsets, Math.round(timeOffsetSec));
+  await warmupRaptorNetworkAsync(net.id, () => packRaptorNet(net));
+}
+
+export async function runRaptorAsync(
+  store: GtfsStore,
+  origins: BoardingStop[],
+  destinations: AlightingStop[],
+  departureTimeSec: number,
+  options: RaptorOptions = {},
+): Promise<RawJourney[]> {
+  if (origins.length === 0 || destinations.length === 0) return [];
+  const idx = options.dayIndex;
+  if (!idx) return [];
+  const net = getRaptorNet(
+    store,
+    idx,
+    options.patternTimeOffsets,
+    Math.round(options.timeOffsetSec ?? 0),
+  );
+  const packedQuery = packRaptorQuery(net, origins, destinations, departureTimeSec, options);
+  if (!packedQuery) return [];
+  const res = await runRaptorQueryAsync(net.id, () => packRaptorNet(net), packedQuery);
+  return unpackJourneys(store, net, Math.round(departureTimeSec), res);
+}
+
 export function runRaptor(
   store: GtfsStore,
   origins: BoardingStop[],
   destinations: AlightingStop[],
   departureTimeSec: number,
-  opts: RaptorOptions = {},
+  options: RaptorOptions = {},
 ): RawJourney[] {
-  if (!origins.length || !destinations.length) return [];
-  const idx = opts.dayIndex;
+  if (origins.length === 0 || destinations.length === 0) return [];
+  const idx = options.dayIndex;
   if (!idx) return [];
-
-  const net = getRaptorNet(store, idx, opts.patternTimeOffsets, Math.round(opts.timeOffsetSec ?? 0));
-  const P = net.patterns;
-  const nPat = P.length;
-  const base = net.base;
-  const nStops = base.stopIds.length;
-
-  const maxTransfers = Math.max(0, Math.min(3, Math.round(opts.maxTransfers ?? 2)));
-  const R = maxTransfers + 1;
-  const minT = Math.max(0, Math.min(600, Math.round(opts.minTransferSec ?? 60)));
-  const trainsEnabled = opts.trainsEnabled ?? true;
-  const cableEnabled = opts.cableEnabled ?? true;
-  const trainNeed = Math.max(minT, Math.max(0, Math.min(1200, Math.round(opts.trainMinTransferSec ?? 300))));
-  const speed = Math.max(0.5, Math.min(3, opts.walkSpeedMps ?? DEFAULT_WALK_SPEED_MPS));
-  const maxTransferWalkM = Math.max(0, Math.min(MAX_TRANSFER_WALK_M, Math.round(opts.maxTransferWalkM ?? MAX_TRANSFER_WALK_M)));
-  const cost = opts.cost ?? ROUTE_STYLE_COSTS.balanced;
-  const wr = Math.max(1, cost.walkReluctance);
-  const t0 = Math.round(departureTimeSec);
-  const W = Math.max(0, Math.round(opts.windowSec ?? 0));
-  const latestArr = opts.latestArrivalSec !== undefined ? Math.round(opts.latestArrivalSec) : INF;
-  const fpDur = footDurations(base, speed, maxTransferWalkM, WALK_DETOUR_FACTOR);
-
-  // ── Filtr pojazdów na poziomie wzorca. Pociągi KD i kolej linowa jeżdżą
-  //    tylko w trybie 'all' (szybki filtr tramwaj/autobus ich nie rusza).
-  const enabled = new Uint8Array(nPat);
-  for (let p = 0; p < nPat; p++) {
-    const kind = P[p].kind;
-    let ok = true;
-    if (kind === 'train') ok = trainsEnabled && (!opts.allowedModes || opts.allowedModes === 'all');
-    else if (kind === 'cable') ok = cableEnabled && (!opts.allowedModes || opts.allowedModes === 'all');
-    else if (opts.allowedModes && opts.allowedModes !== 'all') ok = kind === opts.allowedModes;
-    enabled[p] = ok ? 1 : 0;
-  }
-
-  // ── Czasy efektywne: rozkład + prognoza opóźnienia GPS. Kopiujemy tylko
-  //    wzorce z opóźnionymi kursami; reszta czyta skompilowane tablice.
-  const depV: Int32Array[] = new Array(nPat);
-  const arrV: Int32Array[] = new Array(nPat);
-  const lateMax = new Int32Array(nPat);
-  const earlyMax = new Int32Array(nPat);
-  for (let p = 0; p < nPat; p++) {
-    depV[p] = P[p].dep;
-    arrV[p] = P[p].arr;
-  }
-  if (opts.tripDelays && opts.tripDelays.size > 0) {
-    for (const [tripId, d0raw] of opts.tripDelays) {
-      const d0 = Math.round(d0raw);
-      if (!d0) continue;
-      const loc = net.tripLoc.get(tripId);
-      if (!loc) continue;
-      const [p, j] = loc;
-      const pat = P[p];
-      if (depV[p] === pat.dep) {
-        depV[p] = pat.dep.slice();
-        arrV[p] = pat.arr.slice();
-      }
-      const n = pat.n;
-      const vehicleAt = opts.nowSec !== undefined ? opts.nowSec - d0 : undefined;
-      for (let i = 0; i < n; i++) {
-        const k = j * n + i;
-        const sd = pat.dep[k];
-        const sa = pat.arr[k];
-        const db = vehicleAt === undefined ? d0 : predictDelaySec(d0, sd - vehicleAt, 'board');
-        const da = vehicleAt === undefined ? d0 : predictDelaySec(d0, sa - vehicleAt, 'arrive');
-        depV[p][k] = sd + db;
-        arrV[p][k] = sa + da;
-        if (db > lateMax[p]) lateMax[p] = db;
-        if (-db > earlyMax[p]) earlyMax[p] = -db;
-      }
-    }
-  }
-
-  /** Najwcześniejszy kurs wzorca p do złapania na pozycji pos przy gotowości r. */
-  const earliestTrip = (p: number, pos: number, r: number): number => {
-    const pat = P[p];
-    const n = pat.n;
-    const dep = depV[p];
-    if (dep === pat.dep) {
-      const j = lowerBoundTrips(dep, n, pat.nTrips, pos, r);
-      return j < pat.nTrips ? j : -1;
-    }
-    // Z opóźnieniami kolejność kursów może się rozjechać: start od rozkładu
-    // cofniętego o największe opóźnienie, koniec, gdy żaden dalszy kurs nie
-    // pobije najlepszego nawet przy maksymalnym wyprzedzeniu.
-    const sched = pat.dep;
-    const early = earlyMax[p];
-    let best = -1;
-    let bestT = INF;
-    for (let j = lowerBoundTrips(sched, n, pat.nTrips, pos, r - lateMax[p]); j < pat.nTrips; j++) {
-      if (sched[j * n + pos] - early > bestT) break;
-      const t = dep[j * n + pos];
-      if (t >= r && t < bestT) {
-        bestT = t;
-        best = j;
-      }
-    }
-    return best;
-  };
-
-  // ── Dojścia i odejścia
-  const accessSec = new Int32Array(nStops).fill(-1);
-  const accessM = new Int32Array(nStops);
-  for (const o of origins) {
-    const s = base.stopIndex.get(o.stopId);
-    if (s === undefined) continue;
-    const w = Math.max(0, Math.round(o.walkSec));
-    if (accessSec[s] < 0 || w < accessSec[s]) {
-      accessSec[s] = w;
-      accessM[s] = Math.round(o.walkM);
-    }
-  }
-  const egressSec = new Int32Array(nStops).fill(-1);
-  const egressM = new Int32Array(nStops);
-  for (const d of destinations) {
-    const s = base.stopIndex.get(d.stopId);
-    if (s === undefined) continue;
-    const w = Math.max(0, Math.round(d.walkSec));
-    if (egressSec[s] < 0 || w < egressSec[s]) {
-      egressSec[s] = w;
-      egressM[s] = Math.round(d.walkM);
-    }
-  }
-  const originList: number[] = [];
-  for (let s = 0; s < nStops; s++) if (accessSec[s] >= 0) originList.push(s);
-  if (!originList.length) return [];
-
-  const occStart = (s: number) => (s < net.spCount ? net.spStart[s] : 0);
-  const occEnd = (s: number) => (s < net.spCount ? net.spStart[s + 1] : 0);
-
-  // ── Stan RAPTOR-a: [runda * nStops + przystanek]
-  //    tau = gotowość do wsiadania (przyjazd + zapas na przesiadkę),
-  //    arrAt = fizyczny przyjazd, pType: 1 start, 2 kurs, 3 przejście.
-  const RS = R + 1;
-  const tau = new Int32Array(RS * nStops).fill(INF);
-  const arrAt = new Int32Array(RS * nStops).fill(INF);
-  const pType = new Uint8Array(RS * nStops);
-  const pA = new Int32Array(RS * nStops);
-  const pB = new Int32Array(RS * nStops);
-  const pC = new Int32Array(RS * nStops);
-  const pD = new Int32Array(RS * nStops);
-  const bestArr = new Int32Array(RS).fill(INF);
-  const bestVal = new Int32Array(RS).fill(INF);
-
-  const marked = new Uint8Array(nStops);
-  const markList = new Int32Array(nStops);
-  let markCount = 0;
-  const mark = (s: number) => {
-    if (!marked[s]) {
-      marked[s] = 1;
-      markList[markCount++] = s;
-    }
-  };
-  const improvedFlag = new Uint8Array(nStops);
-  const improvedList = new Int32Array(nStops);
-  let improvedCount = 0;
-  const queue = new Int32Array(nPat).fill(-1);
-  const queued = new Int32Array(nPat);
-
-  const cands: ICand[] = [];
-
-  /** Etykieta (runda, przystanek) -> nogi podróży od startu. null = zepsuty łańcuch. */
-  const backtrack = (round: number, stop: number): ILeg[] | null => {
-    const legs: ILeg[] = [];
-    let k = round;
-    let s = stop;
-    let walkIn = 0;
-    for (let guard = 0; guard < 32; guard++) {
-      const id = k * nStops + s;
-      const t = pType[id];
-      if (t === 1) {
-        if (legs.length) legs[0].walkIn = 0;
-        return legs;
-      }
-      if (t === 3) {
-        walkIn = pB[id];
-        s = pA[id];
-        continue;
-      }
-      if (t !== 2 || k === 0) return null;
-      const p = pA[id];
-      if (legs.length) legs[0].walkIn = walkIn;
-      walkIn = 0;
-      legs.unshift({ p, j: pB[id], b: pC[id], a: pD[id], walkIn: 0 });
-      s = P[p].stops[pC[id]];
-      k--;
-    }
-    return null;
-  };
-
-  const pointless = (legs: ILeg[], dest: number): boolean => {
-    for (const l of legs) if (l.a - l.b <= 0) return true;
-    if (legs.length !== 1) return false;
-    const l = legs[0];
-    if (l.a - l.b > 1 || P[l.p].kind === 'cable') return false;
-    const origin = P[l.p].stops[l.b];
-    const totalM = accessM[origin] + egressM[dest];
-    return totalM > 500 || egressM[dest] > 350;
-  };
-
-  /** Gotowość do wsiadania w rundzie k+1 z etykiety (k, s) dla rodzaju pojazdu. */
-  const boardReady = (km1: number, s: number, isTrain: boolean): number => {
-    const id = km1 * nStops + s;
-    const r = tau[id];
-    if (km1 === 0 || !isTrain || trainNeed <= minT) return r;
-    if (pType[id] === 3) return Math.max(r, pC[id] + Math.max(trainNeed, pB[id] + TRANSFER_WALK_SLACK_SEC));
-    return Math.max(r, arrAt[id] + trainNeed);
-  };
-
-  let boundVal = INF;
-
-  const checkTarget = (k: number, p: number, j: number, bPos: number, aPos: number, s: number, a: number) => {
-    const e = egressSec[s];
-    const arrT = a + e;
-    if (arrT > latestArr) return;
-    const valT = a + Math.round(wr * e);
-    let ba = INF;
-    let bv = INF;
-    for (let r = 1; r <= k; r++) {
-      if (bestArr[r] < ba) ba = bestArr[r];
-      if (bestVal[r] < bv) bv = bestVal[r];
-    }
-    if (arrT >= ba && valT >= bv) return;
-    const prev = backtrack(k - 1, P[p].stops[bPos]);
-    if (!prev) return;
-    const legs = [...prev, { p, j, b: bPos, a: aPos, walkIn: 0 }];
-    if (legs.length > 1) {
-      // dojście do bieżącej nogi: z etykiety przystanku wsiadania
-      const id = (k - 1) * nStops + P[p].stops[bPos];
-      legs[legs.length - 1].walkIn = pType[id] === 3 ? pB[id] : 0;
-    }
-    if (pointless(legs, s)) return;
-    cands.push({ legs, dest: s });
-    if (arrT < bestArr[k]) bestArr[k] = arrT;
-    if (valT < bestVal[k]) bestVal[k] = valT;
-    if (valT < boundVal) boundVal = valT;
-  };
-
-  const scanPattern = (k: number, p: number, start: number) => {
-    const pat = P[p];
-    const n = pat.n;
-    const stops = pat.stops;
-    const dep = depV[p];
-    const arr = arrV[p];
-    const isTrain = pat.kind === 'train';
-    const kk = k * nStops;
-    const km1 = k - 1;
-    const km1Base = km1 * nStops;
-    let cur = -1;
-    let row = 0;
-    let boardPos = -1;
-    for (let i = start; i < n; i++) {
-      const s = stops[i];
-      if (cur >= 0) {
-        const a = arr[row + i];
-        if (egressSec[s] >= 0) checkTarget(k, p, cur, boardPos, i, s, a);
-        if (a < boundVal) {
-          const ready = a + minT;
-          let bestS = INF;
-          for (let r = 0; r <= k; r++) {
-            const v = tau[r * nStops + s];
-            if (v < bestS) bestS = v;
-          }
-          if (ready < bestS) {
-            const id = kk + s;
-            tau[id] = ready;
-            arrAt[id] = a;
-            pType[id] = 2;
-            pA[id] = p;
-            pB[id] = cur;
-            pC[id] = boardPos;
-            pD[id] = i;
-            if (!improvedFlag[s]) {
-              improvedFlag[s] = 1;
-              improvedList[improvedCount++] = s;
-            }
-            mark(s);
-          }
-        }
-      }
-      if (i < n - 1 && tau[km1Base + s] < INF) {
-        const r = boardReady(km1, s, isTrain);
-        if (cur < 0 || r <= dep[row + i]) {
-          const j = earliestTrip(p, i, r);
-          if (j >= 0 && (cur < 0 || dep[j * n + i] < dep[row + i])) {
-            cur = j;
-            row = j * n;
-            boardPos = i;
-          }
-        }
-      }
-    }
-  };
-
-  const relaxFootpaths = (k: number) => {
-    const kk = k * nStops;
-    for (let x = 0; x < improvedCount; x++) {
-      const s = improvedList[x];
-      improvedFlag[s] = 0;
-      // Tylko z przyjazdu kursem: bez łańcuchów przejść (s' -> s -> dalej).
-      if (s >= base.fpCount || pType[kk + s] !== 2) continue;
-      const src = arrAt[kk + s];
-      if (src >= boundVal) continue;
-      for (let e = base.fpStart[s]; e < base.fpStart[s + 1]; e++) {
-        const w = fpDur[e];
-        if (w < 0) continue;
-        const to = base.fpTo[e];
-        if (src + w >= boundVal) continue;
-        const ready = src + Math.max(minT, w + TRANSFER_WALK_SLACK_SEC);
-        let bestS = INF;
-        for (let r = 0; r <= k; r++) {
-          const v = tau[r * nStops + to];
-          if (v < bestS) bestS = v;
-        }
-        if (ready >= bestS) continue;
-        const id = kk + to;
-        tau[id] = ready;
-        arrAt[id] = src + w;
-        pType[id] = 3;
-        pA[id] = s;
-        pB[id] = w;
-        pC[id] = src;
-        mark(to);
-      }
-    }
-    improvedCount = 0;
-  };
-
-  const runIteration = (tau0: number, triggerStops: number[] | null) => {
-    for (const o of originList) {
-      const v = tau0 + accessSec[o];
-      if (v < tau[o]) {
-        tau[o] = v;
-        arrAt[o] = v;
-        pType[o] = 1;
-      }
-    }
-    markCount = 0;
-    if (triggerStops) for (const s of triggerStops) mark(s);
-    else for (const o of originList) mark(o);
-
-    for (let k = 1; k <= R; k++) {
-      let qCount = 0;
-      for (let m = 0; m < markCount; m++) {
-        const s = markList[m];
-        marked[s] = 0;
-        for (let e = occStart(s); e < occEnd(s); e++) {
-          const p = net.spPat[e];
-          if (!enabled[p]) continue;
-          const pos = net.spPos[e];
-          if (pos >= P[p].n - 1) continue;
-          if (queue[p] < 0) {
-            queue[p] = pos;
-            queued[qCount++] = p;
-          } else if (pos < queue[p]) {
-            queue[p] = pos;
-          }
-        }
-      }
-      markCount = 0;
-      if (qCount === 0) break;
-      boundVal = INF;
-      for (let r = 1; r <= k; r++) if (bestVal[r] < boundVal) boundVal = bestVal[r];
-      for (let q = 0; q < qCount; q++) {
-        const p = queued[q];
-        const start = queue[p];
-        queue[p] = -1;
-        scanPattern(k, p, start);
-      }
-      relaxFootpaths(k);
-      if (markCount === 0) break;
-    }
-    for (let m = 0; m < markCount; m++) marked[markList[m]] = 0;
-    markCount = 0;
-  };
-
-  // ── Odjazdy w oknie: każdy kurs z przystanku startowego wyznacza moment
-  //    wyjścia z domu (odjazd minus dojście).
-  const lo = t0 - CATCH_SLACK_SEC;
-  const hi = t0 + W;
-  const trigTimes: number[] = [];
-  const trigStops: number[] = [];
-  for (const o of originList) {
-    const acc = accessSec[o];
-    for (let e = occStart(o); e < occEnd(o); e++) {
-      const p = net.spPat[e];
-      if (!enabled[p]) continue;
-      const pos = net.spPos[e];
-      const pat = P[p];
-      if (pos >= pat.n - 1) continue;
-      const dep = depV[p];
-      const from = lowerBoundTrips(pat.dep, pat.n, pat.nTrips, pos, lo + acc - lateMax[p]);
-      for (let j = from; j < pat.nTrips; j++) {
-        if (pat.dep[j * pat.n + pos] - earlyMax[p] - acc >= hi) break;
-        const tau0 = dep[j * pat.n + pos] - acc;
-        if (tau0 >= lo && tau0 < hi) {
-          trigTimes.push(tau0);
-          trigStops.push(o);
-        }
-      }
-    }
-  }
-  const order = trigTimes.map((_, i) => i).sort((x, y) => trigTimes[y] - trigTimes[x]);
-
-  // Przebieg od końca okna: najszybsze podróże z odjazdem po oknie (rzadkie
-  // nocne kursy, długie dojścia), potem odjazdy w oknie od najpóźniejszego.
-  runIteration(hi, null);
-  for (let x = 0; x < order.length; ) {
-    const t = trigTimes[order[x]];
-    const group: number[] = [];
-    while (x < order.length && trigTimes[order[x]] === t) {
-      group.push(trigStops[order[x]]);
-      x++;
-    }
-    runIteration(t, group);
-  }
-
-  // ── Kandydaci -> koszt -> dopracowanie przystanków -> podróże
-  const legDep = (l: ILeg) => depV[l.p][l.j * P[l.p].n + l.b];
-  const legArr = (l: ILeg) => arrV[l.p][l.j * P[l.p].n + l.a];
-  const info = (c: ICand): CandInfo => {
-    const first = c.legs[0];
-    const last = c.legs[c.legs.length - 1];
-    const access = accessSec[P[first.p].stops[first.b]];
-    const egress = egressSec[c.dest];
-    const dep = Math.max(t0, legDep(first) - access);
-    const arr = legArr(last) + egress;
-    let walkSec = access + egress;
-    for (const l of c.legs) walkSec += l.walkIn;
-    const transfers = c.legs.length - 1;
-    const time = latestArr < INF ? latestArr - dep : arr - t0;
-    const costV = time + (wr - 1) * walkSec + transfers * cost.transferPenaltySec;
-    return { c, dep, arr, walkSec, cost: costV };
-  };
-  const chainKey = (c: ICand) => c.legs.map((l) => `${l.p}:${l.j}`).join('|');
-  const fullKey = (c: ICand) => `${c.legs.map((l) => `${l.p}:${l.j}:${l.b}:${l.a}`).join('|')}>${c.dest}`;
-
-  const byChain = new Map<string, CandInfo>();
-  for (const c of cands) {
-    const ci = info(c);
-    const key = chainKey(c);
-    const prev = byChain.get(key);
-    if (!prev || ci.cost < prev.cost) byChain.set(key, ci);
-  }
-  const shortlist = [...byChain.values()].sort((x, y) => x.cost - y.cost).slice(0, REFINE_LIMIT);
-
-  const refineCtx: RefineCtx = {
-    P, depV, arrV, net, accessSec, egressSec, fpDur,
-    minT, trainNeed, wr, t0, latestArr,
-  };
-  const out: RawJourney[] = [];
-  const seen = new Set<string>();
-  for (const ci of shortlist) {
-    const refined = refine(refineCtx, ci.c, ci.arr) ?? ci.c;
-    const key = fullKey(refined);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const rj = materialize(store, net, depV, arrV, refined, accessSec, accessM, egressSec, egressM, t0);
-    if (rj && !isPointlessShortRide(rj)) out.push(rj);
-  }
-  return out;
-}
-
-interface RefineCtx {
-  P: CompiledPattern[];
-  depV: Int32Array[];
-  arrV: Int32Array[];
-  net: RaptorNet;
-  accessSec: Int32Array;
-  egressSec: Int32Array;
-  fpDur: Int32Array;
-  minT: number;
-  trainNeed: number;
-  wr: number;
-  t0: number;
-  latestArr: number;
-}
-
-/**
- * Dopracowanie przystanków przy STAŁYCH kursach: programowanie dynamiczne po
- * pozycjach wsiadania i wysiadania każdej nogi, minimalizujące koszt
- * odczuwalny (jazda + oczekiwanie + spacer × waga). Naprawia trzy klasyczne
- * błędy samego RAPTOR-a (który liczy wyłącznie najwcześniejszy przyjazd):
- * - „wysiądź przystanek wcześniej i idź”, gdy ten sam tramwaj jedzie pod cel,
- * - przesiadka z przejściem, choć pierwszy kurs dojeżdża na przystanek
- *   drugiego,
- * - dojście do dalszego przystanku tej samej linii zamiast najbliższego.
- */
-function refine(ctx: RefineCtx, c: ICand, origArr: number): ICand | null {
-  const { P, depV, arrV, net, accessSec, egressSec, fpDur, minT, trainNeed, wr, t0, latestArr } = ctx;
-  const base = net.base;
-  const m = c.legs.length;
-  const B: Float64Array[] = [];
-  const Bfrom: Int32Array[] = [];
-  const Bwalk: Int32Array[] = [];
-  const C: Float64Array[] = [];
-  const Cfrom: Int32Array[] = [];
-
-  for (let li = 0; li < m; li++) {
-    const l = c.legs[li];
-    const pat = P[l.p];
-    const n = pat.n;
-    const row = l.j * n;
-    const dep = depV[l.p];
-    const b = new Float64Array(n).fill(Infinity);
-    const bf = new Int32Array(n).fill(-1);
-    const bw = new Int32Array(n);
-    if (li === 0) {
-      for (let pos = 0; pos < n - 1; pos++) {
-        const acc = accessSec[pat.stops[pos]];
-        if (acc < 0) continue;
-        const d = dep[row + pos];
-        if (d - acc < t0 - CATCH_SLACK_SEC) continue;
-        b[pos] = wr * acc - d;
-      }
-    } else {
-      const prev = c.legs[li - 1];
-      const pp = P[prev.p];
-      const prow = prev.j * pp.n;
-      const parr = arrV[prev.p];
-      const need = pat.kind === 'train' ? trainNeed : minT;
-      const positions = new Map<number, number[]>();
-      for (let pos = 0; pos < n - 1; pos++) {
-        const s = pat.stops[pos];
-        const list = positions.get(s);
-        if (list) list.push(pos);
-        else positions.set(s, [pos]);
-      }
-      const Cp = C[li - 1];
-      const tryBoard = (s: number, ready: number, val: number, from: number, walk: number) => {
-        const list = positions.get(s);
-        if (!list) return;
-        for (const pos of list) {
-          if (dep[row + pos] < ready) continue;
-          if (val < b[pos]) {
-            b[pos] = val;
-            bf[pos] = from;
-            bw[pos] = walk;
-          }
-        }
-      };
-      for (let a = 1; a < pp.n; a++) {
-        const cv = Cp[a];
-        if (cv === Infinity) continue;
-        const s = pp.stops[a];
-        const t = parr[prow + a];
-        tryBoard(s, t + need, cv, a, 0);
-        if (s < base.fpCount) {
-          for (let e = base.fpStart[s]; e < base.fpStart[s + 1]; e++) {
-            const w = fpDur[e];
-            if (w < 0) continue;
-            tryBoard(base.fpTo[e], t + Math.max(need, w + TRANSFER_WALK_SLACK_SEC), cv + (wr - 1) * w, a, w);
-          }
-        }
-      }
-    }
-    const cArr = new Float64Array(n).fill(Infinity);
-    const cf = new Int32Array(n).fill(-1);
-    let run = Infinity;
-    let runPos = -1;
-    for (let pos = 0; pos < n; pos++) {
-      if (pos > 0 && run < Infinity) {
-        cArr[pos] = run;
-        cf[pos] = runPos;
-      }
-      if (b[pos] < run) {
-        run = b[pos];
-        runPos = pos;
-      }
-    }
-    B.push(b);
-    Bfrom.push(bf);
-    Bwalk.push(bw);
-    C.push(cArr);
-    Cfrom.push(cf);
-  }
-
-  const last = c.legs[m - 1];
-  const lp = P[last.p];
-  const lrow = last.j * lp.n;
-  const larr = arrV[last.p];
-  const arrCap = Math.min(latestArr, origArr + MAX_REFINE_LATER_SEC);
-  let bestTotal = Infinity;
-  let bestA = -1;
-  for (let a = 1; a < lp.n; a++) {
-    const cv = C[m - 1][a];
-    if (cv === Infinity) continue;
-    const s = lp.stops[a];
-    const e = egressSec[s];
-    if (e < 0) continue;
-    const t = larr[lrow + a];
-    if (t + e > arrCap) continue;
-    const total = cv + t + wr * e;
-    if (total < bestTotal - 1e-6) {
-      bestTotal = total;
-      bestA = a;
-    }
-  }
-  if (bestA < 0) return null;
-
-  const legs: ILeg[] = new Array(m);
-  let a = bestA;
-  for (let li = m - 1; li >= 0; li--) {
-    const l = c.legs[li];
-    const b = Cfrom[li][a];
-    if (b < 0) return null;
-    legs[li] = { p: l.p, j: l.j, b, a, walkIn: li > 0 ? Bwalk[li][b] : 0 };
-    if (li > 0) {
-      a = Bfrom[li][b];
-      if (a < 0) return null;
-    }
-  }
-  return { legs, dest: lp.stops[bestA] };
-}
-
-function footDistanceM(net: RaptorNet, from: number, to: number, walkSec: number): number {
-  const base = net.base;
-  if (from < base.fpCount) {
-    for (let e = base.fpStart[from]; e < base.fpStart[from + 1]; e++) {
-      if (base.fpTo[e] === to) return Math.max(20, base.fpDistM[e]);
-    }
-  }
-  return Math.max(20, Math.round(walkSec * DEFAULT_WALK_SPEED_MPS));
-}
-
-function materialize(
-  store: GtfsStore,
-  net: RaptorNet,
-  depV: Int32Array[],
-  arrV: Int32Array[],
-  c: ICand,
-  accessSec: Int32Array,
-  accessM: Int32Array,
-  egressSec: Int32Array,
-  egressM: Int32Array,
-  t0: number,
-): RawJourney | null {
-  if (!c.legs.length) return null;
-  const P = net.patterns;
-  const ids = net.base.stopIds;
-  const stopName = (s: number) => store.stops.get(ids[s])?.stop_name || 'Przystanek';
-  const segments: JourneySegment[] = [];
-
-  const first = c.legs[0];
-  const firstPat = P[first.p];
-  const firstStop = firstPat.stops[first.b];
-  const firstDep = depV[first.p][first.j * firstPat.n + first.b];
-  if (accessM[firstStop] > 50) {
-    segments.push({
-      type: 'walk',
-      fromStopId: 'origin',
-      fromStopName: 'Twoja lokalizacja',
-      toStopId: ids[firstStop],
-      toStopName: stopName(firstStop),
-      departSec: Math.max(t0, firstDep - accessSec[firstStop]),
-      arriveSec: firstDep,
-      stopsCount: 0,
-      walkMeters: accessM[firstStop],
-    });
-  }
-
-  let prevStop = -1;
-  let prevArr = 0;
-  for (const l of c.legs) {
-    const pat = P[l.p];
-    const row = l.j * pat.n;
-    const from = pat.stops[l.b];
-    const to = pat.stops[l.a];
-    if (prevStop >= 0 && prevStop !== from) {
-      segments.push({
-        type: 'walk',
-        fromStopId: ids[prevStop],
-        fromStopName: stopName(prevStop),
-        toStopId: ids[from],
-        toStopName: stopName(from),
-        departSec: prevArr,
-        arriveSec: prevArr + l.walkIn,
-        stopsCount: 0,
-        walkMeters: footDistanceM(net, prevStop, from, l.walkIn),
-      });
-    }
-    const tripId = pat.tripIds[l.j];
-    const trip = store.trips.get(tripId);
-    const route = store.routes.get(trip?.route_id ?? pat.routeId);
-    const line = route?.route_short_name || 'MPK';
-    segments.push({
-      type: 'transit',
-      tripId,
-      routeId: route?.route_id ?? pat.routeId,
-      line,
-      mode: classifyTransitMode(route?.route_type, line),
-      direction: trip?.trip_headsign || '',
-      fromStopId: ids[from],
-      fromStopName: stopName(from),
-      toStopId: ids[to],
-      toStopName: stopName(to),
-      departSec: depV[l.p][row + l.b],
-      arriveSec: arrV[l.p][row + l.a],
-      stopsCount: l.a - l.b,
-    });
-    prevStop = to;
-    prevArr = arrV[l.p][row + l.a];
-  }
-
-  if (egressM[c.dest] > 50) {
-    segments.push({
-      type: 'walk',
-      fromStopId: ids[c.dest],
-      fromStopName: stopName(c.dest),
-      toStopId: 'destination',
-      toStopName: 'Cel podróży',
-      departSec: prevArr,
-      arriveSec: prevArr + egressSec[c.dest],
-      stopsCount: 0,
-      walkMeters: egressM[c.dest],
-    });
-  }
-
-  return {
-    departureSec: segments[0].departSec,
-    arrivalSec: segments[segments.length - 1].arriveSec,
-    transfers: c.legs.length - 1,
-    segments,
-  };
+  const net = getRaptorNet(
+    store,
+    idx,
+    options.patternTimeOffsets,
+    Math.round(options.timeOffsetSec ?? 0),
+  );
+  const packedQuery = packRaptorQuery(net, origins, destinations, departureTimeSec, options);
+  if (!packedQuery) return [];
+  const res = runRaptorQuerySync(net.id, () => packRaptorNet(net), packedQuery);
+  return unpackJourneys(store, net, Math.round(departureTimeSec), res);
 }
 
 /** Sekundy marszu w podróży (dojście, przesiadki, odejście). */

@@ -48,6 +48,7 @@ modules/*/android/build/
 modules/*/android/.gradle/
 modules/*/android/.cxx/
 modules/*/ios/build/
+modules/*/rust/target/
 
 # generowane dane backendu (pobierane automatycznie: `npm run setup`
 # lub hooki predev/prestart w server/) - nigdy nie commitować
