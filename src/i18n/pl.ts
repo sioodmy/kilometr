@@ -77,6 +77,11 @@ export const pl = {
   settings: {
     title: 'Ustawienia',
     resetA11y: 'Przywróć domyślne',
+    sectionSupport: 'Wsparcie',
+    supportTitle: 'Wesprzyj projekt',
+    supportHint: 'Kilometr jest darmowy. Kawą na Ko-fi pomagasz w dalszym rozwoju.',
+    supportButton: 'Otwórz Ko-fi',
+    supportA11y: 'Otwórz stronę Ko-fi w przeglądarce',
     sectionOffline: 'Offline',
     sectionApp: 'Aplikacja',
     sectionRoute: 'Trasa',

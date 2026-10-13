@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -8,7 +8,9 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
+  Coffee,
   Download,
+  ExternalLink,
   Footprints,
   Minus,
   Plus,
@@ -246,6 +248,30 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
+        <SectionLabel>{s.settings.sectionSupport}</SectionLabel>
+        <View style={styles.card}>
+          <View style={styles.supportHead}>
+            <View style={styles.supportIcon}>
+              <Coffee size={20} color={scheme.onSecondaryContainer} />
+            </View>
+            <View style={styles.settingText}>
+              <Text style={styles.cardTitle}>{s.settings.supportTitle}</Text>
+              <Text style={styles.settingHint}>{s.settings.supportHint}</Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => {
+              void Linking.openURL('https://ko-fi.com/sioodmy').catch(() => {});
+            }}
+            style={({ pressed }) => [styles.downloadBtn, pressed && { opacity: 0.7 }]}
+            accessibilityRole="link"
+            accessibilityLabel={s.settings.supportA11y}
+          >
+            <ExternalLink size={18} color={scheme.onSecondaryContainer} />
+            <Text style={styles.downloadText}>{s.settings.supportButton}</Text>
+          </Pressable>
+        </View>
+
         <SectionLabel>{s.settings.sectionOffline}</SectionLabel>
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{s.settings.dataTitle}</Text>
@@ -554,6 +580,15 @@ const styles = StyleSheet.create({
   cardTitle: { ...type.titleSmall, color: scheme.onSurface, fontWeight: '700' },
   subTitle: { ...type.labelLarge, color: scheme.onSurface, fontWeight: '600' },
   statusText: { ...type.bodyMedium, color: scheme.onSurface },
+  supportHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  supportIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   settingRow: { gap: 10 },
   settingText: { flex: 1, minWidth: 0, gap: 2 },
   settingTitle: { ...type.bodyLarge, color: scheme.onSurface, fontWeight: '500' },

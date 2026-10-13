@@ -79,6 +79,11 @@ export const uk: Strings = {
   settings: {
     title: 'Налаштування',
     resetA11y: 'Відновити типові',
+    sectionSupport: 'Підтримка',
+    supportTitle: 'Підтримай проєкт',
+    supportHint: 'Kilometr безкоштовний. Кава на Ko-fi допомагає розвивати додаток далі.',
+    supportButton: 'Відкрити Ko-fi',
+    supportA11y: 'Відкрити сторінку Ko-fi в браузері',
     sectionOffline: 'Офлайн',
     sectionApp: 'Застосунок',
     sectionRoute: 'Маршрут',
