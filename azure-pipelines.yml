@@ -1,0 +1,405 @@
+# Buildy APK na Azure Pipelines.
+# - preview: uruchamiane komentarzem "build machen !!!" na PR `dev` -> `main`,
+#   przez mostek .github/workflows/dev-preview-comment.yml (kolejkuje ten run
+#   przez REST API). APK leci jako GitHub prerelease `dev-...`, a link ląduje
+#   w komentarzu PR (jeden komentarz, aktualizowany).
+# - ręcznie (Azure DevOps -> Run pipeline): tryb `preview` (dowolny branch),
+#   `artifact-only` (tylko artefakt runu) albo `release` (nightly/prod,
+#   publikuje GitHub Release).
+#
+# Auto-trigger na push jest celowo wylaczony (trigger: none), zeby nie palic
+# minut Azure przy kazdym pushu do dev.
+#
+# Konfiguracja jednorazowa w Azure DevOps (Pipelines -> New pipeline -> GitHub):
+# - zmienna sekretna `GITHUB_TOKEN`: PAT klasyczny z zakresem `repo` (albo
+#   fine-grained: Contents + Issues + Pull requests, zapis); bez niej tryby
+#   preview/release padają
+# - opcjonalna zmienna `TIMETABLE_URL` nadpisuje host rozkładu (domyślnie produkcja)
+name: kilometr-apk-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger: none
+pr: none
+
+parameters:
+  - name: arch
+    displayName: Architektura (arm64-v8a to 99% nowoczesnych telefonów)
+    type: string
+    default: arm64-v8a
+    values:
+      - arm64-v8a
+      - all
+  - name: mode
+    displayName: Tryb (preview buduje dev i komentuje PR, release publikuje wydanie nightly/prod)
+    type: string
+    default: preview
+    values:
+      - preview
+      - artifact-only
+      - release
+
+variables:
+  # Wersje muszą być zgodne z node_modules/react-native/gradle/libs.versions.toml
+  # (compileSdk/targetSdk=36, buildTools=36.0.0, ndkVersion=27.1.12297006)
+  # oraz z CMAKE_VERSION używanym przez react-native (3.30.5).
+  ANDROID_COMPILE_SDK: '36'
+  ANDROID_BUILD_TOOLS: '36.0.0'
+  ANDROID_NDK: '27.1.12297006'
+  ANDROID_CMAKE: '3.30.5'
+  TIMETABLE_URL: 'https://data.kilometr.wroclaw.pl'
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+  - job: build_apk
+    displayName: Build APK
+    timeoutInMinutes: 90
+    steps:
+      # Pełna historia + tagi: potrzebne do auto-semver i notek z conventional commitów.
+      - checkout: self
+        fetchDepth: 0
+        fetchTags: true
+
+      - task: UseNode@1
+        displayName: Use Node.js 20
+        inputs:
+          version: '20.x'
+
+      - task: JavaToolInstaller@0
+        displayName: Use Java 17
+        inputs:
+          versionSpec: '17'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
+
+      # Bramka: APK pobiera bazę z R2 przy starcie, więc nie wypuszczamy
+      # wydania wskazującego na serwer bez realnego KD (MPK-only/atrapa).
+      # Manifest niedostępny = ostrzeżenie (R2 może leżeć); manifest
+      # osiągalny bez KD = twardy błąd.
+      - bash: |
+          set -euo pipefail
+          URL="${TIMETABLE_URL}/manifest.json"
+          if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
+            echo "##vso[task.logissue type=warning]Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
+            exit 0
+          fi
+          node -e '
+            const m = require("/tmp/timetable-manifest.json");
+            const kd = (m.sources && m.sources.kd) || {};
+            const stations = Number(kd.stations || 0);
+            const trips = Number(kd.trips || 0);
+            if (kd.skippedReason || stations <= 0 || trips <= 0) {
+              console.error("Manifest bez realnego KD (skippedReason=" + (kd.skippedReason || "null") + ", stations=" + stations + ", trips=" + trips + "). Nie buduję APK na bazie bez KD.");
+              process.exit(1);
+            }
+            console.log("KD OK: stations=" + stations + ", routes=" + (kd.routes || 0) + ", trips=" + trips + ", interchanges=" + (kd.interchanges || 0));
+          '
+        displayName: Verify timetable has real KD
+        condition: and(succeeded(), eq('${{ parameters.mode }}', 'release'))
+
+      # Obraz hostowany trzyma SDK w $ANDROID_SDK_ROOT, ale cmdline-tools nie ma
+      # na PATH, więc dopisujemy go ręcznie. Domyślny pakiet "tools" zniknął
+      # z repozytorium Google i psuje instalację, więc podajemy pakiety wprost.
+      - bash: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$PATH"
+          if ! command -v sdkmanager >/dev/null 2>&1; then
+            echo "##vso[task.logissue type=error]Brak sdkmanager w $SDK/cmdline-tools/latest/bin"
+            exit 1
+          fi
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-$(ANDROID_COMPILE_SDK)" \
+            "build-tools;$(ANDROID_BUILD_TOOLS)" \
+            "ndk;$(ANDROID_NDK)" \
+            "cmake;$(ANDROID_CMAKE)"
+        displayName: Install Android SDK platforms, build-tools, NDK and CMake
+
+      # Tryby:
+      # preview: tag dev-YYYYMMDD-HHMM-<sha>, prerelease plus komentarz w PR dev -> main.
+      # artifact-only: z dowolnej gałęzi, bez wydania i tagu, tylko artefakt runu.
+      # release: kanał ZAWSZE z gałęzi (nightly/prod), więc nie da się zbudować
+      # "prod" z innego brancha; nowa wersja semver z conventional commitów.
+      - bash: |
+          set -euo pipefail
+          CHANNEL="$(Build.SourceBranchName)"
+          ARCH="${{ parameters.arch }}"
+          MODE="${{ parameters.mode }}"
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+
+          case "$MODE" in
+            preview)
+              CHANNEL="dev"
+              TAG="dev-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+              APK_NAME="kilometr-dev-${ARCH}.apk"
+              PRERELEASE="true"
+              ;;
+            artifact-only)
+              CHANNEL="artifact-only"
+              TAG="test-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+              APK_NAME="kilometr-test.apk"
+              PRERELEASE="true"
+              ;;
+            release)
+              case "$CHANNEL" in
+                nightly|prod) ;;
+                *) echo "##vso[task.logissue type=error]Tryb release dozwolony tylko z gałęzi nightly lub prod (jest: $CHANNEL)."; exit 1 ;;
+              esac
+
+              if [ "$CHANNEL" = "prod" ]; then
+                TAG="$(node .github/scripts/next-version.mjs)"
+                APK_NAME="kilometr-prod.apk"
+                PRERELEASE="false"
+              else
+                TAG="nightly-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+                APK_NAME="kilometr-nightly.apk"
+                PRERELEASE="true"
+              fi
+              ;;
+          esac
+
+          echo "##vso[task.setvariable variable=channel]$CHANNEL"
+          echo "##vso[task.setvariable variable=mode]$MODE"
+          echo "##vso[task.setvariable variable=tag]$TAG"
+          echo "##vso[task.setvariable variable=apk_name]$APK_NAME"
+          echo "##vso[task.setvariable variable=arch]$ARCH"
+          echo "##vso[task.setvariable variable=prerelease]$PRERELEASE"
+          echo "Resolved: mode=$MODE channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE"
+        displayName: Resolve mode, channel, tag, version and asset name
+
+      - task: Cache@2
+        displayName: Cache npm
+        inputs:
+          key: 'npm | "$(Agent.OS)" | package-lock.json'
+          path: $(Pipeline.Workspace)/.npm
+
+      - bash: npm ci
+        displayName: Install Node dependencies
+        env:
+          npm_config_cache: $(Pipeline.Workspace)/.npm
+
+      # Wersja w metadanych APK (versionName/versionCode) zależy od tagu
+      # release'u; app.config.js czyta APP_VERSION.
+      - bash: npx expo prebuild --platform android --clean --no-install
+        displayName: Expo Prebuild
+        env:
+          APP_VERSION: $(tag)
+
+      - task: Cache@2
+        displayName: Cache Gradle
+        inputs:
+          key: 'gradle | "$(Agent.OS)" | android/gradle/wrapper/gradle-wrapper.properties'
+          restoreKeys: |
+            gradle | "$(Agent.OS)"
+          path: $(Pipeline.Workspace)/.gradle
+
+      # Domyślne 2 GB JVM za mało dla równoległej kompilacji C++ (RN 0.86, new arch).
+      # `expo prebuild` generuje gradle.properties BEZ znaku nowej linii na końcu,
+      # więc `cat >>` sklejałby doklejaną właściwość z ostatnią istniejącą
+      # ("expo.inlineModules.watchedDirectories=[]org.gradle.jvmargs=...") i Gradle
+      # czyta tę wartość jako "[]org.gradle.jvmargs=...".
+      - bash: |
+          set -euo pipefail
+          GP=android/gradle.properties
+          printf '\n' >> "$GP"
+          cat >> "$GP" <<'EOF'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          org.gradle.caching=true
+          EOF
+        displayName: Tune Gradle for CI
+
+      - bash: |
+          set -euo pipefail
+          ARCH_FLAG=""
+          if [ "$(arch)" = "arm64-v8a" ]; then
+            echo "Szybki build: kompilacja tylko pod arm64-v8a"
+            ARCH_FLAG="-PreactNativeArchitectures=arm64-v8a"
+          else
+            echo "Pełny build: wszystkie architektury"
+          fi
+
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace $ARCH_FLAG
+        displayName: Build Android Release APK
+        env:
+          GRADLE_USER_HOME: $(Pipeline.Workspace)/.gradle
+
+      - bash: |
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
+          AAPT="${ANDROID_SDK_ROOT}/build-tools/$(ANDROID_BUILD_TOOLS)/aapt"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
+          echo "APK versionName=$APK_VERSION, release tag=$(tag)"
+          if [ "$APK_VERSION" != "$(tag)" ]; then
+            echo "##vso[task.logissue type=error]Wersja APK ($APK_VERSION) nie zgadza się z tagiem release ($(tag))"
+            exit 1
+          fi
+        displayName: Verify APK version matches release tag
+
+      - bash: |
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
+          if [ -z "$APK" ]; then
+            echo "##vso[task.logissue type=error]Nie znaleziono żadnego APK w android/app/build/outputs/apk/release"
+            exit 1
+          fi
+          SIZE="$(du -h "$APK" | cut -f1)"
+          echo "Zbudowano: $APK ($SIZE)"
+          mkdir -p "$(Build.ArtifactStagingDirectory)/apk-dist"
+          cp "$APK" "$(Build.ArtifactStagingDirectory)/apk-dist/$(apk_name)"
+          (cd "$(Build.ArtifactStagingDirectory)/apk-dist" && sha256sum "$(apk_name)" > "$(apk_name).sha256")
+
+          # Kontrakt landingu: przycisk bierze app-release.apk z release "latest".
+          if [ "$(channel)" = "prod" ]; then
+            cp "$(Build.ArtifactStagingDirectory)/apk-dist/$(apk_name)" "$(Build.ArtifactStagingDirectory)/apk-dist/app-release.apk"
+            (cd "$(Build.ArtifactStagingDirectory)/apk-dist" && sha256sum app-release.apk > app-release.apk.sha256)
+          fi
+
+          ls -lh "$(Build.ArtifactStagingDirectory)/apk-dist"
+        displayName: Verify and stage APK
+
+      - bash: |
+          set -euo pipefail
+          node .github/scripts/generate-release-notes.mjs \
+            --tag "$(tag)" \
+            --channel "$(channel)" \
+            --apk-name "$(apk_name)" \
+            --repo "$(Build.Repository.Name)" \
+            --output "$(Build.ArtifactStagingDirectory)/apk-dist/release-notes.md" \
+            --sha-file "$(Build.ArtifactStagingDirectory)/apk-dist/$(apk_name).sha256"
+          echo "--- Wygenerowane Release Notes ---"
+          cat "$(Build.ArtifactStagingDirectory)/apk-dist/release-notes.md"
+        displayName: Generate Release Notes from Conventional Commits
+        condition: and(succeeded(), eq('${{ parameters.mode }}', 'release'))
+
+      - publish: $(Build.ArtifactStagingDirectory)/apk-dist
+        artifact: kilometr-$(channel)-apk
+        displayName: Upload APK Artifact
+        condition: succeeded()
+
+      - bash: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ] || [ "${GH_TOKEN:0:2}" = '$(' ]; then
+            echo "##vso[task.logissue type=error]Tryby preview/release wymagają zmiennej GITHUB_TOKEN (PAT z uprawnieniem repo). Dodaj ją jako sekret w ustawieniach pipeline'u."
+            exit 1
+          fi
+
+          DIST="$(Build.ArtifactStagingDirectory)/apk-dist"
+          NOTES="$DIST/release-notes.md"
+
+          if [ "$(channel)" = "prod" ]; then
+            TITLE="Kilometr $(tag)"
+          elif [ "$(channel)" = "nightly" ]; then
+            TITLE="Kilometr nightly $(tag)"
+          else
+            TITLE="Kilometr dev $(tag)"
+            MSG="$(git log -1 --pretty=%s)"
+            SHORT="$(git rev-parse --short=7 HEAD)"
+            RUN_URL="$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)"
+            {
+              echo "Dev preview z commita \`${SHORT}\`."
+              echo ""
+              echo "$MSG"
+              echo ""
+              echo "[Szczegóły builda w Azure](${RUN_URL})"
+            } > "$NOTES"
+          fi
+
+          PRERELEASE_FLAG=""
+          if [ "$(prerelease)" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          ASSETS=(
+            "${DIST}/$(apk_name)#$(apk_name)"
+            "${DIST}/$(apk_name).sha256#$(apk_name).sha256"
+          )
+          if [ "$(channel)" = "prod" ]; then
+            ASSETS+=(
+              "${DIST}/app-release.apk#app-release.apk"
+              "${DIST}/app-release.apk.sha256#app-release.apk.sha256"
+            )
+          fi
+
+          if gh release view "$(tag)" > /dev/null 2>&1; then
+            echo "Release $(tag) już istnieje, aktualizacja assetów i notek"
+            gh release upload "$(tag)" "${ASSETS[@]}" --clobber
+            gh release edit "$(tag)" --title "$TITLE" --notes-file "$NOTES"
+          else
+            echo "Tworzenie nowego GitHub Release: $(tag)"
+            gh release create "$(tag)" \
+              --title "$TITLE" \
+              --notes-file "$NOTES" \
+              --target "$(Build.SourceVersion)" \
+              $PRERELEASE_FLAG \
+              "${ASSETS[@]}"
+          fi
+
+          gh release view "$(tag)" --json tagName,isPrerelease,assets \
+            --jq '{tag: .tagName, prerelease: .isPrerelease, assets: [.assets[] | .name]}'
+        displayName: Publish GitHub Release
+        condition: and(succeeded(), or(eq('${{ parameters.mode }}', 'preview'), eq('${{ parameters.mode }}', 'release')))
+        env:
+          GH_TOKEN: $(GITHUB_TOKEN)
+          GH_REPO: $(Build.Repository.Name)
+
+      # Komentarz jest jeden na PR: kolejne buildy aktualizują ten sam wpis,
+      # więc wątek nie zamienia się w spam. Marker musi być stały, żeby kolejne
+      # buildy podmieniały istniejący komentarz.
+      - bash: |
+          set -euo pipefail
+          PR_NUMBER="$(gh pr list --head dev --base main --state open --json number --jq '.[0].number // empty' || true)"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Brak otwartego PR dev -> main, pomijam komentarz."
+            exit 0
+          fi
+
+          SHORT="$(git rev-parse --short=7 HEAD)"
+          MSG="$(git log -1 --pretty=%s)"
+          REPO="$(Build.Repository.Name)"
+          RUN_URL="$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)"
+          DOWNLOAD="https://github.com/${REPO}/releases/download/$(tag)/$(apk_name)"
+          MARKER="<!-- dev-preview-apk-comment -->"
+
+          BODY="$(printf '%s\n' \
+            "$MARKER" \
+            "### Dev preview \`${SHORT}\`" \
+            "" \
+            "$MSG" \
+            "" \
+            "- Wersja: \`$(tag)\`" \
+            "- Architektura: \`$(arch)\`" \
+            "- [Pobierz APK](${DOWNLOAD}) (bez logowania)" \
+            "- [Szczegóły builda w Azure](${RUN_URL})")"
+
+          COMMENT_ID="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" | head -n 1 || true)"
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -f body="$BODY" > /dev/null
+            echo "Zaktualizowano komentarz #${COMMENT_ID} w PR #${PR_NUMBER}"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$BODY" > /dev/null
+            echo "Dodano komentarz do PR #${PR_NUMBER}"
+          fi
+        displayName: Comment on dev -> main PR
+        condition: and(succeeded(), eq('${{ parameters.mode }}', 'preview'))
+        env:
+          GH_TOKEN: $(GITHUB_TOKEN)
+          GH_REPO: $(Build.Repository.Name)
+
+      - bash: |
+          set -euo pipefail
+          FILE="$(Agent.TempDirectory)/artifact-only-summary.md"
+          {
+            echo "### APK testowy (bez wydania)"
+            echo ""
+            echo "Pobierz \`$(apk_name)\` z zakładki Artifacts tego runu."
+            echo ""
+            echo "Wersja w APK: \`$(tag)\`."
+          } > "$FILE"
+          echo "##vso[task.uploadsummary]$FILE"
+        displayName: Summarize artifact-only build
+        condition: and(succeeded(), eq('${{ parameters.mode }}', 'artifact-only'))

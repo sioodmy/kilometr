@@ -1,0 +1,77 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Pełne nazwy klas: relatywna nazwa w manifeście biblioteki rozwiązuje się
+       według namespace'u aplikacji, a nie modułu. -->
+  <application>
+    <receiver
+        android:name="pl.wroclaw.kilometr.widgets.NextDepartureWidget"
+        android:exported="false"
+        android:label="@string/kw_next_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/kw_next_info" />
+    </receiver>
+
+    <receiver
+        android:name="pl.wroclaw.kilometr.widgets.DestinationsWidget"
+        android:exported="false"
+        android:label="@string/kw_dest_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/kw_dest_info" />
+    </receiver>
+
+    <receiver
+        android:name="pl.wroclaw.kilometr.widgets.TripWidget"
+        android:exported="false"
+        android:label="@string/kw_trip_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/kw_trip_info" />
+    </receiver>
+
+    <receiver
+        android:name="pl.wroclaw.kilometr.widgets.SearchWidget"
+        android:exported="false"
+        android:label="@string/kw_search_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/kw_search_info" />
+    </receiver>
+
+    <receiver
+        android:name="pl.wroclaw.kilometr.widgets.SavedPlacesWidget"
+        android:exported="false"
+        android:label="@string/kw_saved_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/kw_saved_info" />
+    </receiver>
+
+    <!-- Minutowe tyknięcie odliczania oraz przeliczenie po zmianie zegara
+         albo aktualizacji apki (te broadcasty są zwolnione z limitów Androida 8+). -->
+    <receiver
+        android:name="pl.wroclaw.kilometr.widgets.WidgetTickReceiver"
+        android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.TIME_SET" />
+        <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

@@ -56,6 +56,14 @@ function cacheStops(key: string, stops: LegStop[]) {
   }
 }
 
+/** Ile przystanków przed wsiadaniem widać, zanim pojazd do nas dojedzie. */
+const LEAD_STOPS = 3;
+
+function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
+  const Icon = mode === 'tram' ? TramFront : BusFront;
+  return <Icon size={14} color={scheme.onPrimary} strokeWidth={2.4} />;
+}
+
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
 // Rail ma KRESKĘ CIĄGŁĄ: kropka + łącznik flex:1 rozciągany na wysokość wiersza.
 // Dzięki temu linia jest rzeczywiście połączona przez wszystkie kropki.
@@ -70,10 +78,12 @@ const StopRow = memo(function StopRow({
   connectorAccent,
   vehicleGap,
   vehicleLabel,
+  segmentStart,
 }: {
   stop: LegStop;
   isLast: boolean;
   index: number;
+  segmentStart: number;
   vehicleMode: Leg['mode'];
   inSegment: boolean;
   /** Przystanek startowy albo końcowy odcinka — wyróżniony wagą. */
@@ -83,12 +93,10 @@ const StopRow = memo(function StopRow({
   vehicleGap: number | null;
   vehicleLabel: string;
 }) {
-  const passed = vehicleGap != null && index <= vehicleGap;
-  // Pojazd stojący przed pierwszym przystankiem listy nie ma własnego wiersza,
-  // więc ikonę wieszamy na górze listy zamiast gubić ją poza ekranem.
-  const markerHere =
-    vehicleGap != null && (vehicleGap === index || (vehicleGap < 0 && index === 0));
-  const VehicleIcon = vehicleMode === 'tram' ? TramFront : BusFront;
+  // Przystanki przed wsiadaniem nie należą do naszej trasy, więc są wyszarzone
+  // tak samo jak te, które pojazd już minął.
+  const passed = (vehicleGap != null && index <= vehicleGap) || index < segmentStart;
+  const markerHere = vehicleGap === index && !isLast;
   return (
     <View style={s.stopRow}>
       <View style={s.stopRail}>
@@ -109,7 +117,7 @@ const StopRow = memo(function StopRow({
             accessibilityLabel={vehicleLabel}
             style={s.vehicleMarker}
           >
-            <VehicleIcon size={14} color={scheme.onPrimary} strokeWidth={2.4} />
+            <VehicleGlyph mode={vehicleMode} />
           </View>
         )}
         {!isLast && (
@@ -153,7 +161,9 @@ function LegStopsList({
   const t = useStrings();
   const cacheKey = leg.tripId || leg.id;
   const [stops, setStops] = useState<LegStop[]>(() => stopsCache.get(cacheKey) ?? buildFallbackStops(leg));
-  const [loading, setLoading] = useState(() => !stopsCache.has(cacheKey) && !!leg.tripId);
+  const [loading, setLoading] = useState(
+    () => !stopsCache.has(cacheKey) && !!leg.tripId && !(leg.intermediateStops && leg.intermediateStops.length >= 2),
+  );
   const [vehicle, setVehicle] = useState<TrackedVehicle | null>(null);
   const mounted = useRef(true);
 
@@ -164,14 +174,11 @@ function LegStopsList({
     };
   }, []);
 
-  // Lazy load pełnej sekwencji kursu — raz, wynik w cache modułowym
+  // Lazy load pełnej sekwencji kursu, raz, wynik w cache modułowym. Odcinek
+  // z planu (`intermediateStops`) to tylko wsiadanie-wysiadanie: pokazujemy
+  // go od razu, ale do pozycji pojazdu i przystanków przed wsiadaniem
+  // potrzebny jest cały kurs z czasami.
   useEffect(() => {
-    if (leg.intermediateStops && leg.intermediateStops.length >= 2) {
-      stopsCache.set(cacheKey, leg.intermediateStops);
-      setStops(leg.intermediateStops);
-      setLoading(false);
-      return;
-    }
     const cached = stopsCache.get(cacheKey);
     if (cached) {
       setStops(cached);
@@ -183,7 +190,7 @@ function LegStopsList({
       setLoading(false);
       return;
     }
-    setLoading(true);
+    setLoading(!(leg.intermediateStops && leg.intermediateStops.length >= 2));
     let promise = stopsPromise.get(leg.tripId);
     if (!promise) {
       // Odrzucenie NIE jest zapamiętywane. Wcześniej `.catch(() => [])` trafiał
@@ -222,13 +229,15 @@ function LegStopsList({
   }, [cacheKey, leg]);
 
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const refreshVehicle = () => {
+      const now = Date.now();
+      setNow(now);
       if (!leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus')) {
         setVehicle(null);
         return;
       }
-      const now = Date.now();
       const match = liveTracker.snapshot(leg.line).find(
         (candidate) =>
           candidate.type === leg.mode &&
@@ -244,9 +253,16 @@ function LegStopsList({
   }, [leg.line, leg.mode, leg.tripId]);
 
   const livePosition = useMemo(
-    () => locateLiveStopPosition(stops, leg, vehicle, userLocation),
-    [stops, leg, vehicle, userLocation],
+    () => locateLiveStopPosition(stops, leg, vehicle, userLocation, now),
+    [stops, leg, vehicle, userLocation, now],
   );
+  const vehicleGap = livePosition?.gap ?? null;
+  // Zanim pojazd dojedzie do przystanku wsiadania, pokazujemy też kilka
+  // przystanków wcześniej, żeby było widać, gdzie teraz jest.
+  const showLead = vehicleGap != null && vehicleGap < segment.start;
+  const first = showLead ? Math.max(0, segment.start - LEAD_STOPS) : segment.start;
+  const visible = stops.slice(first, segment.end + 1);
+  const vehicleAbove = vehicleGap != null && vehicleGap < first;
 
   if (loading) {
     return (
@@ -265,21 +281,43 @@ function LegStopsList({
 
   return (
     <View style={s.stopsWrap}>
-      {stops.map((stop, i) => {
+      {vehicleAbove && (
+        <View style={s.stopRow}>
+          <View style={s.stopRail}>
+            <View
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel={first === 0 ? t.leg.vehicleNotStarted : t.leg.vehicleFarBack}
+              style={s.vehicleMarkerLead}
+            >
+              <VehicleGlyph mode={leg.mode} />
+            </View>
+            <View style={[s.connector, { backgroundColor: scheme.outline }]} />
+          </View>
+          <View style={s.stopBody}>
+            <Text style={[s.stopName, s.stopNamePassed]} numberOfLines={1}>
+              {first === 0 ? t.leg.vehicleNotStarted : t.leg.vehicleFarBack}
+            </Text>
+          </View>
+        </View>
+      )}
+      {visible.map((stop, offset) => {
+        const i = first + offset;
         const inSegment = i >= segment.start && i <= segment.end;
         const connectorAccent = i >= segment.start && i + 1 <= segment.end;
         return (
           <StopRow
             key={`${stop.stopId}-${stop.seq}`}
             stop={stop}
-            isLast={i === stops.length - 1}
+            isLast={i === segment.end}
             index={i}
+            segmentStart={segment.start}
             vehicleMode={leg.mode}
             inSegment={inSegment}
             emphasis={i === segment.start || i === segment.end}
             accent={accent}
             connectorAccent={connectorAccent}
-            vehicleGap={livePosition?.gap ?? null}
+            vehicleGap={vehicleGap}
             vehicleLabel={t.leg.vehicleBetween(genericModeGen(t, leg.mode), stop.name, stops[i + 1]?.name ?? stop.name)}
           />
         );
@@ -483,6 +521,17 @@ const s = StyleSheet.create({
     position: 'absolute',
     top: 17,
     left: -1,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: scheme.surface,
+    backgroundColor: scheme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+  },
+  vehicleMarkerLead: {
     width: 24,
     height: 24,
     borderRadius: 12,

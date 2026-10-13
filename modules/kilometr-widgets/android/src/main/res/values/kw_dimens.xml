@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="kw_radius">24dp</dimen>
+    <dimen name="kw_inner_radius">12dp</dimen>
+</resources>

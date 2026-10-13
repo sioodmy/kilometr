@@ -4,7 +4,14 @@ import { RoutingService } from '../api';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
 import type { Connection, RouteQuery, VehiclePosition } from '../../types/models';
-import { buildRoutesLink, mergeWidgetSnapshot, type WidgetPinned } from '../widgetSnapshot';
+import {
+  buildRoutesLink,
+  departureTs,
+  legBadge,
+  mergeWidgetSnapshot,
+  type WidgetPinned,
+} from '../widgetSnapshot';
+import { clockFromMs } from './format';
 import { nowSecOfDay } from '../vehiclePosition';
 import { getNotificationPreferencesSync, loadNotificationPreferences } from './preferences';
 import { computeTripProgress } from './tripProgress';
@@ -129,6 +136,7 @@ async function planTracked(): Promise<Connection | null> {
     trainMinTransferSec: s.trainMinTransferSec,
     maxWalkM: s.maxWalkM,
     walkSpeedMps,
+    routeStyle: s.routeStyle,
   });
   if (conns.length === 0) return null;
 
@@ -390,14 +398,20 @@ async function persist(): Promise<void> {
 /** Sekcja przypięcia w snapshocie widgetów — godziny dokłada odświeżenie. */
 function pushWidgetPinned(trip: TrackedTrip | null): Promise<void> {
   if (!trip) return mergeWidgetSnapshot({ pinned: null });
+  const conn = trip.connection;
+  // Postęp ma już godziny z opóźnieniem live; bez niego liczymy z rozkładu.
+  const departTs = progress?.departAtMs || departureTs(conn);
+  const arriveTs = progress?.arriveAtMs || departTs + conn.durationMin * 60_000;
   const section: WidgetPinned = {
     fromTitle: trip.fromTitle,
     toTitle: trip.toTitle,
-    departAt: trip.connection.departAt,
-    arriveAt: trip.connection.arriveAt,
-    durationMin: trip.connection.durationMin,
-    delayMin: trip.connection.delayMin,
-    live: trip.connection.live,
+    departTs,
+    arriveTs,
+    departAt: clockFromMs(departTs) || conn.departAt,
+    arriveAt: clockFromMs(arriveTs) || conn.arriveAt,
+    delayMin: conn.delayMin,
+    live: conn.live,
+    legs: conn.legs.map(legBadge),
     deepLink: buildRoutesLink({
       fromTitle: trip.fromTitle,
       fromLat: trip.fromLat,

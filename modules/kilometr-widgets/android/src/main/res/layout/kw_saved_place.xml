@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Duży cel dotyku z ikoną miejsca i krótką nazwą. Kafel pozostaje płaski,
+     bo kolorowe koło ikony wystarcza do odróżnienia akcji od tła widgetu. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/kw_saved_place"
+    android:layout_width="0dp"
+    android:layout_height="match_parent"
+    android:layout_weight="1"
+    android:gravity="center"
+    android:minWidth="52dp"
+    android:minHeight="52dp"
+    android:orientation="vertical"
+    android:paddingHorizontal="3dp"
+    android:paddingVertical="3dp">
+
+    <FrameLayout
+        android:layout_width="34dp"
+        android:layout_height="34dp">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:src="@drawable/kw_circle" />
+
+        <ImageView
+            android:id="@+id/kw_saved_place_icon"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
+            android:src="@drawable/kw_ic_home"
+            android:tint="@color/kw_on_primary_container" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/kw_saved_place_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/kw_on_surface"
+        android:textSize="12sp" />
+</LinearLayout>

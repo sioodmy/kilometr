@@ -174,7 +174,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         key={attempt}
         ref={webRef}
         style={styles.web}
-        source={{ html }}
+        // baseUrl = origin dokumentu. Bez niego WebView ma origin null i
+        // fetch kafelków z 127.0.0.1 pada na CORS (czarna mapa offline).
+        source={offlineBase ? { html, baseUrl: `${offlineBase}/` } : { html }}
         originWhitelist={['*']}
         onMessage={handleMessage}
         onShouldStartLoadWithRequest={() => {
