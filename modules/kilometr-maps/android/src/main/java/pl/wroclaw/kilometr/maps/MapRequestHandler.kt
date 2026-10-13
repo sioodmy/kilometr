@@ -9,8 +9,11 @@ import java.io.File
  *   `/tiles/z/x/y.pbf` kafel z archiwum KMTP,
  *   `/assets/...`      silnik mapy, style i glify z filesDir/maps.
  *
- * Wszystko idzie z 127.0.0.1, więc przeglądarka nie pyta o CORS.
- * `assetsRoot` to katalog pobranego zestawu (filesDir/maps).
+ * WebView z `source={{ html }}` ma origin `null` / `about:blank`, więc
+ * fetch kafelków z 127.0.0.1 to cross-origin. Bez CORS MapLibre dostaje
+ * puste odpowiedzi i mapa zostaje czarna (sam kolor landu). Odpowiedzi
+ * dostają `Access-Control-Allow-Origin: *` — lokalny serwer i tak nasłuchuje
+ * tylko na pętli zwrotnej.
  */
 class MapRequestHandler(
     private val pack: TilePack,
@@ -18,6 +21,10 @@ class MapRequestHandler(
 ) : NanoHTTPD(ANY_PORT) {
 
     override fun serve(session: IHTTPSession): Response {
+        // Preflight z WebView/Chromium (rzadki przy prostym GET, ale tani).
+        if (session.method == Method.OPTIONS) {
+            return cors(newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, ""))
+        }
         val path = session.uri ?: return notFound()
         return when {
             path.startsWith("/tiles/") -> serveTile(path)
@@ -36,11 +43,13 @@ class MapRequestHandler(
         if (z < 0 || z > 22) return notFound()
 
         val data = pack.tile(z, x, y) ?: return notFound()
-        return newFixedLengthResponse(
-            Response.Status.OK,
-            MIME_PBF,
-            ByteArrayInputStream(data),
-            data.size.toLong(),
+        return cors(
+            newFixedLengthResponse(
+                Response.Status.OK,
+                MIME_PBF,
+                ByteArrayInputStream(data),
+                data.size.toLong(),
+            ),
         )
     }
 
@@ -52,11 +61,13 @@ class MapRequestHandler(
         val root = assetsRoot ?: return notFound()
         val f = File(root, name)
         if (!f.exists()) return notFound()
-        return newFixedLengthResponse(
-            Response.Status.OK,
-            mimeOf(name),
-            f.inputStream(),
-            f.length(),
+        return cors(
+            newFixedLengthResponse(
+                Response.Status.OK,
+                mimeOf(name),
+                f.inputStream(),
+                f.length(),
+            ),
         )
     }
 
@@ -68,7 +79,14 @@ class MapRequestHandler(
         else -> "application/octet-stream"
     }
 
-    private fun notFound() = newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "")
+    private fun notFound() = cors(newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, ""))
+
+    private fun cors(response: Response): Response {
+        response.addHeader("Access-Control-Allow-Origin", "*")
+        response.addHeader("Access-Control-Allow-Methods", "GET, OPTIONS")
+        response.addHeader("Access-Control-Allow-Headers", "*")
+        return response
+    }
 
     private companion object {
         const val ANY_PORT = 0

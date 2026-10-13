@@ -23,7 +23,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { scheme, shape, type } from '../../src/theme/tokens';
+import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
 import {
   FavoritesService,
@@ -408,6 +408,7 @@ export default function RoutesScreen() {
       maxWalkM: cfg.maxWalkM,
       // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).
       walkSpeedMps: profileWalkSpeedMps(cfg.walkPace),
+      routeStyle: cfg.routeStyle,
     };
   };
 
@@ -1057,7 +1058,12 @@ export default function RoutesScreen() {
               : new FadeInUp().duration(280).delay(stagger)
           }
         >
-          <ConnectionCard item={item} dimmed={past} onPress={openConnection} tick={nowTick} />
+          <ConnectionCard
+            item={item}
+            dimmed={past}
+            onPress={openConnection}
+            tick={nowTick}
+          />
         </Animated.View>
       );
     },
@@ -1238,9 +1244,33 @@ export default function RoutesScreen() {
 
       {/* 3. Lista połączeń */}
       {loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={scheme.primary} />
+        <View style={styles.skeletonList}>
           <Text style={styles.loadingText}>{s.routes.searching}</Text>
+          <View style={styles.skelCard}>
+            <View style={styles.skelRow}>
+              <View style={[styles.skel, { width: 96, height: 22 }]} />
+              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+            </View>
+            <View style={[styles.skel, { width: '70%', height: 12, marginTop: 10 }]} />
+            <View style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]} />
+            <View style={[styles.skel, { width: '55%', height: 28, marginTop: 12, borderRadius: shape.small }]} />
+          </View>
+          <View style={styles.skelCard}>
+            <View style={styles.skelRow}>
+              <View style={[styles.skel, { width: 84, height: 22 }]} />
+              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+            </View>
+            <View style={[styles.skel, { width: '62%', height: 12, marginTop: 10 }]} />
+            <View style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]} />
+            <View style={[styles.skel, { width: '72%', height: 28, marginTop: 12, borderRadius: shape.small }]} />
+          </View>
+          <View style={[styles.skelCard, { opacity: 0.55 }]}>
+            <View style={styles.skelRow}>
+              <View style={[styles.skel, { width: 72, height: 22 }]} />
+              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+            </View>
+            <View style={[styles.skel, { width: '50%', height: 12, marginTop: 10 }]} />
+          </View>
         </View>
       ) : loadError ? (
         <View style={styles.emptyContainer}>
@@ -1527,14 +1557,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 12,
   },
-  // Malutki, delikatny podpis pod togglem — tylko info o aktywnym trybie.
   sortLabel: {
-    marginTop: 2,
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '500',
+    marginTop: 3,
+    ...type.labelSmall,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
-    opacity: 0.65,
     textAlign: 'center',
   },
   // Pinezka 1:1 ze strzałką wstecz — dwa okrągłe akcje na końcach paska.
@@ -1578,21 +1605,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  // Nagłówek trasy w stylu One UI: bez tła, jedna linia.
-  // Wysokość jak dawny box (~64), większy font, luźny oddech z boków.
-  // Wiersz startuje od góry (flex-start), a obie kolumny mają ten sam
-  // paddingTop — dzięki temu tytuły od→do stoją ZAWSZE w jednej linii,
-  // także z dopiską kotwicy (ona rośnie w dół, nie rozpycha środków).
-  // Matematyka jak stare centrowanie: tytuł od 21 px, strzałka od 16 px.
+  // Kontekst trasy jako miękki blok powierzchni: oddziela „skąd→dokąd”
+  // od listy wyników, bez drugiej karty-pigułki.
   routeHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     minHeight: 68,
-    marginHorizontal: 2,
+    marginHorizontal: 14,
     marginTop: 4,
-    marginBottom: 6,
+    marginBottom: 8,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.large,
   },
   routeSide: {
     flexShrink: 1,
@@ -1647,33 +1672,56 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 14,
-    gap: 10,
+    gap: 8,
   },
   footer: { paddingVertical: 18, alignItems: 'center', gap: 10 },
   footerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
-  loading: {
+  skeletonList: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingTop: 8,
     gap: 10,
   },
+  skelCard: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.large,
+    padding: 14,
+    ...elev.level1,
+  },
+  skelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skel: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.small,
+  },
   loadingText: {
-    ...type.titleMedium,
-    color: scheme.onSurface,
+    ...type.labelLarge,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    marginBottom: 4,
+    paddingHorizontal: 4,
   },
   emptyContainer: {
-    padding: 32,
+    paddingHorizontal: 28,
+    paddingVertical: 40,
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   emptyTitle: {
     ...type.titleMedium,
+    fontWeight: '700',
     color: scheme.onSurface,
+    textAlign: 'center',
   },
   emptySub: {
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 320,
   },
   retryBtn: {
     backgroundColor: scheme.primary,

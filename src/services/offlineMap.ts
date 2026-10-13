@@ -8,9 +8,12 @@
 //
 // Po pobraniu natywny serwer mapy serwuje je z filesDir/maps, więc mapa działa
 // bez internetu. Bez zestawu mapa dalej działa, tylko online.
+//
+// Pakiet z R2 ma twardy limit (downloadLimits): raz pobrany starczy na długo.
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { MAP_GLYPHS_URL } from '../config';
+import { getMapDownloadGate, markMapDownloaded } from './downloadLimits';
 
 /** Katalog, z którego czyta natywny serwer mapy (filesDir/maps). */
 export const MAP_DIR_NAME = 'maps';
@@ -30,6 +33,11 @@ export interface OfflineMapProgress {
   progress: number;
   label: string;
 }
+
+export type OfflineMapDownloadResult =
+  | { ok: true }
+  | { ok: false; reason: 'fail' }
+  | { ok: false; reason: 'cooldown'; retryAfterMs: number };
 
 /** `file:///.../files/maps/` — ten sam katalog co filesDir natywnego serwera. */
 function mapsUri(): string {
@@ -81,14 +89,22 @@ async function downloadTo(url: string, dest: string): Promise<boolean> {
 }
 
 /**
- * Pobiera cały zestaw mapy offline. Zwraca true, gdy pakiet kafelków jest na
+ * Pobiera cały zestaw mapy offline. Zwraca ok, gdy pakiet kafelków jest na
  * miejscu. Silnik i glify są potrzebne do rysowania, ale brak któregoś z nich
  * nie przerywa całości: mapa po prostu nie pokaże etykiet albo w ogóle się
  * nie narysuje, więc brak silnika traktujemy jako porażkę.
+ *
+ * Limit R2: kolejne udane pobranie pakietu dopiero po miesiącu
+ * (nawet po usunięciu lokalnych plików).
  */
 export async function downloadOfflineMap(
   onProgress?: (p: OfflineMapProgress) => void,
-): Promise<boolean> {
+): Promise<OfflineMapDownloadResult> {
+  const gate = await getMapDownloadGate();
+  if (!gate.allowed) {
+    return { ok: false, reason: 'cooldown', retryAfterMs: gate.retryAfterMs };
+  }
+
   const report = (progress: number, label: string) => onProgress?.({ progress, label });
   const root = mapsUri();
   await ensureDir(root);
@@ -104,7 +120,7 @@ export async function downloadOfflineMap(
     `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`,
     `${root}maplibre-gl.css`,
   );
-  if (!jsOk) return false;
+  if (!jsOk) return { ok: false, reason: 'fail' };
 
   // 2. Glify: po jednym pliku na font i zakres.
   let done = 0;
@@ -126,11 +142,13 @@ export async function downloadOfflineMap(
   // 3. Pakiet kafelków: największy, więc na końcu.
   report(0.35, 'kafle Wrocławia');
   const ok = await downloadTo(TILE_PACK_URL, `${root}${TILE_PACK_NAME}`);
-  if (ok) report(1, 'gotowe');
-  return ok;
+  if (!ok) return { ok: false, reason: 'fail' };
+  await markMapDownloaded();
+  report(1, 'gotowe');
+  return { ok: true };
 }
 
-/** Usuwa zestaw mapy offline (odzyskanie ~31 MB). */
+/** Usuwa zestaw mapy offline (odzyskanie ~31 MB). Znacznik limitu zostaje. */
 export async function deleteOfflineMap(): Promise<void> {
   try {
     await FileSystem.deleteAsync(mapsUri(), { idempotent: true });

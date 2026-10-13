@@ -134,16 +134,67 @@ function projectToStops(
   return best;
 }
 
-function adjacentStopGap(stops: LegStop[], currentName?: string, nextName?: string): number {
+/**
+ * Para „bieżący → następny” z matchera. Na liniach z pętlą ta sama para nazw
+ * potrafi wystąpić dwa razy, więc przy kilku kandydatach wygrywa ten bliższy
+ * współrzędnym pojazdu.
+ */
+function adjacentStopGap(
+  stops: LegStop[],
+  currentName: string | undefined,
+  nextName: string | undefined,
+  lat: number,
+  lon: number,
+): number {
   if (!currentName || !nextName) return -1;
   const current = normalizeName(currentName);
   const next = normalizeName(nextName);
+  let best = -1;
+  let bestDistance = Infinity;
   for (let i = 0; i < stops.length - 1; i++) {
-    if (normalizeName(stops[i].name) === current && normalizeName(stops[i + 1].name) === next) {
-      return i;
+    if (normalizeName(stops[i].name) !== current || normalizeName(stops[i + 1].name) !== next) continue;
+    const projection = projectToStops(stops, lat, lon, i, i + 1);
+    const distance = projection?.distanceM ?? Number.MAX_VALUE;
+    if (best < 0 || distance < bestDistance) {
+      best = i;
+      bestDistance = distance;
     }
   }
-  return -1;
+  return best;
+}
+
+/** Czas odjazdu z przystanku według rozkładu (GTFS potrafi przekraczać 24:00). */
+function stopTimeSec(stop: LegStop): number | undefined {
+  return stop.departSec ?? stop.arriveSec;
+}
+
+/**
+ * Szacunek z rozkładu całego kursu: pojazd jest za ostatnim przystankiem,
+ * którego odjazd już minął. Przesunięcie o różnicę między efektywnym odjazdem
+ * nogi (z opóźnieniem) a rozkładowym odjazdem z przystanku wsiadania.
+ */
+function estimateGapFromStopTimes(stops: LegStop[], leg: Leg, window: LegWindow, now: number): number | null {
+  const times = stops.map(stopTimeSec);
+  if (times.some((t) => t == null)) return null;
+  const boardingDeparture = parseHMtoSec(leg.departAt);
+  const scheduledBoarding = times[window.start]!;
+  let offset = 0;
+  if (boardingDeparture != null) {
+    const diff = ((boardingDeparture - (scheduledBoarding % 86400) + 129600) % 86400) - 43200;
+    if (Math.abs(diff) <= 1800) offset = diff;
+  }
+  let current = nowSecOfDay(new Date(now));
+  if (times[0]! >= 86400 && current < 43200) current += 86400;
+  const first = times[0]! + offset;
+  const boarding = scheduledBoarding + offset;
+  const last = times[times.length - 1]! + offset;
+  if (current < boarding - 3600 || current > last + 600) return null;
+  if (current < first) return -1;
+  let gap = 0;
+  for (let i = 0; i < times.length; i++) {
+    if (times[i]! + offset <= current) gap = i;
+  }
+  return gap;
 }
 
 interface LegWindow {
@@ -174,10 +225,53 @@ function estimateGap(leg: Leg, window: LegWindow, now: number): number | null {
 }
 
 /**
- * Pozycja do rozwijanej osi przystanków. API wygrywa, gdy pojazd jest świeży
- * i przypisany do tego kursu. GPS telefonu koryguje brak feedu tylko wtedy,
- * gdy fix jest dokładny, świeży, wskazuje jazdę i leży na odcinku tej nogi.
- * Gdy ani jedno ani drugie nic nie daje, zostaje szacunek z rozkładu.
+ * Czy telefon pasażera już jedzie tym pojazdem: pomiar dokładny i świeży,
+ * prędkość jazdy, pozycja w korytarzu naszego odcinka i kierunek zgodny
+ * z trasą. Okno czasu ma zapas na opóźnienie, żeby pasażer w spóźnionym
+ * tramwaju nie wypadał z własnej nogi.
+ */
+function ridingDeviceGap(
+  stops: LegStop[],
+  leg: Leg,
+  window: LegWindow,
+  location: CurrentLocation | null,
+  now: number,
+): number | null {
+  if (!location || location.accuracy == null || location.accuracy > 25) return null;
+  if (window.end <= window.start) return null;
+  const age = now - location.timestamp;
+  if (age < 0 || age > 15_000) return null;
+  if (location.speed == null || location.speed < 2.2 || location.speed > 25) return null;
+
+  const departure = parseHMtoSec(leg.departAt);
+  const arrival = parseHMtoSec(leg.arriveAt);
+  const current = nowSecOfDay(new Date(now));
+  const withinLeg =
+    departure != null && arrival != null && arrival > departure
+      ? current >= departure - 180 && current <= arrival + 600
+      : true;
+  if (!withinLeg) return null;
+
+  const projection = projectToStops(stops, location.lat, location.lon, window.start, window.end);
+  if (!projection) return null;
+  // Prosta między słupkami ucieka od torowiska na łukach ulicy, więc dawny
+  // próg 18 m odrzucał niemal każdy pomiar w jadącym tramwaju. Korytarz jak
+  // dla współrzędnych pojazdu z API.
+  if (projection.distanceM > 120) return null;
+  if (!headingMatchesRoute(stops, projection.gap, location.heading, location.speed)) return null;
+  return projection.gap;
+}
+
+/**
+ * Pozycja do rozwijanej osi przystanków. Kolejność źródeł:
+ *
+ * 1. GPS telefonu pasażera, który już jedzie tym pojazdem: z wnętrza
+ *    tramwaju nie da się znać jego pozycji lepiej, więc pasażer wygrywa
+ *    z feedem (pomyłka matchera albo nieświeży odczyt pokazywały inną
+ *    pozycję niż ta, w której pasażer faktycznie jedzie).
+ * 2. API (MPK, awaryjnie zbiorkom.live), gdy pojazd jest świeży
+ *    i przypisany do tego kursu.
+ * 3. Szacunek z rozkładu.
  */
 export function locateLiveStopPosition(
   stops: LegStop[],
@@ -188,8 +282,19 @@ export function locateLiveStopPosition(
 ): LiveStopPosition | null {
   if (stops.length < 2 || (leg.mode !== 'tram' && leg.mode !== 'bus')) return null;
 
+  const window = findUserSegment(stops, leg);
+
+  const riding = ridingDeviceGap(stops, leg, window, location, now);
+  if (riding != null) return { gap: riding, source: 'device' };
+
   if (vehicle && now - vehicle.updatedAt >= 0 && now - vehicle.updatedAt <= 120_000) {
-    const namedGap = adjacentStopGap(stops, vehicle.currentStopName, vehicle.nextStopName);
+    const namedGap = adjacentStopGap(
+      stops,
+      vehicle.currentStopName,
+      vehicle.nextStopName,
+      vehicle.lat,
+      vehicle.lon,
+    );
     if (namedGap >= 0) return { gap: namedGap, source: 'vehicle' };
 
     const projection = projectToStops(stops, vehicle.lat, vehicle.lon);
@@ -198,31 +303,10 @@ export function locateLiveStopPosition(
     }
   }
 
-  const window = findUserSegment(stops, leg);
-
-  if (location && location.accuracy != null && location.accuracy <= 25) {
-    const fresh = now - location.timestamp >= 0 && now - location.timestamp <= 15_000;
-    const moving = location.speed != null && location.speed >= 2.2 && location.speed <= 25;
-    if (fresh && moving && window.end > window.start) {
-      const departure = parseHMtoSec(leg.departAt);
-      const arrival = parseHMtoSec(leg.arriveAt);
-      const current = nowSecOfDay(new Date(now));
-      const withinLeg =
-        departure != null && arrival != null && arrival > departure
-          ? current >= departure - 180 && current <= arrival + 180
-          : true;
-
-      if (withinLeg) {
-        const projection = projectToStops(stops, location.lat, location.lon, window.start, window.end);
-        if (projection && projection.distanceM <= Math.max(18, location.accuracy + 5)) {
-          const headingFits = headingMatchesRoute(stops, projection.gap, location.heading, location.speed);
-          if (headingFits) return { gap: projection.gap, source: 'device' };
-        }
-      }
-    }
-  }
-
-  const estimate = estimateGap(leg, window, now);
+  const hasStopTimes = stops.length > 2 && stops.every((stop) => stopTimeSec(stop) != null);
+  const estimate = hasStopTimes
+    ? estimateGapFromStopTimes(stops, leg, window, now)
+    : estimateGap(leg, window, now);
   if (estimate == null) return null;
   return { gap: estimate, source: 'estimate' };
 }

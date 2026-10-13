@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { kvGet, kvSet } from './storage';
+import type { RouteStyle } from './routing/types';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -52,6 +53,8 @@ export interface RoutingSettings {
    * wzorce na poziomie skanowania.
    */
   cableEnabled: boolean;
+  /** Wagi spaceru i przesiadek w koszcie planera. Default 'balanced'. */
+  routeStyle: RouteStyle;
 }
 
 export const DEFAULT_SETTINGS: RoutingSettings = {
@@ -63,6 +66,7 @@ export const DEFAULT_SETTINGS: RoutingSettings = {
   trainsEnabled: true,
   trainMinTransferSec: 300,
   cableEnabled: true,
+  routeStyle: 'balanced',
 };
 
 export const SETTINGS_LIMITS = {
@@ -81,6 +85,7 @@ function clampInt(value: unknown, def: number, min: number, max: number): number
 }
 
 const WALK_PACES: readonly WalkPaceProfile[] = ['slow', 'normal', 'fast'];
+export const ROUTE_STYLES: readonly RouteStyle[] = ['fastest', 'balanced', 'lessWalking', 'fewerTransfers'];
 
 /** Stare tempo (m/s) na profil: migracja danych z wcześniejszych wersji. */
 function paceFromLegacyMps(mps: number): WalkPaceProfile {
@@ -109,6 +114,7 @@ function clampSettings(s: StoredSettings): RoutingSettings {
     trainsEnabled: typeof s.trainsEnabled === 'boolean' ? s.trainsEnabled : DEFAULT_SETTINGS.trainsEnabled,
     trainMinTransferSec: clampInt(s.trainMinTransferSec, DEFAULT_SETTINGS.trainMinTransferSec, SETTINGS_LIMITS.trainMinTransferSec.min, SETTINGS_LIMITS.trainMinTransferSec.max),
     cableEnabled: typeof s.cableEnabled === 'boolean' ? s.cableEnabled : DEFAULT_SETTINGS.cableEnabled,
+    routeStyle: ROUTE_STYLES.includes(s.routeStyle as RouteStyle) ? (s.routeStyle as RouteStyle) : DEFAULT_SETTINGS.routeStyle,
   };
 }
 

@@ -1,6 +1,6 @@
 // Karta „Mapa offline” w Ustawieniach: pobierz albo usuń zestaw kafelków
-// Wrocławia. Bez pobrania mapa działa tylko online, więc karta jest opcjonalna,
-// ale to jedyne miejsce, z którego użytkownik może włączyć tryb offline.
+// Wrocławia. Bez pobrania mapa działa tylko online. Po udanym pobraniu nie ma
+// przycisku „pobierz ponownie” (limit R2: raz na miesiąc).
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -14,6 +14,7 @@ import {
 import { Download, MapPinned, Trash2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
+import { getMapDownloadGate, remainingDays } from '../services/downloadLimits';
 import {
   deleteOfflineMap,
   downloadOfflineMap,
@@ -24,11 +25,14 @@ import {
 export function OfflineMapCard() {
   const s = useStrings();
   const [ready, setReady] = useState<boolean | null>(null);
+  const [cooldownMs, setCooldownMs] = useState(0);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const refresh = useCallback(async () => {
     setReady(await hasOfflineMap());
+    const gate = await getMapDownloadGate();
+    setCooldownMs(gate.allowed ? 0 : gate.retryAfterMs);
   }, []);
 
   useEffect(() => {
@@ -40,8 +44,19 @@ export function OfflineMapCard() {
     setBusy(true);
     setProgress(0);
     try {
-      const ok = await downloadOfflineMap((p: OfflineMapProgress) => setProgress(p.progress));
-      if (!ok) Alert.alert(s.settings.offlineMapFailTitle, s.settings.offlineMapFailBody);
+      const result = await downloadOfflineMap((p: OfflineMapProgress) => setProgress(p.progress));
+      if (result.ok) {
+        await refresh();
+        return;
+      }
+      if (result.reason === 'cooldown') {
+        Alert.alert(
+          s.settings.offlineMapCooldownTitle,
+          s.settings.offlineMapCooldownBody(remainingDays(result.retryAfterMs)),
+        );
+      } else {
+        Alert.alert(s.settings.offlineMapFailTitle, s.settings.offlineMapFailBody);
+      }
       await refresh();
     } catch {
       Alert.alert(s.settings.offlineMapFailTitle, s.settings.offlineMapFailBody);
@@ -67,6 +82,7 @@ export function OfflineMapCard() {
   }, [refresh, s]);
 
   const pct = Math.round(progress * 100);
+  const blocked = !ready && cooldownMs > 0;
 
   return (
     <View style={styles.card}>
@@ -77,7 +93,11 @@ export function OfflineMapCard() {
         <View style={styles.titleWrap}>
           <Text style={styles.title}>{s.settings.offlineMapTitle}</Text>
           <Text style={styles.hint}>
-            {ready ? s.settings.offlineMapReady : s.settings.offlineMapHint}
+            {ready
+              ? s.settings.offlineMapReady
+              : blocked
+                ? s.settings.offlineMapCooldownBody(remainingDays(cooldownMs))
+                : s.settings.offlineMapHint}
           </Text>
         </View>
       </View>
@@ -87,7 +107,19 @@ export function OfflineMapCard() {
           <ActivityIndicator size="small" color={scheme.primary} />
           <Text style={styles.progressText}>{s.settings.offlineMapDownloading(pct)}</Text>
         </View>
-      ) : (
+      ) : ready ? (
+        <View style={styles.actions}>
+          <Pressable
+            onPress={handleDelete}
+            style={({ pressed }) => [styles.deleteBtnWide, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel={s.settings.offlineMapDeleteA11y}
+          >
+            <Trash2 size={16} color={scheme.error} />
+            <Text style={styles.deleteText}>{s.settings.offlineMapDelete}</Text>
+          </Pressable>
+        </View>
+      ) : blocked ? null : (
         <View style={styles.actions}>
           <Pressable
             onPress={() => void handleDownload()}
@@ -96,20 +128,8 @@ export function OfflineMapCard() {
             accessibilityLabel={s.settings.offlineMapDownloadA11y}
           >
             <Download size={16} color={scheme.onPrimary} />
-            <Text style={styles.primaryText}>
-              {ready ? s.settings.offlineMapRefresh : s.settings.offlineMapDownload}
-            </Text>
+            <Text style={styles.primaryText}>{s.settings.offlineMapDownload}</Text>
           </Pressable>
-          {ready ? (
-            <Pressable
-              onPress={handleDelete}
-              style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.85 }]}
-              accessibilityRole="button"
-              accessibilityLabel={s.settings.offlineMapDeleteA11y}
-            >
-              <Trash2 size={16} color={scheme.error} />
-            </Pressable>
-          ) : null}
         </View>
       )}
     </View>
@@ -150,14 +170,17 @@ const styles = StyleSheet.create({
     height: 44,
   },
   primaryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
-  deleteBtn: {
-    width: 44,
+  deleteBtnWide: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
+  deleteText: { ...type.labelLarge, fontWeight: '700', color: scheme.error },
 });
 
 export default OfflineMapCard;

@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  4x2: śledzona podróż. Na pierwszym planie odliczanie (odjazd albo przyjazd),
+  pod nim przesiadki jako ciąg badge'y linii i pasek postępu jak w Live Update.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/kw_bg">
+
+    <LinearLayout
+        android:id="@+id/kw_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/kw_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:textColor="@color/kw_on_surface"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/kw_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:textColor="@color/kw_on_surface_variant"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/kw_depart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:textColor="@color/kw_on_surface"
+                android:textSize="24sp" />
+
+            <ImageView
+                android:id="@+id/kw_arrow"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginHorizontal="6dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/kw_ic_arrow"
+                android:tint="@color/kw_on_surface_variant" />
+
+            <TextView
+                android:id="@+id/kw_arrive"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:textColor="@color/kw_on_surface_variant"
+                android:textSize="24sp" />
+
+            <TextView
+                android:id="@+id/kw_phase"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="end"
+                android:maxLines="1"
+                android:textColor="@color/kw_primary"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <LinearLayout
+            android:id="@+id/kw_legs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
+
+        <ProgressBar
+            android:id="@+id/kw_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="10dp"
+            android:max="1000"
+            android:progressDrawable="@drawable/kw_progress" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/kw_empty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/kw_ic_route"
+            android:tint="@color/kw_primary" />
+
+        <TextView
+            android:id="@+id/kw_empty_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/kw_trip_label"
+            android:textColor="@color/kw_on_surface"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/kw_empty_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/kw_open_app"
+            android:textColor="@color/kw_on_surface_variant"
+            android:textSize="13sp" />
+    </LinearLayout>
+</FrameLayout>

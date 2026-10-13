@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Role jak w src/theme/dynamic.ts (M3 dark): powierzchnia N10, kontener N20,
+  tekst N90 / NV80, akcent A80, kontener akcentu A30 z tekstem A90.
+  Sufiks zasobu to odwrócony ton: system_neutral1_900 = ton 10.
+-->
+<resources>
+    <color name="kw_surface">@android:color/system_neutral1_900</color>
+    <color name="kw_surface_high">@android:color/system_neutral1_800</color>
+    <color name="kw_on_surface">@android:color/system_neutral1_100</color>
+    <color name="kw_on_surface_variant">@android:color/system_neutral2_200</color>
+    <color name="kw_primary">@android:color/system_accent1_200</color>
+    <color name="kw_primary_container">@android:color/system_accent1_700</color>
+    <color name="kw_on_primary_container">@android:color/system_accent1_100</color>
+</resources>

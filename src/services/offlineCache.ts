@@ -69,13 +69,15 @@ export function connectionCacheKey(q: RouteQuery): string {
     q.modes ?? '',
     q.maxWalkM ?? '',
     q.anchorStopId ?? '',
+    q.routeStyle ?? '',
   ].join('|');
 }
 
 export async function saveConnections(query: RouteQuery, list: Connection[]): Promise<void> {
   try {
+    const savedAt = Date.now();
     const all = (await readJSON<Record<string, Stamped<Connection[]>>>(KEYS.connections)) ?? {};
-    all[connectionCacheKey(query)] = { savedAt: Date.now(), data: list };
+    all[connectionCacheKey(query)] = { savedAt, data: list };
     // LRU: wywal najstarsze nad limit
     const keys = Object.keys(all);
     if (keys.length > MAX_CACHED_QUERIES) {
@@ -85,6 +87,10 @@ export async function saveConnections(query: RouteQuery, list: Connection[]): Pr
         .forEach((k) => delete all[k]);
     }
     await kvSet(KEYS.connections, JSON.stringify(all));
+    // Linie z wyników idą do filtra aktualności (ostatnie 2 tygodnie).
+    void import('./recentRouteLines').then(({ rememberLinesFromConnections }) =>
+      rememberLinesFromConnections(list, savedAt),
+    );
   } catch {
     // cache best-effort
   }
