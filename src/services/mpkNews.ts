@@ -108,11 +108,12 @@ export function isTransitNews(title: string, description: string): boolean {
   return TRANSIT_RE.test(`${title} ${description}`);
 }
 
-/** Tytuły z mpk.wroc.pl często zaczynają się od daty, którą i tak pokazujemy w chipie. */
+/** Daty z mpk.wroc.pl i ogonki typu „| ZDJĘCIA, AKTUALIZACJA” z portalu miasta. */
 export function cleanNewsTitle(title: string): string {
   const cleaned = title
     .replace(/^\d{1,2}\.\d{1,2}\.\d{4}\s*r\.?\s*[-–—:]\s*/i, '')
     .replace(/^\d{1,2}\.\d{1,2}\.\d{4}\s*[-–—:]\s*/i, '')
+    .split('|')[0]
     .trim();
   if (!cleaned) return cleaned;
   return cleaned.charAt(0).toLocaleUpperCase('pl') + cleaned.slice(1);
@@ -150,7 +151,8 @@ export function parseMpkRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const title = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
     const description = htmlToText(rawDesc);
@@ -158,15 +160,15 @@ export function parseMpkRss(xml: string): MpkNewsItem[] {
     const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
     const ts = pubRaw ? Date.parse(pubRaw) : NaN;
     const pubDate = Number.isFinite(ts) ? ts : null;
-    if (!title && !link) continue;
-    if (!isTransitNews(title, description)) continue;
+    if (!rawTitle && !link) continue;
+    if (!isTransitNews(rawTitle, description)) continue;
     items.push({
-      id: link || title,
+      id: link || rawTitle,
       title: title || newsTitleFallback(),
       link,
       description,
       imageUrl,
-      urgent: isUrgentNews(title, description),
+      urgent: isUrgentNews(rawTitle, description),
       pubDate,
       dateLabel: formatNewsDate(pubDate),
       source: 'city',
