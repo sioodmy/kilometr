@@ -1,9 +1,14 @@
-# Buildy APK na Azure Pipelines (zastępuje dev-pr-apk.yml z GitHub Actions,
-# który stał na self-hosted runnerze).
-# - push do `dev`: tryb preview, APK leci jako GitHub prerelease `dev-...`,
-#   a link ląduje w komentarzu PR `dev` -> `main` (jeden komentarz, aktualizowany)
-# - ręcznie: tryb `preview` (dowolny branch), `artifact-only` (tylko artefakt runu)
-#   albo `release` (nightly/prod, publikuje GitHub Release)
+# Buildy APK na Azure Pipelines.
+# - preview: uruchamiane komentarzem "build machen !!!" na PR `dev` -> `main`,
+#   przez mostek .github/workflows/dev-preview-comment.yml (kolejkuje ten run
+#   przez REST API). APK leci jako GitHub prerelease `dev-...`, a link ląduje
+#   w komentarzu PR (jeden komentarz, aktualizowany).
+# - ręcznie (Azure DevOps -> Run pipeline): tryb `preview` (dowolny branch),
+#   `artifact-only` (tylko artefakt runu) albo `release` (nightly/prod,
+#   publikuje GitHub Release).
+#
+# Auto-trigger na push jest celowo wylaczony (trigger: none), zeby nie palic
+# minut Azure przy kazdym pushu do dev.
 #
 # Konfiguracja jednorazowa w Azure DevOps (Pipelines -> New pipeline -> GitHub):
 # - zmienna sekretna `GITHUB_TOKEN`: PAT klasyczny z zakresem `repo` (albo
@@ -12,11 +17,7 @@
 # - opcjonalna zmienna `TIMETABLE_URL` nadpisuje host rozkładu (domyślnie produkcja)
 name: kilometr-apk-$(Date:yyyyMMdd).$(Rev:r)
 
-trigger:
-  batch: true
-  branches:
-    include:
-      - dev
+trigger: none
 pr: none
 
 parameters:
@@ -347,8 +348,8 @@ jobs:
           GH_REPO: $(Build.Repository.Name)
 
       # Komentarz jest jeden na PR: kolejne buildy aktualizują ten sam wpis,
-      # więc wątek nie zamienia się w spam. Marker musi być identyczny co w starym
-      # dev-pr-apk.yml, żeby kolejne buildy podmieniały istniejący komentarz.
+      # więc wątek nie zamienia się w spam. Marker musi być stały, żeby kolejne
+      # buildy podmieniały istniejący komentarz.
       - bash: |
           set -euo pipefail
           PR_NUMBER="$(gh pr list --head dev --base main --state open --json number --jq '.[0].number // empty' || true)"
