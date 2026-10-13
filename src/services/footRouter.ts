@@ -68,7 +68,7 @@ async function resolveTileUrlTemplate(signal?: AbortSignal): Promise<string> {
   if (resolvedTileTemplate) return resolvedTileTemplate;
   if (MAP_SOURCE_URL.includes('{z}') && MAP_SOURCE_URL.includes('{x}')) {
     resolvedTileTemplate = MAP_SOURCE_URL;
-    return resolvedTileTemplate;
+    return MAP_SOURCE_URL;
   }
   if (!templatePromise) {
     templatePromise = (async () => {

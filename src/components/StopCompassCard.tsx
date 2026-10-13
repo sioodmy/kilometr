@@ -42,10 +42,12 @@ import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { useStrings, type Strings } from '../i18n';
 import { NavMiniMap } from './NavMiniMap';
-import { fetchFootRoute, projectRoutePoint, type Coord } from '../services/routeGeometry';
+import { fetchFootRoute, routeFootSync, type Coord } from '../services/routeGeometry';
 import {
+  matchOnPath,
   nextGuidance,
   nextGuidanceAfter,
+  slicePathFromProjection,
   type Guidance,
   type LegSpan,
   type ManeuverKind,
@@ -61,9 +63,11 @@ interface StopCompassCardProps {
 }
 
 const COMPASS_SWITCH_M = 100;
-const OFF_ROUTE_M = 45;
-const REROUTE_COOLDOWN_MS = 30000;
-const REROUTE_MIN_MOVE_M = 25;
+const COMPASS_ENTER_M = 85;
+const COMPASS_EXIT_M = 115;
+const OFF_ROUTE_M = 38;
+const REROUTE_COOLDOWN_MS = 4000;
+const REROUTE_MIN_MOVE_M = 12;
 const REROUTE_MAX_DIST_M = 10000;
 const ON_TRANSIT_MPS = 4;
 
@@ -220,7 +224,11 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     null,
   );
   const [rerouting, setRerouting] = useState(false);
+  const [confirmedOffRoute, setConfirmedOffRoute] = useState(false);
+  const [isNavMode, setIsNavMode] = useState<boolean | null>(null);
   const routeRequest = useRef<AbortController | null>(null);
+  const prevAlongRef = useRef<{ targetKey: string; alongM: number } | null>(null);
+  const offRouteStreakRef = useRef(0);
   const lastRerouteAttempt = useRef<{
     targetKey: string;
     at: number;
@@ -231,7 +239,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
   useEffect(() => {
     let cancelled = false;
     let headingSub: Location.LocationSubscription | null = null;
-    const alpha = 0.28;
+    const alpha = 0.22;
 
     const applyHeading = (raw: number) => {
       const radians = raw * (Math.PI / 180);
@@ -242,7 +250,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       const degrees = normalizeAngle((Math.atan2(x, y) * 180) / Math.PI);
       let difference = Math.abs(degrees - lastAppliedHeading.current) % 360;
       if (difference > 180) difference = 360 - difference;
-      if (difference >= 1.5) {
+      if (difference >= 2.2) {
         lastAppliedHeading.current = degrees;
         setDeviceHeading(degrees);
       }
@@ -250,6 +258,9 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
 
     void Location.watchHeadingAsync((heading) => {
       if (cancelled) return;
+      if (heading.accuracy === 0 && heading.trueHeading < 0 && headingVec.current != null) {
+        return;
+      }
       const degrees = heading.trueHeading >= 0 ? heading.trueHeading : heading.magHeading;
       if (degrees >= 0) applyHeading(degrees);
     }).then((sub) => {
@@ -299,24 +310,109 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       ? [{ leg: navigationLeg, start: 0, end: routeForTarget.length - 1 }]
       : [],
   [routeForTarget, navigationLeg]);
+
+  const rawHeading = useMemo<number | null>(() => {
+    const gpsHeading =
+      userLocation?.speed != null && userLocation.speed >= 1.3 && userLocation.heading != null
+        ? userLocation.heading
+        : null;
+    return deviceHeading ?? gpsHeading ?? userLocation?.heading ?? null;
+  }, [deviceHeading, userLocation?.speed, userLocation?.heading]);
+
+  const offRouteThreshold = useMemo(
+    () => Math.max(OFF_ROUTE_M, Math.min(72, (userLocation?.accuracy ?? 12) * 1.4)),
+    [userLocation?.accuracy],
+  );
+
   const routeProjection = useMemo(() => {
-    if (!routeForTarget || !userLocation) return null;
-    return projectRoutePoint(routeForTarget, userLocation.lat, userLocation.lon);
-  }, [routeForTarget, userLocation]);
-  const offRoute = routeProjection != null && routeProjection.offsetM > OFF_ROUTE_M;
+    if (!routeForTarget || !userLocation || !targetKey) return null;
+    const prevAlongM =
+      prevAlongRef.current?.targetKey === targetKey ? prevAlongRef.current.alongM : null;
+    return matchOnPath(
+      routeForTarget,
+      [userLocation.lat, userLocation.lon],
+      prevAlongM,
+      userLocation.accuracy,
+      rawHeading,
+    );
+  }, [routeForTarget, userLocation, targetKey, rawHeading]);
+
+  useEffect(() => {
+    if (!routeProjection || !targetKey) return;
+    if (routeProjection.offsetM <= offRouteThreshold) {
+      prevAlongRef.current = { targetKey, alongM: routeProjection.alongM };
+      offRouteStreakRef.current = 0;
+      setConfirmedOffRoute(false);
+    } else {
+      offRouteStreakRef.current += 1;
+      if (
+        offRouteStreakRef.current >= 2 ||
+        routeProjection.offsetM > offRouteThreshold * 1.6
+      ) {
+        setConfirmedOffRoute(true);
+      }
+    }
+  }, [routeProjection, targetKey, offRouteThreshold]);
+
+  const offRoute = confirmedOffRoute;
+
   const guidance: Guidance | null = useMemo(() => {
     if (!routeForTarget || !userLocation || !navigationSpans.length || offRoute) return null;
-    return nextGuidance(routeForTarget, navigationSpans, [userLocation.lat, userLocation.lon]);
-  }, [routeForTarget, userLocation, navigationSpans, offRoute]);
-  const nextUp = useMemo(() => {
-    if (!routeForTarget || !userLocation || !guidance || !navigationSpans.length) return null;
-    return nextGuidanceAfter(routeForTarget, navigationSpans, [userLocation.lat, userLocation.lon]);
-  }, [routeForTarget, userLocation, guidance, navigationSpans]);
+    return nextGuidance(
+      routeForTarget,
+      navigationSpans,
+      [userLocation.lat, userLocation.lon],
+      routeProjection,
+    );
+  }, [routeForTarget, userLocation, navigationSpans, offRoute, routeProjection]);
 
-  const activeHeading = deviceHeading ?? userLocation?.heading ?? null;
-  const { distanceM, relativeAngle } = useMemo(() => {
+  const nextUp = useMemo(() => {
+    if (!routeForTarget || !userLocation || !guidance || !navigationSpans.length || offRoute) {
+      return null;
+    }
+    return nextGuidanceAfter(
+      routeForTarget,
+      navigationSpans,
+      [userLocation.lat, userLocation.lon],
+      35,
+      routeProjection,
+    );
+  }, [routeForTarget, userLocation, guidance, navigationSpans, offRoute, routeProjection]);
+
+  const activeHeading = useMemo<number | null>(() => {
+    if (rawHeading != null) return rawHeading;
+    if (routeProjection && !offRoute && routeProjection.offsetM <= 24) {
+      return routeProjection.segmentBearingDeg;
+    }
+    return null;
+  }, [rawHeading, routeProjection, offRoute]);
+
+  const snapThreshold = useMemo(
+    () => Math.max(26, Math.min(45, (userLocation?.accuracy ?? 10) * 1.25)),
+    [userLocation?.accuracy],
+  );
+
+  // Przyciągamy kursor użytkownika do osi chodnika, gdy idzie wzdłuż wyznaczonej trasy.
+  const displayUserPos = useMemo<Coord | null>(() => {
+    if (!userPos) return null;
+    if (routeProjection && !offRoute && routeProjection.offsetM <= snapThreshold) {
+      return routeProjection.snappedPoint;
+    }
+    return userPos;
+  }, [userPos, routeProjection, offRoute, snapThreshold]);
+
+  // Na minimapce rysujemy odcinek trasy zaczynający się od pozycji użytkownika do przystanku.
+  const displayRoutePath = useMemo<Coord[]>(() => {
+    if (!routeForTarget) return [];
+    if (routeProjection && !offRoute && routeProjection.offsetM <= offRouteThreshold) {
+      return slicePathFromProjection(routeForTarget, routeProjection);
+    }
+    return routeForTarget;
+  }, [routeForTarget, routeProjection, offRoute, offRouteThreshold]);
+
+  const { rawDistanceM, distanceM, relativeAngle } = useMemo(() => {
     if (!userLocation || targetLat == null || targetLon == null) {
-      return { distanceM: null, relativeAngle: 0 };
+      return { rawDistanceM: null, distanceM: null, relativeAngle: 0 };
     }
     const dist = calculateDistanceMeters(
       userLocation.lat,
@@ -331,8 +427,22 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       targetLon,
     );
     const rel = (bearing - (activeHeading ?? 0) + 360) % 360;
-    return { distanceM: Math.round(dist / 5) * 5, relativeAngle: rel };
+    return {
+      rawDistanceM: dist,
+      distanceM: Math.round(dist / 5) * 5,
+      relativeAngle: rel,
+    };
   }, [userLocation, targetLat, targetLon, activeHeading]);
+
+  // Histereza 85-115 m zapobiega migotaniu między minimapką a radarem na granicy 100 m.
+  useEffect(() => {
+    if (rawDistanceM == null) return;
+    setIsNavMode((prev) => {
+      if (prev === null) return rawDistanceM > COMPASS_SWITCH_M;
+      if (prev) return rawDistanceM > COMPASS_ENTER_M;
+      return rawDistanceM >= COMPASS_EXIT_M;
+    });
+  }, [rawDistanceM]);
 
   const hasTarget = targetLat != null && targetLon != null;
   const compassReady = hasTarget && distanceM != null;
@@ -343,15 +453,28 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       ? s.compass.locOff
       : s.compass.locWaiting;
 
-  const walkMin = !onTransit && distanceM != null ? walkMinutesFor(distanceM, walkMps) : null;
+  const walkDistanceM = useMemo<number | null>(() => {
+    if (distanceM == null) return null;
+    if (!onTransit && guidance && !offRoute && guidance.remainM > 0) {
+      return Math.max(distanceM, Math.round(guidance.remainM));
+    }
+    return distanceM;
+  }, [distanceM, onTransit, guidance, offRoute]);
+
+  const walkMin = !onTransit && walkDistanceM != null ? walkMinutesFor(walkDistanceM, walkMps) : null;
   const directionLabel = compassReady ? getDirectionLabel(relativeAngle, s) : compassHint;
 
-  const showNav = distanceM != null && distanceM > COMPASS_SWITCH_M;
+  const showNav =
+    rawDistanceM != null && (isNavMode ?? rawDistanceM > COMPASS_SWITCH_M);
 
   useEffect(() => {
     routeRequest.current?.abort();
     routeRequest.current = null;
     lastRerouteAttempt.current = null;
+    prevAlongRef.current = null;
+    offRouteStreakRef.current = 0;
+    setConfirmedOffRoute(false);
+    setIsNavMode(null);
     setNavigationRoute(null);
     setRerouting(false);
   }, [targetKey]);
@@ -360,9 +483,27 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     if (!showNav || !userLocation || !stopPos || !targetKey) return;
     if (onTransit || distanceM == null || distanceM > REROUTE_MAX_DIST_M) return;
     const routeIsCurrent = navigationRoute?.targetKey === targetKey;
-    const needsRoute =
-      !routeIsCurrent || routeProjection == null || routeProjection.offsetM > OFF_ROUTE_M;
+    const needsRoute = !routeIsCurrent || routeProjection == null || offRoute;
     if (!needsRoute || routeRequest.current) return;
+
+    const fromCoord: Coord = [userLocation.lat, userLocation.lon];
+
+    // Jeśli kafelki są już w pamięci silnika Rust, przeliczamy trasę synchronicznie bez stanu ładowania.
+    const immediatePath = routeFootSync(fromCoord, stopPos);
+    if (immediatePath && immediatePath.length >= 2) {
+      prevAlongRef.current = { targetKey, alongM: 0 };
+      offRouteStreakRef.current = 0;
+      setConfirmedOffRoute(false);
+      setNavigationRoute({ targetKey, path: immediatePath });
+      setRerouting(false);
+      lastRerouteAttempt.current = {
+        targetKey,
+        at: Date.now(),
+        lat: userLocation.lat,
+        lon: userLocation.lon,
+      };
+      return;
+    }
 
     const now = Date.now();
     const last = lastRerouteAttempt.current;
@@ -385,9 +526,12 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     setRerouting(true);
     const controller = new AbortController();
     routeRequest.current = controller;
-    void fetchFootRoute([userLocation.lat, userLocation.lon], stopPos, controller.signal)
+    void fetchFootRoute(fromCoord, stopPos, controller.signal)
       .then((path) => {
         if (routeRequest.current !== controller || !path || path.length < 2) return;
+        prevAlongRef.current = { targetKey, alongM: 0 };
+        offRouteStreakRef.current = 0;
+        setConfirmedOffRoute(false);
         setNavigationRoute({ targetKey, path });
       })
       .catch(() => undefined)
@@ -405,6 +549,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     distanceM,
     navigationRoute,
     routeProjection,
+    offRoute,
     onTransit,
   ]);
   useEffect(() => () => routeRequest.current?.abort(), []);
@@ -465,13 +610,13 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
   const headDist =
     guidance && distText
       ? distText
-      : distanceM != null
-        ? s.compass.distanceText(roundNavM(distanceM))
+      : walkDistanceM != null
+        ? s.compass.distanceText(roundNavM(walkDistanceM))
         : '';
   const footerText =
     walkMin != null
-      ? guidance && distanceM != null
-        ? `${s.compass.navToStop(s.compass.distanceText(roundNavM(distanceM)))} · ${s.compass.walkMins(walkMin)}`
+      ? guidance && walkDistanceM != null
+        ? `${s.compass.navToStop(s.compass.distanceText(roundNavM(walkDistanceM)))} · ${s.compass.walkMins(walkMin)}`
         : s.compass.walkMins(walkMin)
       : '';
 
@@ -537,11 +682,9 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         ) : null}
       </View>
 
-      {/* ─── Nawigacja ─────────────────────────────────────── */}
-      {/* Slot rezerwuje wysokość docelowego widgetu od pierwszego renderu.
-          Powód: stany oczekiwanie/radar/mapa mają różne wysokości i bez tego
-          karta skakała w momencie fixu GPS. */}
-      {showNav && userPos ? (
+      {/* Slot rezerwuje wysokość docelowego widgetu od pierwszego renderu,
+          żeby karta nie skakała po otrzymaniu fixu GPS. */}
+      {showNav && displayUserPos ? (
         // Cały widget jest jednym przyciskiem: dotknięcie otwiera pełną mapę.
         <AnimatedPressable
           onPress={openMap}
@@ -551,8 +694,8 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         >
           <View style={styles.navRow}>
             <NavMiniMap
-              path={routeForTarget ?? []}
-              user={userPos}
+              path={displayRoutePath}
+              user={displayUserPos}
               stop={stopPos}
               headingDeg={activeHeading}
               accuracyM={userLocation?.accuracy ?? null}
@@ -594,16 +737,28 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           </View>
         </AnimatedPressable>
       ) : compassReady ? (
-        /* Do 100 m pokazujemy kompas. */
         <Animated.View style={[styles.compassRow, styles.navSlot, { opacity: navOpacity }]}>
           <View style={styles.dialContainer}>
             <View style={styles.dial}>
               <View style={styles.innerRing} />
               <View style={styles.crosshairV} />
               <View style={styles.crosshairH} />
-              <View style={styles.pointerContainer}>
+              <View
+                style={[
+                  styles.pointerContainer,
+                  { transform: [{ rotate: `${relativeAngle}deg` }] },
+                ]}
+              >
                 <View style={[styles.pointerBeam, { backgroundColor: lineAccent }]} />
-                <View style={[styles.stopTargetBadge, { backgroundColor: lineAccent }]}>
+                <View
+                  style={[
+                    styles.stopTargetBadge,
+                    {
+                      backgroundColor: lineAccent,
+                      transform: [{ rotate: `${-relativeAngle}deg` }],
+                    },
+                  ]}
+                >
                   <TargetIcon size={16} color={lineFg} />
                 </View>
               </View>
@@ -715,9 +870,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ─── Nawigacja ─────────────────────────────────────────────
   // Slot rezerwuje wysokość docelowego widgetu, żeby przejście
-  // oczekiwanie → radar/mapa nie przesuwało reszty ekranu.
+  // oczekiwanie -> radar/mapa nie przesuwało reszty ekranu.
   navSlot: {
     minHeight: 148,
   },
@@ -791,7 +945,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  // ─── Radar (do 100 m) ─────────────────────────────────────
   compassRow: {
     flexDirection: 'row',
     alignItems: 'center',

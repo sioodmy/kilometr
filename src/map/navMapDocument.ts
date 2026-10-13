@@ -64,14 +64,41 @@ const runtime = (routeSourceId: string) => `
     var source = map.getSource(sourceId);
     if (source) source.setData(currentRoute);
   }
+  var hasInitialCamera = false;
+  function shortestBearing(current, target) {
+    var diff = ((target - current + 540) % 360) - 180;
+    return current + diff;
+  }
   function updateCamera(msg, animate) {
     if (!map || !msg.user) return;
-    var bearing = typeof msg.heading === 'number' && isFinite(msg.heading) ? msg.heading : 0;
+    var nextLon = msg.user[1];
+    var nextLat = msg.user[0];
+    var rawBearing = typeof msg.heading === 'number' && isFinite(msg.heading) ? msg.heading : 0;
+    if (!hasInitialCamera || !animate) {
+      hasInitialCamera = true;
+      map.jumpTo({
+        center: [nextLon, nextLat],
+        bearing: rawBearing,
+        zoom: 17,
+      });
+      return;
+    }
+    var curCenter = map.getCenter();
+    var jumpDeg = Math.hypot(nextLon - curCenter.lng, nextLat - curCenter.lat);
+    if (jumpDeg > 0.0025) {
+      map.jumpTo({
+        center: [nextLon, nextLat],
+        bearing: rawBearing,
+        zoom: 17,
+      });
+      return;
+    }
+    var targetBearing = shortestBearing(map.getBearing(), rawBearing);
     map.easeTo({
-      center: [msg.user[1], msg.user[0]],
-      bearing: bearing,
+      center: [nextLon, nextLat],
+      bearing: targetBearing,
       zoom: 17,
-      duration: animate ? 220 : 0,
+      duration: 240,
       essential: true,
     });
   }
