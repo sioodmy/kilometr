@@ -63,6 +63,7 @@ export interface WidgetPinned {
 }
 
 export interface WidgetPlace {
+  id: string;
   name: string;
   icon: string;
   deepLink: string;

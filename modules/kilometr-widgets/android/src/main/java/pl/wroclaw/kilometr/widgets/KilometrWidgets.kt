@@ -51,6 +51,7 @@ internal object KilometrWidgets {
     each(SearchWidget::class.java) { id, opts -> WidgetRenderers.search(app, snap, id, opts) }
     each(SavedPlacesWidget::class.java) { id, opts -> WidgetRenderers.savedPlaces(app, snap, id, opts) }
 
+    LauncherShortcuts.sync(app, snap)
     WidgetTicker.schedule(app, countdownShown && hasUpcoming(snap, now))
   }
 

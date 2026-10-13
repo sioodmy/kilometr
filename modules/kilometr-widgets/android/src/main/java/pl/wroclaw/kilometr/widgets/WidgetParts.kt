@@ -96,13 +96,59 @@ internal fun modeIcon(mode: String?): Int = when (mode) {
   else -> R.drawable.kw_ic_bus
 }
 
-/** Ikony zapisanych miejsc, które mają odpowiednik w widgecie; reszta to pinezka. */
+/** Ikona zapisanego miejsca. Nieznany klucz zostaje pinezką. */
 internal fun placeIcon(icon: String?): Int = when (icon) {
   "home" -> R.drawable.kw_ic_home
   "work" -> R.drawable.kw_ic_work
   "school" -> R.drawable.kw_ic_school
   "train" -> R.drawable.kw_ic_train
+  "tram" -> R.drawable.kw_ic_tram
+  "bus" -> R.drawable.kw_ic_bus
   "history" -> R.drawable.kw_ic_clock
+  "star" -> R.drawable.kw_ic_star
+  "heart" -> R.drawable.kw_ic_heart
+  "coffee" -> R.drawable.kw_ic_coffee
+  "shopping" -> R.drawable.kw_ic_bag
+  "gym" -> R.drawable.kw_ic_gym
+  "restaurant", "sandwich" -> R.drawable.kw_ic_food
+  "pizza" -> R.drawable.kw_ic_pizza
+  "pharmacy" -> R.drawable.kw_ic_pill
+  "park" -> R.drawable.kw_ic_park
+  "cinema" -> R.drawable.kw_ic_film
+  "culture" -> R.drawable.kw_ic_landmark
+  "library" -> R.drawable.kw_ic_book
+  "friends" -> R.drawable.kw_ic_people
+  "church" -> R.drawable.kw_ic_church
+  "car" -> R.drawable.kw_ic_car
+  "bike" -> R.drawable.kw_ic_bike
+  "plane" -> R.drawable.kw_ic_plane
+  "market" -> R.drawable.kw_ic_store
+  "university" -> R.drawable.kw_ic_uni
+  "fuel" -> R.drawable.kw_ic_fuel
+  "ship" -> R.drawable.kw_ic_ship
+  "compass" -> R.drawable.kw_ic_compass
+  "cart" -> R.drawable.kw_ic_cart
+  "hospital" -> R.drawable.kw_ic_hospital
+  "doctor" -> R.drawable.kw_ic_hospital
+  "scissors" -> R.drawable.kw_ic_cut
+  "sparkles" -> R.drawable.kw_ic_spark
+  "theater" -> R.drawable.kw_ic_film
+  "music" -> R.drawable.kw_ic_music
+  "ticket" -> R.drawable.kw_ic_ticket
+  "gamepad" -> R.drawable.kw_ic_game
+  "mountain" -> R.drawable.kw_ic_mountain
+  "tent" -> R.drawable.kw_ic_tent
+  "trophy" -> R.drawable.kw_ic_trophy
+  "swimming" -> R.drawable.kw_ic_pool
+  "baby" -> R.drawable.kw_ic_baby
+  "pet" -> R.drawable.kw_ic_pet
+  "hotel" -> R.drawable.kw_ic_hotel
+  "bank" -> R.drawable.kw_ic_bank
+  "post" -> R.drawable.kw_ic_mail
+  "laptop" -> R.drawable.kw_ic_laptop
+  "beer" -> R.drawable.kw_ic_beer
+  "wine" -> R.drawable.kw_ic_wine
+  "plus" -> R.drawable.kw_ic_plus
   else -> R.drawable.kw_ic_pin
 }
 
