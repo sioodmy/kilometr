@@ -59,7 +59,8 @@ else
   echo "🟡 Metro nie działa — uruchamiam 'npx expo start --localhost' w tle..."
   echo "   Log: $METRO_LOG"
   mkdir -p "$ROOT/.expo"
-  (cd "$ROOT" && nohup npx expo start --localhost >"$METRO_LOG" 2>&1 &)
+  # ipv4first: bez tego Node bywa na [::1], a adb reverse + Expo Go chodzą po 127.0.0.1.
+  (cd "$ROOT" && nohup env NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" npx expo start --localhost >"$METRO_LOG" 2>&1 &)
   wait_for "$METRO_STATUS" 120 "Metro Bundler" \
     || fail "Metro nie wstało w 120 s. Sprawdź log: $METRO_LOG"
 fi

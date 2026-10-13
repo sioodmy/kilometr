@@ -15,9 +15,12 @@ import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
+import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
+import { LineBadge } from '../../src/components/LineBadge';
 import { LiveDot } from '../../src/components/LiveDot';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
+import { linesFromConnections } from '../../src/services/recentRouteLines';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -174,6 +177,7 @@ export default function RouteDetailsScreen() {
   const early = item.live && item.delayMin < 0;
   const onTime = item.live && item.delayMin === 0;
   const noLegs = item.legs.length === 0;
+  const tripLines = linesFromConnections([item]);
 
   // Treść komunikatu o źródle danych. Kolejność ma znaczenie: połączenie
   // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
@@ -239,6 +243,13 @@ export default function RouteDetailsScreen() {
               {item.toTitle}
             </Text>
           </View>
+          {tripLines.length > 0 ? (
+            <View style={styles.summaryLines}>
+              {tripLines.map((line) => (
+                <LineBadge key={line} line={line} compact />
+              ))}
+            </View>
+          ) : null}
           {/* kompaktowy badge statusu */}
           {late ? (
             <View style={[styles.statusBadge, { backgroundColor: scheme.errorContainer }]}>
@@ -286,6 +297,8 @@ export default function RouteDetailsScreen() {
         ) : (
           <>
             <LegTimeline legs={item.legs} />
+
+            <ConnectionLineAlerts connection={item} />
 
             {/* Nawigacja do przystanku siedzi na dole ekranu, tam, gdzie
                 sięga kciuk. Cały widget jest klikalny i otwiera pełną
@@ -357,6 +370,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  summaryLines: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
   },
   statusBadge: {
     flexDirection: 'row',

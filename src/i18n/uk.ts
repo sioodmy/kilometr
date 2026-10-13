@@ -278,7 +278,7 @@ export const uk: Strings = {
     chip: 'Ускладнення',
     fetchFail: 'Не вдалося завантажити новини. Перевір інтернет і спробуй знову.',
     title: 'Новини',
-    sourceLoading: 'MPK Wrocław',
+    sourceLoading: 'MPK і wroclaw.pl',
     sourceEmpty: 'MPK Wrocław • wroclaw.pl',
     count: (n: number, urgent: number) => {
       const items = n === 1 ? `${n} новина` : isFew(n) ? `${n} новини` : `${n} новин`;
@@ -291,6 +291,23 @@ export const uk: Strings = {
     noConnection: 'Немає з’єднання',
     emptyTitle: 'Немає повідомлень',
     emptyBody: 'Вроцлав зараз не опублікував жодних ускладнень. Потягни вниз, щоб перевірити знову.',
+    sectionChanges: 'Зміни на лініях',
+    sectionCity: 'Новини',
+    sourceMpk: 'MPK Wrocław',
+    sourceCity: 'wroclaw.pl',
+    linesLabel: (lines: string) => `Лінії ${lines}`,
+    openBrowser: 'Відкрити в браузері',
+    articleFail: 'Не вдалося завантажити цю сторінку.',
+    articleEmpty: 'На цій сторінці немає тексту, який застосунок може показати.',
+    filterAll: 'Усі',
+    filterMyLines: 'Мої лінії',
+    filterMyLinesA11y: 'Показати лише повідомлення про лінії з твоїх останніх маршрутів',
+    filterEmptyTitle: 'Нічого на твоїх лініях',
+    filterEmptyBody:
+      'Немає повідомлень про лінії з маршрутів, які ти перевіряв останні два тижні.',
+    filterNoHistoryTitle: 'Ще немає ліній',
+    filterNoHistoryBody:
+      'Знайди сполучення в застосунку — тоді тут з’являться повідомлення про ці лінії.',
   },
   newsSvc: {
     justNow: 'щойно',
@@ -422,6 +439,11 @@ export const uk: Strings = {
     schedule: 'Розклад',
     noTrip: 'Немає геометрії маршруту',
     noTripBody: 'Це сполучення не має збережених зупинок, тож намалювати маршрут і показати найближчу зупинку не вийде. Повернись і вибери інше сполучення.',
+    lineAlertsTitle: 'Зміни на твоїх лініях',
+    lineAlertsAll: 'Усі новини',
+    lineAlertsEmpty: 'Немає повідомлень про лінії цього маршруту.',
+    lineAlertsCount: (n: number) =>
+      n === 1 ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
   },
   search: {
     defaultPlaceholder: 'Шукай у Вроцлаві…',
