@@ -1,6 +1,11 @@
+import { clearRaptorNetworks } from '../../../modules/kilometr-raptor';
 import type { DayIndex, LocalGtfsStore } from './store';
 
 export type TransitKind = 'tram' | 'bus' | 'train' | 'cable';
+
+const NET_MAGIC = 0x52415031;
+
+let nextNetId = 1;
 
 /**
  * Klasyfikacja linii na tramwaj/pociąg/kolej linową/autobus: ta sama heurystyka
@@ -18,6 +23,19 @@ export function classifyTransitMode(
   const lineNum = parseInt((shortName || '').trim(), 10);
   if (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33) return 'tram';
   return 'bus';
+}
+
+function kindToCode(kind: TransitKind): number {
+  switch (kind) {
+    case 'tram':
+      return 0;
+    case 'bus':
+      return 1;
+    case 'train':
+      return 2;
+    case 'cable':
+      return 3;
+  }
 }
 
 /** Przystanki i przejścia piesze w tablicach liczbowych (CSR), raz na załadowany sklep. */
@@ -52,6 +70,7 @@ export interface CompiledPattern {
 }
 
 export interface RaptorNet {
+  id: number;
   base: RaptorBase;
   patterns: CompiledPattern[];
   spCount: number;
@@ -60,9 +79,10 @@ export interface RaptorNet {
   spPos: Int32Array;
   /** tripId -> [wzorzec, kurs] dla kursów z dzisiejszego dnia serwisowego (opóźnienia GPS). */
   tripLoc: Map<string, [number, number]>;
+  packed?: Uint8Array;
 }
 
-const baseCache = new WeakMap<LocalGtfsStore, RaptorBase>();
+let baseCache = new WeakMap<LocalGtfsStore, RaptorBase>();
 
 function buildBase(store: LocalGtfsStore): RaptorBase {
   const stopIds = Array.from(store.stops.keys());
@@ -256,10 +276,91 @@ function compile(
     if (p.offset === 0) p.tripIds.forEach((id, j) => tripLoc.set(id, [pi, j]));
   });
 
-  return { base, patterns, spCount, spStart, spPat, spPos, tripLoc };
+  const id = nextNetId++;
+  if (nextNetId > 0x7fff_ff00) {
+    nextNetId = 1;
+  }
+
+  return { id, base, patterns, spCount, spStart, spPat, spPos, tripLoc };
 }
 
-const netCache = new WeakMap<DayIndex, { net: RaptorNet; base: RaptorBase; key: string }>();
+/**
+ * Serializuje skompilowaną sieć RAPTOR do płaskiego bufora binarnego (LE i32)
+ * dla silnika Rust (JNI / WASM). Wynik jest cache'owany na obiekcie sieci.
+ */
+export function packRaptorNet(net: RaptorNet): Uint8Array {
+  if (net.packed) return net.packed;
+
+  const { base, patterns, spCount, spStart, spPat, spPos } = net;
+  const fpCount = base.fpCount;
+  const fpEdges = base.fpTo.length;
+  const spEdges = spPat.length;
+
+  let words =
+    7 +
+    (fpCount + 1) +
+    fpEdges * 3 +
+    (spCount + 1) +
+    spEdges * 2;
+
+  for (let i = 0; i < patterns.length; i++) {
+    const p = patterns[i];
+    words += 3 + p.n + p.dep.length + p.arr.length;
+  }
+
+  const buf = new ArrayBuffer(words * 4);
+  const i32 = new Int32Array(buf);
+  let w = 0;
+
+  i32[w++] = NET_MAGIC;
+  i32[w++] = base.stopIds.length;
+  i32[w++] = fpCount;
+  i32[w++] = fpEdges;
+  i32[w++] = patterns.length;
+  i32[w++] = spCount;
+  i32[w++] = spEdges;
+
+  i32.set(base.fpStart.subarray(0, fpCount + 1), w);
+  w += fpCount + 1;
+  i32.set(base.fpTo, w);
+  w += fpEdges;
+  i32.set(base.fpDistM, w);
+  w += fpEdges;
+  i32.set(base.fpFixedSec, w);
+  w += fpEdges;
+
+  i32.set(spStart.subarray(0, spCount + 1), w);
+  w += spCount + 1;
+  i32.set(spPat, w);
+  w += spEdges;
+  i32.set(spPos, w);
+  w += spEdges;
+
+  for (let i = 0; i < patterns.length; i++) {
+    const p = patterns[i];
+    i32[w++] = kindToCode(p.kind);
+    i32[w++] = p.n;
+    i32[w++] = p.nTrips;
+    i32.set(p.stops, w);
+    w += p.n;
+    i32.set(p.dep, w);
+    w += p.dep.length;
+    i32.set(p.arr, w);
+    w += p.arr.length;
+  }
+
+  const packed = new Uint8Array(buf);
+  net.packed = packed;
+  return packed;
+}
+
+let netCache = new WeakMap<DayIndex, { net: RaptorNet; base: RaptorBase; key: string }>();
+
+export function clearRaptorNetCache(): void {
+  baseCache = new WeakMap<LocalGtfsStore, RaptorBase>();
+  netCache = new WeakMap<DayIndex, { net: RaptorNet; base: RaptorBase; key: string }>();
+  clearRaptorNetworks();
+}
 
 /**
  * Skompilowana sieć dla indeksu dnia (wycinka). Cache na obiekcie indeksu:

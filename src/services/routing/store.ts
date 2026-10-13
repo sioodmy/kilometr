@@ -1,6 +1,7 @@
 import { awaitImportSettled, importInProgress } from '../dataManager';
 import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
+import { clearRaptorNetCache } from './network';
 import {
   POLINKA_ROUTE_ID,
   polinkaRoute,
@@ -70,6 +71,7 @@ export class LocalGtfsStore {
     this.tripRefs.clear();
     this.retainedTrips.clear();
     this.isLoaded = false;
+    clearRaptorNetCache();
   }
 
   async load() {
