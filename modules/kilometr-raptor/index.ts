@@ -1,6 +1,7 @@
 import { RAPTOR_WASM_BASE64 } from "./wasmBase64";
 
 const STATUS_NET_MISSING = -1;
+const FOOT_QUERY_MAGIC = 0x464f4f54; // "FOOT"
 
 type NativeKilometrRaptorModule = {
   isAvailable(): boolean;
@@ -9,11 +10,21 @@ type NativeKilometrRaptorModule = {
   dropNetworkSync(netId: number): void;
   clearNetworksSync(): void;
   runQuerySync(packedQuery: Uint8Array): Uint8Array | null;
+  hasFootTileSync(tx: number, ty: number): boolean;
+  loadFootTileSync(tx: number, ty: number, mvtBytes: Uint8Array): boolean;
+  loadFootTileFromPackSync(tx: number, ty: number): boolean;
+  clearFootTilesSync(): void;
+  routeFootSync(packedReq: Uint8Array): Uint8Array | null;
   hasNetwork(netId: number): Promise<boolean>;
   loadNetwork(netId: number, packedNet: Uint8Array): Promise<boolean>;
   dropNetwork(netId: number): Promise<void>;
   clearNetworks(): Promise<void>;
   runQuery(packedQuery: Uint8Array): Promise<Uint8Array | null>;
+  hasFootTile(tx: number, ty: number): Promise<boolean>;
+  loadFootTile(tx: number, ty: number, mvtBytes: Uint8Array): Promise<boolean>;
+  loadFootTileFromPack(tx: number, ty: number): Promise<boolean>;
+  clearFootTiles(): Promise<void>;
+  routeFoot(packedReq: Uint8Array): Promise<Uint8Array | null>;
 };
 
 type WasmExports = {
@@ -26,6 +37,10 @@ type WasmExports = {
   raptor_clear_networks(): void;
   raptor_run_query(ptr: number, len: number): number;
   raptor_result_ptr(): number;
+  raptor_has_foot_tile(tx: number, ty: number): number;
+  raptor_load_foot_tile(tx: number, ty: number, ptr: number, len: number): number;
+  raptor_clear_foot_tiles(): void;
+  raptor_route_foot(ptr: number, len: number): number;
 };
 
 let cachedNative: NativeKilometrRaptorModule | null | undefined;
@@ -296,6 +311,147 @@ export function clearRaptorNetworks(): void {
   if (cachedWasm) {
     try {
       cachedWasm.raptor_clear_networks();
+    } catch {
+      // Ignore WASM teardown errors.
+    }
+  }
+}
+
+export function hasFootTileSync(tx: number, ty: number): boolean {
+  const nativeMod = getNativeModule();
+  if (nativeMod) {
+    return nativeMod.hasFootTileSync(tx, ty);
+  }
+  const wasm = getWasmExports();
+  return wasm.raptor_has_foot_tile(tx, ty) === 1;
+}
+
+export async function ensureFootTileFromPackAsync(
+  tx: number,
+  ty: number
+): Promise<boolean> {
+  const nativeMod = getNativeModule();
+  if (!nativeMod) return false;
+  try {
+    return await nativeMod.loadFootTileFromPack(tx, ty);
+  } catch {
+    return false;
+  }
+}
+
+export async function loadFootTileAsync(
+  tx: number,
+  ty: number,
+  mvtBytes: Uint8Array
+): Promise<boolean> {
+  if (mvtBytes.byteLength === 0) return false;
+  const nativeMod = getNativeModule();
+  if (nativeMod) {
+    return nativeMod.loadFootTile(tx, ty, mvtBytes);
+  }
+  return loadFootTileSync(tx, ty, mvtBytes);
+}
+
+export function loadFootTileSync(
+  tx: number,
+  ty: number,
+  mvtBytes: Uint8Array
+): boolean {
+  if (mvtBytes.byteLength === 0) return false;
+  const nativeMod = getNativeModule();
+  if (nativeMod) {
+    return nativeMod.loadFootTileSync(tx, ty, mvtBytes);
+  }
+  const wasm = getWasmExports();
+  const ptr = wasm.raptor_alloc(mvtBytes.byteLength);
+  try {
+    new Uint8Array(wasm.memory.buffer, ptr, mvtBytes.byteLength).set(mvtBytes);
+    return wasm.raptor_load_foot_tile(tx, ty, ptr, mvtBytes.byteLength) === 1;
+  } finally {
+    wasm.raptor_dealloc(ptr, mvtBytes.byteLength);
+  }
+}
+
+function packFootWaypoints(waypoints: ReadonlyArray<readonly [number, number]>): Uint8Array {
+  const buf = new ArrayBuffer(8 + waypoints.length * 16);
+  const view = new DataView(buf);
+  view.setUint32(0, FOOT_QUERY_MAGIC, true);
+  view.setUint32(4, waypoints.length, true);
+  let offset = 8;
+  for (let i = 0; i < waypoints.length; i++) {
+    view.setFloat64(offset, waypoints[i][0], true);
+    view.setFloat64(offset + 8, waypoints[i][1], true);
+    offset += 16;
+  }
+  return new Uint8Array(buf);
+}
+
+function unpackFootRoute(bytes: Uint8Array | null): [number, number][] | null {
+  if (!bytes || bytes.byteLength < 8) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const status = view.getInt32(0, true);
+  if (status !== 0) return null;
+  const count = view.getUint32(4, true);
+  if (count < 2 || bytes.byteLength < 8 + count * 16) return null;
+  const out: [number, number][] = new Array(count);
+  let offset = 8;
+  for (let i = 0; i < count; i++) {
+    const lat = view.getFloat64(offset, true);
+    const lon = view.getFloat64(offset + 8, true);
+    out[i] = [lat, lon];
+    offset += 16;
+  }
+  return out;
+}
+
+export function routeFootWaypointsSync(
+  waypoints: ReadonlyArray<readonly [number, number]>
+): [number, number][] | null {
+  if (waypoints.length < 2) return null;
+  const packed = packFootWaypoints(waypoints);
+  const nativeMod = getNativeModule();
+  if (nativeMod) {
+    return unpackFootRoute(nativeMod.routeFootSync(packed));
+  }
+  const wasm = getWasmExports();
+  const ptr = wasm.raptor_alloc(packed.byteLength);
+  try {
+    new Uint8Array(wasm.memory.buffer, ptr, packed.byteLength).set(packed);
+    const outLen = wasm.raptor_route_foot(ptr, packed.byteLength);
+    if (outLen === 0) return null;
+    const outPtr = wasm.raptor_result_ptr();
+    const res = new Uint8Array(wasm.memory.buffer, outPtr, outLen).slice();
+    return unpackFootRoute(res);
+  } finally {
+    wasm.raptor_dealloc(ptr, packed.byteLength);
+  }
+}
+
+export async function routeFootWaypointsAsync(
+  waypoints: ReadonlyArray<readonly [number, number]>
+): Promise<[number, number][] | null> {
+  if (waypoints.length < 2) return null;
+  const packed = packFootWaypoints(waypoints);
+  const nativeMod = getNativeModule();
+  if (nativeMod) {
+    const res = await nativeMod.routeFoot(packed);
+    return unpackFootRoute(res);
+  }
+  return routeFootWaypointsSync(waypoints);
+}
+
+export function clearFootTiles(): void {
+  const nativeMod = getNativeModule();
+  if (nativeMod) {
+    try {
+      nativeMod.clearFootTilesSync();
+    } catch {
+      // Ignore native teardown errors.
+    }
+  }
+  if (cachedWasm) {
+    try {
+      cachedWasm.raptor_clear_foot_tiles();
     } catch {
       // Ignore WASM teardown errors.
     }

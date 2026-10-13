@@ -1,6 +1,7 @@
 use std::ffi::c_void;
 use std::panic::catch_unwind;
 
+use crate::foot_router;
 use crate::raptor;
 
 pub type JniEnv = *const *const *const c_void;
@@ -123,6 +124,55 @@ pub unsafe extern "C" fn Java_pl_wroclaw_kilometr_raptor_KilometrRaptorBridge_na
         return std::ptr::null_mut();
     };
     let Ok(out) = catch_unwind(|| raptor::execute_query_bytes(&bytes)) else {
+        return std::ptr::null_mut();
+    };
+    unsafe { write_jbyte_array(env, &out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_pl_wroclaw_kilometr_raptor_KilometrRaptorBridge_nativeHasFootTile(
+    _env: JniEnv,
+    _class: JClass,
+    tx: JInt,
+    ty: JInt,
+) -> JBoolean {
+    let ok = catch_unwind(|| foot_router::has_foot_tile(tx, ty)).unwrap_or(false);
+    if ok { JNI_TRUE } else { JNI_FALSE }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_pl_wroclaw_kilometr_raptor_KilometrRaptorBridge_nativeLoadFootTile(
+    env: JniEnv,
+    _class: JClass,
+    tx: JInt,
+    ty: JInt,
+    mvt_bytes: JByteArray,
+) -> JBoolean {
+    let Some(bytes) = (unsafe { read_jbyte_array(env, mvt_bytes) }) else {
+        return JNI_FALSE;
+    };
+    let ok = catch_unwind(|| foot_router::load_foot_tile(tx, ty, &bytes)).unwrap_or(false);
+    if ok { JNI_TRUE } else { JNI_FALSE }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_pl_wroclaw_kilometr_raptor_KilometrRaptorBridge_nativeClearFootTiles(
+    _env: JniEnv,
+    _class: JClass,
+) {
+    let _ = catch_unwind(foot_router::clear_foot_tiles);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_pl_wroclaw_kilometr_raptor_KilometrRaptorBridge_nativeRouteFoot(
+    env: JniEnv,
+    _class: JClass,
+    packed_req: JByteArray,
+) -> JByteArray {
+    let Some(bytes) = (unsafe { read_jbyte_array(env, packed_req) }) else {
+        return std::ptr::null_mut();
+    };
+    let Ok(out) = catch_unwind(|| foot_router::execute_foot_route_bytes(&bytes)) else {
         return std::ptr::null_mut();
     };
     unsafe { write_jbyte_array(env, &out) }

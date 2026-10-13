@@ -13,4 +13,9 @@ object KilometrRaptorBridge {
   @JvmStatic external fun nativeDropNetwork(netId: Int)
   @JvmStatic external fun nativeClearNetworks()
   @JvmStatic external fun nativeRunQuery(packedQuery: ByteArray): ByteArray?
+
+  @JvmStatic external fun nativeHasFootTile(tx: Int, ty: Int): Boolean
+  @JvmStatic external fun nativeLoadFootTile(tx: Int, ty: Int, mvtBytes: ByteArray): Boolean
+  @JvmStatic external fun nativeClearFootTiles()
+  @JvmStatic external fun nativeRouteFoot(packedReq: ByteArray): ByteArray?
 }
