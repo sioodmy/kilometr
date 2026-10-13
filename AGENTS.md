@@ -21,8 +21,9 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
 - Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
 - Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie. Jeśli dev jest do przodu ze zmianami w stosunku do main, a PR nie istnieje, to utwórz PR z tą todo listą
-- W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature.
+- W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature. Każdy element jest konkretny i zawiera odnośnik do PR, który go wprowadza, np. `- [ ] Widget odjazdów ulubionej linii (#142)`.
 - Zmergowanie feature brancha do `dev` dopisuje nowy element `- [ ]` do tej listy TYLKO jeśli feature wymaga manualnych testów (UI, funkcjonalność, landing, aplikacja). Drobnostek bez funkcjonalności (np. aktualizacja README, docs, komentarze) nie dopisuj.
+- Jeden element to jedna testowalna rzecz. Nie rozdrabniaj listy na drobne, nieistotne szczegóły; łącz powiązane poprawki w jeden konkretny wpis.
 - PR `dev` -> `main` służy do manualnych testów tylko przez człowieka
 - NIGDY nie merguj automatycznie żadnego PR do `nightly` ani `prod`. Merge do `nightly`/`prod` wykonuje wyłącznie człowiek, ręcznie.
 
