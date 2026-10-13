@@ -161,6 +161,15 @@ export default function HomeScreen() {
     return subscribeDataStatus(setDataStatus);
   }, []);
 
+  // Ekran montuje się pod onboardingiem i wraca na wierzch po jego
+  // ukończeniu: dociągamy prawdziwy fix. refineLocation nie pyta o zgodę
+  // (tylko get), więc przy odmowie jest cichym no-opem.
+  useFocusEffect(
+    useCallback(() => {
+      void LocationService.refineLocation();
+    }, [])
+  );
+
   // Badge na dzwonku: dzisiejsze pilne utrudnienie MPK (RSS wroclaw.pl).
   // Sprawdzamy przy starcie i powrocie na foreground — bez interwału, żeby nie spamować feedu.
   useEffect(() => {
