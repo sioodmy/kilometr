@@ -72,6 +72,11 @@ export const en: Strings = {
   settings: {
     title: 'Settings',
     resetA11y: 'Restore defaults',
+    sectionSupport: 'Support',
+    supportTitle: 'Support the project',
+    supportHint: 'Kilometr is free. A coffee on Ko-fi helps keep development going.',
+    supportButton: 'Open Ko-fi',
+    supportA11y: 'Open the Ko-fi page in your browser',
     sectionOffline: 'Offline',
     sectionApp: 'App',
     sectionRoute: 'Route',
