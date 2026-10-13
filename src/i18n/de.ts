@@ -441,8 +441,10 @@ export const de: Strings = {
     savedA11y: (t: string) => `Gespeicherter Ort: ${t}`,
     searching: 'Wrocław wird durchsucht…',
     noResults: 'Keine Ergebnisse',
-    noResultsHint: 'Versuch: „arkady“, „biskupin“, „zoo“, „swojczycka“ — geht auch ohne polnische Zeichen.',
-    gpsOutsideNotice: 'GPS außerhalb von Wrocław — Punkt manuell wählen.',
+    noResultsHint: 'Versuch: „arkady“, „biskupin“, „zoo“, „swojczycka“. Geht auch ohne polnische Zeichen und mit Tippfehlern.',
+    noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
+    yourPlaces: 'Deine Orte',
+    gpsOutsideNotice: 'GPS außerhalb von Wrocław, Punkt manuell wählen.',
   },
   places: {
     manageTitle: 'Gespeicherte Orte',

@@ -435,7 +435,7 @@ export default function RoutesScreen() {
     Promise.all([FavoritesService.list(), loadSettings()]).then(([places, currentSettings]) => {
       setSavedPlaces(places);
       setSavedQuick(
-        places.slice(0, 3).map((p) => ({
+        places.map((p) => ({
           id: p.placeId,
           title: p.name,
           address: p.address,
@@ -511,7 +511,9 @@ export default function RoutesScreen() {
     }
     setSearchLoading(true);
     const t = setTimeout(() => {
-      SearchService.search(q, { lat: fromLat, lon: fromLon }, 'routes-start')
+      SearchService.search(q, { lat: fromLat, lon: fromLon }, 'routes-start', (partial) => {
+        if (seq === searchSeq.current) setResults(partial);
+      })
         .then((r) => {
           if (seq !== searchSeq.current) return;
           setResults(r);
@@ -520,7 +522,7 @@ export default function RoutesScreen() {
         .catch(() => {
           if (seq === searchSeq.current) setSearchLoading(false);
         });
-    }, 220);
+    }, 90);
     return () => clearTimeout(t);
   }, [query, sheetFor, fromLat, fromLon]);
 

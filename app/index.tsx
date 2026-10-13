@@ -719,7 +719,9 @@ export default function HomeScreen() {
     }
     setLoading(true);
     const t = setTimeout(() => {
-      SearchService.search(q, currentCoords, 'home-sheet')
+      SearchService.search(q, currentCoords, 'home-sheet', (partial) => {
+        if (seq === searchSeq.current) setResults(partial);
+      })
         .then((r) => {
           if (seq !== searchSeq.current) return;
           setResults(r);
@@ -729,13 +731,13 @@ export default function HomeScreen() {
           // Przerwane zapytanie albo błąd — nowsze zapytanie ogarnie stan.
           if (seq === searchSeq.current) setLoading(false);
         });
-    }, 220);
+    }, 90);
     return () => clearTimeout(t);
   }, [query, sheetMode, currentCoords]);
 
   const quick = useMemo<Suggestion[]>(
     () =>
-      saved.slice(0, 3).map((s) => ({
+      saved.map((s) => ({
         id: s.placeId,
         title: s.name,
         address: s.address,
