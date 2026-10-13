@@ -452,8 +452,10 @@ export const pl = {
     savedA11y: (t: string) => `Zapisane miejsce: ${t}`,
     searching: 'Szukam we Wrocławiu…',
     noResults: 'Brak wyników',
-    noResultsHint: 'Spróbuj: „arkady”, „biskupin”, „zoo”, „swojczycka” — działa też bez polskich znaków.',
-    gpsOutsideNotice: 'GPS poza Wrocławiem — wybierz punkt manualnie.',
+    noResultsHint: 'Spróbuj: „arkady”, „biskupin”, „zoo”, „swojczycka”. Działa też bez polskich znaków i z literówkami.',
+    noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
+    yourPlaces: 'Twoje miejsca',
+    gpsOutsideNotice: 'GPS poza Wrocławiem, wybierz punkt manualnie.',
   },
   places: {
     manageTitle: 'Zapisane miejsca',

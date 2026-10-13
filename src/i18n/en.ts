@@ -441,8 +441,10 @@ export const en: Strings = {
     savedA11y: (t: string) => `Saved place: ${t}`,
     searching: 'Searching Wrocław…',
     noResults: 'No results',
-    noResultsHint: 'Try: “arkady”, “biskupin”, “zoo”, “swojczycka” — works without Polish characters too.',
-    gpsOutsideNotice: 'GPS is outside Wrocław — pick a point manually.',
+    noResultsHint: 'Try: “arkady”, “biskupin”, “zoo”, “swojczycka”. Works without Polish characters and with typos too.',
+    noResultsFor: (q: string) => `Nothing matches “${q}”`,
+    yourPlaces: 'Your places',
+    gpsOutsideNotice: 'GPS is outside Wrocław, pick a point manually.',
   },
   places: {
     manageTitle: 'Saved places',
