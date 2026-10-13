@@ -54,6 +54,14 @@ function startWatch(requestPermission: boolean): Promise<void> {
   const token = ++generation;
   const pending = (async () => {
     try {
+      if (requestPermission) {
+        // Jak w LocationService: mapa nie może pytać o lokalizację,
+        // zanim użytkownik przejdzie onboarding.
+        try {
+          const { hasSeenOnboarding } = await import('./onboarding');
+          if (!(await hasSeenOnboarding())) requestPermission = false;
+        } catch {}
+      }
       let permission = await Location.getForegroundPermissionsAsync();
       if (!permission.granted && requestPermission) {
         permission = await Location.requestForegroundPermissionsAsync();

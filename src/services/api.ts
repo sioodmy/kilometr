@@ -4,6 +4,7 @@ import { DEFAULT_LOCATION } from '../config';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
 import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
+import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 
 let cachedLocation: LocationResult | null = null;
@@ -136,6 +137,12 @@ function subscribe(listener: (loc: LocationResult) => void): () => void {
 export const LocationService: ILocationService = {
   async getCurrentLocation(options) {
     try {
+      // Przed ukończeniem onboardingu nie wolno pytać o lokalizację:
+      // ekran główny montuje się pod spodem, zanim _layout przekieruje
+      // na onboarding, i systemowy dialog wyskakiwał przed setup screenem.
+      try {
+        if (!(await hasSeenOnboarding())) return { ...DEFAULT_LOCATION };
+      } catch {}
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return { ...DEFAULT_LOCATION };
 
