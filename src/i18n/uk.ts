@@ -462,8 +462,10 @@ export const uk: Strings = {
     savedA11y: (t: string) => `Збережене місце: ${t}`,
     searching: 'Шукаю у Вроцлаві…',
     noResults: 'Немає результатів',
-    noResultsHint: 'Спробуй: „arkady”, „biskupin”, „zoo”, „swojczycka” — працює й без польських літер.',
-    gpsOutsideNotice: 'GPS поза Вроцлавом — вибери точку вручну.',
+    noResultsHint: 'Спробуй: „arkady”, „biskupin”, „zoo”, „swojczycka”. Працює й без польських літер і з помилками.',
+    noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
+    yourPlaces: 'Твої місця',
+    gpsOutsideNotice: 'GPS поза Вроцлавом, вибери точку вручну.',
   },
   places: {
     manageTitle: 'Збережені місця',

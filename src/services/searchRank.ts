@@ -63,8 +63,11 @@ export function nameScore(s: Suggestion, normQ: string): number {
 
 /** Bonus za popularność przystanku (waga = liczba odjazdów). */
 export function weightBonus(s: Suggestion): number {
-  return (s.weight ?? 0) / 100;
+  return Math.min(12, (s.weight ?? 0) / 100);
 }
+
+/** Przystanek trafiony nazwą (nie literówką) wygrywa z resztą bezwarunkowo. */
+const STRONG_STOP_SCORE = 80;
 
 /**
  * Deduplikacja ze współrzędnymi (~100 m) i ranking wykonywany natywnie w Rust:
@@ -125,5 +128,27 @@ export function dedupeAndSort(
     seen.add(key);
     out.push(item);
   }
+
+  const wantsAddress = normQ ? /\d/.test(normQ) : false;
+  const q = normQ ?? '';
+  const names = new Map(out.map((s) => [s, nameScore(s, q)]));
+  const strongStop = (s: Suggestion) => s.kind === 'stop' && (!q || names.get(s)! >= STRONG_STOP_SCORE);
+
+  out.sort((a, b) => {
+    const aStop = strongStop(a) ? 1 : 0;
+    const bStop = strongStop(b) ? 1 : 0;
+    if (aStop !== bStop) return bStop - aStop;
+    if (aStop && bStop) return 0;
+
+    if (wantsAddress) {
+      const aAddr = a.kind === 'address' ? 0 : 1;
+      const bAddr = b.kind === 'address' ? 0 : 1;
+      if (aAddr !== bAddr) return aAddr - bAddr;
+    }
+
+    const scoreA = names.get(a)! - distPenalty(a, hasUserPos) + weightBonus(a);
+    const scoreB = names.get(b)! - distPenalty(b, hasUserPos) + weightBonus(b);
+    return scoreB - scoreA;
+  });
   return out;
 }

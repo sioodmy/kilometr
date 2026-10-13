@@ -8,6 +8,16 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { Suggestion } from '../types/models';
 import { SuggestionRow } from './SuggestionRow';
+import { fuzzyMatch } from '../gtfs/fuzzy';
+import { distanceMeters, normalizePolish } from '../gtfs/geo';
+
+type Row = { type: 'header'; label: string } | { type: 'item'; item: Suggestion };
+
+const QUICK_CHIPS = 3;
+const PERSONAL_MAX = 3;
+/** Prefiks słowa, całe słowo albo akronim; literówki i trafienia w środku słowa zaśmiecają górę listy. */
+const PERSONAL_MIN_SCORE = 85;
+const SAME_PLACE_M = 60;
 
 export function SearchSheetHost({ children }: { children: React.ReactNode }) {
   return <GestureHandlerRootView style={{ flex: 1 }}>{children}</GestureHandlerRootView>;
@@ -75,19 +85,59 @@ export function SearchSheet({
     ref.current?.close();
   };
 
-  const hasResults = results.length > 0;
+  const trimmed = query.trim();
 
-  const displayData = useMemo(() => {
-    if (hasResults) return results;
-    if (query.trim().length > 0) {
-      const q = query.trim().toLowerCase();
-      const matched = recent.filter(
-        (r) => r.title.toLowerCase().includes(q) || (r.address && r.address.toLowerCase().includes(q))
+  // Zapisane miejsca i historia pasujące do zapytania idą przed wyniki z bazy:
+  // „d” od razu podsuwa „Dom”, zanim sieć cokolwiek zwróci.
+  const personal = useMemo(() => {
+    if (!trimmed) return [];
+    const seen = new Set<string>();
+    const scored: { item: Suggestion; score: number }[] = [];
+    for (const item of [...savedQuick, ...recent]) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      const score = Math.max(
+        fuzzyMatch(trimmed, item.title).score,
+        item.address ? fuzzyMatch(trimmed, item.address).score - 20 : 0,
       );
-      if (matched.length > 0) return matched;
+      if (score >= PERSONAL_MIN_SCORE) scored.push({ item, score });
     }
-    return recent;
-  }, [hasResults, results, query, recent]);
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, PERSONAL_MAX).map((x) => x.item);
+  }, [trimmed, savedQuick, recent]);
+
+  const rest = useMemo(
+    () =>
+      results.filter(
+        (r) =>
+          !personal.some(
+            (p) =>
+              normalizePolish(p.title) === normalizePolish(r.title) ||
+              distanceMeters(p.lat, p.lon, r.lat, r.lon) < SAME_PLACE_M,
+          ),
+      ),
+    [results, personal],
+  );
+
+  const rows = useMemo<Row[]>(() => {
+    if (!trimmed) {
+      return recent.length
+        ? [{ type: 'header', label: s.search.recentTrips }, ...recent.map((item) => ({ type: 'item' as const, item }))]
+        : [];
+    }
+    const out: Row[] = [];
+    if (personal.length) {
+      out.push({ type: 'header', label: s.search.yourPlaces });
+      for (const item of personal) out.push({ type: 'item', item });
+    }
+    if (rest.length) {
+      out.push({ type: 'header', label: s.search.resultsFor(trimmed, rest.length) });
+      for (const item of rest) out.push({ type: 'item', item });
+    }
+    return out;
+  }, [trimmed, recent, personal, rest, s]);
+
+  const first = trimmed ? (personal[0] ?? rest[0]) : undefined;
 
   const handleSelect = (item: Suggestion) => {
     onSelect(item);
@@ -152,14 +202,18 @@ export function SearchSheet({
             placeholderTextColor={scheme.onSurfaceVariant}
             style={styles.input}
             returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            blurOnSubmit={false}
+            onSubmitEditing={() => first && handleSelect(first)}
           />
-          {loading ? (
-            <View style={styles.trailingBtn}>
-              <ActivityIndicator size="small" color={scheme.primary} />
-            </View>
-          ) : query ? (
+          {loading && <ActivityIndicator size="small" color={scheme.primary} style={styles.spinner} />}
+          {query ? (
             <TouchableOpacity
-              onPress={() => onQuery('')}
+              onPress={() => {
+                onQuery('');
+                inputRef.current?.focus();
+              }}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               style={styles.trailingBtn}
               activeOpacity={0.7}
@@ -173,11 +227,12 @@ export function SearchSheet({
       </View>
 
       <BottomSheetFlatList
-        data={displayData}
-        keyExtractor={(i: Suggestion, idx: number) => `${i.id}-${idx}`}
+        data={rows}
+        keyExtractor={(r: Row, idx: number) => (r.type === 'header' ? `h-${r.label}` : `${r.item.id}-${idx}`)}
         overScrollMode="never"
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         ListHeaderComponent={
           <View style={{ gap: 6 }}>
             {notice ? (
@@ -186,17 +241,9 @@ export function SearchSheet({
                 <Text style={styles.noticeText}>{notice}</Text>
               </View>
             ) : null}
-            {/* Nagłówek tylko tam, gdzie coś jest */}
-            {(hasResults || displayData.length > 0) && (
-              <Text style={styles.section}>
-                {hasResults
-                  ? s.search.resultsFor(query.trim(), results.length)
-                  : s.search.recentTrips}
-              </Text>
-            )}
-            {!hasResults && query.trim().length === 0 && (
+            {!trimmed && savedQuick.length > 0 && (
               <View style={styles.quickRow}>
-                {savedQuick.map((q) => (
+                {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
                   <TouchableOpacity
                     key={q.id}
                     onPress={() => handleSelect(q)}
@@ -215,14 +262,22 @@ export function SearchSheet({
             )}
           </View>
         }
-        renderItem={({ item }: { item: Suggestion }) => (
-          <SuggestionRow item={item} onPress={() => handleSelect(item)} />
-        )}
+        renderItem={({ item: row }: { item: Row }) =>
+          row.type === 'header' ? (
+            <Text style={styles.section}>{row.label}</Text>
+          ) : (
+            <SuggestionRow item={row.item} query={trimmed} onPress={() => handleSelect(row.item)} />
+          )
+        }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>{loading ? s.search.searching : s.search.noResults}</Text>
-            <Text style={styles.emptySub}>{s.search.noResultsHint}</Text>
-          </View>
+          trimmed ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>
+                {loading ? s.search.searching : s.search.noResultsFor(trimmed)}
+              </Text>
+              {!loading && <Text style={styles.emptySub}>{s.search.noResultsHint}</Text>}
+            </View>
+          ) : null
         }
       />
     </BottomSheet>
@@ -291,6 +346,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: shape.full,
   },
+  spinner: { marginHorizontal: 4 },
   trailingBtn: {
     width: 44,
     height: 44,

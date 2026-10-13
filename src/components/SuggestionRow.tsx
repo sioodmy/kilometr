@@ -22,6 +22,7 @@ import { elev, scheme, shape, type, type SchemeKey } from '../theme/tokens';
 import type { Suggestion, SuggestionKind } from '../types/models';
 import { formatDistance } from '../services/settings';
 import { useStrings } from '../i18n';
+import { normalizePolish } from '../gtfs/geo';
 
 /**
  * Rodzaje wierszy z motywem aplikacji. Trzymamy tu **nazwy ról**, a nie same
@@ -73,7 +74,62 @@ export function getSuggestionIconMeta(
   return { Icon: ShoppingBag, bg: scheme.primaryContainer, fg: scheme.onPrimaryContainer };
 }
 
-export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: () => void }) {
+/**
+ * Zakresy tytułu pasujące do słów zapytania (bez polskich znaków, od początku
+ * słowa, potem gdziekolwiek). normalizePolish zachowuje długość dla PL liter;
+ * gdy nie zachowa (inne alfabety), nic nie podświetlamy.
+ */
+function highlightRanges(title: string, query: string): [number, number][] {
+  const normT = normalizePolish(title);
+  if (normT.length !== title.length) return [];
+  const tokens = normalizePolish(query).split(/[\s,./()\\-]+/).filter((t) => t.length > 0);
+  const ranges: [number, number][] = [];
+  for (const tok of tokens) {
+    let start = -1;
+    for (let i = normT.indexOf(tok); i >= 0; i = normT.indexOf(tok, i + 1)) {
+      if (i === 0 || !/[a-z0-9]/.test(normT[i - 1])) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) start = normT.indexOf(tok);
+    if (start < 0) continue;
+    ranges.push([start, start + tok.length]);
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([r[0], r[1]]);
+  }
+  return merged;
+}
+
+function HighlightedTitle({ text, query }: { text: string; query?: string }) {
+  const ranges = query ? highlightRanges(text, query) : [];
+  if (!ranges.length) return <Text style={styles.title} numberOfLines={1}>{text}</Text>;
+  const parts: React.ReactNode[] = [];
+  let pos = 0;
+  ranges.forEach(([a, b], i) => {
+    if (a > pos) parts.push(text.slice(pos, a));
+    parts.push(<Text key={i} style={styles.match}>{text.slice(a, b)}</Text>);
+    pos = b;
+  });
+  if (pos < text.length) parts.push(text.slice(pos));
+  return <Text style={[styles.title, styles.dim]} numberOfLines={1}>{parts}</Text>;
+}
+
+export function SuggestionRow({
+  item,
+  onPress,
+  query,
+}: {
+  item: Suggestion;
+  onPress: () => void;
+  /** Zapytanie do podświetlenia pasującego fragmentu tytułu. */
+  query?: string;
+}) {
   const s = useStrings();
   const meta = getSuggestionIconMeta(item);
   const Icon = meta.Icon;
@@ -108,7 +164,7 @@ export function SuggestionRow({ item, onPress }: { item: Suggestion; onPress: ()
         <Icon size={19} color={iconFg} />
       </View>
       <View style={styles.mid}>
-        <Text style={styles.title} numberOfLines={1}>{displayTitle}</Text>
+        <HighlightedTitle text={displayTitle} query={query} />
         {subtitle ? (
           <Text style={styles.sub} numberOfLines={1}>
             {subtitle}
@@ -132,5 +188,7 @@ const styles = StyleSheet.create({
   icon: { width: 44, height: 44, borderRadius: shape.full, alignItems: 'center', justifyContent: 'center' },
   mid: { flex: 1, gap: 1 },
   title: { ...type.bodyLarge, color: scheme.onSurface },
+  dim: { color: scheme.onSurfaceVariant },
+  match: { color: scheme.onSurface, fontWeight: '700' },
   sub: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
 });

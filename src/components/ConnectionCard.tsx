@@ -1,8 +1,9 @@
 import { memo, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArrowRight, Footprints } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
+import { getLineColors } from '../services/lineIdentity';
 import { LineBadge } from './LineBadge';
 import { LiveDot } from './LiveDot';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
@@ -49,6 +50,15 @@ function getLegWalkMin(leg: Leg | undefined, walkMps: number): number {
   return 1;
 }
 
+function transitMinutes(leg: Leg): number {
+  const dep = parseHMtoSec(leg.departAt);
+  const arr = parseHMtoSec(leg.arriveAt);
+  if (dep != null && arr != null && arr > dep) {
+    return Math.max(1, Math.round((arr - dep) / 60));
+  }
+  return 3;
+}
+
 function buildLegSegments(legs: Leg[], walkMps: number): SegmentItem[] {
   const transitLegs = legs.filter((l) => l.mode !== 'walk');
   if (transitLegs.length === 0) {
@@ -57,7 +67,6 @@ function buildLegSegments(legs: Leg[], walkMps: number): SegmentItem[] {
 
   const items: SegmentItem[] = [];
 
-  // 1. Initial walk (pieszo na pierwszy przystanek)
   const firstTransitIdx = legs.findIndex((l) => l.mode !== 'walk');
   if (firstTransitIdx > 0) {
     const initialWalks = legs.slice(0, firstTransitIdx);
@@ -68,7 +77,6 @@ function buildLegSegments(legs: Leg[], walkMps: number): SegmentItem[] {
     }
   }
 
-  // 2. Kolejne pojazdy oraz przesiadki piesze między nimi
   for (let i = 0; i < transitLegs.length; i++) {
     const tLeg = transitLegs[i];
     items.push({ type: 'transit', key: `transit-${tLeg.id || i}`, leg: tLeg });
@@ -89,7 +97,6 @@ function buildLegSegments(legs: Leg[], walkMps: number): SegmentItem[] {
         }
       }
 
-      // Jeśli przesiadka wymagała przejścia pieszego, dodaj walk pill przed strzałką
       if (transferWalkMin > 0) {
         items.push({ type: 'walk', key: `walk-transfer-${tLeg.id || i}`, minutes: transferWalkMin });
       }
@@ -98,7 +105,6 @@ function buildLegSegments(legs: Leg[], walkMps: number): SegmentItem[] {
     }
   }
 
-  // 3. Final walk (pieszo z ostatniego przystanku do celu)
   const lastTransitIdx = legs.reduce((last, l, idx) => (l.mode !== 'walk' ? idx : last), -1);
   if (lastTransitIdx >= 0 && lastTransitIdx < legs.length - 1) {
     const finalWalks = legs.slice(lastTransitIdx + 1);
@@ -112,25 +118,57 @@ function buildLegSegments(legs: Leg[], walkMps: number): SegmentItem[] {
   return items;
 }
 
-// Rząd odcinków ma być zawsze w jednej linii (bez zawijania). Szerokości
-// szacujemy z góry — jednoprzebiegowo, bez pomiarów i flickeru:
-// badge 50, strzałka 16, pill pieszy 46, gap 6.
-const W_BADGE = 50;
-const W_BADGE_COMPACT = 42;
-const W_ARROW = 16;
-const W_WALK = 46;
-const W_GAP = 6;
-// Ile kierunku warto jeszcze pokazać. Poniżej tego miejsca i tak zostałyby
-// same wielkie kropki po elipsie („LEŚNI…”), więc lepiej nie pokazywać wcale —
-// pełny kierunek jest na ekranie szczegółów.
-const W_DIR_MIN = 44;
+/** Nazwy przystanków przesiadkowych z pola interchange silnika. */
+function interchangeStops(raw?: string): string[] {
+  if (!raw) return [];
+  const colon = raw.indexOf(':');
+  const body = colon >= 0 ? raw.slice(colon + 1) : raw;
+  return body
+    .split('•')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
-function rowWidth(segs: SegmentItem[], badgeW: number): number {
-  const badges = segs.filter((s) => s.type === 'transit').length;
-  const arrows = segs.filter((s) => s.type === 'arrow').length;
-  const walks = segs.filter((s) => s.type === 'walk').length;
+const BADGE_H = 28;
+const WALK_H = 18;
+const STRIP_H = 43;
+const STRIP_CELL_MIN_W = 54;
+
+function JourneyStrip({ segments }: { segments: SegmentItem[] }) {
+  const parts = segments.filter((s) => s.type === 'walk' || s.type === 'transit');
+  if (parts.length === 0) return null;
+
+  const weights = parts.map((p) =>
+    p.type === 'walk' ? Math.max(p.minutes, 1) : transitMinutes(p.leg),
+  );
+
   return (
-    badges * badgeW + arrows * W_ARROW + walks * W_WALK + Math.max(0, segs.length - 1) * W_GAP
+    <View style={styles.strip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {parts.map((part, i) => {
+        const color =
+          part.type === 'transit'
+            ? getLineColors(part.leg.line, part.leg.mode).bg
+            : scheme.outlineVariant;
+        return (
+          <View key={part.key} style={[styles.stripCell, { flex: weights[i] }]}>
+            <View style={[styles.stripLine, { backgroundColor: color }]} />
+            <View style={styles.stripBadge}>
+              {part.type === 'walk' ? (
+                <View style={[styles.walkPill, { marginTop: (BADGE_H - WALK_H) / 2 }]}>
+                  <Footprints size={10} color={scheme.onSurfaceVariant} strokeWidth={2.4} />
+                  <Text style={styles.walkPillText}>{part.minutes}m</Text>
+                </View>
+              ) : (
+                <>
+                  <LineBadge mode={part.leg.mode} line={part.leg.line} compact={parts.length > 4} />
+                  <Text style={styles.stripDepart}>{part.leg.departAt}</Text>
+                </>
+              )}
+            </View>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -148,60 +186,19 @@ export const ConnectionCard = memo(function ConnectionCard({
   tick?: number;
 }) {
   const walkMps = useWalkSpeedMps();
-  // `tick` jest tylko wyzwalaczem: czas liczymy świeżo przy każdym jego skoku.
   const now = useMemo(() => nowSec(), [tick]);
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
   const segments = useMemo(() => buildLegSegments(item.legs, walkMps), [item.legs, walkMps]);
-  const { width: winWidth } = useWindowDimensions();
-  // Miejsce na rząd: ekran minus paddingi (lista 14 + karta 14 + wiersz 8, ×2).
-  const avail = winWidth - 72;
-  const compact = boarding.length > 2;
-  const badgeW = compact ? W_BADGE_COMPACT : W_BADGE;
+  const transfers = useMemo(() => interchangeStops(item.interchange), [item.interchange]);
 
-  // Co widać w jednej linii:
-  // - kierunek tylko przy pojedynczej linii i tylko gdy jest na niego miejsce
-  //   (resztę wiersza zajmuje kierunek aż do krawędzi karty),
-  // - przy kilku liniach kierunków nie ma wcale; gdy ciasno, wypadają najpierw
-  //   piesze transfery, potem końcowy i początkowy spacer. Badge linii i strzałki
-  //   zostają zawsze. Pełne dane są na ekranie szczegółów.
-  const visible = useMemo(() => {
-    if (walkOnly) return { segments, dirWidth: 0 };
-    if (boarding.length === 1) {
-      const dir = boarding[0]?.direction ?? '';
-      // Szerokość kierunku to cały wolny pas wiersza, a nie szacunek z liczby
-      // znaków: przy 12 px i wielkich literach „LEŚNICE” potrzebuje ~56 px, a
-      // przelicznik 6,5/znak dawał 45 px i ucinał nazwę do „LEŚNI…”.
-      const free = avail - rowWidth(segments, badgeW) - W_GAP;
-      if (dir && free >= W_DIR_MIN) return { segments, dirWidth: free };
-      return { segments, dirWidth: 0 };
-    }
-    if (rowWidth(segments, badgeW) <= avail) return { segments, dirWidth: 0 };
-    const noTransfer = segments.filter(
-      (s) => !(s.type === 'walk' && s.key.startsWith('walk-transfer')),
-    );
-    if (rowWidth(noTransfer, badgeW) <= avail) return { segments: noTransfer, dirWidth: 0 };
-    const noFinal = noTransfer.filter((s) => s.key !== 'walk-final');
-    if (rowWidth(noFinal, badgeW) <= avail) return { segments: noFinal, dirWidth: 0 };
-    return { segments: noFinal.filter((s) => s.key !== 'walk-initial'), dirWidth: 0 };
-  }, [segments, boarding, walkOnly, avail, badgeW]);
-
-  // Historyczne: odjechało ≥1 min temu — szary badge zamiast czasu odjazdu
   const minsAgo =
     item.departureSec > 0 ? Math.round((now - item.departureSec) / 60) : -1;
   const historical = minsAgo >= 1;
 
-  // Dokładne reguły:
-  // 1. Główny czas (duży, po lewej) = ZA ILE odjazd. Czasy z backendu są już
-  //    efektywne (zawierają opóźnienie) — NIE dodawaj delayMin drugi raz.
-  // 2. Pill po prawej = czas jazdy. Kolor pill + kropka niosą status live.
-  // 3. Brak live: szary pill, brak pulsującej kropki.
   let badgeBg: string = scheme.secondaryContainer;
   let badgeFg: string = scheme.onSecondaryContainer;
   let dotColor: string | null = null;
-  // Odliczamy z departureSec, a nie z departInMin z chwili pobrania:
-  // lista może być otwarta kilkanaście minut, a „za 4 min” w międzyczasie
-  // przestałoby być prawdą (i odjechane połączenie wyglądałoby jak aktualne).
   const effectiveMin =
     item.departureSec > 0 ? Math.round((item.departureSec - now) / 60) : item.departInMin;
 
@@ -248,134 +245,182 @@ export const ConnectionCard = memo(function ConnectionCard({
     linesSummary,
   );
 
+  // Przeszłe: zwarta linia zamiast pełnej karty, żeby kolejne odjazdy
+  // były pierwszym, na co spada wzrok.
+  if (historical || dimmed) {
+    return (
+      <Pressable
+        onPress={() => onPress(item)}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityDesc}
+        style={({ pressed }) => [
+          styles.pastCard,
+          pressed && { backgroundColor: scheme.surfaceContainerHigh },
+        ]}
+      >
+        <Text style={styles.pastDepart} numberOfLines={1}>
+          {departureText}
+        </Text>
+        <Text style={styles.pastHours} numberOfLines={1}>
+          {item.departAt} → {item.arriveAt}
+        </Text>
+        <View style={styles.pastDur}>
+          <Text style={styles.pastDurText}>{tr().common.durMin(item.durationMin)}</Text>
+        </View>
+        {boarding[0]?.line ? (
+          <View style={styles.pastLine}>
+            <LineBadge mode={boarding[0].mode} line={boarding[0].line} compact />
+          </View>
+        ) : null}
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable
       onPress={() => onPress(item)}
       accessibilityRole="button"
       accessibilityLabel={accessibilityDesc}
-      // Sam kolor tła zamiast skali: przyciśnięcie nie musi przeliczać warstwy
-      // i ponownie rasterować karty z cieniem. Skala + opacity pulsowały przy
-      // każdym przytrzymaniu palca na starcie przeciągania.
       style={({ pressed }) => [
         styles.card,
-        dimmed && styles.dimmed,
         pressed && { backgroundColor: scheme.surfaceContainerHigh },
       ]}
     >
-      {/* Góra: ZA ILE odjazd (główne) + pill z czasem jazdy */}
       <View style={styles.top}>
-        <Text style={[styles.duration, { color: departureColor }]}>{departureText}</Text>
-        <View style={[styles.badge, { backgroundColor: historical ? scheme.surfaceContainerHighest : badgeBg }]}>
-          {dotColor != null && !historical && <LiveDot color={dotColor} size={7} />}
-          <Text style={[styles.badgeText, { color: historical ? scheme.onSurfaceVariant : badgeFg }]}>
+        <View style={styles.topLeft}>
+          <Text style={[styles.duration, { color: departureColor }]}>{departureText}</Text>
+          <View style={styles.hoursRow}>
+            <Text style={styles.hours}>{item.departAt}</Text>
+            <ArrowRight size={11} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
+            <Text style={styles.hours}>{item.arriveAt}</Text>
+            <Text style={styles.hoursDot}>·</Text>
+            <Text style={styles.hours}>
+              {walkOnly ? tr().connection.walkLeg : transfersLabel(item.transfers)}
+            </Text>
+          </View>
+        </View>
+        <View
+          style={[
+            styles.badge,
+            { backgroundColor: badgeBg },
+          ]}
+        >
+          {dotColor != null ? <LiveDot color={dotColor} size={7} pulse={false} /> : null}
+          <Text style={[styles.badgeText, { color: badgeFg }]}>
             {tr().common.durMin(item.durationMin)}
           </Text>
         </View>
       </View>
 
-      <View style={styles.hoursRow}>
-        <Text style={styles.hours}>{item.departAt}</Text>
-        <ArrowRight size={12} color={scheme.onSurfaceVariant} strokeWidth={2} />
-        <Text style={styles.hours}>{item.arriveAt}</Text>
-        <Text style={styles.hoursDot}>•</Text>
-        <Text style={styles.hours}>{walkOnly ? tr().connection.walkLeg : transfersLabel(item.transfers)}</Text>
-      </View>
-
-      {/* Środek: badge linii oraz piesze części trasy (zgodnie ze stylem Jakdojade) */}
-      <View style={styles.legs}>
-        {walkOnly ? (
-          <View style={styles.walkOnlyWrap}>
-            <View style={styles.walkPill}>
-              <Footprints size={12} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
-              <Text style={styles.walkPillText}>{walkMin}m</Text>
-            </View>
-            <Text style={styles.walkLabel}>{tr().connection.walkAll}</Text>
+      {walkOnly ? (
+        <View style={styles.walkOnlyWrap}>
+          <View style={styles.walkPill}>
+            <Footprints size={12} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
+            <Text style={styles.walkPillText}>{walkMin}m</Text>
           </View>
-        ) : (
-          visible.segments.map((seg) => {
-            if (seg.type === 'arrow') {
-              return (
-                <ArrowRight
-                  key={seg.key}
-                  size={12}
-                  color={scheme.onSurfaceVariant}
-                  strokeWidth={2}
-                />
-              );
-            }
-            if (seg.type === 'walk') {
-              return (
-                <View key={seg.key} style={styles.walkPill}>
-                  <Footprints size={12} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
-                  <Text style={styles.walkPillText}>{seg.minutes}m</Text>
-                </View>
-              );
-            }
-            const showDirection = boarding.length === 1 && visible.dirWidth > 0;
-            return (
-              <View key={seg.key} style={styles.transitGroup}>
-                <LineBadge mode={seg.leg.mode} line={seg.leg.line} compact={compact} />
-                {showDirection ? (
-                  <Text
-                    style={[styles.dir, { maxWidth: visible.dirWidth }]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {seg.leg.direction}
-                  </Text>
-                ) : null}
-              </View>
-            );
-          })
-        )}
-      </View>
+          <Text style={styles.walkLabel}>{tr().connection.walkAll}</Text>
+        </View>
+      ) : segments.length > 0 ? (
+        <JourneyStrip segments={segments} />
+      ) : null}
 
-      {item.interchange ? <Text style={styles.interchange}>{item.interchange}</Text> : null}
+      {transfers.length > 0 ? (
+        <View style={styles.transferRow}>
+          {transfers.map((stop) => (
+            <View key={stop} style={styles.transferChip}>
+              <Text style={styles.transferChipText} numberOfLines={1}>
+                {stop}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </Pressable>
   );
 });
 
 const styles = StyleSheet.create({
-  // M3 elevated card: surfaceContainer + level1, shape large, minHeight 92 dla kciuka
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.large,
-    padding: 14,
-    gap: 10,
-    minHeight: 92,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 8,
+    minHeight: 72,
     justifyContent: 'center',
+    overflow: 'hidden',
     ...elev.level1,
   },
-  dimmed: {
-    opacity: 0.55,
+  pastCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.medium,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minHeight: 44,
+  },
+  pastDepart: {
+    ...type.labelLarge,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    minWidth: 84,
+  },
+  pastHours: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    flex: 1,
+    opacity: 0.85,
+  },
+  pastDur: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  pastDurText: {
+    ...type.labelSmall,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+  },
+  pastLine: {
+    opacity: 0.7,
   },
   top: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: 12,
+  },
+  topLeft: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0,
   },
   duration: {
     ...type.titleLarge,
     fontWeight: '700',
     color: scheme.onSurface,
+    letterSpacing: -0.3,
   },
-  // Pojedynczy M3 tonal badge w prawym górnym rogu
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     borderRadius: shape.full,
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 6,
+    marginTop: 2,
   },
   badgeText: {
     ...type.labelMedium,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   hoursRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     flexWrap: 'wrap',
   },
   hoursDot: {
@@ -386,11 +431,35 @@ const styles = StyleSheet.create({
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
   },
-  legs: {
+  strip: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    height: STRIP_H,
+  },
+  stripCell: {
+    height: STRIP_H,
+    minWidth: STRIP_CELL_MIN_W,
+  },
+  stripLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 4,
+    top: BADGE_H / 2 - 2,
+  },
+  stripBadge: {
+    alignSelf: 'center',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'nowrap',
+    height: STRIP_H,
+  },
+  stripDepart: {
+    marginTop: 2,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    opacity: 0.72,
+    fontVariant: ['tabular-nums'],
   },
   walkOnlyWrap: {
     flexDirection: 'row',
@@ -400,35 +469,39 @@ const styles = StyleSheet.create({
   walkPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: scheme.surfaceContainerHigh,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: shape.small,
+    justifyContent: 'center',
+    gap: 3,
+    height: WALK_H,
+    backgroundColor: scheme.outlineVariant,
+    paddingHorizontal: 9,
+    borderRadius: 999,
   },
   walkPillText: {
-    ...type.labelSmall,
-    color: scheme.onSurfaceVariant,
+    fontSize: 10,
+    lineHeight: 11,
+    color: scheme.onSurface,
     fontWeight: '600',
   },
   walkLabel: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
-  transitGroup: {
+  transferRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
-    flexShrink: 1,
   },
-  dir: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
+  transferChip: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.small,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    maxWidth: '100%',
   },
-  interchange: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    fontStyle: 'italic',
+  transferChipText: {
+    ...type.labelSmall,
+    color: scheme.onSurface,
+    fontWeight: '500',
+    opacity: 0.82,
   },
 });

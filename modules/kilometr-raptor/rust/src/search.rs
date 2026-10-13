@@ -737,7 +737,7 @@ fn candidate_dist_penalty(c: &RankCandidate, has_user_pos: bool) -> f64 {
 #[inline]
 fn candidate_weight_bonus(c: &RankCandidate) -> f64 {
     if c.weight > 0.0 {
-        c.weight / 100.0
+        (c.weight / 100.0).min(12.0)
     } else {
         0.0
     }
@@ -774,19 +774,19 @@ pub fn dedupe_and_sort(
     unique.sort_by(|&(ia, score_a), &(ib, score_b)| {
         let a = &candidates[ia];
         let b = &candidates[ib];
+        let a_strong = a.kind == 0 && (norm_query.is_empty() || score_a >= 80.0);
+        let b_strong = b.kind == 0 && (norm_query.is_empty() || score_b >= 80.0);
 
-        // 1. Przystanki zawsze na górze, z zachowaniem kolejności wejściowej (stabilnie).
-        if a.kind == 0 && b.kind != 0 {
+        if a_strong && !b_strong {
             return std::cmp::Ordering::Less;
         }
-        if a.kind != 0 && b.kind == 0 {
+        if !a_strong && b_strong {
             return std::cmp::Ordering::Greater;
         }
-        if a.kind == 0 && b.kind == 0 {
+        if a_strong && b_strong {
             return ia.cmp(&ib);
         }
 
-        // 2. Jeśli zapytanie zawiera cyfrę, adresy przed POI.
         if has_digit {
             if a.kind == 1 && b.kind != 1 {
                 return std::cmp::Ordering::Less;
@@ -796,7 +796,6 @@ pub fn dedupe_and_sort(
             }
         }
 
-        // 3. Reszta wg wyniku malejąco, tie-break po kolejności wejściowej.
         score_b
             .partial_cmp(&score_a)
             .unwrap_or(std::cmp::Ordering::Equal)

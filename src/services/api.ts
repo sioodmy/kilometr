@@ -202,6 +202,7 @@ export class SearchAbortedError extends Error {
 const mergedCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MERGED_TTL_MS = 120 * 1000;
 const MERGED_MAX = 60;
+const NETWORK_DELAY_MS = 280;
 
 function mergedGet(key: string): Suggestion[] | null {
   const e = mergedCache.get(key);
@@ -226,6 +227,7 @@ export const SearchService: ISearchService = {
     query: string,
     coords?: { lat: number; lon: number },
     scope: string = DEFAULT_SEARCH_SCOPE,
+    onPartial?: (results: Suggestion[]) => void,
   ): Promise<Suggestion[]> {
     const q = query.trim();
     if (!q) return [];
@@ -288,6 +290,13 @@ export const SearchService: ISearchService = {
       const needNetwork = q.length >= 2 && (looksLikeAddress || localSuggestions.length < 5);
       let remoteHits: Suggestion[] = [];
       if (needNetwork) {
+        // Lokalne trafienia od razu na ekran, sieć dopiero gdy user przestanie pisać
+        // (Nominatim ma limit 1 req/s, a każdy znak i tak by anulował żądanie).
+        if (onPartial && localSuggestions.length > 0) {
+          onPartial(dedupeAndSort(localSuggestions, [], hasPos, normQ).slice(0, 15));
+        }
+        await new Promise((r) => setTimeout(r, NETWORK_DELAY_MS));
+        if (!isCurrent()) throw new SearchAbortedError();
         remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(() => []);
         if (!isCurrent()) throw new SearchAbortedError();
       }
