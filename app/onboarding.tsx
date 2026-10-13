@@ -236,7 +236,9 @@ function useOnboardingPlaces() {
     }
     setSearching(true);
     const t = setTimeout(() => {
-      SearchService.search(q)
+      SearchService.search(q, undefined, undefined, (partial) => {
+        if (seq === searchSeq.current) setResults(partial);
+      })
         .then((r) => {
           if (seq === searchSeq.current) setResults(r);
         })
@@ -246,7 +248,7 @@ function useOnboardingPlaces() {
         .finally(() => {
           if (seq === searchSeq.current) setSearching(false);
         });
-    }, 250);
+    }, 90);
     return () => clearTimeout(t);
   }, [query, activeSlot]);
 
