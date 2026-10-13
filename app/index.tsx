@@ -541,6 +541,7 @@ export default function HomeScreen() {
       .slice(0, 6);
 
     const places: WidgetPlace[] = saved.slice(0, 12).map((p) => ({
+      id: p.id,
       name: p.name,
       icon: p.icon,
       deepLink: linkTo({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon }),
