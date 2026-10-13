@@ -1,13 +1,12 @@
 name: Dev PR APK Preview (Self-hosted)
 
+# Build odpalany RECZNIE komentarzem na PR dev -> main, nie na kazdym pushu.
+# Komentarz musi brzmiec dokladnie: build machen !!!
+# Dzieki temu runner (Azure VM) nie mieli sie przy kazdym synchronize.
 on:
-  pull_request:
-    branches:
-      - main
+  issue_comment:
     types:
-      - opened
-      - synchronize
-      - reopened
+      - created
   workflow_dispatch:
     inputs:
       runner:
@@ -42,21 +41,61 @@ jobs:
   build-preview:
     name: Build Dev PR APK
     # Twarde zabezpieczenie runnera self-hosted przed kodem z zewnatrz:
-    # 1. PR musi pochodzic bezposrednio z glownego repo (nie z forka)
-    # 2. Tylko dla galezi zrodlowej 'dev'
-    # 3. Dla recznego wywolania (workflow_dispatch) tylko wlasciciel repozytorium
+    # 1. Wyzwalacz to komentarz na PR (nie push), o tresci dokladnie "build machen !!!"
+    # 2. Komentujacy musi byc wlascicielem/czlonkiem/wspolpracownikiem repo
+    # 3. Krok "Resolve and validate PR" sprawdza, ze PR idzie z glownego repo do main z galezi dev
+    # 4. Dla recznego wywolania (workflow_dispatch) tylko wlasciciel repozytorium
     if: >-
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       github.head_ref == 'dev') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       github.event.comment.body == 'build machen !!!' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner)
     runs-on: ${{ inputs.runner || 'self-hosted' }}
 
     steps:
+      - name: Resolve and validate PR
+        id: pr
+        uses: actions/github-script@v7
+        env:
+          INPUT_PR: ${{ inputs.pr_number }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const repoFull = `${context.repo.owner}/${context.repo.repo}`;
+            let prNumber;
+            if (context.eventName === 'issue_comment') {
+              prNumber = context.payload.issue.number;
+            } else {
+              prNumber = Number(process.env.INPUT_PR || 129);
+            }
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            if (context.eventName === 'issue_comment') {
+              if (pr.head.repo.full_name !== repoFull) {
+                core.setFailed(`PR #${prNumber} pochodzi z forka (${pr.head.repo.full_name}); odmawiam budowy na self-hosted runnerze.`);
+                return;
+              }
+              if (pr.base.ref !== 'main') {
+                core.setFailed(`PR #${prNumber} nie celuje w main (base=${pr.base.ref}).`);
+                return;
+              }
+              if (pr.head.ref !== 'dev') {
+                core.setFailed(`PR #${prNumber} nie pochodzi z galezi dev (head=${pr.head.ref}).`);
+                return;
+              }
+            }
+            core.setOutput('number', String(prNumber));
+            core.setOutput('head_sha', pr.head.sha);
+            console.log(`PR #${prNumber}: ${pr.head.ref} -> ${pr.base.ref} @ ${pr.head.sha}`);
+
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ steps.pr.outputs.head_sha || github.ref }}
           fetch-depth: 0
 
       - name: Extract Git metadata
@@ -167,7 +206,7 @@ jobs:
       - name: Comment on PR
         uses: actions/github-script@v7
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number || '129' }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
           SHORT_SHA: ${{ steps.git-meta.outputs.short_sha }}
           COMMIT_MSG: ${{ steps.git-meta.outputs.commit_msg }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
