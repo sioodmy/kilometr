@@ -5,7 +5,7 @@
 
 import { OVERPASS } from './gtfsConfig';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
-import { fuzzyMatch } from '../gtfs/fuzzy';
+import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { classifyPoi, buildPoiAddress } from './poiClassify';
 import type { Suggestion } from '../types/models';
 import { findPoiCandidates, getMeta, poiCount, replacePois, setMeta, type PoiRow } from './gtfsDatabase';
@@ -132,10 +132,12 @@ export async function searchPois(
   const hasPos = userLat !== undefined && userLon !== undefined;
 
   const candidates = await findPoiCandidates(normQ).catch(() => [] as PoiRow[]);
+  const matches = fuzzyMatchBatch(normQ, candidates.map((row) => row.name));
   const scored: { row: PoiRow; score: number; distM?: number }[] = [];
-  for (const row of candidates) {
-    const match = fuzzyMatch(normQ, row.name);
-    if (!match.matches) continue;
+  for (let i = 0; i < candidates.length; i++) {
+    const row = candidates[i];
+    const match = matches[i];
+    if (!match?.matches) continue;
     let distM: number | undefined;
     let score = match.score;
     if (hasPos && userLat !== undefined && userLon !== undefined) {

@@ -177,3 +177,19 @@ pub unsafe extern "C" fn Java_pl_wroclaw_kilometr_raptor_KilometrRaptorBridge_na
     };
     unsafe { write_jbyte_array(env, &out) }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_pl_wroclaw_kilometr_raptor_KilometrRaptorBridge_nativeInvoke(
+    env: JniEnv,
+    _class: JClass,
+    cmd: JInt,
+    payload: JByteArray,
+) -> JByteArray {
+    let Some(bytes) = (unsafe { read_jbyte_array(env, payload) }) else {
+        return std::ptr::null_mut();
+    };
+    let Ok(out) = catch_unwind(|| crate::dispatch_invoke(cmd, &bytes)) else {
+        return std::ptr::null_mut();
+    };
+    unsafe { write_jbyte_array(env, &out) }
+}

@@ -245,5 +245,21 @@ class KilometrRaptorModule : Module() {
         KilometrRaptorBridge.nativeRouteFoot(packedReq)
       }
     }
+
+    Function("invokeSync") { cmd: Int, payload: ByteArray ->
+      if (!KilometrRaptorBridge.isLoaded) {
+        null
+      } else {
+        KilometrRaptorBridge.nativeInvoke(cmd, payload)
+      }
+    }
+
+    AsyncFunction("invoke") { cmd: Int, payload: ByteArray ->
+      if (!KilometrRaptorBridge.isLoaded) {
+        null
+      } else {
+        KilometrRaptorBridge.nativeInvoke(cmd, payload)
+      }
+    }
   }
 }

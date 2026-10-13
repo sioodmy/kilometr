@@ -7,6 +7,13 @@
 // kolejnymi przystankami) oraz sprawdza oczekiwany czas w rozkładzie.
 // Eliminuje to błędy pojazdów w ruchu między przystankami i fałszywe dopasowania.
 
+import {
+  BinaryReader,
+  BinaryWriter,
+  CMD_LIVE_LOAD_SCHEDULE,
+  CMD_LIVE_MATCH_BATCH,
+  invokeRustSync,
+} from '../../modules/kilometr-raptor';
 import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
@@ -579,6 +586,125 @@ class LiveTracker {
     return { byId, delays };
   }
 
+  private liveScheduleKey: DayIndex | null = null;
+  private liveTripIds: string[] = [];
+  private liveStopNames: string[] = [];
+
+  private ensureLiveSchedule(dayIndex: DayIndex): boolean {
+    if (this.liveScheduleKey === dayIndex && this.liveTripIds.length > 0) return true;
+    const byLine = new Map<string, any[]>();
+    for (const pattern of dayIndex.patterns.values()) {
+      const route = gtfsStore.routes.get(pattern.routeId);
+      const line = String(route?.route_short_name ?? pattern.routeId ?? '').trim().toUpperCase();
+      if (!line) continue;
+      let list = byLine.get(line);
+      if (!list) {
+        list = [];
+        byLine.set(line, list);
+      }
+      list.push(pattern);
+    }
+    const tripIds: string[] = [];
+    const stopNames: string[] = [];
+    const w = new BinaryWriter(256);
+    w.u32(byLine.size);
+    for (const [line, patterns] of byLine) {
+      w.str(line).u32(patterns.length);
+      for (const pattern of patterns) {
+        const seq: { nameIdx: number; lat: number; lon: number }[] = [];
+        for (const stopId of (pattern.stopSequence as string[]) ?? []) {
+          const stop = gtfsStore.stops.get(stopId);
+          if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
+          const nameIdx = stopNames.length;
+          stopNames.push(stop.stop_name || stopId);
+          seq.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon });
+        }
+        w.u16(seq.length);
+        for (const node of seq) w.u32(node.nameIdx).f64(node.lat).f64(node.lon);
+        const trips = (pattern.trips as { trip_id: string }[]) ?? [];
+        w.u32(trips.length);
+        for (const trip of trips) {
+          const times = gtfsStore.stopTimes.get(trip.trip_id) as
+            | { stop_id: string; departure_sec: number; arrival_sec: number }[]
+            | undefined;
+          const tripIdx = tripIds.length;
+          tripIds.push(trip.trip_id);
+          w.u32(tripIdx);
+          for (let i = 0; i < seq.length; i++) {
+            const t = times?.[i];
+            w.i32(t ? t.departure_sec | 0 : -2147483648).i32(t ? t.arrival_sec | 0 : -2147483648);
+          }
+          const fallback: { nameIdx: number; lat: number; lon: number; dep: number }[] = [];
+          if (times) {
+            for (const t of times) {
+              const stop = gtfsStore.stops.get(t.stop_id);
+              if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
+              const dep = t.departure_sec ?? t.arrival_sec;
+              if (dep == null) continue;
+              const nameIdx = stopNames.length;
+              stopNames.push(stop.stop_name || t.stop_id);
+              fallback.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, dep });
+            }
+          }
+          w.u16(fallback.length);
+          for (const fb of fallback) w.u32(fb.nameIdx).f64(fb.lat).f64(fb.lon).i32(fb.dep | 0);
+        }
+      }
+    }
+    const res = invokeRustSync(CMD_LIVE_LOAD_SCHEDULE, w.finish());
+    if (!res || res.byteLength < 4) return false;
+    this.liveScheduleKey = dayIndex;
+    this.liveTripIds = tripIds;
+    this.liveStopNames = stopNames;
+    return true;
+  }
+
+  private matchRowsRust(
+    rows: RawVehicleRow[],
+    dayIndex: DayIndex,
+    nowSec: number,
+  ): Map<string, { tracked: TrackedVehicle; score: number }> | null {
+    if (!this.ensureLiveSchedule(dayIndex)) return null;
+    const usable = rows.filter((row) => row.x && row.y && row.name);
+    if (usable.length === 0) return null;
+    const w = new BinaryWriter(16 + usable.length * 48);
+    w.i32(nowSec).u32(usable.length);
+    for (const row of usable) w.str(row.name.trim().toUpperCase()).f64(row.x).f64(row.y);
+    const res = invokeRustSync(CMD_LIVE_MATCH_BATCH, w.finish());
+    if (!res || res.byteLength < 4) return null;
+    const r = new BinaryReader(res);
+    const count = r.u32();
+    if (count !== usable.length || res.byteLength < 4 + count * 17) return null;
+    const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
+    for (let i = 0; i < count; i++) {
+      const row = usable[i];
+      const line = row.name.trim().toUpperCase();
+      const ok = r.u8Val() !== 0;
+      const tripIdx = r.u32();
+      const delay = r.i32();
+      const curIdx = r.u32();
+      const nextIdx = r.u32();
+      const tripId = ok ? this.liveTripIds[tripIdx] : undefined;
+      const delayOutOfRange = !!tripId && delay !== 0 && Math.abs(delay) > DELAY_CAP_SEC;
+      matched.set(line + '-' + row.k, {
+        tracked: {
+          vehicleId: `${line}-${row.k}`,
+          line,
+          lat: row.x,
+          lon: row.y,
+          type: row.type === 'tram' ? 'tram' : 'bus',
+          delaySec: tripId && !delayOutOfRange ? delay : null,
+          matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
+          currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
+          nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
+          updatedAt: Date.now(),
+        },
+        score: tripId && !delayOutOfRange ? Math.abs(delay) : Number.POSITIVE_INFINITY,
+      });
+    }
+    return matched;
+  }
+
   private async matchAll(rows: RawVehicleRow[]): Promise<void> {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
@@ -602,14 +728,18 @@ class LiveTracker {
     }
 
     const patternPolylines = new Map<string, PatternPolylineNode[]>();
-    const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
+    const matched =
+      this.matchRowsRust(rows, dayIndex, nowSec) ??
+      new Map<string, { tracked: TrackedVehicle; score: number }>();
 
-    for (const row of rows) {
-      // MPK potrafi w odpowiedzi umieścić wiersz z zerowymi współrzędnymi
-      // (zdarza się np. dla linii 153). Taki wiersz nie ma pozycji, więc
-      // dopasowanie do kursu byłoby zmyślone.
-      if (!row.x || !row.y || !row.name) continue;
-      matched.set(row.name.trim().toUpperCase() + '-' + row.k, this.matchRow(row, dayIndex, nowSec, patternPolylines));
+    if (matched.size === 0) {
+      for (const row of rows) {
+        // MPK potrafi w odpowiedzi umieścić wiersz z zerowymi współrzędnymi
+        // (zdarza się np. dla linii 153). Taki wiersz nie ma pozycji, więc
+        // dopasowanie do kursu byłoby zmyślone.
+        if (!row.x || !row.y || !row.name) continue;
+        matched.set(row.name.trim().toUpperCase() + '-' + row.k, this.matchRow(row, dayIndex, nowSec, patternPolylines));
+      }
     }
 
     // Jeden kurs = jeden pojazd (patrz resolveConflicts), inaczej opóźnienia

@@ -7,7 +7,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
-import { expandTokenSynonyms, fuzzyMatch } from '../gtfs/fuzzy';
+import { expandTokenSynonyms, fuzzyMatchBatch } from '../gtfs/fuzzy';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../gtfs/types';
 
 export const GTFS_DB_NAME = 'kilometr-gtfs.db';
@@ -425,13 +425,17 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
   );
   const scored: StopSearchHit[] = [];
   const seen = new Set<string>();
-  for (const r of rows) {
-    if (seen.has(r.name)) continue;
-    const m = fuzzyMatch(q, r.name);
-    if (m.matches) {
-      seen.add(r.name);
-      scored.push({ stop_id: r.stop_id, code: r.code, name: r.name, lat: r.lat, lon: r.lon, score: m.score, weight: r.weight ?? 0 });
-    }
+  const uniqueRows = rows.filter((r) => {
+    if (seen.has(r.name)) return false;
+    seen.add(r.name);
+    return true;
+  });
+  const matches = fuzzyMatchBatch(q, uniqueRows.map((r) => r.name));
+  for (let i = 0; i < uniqueRows.length; i++) {
+    const m = matches[i];
+    if (!m?.matches) continue;
+    const r = uniqueRows[i];
+    scored.push({ stop_id: r.stop_id, code: r.code, name: r.name, lat: r.lat, lon: r.lon, score: m.score, weight: r.weight ?? 0 });
   }
   scored.sort((a, b) => {
     if (Math.abs(a.score - b.score) > 12) return b.score - a.score;

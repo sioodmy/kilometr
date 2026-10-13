@@ -1,10 +1,9 @@
 // Podpowiedzi budynków Politechniki Wrocławskiej (D-21, C-4, ...).
-// Statyczna lista z mapy kampusu PWr, działa od pierwszego uruchomienia,
-// bez sieci, i pozwala wpisać kod bez myślnika ("d21").
+// Dopasowanie rozmyte wykonywane wsadowo w Rust (`fuzzyMatchBatch`).
 
 import { PWR_BUILDINGS } from '../data/pwrBuildings';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
-import { fuzzyMatch } from '../gtfs/fuzzy';
+import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import type { Suggestion } from '../types/models';
 
 const DIST_PENALTY_CAP = 40;
@@ -14,6 +13,9 @@ const DIST_PENALTY_PER_M = 250;
 export function compactBuildingCode(value: string): string {
   return normalizePolish(value).replace(/[^a-z0-9]/g, '');
 }
+
+const COMPACT_CODES = PWR_BUILDINGS.map((b) => compactBuildingCode(b.code));
+const FULL_TARGETS = PWR_BUILDINGS.map((b) => `${b.code} Politechnika Wrocławska`);
 
 export function searchPwrBuildings(
   query: string,
@@ -31,16 +33,19 @@ export function searchPwrBuildings(
     .map(compactBuildingCode)
     .filter(Boolean);
 
+  const batchResults = fuzzyMatchBatch(normQ, FULL_TARGETS);
   const scored: { item: Suggestion; score: number }[] = [];
-  for (const b of PWR_BUILDINGS) {
-    const compactCode = compactBuildingCode(b.code);
+
+  for (let i = 0; i < PWR_BUILDINGS.length; i++) {
+    const b = PWR_BUILDINGS[i];
+    const compactCode = COMPACT_CODES[i];
     let score = 0;
     if (compactQ === compactCode) score = 100;
     else if (tokens.includes(compactCode)) score = 96;
     else if (compactQ.length >= 2 && compactCode.startsWith(compactQ)) score = 90;
     else {
-      const byName = fuzzyMatch(normQ, `${b.code} Politechnika Wrocławska`);
-      if (byName.matches) score = byName.score;
+      const byName = batchResults[i];
+      if (byName && byName.matches) score = byName.score;
     }
     if (score <= 0) continue;
 

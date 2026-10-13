@@ -6,6 +6,12 @@
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
 
+import {
+  BinaryReader,
+  BinaryWriter,
+  CMD_MATCH_ZB_KD,
+  invokeRustSync,
+} from '../../modules/kilometr-raptor';
 import { ZBIORKOM } from './gtfsConfig';
 import { normalizeName } from './vehiclePosition';
 import { gtfsStore, type DayIndex } from './routing/store';
@@ -137,6 +143,51 @@ export interface ZbKdMatch {
  * postojów. Bez weryfikacji czasowej sam numer to za mało: ten sam skład
  * potrafi jechać rano i wieczorem.
  */
+function matchZbKdRust(veh: ZbKdVehicle, dayIndex: DayIndex, routeIds: string[]): ZbKdMatch | null | undefined {
+  const tripIds: string[] = [];
+  let candCount = 0;
+  const body = new BinaryWriter(256);
+  for (const pattern of dayIndex.patterns.values()) {
+    if (!routeIds.includes(pattern.routeId)) continue;
+    const trips = pattern.trips as { trip_id: string }[] | undefined;
+    if (!trips) continue;
+    for (const trip of trips) {
+      const times = gtfsStore.stopTimes.get(trip.trip_id) as
+        | { stop_id: string; departure_sec: number; arrival_sec: number }[]
+        | undefined;
+      if (!times || times.length === 0) continue;
+      const packed: { name: string; sec: number }[] = [];
+      for (const t of times) {
+        const stop = gtfsStore.stops.get(t.stop_id);
+        const name = stop?.stop_name || '';
+        const sec = t.departure_sec ?? t.arrival_sec;
+        if (!name || sec == null) continue;
+        packed.push({ name, sec });
+      }
+      tripIds.push(trip.trip_id);
+      body.u32(candCount).u16(packed.length);
+      for (const s of packed) body.str(s.name).i32(s.sec | 0);
+      candCount++;
+    }
+  }
+  const head = new BinaryWriter(64 + veh.stops.length * 32);
+  head.u16(veh.stops.length);
+  for (const zb of veh.stops) head.str(zb.name).i32(zb.schedSec | 0);
+  head.u32(candCount);
+  const headBytes = head.finish();
+  const bodyBytes = body.finish();
+  const payload = new Uint8Array(headBytes.byteLength + bodyBytes.byteLength);
+  payload.set(headBytes, 0);
+  payload.set(bodyBytes, headBytes.byteLength);
+  const res = invokeRustSync(CMD_MATCH_ZB_KD, payload);
+  if (!res || res.byteLength < 5) return undefined;
+  const r = new BinaryReader(res);
+  if (r.u8Val() === 0) return null;
+  const idx = r.u32();
+  const tripId = tripIds[idx];
+  return tripId ? { tripId } : null;
+}
+
 export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | null {
   if (veh.stops.length === 0) return null;
   let routeIds: string[] = [];
@@ -146,6 +197,9 @@ export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | nul
     return null;
   }
   if (routeIds.length === 0) return null;
+
+  const rust = matchZbKdRust(veh, dayIndex, routeIds);
+  if (rust !== undefined) return rust;
 
   let bestTripId: string | null = null;
   let bestScore = -Infinity;
