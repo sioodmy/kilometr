@@ -1,0 +1,94 @@
+name: Dev preview APK (queue Azure)
+
+# Azure Pipelines nie umie triggerowac sie od komentarza w GitHubie, wiec ten
+# maly workflow pelni role mostka: na komentarz kolejjkuje run pipeline'u Azure
+# (azure-pipelines.yml) na refs/heads/dev przez REST API.
+#
+# Komentarz musi brzmiec dokladnie: build machen !!!
+#
+# Sekret/zmienne (Settings -> Secrets and variables -> Actions):
+# - sekret AZURE_DEVOPS_PAT: PAT z zakresem Build (Read & execute)
+# - zmienna AZURE_ORG: nazwa organizacji Azure DevOps
+# - zmienna AZURE_PROJECT: nazwa projektu
+# - zmienna AZURE_PIPELINE_ID: id pipeline'u kilometr-apk (widoczne w URL)
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: dev-preview-apk-queue
+  cancel-in-progress: false
+
+jobs:
+  queue:
+    name: Queue Azure build
+    # Tylko komentarz na PR, o tresci dokladnie "build machen !!!", od
+    # wlasciciela/czlonka/wspolpracownika repo.
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.body == 'build machen !!!' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR is dev -> main from this repo
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const repoFull = `${context.repo.owner}/${context.repo.repo}`;
+            const prNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            if (pr.head.repo.full_name !== repoFull) {
+              core.setFailed(`PR #${prNumber} pochodzi z forka (${pr.head.repo.full_name}).`);
+              return;
+            }
+            if (pr.base.ref !== 'main' || pr.head.ref !== 'dev') {
+              core.setFailed(`PR #${prNumber} nie jest dev -> main (jest ${pr.head.ref} -> ${pr.base.ref}).`);
+              return;
+            }
+            core.setOutput('number', String(prNumber));
+            core.setOutput('sha', pr.head.sha);
+            console.log(`PR #${prNumber}: ${pr.head.ref} -> ${pr.base.ref} @ ${pr.head.sha}`);
+
+      - name: Queue Azure pipeline
+        env:
+          AZDO_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+          AZDO_ORG: ${{ vars.AZURE_ORG }}
+          AZDO_PROJECT: ${{ vars.AZURE_PROJECT }}
+          AZDO_PIPELINE_ID: ${{ vars.AZURE_PIPELINE_ID }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -n "${AZDO_PAT:-}" ] || missing="$missing AZURE_DEVOPS_PAT(secret)"
+          [ -n "${AZDO_ORG:-}" ] || missing="$missing AZURE_ORG(var)"
+          [ -n "${AZDO_PROJECT:-}" ] || missing="$missing AZURE_PROJECT(var)"
+          [ -n "${AZDO_PIPELINE_ID:-}" ] || missing="$missing AZURE_PIPELINE_ID(var)"
+          if [ -n "$missing" ]; then
+            echo "::error::Brak konfiguracji:$missing. Dodaj w Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+          URL="https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/pipelines/${AZDO_PIPELINE_ID}/runs?api-version=7.1"
+          BODY='{"resources":{"repositories":{"self":{"refName":"refs/heads/dev"}}},"templateParameters":{"mode":"preview","arch":"arm64-v8a"}}'
+
+          echo "Kolejkuje pipeline ${AZDO_PIPELINE_ID} (${AZDO_ORG}/${AZDO_PROJECT}) na refs/heads/dev"
+          RESP="$(curl -fsS -u ":${AZDO_PAT}" -X POST "$URL" -H "Content-Type: application/json" -d "$BODY")"
+          echo "$RESP" | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => s += d).on("end", () => {
+              const j = JSON.parse(s);
+              const url = (j._links && j._links.web && j._links.web.href) || "";
+              console.log(`Uruchomiono build id=${j.id || "?"} state=${j.state || "?"} ${url}`);
+            });
+          '
