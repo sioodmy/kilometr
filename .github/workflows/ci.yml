@@ -85,6 +85,18 @@ jobs:
       - name: Run logic tests (Geometry cache)
         run: npm run check:geometry-cache
 
+      # Doradczy skan CVE: podatności siedzą w tranzytywnych paczkach Expo,
+      # więc twarde gate'owanie zaczerwieniłoby CI na stałe. Twardą bramką
+      # na nowe podatności jest OSV scan na PR (osv-scan.yml).
+      - name: Audit dependencies (Advisory)
+        run: |
+          npm audit --json > /tmp/audit-root.json 2>/dev/null || true
+          if [ -s /tmp/audit-root.json ]; then
+            node -e "const a=require('/tmp/audit-root.json');const v=((a||{}).metadata||{}).vulnerabilities||{};console.log('npm audit (root): info='+(v.info||0)+' low='+(v.low||0)+' moderate='+(v.moderate||0)+' high='+(v.high||0)+' critical='+(v.critical||0))" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "npm audit (root): brak danych" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Expo Doctor (Advisory)
         run: npx expo-doctor || true
 
@@ -113,3 +125,14 @@ jobs:
         run: |
           npm --prefix landing ci
           npm --prefix landing run build
+
+      - name: Audit dependencies (Advisory)
+        run: |
+          for p in server landing; do
+            npm --prefix "$p" audit --json > "/tmp/audit-$p.json" 2>/dev/null || true
+            if [ -s "/tmp/audit-$p.json" ]; then
+              P="$p" node -e "const a=require('/tmp/audit-'+process.env.P+'.json');const v=((a||{}).metadata||{}).vulnerabilities||{};console.log('npm audit ('+process.env.P+'): info='+(v.info||0)+' low='+(v.low||0)+' moderate='+(v.moderate||0)+' high='+(v.high||0)+' critical='+(v.critical||0))" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "npm audit ($p): brak danych" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
