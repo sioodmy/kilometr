@@ -20,7 +20,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbKs, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbGzmRows, fetchZbIc, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbKs, fetchZbPr, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -54,13 +54,20 @@ function safeCityId(): string {
     return 'wroclaw';
   }
 }
-/** Snapshot v2 dokłada pociągi regionalne (starszy format bez `kd` dalej się wczytuje). */
+/** Snapshot v3 dokłada listę feedów kolei (starszy format z jednym `kd` dalej się wczytuje). */
 interface StoredSnapshot {
   at: number;
   rows: RawVehicleRow[];
   kd?: ZbKdVehicle[];
   /** Prefiks pojazdów kolei (`KD:` / `KML:`); brak = legacy `KD:`. */
   railPrefix?: string;
+  rails?: RailFeed[];
+}
+
+/** Jeden feed kolei: pojazdy plus prefiks ich identyfikatorów. */
+export interface RailFeed {
+  vehicles: ZbKdVehicle[];
+  prefix: string;
 }
 /** Ile wytrzymujemy snapshot z dysku bez odświeżenia. */
 const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000;
@@ -182,19 +189,25 @@ class LiveTracker {
         return;
       }
       let ok = false;
+      const rails = rail ?? [];
       if (rows && rows.length > 0) {
         await this.matchAll(rows);
         ok = true;
-        void this.persistSnapshot(rows, rail?.vehicles, rail?.prefix, cityAtStart);
+        void this.persistSnapshot(rows, rails, cityAtStart);
       } else {
         // Pusta odpowiedź to nie awaria: po północy miasto milknie. Ostatni
         // dobry snapshot zostaje w pamięci, a stan przejdzie na „stale” dopiero
         // po GIVE_UP_MS, więc noc nie miga komunikatem o braku danych.
       }
-      if (rail && rail.vehicles.length > 0) {
-        await this.matchRailAll(rail.vehicles, rail.prefix);
+      let railOk = false;
+      for (const feed of rails) {
+        if (feed.vehicles.length === 0) continue;
+        await this.matchRailAll(feed.vehicles, feed.prefix);
+        railOk = true;
+      }
+      if (railOk) {
         ok = true;
-        if (!rows || rows.length === 0) void this.persistSnapshot([], rail.vehicles, rail.prefix, cityAtStart);
+        if (!rows || rows.length === 0) void this.persistSnapshot([], rails, cityAtStart);
       }
       if (ok && safeCityId() === cityAtStart) this.lastOk = Date.now();
     } catch (err) {
@@ -207,26 +220,34 @@ class LiveTracker {
   /**
    * Pociągi regionalne nigdy nie rzucają: brak live dla kolei to nie awaria
    * miasta. Wrocław: KD, Kraków: Koleje Małopolskie (agencja KML),
-   * GZM: Koleje Śląskie (agencja KS).
+   * GZM: Koleje Śląskie, PKP Intercity i POLREGIO (agencje KS, IC, PR).
    */
-  private async fetchRailSafe(): Promise<{ vehicles: ZbKdVehicle[]; prefix: string } | null> {
+  private async fetchRailSafe(): Promise<RailFeed[] | null> {
     const id = safeCityId();
     try {
-      if (!getCity(id).features.regionalRail) return { vehicles: [], prefix: '' };
+      if (!getCity(id).features.regionalRail) return [];
     } catch {
       return null;
     }
     try {
       if (id === 'krakow') {
         const rows = await fetchZbKml();
-        return rows ? { vehicles: rows, prefix: 'KML:' } : null;
+        return rows ? [{ vehicles: rows, prefix: 'KML:' }] : null;
       }
       if (id === 'gzm') {
-        const rows = await fetchZbKs();
-        return rows ? { vehicles: rows, prefix: 'KŚ:' } : null;
+        const [ks, ic, pr] = await Promise.all([fetchZbKs(), fetchZbIc(), fetchZbPr()]);
+        const out: RailFeed[] = [];
+        if (ks) out.push({ vehicles: ks, prefix: 'KŚ:' });
+        if (ic) out.push({ vehicles: ic, prefix: 'IC:' });
+        if (pr) out.push({ vehicles: pr, prefix: 'PR:' });
+        if (out.length === 0) {
+          console.warn('[LiveTracker] rail fetch failed: KS+IC+PR wszystkie null');
+          return null;
+        }
+        return out;
       }
       const rows = await fetchZbKd();
-      return rows ? { vehicles: rows, prefix: 'KD:' } : null;
+      return rows ? [{ vehicles: rows, prefix: 'KD:' }] : null;
     } catch (err) {
       console.warn('[LiveTracker] rail fetch failed:', err);
       return null;
@@ -371,8 +392,8 @@ class LiveTracker {
     return parsed as RawVehicleRow[];
   }
 
-  private persistSnapshot(rows: RawVehicleRow[], kd?: ZbKdVehicle[], railPrefix?: string, cityId?: string): void {
-    void kvSet(snapshotKey(cityId), JSON.stringify({ at: Date.now(), rows, kd: kd ?? [], railPrefix: railPrefix ?? 'KD:' } satisfies StoredSnapshot));
+  private persistSnapshot(rows: RawVehicleRow[], rails?: RailFeed[], cityId?: string): void {
+    void kvSet(snapshotKey(cityId), JSON.stringify({ at: Date.now(), rows, rails: rails ?? [] } satisfies StoredSnapshot));
   }
 
   /**
@@ -387,13 +408,18 @@ class LiveTracker {
       const raw = await kvGet(snapshotKey());
       if (!raw) return;
       const parsed = JSON.parse(raw) as StoredSnapshot;
-      if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd))) return;
+      if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd) && !Array.isArray(parsed.rails))) return;
       // Stary snapshot to nie „live”: bez tego apka po dłuższej przerwie
       // pokazywałaby nieaktualne pojazdy, dopóki nie wróci pierwszy poll.
       if (!parsed.at || Date.now() - parsed.at > SNAPSHOT_MAX_AGE_MS) return;
       if (Array.isArray(parsed.rows) && parsed.rows.length > 0) await this.matchAll(parsed.rows);
-      if (Array.isArray(parsed.kd) && parsed.kd.length > 0) {
-        await this.matchRailAll(parsed.kd, parsed.railPrefix || 'KD:');
+      const rails: RailFeed[] = Array.isArray(parsed.rails)
+        ? parsed.rails
+        : Array.isArray(parsed.kd)
+          ? [{ vehicles: parsed.kd, prefix: parsed.railPrefix || 'KD:' }]
+          : [];
+      for (const feed of rails) {
+        if (feed.vehicles.length > 0) await this.matchRailAll(feed.vehicles, feed.prefix);
       }
       if (this.byId.size === 0) return;
       this.lastOk = Date.now();

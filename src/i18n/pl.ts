@@ -89,7 +89,7 @@ export const pl = {
       id === 'krakow'
         ? 'ZTP i Koleje Małopolskie'
         : id === 'gzm'
-          ? 'ZTM i Koleje Śląskie'
+          ? 'ZTM, Koleje Śląskie, POLREGIO i PKP Intercity'
           : 'MPK i Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław • wroclaw.pl',

@@ -139,6 +139,18 @@ export async function fetchZbKs(): Promise<ZbKdVehicle[] | null> {
   return fetchZbRail('KS', getCity('gzm').zbiorkomBbox);
 }
 
+/** Pociągi PKP Intercity z zbiorkom.live (agencja IC, bbox GZM). */
+export async function fetchZbIc(): Promise<ZbKdVehicle[] | null> {
+  const { getCity } = await import('../cities');
+  return fetchZbRail('IC', getCity('gzm').zbiorkomBbox);
+}
+
+/** Pociągi POLREGIO z zbiorkom.live (agencja PR, bbox GZM). */
+export async function fetchZbPr(): Promise<ZbKdVehicle[] | null> {
+  const { getCity } = await import('../cities');
+  return fetchZbRail('PR', getCity('gzm').zbiorkomBbox);
+}
+
 async function fetchZbRail(agency: string, bbox?: string): Promise<ZbKdVehicle[] | null> {
   const positions = await fetchPositions('pkp', agency, bbox);
   if (positions === null) return null;
