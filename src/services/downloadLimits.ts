@@ -47,6 +47,8 @@ export async function markMapDownloaded(cityId?: string): Promise<void> {
 }
 
 export async function getTimetableDownloadGate(_cityId?: string): Promise<DownloadGate> {
+  // Limit jest per-baza: znacznik siedzi w tabeli meta per-miastowego SQLite,
+  // więc parametr miasta jest celowo ignorowany (parzystość z getMapDownloadGate).
   try {
     // Nowy znacznik; fallback na datę importu, żeby po aktualizacji apki
     // istniejące instalacje nie odpalały od razu pełnego pobrania.

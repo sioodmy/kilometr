@@ -36,9 +36,11 @@ export async function loadActiveCity(): Promise<CityId> {
   loaded = true;
   // Zapisane miasto różni się od domyślnego: pełna zmiana (baza + store),
   // inaczej apk startuje z rozkładem Wrocławia pod hasłem "Kraków".
+  // Id ustawiamy DOPO swapie, żeby synchroniczni czytelnicy (getGtfsDb
+  // przez currentGtfsDbName) nie widzieli nowego miasta przy starej bazie.
   if (id !== cachedId) {
-    cachedId = id;
     await swapStores();
+    cachedId = id;
     notify();
     return cachedId;
   }
@@ -56,9 +58,9 @@ export function getActiveCitySync(): CityDef {
 }
 
 /**
- * Zamiana baz i cache per-miasto. Wywoływana ZANIM powiadamy UI: w oknie
- * między `cachedId = id` a `notify()` ekran pokazywałby nowe miasto przy
- * starym rozkładzie (Wrocławskie trasy podpisane "Kraków").
+ * Zamiana baz i cache per-miasto. Id (cachedId) zmieniamy DOPO swapie,
+ * a UI powiadamiamy na końcu: synchroniczni czytelnicy i ekran widzą
+ * nowe miasto dopiero z nowymi store (bez tras Wrocławia pod hasłem Kraków).
  */
 async function swapStores(): Promise<void> {
   try {
@@ -92,8 +94,8 @@ async function swapStores(): Promise<void> {
  * Nie kasuje nic z poprzedniego miasta (baza ani kafle zostają na dysku).
  */
 export async function setActiveCityId(id: CityId): Promise<CityDef> {
-  cachedId = id;
   await swapStores();
+  cachedId = id;
   notify();
   try {
     await kvSet(KEY, id);
