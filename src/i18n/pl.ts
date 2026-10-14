@@ -82,23 +82,47 @@ export const pl = {
     section: 'Miasto',
     settingsTitle: 'Miasto',
     settingsHint: 'Rozkład, mapa offline i aktualności idą za miastem. Dane drugiego miasta zostają na telefonie.',
-    name: (id: string): string => (id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : 'Wrocław'),
-    gen: (id: string): string => (id === 'krakow' ? 'Krakowa' : id === 'gzm' ? 'GZM' : 'Wrocławia'),
-    loc: (id: string): string => (id === 'krakow' ? 'Krakowie' : id === 'gzm' ? 'GZM' : 'Wrocławiu'),
+    name: (id: string): string =>
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : 'Wrocław',
+    gen: (id: string): string =>
+      id === 'krakow' ? 'Krakowa' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawy' : 'Wrocławia',
+    loc: (id: string): string =>
+      id === 'krakow' ? 'Krakowie' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawie' : 'Wrocławiu',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP i Koleje Małopolskie'
         : id === 'gzm'
           ? 'ZTM, Koleje Śląskie, POLREGIO i PKP Intercity'
-          : 'MPK i Koleje Dolnośląskie',
+          : id === 'warszawa'
+            ? 'WTP, SKA, Koleje Mazowieckie i WKD'
+            : 'MPK i Koleje Dolnośląskie',
     newsSources: (id: string): string =>
-      id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław • wroclaw.pl',
+      id === 'krakow'
+        ? 'ZTP Kraków'
+        : id === 'gzm'
+          ? 'ZTM GZM'
+          : id === 'warszawa'
+            ? 'WTP Warszawa'
+            : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
-      id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław',
-    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : 'MPK'),
+      id === 'krakow'
+        ? 'ZTP Kraków'
+        : id === 'gzm'
+          ? 'ZTM GZM'
+          : id === 'warszawa'
+            ? 'WTP Warszawa'
+            : 'MPK Wrocław',
+    operatorShort: (id: string): string =>
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : 'MPK',
     portal: (id: string): string =>
-      id === 'krakow' ? 'ztp.krakow.pl' : id === 'gzm' ? 'metropoliaztm.pl' : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM',
+      id === 'krakow'
+        ? 'ztp.krakow.pl'
+        : id === 'gzm'
+          ? 'metropoliaztm.pl'
+          : id === 'warszawa'
+            ? 'wtp.waw.pl'
+            : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa',
     changed: (name: string) => `Przełączono na: ${name}.`,
     switching: 'Przełączam miasto…',
     blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
@@ -254,13 +278,25 @@ export const pl = {
     toEnable: 'Do włączenia',
     slotHome: 'Dom',
     slotHomeHint: (id: string): string =>
-      (id === 'krakow' ? 'np. Krowoderska 12' : 'np. Swojczycka 41'),
+      (id === 'krakow'
+        ? 'np. Krowoderska 12'
+        : id === 'warszawa'
+          ? 'np. Marszałkowska 12'
+          : 'np. Swojczycka 41'),
     slotWork: 'Praca',
     slotWorkHint: (id: string): string =>
-      (id === 'krakow' ? 'np. Galeria Krakowska' : 'np. Sky Tower'),
+      (id === 'krakow'
+        ? 'np. Galeria Krakowska'
+        : id === 'warszawa'
+          ? 'np. Złote Tarasy'
+          : 'np. Sky Tower'),
     slotUni: 'Uczelnia',
     slotUniHint: (id: string): string =>
-      (id === 'krakow' ? 'np. AGH' : 'np. Politechnika'),
+      (id === 'krakow'
+        ? 'np. AGH'
+        : id === 'warszawa'
+          ? 'np. Uniwersytet'
+          : 'np. Politechnika'),
     backA11y: 'Wstecz',
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
     brand: 'Kilometr',
@@ -462,6 +498,7 @@ export const pl = {
     vehicleBusGen: 'autobusem',
     vehicleTrolleyGen: 'trolejbusem',
     vehicleTrainGen: 'pociągiem',
+    vehicleSubwayGen: 'metrem',
     vehicleCableGen: 'koleją linową',
     showWithChangesA11y: 'Pokaż połączenia z przesiadkami',
     showWithChanges: 'Pokaż z przesiadkami',
@@ -498,7 +535,7 @@ export const pl = {
     searching: (city: string) => `Szukam w ${city}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
-      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
+      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
     yourPlaces: 'Twoje miejsca',
     gpsOutsideNotice: 'GPS poza obsługiwanym miastem, wybierz punkt manualnie.',
@@ -753,6 +790,7 @@ export const pl = {
     modeTram: 'Tramwaj',
     modeBus: 'Autobus',
     modeTrain: 'Pociąg',
+    modeSubway: 'Metro',
     modeCable: 'Kolej linowa',
     modeTrolleybus: 'Trolejbus',
     // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii —

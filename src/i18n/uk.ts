@@ -84,23 +84,47 @@ export const uk: Strings = {
     section: 'Місто',
     settingsTitle: 'Місто',
     settingsHint: 'Розклад, мапа офлайн і новини йдуть за містом. Дані іншого міста залишаються на телефоні.',
-    name: (id: string): string => (id === 'krakow' ? 'Краків' : id === 'gzm' ? 'GZM' : 'Вроцлав'),
-    gen: (id: string): string => (id === 'krakow' ? 'Кракова' : id === 'gzm' ? 'GZM' : 'Вроцлава'),
-    loc: (id: string): string => (id === 'krakow' ? 'Кракові' : id === 'gzm' ? 'GZM' : 'Вроцлаві'),
+    name: (id: string): string =>
+      id === 'krakow' ? 'Краків' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшава' : 'Вроцлав',
+    gen: (id: string): string =>
+      id === 'krakow' ? 'Кракова' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшави' : 'Вроцлава',
+    loc: (id: string): string =>
+      id === 'krakow' ? 'Кракові' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшаві' : 'Вроцлаві',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP і Koleje Małopolskie'
         : id === 'gzm'
           ? 'ZTM, Koleje Śląskie, POLREGIO і PKP Intercity'
-          : 'MPK і Koleje Dolnośląskie',
+          : id === 'warszawa'
+            ? 'WTP, SKA, Koleje Mazowieckie і WKD'
+            : 'MPK і Koleje Dolnośląskie',
     newsSources: (id: string): string =>
-      id === 'krakow' ? 'ZTP Краків' : id === 'gzm' ? 'ZTM GZM' : 'MPK Вроцлав • wroclaw.pl',
+      id === 'krakow'
+        ? 'ZTP Краків'
+        : id === 'gzm'
+          ? 'ZTM GZM'
+          : id === 'warszawa'
+            ? 'WTP Варшава'
+            : 'MPK Вроцлав • wroclaw.pl',
     operator: (id: string): string =>
-      id === 'krakow' ? 'ZTP Краків' : id === 'gzm' ? 'ZTM GZM' : 'MPK Вроцлав',
-    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : 'MPK'),
+      id === 'krakow'
+        ? 'ZTP Краків'
+        : id === 'gzm'
+          ? 'ZTM GZM'
+          : id === 'warszawa'
+            ? 'WTP Варшава'
+            : 'MPK Вроцлав',
+    operatorShort: (id: string): string =>
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : 'MPK',
     portal: (id: string): string =>
-      id === 'krakow' ? 'ztp.krakow.pl' : id === 'gzm' ? 'metropoliaztm.pl' : 'wroclaw.pl',
-    supportedList: 'Вроцлав, Краків, GZM',
+      id === 'krakow'
+        ? 'ztp.krakow.pl'
+        : id === 'gzm'
+          ? 'metropoliaztm.pl'
+          : id === 'warszawa'
+            ? 'wtp.waw.pl'
+            : 'wroclaw.pl',
+    supportedList: 'Вроцлав, Краків, GZM, Варшава',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
@@ -256,13 +280,25 @@ export const uk: Strings = {
     toEnable: 'До ввімкнення',
     slotHome: 'Дім',
     slotHomeHint: (id: string) =>
-      id === 'krakow' ? 'напр. Krowoderska 12' : 'напр. Swojczycka 41',
+      id === 'krakow'
+        ? 'напр. Krowoderska 12'
+        : id === 'warszawa'
+          ? 'напр. Marszałkowska 12'
+          : 'напр. Swojczycka 41',
     slotWork: 'Робота',
     slotWorkHint: (id: string) =>
-      id === 'krakow' ? 'напр. Galeria Krakowska' : 'напр. Sky Tower',
+      id === 'krakow'
+        ? 'напр. Galeria Krakowska'
+        : id === 'warszawa'
+          ? 'напр. Złote Tarasy'
+          : 'напр. Sky Tower',
     slotUni: 'Універ',
     slotUniHint: (id: string) =>
-      id === 'krakow' ? 'напр. AGH' : 'напр. Politechnika',
+      id === 'krakow'
+        ? 'напр. AGH'
+        : id === 'warszawa'
+          ? 'напр. Університет'
+          : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',
@@ -472,6 +508,7 @@ export const uk: Strings = {
     vehicleBusGen: 'автобусом',
     vehicleTrolleyGen: 'тролейбусом',
     vehicleTrainGen: 'потягом',
+    vehicleSubwayGen: 'метром',
     vehicleCableGen: 'канатною дорогою',
     showWithChangesA11y: 'Показати сполучення з пересадками',
     showWithChanges: 'Показати з пересадками',
@@ -508,7 +545,7 @@ export const uk: Strings = {
     searching: (city: string) => `Шукаю у ${city}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
-      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
+      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
     yourPlaces: 'Твої місця',
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
@@ -761,6 +798,7 @@ export const uk: Strings = {
     modeTram: 'Трамвай',
     modeBus: 'Автобус',
     modeTrain: 'Потяг',
+    modeSubway: 'Метро',
     modeCable: 'Канатна дорога',
     modeTrolleybus: 'Тролейбус',
     departTitle: (service: string, at: string) => `${service} • відправлення о ${at}`,

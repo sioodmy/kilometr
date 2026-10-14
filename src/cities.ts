@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa';
 
 export interface CityCenter {
   lat: number;
@@ -112,7 +112,28 @@ const GZM: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM];
+const WARSZAWA: CityDef = {
+  id: 'warszawa',
+  name: 'Warszawa',
+  center: { lat: 52.2297, lon: 21.0122 },
+  radiusM: 16_000,
+  bounds: { minLat: 52.0, maxLat: 52.4, minLon: 20.8, maxLon: 21.3 },
+  nominatimViewbox: '20.8,52.4,21.3,52.0',
+  overpassBbox: '52.00,20.80,52.40,21.30',
+  // zbiorkom.live nazywa miasto `warsaw` (agencja `default`); bbox jak bounds.
+  zbiorkomSlug: 'warsaw',
+  zbiorkomBbox: '20.8,52.0,21.3,52.4',
+  dbFile: 'kilometr-gtfs-warszawa.db',
+  tilePack: 'warszawa-tiles.ktp',
+  tileBbox: { minLat: 52.05, maxLat: 52.35, minLon: 20.85, maxLon: 21.28 },
+  // Warszawa w z14: powierzchnia porównywalna z Krakowem (~34 MB).
+  tileMaxZoom: 14,
+  tilePackMB: 38,
+  // SKM siedzi w GTFS WTP, KM i WKD dociąga build z PDP (jak KD we Wrocławiu).
+  features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

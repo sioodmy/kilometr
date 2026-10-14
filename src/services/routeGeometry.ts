@@ -44,9 +44,10 @@ type RouteProfile = 'driving' | 'foot';
  * Tory nie leżą na jezdni, więc router samochodowy robi pętelki i objazdy.
  * Kolej linowa tym bardziej: Polinka leci nad Odrą wprost, a OSRM po jezdni
  * objechałby rzekę mostem Grunwaldzkim i narysowała 2 km zamiast 400 m.
+ * Metro jedzie tunelem, więc OSRM nie ma po czym prowadzić.
  */
 export function isRailLeg(leg: MapLeg): boolean {
-  return leg.mode === 'tram' || leg.mode === 'train' || leg.mode === 'cable';
+  return leg.mode === 'tram' || leg.mode === 'train' || leg.mode === 'cable' || leg.mode === 'subway';
 }
 
 function legProfile(leg: MapLeg): RouteProfile {

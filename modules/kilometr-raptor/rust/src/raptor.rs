@@ -29,6 +29,10 @@ pub const KIND_TRAM: u8 = 0;
 pub const KIND_BUS: u8 = 1;
 pub const KIND_TRAIN: u8 = 2;
 pub const KIND_CABLE: u8 = 3;
+/// Metro (Warszawa M1/M2). Osobny kind, bo NIE podlega bramce `trains_enabled`:
+/// wyłączenie „Pociągów regionalnych” nie może zniknąć metra z wyników.
+/// Wąskie filtry (tram/bus) też go nie przepuszczają, tylko tryb „wszystkie”.
+pub const KIND_SUBWAY: u8 = 4;
 
 pub const ALLOWED_ALL: i32 = 0;
 pub const ALLOWED_TRAM: i32 = 1;
@@ -199,6 +203,7 @@ impl CompiledNet {
                 1 => KIND_BUS,
                 2 => KIND_TRAIN,
                 3 => KIND_CABLE,
+                4 => KIND_SUBWAY,
                 _ => KIND_BUS,
             };
             let n = usize::try_from(r.next()?).ok()?;
@@ -1517,6 +1522,9 @@ pub fn run_on_net(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
 
         for p in 0..n_pat {
             let kind = net.patterns[p].kind;
+            // KIND_SUBWAY celowo wpada w ostatnią gałąź: działa w trybie
+            // „wszystkie” i nie zależy od żadnego przełącznika (metro to nie
+            // pociąg regionalny), a filtry tram/bus go nie przepuszczają.
             let ok = if kind == KIND_TRAIN {
                 q.trains_enabled && q.allowed_mode == ALLOWED_ALL
             } else if kind == KIND_CABLE {
@@ -1861,5 +1869,145 @@ mod tests {
         assert_eq!(res[1], 4);
         let alight_pos = res[1 + 7 + 3];
         assert_eq!(alight_pos, 4);
+    }
+
+    /// Sieć z jednym wzorcem (2 przystanki, 1 kurs). Służy do sprawdzenia
+    /// bramki `trains_enabled`: metro ma własny KIND_SUBWAY i NIE może
+    /// zależeć od przełącznika pociągów. Ten test to regression guard na
+    /// wypadek, gdyby ktoś kiedyś złączył metro z powrotem z KIND_TRAIN.
+    fn build_single_pattern_net(net_id: i32, kind: u8) -> i32 {
+        let start = 8 * 3600;
+        let mut words = vec![
+            NET_MAGIC, 2, // n_stops
+            0, // fp_count
+            0, // fp_total
+            1, // n_pat
+            2, // sp_count
+            2, // sp_total
+            // fp_start (fp_count + 1 = 1)
+            0,
+            // sp_start (3)
+            0, 1, 2,
+            // sp_pat (2)
+            0, 0,
+            // sp_pos (2)
+            0, 1,
+            // pattern 0: kind, 2 stops, 1 trip
+            kind as i32, 2, 1,
+            // stops
+            0, 1,
+            // dep times
+            start, start + 300,
+            // arr times
+            start, start + 300,
+        ];
+        let mut bytes = Vec::with_capacity(words.len() * 4);
+        for w in words.drain(..) {
+            bytes.extend_from_slice(&w.to_le_bytes());
+        }
+        assert!(load_network(net_id, &bytes));
+        start
+    }
+
+    fn run_simple_query(net_id: i32, start: i32, trains_enabled: i32) -> Vec<i32> {
+        let speed_bits = DEFAULT_WALK_SPEED_MPS.to_bits();
+        let wr_bits = 1.8_f64.to_bits();
+        let words = vec![
+            QUERY_MAGIC,
+            net_id,
+            start - 60, // t0
+            3600,       // window_sec
+            2,          // max_transfers
+            60,         // min_t
+            300,        // train_need
+            trains_enabled,
+            1,           // cable_enabled
+            ALLOWED_ALL, // allowed_mode
+            speed_bits as u32 as i32,
+            (speed_bits >> 32) as u32 as i32,
+            800, // max_transfer_walk_m
+            wr_bits as u32 as i32,
+            (wr_bits >> 32) as u32 as i32,
+            600, // transfer_penalty_sec
+            INF, // latest_arr
+            0,   // has_now
+            0,   // now_val
+            1,   // n_origins
+            1,   // n_destinations
+            0,   // n_delays
+            // origin: S0, bez dojścia
+            0, 0, 0,
+            // dest: S1, bez dojścia
+            1, 0, 0,
+        ];
+        let mut bytes = Vec::with_capacity(words.len() * 4);
+        for w in words {
+            bytes.extend_from_slice(&w.to_le_bytes());
+        }
+        execute_query_words(&bytes)
+    }
+
+    #[test]
+    fn subway_ignores_trains_toggle() {
+        let start = build_single_pattern_net(901, KIND_SUBWAY);
+        let with_trains = run_simple_query(901, start, 1);
+        assert!(with_trains[0] >= 1, "metro musi działać z włączonymi pociągami");
+        assert_eq!(with_trains[1], 1);
+        assert_eq!(with_trains[1 + 7 + 3], 1);
+
+        let without_trains = run_simple_query(901, start, 0);
+        assert!(
+            without_trains[0] >= 1,
+            "wyłączenie pociągów nie może gasić metra (KIND_SUBWAY)"
+        );
+        assert_eq!(without_trains[1 + 7 + 3], 1);
+    }
+
+    #[test]
+    fn train_respects_trains_toggle() {
+        let start = build_single_pattern_net(902, KIND_TRAIN);
+        assert!(run_simple_query(902, start, 1)[0] >= 1);
+        assert_eq!(run_simple_query(902, start, 0)[0], 0);
+    }
+
+    #[test]
+    fn subway_excluded_from_narrow_mode_filters() {
+        let start = build_single_pattern_net(903, KIND_SUBWAY);
+        for allowed in [ALLOWED_TRAM, ALLOWED_BUS] {
+            let speed_bits = DEFAULT_WALK_SPEED_MPS.to_bits();
+            let wr_bits = 1.8_f64.to_bits();
+            let words = vec![
+                QUERY_MAGIC,
+                903,
+                start - 60,
+                3600,
+                2,
+                60,
+                300,
+                1,
+                1,
+                allowed,
+                speed_bits as u32 as i32,
+                (speed_bits >> 32) as u32 as i32,
+                800,
+                wr_bits as u32 as i32,
+                (wr_bits >> 32) as u32 as i32,
+                600,
+                INF,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0, 0, 0,
+                1, 0, 0,
+            ];
+            let mut bytes = Vec::with_capacity(words.len() * 4);
+            for w in words {
+                bytes.extend_from_slice(&w.to_le_bytes());
+            }
+            let res = execute_query_words(&bytes);
+            assert_eq!(res[0], 0, "metro nie może wejść w filtr tram/bus");
+        }
     }
 }

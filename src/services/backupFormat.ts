@@ -155,9 +155,10 @@ function readPlace(v: unknown): SavedPlace | null {
   };
 }
 
-// 'train' i 'cable' też warto tu wpisać: bez nich przywracanie zapisanej trasy
-// po cichu gubiło nogi pociągowe (i teraz Polinki), zostawiając dziurę w rozkładzie.
-const LEG_MODES: readonly string[] = ['tram', 'bus', 'train', 'cable', 'walk'];
+// Pełna lista trybów z LegMode. Brak wpisu po cichu gubił nogę przy
+// przywracaniu zapisanej trasy: 'train' i 'cable' wpadły przy pociągach
+// i Polince, 'trolleybus' i 'subway' przy GZM (Tychy) i metrze Warszawy.
+const LEG_MODES: readonly string[] = ['tram', 'bus', 'train', 'cable', 'trolleybus', 'subway', 'walk'];
 
 function readLeg(v: unknown): Leg | null {
   if (!isRecord(v)) return null;

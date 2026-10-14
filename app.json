@@ -57,7 +57,12 @@
           "locationWhenInUsePermission": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji."
         }
       ],
-      "expo-localization",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": ["pl", "en", "de", "uk"]
+        }
+      ],
       "expo-sharing"
     ]
   }

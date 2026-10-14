@@ -136,6 +136,7 @@ internal data class LiveTripPlan(
     return when (active?.mode) {
       MODE_WALK -> R.drawable.ic_kilometr_walk
       MODE_BUS, MODE_TROLLEYBUS -> R.drawable.ic_kilometr_bus
+      MODE_TRAIN, MODE_SUBWAY -> R.drawable.ic_kilometr_train
       else -> R.drawable.ic_kilometr_tram
     }
   }
@@ -145,6 +146,8 @@ internal data class LiveTripPlan(
     const val MODE_TRAM = "tram"
     const val MODE_BUS = "bus"
     const val MODE_TROLLEYBUS = "trolleybus"
+    const val MODE_TRAIN = "train"
+    const val MODE_SUBWAY = "subway"
 
     const val PHASE_WALKING = "walking"
     const val PHASE_WAITING = "waiting"
