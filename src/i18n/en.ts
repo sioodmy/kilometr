@@ -238,11 +238,14 @@ export const en: Strings = {
     denied: 'Off',
     toEnable: 'To enable',
     slotHome: 'Home',
-    slotHomeHint: 'e.g. Swojczycka 41',
+    slotHomeHint: (id: string) =>
+      id === 'krakow' ? 'e.g. Krowoderska 12' : 'e.g. Swojczycka 41',
     slotWork: 'Work',
-    slotWorkHint: 'e.g. Sky Tower',
+    slotWorkHint: (id: string) =>
+      id === 'krakow' ? 'e.g. Galeria Krakowska' : 'e.g. Sky Tower',
     slotUni: 'University',
-    slotUniHint: 'e.g. Politechnika',
+    slotUniHint: (id: string) =>
+      id === 'krakow' ? 'e.g. AGH' : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
     brand: 'Kilometr',
