@@ -13,7 +13,6 @@
 // (serwisy, `tr()` w skryptach) nie ciągnęła `react-native` za sobą.
 
 import { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
 import { getLocales } from 'expo-localization';
 import { kvGet, kvSet } from '../services/storage';
 import {
@@ -63,11 +62,20 @@ let appStateSubscribed = false;
 function ensureAppStateListener(): void {
   if (appStateSubscribed) return;
   appStateSubscribed = true;
-  AppState.addEventListener('change', (state) => {
-    if (state === 'active') {
-      syncSystemLocale();
-    }
-  });
+  // Import leniwy: to jest jedyne miejsce w tym module, które potrzebuje
+  // react-native, a skrypty check:* ładują słowniki w Node, gdzie transform
+  // Flow z react-native wywala tsx. Wołane tylko z initLocale (start apki).
+  void import('react-native')
+    .then(({ AppState }) => {
+      AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          syncSystemLocale();
+        }
+      });
+    })
+    .catch(() => {
+      // Środowisko bez react-native (skrypty): synchronizacja zbędna.
+    });
 }
 
 /** Wczytaj zapisany wybór (wołać raz przy starcie, przed pierwszym renderem UI). */
