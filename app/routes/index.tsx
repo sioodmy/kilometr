@@ -24,7 +24,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
-import { DEFAULT_LOCATION } from '../../src/config';
+import { defaultLocationForCity } from '../../src/config';
+import { getActiveCityIdSync, useActiveCity } from '../../src/services/cityStore';
 import {
   FavoritesService,
   LocationService,
@@ -88,6 +89,10 @@ const connectionKey = (item: Connection) => item.id;
 
 export default function RoutesScreen() {
   const s = useStrings();
+  const { cityId } = useActiveCity();
+  const cityDef = defaultLocationForCity(cityId);
+  const cityGen = s.city.gen(cityId);
+  const operator = s.city.operator(cityId);
   const gpsItem: Suggestion = {
     id: '__gps',
     title: s.home.gpsTitle,
@@ -115,9 +120,9 @@ export default function RoutesScreen() {
     open?: string;
   }>();
 
-  const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
-  const [fromLat, setFromLat] = useState(Number(params.fromLat || DEFAULT_LOCATION.lat));
-  const [fromLon, setFromLon] = useState(Number(params.fromLon || DEFAULT_LOCATION.lon));
+  const [fromTitle, setFromTitle] = useState(params.fromTitle || cityDef.title);
+  const [fromLat, setFromLat] = useState(Number(params.fromLat || cityDef.lat));
+  const [fromLon, setFromLon] = useState(Number(params.fromLon || cityDef.lon));
   // Czy start nadal jest GPS-em (a nie ręcznie wybranym punktem). Zmiana na
   // custom wyłącza doprecyzowanie w tle i odwrotnie.
   const [gpsOrigin, setGpsOrigin] = useState(params.fromGps === '1');
@@ -426,7 +431,7 @@ export default function RoutesScreen() {
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [savedQuick, setSavedQuick] = useState<Suggestion[]>([]);
-  // GPS spoza strefy (> 15 km od Wrocławia) nie może być startem trasy.
+  // GPS spoza strefy aktywnego miasta nie może być startem trasy.
   const [gpsOutside, setGpsOutside] = useState(false);
   const [gpsOutsideCity, setGpsOutsideCity] = useState<string | null>(null);
 
@@ -447,9 +452,10 @@ export default function RoutesScreen() {
 
       if (!initialAnchorCheckedRef.current) {
         initialAnchorCheckedRef.current = true;
-        const startLat = Number(params.fromLat || DEFAULT_LOCATION.lat);
-        const startLon = Number(params.fromLon || DEFAULT_LOCATION.lon);
-        const startTitle = params.fromTitle || DEFAULT_LOCATION.title;
+        const cityD = defaultLocationForCity(getActiveCityIdSync());
+        const startLat = Number(params.fromLat || cityD.lat);
+        const startLon = Number(params.fromLon || cityD.lon);
+        const startTitle = params.fromTitle || cityD.title;
         const anchor = findAnchorForLocation(
           startLat,
           startLon,
@@ -549,7 +555,7 @@ export default function RoutesScreen() {
           setGpsOutsideCity(city);
           Alert.alert(
             s.home.gpsBlockedTitle,
-            city ? s.home.gpsBlockedBody(city) : s.home.gpsBlockedBodyUnknown,
+            city ? s.home.gpsBlockedBody(city, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
             [
               {
                 text: s.home.unsupportedAction,
@@ -1082,7 +1088,7 @@ export default function RoutesScreen() {
         </Pressable>
 
         <Text style={styles.screenTitle} numberOfLines={1}>
-          {s.routes.title}
+          {s.routes.title(operator)}
         </Text>
 
         {/* Sortowanie z paska (z main): 0 = odjazd, 1 = przyjazd. */}

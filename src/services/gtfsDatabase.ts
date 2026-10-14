@@ -9,13 +9,25 @@ import * as SQLite from 'expo-sqlite';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { expandTokenSynonyms, fuzzyMatchBatch } from '../gtfs/fuzzy';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../gtfs/types';
+import { getCity } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 
 export const GTFS_DB_NAME = 'kilometr-gtfs.db';
 
-let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+/** Plik bazy dla miasta. Wrocław trzyma legacy nazwę (zero migracji). */
+export function gtfsDbName(cityId?: string): string {
+  return getCity(cityId ?? getActiveCityIdSync()).dbFile;
+}
 
-async function initDb(): Promise<SQLite.SQLiteDatabase> {
-      const db = await SQLite.openDatabaseAsync(GTFS_DB_NAME);
+/** Plik bazy aktywnego miasta (do podmiany po pobraniu). */
+export function currentGtfsDbName(): string {
+  return gtfsDbName();
+}
+
+const dbPromises = new Map<string, Promise<SQLite.SQLiteDatabase>>();
+
+async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
+      const db = await SQLite.openDatabaseAsync(name);
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
         PRAGMA busy_timeout = 15000;
@@ -125,17 +137,20 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   if (swapGate) {
     return swapGate.then(() => getGtfsDb());
   }
-  if (!dbPromise) {
-    const p = initDb();
-    dbPromise = p;
-    // Nie trzymaj odrzuconego promise'a — następne wywołanie próbuje od nowa
-    // zamiast zwracać w kółko ten sam błąd (widoczne w logach jako wieczne
-    // "[LocalGtfsStore] Initializing..." bez "Loaded").
-    p.catch(() => {
-      if (dbPromise === p) dbPromise = null;
-    });
-  }
-  return dbPromise;
+  // Baza jest per-miasto: każde miasto ma własny plik, więc zmiana miasta
+  // nigdy nie nadpisuje danych drugiego (mieszkasz w jednym, studiujesz w drugim).
+  const name = currentGtfsDbName();
+  const existing = dbPromises.get(name);
+  if (existing) return existing;
+  const p = initDb(name);
+  dbPromises.set(name, p);
+  // Nie trzymaj odrzuconego promise'a — następne wywołanie próbuje od nowa
+  // zamiast zwracać w kółko ten sam błąd (widoczne w logach jako wieczne
+  // "[LocalGtfsStore] Initializing..." bez "Loaded").
+  p.catch(() => {
+    if (dbPromises.get(name) === p) dbPromises.delete(name);
+  });
+  return p;
 }
 
 // Bramka podmiany pliku bazy. Ustawiana na czas close→delete→move, żeby żaden
@@ -164,14 +179,15 @@ export function endGtfsSwap(): void {
  * albo blokada na Androidzie.
  */
 export async function closeGtfsDb(): Promise<void> {
-  const p = dbPromise;
-  dbPromise = null;
-  if (!p) return;
-  try {
-    const db = await p;
-    await db.closeAsync();
-  } catch {
-    // best-effort: plik i tak podmieniamy, a initDb otworzy od nowa
+  const entries = Array.from(dbPromises.entries());
+  dbPromises.clear();
+  for (const [, p] of entries) {
+    try {
+      const db = await p;
+      await db.closeAsync();
+    } catch {
+      // best-effort: plik i tak podmieniamy, a initDb otworzy od nowa
+    }
   }
 }
 

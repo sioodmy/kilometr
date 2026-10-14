@@ -1,7 +1,7 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
-// - miasto `pkp`, agencja `KD`: pozycje i opóźnienia pociągów KD,
-// - miasto `wroclaw`: awaryjne pozycje autobusów i tramwajów, gdy
-//   bezpośredni bus_position MPK nie odpowiada.
+// - miasto `pkp`, agencja `KD`: pozycje i opóźnienia pociągów KD (Wrocław),
+// - miasto `wroclaw` / `krakow`: awaryjne (Wrocław) albo podstawowe (Kraków)
+//   pozycje autobusów i tramwajów, gdy bezpośredni feed nie odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -50,12 +50,13 @@ interface ZbPositionJson {
   upcomingStops?: { name?: string; scheduledArrival?: number; scheduledDeparture?: number }[];
 }
 
-async function fetchPositions(city: string, agencies?: string): Promise<ZbPositionJson[] | null> {
+async function fetchPositions(city: string, agencies?: string, bbox?: string): Promise<ZbPositionJson[] | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ZBIORKOM.timeoutMs);
   try {
+    const box = bbox ?? ZBIORKOM.wroclawBbox;
     const url =
-      `${ZBIORKOM.baseUrl}/api6-open/${city}/positions/${ZBIORKOM.wroclawBbox}` +
+      `${ZBIORKOM.baseUrl}/api6-open/${city}/positions/${box}` +
       (agencies ? `?agencies=${encodeURIComponent(agencies)}` : '');
     const res = await fetch(url, { signal: ctrl.signal });
     if (!res.ok) return null;
@@ -78,6 +79,19 @@ async function fetchPositions(city: string, agencies?: string): Promise<ZbPositi
 export async function fetchZbWroclawRows(): Promise<RawVehicleRow[] | null> {
   const positions = await fetchPositions('wroclaw');
   if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/** Pozycje KMK Kraków (ZTP) jako wiersze dla matchera. Podstawowy feed live. */
+export async function fetchZbKrakowRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const krk = getCity('krakow');
+  const positions = await fetchPositions(krk.zbiorkomSlug, undefined, krk.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
   const rows: RawVehicleRow[] = [];
   for (const p of positions) {
     const line = (p.routeName || '').trim();

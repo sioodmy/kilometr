@@ -1,5 +1,5 @@
-// Karta „Nieobsługiwane miasto": pokazywana, gdy GPS jest dalej niż
-// 15 km od centrum Wrocławia. Ma wyglądać jak pełnoprawny empty-state,
+// Karta „Nieobsługiwane miasto": pokazywana, gdy GPS jest poza strefą
+// aktywnego miasta. Ma wyglądać jak pełnoprawny empty-state,
 // nie jak błąd — stąd spokojna kompozycja M3: ikona w kole, pigułka
 // z wykrytą miejscowością, tytuł, opis i jedno wyraźne CTA.
 
@@ -17,7 +17,8 @@ export function UnsupportedCityCard({
   onPickStart: () => void;
 }) {
   const s = useStrings();
-  const body = city ? s.home.unsupportedBody(city) : s.home.unsupportedBodyUnknown;
+  const supported = s.city.supportedList;
+  const body = city ? s.home.unsupportedBody(city, supported) : s.home.unsupportedBodyUnknown(supported);
 
   return (
     <View

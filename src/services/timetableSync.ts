@@ -12,7 +12,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
 import { TIMETABLE } from './gtfsConfig';
-import { GTFS_DB_NAME, beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
+import { getCity, type CityId } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
+import { beginGtfsSwap, closeGtfsDb, currentGtfsDbName, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -42,21 +44,48 @@ export function timetableEnabled(): boolean {
   return TIMETABLE.baseUrl.length > 0;
 }
 
-export function manifestUrl(): string {
-  return `${TIMETABLE.baseUrl}/manifest.json`;
+export function manifestUrl(cityId?: CityId | string): string {
+  const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
+  // Wrocław trzyma legacy manifest w root (kompat ze starymi buildami R2),
+  // reszta miast siedzi pod /{miasto}/manifest.json.
+  if (city.id === 'wroclaw') return `${TIMETABLE.baseUrl}/manifest.json`;
+  return `${TIMETABLE.baseUrl}/${city.id}/manifest.json`;
 }
 
-export function dbDownloadUrl(manifest: TimetableManifest): string {
+export function dbDownloadUrl(manifest: TimetableManifest, cityId?: CityId | string): string {
+  const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
   const path = manifest.db.path.startsWith('/') ? manifest.db.path : `/${manifest.db.path}`;
+  // Legacy manifest Wrocławia ma ścieżkę względną root; nowe manifesty
+  // per-miasto niosą pełną ścieżkę z prefiksem miasta.
+  if (city.id === 'wroclaw' && !manifest.db.path.startsWith('wroclaw/')) {
+    return `${TIMETABLE.baseUrl}${path}`;
+  }
   return `${TIMETABLE.baseUrl}${path}`;
 }
 
 /** Manifest to ~500 B — tanie pytanie, które chroni limity (brak pobrań bez zmian). */
-export async function fetchManifest(): Promise<TimetableManifest> {
+export async function fetchManifest(cityId?: CityId | string): Promise<TimetableManifest> {
+  const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
+  const urls =
+    city.id === 'wroclaw'
+      ? [manifestUrl(city.id), `${TIMETABLE.baseUrl}/wroclaw/manifest.json`]
+      : [manifestUrl(city.id)];
+  let lastErr: unknown = null;
+  for (const url of urls) {
+    try {
+      return await fetchManifestAt(url);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('manifest fetch failed');
+}
+
+async function fetchManifestAt(url: string): Promise<TimetableManifest> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMETABLE.timeoutMs);
   try {
-    const res = await fetch(manifestUrl(), {
+    const res = await fetch(url, {
       headers: { Accept: 'application/json' },
       signal: ctrl.signal,
     });
@@ -83,7 +112,11 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
   }
 }
 
-const TEMP_DB_NAME = 'kilometr-gtfs.new.db';
+const TEMP_DB_SUFFIX = '.new.db';
+
+function tempDbName(): string {
+  return `${currentGtfsDbName()}${TEMP_DB_SUFFIX}`;
+}
 
 // Katalog bazy z documentDirectory (file:///data/user/0/…/files/SQLite).
 // expo-file-system przyznaje zapis po kanonicznej ścieżce względem filesDir,
@@ -134,9 +167,11 @@ async function deleteSidecars(uri: string): Promise<void> {
 export async function downloadPrebuiltDb(
   manifest: TimetableManifest,
   onProgress?: (bytesWritten: number, totalBytes: number) => void,
+  cityId?: CityId | string,
 ): Promise<void> {
   const T = syncDlTr();
-  const dest = await sqliteUri(TEMP_DB_NAME);
+  const tempName = tempDbName();
+  const dest = await sqliteUri(tempName);
   await deleteSidecars(dest);
   try {
     await FileSystem.deleteAsync(dest, { idempotent: true });
@@ -146,7 +181,7 @@ export async function downloadPrebuiltDb(
 
   // Download strumieniem na dysk (wznawialny) — RAM-u prawie nie rusza.
   const task = FileSystem.createDownloadResumable(
-    dbDownloadUrl(manifest),
+    dbDownloadUrl(manifest, cityId),
     dest,
     { headers: { 'User-Agent': 'KilometrApp/1.0' } },
     (p) => onProgress?.(p.totalBytesWritten, p.totalBytesExpectedToWrite),
@@ -165,7 +200,7 @@ export async function downloadPrebuiltDb(
   }
 
   // Weryfikacja zawartości na pliku tymczasowym (osobny uchwyt!).
-  const probe = await SQLite.openDatabaseAsync(TEMP_DB_NAME);
+  const probe = await SQLite.openDatabaseAsync(tempName);
   try {
     const chk = await probe.getFirstAsync<{ integrity_check: string }>('PRAGMA integrity_check');
     const s = await probe.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
@@ -192,7 +227,7 @@ export async function downloadPrebuiltDb(
   // Podmiana: zamknij działającą bazę, podmień plik atomowo (w ramach katalogu).
   // Bramka blokuje równoległe getGtfsDb() z UI, żeby nie otworzyły usuwanego pliku.
   beginGtfsSwap();
-  const mainUri = await sqliteUri(GTFS_DB_NAME);
+  const mainUri = await sqliteUri(currentGtfsDbName());
   try {
     await closeGtfsDb();
     try {

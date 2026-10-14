@@ -1,5 +1,6 @@
 import { kvGet, kvSet } from './storage';
-import { DEFAULT_LOCATION } from '../config';
+import { defaultLocationForCity } from '../config';
+import { getActiveCitySync } from './cityStore';
 import {
   mergeTripSearch,
   rankSmartDestinations,
@@ -195,15 +196,17 @@ export async function recordTripSearch(
 ): Promise<void> {
   if (!dest.title || typeof dest.lat !== 'number' || typeof dest.lon !== 'number') return;
   // `NaN` i `0` są fałszywe, więc `||` łapie też śmieci z deep linka.
+  const cityFallback = defaultLocationForCity(getActiveCitySync().id);
   const history = await loadTripHistory();
   const updated = mergeTripSearch(
     history,
-    originLat || DEFAULT_LOCATION.lat,
-    originLon || DEFAULT_LOCATION.lon,
+    originLat || cityFallback.lat,
+    originLon || cityFallback.lon,
     originTitle,
     dest,
     measuredMinutes,
     Date.now(),
+    cityFallback.address,
   );
   await saveTripHistory(updated);
 }

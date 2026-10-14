@@ -1,7 +1,11 @@
-// Czytnik aktualności MPK / wroclaw.pl (RSS) — bez dodatkowych zależności.
-// Feed: https://www.wroclaw.pl/komunikacja/rss (RSS 2.0, opis w CDATA z <img> + tekst).
+// Czytnik aktualności per-miasto (bez dodatkowych zależności).
+// - Wrocław: RSS wroclaw.pl/komunikacja (miasto) + HTML mpk.wroc.pl (zmiany),
+// - Kraków: RSS ZTP (komunikaty KMK, ?post_type=komunikat).
+// Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
+import { getCity, type CityId } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -34,6 +38,13 @@ export type ArticleBlock = { kind: 'h' | 'p'; text: string };
 export const MPK_NEWS_URL = 'https://www.wroclaw.pl/komunikacja/rss';
 export const MPK_CHANGES_URL =
   'https://mpk.wroc.pl/strefa-pasazera/zaplanuj-podroz/zmiany-w-komunikacji';
+/**
+ * Komunikaty KMK (ZTP Kraków). Lista HTML (tytuł + link + linie + termin
+ * wprost na karcie) + awaryjny RSS WordPressa (?post_type=komunikat, same
+ * tytuły bez linii).
+ */
+export const ZTP_KOMUNIKATY_URL = 'https://ztp.krakow.pl/kmk/komunikaty';
+export const ZTP_KOMUNIKATY_RSS = 'https://ztp.krakow.pl/feed?post_type=komunikat';
 
 /** RSS bywa wolny; po 12 s uznajemy pobieranie za nieudane, żeby ekran nie wisiał. */
 const NEWS_TIMEOUT_MS = 12000;
@@ -219,6 +230,113 @@ export function parseMpkChanges(html: string): MpkNewsItem[] {
   return items;
 }
 
+/**
+ * Komunikaty ZTP Kraków ze strony listy (jeden fetch: tytuł + link + linie
+ * + termin na karcie). Karta: div.card > .date, .lines, a.message-btn.
+ * RSS WordPressa ma same tytuły bez linii, więc służy tylko za fallback.
+ */
+export function parseZtpKomunikaty(html: string): MpkNewsItem[] {
+  const cards = html.split(/<div class="card">/i).slice(1);
+  const items: MpkNewsItem[] = [];
+  for (const card of cards) {
+    const linkM = card.match(
+      /href="(https:\/\/ztp\.krakow\.pl\/kmk\/komunikaty\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    if (!linkM) continue;
+    const link = decodeEntities(linkM[1]).trim();
+    const rawTitle = htmlToText(linkM[2]).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const linesRaw = htmlToText(
+      (card.match(/<div class="lines">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '',
+    );
+    const lines = linesRaw
+      .split(/[,/]/)
+      .map((t) => decodeEntities(t).trim().toUpperCase())
+      .filter((t) => /^(LR\d{1,2}|\d{1,3})$/.test(t));
+    const range = decodeEntities((card.match(/<div class="date">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const pubDate = range ? parsePlDate(range.split(/\s*(do|–|-)\s*/i)[0] ?? '') : null;
+    if (!title) continue;
+    items.push({
+      id: link,
+      title,
+      link,
+      description: '',
+      imageUrl: null,
+      urgent: isUrgentNews(title, lines.join(' ')),
+      pubDate,
+      dateLabel: range || formatNewsDate(pubDate),
+      source: 'mpk',
+      lines,
+    });
+  }
+  return items;
+}
+
+/** Numery linii w treści komunikatu (fallback RSS, który nie niesie linii). */
+const ZTP_LINE_RE = /\b(LR\d{1,2}|\d{1,3})\b/g;
+
+function extractZtpLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`;
+  let m: RegExpExecArray | null;
+  ZTP_LINE_RE.lastIndex = 0;
+  while ((m = ZTP_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    // Lata i godziny to nie linie ("2026", "13:30" łapie \d{1,3} jako "13"/"30"...).
+    // Odrzucamy 4-cyfrowe już regexem; godziny odsiewamy kontekstem dwukropka.
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' || after === ':') continue;
+    const n = Number(tok);
+    if (Number.isFinite(n) && (n < 1 || n > 999)) continue;
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Komunikaty ZTP Kraków (RSS WordPressa: title + link + pubDate + opis).
+ * Każdy komunikat dotyczy komunikacji, więc nie filtrujemy po słowach
+ * jak miejski RSS Wrocławia. Daty "od ... do ..." z listy lądują w opisie.
+ */
+export function parseZtpRss(xml: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const link = stripCdata(tagInner(b, 'link')).trim();
+    const rawDesc = stripCdata(tagInner(b, 'description') || tagInner(b, 'content:encoded'));
+    const description = htmlToText(rawDesc).slice(0, 600);
+    // RSS niesie zwykle sam tytuł (opisy puste): bierzemy go wprost.
+    // Gdy opis istnieje, pierwsze zdanie bywa treściwsze od sygnatury.
+    const firstSentence = description.split(/(?<=[.!?])\s/)[0]?.trim() ?? '';
+    const title =
+      firstSentence && firstSentence !== rawTitle
+        ? `${cleanNewsTitle(firstSentence.slice(0, 120))} (${rawTitle})`
+        : cleanNewsTitle(rawTitle);
+    const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
+    const ts = pubRaw ? Date.parse(pubRaw) : NaN;
+    const pubDate = Number.isFinite(ts) ? ts : null;
+    if (!title && !link) continue;
+    items.push({
+      id: link || `${rawTitle}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description,
+      imageUrl: extractImage(rawDesc),
+      urgent: isUrgentNews(title, description),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractZtpLines(title, description),
+    });
+  }
+  return items;
+}
+
 const ARTICLE_JUNK_RE =
   /^(galeria zdjęć|zobacz galerię|zobacz galerię zdjęć tego artykułu|rozwiń|czytaj także|polecane|udostępnij)$/i;
 
@@ -261,10 +379,16 @@ function scrubArticleHtml(raw: string): string {
 
 export function extractArticleBlocks(html: string, url: string): ArticleBlock[] {
   const mpk = /mpk\.wroc\.pl/i.test(url);
+  const ztp = /ztp\.krakow\.pl/i.test(url);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
-    : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
-      '');
+    : ztp
+      ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
+        html.match(/class="content"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i)?.[1] ??
+        html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
+        '')
+      : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
+        '');
   fragment = scrubArticleHtml(fragment);
   if (!fragment.trim()) return [];
   const blocks: ArticleBlock[] = [];
@@ -295,9 +419,23 @@ const KEY_NEWS_LAST_SEEN_TS = 'mpk_news_last_seen_ts';
 const KEY_NEWS_SEEN_URGENT_IDS = 'mpk_news_seen_urgent_ids';
 const KEY_NEWS_CACHE = 'mpk_news_cache_v3';
 
+function cityKey(base: string, cityId: string): string {
+  return cityId === 'wroclaw' ? base : `${base}.${cityId}`;
+}
+
+function activeCityId(): CityId {
+  try {
+    return getActiveCityIdSync();
+  } catch {
+    return 'wroclaw';
+  }
+}
+
 let cachedNewsItems: MpkNewsItem[] | null = null;
+let cachedNewsCity: string | null = null;
 let inMemoryLastSeenDate: string | null = null;
 let inMemoryLastSeenTs: number | null = null;
+let inMemorySeenCity: string | null = null;
 let inMemorySeenUrgentIds: Set<string> | null = null;
 
 export function getTodayDateString(d: Date = new Date()): string {
@@ -308,6 +446,7 @@ export function getTodayDateString(d: Date = new Date()): string {
 }
 
 export function getCachedNews(): MpkNewsItem[] | null {
+  if (cachedNewsCity !== null && cachedNewsCity !== activeCityId()) return null;
   return cachedNewsItems;
 }
 
@@ -317,24 +456,66 @@ async function fetchText(url: string, signal: AbortSignal, accept: string): Prom
   return res.text();
 }
 
-export async function loadNewsCache(): Promise<MpkNewsItem[] | null> {
-  if (cachedNewsItems) return cachedNewsItems;
-  const raw = await kvGet(KEY_NEWS_CACHE);
+export async function loadNewsCache(cityId?: CityId | string): Promise<MpkNewsItem[] | null> {
+  const city = getCity(typeof cityId === 'string' ? cityId : activeCityId());
+  if (cachedNewsItems && cachedNewsCity === city.id) return cachedNewsItems;
+  const raw = await kvGet(cityKey(KEY_NEWS_CACHE, city.id));
   if (!raw) return null;
   try {
     const items = JSON.parse(raw) as MpkNewsItem[];
     if (!Array.isArray(items) || items.length === 0) return null;
     cachedNewsItems = items;
+    cachedNewsCity = city.id;
     return items;
   } catch {
     return null;
   }
 }
 
-function rememberNews(items: MpkNewsItem[]): MpkNewsItem[] {
+function rememberNews(items: MpkNewsItem[], cityId: string): MpkNewsItem[] {
   cachedNewsItems = items;
-  void kvSet(KEY_NEWS_CACHE, JSON.stringify(items));
+  cachedNewsCity = cityId;
+  void kvSet(cityKey(KEY_NEWS_CACHE, cityId), JSON.stringify(items));
   return items;
+}
+
+/** Aktualności aktywnego miasta. Wrocław = legacy fetchMpkNews. */
+export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
+  const city = getCity(activeCityId());
+  if (city.id === 'krakow') return fetchZtpNews(signal, city.id);
+  return fetchMpkNews(signal);
+}
+
+async function fetchZtpNews(signal?: AbortSignal, cityId = 'krakow'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const [list, rss] = await Promise.allSettled([
+      fetchText(ZTP_KOMUNIKATY_URL, scope.signal, 'text/html, */*').then(parseZtpKomunikaty),
+      fetchText(ZTP_KOMUNIKATY_RSS, scope.signal, 'application/rss+xml, application/xml, text/xml, */*').then(
+        parseZtpRss,
+      ),
+    ]);
+    const fromList = list.status === 'fulfilled' ? list.value : [];
+    if (fromList.length > 0) {
+      return rememberNews(sortNews(fromList), cityId);
+    }
+    const fromRss = rss.status === 'fulfilled' ? rss.value : [];
+    if (fromRss.length === 0) {
+      if (list.status === 'rejected' && rss.status === 'rejected') {
+        throw list.reason instanceof Error ? list.reason : new Error('news');
+      }
+    }
+    return rememberNews(sortNews(fromRss), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+function sortNews(items: MpkNewsItem[]): MpkNewsItem[] {
+  return [...items].sort((a, b) => {
+    if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
+    return (b.pubDate ?? 0) - (a.pubDate ?? 0);
+  });
 }
 
 export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
@@ -359,7 +540,7 @@ export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]>
       if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
       return (b.pubDate ?? 0) - (a.pubDate ?? 0);
     };
-    return rememberNews([...changes.sort(byFreshness), ...stories.sort(byFreshness)]);
+    return rememberNews([...changes.sort(byFreshness), ...stories.sort(byFreshness)], 'wroclaw');
   } finally {
     scope.dispose();
   }
@@ -396,12 +577,14 @@ export function hasUrgentNewsToday(items: MpkNewsItem[]): boolean {
  * Zapisuje datę dzisiejszą, timestamp oraz identyfikatory dzisiejszych pilnych komunikatów.
  */
 export async function markNewsSeen(items?: MpkNewsItem[]): Promise<void> {
+  const cityId = activeCityId();
   const today = getTodayDateString();
   const now = Date.now();
   inMemoryLastSeenDate = today;
   inMemoryLastSeenTs = now;
+  inMemorySeenCity = cityId;
 
-  const currentItems = items || cachedNewsItems || [];
+  const currentItems = items || (cachedNewsCity === cityId ? cachedNewsItems : null) || [];
   const urgentIds = currentItems
     .filter((i) => i.urgent && isToday(i.pubDate))
     .map((i) => i.id);
@@ -409,9 +592,9 @@ export async function markNewsSeen(items?: MpkNewsItem[]): Promise<void> {
   inMemorySeenUrgentIds = new Set(urgentIds);
 
   await Promise.all([
-    kvSet(KEY_NEWS_LAST_SEEN_DATE, today),
-    kvSet(KEY_NEWS_LAST_SEEN_TS, String(now)),
-    kvSet(KEY_NEWS_SEEN_URGENT_IDS, JSON.stringify(urgentIds)),
+    kvSet(cityKey(KEY_NEWS_LAST_SEEN_DATE, cityId), today),
+    kvSet(cityKey(KEY_NEWS_LAST_SEEN_TS, cityId), String(now)),
+    kvSet(cityKey(KEY_NEWS_SEEN_URGENT_IDS, cityId), JSON.stringify(urgentIds)),
   ]);
 }
 
@@ -427,12 +610,13 @@ export async function shouldShowNewsAlert(items: MpkNewsItem[]): Promise<boolean
   if (todayUrgent.length === 0) return false;
 
   const today = getTodayDateString();
+  const cityId = activeCityId();
 
   // Sprawdź pamięć podręczną lub KV store
-  let lastSeenDate = inMemoryLastSeenDate;
+  let lastSeenDate = inMemorySeenCity === cityId ? inMemoryLastSeenDate : null;
   if (!lastSeenDate) {
-    lastSeenDate = await kvGet(KEY_NEWS_LAST_SEEN_DATE);
-    inMemoryLastSeenDate = lastSeenDate;
+    lastSeenDate = await kvGet(cityKey(KEY_NEWS_LAST_SEEN_DATE, cityId));
+    if (inMemorySeenCity === cityId) inMemoryLastSeenDate = lastSeenDate;
   }
 
   // Jeśli użytkownik w ogóle nie wchodził dzisiaj w sekcję aktualności -> pokaż wykrzyknik
@@ -442,9 +626,9 @@ export async function shouldShowNewsAlert(items: MpkNewsItem[]): Promise<boolean
 
   // Użytkownik wszedł dzisiaj w tę sekcję. Sprawdź, czy są jakieś NOWE utrudnienia,
   // których wcześniej nie widział.
-  let seenIds = inMemorySeenUrgentIds;
+  let seenIds = inMemorySeenCity === cityId ? inMemorySeenUrgentIds : null;
   if (!seenIds) {
-    const rawSeen = await kvGet(KEY_NEWS_SEEN_URGENT_IDS);
+    const rawSeen = await kvGet(cityKey(KEY_NEWS_SEEN_URGENT_IDS, cityId));
     if (rawSeen) {
       try {
         seenIds = new Set<string>(JSON.parse(rawSeen));
@@ -454,14 +638,14 @@ export async function shouldShowNewsAlert(items: MpkNewsItem[]): Promise<boolean
     } else {
       seenIds = new Set<string>();
     }
-    inMemorySeenUrgentIds = seenIds;
+    if (inMemorySeenCity === cityId) inMemorySeenUrgentIds = seenIds;
   }
 
-  let lastSeenTs = inMemoryLastSeenTs;
+  let lastSeenTs = inMemorySeenCity === cityId ? inMemoryLastSeenTs : null;
   if (lastSeenTs == null) {
-    const rawTs = await kvGet(KEY_NEWS_LAST_SEEN_TS);
+    const rawTs = await kvGet(cityKey(KEY_NEWS_LAST_SEEN_TS, cityId));
     lastSeenTs = rawTs ? Number(rawTs) : 0;
-    inMemoryLastSeenTs = lastSeenTs;
+    if (inMemorySeenCity === cityId) inMemoryLastSeenTs = lastSeenTs;
   }
 
   // Czy pojawił się nowy komunikat, którego nie było na liście i ma pubDate po wizycie?

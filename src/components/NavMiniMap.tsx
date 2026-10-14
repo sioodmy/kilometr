@@ -4,6 +4,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import Svg, { Circle, Polygon } from 'react-native-svg';
 import type { Coord } from '../services/routeGeometry';
 import { buildNavMapDocument } from '../map/navMapDocument';
+import { getActiveCitySync } from '../services/cityStore';
 import { acquireMapServer } from '../services/mapServerLease';
 import { scheme } from '../theme/tokens';
 
@@ -47,10 +48,17 @@ export function NavMiniMap({
   latestRoute.current = { path, stop, accent };
   latestCamera.current = { user, heading: headingDeg };
 
-  const html = useMemo(
-    () => (offlineBase === undefined ? null : buildNavMapDocument({ offlineBase })),
-    [offlineBase],
-  );
+  const html = useMemo(() => {
+    if (offlineBase === undefined) return null;
+    let center: [number, number] | null = null;
+    try {
+      const c = getActiveCitySync().center;
+      center = [c.lon, c.lat];
+    } catch {
+      center = null;
+    }
+    return buildNavMapDocument({ offlineBase, center });
+  }, [offlineBase]);
 
   useEffect(() => {
     let cancelled = false;

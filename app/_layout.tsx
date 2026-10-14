@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
 import { initDynamicColors } from '../src/theme/dynamic';
 import { initLocale } from '../src/i18n';
+import { loadActiveCity } from '../src/services/cityStore';
 import { loadSettings } from '../src/services/settings';
 import { hasSeenOnboarding } from '../src/services/onboarding';
 import { loadNotificationPreferences } from '../src/services/notifications/preferences';
@@ -50,6 +51,8 @@ export default function RootLayout() {
       // seedzie, a ekran przez sekundę migotałby między dwiema paletami.
       await initDynamicColors();
       await migrateFromSqliteKv();
+      // Miasto przed bazą: getGtfsDb() otwiera plik per-miasto po sync id.
+      await loadActiveCity();
       await loadSettings();
       await initLocale();
       await loadNotificationPreferences();

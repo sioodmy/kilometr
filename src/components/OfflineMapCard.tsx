@@ -1,6 +1,6 @@
 // Karta „Mapa offline” w Ustawieniach: pobierz albo usuń zestaw kafelków
-// Wrocławia. Bez pobrania mapa działa tylko online. Po udanym pobraniu nie ma
-// przycisku „pobierz ponownie” (limit R2: raz na miesiąc).
+// aktywnego miasta. Bez pobrania mapa działa tylko online. Po udanym pobraniu
+// nie ma przycisku „pobierz ponownie” (limit R2: raz na miesiąc, per miasto).
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -14,6 +14,7 @@ import {
 import { Download, MapPinned, Trash2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
+import { useActiveCity } from '../services/cityStore';
 import { getMapDownloadGate, remainingDays } from '../services/downloadLimits';
 import {
   deleteOfflineMap,
@@ -24,18 +25,23 @@ import {
 
 export function OfflineMapCard() {
   const s = useStrings();
+  const { cityId } = useActiveCity();
+  const cityName = s.city.name(cityId);
   const [ready, setReady] = useState<boolean | null>(null);
   const [cooldownMs, setCooldownMs] = useState(0);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const refresh = useCallback(async () => {
-    setReady(await hasOfflineMap());
-    const gate = await getMapDownloadGate();
+    setReady(await hasOfflineMap(cityId));
+    const gate = await getMapDownloadGate(cityId);
     setCooldownMs(gate.allowed ? 0 : gate.retryAfterMs);
-  }, []);
+  }, [cityId]);
 
   useEffect(() => {
+    setReady(null);
+    setBusy(false);
+    setProgress(0);
     void refresh();
   }, [refresh]);
 
@@ -44,7 +50,7 @@ export function OfflineMapCard() {
     setBusy(true);
     setProgress(0);
     try {
-      const result = await downloadOfflineMap((p: OfflineMapProgress) => setProgress(p.progress));
+      const result = await downloadOfflineMap((p: OfflineMapProgress) => setProgress(p.progress), cityId);
       if (result.ok) {
         await refresh();
         return;
@@ -63,23 +69,24 @@ export function OfflineMapCard() {
     } finally {
       setBusy(false);
     }
-  }, [busy, refresh, s]);
+  }, [busy, refresh, s, cityId]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(s.settings.offlineMapDeleteTitle, s.settings.offlineMapDeleteBody, [
       { text: s.common.cancel, style: 'cancel' },
-      {
-        text: s.settings.offlineMapDelete,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            await deleteOfflineMap();
-            await refresh();
-          })();
+        {
+          text: s.settings.offlineMapDelete,
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await deleteOfflineMap(cityId);
+              await refresh();
+            })();
+          },
         },
-      },
-    ]);
-  }, [refresh, s]);
+      ],
+    );
+  }, [refresh, s, cityId]);
 
   const pct = Math.round(progress * 100);
   const blocked = !ready && cooldownMs > 0;
@@ -91,13 +98,13 @@ export function OfflineMapCard() {
           <MapPinned size={18} color={scheme.primary} />
         </View>
         <View style={styles.titleWrap}>
-          <Text style={styles.title}>{s.settings.offlineMapTitle}</Text>
+          <Text style={styles.title}>{s.settings.offlineMapTitle(cityName)}</Text>
           <Text style={styles.hint}>
             {ready
-              ? s.settings.offlineMapReady
+              ? s.settings.offlineMapReady(cityName)
               : blocked
                 ? s.settings.offlineMapCooldownBody(remainingDays(cooldownMs))
-                : s.settings.offlineMapHint}
+                : s.settings.offlineMapHint(cityName)}
           </Text>
         </View>
       </View>
@@ -125,7 +132,7 @@ export function OfflineMapCard() {
             onPress={() => void handleDownload()}
             style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel={s.settings.offlineMapDownloadA11y}
+            accessibilityLabel={s.settings.offlineMapDownloadA11y(cityName)}
           >
             <Download size={16} color={scheme.onPrimary} />
             <Text style={styles.primaryText}>{s.settings.offlineMapDownload}</Text>

@@ -214,7 +214,17 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
     }
 
     // Ścieżka 2 (fallback): katalog → zip → unzip → SQLite, jak dawniej.
+    // Tylko Wrocław ma legacy feed Open Data; inne miasta biorą wyłącznie
+    // prebuilt z serwera (katalog Wrocławia do bazy Krakowa to katastrofa).
     // Też objęta limitem, żeby nie palić Open Data / R2 przy spamie przycisku.
+    const { getActiveCitySync } = await import('./cityStore');
+    if (getActiveCitySync().id !== 'wroclaw') {
+      const detail = 'prebuilt sync failed';
+      const Terr = dataTr();
+      console.warn('[DataManager] import failed:', detail);
+      emit({ state: 'error', message: Terr.prepareFail, hint: Terr.retryHint, detail });
+      throw new Error(detail);
+    }
     const gate = await getTimetableDownloadGate();
     const localStats = await getGtfsStats().catch(() => null);
     const hasLocal =
@@ -340,7 +350,7 @@ async function importGtfsLegacy(): Promise<void> {
       async (batch) => {
         await importStopTimesBatch(batch);
         done += batch.length;
-        // Progres orientacyjny: ~1.5M wierszy w stop_times Wrocławia.
+        // Progres orientacyjny: ~1.5M wierszy w stop_times dużego miasta.
         emit({ state: 'importing', step: T.stepTimesK(Math.round(done / 1000)), progress: Math.min(0.95, 0.5 + done / 1500000 / 2) });
       },
       { batchSize: 5000 },

@@ -1,4 +1,17 @@
 // Bezpośrednie źródła danych. Telefon gada z publicznym API, bez pośrednika.
+// Wartości per-miasto siedzą w src/cities.ts; ten plik trzyma legacy eksporty
+// (Wrocław) i źródła globalne, żeby reszta kodu nie musiała znać miasta.
+
+import { getCity } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
+
+function activeCity() {
+  try {
+    return getCity(getActiveCityIdSync());
+  } catch {
+    return getCity('wroclaw');
+  }
+}
 // - Rozkład GTFS: Open Data Wrocław (katalog + zip)
 // - Pozycje pojazdów: mpk.wroc.pl/bus_position (POST, bez klucza), wprost z
 //   telefonu, bez cache'a brzegowego. Workers Free ma limit 100k requestów
@@ -62,23 +75,39 @@ export const ZBIORKOM = {
   timeoutMs: 10000,
 } as const;
 
+/** Slug + bbox zbiorkom.live dla aktywnego miasta. */
+export function zbiorkomCity(): { slug: string; bbox: string } {
+  const c = activeCity();
+  return { slug: c.zbiorkomSlug, bbox: c.zbiorkomBbox };
+}
+
 export const NOMINATIM = {
   baseUrl: 'https://nominatim.openstreetmap.org/search',
   reverseUrl: 'https://nominatim.openstreetmap.org/reverse',
   userAgent: 'KilometrTransitApp/1.0 (contact: dev@kilometr.local)',
-  // Wrocław bbox: minLon, maxLat, maxLon, minLat
+  // Wrocław bbox: minLon, maxLat, maxLon, minLat (legacy; per-miasto w cities.ts)
   wroclawBbox: '16.7,51.25,17.25,50.95',
   cacheTtlMs: 24 * 60 * 60 * 1000,
 } as const;
 
+/** Viewbox Nominatim dla aktywnego miasta. */
+export function nominatimViewbox(): string {
+  return activeCity().nominatimViewbox;
+}
+
 export const OVERPASS = {
   baseUrl: 'https://overpass-api.de/api/interpreter',
   userAgent: 'KilometrTransitApp/1.0 (contact: dev@kilometr.local)',
-  // Wrocław: south,west,north,east
+  // Wrocław: south,west,north,east (legacy; per-miasto w cities.ts)
   bbox: '50.95,16.70,51.25,17.25',
   timeoutMs: 45000,
   refreshDays: 7,
 } as const;
+
+/** Bbox Overpass dla aktywnego miasta. */
+export function overpassBbox(): string {
+  return activeCity().overpassBbox;
+}
 
 export const BOUNDS = {
   minLat: 50.95,
@@ -86,6 +115,11 @@ export const BOUNDS = {
   minLon: 16.7,
   maxLon: 17.25,
 } as const;
+
+/** Granice aktywnego miasta (ścisły filtr wyszukiwarki). */
+export function activeBounds(): { minLat: number; maxLat: number; minLon: number; maxLon: number } {
+  return activeCity().bounds;
+}
 
 /** Tramwaje wg rozkładu MPK (route_type 0). */
 export const WROCLAW_TRAM_LINES = [

@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { getCity } from './cities';
 
 function extractHost(candidate?: string | null): string | null {
   if (!candidate) return null;
@@ -64,9 +65,17 @@ export const OSRM_FOOT_BASE_URL =
 
 // Neutralny placeholder zanim GPS zwróci pozycję (prawdziwe współrzędne
 // centrum Wrocławia, nie mock danych). Nadpisywany przez LocationService.
+// Per-miasto odpowiednik: defaultLocationForCity() w dole pliku.
 export const DEFAULT_LOCATION = {
   title: 'Twoja lokalizacja',
   address: 'Wrocław',
   lat: 51.1079,
   lon: 17.0385,
 };
+
+/** Placeholder startowy dla miasta (środek + nazwa, nie mock danych). */
+export function defaultLocationForCity(cityId?: string): typeof DEFAULT_LOCATION {
+  const city = getCity(cityId);
+  if (city.id === 'wroclaw') return { ...DEFAULT_LOCATION };
+  return { title: 'Twoja lokalizacja', address: city.name, lat: city.center.lat, lon: city.center.lon };
+}

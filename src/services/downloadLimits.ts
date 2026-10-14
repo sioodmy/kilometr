@@ -3,6 +3,8 @@
 // Limit liczy się od udanego pobrania; nieudana próba nie blokuje retry.
 
 import { kvGet, kvSet } from './storage';
+import { getCity } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 import { getMeta, setMeta } from './gtfsDatabase';
 
 /** Mapa OSM zmienia się wolno: raz na miesiąc wystarczy. */
@@ -17,6 +19,12 @@ export const TIMETABLE_DOWNLOAD_MIN_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const MAP_LAST_KEY = 'kilometr.offlineMap.lastDownloadAt';
 const TIMETABLE_LAST_META = 'gtfs_last_download';
 
+function mapKey(cityId?: string): string {
+  const city = getCity(cityId ?? getActiveCityIdSync());
+  // Legacy klucz Wrocławia bez sufiksu (kompat ze starymi instalacjami).
+  return city.id === 'wroclaw' ? MAP_LAST_KEY : `${MAP_LAST_KEY}.${city.id}`;
+}
+
 export type DownloadGate =
   | { allowed: true }
   | { allowed: false; retryAfterMs: number };
@@ -30,12 +38,12 @@ function gateFrom(lastIso: string | null | undefined, minIntervalMs: number): Do
   return { allowed: false, retryAfterMs: Math.max(0, minIntervalMs - elapsed) };
 }
 
-export async function getMapDownloadGate(): Promise<DownloadGate> {
-  return gateFrom(await kvGet(MAP_LAST_KEY), MAP_DOWNLOAD_MIN_INTERVAL_MS);
+export async function getMapDownloadGate(cityId?: string): Promise<DownloadGate> {
+  return gateFrom(await kvGet(mapKey(cityId)), MAP_DOWNLOAD_MIN_INTERVAL_MS);
 }
 
-export async function markMapDownloaded(): Promise<void> {
-  await kvSet(MAP_LAST_KEY, new Date().toISOString());
+export async function markMapDownloaded(cityId?: string): Promise<void> {
+  await kvSet(mapKey(cityId), new Date().toISOString());
 }
 
 export async function getTimetableDownloadGate(): Promise<DownloadGate> {

@@ -15,10 +15,12 @@ import {
   invokeRustSync,
 } from '../../modules/kilometr-raptor';
 import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
+import { getCity } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbKd, fetchZbKrakowRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -39,7 +41,19 @@ const WINDOW_SEC = 1800;
 const MAX_CORRIDOR_DIST_M = 350;
 const DELAY_CAP_SEC = 1800;
 /** Ostatni udany snapshot na dysku, żeby restart apki nie startował od zera. */
-const SNAPSHOT_KEY = 'live.snapshot.v1';
+function snapshotKey(): string {
+  const id = safeCityId();
+  // Legacy klucz Wrocławia bez sufiksu (kompat ze starymi instalacjami).
+  return id === 'wroclaw' ? 'live.snapshot.v1' : `live.snapshot.${id}.v1`;
+}
+
+function safeCityId(): string {
+  try {
+    return getActiveCityIdSync();
+  } catch {
+    return 'wroclaw';
+  }
+}
 /** Snapshot v2 dokłada pociągi KD (starszy format bez `kd` dalej się wczytuje). */
 interface StoredSnapshot {
   at: number;
@@ -104,7 +118,8 @@ class LiveTracker {
     this.byLine.clear();
     this.tripDelays.clear();
     this.lastOk = 0;
-    void kvSet(SNAPSHOT_KEY, JSON.stringify({ at: 0, rows: [] } satisfies StoredSnapshot));
+    this.restored = false;
+    void kvSet(snapshotKey(), JSON.stringify({ at: 0, rows: [] } satisfies StoredSnapshot));
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -159,7 +174,7 @@ class LiveTracker {
         ok = true;
         void this.persistSnapshot(rows, kd ?? undefined);
       } else {
-        // Pusta odpowiedź to nie awaria: po północy Wrocław milknie. Ostatni
+        // Pusta odpowiedź to nie awaria: po północy miasto milknie. Ostatni
         // dobry snapshot zostaje w pamięci, a stan przejdzie na „stale” dopiero
         // po GIVE_UP_MS, więc noc nie miga komunikatem o braku danych.
       }
@@ -178,6 +193,12 @@ class LiveTracker {
 
   /** Pociągi KD nigdy nie rzucają: brak live dla kolei to nie awaria MPK. */
   private async fetchKdSafe(): Promise<ZbKdVehicle[] | null> {
+    // KD to specyfika Wrocławia: inne miasta nie mają tej sekcji wcale.
+    try {
+      if (!getCity(safeCityId()).features.regionalRail) return [];
+    } catch {
+      return null;
+    }
     try {
       return await fetchZbKd();
     } catch (err) {
@@ -232,17 +253,28 @@ class LiveTracker {
   }
 
   /**
-   * Pozycje pojazdów wprost z MPK, z jednym ponowieniem. Gdy MPK nie odpowiada
-   * w ogóle (null, nie pusta nocna odpowiedź), fallbackiem jest zbiorkom.live:
-   * te same pojazdy MPK w tym samym formacie wierszy, więc matcher dalej
-   * działa bez zmian.
+   * Pozycje pojazdów per-miasto:
+   * - Wrocław: wprost z MPK (POST bus_position), awaryjnie zbiorkom.live,
+   * - Kraków: zbiorkom.live (ZTP nie ma publicznego bus_position).
    *
-   * Świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby 100k
-   * requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK i tak
-   * odpowiada w 291 ms medianowo i nie zawodzi. Jedno ponowienie po krótkiej
-   * przerwie wystarczy na przejściowy timeout.
+   * Wrocław świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby
+   * 100k requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK
+   * i tak odpowiada w 291 ms medianowo i nie zawodzi. Jedno ponowienie po
+   * krótkiej przerwie wystarczy na przejściowy timeout.
    */
   private async fetchAll(): Promise<RawVehicleRow[] | null> {
+    let direct = false;
+    try {
+      direct = getCity(safeCityId()).features.directBusPosition;
+    } catch {
+      direct = true;
+    }
+    if (!direct) {
+      const krakow = await this.fetchZbCity();
+      if (krakow) return krakow;
+      await new Promise((r) => setTimeout(r, 1200));
+      return this.fetchZbCity();
+    }
     const first = await this.fetchDirect();
     if (first) return first;
     await new Promise((r) => setTimeout(r, 1200));
@@ -254,6 +286,16 @@ class LiveTracker {
       return fallback;
     } catch (err) {
       console.warn('[LiveTracker] zbiorkom fallback failed:', err);
+      return null;
+    }
+  }
+
+  private async fetchZbCity(): Promise<RawVehicleRow[] | null> {
+    try {
+      if (safeCityId() === 'krakow') return await fetchZbKrakowRows();
+      return await fetchZbWroclawRows();
+    } catch (err) {
+      console.warn('[LiveTracker] zbiorkom city fetch failed:', err);
       return null;
     }
   }
@@ -301,7 +343,7 @@ class LiveTracker {
   }
 
   private persistSnapshot(rows: RawVehicleRow[], kd?: ZbKdVehicle[]): void {
-    void kvSet(SNAPSHOT_KEY, JSON.stringify({ at: Date.now(), rows, kd: kd ?? [] } satisfies StoredSnapshot));
+    void kvSet(snapshotKey(), JSON.stringify({ at: Date.now(), rows, kd: kd ?? [] } satisfies StoredSnapshot));
   }
 
   /**
@@ -313,7 +355,7 @@ class LiveTracker {
     if (this.restored) return;
     this.restored = true;
     try {
-      const raw = await kvGet(SNAPSHOT_KEY);
+      const raw = await kvGet(snapshotKey());
       if (!raw) return;
       const parsed = JSON.parse(raw) as StoredSnapshot;
       if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd))) return;

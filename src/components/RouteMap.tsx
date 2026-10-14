@@ -20,6 +20,7 @@ import React, {
 import { Linking, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { buildRouteMapDocument } from '../map/routeMapDocument';
+import { getActiveCitySync } from '../services/cityStore';
 import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
 import { scheme } from '../theme/tokens';
 
@@ -94,10 +95,16 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
 
   const [attempt, setAttempt] = useState(0);
 
-  const html = useMemo(
-    () => buildRouteMapDocument({ route, vehicle, user, selectedLegId, offlineBase }),
-    [route?.id, attempt, offlineBase],
-  );
+  const html = useMemo(() => {
+    let center: [number, number] | null = null;
+    try {
+      const c = getActiveCitySync().center;
+      center = [c.lon, c.lat];
+    } catch {
+      center = null;
+    }
+    return buildRouteMapDocument({ route, vehicle, user, selectedLegId, offlineBase, center });
+  }, [route?.id, attempt, offlineBase]);
 
   const send = useCallback((msg: MapInMessage) => {
     webRef.current?.injectJavaScript(

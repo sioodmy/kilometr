@@ -1,9 +1,9 @@
-// Lokalny indeks miejsc (POI) Wrocławia na telefonie — port server/src/search/poiIndex.ts.
-// Zasilany z Overpass API, cachowany w SQLite (tabela pois). Dzięki temu
-// "lidl", "zoo", "apteka" podpowiadają się natychmiast, bez czekania na
-// Nominatim, i są sortowane po odległości od użytkownika.
+// Lokalny indeks miejsc (POI) aktywnego miasta na telefonie — port server/src/search/poiIndex.ts.
+// Zasilany z Overpass API, cachowany w SQLite (tabela pois, per-miasto jak reszta
+// bazy). Dzięki temu "lidl", "zoo", "apteka" podpowiadają się natychmiast,
+// bez czekania na Nominatim, i są sortowane po odległości od użytkownika.
 
-import { OVERPASS } from './gtfsConfig';
+import { OVERPASS, overpassBbox } from './gtfsConfig';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { classifyPoi, buildPoiAddress } from './poiClassify';
@@ -13,7 +13,7 @@ import { findPoiCandidates, getMeta, poiCount, replacePois, setMeta, type PoiRow
 const ADDR_VERSION = '2';
 const REFRESH_DAYS = 7;
 
-const OVERPASS_FILTERS = [
+const OVERPASS_FILTERS_BASE = [
   'node["shop"~"^(supermarket|mall|department_store)$"]',
   'way["shop"~"^(supermarket|mall|department_store)$"]',
   'node["amenity"~"^(pharmacy|hospital|clinic|university|college|school|cinema|theatre|library)$"]',
@@ -22,9 +22,18 @@ const OVERPASS_FILTERS = [
   'node["leisure"~"^(park|garden|stadium|swimming_pool|sports_centre|fitness_centre)$"]',
   'node["railway"="station"]',
   'node["amenity"="fuel"]',
-].map((f) => `${f}(${OVERPASS.bbox});`).join('\n  ');
+];
 
-const POI_QUERY = `[out:json][timeout:30];\n(\n  ${OVERPASS_FILTERS}\n);\nout center;`;
+function poiQuery(): string {
+  let bbox: string = OVERPASS.bbox;
+  try {
+    bbox = overpassBbox();
+  } catch {
+    // legacy Wrocław
+  }
+  const filters = OVERPASS_FILTERS_BASE.map((f) => `${f}(${bbox});`).join('\n  ');
+  return `[out:json][timeout:30];\n(\n  ${filters}\n);\nout center;`;
+}
 
 let refreshInFlight = false;
 
@@ -48,7 +57,7 @@ export async function refreshPoiIndex(): Promise<number> {
           'User-Agent': OVERPASS.userAgent,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: 'data=' + encodeURIComponent(POI_QUERY),
+        body: 'data=' + encodeURIComponent(poiQuery()),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

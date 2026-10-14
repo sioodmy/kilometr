@@ -22,6 +22,8 @@ import {
 import type { RouteStyle } from '../src/services/routing/types';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
+import { CITIES, getCity, type CityId } from '../src/cities';
+import { useActiveCity } from '../src/services/cityStore';
 import {
   SETTINGS_LIMITS,
   WALK_PACE_DEFAULTS_MPS,
@@ -149,6 +151,9 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { settings, update, reset } = useRoutingSettings();
   const s = useStrings();
+  const { cityId, setCity } = useActiveCity();
+  const operatorShort = s.city.operatorShort(cityId);
+  const feeds = s.city.feeds(cityId);
   const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
   const walkMps = useWalkSpeedMps();
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -172,15 +177,17 @@ export default function SettingsScreen() {
   const anchor = SETTINGS_LIMITS.anchorRadiusM;
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [importing, setImporting] = useState(false);
+  const [switchingCity, setSwitchingCity] = useState(false);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
   const [hasTrains, setHasTrains] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [cooldownHours, setCooldownHours] = useState(1);
+  const cityHasCable = getCity(cityId).features.cable;
 
   useEffect(() => {
     refreshDataStatus().then(setDataStatus).catch(() => {});
     return subscribeDataStatus(setDataStatus);
-  }, []);
+  }, [cityId]);
 
   useEffect(() => {
     let alive = true;
@@ -198,6 +205,19 @@ export default function SettingsScreen() {
 
   const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
   const hasTimetable = dataStatus.state === 'ready';
+
+  const handleCityChange = async (id: CityId) => {
+    if (id === cityId || switchingCity || busy) return;
+    setSwitchingCity(true);
+    setOutcome(null);
+    try {
+      await setCity(id);
+      await refreshDataStatus().then(setDataStatus).catch(() => {});
+    } finally {
+      setSwitchingCity(false);
+      setReloadKey((k) => k + 1);
+    }
+  };
 
   const handleDownload = async () => {
     if (busy) return;
@@ -272,9 +292,48 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
+        <SectionLabel>{s.city.section}</SectionLabel>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>{s.city.settingsTitle}</Text>
+          <Text style={styles.settingHint}>{s.city.settingsHint}</Text>
+          <View style={styles.langRow}>
+            {CITIES.map((c) => {
+              const active = cityId === c.id;
+              const label = s.city.name(c.id);
+              return (
+                <Pressable
+                  key={c.id}
+                  onPress={() => void handleCityChange(c.id)}
+                  disabled={switchingCity || busy}
+                  style={({ pressed }) => [
+                    styles.langChip,
+                    active && styles.langChipActive,
+                    pressed && !active && { opacity: 0.7 },
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                  accessibilityLabel={label}
+                >
+                  {active && <Check size={14} color={scheme.onPrimaryContainer} />}
+                  <Text style={[styles.langChipText, active && styles.langChipTextActive]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {switchingCity ? (
+            <View style={styles.switchRow}>
+              <ActivityIndicator size="small" color={scheme.primary} />
+              <Text style={styles.switchText}>{s.city.changed(s.city.name(cityId))}</Text>
+            </View>
+          ) : dataStatus.state === 'empty' ? (
+            <Text style={styles.warnHint}>{s.city.needDownload}</Text>
+          ) : null}
+        </View>
+
         <SectionLabel>{s.settings.sectionOffline}</SectionLabel>
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{s.settings.dataTitle}</Text>
+          <Text style={styles.cardTitle}>{s.settings.dataTitle(operatorShort)}</Text>
+          <Text style={styles.settingHint}>{s.settings.dataHint(feeds)}</Text>
           <Text style={styles.statusText}>{dataStatusLabel(dataStatus)}</Text>
           <Pressable
             onPress={handleDownload}
@@ -467,20 +526,23 @@ export default function SettingsScreen() {
             ) : null}
           </View>
 
-          <View style={styles.divider} />
-
-          <View style={styles.toggleHead}>
-            <CableCar size={18} color={scheme.onSurfaceVariant} />
-            <Text style={[styles.settingTitle, styles.settingText]}>{s.settings.cableTitle}</Text>
-            <PrefsToggle
-              value={settings.cableEnabled}
-              onChange={(v) => update({ cableEnabled: v })}
-              label={s.settings.cableTitle}
-              hint={s.settings.cableHintShort}
-              onText={s.notificationPrefs.on}
-              offText={s.notificationPrefs.off}
-            />
-          </View>
+          {cityHasCable ? (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.toggleHead}>
+                <CableCar size={18} color={scheme.onSurfaceVariant} />
+                <Text style={[styles.settingTitle, styles.settingText]}>{s.settings.cableTitle}</Text>
+                <PrefsToggle
+                  value={settings.cableEnabled}
+                  onChange={(v) => update({ cableEnabled: v })}
+                  label={s.settings.cableTitle}
+                  hint={s.settings.cableHintShort}
+                  onText={s.notificationPrefs.on}
+                  offText={s.notificationPrefs.off}
+                />
+              </View>
+            </>
+          ) : null}
         </View>
 
         <Pressable
@@ -594,6 +656,8 @@ const styles = StyleSheet.create({
   settingTitle: { ...type.bodyLarge, color: scheme.onSurface, fontWeight: '500' },
   settingHint: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 17 },
   warnHint: { ...type.bodySmall, color: scheme.warning, lineHeight: 17 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  switchText: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   toggleBlock: { gap: 12 },
   toggleHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: scheme.outlineVariant },
