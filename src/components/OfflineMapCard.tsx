@@ -74,7 +74,7 @@ export function OfflineMapCard() {
     }
   }, [busy, refresh, s, cityId]);
 
-const handleDelete = useCallback(() => {
+  const handleDelete = useCallback(() => {
     Alert.alert(s.settings.offlineMapDeleteTitle, s.settings.offlineMapDeleteBody, [
       { text: s.common.cancel, style: 'cancel' },
       {

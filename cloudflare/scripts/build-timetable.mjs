@@ -513,6 +513,12 @@ async function main() {
     gtfsSources = [{ label: 'MPK', url: mpk.url, prefix: '', headers: MPK_UA, version: mpk.effectiveDate }];
   }
 
+  // Odcisk ZTP/KMŁ powstaje z Last-Modified/ETag. Gdy feed ich nie zwraca,
+  // „odcisk” jest stały i nie wykryje zmiany rozkładu, więc skip byłby wieczny.
+  // Wtedy (bez --force) budujemy na nowo zamiast pomijać.
+  const ztpVersionsReliable = CITY !== 'krakow' || (gtfsSources.length > 0 && gtfsSources.every((s) => !!s.version));
+  const kmlVersionReliable = CITY !== 'krakow' || !!kmlVersion;
+
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
       // Ten sam ZTP wystarczy do skipu tylko wtedy, gdy zdalna baza faktycznie
@@ -523,12 +529,15 @@ async function main() {
         (remote.sources.kml?.version || null) === (kmlVersion || null) &&
         Number(remote.sources.kml?.stations || 0) > 0 &&
         Number(remote.sources.kml?.trips || 0) > 0;
-      if (remoteKmlReal) {
+      if (!ztpVersionsReliable || !kmlVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else if (remoteKmlReal) {
         log('brak zmian (ZTP + KMŁ), skip buildu.');
         rmSync(work, { recursive: true, force: true });
         process.exit(2);
+      } else {
+        warn('zdalny manifest bez realnego KMŁ, przebudowuję zamiast skipować.');
       }
-      warn('zdalny manifest bez realnego KMŁ, przebudowuję zamiast skipować.');
     }
     if (CITY === 'wroclaw'
       && remote.sources.mpk?.effectiveDate === mpk.effectiveDate

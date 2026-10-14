@@ -54,14 +54,13 @@ export function manifestUrl(cityId?: CityId | string): string {
   return `${TIMETABLE.baseUrl}/${city.id}/manifest.json`;
 }
 
-export function dbDownloadUrl(manifest: TimetableManifest, cityId?: CityId | string): string {
-  const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
+/**
+ * URL bazy z manifestu. `db.path` jest już pełną ścieżką R2: legacy root
+ * Wrocławia niesie `db/kilometr-gtfs.db`, nowe manifesty per-miasto
+ * `{miasto}/db/kilometr-gtfs.db`. Oba wystarczy dokleić do bazowego URL-a.
+ */
+export function dbDownloadUrl(manifest: TimetableManifest): string {
   const path = manifest.db.path.startsWith('/') ? manifest.db.path : `/${manifest.db.path}`;
-  // Legacy manifest Wrocławia ma ścieżkę względną root; nowe manifesty
-  // per-miasto niosą pełną ścieżkę z prefiksem miasta.
-  if (city.id === 'wroclaw' && !manifest.db.path.startsWith('wroclaw/')) {
-    return `${TIMETABLE.baseUrl}${path}`;
-  }
   return `${TIMETABLE.baseUrl}${path}`;
 }
 
@@ -191,7 +190,7 @@ export async function downloadPrebuiltDb(
 
   // Download strumieniem na dysk (wznawialny) — RAM-u prawie nie rusza.
   const task = FileSystem.createDownloadResumable(
-    dbDownloadUrl(manifest, cityId),
+    dbDownloadUrl(manifest),
     dest,
     { headers: { 'User-Agent': 'KilometrApp/1.0' } },
     (p) => onProgress?.(p.totalBytesWritten, p.totalBytesExpectedToWrite),
