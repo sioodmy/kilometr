@@ -59,7 +59,7 @@ export function getActiveCitySync(): CityDef {
 }
 
 /**
- * Zamiana baz i cache per-miasto. Wołana PRZED podmianą `cachedId` i `notify()`,
+ * Zamiana baz i cache per-miasto. Wołana PRZED zmianą `cachedId` i `notify()`,
  * więc UI nie zobaczy nowego miasta przy starym rozkładzie (wrocławskie trasy
  * podpisane "Kraków").
  */
@@ -101,6 +101,17 @@ export async function setActiveCityId(id: CityId): Promise<CityDef> {
   // obecnemu wyborowi w onboardingu).
   if (id === cachedId) return getCity(id);
   await swapStores();
+  // Przypięty kurs planowano na bazie poprzedniego miasta, a jego przystanki
+  // i opóźnienia istnieją tylko tam; planer liczy już na nowej bazie, więc
+  // nie da się go odświeżyć. Zatrzymujemy go, żeby nie zostawić powiadomienia
+  // z nieaktualnym planem. Robimy to TYLKO przy jawnej zmianie miasta, nie
+  // przy starcie aplikacji: tam odtworzenie pinu należy do `restoreTrackedTrip`.
+  try {
+    const { stopTracking } = await import('./notifications/tripMonitor');
+    await stopTracking();
+  } catch (err) {
+    console.warn('[CityStore] tracked trip stop failed:', err);
+  }
   cachedId = id;
   notify();
   try {
