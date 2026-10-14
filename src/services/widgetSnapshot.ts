@@ -14,7 +14,7 @@ import type { Connection, Leg } from '../types/models';
 export const WIDGET_SNAPSHOT_FILE = 'kilometr-widget.json';
 
 export interface WidgetLineBadge {
-  mode: 'tram' | 'bus' | 'train' | 'cable' | 'walk';
+  mode: 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'walk';
   line?: string;
   bg?: string;
   fg?: string;

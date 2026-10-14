@@ -74,7 +74,7 @@ export interface RawVehicleRow {
 }
 
 export interface TrackedVehicle extends VehiclePosition {
-  type: 'bus' | 'tram' | 'train';
+  type: 'bus' | 'tram' | 'train' | 'trolleybus';
 }
 
 interface PatternPolylineNode {
@@ -476,7 +476,8 @@ class LiveTracker {
     const vehicleId = `${line}-${row.k}`;
     const lat = row.x;
     const lon = row.y;
-    const type: 'bus' | 'tram' = row.type === 'tram' ? 'tram' : 'bus';
+    let type: 'bus' | 'tram' | 'trolleybus' =
+      row.type === 'tram' ? 'tram' : row.type === 'trolleybus' ? 'trolleybus' : 'bus';
 
     let routeIds = gtfsStore.getRouteIdsByShortName(line);
     if (routeIds.length === 0) routeIds = [line];
@@ -590,6 +591,14 @@ class LiveTracker {
       console.warn(
         `[LiveTracker] ${line} ${vehicleId}: odrzucone opóźnienie ${Math.round(bestDelay / 60)} min (> ${DELAY_CAP_SEC / 60})`,
       );
+    }
+    // Typ z feedu bywa zgadywany, więc po dopasowaniu bierzemy go z bazy:
+    // route_type 0 to tramwaj, 11 to trolejbus. Bez meczu zostaje typ z wiersza.
+    if (bestTripId) {
+      const trip = gtfsStore.trips.get(bestTripId) as { route_id?: string } | undefined;
+      const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
+      if (routeType === 0) type = 'tram';
+      else if (routeType === 11) type = 'trolleybus';
     }
 
     return {

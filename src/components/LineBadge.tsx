@@ -38,6 +38,8 @@ export function LineBadge({
   }
 
   const { bg, fg } = getLineColors(line, mode);
+  // Zestaw ikon nie ma osobnego glifu trolejbusu, więc trolejbus jedzie
+  // ikoną autobusu na własnym zielonym tle: kolor niesie tożsamość.
   const Icon =
     resolved === 'cable' ? CableCar : resolved === 'train' ? TrainFront : resolved === 'tram' ? TramFront : BusFront;
 

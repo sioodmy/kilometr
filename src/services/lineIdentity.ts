@@ -1,4 +1,5 @@
 import type { LegMode } from '../types/models';
+import { getActiveCityIdSync } from './cityStore';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
@@ -32,19 +33,30 @@ export const TRANSIT_PALETTE = [
 ];
 
 /** Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy). */
-export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'train' | 'cable' | 'walk' {
+export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'walk' {
   if (mode === 'walk') return 'walk';
   if (mode === 'tram') return 'tram';
   if (mode === 'train') return 'train';
   if (mode === 'cable') return 'cable';
+  if (mode === 'trolleybus') return 'trolleybus';
   if (mode === 'bus') return 'bus';
   if (!line) return 'bus';
   const clean = line.trim();
   const num = parseInt(clean, 10);
-  if (!isNaN(num) && num >= 1 && num <= 33) {
+  // Heurystyka numerów jak w classifyTransitMode: tylko poza GZM, gdzie
+  // niskie numery noszą też autobusy.
+  if (!isNaN(num) && num >= 1 && num <= 33 && numericFallbackApplies()) {
     return 'tram';
   }
   return 'bus';
+}
+
+function numericFallbackApplies(): boolean {
+  try {
+    return getActiveCityIdSync() !== 'gzm';
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -61,6 +73,13 @@ export const TRAIN_BADGE_BG = '#FFB957';
  * od bursztynu pociągów. Jasne tło → ciemny tekst, kontrast ~11:1.
  */
 export const CABLE_BADGE_BG = '#A5CCE8';
+
+/**
+ * Trolejbus (GZM/Tychy) dostaje stałą zieleń: sygnalizuje napęd elektryczny,
+ * a odcień jest odrębny od bursztynu pociągów i błękitu kolejki. Ciemne
+ * tło → biały tekst, kontrast ~5:1.
+ */
+export const TROLLEY_BADGE_BG = '#2E7D32';
 
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
 function contrastFg(bg: string): string {
@@ -83,6 +102,9 @@ export function getLineColors(
   }
   if (resolved === 'cable') {
     return { bg: CABLE_BADGE_BG, fg: contrastFg(CABLE_BADGE_BG), isTram: false, isTrain: false, isCable: true };
+  }
+  if (resolved === 'trolleybus') {
+    return { bg: TROLLEY_BADGE_BG, fg: contrastFg(TROLLEY_BADGE_BG), isTram: false, isTrain: false, isCable: false };
   }
   const isTram = resolved === 'tram';
   const clean = (line || '').trim().toUpperCase();
