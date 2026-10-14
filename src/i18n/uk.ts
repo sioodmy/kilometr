@@ -508,7 +508,7 @@ export const uk: Strings = {
     vehicleBusGen: 'автобусом',
     vehicleTrolleyGen: 'тролейбусом',
     vehicleTrainGen: 'потягом',
-    vehicleSubwayGen: 'метро',
+    vehicleSubwayGen: 'метром',
     vehicleCableGen: 'канатною дорогою',
     showWithChangesA11y: 'Показати сполучення з пересадками',
     showWithChanges: 'Показати з пересадками',

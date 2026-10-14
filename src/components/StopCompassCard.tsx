@@ -141,7 +141,7 @@ function legIcon(mode: string, line?: string) {
   const m = inferTransitMode(mode as never, line);
   if (m === 'tram') return TramFront;
   if (m === 'bus' || m === 'trolleybus') return BusFront;
-  if (m === 'train') return TrainFront;
+  if (m === 'train' || m === 'subway') return TrainFront;
   if (m === 'cable') return CableCar;
   return Signpost;
 }

@@ -423,15 +423,22 @@ function extractGzmLines(title: string, description: string): string[] {
  */
 const WTP_LINE_RE = /\b(M[12]|S\d{1,2}|L-?\d{1,3}|N\d{1,3}|Z\d{1,3}|\d{1,3}[A-Z]?)\b/gi;
 
+const WTP_MONTHS =
+  'stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia|pazdziernika';
+
 function extractWtpLines(title: string, description: string): string[] {
   const seen = new Set<string>();
-  const MONTHS = 'stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia|pazdziernika';
   const text = `${title} ${description}`
-    .replace(/\d{1,2}\.\d{1,2}\.\d{4}/g, ' ')
+    // Pełne i skrócone daty liczbowe: „17.10.2026”, „17.10” (zostawiłoby 17 i 10 jako linie).
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
-    // Zakresy dat („17-25 października”, „od 19 października”) to nie linie.
-    .replace(new RegExp(`\\b\\d{1,2}\\s*-\\s*\\d{1,2}\\s+(?:${MONTHS})\\b`, 'gi'), ' ')
-    .replace(new RegExp(`\\b(?:od|do)\\s+\\d{1,2}\\s+(?:${MONTHS})\\b`, 'gi'), ' ');
+    // Daty z nazwą miesiąca w każdej formie z feedu: „19 października”,
+    // „17-25 października” (też – i —), „od 17 do 25 października”,
+    // „1 i 2 listopada”, „do 19 października”.
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    // Sam zakres dni bez miesiąca („w dniach 17-25”): też data, nie linie.
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   WTP_LINE_RE.lastIndex = 0;
   while ((m = WTP_LINE_RE.exec(text))) {
@@ -442,10 +449,6 @@ function extractWtpLines(title: string, description: string): string[] {
     if (/^\d+$/.test(tok)) {
       const n = Number(tok);
       if (n < 1 || n > 999) continue;
-      // Dni miesiąca („od 7 października”, „17-25 października”): liczba
-      // tuż przed nazwą miesiąca to data, nie linia.
-      const tail = text.slice(m.index + m[1].length, m.index + m[1].length + 16).toLowerCase();
-      if (/^\s+(stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia|pazdziernika)\b/.test(tail)) continue;
     }
     if (!seen.has(tok)) seen.add(tok);
     if (seen.size >= 12) break;

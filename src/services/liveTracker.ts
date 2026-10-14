@@ -221,8 +221,8 @@ class LiveTracker {
    * Pociągi regionalne nigdy nie rzucają: brak live dla kolei to nie awaria
    * miasta. Wrocław: KD, Kraków: Koleje Małopolskie (agencja KML),
    * GZM: Koleje Śląskie, PKP Intercity i POLREGIO (agencje KS, IC, PR),
-   * Warszawa: Koleje Mazowieckie i WKD (agencje KM, WKD; SKA łapie
-   * podstawowy feed miasta po nazwie linii, bo nie ma osobnej agencji).
+   * Warszawa: Koleje Mazowieckie i WKD (agencje KM, WKD). SKA nie ma feedu
+   * live, więc zostaje na rozkładzie.
    */
   private async fetchRailSafe(): Promise<RailFeed[] | null> {
     const id = safeCityId();
@@ -512,7 +512,7 @@ class LiveTracker {
     const vehicleId = `${line}-${row.k}`;
     const lat = row.x;
     const lon = row.y;
-    let type: 'bus' | 'tram' | 'trolleybus' | 'subway' =
+    let type: 'bus' | 'tram' | 'trolleybus' | 'subway' | 'train' =
       row.type === 'tram' ? 'tram' : row.type === 'trolleybus' ? 'trolleybus' : 'bus';
 
     let routeIds = gtfsStore.getRouteIdsByShortName(line);
@@ -629,13 +629,14 @@ class LiveTracker {
       );
     }
     // Typ z feedu bywa zgadywany, więc po dopasowaniu bierzemy go z bazy:
-    // route_type 0 to tramwaj, 1 to metro, 11 to trolejbus. Bez meczu zostaje
-    // typ z wiersza.
+    // route_type 0 to tramwaj, 1 to metro, 2 to pociąg (SKA), 11 to trolejbus.
+    // Bez meczu zostaje typ z wiersza. Ta sama kolejność co w ścieżce Rusta.
     if (bestTripId) {
       const trip = gtfsStore.trips.get(bestTripId) as { route_id?: string } | undefined;
       const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
       if (routeType === 0) type = 'tram';
       else if (routeType === 1) type = 'subway';
+      else if (routeType === 2) type = 'train';
       else if (routeType === 11) type = 'trolleybus';
     }
 
@@ -802,7 +803,8 @@ class LiveTracker {
       const tripId = ok ? this.liveTripIds[tripIdx] : undefined;
       const delayOutOfRange = !!tripId && delay !== 0 && Math.abs(delay) > DELAY_CAP_SEC;
       // Ścieżka Rusta nie zna route_type, więc typ bierzemy z bazy po meczu
-      // (metro z feedu miasta przychodzi jako „bus", SKA tak samo).
+      // (metro M1/M2 z feedu miasta przychodzi jako „bus", a po meczu
+      // dostaje route_type 1 i kropkę metra).
       let vtype: TrackedVehicle['type'] = row.type === 'tram' ? 'tram' : 'bus';
       if (tripId) {
         const trip = gtfsStore.trips.get(tripId) as { route_id?: string } | undefined;

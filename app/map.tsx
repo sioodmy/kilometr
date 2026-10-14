@@ -289,17 +289,15 @@ export default function RouteMapScreen() {
       const leg = matchLeg;
       shownVehicleRef.current = match.vehicle.vehicleId;
       const { bg } = getLineColors(match.vehicle.line, leg.mode);
+      // Tryb bierze się z leg.mode (planner ustawia go z route_type feedu),
+      // więc metro i SKA niosą własne tryby. 'walk' tu nie trafia, ale
+      // unia MapVehicle go nie zna, stąd mapowanie na autobus.
+      const vehMode = inferTransitMode(leg.mode, match.vehicle.line);
       setVehicle({
         vehicleId: match.vehicle.vehicleId,
         legId: leg.id,
         line: match.vehicle.line,
-        mode: inferTransitMode(leg.mode, match.vehicle.line) === 'tram'
-          ? 'tram'
-          : leg.mode === 'train'
-            ? 'train'
-            : leg.mode === 'cable'
-              ? 'cable'
-              : 'bus',
+        mode: vehMode === 'walk' ? 'bus' : vehMode,
         color: bg,
         lat: match.vehicle.lat,
         lon: match.vehicle.lon,

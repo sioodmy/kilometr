@@ -114,6 +114,26 @@ describe('Numery linii WTP: metro, SKA, nocne, lokalne');
     parseWtpRss(xml('Podsumowanie roku 2026 w komunikacji')).map((i) => i.lines),
     [[]],
   );
+  expect(
+    '„od 17 do 25 października” to nie linie',
+    parseWtpRss(xml('Zamknięcie od 17 do 25 października')).map((i) => i.lines),
+    [[]],
+  );
+  expect(
+    'myślnik typograficzny w zakresie',
+    parseWtpRss(xml('Prace 17–25 października')).map((i) => i.lines),
+    [[]],
+  );
+  expect(
+    'data kropkowana 1.10',
+    parseWtpRss(xml('Od 1.10 nowe rozkłady linii 128')).map((i) => i.lines),
+    [['128']],
+  );
+  expect(
+    'lista dni z miesiącem',
+    parseWtpRss(xml('W dniach 1 i 2 listopada zmiany na 189')).map((i) => i.lines),
+    [['189']],
+  );
 }
 
 describe('Metro M1/M2: tryb i kolory');

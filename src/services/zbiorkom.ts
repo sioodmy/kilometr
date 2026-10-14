@@ -103,15 +103,17 @@ export async function fetchZbGzmRows(): Promise<RawVehicleRow[] | null> {
 }
 
 /**
- * Pozycje WTP (autobusy, tramwaje, metro M1/M2, SKA) jako wiersze dla
- * matchera. Podstawowy feed live Warszawy: zbiorkom agreguje tu wszystko
- * z miasta pod agencją `default`, a dopasowanie do kursów idzie po nazwie
- * linii jak w Krakowie i GZM.
+ * Pozycje WTP (autobusy, tramwaje, metro M1/M2) jako wiersze dla matchera.
+ * Podstawowy feed live Warszawy: zbiorkom agreguje pod miastem także gminy
+ * ościenne (GPA, Ząbki, Pruszków, Otwock), a te mają własne numery linii,
+ * które kolidują z WTP (Otwock jeździ nawet jako "M1"). Filtr
+ * `agencies=default` zostawia wyłącznie Warszawski Transport Publiczny.
+ * SKA nie pojawia się w tym feedzie, więc zostaje bez live.
  */
 export async function fetchZbWarsawRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const waw = getCity('warszawa');
-  const positions = await fetchPositions(waw.zbiorkomSlug, undefined, waw.zbiorkomBbox);
+  const positions = await fetchPositions(waw.zbiorkomSlug, 'default', waw.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }
@@ -163,9 +165,9 @@ export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbK
 }
 
 /**
- * Pociągi KM i WKD z jednego zapytania (bbox Warszawy). SKA nie ma tu
- * osobnej agencji: jej kursy łapie podstawowy feed miasta po nazwie linii
- * (S1…S40 siedzą w GTFS WTP, więc matcher geometryczny wystarcza).
+ * Pociągi KM i WKD z jednego zapytania (bbox Warszawy). SKA nie ma feedu
+ * live (sprawdzone: nie ma jej ani w mieście `warsaw`, ani pod agencją
+ * SKM w `pkp`), więc zostaje na rozkładzie jak kolej w innych miastach.
  */
 export async function fetchZbWarsawRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
   const { getCity } = await import('../cities');
