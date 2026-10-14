@@ -1,8 +1,15 @@
 /**
  * kilometr-timetable — Worker serwujący gotowe rozkłady (Cloudflare free tier).
  *
- * - GET /manifest.json         → manifest buildu z R2 (wersja, statystyki)
- * - GET /db/kilometr-gtfs.db   → prebuilt SQLite z R2 (Range, ETag, cache 5 min)
+ * Per-miasto (nowe ścieżki):
+ * - GET /{miasto}/manifest.json     → manifest buildu z R2
+ * - GET /{miasto}/db/kilometr-gtfs.db → prebuilt SQLite z R2 (Range, ETag)
+ * - GET /maps/{miasto}-tiles.ktp    → pakiet kafli offline z R2
+ * Miasta: wroclaw, krakow (allowlista CITIES niżej).
+ *
+ * Legacy (Wrocław, kompat ze starymi APK):
+ * - GET /manifest.json, GET /db/kilometr-gtfs.db, GET /maps/wroclaw-tiles.ktp
+ *
  * - GET /api/kd/departures     → PDP /operations (sekret po stronie serwera,
  *                                 cache 120 s — aplikacja tego NA RAZIE nie woła)
  * - GET /api/kd/schedule       → PDP /schedules (cache 1 h, jw.)
@@ -18,14 +25,22 @@ export interface Env {
   PDP_API_KEY?: string;
 }
 
+/** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
+const CITIES = ['wroclaw', 'krakow'] as const;
+
 const PDP_BASE = 'https://pdp-api.plk-sa.pl';
-const DB_KEY = 'db/kilometr-gtfs.db';
-const MANIFEST_KEY = 'manifest.json';
+/** Legacy klucze Wrocławia w root bucketa (kompat ze starymi APK). */
+const LEGACY_DB_KEY = 'db/kilometr-gtfs.db';
+const LEGACY_MANIFEST_KEY = 'manifest.json';
+const LEGACY_MAP_PACK_KEY = 'maps/wroclaw-tiles.ktp';
+
+const dbKeyFor = (city: string): string => `${city}/db/kilometr-gtfs.db`;
+const manifestKeyFor = (city: string): string => `${city}/manifest.json`;
 /**
- * Pakiet kafelków mapy offline (Wrocław). Buduje go workflow map-tiles.yml,
- * a telefon pobiera raz i trzyma lokalnie.
+ * Pakiet kafelków mapy offline. Buduje go workflow map-tiles.yml (--city),
+ * a telefon pobiera raz i trzyma lokalnie (osobny plik na miasto).
  */
-const MAP_PACK_KEY = 'maps/wroclaw-tiles.ktp';
+const mapPackKeyFor = (city: string): string => `maps/${city}-tiles.ktp`;
 
 function json(data: unknown, status = 200, cacheSeconds = 0): Response {
   const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' };
@@ -71,87 +86,113 @@ export default {
     if (req.method !== 'GET' && req.method !== 'HEAD') return json({ error: 'method-not-allowed' }, 405);
 
     if (url.pathname === '/health') {
-      return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString() });
+      return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString(), cities: [...CITIES] });
     }
 
-    if (url.pathname === '/manifest.json') {
-      const obj = await env.TIMETABLE_BUCKET.get(MANIFEST_KEY);
-      if (!obj) {
-        return json(
-          { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
-          404,
-        );
+    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
+    const cityMatch = /^\/(wroclaw|krakow)(\/.*)$/.exec(url.pathname);
+    if (cityMatch) {
+      const [, city, rest] = cityMatch;
+      if (rest === '/manifest.json') {
+        return serveManifest(env, manifestKeyFor(city));
       }
-      const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8' });
-      headers.set('Cache-Control', 'public, max-age=300');
-      if (obj.etag) headers.set('ETag', obj.etag);
-      return new Response(obj.body, { headers });
+      if (rest === '/db/kilometr-gtfs.db') {
+        return serveDb(req, env, dbKeyFor(city));
+      }
+    }
+    const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
+    if (mapMatch && (CITIES as readonly string[]).includes(mapMatch[1])) {
+      return serveObject(env, mapPackKeyFor(mapMatch[1]), 'application/octet-stream', 'map-tiles.yml');
+    }
+
+    // Legacy root (Wrocław, stare APK).
+    if (url.pathname === '/manifest.json') {
+      return serveManifest(env, LEGACY_MANIFEST_KEY);
     }
 
     if (url.pathname === '/db/kilometr-gtfs.db') {
-      // Uwaga: HEAD działa tak samo (Runtime sam ucina body).
-      const range = req.headers.get('Range');
-      if (range) {
-        const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-        const head = await env.TIMETABLE_BUCKET.head(DB_KEY);
-        if (!head) {
-          return json(
-            { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
-            404,
-          );
-        }
-        if (m) {
-          const size = head.size;
-          let start = m[1] === '' ? size - Number(m[2] || 0) : Number(m[1]);
-          let end = m[2] === '' ? size - 1 : Number(m[2]);
-          if (Number.isNaN(start)) start = 0;
-          if (Number.isNaN(end)) end = size - 1;
-          start = Math.max(0, start);
-          end = Math.min(size - 1, end);
-          if (start <= end) {
-            const obj = await env.TIMETABLE_BUCKET.get(DB_KEY, {
-              range: { offset: start, length: end - start + 1 },
-            });
-            if (obj) {
-              const headers = new Headers();
-              headers.set('Content-Type', 'application/x-sqlite3');
-              headers.set('Accept-Ranges', 'bytes');
-              headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
-              headers.set('Content-Length', String(end - start + 1));
-              if (head.etag) headers.set('ETag', head.etag);
-              headers.set('Cache-Control', 'public, max-age=300');
-              return new Response(obj.body, { status: 206, headers });
-            }
-          }
-        }
-      }
-      const obj = await env.TIMETABLE_BUCKET.get(DB_KEY);
-      if (!obj) {
-        return json(
-          { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
-          404,
-        );
-      }
-      const headers = new Headers();
-      headers.set('Content-Type', 'application/x-sqlite3');
-      headers.set('Accept-Ranges', 'bytes');
-      headers.set('Content-Length', String(obj.size));
-      if (obj.etag) headers.set('ETag', obj.etag);
-      headers.set('Cache-Control', 'public, max-age=300');
-      return new Response(obj.body, { headers });
+      return serveDb(req, env, LEGACY_DB_KEY);
     }
 
     if (url.pathname === '/api/kd/departures' || url.pathname === '/api/kd/schedule') {
       return proxyPdp(req, env, ctx, url.pathname === '/api/kd/departures' ? 'operations' : 'schedules');
     }
 
+    // Legacy kafle Wrocławia (nowe ścieżki: /maps/{miasto}-tiles.ktp wyżej).
     if (url.pathname === '/maps/wroclaw-tiles.ktp') {
-      return serveObject(env, MAP_PACK_KEY, 'application/octet-stream', 'map-tiles.yml');
+      return serveObject(env, LEGACY_MAP_PACK_KEY, 'application/octet-stream', 'map-tiles.yml');
     }
 
     return json({ error: 'not-found' }, 404);
   },
 };
+
+async function serveManifest(env: Env, key: string): Promise<Response> {
+  const obj = await env.TIMETABLE_BUCKET.get(key);
+  if (!obj) {
+    return json(
+      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
+      404,
+    );
+  }
+  const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8' });
+  headers.set('Cache-Control', 'public, max-age=300');
+  if (obj.etag) headers.set('ETag', obj.etag);
+  return new Response(obj.body, { headers });
+}
+
+async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
+  // Uwaga: HEAD działa tak samo (Runtime sam ucina body).
+  const range = req.headers.get('Range');
+  if (range) {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    const head = await env.TIMETABLE_BUCKET.head(key);
+    if (!head) {
+      return json(
+        { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
+        404,
+      );
+    }
+    if (m) {
+      const size = head.size;
+      let start = m[1] === '' ? size - Number(m[2] || 0) : Number(m[1]);
+      let end = m[2] === '' ? size - 1 : Number(m[2]);
+      if (Number.isNaN(start)) start = 0;
+      if (Number.isNaN(end)) end = size - 1;
+      start = Math.max(0, start);
+      end = Math.min(size - 1, end);
+      if (start <= end) {
+        const obj = await env.TIMETABLE_BUCKET.get(key, {
+          range: { offset: start, length: end - start + 1 },
+        });
+        if (obj) {
+          const headers = new Headers();
+          headers.set('Content-Type', 'application/x-sqlite3');
+          headers.set('Accept-Ranges', 'bytes');
+          headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
+          headers.set('Content-Length', String(end - start + 1));
+          if (head.etag) headers.set('ETag', head.etag);
+          headers.set('Cache-Control', 'public, max-age=300');
+          return new Response(obj.body, { status: 206, headers });
+        }
+      }
+    }
+  }
+  const obj = await env.TIMETABLE_BUCKET.get(key);
+  if (!obj) {
+    return json(
+      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
+      404,
+    );
+  }
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/x-sqlite3');
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Content-Length', String(obj.size));
+  if (obj.etag) headers.set('ETag', obj.etag);
+  headers.set('Cache-Control', 'public, max-age=300');
+  return new Response(obj.body, { headers });
+}
 
 /**
  * Gotowość pod przyszłe opóźnienia KD — passthrough do PDP z cache,
