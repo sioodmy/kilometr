@@ -761,13 +761,17 @@ function hashTripRows(rows) {
  * go kawałkami, a wiersze trzymamy tylko dla bieżącego kursu. Działa, bo
  * eksport grupuje wiersze po trip_id (zweryfikowane: bloki == unikalne tripy).
  * Plik nie ma cudzysłowów, więc szybki split po przecinku wystarcza.
+ *
+ * Cięcie idzie po BAJTACH (0x0A), a linie dekodujemy dopiero w całości:
+ * dekodowanie każdego chunka osobno rozcięłoby wielobajtowy znak UTF-8
+ * na granicy bufora i zamieniło go w U+FFFD.
  */
 function streamTripBlocks(path, onBlock) {
   const size = statSync(path).size;
   const fd = openSync(path, 'r');
   const CHUNK = 32 * 1048576;
   const buf = Buffer.alloc(CHUNK);
-  let rest = '';
+  let rest = Buffer.alloc(0);
   let header = null;
   let ti = 0, si = 2, ai = 3, di = 4, qi = 1;
   let curTid = null;
@@ -777,52 +781,50 @@ function streamTripBlocks(path, onBlock) {
     curTid = null;
     curRows = [];
   };
+  const handleLine = (rawLine) => {
+    let line = rawLine;
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (!line.trim()) return;
+    if (header === null) {
+      if (line.startsWith('\ufeff')) line = line.slice(1);
+      if (line.startsWith('trip_id,')) {
+        header = line.split(',');
+        ti = header.indexOf('trip_id');
+        si = header.indexOf('stop_id');
+        ai = header.indexOf('arrival_time');
+        di = header.indexOf('departure_time');
+        qi = header.indexOf('stop_sequence');
+        if (ti === -1 || si === -1 || ai === -1 || di === -1 || qi === -1) {
+          throw new Error(`stop_times.txt bez wymaganych kolumn (trip_id/stop_id/arrival_time/departure_time/stop_sequence): ${header.join(',')}`);
+        }
+        return;
+      }
+    }
+    const c = line.split(',');
+    const tid = (c[ti] || '').trim();
+    if (!tid) return;
+    if (curTid !== null && tid !== curTid) flush();
+    curTid = tid;
+    const arr = (c[ai] || '').trim() || '00:00:00';
+    curRows.push([(c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0]);
+  };
   try {
     let pos = 0;
-    let first = true;
     while (pos < size) {
       const n = readSync(fd, buf, 0, CHUNK, pos);
       if (n <= 0) break;
       pos += n;
-      const text = rest + buf.subarray(0, n).toString('utf8');
-      const lines = text.split('\n');
-      rest = lines.pop() ?? '';
-      for (let line of lines) {
-        if (line.endsWith('\r')) line = line.slice(0, -1);
-        if (!line.trim()) continue;
-        if (first) {
-          first = false;
-          if (line.startsWith('trip_id,')) {
-            header = line.split(',');
-            ti = header.indexOf('trip_id');
-            si = header.indexOf('stop_id');
-            ai = header.indexOf('arrival_time');
-            di = header.indexOf('departure_time');
-            qi = header.indexOf('stop_sequence');
-            continue;
-          }
-        }
-        const c = line.split(',');
-        const tid = (c[ti] || '').trim();
-        if (!tid) continue;
-        if (curTid !== null && tid !== curTid) flush();
-        curTid = tid;
-        const arr = (c[ai] || '').trim() || '00:00:00';
-        curRows.push([(c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0]);
+      const chunk = buf.subarray(0, n);
+      const combined = rest.length > 0 ? Buffer.concat([rest, chunk]) : chunk;
+      let start = 0;
+      for (let i = 0; i < combined.length; i++) {
+        if (combined[i] !== 0x0a) continue;
+        handleLine(combined.subarray(start, i).toString('utf8'));
+        start = i + 1;
       }
+      rest = Buffer.from(combined.subarray(start)); // kopia: buf jest reużywany
     }
-    if (rest.trim()) {
-      let line = rest;
-      if (line.endsWith('\r')) line = line.slice(0, -1);
-      const c = line.split(',');
-      const tid = (c[ti] || '').trim();
-      if (tid) {
-        if (curTid !== null && tid !== curTid) flush();
-        curTid = tid;
-        const arr = (c[ai] || '').trim() || '00:00:00';
-        curRows.push([(c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0]);
-      }
-    }
+    if (rest.length > 0) handleLine(rest.toString('utf8'));
     flush();
   } finally {
     closeSync(fd);
@@ -864,11 +866,17 @@ function importStaticRailFeed(db, o) {
   const routesTxt = readTxt('routes.txt');
   if (!routesTxt) throw new Error(`${o.tag} bez routes.txt, przerywam.`);
   const routeIds = new Set();
+  const routeTypeById = new Map();
   eachRow(routesTxt, (c, idx) => {
     const id = (c[idx.route_id] || '').trim();
     if (!id) return;
     if (o.agency && (c[idx.agency_id] || '').trim() !== o.agency) return;
     routeIds.add(id);
+    const raw = (c[idx.route_type] || '').trim();
+    // Typ z feedu: 2 = pociąg, 3 = ZKA (zastępcza komunikacja autobusowa).
+    // Bez tego ZKA jechałaby w UI jako pociąg. Mapowanie niemal 1:1 jak
+    // w aplikacji (route_type 3 = autobus), z domyślnym 2 dla śmieci.
+    routeTypeById.set(id, raw !== '' && !isNaN(Number(raw)) ? Number(raw) : 2);
   });
   if (routeIds.size === 0) throw new Error(`${o.tag}: brak linii agencji ${o.agency || '(dowolnej)'}, przerywam.`);
 
@@ -915,6 +923,7 @@ function importStaticRailFeed(db, o) {
       num,
       headsign: (c[idx.trip_headsign] || '').trim(),
       direction: Number(c[idx.direction_id]) || 0,
+      type: routeTypeById.get(rid) ?? 2,
       dates,
     });
   });
@@ -937,7 +946,12 @@ function importStaticRailFeed(db, o) {
     const gkey = `${e.num}|${e.headsign}|${e.direction}|${sig}`;
     let key = keyOf.get(gkey);
     if (!key) {
-      key = `${o.prefix}:T:${kept.size}`;
+      // Klucz z numeru pociągu i sygnatury czasów: stabilny między buildami
+      // (identyczny kurs zachowuje trip_id), a unikalny także wtedy, gdy ten
+      // sam numer jedzie różne warianty. Kolizja niemożliwa do wykluczenia
+      // (ten sam numer, kierunek i czasy, inny headsign) dostaje sufiks.
+      key = `${o.prefix}:T:${e.num}:${sig}`;
+      for (let n = 2; kept.has(key); n++) key = `${o.prefix}:T:${e.num}:${sig}#${n}`;
       keyOf.set(gkey, key);
       kept.set(key, { dates: new Set(), data: e, rows });
     }
@@ -978,7 +992,7 @@ function importStaticRailFeed(db, o) {
     if (!seenRoutes.has(routeId)) {
       const first = stopGeo.get(k.rows[0][0]);
       const last = stopGeo.get(k.rows[k.rows.length - 1][0]);
-      insRoute.run(routeId, k.data.num, `${first?.name || ''} – ${last?.name || k.data.headsign}`, 2);
+      insRoute.run(routeId, k.data.num, `${first?.name || ''} – ${last?.name || k.data.headsign}`, k.data.type ?? 2);
       seenRoutes.add(routeId);
       o.counts.routes++;
       stat.routes++;
@@ -1122,13 +1136,18 @@ function importWawCompact(db, txtDir, counts, cityStops, cityStopIds) {
   const kept = new Map(); // klucz kursu -> {dates:Set, data, rows}
   const keyOf = new Map(); // sygnatura kursu -> klucz
   const tplRows = new Map(); // template tid -> wiersze względne
-  const absorb = (tid, o, rows) => {
+  const absorb = (o, rows) => {
     if (!rows || rows.length < 2) return;
     const sig = hashTripRows(rows);
     const gkey = `${o.route}|${o.headsign}|${o.direction}|${sig}`;
     let key = keyOf.get(gkey);
     if (!key) {
-      key = tid;
+      // Klucz z trasy i sygnatury czasów, NIE z trip_id feedu: id WTP noszą
+      // datę dnia (`2026-10-13:102:…`), więc ten sam kurs zmieniałby trip_id
+      // przy każdym dziennym eksporcie, a przypięte trasy traciłyby kurs.
+      // Sygnatura jest stabilna, dopóki rozkład się nie zmieni.
+      key = `${o.route}:${sig}`;
+      for (let n = 2; kept.has(key); n++) key = `${o.route}:${sig}#${n}`;
       keyOf.set(gkey, key);
       kept.set(key, { dates: new Set(), data: o, rows });
     }
@@ -1141,14 +1160,14 @@ function importWawCompact(db, txtDir, counts, cityStops, cityStopIds) {
       if (rows.length >= 2 && !tplRows.has(tid)) tplRows.set(tid, rows);
       return;
     }
-    absorb(tid, o, rows);
+    absorb(o, rows);
   });
   log(`WAW: kursy po scaleniu=${kept.size} (szablony metra: ${tplRows.size})`);
 
   // 4b. Metro: szablon (czasy względne) x okna headwayów z frequencies.txt.
   // Odjazd D w oknie [start, end] co headway: czasy = D + offset szablonu.
-  // Klucz syntetyczny `${tpl}@${D}` jest deterministyczny, więc ten sam
-  // odjazd w różne dni scala się w jeden wiersz jak zwykłe kursy.
+  // Klucz kursu to sygnatura czasów, więc ten sam odjazd w różne dni scala
+  // się w jeden wiersz jak zwykłe kursy.
   let metroTrips = 0;
   const freqTxt = readTxt('frequencies.txt');
   if (freqTxt) {
@@ -1177,7 +1196,7 @@ function importWawCompact(db, txtDir, counts, cityStops, cityStopIds) {
       if (head <= 0 || end <= start) continue;
       for (let d = start; d <= end; d += head) {
         const sh = rows.map((r) => [r[0], r[1] + d, r[2] + d, r[3]]);
-        absorb(`${tpl}@${d}`, o, sh);
+        absorb(o, sh);
         metroTrips++;
       }
     }
