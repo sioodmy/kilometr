@@ -1,0 +1,36 @@
+name: "CodeQL"
+
+# SAST własnego kodu. Dla JS/TS nie wymaga buildu, wyniki lądują w
+# Security > Code scanning. Sam check nie czerwieni się od znalezisk.
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+      - nightly
+      - prod
+  schedule:
+    # Co poniedziałek nad ranem, poza PR-ami.
+    - cron: '23 4 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze JS/TS
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

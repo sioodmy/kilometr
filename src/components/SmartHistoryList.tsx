@@ -41,7 +41,6 @@ function SlideIn({
     tx.value =
       delay > 0 ? withDelay(delay, withSpring(0, { damping: 24, stiffness: 300 })) : withSpring(0, { damping: 24, stiffness: 300 });
     op.value = delay > 0 ? withDelay(delay, withTiming(1, { duration: 220 })) : withTiming(1, { duration: 220 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const anim = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }],

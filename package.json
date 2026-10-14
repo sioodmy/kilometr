@@ -1,6 +1,7 @@
 {
   "name": "kilometr",
   "version": "1.0.0",
+  "license": "GPL-3.0-or-later",
   "main": "expo-router/entry",
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",
@@ -31,9 +32,16 @@
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "@eslint/js": "^10.0.1",
     "@types/react": "~19.2.2",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
     "tsx": "^4.20.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2"
   },
   "scripts": {
     "start": "expo start",
@@ -51,6 +59,8 @@
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "check:backup": "tsx scripts/check-backup.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"app/**/*.{ts,tsx}\" \"scripts/**/*.ts\" \"server/src/**/*.ts\" \"server/scripts/**/*.ts\" \"cloudflare/src/**/*.ts\" \"cloudflare/scripts/**/*.mjs\" \"landing/src/**/*.{ts,tsx}\" \".github/scripts/**/*.mjs\" \"eslint.config.mjs\"",
     "check:nav": "tsx scripts/check-nav.ts",
     "check:navigation-target": "tsx scripts/check-navigation-target.ts",
     "check:minimap": "tsx scripts/check-minimap.ts",

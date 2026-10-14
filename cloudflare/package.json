@@ -2,6 +2,7 @@
   "name": "kilometr-timetable",
   "version": "1.0.0",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "description": "Worker + build rozkładów Kilometr na Cloudflare (free tier)",
   "scripts": {
     "deploy": "wrangler deploy",
