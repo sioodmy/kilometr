@@ -291,11 +291,13 @@ function modeLabel(mode: TripProgress['lineMode'], s: Strings): string {
       ? s.notification.modeTram
       : mode === 'train'
         ? s.notification.modeTrain
-        : mode === 'cable'
-          ? s.notification.modeCable
-          : mode === 'trolleybus'
-            ? s.notification.modeTrolleybus
-            : s.notification.modeBus;
+        : mode === 'subway'
+          ? s.notification.modeSubway
+          : mode === 'cable'
+            ? s.notification.modeCable
+            : mode === 'trolleybus'
+              ? s.notification.modeTrolleybus
+              : s.notification.modeBus;
 }
 
 /**

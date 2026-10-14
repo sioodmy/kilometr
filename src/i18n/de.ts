@@ -77,23 +77,47 @@ export const de: Strings = {
     section: 'Stadt',
     settingsTitle: 'Stadt',
     settingsHint: 'Fahrplan, Offline-Karte und Meldungen folgen der Stadt. Die Daten der anderen Stadt bleiben auf dem Telefon.',
-    name: (id: string): string => (id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : 'Wrocław'),
-    gen: (id: string): string => (id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : 'Wrocław'),
-    loc: (id: string): string => (id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : 'Wrocław'),
+    name: (id: string): string =>
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : 'Wrocław',
+    gen: (id: string): string =>
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : 'Wrocław',
+    loc: (id: string): string =>
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP und Koleje Małopolskie'
         : id === 'gzm'
           ? 'ZTM, Koleje Śląskie, POLREGIO und PKP Intercity'
-          : 'MPK und Koleje Dolnośląskie',
+          : id === 'warszawa'
+            ? 'WTP, SKA, Koleje Mazowieckie und WKD'
+            : 'MPK und Koleje Dolnośląskie',
     newsSources: (id: string): string =>
-      id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław • wroclaw.pl',
+      id === 'krakow'
+        ? 'ZTP Kraków'
+        : id === 'gzm'
+          ? 'ZTM GZM'
+          : id === 'warszawa'
+            ? 'WTP Warszawa'
+            : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
-      id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław',
-    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : 'MPK'),
+      id === 'krakow'
+        ? 'ZTP Kraków'
+        : id === 'gzm'
+          ? 'ZTM GZM'
+          : id === 'warszawa'
+            ? 'WTP Warszawa'
+            : 'MPK Wrocław',
+    operatorShort: (id: string): string =>
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : 'MPK',
     portal: (id: string): string =>
-      id === 'krakow' ? 'ztp.krakow.pl' : id === 'gzm' ? 'metropoliaztm.pl' : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM',
+      id === 'krakow'
+        ? 'ztp.krakow.pl'
+        : id === 'gzm'
+          ? 'metropoliaztm.pl'
+          : id === 'warszawa'
+            ? 'wtp.waw.pl'
+            : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
@@ -246,13 +270,25 @@ export const de: Strings = {
     toEnable: 'Zu aktivieren',
     slotHome: 'Zuhause',
     slotHomeHint: (id: string) =>
-      id === 'krakow' ? 'z. B. Krowoderska 12' : 'z. B. Swojczycka 41',
+      id === 'krakow'
+        ? 'z. B. Krowoderska 12'
+        : id === 'warszawa'
+          ? 'z. B. Marszałkowska 12'
+          : 'z. B. Swojczycka 41',
     slotWork: 'Arbeit',
     slotWorkHint: (id: string) =>
-      id === 'krakow' ? 'z. B. Galeria Krakowska' : 'z. B. Sky Tower',
+      id === 'krakow'
+        ? 'z. B. Galeria Krakowska'
+        : id === 'warszawa'
+          ? 'z. B. Złote Tarasy'
+          : 'z. B. Sky Tower',
     slotUni: 'Uni',
     slotUniHint: (id: string) =>
-      id === 'krakow' ? 'z. B. AGH' : 'z. B. Politechnika',
+      id === 'krakow'
+        ? 'z. B. AGH'
+        : id === 'warszawa'
+          ? 'z. B. Uniwersytet'
+          : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',
@@ -452,6 +488,7 @@ export const de: Strings = {
     vehicleBusGen: 'mit dem Bus',
     vehicleTrolleyGen: 'mit dem Obus',
     vehicleTrainGen: 'mit dem Zug',
+    vehicleSubwayGen: 'mit der U-Bahn',
     vehicleCableGen: 'mit der Seilbahn',
     showWithChangesA11y: 'Verbindungen mit Umstieg zeigen',
     showWithChanges: 'Mit Umstieg zeigen',
@@ -487,7 +524,7 @@ export const de: Strings = {
     searching: (city: string) => `${city} wird durchsucht…`,
     noResults: 'Keine Ergebnisse',
     noResultsHint: (id: string) =>
-      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
+      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
     yourPlaces: 'Deine Orte',
     gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',
@@ -737,6 +774,7 @@ export const de: Strings = {
     modeTram: 'Straßenbahn',
     modeBus: 'Bus',
     modeTrain: 'Zug',
+    modeSubway: 'U-Bahn',
     modeCable: 'Seilbahn',
     modeTrolleybus: 'Obus',
     departTitle: (service: string, at: string) => `${service} • ab ${at}`,

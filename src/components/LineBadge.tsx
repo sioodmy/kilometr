@@ -41,10 +41,17 @@ export function LineBadge({
   }
 
   const { bg, fg } = getLineColors(line, mode, cityId);
-  // Zestaw ikon nie ma osobnego glifu trolejbusu, więc trolejbus jedzie
-  // ikoną autobusu na własnym zielonym tle: kolor niesie tożsamość.
+  // Zestaw ikon nie ma osobnego glifu trolejbusu ani metra, więc trolejbus
+  // jedzie ikoną autobusu na własnym zielonym tle, a metro ikoną pociągu
+  // na barwie linii ze schematu (M1/M2): kolor niesie tożsamość.
   const Icon =
-    resolved === 'cable' ? CableCar : resolved === 'train' ? TrainFront : resolved === 'tram' ? TramFront : BusFront;
+    resolved === 'cable'
+      ? CableCar
+      : resolved === 'train' || resolved === 'subway'
+        ? TrainFront
+        : resolved === 'tram'
+          ? TramFront
+          : BusFront;
 
   return (
     <View style={[styles.badge, compact && styles.compact, { backgroundColor: bg }]}>

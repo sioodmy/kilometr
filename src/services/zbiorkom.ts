@@ -1,9 +1,9 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
 // - miasto `pkp`: pozycje i opóźnienia pociągów regionalnych (agencja `KD`
-//   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM),
-// - miasto `wroclaw` / `krakow` / `gzm`: awaryjne (Wrocław) albo podstawowe
-//   (Kraków, GZM) pozycje autobusów i tramwajów, gdy bezpośredni feed nie
-//   odpowiada.
+//   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy),
+// - miasto `wroclaw` / `krakow` / `gzm` / `warsaw`: awaryjne (Wrocław) albo
+//   podstawowe (Kraków, GZM, Warszawa) pozycje autobusów, tramwajów i metra,
+//   gdy bezpośredni feed nie odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -102,6 +102,20 @@ export async function fetchZbGzmRows(): Promise<RawVehicleRow[] | null> {
   return toRawRows(positions);
 }
 
+/**
+ * Pozycje WTP (autobusy, tramwaje, metro M1/M2, SKA) jako wiersze dla
+ * matchera. Podstawowy feed live Warszawy: zbiorkom agreguje tu wszystko
+ * z miasta pod agencją `default`, a dopasowanie do kursów idzie po nazwie
+ * linii jak w Krakowie i GZM.
+ */
+export async function fetchZbWarsawRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const waw = getCity('warszawa');
+  const positions = await fetchPositions(waw.zbiorkomSlug, undefined, waw.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
 function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
   const rows: RawVehicleRow[] = [];
   for (const p of positions) {
@@ -142,6 +156,23 @@ export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbK
   if (positions === null) return null;
   const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
   for (const agency of ['KS', 'IC', 'PR']) {
+    const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
+    if (vehicles.length > 0) out.push({ agency, vehicles });
+  }
+  return out;
+}
+
+/**
+ * Pociągi KM i WKD z jednego zapytania (bbox Warszawy). SKA nie ma tu
+ * osobnej agencji: jej kursy łapie podstawowy feed miasta po nazwie linii
+ * (S1…S40 siedzą w GTFS WTP, więc matcher geometryczny wystarcza).
+ */
+export async function fetchZbWarsawRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+  const { getCity } = await import('../cities');
+  const positions = await fetchPositions('pkp', 'KM,WKD', getCity('warszawa').zbiorkomBbox);
+  if (positions === null) return null;
+  const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
+  for (const agency of ['KM', 'WKD']) {
     const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
     if (vehicles.length > 0) out.push({ agency, vehicles });
   }

@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ArrowRight, BusFront, ChevronDown, Footprints, TramFront } from 'lucide-react-native';
+import { ArrowRight, BusFront, ChevronDown, Footprints, TrainFront, TramFront } from 'lucide-react-native';
 import Animated, {
   LinearTransition,
   useAnimatedStyle,
@@ -26,10 +26,11 @@ import {
 import { useStrings, type Strings } from '../i18n';
 
 // Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
-// pociągi, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
+// pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
 function genericModeGen(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.routes.vehicleTramGen;
   if (mode === 'train') return t.routes.vehicleTrainGen;
+  if (mode === 'subway') return t.routes.vehicleSubwayGen;
   if (mode === 'trolleybus') return t.routes.vehicleTrolleyGen;
   if (mode === 'cable') return t.routes.vehicleCableGen;
   return t.routes.vehicleBusGen;
@@ -61,7 +62,7 @@ function cacheStops(key: string, stops: LegStop[]) {
 const LEAD_STOPS = 3;
 
 function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
-  const Icon = mode === 'tram' ? TramFront : BusFront;
+  const Icon = mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
   return <Icon size={14} color={scheme.onPrimary} strokeWidth={2.4} />;
 }
 
@@ -235,7 +236,7 @@ function LegStopsList({
     const refreshVehicle = () => {
       const now = Date.now();
       setNow(now);
-      if (!leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus')) {
+      if (!leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')) {
         setVehicle(null);
         return;
       }

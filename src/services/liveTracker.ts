@@ -20,7 +20,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -81,7 +81,7 @@ export interface RawVehicleRow {
 }
 
 export interface TrackedVehicle extends VehiclePosition {
-  type: 'bus' | 'tram' | 'train' | 'trolleybus';
+  type: 'bus' | 'tram' | 'train' | 'trolleybus' | 'subway';
 }
 
 interface PatternPolylineNode {
@@ -220,7 +220,9 @@ class LiveTracker {
   /**
    * Pociągi regionalne nigdy nie rzucają: brak live dla kolei to nie awaria
    * miasta. Wrocław: KD, Kraków: Koleje Małopolskie (agencja KML),
-   * GZM: Koleje Śląskie, PKP Intercity i POLREGIO (agencje KS, IC, PR).
+   * GZM: Koleje Śląskie, PKP Intercity i POLREGIO (agencje KS, IC, PR),
+   * Warszawa: Koleje Mazowieckie i WKD (agencje KM, WKD; SKA łapie
+   * podstawowy feed miasta po nazwie linii, bo nie ma osobnej agencji).
    */
   private async fetchRailSafe(): Promise<RailFeed[] | null> {
     const id = safeCityId();
@@ -239,6 +241,11 @@ class LiveTracker {
         if (feeds === null) return null;
         const prefixes: Record<string, string> = { KS: 'KŚ:', IC: 'IC:', PR: 'PR:' };
         return feeds.map((f) => ({ vehicles: f.vehicles, prefix: prefixes[f.agency] ?? `${f.agency}:` }));
+      }
+      if (id === 'warszawa') {
+        const feeds = await fetchZbWarsawRails();
+        if (feeds === null) return null;
+        return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
       }
       const rows = await fetchZbKd();
       return rows ? [{ vehicles: rows, prefix: 'KD:' }] : null;
@@ -296,8 +303,8 @@ class LiveTracker {
   /**
    * Pozycje pojazdów per-miasto:
    * - Wrocław: wprost z MPK (POST bus_position), awaryjnie zbiorkom.live,
-   * - Kraków: zbiorkom.live (ZTP nie ma publicznego bus_position),
-   * - GZM: zbiorkom.live (ZTM nie ma publicznego bus_position).
+   * - Kraków / GZM / Warszawa: zbiorkom.live (ZTP, ZTM i WTP nie mają
+   *   publicznego bus_position).
    *
    * Wrocław świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby
    * 100k requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK
@@ -337,6 +344,7 @@ class LiveTracker {
       const id = safeCityId();
       if (id === 'krakow') return await fetchZbKrakowRows();
       if (id === 'gzm') return await fetchZbGzmRows();
+      if (id === 'warszawa') return await fetchZbWarsawRows();
       return await fetchZbWroclawRows();
     } catch (err) {
       console.warn('[LiveTracker] zbiorkom city fetch failed:', err);
@@ -504,7 +512,7 @@ class LiveTracker {
     const vehicleId = `${line}-${row.k}`;
     const lat = row.x;
     const lon = row.y;
-    let type: 'bus' | 'tram' | 'trolleybus' =
+    let type: 'bus' | 'tram' | 'trolleybus' | 'subway' =
       row.type === 'tram' ? 'tram' : row.type === 'trolleybus' ? 'trolleybus' : 'bus';
 
     let routeIds = gtfsStore.getRouteIdsByShortName(line);
@@ -621,11 +629,13 @@ class LiveTracker {
       );
     }
     // Typ z feedu bywa zgadywany, więc po dopasowaniu bierzemy go z bazy:
-    // route_type 0 to tramwaj, 11 to trolejbus. Bez meczu zostaje typ z wiersza.
+    // route_type 0 to tramwaj, 1 to metro, 11 to trolejbus. Bez meczu zostaje
+    // typ z wiersza.
     if (bestTripId) {
       const trip = gtfsStore.trips.get(bestTripId) as { route_id?: string } | undefined;
       const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
       if (routeType === 0) type = 'tram';
+      else if (routeType === 1) type = 'subway';
       else if (routeType === 11) type = 'trolleybus';
     }
 
@@ -791,13 +801,24 @@ class LiveTracker {
       const nextIdx = r.u32();
       const tripId = ok ? this.liveTripIds[tripIdx] : undefined;
       const delayOutOfRange = !!tripId && delay !== 0 && Math.abs(delay) > DELAY_CAP_SEC;
+      // Ścieżka Rusta nie zna route_type, więc typ bierzemy z bazy po meczu
+      // (metro z feedu miasta przychodzi jako „bus", SKA tak samo).
+      let vtype: TrackedVehicle['type'] = row.type === 'tram' ? 'tram' : 'bus';
+      if (tripId) {
+        const trip = gtfsStore.trips.get(tripId) as { route_id?: string } | undefined;
+        const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
+        if (routeType === 0) vtype = 'tram';
+        else if (routeType === 1) vtype = 'subway';
+        else if (routeType === 2) vtype = 'train';
+        else if (routeType === 11) vtype = 'trolleybus';
+      }
       matched.set(line + '-' + row.k, {
         tracked: {
           vehicleId: `${line}-${row.k}`,
           line,
           lat: row.x,
           lon: row.y,
-          type: row.type === 'tram' ? 'tram' : 'bus',
+          type: vtype,
           delaySec: tripId && !delayOutOfRange ? delay : null,
           matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
           currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
@@ -852,8 +873,11 @@ class LiveTracker {
     const { byId, delays } = this.resolveConflicts(matched);
     // Przebudowa dotyczy tylko miasta: pociągi regionalne (osobny poll)
     // przeżywają, żeby chwilowa dziura w feedzie kolei nie gasiła opóźnień.
+    // Wpisy kolei noszą prefiks z dwukropkiem (`KD:123:veh`, `KŚ:…`, `KM:…`),
+    // miejskie to `linia-id` bez dwukropka, więc rozróżnienie nie wymaga
+    // listy agencji per-miasto.
     for (const [id, kept] of this.byId) {
-      if (!id.startsWith('KD:') && !id.startsWith('KML:')) continue;
+      if (!id.includes(':')) continue;
       byId.set(id, kept);
       if (kept.matchedTripId && kept.delaySec !== null) delays.set(kept.matchedTripId, kept.delaySec);
     }

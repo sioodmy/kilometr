@@ -1,5 +1,5 @@
 /** 'cable' = kolej linowa / powietrzna (Polinka przy Politechnice Wrocławskiej). */
-export type LegMode = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'walk';
+export type LegMode = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway' | 'walk';
 
 /** Jednorazowy filtr pojazdów: 'all' = tramwaje + autobusy + pociągi KD (default). */
 export type TransitModePreference = 'all' | 'tram' | 'bus';

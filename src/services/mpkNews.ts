@@ -2,6 +2,9 @@
 // - Wrocław: RSS wroclaw.pl/komunikacja (miasto) + HTML mpk.wroc.pl (zmiany),
 // - Kraków: RSS ZTP (komunikaty KMK, ?post_type=komunikat).
 // - GZM: HTML rj.transportgzm.pl/v2/news (komunikaty ZTM, serwerowy markup).
+// - Warszawa: RSS WTP (www.wtp.waw.pl/feed, zwykły RSS 2.0 z numerami linii
+//   w tytułach; podstrony artykułów blokuje CloudFront, więc treść bierzemy
+//   z opisu w feedzie).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -47,6 +50,12 @@ export const MPK_CHANGES_URL =
 export const ZTP_KOMUNIKATY_URL = 'https://ztp.krakow.pl/kmk/komunikaty';
 export const ZTP_KOMUNIKATY_RSS = 'https://ztp.krakow.pl/feed?post_type=komunikat';
 export const GZM_NEWS_URL = 'https://rj.transportgzm.pl/v2/news/';
+/**
+ * Komunikaty WTP Warszawa: zwykły kanał RSS 2.0 (tytuł + link + pubDate
+ * + opis). Numery linii siedzą w tytułach („objazdy dla 138”, „autobusów
+ * 108, 130 i 162”), więc wyciągamy je regexem jak w ZTP/GZM.
+ */
+export const WTP_FEED_URL = 'https://www.wtp.waw.pl/feed/';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -407,6 +416,78 @@ function extractGzmLines(title: string, description: string): string[] {
   return [...seen];
 }
 
+/**
+ * Numery linii WTP w tekście: M1/M2, S1…S40, L-5/L28, N12, Z14 i zwykłe
+ * 1–999. Daty i godziny wycinamy wcześniej, żeby „17-25 października”
+ * ani „od 19 października” nie udawały linii.
+ */
+const WTP_LINE_RE = /\b(M[12]|S\d{1,2}|L-?\d{1,3}|N\d{1,3}|Z\d{1,3}|\d{1,3}[A-Z]?)\b/gi;
+
+function extractWtpLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const MONTHS = 'stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia|pazdziernika';
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{4}/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Zakresy dat („17-25 października”, „od 19 października”) to nie linie.
+    .replace(new RegExp(`\\b\\d{1,2}\\s*-\\s*\\d{1,2}\\s+(?:${MONTHS})\\b`, 'gi'), ' ')
+    .replace(new RegExp(`\\b(?:od|do)\\s+\\d{1,2}\\s+(?:${MONTHS})\\b`, 'gi'), ' ');
+  let m: RegExpExecArray | null;
+  WTP_LINE_RE.lastIndex = 0;
+  while ((m = WTP_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' || after === ':') continue;
+    if (/^\d+$/.test(tok)) {
+      const n = Number(tok);
+      if (n < 1 || n > 999) continue;
+      // Dni miesiąca („od 7 października”, „17-25 października”): liczba
+      // tuż przed nazwą miesiąca to data, nie linia.
+      const tail = text.slice(m.index + m[1].length, m.index + m[1].length + 16).toLowerCase();
+      if (/^\s+(stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia|pazdziernika)\b/.test(tail)) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Komunikaty WTP Warszawa (RSS 2.0: tytuł + link + pubDate + opis).
+ * Cały kanał dotyczy komunikacji, więc nie filtrujemy po słowach jak
+ * miejski RSS Wrocławia. Opis z feedu ląduje w karcie, bo podstrony
+ * artykułów blokuje CloudFront.
+ */
+export function parseWtpRss(xml: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const link = stripCdata(tagInner(b, 'link')).trim();
+    const rawDesc = stripCdata(tagInner(b, 'description'));
+    const description = htmlToText(rawDesc).slice(0, 600);
+    const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
+    const ts = pubRaw ? Date.parse(pubRaw) : NaN;
+    const pubDate = Number.isFinite(ts) ? ts : null;
+    if (!title && !link) continue;
+    items.push({
+      id: link || `${rawTitle}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description,
+      imageUrl: extractImage(rawDesc),
+      urgent: isUrgentNews(title, description),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractWtpLines(title, description),
+    });
+  }
+  return items;
+}
+
 const ARTICLE_JUNK_RE =
   /^(galeria zdjęć|zobacz galerię|zobacz galerię zdjęć tego artykułu|rozwiń|czytaj także|polecane|udostępnij)$/i;
 
@@ -451,6 +532,7 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   const mpk = /mpk\.wroc\.pl/i.test(url);
   const ztp = /ztp\.krakow\.pl/i.test(url);
   const gzm = /rj\.transportgzm\.pl/i.test(url);
+  const wtp = /wtp\.waw\.pl/i.test(url);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : ztp
@@ -460,8 +542,13 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
         '')
       : gzm
         ? (html.split(/id="mcontent"/i)[1]?.split(/<div class="modal"|<footer/i)[0] ?? '')
-        : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
-        '');
+        : wtp
+          ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
+            html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ??
+            html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
+            '')
+          : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
+          '');
   if (gzm) {
     // Tytuł niesie nagłówek ekranu (params.title), więc w treści go pomijamy.
     fragment = fragment.replace(/<h2\b[^>]*>[\s\S]*?<\/h2>/i, ' ');
@@ -561,7 +648,21 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   const city = getCity(activeCityId());
   if (city.id === 'krakow') return fetchZtpNews(signal, city.id);
   if (city.id === 'gzm') return fetchGzmNews(signal, city.id);
+  if (city.id === 'warszawa') return fetchWtpNews(signal, city.id);
   return fetchMpkNews(signal);
+}
+
+/** Komunikaty WTP Warszawa: jedno źródło (RSS), brak fallbacku. */
+async function fetchWtpNews(signal?: AbortSignal, cityId = 'warszawa'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const xml = await fetchText(WTP_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const items = parseWtpRss(xml);
+    if (items.length === 0) console.warn('[News] WTP: pusty feed (zmiana formatu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
 }
 
 /** Komunikaty ZTM GZM: jedno źródło (lista HTML), brak fallbacku. */
