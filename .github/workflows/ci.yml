@@ -70,6 +70,24 @@ jobs:
       - name: Run logic tests (Navigation target)
         run: npm run check:navigation-target
 
+      - name: Run logic tests (RAPTOR routing)
+        run: npm run check:routing
+
+      - name: Run logic tests (Live feed)
+        run: npm run check:live
+
+      - name: Run logic tests (Polinka)
+        run: npm run check:polinka
+
+      - name: Run logic tests (Navigation)
+        run: npm run check:nav
+
+      - name: Run logic tests (Minimap)
+        run: npm run check:minimap
+
+      - name: Run logic tests (Geometry cache)
+        run: npm run check:geometry-cache
+
       - name: Expo Doctor (Advisory)
         run: npx expo-doctor || true
 
@@ -84,6 +102,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            server/package-lock.json
+            landing/package-lock.json
 
       - name: Build & typecheck server
         run: |
