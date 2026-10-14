@@ -1,5 +1,6 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
-// - miasto `pkp`, agencja `KD`: pozycje i opóźnienia pociągów KD (Wrocław),
+// - miasto `pkp`: pozycje i opóźnienia pociągów regionalnych (agencja `KD`
+//   dla Wrocławia, `KML` dla Krakowa),
 // - miasto `wroclaw` / `krakow`: awaryjne (Wrocław) albo podstawowe (Kraków)
 //   pozycje autobusów i tramwajów, gdy bezpośredni feed nie odpowiada.
 //
@@ -113,7 +114,17 @@ function toSecOfDay(ms: number): number {
 }
 
 export async function fetchZbKd(): Promise<ZbKdVehicle[] | null> {
-  const positions = await fetchPositions('pkp', 'KD');
+  return fetchZbRail('KD');
+}
+
+/** Pociągi Kolei Małopolskich (SKA) z zbiorkom.live. Ten sam kształt co KD. */
+export async function fetchZbKml(): Promise<ZbKdVehicle[] | null> {
+  const { getCity } = await import('../cities');
+  return fetchZbRail('KML', getCity('krakow').zbiorkomBbox);
+}
+
+async function fetchZbRail(agency: string, bbox?: string): Promise<ZbKdVehicle[] | null> {
+  const positions = await fetchPositions('pkp', agency, bbox);
   if (positions === null) return null;
   const out: ZbKdVehicle[] = [];
   for (const p of positions) {

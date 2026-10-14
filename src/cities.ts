@@ -85,7 +85,7 @@ const KRAKOW: CityDef = {
   tilePack: 'krakow-tiles.ktp',
   tileBbox: { minLat: 49.96, maxLat: 50.16, minLon: 19.7, maxLon: 20.3 },
   tileMaxZoom: 14,
-  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+  features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
 export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW];

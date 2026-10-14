@@ -20,7 +20,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbKd, fetchZbKrakowRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -54,11 +54,13 @@ function safeCityId(): string {
     return 'wroclaw';
   }
 }
-/** Snapshot v2 dokłada pociągi KD (starszy format bez `kd` dalej się wczytuje). */
+/** Snapshot v2 dokłada pociągi regionalne (starszy format bez `kd` dalej się wczytuje). */
 interface StoredSnapshot {
   at: number;
   rows: RawVehicleRow[];
   kd?: ZbKdVehicle[];
+  /** Prefiks pojazdów kolei (`KD:` / `KML:`); brak = legacy `KD:`. */
+  railPrefix?: string;
 }
 /** Ile wytrzymujemy snapshot z dysku bez odświeżenia. */
 const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000;
@@ -167,21 +169,21 @@ class LiveTracker {
     if (this.inFlight) return;
     this.inFlight = true;
     try {
-      const [rows, kd] = await Promise.all([this.fetchAll(), this.fetchKdSafe()]);
+      const [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
       let ok = false;
       if (rows && rows.length > 0) {
         await this.matchAll(rows);
         ok = true;
-        void this.persistSnapshot(rows, kd ?? undefined);
+        void this.persistSnapshot(rows, rail?.vehicles, rail?.prefix);
       } else {
         // Pusta odpowiedź to nie awaria: po północy miasto milknie. Ostatni
         // dobry snapshot zostaje w pamięci, a stan przejdzie na „stale” dopiero
         // po GIVE_UP_MS, więc noc nie miga komunikatem o braku danych.
       }
-      if (kd && kd.length > 0) {
-        await this.matchKdAll(kd);
+      if (rail && rail.vehicles.length > 0) {
+        await this.matchRailAll(rail.vehicles, rail.prefix);
         ok = true;
-        if (!rows || rows.length === 0) void this.persistSnapshot([], kd);
+        if (!rows || rows.length === 0) void this.persistSnapshot([], rail.vehicles, rail.prefix);
       }
       if (ok) this.lastOk = Date.now();
     } catch (err) {
@@ -191,18 +193,26 @@ class LiveTracker {
     }
   }
 
-  /** Pociągi KD nigdy nie rzucają: brak live dla kolei to nie awaria MPK. */
-  private async fetchKdSafe(): Promise<ZbKdVehicle[] | null> {
-    // KD to specyfika Wrocławia: inne miasta nie mają tej sekcji wcale.
+  /**
+   * Pociągi regionalne nigdy nie rzucają: brak live dla kolei to nie awaria
+   * miasta. Wrocław: KD, Kraków: Koleje Małopolskie (agencja KML).
+   */
+  private async fetchRailSafe(): Promise<{ vehicles: ZbKdVehicle[]; prefix: string } | null> {
+    const id = safeCityId();
     try {
-      if (!getCity(safeCityId()).features.regionalRail) return [];
+      if (!getCity(id).features.regionalRail) return { vehicles: [], prefix: '' };
     } catch {
       return null;
     }
     try {
-      return await fetchZbKd();
+      if (id === 'krakow') {
+        const rows = await fetchZbKml();
+        return rows ? { vehicles: rows, prefix: 'KML:' } : null;
+      }
+      const rows = await fetchZbKd();
+      return rows ? { vehicles: rows, prefix: 'KD:' } : null;
     } catch (err) {
-      console.warn('[LiveTracker] KD fetch failed:', err);
+      console.warn('[LiveTracker] rail fetch failed:', err);
       return null;
     }
   }
@@ -342,8 +352,8 @@ class LiveTracker {
     return parsed as RawVehicleRow[];
   }
 
-  private persistSnapshot(rows: RawVehicleRow[], kd?: ZbKdVehicle[]): void {
-    void kvSet(snapshotKey(), JSON.stringify({ at: Date.now(), rows, kd: kd ?? [] } satisfies StoredSnapshot));
+  private persistSnapshot(rows: RawVehicleRow[], kd?: ZbKdVehicle[], railPrefix?: string): void {
+    void kvSet(snapshotKey(), JSON.stringify({ at: Date.now(), rows, kd: kd ?? [], railPrefix: railPrefix ?? 'KD:' } satisfies StoredSnapshot));
   }
 
   /**
@@ -360,7 +370,9 @@ class LiveTracker {
       const parsed = JSON.parse(raw) as StoredSnapshot;
       if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd))) return;
       if (Array.isArray(parsed.rows) && parsed.rows.length > 0) await this.matchAll(parsed.rows);
-      if (Array.isArray(parsed.kd) && parsed.kd.length > 0) await this.matchKdAll(parsed.kd);
+      if (Array.isArray(parsed.kd) && parsed.kd.length > 0) {
+        await this.matchRailAll(parsed.kd, parsed.railPrefix || 'KD:');
+      }
       if (this.byId.size === 0) return;
       this.lastOk = Date.now();
     } catch (err) {
@@ -369,13 +381,13 @@ class LiveTracker {
   }
 
   /**
-   * Pociągi KD z zbiorkom.live do lokalnych kursów (tripDelays dla RAPTOR-a).
+   * Pociągi regionalne z zbiorkom.live do lokalnych kursów (tripDelays dla RAPTOR-a).
    * Numer pociągu (brygada) to nasz route_short_name; matchZbKd weryfikuje
    * go jeszcze nazwami i czasami najbliższych postojów, bo identyfikatory
    * tripów obu źródeł są różne. Dopasowuje się addytywnie do wyniku matchAll
-   * (przestrzeń tripId KD:T:... nie koliduje z MPK).
+   * (przestrzeń tripId kolei nie koliduje z miejską).
    */
-  private async matchKdAll(vehicles: ZbKdVehicle[]): Promise<void> {
+  private async matchRailAll(vehicles: ZbKdVehicle[], prefix: string): Promise<void> {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
     } catch (err) {
@@ -397,7 +409,7 @@ class LiveTracker {
 
     for (const veh of vehicles) {
       if (!veh.lat || !veh.lon || !veh.trainNumber) continue;
-      const vehicleId = `KD:${veh.trainNumber}:${veh.id}`;
+      const vehicleId = `${prefix}${veh.trainNumber}:${veh.id}`;
       const match = matchZbKd(veh, dayIndex);
       const outOfRange = match != null && Math.abs(veh.delaySec) > DELAY_CAP_SEC;
       if (outOfRange) {
@@ -787,10 +799,10 @@ class LiveTracker {
     // Jeden kurs = jeden pojazd (patrz resolveConflicts), inaczej opóźnienia
     // i strzałka na mapie skakałyby między pojazdami w kolejności z API.
     const { byId, delays } = this.resolveConflicts(matched);
-    // Przebudowa dotyczy tylko MPK: pociągi KD (osobny poll) przeżywają,
-    // żeby chwilowa dziura w feedzie kolei nie gasiła jej opóźnień.
+    // Przebudowa dotyczy tylko miasta: pociągi regionalne (osobny poll)
+    // przeżywają, żeby chwilowa dziura w feedzie kolei nie gasiła opóźnień.
     for (const [id, kept] of this.byId) {
-      if (!id.startsWith('KD:')) continue;
+      if (!id.startsWith('KD:') && !id.startsWith('KML:')) continue;
       byId.set(id, kept);
       if (kept.matchedTripId && kept.delaySec !== null) delays.set(kept.matchedTripId, kept.delaySec);
     }

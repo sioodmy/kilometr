@@ -33,8 +33,10 @@ export interface TimetableManifest {
   builtAt: string;
   db: { path: string; sizeBytes: number; sha256: string };
   sources: {
-    mpk: { effectiveDate?: string };
-    kd: { schedulesVersion?: string; skippedReason?: string | null };
+    mpk?: { effectiveDate?: string };
+    kd?: { schedulesVersion?: string; skippedReason?: string | null };
+    ztp?: { fingerprint?: string };
+    kml?: { version?: string | null; skippedReason?: string | null };
   };
   stats: { stops: number; routes: number; trips: number; stopTimes: number };
 }
@@ -249,7 +251,12 @@ export async function downloadPrebuiltDb(
   await setMeta('gtfs_imported_at', new Date().toISOString());
   await setMeta('gtfs_source', 'network');
   try {
-    await setMeta('feeds', JSON.stringify({ mpk: manifest.sources.mpk?.effectiveDate ?? null, kd: manifest.sources.kd?.schedulesVersion ?? null }));
+    await setMeta('feeds', JSON.stringify({
+      mpk: manifest.sources.mpk?.effectiveDate ?? null,
+      kd: manifest.sources.kd?.schedulesVersion ?? null,
+      ztp: manifest.sources.ztp?.fingerprint ?? null,
+      kml: manifest.sources.kml?.version ?? null,
+    }));
   } catch {
     // meta opisowa — nie blokuje gotowości
   }

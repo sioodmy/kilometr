@@ -82,7 +82,7 @@ export const pl = {
     gen: (id: string): string => (id === 'krakow' ? 'Krakowa' : 'Wrocławia'),
     loc: (id: string): string => (id === 'krakow' ? 'Krakowie' : 'Wrocławiu'),
     feeds: (id: string): string =>
-      id === 'krakow' ? 'ZTP (tramwaje i autobusy)' : 'MPK i Koleje Dolnośląskie',
+      id === 'krakow' ? 'ZTP i Koleje Małopolskie' : 'MPK i Koleje Dolnośląskie',
     operator: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław'),
     operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : 'MPK'),
     portal: (id: string): string => (id === 'krakow' ? 'ztp.krakow.pl' : 'wroclaw.pl'),

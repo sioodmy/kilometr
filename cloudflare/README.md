@@ -236,7 +236,7 @@ importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
   Przy ~100 pociągach KD dziennie we Wrocławiu to kilka tysięcy kursów —
   ułamek 1,5M wierszy MPK.
 
-### Kraków: ZTP (bez PDP)
+### Kraków: ZTP + Koleje Małopolskie (bez PDP)
 
 - 3 statyczne feedy: `GTFS_KRK_A.zip` (autobusy), `GTFS_KRK_T.zip`
   (tramwaje), `GTFS_KRK_M.zip` (reszta). Merge prefiksami `KRK:{A,T,M}`:
@@ -244,11 +244,15 @@ importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
   z prefiksem (brak kolizji id między feedami).
 - ZTP oznacza tramwaje rozszerzonym `route_type = 900` — build sprowadza
   do kanonicznego GTFS `0`, żeby filtry tramwaj/autobus działały.
-- Skip buildu po `HEAD`-fingerprincie (`Last-Modified`/ETag 3 feedów).
-- Małopolskie koleje siedzą w GTFS, osobnej sekcji kolejowej nie ma
-  (manifest: `kd: { kind: 'none' }`), więc bramka KD Wrocławia tu nie działa.
-  Twarda bramka uniwersalna: pusta baza (0 przystanków/kursów/czasów)
-  nigdy nie trafia do R2, niezależnie od miasta.
+- Kolej: własny publiczny GTFS Kolei Małopolskich
+  (`kml-ska-gtfs.zip`, bez klucza). Trasy w bazie grupujemy po numerze
+  pociągu (pierwszy token `trip_short_name`, sufiks `/N` odcinamy, bo live
+  niesie goły numer): `KML:R:{numer}`, `route_type = 2`, stacje `KML:S:{id}`.
+  Współrzędne są w feedzie, geokodowania nie trzeba. Przesiadki KMŁ↔ZTP
+  liczy ten sam kod co MPK↔KD (promień 600 m + override Dworca Głównego).
+- Skip buildu po `HEAD`-fingerprincie (3 feedy ZTP + KMŁ).
+- Twarda bramka: 0 stacji/tras/kursów KMŁ albo 0 przesiadek = błąd, baza
+  nie trafia do R2. Uniwersalna bramka pustej bazy działa niezależnie.
 
 ## Opóźnienia KD (gotowość, BEZ implementacji w aplikacji)
 
