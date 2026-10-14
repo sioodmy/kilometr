@@ -322,6 +322,10 @@ describe('Odporność: odcinek bez godzin odpada, reszta trasy zostaje');
                   { id: 'broken', mode: 'tram', fromStop: 'A', toStop: 'B' },
                   { id: 'l2', mode: 'walk', fromStop: 'A', toStop: 'C', departAt: '11:05', arriveAt: '11:10' },
                   { id: 'l3', mode: 'teleport', fromStop: 'C', toStop: 'D', departAt: '11:10', arriveAt: '11:20' },
+                  // Metro i trolejbus muszą przeżyć: bez nich w LEG_MODES
+                  // zapisana trasa z M1/M2 albo z Tychów cicho gubiła nogę.
+                  { id: 'l4', mode: 'subway', fromStop: 'C', toStop: 'D', departAt: '11:12', arriveAt: '11:18' },
+                  { id: 'l5', mode: 'trolleybus', fromStop: 'D', toStop: 'E', departAt: '11:20', arriveAt: '11:26' },
                 ],
               },
             },
@@ -333,7 +337,7 @@ describe('Odporność: odcinek bez godzin odpada, reszta trasy zostaje');
   expectTrue('kopia się parsuje', r.ok);
   if (r.ok) {
     const legs = r.envelope.data.savedRoutes[0]?.items[0]?.connection.legs ?? [];
-    expect('zostaje tylko dobry odcinek', legs.map((l) => l.id).join(','), 'l2');
+    expect('zostaje tylko dobry odcinek', legs.map((l) => l.id).join(','), 'l2,l4,l5');
   }
 }
 

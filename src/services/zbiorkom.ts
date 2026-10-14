@@ -1,9 +1,9 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
 // - miasto `pkp`: pozycje i opóźnienia pociągów regionalnych (agencja `KD`
-//   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM),
-// - miasto `wroclaw` / `krakow` / `gzm`: awaryjne (Wrocław) albo podstawowe
-//   (Kraków, GZM) pozycje autobusów i tramwajów, gdy bezpośredni feed nie
-//   odpowiada.
+//   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy),
+// - miasto `wroclaw` / `krakow` / `gzm` / `warsaw`: awaryjne (Wrocław) albo
+//   podstawowe (Kraków, GZM, Warszawa) pozycje autobusów, tramwajów i metra,
+//   gdy bezpośredni feed nie odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -102,6 +102,22 @@ export async function fetchZbGzmRows(): Promise<RawVehicleRow[] | null> {
   return toRawRows(positions);
 }
 
+/**
+ * Pozycje WTP (autobusy, tramwaje, metro M1/M2) jako wiersze dla matchera.
+ * Podstawowy feed live Warszawy: zbiorkom agreguje pod miastem także gminy
+ * ościenne (GPA, Ząbki, Pruszków, Otwock), a te mają własne numery linii,
+ * które kolidują z WTP (Otwock jeździ nawet jako "M1"). Filtr
+ * `agencies=default` zostawia wyłącznie Warszawski Transport Publiczny.
+ * SKA nie pojawia się w tym feedzie, więc zostaje bez live.
+ */
+export async function fetchZbWarsawRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const waw = getCity('warszawa');
+  const positions = await fetchPositions(waw.zbiorkomSlug, 'default', waw.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
 function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
   const rows: RawVehicleRow[] = [];
   for (const p of positions) {
@@ -142,6 +158,23 @@ export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbK
   if (positions === null) return null;
   const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
   for (const agency of ['KS', 'IC', 'PR']) {
+    const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
+    if (vehicles.length > 0) out.push({ agency, vehicles });
+  }
+  return out;
+}
+
+/**
+ * Pociągi KM i WKD z jednego zapytania (bbox Warszawy). SKA nie ma feedu
+ * live (sprawdzone: nie ma jej ani w mieście `warsaw`, ani pod agencją
+ * SKM w `pkp`), więc zostaje na rozkładzie jak kolej w innych miastach.
+ */
+export async function fetchZbWarsawRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+  const { getCity } = await import('../cities');
+  const positions = await fetchPositions('pkp', 'KM,WKD', getCity('warszawa').zbiorkomBbox);
+  if (positions === null) return null;
+  const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
+  for (const agency of ['KM', 'WKD']) {
     const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
     if (vehicles.length > 0) out.push({ agency, vehicles });
   }

@@ -489,8 +489,9 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
   // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
-  // Pociągi (mode 'train') wypadają z wąskich filtrów same, bo nigdy nie są
-  // równe 'tram' ani 'bus'. Trolejbus jedzie z filtrem autobusowym.
+  // Pociągi (mode 'train') i metro (mode 'subway') wypadają z wąskich filtrów
+  // same, bo nigdy nie są równe 'tram' ani 'bus'. Trolejbus jedzie z filtrem
+  // autobusowym.
   const applyModeFilter = (list: RawJourney[]) =>
     modes === 'all'
       ? list

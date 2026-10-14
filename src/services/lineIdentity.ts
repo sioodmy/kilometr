@@ -36,21 +36,28 @@ export const TRANSIT_PALETTE = [
  * Moduł musi się dać importować w Node (skrypty check:*), więc `cityId` jest
  * opcjonalnym parametrem, a nie odczytem aktywnego miasta: heurystyka niskich
  * numerów dotyczy Wrocławia i Krakowa, a w GZM niskie numery mają też
- * autobusy, więc komponent przekazuje `'gzm'` i fallback gaśnie.
+ * autobusy, więc komponent przekazuje `'gzm'` i fallback gaśnie. Warszawa
+ * dokłada metro M1/M2 (route_type 1) i SKA S1…S40 (route_type 2): badge
+ * newsów nie zna trybu z planera, więc linie rozpoznaje po nazwie.
  */
 export function inferTransitMode(
   mode?: LegMode,
   line?: string,
   cityId?: string,
-): 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'walk' {
+): 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway' | 'walk' {
   if (mode === 'walk') return 'walk';
   if (mode === 'tram') return 'tram';
   if (mode === 'train') return 'train';
   if (mode === 'cable') return 'cable';
   if (mode === 'trolleybus') return 'trolleybus';
+  if (mode === 'subway') return 'subway';
   if (mode === 'bus') return 'bus';
   if (!line) return 'bus';
   const clean = line.trim();
+  if (cityId === 'warszawa') {
+    if (/^M[12]$/i.test(clean)) return 'subway';
+    if (/^S\d{1,2}$/i.test(clean)) return 'train';
+  }
   const num = parseInt(clean, 10);
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
@@ -80,6 +87,14 @@ export const CABLE_BADGE_BG = '#A5CCE8';
  */
 export const TROLLEY_BADGE_BG = '#2E7D32';
 
+/**
+ * Metro Warszawy jedzie kolorami z feedu WTP (M1 niebieskie #0000BB,
+ * M2 czerwone #BB0000, zweryfikowane w routes.txt): pasażer poznaje linię
+ * po barwie ze schematu, nie po losie z palety. Oba ciemne → biały tekst.
+ */
+export const SUBWAY_BADGE_BG: Record<string, string> = { M1: '#0000BB', M2: '#BB0000' };
+export const SUBWAY_BADGE_FALLBACK_BG = '#1A237E';
+
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
 function contrastFg(bg: string): string {
   const hex = bg.replace('#', '');
@@ -99,6 +114,10 @@ export function getLineColors(
   const resolved = inferTransitMode(mode, line, cityId);
   if (resolved === 'train') {
     return { bg: TRAIN_BADGE_BG, fg: contrastFg(TRAIN_BADGE_BG), isTram: false, isTrain: true, isCable: false };
+  }
+  if (resolved === 'subway') {
+    const bg = SUBWAY_BADGE_BG[(line || '').trim().toUpperCase()] ?? SUBWAY_BADGE_FALLBACK_BG;
+    return { bg, fg: contrastFg(bg), isTram: false, isTrain: false, isCable: false };
   }
   if (resolved === 'cable') {
     return { bg: CABLE_BADGE_BG, fg: contrastFg(CABLE_BADGE_BG), isTram: false, isTrain: false, isCable: true };

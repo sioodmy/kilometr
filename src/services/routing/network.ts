@@ -2,25 +2,26 @@ import { clearRaptorNetworks } from '../../../modules/kilometr-raptor';
 import type { DayIndex, LocalGtfsStore } from './store';
 import { getActiveCityIdSync } from '../cityStore';
 
-export type TransitKind = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus';
+export type TransitKind = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway';
 
 const NET_MAGIC = 0x52415031;
 
 let nextNetId = 1;
 
 /**
- * Klasyfikacja linii na tramwaj/trolejbus/pociąg/kolej linową/autobus: ta sama
- * heurystyka co w backtrack i LineBadge (route_type 0 to tramwaj, 11 to
- * trolejbus, 2 to pociąg, 6 i 7 to kolej powietrzna i funicular, reszta to
- * autobus). Numery 1–33 to wrocławski schemat (tam niskie numery to tramwaje);
- * w GZM niskie numery mają też autobusy, więc tam liczy się wyłącznie
- * route_type z feedu.
+ * Klasyfikacja linii na tramwaj/trolejbus/pociąg/kolej linową/metro/autobus:
+ * ta sama heurystyka co w backtrack i LineBadge (route_type 0 to tramwaj, 11 to
+ * trolejbus, 2 to pociąg, 1 to metro, 6 i 7 to kolej powietrzna i funicular,
+ * reszta to autobus). Numery 1–33 to wrocławski schemat (tam niskie numery
+ * to tramwaje); w GZM niskie numery mają też autobusy, więc tam liczy się
+ * wyłącznie route_type z feedu.
  */
 export function classifyTransitMode(
   routeType: number | undefined,
   shortName: string | undefined,
 ): TransitKind {
   if (routeType === 2) return 'train';
+  if (routeType === 1) return 'subway';
   if (routeType === 6 || routeType === 7) return 'cable';
   if (routeType === 0) return 'tram';
   // GTFS: 11 = trolejbus (GZM/Tychy). W UI osobny typ, w silniku jedzie
@@ -49,6 +50,12 @@ function kindToCode(kind: TransitKind): number {
       return 1;
     case 'train':
       return 2;
+    case 'subway':
+      // Rust zna osobny KIND_SUBWAY=4: metro działa tylko w trybie
+      // „wszystkie” i NIE podlega przełącznikowi „Pociągi regionalne”
+      // (wyłączenie pociągów nie może gasić M1/M2). Karę za przesiadkę
+      // metro dzieli z tramwajem/autobusem (krótki min_t).
+      return 4;
     case 'cable':
       return 3;
   }
