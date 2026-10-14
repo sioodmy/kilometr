@@ -12,8 +12,6 @@ import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 
-export const GTFS_DB_NAME = 'kilometr-gtfs.db';
-
 /** Plik bazy dla miasta. Wrocław trzyma legacy nazwę (zero migracji). */
 export function gtfsDbName(cityId?: string): string {
   return getCity(cityId ?? getActiveCityIdSync()).dbFile;

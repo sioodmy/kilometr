@@ -20,8 +20,6 @@ import { getMapDownloadGate, markMapDownloaded } from './downloadLimits';
 
 /** Katalog, z którego czyta natywny serwer mapy (filesDir/maps). */
 export const MAP_DIR_NAME = 'maps';
-/** Legacy nazwa pakietu Wrocławia (kompat ze starymi instalacjami). */
-export const TILE_PACK_NAME = 'wroclaw-tiles.ktp';
 
 /** Pakiet kafli aktywnego miasta. Inna nazwa na miasto = brak nadpisywania. */
 export function tilePackName(cityId?: string): string {
