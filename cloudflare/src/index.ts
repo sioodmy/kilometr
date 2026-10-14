@@ -5,7 +5,7 @@
  * - GET /{miasto}/manifest.json     → manifest buildu z R2
  * - GET /{miasto}/db/kilometr-gtfs.db → prebuilt SQLite z R2 (Range, ETag)
  * - GET /maps/{miasto}-tiles.ktp    → pakiet kafli offline z R2
- * Miasta: wroclaw, krakow, gzm (allowlista CITIES niżej).
+ * Miasta: wroclaw, krakow, gzm, warszawa (allowlista CITIES niżej).
  *
  * Legacy (Wrocław, kompat ze starymi APK):
  * - GET /manifest.json, GET /db/kilometr-gtfs.db, GET /maps/wroclaw-tiles.ktp
@@ -26,7 +26,7 @@ export interface Env {
 }
 
 /** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
-const CITIES = ['wroclaw', 'krakow', 'gzm'] as const;
+const CITIES = ['wroclaw', 'krakow', 'gzm', 'warszawa'] as const;
 
 /** Regex ścieżek per-miasto budowany z CITIES, żeby nowe miasto nie wymagało edycji routingu. */
 const CITY_PATH_RE = new RegExp(`^/(${CITIES.join('|')})(/.*)$`);

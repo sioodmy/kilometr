@@ -1,13 +1,14 @@
 # Codzienny build prebuilt SQLite per-miasto → Cloudflare R2.
 #
-# Macierz: wroclaw (MPK + KD z PDP), krakow (3 feedy ZTP + KMŁ)
-# i gzm (eksporty dzienne ZTM z CKAN + KŚ).
+# Macierz: wroclaw (MPK + KD z PDP), krakow (3 feedy ZTP + KMŁ),
+# gzm (eksporty dzienne ZTM z CKAN + KŚ) i warszawa (GTFS WTP + KM/WKD z PDP).
 # Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.
 # Wrocław dokłada legacy root (manifest.json, db/...) dla starych APK.
 #
 # Wymagane sekrety (repo → Settings → Secrets → Actions):
-#   PDP_API_KEY            klucz https://pdp-api.plk-sa.pl (tylko sekcja KD
-#                          Wrocławia; Kraków go nie potrzebuje)
+#   PDP_API_KEY            klucz https://pdp-api.plk-sa.pl (sekcje kolei
+#                          z PDP: KD Wrocławia oraz IC/PR GZM; Kraków
+#                          i Warszawa biorą koleje ze statycznych feedów)
 #   CLOUDFLARE_API_TOKEN   token z uprawnieniem R2 write na bucket kilometr-timetable
 #   CLOUDFLARE_ACCOUNT_ID  id konta Cloudflare
 #   TIMETABLE_PUBLIC_URL   URL Workera, np. https://kilometr-timetable.<sub>.workers.dev
@@ -30,7 +31,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow, gzm]
+        options: ['', wroclaw, krakow, gzm, warszawa]
 
 permissions:
   contents: read
@@ -50,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -129,6 +130,7 @@ jobs:
             cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db
             cloudflare/dist/${{ matrix.city }}/manifest.json
             cloudflare/data/kd-station-coords.json
+            cloudflare/data/gzm-station-coords.json
           retention-days: 7
 
       # Kolejność ma znaczenie. Telefon czyta manifest, potem dopiero ściąga

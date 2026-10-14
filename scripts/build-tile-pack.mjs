@@ -8,7 +8,7 @@
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
 //
-// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm] [output]
+// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa] [output]
 //
 // Nowe miasto = wpis w CITY_PACKS niżej (bbox + maxzoom + nazwa pliku).
 
@@ -36,6 +36,13 @@ const CITY_PACKS = {
     // z14 dla całej metropolii to ~311 MB, ponad limit 300 MB na obiekt w R2.
     // z13 daje ~80 MB i wystarcza do offline.
     maxZoom: 13,
+  },
+  warszawa: {
+    out: 'warszawa-tiles.ktp',
+    bbox: { minLon: 20.85, minLat: 52.05, maxLon: 21.28, maxLat: 52.35 },
+    // Powierzchnia jak Kraków (z14, ~34 MB): stolica wchodzi w jeden pakiet
+    // bez cięcia zoomu, z zapasem na lotnisko i SKM-korytarze.
+    maxZoom: 14,
   },
 };
 
