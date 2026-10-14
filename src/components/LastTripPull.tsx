@@ -25,7 +25,8 @@ export const LAST_TRIP_ARM_2 = ARM_2_PX;
 export const LAST_TRIP_DISARM_2 = ARM_2_PX - 20;
 export const LAST_TRIP_MAX = ARM_2_PX + 60;
 
-export type LastTripOption = 0 | 1 | 2;
+export type { LastTripOption } from '../services/lastTripPull';
+import type { LastTripOption } from '../services/lastTripPull';
 
 const PILL_PAD = 4;
 const THUMB = 34;
