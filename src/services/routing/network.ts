@@ -49,12 +49,13 @@ function kindToCode(kind: TransitKind): number {
     case 'trolleybus':
       return 1;
     case 'train':
-    case 'subway':
-      // Metro jedzie w silniku jak pociąg (kara za przesiadkę, bramka
-      // trainsEnabled): Rust nie zna osobnego kodu, a charakterystyka
-      // (wydzielone torowisko, wysoka częstotliwość) jest ta sama.
-      // Odróżnienie do UI niesie tryb tekstowy w legach.
       return 2;
+    case 'subway':
+      // Rust zna osobny KIND_SUBWAY=4: metro działa tylko w trybie
+      // „wszystkie” i NIE podlega przełącznikowi „Pociągi regionalne”
+      // (wyłączenie pociągów nie może gasić M1/M2). Karę za przesiadkę
+      // metro dzieli z tramwajem/autobusem (krótki min_t).
+      return 4;
     case 'cable':
       return 3;
   }
