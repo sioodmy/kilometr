@@ -319,7 +319,6 @@ export default function HomeScreen() {
       setSmartReady(true);
     });
     const unsubscribeGps = LocationService.subscribe(applyGpsFix);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => unsubscribeGps();
   }, []);
 
@@ -482,7 +481,6 @@ export default function HomeScreen() {
       }
     })();
     // Świeży `firstConns` łapiemy z bieżącego renderu (homeTick go wymusza).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [homeTick]);
 
   // Użytkownik zaczął szukać własnej trasy — tniemy dogrzewanie ostatnich
@@ -558,7 +556,6 @@ export default function HomeScreen() {
 
     void mergeWidgetSnapshot({ origin: locTitle, next, quick, places });
     // firstConns zmienia referencję razem z nextDepart, więc snapshot idzie po świeżych danych.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstConns, locTitle, saved, smart, smartReady]);
 
   // Ostatnie przejazdy w identycznej kolejności co na ekranie głównym (smart history)
