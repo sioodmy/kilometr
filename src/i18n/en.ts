@@ -117,7 +117,7 @@ export const en: Strings = {
     notificationsSection: 'Notifications',
     notificationsFoot: 'Notifications work in a development build. Expo Go does not support them.',
     offlineMapTitle: (name: string) => `Offline map (${name})`,
-    offlineMapHint: (name: string) => `Download ${name} map tiles (about 31 MB) so routes work without internet.`,
+    offlineMapHint: (name: string, mb: number) => `Download ${name} map tiles (about ${mb} MB) so routes work without internet.`,
     offlineMapReady: (name: string) => `The ${name} map is on your phone. Routes work without internet.`,
     offlineMapDownload: 'Download map',
     offlineMapDownloadA11y: (name: string) => `Download the ${name} map for offline use`,
@@ -127,8 +127,8 @@ export const en: Strings = {
     offlineMapDelete: 'Delete',
     offlineMapDeleteA11y: 'Delete the offline map',
     offlineMapDeleteTitle: 'Delete the offline map?',
-    offlineMapDeleteBody:
-      'This frees about 31 MB. The map will still work online. You can download it again only after a month.',
+    offlineMapDeleteBody: (mb: number) =>
+      `This frees about ${mb} MB. The map will still work online. You can download it again only after a month.`,
     offlineMapFailTitle: 'Could not download the map',
     offlineMapFailBody: 'Check your connection and try again. The rest of the app works normally.',
     offlineMapCooldownTitle: 'Map already downloaded',

@@ -124,7 +124,7 @@ export const uk: Strings = {
     notificationsSection: 'Сповіщення',
     notificationsFoot: 'Сповіщення працюють у dev-збірці. Expo Go їх не підтримує.',
     offlineMapTitle: (name: string) => `Мапа офлайн (${name})`,
-    offlineMapHint: (name: string) => `Завантаж тайли мапи ${name} (близько 31 МБ), щоб маршрути працювали без інтернету.`,
+    offlineMapHint: (name: string, mb: number) => `Завантаж тайли мапи ${name} (близько ${mb} МБ), щоб маршрути працювали без інтернету.`,
     offlineMapReady: (name: string) => `Мапа ${name} вже на телефоні. Маршрути працюють без інтернету.`,
     offlineMapDownload: 'Завантажити мапу',
     offlineMapDownloadA11y: (name: string) => `Завантажити мапу ${name} для офлайну`,
@@ -134,8 +134,8 @@ export const uk: Strings = {
     offlineMapDelete: 'Видалити',
     offlineMapDeleteA11y: 'Видалити мапу офлайн',
     offlineMapDeleteTitle: 'Видалити мапу офлайн?',
-    offlineMapDeleteBody:
-      'Звільниться близько 31 МБ. Мапа далі працюватиме онлайн. Повторне завантаження буде доступне лише за місяць.',
+    offlineMapDeleteBody: (mb: number) =>
+      `Звільниться близько ${mb} МБ. Мапа далі працюватиме онлайн. Повторне завантаження буде доступне лише за місяць.`,
     offlineMapFailTitle: 'Не вдалося завантажити мапу',
     offlineMapFailBody: 'Перевір з\'єднання і спробуй ще раз. Решта застосунку працює як звичайно.',
     offlineMapCooldownTitle: 'Мапу вже завантажували',

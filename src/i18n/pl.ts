@@ -122,7 +122,7 @@ export const pl = {
     notificationsSection: 'Powiadomienia',
     notificationsFoot: 'Powiadomienia działają w buildzie deweloperskim. Expo Go ich nie obsługuje.',
     offlineMapTitle: (name: string) => `Mapa offline (${name})`,
-    offlineMapHint: (name: string) => `Pobierz kafle mapy ${name} (ok. 31 MB), żeby trasa działała bez internetu.`,
+    offlineMapHint: (name: string, mb: number) => `Pobierz kafle mapy ${name} (ok. ${mb} MB), żeby trasa działała bez internetu.`,
     offlineMapReady: (name: string) => `Mapa ${name} jest na telefonie. Trasa działa bez internetu.`,
     offlineMapDownload: 'Pobierz mapę',
     offlineMapDownloadA11y: (name: string) => `Pobierz mapę ${name} do trybu offline`,
@@ -132,8 +132,8 @@ export const pl = {
     offlineMapDelete: 'Usuń',
     offlineMapDeleteA11y: 'Usuń mapę offline',
     offlineMapDeleteTitle: 'Usunąć mapę offline?',
-    offlineMapDeleteBody:
-      'Zwolni się około 31 MB. Mapa nadal będzie działać online. Ponowne pobranie będzie możliwe dopiero za miesiąc.',
+    offlineMapDeleteBody: (mb: number) =>
+      `Zwolni się około ${mb} MB. Mapa nadal będzie działać online. Ponowne pobranie będzie możliwe dopiero za miesiąc.`,
     offlineMapFailTitle: 'Nie udało się pobrać mapy',
     offlineMapFailBody: 'Sprawdź połączenie i spróbuj ponownie. Reszta aplikacji działa normalnie.',
     offlineMapCooldownTitle: 'Mapa już była pobierana',

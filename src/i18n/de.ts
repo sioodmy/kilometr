@@ -117,7 +117,7 @@ export const de: Strings = {
     notificationsSection: 'Benachrichtigungen',
     notificationsFoot: 'Benachrichtigungen funktionieren im Dev-Build. Expo Go unterstützt sie nicht.',
     offlineMapTitle: (name: string) => `Offline-Karte (${name})`,
-    offlineMapHint: (name: string) => `Lade die Kartenkacheln von ${name} (etwa 31 MB), damit Routen ohne Internet funktionieren.`,
+    offlineMapHint: (name: string, mb: number) => `Lade die Kartenkacheln von ${name} (etwa ${mb} MB), damit Routen ohne Internet funktionieren.`,
     offlineMapReady: (name: string) => `Die ${name}-Karte ist auf dem Telefon. Routen funktionieren ohne Internet.`,
     offlineMapDownload: 'Karte laden',
     offlineMapDownloadA11y: (name: string) => `Die ${name}-Karte für offline laden`,
@@ -127,8 +127,8 @@ export const de: Strings = {
     offlineMapDelete: 'Löschen',
     offlineMapDeleteA11y: 'Offline-Karte löschen',
     offlineMapDeleteTitle: 'Offline-Karte löschen?',
-    offlineMapDeleteBody:
-      'Das gibt etwa 31 MB frei. Die Karte funktioniert weiterhin online. Erneut laden geht erst nach einem Monat.',
+    offlineMapDeleteBody: (mb: number) =>
+      `Das gibt etwa ${mb} MB frei. Die Karte funktioniert weiterhin online. Erneut laden geht erst nach einem Monat.`,
     offlineMapFailTitle: 'Karte konnte nicht geladen werden',
     offlineMapFailBody: 'Prüfe die Verbindung und versuche es erneut. Der Rest der App funktioniert normal.',
     offlineMapCooldownTitle: 'Karte schon geladen',

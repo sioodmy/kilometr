@@ -33,7 +33,9 @@ const CITY_PACKS = {
   gzm: {
     out: 'gzm-tiles.ktp',
     bbox: { minLon: 18.25, minLat: 49.9, maxLon: 19.85, maxLat: 50.65 },
-    maxZoom: 14,
+    // z14 dla całej metropolii to ~311 MB, ponad limit 300 MB na obiekt w R2.
+    // z13 daje ~80 MB i wystarcza do offline.
+    maxZoom: 13,
   },
 };
 
