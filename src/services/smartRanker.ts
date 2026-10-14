@@ -1,6 +1,7 @@
 import { kvGet, kvSet } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getActiveCityIdSync, getActiveCitySync } from './cityStore';
+import { cityKey } from '../cities';
 import {
   mergeTripSearch,
   rankSmartDestinations,
@@ -153,16 +154,12 @@ export const SEED_TRIPS: TripHistoryItem[] = [
   })),
 ];
 
-// Klucze per-miasto: historia i cache ulubionych z Wrocławia nie mogą wyskakiwać
-// na ekranie Krakowa (pozycje z innego miasta nigdy nie mają trasy w bazie).
-// Wrocław trzyma klucze bez sufiksu (kompat ze starymi instalacjami).
-function cityStorageKey(base: string): string {
-  const id = getActiveCityIdSync();
-  return id === 'wroclaw' ? base : `${base}.${id}`;
-}
-
+// Klucze per-miasto ze wspólnego helpera (cities.cityKey): historia z Wrocławia
+// nie może wyskakiwać na ekranie Krakowa (pozycje z innego miasta nigdy nie
+// mają trasy w bazie). Wrocław trzyma klucze bez sufiksu.
 const STORAGE_KEYS = {
-  tripHistory: (): string => cityStorageKey('kilometr.trip_history'),
+  tripHistory: (): string => cityKey('kilometr.trip_history', getActiveCityIdSync()),
+  savedPlaces: (): string => cityKey('kilometr.places', getActiveCityIdSync()),
 };
 
 const MAX_HISTORY_ITEMS = 80;
@@ -231,11 +228,12 @@ export async function getSmartDestinationsForLocation(
     exclusionRadiusM = getSettingsSync().anchorRadiusM ?? EXCLUSION_RADIUS_FALLBACK_M;
   } catch {}
 
-  // Zapisane miejsca: klucz jest globalny (FavoritesService i backup korzystają
-  // z tego samego), więc odsiewamy po mieście razem z historią.
+  // Zapisane miejsca czytamy z kubełka aktywnego miasta (ten sam klucz co
+  // FavoritesService). Odsiew po bbox zostaje jako zabezpieczenie przed
+  // wpisami z cudzych kubełków (np. stara kopia sprzed migracji).
   let savedPlaces: SavedPlace[] = [];
   try {
-    const rawPlaces = await kvGet('kilometr.places');
+    const rawPlaces = await kvGet(STORAGE_KEYS.savedPlaces());
     if (rawPlaces) {
       const parsed = JSON.parse(rawPlaces);
       if (Array.isArray(parsed)) savedPlaces = parsed;
@@ -262,7 +260,7 @@ export async function getSmartDestinationsForLocation(
 // GPS potrafi myśleć parę sekund, więc na starcie malujemy gołe ostatnie
 // miejsca z cache (bez ikon i odjazdów — te dociągają się jak zwykle),
 // a gdy GPS + świeży ranking dotrą, lista zamienia się w miejscu.
-const smartCacheKey = (): string => cityStorageKey('kilometr.smart_cache.v1');
+const smartCacheKey = (): string => cityKey('kilometr.smart_cache.v1', getActiveCityIdSync());
 const SMART_CACHE_MAX = 5;
 
 export async function loadCachedSmartDestinations(): Promise<SmartDestination[]> {
