@@ -112,7 +112,11 @@ export async function setActiveCityId(id: CityId): Promise<CityDef> {
 }
 
 /** Hook do ekranów: chipy miasta, onboarding, ustawienia. */
-export function useActiveCity(): { cityId: CityId; city: CityDef; setCity: (id: CityId) => Promise<CityDef> } {
+export function useActiveCity(): {
+  cityId: CityId;
+  city: CityDef;
+  setCity: (id: CityId) => Promise<CityDef>;
+} {
   const [cityId, setCityId] = useState<CityId>(cachedId);
 
   useEffect(() => {
