@@ -42,12 +42,14 @@ jobs:
   build-and-upload:
     name: Build SQLite + upload R2 (${{ matrix.city }})
     runs-on: ubuntu-latest
+    # Macierz liczona z inputu: puste (albo brak, np. cron) = oba miasta,
+    # wybrane = tylko to jedno. `matrix` nie istnieje w warunku na poziomie
+    # joba (job `if` jest liczone przed rozwinięciem strategii), więc
+    # filtrujemy samą listę miast, a nie warunek.
     strategy:
       fail-fast: false
       matrix:
-        city: [wroclaw, krakow]
-    # Ręczny dispatch może ograniczyć się do jednego miasta.
-    if: ${{ inputs.city == '' || inputs.city == matrix.city }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
