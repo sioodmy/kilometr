@@ -1,7 +1,7 @@
 import { kvGet, kvSet } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getActiveCityIdSync, getActiveCitySync } from './cityStore';
-import { cityKey } from '../cities';
+import { cityKey, getCity, suggestCityForCoords, type CityId } from '../cities';
 import {
   mergeTripSearch,
   rankSmartDestinations,
@@ -167,14 +167,77 @@ const MAX_HISTORY_ITEMS = 80;
 const EXCLUSION_RADIUS_FALLBACK_M = 300;
 
 export async function loadTripHistory(): Promise<TripHistoryItem[]> {
+  await ensureTripHistoryMigrated();
+  return readRawHistory(STORAGE_KEYS.tripHistory());
+}
+
+/** Surowy odczyt kubełka, bez migracji (żeby migracja nie wpadła w rekurencję). */
+async function readRawHistory(key: string): Promise<TripHistoryItem[]> {
   try {
-    const raw = await kvGet(STORAGE_KEYS.tripHistory());
+    const raw = await kvGet(key);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch {}
   return [];
+}
+
+/**
+ * Jednorazowa migracja historii sprzed podziału na miasta. Historia była
+ * w jednym globalnym kubełku (dziś legacy klucz Wrocławia), więc leżą w nim
+ * także trasy krakowskie. Przenosimy wpisy, których POCZĄTEK leży w strefie
+ * innego miasta, do jego kubełka (idempotentna). Bez tego pull na ekranie
+ * głównym oferowałby w Wrocławiu trasę z Krakowa, a jej wyszukanie nie ma
+ * przystanków w aktywnej bazie.
+ */
+let historyMigration: Promise<void> | null = null;
+
+export function ensureTripHistoryMigrated(): Promise<void> {
+  if (!historyMigration) historyMigration = migrateTripHistoryToCityBuckets();
+  return historyMigration;
+}
+
+async function migrateTripHistoryToCityBuckets(): Promise<void> {
+  let legacy: TripHistoryItem[];
+  try {
+    legacy = await readRawHistory(cityKey('kilometr.trip_history', 'wroclaw'));
+  } catch (err) {
+    console.warn('[SmartRanker] history migration read failed:', err);
+    return;
+  }
+  if (legacy.length === 0) return;
+  const movers = new Map<CityId, TripHistoryItem[]>();
+  const staying = legacy.filter((t) => {
+    const hit = suggestCityForCoords(t?.origin_lat, t?.origin_lon);
+    if (hit && hit.id !== 'wroclaw') {
+      const list = movers.get(hit.id) ?? [];
+      list.push(t);
+      movers.set(hit.id, list);
+      return false;
+    }
+    return true;
+  });
+  if (movers.size === 0) return;
+  for (const [cityId, moved] of movers) {
+    try {
+      const key = cityKey('kilometr.trip_history', getCity(cityId).id);
+      const existing = await readRawHistory(key);
+      const have = new Set(existing.map((t) => t.id));
+      const merged = [...existing, ...moved.filter((t) => !have.has(t.id))]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, MAX_HISTORY_ITEMS);
+      await kvSet(key, JSON.stringify(merged));
+    } catch (err) {
+      console.warn('[SmartRanker] history migration write failed:', err);
+      return;
+    }
+  }
+  try {
+    await kvSet(cityKey('kilometr.trip_history', 'wroclaw'), JSON.stringify(staying));
+  } catch (err) {
+    console.warn('[SmartRanker] history migration cleanup failed:', err);
+  }
 }
 
 export async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
