@@ -1,5 +1,5 @@
 import { DayIndex, gtfsStore } from './store';
-import { costParamsFor, isPointlessShortRide, mergeDayIndexes, runRaptor, selectJourneys, type CostParams } from './raptor';
+import { costParamsFor, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
 import { Connection, Leg, LegStop, RawJourney, RouteStyle, TransitModePreference } from './types';
 import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
@@ -83,7 +83,8 @@ export async function warmupRouting(): Promise<void> {
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const d = String(now.getDate()).padStart(2, '0');
-    await gtfsStore.getDayIndexSlice(now.getDay(), `${y}${m}${d}`, currentSec - 1800, currentSec + 10800);
+    const slice = await gtfsStore.getDayIndexSlice(now.getDay(), `${y}${m}${d}`, currentSec - 1800, currentSec + 10800);
+    await warmupRaptorNet(gtfsStore, slice);
   } catch (err) {
     console.warn('[Routing] warmup failed:', err);
   }
@@ -488,7 +489,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
   // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
-  // Pociągi (mode 'train') wypadają z wąskich filtrów same — nigdy nie są
+  // Pociągi (mode 'train') wypadają z wąskich filtrów same, bo nigdy nie są
   // równe 'tram' ani 'bus'.
   const applyModeFilter = (list: RawJourney[]) =>
     modes === 'all'
@@ -519,7 +520,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const MAX_BOARD_AHEAD_SEC = 7200;
 
   for (const [offsetSec, windowSec] of timeWindows) {
-    const batch = runRaptor(gtfsStore, origins, destinations, searchStartSec + offsetSec, {
+    const batch = await runRaptorAsync(gtfsStore, origins, destinations, searchStartSec + offsetSec, {
       maxTransfers,
       minTransferSec,
       trainsEnabled,

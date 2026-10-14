@@ -2,6 +2,14 @@ import { awaitImportSettled, importInProgress } from '../dataManager';
 import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
 import {
+  BinaryReader,
+  BinaryWriter,
+  CMD_LOAD_STOPS,
+  CMD_STOPS_QUERY,
+  invokeRustSync,
+} from '../../../modules/kilometr-raptor';
+import { clearRaptorNetCache } from './network';
+import {
   POLINKA_ROUTE_ID,
   polinkaRoute,
   polinkaStops,
@@ -51,6 +59,8 @@ export class LocalGtfsStore {
   // Kursy z pełnego indeksu dnia trzymamy na stałe (nie są zwalniane przez
   // ewangelizację wycinków, która dotyczy wyłącznie sliceIndexes).
   private retainedTrips = new Set<string>();
+  private rustStopIds: string[] = [];
+  private rustStopCount = -1;
   isLoaded = false;
 
   /**
@@ -69,7 +79,10 @@ export class LocalGtfsStore {
     this.sliceTripIds.clear();
     this.tripRefs.clear();
     this.retainedTrips.clear();
+    this.rustStopIds = [];
+    this.rustStopCount = -1;
     this.isLoaded = false;
+    clearRaptorNetCache();
   }
 
   async load() {
@@ -614,10 +627,51 @@ export class LocalGtfsStore {
     return idx;
   }
 
+  private syncRustStops(): boolean {
+    if (this.rustStopCount === this.stops.size && this.rustStopIds.length === this.stops.size) {
+      return this.rustStopIds.length > 0 || this.stops.size === 0;
+    }
+    const ids: string[] = [];
+    const w = new BinaryWriter(32 + this.stops.size * 64);
+    w.u32(this.stops.size);
+    for (const stop of this.stops.values()) {
+      ids.push(stop.stop_id);
+      w.str(String(stop.stop_id))
+        .str(String(stop.stop_code ?? ''))
+        .str(String(stop.stop_name ?? ''))
+        .f64(Number(stop.stop_lat))
+        .f64(Number(stop.stop_lon))
+        .i32(Number(stop.weight) || 0);
+    }
+    const res = invokeRustSync(CMD_LOAD_STOPS, w.finish());
+    if (!res || res.byteLength < 4) return false;
+    this.rustStopIds = ids;
+    this.rustStopCount = ids.length;
+    return true;
+  }
+
   findNearestStops(lat: number, lon: number, maxDistanceMeters = 800, limit = 12) {
+    if (this.syncRustStops()) {
+      const w = new BinaryWriter(32);
+      w.u8Val(0).f64(lat).f64(lon).f64(maxDistanceMeters).u32(limit);
+      const res = invokeRustSync(CMD_STOPS_QUERY, w.finish());
+      if (res && res.byteLength >= 4) {
+        const r = new BinaryReader(res);
+        const count = r.u32();
+        const results: { stop: any; distanceM: number }[] = [];
+        for (let i = 0; i < count; i++) {
+          const idx = r.u32();
+          const distanceM = r.i32();
+          const stop = this.stops.get(this.rustStopIds[idx]);
+          if (stop) results.push({ stop, distanceM });
+        }
+        return results;
+      }
+    }
+
     const results: any[] = [];
     const latRange = maxDistanceMeters / 111000;
-    const lonRange = maxDistanceMeters / (111000 * Math.cos(lat * Math.PI / 180));
+    const lonRange = maxDistanceMeters / (111000 * Math.cos((lat * Math.PI) / 180));
 
     for (const stop of this.stops.values()) {
       if (Math.abs(stop.stop_lat - lat) > latRange) continue;

@@ -157,14 +157,45 @@ export function findTurns(
   }));
 }
 
-/**
- * Rzutuje punkt na linię trasy. Zwraca pozycję wzdłuż trasy i informację po
- * której stronie punktu wypadł (mapa to ulica o szerokości, nie nić).
- */
-export function projectOnPath(
+export interface PathProjection {
+  index: number;
+  t: number;
+  offsetM: number;
+  alongM: number;
+  progress: number;
+  snappedPoint: Coord;
+  segmentBearingDeg: number;
+}
+
+function interpolateAtAlong(
   coords: Coord[],
-  point: Coord,
-): { index: number; t: number; offsetM: number; alongM: number; progress: number } | null {
+  cum: number[],
+  alongM: number,
+): { index: number; t: number; snappedPoint: Coord; segmentBearingDeg: number } {
+  const total = cum[cum.length - 1];
+  const clamped = Math.max(0, Math.min(total, alongM));
+  let idx = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    if (cum[i + 1] >= clamped || i === coords.length - 2) {
+      idx = i;
+      break;
+    }
+  }
+  const segLen = cum[idx + 1] - cum[idx];
+  const t = segLen > 1e-6 ? Math.max(0, Math.min(1, (clamped - cum[idx]) / segLen)) : 0;
+  const snappedPoint: Coord = [
+    coords[idx][0] + t * (coords[idx + 1][0] - coords[idx][0]),
+    coords[idx][1] + t * (coords[idx + 1][1] - coords[idx][1]),
+  ];
+  const segmentBearingDeg = ((bearing(coords[idx], coords[idx + 1]) % 360) + 360) % 360;
+  return { index: idx, t, snappedPoint, segmentBearingDeg };
+}
+
+/**
+ * Rzutuje punkt na linię trasy. Zwraca pozycję wzdłuż trasy, współrzędne
+ * przyciągnięte do osi odcinka oraz kurs bieżącego segmentu.
+ */
+export function projectOnPath(coords: Coord[], point: Coord): PathProjection | null {
   if (coords.length === 0) return null;
   if (coords.length === 1) {
     return {
@@ -173,6 +204,8 @@ export function projectOnPath(
       offsetM: distanceM(coords[0], point),
       alongM: 0,
       progress: 0,
+      snappedPoint: [coords[0][0], coords[0][1]],
+      segmentBearingDeg: 0,
     };
   }
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -207,17 +240,148 @@ export function projectOnPath(
   }
 
   const alongM = cum[bestIndex] + bestT * (cum[bestIndex + 1] - cum[bestIndex]);
+  const snappedPoint: Coord = [
+    coords[bestIndex][0] + bestT * (coords[bestIndex + 1][0] - coords[bestIndex][0]),
+    coords[bestIndex][1] + bestT * (coords[bestIndex + 1][1] - coords[bestIndex][1]),
+  ];
+  const segmentBearingDeg =
+    ((bearing(coords[bestIndex], coords[bestIndex + 1]) % 360) + 360) % 360;
   return {
     index: bestIndex,
     t: bestT,
-    offsetM: distanceM(
-      [coords[bestIndex][0] + bestT * (coords[bestIndex + 1][0] - coords[bestIndex][0]),
-       coords[bestIndex][1] + bestT * (coords[bestIndex + 1][1] - coords[bestIndex][1])],
-      point,
-    ),
+    offsetM: distanceM(snappedPoint, point),
     alongM,
     progress: total > 0 ? Math.max(0, Math.min(1, alongM / total)) : 0,
+    snappedPoint,
+    segmentBearingDeg,
   };
+}
+
+/**
+ * Dopasowuje pozycję użytkownika do trasy z pamięcią poprzedniego postępu (map-matching).
+ * Zapobiega przeskakiwaniu między sąsiednimi ulicami na skrzyżowaniach oraz
+ * cofaniu się licznika metrów przez drobny szum GPS w postoju.
+ */
+export function matchOnPath(
+  coords: Coord[],
+  point: Coord,
+  prevAlongM?: number | null,
+  accuracyM?: number | null,
+  headingDeg?: number | null,
+): PathProjection | null {
+  const rawProj = projectOnPath(coords, point);
+  if (!rawProj || coords.length < 2 || prevAlongM == null || !Number.isFinite(prevAlongM)) {
+    return rawProj;
+  }
+
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const cum: number[] = [0];
+  for (let i = 0; i < coords.length - 1; i++) {
+    cum.push(cum[i] + distanceM(coords[i], coords[i + 1]));
+  }
+  const total = cum[cum.length - 1];
+
+  let bestScore = Infinity;
+  let bestIndex = rawProj.index;
+  let bestT = rawProj.t;
+  let bestOffsetM = rawProj.offsetM;
+  let bestAlongM = rawProj.alongM;
+  let bestSnapped: Coord = rawProj.snappedPoint;
+  let bestBearing = rawProj.segmentBearingDeg;
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lat1, lon1] = coords[i];
+    const [lat2, lon2] = coords[i + 1];
+    const kx = Math.cos(toRad((lat1 + lat2) / 2));
+    const x = toRad(point[1] - lon1) * kx;
+    const y = toRad(point[0] - lat1);
+    const dx = toRad(lon2 - lon1) * kx;
+    const dy = toRad(lat2 - lat1);
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, (x * dx + y * dy) / lenSq)) : 0;
+    const snapped: Coord = [lat1 + t * (lat2 - lat1), lon1 + t * (lon2 - lon1)];
+    const offsetM = distanceM(snapped, point);
+    const segLen = cum[i + 1] - cum[i];
+    const alongM = cum[i] + t * segLen;
+    const segBearing = ((bearing(coords[i], coords[i + 1]) % 360) + 360) % 360;
+
+    const deltaAlong = alongM - prevAlongM;
+    let continuityPenalty = 0;
+    if (deltaAlong < 0) {
+      continuityPenalty = Math.abs(deltaAlong) * 0.65;
+    } else if (deltaAlong > 24) {
+      continuityPenalty = (deltaAlong - 24) * 0.38;
+    }
+
+    let headingPenalty = 0;
+    if (headingDeg != null && Number.isFinite(headingDeg) && segLen > 2) {
+      let diff = Math.abs(headingDeg - segBearing) % 360;
+      if (diff > 180) diff = 360 - diff;
+      if (diff > 75) {
+        headingPenalty = ((diff - 75) / 105) * 6;
+      }
+    }
+
+    const score = offsetM + continuityPenalty + headingPenalty;
+    if (score < bestScore) {
+      bestScore = score;
+      bestIndex = i;
+      bestT = t;
+      bestOffsetM = offsetM;
+      bestAlongM = alongM;
+      bestSnapped = snapped;
+      bestBearing = segBearing;
+    }
+  }
+
+  // Jeśli globalnie najbliższy odcinek jest znacznie bliżej niż dopasowany ciągłościowo, użytkownik faktycznie zmienił odcinek.
+  if (rawProj.offsetM + 16 < bestOffsetM || bestOffsetM > 40) {
+    return rawProj;
+  }
+
+  // Monotoniczna blokada drobnego cofania GPS (np. na światłach lub przy powolnym marszu).
+  const maxBackwardJitterM = Math.max(10, Math.min(22, (accuracyM ?? 10) * 0.9));
+  if (bestOffsetM <= 28 && bestAlongM < prevAlongM && prevAlongM - bestAlongM <= maxBackwardJitterM) {
+    const clamped = interpolateAtAlong(coords, cum, prevAlongM);
+    return {
+      index: clamped.index,
+      t: clamped.t,
+      offsetM: bestOffsetM,
+      alongM: Math.min(total, prevAlongM),
+      progress: total > 0 ? Math.max(0, Math.min(1, prevAlongM / total)) : 0,
+      snappedPoint: clamped.snappedPoint,
+      segmentBearingDeg: clamped.segmentBearingDeg,
+    };
+  }
+
+  return {
+    index: bestIndex,
+    t: bestT,
+    offsetM: bestOffsetM,
+    alongM: bestAlongM,
+    progress: total > 0 ? Math.max(0, Math.min(1, bestAlongM / total)) : 0,
+    snappedPoint: bestSnapped,
+    segmentBearingDeg: bestBearing,
+  };
+}
+
+/**
+ * Zwraca aktywny odcinek trasy przed użytkownikiem (od przyciągniętego punktu do końca).
+ */
+export function slicePathFromProjection(coords: Coord[], proj: PathProjection): Coord[] {
+  if (coords.length < 2) return coords;
+  const tail = coords.slice(proj.index + 1);
+  if (tail.length === 0) {
+    return [proj.snappedPoint, coords[coords.length - 1]];
+  }
+  const firstTail = tail[0];
+  if (
+    Math.abs(firstTail[0] - proj.snappedPoint[0]) < 1e-7 &&
+    Math.abs(firstTail[1] - proj.snappedPoint[1]) < 1e-7
+  ) {
+    return tail.length >= 2 ? tail : [proj.snappedPoint, ...tail];
+  }
+  return [proj.snappedPoint, ...tail];
 }
 
 /** Gdzie na trasie jest dana noga i w którym jej punkcie. */
@@ -366,9 +530,10 @@ export function nextGuidance(
   coords: Coord[],
   spans: LegSpan[],
   userPos: Coord,
+  projOverride?: PathProjection | null,
 ): Guidance | null {
   if (coords.length < 2 || spans.length === 0) return null;
-  const proj = projectOnPath(coords, userPos);
+  const proj = projOverride ?? projectOnPath(coords, userPos);
   if (!proj) return null;
 
   const last = spans[spans.length - 1];
@@ -385,7 +550,7 @@ export function nextGuidance(
     return {
       maneuver: { kind, distanceM, at: coords[idx], path: [] },
       leg,
-      remainM: distanceM,
+      remainM: remainToEnd,
       offsetM: proj.offsetM,
       path: coords,
       toManeuver: coords.slice(at, idx + 1),
@@ -409,8 +574,8 @@ export function nextGuidance(
     ? turns.filter((t) => t.index > at + 1 && t.index <= span.end)
     : [];
 
-  // Do końca bieżącej nogi zostało X metrów wzdłuż trasy.
-  const legEndDist = distanceAlong(coords, at, span.end);
+  // Do końca bieżącej nogi zostało X metrów wzdłuż trasy (ciągle względem rzutowanej pozycji).
+  const legEndDist = Math.max(0, distanceAlong(coords, 0, span.end) - progressM);
 
   if (leg.mode !== 'walk') {
     // Stoisz przy końcu przebiegu: wysiadaj.
@@ -448,8 +613,9 @@ export function nextGuidanceAfter(
   spans: LegSpan[],
   userPos: Coord,
   minGapM = 35,
+  projOverride?: PathProjection | null,
 ): Guidance | null {
-  const proj = projectOnPath(coords, userPos);
+  const proj = projOverride ?? projectOnPath(coords, userPos);
   if (!proj) return null;
   const at = Math.min(proj.index, coords.length - 2);
   const span = spanAt(spans, at);

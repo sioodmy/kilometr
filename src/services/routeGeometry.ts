@@ -18,7 +18,8 @@
 // dokładał pętelki i objazdy. Takie nogi zostają na prostych między
 // przystankami, czyli czysto i blisko torów.
 
-import { OSRM_BASE_URL, OSRM_FOOT_BASE_URL } from '../config';
+import { OSRM_BASE_URL } from '../config';
+import { routeFootLocal, routeFootLocalSync } from './footRouter';
 import { kvGet, kvSet } from './storage';
 import { getLineColors } from '../components/LineBadge';
 import { timeStringToSeconds } from '../gtfs/geo';
@@ -50,10 +51,6 @@ export function isRailLeg(leg: MapLeg): boolean {
 
 function legProfile(leg: MapLeg): RouteProfile {
   return leg.mode === 'walk' ? 'foot' : 'driving';
-}
-
-function profileUrl(profile: RouteProfile): string {
-  return profile === 'foot' ? OSRM_FOOT_BASE_URL : OSRM_BASE_URL;
 }
 
 export type Coord = [number, number];
@@ -305,8 +302,11 @@ async function fetchChunk(
   signal?: AbortSignal,
 ): Promise<Coord[] | null> {
   if (points.length < 2) return null;
+  if (profile === 'foot') {
+    return routeFootLocal(points, signal);
+  }
   const coordsParam = points.map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
-  const url = `${profileUrl(profile)}/route/v1/${profile}/${coordsParam}?overview=full&geometries=geojson`;
+  const url = `${OSRM_BASE_URL}/route/v1/${profile}/${coordsParam}?overview=full&geometries=geojson`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   // Anulowanie z ekranu ma przerwać także żądanie w locie, nie tylko pętlę.
@@ -367,46 +367,51 @@ export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promi
 }
 
 /**
- * Trasa piesza między dwoma dowolnymi punktami. Używa jej tylko widget
- * nawigacji, gdy użytkownik zgubi trasę (przerouting nie rusza pełnej mapy).
- * Jedno zapytanie do OSRM foot, ten sam cache i timeout co nogi. Null bez
- * sieci albo po błędzie. Wtedy widget mówi „idź w stronę przystanku”.
+ * Trasa piesza między dwoma dowolnymi punktami wyznaczana lokalnie w silniku Rust
+ * na wektorowych kafelkach OSM.
  */
+export function routeFootSync(from: Coord, to: Coord): Coord[] | null {
+  if (from[0] === to[0] && from[1] === to[1]) return null;
+  return routeFootLocalSync([from, to]);
+}
+
 export async function fetchFootRoute(
   from: Coord,
   to: Coord,
   signal?: AbortSignal,
 ): Promise<Coord[] | null> {
-  // Siatka ok. 11 m (jak waypointKey): powtórzone pytania o prawie to samo
-  // miejsce trafiają w cache, a nie w publiczny serwer.
   const r = (v: number) => Math.round(v * 1e4) / 1e4;
   const points: Coord[] = [
     [r(from[0]), r(from[1])],
     [r(to[0]), r(to[1])],
   ];
   if (points[0][0] === points[1][0] && points[0][1] === points[1][1]) return null;
+
+  // Gdy kafelki są już w pamięci silnika Rust, wyznaczamy trasę od ręki bez czekania na I/O.
+  const immediate = routeFootLocalSync([from, to]);
+  if (immediate && immediate.length > 1) {
+    return immediate;
+  }
+
   const key = `foot:${points[0][0]},${points[0][1]}>${points[1][0]},${points[1][1]}`;
   const cache = await readCache();
   const hit = cache.get(key);
   if (hit && hit.length > 1) return hit;
   if (signal?.aborted) return null;
-  const path = await fetchChunk(points, 'foot', signal);
+  const path = await routeFootLocal([from, to], signal);
   if (!path || path.length < 2 || signal?.aborted) return null;
   void writeCache(key, path);
   return path;
 }
 
-/** Prosty odcinek przez przystanki — natychmiastowa wersja trasy. */
+/** Prosty odcinek przez przystanki, natychmiastowa wersja trasy. */
 export function straightGeometry(leg: MapLeg): Coord[] {
   return legWaypoints(leg);
 }
 
 /**
- * Uzupełnia geometrię nóg po kolei (OSRM demo nie lubi równoległych pytań).
- * Każda gotowa noga trafia do `onLeg`, więc mapa dociąga je w tle.
- *
- * `signal` pozwala przerwać całą pętlę — ekran nie powinien ciągnąć zapytań do
- * publicznego serwera po zamknięciu.
+ * Uzupełnia geometrię nóg po kolei. Nogi piesze liczy lokalnie w Rust,
+ * a autobusowe dociąga z OSRM.
  */
 export async function resolveGeometry(
   route: MapRoute,
@@ -419,8 +424,9 @@ export async function resolveGeometry(
     const coords = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
     if (coords && coords.length > 1) onLeg(leg.id, coords);
-    // Pauza między zapytaniami — demo-serwer ma limit ~1 req/s.
-    await new Promise((r) => setTimeout(r, 350));
+    if (leg.mode !== 'walk') {
+      await new Promise((r) => setTimeout(r, 350));
+    }
   }
 }
 

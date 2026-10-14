@@ -1,13 +1,8 @@
-// Stacje Polinki w wyszukiwarce.
-//
-// Stacje wstrzykujemy do sklepu w pamięci, a `searchStops` pyta bazę SQLite
-// wprost, więc bez tego wpisanie „Polinka" albo „Na Grobli" nic nie znajdzie,
-// mimo że planer po niej jeździ. To jedyne miejsce, gdzie trzeba o niej
-// pamiętać poza sklepem.
+// Stacje Polinki w wyszukiwarce — dopasowanie rozmyte wykonywane wsadowo w Rust.
 
 import { polinkaStops } from '../data/polinka';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
-import { fuzzyMatch } from '../gtfs/fuzzy';
+import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { tr } from '../i18n';
 import type { Suggestion } from '../types/models';
 
@@ -21,13 +16,16 @@ export function searchPolinkaStops(
   if (normQ.length < 2) return [];
 
   const kindLabel = tr().notification.modeCable;
+  const stops = polinkaStops();
+  const targets = stops.map((stop) => `${stop.stop_name} ${kindLabel}`);
+  const matches = fuzzyMatchBatch(normQ, targets);
+
   const scored: { item: Suggestion; score: number }[] = [];
 
-  for (const stop of polinkaStops()) {
-    // Nazwa stacji plus nazwa linii: „polinka", „kolej linowa" i „geocentrum"
-    // mają trafiać w tę samą podpowiedź.
-    const byName = fuzzyMatch(normQ, `${stop.stop_name} ${kindLabel}`);
-    if (!byName.matches) continue;
+  for (let i = 0; i < stops.length; i++) {
+    const stop = stops[i];
+    const byName = matches[i];
+    if (!byName || !byName.matches) continue;
     scored.push({
       item: {
         id: `stop-${stop.stop_id}`,

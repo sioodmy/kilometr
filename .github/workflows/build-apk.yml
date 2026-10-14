@@ -194,6 +194,23 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Setup Rust toolchain and Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ steps.release.outputs.arch == 'arm64-v8a' && 'aarch64-linux-android' || 'aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android' }}
+
+      - name: Cache Rust RAPTOR target
+        uses: actions/cache@v4
+        with:
+          path: modules/kilometr-raptor/rust/target
+          key: rust-raptor-${{ runner.os }}-${{ steps.release.outputs.arch }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
+          restore-keys: |
+            rust-raptor-${{ runner.os }}-${{ steps.release.outputs.arch }}-
+            rust-raptor-${{ runner.os }}-
+
+      - name: Test Rust RAPTOR engine
+        run: cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+
       - name: Expo Prebuild
         env:
           # Wersja w metadanych APK (versionName/versionCode) zależy od tagu
@@ -295,7 +312,7 @@ jobs:
             --apk-name "$APK_NAME" \
             --output "apk-dist/release-notes.md" \
             --sha-file "apk-dist/${APK_NAME}.sha256"
-          echo "--- Wygenerowane Release Notes ---"
+          echo "Wygenerowane Release Notes:"
           cat apk-dist/release-notes.md
 
       - name: Upload APK Artifact
@@ -368,7 +385,7 @@ jobs:
               "${ASSETS[@]}"
           fi
 
-          echo "--- Weryfikacja release '$TAG' ---"
+          echo "Weryfikacja release '$TAG':"
           gh release view "$TAG" --json tagName,isPrerelease,assets \
             --jq '{tag: .tagName, prerelease: .isPrerelease, assets: [.assets[] | .name]}'
 

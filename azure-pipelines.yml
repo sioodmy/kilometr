@@ -180,6 +180,33 @@ jobs:
         env:
           npm_config_cache: $(Pipeline.Workspace)/.npm
 
+      - task: Cache@2
+        displayName: Cache Rust target
+        inputs:
+          key: 'rust-raptor | "$(Agent.OS)" | "$(arch)" | modules/kilometr-raptor/rust/Cargo.toml | modules/kilometr-raptor/rust/src/raptor.rs | modules/kilometr-raptor/rust/src/foot_router.rs'
+          restoreKeys: |
+            rust-raptor | "$(Agent.OS)" | "$(arch)"
+            rust-raptor | "$(Agent.OS)"
+          path: modules/kilometr-raptor/rust/target
+
+      - bash: |
+          set -euo pipefail
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          fi
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "##vso[task.prependpath]$HOME/.cargo/bin"
+          rustup default stable
+          if [ "$(arch)" = "arm64-v8a" ]; then
+            rustup target add aarch64-linux-android
+          else
+            rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+          fi
+          rustc --version
+          cargo --version
+          cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+        displayName: Setup Rust Android targets and test RAPTOR engine
+
       # Wersja w metadanych APK (versionName/versionCode) zależy od tagu
       # release'u; app.config.js czyta APP_VERSION.
       - bash: npx expo prebuild --platform android --clean --no-install
@@ -271,7 +298,7 @@ jobs:
             --repo "$(Build.Repository.Name)" \
             --output "$(Build.ArtifactStagingDirectory)/apk-dist/release-notes.md" \
             --sha-file "$(Build.ArtifactStagingDirectory)/apk-dist/$(apk_name).sha256"
-          echo "--- Wygenerowane Release Notes ---"
+          echo "Wygenerowane Release Notes:"
           cat "$(Build.ArtifactStagingDirectory)/apk-dist/release-notes.md"
         displayName: Generate Release Notes from Conventional Commits
         condition: and(succeeded(), eq('${{ parameters.mode }}', 'release'))

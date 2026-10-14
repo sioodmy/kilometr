@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["pl.wroclaw.kilometr.raptor.KilometrRaptorModule"]
+  }
+}
