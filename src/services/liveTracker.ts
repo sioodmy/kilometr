@@ -41,8 +41,8 @@ const WINDOW_SEC = 1800;
 const MAX_CORRIDOR_DIST_M = 350;
 const DELAY_CAP_SEC = 1800;
 /** Ostatni udany snapshot na dysku, żeby restart apki nie startował od zera. */
-function snapshotKey(): string {
-  const id = safeCityId();
+function snapshotKey(cityId?: string): string {
+  const id = cityId ?? safeCityId();
   // Legacy klucz Wrocławia bez sufiksu (kompat ze starymi instalacjami).
   return id === 'wroclaw' ? 'live.snapshot.v1' : `live.snapshot.${id}.v1`;
 }
@@ -114,14 +114,17 @@ class LiveTracker {
     return Date.now() - this.lastOk < GIVE_UP_MS ? 'fresh' : 'stale';
   }
 
-  /** Czyści stan trackera (np. po resecie bazy lub nowym imporcie). */
+  /**
+   * Czyści stan w pamięci (zmiana miasta, nowy import). Snapshotu na dysku NIE
+   * kasujemy: klucze są per-miasto, a wpis, który tam jest, należy do miasta,
+   * z którego właśnie wyszliśmy. Nadpisze go następny udany poll.
+   */
   reset(): void {
     this.byId.clear();
     this.byLine.clear();
     this.tripDelays.clear();
     this.lastOk = 0;
     this.restored = false;
-    void kvSet(snapshotKey(), JSON.stringify({ at: 0, rows: [] } satisfies StoredSnapshot));
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -168,13 +171,21 @@ class LiveTracker {
   async poll(): Promise<void> {
     if (this.inFlight) return;
     this.inFlight = true;
+    const cityAtStart = safeCityId();
     try {
       const [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
+      // Użytkownik zmienił miasto w trakcie pobierania (do 10 s na zapytanie).
+      // Odpowiedź dotyczy poprzedniego miasta: nie wolno jej dopasowywać do
+      // nowego rozkładu ani zapisywać pod kluczem nowego miasta.
+      if (safeCityId() !== cityAtStart) {
+        this.inFlight = false;
+        return;
+      }
       let ok = false;
       if (rows && rows.length > 0) {
         await this.matchAll(rows);
         ok = true;
-        void this.persistSnapshot(rows, rail?.vehicles, rail?.prefix);
+        void this.persistSnapshot(rows, rail?.vehicles, rail?.prefix, cityAtStart);
       } else {
         // Pusta odpowiedź to nie awaria: po północy miasto milknie. Ostatni
         // dobry snapshot zostaje w pamięci, a stan przejdzie na „stale” dopiero
@@ -183,9 +194,9 @@ class LiveTracker {
       if (rail && rail.vehicles.length > 0) {
         await this.matchRailAll(rail.vehicles, rail.prefix);
         ok = true;
-        if (!rows || rows.length === 0) void this.persistSnapshot([], rail.vehicles, rail.prefix);
+        if (!rows || rows.length === 0) void this.persistSnapshot([], rail.vehicles, rail.prefix, cityAtStart);
       }
-      if (ok) this.lastOk = Date.now();
+      if (ok && safeCityId() === cityAtStart) this.lastOk = Date.now();
     } catch (err) {
       console.warn('[LiveTracker] poll failed:', err);
     } finally {
@@ -352,8 +363,8 @@ class LiveTracker {
     return parsed as RawVehicleRow[];
   }
 
-  private persistSnapshot(rows: RawVehicleRow[], kd?: ZbKdVehicle[], railPrefix?: string): void {
-    void kvSet(snapshotKey(), JSON.stringify({ at: Date.now(), rows, kd: kd ?? [], railPrefix: railPrefix ?? 'KD:' } satisfies StoredSnapshot));
+  private persistSnapshot(rows: RawVehicleRow[], kd?: ZbKdVehicle[], railPrefix?: string, cityId?: string): void {
+    void kvSet(snapshotKey(cityId), JSON.stringify({ at: Date.now(), rows, kd: kd ?? [], railPrefix: railPrefix ?? 'KD:' } satisfies StoredSnapshot));
   }
 
   /**

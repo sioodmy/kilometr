@@ -46,7 +46,7 @@ export async function markMapDownloaded(cityId?: string): Promise<void> {
   await kvSet(mapKey(cityId), new Date().toISOString());
 }
 
-export async function getTimetableDownloadGate(): Promise<DownloadGate> {
+export async function getTimetableDownloadGate(_cityId?: string): Promise<DownloadGate> {
   try {
     // Nowy znacznik; fallback na datę importu, żeby po aktualizacji apki
     // istniejące instalacje nie odpalały od razu pełnego pobrania.

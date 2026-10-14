@@ -1,6 +1,6 @@
 import { kvGet, kvSet } from './storage';
 import { defaultLocationForCity } from '../config';
-import { getActiveCitySync } from './cityStore';
+import { getActiveCityIdSync, getActiveCitySync } from './cityStore';
 import {
   mergeTripSearch,
   rankSmartDestinations,
@@ -153,9 +153,16 @@ export const SEED_TRIPS: TripHistoryItem[] = [
   })),
 ];
 
+// Klucze per-miasto: historia i cache ulubionych z Wrocławia nie mogą wyskakiwać
+// na ekranie Krakowa (pozycje z innego miasta nigdy nie mają trasy w bazie).
+// Wrocław trzyma klucze bez sufiksu (kompat ze starymi instalacjami).
+function cityStorageKey(base: string): string {
+  const id = getActiveCityIdSync();
+  return id === 'wroclaw' ? base : `${base}.${id}`;
+}
+
 const STORAGE_KEYS = {
-  TRIP_HISTORY: 'kilometr.trip_history',
-  SAVED_PLACES: 'kilometr.places',
+  tripHistory: (): string => cityStorageKey('kilometr.trip_history'),
 };
 
 const MAX_HISTORY_ITEMS = 80;
@@ -164,7 +171,7 @@ const EXCLUSION_RADIUS_FALLBACK_M = 300;
 
 export async function loadTripHistory(): Promise<TripHistoryItem[]> {
   try {
-    const raw = await kvGet(STORAGE_KEYS.TRIP_HISTORY);
+    const raw = await kvGet(STORAGE_KEYS.tripHistory());
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -175,7 +182,7 @@ export async function loadTripHistory(): Promise<TripHistoryItem[]> {
 
 export async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
   try {
-    await kvSet(STORAGE_KEYS.TRIP_HISTORY, JSON.stringify(items.slice(0, MAX_HISTORY_ITEMS)));
+    await kvSet(STORAGE_KEYS.tripHistory(), JSON.stringify(items.slice(0, MAX_HISTORY_ITEMS)));
   } catch {}
 }
 
@@ -224,17 +231,30 @@ export async function getSmartDestinationsForLocation(
     exclusionRadiusM = getSettingsSync().anchorRadiusM ?? EXCLUSION_RADIUS_FALLBACK_M;
   } catch {}
 
-  // Zapisane miejsca użytkownika (ten sam klucz co w FavoritesService).
+  // Zapisane miejsca: klucz jest globalny (FavoritesService i backup korzystają
+  // z tego samego), więc odsiewamy po mieście razem z historią.
   let savedPlaces: SavedPlace[] = [];
   try {
-    const rawPlaces = await kvGet(STORAGE_KEYS.SAVED_PLACES);
+    const rawPlaces = await kvGet('kilometr.places');
     if (rawPlaces) {
       const parsed = JSON.parse(rawPlaces);
       if (Array.isArray(parsed)) savedPlaces = parsed;
     }
   } catch {}
 
-  const history = await loadTripHistory();
+  // Historia bywa jeszcze z poprzedniego miasta (klucze per-miasto powstają dopiero
+  // po zmianie). Pozycje poza granicami aktywnego miasta odrzucamy: routing nigdy
+  // nie znajdzie do nich przystanku, więc podpowiedź byłaby martwa.
+  const { activeBounds } = await import('./gtfsConfig');
+  const bounds = activeBounds();
+  const inCity = (lat: number, lon: number): boolean =>
+    Number.isFinite(lat) && Number.isFinite(lon) &&
+    lat >= bounds.minLat && lat <= bounds.maxLat &&
+    lon >= bounds.minLon && lon <= bounds.maxLon;
+  const history = (await loadTripHistory()).filter(
+    (t) => inCity(t.dest_lat, t.dest_lon) && inCity(t.origin_lat, t.origin_lon),
+  );
+  savedPlaces = savedPlaces.filter((p) => inCity(p.lat, p.lon));
   return rankSmartDestinations(history, savedPlaces, userLat, userLon, Date.now(), limit, exclusionRadiusM);
 }
 
@@ -242,12 +262,12 @@ export async function getSmartDestinationsForLocation(
 // GPS potrafi myśleć parę sekund, więc na starcie malujemy gołe ostatnie
 // miejsca z cache (bez ikon i odjazdów — te dociągają się jak zwykle),
 // a gdy GPS + świeży ranking dotrą, lista zamienia się w miejscu.
-const SMART_CACHE_KEY = 'kilometr.smart_cache.v1';
+const smartCacheKey = (): string => cityStorageKey('kilometr.smart_cache.v1');
 const SMART_CACHE_MAX = 5;
 
 export async function loadCachedSmartDestinations(): Promise<SmartDestination[]> {
   try {
-    const raw = await kvGet(SMART_CACHE_KEY);
+    const raw = await kvGet(smartCacheKey());
     if (!raw) return [];
     const parsed = JSON.parse(raw) as { items?: SmartDestination[] };
     const items = Array.isArray(parsed?.items) ? parsed.items : [];
@@ -262,6 +282,6 @@ export async function loadCachedSmartDestinations(): Promise<SmartDestination[]>
 export async function saveCachedSmartDestinations(items: SmartDestination[]): Promise<void> {
   try {
     if (!Array.isArray(items) || items.length === 0) return;
-    await kvSet(SMART_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items: items.slice(0, SMART_CACHE_MAX) }));
+    await kvSet(smartCacheKey(), JSON.stringify({ savedAt: Date.now(), items: items.slice(0, SMART_CACHE_MAX) }));
   } catch {}
 }

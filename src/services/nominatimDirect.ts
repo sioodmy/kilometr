@@ -127,8 +127,10 @@ export async function searchNominatimDirect(
   const q = query.trim();
   if (!q || q.length < 2) return [];
   // Cache BEZ pozycji (dystanse dokładamy przy zwrocie — trafienia niezależne od GPS).
-  // Klucz zawiera miasto: te same zapytania w Krakowie i Wrocławiu to inne wyniki.
-  const cacheKey = `nominatim:${fallbackCityName()}:${q.toLowerCase()}`;
+  // Klucz zawiera miasto (po id, nie po nazwie wyświetlanej): te same zapytania w
+  // Krakowie i Wrocławiu to inne wyniki, a zmiana nazwy w rejestrze nie może
+  // wyczyścić całego cache.
+  const cacheKey = `nominatim:${getActiveCityIdSync()}:${q.toLowerCase()}`;
   const cached = memGet(cacheKey);
   if (cached) return withDistances(cached, userLat, userLon);
 

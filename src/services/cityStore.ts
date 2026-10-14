@@ -26,13 +26,22 @@ function notify(): void {
 
 export async function loadActiveCity(): Promise<CityId> {
   if (loaded) return cachedId;
+  let id: CityId = DEFAULT_CITY_ID;
   try {
     const raw = await kvGet(KEY);
-    if (raw && isCityId(raw)) cachedId = raw;
+    if (raw && isCityId(raw)) id = raw;
   } catch {
-    // storage niedostępny — zostaje default
+    // storage niedostępny, zostaje default
   }
   loaded = true;
+  // Zapisane miasto różni się od domyślnego: pełna zmiana (baza + store),
+  // inaczej apk startuje z rozkładem Wrocławia pod hasłem "Kraków".
+  if (id !== cachedId) {
+    cachedId = id;
+    await swapStores();
+    notify();
+    return cachedId;
+  }
   notify();
   return cachedId;
 }
@@ -47,17 +56,11 @@ export function getActiveCitySync(): CityDef {
 }
 
 /**
- * Zmiana miasta: persist + przełączenie bazy na plik drugiego miasta.
- * Nie kasuje nic z poprzedniego miasta (baza ani kafle zostają na dysku).
+ * Zamiana baz i cache per-miasto. Wywoływana ZANIM powiadamy UI: w oknie
+ * między `cachedId = id` a `notify()` ekran pokazywałby nowe miasto przy
+ * starym rozkładzie (Wrocławskie trasy podpisane "Kraków").
  */
-export async function setActiveCityId(id: CityId): Promise<CityDef> {
-  cachedId = id;
-  notify();
-  try {
-    await kvSet(KEY, id);
-  } catch {
-    // ignoruj błąd zapisu
-  }
+async function swapStores(): Promise<void> {
   try {
     const { closeGtfsDb } = await import('./gtfsDatabase');
     await closeGtfsDb();
@@ -65,12 +68,37 @@ export async function setActiveCityId(id: CityId): Promise<CityDef> {
     console.warn('[CityStore] db switch failed:', err);
   }
   try {
+    const { resetDataStatusForCity } = await import('./dataManager');
+    resetDataStatusForCity();
+  } catch (err) {
+    console.warn('[CityStore] data status reset failed:', err);
+  }
+  try {
     const { gtfsStore } = await import('./routing/store');
     gtfsStore.reset();
+  } catch (err) {
+    console.warn('[CityStore] routing store reset failed:', err);
+  }
+  try {
     const { liveTracker } = await import('./liveTracker');
     liveTracker.reset();
   } catch (err) {
-    console.warn('[CityStore] store reset failed:', err);
+    console.warn('[CityStore] live tracker reset failed:', err);
+  }
+}
+
+/**
+ * Zmiana miasta: persist + przełączenie bazy na plik drugiego miasta.
+ * Nie kasuje nic z poprzedniego miasta (baza ani kafle zostają na dysku).
+ */
+export async function setActiveCityId(id: CityId): Promise<CityDef> {
+  cachedId = id;
+  await swapStores();
+  notify();
+  try {
+    await kvSet(KEY, id);
+  } catch {
+    // ignoruj błąd zapisu
   }
   return getCity(id);
 }

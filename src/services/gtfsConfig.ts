@@ -104,9 +104,9 @@ export const OVERPASS = {
   refreshDays: 7,
 } as const;
 
-/** Bbox Overpass dla aktywnego miasta. */
-export function overpassBbox(): string {
-  return activeCity().overpassBbox;
+/** Bbox Overpass dla miasta (domyślnie aktywnego). */
+export function overpassBbox(cityId?: string): string {
+  return getCity(cityId ?? getActiveCityIdSync()).overpassBbox;
 }
 
 export const BOUNDS = {

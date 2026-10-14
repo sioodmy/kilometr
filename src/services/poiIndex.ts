@@ -1,9 +1,11 @@
-// Lokalny indeks miejsc (POI) aktywnego miasta na telefonie — port server/src/search/poiIndex.ts.
+// Lokalny indeks miejsc (POI) aktywnego miasta na telefonie. Port server/src/search/poiIndex.ts.
 // Zasilany z Overpass API, cachowany w SQLite (tabela pois, per-miasto jak reszta
 // bazy). Dzięki temu "lidl", "zoo", "apteka" podpowiadają się natychmiast,
 // bez czekania na Nominatim, i są sortowane po odległości od użytkownika.
 
 import { OVERPASS, overpassBbox } from './gtfsConfig';
+import { getActiveCityIdSync } from './cityStore';
+import type { CityId } from '../cities';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { classifyPoi, buildPoiAddress } from './poiClassify';
@@ -24,10 +26,10 @@ const OVERPASS_FILTERS_BASE = [
   'node["amenity"="fuel"]',
 ];
 
-function poiQuery(): string {
+function poiQuery(cityId: CityId): string {
   let bbox: string = OVERPASS.bbox;
   try {
-    bbox = overpassBbox();
+    bbox = overpassBbox(cityId);
   } catch {
     // legacy Wrocław
   }
@@ -46,6 +48,11 @@ function isStale(last: string | null): boolean {
 /** Pobiera POI z Overpass i podmienia tabelę. Best-effort — błąd zostawia stare. */
 export async function refreshPoiIndex(): Promise<number> {
   if (refreshInFlight) return poiCount();
+  // Zapytanie potrafi trwać 45 s, a użytkownik zmieni miasto w międzyczasie.
+  // Bbox bierzemy i sprawdzamy dla jednego miasta: inaczej odpowiedź dla
+  // Wrocławia trafiłaby do bazy Krakowa i wyszukiwarka pokazywałaby
+  // wrocławskie sklepy przez cały cykl życia indeksu.
+  const cityId = getActiveCityIdSync();
   refreshInFlight = true;
   try {
     const ctrl = new AbortController();
@@ -57,7 +64,7 @@ export async function refreshPoiIndex(): Promise<number> {
           'User-Agent': OVERPASS.userAgent,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: 'data=' + encodeURIComponent(poiQuery()),
+        body: 'data=' + encodeURIComponent(poiQuery(cityId)),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -90,6 +97,10 @@ export async function refreshPoiIndex(): Promise<number> {
         });
       }
 
+      if (getActiveCityIdSync() !== cityId) {
+        console.warn('[Poi] miasto zmienione w trakcie odświeżania, pomijam zapis');
+        return poiCount();
+      }
       await replacePois(rows);
       await setMeta('poi_last_refresh', String(Date.now()));
       await setMeta('poi_addr_version', ADDR_VERSION);

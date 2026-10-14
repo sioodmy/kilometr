@@ -14,7 +14,7 @@ import * as SQLite from 'expo-sqlite';
 import { TIMETABLE } from './gtfsConfig';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { beginGtfsSwap, closeGtfsDb, currentGtfsDbName, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
+import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -68,9 +68,12 @@ export function dbDownloadUrl(manifest: TimetableManifest, cityId?: CityId | str
 /** Manifest to ~500 B — tanie pytanie, które chroni limity (brak pobrań bez zmian). */
 export async function fetchManifest(cityId?: CityId | string): Promise<TimetableManifest> {
   const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
+  // Wrocław: najpierw kanoniczny /wroclaw/manifest.json, potem legacy root.
+  // Kolejność ma znaczenie: jeśli upload rootu padnie, root zostaje stary
+  // i klient preferujący legacy root nigdy nie widziałby nowego buildu.
   const urls =
     city.id === 'wroclaw'
-      ? [manifestUrl(city.id), `${TIMETABLE.baseUrl}/wroclaw/manifest.json`]
+      ? [`${TIMETABLE.baseUrl}/wroclaw/manifest.json`, manifestUrl(city.id)]
       : [manifestUrl(city.id)];
   let lastErr: unknown = null;
   for (const url of urls) {
@@ -116,8 +119,8 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
 
 const TEMP_DB_SUFFIX = '.new.db';
 
-function tempDbName(): string {
-  return `${currentGtfsDbName()}${TEMP_DB_SUFFIX}`;
+function tempDbName(mainName: string): string {
+  return `${mainName}${TEMP_DB_SUFFIX}`;
 }
 
 // Katalog bazy z documentDirectory (file:///data/user/0/…/files/SQLite).
@@ -172,7 +175,12 @@ export async function downloadPrebuiltDb(
   cityId?: CityId | string,
 ): Promise<void> {
   const T = syncDlTr();
-  const tempName = tempDbName();
+  // Miasto pinujemy raz, na starcie: pobieranie trwa kilka minut, a użytkownik
+  // może w międzyczasie zmienić miasto. Bez pinu plik tymczasowy i cel podmiany
+  // rozjeżdżałyby się (Wrocławskie dane w pliku Krakowa).
+  const city = getCity(cityId ?? getActiveCityIdSync());
+  const mainName = city.dbFile;
+  const tempName = tempDbName(mainName);
   const dest = await sqliteUri(tempName);
   await deleteSidecars(dest);
   try {
@@ -228,8 +236,14 @@ export async function downloadPrebuiltDb(
 
   // Podmiana: zamknij działającą bazę, podmień plik atomowo (w ramach katalogu).
   // Bramka blokuje równoległe getGtfsDb() z UI, żeby nie otworzyły usuwanego pliku.
+  // Miasto mogło się zmienić w trakcie pobierania: wtedy baza właśnie ściągnięta
+  // należy do innego miasta niż aktywne i nie wolno jej podmienić.
+  if (getActiveCityIdSync() !== city.id) {
+    await FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
+    throw new GtfsDownloadError(T.unavailable, 'city changed during download', T.hintLater, 'unreachable');
+  }
   beginGtfsSwap();
-  const mainUri = await sqliteUri(currentGtfsDbName());
+  const mainUri = await sqliteUri(mainName);
   try {
     await closeGtfsDb();
     try {
