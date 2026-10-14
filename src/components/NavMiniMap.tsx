@@ -4,7 +4,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import Svg, { Circle, Polygon } from 'react-native-svg';
 import type { Coord } from '../services/routeGeometry';
 import { buildNavMapDocument } from '../map/navMapDocument';
-import { getActiveCitySync } from '../services/cityStore';
+import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import { acquireMapServer } from '../services/mapServerLease';
 import { scheme } from '../theme/tokens';
 
@@ -40,6 +40,7 @@ export function NavMiniMap({
 }: NavMiniMapProps) {
   const webRef = useRef<WebView>(null);
   const ready = useRef(false);
+  const { cityId } = useActiveCity();
   // undefined = czekamy na lokalny serwer; nie ładuj CDN zanim wiemy.
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   const latestRoute = useRef<NavMapRouteUpdate>({ path, stop, accent });
@@ -58,7 +59,7 @@ export function NavMiniMap({
       center = null;
     }
     return buildNavMapDocument({ offlineBase, center });
-  }, [offlineBase]);
+  }, [offlineBase, cityId]);
 
   useEffect(() => {
     let cancelled = false;

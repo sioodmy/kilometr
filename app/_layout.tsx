@@ -44,6 +44,7 @@ export default function RootLayout() {
     const safetyTimeout = setTimeout(() => {
       if (isMounted) setReady(true);
     }, 3000);
+    let initAppReady: Promise<void> = Promise.resolve();
 
     const initApp = async () => {
       // Kolory Material You z tapety muszą być w motywie zanim cokolwiek
@@ -71,11 +72,12 @@ export default function RootLayout() {
       }
     };
 
-    initApp();
-    
+    initAppReady = initApp();
+
     // Śledzenie podróży przeżywa restart telefonu, więc podnosimy je,
-    // zanim użytkownik cokolwiek otworzy.
-    void restoreTrackedTrip();
+    // zanim użytkownik cokolwiek otworzy. Miasto musi być już wczytane:
+    // planowanie trasy odtwarza się na bazie aktywnego miasta.
+    void initAppReady.finally(() => restoreTrackedTrip());
     startTrackedTripListener();
 
     // Tap w powiadomienie lub przycisk akcji → ekran połączeń / koniec

@@ -7,18 +7,32 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MapPinOff, MapPin, Navigation } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
+import { CITIES } from '../cities';
 
 export function UnsupportedCityCard({
   city,
+  activeCity,
   onPickStart,
 }: {
   /** Miejscowość z reverse-geocode; null = nie udało się ustalić. */
   city: string | null;
+  /** Nazwa aktywnego miasta (tego, dla którego mamy rozkład). */
+  activeCity: string;
   onPickStart: () => void;
 }) {
   const s = useStrings();
   const supported = s.city.supportedList;
-  const body = city ? s.home.unsupportedBody(city, supported) : s.home.unsupportedBodyUnknown(supported);
+  // Karta pokazuje się też wtedy, gdy użytkownik stoi w mieście, które
+  // obsługujemy, ale w apce ma ustawione inne. Bez tego wariantu tekst
+  // głosiłby „obsługujemy tylko: Wrocław, Kraków” osobie stojącej w Krakowie.
+  const insideSupported = city
+    ? CITIES.some((c) => c.name.toLocaleLowerCase() === city.trim().toLocaleLowerCase())
+    : false;
+  const body = !city
+    ? s.home.unsupportedBodyUnknown(supported)
+    : insideSupported
+      ? s.home.unsupportedBodyOther(city, activeCity)
+      : s.home.unsupportedBody(city, supported);
 
   return (
     <View

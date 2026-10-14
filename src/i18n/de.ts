@@ -47,6 +47,7 @@ export const de: Strings = {
     historyEmptyAction: 'Verbindung suchen',
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
     gpsTitle: 'Mein Standort (GPS)',
+    locationFallback: 'Dein Standort',
     gpsAddressHome: 'Aktuelle Geräteposition',
     importingTitle: (gen: string) => `Fahrplan für ${gen} wird geladen…`,
     importErrorTitle: 'Fehler beim Laden des Fahrplans',
@@ -58,6 +59,8 @@ export const de: Strings = {
     unsupportedTitle: 'Nicht unterstützte Stadt',
     unsupportedBody: (city: string, supported: string) =>
       `Dein GPS-Standort zeigt auf ${city}. Aktuell bedienen wir nur: ${supported}.`,
+    unsupportedBodyOther: (city: string, active: string) =>
+      `Du bist in ${city}, die App ist aber auf ${active} eingestellt. Stadt in den Einstellungen wechseln.`,
     unsupportedBodyUnknown: (supported: string) =>
       `Dein GPS-Standort liegt außerhalb des unterstützten Gebiets. Aktuell bedienen wir nur: ${supported}.`,
     unsupportedHint: 'Wähle den Start manuell, um Verbindungen zu suchen.',
@@ -78,11 +81,14 @@ export const de: Strings = {
     loc: (id: string): string => (id === 'krakow' ? 'Kraków' : 'Wrocław'),
     feeds: (id: string): string =>
       id === 'krakow' ? 'ZTP und Koleje Małopolskie' : 'MPK und Koleje Dolnośląskie',
+    newsSources: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław • wroclaw.pl'),
     operator: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław'),
     operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : 'MPK'),
     portal: (id: string): string => (id === 'krakow' ? 'ztp.krakow.pl' : 'wroclaw.pl'),
     supportedList: 'Wrocław, Kraków',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
+    switching: 'Stadt wird umgestellt…',
+    blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
     needDownload: 'Für diese Stadt liegt noch kein Fahrplan auf dem Telefon. Lade ihn unten.',
   },
   settings: {
@@ -108,6 +114,8 @@ export const de: Strings = {
     offlineMapDownload: 'Karte laden',
     offlineMapDownloadA11y: (name: string) => `Die ${name}-Karte für offline laden`,
     offlineMapDownloading: (pct: number) => `Lädt… ${pct}%`,
+    offlineMapStepTiles: (name: string) => `Kacheln für ${name}`,
+    offlineMapStepDone: 'fertig',
     offlineMapDelete: 'Löschen',
     offlineMapDeleteA11y: 'Offline-Karte löschen',
     offlineMapDeleteTitle: 'Offline-Karte löschen?',
@@ -256,6 +264,8 @@ export const de: Strings = {
     cityBody: 'Fahrplan, Karte und Meldungen folgen deiner Wahl. Die Stadt lässt sich später in den Einstellungen ändern.',
     citySuggested: (name: string) => `Laut GPS bist du in: ${name}.`,
     cityNoGps: 'Ohne GPS-Zugriff wähle die Stadt aus der Liste.',
+    cityLocating: 'GPS-Position wird ermittelt…',
+    cityNoMatch: 'GPS ist in keiner unterstützten Stadt. Wähle eine aus der Liste.',
     cityPickA11y: (name: string) => `Stadt wählen: ${name}`,
     citySuggestedA11y: (name: string) => `Vorgeschlagene Stadt laut GPS: ${name}`,
     dlTitle: (gen: string) => `Fahrplan für\n${gen} laden`,
@@ -290,6 +300,7 @@ export const de: Strings = {
     doneCount: (n: number) => `Fertig (${n})`,
     donePlain: 'Fertig',
     skip: 'Erstmal überspringen',
+    skipTimetable: 'Überspringen, Fahrplan lade ich später',
   },
   news: {
     chip: 'Störungen',
@@ -399,7 +410,7 @@ export const de: Strings = {
     calcFail: 'Verbindungen konnten nicht berechnet werden',
     noTimetable: 'Kein Fahrplan',
     calcFailBody: 'Der Planer rechnet Routen auf deinem Telefon. Versuch es erneut — bei Dauerfehlern den Fahrplan in den Einstellungen aktualisieren.',
-    noTimetableBody: 'Die App berechnet Routen auf deinem Telefon aus dem vollen Fahrplan. Ohne ihn gibt es keine Verbindungen — einmal laden, danach offline nutzbar.',
+    noTimetableBody: 'Die App berechnet Routen auf deinem Telefon aus dem vollen Fahrplan. Ohne ihn gibt es keine Verbindungen. Einmal laden, danach offline nutzbar.',
     downloadA11y: 'Fahrplan laden',
     downloading: (p: number) => `Wird geladen… ${p} %`,
     downloadingStep: (step: string, p: number) => `${step} ${p} %`,
@@ -463,7 +474,8 @@ export const de: Strings = {
     savedA11y: (t: string) => `Gespeicherter Ort: ${t}`,
     searching: (city: string) => `${city} wird durchsucht…`,
     noResults: 'Keine Ergebnisse',
-    noResultsHint: 'Versuch: „arkady“, „biskupin“, „zoo“, „swojczycka“. Geht auch ohne polnische Zeichen und mit Tippfehlern.',
+    noResultsHint: (id: string) =>
+      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
     yourPlaces: 'Deine Orte',
     gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',

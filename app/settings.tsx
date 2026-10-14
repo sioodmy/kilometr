@@ -178,6 +178,7 @@ export default function SettingsScreen() {
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [importing, setImporting] = useState(false);
   const [switchingCity, setSwitchingCity] = useState(false);
+  const [justSwitched, setJustSwitched] = useState<CityId | null>(null);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
   const [hasTrains, setHasTrains] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
@@ -209,10 +210,15 @@ export default function SettingsScreen() {
   const handleCityChange = async (id: CityId) => {
     if (id === cityId || switchingCity || busy) return;
     setSwitchingCity(true);
+    setJustSwitched(null);
     setOutcome(null);
     try {
       await setCity(id);
       await refreshDataStatus().then(setDataStatus).catch(() => {});
+      // Potwierdzenie zostaje na ekranie po zakończeniu zmiany. Wcześniej
+      // znikało razem ze spinnerem, więc użytkownik nie dostawał żadnego
+      // znaku, że przełączenie w ogóle się udało.
+      setJustSwitched(id);
     } finally {
       setSwitchingCity(false);
       setReloadKey((k) => k + 1);
@@ -296,7 +302,7 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{s.city.settingsTitle}</Text>
           <Text style={styles.settingHint}>{s.city.settingsHint}</Text>
-          <View style={styles.langRow}>
+          <View style={styles.langRow} accessibilityRole="radiogroup">
             {CITIES.map((c) => {
               const active = cityId === c.id;
               const label = s.city.name(c.id);
@@ -308,10 +314,11 @@ export default function SettingsScreen() {
                   style={({ pressed }) => [
                     styles.langChip,
                     active && styles.langChipActive,
+                    (switchingCity || busy) && !active && styles.langChipDisabled,
                     pressed && !active && { opacity: 0.7 },
                   ]}
                   accessibilityRole="radio"
-                  accessibilityState={{ checked: active }}
+                  accessibilityState={{ checked: active, disabled: switchingCity || busy }}
                   accessibilityLabel={label}
                 >
                   {active && <Check size={14} color={scheme.onPrimaryContainer} />}
@@ -323,9 +330,16 @@ export default function SettingsScreen() {
           {switchingCity ? (
             <View style={styles.switchRow}>
               <ActivityIndicator size="small" color={scheme.primary} />
-              <Text style={styles.switchText}>{s.city.changed(s.city.name(cityId))}</Text>
+              <Text style={styles.switchText}>{s.city.switching}</Text>
             </View>
-          ) : dataStatus.state === 'empty' ? (
+          ) : justSwitched ? (
+            <View style={styles.switchRow}>
+              <Check size={16} color={scheme.primary} />
+              <Text style={styles.switchText}>{s.city.changed(s.city.name(justSwitched))}</Text>
+            </View>
+          ) : null}
+          {busy && !switchingCity && <Text style={styles.warnHint}>{s.city.blockedByDownload}</Text>}
+          {!busy && !switchingCity && dataStatus.state === 'empty' ? (
             <Text style={styles.warnHint}>{s.city.needDownload}</Text>
           ) : null}
         </View>
@@ -722,6 +736,9 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   langChipActive: { backgroundColor: scheme.primaryContainer },
+  // Niedostępny chip musi wyglądać niedostępny: bez tego przycisk gasł się
+  // bez żadnej informacji, a niżej w karcie jechał pasek postępu pobierania.
+  langChipDisabled: { opacity: 0.45 },
   langChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
   styleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

@@ -20,7 +20,7 @@ import React, {
 import { Linking, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { buildRouteMapDocument } from '../map/routeMapDocument';
-import { getActiveCitySync } from '../services/cityStore';
+import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
 import { scheme } from '../theme/tokens';
 
@@ -93,6 +93,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   const padRef = useRef<[number, number, number, number]>([42, 42, paddingBottom, 42]);
   padRef.current = [paddingTop, 42, paddingBottom, 42];
 
+  const { cityId } = useActiveCity();
   const [attempt, setAttempt] = useState(0);
 
   const html = useMemo(() => {
@@ -104,7 +105,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       center = null;
     }
     return buildRouteMapDocument({ route, vehicle, user, selectedLegId, offlineBase, center });
-  }, [route?.id, attempt, offlineBase]);
+    // cityId w zaleznosciach: ekran nie jest odmontowywany przy zmianie miasta
+    // (stos natywny), a bez tego WebView dostalby centrum poprzedniego miasta.
+  }, [route?.id, attempt, offlineBase, cityId]);
 
   const send = useCallback((msg: MapInMessage) => {
     webRef.current?.injectJavaScript(

@@ -295,7 +295,7 @@ export default function HomeScreen() {
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
       if (outside) {
         // Poza strefą: GPS zostaje tylko jako informacja do karty,
-        // a ranking i trasy liczymy z centrum aktywnego miasta — start
+        // a ranking i trasy liczymy z centrum aktywnego miasta, bo start
         // i tak trzeba wybrać ręcznie, więc nie podstawiamy pozycji spoza.
         setGpsUnsupported(true);
         setGpsCity(city);
@@ -321,7 +321,43 @@ export default function HomeScreen() {
     });
     const unsubscribeGps = LocationService.subscribe(applyGpsFix);
     return () => unsubscribeGps();
-  }, []);
+    // Zmiana miasta to nowy kontekst: GPS, historia i cache ulubionych należą
+    // do poprzedniego miasta, więc efekt startuje od nowa.
+  }, [cityId]);
+
+  // Sam reset stanu per-miasto. Ekran główny zostaje zamontowany, gdy Settings
+  // jest wypchnięty na stos (native stack nie robi unmount), więc bez tego
+  // po zmianie miasta pokazywałby stare ulubione, starą pozycję startu
+  // i orzekał „Wrocław" przy aktywnym Krakowie.
+  const firstCityRun = useRef(true);
+  useEffect(() => {
+    if (firstCityRun.current) {
+      firstCityRun.current = false;
+      return;
+    }
+    isCustomStartRef.current = false;
+    setIsCustomStart(false);
+    setQuery('');
+    setResults([]);
+    setSmart([]);
+    setSmartReady(false);
+    setRecent([]);
+    setLastTrip(null);
+    setGpsUnsupported(false);
+    setGpsCity(null);
+    const d = defaultLocationForCity(cityId);
+    setLocTitle(d.title);
+    setCurrentCoords({ lat: d.lat, lon: d.lon });
+    setNextDepart({});
+    setFirstConns({});
+    setFirstLegs({});
+    refreshPlaces();
+    SearchService.recent().then(setRecent);
+    loadTripHistory().then((h) => setLastTrip(h.length > 0 ? h[0] : null));
+    loadCachedSmartDestinations().then((cached) => {
+      if (cached.length > 0) setSmart(cached);
+    });
+  }, [cityId]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy
   useEffect(() => {
@@ -1011,6 +1047,7 @@ export default function HomeScreen() {
           {gpsUnsupported && (
             <UnsupportedCityCard
               city={gpsCity}
+              activeCity={s.city.name(cityId)}
               onPickStart={() => {
                 setReturnToDestinationAfterStart(false);
                 setQuery('');

@@ -27,6 +27,9 @@ export function OfflineMapCard() {
   const s = useStrings();
   const { cityId } = useActiveCity();
   const cityName = s.city.name(cityId);
+  // Dopełniacz ("mapy Krakowa", "na telefonie"), nie mianownik: te teksty
+  // wchodzą w dopełnienie albo są rzeczownikiem w locacji.
+  const cityGen = s.city.gen(cityId);
   const [ready, setReady] = useState<boolean | null>(null);
   const [cooldownMs, setCooldownMs] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -71,21 +74,20 @@ export function OfflineMapCard() {
     }
   }, [busy, refresh, s, cityId]);
 
-  const handleDelete = useCallback(() => {
+const handleDelete = useCallback(() => {
     Alert.alert(s.settings.offlineMapDeleteTitle, s.settings.offlineMapDeleteBody, [
       { text: s.common.cancel, style: 'cancel' },
-        {
-          text: s.settings.offlineMapDelete,
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              await deleteOfflineMap(cityId);
-              await refresh();
-            })();
-          },
+      {
+        text: s.settings.offlineMapDelete,
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await deleteOfflineMap(cityId);
+            await refresh();
+          })();
         },
-      ],
-    );
+      },
+    ]);
   }, [refresh, s, cityId]);
 
   const pct = Math.round(progress * 100);
@@ -101,10 +103,10 @@ export function OfflineMapCard() {
           <Text style={styles.title}>{s.settings.offlineMapTitle(cityName)}</Text>
           <Text style={styles.hint}>
             {ready
-              ? s.settings.offlineMapReady(cityName)
+              ? s.settings.offlineMapReady(cityGen)
               : blocked
                 ? s.settings.offlineMapCooldownBody(remainingDays(cooldownMs))
-                : s.settings.offlineMapHint(cityName)}
+                : s.settings.offlineMapHint(cityGen)}
           </Text>
         </View>
       </View>
@@ -132,7 +134,7 @@ export function OfflineMapCard() {
             onPress={() => void handleDownload()}
             style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel={s.settings.offlineMapDownloadA11y(cityName)}
+            accessibilityLabel={s.settings.offlineMapDownloadA11y(cityGen)}
           >
             <Download size={16} color={scheme.onPrimary} />
             <Text style={styles.primaryText}>{s.settings.offlineMapDownload}</Text>

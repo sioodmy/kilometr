@@ -54,6 +54,7 @@ export const uk: Strings = {
     historyEmptyAction: 'Шукати сполучення',
     openConnA11y: (title: string, label: string) => `Відкрити сполучення до ${title}, ${label}`,
     gpsTitle: 'Моя локація (GPS)',
+    locationFallback: 'Твоя локація',
     gpsAddressHome: 'Поточна позиція пристрою',
     importingTitle: (gen: string) => `Завантаження розкладу ${gen}…`,
     importErrorTitle: 'Помилка завантаження розкладу',
@@ -65,6 +66,8 @@ export const uk: Strings = {
     unsupportedTitle: 'Місто не підтримується',
     unsupportedBody: (city: string, supported: string) =>
       `Твоя GPS-локація вказує на ${city}. Наразі обслуговуємо лише: ${supported}.`,
+    unsupportedBodyOther: (city: string, active: string) =>
+      `Ти в ${city}, а застосунок налаштовано на ${active}. Зміни місто в налаштуваннях.`,
     unsupportedBodyUnknown: (supported: string) =>
       `Твоя GPS-локація поза зоною обслуговування. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedHint: 'Вибери початок вручну, щоб знайти сполучення.',
@@ -85,11 +88,14 @@ export const uk: Strings = {
     loc: (id: string): string => (id === 'krakow' ? 'Кракові' : 'Вроцлаві'),
     feeds: (id: string): string =>
       id === 'krakow' ? 'ZTP і Koleje Małopolskie' : 'MPK і Koleje Dolnośląskie',
-    operator: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław'),
+    newsSources: (id: string): string => (id === 'krakow' ? 'ZTP Краків' : 'MPK Вроцлав • wroclaw.pl'),
+    operator: (id: string): string => (id === 'krakow' ? 'ZTP Краків' : 'MPK Вроцлав'),
     operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : 'MPK'),
     portal: (id: string): string => (id === 'krakow' ? 'ztp.krakow.pl' : 'wroclaw.pl'),
     supportedList: 'Вроцлав, Краків',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
+    switching: 'Перемикаю місто…',
+    blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
     needDownload: 'Для цього міста ще немає розкладу на телефоні. Завантаж його нижче.',
   },
   settings: {
@@ -115,6 +121,8 @@ export const uk: Strings = {
     offlineMapDownload: 'Завантажити мапу',
     offlineMapDownloadA11y: (name: string) => `Завантажити мапу ${name} для офлайну`,
     offlineMapDownloading: (pct: number) => `Завантаження… ${pct}%`,
+    offlineMapStepTiles: (name: string) => `тайли для ${name}`,
+    offlineMapStepDone: 'готово',
     offlineMapDelete: 'Видалити',
     offlineMapDeleteA11y: 'Видалити мапу офлайн',
     offlineMapDeleteTitle: 'Видалити мапу офлайн?',
@@ -266,6 +274,8 @@ export const uk: Strings = {
     cityBody: 'Розклад, мапа й новини підлаштуються під вибір. Місто можна змінити пізніше в налаштуваннях.',
     citySuggested: (name: string) => `За GPS ти в: ${name}.`,
     cityNoGps: 'Без доступу до GPS вибери місто зі списку.',
+    cityLocating: 'Шукаю твою позицію GPS…',
+    cityNoMatch: 'GPS не вказує на підтримуване місто. Вибери зі списку.',
     cityPickA11y: (name: string) => `Вибрати місто: ${name}`,
     citySuggestedA11y: (name: string) => `Запропоноване місто за GPS: ${name}`,
     dlTitle: (gen: string) => `Завантажити розклад\n${gen}`,
@@ -300,6 +310,7 @@ export const uk: Strings = {
     doneCount: (n: number) => `Готово (${n})`,
     donePlain: 'Готово',
     skip: 'Пропустити',
+    skipTimetable: 'Пропустити, розклад завантажу пізніше',
   },
   news: {
     chip: 'Ускладнення',
@@ -419,7 +430,7 @@ export const uk: Strings = {
     calcFail: 'Не вдалося порахувати сполучення',
     noTimetable: 'Немає розкладу',
     calcFailBody: 'Планувальник рахує маршрути на телефоні. Спробуй знову — якщо повторюється завжди, онови розклад у налаштуваннях.',
-    noTimetableBody: 'Застосунок рахує маршрути на телефоні з повного розкладу. Без нього немає сполучень — завантаж раз, далі працює офлайн.',
+    noTimetableBody: 'Застосунок рахує маршрути на телефоні з повного розкладу. Без нього немає сполучень. Завантаж раз, далі працює офлайн.',
     downloadA11y: 'Завантажити розклад',
     downloading: (p: number) => `Завантаження… ${p}%`,
     downloadingStep: (step: string, p: number) => `${step} ${p}%`,
@@ -484,7 +495,8 @@ export const uk: Strings = {
     savedA11y: (t: string) => `Збережене місце: ${t}`,
     searching: (city: string) => `Шукаю: ${city}…`,
     noResults: 'Немає результатів',
-    noResultsHint: 'Спробуй: „arkady”, „biskupin”, „zoo”, „swojczycka”. Працює й без польських літер і з помилками.',
+    noResultsHint: (id: string) =>
+      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
     yourPlaces: 'Твої місця',
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',

@@ -507,7 +507,7 @@ const runtime = [
   '  map = new maplibregl.Map({',
   '    container: "map",',
   '    style: P.style,',
-  '    center: P.center || [17.0385, 51.1079],',
+  '    center: P.center || [0, 0],',
   '    zoom: 13,',
   '    minZoom: 9,',
   '    maxZoom: 19,',

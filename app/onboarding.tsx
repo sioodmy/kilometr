@@ -205,24 +205,34 @@ function StatusPill({ v }: { v: 'unknown' | 'granted' | 'denied' }) {
 function useCitySuggestion(locGranted: boolean) {
   const { cityId, setCity } = useActiveCity();
   const [suggested, setSuggested] = useState<CityId | null>(null);
+  // 'idle' = jeszcze nie pytaliśmy, 'locating' = czekamy na fix,
+  // 'nomatch' = GPS gdzieś, gdzie żadne miasto nie pasuje.
+  const [status, setStatus] = useState<'idle' | 'locating' | 'nomatch'>('idle');
 
   useEffect(() => {
     if (!locGranted) {
       setSuggested(null);
+      setStatus('idle');
       return;
     }
     let live = true;
+    setStatus('locating');
     void (async () => {
       try {
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         const hit = suggestCityForGps(pos.coords.latitude, pos.coords.longitude);
-        if (live && hit) {
+        if (!live) return;
+        if (hit) {
           setSuggested(hit.id);
           // Propozycja od razu ustawia miasto; chipem można ją zmienić.
           await setCity(hit.id);
+          setStatus('idle');
+        } else {
+          setStatus('nomatch');
         }
       } catch {
-        // brak fixu — wybór manualny z listy
+        // Brak fixa: wybór manualny z listy, bez zgadywania miasta.
+        if (live) setStatus('nomatch');
       }
     })();
     return () => {
@@ -230,7 +240,7 @@ function useCitySuggestion(locGranted: boolean) {
     };
   }, [locGranted, setCity]);
 
-  return { cityId, setCity, suggested };
+  return { cityId, setCity, suggested, status };
 }
 
 // ─── Krok 4: zapisane miejsca ────────────────────────────────────────────────
@@ -352,7 +362,7 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const perms = usePermissionStates();
-  const { cityId, setCity, suggested } = useCitySuggestion(perms.loc === 'granted');
+  const { cityId, setCity, suggested, status: citySuggestionStatus } = useCitySuggestion(perms.loc === 'granted');
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [downloading, setDownloading] = useState(false);
   const slots = useOnboardingPlaces();
@@ -581,12 +591,18 @@ export default function OnboardingScreen() {
             <Text style={st.leadSmall}>{s.onboarding.cityBody}</Text>
 
             {suggested ? (
-              <Text style={st.suggestNote}>{s.onboarding.citySuggested(s.city.name(suggested))}</Text>
+              <Text style={st.suggestNote}>
+                {s.onboarding.citySuggested(s.city.loc(suggested))}
+              </Text>
             ) : perms.loc !== 'granted' ? (
               <Text style={st.suggestNote}>{s.onboarding.cityNoGps}</Text>
+            ) : citySuggestionStatus === 'locating' ? (
+              <Text style={st.suggestNote}>{s.onboarding.cityLocating}</Text>
+            ) : citySuggestionStatus === 'nomatch' ? (
+              <Text style={st.suggestNote}>{s.onboarding.cityNoMatch}</Text>
             ) : null}
 
-            <View style={st.cityList}>
+            <View style={st.cityList} accessibilityRole="radiogroup">
               {CITIES.map((c) => {
                 const active = cityId === c.id;
                 const isSuggested = suggested === c.id;
@@ -597,11 +613,11 @@ export default function OnboardingScreen() {
                     style={({ pressed }) => [st.cityChip, active && st.cityChipActive, pressed && !active && { opacity: 0.75 }]}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: active }}
-                    accessibilityLabel={
-                      isSuggested
-                        ? s.onboarding.citySuggestedA11y(s.city.name(c.id))
-                        : s.onboarding.cityPickA11y(s.city.name(c.id))
-                    }
+                    // Etykieta opisuje wybór, nie podpowiedź GPS: TalkBack czyta „Proponowane
+                  // miasto według GPS" jako nazwę przycisku, a stan i tak
+                  // ogłasza przez accessibilityState.
+                    accessibilityLabel={s.onboarding.cityPickA11y(s.city.name(c.id))}
+                    accessibilityHint={isSuggested ? s.onboarding.citySuggestedA11y(s.city.name(c.id)) : undefined}
                   >
                     <MapPin size={20} color={active ? scheme.onPrimaryContainer : scheme.primary} />
                     <View style={{ flex: 1 }}>
@@ -884,6 +900,11 @@ export default function OnboardingScreen() {
             {!gtfsReady && (
               <Text style={st.lockNote}>{s.onboarding.needTimetable}</Text>
             )}
+            {/* Bez tego kroku apka jest nie do przejścia: rozkład miasta może nie
+                być na serwerze albo pobieranie może paść, a „Dalej" odblokowuje
+                się dopiero po gotowej bazie. Użytkownik zostawałby w ekranie
+                z „Spróbuj ponowić" w nieskończoność. */}
+            {!gtfsReady && <GhostBtn label={s.onboarding.skipTimetable} onPress={next} />}
           </>
         )}
         {step === 4 && (

@@ -21,8 +21,6 @@ export interface CityDef {
   id: CityId;
   /** Nazwa w mianowniku (do chipów i nagłówków). */
   name: string;
-  /** Dopełniacz do komunikatów ("rozkład Wrocławia / Krakowa"). */
-  genitive: string;
   center: CityCenter;
   /** Promień strefy obsługi w metrach. */
   radiusM: number;
@@ -55,7 +53,6 @@ export interface CityDef {
 const WROCLAW: CityDef = {
   id: 'wroclaw',
   name: 'Wrocław',
-  genitive: 'Wrocławia',
   center: { lat: 51.1079, lon: 17.0385 },
   radiusM: 15_000,
   bounds: { minLat: 50.95, maxLat: 51.25, minLon: 16.7, maxLon: 17.25 },
@@ -73,7 +70,6 @@ const WROCLAW: CityDef = {
 const KRAKOW: CityDef = {
   id: 'krakow',
   name: 'Kraków',
-  genitive: 'Krakowa',
   center: { lat: 50.0614, lon: 19.9366 },
   radiusM: 15_000,
   bounds: { minLat: 49.95, maxLat: 50.17, minLon: 19.7, maxLon: 20.3 },

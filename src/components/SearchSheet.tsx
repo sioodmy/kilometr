@@ -278,7 +278,7 @@ export function SearchSheet({
               <Text style={styles.emptyTitle}>
                 {loading ? s.search.searching(cityName) : s.search.noResultsFor(trimmed)}
               </Text>
-              {!loading && <Text style={styles.emptySub}>{s.search.noResultsHint}</Text>}
+              {!loading && <Text style={styles.emptySub}>{s.search.noResultsHint(cityId)}</Text>}
             </View>
           ) : null
         }

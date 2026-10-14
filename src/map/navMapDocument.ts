@@ -121,7 +121,7 @@ const runtime = (routeSourceId: string) => `
     map = new maplibregl.Map({
       container: 'map',
       style: window.__NAV__.style,
-      center: window.__NAV__.center || [17.0385, 51.1079],
+      center: window.__NAV__.center || [0, 0],
       zoom: 17,
       bearing: 0,
       interactive: false,

@@ -114,7 +114,7 @@ export default function NewsScreen() {
   const operator = s.city.operator(cityId);
   const portal = s.city.portal(cityId);
   const cityName = s.city.name(cityId);
-  const feedsLabel = cityId === 'krakow' ? operator : `${operator} • ${portal}`;
+  const feedsLabel = s.city.newsSources(cityId);
   const [items, setItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [loading, setLoading] = useState(() => (getCachedNews()?.length ?? 0) === 0);
   const [refreshing, setRefreshing] = useState(false);

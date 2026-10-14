@@ -52,6 +52,7 @@ export const pl = {
     historyEmptyAction: 'Szukaj połączenia',
     openConnA11y: (title: string, label: string) => `Otwórz połączenie do ${title}, ${label}`,
     gpsTitle: 'Moja lokalizacja (GPS)',
+    locationFallback: 'Twoja lokalizacja',
     gpsAddressHome: 'Bieżąca pozycja urządzenia',
     importingTitle: (gen: string) => `Pobieranie rozkładu ${gen}…`,
     importErrorTitle: 'Błąd pobierania rozkładu',
@@ -63,6 +64,8 @@ export const pl = {
     unsupportedTitle: 'Nieobsługiwane miasto',
     unsupportedBody: (city: string, supported: string) =>
       `Twoja lokalizacja GPS wskazuje na ${city}. Aktualnie obsługujemy tylko: ${supported}.`,
+    unsupportedBodyOther: (city: string, active: string) =>
+      `Jesteś w ${city}, a aplikacja jest ustawiona na ${active}. Zmień miasto w Ustawieniach.`,
     unsupportedBodyUnknown: (supported: string) =>
       `Twoja lokalizacja GPS jest poza obsługiwanym obszarem. Aktualnie obsługujemy tylko: ${supported}.`,
     unsupportedHint: 'Wybierz punkt startowy manualnie, aby wyszukać połączenie.',
@@ -83,11 +86,14 @@ export const pl = {
     loc: (id: string): string => (id === 'krakow' ? 'Krakowie' : 'Wrocławiu'),
     feeds: (id: string): string =>
       id === 'krakow' ? 'ZTP i Koleje Małopolskie' : 'MPK i Koleje Dolnośląskie',
+    newsSources: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław • wroclaw.pl'),
     operator: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław'),
     operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : 'MPK'),
     portal: (id: string): string => (id === 'krakow' ? 'ztp.krakow.pl' : 'wroclaw.pl'),
     supportedList: 'Wrocław, Kraków',
     changed: (name: string) => `Przełączono na: ${name}.`,
+    switching: 'Przełączam miasto…',
+    blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
     needDownload: 'To miasto nie ma jeszcze rozkładu na telefonie. Pobierz go poniżej.',
   },
   settings: {
@@ -113,6 +119,8 @@ export const pl = {
     offlineMapDownload: 'Pobierz mapę',
     offlineMapDownloadA11y: (name: string) => `Pobierz mapę ${name} do trybu offline`,
     offlineMapDownloading: (pct: number) => `Pobieram… ${pct}%`,
+    offlineMapStepTiles: (name: string) => `kafle ${name}`,
+    offlineMapStepDone: 'gotowe',
     offlineMapDelete: 'Usuń',
     offlineMapDeleteA11y: 'Usuń mapę offline',
     offlineMapDeleteTitle: 'Usunąć mapę offline?',
@@ -198,7 +206,7 @@ export const pl = {
     transferTimeHintShort: 'Rezerwa między wysiadką a kolejnym odjazdem.',
     trainTitle: 'Pociągi regionalne',
     trainHint:
-      'Przesiadki na pociągi regionalne. Działają tylko w trybie „Wszystkie” — szybki filtr tramwaj/autobus ich nie rusza.',
+      'Przesiadki na pociągi regionalne. Działają tylko w trybie „Wszystkie”, szybki filtr tramwaj/autobus ich nie rusza.',
     trainHintShort: 'Przesiadki na pociągi. Tylko w trybie „Wszystkie”.',
     trainBufferTitle: 'Zapas na pociąg',
     trainBufferHint:
@@ -262,8 +270,10 @@ export const pl = {
     notifAllow: 'Włącz powiadomienia',
     cityTitle: 'W którym mieście\njeździsz?',
     cityBody: 'Rozkład, mapa i aktualności dopasują się do wyboru. Miasto zmienisz później w ustawieniach.',
-    citySuggested: (name: string) => `Według GPS jesteś w: ${name}.`,
+    citySuggested: (name: string) => `Według GPS jesteś ${name}.`,
     cityNoGps: 'Bez dostępu do GPS wybierz miasto z listy.',
+    cityLocating: 'Szukam pozycji GPS…',
+    cityNoMatch: 'Nie znalazłem Cię w obsługiwanym mieście. Wybierz z listy.',
     cityPickA11y: (name: string) => `Wybierz miasto: ${name}`,
     citySuggestedA11y: (name: string) => `Proponowane miasto według GPS: ${name}`,
     dlTitle: (gen: string) => `Pobierz rozkład\n${gen}`,
@@ -298,6 +308,7 @@ export const pl = {
     doneCount: (n: number) => `Gotowe (${n})`,
     donePlain: 'Gotowe',
     skip: 'Pomiń na razie',
+    skipTimetable: 'Pomiń, pobiorę rozkład później',
   },
   news: {
     chip: 'Utrudnienia',
@@ -409,7 +420,7 @@ export const pl = {
     calcFail: 'Nie udało się policzyć połączeń',
     noTimetable: 'Brak rozkładu',
     calcFailBody: 'Planer liczy trasy na telefonie. Spróbuj ponownie — jeśli powtarza się to zawsze, odśwież rozkład w ustawieniach.',
-    noTimetableBody: 'Aplikacja liczy trasy na telefonie z pełnego rozkładu. Bez niego nie ma połączeń — pobierz go raz, potem działa offline.',
+    noTimetableBody: 'Aplikacja liczy trasy na telefonie z pełnego rozkładu. Bez niego nie ma połączeń. Pobierz go raz, potem działa offline.',
     downloadA11y: 'Pobierz rozkład',
     downloading: (p: number) => `Pobieranie… ${p}%`,
     downloadingStep: (step: string, p: number) => `${step} ${p}%`,
@@ -474,7 +485,8 @@ export const pl = {
     savedA11y: (t: string) => `Zapisane miejsce: ${t}`,
     searching: (city: string) => `Szukam w: ${city}…`,
     noResults: 'Brak wyników',
-    noResultsHint: 'Spróbuj: „arkady”, „biskupin”, „zoo”, „swojczycka”. Działa też bez polskich znaków i z literówkami.',
+    noResultsHint: (id: string) =>
+      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
     yourPlaces: 'Twoje miejsca',
     gpsOutsideNotice: 'GPS poza obsługiwanym miastem, wybierz punkt manualnie.',

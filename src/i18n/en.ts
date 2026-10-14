@@ -47,6 +47,7 @@ export const en: Strings = {
     historyEmptyAction: 'Search connections',
     openConnA11y: (title: string, label: string) => `Open connection to ${title}, ${label}`,
     gpsTitle: 'My location (GPS)',
+    locationFallback: 'Your location',
     gpsAddressHome: 'Current device position',
     importingTitle: (gen: string) => `Downloading the ${gen} timetable…`,
     importErrorTitle: 'Timetable download error',
@@ -58,6 +59,8 @@ export const en: Strings = {
     unsupportedTitle: 'Unsupported city',
     unsupportedBody: (city: string, supported: string) =>
       `Your GPS location points to ${city}. We currently serve only: ${supported}.`,
+    unsupportedBodyOther: (city: string, active: string) =>
+      `You are in ${city}, but the app is set to ${active}. Change the city in Settings.`,
     unsupportedBodyUnknown: (supported: string) =>
       `Your GPS location is outside the supported area. We currently serve only: ${supported}.`,
     unsupportedHint: 'Pick a start point manually to search connections.',
@@ -78,11 +81,14 @@ export const en: Strings = {
     loc: (id: string): string => (id === 'krakow' ? 'Kraków' : 'Wrocław'),
     feeds: (id: string): string =>
       id === 'krakow' ? 'ZTP and Koleje Małopolskie' : 'MPK and Koleje Dolnośląskie',
+    newsSources: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław • wroclaw.pl'),
     operator: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław'),
     operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : 'MPK'),
     portal: (id: string): string => (id === 'krakow' ? 'ztp.krakow.pl' : 'wroclaw.pl'),
     supportedList: 'Wrocław, Kraków',
     changed: (name: string) => `Switched to: ${name}.`,
+    switching: 'Switching city…',
+    blockedByDownload: 'Timetable download in progress. You can switch city once it finishes.',
     needDownload: 'This city has no timetable on the phone yet. Download it below.',
   },
   settings: {
@@ -108,6 +114,8 @@ export const en: Strings = {
     offlineMapDownload: 'Download map',
     offlineMapDownloadA11y: (name: string) => `Download the ${name} map for offline use`,
     offlineMapDownloading: (pct: number) => `Downloading… ${pct}%`,
+    offlineMapStepTiles: (name: string) => `tiles for ${name}`,
+    offlineMapStepDone: 'done',
     offlineMapDelete: 'Delete',
     offlineMapDeleteA11y: 'Delete the offline map',
     offlineMapDeleteTitle: 'Delete the offline map?',
@@ -256,6 +264,8 @@ export const en: Strings = {
     cityBody: 'Timetable, map and news follow your choice. You can change the city later in settings.',
     citySuggested: (name: string) => `Your GPS says: ${name}.`,
     cityNoGps: 'Without GPS access, pick a city from the list.',
+    cityLocating: 'Finding your GPS position…',
+    cityNoMatch: 'GPS did not land in a supported city. Pick one from the list.',
     cityPickA11y: (name: string) => `Choose city: ${name}`,
     citySuggestedA11y: (name: string) => `Suggested city from GPS: ${name}`,
     dlTitle: (gen: string) => `Download the\n${gen} timetable`,
@@ -290,6 +300,7 @@ export const en: Strings = {
     doneCount: (n: number) => `Done (${n})`,
     donePlain: 'Done',
     skip: 'Skip for now',
+    skipTimetable: 'Skip, I will download the timetable later',
   },
   news: {
     chip: 'Disruptions',
@@ -399,7 +410,7 @@ export const en: Strings = {
     calcFail: 'Could not compute connections',
     noTimetable: 'No timetable',
     calcFailBody: 'The planner computes routes on your phone. Try again — if it always fails, refresh the timetable in settings.',
-    noTimetableBody: 'The app computes routes on your phone from the full timetable. Without it there are no connections — download it once, then it works offline.',
+    noTimetableBody: 'The app computes routes on your phone from the full timetable. Without it there are no connections. Download it once, then it works offline.',
     downloadA11y: 'Download timetable',
     downloading: (p: number) => `Downloading… ${p}%`,
     downloadingStep: (step: string, p: number) => `${step} ${p}%`,
@@ -463,7 +474,8 @@ export const en: Strings = {
     savedA11y: (t: string) => `Saved place: ${t}`,
     searching: (city: string) => `Searching ${city}…`,
     noResults: 'No results',
-    noResultsHint: 'Try: “arkady”, “biskupin”, “zoo”, “swojczycka”. Works without Polish characters and with typos too.',
+    noResultsHint: (id: string) =>
+      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
     noResultsFor: (q: string) => `Nothing matches “${q}”`,
     yourPlaces: 'Your places',
     gpsOutsideNotice: 'GPS is outside the city, pick a point manually.',
