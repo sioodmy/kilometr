@@ -321,7 +321,7 @@ jobs:
             PREV=$(MODE="$MODE" node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const all=JSON.parse(s);const r=process.env.MODE==='stable'?all.find(x=>!x.isPrerelease&&/^v\d+\.\d+\.\d+$/.test(x.tagName)):all.map(x=>x.tagName).find(t=>t.startsWith('nightly-'));console.log(typeof r==='string'?r:(r?r.tagName:''))}catch{console.log('')}})" <<< "$LIST")
           fi
           if [ -z "${PREV:-}" ]; then
-            echo "Brak poprzedniego wydania $CHANNEL — pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
+            echo "Brak poprzedniego wydania $CHANNEL, pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           VIEW=$(gh release view "$PREV" --json assets 2>/dev/null || true)
@@ -338,7 +338,7 @@ jobs:
             fi
           fi
           if [ -z "${PREVSIZE:-}" ] || [ "$PREVSIZE" -le 0 ]; then
-            echo "Wydanie $PREV nie ma assetu $ASSET — pomijam." >> "$GITHUB_STEP_SUMMARY"
+            echo "Wydanie $PREV nie ma assetu $ASSET, pomijam." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           DIFF=$((SIZE - PREVSIZE))

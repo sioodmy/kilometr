@@ -77,7 +77,7 @@ jobs:
           echo "Nowa baza: $((NEW / 1048576)) MB" >> "$GITHUB_STEP_SUMMARY"
           URL="${TIMETABLE_PUBLIC_URL:-}"
           if [ -z "$URL" ]; then
-            echo "Brak TIMETABLE_PUBLIC_URL — pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
+            echo "Brak TIMETABLE_PUBLIC_URL, pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           REMOTE=$(curl -fsS --max-time 20 "$URL/manifest.json" 2>/dev/null || true)
@@ -86,7 +86,7 @@ jobs:
             OLD=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log((JSON.parse(s).db||{}).sizeBytes||0)}catch{console.log(0)}})" <<< "$REMOTE")
           fi
           if [ -z "${OLD:-}" ] || [ "$OLD" -le 0 ]; then
-            echo "Brak zdalnego manifestu — pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
+            echo "Brak zdalnego manifestu, pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           DIFF=$((NEW - OLD))
