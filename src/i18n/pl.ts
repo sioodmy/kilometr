@@ -253,11 +253,14 @@ export const pl = {
     denied: 'Wyłączone',
     toEnable: 'Do włączenia',
     slotHome: 'Dom',
-    slotHomeHint: 'np. Swojczycka 41',
+    slotHomeHint: (id: string): string =>
+      (id === 'krakow' ? 'np. Krowoderska 12' : 'np. Swojczycka 41'),
     slotWork: 'Praca',
-    slotWorkHint: 'np. Sky Tower',
+    slotWorkHint: (id: string): string =>
+      (id === 'krakow' ? 'np. Galeria Krakowska' : 'np. Sky Tower'),
     slotUni: 'Uczelnia',
-    slotUniHint: 'np. Politechnika',
+    slotUniHint: (id: string): string =>
+      (id === 'krakow' ? 'np. AGH' : 'np. Politechnika'),
     backA11y: 'Wstecz',
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
     brand: 'Kilometr',

@@ -255,11 +255,14 @@ export const uk: Strings = {
     denied: 'Вимкнено',
     toEnable: 'До ввімкнення',
     slotHome: 'Дім',
-    slotHomeHint: 'напр. Swojczycka 41',
+    slotHomeHint: (id: string) =>
+      id === 'krakow' ? 'напр. Krowoderska 12' : 'напр. Swojczycka 41',
     slotWork: 'Робота',
-    slotWorkHint: 'напр. Sky Tower',
+    slotWorkHint: (id: string) =>
+      id === 'krakow' ? 'напр. Galeria Krakowska' : 'напр. Sky Tower',
     slotUni: 'Універ',
-    slotUniHint: 'напр. Politechnika',
+    slotUniHint: (id: string) =>
+      id === 'krakow' ? 'напр. AGH' : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',

@@ -10,6 +10,7 @@ import { defaultLocationForCity } from '../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch, type LocationResult } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
+import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
   type DataStatus,
@@ -873,10 +874,7 @@ export default function HomeScreen() {
         const h = Math.max(0, Math.min(LAST_TRIP_MAX, g.dy));
         pullHeight.value = h;
         const cur = optionRef.current;
-        let next: LastTripOption = cur;
-        if (h >= LAST_TRIP_ARM_2) next = 2;
-        else if (cur === 2) next = h >= LAST_TRIP_DISARM_2 ? 2 : h >= LAST_TRIP_ARM_1 ? 1 : 0;
-        else next = h >= LAST_TRIP_ARM_1 ? 1 : 0;
+        const next = nextPullOption(cur, h, LAST_TRIP_ARM_1, LAST_TRIP_ARM_2, LAST_TRIP_DISARM_2);
         if (next !== cur) {
           optionRef.current = next;
           setPullOption(next);

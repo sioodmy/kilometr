@@ -62,10 +62,9 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
           stop_id TEXT NOT NULL,
           arr_sec INTEGER NOT NULL,
           dep_sec INTEGER NOT NULL,
-          seq INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);
-        CREATE INDEX IF NOT EXISTS idx_stoptimes_stop ON stop_times (stop_id, dep_sec);
+          seq INTEGER NOT NULL,
+          PRIMARY KEY (trip_id, seq)
+        ) WITHOUT ROWID;
         CREATE TABLE IF NOT EXISTS calendar (
           service_id TEXT PRIMARY KEY NOT NULL,
           mon INTEGER NOT NULL DEFAULT 0,
@@ -205,15 +204,19 @@ export async function prepareForBulkImport(): Promise<void> {
   await db.execAsync(`
     PRAGMA synchronous = OFF;
     DROP INDEX IF EXISTS idx_stoptimes_trip;
-    DROP INDEX IF EXISTS idx_stoptimes_stop;
   `);
 }
 
 export async function finishBulkImport(): Promise<void> {
   const db = await getGtfsDb();
+  // Klucz (trip_id, seq) nowych tabel WITHOUT ROWID pokrywa zapytania
+  // po kursach. Legacy (rowid) odtwarzamy idx_trip po re-imporcie.
+  const t = await db.getFirstAsync<{ sql: string | null }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'stop_times'",
+  );
+  const clustered = (t?.sql ?? '').toUpperCase().includes('WITHOUT ROWID');
   await db.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);
-    CREATE INDEX IF NOT EXISTS idx_stoptimes_stop ON stop_times (stop_id, dep_sec);
+    ${clustered ? '' : 'CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);'}
     PRAGMA synchronous = NORMAL;
   `);
 }
@@ -460,14 +463,17 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
 
 /**
  * Waga przystanku = liczba obsłużonych odjazdów (stop_times).
- * Jednorazowo po imporcie; idx_stoptimes_stop robi to szybko natywnie.
+ * Jednorazowo po imporcie; GROUP BY jednym skanem, bez indeksu po stop_id.
  */
 export async function computeStopWeights(): Promise<number> {
   try {
     const db = await getGtfsDb();
-    await db.execAsync(
-      'UPDATE stops SET weight = (SELECT COUNT(*) FROM stop_times WHERE stop_times.stop_id = stops.stop_id)'
-    );
+    await db.execAsync(`
+      UPDATE stops SET weight = 0;
+      UPDATE stops SET weight = agg.c
+        FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg
+        WHERE agg.stop_id = stops.stop_id;
+    `);
     const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
     return row?.n ?? 0;
   } catch (err) {

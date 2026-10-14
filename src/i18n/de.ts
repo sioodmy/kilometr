@@ -245,11 +245,14 @@ export const de: Strings = {
     denied: 'Aus',
     toEnable: 'Zu aktivieren',
     slotHome: 'Zuhause',
-    slotHomeHint: 'z. B. Swojczycka 41',
+    slotHomeHint: (id: string) =>
+      id === 'krakow' ? 'z. B. Krowoderska 12' : 'z. B. Swojczycka 41',
     slotWork: 'Arbeit',
-    slotWorkHint: 'z. B. Sky Tower',
+    slotWorkHint: (id: string) =>
+      id === 'krakow' ? 'z. B. Galeria Krakowska' : 'z. B. Sky Tower',
     slotUni: 'Uni',
-    slotUniHint: 'z. B. Politechnika',
+    slotUniHint: (id: string) =>
+      id === 'krakow' ? 'z. B. AGH' : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',
