@@ -52,6 +52,9 @@ jobs:
       - name: Typecheck (App & i18n)
         run: npm run typecheck
 
+      - name: Lint (ESLint)
+        run: npm run lint
+
       - name: Run logic tests (RAPTOR routing)
         run: npm run check:routing
 
@@ -70,8 +73,40 @@ jobs:
       - name: Run logic tests (Navigation target)
         run: npm run check:navigation-target
 
+      - name: Run logic tests (Live feed)
+        run: npm run check:live
+
+      - name: Run logic tests (Navigation)
+        run: npm run check:nav
+
+      - name: Run logic tests (Minimap)
+        run: npm run check:minimap
+
+      - name: Run logic tests (Geometry cache)
+        run: npm run check:geometry-cache
+
+      # Doradczy skan CVE: podatności siedzą w tranzytywnych paczkach Expo,
+      # więc twarde gate'owanie zaczerwieniłoby CI na stałe. Twardą bramką
+      # na nowe podatności jest OSV scan na PR (osv-scan.yml).
+      - name: Audit dependencies (Advisory)
+        run: |
+          npm audit --json > /tmp/audit-root.json 2>/dev/null || true
+          if [ -s /tmp/audit-root.json ]; then
+            node -e "const a=require('/tmp/audit-root.json');const v=((a||{}).metadata||{}).vulnerabilities||{};console.log('npm audit (root): info='+(v.info||0)+' low='+(v.low||0)+' moderate='+(v.moderate||0)+' high='+(v.high||0)+' critical='+(v.critical||0))" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "npm audit (root): brak danych" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Doradczy, dopóki paczki Expo nie są dociągnięte do SDK (dziś 9
+      # niezgodności wersji). Wynik ląduje w podsumowaniu, żeby dryf było
+      # widać. Twarda bramka dopiero po alignie zależności.
       - name: Expo Doctor (Advisory)
-        run: npx expo-doctor || true
+        run: |
+          npx expo-doctor > /tmp/expo-doctor.txt 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -25 /tmp/expo-doctor.txt >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/expo-doctor.txt
 
   verify-subprojects:
     name: Verify Server & Landing
@@ -84,6 +119,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            server/package-lock.json
+            landing/package-lock.json
 
       - name: Build & typecheck server
         run: |
@@ -94,3 +133,14 @@ jobs:
         run: |
           npm --prefix landing ci
           npm --prefix landing run build
+
+      - name: Audit dependencies (Advisory)
+        run: |
+          for p in server landing; do
+            npm --prefix "$p" audit --json > "/tmp/audit-$p.json" 2>/dev/null || true
+            if [ -s "/tmp/audit-$p.json" ]; then
+              P="$p" node -e "const a=require('/tmp/audit-'+process.env.P+'.json');const v=((a||{}).metadata||{}).vulnerabilities||{};console.log('npm audit ('+process.env.P+'): info='+(v.info||0)+' low='+(v.low||0)+' moderate='+(v.moderate||0)+' high='+(v.high||0)+' critical='+(v.critical||0))" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "npm audit ($p): brak danych" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done

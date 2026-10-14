@@ -167,7 +167,6 @@ export default function RouteMapScreen() {
       cancelled = true;
     };
     // Raz na połączenie: po wzbogaceniu id bez zmian, więc bez pętli.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
 
   const route: MapRoute | null = useMemo(() => (item ? buildMapRoute(item) : null), [item]);

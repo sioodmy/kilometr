@@ -62,4 +62,5 @@ Kod płynie `feature/*` → `dev` → `main` → `nightly` → `prod`, każdy kr
 
 ## Licencja
 
-MIT, szczegóły w [LICENSE](LICENSE).
+Kilometr jest wolnym oprogramowaniem na licencji GPL-3.0-or-later.
+Copyright (C) sioodmy, pełny tekst w [LICENSE](LICENSE).

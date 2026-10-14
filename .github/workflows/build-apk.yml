@@ -296,6 +296,60 @@ jobs:
 
           ls -lh apk-dist
 
+      # Budżet rozmiaru: ostrzega, gdy APK urośnie wyraźnie względem
+      # poprzedniego wydania tego kanału. Doradcze, nie blokuje publikacji.
+      - name: Budżet rozmiaru APK
+        env:
+          APK_NAME: ${{ steps.release.outputs.apk_name }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" = "artifact-only" ]; then exit 0; fi
+          SIZE=$(stat -c%s "apk-dist/$APK_NAME")
+          echo "APK: $((SIZE / 1048576)) MB" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CHANNEL" = "prod" ]; then
+            MODE="stable"
+            ASSET="kilometr-prod.apk"
+          else
+            MODE="nightly"
+            ASSET="kilometr-nightly.apk"
+          fi
+          LIST=$(gh release list --limit 30 --json tagName,isPrerelease 2>/dev/null || true)
+          PREV=""
+          if [ -n "$LIST" ]; then
+            PREV=$(MODE="$MODE" node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const all=JSON.parse(s);const r=process.env.MODE==='stable'?all.find(x=>!x.isPrerelease&&/^v\d+\.\d+\.\d+$/.test(x.tagName)):all.map(x=>x.tagName).find(t=>t.startsWith('nightly-'));console.log(typeof r==='string'?r:(r?r.tagName:''))}catch{console.log('')}})" <<< "$LIST")
+          fi
+          if [ -z "${PREV:-}" ]; then
+            echo "Brak poprzedniego wydania $CHANNEL, pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          VIEW=$(gh release view "$PREV" --json assets 2>/dev/null || true)
+          PREVSIZE=""
+          if [ -n "$VIEW" ]; then
+            PREVSIZE=$(ASSET="$ASSET" node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=(JSON.parse(s).assets||[]).find(x=>x.name===process.env.ASSET);console.log(a?a.size:0)}catch{console.log(0)}})" <<< "$VIEW")
+          fi
+          # Starsze wydania prod nie mają kilometr-prod.apk, tylko alias
+          # app-release.apk (ta sama zawartość, inna nazwa).
+          if { [ -z "${PREVSIZE:-}" ] || [ "$PREVSIZE" -le 0 ]; } && [ "$MODE" = "stable" ]; then
+            ASSET="app-release.apk"
+            if [ -n "$VIEW" ]; then
+              PREVSIZE=$(ASSET="$ASSET" node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=(JSON.parse(s).assets||[]).find(x=>x.name===process.env.ASSET);console.log(a?a.size:0)}catch{console.log(0)}})" <<< "$VIEW")
+            fi
+          fi
+          if [ -z "${PREVSIZE:-}" ] || [ "$PREVSIZE" -le 0 ]; then
+            echo "Wydanie $PREV nie ma assetu $ASSET, pomijam." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          DIFF=$((SIZE - PREVSIZE))
+          PCT=$((DIFF * 100 / PREVSIZE))
+          SIGN=""
+          if [ "$DIFF" -ge 0 ]; then SIGN="+"; fi
+          echo "$PREV: $((PREVSIZE / 1048576)) MB, ten build: $((SIZE / 1048576)) MB (${SIGN}${PCT}%)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PCT" -gt 10 ] && [ "$DIFF" -gt 1048576 ]; then
+            echo "::warning::APK urosło o ${PCT}% (+$((DIFF / 1048576)) MB) względem $PREV. Jeśli to nie nowe zasoby, sprawdź build."
+          fi
+
       # Notki i wydanie tylko w trybie release. artifact-only kończy na
       # artefakcie Actions i nie tworzy tagu ani wydania.
       - name: Generate Release Notes from Conventional Commits
