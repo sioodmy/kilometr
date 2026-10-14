@@ -1,4 +1,5 @@
 import { kvGet, kvSet } from './storage';
+import { getActiveCityIdSync } from './cityStore';
 
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
@@ -28,6 +29,21 @@ const KEYS = {
   recent: 'kilometr.cache.recent.v1',
   location: 'kilometr.cache.location.v1',
 } as const;
+
+/**
+ * Klucz per-miasto dla danych, które NIE mogą wyciekać między miastami.
+ * Wrocław trzyma legacy klucz (kompat ze starymi instalacjami). Połączenia
+ * i podpowiedzi są kluczowane zapytaniem/współrzędnymi, więc zostają globalne.
+ */
+function cityScopedKey(base: string): string {
+  let id = 'wroclaw';
+  try {
+    id = getActiveCityIdSync();
+  } catch {
+    // storage jeszcze niegotowy: legacy klucz Wrocławia
+  }
+  return id === 'wroclaw' ? base : `${base}.${id}`;
+}
 
 const CONNECTIONS_TTL_MS = 6 * 3600 * 1000;
 const SUGGESTIONS_TTL_MS = 7 * 24 * 3600 * 1000;
@@ -202,14 +218,14 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
 
 export async function saveRecent(items: Suggestion[]): Promise<void> {
   try {
-    await kvSet(KEYS.recent, JSON.stringify({ savedAt: Date.now(), data: items }));
+    await kvSet(cityScopedKey(KEYS.recent), JSON.stringify({ savedAt: Date.now(), data: items }));
   } catch {
     // best-effort
   }
 }
 
 export async function loadRecent(): Promise<Suggestion[]> {
-  const entry = await readJSON<Stamped<Suggestion[]>>(KEYS.recent);
+  const entry = await readJSON<Stamped<Suggestion[]>>(cityScopedKey(KEYS.recent));
   if (!entry || Date.now() - entry.savedAt > SUGGESTIONS_TTL_MS) return [];
   return Array.isArray(entry.data) ? entry.data : [];
 }
