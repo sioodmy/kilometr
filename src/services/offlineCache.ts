@@ -172,7 +172,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
   const key = normQuery(query);
   if (!key || results.length === 0) return;
   try {
-    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(KEYS.suggestions)) ?? {};
+    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions))) ?? {};
     all[key] = { savedAt: Date.now(), data: results };
     const keys = Object.keys(all);
     if (keys.length > MAX_SUGGESTION_ENTRIES) {
@@ -181,7 +181,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
         .slice(0, keys.length - MAX_SUGGESTION_ENTRIES)
         .forEach((k) => delete all[k]);
     }
-    await kvSet(KEYS.suggestions, JSON.stringify(all));
+    await kvSet(cityScopedKey(KEYS.suggestions), JSON.stringify(all));
   } catch {
     // best-effort
   }
@@ -191,7 +191,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
 export async function loadSuggestions(query: string): Promise<Suggestion[]> {
   const key = normQuery(query);
   if (!key) return [];
-  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(KEYS.suggestions);
+  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions));
   if (!all) return [];
   const fresh = (e: Stamped<Suggestion[]> | undefined) =>
     e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS ? e.data : null;
