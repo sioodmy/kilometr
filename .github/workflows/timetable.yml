@@ -66,6 +66,40 @@ jobs:
           node -e "const m=require('./cloudflare/dist/manifest.json');console.log(JSON.stringify({version:m.version,builtAt:m.builtAt,sizeMB:+(m.db.sizeBytes/1048576).toFixed(1),stats:m.stats,sources:{mpk:m.sources.mpk.effectiveDate,kd:m.sources.kd.schedulesVersion||m.sources.kd.skippedReason}},null,2))" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+      # Budżet rozmiaru: ostrzega, gdy baza urośnie wyraźnie względem R2.
+      # Doradcze (nie blokuje uploadu): rozkład czasem rośnie legalnie,
+      # ale +15% z dnia na dzień to zwykle błąd buildu, nie nowe kursy.
+      - name: Budżet rozmiaru bazy
+        if: steps.build.outputs.exit == '0'
+        run: |
+          set -euo pipefail
+          NEW=$(stat -c%s cloudflare/dist/kilometr-gtfs.db)
+          echo "Nowa baza: $((NEW / 1048576)) MB" >> "$GITHUB_STEP_SUMMARY"
+          URL="${TIMETABLE_PUBLIC_URL:-}"
+          if [ -z "$URL" ]; then
+            echo "Brak TIMETABLE_PUBLIC_URL — pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          REMOTE=$(curl -fsS --max-time 20 "$URL/manifest.json" 2>/dev/null || true)
+          OLD=""
+          if [ -n "$REMOTE" ]; then
+            OLD=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log((JSON.parse(s).db||{}).sizeBytes||0)}catch{console.log(0)}})" <<< "$REMOTE")
+          fi
+          if [ -z "${OLD:-}" ] || [ "$OLD" -le 0 ]; then
+            echo "Brak zdalnego manifestu — pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          DIFF=$((NEW - OLD))
+          PCT=$((DIFF * 100 / OLD))
+          SIGN=""
+          if [ "$DIFF" -ge 0 ]; then SIGN="+"; fi
+          echo "R2: $((OLD / 1048576)) MB, nowa: $((NEW / 1048576)) MB (${SIGN}${PCT}%)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PCT" -gt 15 ] && [ "$DIFF" -gt 5242880 ]; then
+            echo "::warning::Baza urosła o ${PCT}% (+$((DIFF / 1048576)) MB) względem R2. Jeśli to nie nowy rozkład, sprawdź build."
+          fi
+        env:
+          TIMETABLE_PUBLIC_URL: ${{ secrets.TIMETABLE_PUBLIC_URL }}
+
       - name: Artefakt (7 dni, do podejrzenia)
         if: steps.build.outputs.exit == '0'
         uses: actions/upload-artifact@v4

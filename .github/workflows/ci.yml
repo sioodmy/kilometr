@@ -97,8 +97,16 @@ jobs:
             echo "npm audit (root): brak danych" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Doradczy, dopóki paczki Expo nie są dociągnięte do SDK (dziś 9
+      # niezgodności wersji). Wynik ląduje w podsumowaniu, żeby dryf było
+      # widać. Twarda bramka dopiero po alignie zależności.
       - name: Expo Doctor (Advisory)
-        run: npx expo-doctor || true
+        run: |
+          npx expo-doctor > /tmp/expo-doctor.txt 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -25 /tmp/expo-doctor.txt >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/expo-doctor.txt
 
   verify-subprojects:
     name: Verify Server & Landing
