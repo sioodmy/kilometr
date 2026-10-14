@@ -1090,9 +1090,9 @@ async function main() {
   // 7. Wagi, indeksy, meta, porządki.
   db.exec('PRAGMA synchronous = NORMAL;');
   db.exec('CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_stoptimes_stop ON stop_times (stop_id, dep_sec)');
   log('wagi przystanków…');
-  db.exec('UPDATE stops SET weight = (SELECT COUNT(*) FROM stop_times WHERE stop_times.stop_id = stops.stop_id)');
+  db.exec('UPDATE stops SET weight = 0');
+  db.exec('UPDATE stops SET weight = agg.c FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg WHERE agg.stop_id = stops.stop_id');
   // Statystyki planisty (sqlite_stat1): świeży plik nie ma historii zapytań,
   // więc PRAGMA optimize nic by nie dał — jawny ANALYZE robi to deterministycznie.
   // Na telefonie tego nie powtarzamy (import i tak jest ciężki, a indeksy wystarczą).
