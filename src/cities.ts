@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm';
 
 export interface CityCenter {
   lat: number;
@@ -84,7 +84,24 @@ const KRAKOW: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW];
+const GZM: CityDef = {
+  id: 'gzm',
+  name: 'GZM',
+  center: { lat: 50.2649, lon: 19.0238 },
+  radiusM: 35_000,
+  bounds: { minLat: 49.95, maxLat: 50.6, minLon: 18.3, maxLon: 19.8 },
+  nominatimViewbox: '18.3,50.6,19.8,49.95',
+  overpassBbox: '49.95,18.30,50.60,19.80',
+  zbiorkomSlug: 'gzm',
+  zbiorkomBbox: '18.3,49.95,19.8,50.6',
+  dbFile: 'kilometr-gtfs-gzm.db',
+  tilePack: 'gzm-tiles.ktp',
+  tileBbox: { minLat: 49.9, maxLat: 50.65, minLon: 18.25, maxLon: 19.85 },
+  tileMaxZoom: 14,
+  features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

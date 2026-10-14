@@ -84,16 +84,23 @@ export const uk: Strings = {
     section: 'Місто',
     settingsTitle: 'Місто',
     settingsHint: 'Розклад, мапа офлайн і новини йдуть за містом. Дані іншого міста залишаються на телефоні.',
-    name: (id: string): string => (id === 'krakow' ? 'Краків' : 'Вроцлав'),
-    gen: (id: string): string => (id === 'krakow' ? 'Кракова' : 'Вроцлава'),
-    loc: (id: string): string => (id === 'krakow' ? 'Кракові' : 'Вроцлаві'),
+    name: (id: string): string => (id === 'krakow' ? 'Краків' : id === 'gzm' ? 'GZM' : 'Вроцлав'),
+    gen: (id: string): string => (id === 'krakow' ? 'Кракова' : id === 'gzm' ? 'GZM' : 'Вроцлава'),
+    loc: (id: string): string => (id === 'krakow' ? 'Кракові' : id === 'gzm' ? 'GZM' : 'Вроцлаві'),
     feeds: (id: string): string =>
-      id === 'krakow' ? 'ZTP і Koleje Małopolskie' : 'MPK і Koleje Dolnośląskie',
-    newsSources: (id: string): string => (id === 'krakow' ? 'ZTP Краків' : 'MPK Вроцлав • wroclaw.pl'),
-    operator: (id: string): string => (id === 'krakow' ? 'ZTP Краків' : 'MPK Вроцлав'),
-    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : 'MPK'),
-    portal: (id: string): string => (id === 'krakow' ? 'ztp.krakow.pl' : 'wroclaw.pl'),
-    supportedList: 'Вроцлав, Краків',
+      id === 'krakow'
+        ? 'ZTP і Koleje Małopolskie'
+        : id === 'gzm'
+          ? 'ZTM і Koleje Śląskie'
+          : 'MPK і Koleje Dolnośląskie',
+    newsSources: (id: string): string =>
+      id === 'krakow' ? 'ZTP Краків' : id === 'gzm' ? 'ZTM GZM' : 'MPK Вроцлав • wroclaw.pl',
+    operator: (id: string): string =>
+      id === 'krakow' ? 'ZTP Краків' : id === 'gzm' ? 'ZTM GZM' : 'MPK Вроцлав',
+    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : 'MPK'),
+    portal: (id: string): string =>
+      id === 'krakow' ? 'ztp.krakow.pl' : id === 'gzm' ? 'metropoliaztm.pl' : 'wroclaw.pl',
+    supportedList: 'Вроцлав, Краків, GZM',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
@@ -460,6 +467,7 @@ export const uk: Strings = {
     emptyPlain: 'Спробуй іншу ціль або перевір інший час відправлення.',
     vehicleTramGen: 'трамваєм',
     vehicleBusGen: 'автобусом',
+    vehicleTrolleyGen: 'тролейбусом',
     vehicleTrainGen: 'потягом',
     vehicleCableGen: 'канатною дорогою',
     showWithChangesA11y: 'Показати сполучення з пересадками',
@@ -497,7 +505,7 @@ export const uk: Strings = {
     searching: (city: string) => `Шукаю у ${city}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
-      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
+      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
     yourPlaces: 'Твої місця',
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
@@ -751,6 +759,7 @@ export const uk: Strings = {
     modeBus: 'Автобус',
     modeTrain: 'Потяг',
     modeCable: 'Канатна дорога',
+    modeTrolleybus: 'Тролейбус',
     departTitle: (service: string, at: string) => `${service} • відправлення о ${at}`,
     rideTitle: (service: string, at: string) => `${service} • прибуття о ${at}`,
     transferTitle: (service: string, at: string) =>
