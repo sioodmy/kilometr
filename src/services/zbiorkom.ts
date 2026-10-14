@@ -1,8 +1,9 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
 // - miasto `pkp`: pozycje i opóźnienia pociągów regionalnych (agencja `KD`
-//   dla Wrocławia, `KML` dla Krakowa),
-// - miasto `wroclaw` / `krakow`: awaryjne (Wrocław) albo podstawowe (Kraków)
-//   pozycje autobusów i tramwajów, gdy bezpośredni feed nie odpowiada.
+//   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM),
+// - miasto `wroclaw` / `krakow` / `gzm`: awaryjne (Wrocław) albo podstawowe
+//   (Kraków, GZM) pozycje autobusów i tramwajów, gdy bezpośredni feed nie
+//   odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -92,6 +93,15 @@ export async function fetchZbKrakowRows(): Promise<RawVehicleRow[] | null> {
   return toRawRows(positions);
 }
 
+/** Pozycje ZTM GZM jako wiersze dla matchera. Podstawowy feed live. */
+export async function fetchZbGzmRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const gzm = getCity('gzm');
+  const positions = await fetchPositions(gzm.zbiorkomSlug, undefined, gzm.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
 function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
   const rows: RawVehicleRow[] = [];
   for (const p of positions) {
@@ -123,9 +133,28 @@ export async function fetchZbKml(): Promise<ZbKdVehicle[] | null> {
   return fetchZbRail('KML', getCity('krakow').zbiorkomBbox);
 }
 
+/** Pociągi Kolei Śląskich, IC i POLREGIO z jednego zapytania (bbox GZM).
+ *  Trzy osobne zapytania na poll to zbędny ruch: API przyjmuje listę
+ *  agencji, a pojazdy rozdzielamy po `vehicle.agency`. */
+export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+  const { getCity } = await import('../cities');
+  const positions = await fetchPositions('pkp', 'KS,IC,PR', getCity('gzm').zbiorkomBbox);
+  if (positions === null) return null;
+  const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
+  for (const agency of ['KS', 'IC', 'PR']) {
+    const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
+    if (vehicles.length > 0) out.push({ agency, vehicles });
+  }
+  return out;
+}
+
 async function fetchZbRail(agency: string, bbox?: string): Promise<ZbKdVehicle[] | null> {
   const positions = await fetchPositions('pkp', agency, bbox);
   if (positions === null) return null;
+  return toRailVehicles(positions);
+}
+
+function toRailVehicles(positions: ZbPositionJson[]): ZbKdVehicle[] {
   const out: ZbKdVehicle[] = [];
   for (const p of positions) {
     const trainNumber = (p.brigade || '').trim();

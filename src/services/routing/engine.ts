@@ -490,14 +490,14 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
   // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
   // Pociągi (mode 'train') wypadają z wąskich filtrów same, bo nigdy nie są
-  // równe 'tram' ani 'bus'.
+  // równe 'tram' ani 'bus'. Trolejbus jedzie z filtrem autobusowym.
   const applyModeFilter = (list: RawJourney[]) =>
     modes === 'all'
       ? list
       : list.filter((j) =>
           j.segments
             .filter((s) => s.type === 'transit')
-            .every((s) => s.mode === modes),
+            .every((s) => s.mode === modes || (modes === 'bus' && s.mode === 'trolleybus')),
         );
   const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays };
   // W trybie przyjazdu odrzucamy wszystko z przybyciem po celu

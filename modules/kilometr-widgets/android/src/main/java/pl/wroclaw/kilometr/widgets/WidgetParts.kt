@@ -93,6 +93,7 @@ internal fun modeIcon(mode: String?): Int = when (mode) {
   "tram", "cable" -> R.drawable.kw_ic_tram
   "train" -> R.drawable.kw_ic_train
   "walk" -> R.drawable.kw_ic_walk
+  "bus", "trolleybus" -> R.drawable.kw_ic_bus
   else -> R.drawable.kw_ic_bus
 }
 

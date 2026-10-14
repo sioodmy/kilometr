@@ -31,17 +31,28 @@ export const TRANSIT_PALETTE = [
   '#1A237E', // Midnight Blue
 ];
 
-/** Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy). */
-export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'train' | 'cable' | 'walk' {
+/**
+ * Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy).
+ * Moduł musi się dać importować w Node (skrypty check:*), więc `cityId` jest
+ * opcjonalnym parametrem, a nie odczytem aktywnego miasta: heurystyka niskich
+ * numerów dotyczy Wrocławia i Krakowa, a w GZM niskie numery mają też
+ * autobusy, więc komponent przekazuje `'gzm'` i fallback gaśnie.
+ */
+export function inferTransitMode(
+  mode?: LegMode,
+  line?: string,
+  cityId?: string,
+): 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'walk' {
   if (mode === 'walk') return 'walk';
   if (mode === 'tram') return 'tram';
   if (mode === 'train') return 'train';
   if (mode === 'cable') return 'cable';
+  if (mode === 'trolleybus') return 'trolleybus';
   if (mode === 'bus') return 'bus';
   if (!line) return 'bus';
   const clean = line.trim();
   const num = parseInt(clean, 10);
-  if (!isNaN(num) && num >= 1 && num <= 33) {
+  if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
   }
   return 'bus';
@@ -62,6 +73,13 @@ export const TRAIN_BADGE_BG = '#FFB957';
  */
 export const CABLE_BADGE_BG = '#A5CCE8';
 
+/**
+ * Trolejbus (GZM/Tychy) dostaje stałą zieleń: sygnalizuje napęd elektryczny,
+ * a odcień jest odrębny od bursztynu pociągów i błękitu kolejki. Ciemne
+ * tło → biały tekst, kontrast ~5:1.
+ */
+export const TROLLEY_BADGE_BG = '#2E7D32';
+
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
 function contrastFg(bg: string): string {
   const hex = bg.replace('#', '');
@@ -76,13 +94,17 @@ function contrastFg(bg: string): string {
 export function getLineColors(
   line?: string,
   mode?: LegMode,
+  cityId?: string,
 ): { bg: string; fg: string; isTram: boolean; isTrain: boolean; isCable: boolean } {
-  const resolved = inferTransitMode(mode, line);
+  const resolved = inferTransitMode(mode, line, cityId);
   if (resolved === 'train') {
     return { bg: TRAIN_BADGE_BG, fg: contrastFg(TRAIN_BADGE_BG), isTram: false, isTrain: true, isCable: false };
   }
   if (resolved === 'cable') {
     return { bg: CABLE_BADGE_BG, fg: contrastFg(CABLE_BADGE_BG), isTram: false, isTrain: false, isCable: true };
+  }
+  if (resolved === 'trolleybus') {
+    return { bg: TROLLEY_BADGE_BG, fg: contrastFg(TROLLEY_BADGE_BG), isTram: false, isTrain: false, isCable: false };
   }
   const isTram = resolved === 'tram';
   const clean = (line || '').trim().toUpperCase();

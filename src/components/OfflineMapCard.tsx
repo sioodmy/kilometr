@@ -25,7 +25,7 @@ import {
 
 export function OfflineMapCard() {
   const s = useStrings();
-  const { cityId } = useActiveCity();
+  const { cityId, city } = useActiveCity();
   const cityName = s.city.name(cityId);
   // Dopełniacz ("mapy Krakowa", "na telefonie"), nie mianownik: te teksty
   // wchodzą w dopełnienie albo są rzeczownikiem w locacji.
@@ -75,7 +75,7 @@ export function OfflineMapCard() {
   }, [busy, refresh, s, cityId]);
 
   const handleDelete = useCallback(() => {
-    Alert.alert(s.settings.offlineMapDeleteTitle, s.settings.offlineMapDeleteBody, [
+    Alert.alert(s.settings.offlineMapDeleteTitle, s.settings.offlineMapDeleteBody(city.tilePackMB), [
       { text: s.common.cancel, style: 'cancel' },
       {
         text: s.settings.offlineMapDelete,
@@ -88,7 +88,7 @@ export function OfflineMapCard() {
         },
       },
     ]);
-  }, [refresh, s, cityId]);
+  }, [refresh, s, city, cityId]);
 
   const pct = Math.round(progress * 100);
   const blocked = !ready && cooldownMs > 0;
@@ -106,7 +106,7 @@ export function OfflineMapCard() {
               ? s.settings.offlineMapReady(cityGen)
               : blocked
                 ? s.settings.offlineMapCooldownBody(remainingDays(cooldownMs))
-                : s.settings.offlineMapHint(cityGen)}
+                : s.settings.offlineMapHint(cityGen, city.tilePackMB)}
           </Text>
         </View>
       </View>

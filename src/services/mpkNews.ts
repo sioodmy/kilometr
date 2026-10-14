@@ -1,6 +1,7 @@
 // Czytnik aktualności per-miasto (bez dodatkowych zależności).
 // - Wrocław: RSS wroclaw.pl/komunikacja (miasto) + HTML mpk.wroc.pl (zmiany),
 // - Kraków: RSS ZTP (komunikaty KMK, ?post_type=komunikat).
+// - GZM: HTML rj.transportgzm.pl/v2/news (komunikaty ZTM, serwerowy markup).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -45,6 +46,14 @@ export const MPK_CHANGES_URL =
  */
 export const ZTP_KOMUNIKATY_URL = 'https://ztp.krakow.pl/kmk/komunikaty';
 export const ZTP_KOMUNIKATY_RSS = 'https://ztp.krakow.pl/feed?post_type=komunikat';
+export const GZM_NEWS_URL = 'https://rj.transportgzm.pl/v2/news/';
+
+/**
+ * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
+ * (jeden ekran, ~35 kart). Karta: div.panel.panel-default > h2 z linkiem
+ * /v2/news/i/{id}/, data „Ostatnia aktualizacja: DD.MM.RRRR [HH:MM]”
+ * albo „Data obowiązywania od: DD.MM.RRRR”, lead p.list_lead.
+ */
 
 /** RSS bywa wolny; po 12 s uznajemy pobieranie za nieudane, żeby ekran nie wisiał. */
 const NEWS_TIMEOUT_MS = 12000;
@@ -337,6 +346,67 @@ export function parseZtpRss(xml: string): MpkNewsItem[] {
   return items;
 }
 
+/**
+ * Komunikaty ZTM GZM z listy (jeden fetch: tytuł + link + data + lead).
+ * Numery linii nie mają własnych znaczników na liście, więc skanujemy
+ * tekst (daty wycinamy wcześniej, żeby „18.10.2026” nie udawało linii).
+ */
+export function parseGzmNews(html: string): MpkNewsItem[] {
+  const cards = html.split(/<div class="panel panel-default">/i).slice(1);
+  const items: MpkNewsItem[] = [];
+  for (const card of cards) {
+    const linkM = card.match(/href="(\/v2\/news\/i\/\d+\/?)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkM) continue;
+    const link = `https://rj.transportgzm.pl${decodeEntities(linkM[1]).trim()}`;
+    const rawTitle = htmlToText(linkM[2]).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const dateM = card.match(
+      /(?:Ostatnia aktualizacja|Data obowiązywania od):\s*(\d{1,2}\.\d{1,2}\.\d{4})(?:\s+(\d{1,2}:\d{2}))?/,
+    );
+    const dateLabel = dateM ? (dateM[2] ? `${dateM[1]} ${dateM[2]}` : dateM[1]) : '';
+    const pubDate = dateM ? parsePlDate(dateM[1]) : null;
+    const lead = htmlToText((card.match(/<p class="lead list_lead">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    if (!title) continue;
+    items.push({
+      id: link,
+      title,
+      link,
+      description: lead,
+      imageUrl: null,
+      urgent: isUrgentNews(title, lead),
+      pubDate,
+      dateLabel: dateLabel || formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractGzmLines(title, lead),
+    });
+  }
+  return items;
+}
+
+/** Numery linii GZM w tekście: 6, M100, A4, Z-4, AP. */
+const GZM_LINE_RE = /\b([A-Z]{0,2}\d{1,3}[A-Z]?|[A-Z]-\d{1,3}|AP)\b/gi;
+
+function extractGzmLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{4}/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ');
+  let m: RegExpExecArray | null;
+  GZM_LINE_RE.lastIndex = 0;
+  while ((m = GZM_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    // Numery stanowisk („Gospoda 02”) to nie linie: prawdziwe linie
+    // nie zaczynają się od zera.
+    if (/^0\d+$/.test(tok)) continue;
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
 const ARTICLE_JUNK_RE =
   /^(galeria zdjęć|zobacz galerię|zobacz galerię zdjęć tego artykułu|rozwiń|czytaj także|polecane|udostępnij)$/i;
 
@@ -380,6 +450,7 @@ function scrubArticleHtml(raw: string): string {
 export function extractArticleBlocks(html: string, url: string): ArticleBlock[] {
   const mpk = /mpk\.wroc\.pl/i.test(url);
   const ztp = /ztp\.krakow\.pl/i.test(url);
+  const gzm = /rj\.transportgzm\.pl/i.test(url);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : ztp
@@ -387,8 +458,14 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
         html.match(/class="content"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i)?.[1] ??
         html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
         '')
-      : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
+      : gzm
+        ? (html.split(/id="mcontent"/i)[1]?.split(/<div class="modal"|<footer/i)[0] ?? '')
+        : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
         '');
+  if (gzm) {
+    // Tytuł niesie nagłówek ekranu (params.title), więc w treści go pomijamy.
+    fragment = fragment.replace(/<h2\b[^>]*>[\s\S]*?<\/h2>/i, ' ');
+  }
   fragment = scrubArticleHtml(fragment);
   if (!fragment.trim()) return [];
   const blocks: ArticleBlock[] = [];
@@ -483,7 +560,21 @@ function rememberNews(items: MpkNewsItem[], cityId: string): MpkNewsItem[] {
 export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const city = getCity(activeCityId());
   if (city.id === 'krakow') return fetchZtpNews(signal, city.id);
+  if (city.id === 'gzm') return fetchGzmNews(signal, city.id);
   return fetchMpkNews(signal);
+}
+
+/** Komunikaty ZTM GZM: jedno źródło (lista HTML), brak fallbacku. */
+async function fetchGzmNews(signal?: AbortSignal, cityId = 'gzm'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const html = await fetchText(GZM_NEWS_URL, scope.signal, 'text/html, */*');
+    const items = parseGzmNews(html);
+    if (items.length === 0) console.warn('[News] GZM: pusta lista (zmiana markupu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
 }
 
 async function fetchZtpNews(signal?: AbortSignal, cityId = 'krakow'): Promise<MpkNewsItem[]> {

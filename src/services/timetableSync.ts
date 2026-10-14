@@ -37,6 +37,10 @@ export interface TimetableManifest {
     kd?: { schedulesVersion?: string; skippedReason?: string | null };
     ztp?: { fingerprint?: string };
     kml?: { version?: string | null; skippedReason?: string | null };
+    ztm?: { fingerprint?: string };
+    ks?: { version?: string | null; skippedReason?: string | null };
+    ic?: { schedulesVersion?: string; skippedReason?: string | null };
+    pr?: { schedulesVersion?: string; skippedReason?: string | null };
   };
   stats: { stops: number; routes: number; trips: number; stopTimes: number };
 }

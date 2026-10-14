@@ -1,6 +1,7 @@
 # Codzienny build prebuilt SQLite per-miasto → Cloudflare R2.
 #
-# Macierz: wroclaw (MPK + KD z PDP) i krakow (3 feedy ZTP, bez PDP).
+# Macierz: wroclaw (MPK + KD z PDP), krakow (3 feedy ZTP + KMŁ)
+# i gzm (eksporty dzienne ZTM z CKAN + KŚ).
 # Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.
 # Wrocław dokłada legacy root (manifest.json, db/...) dla starych APK.
 #
@@ -29,7 +30,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow]
+        options: ['', wroclaw, krakow, gzm]
 
 permissions:
   contents: read
@@ -49,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4

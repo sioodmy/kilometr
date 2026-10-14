@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm';
 
 export interface CityCenter {
   lat: number;
@@ -38,6 +38,8 @@ export interface CityDef {
   tilePack: string;
   tileBbox: CityBbox;
   tileMaxZoom: number;
+  /** Orientacyjny rozmiar pakietu kafli (MB) do tekstów UI; "ok." w i18n. */
+  tilePackMB: number;
   features: {
     /** Kolej linowa (Polinka) istnieje tylko we Wrocławiu. */
     cable: boolean;
@@ -64,6 +66,7 @@ const WROCLAW: CityDef = {
   tilePack: 'wroclaw-tiles.ktp',
   tileBbox: { minLat: 51.0, maxLat: 51.22, minLon: 16.8, maxLon: 17.28 },
   tileMaxZoom: 14,
+  tilePackMB: 31,
   features: { cable: true, campusPois: true, regionalRail: true, directBusPosition: true },
 };
 
@@ -81,10 +84,35 @@ const KRAKOW: CityDef = {
   tilePack: 'krakow-tiles.ktp',
   tileBbox: { minLat: 49.96, maxLat: 50.16, minLon: 19.7, maxLon: 20.3 },
   tileMaxZoom: 14,
+  tilePackMB: 34,
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW];
+const GZM: CityDef = {
+  id: 'gzm',
+  name: 'GZM',
+  // Strefa obsługi metropolii: promień musi sięgać najdalszych gmin GZM
+  // (najdalszy punkt to Rudziniec Gliwicki ~46 km od Katowic), a nie obejmować
+  // Bielska (~49,5 km). Rybnik i Wodzisław Śląskie NIE są w GZM, więc nie
+  // wyznaczają promienia.
+  center: { lat: 50.2649, lon: 19.0238 },
+  radiusM: 48_000,
+  bounds: { minLat: 49.95, maxLat: 50.6, minLon: 18.3, maxLon: 19.8 },
+  nominatimViewbox: '18.3,50.6,19.8,49.95',
+  overpassBbox: '49.95,18.30,50.60,19.80',
+  zbiorkomSlug: 'gzm',
+  zbiorkomBbox: '18.3,49.95,19.8,50.6',
+  dbFile: 'kilometr-gtfs-gzm.db',
+  tilePack: 'gzm-tiles.ktp',
+  tileBbox: { minLat: 49.9, maxLat: 50.65, minLon: 18.25, maxLon: 19.85 },
+  // z13, nie z14: cała metropolia w z14 to ~311 MB (limit 300 MB na obiekt
+  // w R2), a z13 daje ~80 MB i wystarczającą szczegółowość offline.
+  tileMaxZoom: 13,
+  tilePackMB: 80,
+  features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

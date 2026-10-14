@@ -2,7 +2,7 @@
 /**
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Użycie: node build-timetable.mjs [--city=wroclaw|krakow] [--force] [--write-coords] [--allow-mpk-only]
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city zachowuje się jak dawniej (Wrocław → cloudflare/dist/).
  * Z --city artefakty lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
@@ -40,7 +40,7 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : 'wroclaw';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 const CITY_SCOPED = CITY_ARG !== '';
 const DIST = CITY_SCOPED ? join(ROOT, 'dist', CITY) : join(ROOT, 'dist');
@@ -72,6 +72,70 @@ const ZTP_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@ki
  */
 const KML_GTFS_URL = 'https://kolejemalopolskie.com.pl/rozklady_jazdy/kml-ska-gtfs.zip';
 const KML_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * GZM: ZTM publikuje eksporty dzienne (CKAN, URL-e rotowane codziennie),
+ * każdy pokrywa inny zakres dat. Bierzemy wszystkie ZIP-y z datasetu
+ * i mergujemy prefiksami GZM:{i} (ten sam wzorzec co feedy ZTP Krakowa).
+ * Dataset: otwartedane.metropoliagzm.pl, „GTFS wersja rozszerzona”.
+ */
+const GZM_CKAN_PACKAGE = 'https://otwartedane.metropoliagzm.pl/api/3/action/package_show?id=317435cc-0075-4d10-b8ef-6e9b0010e90a';
+const GZM_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * Koleje Śląskie: publiczny roczny GTFS (bez klucza). Pociągi grupujemy
+ * po numerze z trip_short_name jak KMŁ: brygada z live (zbiorkom, agencja
+ * KS) to goły numer, a dopasowanie weryfikują nazwy/czasy postojów.
+ */
+const KS_GTFS_URL = 'https://koleje-ks.pl/gtfs/2025-2026.zip';
+const KS_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * Gminy członkowskie GZM (oficjalna lista 41, gzmetropolia.pl/metropolia).
+ * Uwaga: Rybnik, Wodzisław Śląski, Żory, Jaworzno i Miasteczko Śląskie NIE
+ * należą do GZM (choć ZTM/KŚ mogą tam docierać) i celowo ich tu nie ma.
+ * Gminy bez stacji kolejowej (m.in. Psary, Pilchowice, Wojkowice) po prostu
+ * nie znajdą wpisu w słowniku PDP; to nie błąd.
+ * Bobrowniki też tu nie ma: gmina nie ma stacji, a PDP pod tą nazwą trzyma
+ * Bobrowniki z Kujaw (obsługiwane wyłącznie przez ŁKA).
+ */
+const GZM_GMINAS = [
+  'BĘDZIN', 'BIERUŃ', 'BOJSZOWY', 'BYTOM', 'CHEŁM ŚLĄSKI',
+  'CHORZÓW', 'CZELADŹ', 'DĄBROWA GÓRNICZA', 'GIERAŁTOWICE', 'GLIWICE',
+  'IMIELIN', 'KATOWICE', 'KNURÓW', 'KOBIÓR', 'LĘDZINY', 'ŁAZISKA GÓRNE',
+  'MIERZĘCICE', 'MIKOŁÓW', 'MYSŁOWICE', 'OŻAROWICE', 'PIEKARY ŚLĄSKIE',
+  'PILCHOWICE', 'PSARY', 'PYSKOWICE', 'RADZIONKÓW', 'RUDA ŚLĄSKA',
+  'RUDZINIEC', 'SIEMIANOWICE ŚLĄSKIE', 'SIEWIERZ', 'SŁAWKÓW', 'SOSNOWIEC',
+  'SOŚNICOWICE', 'ŚWIERKLANIEC', 'ŚWIĘTOCHŁOWICE', 'TARNOWSKIE GÓRY',
+  'TYCHY', 'WOJKOWICE', 'WYRY', 'ZABRZE', 'ZBROSŁAWICE',
+];
+/**
+ * Nazwy miast w słowniku PDP różne od nazwy gminy (słownik używa nazwy
+ * miejscowości-węzła, nie pełnej nazwy gminy). Tylko te dwa odstępstwa
+ * wychodzą z audytu; każdy inny brak dokładnego trafienia to ostrzeżenie
+ * i pominięcie gminy (chroni przed miastem o tej samej nazwie w innym
+ * regionie, np. Bobrowniki z Kujaw albo Dąbrowa Białostocka).
+ */
+const GZM_CITY_ALIASES = {
+  'DĄBROWA GÓRNICZA': 'DĄBROWA',
+  'ŁAZISKA GÓRNE': 'ŁAZISKA',
+};
+/**
+ * Stacje GZM, których nie obejmuje słownik cities PDP: Katowice Gł.
+ * (jest tylko w /dictionaries/stations), Pyrzowice Lotnisko, Nowy Bieruń
+ * oraz Taciszów i Rzeczyce Śląskie (gmina Rudziniec, obsługiwane przez PR,
+ * a nieujęte w jej wpisie cities). Zweryfikowane parami: IC/PR faktycznie
+ * się na nich zatrzymują.
+ */
+const GZM_EXTRA_STATIONS = [73312, 265126, 77271, 70169, 70151];
+/** Bbox GZM do geokodowania stacji (minLon, maxLat, maxLon, minLat jak Nominatim). */
+const GZM_BBOX = { minLon: 18.3, maxLat: 50.6, maxLon: 19.8, minLat: 49.95 };
+/**
+ * Obwiednia GZM z zapasem na geokodowanie: druga linia obrony przed stacją
+ * z innego regionu o tej samej nazwie (słownik PDP zwraca całą Polskę).
+ * Najdalsza stacja GZM to Rudziniec Gliwicki (~18.40), stąd zachód 18.05.
+ */
+const GZM_ENVELOPE = { minLat: 49.7, maxLat: 50.75, minLon: 18.05, maxLon: 19.95 };
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
@@ -384,6 +448,277 @@ async function discoverMpk() {
   return { id: 136, url: MPK_FALLBACK_URL, filename: '', effectiveDate: 'unknown' };
 }
 
+/**
+ * Eksporty dzienne ZTM z CKAN: wszystkie ZIP-y datasetu posortowane po
+ * dacie utworzenia (jak mirror TransportGZM-GTFS). Razem pokrywają ~14 dni;
+ * każdy dostaje własny prefiks GZM:{i}, bo ten sam service_id/trip_id
+ * występuje w kilku eksportach z innym zakresem dat.
+ */
+async function discoverGzmExports() {
+  const pkg = await fetchJson(GZM_CKAN_PACKAGE, { Accept: 'application/json', ...GZM_UA }, 30000);
+  const resources = Array.isArray(pkg?.result?.resources) ? pkg.result.resources : [];
+  const zips = resources
+    .filter((r) => (r.format || '').toUpperCase() === 'ZIP' || /\.zip$/i.test(r.name || ''))
+    .filter((r) => r.url)
+    .sort((a, b) => (String(a.created || '') < String(b.created || '') ? -1 : 1));
+  return zips.map((r, i) => ({
+    label: `ZTM-${i}`,
+    url: r.url,
+    prefix: `GZM:${i}`,
+    name: r.name || '',
+    lastModified: r.last_modified || r.created || '',
+  }));
+}
+
+/** YYYYMMDD -> Date UTC (bez strefy, kalendarz GTFS to daty lokalne). */
+function ymdToDate(s) {
+  return new Date(Date.UTC(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1, Number(s.slice(6, 8))));
+}
+
+/** yyyymmdd z Date UTC. */
+function dateToYmd(d) {
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Zwarty import eksportów dziennych ZTM (tylko GZM).
+ *
+ * Eksporty pokrywają rozłączne zakresy dat, ale trip_id się powtarzają
+ * (ten sam kurs w różnych dniach). Zwykły merge prefiksami dałby ~4,4 mln
+ * wierszy stop_times (~390 MB bazy). Tutaj: jeden wiersz kursu na trip_id
+ * z sumą dat ze wszystkich eksportów (serwis scalony przez calendar_dates),
+ * więc baza ląduje w okolicy ~130 MB. Kurs, którego czasy zmieniono
+ * w trakcie okna, dostaje osobny wariant z sufiksem (poprawność > rozmiar).
+ */
+function importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds) {
+  // 1. Kalendarze -> konkretne daty per (eksport, serwis).
+  const serviceDates = new Map(); // `${i}:${sid}` -> Set<yyyymmdd>
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const readTxt = readers[fi];
+    const calTxt = readTxt('calendar.txt');
+    if (calTxt) {
+      eachRow(calTxt, (c, idx) => {
+        const sid = (c[idx.service_id] || '').trim();
+        const start = (c[idx.start_date] || '').trim();
+        const end = (c[idx.end_date] || '').trim();
+        if (!sid || start.length !== 8 || end.length !== 8) return;
+        const flags = [
+          Number(c[idx.sunday]) || 0, Number(c[idx.monday]) || 0, Number(c[idx.tuesday]) || 0,
+          Number(c[idx.wednesday]) || 0, Number(c[idx.thursday]) || 0, Number(c[idx.friday]) || 0,
+          Number(c[idx.saturday]) || 0,
+        ];
+        const set = new Set();
+        for (let d = ymdToDate(start); dateToYmd(d) <= end; d = new Date(d.getTime() + 86400000)) {
+          if (flags[d.getUTCDay()]) set.add(dateToYmd(d));
+        }
+        serviceDates.set(`${fi}:${sid}`, set);
+      });
+    }
+    const calDatesTxt = readTxt('calendar_dates.txt');
+    if (calDatesTxt) {
+      eachRow(calDatesTxt, (c, idx) => {
+        const sid = (c[idx.service_id] || '').trim();
+        const date = (c[idx.date] || '').trim();
+        const exc = Number(c[idx.exception_type]) || 0;
+        if (!sid || date.length !== 8) return;
+        const key = `${fi}:${sid}`;
+        if (!serviceDates.has(key)) serviceDates.set(key, new Set());
+        if (exc === 1) serviceDates.get(key).add(date);
+        else if (exc === 2) serviceDates.get(key).delete(date);
+      });
+    }
+  }
+
+  // 2. Przystanki i linie bez prefiksów (REPLACE deduplikuje między eksportami).
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const readTxt = readers[fi];
+    const stopsTxt = readTxt('stops.txt');
+    if (!stopsTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stops.txt, przerywam (nie nadpisuję R2 pustką).`);
+    const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
+    db.exec('BEGIN');
+    eachRow(stopsTxt, (c, idx) => {
+      const id = (c[idx.stop_id] || '').trim();
+      const name = (c[idx.stop_name] || '').trim();
+      if (!id || !name) return;
+      const lat = Number(c[idx.stop_lat]) || 0;
+      const lon = Number(c[idx.stop_lon]) || 0;
+      const norm = normalizePolish(name);
+      ins.run(id, (c[idx.stop_code] || '').trim(), name, lat, lon, norm);
+      if (lat && lon && !cityStopIds.has(id)) {
+        cityStopIds.add(id);
+        cityStops.push({ id, norm, lat, lon });
+      }
+      counts.stops++;
+    });
+    db.exec('COMMIT');
+    const routesTxt = readTxt('routes.txt');
+    if (routesTxt) {
+      const insR = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(routesTxt, (c, idx) => {
+        const id = (c[idx.route_id] || '').trim();
+        if (!id) return;
+        const raw = (c[idx.route_type] || '').trim();
+        const num = raw !== '' && !isNaN(Number(raw)) ? Number(raw) : 3;
+        insR.run(id, (c[idx.route_short_name] || '').trim() || id, (c[idx.route_long_name] || '').trim(), num);
+        counts.routes++;
+      });
+      db.exec('COMMIT');
+    }
+  }
+
+  // 3. Wystąpienia kursów per eksport (daty z kalendarza tego eksportu).
+  const occ = new Map(); // tid -> Array<{route, headsign, direction, shape, dates:Set}>
+  let skippedNoService = 0;
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const tripsTxt = readers[fi]('trips.txt');
+    if (!tripsTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez trips.txt, przerywam.`);
+    eachRow(tripsTxt, (c, idx) => {
+      const tid = (c[idx.trip_id] || '').trim();
+      const rid = (c[idx.route_id] || '').trim();
+      const sid = (c[idx.service_id] || '').trim();
+      if (!tid || !rid || !sid) return;
+      const dates = serviceDates.get(`${fi}:${sid}`);
+      if (!dates || dates.size === 0) { skippedNoService++; return; }
+      if (!occ.has(tid)) occ.set(tid, []);
+      occ.get(tid).push({
+        fi,
+        route: rid,
+        headsign: (c[idx.trip_headsign] || '').trim(),
+        direction: Number(c[idx.direction_id]) || 0,
+        shape: (c[idx.shape_id] || '').trim(),
+        dates,
+      });
+    });
+  }
+  if (skippedNoService > 0) log(`GZM: pominięto ${skippedNoService} kursów bez dat serwisu`);
+
+  // 4. Warianty: ten sam trip_id o różnych czasach w różnych eksportach
+  // (zmiana rozkładu w trakcie okna) nie może dzielić jednego wiersza.
+  // Sygnatura to pełny odcisk treści (stop_id, godziny, kolejność), nie tylko
+  // liczba postojów i końce: zmiana czasów pośrednich też musi dać nowy wariant.
+  // Warianty kluczujemy po sygnaturze (nie po numerze eksportu), żeby ten sam
+  // rozkład z dwóch eksportów nie trafił do dwóch osobnych wariantów.
+  const kept = new Map(); // klucz wiersza -> {sig, dates:Set, data}
+  const variants = new Map(); // tid -> Map<sig, klucz wiersza>
+  let divergent = 0;
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const stTxt = readers[fi]('stop_times.txt');
+    if (!stTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stop_times.txt, przerywam.`);
+    const byTrip = parseStopTimesByTrip(stTxt);
+    for (const [tid, rows] of byTrip) {
+      if (!occ.has(tid)) continue;
+      const sig = hashTripRows(rows);
+      const list = occ.get(tid);
+      const o = list.find((e) => e.fi === fi) ?? list[0];
+      let bySig = variants.get(tid);
+      if (!bySig) { bySig = new Map(); variants.set(tid, bySig); }
+      const known = bySig.get(sig);
+      if (known) {
+        for (const d of o.dates) kept.get(known).dates.add(d);
+        continue;
+      }
+      // Pierwszy wariant trzyma oryginalny trip_id (live dopina się po numerze),
+      // kolejne dostają sufiks. Numerujemy po liczbie wariantów, nie po eksporcie.
+      const key = bySig.size === 0 ? tid : `${tid}#G${bySig.size}`;
+      bySig.set(sig, key);
+      kept.set(key, { sig, dates: new Set(o.dates), data: o });
+      if (bySig.size > 1) divergent++;
+    }
+  }
+  if (divergent > 0) log(`GZM: ${divergent} kursów ze zmienionym rozkładem w trakcie okna (osobne warianty)`);
+
+  // 5. Serwisy scalone: jeden serwis na unikalny zbiór dat (zwykle kilka
+  // wzorców: robocze/soboty/niedziele). Daty dopisujemy przez
+  // calendar_dates, więc getActiveServices działa bez zmian.
+  const svcByDates = new Map(); // klucz dat -> service_id
+  const insCal = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const insCalDate = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
+  const insTrip = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
+  db.exec('BEGIN');
+  for (const [key, k] of kept) {
+    const sorted = [...k.dates].sort();
+    const dkey = sorted.join(',');
+    let svc = svcByDates.get(dkey);
+    if (!svc) {
+      svc = `GZM:SVC:${svcByDates.size}`;
+      svcByDates.set(dkey, svc);
+      insCal.run(svc, 0, 0, 0, 0, 0, 0, 0, sorted[0] ?? '', sorted[sorted.length - 1] ?? '');
+      for (const d of sorted) insCalDate.run(svc, d, 1);
+    }
+    insTrip.run(key, k.data.route, svc, k.data.headsign, k.data.direction, k.data.shape);
+    counts.trips++;
+  }
+  db.exec('COMMIT');
+  log(`GZM: kursów po scaleniu=${kept.size} (serwisów=${svcByDates.size})`);
+
+  // 6. Czasy: drugi przebieg po stop_times, tylko dla trzymanych wariantów.
+  // Ten sam wariant kursu powtarza się w kilku eksportach, więc wiersze
+  // wstawiamy raz (klucz = wariant z fazy 4, dobrany po pełnej sygnaturze).
+  const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
+  db.exec('BEGIN');
+  let batch = 0;
+  const inserted = new Set();
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const stTxt = readers[fi]('stop_times.txt');
+    if (!stTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stop_times.txt, przerywam.`);
+    const byTrip = parseStopTimesByTrip(stTxt);
+    for (const [tid, rows] of byTrip) {
+      const bySig = variants.get(tid);
+      if (!bySig) continue;
+      const key = bySig.get(hashTripRows(rows));
+      if (!key || inserted.has(key)) continue;
+      inserted.add(key);
+      for (const r of rows) {
+        ins.run(key, r[0], r[1], r[2], r[3]);
+        counts.stopTimes++;
+        if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
+      }
+    }
+  }
+  db.exec('COMMIT');
+  log(`GZM: stopTimes po scaleniu=${counts.stopTimes}`);
+}
+
+/**
+ * Wiersze stop_times pogrupowane po kursie: tid -> [[stop_id, arrSec, depSec, seq]],
+ * posortowane po seq. Jeden odczyt na eksport; używa go faza wariantów i faza
+ * wstawiania czasów, więc obie liczą sygnaturę z tych samych danych.
+ */
+function parseStopTimesByTrip(stTxt) {
+  const { header } = splitHeader(stTxt);
+  const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
+    di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+  const byTrip = new Map();
+  let pos = stTxt.indexOf('\n') + 1;
+  const len = stTxt.length;
+  while (pos < len) {
+    let nl = stTxt.indexOf('\n', pos);
+    if (nl === -1) nl = len;
+    let line = stTxt.slice(pos, nl);
+    pos = nl + 1;
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (!line.trim()) continue;
+    const c = line.split(',');
+    const tid = (c[ti] || '').trim();
+    if (!tid) continue;
+    const arr = (c[ai] || '').trim() || '00:00:00';
+    if (!byTrip.has(tid)) byTrip.set(tid, []);
+    byTrip.get(tid).push([(c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0]);
+  }
+  for (const rows of byTrip.values()) rows.sort((a, b) => a[3] - b[3]);
+  return byTrip;
+}
+
+/** Pełny odcisk treści kursu (stop, godziny, kolejność). Ta sama funkcja dla
+ *  obu przebiegów, więc identyczne kursy dają identyczny hash, a każda zmiana
+ *  (także czasów pośrednich) daje inny. */
+function hashTripRows(rows) {
+  const h = createHash('sha1');
+  for (const r of rows) h.update(`${r[3]}\t${r[0]}\t${r[1]}\t${r[2]};`);
+  return h.digest('hex').slice(0, 16);
+}
+
 /* ─── PDP (KD): stacje Wrocławia → rozkład ────────────────────────────── */
 
 function pdpHeaders() {
@@ -420,6 +755,52 @@ async function pdpKdSchedules(stationIds) {
   return { from, to, routes: res.rt || res.routes || [], dict: res.dc || res.dictionaries || {} };
 }
 
+/**
+ * Stacje kolejowe GZM: unia stacji gmin członkowskich ze słownika cities
+ * PDP plus kuratorowane wyjątki (stacje spoza słownika cities). Każdy inny
+ * brak dokładnego trafienia to pominięcie gminy z ostrzeżeniem na końcu:
+ * lepiej stracić stację niż wciągnąć miasto o tej samej nazwie z innego
+ * regionu (PDP zwraca trafienia z całej Polski). Pusta lista to błąd buildu.
+ */
+async function pdpGzmStationIds() {
+  const ids = new Set(GZM_EXTRA_STATIONS.map(Number));
+  const skipped = [];
+  for (const g of GZM_GMINAS) {
+    const wantName = GZM_CITY_ALIASES[g] ?? g;
+    try {
+      const res = await fetchJson(`${PDP_BASE}/api/v1/dictionaries/cities?search=${encodeURIComponent(g)}`, pdpHeaders(), 20000);
+      const cities = res.cities || [];
+      const hit = cities.find((c) => String(c.name || '').toUpperCase() === wantName);
+      if (hit && Array.isArray(hit.stationIds) && hit.stationIds.length > 0) {
+        for (const id of hit.stationIds) ids.add(Number(id));
+      } else {
+        skipped.push(g);
+      }
+    } catch (e) {
+      warn(`GZM miasta: ${g}: ${String(e).slice(0, 120)}`);
+      skipped.push(g);
+    }
+  }
+  if (skipped.length > 0) {
+    log(`GZM: gminy bez wpisu w cities (brak stacji albo inny region): ${skipped.join(', ')}`);
+  }
+  return [...ids].filter((n) => Number.isFinite(n));
+}
+
+/** Rozkład IC/PR dla stacji GZM (okno jak KD, maks. 31 dni w API). */
+async function pdpGzmRail(stationIds) {
+  const from = isoDaysFromNow(0);
+  const to = isoDaysFromNow(KD_WINDOW_DAYS - 1);
+  const q = new URLSearchParams({
+    dateFrom: from, dateTo: to,
+    stations: stationIds.join(','),
+    carriersInclude: 'IC,PR',
+    dictionaries: 'true',
+  });
+  const res = await fetchJson(`${PDP_BASE}/api/v1/schedules/shortened?${q}`, pdpHeaders(), 120000);
+  return { from, to, routes: res.rt || res.routes || [], dict: res.dc || res.dictionaries || {} };
+}
+
 /* ─── Nominatim (tylko brakujące współrzędne stacji KD) ───────────────── */
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -430,18 +811,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Wynik spoza bboxa to śmieć (kiedyś każda stacja dostała ten sam punkt),
  * więc go odrzucamy zamiast brać pierwszy z listy.
  */
-async function geocodeStation(name) {
+async function geocodeStation(name, bbox = WRO_BBOX, placeHint = 'Wrocław, Polska') {
   const inBbox = (r) => {
     const lat = Number(r.lat), lon = Number(r.lon);
-    return lat >= WRO_BBOX.minLat && lat <= WRO_BBOX.maxLat && lon >= WRO_BBOX.minLon && lon <= WRO_BBOX.maxLon;
+    return lat >= bbox.minLat && lat <= bbox.maxLat && lon >= bbox.minLon && lon <= bbox.maxLon;
   };
-  const inWro = new URLSearchParams({
-    q: `${name}, Wrocław, Polska`,
+  const q = new URLSearchParams({
+    q: `${name}, ${placeHint}`,
     format: 'json', limit: '5', addressdetails: '0',
-    viewbox: `${WRO_BBOX.minLon},${WRO_BBOX.maxLat},${WRO_BBOX.maxLon},${WRO_BBOX.minLat}`,
+    viewbox: `${bbox.minLon},${bbox.maxLat},${bbox.maxLon},${bbox.minLat}`,
     bounded: '1',
   });
-  const res = await fetchJson(`${NOMINATIM}?${inWro}`, { 'User-Agent': NOMINATIM_UA }, 20000);
+  const res = await fetchJson(`${NOMINATIM}?${q}`, { 'User-Agent': NOMINATIM_UA }, 20000);
   const hits = Array.isArray(res) ? res.filter(inBbox) : [];
   // Dworzec to railway=station/halt, nie słupek bus_stop; preferujemy kolej.
   const rank = (r) => {
@@ -481,12 +862,16 @@ async function main() {
   }
 
   // 2. Źródła GTFS per-miasto (tanie zapytania).
-  // prefix chroni przed kolizją id między feedami (Kraków ma 3 ZIP-y).
+  // prefix chroni przed kolizją id między feedami (Kraków ma 3 ZIP-y,
+  // GZM ma N eksportów dziennych z powtarzającymi się id).
   let gtfsSources = [];
   let mpk = null;
   let kdVersion = 'none';
   let ztpFingerprint = '';
   let kmlVersion = '';
+  let gtmFingerprint = '';
+  let ksVersion = '';
+  let icprVersion = 'none';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -499,6 +884,25 @@ async function main() {
     ztpFingerprint = ztpVersions.join('|');
     kmlVersion = await headVersion(KML_GTFS_URL, KML_UA);
     log('ZTP:', ztpFingerprint, '| KMŁ:', kmlVersion || '?');
+  } else if (CITY === 'gzm') {
+    if (!PDP_API_KEY) {
+      throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
+    }
+    const exports = await discoverGzmExports();
+    if (exports.length === 0) throw new Error('CKAN ZTM: brak eksportów ZIP, przerywam (nie nadpisuję R2 pustką).');
+    for (const e of exports) {
+      gtfsSources.push({ label: e.label, url: e.url, prefix: e.prefix, headers: GZM_UA, version: e.lastModified });
+    }
+    gtmFingerprint = exports.map((e) => `${e.name}|${e.lastModified}`).join(';');
+    ksVersion = await headVersion(KS_GTFS_URL, KS_UA);
+    log(`ZTM: ${exports.length} eksportów dziennych | KŚ:`, ksVersion || '?');
+    try {
+      icprVersion = await pdpDataVersion();
+    } catch (e) {
+      warn('PDP /data-version failed:', String(e), ', IC/PR mogą być nieaktualne.');
+      icprVersion = 'unknown';
+    }
+    log('IC/PR schedulesVersion:', icprVersion);
   } else {
     mpk = await discoverMpk();
     log('MPK:', mpk.filename || mpk.url, '| effective:', mpk.effectiveDate);
@@ -519,6 +923,8 @@ async function main() {
   // Wtedy (bez --force) budujemy na nowo zamiast pomijać.
   const ztpVersionsReliable = CITY !== 'krakow' || (gtfsSources.length > 0 && gtfsSources.every((s) => !!s.version));
   const kmlVersionReliable = CITY !== 'krakow' || !!kmlVersion;
+  const gtmVersionsReliable = CITY !== 'gzm' || (gtfsSources.length > 0 && gtfsSources.every((s) => !!s.version));
+  const ksVersionReliable = CITY !== 'gzm' || !!ksVersion;
 
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
@@ -538,6 +944,29 @@ async function main() {
         process.exit(2);
       } else {
         warn('zdalny manifest bez realnego KMŁ, przebudowuję zamiast skipować.');
+      }
+    }
+    if (CITY === 'gzm' && remote.sources.ztm?.fingerprint === gtmFingerprint && gtmFingerprint) {
+      // Ten sam zestaw eksportów ZTM wystarczy do skipu tylko wtedy, gdy
+      // zdalna baza faktycznie ma Koleje Śląskie i IC/PR (manifest sprzed
+      // ich wdrożenia ma zgodny odcisk, ale pociągów nie zawiera).
+      const remoteKsReal =
+        (remote.sources.ks?.version || null) === (ksVersion || null) &&
+        Number(remote.sources.ks?.stations || 0) > 0 &&
+        Number(remote.sources.ks?.trips || 0) > 0;
+      const remoteIcPrReal =
+        (remote.sources.ic?.schedulesVersion || null) === (icprVersion || null) &&
+        (remote.sources.pr?.schedulesVersion || null) === (icprVersion || null) &&
+        Number(remote.sources.ic?.trips || 0) > 0 &&
+        Number(remote.sources.pr?.trips || 0) > 0;
+      if (!gtmVersionsReliable || !ksVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else if (remoteKsReal && remoteIcPrReal) {
+        log('brak zmian (ZTM + KŚ + IC/PR), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      } else {
+        warn('zdalny manifest bez realnych KŚ/IC/PR, przebudowuję zamiast skipować.');
       }
     }
     if (CITY === 'wroclaw'
@@ -596,14 +1025,18 @@ async function main() {
   db.exec(SCHEMA_SQL);
   db.exec('PRAGMA synchronous = OFF;');
 
-  const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0, kmlStations: 0, kmlRoutes: 0, kmlTrips: 0, kmlStopTimes: 0 };
+  const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0, kmlStations: 0, kmlRoutes: 0, kmlTrips: 0, kmlStopTimes: 0, ksStations: 0, ksRoutes: 0, ksTrips: 0, ksStopTimes: 0, icStations: 0, icRoutes: 0, icTrips: 0, icStopTimes: 0, prStations: 0, prRoutes: 0, prTrips: 0, prStopTimes: 0 };
   /** Przystanki miasta w pamięci (do liczenia przesiadek na kolej w kroku 6b). */
   const cityStops = [];
   const cityStopIds = new Set();
 
   // 5. GTFS → tabele. Kraków merguje 3 feedy: przystanki współdzielone
   // (REPLACE po stop_id), reszta id z prefiksem KRK:{A,T,M} (brak kolizji).
+  // GZM merguje N eksportów dziennych zwartym importem (dedupe kursów).
   db.exec('DELETE FROM calendar_dates');
+  if (CITY === 'gzm') {
+    importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds);
+  } else {
   for (let fi = 0; fi < txtDirs.length; fi++) {
     const { prefix, label } = txtDirs[fi];
     const readTxt = readers[fi];
@@ -721,22 +1154,35 @@ async function main() {
     }
     log(`${label}: routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
   }
-  // Przystanki liczone z dupami między feedami, przelicz na stan faktyczny.
+  }
+  // Liczniki po merge: GZM wstawia przystanki/linie eksport po eksporcie
+  // (REPLACE), więc surowe zliczenia zawyżają stan. Przelicz na faktyczny
+  // stan tabeli (dla Wrocławia/Krakowa to samo co zliczenia, id są unikalne).
   try {
     counts.stops = db.prepare('SELECT COUNT(*) AS n FROM stops').get().n;
+    counts.routes = db.prepare('SELECT COUNT(*) AS n FROM routes').get().n;
   } catch {}
   log(`GTFS: stops=${counts.stops} routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
 
   // 6. Kolej regionalna: KD z PDP API (tylko Wrocław) albo Koleje
   // Małopolskie ze statycznego GTFS (tylko Kraków). Wspólny mianownik:
   // mapa stacji railGeo (do przesiadek w kroku 6b) i prefiks ID.
-  const RAIL_PREFIX = CITY === 'krakow' ? 'KML' : 'KD';
+  const RAIL_PREFIX = CITY === 'krakow' ? 'KML' : CITY === 'gzm' ? 'KS' : 'KD';
   let kdInfo = CITY === 'wroclaw'
     ? { kind: 'pdp-api', skippedReason: PDP_API_KEY ? null : 'no-key' }
     : { kind: 'none', skippedReason: 'krakow-pdp-unused' };
   let kmlInfo = CITY === 'krakow'
     ? { kind: 'gtfs-zip', skippedReason: 'not-fetched-yet' }
     : { kind: 'none', skippedReason: 'wroclaw-no-kml' };
+  let ksInfo = CITY === 'gzm'
+    ? { kind: 'gtfs-zip', skippedReason: 'not-fetched-yet' }
+    : { kind: 'none', skippedReason: 'only-gzm-has-ks' };
+  let icInfo = CITY === 'gzm'
+    ? { kind: 'pdp-api', skippedReason: 'not-fetched-yet' }
+    : { kind: 'none', skippedReason: 'only-gzm-has-ic' };
+  let prInfo = CITY === 'gzm'
+    ? { kind: 'pdp-api', skippedReason: 'not-fetched-yet' }
+    : { kind: 'none', skippedReason: 'only-gzm-has-pr' };
   /** Liczba stacji kolei bez współrzędnych (kursy z nimi są pomijane). */
   let unresolvedCount = 0;
   /** Stacje kolei ze współrzędnymi (do przesiadek w kroku 6b). */
@@ -1002,6 +1448,318 @@ async function main() {
     log(`KMŁ: stations=${railGeo.size} routes=${trainOf.size} trips=${counts.kmlTrips} stopTimes=${counts.kmlStopTimes}`);
   }
 
+  // 6a2. Koleje Śląskie ze statycznego GTFS (tylko GZM, bez klucza).
+  // Ten sam wzorzec co KMŁ: trasy grupujemy po numerze pociągu (pierwszy
+  // token trip_short_name), live dopina się po numerze (brygada zbiorkom,
+  // agencja KS). Numery parzyste "34052/34053" to obie strony kursu:
+  // druga strona dostaje alias z sufiksem, żeby brygada wracała też.
+  if (CITY === 'gzm') {
+    const zipPath = join(work, 'ks.zip');
+    log('pobieranie ZIP KŚ…');
+    const zipBuf = await fetchBuffer(KS_GTFS_URL, KS_UA, 180000);
+    writeFileSync(zipPath, zipBuf);
+    log('ZIP KŚ:', (zipBuf.length / 1048576).toFixed(1), 'MB');
+    const txtDir = join(work, 'ks');
+    mkdirSync(txtDir, { recursive: true });
+    try {
+      execFileSync('unzip', ['-o', '-j', zipPath, ...NEEDED, '-d', txtDir], { stdio: 'pipe' });
+    } catch (e) {
+      if (e && (e.code === 'ENOENT' || /not found/i.test(String(e.message || '')))) {
+        rmSync(work, { recursive: true, force: true });
+        throw new Error('Brak programu `unzip` w PATH (linux/macos: standard; Windows: Git Bash/WSL).');
+      }
+      warn('unzip dla KŚ zwrócił błąd (kontynuuję, zweryfikuję pliki):', String((e && e.message) || e).slice(0, 160));
+    }
+    const readKs = (n) => {
+      try { return readFileSync(join(txtDir, n), 'utf8'); } catch { return null; }
+    };
+    const PS = (id) => `KS:S:${id}`;
+    const PR = (id) => `KS:${id}`;
+    const stopsTxt = readKs('stops.txt');
+    if (!stopsTxt) throw new Error('ZIP KŚ bez stops.txt, przerywam (nie nadpisuję R2 pustką).');
+    {
+      const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(stopsTxt, (c, idx) => {
+        const id = (c[idx.stop_id] || '').trim();
+        const name = (c[idx.stop_name] || '').trim();
+        if (!id || !name) return;
+        const lat = Number(c[idx.stop_lat]) || 0;
+        const lon = Number(c[idx.stop_lon]) || 0;
+        if (!lat || !lon) { unresolvedCount++; return; }
+        ins.run(PS(id), (c[idx.stop_code] || '').trim(), titleCasePl(name), lat, lon, normalizePolish(name));
+        railGeo.set(id, { name: titleCasePl(name), lat, lon });
+        counts.stops++;
+        counts.ksStations++;
+      });
+      db.exec('COMMIT');
+    }
+    const calTxt = readKs('calendar.txt');
+    if (calTxt) {
+      const ins = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(calTxt, (c, idx) => {
+        const id = (c[idx.service_id] || '').trim();
+        if (!id) return;
+        ins.run(PR(id), Number(c[idx.monday]) || 0, Number(c[idx.tuesday]) || 0, Number(c[idx.wednesday]) || 0,
+          Number(c[idx.thursday]) || 0, Number(c[idx.friday]) || 0, Number(c[idx.saturday]) || 0, Number(c[idx.sunday]) || 0,
+          (c[idx.start_date] || '').trim(), (c[idx.end_date] || '').trim());
+      });
+      db.exec('COMMIT');
+    }
+    const calDatesTxt = readKs('calendar_dates.txt');
+    if (calDatesTxt) {
+      const ins = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(calDatesTxt, (c, idx) => {
+        const id = (c[idx.service_id] || '').trim();
+        if (id) ins.run(PR(id), (c[idx.date] || '').trim(), Number(c[idx.exception_type]) || 0);
+      });
+      db.exec('COMMIT');
+    }
+    const tripsTxt = readKs('trips.txt');
+    if (!tripsTxt) throw new Error('ZIP KŚ bez trips.txt, przerywam.');
+    const trainOf = new Map(); // numer pociągu -> routeId
+    const ksAliases = new Map(); // trip_id -> dopisane aliasy (druga strona "a/b")
+    let skippedNoNumber = 0;
+    {
+      const insRoute = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)');
+      const insTrip = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(tripsTxt, (c, idx) => {
+        const tid = (c[idx.trip_id] || '').trim();
+        const sid = (c[idx.service_id] || '').trim();
+        if (!tid || !sid) return;
+        const fullShort = (c[idx.trip_short_name] || '').trim();
+        const nums = (fullShort.split(/\s/)[0] || '').split('/').map((s) => s.trim()).filter(Boolean);
+        const num = nums[0] || '';
+        if (!num) { skippedNoNumber++; return; }
+        const headsign = (c[idx.trip_headsign] || '').trim();
+        const direction = Number(c[idx.direction_id]) || 0;
+        const shape = (c[idx.shape_id] || '').trim();
+        const putTrip = (tripId, trainNum) => {
+          const routeId = `KS:R:${trainNum}`;
+          if (!trainOf.has(trainNum)) {
+            insRoute.run(routeId, trainNum, headsign || trainNum, 2);
+            trainOf.set(trainNum, routeId);
+            counts.routes++;
+            counts.ksRoutes++;
+          }
+          insTrip.run(PR(tripId), routeId, PR(sid), headsign, direction, shape);
+          counts.trips++;
+          counts.ksTrips++;
+        };
+        putTrip(tid, num);
+        if (nums[1] && nums[1] !== num) {
+          const alias = `${tid}#b`;
+          putTrip(alias, nums[1]);
+          if (!ksAliases.has(tid)) ksAliases.set(tid, []);
+          ksAliases.get(tid).push(alias);
+        }
+      });
+      db.exec('COMMIT');
+    }
+    if (skippedNoNumber > 0) log(`KŚ: pominięto ${skippedNoNumber} kursów bez numeru pociągu`);
+    const stTxt = readKs('stop_times.txt');
+    if (!stTxt) throw new Error('ZIP KŚ bez stop_times.txt, przerywam.');
+    {
+      const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
+      const { header } = splitHeader(stTxt);
+      const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
+        di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+      let batch = 0;
+      db.exec('BEGIN');
+      let pos = stTxt.indexOf('\n') + 1;
+      const len = stTxt.length;
+      while (pos < len) {
+        let nl = stTxt.indexOf('\n', pos);
+        if (nl === -1) nl = len;
+        let line = stTxt.slice(pos, nl);
+        pos = nl + 1;
+        if (line.endsWith('\r')) line = line.slice(0, -1);
+        if (!line.trim()) continue;
+        const c = line.split(',');
+        const tid = (c[ti] || '').trim();
+        if (!tid) continue;
+        const arr = (c[ai] || '').trim() || '00:00:00';
+        const ids = [tid, ...(ksAliases.get(tid) ?? [])];
+        for (const id of ids) {
+          ins.run(PR(id), PS((c[si] || '').trim()), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0);
+          counts.stopTimes++;
+          counts.ksStopTimes++;
+        }
+        if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
+      }
+      db.exec('COMMIT');
+    }
+    ksInfo = {
+      kind: 'gtfs-zip', url: KS_GTFS_URL, version: ksVersion || null,
+      stations: railGeo.size, routes: trainOf.size, trips: counts.ksTrips,
+      stopTimes: counts.ksStopTimes, skippedTripsNoNumber: skippedNoNumber,
+    };
+    log(`KŚ: stations=${railGeo.size} routes=${trainOf.size} trips=${counts.ksTrips} stopTimes=${counts.ksStopTimes}`);
+  }
+
+  // 6a3. IC + Polregio z PDP API (tylko GZM, ten sam klucz co KD).
+  // Kursy grupujemy po numerze pociągu (brygada z live to goły numer),
+  // trasy po (sid, oid) jak KD. PDP zwraca tylko stacje z zapytania,
+  // więc odcinki są z natury ucięte do GZM; kursy z <2 postojami
+  // w GZM odrzucamy. Współrzędne najpierw z KŚ (te same fizyczne
+  // stacje), brakujące geokodujemy jak KD.
+  if (CITY === 'gzm') {
+    const GZM_COORDS_FILE = process.env.GZM_COORDS_FILE || join(DATA, 'gzm-station-coords.json');
+    const gzmIds = await pdpGzmStationIds();
+    if (gzmIds.length === 0) throw new Error('GZM: pusta lista stacji (PDP cities), przerywam.');
+    log(`GZM: ${gzmIds.length} stacji w PDP`);
+    const gzmSet = new Set(gzmIds.map(String));
+    const { from, to, routes, dict } = await pdpGzmRail(gzmIds);
+    const stationNames = stationNamesFromDict(dict);
+    const ksGeoByNorm = new Map();
+    for (const g of railGeo.values()) ksGeoByNorm.set(normalizePolish(g.name), g);
+    let coords = { stations: {} };
+    try {
+      const raw = readFileSync(GZM_COORDS_FILE, 'utf8');
+      coords = JSON.parse(raw);
+      if (!coords.stations) coords.stations = {};
+    } catch {}
+    for (const [id, c] of Object.entries(coords.stations)) {
+      if (!stationNames[id] && c?.name) stationNames[id] = c.name;
+    }
+    log(`IC/PR: nazw stacji: ${Object.keys(stationNames).length} (ze słownika PDP + cache + KŚ)`);
+    const unresolved = [];
+    const unnamed = new Set();
+    const outsideEnvelope = new Set();
+    let skippedNoTimes = 0;
+    let skippedOutside = 0;
+    const ensureCoords = async (id, name) => {
+      const known = ksGeoByNorm.get(normalizePolish(name));
+      if (known) return known;
+      if (coords.stations[id]?.lat) return coords.stations[id];
+      await sleep(1100); // uprzejmie dla Nominatim (max 1 req/s)
+      try {
+        const g = await geocodeStation(name, GZM_BBOX, 'Polska');
+        if (g) {
+          coords.stations[id] = { name, lat: g.lat, lon: g.lon, updatedAt: new Date().toISOString().slice(0, 10) };
+          log(`geocode OK: ${name} → ${g.lat.toFixed(5)},${g.lon.toFixed(5)}`);
+          return coords.stations[id];
+        }
+      } catch (e) {
+        warn(`geocode fail ${name}:`, String(e));
+      }
+      unresolved.push({ id, name });
+      return null;
+    };
+
+    const insStop = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
+    const insRoute = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)');
+    const insTrip = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
+    const insSt = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
+    const insCal = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const insCalDate = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
+    db.exec('BEGIN');
+    const seenStops = new Set();
+    const seenRoutes = new Set();
+    const perCc = { IC: { stations: 0, routes: 0, trips: 0, stopTimes: 0 }, PR: { stations: 0, routes: 0, trips: 0, stopTimes: 0 } };
+    for (const r of routes) {
+      const cc = (r.cc || r.carrierCode || '');
+      if (cc !== 'IC' && cc !== 'PR') continue;
+      const stat = perCc[cc];
+      const sid = r.sid ?? r.scheduleId;
+      const oid = r.oid ?? r.orderId;
+      const dates = r.od || r.operatingDates || [];
+      const stopsSorted = [...(r.st || r.stations || [])]
+        .sort((a, b) => (Number(a.ord ?? a.orderNumber) || 0) - (Number(b.ord ?? b.orderNumber) || 0))
+        .filter((s) => gzmSet.has(String(s.id ?? s.stationId)));
+      if (sid == null || oid == null || dates.length === 0) continue;
+      // Rozwiąż nazwy i współrzędne, potem odsiej stacje spoza obwiedni GZM
+      // (drugie zabezpieczenie po precyzyjnym dopasowaniu gmin: stacja
+      // z innego regionu nie może tworzyć lokalnego odcinka).
+      const stops = [];
+      let ok = true;
+      for (const s of stopsSorted) {
+        const id = String(s.id ?? s.stationId);
+        const nm = stationNames[id];
+        if (!nm) { unnamed.add(id); ok = false; break; }
+        const geo = await ensureCoords(id, nm);
+        if (!geo) { ok = false; break; }
+        if (geo.lat < GZM_ENVELOPE.minLat || geo.lat > GZM_ENVELOPE.maxLat ||
+            geo.lon < GZM_ENVELOPE.minLon || geo.lon > GZM_ENVELOPE.maxLon) {
+          outsideEnvelope.add(id);
+          continue;
+        }
+        stops.push({ id, nm, geo, t: stopTimesOf(s) });
+      }
+      if (!ok) continue;
+      if (stops.length < 2) { skippedOutside++; continue; }
+      if (stops.some((s) => s.t === null)) { skippedNoTimes++; continue; }
+      for (const s of stops) {
+        if (!seenStops.has(`${cc}:${s.id}`)) {
+          insStop.run(`${cc}:S:${s.id}`, s.id, s.nm, s.geo.lat, s.geo.lon, normalizePolish(s.nm));
+          seenStops.add(`${cc}:${s.id}`);
+          railGeo.set(`${cc}:S:${s.id}`, { stopId: `${cc}:S:${s.id}`, name: s.nm, lat: s.geo.lat, lon: s.geo.lon });
+          counts.stops++;
+          stat.stations++;
+        }
+      }
+      const num = String(r.nn ?? r.nationalNumber ?? r.nm ?? r.name ?? `${sid}/${oid}`);
+      const routeId = `${cc}:R:${sid}:${oid}`;
+      const svc = `${cc}:svc:${sid}:${oid}`;
+      const firstName = stops[0].nm;
+      const lastName = stops[stops.length - 1].nm;
+      if (!seenRoutes.has(routeId)) {
+        insRoute.run(routeId, num, `${firstName} – ${lastName}`, 2);
+        seenRoutes.add(routeId);
+        counts.routes++;
+        stat.routes++;
+        insCal.run(svc, 0, 0, 0, 0, 0, 0, 0, '', '');
+      }
+      for (const d of dates) {
+        const dc = ymdCompact(d);
+        const tripId = `${cc}:T:${sid}:${oid}:${dc}`;
+        insTrip.run(tripId, routeId, svc, lastName, 0, '');
+        counts.trips++;
+        stat.trips++;
+        for (let i = 0; i < stops.length; i++) {
+          insSt.run(tripId, `${cc}:S:${stops[i].id}`, stops[i].t.arr, stops[i].t.dep, i + 1);
+          counts.stopTimes++;
+          stat.stopTimes++;
+        }
+        insCalDate.run(svc, dc, 1);
+      }
+    }
+    db.exec('COMMIT');
+    if (unnamed.size > 0) warn(`IC/PR: ${unnamed.size} stacji bez nazwy (brak w słowniku PDP i cache): ${[...unnamed].join(', ')}`);
+    if (outsideEnvelope.size > 0) warn(`IC/PR: ${outsideEnvelope.size} stacji poza obwiednią GZM (pominięte): ${[...outsideEnvelope].join(', ')}`);
+    if (skippedNoTimes > 0) log(`IC/PR: pominięto ${skippedNoTimes} kursów bez pełnych czasów`);
+    if (skippedOutside > 0) log(`IC/PR: pominięto ${skippedOutside} kursów z <2 postojami w GZM`);
+    if (WRITE_COORDS) {
+      writeFileSync(GZM_COORDS_FILE, JSON.stringify(coords, null, 2) + '\n');
+      log('zapisano cache współrzędnych →', GZM_COORDS_FILE, '(przejrzyj diffa przed commitem!)');
+    } else {
+      log(`współrzędne GZM: ${Object.keys(coords.stations).length} z cache/geokodowania (nie zapisuję pliku bez --write-coords).`);
+    }
+    icInfo = {
+      kind: 'pdp-api', carriers: 'IC', windowFrom: from, windowTo: to,
+      stations: perCc.IC.stations, routes: perCc.IC.routes, trips: perCc.IC.trips,
+      stopTimes: perCc.IC.stopTimes, schedulesVersion: icprVersion,
+      unresolvedStations: unresolved, unnamedStations: [...unnamed],
+      skippedTripsNoTimes: skippedNoTimes, skippedOutsideGzm: skippedOutside,
+    };
+    prInfo = {
+      kind: 'pdp-api', carriers: 'PR', windowFrom: from, windowTo: to,
+      stations: perCc.PR.stations, routes: perCc.PR.routes, trips: perCc.PR.trips,
+      stopTimes: perCc.PR.stopTimes, schedulesVersion: icprVersion,
+      unresolvedStations: unresolved, unnamedStations: [...unnamed],
+      skippedTripsNoTimes: skippedNoTimes, skippedOutsideGzm: skippedOutside,
+    };
+    counts.icStations = perCc.IC.stations; counts.icRoutes = perCc.IC.routes;
+    counts.icTrips = perCc.IC.trips; counts.icStopTimes = perCc.IC.stopTimes;
+    counts.prStations = perCc.PR.stations; counts.prRoutes = perCc.PR.routes;
+    counts.prTrips = perCc.PR.trips; counts.prStopTimes = perCc.PR.stopTimes;
+    log(`IC: stations=${perCc.IC.stations} routes=${perCc.IC.routes} trips=${perCc.IC.trips} stopTimes=${perCc.IC.stopTimes}`);
+    log(`PR: stations=${perCc.PR.stations} routes=${perCc.PR.routes} trips=${perCc.PR.trips} stopTimes=${perCc.PR.stopTimes}`);
+  }
+
   // 6b. Przesiadki miasto<->kolej. Stacja kolejowa to nie słupek przy torach:
   // perony bywają schowane (Dworzec Główny: przystanek ~300 m od peronów
   // + hala i schody), więc linki liczymy hojnie. Aplikacja dokleja je do
@@ -1018,7 +1776,9 @@ async function main() {
     };
     const computed = (distM) => Math.max(INTERCHANGE_MIN_SEC, Math.round(distM * IX_WALK_DETOUR / IX_WALK_SPEED_MPS));
     for (const [kid, g] of railGeo) {
-      const kStopId = `${RAIL_PREFIX}:S:${kid}`;
+      // IC/PR niosą pełny stop_id w geolokalizacji (prefiks per przewoźnik),
+      // reszta (KD/KML/KS) buduje go z RAIL_PREFIX jak dotąd.
+      const kStopId = g.stopId ?? `${RAIL_PREFIX}:S:${kid}`;
       const isGlowny = normalizePolish(g.name).includes('glowny');
       for (const m of cityStops) {
         const dist = haversineM(g.lat, g.lon, m.lat, m.lon);
@@ -1037,7 +1797,7 @@ async function main() {
     if (links.size > 0) {
       const ins = db.prepare('INSERT INTO interchanges (from_stop_id, to_stop_id, walk_sec, kind) VALUES (?, ?, ?, ?)');
       db.exec('BEGIN');
-      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : 'mpk-kd');
+      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : CITY === 'gzm' ? 'rail-ztm' : 'mpk-kd');
       db.exec('COMMIT');
       interchangeCount = links.size;
     }
@@ -1048,6 +1808,9 @@ async function main() {
   }
   if (kdInfo && !kdInfo.skippedReason) kdInfo.interchanges = interchangeCount;
   if (kmlInfo && !kmlInfo.skippedReason) kmlInfo.interchanges = interchangeCount;
+  if (ksInfo && !ksInfo.skippedReason) ksInfo.interchanges = interchangeCount;
+  if (icInfo && !icInfo.skippedReason) icInfo.interchanges = interchangeCount;
+  if (prInfo && !prInfo.skippedReason) prInfo.interchanges = interchangeCount;
 
   // 6c. Twarda bramka, tylko Wrocław: bez pełnego, realnego KD nie
   // nadpisujemy R2. Baza MPK-only albo z niekompletnym KD to dokładnie ta
@@ -1088,6 +1851,24 @@ async function main() {
     }
   }
 
+  // 6e. Twarda bramka, GZM: baza bez pełnych Kolei Śląskich, IC albo
+  // Polregio (albo bez przesiadek na kolej) nie nadpisuje R2.
+  if (CITY === 'gzm') {
+    const problems = [];
+    if (counts.ksStations === 0) problems.push('0 stacji KŚ');
+    if (counts.ksRoutes === 0) problems.push('0 tras KŚ');
+    if (counts.ksTrips === 0) problems.push('0 kursów KŚ');
+    if (counts.icStations === 0) problems.push('0 stacji IC');
+    if (counts.icTrips === 0) problems.push('0 kursów IC');
+    if (counts.prStations === 0) problems.push('0 stacji PR');
+    if (counts.prTrips === 0) problems.push('0 kursów PR');
+    if (interchangeCount === 0) problems.push('0 przesiadek kolej<->ZTM');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełne koleje GZM (${problems.join(', ')}): nie publikuję bazy.`);
+    }
+  }
+
   // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem
   // (trip_id, seq), więc żaden indeks na tej tabeli nie jest potrzebny.
   db.exec('PRAGMA synchronous = NORMAL;');
@@ -1101,12 +1882,14 @@ async function main() {
   db.exec('ANALYZE');
   const version = CITY === 'krakow'
     ? `${todayCompact()}-krk${createHash('sha256').update(`${ztpFingerprint}|${kmlVersion}`).digest('hex').slice(0, 8)}`
-    : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
+    : CITY === 'gzm'
+      ? `${todayCompact()}-gzm${createHash('sha256').update(`${gtmFingerprint}|${ksVersion}|${icprVersion}`).digest('hex').slice(0, 8)}`
+      : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -1135,6 +1918,20 @@ async function main() {
             trips: counts.trips - counts.kmlTrips, stopTimes: counts.stopTimes - counts.kmlStopTimes,
           },
           kml: kmlInfo,
+        }
+      : CITY === 'gzm'
+      ? {
+          ztm: {
+            kind: 'gtfs-ckan-daily', dataset: GZM_CKAN_PACKAGE,
+            fingerprint: gtmFingerprint,
+            stops: counts.stops - counts.ksStations - counts.icStations - counts.prStations,
+            routes: counts.routes - counts.ksRoutes - counts.icRoutes - counts.prRoutes,
+            trips: counts.trips - counts.ksTrips - counts.icTrips - counts.prTrips,
+            stopTimes: counts.stopTimes - counts.ksStopTimes - counts.icStopTimes - counts.prStopTimes,
+          },
+          ks: ksInfo,
+          ic: icInfo,
+          pr: prInfo,
         }
       : {
           mpk: {
