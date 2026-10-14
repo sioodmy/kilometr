@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import { kvGet, kvGetStrict, kvSet } from './storage';
 import { defaultLocationForCity } from '../config';
-import { getCity } from '../cities';
+import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
@@ -421,7 +421,7 @@ export const RoutingService: IRoutingService = {
     try {
       const all = await getSavedRoutes();
       all.push({ id: connection.id, savedAt: Date.now(), connection });
-      await kvSet('kilometr.saved_routes', JSON.stringify(all));
+      await kvSet(savedRoutesKey(), JSON.stringify(all));
     } catch (err) {
       console.warn('[RoutingService] Failed to save route:', err);
     }
@@ -431,7 +431,7 @@ export const RoutingService: IRoutingService = {
     try {
       const all = await getSavedRoutes();
       const filtered = all.filter(r => r.id !== id);
-      await kvSet('kilometr.saved_routes', JSON.stringify(filtered));
+      await kvSet(savedRoutesKey(), JSON.stringify(filtered));
     } catch (err) {
       console.warn('[RoutingService] Failed to delete saved route:', err);
     }
@@ -456,23 +456,93 @@ export const RoutingService: IRoutingService = {
 
 };
 
+// Zapisane trasy też są per-miasto (połączenie ma sens tylko w bazie miasta,
+// w którym je zaplanowano). Ten sam wzorzec kluczy co miejsca.
+const SAVED_ROUTES_BASE_KEY = 'kilometr.saved_routes';
+
+function savedRoutesKey(cityId?: string): string {
+  return cityKey(SAVED_ROUTES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
+}
+
 async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
   try {
-    const raw = await kvGet('kilometr.saved_routes');
+    const raw = await kvGet(savedRoutesKey());
     if (raw) return JSON.parse(raw);
   } catch {}
   return [];
 }
 
+// Miejsca są per-miasto: każde miasto ma własny kubełek (`cityKey`),
+// Wrocław trzyma legacy klucz bez sufiksu. Kubełek wynika z miasta
+// aktywnego w chwili zapisu, więc Kraków nigdy nie zobaczy „Domu”
+// z Wrocławia (i na odwrót).
+const PLACES_BASE_KEY = 'kilometr.places';
+
+function placesKey(cityId?: string): string {
+  return cityKey(PLACES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
+}
+
 // Odczyt listy miejsc do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
 // żeby add/update/delete nie nadpisały prawdziwych danych pustą listą.
 // Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
-async function readPlaces(): Promise<SavedPlace[]> {
-  const raw = await kvGetStrict('kilometr.places');
+async function readPlaces(key?: string): Promise<SavedPlace[]> {
+  const raw = await kvGetStrict(key ?? placesKey());
   if (!raw) return [];
   const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error('kilometr.places is not an array');
+  if (!Array.isArray(parsed)) throw new Error(`${key ?? PLACES_BASE_KEY} is not an array`);
   return parsed as SavedPlace[];
+}
+
+/**
+ * Jednorazowa migracja miejsc sprzed multi-city. Legacy kubełek trzymał
+ * wszystko razem: wpisy leżące w strefie innego miasta przenosimy do jego
+ * kubełka, reszta (w tym punkty spoza wszystkich miast) zostaje we Wrocławiu.
+ * Idempotentna: powtórne wywołanie nic nie rusza.
+ */
+let placesMigration: Promise<void> | null = null;
+
+export function ensurePlacesMigrated(): Promise<void> {
+  if (!placesMigration) placesMigration = migratePlacesToCityBuckets();
+  return placesMigration;
+}
+
+async function migratePlacesToCityBuckets(): Promise<void> {
+  let legacy: SavedPlace[];
+  try {
+    legacy = await readPlaces(cityKey(PLACES_BASE_KEY, 'wroclaw'));
+  } catch (err) {
+    console.warn('[FavoritesService] migration read failed:', err);
+    return;
+  }
+  if (legacy.length === 0) return;
+  const movers = new Map<string, SavedPlace[]>();
+  const staying = legacy.filter((p) => {
+    const hit = suggestCityForCoords(p?.lat, p?.lon);
+    if (hit && hit.id !== 'wroclaw') {
+      const list = movers.get(hit.id) ?? [];
+      list.push(p);
+      movers.set(hit.id, list);
+      return false;
+    }
+    return true;
+  });
+  if (movers.size === 0) return;
+  for (const [cityId, moved] of movers) {
+    try {
+      const key = cityKey(PLACES_BASE_KEY, getCity(cityId).id);
+      const existing = await readPlaces(key);
+      const have = new Set(existing.map((p) => p.id));
+      await kvSet(key, JSON.stringify([...existing, ...moved.filter((p) => !have.has(p.id))]));
+    } catch (err) {
+      console.warn('[FavoritesService] migration write failed:', err);
+      return;
+    }
+  }
+  try {
+    await kvSet(cityKey(PLACES_BASE_KEY, 'wroclaw'), JSON.stringify(staying));
+  } catch (err) {
+    console.warn('[FavoritesService] migration cleanup failed:', err);
+  }
 }
 
 // Serializuje read-modify-write listy miejsc: dwa równoległe addPlace nie mogą
@@ -485,8 +555,10 @@ function withPlacesLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export const FavoritesService: IFavoritesService = {
+  /** Tylko miejsca aktywnego miasta (po migracji legacy kubełka). */
   async list(): Promise<SavedPlace[]> {
     try {
+      await ensurePlacesMigrated();
       return await readPlaces();
     } catch (err) {
       console.warn('[FavoritesService] list failed:', err);
@@ -522,6 +594,7 @@ export const FavoritesService: IFavoritesService = {
     anchorStopLon?: number | null;
   }): Promise<SavedPlace> {
     return withPlacesLock(async () => {
+      await ensurePlacesMigrated();
       const places = await readPlaces();
       // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
       // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
@@ -543,18 +616,19 @@ export const FavoritesService: IFavoritesService = {
         anchorStopLon: place.anchorStopLon || undefined,
       };
       places.push(newPlace);
-      await kvSet('kilometr.places', JSON.stringify(places));
+      await kvSet(placesKey(), JSON.stringify(places));
       return newPlace;
     });
   },
 
   async updatePlace(id: string, updates: Partial<SavedPlace>): Promise<SavedPlace | null> {
     return withPlacesLock(async () => {
+      await ensurePlacesMigrated();
       const places = await readPlaces();
       const idx = places.findIndex(p => p.id === id);
       if (idx === -1) return null;
       places[idx] = { ...places[idx], ...updates };
-      await kvSet('kilometr.places', JSON.stringify(places));
+      await kvSet(placesKey(), JSON.stringify(places));
       return places[idx];
     });
   },
@@ -563,6 +637,7 @@ export const FavoritesService: IFavoritesService = {
     return withPlacesLock(async () => {
       let places: SavedPlace[];
       try {
+        await ensurePlacesMigrated();
         places = await readPlaces();
       } catch (err) {
         // Błąd odczytu: NIE nadpisujemy listy pustką, tylko zgłaszamy porażkę.
@@ -571,7 +646,7 @@ export const FavoritesService: IFavoritesService = {
       }
       const filtered = places.filter(p => p.id !== id);
       if (filtered.length === places.length) return false;
-      await kvSet('kilometr.places', JSON.stringify(filtered));
+      await kvSet(placesKey(), JSON.stringify(filtered));
       return true;
     });
   },

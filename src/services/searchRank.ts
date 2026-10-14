@@ -31,11 +31,6 @@ export function inCity(lat: number, lon: number): boolean {
   );
 }
 
-/** Ścisły filtr: obsługujemy tylko Wrocław (legacy alias dla inCity). */
-export function inWroclaw(lat: number, lon: number): boolean {
-  return inCity(lat, lon);
-}
-
 /** Odległości liczone na końcu (cache trzyma surowe wyniki bez pozycji usera). */
 export function withDistances(
   items: Suggestion[],

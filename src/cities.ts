@@ -96,6 +96,15 @@ export function isCityId(id: string | null | undefined): id is CityId {
   return CITIES.some((c) => c.id === id);
 }
 
+/**
+ * Klucz KV per-miasto. Wrocław trzyma legacy klucz bez sufiksu (kompat
+ * ze starymi instalacjami), reszta miast dokleja `.id`. Jawny parametr,
+ * bez odczytu aktywnego miasta: funkcja jest czysta i testowalna.
+ */
+export function cityKey(base: string, cityId: CityId): string {
+  return cityId === 'wroclaw' ? base : `${base}.${cityId}`;
+}
+
 /** Haversine w metrach. */
 export function cityDistanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6_371_000;

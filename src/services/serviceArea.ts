@@ -4,24 +4,17 @@
 // z GPS — użytkownik musi wybrać punkt startowy ręcznie, bo planer
 // liczy trasy wyłącznie po rozkładzie aktywnego miasta.
 
-import { DEFAULT_LOCATION } from '../config';
 import { getCity, suggestCityForCoords as suggest } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 
-export const SERVICE_AREA_CENTER = {
-  lat: DEFAULT_LOCATION.lat,
-  lon: DEFAULT_LOCATION.lon,
-} as const;
-
-/** Promień obsługi w metrach (15 km od centrum Wrocławia, legacy). */
-export const SERVICE_AREA_RADIUS_M = 15_000;
-
-/** Haversine — dystans w metrach między dwoma punktami. */
+/** Haversine: dystans w metrach między dwoma punktami. Środek jawny, bez
+ *  domyślnego miasta: jedyny caller (`isOutsideServiceArea`) podaje środek
+ *  aktywnego miasta, a ukryty default Wrocławia byłby pułapką. */
 export function serviceAreaDistanceM(
   lat: number,
   lon: number,
-  centerLat: number = SERVICE_AREA_CENTER.lat,
-  centerLon: number = SERVICE_AREA_CENTER.lon,
+  centerLat: number,
+  centerLon: number,
 ): number {
   const R = 6_371_000;
   const dLa = ((lat - centerLat) * Math.PI) / 180;

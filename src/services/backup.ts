@@ -22,6 +22,7 @@ import {
 import type { NotificationPreferences } from './notifications/types';
 import type { SavedPlace, SavedRoute } from '../types/models';
 import type { TripHistoryItem } from './smartRanking';
+import { CITIES, cityKey, type CityId } from '../cities';
 import {
   BACKUP_EXTENSION,
   BACKUP_MIME,
@@ -40,6 +41,11 @@ const KEYS = {
   savedRoutes: 'kilometr.saved_routes',
   tripHistory: 'kilometr.trip_history',
 } as const;
+
+/** Kubełek miasta dla klucza bazowego (ten sam wzorzec co reszta aplikacji). */
+function bucketKey(base: string, cityId: CityId): string {
+  return cityKey(base, cityId);
+}
 
 /** Historia jest przycięta do 80 pozycji przez `saveTripHistory`; import
  *  zapisuje tędy, więc dłuższa kopia i tak zostanie ucięta. */
@@ -64,21 +70,33 @@ async function readArray<T>(key: string): Promise<T[]> {
 
 // ─── Eksport ────────────────────────────────────────────────────────────────
 
+/**
+ * Czyta kubełek miasta. Pusty kubełek to pusta lista, ale uszkodzony JSON
+ * rzuca jak dawniej: eksport nie może po cichu wysłać kopii bez sekcji.
+ */
+async function readCityBucket<T>(base: string, cityId: CityId): Promise<T[]> {
+  return readArray<T>(bucketKey(base, cityId));
+}
+
 async function collectBackupData(): Promise<BackupData> {
-  const [places, savedRoutes, tripHistory, routing, prefs] = await Promise.all([
-    readArray<SavedPlace>(KEYS.places),
-    readArray<SavedRoute>(KEYS.savedRoutes),
-    readArray<TripHistoryItem>(KEYS.tripHistory),
+  const perCity = CITIES.map((c) => c.id);
+  const [placesByCity, routesByCity, historyByCity, routing, prefs] = await Promise.all([
+    Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<SavedPlace>(KEYS.places, city) }))),
+    Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<SavedRoute>(KEYS.savedRoutes, city) }))),
+    Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<TripHistoryItem>(KEYS.tripHistory, city) }))),
     loadSettings(),
     loadNotificationPreferences(),
   ]);
+  // Puste kubełki pomijamy: kopia z samego Wrocławia nie musi wozić
+  // pustych sekcji Krakowa (import pustej sekcji i tak jest no-opem).
+  const nonEmpty = <T,>(sections: { city: CityId; items: T[] }[]) => sections.filter((s) => s.items.length > 0);
   // Język bierzemy z modułu, nie z KV: `getLocaleSettingSync` to jedyne
   // miejsce, które zna aktualny wybór (również 'system', gdy klucza nie ma).
   const locale: LocaleSetting = getLocaleSettingSync();
   return {
-    places,
-    savedRoutes,
-    tripHistory,
+    places: nonEmpty(placesByCity),
+    savedRoutes: nonEmpty(routesByCity),
+    tripHistory: nonEmpty(historyByCity),
     routingSettings: routing,
     notificationPrefs: prefs,
     locale,
@@ -238,29 +256,49 @@ function byNewest(a: TripHistoryItem, b: TripHistoryItem): number {
  * a nie tego, co było w kopercie — inaczej po imporcie telefon z 4 miejscami
  * i kopią z 2 miejscami zgłosiłby „scalono 2", co jest prawdą na połowę.
  */
+/** Wszystkie kubełki klucza (do liczników po scaleniu). */
+async function readAllBuckets<T>(base: string): Promise<{ city: CityId; items: T[] }[]> {
+  const out: { city: CityId; items: T[] }[] = [];
+  for (const c of CITIES) {
+    try {
+      const items = await readArray<T>(bucketKey(base, c.id));
+      if (items.length > 0) out.push({ city: c.id, items });
+    } catch {
+      // Uszkodzony kubełek nie może wywalić liczenia reszty.
+    }
+  }
+  return out;
+}
+
 export async function applyBackup(data: BackupData): Promise<BackupCounts> {
-  const [places, savedRoutes, tripHistory] = await Promise.all([
-    readArray<SavedPlace>(KEYS.places),
-    readArray<SavedRoute>(KEYS.savedRoutes),
-    readArray<TripHistoryItem>(KEYS.tripHistory),
+  // Scalanie idzie per kubełek miasta: kopia z Krakowa nie dotyka Wrocławia.
+  // Sekcje dla nieznanych miast nie przechodzą walidacji formatu, więc tu
+  // ich nie ma, ale na wszelki wypadek pomijamy je zamiast rzucać.
+  const mergeSection = async <T extends { id: string }>(
+    base: string,
+    sections: { city: CityId; items: T[] }[],
+    sort?: (a: T, b: T) => number,
+    cap?: number,
+  ): Promise<{ city: CityId; items: T[] }[]> => {
+    const out: { city: CityId; items: T[] }[] = [];
+    for (const section of sections) {
+      if (!CITIES.some((c) => c.id === section.city) || section.items.length === 0) continue;
+      const key = bucketKey(base, section.city);
+      const current = await readArray<T>(key);
+      let next = mergeById(current, section.items);
+      if (sort) next = next.sort(sort);
+      if (cap !== undefined) next = next.slice(0, cap);
+      if (next !== current) await kvSet(key, JSON.stringify(next));
+      out.push({ city: section.city, items: next });
+    }
+    return out;
+  };
+
+  await Promise.all([
+    mergeSection(KEYS.places, data.places),
+    mergeSection(KEYS.savedRoutes, data.savedRoutes),
+    mergeSection<TripHistoryItem>(KEYS.tripHistory, data.tripHistory, byNewest, MAX_TRIP_HISTORY),
   ]);
-
-  const nextPlaces = data.places.length > 0 ? mergeById(places, data.places) : places;
-  if (nextPlaces !== places && data.places.length > 0) {
-    await kvSet(KEYS.places, JSON.stringify(nextPlaces));
-  }
-
-  const nextRoutes =
-    data.savedRoutes.length > 0 ? mergeById(savedRoutes, data.savedRoutes) : savedRoutes;
-  if (nextRoutes !== savedRoutes && data.savedRoutes.length > 0) {
-    await kvSet(KEYS.savedRoutes, JSON.stringify(nextRoutes));
-  }
-
-  let nextHistory = tripHistory;
-  if (data.tripHistory.length > 0) {
-    nextHistory = mergeById(nextHistory, data.tripHistory).sort(byNewest).slice(0, MAX_TRIP_HISTORY);
-    await kvSet(KEYS.tripHistory, JSON.stringify(nextHistory));
-  }
 
   // Ustawienia idą przez `save*`, nie przez kvSet: moduły trzymają cache w
   // pamięci, więc zapis bezpośredni zostawiłby UI na starych wartościach do
@@ -273,10 +311,18 @@ export async function applyBackup(data: BackupData): Promise<BackupCounts> {
 
   notifyApplied();
 
+  // Licznik pokazuje stan telefonu po scaleniu (wszystkie kubełki), nie tylko
+  // to, co było w kopercie. Kopia z samego Krakowa nie zeruje wrocławskich
+  // liczb na ekranie potwierdzenia.
+  const [placesNow, routesNow, historyNow] = await Promise.all([
+    readAllBuckets<SavedPlace>(KEYS.places),
+    readAllBuckets<SavedRoute>(KEYS.savedRoutes),
+    readAllBuckets<TripHistoryItem>(KEYS.tripHistory),
+  ]);
   return countBackupData({
-    places: nextPlaces,
-    savedRoutes: nextRoutes,
-    tripHistory: nextHistory,
+    places: placesNow,
+    savedRoutes: routesNow,
+    tripHistory: historyNow,
     routingSettings: data.routingSettings,
     notificationPrefs: data.notificationPrefs,
     locale: data.locale,

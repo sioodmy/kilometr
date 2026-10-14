@@ -58,6 +58,8 @@
     "check:routing": "tsx --require ./scripts/stub-expo.cjs scripts/check-routing.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "check:backup": "tsx scripts/check-backup.ts",
+    "check:places": "tsx scripts/check-places.ts",
+    "check:pull": "tsx scripts/check-pull.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"app/**/*.{ts,tsx}\" \"scripts/**/*.ts\" \"server/src/**/*.ts\" \"server/scripts/**/*.ts\" \"cloudflare/src/**/*.ts\" \"cloudflare/scripts/**/*.mjs\" \"landing/src/**/*.{ts,tsx}\" \".github/scripts/**/*.mjs\" \"eslint.config.mjs\"",
