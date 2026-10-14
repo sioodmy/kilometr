@@ -595,55 +595,35 @@ function importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds) {
 
   // 4. Warianty: ten sam trip_id o różnych czasach w różnych eksportach
   // (zmiana rozkładu w trakcie okna) nie może dzielić jednego wiersza.
-  // Sygnatura = liczba postojów + pierwszy odjazd + ostatni przyjazd.
-  const kept = new Map(); // wiersz trips -> {sig, dates:Set, data}
+  // Sygnatura to pełny odcisk treści (stop_id, godziny, kolejność), nie tylko
+  // liczba postojów i końce: zmiana czasów pośrednich też musi dać nowy wariant.
+  // Warianty kluczujemy po sygnaturze (nie po numerze eksportu), żeby ten sam
+  // rozkład z dwóch eksportów nie trafił do dwóch osobnych wariantów.
+  const kept = new Map(); // klucz wiersza -> {sig, dates:Set, data}
+  const variants = new Map(); // tid -> Map<sig, klucz wiersza>
   let divergent = 0;
   for (let fi = 0; fi < txtDirs.length; fi++) {
     const stTxt = readers[fi]('stop_times.txt');
     if (!stTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stop_times.txt, przerywam.`);
-    const { header } = splitHeader(stTxt);
-    const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
-      di = header.indexOf('departure_time');
-    const byTrip = new Map(); // tid -> {n, firstDep, lastArr}
-    let pos = stTxt.indexOf('\n') + 1;
-    const len = stTxt.length;
-    while (pos < len) {
-      let nl = stTxt.indexOf('\n', pos);
-      if (nl === -1) nl = len;
-      let line = stTxt.slice(pos, nl);
-      pos = nl + 1;
-      if (line.endsWith('\r')) line = line.slice(0, -1);
-      if (!line.trim()) continue;
-      const c = line.split(',');
-      const tid = (c[ti] || '').trim();
-      if (!tid || !occ.has(tid)) continue;
-      let g = byTrip.get(tid);
-      if (!g) { g = { n: 0, firstDep: '', lastArr: '' }; byTrip.set(tid, g); }
-      g.n++;
-      const dep = (c[di] || '').trim() || (c[ai] || '').trim();
-      const arr = (c[ai] || '').trim() || dep;
-      if (!g.firstDep) g.firstDep = dep;
-      g.lastArr = arr;
-    }
-    for (const [tid, g] of byTrip) {
-      const sig = `${g.n}|${g.firstDep}|${g.lastArr}`;
+    const byTrip = parseStopTimesByTrip(stTxt);
+    for (const [tid, rows] of byTrip) {
+      if (!occ.has(tid)) continue;
+      const sig = hashTripRows(rows);
       const list = occ.get(tid);
       const o = list.find((e) => e.fi === fi) ?? list[0];
-      const cur = kept.get(tid);
-      if (!cur) {
-        kept.set(tid, { sig, dates: new Set(o.dates), data: o });
-      } else if (cur.sig === sig) {
-        for (const d of o.dates) cur.dates.add(d);
-      } else {
-        const alias = `${tid}#G${fi}`;
-        if (!kept.has(alias)) {
-          kept.set(alias, { sig, dates: new Set(o.dates), data: o });
-          divergent++;
-        } else {
-          const ex = kept.get(alias);
-          if (ex.sig === sig) for (const d of o.dates) ex.dates.add(d);
-        }
+      let bySig = variants.get(tid);
+      if (!bySig) { bySig = new Map(); variants.set(tid, bySig); }
+      const known = bySig.get(sig);
+      if (known) {
+        for (const d of o.dates) kept.get(known).dates.add(d);
+        continue;
       }
+      // Pierwszy wariant trzyma oryginalny trip_id (live dopina się po numerze),
+      // kolejne dostają sufiks. Numerujemy po liczbie wariantów, nie po eksporcie.
+      const key = bySig.size === 0 ? tid : `${tid}#G${bySig.size}`;
+      bySig.set(sig, key);
+      kept.set(key, { sig, dates: new Set(o.dates), data: o });
+      if (bySig.size > 1) divergent++;
     }
   }
   if (divergent > 0) log(`GZM: ${divergent} kursów ze zmienionym rozkładem w trakcie okna (osobne warianty)`);
@@ -673,46 +653,24 @@ function importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds) {
   log(`GZM: kursów po scaleniu=${kept.size} (serwisów=${svcByDates.size})`);
 
   // 6. Czasy: drugi przebieg po stop_times, tylko dla trzymanych wariantów.
-  // Grupujemy wiersze kursu w mapie (jeden eksport naraz), bo plik nie
-  // jest gwarantowanie posortowany po trip_id.
+  // Ten sam wariant kursu powtarza się w kilku eksportach, więc wiersze
+  // wstawiamy raz (klucz = wariant z fazy 4, dobrany po pełnej sygnaturze).
   const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
   db.exec('BEGIN');
   let batch = 0;
-  // Ten sam wariant kursu występuje w kilku eksportach: wiersze wstawiamy
-  // raz (pierwsze wystąpienie), reszta to duplikaty. Aliasy (#G{i}) są
-  // unikalne per eksport, więc wchodzą zawsze.
   const inserted = new Set();
   for (let fi = 0; fi < txtDirs.length; fi++) {
     const stTxt = readers[fi]('stop_times.txt');
     if (!stTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stop_times.txt, przerywam.`);
-    const { header } = splitHeader(stTxt);
-    const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
-      di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
-    const byTrip = new Map(); // tid -> Array<[stop_id, arr, dep, seq]>
-    let pos = stTxt.indexOf('\n') + 1;
-    const len = stTxt.length;
-    while (pos < len) {
-      let nl = stTxt.indexOf('\n', pos);
-      if (nl === -1) nl = len;
-      let line = stTxt.slice(pos, nl);
-      pos = nl + 1;
-      if (line.endsWith('\r')) line = line.slice(0, -1);
-      if (!line.trim()) continue;
-      const c = line.split(',');
-      const tid = (c[ti] || '').trim();
-      if (!tid || (!kept.has(tid) && !kept.has(`${tid}#G${fi}`))) continue;
-      const arr = (c[ai] || '').trim() || '00:00:00';
-      if (!byTrip.has(tid)) byTrip.set(tid, []);
-      byTrip.get(tid).push([(c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0]);
-    }
+    const byTrip = parseStopTimesByTrip(stTxt);
     for (const [tid, rows] of byTrip) {
-      const sig = rows.length ? `${rows.length}|${secToHms(rows[0][2])}|${secToHms(rows[rows.length - 1][1])}` : '|';
-      const base = kept.get(tid);
-      const target = base && base.sig === sig ? tid : `${tid}#G${fi}`;
-      if (!kept.has(target) || inserted.has(target)) continue;
-      inserted.add(target);
+      const bySig = variants.get(tid);
+      if (!bySig) continue;
+      const key = bySig.get(hashTripRows(rows));
+      if (!key || inserted.has(key)) continue;
+      inserted.add(key);
       for (const r of rows) {
-        ins.run(target, r[0], r[1], r[2], r[3]);
+        ins.run(key, r[0], r[1], r[2], r[3]);
         counts.stopTimes++;
         if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
       }
@@ -722,10 +680,43 @@ function importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds) {
   log(`GZM: stopTimes po scaleniu=${counts.stopTimes}`);
 }
 
-/** Sekundy -> "HH:MM:SS" (ten sam format co w GTFS, do porównania sygnatur). */
-function secToHms(s) {
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+/**
+ * Wiersze stop_times pogrupowane po kursie: tid -> [[stop_id, arrSec, depSec, seq]],
+ * posortowane po seq. Jeden odczyt na eksport; używa go faza wariantów i faza
+ * wstawiania czasów, więc obie liczą sygnaturę z tych samych danych.
+ */
+function parseStopTimesByTrip(stTxt) {
+  const { header } = splitHeader(stTxt);
+  const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
+    di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+  const byTrip = new Map();
+  let pos = stTxt.indexOf('\n') + 1;
+  const len = stTxt.length;
+  while (pos < len) {
+    let nl = stTxt.indexOf('\n', pos);
+    if (nl === -1) nl = len;
+    let line = stTxt.slice(pos, nl);
+    pos = nl + 1;
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (!line.trim()) continue;
+    const c = line.split(',');
+    const tid = (c[ti] || '').trim();
+    if (!tid) continue;
+    const arr = (c[ai] || '').trim() || '00:00:00';
+    if (!byTrip.has(tid)) byTrip.set(tid, []);
+    byTrip.get(tid).push([(c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0]);
+  }
+  for (const rows of byTrip.values()) rows.sort((a, b) => a[3] - b[3]);
+  return byTrip;
+}
+
+/** Pełny odcisk treści kursu (stop, godziny, kolejność). Ta sama funkcja dla
+ *  obu przebiegów, więc identyczne kursy dają identyczny hash, a każda zmiana
+ *  (także czasów pośrednich) daje inny. */
+function hashTripRows(rows) {
+  const h = createHash('sha1');
+  for (const r of rows) h.update(`${r[3]}\t${r[0]}\t${r[1]}\t${r[2]};`);
+  return h.digest('hex').slice(0, 16);
 }
 
 /* ─── PDP (KD): stacje Wrocławia → rozkład ────────────────────────────── */
