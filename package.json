@@ -1,6 +1,7 @@
 {
   "name": "kilometr",
   "version": "1.0.0",
+  "license": "GPL-3.0-or-later",
   "main": "expo-router/entry",
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",

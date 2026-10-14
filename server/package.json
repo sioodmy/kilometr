@@ -2,6 +2,7 @@
   "name": "kilometr-server",
   "version": "1.0.0",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "description": "Backend for Kilometr - Wrocław MPK transit routing, live tracking, and smart location caching",
   "main": "src/index.ts",
   "scripts": {
