@@ -9,12 +9,23 @@ import {
   invokeRustSync,
 } from '../../../modules/kilometr-raptor';
 import { clearRaptorNetCache } from './network';
+import { getCity } from '../../cities';
+import { getActiveCityIdSync } from '../cityStore';
 import {
   POLINKA_ROUTE_ID,
   polinkaRoute,
   polinkaStops,
   polinkaTripsOverlapping,
 } from '../../data/polinka';
+
+/** Kolej linowa istnieje tylko w miastach z featurem (Wrocław / Polinka). */
+function cableInCity(): boolean {
+  try {
+    return getCity(getActiveCityIdSync()).features.cable;
+  } catch {
+    return true;
+  }
+}
 
 const WALK_SPEED_MPS = 1.45;
 const WALK_DETOUR_FACTOR = 1.15;
@@ -124,7 +135,8 @@ export class LocalGtfsStore {
     }
 
     // 3. Kolej linowa Polinka: stacje i linia zanim powstaną przesiadki
-    this.injectPolinkaStopsAndRoute();
+    // (tylko miasta z koleją linową, Kraków jej nie ma i nie dostaje atrapy)
+    if (cableInCity()) this.injectPolinkaStopsAndRoute();
 
     // 4. Build footpaths
     this.buildFootpaths();
@@ -170,6 +182,7 @@ export class LocalGtfsStore {
     toSec: number,
   ): { tripIds: string[]; byRouteId: Map<string, any[]> } {
     const empty = { tripIds: [] as string[], byRouteId: new Map<string, any[]>() };
+    if (!cableInCity()) return empty;
     if (day < 1 || day > 5) return empty;
 
     const bundles = polinkaTripsOverlapping(fromSec, toSec);

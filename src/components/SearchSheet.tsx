@@ -6,6 +6,7 @@ import { ArrowLeft, MapPinOff, X } from 'lucide-react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
+import { useActiveCity } from '../services/cityStore';
 import type { Suggestion } from '../types/models';
 import { SuggestionRow } from './SuggestionRow';
 import { fuzzyMatch } from '../gtfs/fuzzy';
@@ -52,13 +53,16 @@ export function SearchSheet({
   originTitle?: string;
   onChangeOrigin?: () => void;
   closeOnSelect?: boolean;
-  /** Informacyjny pasek nad listą (np. „GPS poza Wrocławiem"). */
+  /** Informacyjny pasek nad listą (np. „GPS poza obsługiwanym miastem"). */
   notice?: string;
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
   const s = useStrings();
-  const placeholder = placeholderProp ?? s.search.defaultPlaceholder;
+  const { cityId } = useActiveCity();
+  // Miejscownik ("w Krakowie"), nie mianownik: wchodzi po przyimku w placeholderze.
+  const cityLoc = s.city.loc(cityId);
+  const placeholder = placeholderProp ?? s.search.defaultPlaceholder(cityLoc);
   // Pasek nawigacji nie może zasłaniać ostatnich wyników (edge-to-edge).
   const insets = useSafeAreaInsets();
 
@@ -273,9 +277,9 @@ export function SearchSheet({
           trimmed ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>
-                {loading ? s.search.searching : s.search.noResultsFor(trimmed)}
+                {loading ? s.search.searching(cityLoc) : s.search.noResultsFor(trimmed)}
               </Text>
-              {!loading && <Text style={styles.emptySub}>{s.search.noResultsHint}</Text>}
+              {!loading && <Text style={styles.emptySub}>{s.search.noResultsHint(cityId)}</Text>}
             </View>
           ) : null
         }

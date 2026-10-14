@@ -1,16 +1,24 @@
 #!/usr/bin/env node
 /**
- * build-timetable.mjs — buduje prebuilt SQLite z rozkładów MPK + KD.
+ * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Wejścia (publiczne, bez klucza):
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow] [--force] [--write-coords] [--allow-mpk-only]
+ * Bez --city zachowuje się jak dawniej (Wrocław → cloudflare/dist/).
+ * Z --city artefakty lądują w cloudflare/dist/{miasto}/, a manifest niesie
+ * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
+ * {miasto}/db/kilometr-gtfs.db).
+ *
+ * Wrocław:
  *   Open Data Wrocław — katalog GTFS + ZIP (MPK: tramwaje + autobusy)
- * Wejścia (wymagają PDP_API_KEY — sekret CI, nigdy do repo):
- *   PDP API (PLK): /data-version, /dictionaries/cities, /schedules/shortened
- *   (przewoźnik KD, stacje Wrocławia, okno 14 dni)
+ *   + PDP API (PLK): KD, stacje Wrocławia, okno 14 dni (wymaga PDP_API_KEY)
+ * Kraków:
+ *   ZTP Kraków: 3 statyczne ZIP-y GTFS (A: autobusy, T: tramwaje, M: reszta),
+ *   mergowane prefiksami KRK:{A,T,M}. Bez PDP (małopolskie koleje siedzą
+ *   we własnym publicznym GTFS Kolei Małopolskich, nie w PDP).
  *
- * Wyjścia (cloudflare/dist/):
+ * Wyjścia (cloudflare/dist[/{miasto}]/):
  *   kilometr-gtfs.db  — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
- *   manifest.json     — wersja, statystyki, sha256 bazy
+ *   manifest.json: miasto, wersja, statystyki, sha256 bazy
  *
  * Wymagania: Node.js ≥ 22.5 (node:sqlite), program `unzip` w PATH
  * (linux/macos: standard; Windows: Git Bash / WSL). Zero zależności npm.
@@ -27,16 +35,43 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = join(ROOT, 'dist');
+
+const args = new Set(process.argv.slice(2));
+const FORCE = args.has('--force');
+const WRITE_COORDS = args.has('--write-coords');
+const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : 'wroclaw';
+/** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
+const CITY_SCOPED = CITY_ARG !== '';
+const DIST = CITY_SCOPED ? join(ROOT, 'dist', CITY) : join(ROOT, 'dist');
 const DATA = join(ROOT, 'data');
 const COORDS_FILE = process.env.KD_COORDS_FILE || join(DATA, 'kd-station-coords.json');
 const DB_FILE = join(DIST, 'kilometr-gtfs.db');
 const MANIFEST_FILE = join(DIST, 'manifest.json');
+// Ścieżka bazy w R2 i w URL-u Workera (legacy Wrocław: bez prefiksu miasta).
+const DB_R2_PATH = CITY_SCOPED ? `${CITY}/db/kilometr-gtfs.db` : 'db/kilometr-gtfs.db';
 
 const MPK_CATALOGUE = 'https://api.open-data.cui.wroclaw.pl/od2/6/';
 const MPK_DOWNLOAD_BASE = 'https://open-data.cui.wroclaw.pl/hdb/download';
 const MPK_FALLBACK_URL = 'https://open-data.cui.wroclaw.pl/hdb/download/136/';
 const MPK_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/** Statyczne feedy ZTP Kraków (A: autobusy, T: tramwaje, M: pozostałe). */
+const ZTP_FEEDS = [
+  { prefix: 'A', url: 'https://gtfs.ztp.krakow.pl/GTFS_KRK_A.zip' },
+  { prefix: 'T', url: 'https://gtfs.ztp.krakow.pl/GTFS_KRK_T.zip' },
+  { prefix: 'M', url: 'https://gtfs.ztp.krakow.pl/GTFS_KRK_M.zip' },
+];
+const ZTP_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * Koleje Małopolskie: własny publiczny GTFS (SKA + reszta kolei
+ * regionalnej, bez klucza). Trasy w feedzie to pociągi imienne
+ * (HUBAL, LUXTORPEDA...), numer pociągu siedzi w trip_short_name
+ * ("33142 HUBAL"), trasy w bazie grupujemy po numerze jak kursy KD.
+ */
+const KML_GTFS_URL = 'https://kolejemalopolskie.com.pl/rozklady_jazdy/kml-ska-gtfs.zip';
+const KML_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
@@ -47,16 +82,14 @@ const NOMINATIM_UA = 'KilometrTimetableBot/1.0 (contact: dev@kilometr.local)';
 // Wrocław: minLon, maxLat, maxLon, minLat
 const WRO_BBOX = { minLon: 16.7, maxLat: 51.25, maxLon: 17.25, minLat: 50.95 };
 
-const args = new Set(process.argv.slice(2));
-const FORCE = args.has('--force');
-const WRITE_COORDS = args.has('--write-coords');
-/**
- * Realne KD jest DOMYŚLNIE wymagane: build bez KD albo z niepełnym KD kończy
- * się błędem, żeby do R2 (a więc i do APK) nigdy nie trafiła baza MPK-only
- * ani atrapa. Jedyny świadomy wyjątek to jawne --allow-mpk-only (lokalne
- * testy / diagnostyka), które nigdy nie leci w cronie.
- */
 const ALLOW_MPK_ONLY = args.has('--allow-mpk-only') || process.env.ALLOW_MPK_ONLY === '1';
+/**
+ * Realne KD jest DOMYŚLNIE wymagane we Wrocławiu: build bez KD albo
+ * z niepełnym KD kończy się błędem, żeby do R2 (a więc i do APK) nigdy nie
+ * trafiła baza MPK-only ani atrapa. Jedyny świadomy wyjątek to jawne
+ * --allow-mpk-only (lokalne testy / diagnostyka), które nigdy nie leci w cronie.
+ * Kraków nie ma sekcji KD wcale (małopolskie koleje siedzą w GTFS ZTP).
+ */
 const PDP_API_KEY = process.env.PDP_API_KEY || '';
 const PUBLIC_URL = (process.env.TIMETABLE_PUBLIC_URL || '').replace(/\/$/, '');
 
@@ -200,6 +233,23 @@ async function fetchBuffer(url, headers = {}, timeoutMs = 120000) {
     return Buffer.from(await res.arrayBuffer());
   } finally {
     clearTimeout(t);
+  }
+}
+
+/** Tani fingerprint feedu (do skipu buildu): Last-Modified albo ETag. */
+async function headVersion(url, headers = {}) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(url, { method: 'HEAD', headers, signal: ctrl.signal });
+      if (!res.ok) return '';
+      return res.headers.get('last-modified') || res.headers.get('etag') || '';
+    } finally {
+      clearTimeout(t);
+    }
+  } catch {
+    return '';
   }
 }
 
@@ -409,9 +459,11 @@ function todayCompact() {
 }
 
 async function main() {
-  // Realne KD jest wymagane, chyba że jawnie --allow-mpk-only. Fail-fast
-  // zamiast pobierać MPK i dopiero potem odkryć brak klucza.
-  if (!PDP_API_KEY && !ALLOW_MPK_ONLY) {
+  log(`miasto: ${CITY} (output: ${DIST})`);
+  // Realne KD jest wymagane we Wrocławiu, chyba że jawnie --allow-mpk-only.
+  // Fail-fast zamiast pobierać MPK i dopiero potem odkryć brak klucza.
+  // Kraków nie używa PDP wcale, więc klucza nie wymaga.
+  if (CITY === 'wroclaw' && !PDP_API_KEY && !ALLOW_MPK_ONLY) {
     throw new Error('brak PDP_API_KEY: build wymaga realnych danych KD. Ustaw sekret PDP_API_KEY albo jawnie --allow-mpk-only (tylko diagnostyka).');
   }
   mkdirSync(DIST, { recursive: true });
@@ -422,60 +474,117 @@ async function main() {
   let remote = null;
   if (PUBLIC_URL && !FORCE) {
     try {
-      remote = await fetchJson(`${PUBLIC_URL}/manifest.json`, {}, 15000);
+      remote = await fetchJson(`${PUBLIC_URL}/${CITY_SCOPED ? `${CITY}/` : ''}manifest.json`, {}, 15000);
       log('remote manifest version:', remote.version);
     } catch { log('brak zdalnego manifestu (pierwszy build?) — buduję pełny.'); }
   }
 
-  // 2. MPK discovery + PDP data-version (tanie zapytania).
-  const mpk = await discoverMpk();
-  log('MPK:', mpk.filename || mpk.url, '| effective:', mpk.effectiveDate);
+  // 2. Źródła GTFS per-miasto (tanie zapytania).
+  // prefix chroni przed kolizją id między feedami (Kraków ma 3 ZIP-y).
+  let gtfsSources = [];
+  let mpk = null;
   let kdVersion = 'none';
-  if (PDP_API_KEY) {
-    try {
-      kdVersion = await pdpDataVersion();
-    } catch (e) {
-      warn('PDP /data-version failed:', String(e), ', KD może być nieaktualne.');
-      kdVersion = 'unknown';
+  let ztpFingerprint = '';
+  let kmlVersion = '';
+  if (CITY === 'krakow') {
+    for (const f of ZTP_FEEDS) {
+      gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
+    }
+    const ztpVersions = [];
+    for (const s of gtfsSources) {
+      s.version = await headVersion(s.url, s.headers);
+      ztpVersions.push(`${s.label}=${s.version || '?'}`);
+    }
+    ztpFingerprint = ztpVersions.join('|');
+    kmlVersion = await headVersion(KML_GTFS_URL, KML_UA);
+    log('ZTP:', ztpFingerprint, '| KMŁ:', kmlVersion || '?');
+  } else {
+    mpk = await discoverMpk();
+    log('MPK:', mpk.filename || mpk.url, '| effective:', mpk.effectiveDate);
+    if (PDP_API_KEY) {
+      try {
+        kdVersion = await pdpDataVersion();
+      } catch (e) {
+        warn('PDP /data-version failed:', String(e), ', KD może być nieaktualne.');
+        kdVersion = 'unknown';
+      }
+    }
+    log('KD schedulesVersion:', kdVersion);
+    gtfsSources = [{ label: 'MPK', url: mpk.url, prefix: '', headers: MPK_UA, version: mpk.effectiveDate }];
+  }
+
+  // Odcisk ZTP/KMŁ powstaje z Last-Modified/ETag. Gdy feed ich nie zwraca,
+  // „odcisk” jest stały i nie wykryje zmiany rozkładu, więc skip byłby wieczny.
+  // Wtedy (bez --force) budujemy na nowo zamiast pomijać.
+  const ztpVersionsReliable = CITY !== 'krakow' || (gtfsSources.length > 0 && gtfsSources.every((s) => !!s.version));
+  const kmlVersionReliable = CITY !== 'krakow' || !!kmlVersion;
+
+  if (!FORCE && remote?.sources) {
+    if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
+      // Ten sam ZTP wystarczy do skipu tylko wtedy, gdy zdalna baza faktycznie
+      // ma Koleje Małopolskie. Manifest sprzed ich wdrożenia ma zgodny odcisk
+      // ZTP, ale pociągów nie zawiera, więc bez tego warunku Kraków nigdy by
+      // ich nie dostał.
+      const remoteKmlReal =
+        (remote.sources.kml?.version || null) === (kmlVersion || null) &&
+        Number(remote.sources.kml?.stations || 0) > 0 &&
+        Number(remote.sources.kml?.trips || 0) > 0;
+      if (!ztpVersionsReliable || !kmlVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else if (remoteKmlReal) {
+        log('brak zmian (ZTP + KMŁ), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      } else {
+        warn('zdalny manifest bez realnego KMŁ, przebudowuję zamiast skipować.');
+      }
+    }
+    if (CITY === 'wroclaw'
+      && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
+      && (remote.sources.kd?.schedulesVersion || 'none') === kdVersion) {
+      // Gdy KD jest wymagane, skip tylko jeśli zdalna baza faktycznie je ma.
+      // Inaczej wymuszamy przebudowę (stary manifest mógł być MPK-only/mock).
+      const remoteKdReal = !ALLOW_MPK_ONLY
+        && !remote.sources.kd?.skippedReason
+        && Number(remote.sources.kd?.stations || 0) > 0
+        && Number(remote.sources.kd?.trips || 0) > 0;
+      if (ALLOW_MPK_ONLY || remoteKdReal) {
+        log('brak zmian (MPK + KD), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+      warn('zdalny manifest bez realnego KD, przebudowuję zamiast skipować.');
     }
   }
-  log('KD schedulesVersion:', kdVersion);
 
-  if (!FORCE && remote?.sources
-    && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
-    && (remote.sources.kd?.schedulesVersion || 'none') === kdVersion) {
-    // Gdy KD jest wymagane, skip tylko jeśli zdalna baza faktycznie je ma.
-    // Inaczej wymuszamy przebudowę (stary manifest mógł być MPK-only/mock).
-    const remoteKdReal = !ALLOW_MPK_ONLY
-      && !remote.sources.kd?.skippedReason
-      && Number(remote.sources.kd?.stations || 0) > 0
-      && Number(remote.sources.kd?.trips || 0) > 0;
-    if (ALLOW_MPK_ONLY || remoteKdReal) {
-      log('brak zmian (MPK + KD), skip buildu.');
-      rmSync(work, { recursive: true, force: true });
-      process.exit(2);
-    }
-    warn('zdalny manifest bez realnego KD, przebudowuję zamiast skipować.');
-  }
-
-  // 3. Pobieranie ZIP-a MPK + rozpakowanie (unzip z systemu — Node nie ma wbudowanego).
-  const zipPath = join(work, 'gtfs.zip');
-  log('pobieranie ZIP MPK…');
-  const zipBuf = await fetchBuffer(mpk.url, MPK_UA, 180000);
-  writeFileSync(zipPath, zipBuf);
-  log('ZIP:', (zipBuf.length / 1048576).toFixed(1), 'MB');
-  const txtDir = join(work, 'gtfs');
-  mkdirSync(txtDir, { recursive: true });
+  // 3. Pobieranie ZIP-ów + rozpakowanie (unzip z systemu, Node nie ma wbudowanego).
   const NEEDED = ['stops.txt', 'routes.txt', 'calendar.txt', 'calendar_dates.txt', 'trips.txt', 'stop_times.txt'];
-  try {
-    execFileSync('unzip', ['-o', '-j', zipPath, ...NEEDED, '-d', txtDir], { stdio: 'pipe' });
-  } catch {
-    rmSync(work, { recursive: true, force: true });
-    throw new Error('Brak programu `unzip` w PATH (linux/macos: standard; Windows: Git Bash/WSL).');
+  const txtDirs = [];
+  for (const [i, src] of gtfsSources.entries()) {
+    const zipPath = join(work, `gtfs-${i}.zip`);
+    log(`pobieranie ZIP ${src.label}…`);
+    const zipBuf = await fetchBuffer(src.url, src.headers, 180000);
+    writeFileSync(zipPath, zipBuf);
+    log(`ZIP ${src.label}:`, (zipBuf.length / 1048576).toFixed(1), 'MB');
+    const txtDir = join(work, `gtfs-${i}`);
+    mkdirSync(txtDir, { recursive: true });
+    // Niezerowy exit tolerujemy (np. brak opcjonalnego calendar.txt w feedzie:
+    // unzip krzyczy "filename not matched", ale resztę wypakowuje). Brak
+    // wymaganych plików wyłapią konkretne błędy przy imporcie niżej.
+    try {
+      execFileSync('unzip', ['-o', '-j', zipPath, ...NEEDED, '-d', txtDir], { stdio: 'pipe' });
+    } catch (e) {
+      if (e && (e.code === 'ENOENT' || /not found/i.test(String(e.message || '')))) {
+        rmSync(work, { recursive: true, force: true });
+        throw new Error('Brak programu `unzip` w PATH (linux/macos: standard; Windows: Git Bash/WSL).');
+      }
+      warn(`unzip dla ${src.label} zwrócił błąd (kontynuuję, zweryfikuję pliki):`, String((e && e.message) || e).slice(0, 160));
+    }
+    txtDirs.push({ dir: txtDir, prefix: src.prefix, label: src.label });
   }
-  const readTxt = (n) => {
-    try { return readFileSync(join(txtDir, n), 'utf8'); } catch { return null; }
-  };
+  const readers = txtDirs.map(({ dir }) => (n) => {
+    try { return readFileSync(join(dir, n), 'utf8'); } catch { return null; }
+  });
 
   // 4. Świeża baza.
   try { rmSync(DB_FILE, { force: true }); } catch {}
@@ -486,127 +595,152 @@ async function main() {
   db.exec(SCHEMA_SQL);
   db.exec('PRAGMA synchronous = OFF;');
 
-  const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0 };
-  /** Przystanki MPK w pamięci (do liczenia przesiadek na KD w kroku 6b). */
-  const mpkStops = [];
+  const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0, kmlStations: 0, kmlRoutes: 0, kmlTrips: 0, kmlStopTimes: 0 };
+  /** Przystanki miasta w pamięci (do liczenia przesiadek na kolej w kroku 6b). */
+  const cityStops = [];
+  const cityStopIds = new Set();
 
-  // 5. MPK → tabele.
-  const stopsTxt = readTxt('stops.txt');
-  if (!stopsTxt) throw new Error('ZIP bez stops.txt — przerywam (nie nadpisuję R2 pustką).');
-  {
-    const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
-    db.exec('BEGIN');
-    let i = 0;
-    eachRow(stopsTxt, (c, idx) => {
-      const id = (c[idx.stop_id] || '').trim();
-      const name = (c[idx.stop_name] || '').trim();
-      if (!id || !name) return;
-      const lat = Number(c[idx.stop_lat]) || 0;
-      const lon = Number(c[idx.stop_lon]) || 0;
-      const norm = normalizePolish(name);
-      ins.run(id, (c[idx.stop_code] || '').trim(), name, lat, lon, norm);
-      if (lat && lon) mpkStops.push({ id, norm, lat, lon });
-      if (++i % 2000 === 0) { db.exec('COMMIT'); db.exec('BEGIN'); }
-      counts.stops++;
-    });
-    db.exec('COMMIT');
-  }
-  const routesTxt = readTxt('routes.txt');
-  if (routesTxt) {
-    const ins = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)');
-    db.exec('BEGIN');
-    eachRow(routesTxt, (c, idx) => {
-      const id = (c[idx.route_id] || '').trim();
-      if (!id) return;
-      const raw = (c[idx.route_type] || '').trim();
-      ins.run(id, (c[idx.route_short_name] || '').trim() || id, (c[idx.route_long_name] || '').trim(), raw !== '' && !isNaN(Number(raw)) ? Number(raw) : 3);
-      counts.routes++;
-    });
-    db.exec('COMMIT');
-  }
-  const calTxt = readTxt('calendar.txt');
-  if (calTxt) {
-    const ins = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    db.exec('BEGIN');
-    eachRow(calTxt, (c, idx) => {
-      const id = (c[idx.service_id] || '').trim();
-      if (!id) return;
-      ins.run(id, Number(c[idx.monday]) || 0, Number(c[idx.tuesday]) || 0, Number(c[idx.wednesday]) || 0,
-        Number(c[idx.thursday]) || 0, Number(c[idx.friday]) || 0, Number(c[idx.saturday]) || 0, Number(c[idx.sunday]) || 0,
-        (c[idx.start_date] || '').trim(), (c[idx.end_date] || '').trim());
-    });
-    db.exec('COMMIT');
-  }
-  const calDatesTxt = readTxt('calendar_dates.txt');
-  {
-    const rows = calDatesTxt ? [] : [];
+  // 5. GTFS → tabele. Kraków merguje 3 feedy: przystanki współdzielone
+  // (REPLACE po stop_id), reszta id z prefiksem KRK:{A,T,M} (brak kolizji).
+  db.exec('DELETE FROM calendar_dates');
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const { prefix, label } = txtDirs[fi];
+    const readTxt = readers[fi];
+    const P = (id) => (prefix ? `${prefix}:${id}` : id);
+    const stopsTxt = readTxt('stops.txt');
+    if (!stopsTxt) throw new Error(`ZIP ${label} bez stops.txt, przerywam (nie nadpisuję R2 pustką).`);
+    {
+      const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
+      db.exec('BEGIN');
+      let i = 0;
+      eachRow(stopsTxt, (c, idx) => {
+        const id = (c[idx.stop_id] || '').trim();
+        const name = (c[idx.stop_name] || '').trim();
+        if (!id || !name) return;
+        const lat = Number(c[idx.stop_lat]) || 0;
+        const lon = Number(c[idx.stop_lon]) || 0;
+        const norm = normalizePolish(name);
+        ins.run(id, (c[idx.stop_code] || '').trim(), name, lat, lon, norm);
+        if (lat && lon && !cityStopIds.has(id)) {
+          cityStopIds.add(id);
+          cityStops.push({ id, norm, lat, lon });
+        }
+        if (++i % 2000 === 0) { db.exec('COMMIT'); db.exec('BEGIN'); }
+        counts.stops++;
+      });
+      db.exec('COMMIT');
+    }
+    const routesTxt = readTxt('routes.txt');
+    if (routesTxt) {
+      const ins = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(routesTxt, (c, idx) => {
+        const id = (c[idx.route_id] || '').trim();
+        if (!id) return;
+        const raw = (c[idx.route_type] || '').trim();
+        let num = raw !== '' && !isNaN(Number(raw)) ? Number(raw) : 3;
+        // ZTP Kraków oznacza tramwaje rozszerzonym typem 900, sprowadzamy
+        // do kanonicznego GTFS 0, żeby filtry tramwaj/autobus działały.
+        if (CITY === 'krakow' && num === 900) num = 0;
+        ins.run(P(id), (c[idx.route_short_name] || '').trim() || id, (c[idx.route_long_name] || '').trim(), num);
+        counts.routes++;
+      });
+      db.exec('COMMIT');
+    }
+    const calTxt = readTxt('calendar.txt');
+    if (calTxt) {
+      const ins = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(calTxt, (c, idx) => {
+        const id = (c[idx.service_id] || '').trim();
+        if (!id) return;
+        ins.run(P(id), Number(c[idx.monday]) || 0, Number(c[idx.tuesday]) || 0, Number(c[idx.wednesday]) || 0,
+          Number(c[idx.thursday]) || 0, Number(c[idx.friday]) || 0, Number(c[idx.saturday]) || 0, Number(c[idx.sunday]) || 0,
+          (c[idx.start_date] || '').trim(), (c[idx.end_date] || '').trim());
+      });
+      db.exec('COMMIT');
+    }
+    const calDatesTxt = readTxt('calendar_dates.txt');
     if (calDatesTxt) {
+      const rows = [];
       eachRow(calDatesTxt, (c, idx) => {
         const id = (c[idx.service_id] || '').trim();
-        if (id) rows.push([id, (c[idx.date] || '').trim(), Number(c[idx.exception_type]) || 0]);
+        if (id) rows.push([P(id), (c[idx.date] || '').trim(), Number(c[idx.exception_type]) || 0]);
       });
+      const ins = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
+      db.exec('BEGIN');
+      for (const r of rows) ins.run(...r);
+      db.exec('COMMIT');
     }
-    const ins = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
-    db.exec('BEGIN');
-    db.exec('DELETE FROM calendar_dates');
-    for (const r of rows) ins.run(...r);
-    db.exec('COMMIT');
-  }
-  const tripsTxt = readTxt('trips.txt');
-  if (!tripsTxt) throw new Error('ZIP bez trips.txt — przerywam.');
-  {
-    const ins = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
-    db.exec('BEGIN');
-    let i = 0;
-    eachRow(tripsTxt, (c, idx) => {
-      const tid = (c[idx.trip_id] || '').trim();
-      const rid = (c[idx.route_id] || '').trim();
-      const sid = (c[idx.service_id] || '').trim();
-      if (!tid || !rid || !sid) return;
-      ins.run(tid, rid, sid, (c[idx.trip_headsign] || '').trim(), Number(c[idx.direction_id]) || 0, (c[idx.shape_id] || '').trim());
-      if (++i % 5000 === 0) { db.exec('COMMIT'); db.exec('BEGIN'); }
-      counts.trips++;
-    });
-    db.exec('COMMIT');
-  }
-  const stTxt = readTxt('stop_times.txt');
-  if (!stTxt) throw new Error('ZIP bez stop_times.txt — przerywam.');
-  {
-    const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
-    const { header } = splitHeader(stTxt);
-    const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
-      di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
-    let batch = 0;
-    db.exec('BEGIN');
-    let pos = stTxt.indexOf('\n') + 1;
-    const len = stTxt.length;
-    while (pos < len) {
-      let nl = stTxt.indexOf('\n', pos);
-      if (nl === -1) nl = len;
-      let line = stTxt.slice(pos, nl);
-      pos = nl + 1;
-      if (line.endsWith('\r')) line = line.slice(0, -1);
-      if (!line.trim()) continue;
-      // stop_times nie ma cudzysłowów — szybki split jak w aplikacji
-      const c = line.split(',');
-      const tid = (c[ti] || '').trim();
-      if (!tid) continue;
-      const arr = (c[ai] || '').trim() || '00:00:00';
-      ins.run(tid, (c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0);
-      counts.stopTimes++;
-      if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
+    const tripsTxt = readTxt('trips.txt');
+    if (!tripsTxt) throw new Error(`ZIP ${label} bez trips.txt, przerywam.`);
+    {
+      const ins = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
+      db.exec('BEGIN');
+      let i = 0;
+      eachRow(tripsTxt, (c, idx) => {
+        const tid = (c[idx.trip_id] || '').trim();
+        const rid = (c[idx.route_id] || '').trim();
+        const sid = (c[idx.service_id] || '').trim();
+        if (!tid || !rid || !sid) return;
+        ins.run(P(tid), P(rid), P(sid), (c[idx.trip_headsign] || '').trim(), Number(c[idx.direction_id]) || 0, (c[idx.shape_id] || '').trim());
+        if (++i % 5000 === 0) { db.exec('COMMIT'); db.exec('BEGIN'); }
+        counts.trips++;
+      });
+      db.exec('COMMIT');
     }
-    db.exec('COMMIT');
+    const stTxt = readTxt('stop_times.txt');
+    if (!stTxt) throw new Error(`ZIP ${label} bez stop_times.txt, przerywam.`);
+    {
+      const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
+      const { header } = splitHeader(stTxt);
+      const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
+        di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+      let batch = 0;
+      db.exec('BEGIN');
+      let pos = stTxt.indexOf('\n') + 1;
+      const len = stTxt.length;
+      while (pos < len) {
+        let nl = stTxt.indexOf('\n', pos);
+        if (nl === -1) nl = len;
+        let line = stTxt.slice(pos, nl);
+        pos = nl + 1;
+        if (line.endsWith('\r')) line = line.slice(0, -1);
+        if (!line.trim()) continue;
+        // stop_times nie ma cudzysłowów, więc szybki split jak w aplikacji
+        const c = line.split(',');
+        const tid = (c[ti] || '').trim();
+        if (!tid) continue;
+        const arr = (c[ai] || '').trim() || '00:00:00';
+        ins.run(P(tid), (c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0);
+        counts.stopTimes++;
+        if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
+      }
+      db.exec('COMMIT');
+    }
+    log(`${label}: routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
   }
-  log(`MPK: stops=${counts.stops} routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
+  // Przystanki liczone z dupami między feedami, przelicz na stan faktyczny.
+  try {
+    counts.stops = db.prepare('SELECT COUNT(*) AS n FROM stops').get().n;
+  } catch {}
+  log(`GTFS: stops=${counts.stops} routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
 
-  // 6. KD z PDP API. Domyślnie WYMAGANE (patrz fail-fast na starcie main).
-  let kdInfo = { kind: 'pdp-api', skippedReason: PDP_API_KEY ? null : 'no-key' };
-  /** Liczba stacji KD bez współrzędnych (kursy z nimi są pomijane). */
+  // 6. Kolej regionalna: KD z PDP API (tylko Wrocław) albo Koleje
+  // Małopolskie ze statycznego GTFS (tylko Kraków). Wspólny mianownik:
+  // mapa stacji railGeo (do przesiadek w kroku 6b) i prefiks ID.
+  const RAIL_PREFIX = CITY === 'krakow' ? 'KML' : 'KD';
+  let kdInfo = CITY === 'wroclaw'
+    ? { kind: 'pdp-api', skippedReason: PDP_API_KEY ? null : 'no-key' }
+    : { kind: 'none', skippedReason: 'krakow-pdp-unused' };
+  let kmlInfo = CITY === 'krakow'
+    ? { kind: 'gtfs-zip', skippedReason: 'not-fetched-yet' }
+    : { kind: 'none', skippedReason: 'wroclaw-no-kml' };
+  /** Liczba stacji kolei bez współrzędnych (kursy z nimi są pomijane). */
   let unresolvedCount = 0;
-  /** Stacje KD ze współrzędnymi (do przesiadek w kroku 6b). */
-  const kdGeo = new Map();
-  if (PDP_API_KEY) {
+  /** Stacje kolei ze współrzędnymi (do przesiadek w kroku 6b). */
+  const railGeo = new Map();
+  if (CITY === 'wroclaw' && PDP_API_KEY) {
     try {
       const wro = await pdpWroclawStationIds();
       log(`WROCŁAW: ${wro.stationIds.length} stacji w PDP`);
@@ -678,7 +812,7 @@ async function main() {
             if (!geo) { ok = false; break; }
             insStop.run(`KD:S:${id}`, id, nm, geo.lat, geo.lon, normalizePolish(nm));
             seenStops.add(id);
-            kdGeo.set(id, { name: nm, lat: geo.lat, lon: geo.lon });
+            railGeo.set(id, { name: nm, lat: geo.lat, lon: geo.lon });
             counts.stops++;
             counts.kdStations++;
           }
@@ -737,13 +871,143 @@ async function main() {
     }
   }
 
-  // 6b. Przesiadki MPK<->KD. Stacja kolejowa to nie słupek przy torach:
+  // 6a. Koleje Małopolskie ze statycznego GTFS (tylko Kraków, bez klucza).
+  // Trasy w bazie grupujemy po numerze pociągu (pierwszy token trip_short_name,
+  // np. "33142" z "33142 HUBAL"), ten sam wzorzec co kursy KD: LineBadge
+  // pokazuje numer, a live dopina się po numerze (brygada z zbiorkom).
+  if (CITY === 'krakow') {
+    const zipPath = join(work, 'kml.zip');
+    log('pobieranie ZIP KMŁ…');
+    const zipBuf = await fetchBuffer(KML_GTFS_URL, KML_UA, 180000);
+    writeFileSync(zipPath, zipBuf);
+    log('ZIP KMŁ:', (zipBuf.length / 1048576).toFixed(1), 'MB');
+    const txtDir = join(work, 'kml');
+    mkdirSync(txtDir, { recursive: true });
+    // Jak wyżej: brak opcjonalnego calendar.txt to nie błąd unzip.
+    try {
+      execFileSync('unzip', ['-o', '-j', zipPath, ...NEEDED, '-d', txtDir], { stdio: 'pipe' });
+    } catch (e) {
+      if (e && (e.code === 'ENOENT' || /not found/i.test(String(e.message || '')))) {
+        rmSync(work, { recursive: true, force: true });
+        throw new Error('Brak programu `unzip` w PATH (linux/macos: standard; Windows: Git Bash/WSL).');
+      }
+      warn('unzip dla KMŁ zwrócił błąd (kontynuuję, zweryfikuję pliki):', String((e && e.message) || e).slice(0, 160));
+    }
+    const readKml = (n) => {
+      try { return readFileSync(join(txtDir, n), 'utf8'); } catch { return null; }
+    };
+    const PS = (id) => `KML:S:${id}`;
+    const PR = (id) => `KML:${id}`;
+    const stopsTxt = readKml('stops.txt');
+    if (!stopsTxt) throw new Error('ZIP KMŁ bez stops.txt, przerywam (nie nadpisuję R2 pustką).');
+    {
+      const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(stopsTxt, (c, idx) => {
+        const id = (c[idx.stop_id] || '').trim();
+        const name = (c[idx.stop_name] || '').trim();
+        if (!id || !name) return;
+        const lat = Number(c[idx.stop_lat]) || 0;
+        const lon = Number(c[idx.stop_lon]) || 0;
+        if (!lat || !lon) { unresolvedCount++; return; }
+        ins.run(PS(id), (c[idx.stop_code] || '').trim(), titleCasePl(name), lat, lon, normalizePolish(name));
+        railGeo.set(id, { name: titleCasePl(name), lat, lon });
+        counts.stops++;
+        counts.kmlStations++;
+      });
+      db.exec('COMMIT');
+    }
+    const tripsTxt = readKml('trips.txt');
+    if (!tripsTxt) throw new Error('ZIP KMŁ bez trips.txt, przerywam.');
+    const trainOf = new Map(); // numer pociągu -> { routeId, first, last }
+    let skippedNoNumber = 0;
+    {
+      const insRoute = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)');
+      const insTrip = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
+      const insCal = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(tripsTxt, (c, idx) => {
+        const tid = (c[idx.trip_id] || '').trim();
+        const sid = (c[idx.service_id] || '').trim();
+        if (!tid || !sid) return;
+        // Numer pociągu to pierwszy token trip_short_name ("33142" z "33142 HUBAL").
+        // Sufiks wariantu ("/1" w "30710/1") odcinamy: live (brygada zbiorkom)
+        // niesie goły numer, a kierunek i tak weryfikują nazwy/czasy postojów.
+        const fullShort = (c[idx.trip_short_name] || '').trim();
+        const rawNum = (fullShort.split(/\s/)[0] || '').trim();
+        const num = rawNum.split('/')[0].trim();
+        if (!num) { skippedNoNumber++; return; }
+        const routeId = `KML:R:${num}`;
+        const headsign = (c[idx.trip_headsign] || '').trim();
+        if (!trainOf.has(num)) {
+          const trainName = fullShort.slice(rawNum.length).trim() || headsign || num;
+          insRoute.run(routeId, num, trainName, 2);
+          trainOf.set(num, { routeId, name: trainName });
+          counts.routes++;
+          counts.kmlRoutes++;
+          insCal.run(PR(sid), 0, 0, 0, 0, 0, 0, 0, '', '');
+        }
+        insTrip.run(PR(tid), routeId, PR(sid), headsign, Number(c[idx.direction_id]) || 0, (c[idx.shape_id] || '').trim());
+        counts.trips++;
+        counts.kmlTrips++;
+      });
+      db.exec('COMMIT');
+    }
+    if (skippedNoNumber > 0) log(`KMŁ: pominięto ${skippedNoNumber} kursów bez numeru pociągu`);
+    const calDatesTxt = readKml('calendar_dates.txt');
+    if (calDatesTxt) {
+      const ins = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(calDatesTxt, (c, idx) => {
+        const id = (c[idx.service_id] || '').trim();
+        if (id) ins.run(PR(id), (c[idx.date] || '').trim(), Number(c[idx.exception_type]) || 0);
+      });
+      db.exec('COMMIT');
+    }
+    const stTxt = readKml('stop_times.txt');
+    if (!stTxt) throw new Error('ZIP KMŁ bez stop_times.txt, przerywam.');
+    {
+      const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
+      const { header } = splitHeader(stTxt);
+      const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
+        di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+      let batch = 0;
+      db.exec('BEGIN');
+      let pos = stTxt.indexOf('\n') + 1;
+      const len = stTxt.length;
+      while (pos < len) {
+        let nl = stTxt.indexOf('\n', pos);
+        if (nl === -1) nl = len;
+        let line = stTxt.slice(pos, nl);
+        pos = nl + 1;
+        if (line.endsWith('\r')) line = line.slice(0, -1);
+        if (!line.trim()) continue;
+        const c = line.split(',');
+        const tid = (c[ti] || '').trim();
+        if (!tid) continue;
+        const arr = (c[ai] || '').trim() || '00:00:00';
+        ins.run(PR(tid), PS((c[si] || '').trim()), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0);
+        counts.stopTimes++;
+        counts.kmlStopTimes++;
+        if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
+      }
+      db.exec('COMMIT');
+    }
+    kmlInfo = {
+      kind: 'gtfs-zip', url: KML_GTFS_URL, version: kmlVersion || null,
+      stations: railGeo.size, routes: trainOf.size, trips: counts.kmlTrips,
+      stopTimes: counts.kmlStopTimes, skippedTripsNoNumber: skippedNoNumber,
+    };
+    log(`KMŁ: stations=${railGeo.size} routes=${trainOf.size} trips=${counts.kmlTrips} stopTimes=${counts.kmlStopTimes}`);
+  }
+
+  // 6b. Przesiadki miasto<->kolej. Stacja kolejowa to nie słupek przy torach:
   // perony bywają schowane (Dworzec Główny: przystanek ~300 m od peronów
   // + hala i schody), więc linki liczymy hojnie. Aplikacja dokleja je do
   // footpaths i ZASTĘPUJE nimi gridowe linki między tymi samymi parami
   // (grid liczy sam dystans w linii prostej — bez zapasu na peron).
   let interchangeCount = 0;
-  if (kdGeo.size > 0 && mpkStops.length > 0) {
+  if (railGeo.size > 0 && cityStops.length > 0) {
     const links = new Map(); // "a|b" (posortowane) -> { a, b, walkSec }
     const link = (a, b, walkSec) => {
       const [x, y] = a < b ? [a, b] : [b, a];
@@ -752,10 +1016,10 @@ async function main() {
       if (!prev || walkSec > prev.walkSec) links.set(k, { a: x, b: y, walkSec });
     };
     const computed = (distM) => Math.max(INTERCHANGE_MIN_SEC, Math.round(distM * IX_WALK_DETOUR / IX_WALK_SPEED_MPS));
-    for (const [kid, g] of kdGeo) {
-      const kStopId = `KD:S:${kid}`;
+    for (const [kid, g] of railGeo) {
+      const kStopId = `${RAIL_PREFIX}:S:${kid}`;
       const isGlowny = normalizePolish(g.name).includes('glowny');
-      for (const m of mpkStops) {
+      for (const m of cityStops) {
         const dist = haversineM(g.lat, g.lon, m.lat, m.lon);
         if (dist <= INTERCHANGE_RADIUS_M) {
           // Dworzec Główny: słupki są blisko w linii prostej (~150 m), ale
@@ -772,32 +1036,33 @@ async function main() {
     if (links.size > 0) {
       const ins = db.prepare('INSERT INTO interchanges (from_stop_id, to_stop_id, walk_sec, kind) VALUES (?, ?, ?, ?)');
       db.exec('BEGIN');
-      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, 'mpk-kd');
+      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : 'mpk-kd');
       db.exec('COMMIT');
       interchangeCount = links.size;
     }
-    log(`interchanges MPK<->KD: ${interchangeCount} (stacji KD: ${kdGeo.size})`);
-    if (kdGeo.size > 0 && interchangeCount === 0) {
-      warn('zero linków przesiadkowych — stacje KD bez połączenia z MPK (sprawdź współrzędne w cache!)');
+    log(`interchanges kolej<->miasto: ${interchangeCount} (stacji kolei: ${railGeo.size})`);
+    if (railGeo.size > 0 && interchangeCount === 0) {
+      warn('zero linków przesiadkowych: stacje kolei bez połączenia z miastem (sprawdź współrzędne!)');
     }
   }
   if (kdInfo && !kdInfo.skippedReason) kdInfo.interchanges = interchangeCount;
+  if (kmlInfo && !kmlInfo.skippedReason) kmlInfo.interchanges = interchangeCount;
 
-  // 6c. Twarda bramka: bez pełnego, realnego KD nie nadpisujemy R2.
-  // Baza MPK-only albo z niekompletnym KD to dokładnie ta atrapa, której
-  // nie chcemy w APK. Wszystkie cztery sekcje muszą być niepuste.
-  if (!ALLOW_MPK_ONLY) {
+  // 6c. Twarda bramka, tylko Wrocław: bez pełnego, realnego KD nie
+  // nadpisujemy R2. Baza MPK-only albo z niekompletnym KD to dokładnie ta
+  // atrapa, której nie chcemy w APK. Wszystkie cztery sekcje muszą być niepuste.
+  if (CITY === 'wroclaw' && !ALLOW_MPK_ONLY) {
     const problems = [];
     if (counts.kdStations === 0) problems.push('0 stacji KD');
     if (counts.kdRoutes === 0) problems.push('0 tras KD');
     if (counts.kdTrips === 0) problems.push('0 kursów KD');
     if (interchangeCount === 0) problems.push('0 przesiadek MPK<->KD');
     // Zdegenerowane współrzędne (dawniej: 30 stacji w 4 punktach) psują przesiadki.
-    const uniqueKdCoords = new Set([...kdGeo.values()].map((g) => `${g.lat.toFixed(5)},${g.lon.toFixed(5)}`)).size;
-    if (kdGeo.size >= 2 && uniqueKdCoords < kdGeo.size * 0.9) {
-      problems.push(`współrzędne KD zdegenerowane (${uniqueKdCoords} różnych punktów dla ${kdGeo.size} stacji)`);
+    const uniqueKdCoords = new Set([...railGeo.values()].map((g) => `${g.lat.toFixed(5)},${g.lon.toFixed(5)}`)).size;
+    if (railGeo.size >= 2 && uniqueKdCoords < railGeo.size * 0.9) {
+      problems.push(`współrzędne KD zdegenerowane (${uniqueKdCoords} różnych punktów dla ${railGeo.size} stacji)`);
     }
-    const kdPlaceholderNames = [...kdGeo.values()].filter((g) => /^Stacja \d+$/.test(g.name)).length;
+    const kdPlaceholderNames = [...railGeo.values()].filter((g) => /^Stacja \d+$/.test(g.name)).length;
     if (kdPlaceholderNames > 0) problems.push(`${kdPlaceholderNames} stacji KD z zastępczą nazwą "Stacja NNN"`);
     if (problems.length > 0) {
       rmSync(work, { recursive: true, force: true });
@@ -805,6 +1070,20 @@ async function main() {
     }
     if (unresolvedCount > 0) {
       warn(`KD: ${unresolvedCount} stacji bez współrzędnych, część kursów pominięta (uzupełnij cache: --write-coords).`);
+    }
+  }
+
+  // 6d. Twarda bramka, Kraków: baza bez pełnych Kolei Małopolskich
+  // (albo bez przesiadek na nie) nie nadpisuje R2.
+  if (CITY === 'krakow') {
+    const problems = [];
+    if (counts.kmlStations === 0) problems.push('0 stacji KMŁ');
+    if (counts.kmlRoutes === 0) problems.push('0 tras KMŁ');
+    if (counts.kmlTrips === 0) problems.push('0 kursów KMŁ');
+    if (interchangeCount === 0) problems.push('0 przesiadek KMŁ<->ZTP');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełne KMŁ (${problems.join(', ')}): nie publikuję bazy.`);
     }
   }
 
@@ -819,16 +1098,23 @@ async function main() {
   // Na telefonie tego nie powtarzamy (import i tak jest ciężki, a indeksy wystarczą).
   log('analyze…');
   db.exec('ANALYZE');
-  const version = `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
+  const version = CITY === 'krakow'
+    ? `${todayCompact()}-krk${createHash('sha256').update(`${ztpFingerprint}|${kmlVersion}`).digest('hex').slice(0, 8)}`
+    : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run('feeds', JSON.stringify({ mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
   if (!vals.includes('ok')) throw new Error('integrity_check NIE przeszedł: ' + JSON.stringify(chk));
+  // Pusta baza (padnięte ZIP-y) nigdy nie leci do R2, niezależnie od miasta.
+  const guard = db.prepare('SELECT (SELECT COUNT(*) FROM stops) AS s, (SELECT COUNT(*) FROM trips) AS t, (SELECT COUNT(*) FROM stop_times) AS st').get();
+  if (!guard || guard.s <= 0 || guard.t <= 0 || guard.st <= 0) {
+    throw new Error(`pusta baza (stops=${guard?.s} trips=${guard?.t} times=${guard?.st}): nie publikuję.`);
+  }
   const size = statSync(DB_FILE).size;
   const sha = createHash('sha256').update(readFileSync(DB_FILE)).digest('hex');
   db.close();
@@ -837,16 +1123,27 @@ async function main() {
   const manifest = {
     version,
     builtAt: new Date().toISOString(),
-    db: { path: 'db/kilometr-gtfs.db', sizeBytes: size, sha256: sha },
-    sources: {
-      mpk: {
-        kind: 'gtfs-zip', catalogueUrl: MPK_CATALOGUE, downloadUrl: mpk.url,
-        filename: mpk.filename || null, effectiveDate: mpk.effectiveDate,
-        stops: counts.stops - counts.kdStations, routes: counts.routes - counts.kdRoutes,
-        trips: counts.trips - counts.kdTrips, stopTimes: counts.stopTimes - counts.kdStopTimes,
-      },
-      kd: kdInfo,
-    },
+    city: CITY,
+    db: { path: DB_R2_PATH, sizeBytes: size, sha256: sha },
+    sources: CITY === 'krakow'
+      ? {
+          ztp: {
+            kind: 'gtfs-zip', feeds: ZTP_FEEDS.map((f) => f.url),
+            fingerprint: ztpFingerprint,
+            stops: counts.stops - counts.kmlStations, routes: counts.routes - counts.kmlRoutes,
+            trips: counts.trips - counts.kmlTrips, stopTimes: counts.stopTimes - counts.kmlStopTimes,
+          },
+          kml: kmlInfo,
+        }
+      : {
+          mpk: {
+            kind: 'gtfs-zip', catalogueUrl: MPK_CATALOGUE, downloadUrl: mpk.url,
+            filename: mpk.filename || null, effectiveDate: mpk.effectiveDate,
+            stops: counts.stops - counts.kdStations, routes: counts.routes - counts.kdRoutes,
+            trips: counts.trips - counts.kdTrips, stopTimes: counts.stopTimes - counts.kdStopTimes,
+          },
+          kd: kdInfo,
+        },
     stats: { stops: counts.stops, routes: counts.routes, trips: counts.trips, stopTimes: counts.stopTimes },
   };
   writeFileSync(MANIFEST_FILE, JSON.stringify(manifest, null, 2) + '\n');

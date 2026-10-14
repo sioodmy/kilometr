@@ -11,18 +11,29 @@ import {
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { fuzzyMatch } from '../gtfs/fuzzy';
 import type { Suggestion } from '../types/models';
-import { BOUNDS } from './gtfsConfig';
+import { BOUNDS, activeBounds } from './gtfsConfig';
 
-/** Ścisły filtr: obsługujemy tylko Wrocław. Viewbox Nominatim nie wystarcza. */
-export function inWroclaw(lat: number, lon: number): boolean {
+/** Ścisły filtr: punkt w granicach aktywnego miasta. Viewbox Nominatim nie wystarcza. */
+export function inCity(lat: number, lon: number): boolean {
+  let b: { minLat: number; maxLat: number; minLon: number; maxLon: number } = BOUNDS;
+  try {
+    b = activeBounds();
+  } catch {
+    // storage jeszcze nie gotowy, legacy Wrocław
+  }
   return (
     Number.isFinite(lat) &&
     Number.isFinite(lon) &&
-    lat >= BOUNDS.minLat &&
-    lat <= BOUNDS.maxLat &&
-    lon >= BOUNDS.minLon &&
-    lon <= BOUNDS.maxLon
+    lat >= b.minLat &&
+    lat <= b.maxLat &&
+    lon >= b.minLon &&
+    lon <= b.maxLon
   );
+}
+
+/** Ścisły filtr: obsługujemy tylko Wrocław (legacy alias dla inCity). */
+export function inWroclaw(lat: number, lon: number): boolean {
+  return inCity(lat, lon);
 }
 
 /** Odległości liczone na końcu (cache trzyma surowe wyniki bez pozycji usera). */

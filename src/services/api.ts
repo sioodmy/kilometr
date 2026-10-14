@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 import { kvGet, kvGetStrict, kvSet } from './storage';
-import { DEFAULT_LOCATION } from '../config';
+import { defaultLocationForCity } from '../config';
+import { getCity } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
 import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
@@ -45,9 +47,18 @@ function newId(): string {
  * tylko wtedy, gdy ten odczyt wciąż jest najnowszy, więc wolniejszy reverse-geocode
  * słabego fixu nie może nadpisać późniejszego, precyzyjnego wyniku.
  */
+function activeCityDef() {
+  try {
+    return getCity(getActiveCityIdSync());
+  } catch {
+    return getCity('wroclaw');
+  }
+}
+
 async function resolveLocation(lat: number, lon: number, accuracyM?: number | null): Promise<LocationResult> {
   const seq = ++cacheWriteSeq;
-  let result: LocationResult = { title: 'Twoja lokalizacja', address: 'Wrocław', lat, lon, accuracyM };
+  const fallback = defaultLocationForCity(activeCityDef().id);
+  let result: LocationResult = { title: fallback.title, address: fallback.address, lat, lon, accuracyM };
   let city: string | null = null;
   let foundStop = false;
   let hadReverse = false;
@@ -141,10 +152,10 @@ export const LocationService: ILocationService = {
       // ekran główny montuje się pod spodem, zanim _layout przekieruje
       // na onboarding, i systemowy dialog wyskakiwał przed setup screenem.
       try {
-        if (!(await hasSeenOnboarding())) return { ...DEFAULT_LOCATION };
+        if (!(await hasSeenOnboarding())) return { ...defaultLocationForCity(activeCityDef().id) };
       } catch {}
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return { ...DEFAULT_LOCATION };
+      if (status !== 'granted') return { ...defaultLocationForCity(activeCityDef().id) };
 
       if (!options?.force) {
         // Świeży fix oddajemy od razu; precyzja dociąga się w tle i sama
@@ -169,7 +180,7 @@ export const LocationService: ILocationService = {
       console.warn('[LocationService] Failed to acquire device location:', err);
     }
 
-    return { ...DEFAULT_LOCATION };
+    return { ...defaultLocationForCity(activeCityDef().id) };
   },
   refineLocation,
   subscribe,
@@ -257,12 +268,13 @@ export const SearchService: ISearchService = {
       ensurePoiIndex();
 
       // 1. Lokalne źródła (szybkie, offline): przystanki GTFS + indeks POI
-      // + statyczna lista budynków PWr.
+      // + specyfiki miasta (Polinka i budynki PWr tylko we Wrocławiu).
       const [stopHits, poiHits] = await Promise.all([
         searchStops(q, 12).catch(() => []),
         searchPois(q, coords?.lat, coords?.lon, 8).catch(() => []),
       ]);
       if (!isCurrent()) throw new SearchAbortedError();
+      const city = activeCityDef();
       const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
         id: `stop-${h.stop_id}`,
         title: h.name.toUpperCase(),
@@ -278,9 +290,9 @@ export const SearchService: ISearchService = {
       }));
       const localSuggestions = [
         ...stopSuggestions,
-        ...searchPolinkaStops(q, coords?.lat, coords?.lon),
+        ...(city.features.cable ? searchPolinkaStops(q, coords?.lat, coords?.lon) : []),
         ...poiHits,
-        ...searchPwrBuildings(q, coords?.lat, coords?.lon, 8),
+        ...(city.features.campusPois ? searchPwrBuildings(q, coords?.lat, coords?.lon, 8) : []),
       ];
 
       // 2. Sieć (Nominatim) tylko gdy lokalnie za mało albo to adres z numerem.
@@ -485,11 +497,12 @@ export const FavoritesService: IFavoritesService = {
   async smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]> {
     try {
       const { getSmartDestinationsForLocation } = await import('./smartRanker');
+      const city = activeCityDef();
       // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS — a
       // ranking na `NaN` wypadałby z każdego promienia, czyli pokazałby
       // historię z całego miasta jako „w okolicy".
-      const lat = Number.isFinite(coords?.lat) ? coords!.lat! : DEFAULT_LOCATION.lat;
-      const lon = Number.isFinite(coords?.lon) ? coords!.lon! : DEFAULT_LOCATION.lon;
+      const lat = Number.isFinite(coords?.lat) ? coords!.lat! : city.center.lat;
+      const lon = Number.isFinite(coords?.lon) ? coords!.lon! : city.center.lon;
       return await getSmartDestinationsForLocation(lat, lon);
     } catch (err) {
       console.warn('[FavoritesService] smartFromOrigin failed:', err);

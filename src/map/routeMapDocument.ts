@@ -21,6 +21,11 @@ export interface RouteMapDocumentOptions {
   user?: { lat: number; lon: number; heading: number | null } | null;
   selectedLegId?: string | null;
   /**
+   * Startowa kamera mapy [lon, lat] (pierwszy kadr, zanim dane ją przesuną).
+   * Default: środek aktywnego miasta.
+   */
+  center?: [number, number] | null;
+  /**
    * Bazowy URL lokalnego serwera mapy (np. `http://127.0.0.1:45999`). Gdy
    * podany, kafle, glify i sam silnik mapy idą z telefonu, więc mapa działa
    * bez internetu. Bez niego wszystko leci z CDN-ów jak dotąd.
@@ -502,7 +507,7 @@ const runtime = [
   '  map = new maplibregl.Map({',
   '    container: "map",',
   '    style: P.style,',
-  '    center: [17.0385, 51.1079],',
+  '    center: P.center || [0, 0],',
   '    zoom: 13,',
   '    minZoom: 9,',
   '    maxZoom: 19,',
@@ -593,6 +598,7 @@ function bootstrapPayload(opts: RouteMapDocumentOptions): string {
     vehicle: opts.vehicle ?? null,
     user: opts.user ?? null,
     selectedLegId: opts.selectedLegId ?? null,
+    center: opts.center ?? null,
   };
   return JSON.stringify(payload).replace(/</g, '\\u003c');
 }

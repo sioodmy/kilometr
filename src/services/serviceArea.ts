@@ -1,17 +1,19 @@
-// Strefa obsługi: tylko Wrocław (+ otulina 15 km od Rynku).
+// Strefa obsługi: aktywne miasto (+ otulina radiusM od centrum).
 //
 // Poza nią pokazujemy kartę „Nieobsługiwane miasto" i blokujemy start
 // z GPS — użytkownik musi wybrać punkt startowy ręcznie, bo planer
-// liczy trasy wyłącznie po rozkładzie MPK Wrocław.
+// liczy trasy wyłącznie po rozkładzie aktywnego miasta.
 
 import { DEFAULT_LOCATION } from '../config';
+import { getCity, suggestCityForCoords as suggest } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 
 export const SERVICE_AREA_CENTER = {
   lat: DEFAULT_LOCATION.lat,
   lon: DEFAULT_LOCATION.lon,
 } as const;
 
-/** Promień obsługi w metrach (15 km od centrum Wrocławia). */
+/** Promień obsługi w metrach (15 km od centrum Wrocławia, legacy). */
 export const SERVICE_AREA_RADIUS_M = 15_000;
 
 /** Haversine — dystans w metrach między dwoma punktami. */
@@ -32,8 +34,17 @@ export function serviceAreaDistanceM(
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-/** True, gdy pozycja jest DALEJ niż 15 km od centrum Wrocławia. */
-export function isOutsideServiceArea(lat: number, lon: number): boolean {
+/** True, gdy pozycja jest poza strefą aktywnego miasta. */
+export function isOutsideServiceArea(lat: number, lon: number, cityId?: string): boolean {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
-  return serviceAreaDistanceM(lat, lon) > SERVICE_AREA_RADIUS_M;
+  const city = getCity(cityId ?? getActiveCityIdSync());
+  return serviceAreaDistanceM(lat, lon, city.center.lat, city.center.lon) > city.radiusM;
+}
+
+/**
+ * Miasto dla współrzędnych GPS (do sugestii w onboardingu). Zwraca wpis
+ * miasta w strefie albo null, gdy GPS jest poza wszystkimi miastami.
+ */
+export function suggestCityForGps(lat: number, lon: number) {
+  return suggest(lat, lon);
 }

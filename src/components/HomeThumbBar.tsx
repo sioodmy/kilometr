@@ -12,7 +12,7 @@ interface HomeThumbBarProps {
   isCustomStart: boolean;
   onOpenStart: () => void;
   onResetStart: () => void;
-  /** GPS poza Wrocławiem: start wymaga ręcznego wyboru. */
+  /** GPS poza strefą: start wymaga ręcznego wyboru. */
   gpsUnsupported?: boolean;
 }
 

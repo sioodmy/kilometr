@@ -1,8 +1,8 @@
-# Ręczny build pakietu kafelków mapy (Wrocław) → Cloudflare R2.
+# Ręczny build pakietu kafelków mapy per-miasto → Cloudflare R2.
 #
 # Uruchamiaj rzadko i ręcznie: kafle OSM zmieniają się powoli, a pakiet waży
 # ~31 MB. Gdy go odpalasz z gałęzi innej niż domyślna, wybierz tę gałąź
-# w „Run workflow".
+# w „Run workflow". Miasto wybierasz inputem `city`.
 #
 # Wymagane sekrety (te same co timetable.yml):
 #   CLOUDFLARE_API_TOKEN   token z uprawnieniem R2 write na bucket kilometr-timetable
@@ -11,24 +11,31 @@
 # Bez sekretów Cloudflare workflow kończy się na artefakcie Actions
 # (do ręcznego wgrania) — R2 nie jest dotykane.
 #
-# Po wgraniu telefon pobiera pakiet z https://data.kilometr.wroclaw.pl/maps/wroclaw-tiles.ktp
+# Po wgraniu telefon pobiera pakiet z https://data.kilometr.wroclaw.pl/maps/{miasto}-tiles.ktp
 # (Worker kilometr-timetable serwuje ten klucz z R2).
 
 name: Map tiles build → R2
 
 on:
   workflow_dispatch:
+    inputs:
+      city:
+        description: 'Miasto'
+        required: true
+        default: 'wroclaw'
+        type: choice
+        options: [wroclaw, krakow]
 
 permissions:
   contents: read
 
 concurrency:
-  group: map-tiles-build
+  group: map-tiles-build-${{ inputs.city }}
   cancel-in-progress: false
 
 jobs:
   build-and-upload:
-    name: Build tile pack + upload R2
+    name: Build tile pack + upload R2 (${{ inputs.city }})
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -39,24 +46,24 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build tile pack (Wrocław, z0-14)
+      - name: Build tile pack (${{ inputs.city }}, z0-14)
         run: |
           mkdir -p dist
-          node scripts/build-tile-pack.mjs dist/wroclaw-tiles.ktp
+          node scripts/build-tile-pack.mjs --city=${{ inputs.city }} dist/${{ inputs.city }}-tiles.ktp
 
       - name: Summary
         run: |
-          SIZE=$(du -h dist/wroclaw-tiles.ktp | cut -f1)
-          echo "### Pakiet kafelków: ${SIZE}" >> "$GITHUB_STEP_SUMMARY"
+          SIZE=$(du -h "dist/${{ inputs.city }}-tiles.ktp" | cut -f1)
+          echo "### Pakiet kafelków (${{ inputs.city }}): ${SIZE}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          node -e "const fs=require('fs');const b=fs.readFileSync('dist/wroclaw-tiles.ktp');console.log(JSON.stringify({kafelkow:b.readUInt32LE(8),maxzoom:b.readUInt32LE(12),rozmiarMB:+(b.length/1048576).toFixed(1)}))" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const fs=require('fs');const b=fs.readFileSync('dist/${{ inputs.city }}-tiles.ktp');console.log(JSON.stringify({kafelkow:b.readUInt32LE(8),maxzoom:b.readUInt32LE(12),rozmiarMB:+(b.length/1048576).toFixed(1)}))" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Artefakt (7 dni, do ręcznego wgrania)
         uses: actions/upload-artifact@v4
         with:
-          name: wroclaw-tiles
-          path: dist/wroclaw-tiles.ktp
+          name: ${{ inputs.city }}-tiles
+          path: dist/${{ inputs.city }}-tiles.ktp
           retention-days: 7
 
       - name: Upload → R2
@@ -65,18 +72,18 @@ jobs:
             echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload do R2. Pakiet jest w artefakcie."
             exit 0
           fi
-          npx -y wrangler@3.114.0 r2 object put kilometr-timetable/maps/wroclaw-tiles.ktp \
-            --file=dist/wroclaw-tiles.ktp --content-type application/octet-stream
+          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/maps/${{ inputs.city }}-tiles.ktp" \
+            --file="dist/${{ inputs.city }}-tiles.ktp" --content-type application/octet-stream
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # Worker musi mieć trasę /maps/wroclaw-tiles.ktp (wrangler deploy w cloudflare/).
+      # Worker musi mieć trasę /maps/{miasto}-tiles.ktp (wrangler deploy w cloudflare/).
       # Bez niej upload do R2 nic nie daje: telefon dostaje 404 not-found.
       - name: Verify public URL
         run: |
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
-            "https://data.kilometr.wroclaw.pl/maps/wroclaw-tiles.ktp")
+            "https://data.kilometr.wroclaw.pl/maps/${{ inputs.city }}-tiles.ktp")
           echo "HTTP ${CODE}"
           if [ "${CODE}" != "200" ]; then
             echo "::error::Endpoint mapy zwrocil ${CODE}. Jesli 404 not-found: zdeployuj Workera (cd cloudflare && npx wrangler deploy). Jesli not-built-yet: upload R2 sie nie udal."

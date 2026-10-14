@@ -10,7 +10,8 @@ import {
   RouteOff,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
-import { DEFAULT_LOCATION } from '../../src/config';
+import { defaultLocationForCity } from '../../src/config';
+import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
 import { liveTracker } from '../../src/services/liveTracker';
@@ -72,15 +73,18 @@ export default function RouteDetailsScreen() {
       // przystanku wokół tych współrzędnych.
       const firstLeg = item.legs[0];
       const lastLeg = item.legs[item.legs.length - 1];
+      // Środek aktywnego miasta, nie zawsze Wrocławia: odcinki zwykle niosą
+      // współrzędne, ale bez nich tracking musi zakotwiczyć się w mieście trasy.
+      const fallback = defaultLocationForCity(getActiveCityIdSync());
       await startTracking({
         id: item.id,
         fromTitle: item.fromTitle,
-        fromLat: firstLeg?.fromLat ?? DEFAULT_LOCATION.lat,
-        fromLon: firstLeg?.fromLon ?? DEFAULT_LOCATION.lon,
+        fromLat: firstLeg?.fromLat ?? fallback.lat,
+        fromLon: firstLeg?.fromLon ?? fallback.lon,
         toId: item.toTitle,
         toTitle: item.toTitle,
-        toLat: lastLeg?.toLat ?? DEFAULT_LOCATION.lat,
-        toLon: lastLeg?.toLon ?? DEFAULT_LOCATION.lon,
+        toLat: lastLeg?.toLat ?? fallback.lat,
+        toLon: lastLeg?.toLon ?? fallback.lon,
         connection: item,
         startedAt: Date.now(),
       });

@@ -7,7 +7,7 @@ import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection } from '../types/models';
 import {
-  fetchMpkNews,
+  fetchCityNews,
   getCachedNews,
   loadNewsCache,
   type MpkNewsItem,
@@ -48,7 +48,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         if (live && cached && cached.length > 0) setNews(cached);
       }
       try {
-        const fresh = await fetchMpkNews();
+        const fresh = await fetchCityNews();
         if (live) setNews(fresh);
       } catch {
         // zostaw cache

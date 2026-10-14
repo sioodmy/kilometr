@@ -36,6 +36,9 @@ import {
 import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
+import { CITIES, type CityId } from '../src/cities';
+import { useActiveCity } from '../src/services/cityStore';
+import { suggestCityForGps } from '../src/services/serviceArea';
 import { setOnboardingSeen } from '../src/services/onboarding';
 import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
 import { ensureNotificationPermission, hasNotificationPermission } from '../src/services/notifications';
@@ -197,7 +200,62 @@ function StatusPill({ v }: { v: 'unknown' | 'granted' | 'denied' }) {
   );
 }
 
-// ─── Krok 3: zapisane miejsca ────────────────────────────────────────────────
+// ─── Krok 2: miasto ──────────────────────────────────────────────────────────
+
+function useCitySuggestion(locGranted: boolean) {
+  const { cityId, setCity } = useActiveCity();
+  const [suggested, setSuggested] = useState<CityId | null>(null);
+  // 'idle' = jeszcze nie pytaliśmy, 'locating' = czekamy na fix,
+  // 'nomatch' = GPS gdzieś, gdzie żadne miasto nie pasuje.
+  const [status, setStatus] = useState<'idle' | 'locating' | 'nomatch'>('idle');
+  // Ręczny wybór wygrywa: spóźniony fix GPS nie nadpisuje decyzji użytkownika.
+  const pickedRef = useRef(false);
+
+  useEffect(() => {
+    if (!locGranted) {
+      setSuggested(null);
+      setStatus('idle');
+      return;
+    }
+    let live = true;
+    setStatus('locating');
+    void (async () => {
+      try {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const hit = suggestCityForGps(pos.coords.latitude, pos.coords.longitude);
+        if (!live) return;
+        if (hit) {
+          // Propozycja od razu ustawia miasto; chipem można ją zmienić.
+          if (!pickedRef.current) {
+            setSuggested(hit.id);
+            await setCity(hit.id);
+          }
+          setStatus('idle');
+        } else {
+          setStatus('nomatch');
+        }
+      } catch {
+        // Brak fixa: wybór manualny z listy, bez zgadywania miasta.
+        if (live) setStatus('nomatch');
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [locGranted, setCity]);
+
+  const pick = useCallback(
+    (id: CityId) => {
+      pickedRef.current = true;
+      void setCity(id);
+    },
+    [setCity],
+  );
+
+  return { cityId, setCity, pick, suggested, status };
+}
+
+// ─── Krok 4: zapisane miejsca ────────────────────────────────────────────────
 
 type SlotKey = 'home' | 'work' | 'school';
 
@@ -316,10 +374,13 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const perms = usePermissionStates();
+  const { cityId, pick, suggested, status: citySuggestionStatus } = useCitySuggestion(perms.loc === 'granted');
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [downloading, setDownloading] = useState(false);
   const slots = useOnboardingPlaces();
   const steps = s.onboarding.steps;
+  const cityGen = s.city.gen(cityId);
+  const cityFeeds = s.city.feeds(cityId);
   const placeSlots = [
     { key: 'home' as SlotKey, name: s.onboarding.slotHome, icon: Home, hint: s.onboarding.slotHomeHint },
     { key: 'work' as SlotKey, name: s.onboarding.slotWork, icon: Briefcase, hint: s.onboarding.slotWorkHint },
@@ -344,7 +405,7 @@ export default function OnboardingScreen() {
 
   // Na kroku rozkładu od razu odśwież status.
   useEffect(() => {
-    if (step === 2) void refreshDataStatus().catch(() => {});
+    if (step === 3) void refreshDataStatus().catch(() => {});
   }, [step ]);
 
   const finish = useCallback(async () => {
@@ -528,8 +589,67 @@ export default function OnboardingScreen() {
           </ScrollView>
         )}
 
-        {/* ── 2 · Rozkład ───────────────────────────────────────────── */}
+        {/* ── 2 · Miasto ────────────────────────────────────────────── */}
         {step === 2 && (
+          <ScrollView
+            contentContainerStyle={st.body}
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
+          >
+            <View style={st.heroMarkSmall}>
+              <MapPin size={30} color={scheme.onPrimaryContainer} />
+            </View>
+            <Text style={st.title}>{s.onboarding.cityTitle}</Text>
+            <Text style={st.leadSmall}>{s.onboarding.cityBody}</Text>
+
+            {suggested ? (
+              <Text style={st.suggestNote}>
+                {s.onboarding.citySuggested(s.city.loc(suggested))}
+              </Text>
+            ) : perms.loc !== 'granted' ? (
+              <Text style={st.suggestNote}>{s.onboarding.cityNoGps}</Text>
+            ) : citySuggestionStatus === 'locating' ? (
+              <Text style={st.suggestNote}>{s.onboarding.cityLocating}</Text>
+            ) : citySuggestionStatus === 'nomatch' ? (
+              <Text style={st.suggestNote}>{s.onboarding.cityNoMatch}</Text>
+            ) : null}
+
+            <View style={st.cityList} accessibilityRole="radiogroup">
+              {CITIES.map((c) => {
+                const active = cityId === c.id;
+                const isSuggested = suggested === c.id;
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => pick(c.id)}
+                    style={({ pressed }) => [st.cityChip, active && st.cityChipActive, pressed && !active && { opacity: 0.75 }]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                    // Etykieta opisuje wybór, nie podpowiedź GPS: TalkBack czyta „Proponowane
+                  // miasto według GPS" jako nazwę przycisku, a stan i tak
+                  // ogłasza przez accessibilityState.
+                    accessibilityLabel={s.onboarding.cityPickA11y(s.city.name(c.id))}
+                    accessibilityHint={isSuggested ? s.onboarding.citySuggestedA11y(s.city.name(c.id)) : undefined}
+                  >
+                    <MapPin size={20} color={active ? scheme.onPrimaryContainer : scheme.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[st.cityName, active && st.cityNameActive]}>
+                        {s.city.name(c.id)}
+                      </Text>
+                      <Text style={[st.citySub, active && st.citySubActive]}>
+                        {s.city.feeds(c.id)}
+                      </Text>
+                    </View>
+                    {active && <Check size={20} color={scheme.onPrimaryContainer} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+        )}
+
+        {/* ── 3 · Rozkład ───────────────────────────────────────────── */}
+        {step === 3 && (
           <ScrollView
             contentContainerStyle={st.body}
             showsVerticalScrollIndicator={false}
@@ -538,9 +658,9 @@ export default function OnboardingScreen() {
             <View style={st.heroMarkSmall}>
               <Database size={30} color={scheme.onPrimaryContainer} />
             </View>
-            <Text style={st.title}>{s.onboarding.dlTitle}</Text>
+            <Text style={st.title}>{s.onboarding.dlTitle(cityGen)}</Text>
             <Text style={st.leadSmall}>
-              {s.onboarding.dlBody}
+              {s.onboarding.dlBody(cityFeeds)}
             </Text>
 
             <View style={st.card}>
@@ -612,8 +732,8 @@ export default function OnboardingScreen() {
           </ScrollView>
         )}
 
-        {/* ── 3 · Miejsca (pomijalne) ───────────────────────────────── */}
-        {step === 3 && (
+        {/* ── 4 · Miejsca (pomijalne) ───────────────────────────────── */}
+        {step === 4 && (
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -759,6 +879,9 @@ export default function OnboardingScreen() {
           </>
         )}
         {step === 2 && (
+          <PrimaryBtn label={s.onboarding.next} onPress={next} icon={<ChevronRight size={18} color={scheme.onPrimary} />} />
+        )}
+        {step === 3 && (
           <>
             <PrimaryBtn
               label={
@@ -786,9 +909,14 @@ export default function OnboardingScreen() {
             {!gtfsReady && (
               <Text style={st.lockNote}>{s.onboarding.needTimetable}</Text>
             )}
+            {/* Bez tego kroku apka jest nie do przejścia: rozkład miasta może nie
+                być na serwerze albo pobieranie może paść, a „Dalej" odblokowuje
+                się dopiero po gotowej bazie. Użytkownik zostawałby w ekranie
+                z „Spróbuj ponowić" w nieskończoność. */}
+            {!gtfsReady && <GhostBtn label={s.onboarding.skipTimetable} onPress={next} />}
           </>
         )}
-        {step === 3 && (
+        {step === 4 && (
           <>
             <PrimaryBtn
               label={savedCount > 0 ? s.onboarding.doneCount(savedCount) : s.onboarding.donePlain}
@@ -885,6 +1013,22 @@ const st = StyleSheet.create({
   cardTitle: { ...type.titleMedium, color: scheme.onSurface },
   cardWhy: { ...type.bodySmall, color: scheme.primary, marginTop: 1 },
   cardBody: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
+  suggestNote: { ...type.bodyMedium, color: scheme.primary, fontWeight: '600' },
+  cityList: { gap: 10, marginTop: 4 },
+  cityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.large,
+    padding: 16,
+    ...elev.level1,
+  },
+  cityChipActive: { backgroundColor: scheme.primaryContainer },
+  cityName: { ...type.titleMedium, color: scheme.onSurface },
+  cityNameActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
+  citySub: { ...type.bodySmall, color: scheme.onSurfaceVariant, marginTop: 1 },
+  citySubActive: { color: scheme.onPrimaryContainer },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
