@@ -208,6 +208,8 @@ function useCitySuggestion(locGranted: boolean) {
   // 'idle' = jeszcze nie pytaliśmy, 'locating' = czekamy na fix,
   // 'nomatch' = GPS gdzieś, gdzie żadne miasto nie pasuje.
   const [status, setStatus] = useState<'idle' | 'locating' | 'nomatch'>('idle');
+  // Ręczny wybór wygrywa: spóźniony fix GPS nie nadpisuje decyzji użytkownika.
+  const pickedRef = useRef(false);
 
   useEffect(() => {
     if (!locGranted) {
@@ -223,9 +225,11 @@ function useCitySuggestion(locGranted: boolean) {
         const hit = suggestCityForGps(pos.coords.latitude, pos.coords.longitude);
         if (!live) return;
         if (hit) {
-          setSuggested(hit.id);
           // Propozycja od razu ustawia miasto; chipem można ją zmienić.
-          await setCity(hit.id);
+          if (!pickedRef.current) {
+            setSuggested(hit.id);
+            await setCity(hit.id);
+          }
           setStatus('idle');
         } else {
           setStatus('nomatch');
@@ -240,7 +244,15 @@ function useCitySuggestion(locGranted: boolean) {
     };
   }, [locGranted, setCity]);
 
-  return { cityId, setCity, suggested, status };
+  const pick = useCallback(
+    (id: CityId) => {
+      pickedRef.current = true;
+      void setCity(id);
+    },
+    [setCity],
+  );
+
+  return { cityId, setCity, pick, suggested, status };
 }
 
 // ─── Krok 4: zapisane miejsca ────────────────────────────────────────────────
@@ -362,7 +374,7 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const perms = usePermissionStates();
-  const { cityId, setCity, suggested, status: citySuggestionStatus } = useCitySuggestion(perms.loc === 'granted');
+  const { cityId, pick, suggested, status: citySuggestionStatus } = useCitySuggestion(perms.loc === 'granted');
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [downloading, setDownloading] = useState(false);
   const slots = useOnboardingPlaces();
@@ -609,7 +621,7 @@ export default function OnboardingScreen() {
                 return (
                   <Pressable
                     key={c.id}
-                    onPress={() => void setCity(c.id)}
+                    onPress={() => pick(c.id)}
                     style={({ pressed }) => [st.cityChip, active && st.cityChipActive, pressed && !active && { opacity: 0.75 }]}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: active }}
