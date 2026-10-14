@@ -293,8 +293,9 @@ CREATE TABLE stop_times (
   stop_id TEXT NOT NULL,
   arr_sec INTEGER NOT NULL,
   dep_sec INTEGER NOT NULL,
-  seq INTEGER NOT NULL
-);
+  seq INTEGER NOT NULL,
+  PRIMARY KEY (trip_id, seq)
+) WITHOUT ROWID;
 CREATE TABLE calendar (
   service_id TEXT PRIMARY KEY NOT NULL,
   mon INTEGER NOT NULL DEFAULT 0,
@@ -1087,9 +1088,9 @@ async function main() {
     }
   }
 
-  // 7. Wagi, indeksy, meta, porządki.
+  // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem
+  // (trip_id, seq), więc żaden indeks na tej tabeli nie jest potrzebny.
   db.exec('PRAGMA synchronous = NORMAL;');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq)');
   log('wagi przystanków…');
   db.exec('UPDATE stops SET weight = 0');
   db.exec('UPDATE stops SET weight = agg.c FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg WHERE agg.stop_id = stops.stop_id');

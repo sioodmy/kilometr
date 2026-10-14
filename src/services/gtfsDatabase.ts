@@ -62,9 +62,9 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
           stop_id TEXT NOT NULL,
           arr_sec INTEGER NOT NULL,
           dep_sec INTEGER NOT NULL,
-          seq INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);
+          seq INTEGER NOT NULL,
+          PRIMARY KEY (trip_id, seq)
+        ) WITHOUT ROWID;
         CREATE TABLE IF NOT EXISTS calendar (
           service_id TEXT PRIMARY KEY NOT NULL,
           mon INTEGER NOT NULL DEFAULT 0,
@@ -209,8 +209,14 @@ export async function prepareForBulkImport(): Promise<void> {
 
 export async function finishBulkImport(): Promise<void> {
   const db = await getGtfsDb();
+  // Klucz (trip_id, seq) nowych tabel WITHOUT ROWID pokrywa zapytania
+  // po kursach. Legacy (rowid) odtwarzamy idx_trip po re-imporcie.
+  const t = await db.getFirstAsync<{ sql: string | null }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'stop_times'",
+  );
+  const clustered = (t?.sql ?? '').toUpperCase().includes('WITHOUT ROWID');
   await db.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);
+    ${clustered ? '' : 'CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);'}
     PRAGMA synchronous = NORMAL;
   `);
 }
