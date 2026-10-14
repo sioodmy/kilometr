@@ -380,6 +380,9 @@ class LiveTracker {
       if (!raw) return;
       const parsed = JSON.parse(raw) as StoredSnapshot;
       if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd))) return;
+      // Stary snapshot to nie „live”: bez tego apka po dłuższej przerwie
+      // pokazywałaby nieaktualne pojazdy, dopóki nie wróci pierwszy poll.
+      if (!parsed.at || Date.now() - parsed.at > SNAPSHOT_MAX_AGE_MS) return;
       if (Array.isArray(parsed.rows) && parsed.rows.length > 0) await this.matchAll(parsed.rows);
       if (Array.isArray(parsed.kd) && parsed.kd.length > 0) {
         await this.matchRailAll(parsed.kd, parsed.railPrefix || 'KD:');
