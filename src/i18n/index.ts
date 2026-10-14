@@ -1,19 +1,19 @@
 // i18n: poprawna ścieżka dla Expo (Android czyta locale systemowe).
 //
-// - Wykrywanie języka: expo-localization (getLocales) — to jest oficjalny,
+// - Wykrywanie języka: expo-localization (getLocales) - to jest oficjalny,
 //   wspierany sposób w Expo, zamiast zgadywania przez NativeModules.
-// - Nadpisanie per-app: Ustawienia → Język (Systemowy / PL / EN / DE / UK),
-//   persistowane w kv-store. Bez tego zmiana języka wymagałaby grzebania
-//   w ustawieniach systemowych telefonu.
+// - Nadpisanie per-app: Ustawienia -> Język (Systemowy / PL / EN / DE / UK),
+//   persistowane w kv-store.
 // - Słowniki typowane: `Strings = typeof pl`, więc brak klucza w en/de/uk
 //   to błąd kompilacji, nie pusty label w runtime.
 // - Liczby mnogie i interpolacje to funkcje w słowniku (pl: 1/2-4/5+,
-//   uk: tak samo, en/de: 1/wiele) — zero runtime'owego silnika pluralizacji.
+//   uk: tak samo, en/de: 1/wiele) - zero runtime'owego silnika pluralizacji.
 //
 // Stan języka siedzi w `locale.ts` bez importu Expo, żeby czysta logika
 // (serwisy, `tr()` w skryptach) nie ciągnęła `react-native` za sobą.
 
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { getLocales } from 'expo-localization';
 import { kvGet, kvSet } from '../services/storage';
 import {
@@ -49,6 +49,27 @@ function resolve(setting: LocaleSetting): Locale {
   return setting === 'system' ? deviceLocale() : setting;
 }
 
+function syncSystemLocale(): void {
+  const setting = getLocaleSettingSync();
+  if (setting === 'system') {
+    const resolved = resolve('system');
+    if (resolved !== getLocaleSync()) {
+      setLocaleInternal('system', resolved);
+    }
+  }
+}
+
+let appStateSubscribed = false;
+function ensureAppStateListener(): void {
+  if (appStateSubscribed) return;
+  appStateSubscribed = true;
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      syncSystemLocale();
+    }
+  });
+}
+
 /** Wczytaj zapisany wybór (wołać raz przy starcie, przed pierwszym renderem UI). */
 export async function initLocale(): Promise<Locale> {
   let setting: LocaleSetting = 'system';
@@ -59,6 +80,7 @@ export async function initLocale(): Promise<Locale> {
     }
   } catch {}
   setLocaleInternal(setting, resolve(setting));
+  ensureAppStateListener();
   return getLocaleSync();
 }
 
