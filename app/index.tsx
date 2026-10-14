@@ -175,8 +175,11 @@ export default function HomeScreen() {
 
   // Badge na dzwonku: dzisiejsze pilne utrudnienie (feed miasta).
   // Sprawdzamy przy starcie i powrocie na foreground — bez interwału, żeby nie spamować feedu.
+  // Zmiana miasta to nowy feed: badge trzeba przeliczyć od zera, inaczej wisiałby
+  // z poprzedniego miasta do najbliższego foregroundu.
   useEffect(() => {
     let cancelled = false;
+    setNewsAlert(false);
     const checkNews = async () => {
       try {
         const { fetchCityNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
@@ -195,7 +198,7 @@ export default function HomeScreen() {
       cancelled = true;
       sub.remove();
     };
-  }, []);
+  }, [cityId]);
 
   // Weryfikacja badge'a przy powrocie na ekran główny (np. po wyjściu z sekcji newsów)
   useFocusEffect(
