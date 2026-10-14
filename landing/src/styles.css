@@ -466,6 +466,11 @@ body {
   padding: calc(6 * var(--dp)) calc(16 * var(--dp)) 0;
 }
 
+/* Ekran połączeń nie ma paddingu body: każdy blok ma własny margin. */
+.rn-routes {
+  padding: 0;
+}
+
 /* topBar: height 44, gap 8 */
 .rn-topbar {
   height: calc(44 * var(--dp));
@@ -582,15 +587,26 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Prawa kolumna: badgeSlot 28 px nad „za x min” (titleSmall, lineHeight 20) */
+/* right: kolumna, gap 3, minWidth 64, maxWidth 40% */
+.rn-row-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(3 * var(--dp));
+  flex: none;
+  min-width: calc(64 * var(--dp));
+  max-width: 40%;
+}
+
 .rn-row-badge {
   height: calc(28 * var(--dp));
-  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .rn-row-depart {
-  flex: none;
-  min-width: calc(64 * var(--dp));
   text-align: center;
   font-size: calc(14 * var(--dp));
   line-height: calc(20 * var(--dp));
@@ -1302,6 +1318,7 @@ body {
 
 .rt-title {
   flex: 1;
+  min-width: 0;
   padding-top: calc(8 * var(--dp));
   font-size: calc(16 * var(--dp));
   line-height: calc(24 * var(--dp));
@@ -1312,13 +1329,60 @@ body {
   text-overflow: ellipsis;
 }
 
-/* routeHeader: minHeight 68, marginTop 4, marginBottom 6, padding 12/16 */
+/* sortWrap 78, tor 78×38, kciuk 34 na secondaryContainer, label pod spodem */
+.rt-sort {
+  width: calc(78 * var(--dp));
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.rt-sort-toggle {
+  position: relative;
+  width: calc(78 * var(--dp));
+  height: calc(38 * var(--dp));
+  border-radius: 999px;
+  background: #252b2a;
+  border: calc(1 * var(--dp)) solid #3f4946;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 calc(12 * var(--dp));
+  overflow: hidden;
+}
+
+.rt-sort-thumb {
+  position: absolute;
+  left: calc(4 * var(--dp));
+  width: calc(34 * var(--dp));
+  height: calc(34 * var(--dp));
+  border-radius: 50%;
+  background: #334b46;
+}
+
+.rt-sort-toggle svg {
+  position: relative;
+  z-index: 1;
+}
+
+.rt-sort-label {
+  margin-top: calc(3 * var(--dp));
+  font-size: calc(11 * var(--dp));
+  line-height: calc(14 * var(--dp));
+  font-weight: 600;
+  color: #bfc9c5;
+}
+
+/* routeHeader: minHeight 68, margin 4/14/8, padding 12/14, surfaceContainerLow */
 .rt-routehead {
   display: flex;
   align-items: flex-start;
   min-height: calc(68 * var(--dp));
-  margin: calc(4 * var(--dp)) calc(2 * var(--dp)) calc(6 * var(--dp));
-  padding: calc(12 * var(--dp)) calc(16 * var(--dp));
+  margin: calc(4 * var(--dp)) calc(14 * var(--dp)) calc(8 * var(--dp));
+  padding: calc(12 * var(--dp)) calc(14 * var(--dp));
+  background: #171d1c;
+  border-radius: calc(16 * var(--dp));
 }
 
 .rt-side {
@@ -1441,82 +1505,127 @@ body {
   color: #bfc9c5;
 }
 
-/* Pierwsza karta listy: ConnectionCard: radius 16, padding 14, gap 10 */
+/* ConnectionCard: padding 12/14, gap 8, radius large */
 .rt-card {
   margin: 0 calc(14 * var(--dp));
-  padding: calc(14 * var(--dp));
+  padding: calc(12 * var(--dp)) calc(14 * var(--dp));
   border-radius: calc(16 * var(--dp));
   background: #1b2120;
   display: flex;
   flex-direction: column;
-  gap: calc(10 * var(--dp));
+  gap: calc(8 * var(--dp));
   box-shadow: 0 calc(1 * var(--dp)) calc(3 * var(--dp)) rgba(0, 0, 0, 0.08);
 }
 
 .rt-card-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: calc(12 * var(--dp));
+}
+
+.rt-card-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--dp));
 }
 
 .rt-card-top b {
   font-size: calc(22 * var(--dp));
   line-height: calc(28 * var(--dp));
   font-weight: 700;
+  letter-spacing: calc(-0.3 * var(--dp));
   color: #e0e3e1;
 }
 
 .rt-card-dur {
+  margin-top: calc(2 * var(--dp));
   background: #334b46;
   color: #cde8e1;
   border-radius: 999px;
-  padding: calc(5 * var(--dp)) calc(12 * var(--dp));
+  padding: calc(6 * var(--dp)) calc(12 * var(--dp));
   font-size: calc(12 * var(--dp));
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .rt-card-hours {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(5 * var(--dp));
+  margin: 0;
   font-size: calc(14 * var(--dp));
   line-height: calc(20 * var(--dp));
   color: #bfc9c5;
 }
 
-.rt-card-legs {
+.rt-card-dot {
+  font-size: calc(12 * var(--dp));
+}
+
+/* JourneyStrip: wysokość 43, linia 4 px przez środek badge 28 */
+.rt-strip {
   display: flex;
+  align-items: flex-start;
+  height: calc(43 * var(--dp));
+}
+
+.rt-strip-cell {
+  position: relative;
+  height: calc(43 * var(--dp));
+  min-width: calc(54 * var(--dp));
+  display: flex;
+  justify-content: center;
+}
+
+.rt-strip-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: calc(4 * var(--dp));
+  top: calc(12 * var(--dp));
+}
+
+.rt-strip-badge {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: calc(6 * var(--dp));
-  flex-wrap: nowrap;
+}
+
+.rt-strip-depart {
+  margin-top: calc(2 * var(--dp));
+  font-size: calc(9 * var(--dp));
+  line-height: calc(11 * var(--dp));
+  font-weight: 600;
+  color: #bfc9c5;
+  opacity: 0.72;
 }
 
 .rt-walk {
-  flex: none;
+  position: relative;
+  margin-top: calc(5 * var(--dp));
+  height: calc(18 * var(--dp));
   display: flex;
   align-items: center;
-  gap: calc(4 * var(--dp));
-  background: #252b2a;
-  border-radius: calc(8 * var(--dp));
-  padding: calc(3 * var(--dp)) calc(7 * var(--dp));
-  font-size: calc(11 * var(--dp));
+  gap: calc(3 * var(--dp));
+  background: #3f4946;
+  border-radius: 999px;
+  padding: 0 calc(9 * var(--dp));
+  font-size: calc(10 * var(--dp));
+  line-height: calc(11 * var(--dp));
   font-weight: 600;
-  color: #bfc9c5;
+  color: #e0e3e1;
 }
 
-.rt-line {
-  flex-shrink: 1;
-  display: flex;
-  align-items: center;
-  gap: calc(6 * var(--dp));
-  font-size: calc(12 * var(--dp));
-  color: #bfc9c5;
-  min-width: 0;
-}
-
-/* LineBadge: radius 8, minWidth 44, height 28, padding 9/4 */
 .rt-line-badge {
-  flex: none;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: calc(5 * var(--dp));
   min-width: calc(44 * var(--dp));
   height: calc(28 * var(--dp));
   padding: 0 calc(9 * var(--dp));

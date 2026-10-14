@@ -1,4 +1,4 @@
-import { Anchor, ArrowRight, ChevronLeft, Footprints, Pin, X } from 'lucide-react';
+import { Anchor, ArrowRight, ChevronLeft, Clock3, Footprints, Pin, Rocket, TramFront, X } from 'lucide-react';
 import { PixelFrame, StatusBar } from './Phone';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,9 +14,9 @@ import { PixelFrame, StatusBar } from './Phone';
 // Animacje startują dopiero po przewinięciu: CSS `animation-timeline: view()`.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Ile dp ekranu pokazujemy: treść kończy się ~333 dp, więc 380 z małym
- *  zapasem: inaczej pod cięciem zostaje pusty pas ekranu. */
-const CROP_DP = 380;
+/** Ile dp ekranu pokazujemy: pasek z toglem, nagłówek i karta z paskiem
+ *  trasy kończą się około 430 dp. */
+const CROP_DP = 450;
 
 const ROUTES = {
   /** s.routes.title */
@@ -57,13 +57,21 @@ export function AnchorSection() {
     <section className="anchor">
       <div className="anchor-phone">
         <PixelFrame cropDp={CROP_DP}>
-          <div className="rn-app" style={{ top: `calc(26 * var(--dp))` }}>
-            {/* 1. Górny pasek: Wstecz (40), tytuł, pinezka śledzenia (40). */}
+          <div className="rn-app rn-routes" style={{ top: `calc(26 * var(--dp))` }}>
+            {/* 1. Górny pasek: Wstecz, tytuł, toggle sortowania, pinezka. */}
             <div className="rt-topbar">
               <span className="rt-back">
                 <ChevronLeft size={ic(23)} color="#E0E3E1" strokeWidth={2} />
               </span>
               <span className="rt-title">{ROUTES.title}</span>
+              <span className="rt-sort">
+                <span className="rt-sort-toggle">
+                  <span className="rt-sort-thumb" />
+                  <Clock3 size={ic(15)} color="#CDE8E1" strokeWidth={2} />
+                  <Rocket size={ic(15)} color="#BFC9C5" strokeWidth={2} />
+                </span>
+                <span className="rt-sort-label">odjazd</span>
+              </span>
               <span className="rt-pin">
                 <Pin size={ic(19)} color="#E0E3E1" strokeWidth={2} />
               </span>
@@ -104,30 +112,43 @@ export function AnchorSection() {
             {/* Pierwsza karta z listy: żeby było widać, że to ekran połączeń. */}
             <div className="rt-card">
               <div className="rt-card-top">
-                <b>{card.depart}</b>
+                <div className="rt-card-left">
+                  <b>{card.depart}</b>
+                  <p className="rt-card-hours">
+                    <span>12:07</span>
+                    <ArrowRight size={ic(11)} color="#BFC9C5" strokeWidth={2.2} />
+                    <span>12:15</span>
+                    <span className="rt-card-dot">·</span>
+                    <span>{ROUTES.transfers}</span>
+                  </p>
+                </div>
                 <span className="rt-card-dur">{card.duration}</span>
               </div>
-              <p className="rt-card-hours">
-                {card.hours} · {ROUTES.transfers}
-              </p>
-              <div className="rt-card-legs">
-                <span className="rt-walk">
-                  <Footprints size={ic(12)} color="#BFC9C5" strokeWidth={2.2} />
-                  {card.walkIn}
-                </span>
-                <span className="rt-line">
-                  <span
-                    className="rt-line-badge"
-                    style={{ background: card.lineColor }}
-                  >
-                    {card.line}
+              <div className="rt-strip">
+                <div className="rt-strip-cell" style={{ flex: 1 }}>
+                  <span className="rt-strip-line" style={{ background: '#3F4946' }} />
+                  <span className="rt-walk">
+                    <Footprints size={ic(10)} color="#BFC9C5" strokeWidth={2.4} />
+                    {card.walkIn}
                   </span>
-                  {card.headsign}
-                </span>
-                <span className="rt-walk">
-                  <Footprints size={ic(12)} color="#BFC9C5" strokeWidth={2.2} />
-                  {card.walkOut}
-                </span>
+                </div>
+                <div className="rt-strip-cell" style={{ flex: 8 }}>
+                  <span className="rt-strip-line" style={{ background: card.lineColor }} />
+                  <span className="rt-strip-badge">
+                    <span className="rt-line-badge" style={{ background: card.lineColor }}>
+                      <TramFront size={ic(13)} color="#fff" strokeWidth={2} />
+                      {card.line}
+                    </span>
+                    <span className="rt-strip-depart">12:07</span>
+                  </span>
+                </div>
+                <div className="rt-strip-cell" style={{ flex: 3 }}>
+                  <span className="rt-strip-line" style={{ background: '#3F4946' }} />
+                  <span className="rt-walk">
+                    <Footprints size={ic(10)} color="#BFC9C5" strokeWidth={2.4} />
+                    {card.walkOut}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
