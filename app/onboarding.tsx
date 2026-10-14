@@ -867,10 +867,7 @@ export default function OnboardingScreen() {
           </>
         )}
         {step === 2 && (
-          <>
-            <PrimaryBtn label={s.onboarding.next} onPress={next} icon={<ChevronRight size={18} color={scheme.onPrimary} />} />
-            <GhostBtn label={s.onboarding.later} onPress={next} />
-          </>
+          <PrimaryBtn label={s.onboarding.next} onPress={next} icon={<ChevronRight size={18} color={scheme.onPrimary} />} />
         )}
         {step === 3 && (
           <>
