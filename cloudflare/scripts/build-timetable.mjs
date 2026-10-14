@@ -91,14 +91,16 @@ const KS_GTFS_URL = 'https://koleje-ks.pl/gtfs/2025-2026.zip';
 const KS_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
- * Kolej dalekobieżna i regionalna w GZM z PDP API (ten sam klucz co KD).
- * Metrobilet 30 honorowany w IC/EIC/EIP i PR na odcinkach między stacjami
- * GZM, więc do bazy trafiają tylko postoje na stacjach GZM (PDP i tak
- * zwraca wyłącznie stacje z zapytania). Grupowanie po numerze pociągu
- * jak KD: brygada z live to goły numer.
+ * Gminy członkowskie GZM (oficjalna lista 41, gzmetropolia.pl/metropolia).
+ * Uwaga: Rybnik, Wodzisław Śląski, Żory, Jaworzno i Miasteczko Śląskie NIE
+ * należą do GZM (choć ZTM/KŚ mogą tam docierać) i celowo ich tu nie ma.
+ * Gminy bez stacji kolejowej (m.in. Psary, Pilchowice, Wojkowice) po prostu
+ * nie znajdą wpisu w słowniku PDP; to nie błąd.
+ * Bobrowniki też tu nie ma: gmina nie ma stacji, a PDP pod tą nazwą trzyma
+ * Bobrowniki z Kujaw (obsługiwane wyłącznie przez ŁKA).
  */
 const GZM_GMINAS = [
-  'BĘDZIN', 'BIERUŃ', 'BOBROWNIKI', 'BOJSZOWY', 'BYTOM', 'CHEŁM ŚLĄSKI',
+  'BĘDZIN', 'BIERUŃ', 'BOJSZOWY', 'BYTOM', 'CHEŁM ŚLĄSKI',
   'CHORZÓW', 'CZELADŹ', 'DĄBROWA GÓRNICZA', 'GIERAŁTOWICE', 'GLIWICE',
   'IMIELIN', 'KATOWICE', 'KNURÓW', 'KOBIÓR', 'LĘDZINY', 'ŁAZISKA GÓRNE',
   'MIERZĘCICE', 'MIKOŁÓW', 'MYSŁOWICE', 'OŻAROWICE', 'PIEKARY ŚLĄSKIE',
@@ -108,13 +110,32 @@ const GZM_GMINAS = [
   'TYCHY', 'WOJKOWICE', 'WYRY', 'ZABRZE', 'ZBROSŁAWICE',
 ];
 /**
- * Stacje GZM, których nie ma w słowniku cities PDP (mikro-przystanki
- * pod własnymi hasłami albo braki słownika): Katowice Gł., Pyrzowice
- * Lotnisko, Nowy Bieruń. Zweryfikowane ze słownikiem stations.
+ * Nazwy miast w słowniku PDP różne od nazwy gminy (słownik używa nazwy
+ * miejscowości-węzła, nie pełnej nazwy gminy). Tylko te dwa odstępstwa
+ * wychodzą z audytu; każdy inny brak dokładnego trafienia to ostrzeżenie
+ * i pominięcie gminy (chroni przed miastem o tej samej nazwie w innym
+ * regionie, np. Bobrowniki z Kujaw albo Dąbrowa Białostocka).
  */
-const GZM_EXTRA_STATIONS = [73312, 265126, 77271];
+const GZM_CITY_ALIASES = {
+  'DĄBROWA GÓRNICZA': 'DĄBROWA',
+  'ŁAZISKA GÓRNE': 'ŁAZISKA',
+};
+/**
+ * Stacje GZM, których nie obejmuje słownik cities PDP: Katowice Gł.
+ * (jest tylko w /dictionaries/stations), Pyrzowice Lotnisko, Nowy Bieruń
+ * oraz Taciszów i Rzeczyce Śląskie (gmina Rudziniec, obsługiwane przez PR,
+ * a nieujęte w jej wpisie cities). Zweryfikowane parami: IC/PR faktycznie
+ * się na nich zatrzymują.
+ */
+const GZM_EXTRA_STATIONS = [73312, 265126, 77271, 70169, 70151];
 /** Bbox GZM do geokodowania stacji (minLon, maxLat, maxLon, minLat jak Nominatim). */
 const GZM_BBOX = { minLon: 18.3, maxLat: 50.6, maxLon: 19.8, minLat: 49.95 };
+/**
+ * Obwiednia GZM z zapasem na geokodowanie: druga linia obrony przed stacją
+ * z innego regionu o tej samej nazwie (słownik PDP zwraca całą Polskę).
+ * Najdalsza stacja GZM to Rudziniec Gliwicki (~18.40), stąd zachód 18.05.
+ */
+const GZM_ENVELOPE = { minLat: 49.7, maxLat: 50.75, minLon: 18.05, maxLon: 19.95 };
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
@@ -581,7 +602,7 @@ function importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds) {
     if (!stTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stop_times.txt, przerywam.`);
     const { header } = splitHeader(stTxt);
     const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
-      di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+      di = header.indexOf('departure_time');
     const byTrip = new Map(); // tid -> {n, firstDep, lastArr}
     let pos = stTxt.indexOf('\n') + 1;
     const len = stTxt.length;
@@ -706,37 +727,6 @@ function secToHms(s) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 }
 
-/** Sygnatury kursów w stop_times: tid -> "postojów|pierwszyOdjazd|ostatniPrzyjazd". */
-function tripSignatures(stTxt) {
-  const { header } = splitHeader(stTxt);
-  const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
-    di = header.indexOf('departure_time');
-  const acc = new Map(); // tid -> {n, firstDep, lastArr}
-  let pos = stTxt.indexOf('\n') + 1;
-  const len = stTxt.length;
-  while (pos < len) {
-    let nl = stTxt.indexOf('\n', pos);
-    if (nl === -1) nl = len;
-    let line = stTxt.slice(pos, nl);
-    pos = nl + 1;
-    if (line.endsWith('\r')) line = line.slice(0, -1);
-    if (!line.trim()) continue;
-    const c = line.split(',');
-    const tid = (c[ti] || '').trim();
-    if (!tid) continue;
-    let g = acc.get(tid);
-    if (!g) { g = { n: 0, firstDep: '', lastArr: '' }; acc.set(tid, g); }
-    g.n++;
-    const dep = (c[di] || '').trim() || (c[ai] || '').trim();
-    const arr = (c[ai] || '').trim() || dep;
-    if (!g.firstDep) g.firstDep = dep;
-    g.lastArr = arr;
-  }
-  const out = new Map();
-  for (const [tid, g] of acc) out.set(tid, `${g.n}|${g.firstDep}|${g.lastArr}`);
-  return out;
-}
-
 /* ─── PDP (KD): stacje Wrocławia → rozkład ────────────────────────────── */
 
 function pdpHeaders() {
@@ -775,24 +765,32 @@ async function pdpKdSchedules(stationIds) {
 
 /**
  * Stacje kolejowe GZM: unia stacji gmin członkowskich ze słownika cities
- * PDP plus kuratorowane wyjątki (stacje spoza słownika cities). Pojedynczy
- * błąd gminy nie kładzie całości, ale pusta lista to błąd buildu.
+ * PDP plus kuratorowane wyjątki (stacje spoza słownika cities). Każdy inny
+ * brak dokładnego trafienia to pominięcie gminy z ostrzeżeniem na końcu:
+ * lepiej stracić stację niż wciągnąć miasto o tej samej nazwie z innego
+ * regionu (PDP zwraca trafienia z całej Polski). Pusta lista to błąd buildu.
  */
 async function pdpGzmStationIds() {
   const ids = new Set(GZM_EXTRA_STATIONS.map(Number));
+  const skipped = [];
   for (const g of GZM_GMINAS) {
+    const wantName = GZM_CITY_ALIASES[g] ?? g;
     try {
       const res = await fetchJson(`${PDP_BASE}/api/v1/dictionaries/cities?search=${encodeURIComponent(g)}`, pdpHeaders(), 20000);
       const cities = res.cities || [];
-      const hit = cities.find((c) => String(c.name || '').toUpperCase() === g) || cities[0];
-      if (hit && Array.isArray(hit.stationIds)) {
+      const hit = cities.find((c) => String(c.name || '').toUpperCase() === wantName);
+      if (hit && Array.isArray(hit.stationIds) && hit.stationIds.length > 0) {
         for (const id of hit.stationIds) ids.add(Number(id));
       } else {
-        warn(`GZM miasta: brak stacji dla ${g}`);
+        skipped.push(g);
       }
     } catch (e) {
       warn(`GZM miasta: ${g}: ${String(e).slice(0, 120)}`);
+      skipped.push(g);
     }
+  }
+  if (skipped.length > 0) {
+    log(`GZM: gminy bez wpisu w cities (brak stacji albo inny region): ${skipped.join(', ')}`);
   }
   return [...ids].filter((n) => Number.isFinite(n));
 }
@@ -1165,9 +1163,12 @@ async function main() {
     log(`${label}: routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
   }
   }
-  // Przystanki liczone z dupami między feedami, przelicz na stan faktyczny.
+  // Liczniki po merge: GZM wstawia przystanki/linie eksport po eksporcie
+  // (REPLACE), więc surowe zliczenia zawyżają stan. Przelicz na faktyczny
+  // stan tabeli (dla Wrocławia/Krakowa to samo co zliczenia, id są unikalne).
   try {
     counts.stops = db.prepare('SELECT COUNT(*) AS n FROM stops').get().n;
+    counts.routes = db.prepare('SELECT COUNT(*) AS n FROM routes').get().n;
   } catch {}
   log(`GTFS: stops=${counts.stops} routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
 
@@ -1635,6 +1636,7 @@ async function main() {
     log(`IC/PR: nazw stacji: ${Object.keys(stationNames).length} (ze słownika PDP + cache + KŚ)`);
     const unresolved = [];
     const unnamed = new Set();
+    const outsideEnvelope = new Set();
     let skippedNoTimes = 0;
     let skippedOutside = 0;
     const ensureCoords = async (id, name) => {
@@ -1673,34 +1675,45 @@ async function main() {
       const sid = r.sid ?? r.scheduleId;
       const oid = r.oid ?? r.orderId;
       const dates = r.od || r.operatingDates || [];
-      const stops = [...(r.st || r.stations || [])]
+      const stopsSorted = [...(r.st || r.stations || [])]
         .sort((a, b) => (Number(a.ord ?? a.orderNumber) || 0) - (Number(b.ord ?? b.orderNumber) || 0))
         .filter((s) => gzmSet.has(String(s.id ?? s.stationId)));
       if (sid == null || oid == null || dates.length === 0) continue;
-      if (stops.length < 2) { skippedOutside++; continue; }
-      const times = stops.map(stopTimesOf);
-      if (times.some((t) => t === null)) { skippedNoTimes++; continue; }
+      // Rozwiąż nazwy i współrzędne, potem odsiej stacje spoza obwiedni GZM
+      // (drugie zabezpieczenie po precyzyjnym dopasowaniu gmin: stacja
+      // z innego regionu nie może tworzyć lokalnego odcinka).
+      const stops = [];
       let ok = true;
-      for (const s of stops) {
+      for (const s of stopsSorted) {
         const id = String(s.id ?? s.stationId);
         const nm = stationNames[id];
         if (!nm) { unnamed.add(id); ok = false; break; }
-        if (!seenStops.has(`${cc}:${id}`)) {
-          const geo = await ensureCoords(id, nm);
-          if (!geo) { ok = false; break; }
-          insStop.run(`${cc}:S:${id}`, id, nm, geo.lat, geo.lon, normalizePolish(nm));
-          seenStops.add(`${cc}:${id}`);
-          railGeo.set(`${cc}:S:${id}`, { stopId: `${cc}:S:${id}`, name: nm, lat: geo.lat, lon: geo.lon });
+        const geo = await ensureCoords(id, nm);
+        if (!geo) { ok = false; break; }
+        if (geo.lat < GZM_ENVELOPE.minLat || geo.lat > GZM_ENVELOPE.maxLat ||
+            geo.lon < GZM_ENVELOPE.minLon || geo.lon > GZM_ENVELOPE.maxLon) {
+          outsideEnvelope.add(id);
+          continue;
+        }
+        stops.push({ id, nm, geo, t: stopTimesOf(s) });
+      }
+      if (!ok) continue;
+      if (stops.length < 2) { skippedOutside++; continue; }
+      if (stops.some((s) => s.t === null)) { skippedNoTimes++; continue; }
+      for (const s of stops) {
+        if (!seenStops.has(`${cc}:${s.id}`)) {
+          insStop.run(`${cc}:S:${s.id}`, s.id, s.nm, s.geo.lat, s.geo.lon, normalizePolish(s.nm));
+          seenStops.add(`${cc}:${s.id}`);
+          railGeo.set(`${cc}:S:${s.id}`, { stopId: `${cc}:S:${s.id}`, name: s.nm, lat: s.geo.lat, lon: s.geo.lon });
           counts.stops++;
           stat.stations++;
         }
       }
-      if (!ok) continue;
       const num = String(r.nn ?? r.nationalNumber ?? r.nm ?? r.name ?? `${sid}/${oid}`);
       const routeId = `${cc}:R:${sid}:${oid}`;
       const svc = `${cc}:svc:${sid}:${oid}`;
-      const firstName = stationNames[String(stops[0].id ?? stops[0].stationId)];
-      const lastName = stationNames[String(stops[stops.length - 1].id ?? stops[stops.length - 1].stationId)];
+      const firstName = stops[0].nm;
+      const lastName = stops[stops.length - 1].nm;
       if (!seenRoutes.has(routeId)) {
         insRoute.run(routeId, num, `${firstName} – ${lastName}`, 2);
         seenRoutes.add(routeId);
@@ -1715,8 +1728,7 @@ async function main() {
         counts.trips++;
         stat.trips++;
         for (let i = 0; i < stops.length; i++) {
-          const id = String(stops[i].id ?? stops[i].stationId);
-          insSt.run(tripId, `${cc}:S:${id}`, times[i].arr, times[i].dep, i + 1);
+          insSt.run(tripId, `${cc}:S:${stops[i].id}`, stops[i].t.arr, stops[i].t.dep, i + 1);
           counts.stopTimes++;
           stat.stopTimes++;
         }
@@ -1725,6 +1737,7 @@ async function main() {
     }
     db.exec('COMMIT');
     if (unnamed.size > 0) warn(`IC/PR: ${unnamed.size} stacji bez nazwy (brak w słowniku PDP i cache): ${[...unnamed].join(', ')}`);
+    if (outsideEnvelope.size > 0) warn(`IC/PR: ${outsideEnvelope.size} stacji poza obwiednią GZM (pominięte): ${[...outsideEnvelope].join(', ')}`);
     if (skippedNoTimes > 0) log(`IC/PR: pominięto ${skippedNoTimes} kursów bez pełnych czasów`);
     if (skippedOutside > 0) log(`IC/PR: pominięto ${skippedOutside} kursów z <2 postojami w GZM`);
     if (WRITE_COORDS) {
@@ -1792,7 +1805,7 @@ async function main() {
     if (links.size > 0) {
       const ins = db.prepare('INSERT INTO interchanges (from_stop_id, to_stop_id, walk_sec, kind) VALUES (?, ?, ?, ?)');
       db.exec('BEGIN');
-      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : CITY === 'gzm' ? 'ks-ztm' : 'mpk-kd');
+      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : CITY === 'gzm' ? 'rail-ztm' : 'mpk-kd');
       db.exec('COMMIT');
       interchangeCount = links.size;
     }
