@@ -33,12 +33,15 @@ export function UnsupportedCityCard({
     : insideSupported
       ? s.home.unsupportedBodyOther(city, activeCity)
       : s.home.unsupportedBody(city, supported);
+  // Miasto obsługiwane, ale w apce ustawione inne: tytuł „Nieobsługiwane miasto”
+  // kłóciłby się z treścią, która mówi „jesteś w obsługiwanym mieście”.
+  const title = insideSupported ? s.home.unsupportedTitleOther : s.home.unsupportedTitle;
 
   return (
     <View
       style={styles.card}
       accessibilityRole="alert"
-      accessibilityLabel={`${s.home.unsupportedTitle}. ${body}`}
+      accessibilityLabel={`${title}. ${body}`}
     >
       {/* Górny rząd: ikona + pigułka z miejscowością */}
       <View style={styles.topRow}>
@@ -55,7 +58,7 @@ export function UnsupportedCityCard({
         ) : null}
       </View>
 
-      <Text style={styles.title}>{s.home.unsupportedTitle}</Text>
+      <Text style={styles.title}>{title}</Text>
       <Text style={styles.body}>{body}</Text>
 
       <View style={styles.hintRow}>

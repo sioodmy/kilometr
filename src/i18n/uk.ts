@@ -64,6 +64,7 @@ export const uk: Strings = {
     searchPlaceholderTo: 'Куди їдеш?',
     searchPlaceholderFrom: 'Звідки вирушаєш?',
     unsupportedTitle: 'Місто не підтримується',
+    unsupportedTitleOther: 'Інше місто в застосунку',
     unsupportedBody: (city: string, supported: string) =>
       `Твоя GPS-локація вказує на ${city}. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedBodyOther: (city: string, active: string) =>
@@ -484,7 +485,7 @@ export const uk: Strings = {
       n === 1 ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
   },
   search: {
-    defaultPlaceholder: (city: string) => `Шукай: ${city}…`,
+    defaultPlaceholder: (city: string) => `Шукай у ${city}…`,
     originA11y: (t: string) => `Початок: ${t}. Натисни, щоб змінити.`,
     fromPrefix: 'З:',
     change: 'Змінити',
@@ -493,7 +494,7 @@ export const uk: Strings = {
     resultsFor: (q: string, n: number) => `Результати для „${q}” (${n})`,
     recentTrips: 'Останні поїздки',
     savedA11y: (t: string) => `Збережене місце: ${t}`,
-    searching: (city: string) => `Шукаю: ${city}…`,
+    searching: (city: string) => `Шукаю у ${city}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
       `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,

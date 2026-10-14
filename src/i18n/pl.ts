@@ -62,6 +62,7 @@ export const pl = {
     searchPlaceholderTo: 'Dokąd jedziesz?',
     searchPlaceholderFrom: 'Skąd wyruszasz?',
     unsupportedTitle: 'Nieobsługiwane miasto',
+    unsupportedTitleOther: 'Inne miasto w aplikacji',
     unsupportedBody: (city: string, supported: string) =>
       `Twoja lokalizacja GPS wskazuje na ${city}. Aktualnie obsługujemy tylko: ${supported}.`,
     unsupportedBodyOther: (city: string, active: string) =>
@@ -270,7 +271,7 @@ export const pl = {
     notifAllow: 'Włącz powiadomienia',
     cityTitle: 'W którym mieście\njeździsz?',
     cityBody: 'Rozkład, mapa i aktualności dopasują się do wyboru. Miasto zmienisz później w ustawieniach.',
-    citySuggested: (name: string) => `Według GPS jesteś ${name}.`,
+    citySuggested: (name: string) => `Według GPS jesteś w ${name}.`,
     cityNoGps: 'Bez dostępu do GPS wybierz miasto z listy.',
     cityLocating: 'Szukam pozycji GPS…',
     cityNoMatch: 'Nie znalazłem Cię w obsługiwanym mieście. Wybierz z listy.',
@@ -474,7 +475,7 @@ export const pl = {
       n === 1 ? '1 komunikat' : isFew(n) ? `${n} komunikaty` : `${n} komunikatów`,
   },
   search: {
-    defaultPlaceholder: (city: string) => `Szukaj w: ${city}…`,
+    defaultPlaceholder: (city: string) => `Szukaj w ${city}…`,
     originA11y: (t: string) => `Punkt startowy: ${t}. Dotknij, aby zmienić.`,
     fromPrefix: 'Z:',
     change: 'Zmień',
@@ -483,7 +484,7 @@ export const pl = {
     resultsFor: (q: string, n: number) => `Wyniki dla „${q}” (${n})`,
     recentTrips: 'Ostatnie przejazdy',
     savedA11y: (t: string) => `Zapisane miejsce: ${t}`,
-    searching: (city: string) => `Szukam w: ${city}…`,
+    searching: (city: string) => `Szukam w ${city}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
       `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,

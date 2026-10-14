@@ -57,6 +57,7 @@ export const en: Strings = {
     searchPlaceholderTo: 'Where are you going?',
     searchPlaceholderFrom: 'Where are you starting from?',
     unsupportedTitle: 'Unsupported city',
+    unsupportedTitleOther: 'Different city in the app',
     unsupportedBody: (city: string, supported: string) =>
       `Your GPS location points to ${city}. We currently serve only: ${supported}.`,
     unsupportedBodyOther: (city: string, active: string) =>

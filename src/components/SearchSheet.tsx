@@ -60,8 +60,9 @@ export function SearchSheet({
   const inputRef = useRef<TextInput>(null);
   const s = useStrings();
   const { cityId } = useActiveCity();
-  const cityName = s.city.name(cityId);
-  const placeholder = placeholderProp ?? s.search.defaultPlaceholder(cityName);
+  // Miejscownik ("w Krakowie"), nie mianownik: wchodzi po przyimku w placeholderze.
+  const cityLoc = s.city.loc(cityId);
+  const placeholder = placeholderProp ?? s.search.defaultPlaceholder(cityLoc);
   // Pasek nawigacji nie może zasłaniać ostatnich wyników (edge-to-edge).
   const insets = useSafeAreaInsets();
 
@@ -276,7 +277,7 @@ export function SearchSheet({
           trimmed ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>
-                {loading ? s.search.searching(cityName) : s.search.noResultsFor(trimmed)}
+                {loading ? s.search.searching(cityLoc) : s.search.noResultsFor(trimmed)}
               </Text>
               {!loading && <Text style={styles.emptySub}>{s.search.noResultsHint(cityId)}</Text>}
             </View>

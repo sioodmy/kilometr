@@ -57,6 +57,7 @@ export const de: Strings = {
     searchPlaceholderTo: 'Wohin fährst du?',
     searchPlaceholderFrom: 'Wo startest du?',
     unsupportedTitle: 'Nicht unterstützte Stadt',
+    unsupportedTitleOther: 'Andere Stadt in der App',
     unsupportedBody: (city: string, supported: string) =>
       `Dein GPS-Standort zeigt auf ${city}. Aktuell bedienen wir nur: ${supported}.`,
     unsupportedBodyOther: (city: string, active: string) =>
