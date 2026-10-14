@@ -1,17 +1,20 @@
 import { clearRaptorNetworks } from '../../../modules/kilometr-raptor';
 import type { DayIndex, LocalGtfsStore } from './store';
+import { getActiveCityIdSync } from '../cityStore';
 
-export type TransitKind = 'tram' | 'bus' | 'train' | 'cable';
+export type TransitKind = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus';
 
 const NET_MAGIC = 0x52415031;
 
 let nextNetId = 1;
 
 /**
- * Klasyfikacja linii na tramwaj/pociąg/kolej linową/autobus: ta sama heurystyka
- * co w backtrack i LineBadge (Wrocław: route_type 0 albo numer 1–33 to tramwaj,
- * route_type 2 to pociąg KD, route_type 6 i 7 to kolej powietrzna i funicular,
- * reszta to autobus).
+ * Klasyfikacja linii na tramwaj/trolejbus/pociąg/kolej linową/autobus: ta sama
+ * heurystyka co w backtrack i LineBadge (route_type 0 to tramwaj, 11 to
+ * trolejbus, 2 to pociąg, 6 i 7 to kolej powietrzna i funicular, reszta to
+ * autobus). Numery 1–33 to wrocławski schemat (tam niskie numery to tramwaje);
+ * w GZM niskie numery mają też autobusy, więc tam liczy się wyłącznie
+ * route_type z feedu.
  */
 export function classifyTransitMode(
   routeType: number | undefined,
@@ -20,9 +23,21 @@ export function classifyTransitMode(
   if (routeType === 2) return 'train';
   if (routeType === 6 || routeType === 7) return 'cable';
   if (routeType === 0) return 'tram';
-  const lineNum = parseInt((shortName || '').trim(), 10);
-  if (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33) return 'tram';
+  // GTFS: 11 = trolejbus (GZM/Tychy). W UI osobny typ, w silniku jedzie
+  // jak autobus (ten sam kod poniżej), więc RAPTOR nie wymaga zmian.
+  if (routeType === 11) return 'trolleybus';
+  if (numericFallbackApplies(shortName)) return 'tram';
   return 'bus';
+}
+
+function numericFallbackApplies(shortName: string | undefined): boolean {
+  const lineNum = parseInt((shortName || '').trim(), 10);
+  if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
+  try {
+    return getActiveCityIdSync() !== 'gzm';
+  } catch {
+    return true;
+  }
 }
 
 function kindToCode(kind: TransitKind): number {
@@ -30,6 +45,7 @@ function kindToCode(kind: TransitKind): number {
     case 'tram':
       return 0;
     case 'bus':
+    case 'trolleybus':
       return 1;
     case 'train':
       return 2;

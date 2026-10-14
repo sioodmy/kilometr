@@ -77,16 +77,23 @@ export const de: Strings = {
     section: 'Stadt',
     settingsTitle: 'Stadt',
     settingsHint: 'Fahrplan, Offline-Karte und Meldungen folgen der Stadt. Die Daten der anderen Stadt bleiben auf dem Telefon.',
-    name: (id: string): string => (id === 'krakow' ? 'Kraków' : 'Wrocław'),
-    gen: (id: string): string => (id === 'krakow' ? 'Kraków' : 'Wrocław'),
-    loc: (id: string): string => (id === 'krakow' ? 'Kraków' : 'Wrocław'),
+    name: (id: string): string => (id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : 'Wrocław'),
+    gen: (id: string): string => (id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : 'Wrocław'),
+    loc: (id: string): string => (id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : 'Wrocław'),
     feeds: (id: string): string =>
-      id === 'krakow' ? 'ZTP und Koleje Małopolskie' : 'MPK und Koleje Dolnośląskie',
-    newsSources: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław • wroclaw.pl'),
-    operator: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław'),
-    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : 'MPK'),
-    portal: (id: string): string => (id === 'krakow' ? 'ztp.krakow.pl' : 'wroclaw.pl'),
-    supportedList: 'Wrocław, Kraków',
+      id === 'krakow'
+        ? 'ZTP und Koleje Małopolskie'
+        : id === 'gzm'
+          ? 'ZTM, Koleje Śląskie, POLREGIO und PKP Intercity'
+          : 'MPK und Koleje Dolnośląskie',
+    newsSources: (id: string): string =>
+      id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław • wroclaw.pl',
+    operator: (id: string): string =>
+      id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław',
+    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : 'MPK'),
+    portal: (id: string): string =>
+      id === 'krakow' ? 'ztp.krakow.pl' : id === 'gzm' ? 'metropoliaztm.pl' : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
@@ -110,7 +117,7 @@ export const de: Strings = {
     notificationsSection: 'Benachrichtigungen',
     notificationsFoot: 'Benachrichtigungen funktionieren im Dev-Build. Expo Go unterstützt sie nicht.',
     offlineMapTitle: (name: string) => `Offline-Karte (${name})`,
-    offlineMapHint: (name: string) => `Lade die Kartenkacheln von ${name} (etwa 31 MB), damit Routen ohne Internet funktionieren.`,
+    offlineMapHint: (name: string, mb: number) => `Lade die Kartenkacheln von ${name} (etwa ${mb} MB), damit Routen ohne Internet funktionieren.`,
     offlineMapReady: (name: string) => `Die ${name}-Karte ist auf dem Telefon. Routen funktionieren ohne Internet.`,
     offlineMapDownload: 'Karte laden',
     offlineMapDownloadA11y: (name: string) => `Die ${name}-Karte für offline laden`,
@@ -120,8 +127,8 @@ export const de: Strings = {
     offlineMapDelete: 'Löschen',
     offlineMapDeleteA11y: 'Offline-Karte löschen',
     offlineMapDeleteTitle: 'Offline-Karte löschen?',
-    offlineMapDeleteBody:
-      'Das gibt etwa 31 MB frei. Die Karte funktioniert weiterhin online. Erneut laden geht erst nach einem Monat.',
+    offlineMapDeleteBody: (mb: number) =>
+      `Das gibt etwa ${mb} MB frei. Die Karte funktioniert weiterhin online. Erneut laden geht erst nach einem Monat.`,
     offlineMapFailTitle: 'Karte konnte nicht geladen werden',
     offlineMapFailBody: 'Prüfe die Verbindung und versuche es erneut. Der Rest der App funktioniert normal.',
     offlineMapCooldownTitle: 'Karte schon geladen',
@@ -443,6 +450,7 @@ export const de: Strings = {
     emptyPlain: 'Versuch ein anderes Ziel oder prüfe eine andere Abfahrtszeit.',
     vehicleTramGen: 'mit der Tram',
     vehicleBusGen: 'mit dem Bus',
+    vehicleTrolleyGen: 'mit dem Obus',
     vehicleTrainGen: 'mit dem Zug',
     vehicleCableGen: 'mit der Seilbahn',
     showWithChangesA11y: 'Verbindungen mit Umstieg zeigen',
@@ -479,7 +487,7 @@ export const de: Strings = {
     searching: (city: string) => `${city} wird durchsucht…`,
     noResults: 'Keine Ergebnisse',
     noResultsHint: (id: string) =>
-      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
+      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
     yourPlaces: 'Deine Orte',
     gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',
@@ -730,6 +738,7 @@ export const de: Strings = {
     modeBus: 'Bus',
     modeTrain: 'Zug',
     modeCable: 'Seilbahn',
+    modeTrolleybus: 'Obus',
     departTitle: (service: string, at: string) => `${service} • ab ${at}`,
     rideTitle: (service: string, at: string) => `${service} • an ${at}`,
     transferTitle: (service: string, at: string) => `Umsteigen • ${service} • ab ${at}`,

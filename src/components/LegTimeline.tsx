@@ -26,10 +26,11 @@ import {
 import { useStrings, type Strings } from '../i18n';
 
 // Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
-// pociągi i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
+// pociągi, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
 function genericModeGen(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.routes.vehicleTramGen;
   if (mode === 'train') return t.routes.vehicleTrainGen;
+  if (mode === 'trolleybus') return t.routes.vehicleTrolleyGen;
   if (mode === 'cable') return t.routes.vehicleCableGen;
   return t.routes.vehicleBusGen;
 }

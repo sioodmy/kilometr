@@ -135,7 +135,7 @@ internal data class LiveTripPlan(
     val active = segments.lastOrNull { nowMs >= it.startAtMs } ?: segments.firstOrNull()
     return when (active?.mode) {
       MODE_WALK -> R.drawable.ic_kilometr_walk
-      MODE_BUS -> R.drawable.ic_kilometr_bus
+      MODE_BUS, MODE_TROLLEYBUS -> R.drawable.ic_kilometr_bus
       else -> R.drawable.ic_kilometr_tram
     }
   }
@@ -144,6 +144,7 @@ internal data class LiveTripPlan(
     const val MODE_WALK = "walk"
     const val MODE_TRAM = "tram"
     const val MODE_BUS = "bus"
+    const val MODE_TROLLEYBUS = "trolleybus"
 
     const val PHASE_WALKING = "walking"
     const val PHASE_WAITING = "waiting"

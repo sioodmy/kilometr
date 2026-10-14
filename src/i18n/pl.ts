@@ -82,16 +82,23 @@ export const pl = {
     section: 'Miasto',
     settingsTitle: 'Miasto',
     settingsHint: 'Rozkład, mapa offline i aktualności idą za miastem. Dane drugiego miasta zostają na telefonie.',
-    name: (id: string): string => (id === 'krakow' ? 'Kraków' : 'Wrocław'),
-    gen: (id: string): string => (id === 'krakow' ? 'Krakowa' : 'Wrocławia'),
-    loc: (id: string): string => (id === 'krakow' ? 'Krakowie' : 'Wrocławiu'),
+    name: (id: string): string => (id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : 'Wrocław'),
+    gen: (id: string): string => (id === 'krakow' ? 'Krakowa' : id === 'gzm' ? 'GZM' : 'Wrocławia'),
+    loc: (id: string): string => (id === 'krakow' ? 'Krakowie' : id === 'gzm' ? 'GZM' : 'Wrocławiu'),
     feeds: (id: string): string =>
-      id === 'krakow' ? 'ZTP i Koleje Małopolskie' : 'MPK i Koleje Dolnośląskie',
-    newsSources: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław • wroclaw.pl'),
-    operator: (id: string): string => (id === 'krakow' ? 'ZTP Kraków' : 'MPK Wrocław'),
-    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : 'MPK'),
-    portal: (id: string): string => (id === 'krakow' ? 'ztp.krakow.pl' : 'wroclaw.pl'),
-    supportedList: 'Wrocław, Kraków',
+      id === 'krakow'
+        ? 'ZTP i Koleje Małopolskie'
+        : id === 'gzm'
+          ? 'ZTM, Koleje Śląskie, POLREGIO i PKP Intercity'
+          : 'MPK i Koleje Dolnośląskie',
+    newsSources: (id: string): string =>
+      id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław • wroclaw.pl',
+    operator: (id: string): string =>
+      id === 'krakow' ? 'ZTP Kraków' : id === 'gzm' ? 'ZTM GZM' : 'MPK Wrocław',
+    operatorShort: (id: string): string => (id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : 'MPK'),
+    portal: (id: string): string =>
+      id === 'krakow' ? 'ztp.krakow.pl' : id === 'gzm' ? 'metropoliaztm.pl' : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM',
     changed: (name: string) => `Przełączono na: ${name}.`,
     switching: 'Przełączam miasto…',
     blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
@@ -115,7 +122,7 @@ export const pl = {
     notificationsSection: 'Powiadomienia',
     notificationsFoot: 'Powiadomienia działają w buildzie deweloperskim. Expo Go ich nie obsługuje.',
     offlineMapTitle: (name: string) => `Mapa offline (${name})`,
-    offlineMapHint: (name: string) => `Pobierz kafle mapy ${name} (ok. 31 MB), żeby trasa działała bez internetu.`,
+    offlineMapHint: (name: string, mb: number) => `Pobierz kafle mapy ${name} (ok. ${mb} MB), żeby trasa działała bez internetu.`,
     offlineMapReady: (name: string) => `Mapa ${name} jest na telefonie. Trasa działa bez internetu.`,
     offlineMapDownload: 'Pobierz mapę',
     offlineMapDownloadA11y: (name: string) => `Pobierz mapę ${name} do trybu offline`,
@@ -125,8 +132,8 @@ export const pl = {
     offlineMapDelete: 'Usuń',
     offlineMapDeleteA11y: 'Usuń mapę offline',
     offlineMapDeleteTitle: 'Usunąć mapę offline?',
-    offlineMapDeleteBody:
-      'Zwolni się około 31 MB. Mapa nadal będzie działać online. Ponowne pobranie będzie możliwe dopiero za miesiąc.',
+    offlineMapDeleteBody: (mb: number) =>
+      `Zwolni się około ${mb} MB. Mapa nadal będzie działać online. Ponowne pobranie będzie możliwe dopiero za miesiąc.`,
     offlineMapFailTitle: 'Nie udało się pobrać mapy',
     offlineMapFailBody: 'Sprawdź połączenie i spróbuj ponownie. Reszta aplikacji działa normalnie.',
     offlineMapCooldownTitle: 'Mapa już była pobierana',
@@ -453,6 +460,7 @@ export const pl = {
     emptyPlain: 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.',
     vehicleTramGen: 'tramwajem',
     vehicleBusGen: 'autobusem',
+    vehicleTrolleyGen: 'trolejbusem',
     vehicleTrainGen: 'pociągiem',
     vehicleCableGen: 'koleją linową',
     showWithChangesA11y: 'Pokaż połączenia z przesiadkami',
@@ -490,7 +498,7 @@ export const pl = {
     searching: (city: string) => `Szukam w ${city}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
-      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
+      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
     yourPlaces: 'Twoje miejsca',
     gpsOutsideNotice: 'GPS poza obsługiwanym miastem, wybierz punkt manualnie.',
@@ -746,6 +754,7 @@ export const pl = {
     modeBus: 'Autobus',
     modeTrain: 'Pociąg',
     modeCable: 'Kolej linowa',
+    modeTrolleybus: 'Trolejbus',
     // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii —
     // zegar systemowy tyka w nagłówku i sam z siebie nie wie, do czego liczy.
     // Względne „za 4 min” w treści zestarzałoby się przy pierwszym

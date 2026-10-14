@@ -115,7 +115,7 @@ export interface SmartDestination extends LatLon {
 }
 
 /** 'cable' = kolej linowa / powietrzna (Polinka przy Politechnice Wrocławskiej). */
-export type LegMode = 'tram' | 'bus' | 'train' | 'cable' | 'walk';
+export type LegMode = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'walk';
 
 export interface LegStop {
   stopId: string;
