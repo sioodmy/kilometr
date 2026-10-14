@@ -28,6 +28,9 @@ export interface Env {
 /** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
 const CITIES = ['wroclaw', 'krakow'] as const;
 
+/** Regex ścieżek per-miasto budowany z CITIES, żeby nowe miasto nie wymagało edycji routingu. */
+const CITY_PATH_RE = new RegExp(`^/(${CITIES.join('|')})(/.*)$`);
+
 const PDP_BASE = 'https://pdp-api.plk-sa.pl';
 /** Legacy klucze Wrocławia w root bucketa (kompat ze starymi APK). */
 const LEGACY_DB_KEY = 'db/kilometr-gtfs.db';
@@ -90,7 +93,7 @@ export default {
     }
 
     // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
-    const cityMatch = /^\/(wroclaw|krakow)(\/.*)$/.exec(url.pathname);
+    const cityMatch = CITY_PATH_RE.exec(url.pathname);
     if (cityMatch) {
       const [, city, rest] = cityMatch;
       if (rest === '/manifest.json') {
