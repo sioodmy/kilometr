@@ -1,8 +1,9 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
 // - miasto `pkp`: pozycje i opóźnienia pociągów regionalnych (agencja `KD`
-//   dla Wrocławia, `KML` dla Krakowa),
-// - miasto `wroclaw` / `krakow`: awaryjne (Wrocław) albo podstawowe (Kraków)
-//   pozycje autobusów i tramwajów, gdy bezpośredni feed nie odpowiada.
+//   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM),
+// - miasto `wroclaw` / `krakow` / `gzm`: awaryjne (Wrocław) albo podstawowe
+//   (Kraków, GZM) pozycje autobusów i tramwajów, gdy bezpośredni feed nie
+//   odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -92,6 +93,15 @@ export async function fetchZbKrakowRows(): Promise<RawVehicleRow[] | null> {
   return toRawRows(positions);
 }
 
+/** Pozycje ZTM GZM jako wiersze dla matchera. Podstawowy feed live. */
+export async function fetchZbGzmRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const gzm = getCity('gzm');
+  const positions = await fetchPositions(gzm.zbiorkomSlug, undefined, gzm.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
 function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
   const rows: RawVehicleRow[] = [];
   for (const p of positions) {
@@ -121,6 +131,12 @@ export async function fetchZbKd(): Promise<ZbKdVehicle[] | null> {
 export async function fetchZbKml(): Promise<ZbKdVehicle[] | null> {
   const { getCity } = await import('../cities');
   return fetchZbRail('KML', getCity('krakow').zbiorkomBbox);
+}
+
+/** Pociągi Kolei Śląskich z zbiorkom.live (agencja KS, bbox GZM). */
+export async function fetchZbKs(): Promise<ZbKdVehicle[] | null> {
+  const { getCity } = await import('../cities');
+  return fetchZbRail('KS', getCity('gzm').zbiorkomBbox);
 }
 
 async function fetchZbRail(agency: string, bbox?: string): Promise<ZbKdVehicle[] | null> {

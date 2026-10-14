@@ -20,7 +20,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbKs, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -206,7 +206,8 @@ class LiveTracker {
 
   /**
    * Pociągi regionalne nigdy nie rzucają: brak live dla kolei to nie awaria
-   * miasta. Wrocław: KD, Kraków: Koleje Małopolskie (agencja KML).
+   * miasta. Wrocław: KD, Kraków: Koleje Małopolskie (agencja KML),
+   * GZM: Koleje Śląskie (agencja KS).
    */
   private async fetchRailSafe(): Promise<{ vehicles: ZbKdVehicle[]; prefix: string } | null> {
     const id = safeCityId();
@@ -219,6 +220,10 @@ class LiveTracker {
       if (id === 'krakow') {
         const rows = await fetchZbKml();
         return rows ? { vehicles: rows, prefix: 'KML:' } : null;
+      }
+      if (id === 'gzm') {
+        const rows = await fetchZbKs();
+        return rows ? { vehicles: rows, prefix: 'KŚ:' } : null;
       }
       const rows = await fetchZbKd();
       return rows ? { vehicles: rows, prefix: 'KD:' } : null;
@@ -276,7 +281,8 @@ class LiveTracker {
   /**
    * Pozycje pojazdów per-miasto:
    * - Wrocław: wprost z MPK (POST bus_position), awaryjnie zbiorkom.live,
-   * - Kraków: zbiorkom.live (ZTP nie ma publicznego bus_position).
+   * - Kraków: zbiorkom.live (ZTP nie ma publicznego bus_position),
+   * - GZM: zbiorkom.live (ZTM nie ma publicznego bus_position).
    *
    * Wrocław świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby
    * 100k requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK
@@ -313,7 +319,9 @@ class LiveTracker {
 
   private async fetchZbCity(): Promise<RawVehicleRow[] | null> {
     try {
-      if (safeCityId() === 'krakow') return await fetchZbKrakowRows();
+      const id = safeCityId();
+      if (id === 'krakow') return await fetchZbKrakowRows();
+      if (id === 'gzm') return await fetchZbGzmRows();
       return await fetchZbWroclawRows();
     } catch (err) {
       console.warn('[LiveTracker] zbiorkom city fetch failed:', err);
