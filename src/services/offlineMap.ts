@@ -14,6 +14,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { MAP_GLYPHS_URL } from '../config';
 import { getCity } from '../cities';
+import { tr } from '../i18n';
 import { getActiveCityIdSync } from './cityStore';
 import { getMapDownloadGate, markMapDownloaded } from './downloadLimits';
 
@@ -153,11 +154,12 @@ export async function downloadOfflineMap(
   }
 
   // 3. Pakiet kafelków: największy, więc na końcu.
-  report(0.35, `kafle ${city.genitive}`);
+  const s = tr();
+  report(0.35, s.settings.offlineMapStepTiles(s.city.gen(city.id)));
   const ok = await downloadTo(tilePackUrl(city.id), `${root}${city.tilePack}`);
   if (!ok) return { ok: false, reason: 'fail' };
   await markMapDownloaded(city.id);
-  report(1, 'gotowe');
+  report(1, s.settings.offlineMapStepDone);
   return { ok: true };
 }
 

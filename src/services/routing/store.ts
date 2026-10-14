@@ -135,7 +135,7 @@ export class LocalGtfsStore {
     }
 
     // 3. Kolej linowa Polinka: stacje i linia zanim powstaną przesiadki
-    // (tylko miasta z koleją linową — Kraków jej nie ma i nie dostaje atrapy)
+    // (tylko miasta z koleją linową, Kraków jej nie ma i nie dostaje atrapy)
     if (cableInCity()) this.injectPolinkaStopsAndRoute();
 
     // 4. Build footpaths

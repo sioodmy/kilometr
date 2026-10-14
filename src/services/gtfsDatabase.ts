@@ -144,7 +144,7 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   if (existing) return existing;
   const p = initDb(name);
   dbPromises.set(name, p);
-  // Nie trzymaj odrzuconego promise'a — następne wywołanie próbuje od nowa
+  // Nie trzymaj odrzuconego promise'a, następne wywołanie próbuje od nowa
   // zamiast zwracać w kółko ten sam błąd (widoczne w logach jako wieczne
   // "[LocalGtfsStore] Initializing..." bez "Loaded").
   p.catch(() => {

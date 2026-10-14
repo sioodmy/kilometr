@@ -19,7 +19,7 @@ export function inCity(lat: number, lon: number): boolean {
   try {
     b = activeBounds();
   } catch {
-    // storage jeszcze nie gotowy — legacy Wrocław
+    // storage jeszcze nie gotowy, legacy Wrocław
   }
   return (
     Number.isFinite(lat) &&
