@@ -21,7 +21,7 @@ import java.nio.ByteOrder
  *   16..   katalog: offset u64, len u32, z u8, x u16, y u16 (18 B na pozycję)
  *   potem  dane kafelków, kolejno wg katalogu
  */
-class TilePack(private val file: File) {
+class TilePack(val file: File) {
 
     companion object {
         private const val HEADER_BYTES = 32

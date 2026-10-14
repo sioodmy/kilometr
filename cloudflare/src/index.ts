@@ -64,7 +64,7 @@ async function serveObject(
     return json(
       {
         error: 'not-built-yet',
-        hint: `Build jeszcze nie wystartował — odpal workflow ${workflowName} (workflow_dispatch).`,
+        hint: `Build jeszcze nie wystartował. Odpal workflow ${workflowName} (workflow_dispatch).`,
       },
       404,
     );
@@ -131,7 +131,7 @@ async function serveManifest(env: Env, key: string): Promise<Response> {
   const obj = await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
     return json(
-      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
+      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
       404,
     );
   }
@@ -149,7 +149,7 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
     const head = await env.TIMETABLE_BUCKET.head(key);
     if (!head) {
       return json(
-        { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
+        { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
         404,
       );
     }
@@ -181,7 +181,7 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
   const obj = await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
     return json(
-      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował — odpal workflow timetable.yml (workflow_dispatch).' },
+      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
       404,
     );
   }

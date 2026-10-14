@@ -68,7 +68,7 @@ jobs:
           code=$?
           echo "exit=$code" >> "$GITHUB_OUTPUT"
           if [ "$code" -eq 2 ]; then
-            echo "### Bez zmian — skip (${{ matrix.city }})" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Bez zmian (skip) (${{ matrix.city }})" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           exit "$code"

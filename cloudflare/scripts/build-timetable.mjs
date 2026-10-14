@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * build-timetable.mjs — buduje prebuilt SQLite per-miasto.
+ * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
  * Użycie: node build-timetable.mjs [--city=wroclaw|krakow] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city zachowuje się jak dawniej (Wrocław → cloudflare/dist/).
@@ -12,13 +12,13 @@
  *   Open Data Wrocław — katalog GTFS + ZIP (MPK: tramwaje + autobusy)
  *   + PDP API (PLK): KD, stacje Wrocławia, okno 14 dni (wymaga PDP_API_KEY)
  * Kraków:
- *   ZTP Kraków — 3 statyczne ZIP-y GTFS (A: autobusy, T: tramwaje, M: reszta),
+ *   ZTP Kraków: 3 statyczne ZIP-y GTFS (A: autobusy, T: tramwaje, M: reszta),
  *   mergowane prefiksami KRK:{A,T,M}. Bez PDP (małopolskie koleje siedzą
  *   we własnym publicznym GTFS Kolei Małopolskich, nie w PDP).
  *
  * Wyjścia (cloudflare/dist[/{miasto}]/):
  *   kilometr-gtfs.db  — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
- *   manifest.json     — miasto, wersja, statystyki, sha256 bazy
+ *   manifest.json: miasto, wersja, statystyki, sha256 bazy
  *
  * Wymagania: Node.js ≥ 22.5 (node:sqlite), program `unzip` w PATH
  * (linux/macos: standard; Windows: Git Bash / WSL). Zero zależności npm.
@@ -68,7 +68,7 @@ const ZTP_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@ki
  * Koleje Małopolskie: własny publiczny GTFS (SKA + reszta kolei
  * regionalnej, bez klucza). Trasy w feedzie to pociągi imienne
  * (HUBAL, LUXTORPEDA...), numer pociągu siedzi w trip_short_name
- * ("33142 HUBAL") — trasy w bazie grupujemy po numerze jak kursy KD.
+ * ("33142 HUBAL"), trasy w bazie grupujemy po numerze jak kursy KD.
  */
 const KML_GTFS_URL = 'https://kolejemalopolskie.com.pl/rozklady_jazdy/kml-ska-gtfs.zip';
 const KML_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
@@ -490,15 +490,14 @@ async function main() {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
     }
-    const versions = [];
+    const ztpVersions = [];
     for (const s of gtfsSources) {
       s.version = await headVersion(s.url, s.headers);
-      versions.push(`${s.label}=${s.version || '?'}`);
+      ztpVersions.push(`${s.label}=${s.version || '?'}`);
     }
+    ztpFingerprint = ztpVersions.join('|');
     kmlVersion = await headVersion(KML_GTFS_URL, KML_UA);
-    versions.push(`KML=${kmlVersion || '?'}`);
-    ztpFingerprint = versions.join('|');
-    log('ZTP+KML:', ztpFingerprint);
+    log('ZTP:', ztpFingerprint, '| KMŁ:', kmlVersion || '?');
   } else {
     mpk = await discoverMpk();
     log('MPK:', mpk.filename || mpk.url, '| effective:', mpk.effectiveDate);
@@ -516,9 +515,20 @@ async function main() {
 
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
-      log('brak zmian (ZTP), skip buildu.');
-      rmSync(work, { recursive: true, force: true });
-      process.exit(2);
+      // Ten sam ZTP wystarczy do skipu tylko wtedy, gdy zdalna baza faktycznie
+      // ma Koleje Małopolskie. Manifest sprzed ich wdrożenia ma zgodny odcisk
+      // ZTP, ale pociągów nie zawiera, więc bez tego warunku Kraków nigdy by
+      // ich nie dostał.
+      const remoteKmlReal =
+        (remote.sources.kml?.version || null) === (kmlVersion || null) &&
+        Number(remote.sources.kml?.stations || 0) > 0 &&
+        Number(remote.sources.kml?.trips || 0) > 0;
+      if (remoteKmlReal) {
+        log('brak zmian (ZTP + KMŁ), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+      warn('zdalny manifest bez realnego KMŁ, przebudowuję zamiast skipować.');
     }
     if (CITY === 'wroclaw'
       && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
@@ -538,7 +548,7 @@ async function main() {
     }
   }
 
-  // 3. Pobieranie ZIP-ów + rozpakowanie (unzip z systemu — Node nie ma wbudowanego).
+  // 3. Pobieranie ZIP-ów + rozpakowanie (unzip z systemu, Node nie ma wbudowanego).
   const NEEDED = ['stops.txt', 'routes.txt', 'calendar.txt', 'calendar_dates.txt', 'trips.txt', 'stop_times.txt'];
   const txtDirs = [];
   for (const [i, src] of gtfsSources.entries()) {
@@ -589,7 +599,7 @@ async function main() {
     const readTxt = readers[fi];
     const P = (id) => (prefix ? `${prefix}:${id}` : id);
     const stopsTxt = readTxt('stops.txt');
-    if (!stopsTxt) throw new Error(`ZIP ${label} bez stops.txt — przerywam (nie nadpisuję R2 pustką).`);
+    if (!stopsTxt) throw new Error(`ZIP ${label} bez stops.txt, przerywam (nie nadpisuję R2 pustką).`);
     {
       const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
       db.exec('BEGIN');
@@ -620,7 +630,7 @@ async function main() {
         if (!id) return;
         const raw = (c[idx.route_type] || '').trim();
         let num = raw !== '' && !isNaN(Number(raw)) ? Number(raw) : 3;
-        // ZTP Kraków oznacza tramwaje rozszerzonym typem 900 — sprowadzamy
+        // ZTP Kraków oznacza tramwaje rozszerzonym typem 900, sprowadzamy
         // do kanonicznego GTFS 0, żeby filtry tramwaj/autobus działały.
         if (CITY === 'krakow' && num === 900) num = 0;
         ins.run(P(id), (c[idx.route_short_name] || '').trim() || id, (c[idx.route_long_name] || '').trim(), num);
@@ -654,7 +664,7 @@ async function main() {
       db.exec('COMMIT');
     }
     const tripsTxt = readTxt('trips.txt');
-    if (!tripsTxt) throw new Error(`ZIP ${label} bez trips.txt — przerywam.`);
+    if (!tripsTxt) throw new Error(`ZIP ${label} bez trips.txt, przerywam.`);
     {
       const ins = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
       db.exec('BEGIN');
@@ -671,7 +681,7 @@ async function main() {
       db.exec('COMMIT');
     }
     const stTxt = readTxt('stop_times.txt');
-    if (!stTxt) throw new Error(`ZIP ${label} bez stop_times.txt — przerywam.`);
+    if (!stTxt) throw new Error(`ZIP ${label} bez stop_times.txt, przerywam.`);
     {
       const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
       const { header } = splitHeader(stTxt);
@@ -688,7 +698,7 @@ async function main() {
         pos = nl + 1;
         if (line.endsWith('\r')) line = line.slice(0, -1);
         if (!line.trim()) continue;
-        // stop_times nie ma cudzysłowów — szybki split jak w aplikacji
+        // stop_times nie ma cudzysłowów, więc szybki split jak w aplikacji
         const c = line.split(',');
         const tid = (c[ti] || '').trim();
         if (!tid) continue;
@@ -701,7 +711,7 @@ async function main() {
     }
     log(`${label}: routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
   }
-  // Przystanki liczone z dupami między feedami — przelicz na stan faktyczny.
+  // Przystanki liczone z dupami między feedami, przelicz na stan faktyczny.
   try {
     counts.stops = db.prepare('SELECT COUNT(*) AS n FROM stops').get().n;
   } catch {}
@@ -854,7 +864,7 @@ async function main() {
 
   // 6a. Koleje Małopolskie ze statycznego GTFS (tylko Kraków, bez klucza).
   // Trasy w bazie grupujemy po numerze pociągu (pierwszy token trip_short_name,
-  // np. "33142" z "33142 HUBAL") — ten sam wzorzec co kursy KD: LineBadge
+  // np. "33142" z "33142 HUBAL"), ten sam wzorzec co kursy KD: LineBadge
   // pokazuje numer, a live dopina się po numerze (brygada z zbiorkom).
   if (CITY === 'krakow') {
     const zipPath = join(work, 'kml.zip');
@@ -880,7 +890,7 @@ async function main() {
     const PS = (id) => `KML:S:${id}`;
     const PR = (id) => `KML:${id}`;
     const stopsTxt = readKml('stops.txt');
-    if (!stopsTxt) throw new Error('ZIP KMŁ bez stops.txt — przerywam (nie nadpisuję R2 pustką).');
+    if (!stopsTxt) throw new Error('ZIP KMŁ bez stops.txt, przerywam (nie nadpisuję R2 pustką).');
     {
       const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
       db.exec('BEGIN');
@@ -899,7 +909,7 @@ async function main() {
       db.exec('COMMIT');
     }
     const tripsTxt = readKml('trips.txt');
-    if (!tripsTxt) throw new Error('ZIP KMŁ bez trips.txt — przerywam.');
+    if (!tripsTxt) throw new Error('ZIP KMŁ bez trips.txt, przerywam.');
     const trainOf = new Map(); // numer pociągu -> { routeId, first, last }
     let skippedNoNumber = 0;
     {
@@ -946,7 +956,7 @@ async function main() {
       db.exec('COMMIT');
     }
     const stTxt = readKml('stop_times.txt');
-    if (!stTxt) throw new Error('ZIP KMŁ bez stop_times.txt — przerywam.');
+    if (!stTxt) throw new Error('ZIP KMŁ bez stop_times.txt, przerywam.');
     {
       const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
       const { header } = splitHeader(stTxt);
@@ -1023,13 +1033,13 @@ async function main() {
     }
     log(`interchanges kolej<->miasto: ${interchangeCount} (stacji kolei: ${railGeo.size})`);
     if (railGeo.size > 0 && interchangeCount === 0) {
-      warn('zero linków przesiadkowych — stacje kolei bez połączenia z miastem (sprawdź współrzędne!)');
+      warn('zero linków przesiadkowych: stacje kolei bez połączenia z miastem (sprawdź współrzędne!)');
     }
   }
   if (kdInfo && !kdInfo.skippedReason) kdInfo.interchanges = interchangeCount;
   if (kmlInfo && !kmlInfo.skippedReason) kmlInfo.interchanges = interchangeCount;
 
-  // 6c. Twarda bramka — tylko Wrocław: bez pełnego, realnego KD nie
+  // 6c. Twarda bramka, tylko Wrocław: bez pełnego, realnego KD nie
   // nadpisujemy R2. Baza MPK-only albo z niekompletnym KD to dokładnie ta
   // atrapa, której nie chcemy w APK. Wszystkie cztery sekcje muszą być niepuste.
   if (CITY === 'wroclaw' && !ALLOW_MPK_ONLY) {
@@ -1054,7 +1064,7 @@ async function main() {
     }
   }
 
-  // 6d. Twarda bramka — Kraków: baza bez pełnych Kolei Małopolskich
+  // 6d. Twarda bramka, Kraków: baza bez pełnych Kolei Małopolskich
   // (albo bez przesiadek na nie) nie nadpisuje R2.
   if (CITY === 'krakow') {
     const problems = [];
@@ -1091,7 +1101,7 @@ async function main() {
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
   if (!vals.includes('ok')) throw new Error('integrity_check NIE przeszedł: ' + JSON.stringify(chk));
-  // Pusta baza (padnięte ZIP-y) nigdy nie leci do R2 — niezależnie od miasta.
+  // Pusta baza (padnięte ZIP-y) nigdy nie leci do R2, niezależnie od miasta.
   const guard = db.prepare('SELECT (SELECT COUNT(*) FROM stops) AS s, (SELECT COUNT(*) FROM trips) AS t, (SELECT COUNT(*) FROM stop_times) AS st').get();
   if (!guard || guard.s <= 0 || guard.t <= 0 || guard.st <= 0) {
     throw new Error(`pusta baza (stops=${guard?.s} trips=${guard?.t} times=${guard?.st}): nie publikuję.`);

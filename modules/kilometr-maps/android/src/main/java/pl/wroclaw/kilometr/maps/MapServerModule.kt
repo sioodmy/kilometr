@@ -30,7 +30,7 @@ class MapServerModule : Module() {
     private val mapsDir: File?
         get() = appContext.reactContext?.applicationContext?.let { File(it.filesDir, "maps") }
 
-    /** Wszystkie pakiety miast (`{miasto}-tiles.ktp`) — każde miasto ma własny plik. */
+    /** Wszystkie pakiety miast (`{miasto}-tiles.ktp`), każde miasto ma własny plik. */
     private fun packFiles(): List<File> =
         mapsDir?.listFiles { f -> f.isFile && f.name.endsWith("-tiles.ktp") }
             ?.sortedBy { it.name } ?: emptyList()
@@ -58,7 +58,14 @@ class MapServerModule : Module() {
 
         /** Startuje serwer, zwraca bazowy URL; null gdy brak pakietu. */
         AsyncFunction("start") {
-            server?.let { return@AsyncFunction "http://127.0.0.1:${it.listeningPort}" }
+            val files = packFiles().map { it.name to it.length() }
+            val running = server
+            // Zestaw pakietów zmienił się na dysku (pobrano/usunięto miasto):
+            // otwarte uchwyty dotyczą starych plików, więc restartujemy serwer.
+            if (running != null && files == packs.map { it.file.name to it.file.length() }) {
+                return@AsyncFunction "http://127.0.0.1:${running.listeningPort}"
+            }
+            if (running != null) stopServer()
             val opened = openPacks()
             if (opened.isEmpty()) return@AsyncFunction null
             packs = opened
