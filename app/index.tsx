@@ -6,9 +6,11 @@ import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { Bell, History, Settings2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
-import { DEFAULT_LOCATION } from '../src/config';
+import { defaultLocationForCity } from '../src/config';
+import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch, type LocationResult } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
+import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
   type DataStatus,
@@ -52,6 +54,8 @@ import { UnsupportedCityCard } from '../src/components/UnsupportedCityCard';
 export default function HomeScreen() {
   const s = useStrings();
   const router = useRouter();
+  const { cityId } = useActiveCity();
+  const cityGen = s.city.gen(cityId);
   const GPS_ITEM: Suggestion = {
     id: '__gps',
     title: s.home.gpsTitle,
@@ -75,7 +79,7 @@ export default function HomeScreen() {
   // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
   const isCustomStartRef = useRef(isCustomStart);
   isCustomStartRef.current = isCustomStart;
-  // GPS poza strefą (> 15 km od Wrocławia): tras z GPS nie liczymy,
+  // GPS poza strefą aktywnego miasta: tras z GPS nie liczymy,
   // start trzeba wybrać ręcznie. Miasto z reverse-geocode do komunikatu.
   const [gpsUnsupported, setGpsUnsupported] = useState(false);
   const [gpsCity, setGpsCity] = useState<string | null>(null);
@@ -86,10 +90,10 @@ export default function HomeScreen() {
   const [results, setResults] = useState<Suggestion[]>([]);
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
-  const [locTitle, setLocTitle] = useState(DEFAULT_LOCATION.title);
-  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lon: number }>({
-    lat: DEFAULT_LOCATION.lat,
-    lon: DEFAULT_LOCATION.lon,
+  const [locTitle, setLocTitle] = useState(() => defaultLocationForCity(getActiveCityIdSync()).title);
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lon: number }>(() => {
+    const d = defaultLocationForCity(getActiveCityIdSync());
+    return { lat: d.lat, lon: d.lon };
   });
   const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
@@ -170,14 +174,17 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // Badge na dzwonku: dzisiejsze pilne utrudnienie MPK (RSS wroclaw.pl).
+  // Badge na dzwonku: dzisiejsze pilne utrudnienie (feed miasta).
   // Sprawdzamy przy starcie i powrocie na foreground — bez interwału, żeby nie spamować feedu.
+  // Zmiana miasta to nowy feed: badge trzeba przeliczyć od zera, inaczej wisiałby
+  // z poprzedniego miasta do najbliższego foregroundu.
   useEffect(() => {
     let cancelled = false;
+    setNewsAlert(false);
     const checkNews = async () => {
       try {
-        const { fetchMpkNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
-        const news = await fetchMpkNews();
+        const { fetchCityNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
+        const news = await fetchCityNews();
         const alert = await shouldShowNewsAlert(news);
         if (!cancelled) setNewsAlert(alert);
       } catch {
@@ -192,7 +199,7 @@ export default function HomeScreen() {
       cancelled = true;
       sub.remove();
     };
-  }, []);
+  }, [cityId]);
 
   // Weryfikacja badge'a przy powrocie na ekran główny (np. po wyjściu z sekcji newsów)
   useFocusEffect(
@@ -255,7 +262,7 @@ export default function HomeScreen() {
   // Origin trzymamy jako stop-id, tak jak zapisuje go GPS, a nie sam tytuł —
   // inaczej ranking po zapisie miejsca liczyłby się z innego klucza.
   const smartGen = useRef(0);
-  const originStopRef = useRef<string>(DEFAULT_LOCATION.title);
+  const originStopRef = useRef<string>(defaultLocationForCity(getActiveCityIdSync()).title);
   const requestSmart = useCallback(
     (originStop: string, coords: { lat: number; lon: number }) => {
       originStopRef.current = originStop;
@@ -291,16 +298,14 @@ export default function HomeScreen() {
       const city = l.city ?? null;
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
       if (outside) {
-        // Poza Wrocławiem: GPS zostaje tylko jako informacja do karty,
-        // a ranking i trasy liczymy z centrum — start i tak trzeba
-        // wybrać ręcznie, więc nie podstawiamy pozycji spoza strefy.
+        // Poza strefą: GPS zostaje tylko jako informacja do karty,
+        // a ranking i trasy liczymy z centrum aktywnego miasta, bo start
+        // i tak trzeba wybrać ręcznie, więc nie podstawiamy pozycji spoza.
         setGpsUnsupported(true);
         setGpsCity(city);
         if (!isCustomStartRef.current) {
-          requestSmart(DEFAULT_LOCATION.title, {
-            lat: DEFAULT_LOCATION.lat,
-            lon: DEFAULT_LOCATION.lon,
-          });
+          const d = defaultLocationForCity(getActiveCityIdSync());
+          requestSmart(d.title, { lat: d.lat, lon: d.lon });
         }
         return;
       }
@@ -320,7 +325,43 @@ export default function HomeScreen() {
     });
     const unsubscribeGps = LocationService.subscribe(applyGpsFix);
     return () => unsubscribeGps();
-  }, []);
+    // Zmiana miasta to nowy kontekst: GPS, historia i cache ulubionych należą
+    // do poprzedniego miasta, więc efekt startuje od nowa.
+  }, [cityId]);
+
+  // Sam reset stanu per-miasto. Ekran główny zostaje zamontowany, gdy Settings
+  // jest wypchnięty na stos (native stack nie robi unmount), więc bez tego
+  // po zmianie miasta pokazywałby stare ulubione, starą pozycję startu
+  // i orzekał „Wrocław" przy aktywnym Krakowie.
+  const firstCityRun = useRef(true);
+  useEffect(() => {
+    if (firstCityRun.current) {
+      firstCityRun.current = false;
+      return;
+    }
+    isCustomStartRef.current = false;
+    setIsCustomStart(false);
+    setQuery('');
+    setResults([]);
+    setSmart([]);
+    setSmartReady(false);
+    setRecent([]);
+    setLastTrip(null);
+    setGpsUnsupported(false);
+    setGpsCity(null);
+    const d = defaultLocationForCity(cityId);
+    setLocTitle(d.title);
+    setCurrentCoords({ lat: d.lat, lon: d.lon });
+    setNextDepart({});
+    setFirstConns({});
+    setFirstLegs({});
+    refreshPlaces();
+    SearchService.recent().then(setRecent);
+    loadTripHistory().then((h) => setLastTrip(h.length > 0 ? h[0] : null));
+    loadCachedSmartDestinations().then((cached) => {
+      if (cached.length > 0) setSmart(cached);
+    });
+  }, [cityId]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy
   useEffect(() => {
@@ -613,7 +654,7 @@ export default function HomeScreen() {
   const blockGpsStart = () => {
     Alert.alert(
       s.home.gpsBlockedTitle,
-      gpsCity ? s.home.gpsBlockedBody(gpsCity) : s.home.gpsBlockedBodyUnknown,
+      gpsCity ? s.home.gpsBlockedBody(gpsCity, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
       [
         { text: s.common.cancel, style: 'cancel' },
         {
@@ -670,7 +711,7 @@ export default function HomeScreen() {
         // od razu wybrał punkt ręcznie; sam alert by go wyrzucał z flow.
         Alert.alert(
           s.home.gpsBlockedTitle,
-          gpsCity ? s.home.gpsBlockedBody(gpsCity) : s.home.gpsBlockedBodyUnknown,
+          gpsCity ? s.home.gpsBlockedBody(gpsCity, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
         );
         setQuery('');
         return;
@@ -760,7 +801,7 @@ export default function HomeScreen() {
 
   const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number }) => {
     // GPS spoza strefy nie może być startem: zamiast puszczać trasę
-    // z pozycji spoza Wrocławia prosimy o ręczny wybór startu.
+    // z pozycji spoza strefy prosimy o ręczny wybór startu.
     if (gpsUnsupported && !isCustomStart) {
       blockGpsStart();
       return;
@@ -833,10 +874,7 @@ export default function HomeScreen() {
         const h = Math.max(0, Math.min(LAST_TRIP_MAX, g.dy));
         pullHeight.value = h;
         const cur = optionRef.current;
-        let next: LastTripOption = cur;
-        if (h >= LAST_TRIP_ARM_2) next = 2;
-        else if (cur === 2) next = h >= LAST_TRIP_DISARM_2 ? 2 : h >= LAST_TRIP_ARM_1 ? 1 : 0;
-        else next = h >= LAST_TRIP_ARM_1 ? 1 : 0;
+        const next = nextPullOption(cur, h, LAST_TRIP_ARM_1, LAST_TRIP_ARM_2, LAST_TRIP_DISARM_2);
         if (next !== cur) {
           optionRef.current = next;
           setPullOption(next);
@@ -982,7 +1020,7 @@ export default function HomeScreen() {
             <View style={styles.importCard}>
               <ActivityIndicator size="small" color={scheme.primary} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.importTitle}>{s.home.importingTitle}</Text>
+                <Text style={styles.importTitle}>{s.home.importingTitle(cityGen)}</Text>
                 <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
               </View>
             </View>
@@ -1010,6 +1048,7 @@ export default function HomeScreen() {
           {gpsUnsupported && (
             <UnsupportedCityCard
               city={gpsCity}
+              activeCity={s.city.name(cityId)}
               onPickStart={() => {
                 setReturnToDestinationAfterStart(false);
                 setQuery('');

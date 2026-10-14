@@ -21,12 +21,13 @@ import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
 import {
-  fetchMpkNews,
+  fetchCityNews,
   getCachedNews,
   loadNewsCache,
   markNewsSeen,
   type MpkNewsItem,
 } from '../src/services/mpkNews';
+import { useActiveCity } from '../src/services/cityStore';
 import {
   loadRecentRouteLines,
   newsTouchesLines,
@@ -40,9 +41,13 @@ type Row =
 
 const NewsCard = memo(function NewsCard({
   item,
+  operator,
+  portal,
   onOpen,
 }: {
   item: MpkNewsItem;
+  operator: string;
+  portal: string;
   onOpen: (item: MpkNewsItem) => void;
 }) {
   const s = useStrings();
@@ -69,7 +74,7 @@ const NewsCard = memo(function NewsCard({
         ) : null}
         <View style={styles.spacer} />
         <Text style={styles.sourceTag}>
-          {item.source === 'mpk' ? s.news.sourceMpk : s.news.sourceCity}
+          {item.source === 'mpk' ? s.news.sourceMpk(operator) : s.news.sourceCity(portal)}
         </Text>
       </View>
       <Text style={styles.cardTitle}>{item.title}</Text>
@@ -105,6 +110,11 @@ function SkeletonCard() {
 export default function NewsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const { cityId } = useActiveCity();
+  const operator = s.city.operator(cityId);
+  const portal = s.city.portal(cityId);
+  const cityName = s.city.name(cityId);
+  const feedsLabel = s.city.newsSources(cityId);
   const [items, setItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [loading, setLoading] = useState(() => (getCachedNews()?.length ?? 0) === 0);
   const [refreshing, setRefreshing] = useState(false);
@@ -122,7 +132,7 @@ export default function NewsScreen() {
       if (isRefresh) setRefreshing(true);
       setError(null);
       try {
-        const news = await fetchMpkNews();
+        const news = await fetchCityNews();
         setItems(news);
         void markNewsSeen(news);
         await refreshMyLines();
@@ -208,9 +218,9 @@ export default function NewsScreen() {
           <Text style={styles.headerTitle}>{s.news.title}</Text>
           <Text style={styles.headerSub}>
             {loading && items.length === 0
-              ? s.news.sourceLoading
+              ? s.news.sourceLoading(feedsLabel)
               : items.length === 0
-                ? s.news.sourceEmpty
+                ? s.news.sourceEmpty(feedsLabel)
                 : s.news.count(visibleItems.length, urgentCount)}
           </Text>
         </View>
@@ -295,7 +305,7 @@ export default function NewsScreen() {
             row.kind === 'head' ? (
               <Text style={styles.section}>{row.label}</Text>
             ) : (
-              <NewsCard item={row.item} onOpen={openItem} />
+              <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
             )
           }
           ListEmptyComponent={
@@ -315,7 +325,7 @@ export default function NewsScreen() {
                   ? myLines.length === 0
                     ? s.news.filterNoHistoryBody
                     : s.news.filterEmptyBody
-                  : s.news.emptyBody}
+                  : s.news.emptyBody(cityName)}
               </Text>
             </View>
           }

@@ -1,5 +1,7 @@
 import { AppState } from 'react-native';
 import { kvGet, kvRemove, kvSet } from '../storage';
+import { inCityBounds } from '../../cities';
+import { getActiveCitySync } from '../cityStore';
 import { RoutingService } from '../api';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
@@ -335,6 +337,13 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as TrackedTrip;
     if (!parsed?.connection) return null;
+    // Kurs z innego miasta: jego przystanki i opóźnienia istnieją tylko w tamtej
+    // bazie, więc po przełączeniu miasta nie da się go odświeżyć. Instalacje
+    // sprzed tej poprawki mogły zostawić taki pin, więc go odrzucamy.
+    if (!inCityBounds(getActiveCitySync(), parsed.fromLat, parsed.fromLon)) {
+      await kvRemove(STORAGE_KEY);
+      return null;
+    }
     tracked = parsed;
     progress = computeTripProgress(parsed.connection, {
       walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),

@@ -24,44 +24,58 @@ import java.io.File
 class MapServerModule : Module() {
 
     private var server: NanoHTTPD? = null
-    private var pack: TilePack? = null
+    private var packs: List<TilePack> = emptyList()
 
     /** filesDir/maps — ten sam katalog, do którego pisze JS przy pobieraniu. */
     private val mapsDir: File?
         get() = appContext.reactContext?.applicationContext?.let { File(it.filesDir, "maps") }
 
-    private fun packFile(): File? = mapsDir?.let { File(it, "wroclaw-tiles.ktp") }
+    /** Wszystkie pakiety miast (`{miasto}-tiles.ktp`), każde miasto ma własny plik. */
+    private fun packFiles(): List<File> =
+        mapsDir?.listFiles { f -> f.isFile && f.name.endsWith("-tiles.ktp") }
+            ?.sortedBy { it.name } ?: emptyList()
 
-    private fun openPack(): TilePack? {
-        val f = packFile() ?: return null
-        if (!f.exists() || f.length() < 1024) return null
-        return try {
-            TilePack(f)
-        } catch (e: Exception) {
-            null
+    private fun openPacks(): List<TilePack> {
+        val out = mutableListOf<TilePack>()
+        for (f in packFiles()) {
+            if (!f.exists() || f.length() < 1024) continue
+            try {
+                out.add(TilePack(f))
+            } catch (e: Exception) {
+                // uszkodzony pakiet jednego miasta nie kładzie reszty
+            }
         }
+        return out
     }
 
     override fun definition() = ModuleDefinition {
         Name("KilometrMapServer")
 
-        /** Czy pakiet kafelków jest już na telefonie. */
+        /** Czy jakikolwiek pakiet kafelków jest już na telefonie. */
         AsyncFunction("hasTilePack") {
-            val f = packFile() ?: return@AsyncFunction false
-            f.exists() && f.length() > 1024
+            packFiles().any { it.exists() && it.length() > 1024 }
         }
 
         /** Startuje serwer, zwraca bazowy URL; null gdy brak pakietu. */
         AsyncFunction("start") {
-            server?.let { return@AsyncFunction "http://127.0.0.1:${it.listeningPort}" }
-            val p = openPack() ?: return@AsyncFunction null
-            pack = p
+            val files = packFiles().map { it.name to it.length() }
+            val running = server
+            // Zestaw pakietów zmienił się na dysku (pobrano/usunięto miasto):
+            // otwarte uchwyty dotyczą starych plików, więc restartujemy serwer.
+            if (running != null && files == packs.map { it.file.name to it.file.length() }) {
+                return@AsyncFunction "http://127.0.0.1:${running.listeningPort}"
+            }
+            if (running != null) stopServer()
+            val opened = openPacks()
+            if (opened.isEmpty()) return@AsyncFunction null
+            packs = opened
             try {
-                val s = MapRequestHandler(p, mapsDir)
+                val s = MapRequestHandler(opened, mapsDir)
                 s.start(SOCKET_READ_TIMEOUT, false)
                 server = s
                 "http://127.0.0.1:${s.listeningPort}"
             } catch (e: Exception) {
+                closePacks()
                 null
             }
         }
@@ -75,11 +89,21 @@ class MapServerModule : Module() {
         }
     }
 
+    private fun closePacks() {
+        for (p in packs) {
+            try {
+                p.close()
+            } catch (e: Exception) {
+                // best-effort
+            }
+        }
+        packs = emptyList()
+    }
+
     private fun stopServer() {
         server?.stop()
         server = null
-        pack?.close()
-        pack = null
+        closePacks()
     }
 
     private companion object {

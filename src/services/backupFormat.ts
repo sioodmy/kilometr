@@ -1,9 +1,11 @@
 // Format kopii zapasowej (import/eksport user space).
 //
-// Ten plik jest CELOWO czysty — zero `expo-*`, zero `kvGet`. Importuje tylko
-// typy, więc da się go uruchomić pod `tsx` bez telefonu (`npm run check:backup`).
-// Wersjonowanie: kopie starsze od naszej wersji schematu odrzucamy (dane
-// wymagają migracji, której nie mamy), nowsze też (nie umiemy ich czytać).
+// Ten plik jest CELOWO czysty: zero `expo-*`, zero `kvGet`. Poza typami
+// importuje tylko czysty rejestr miast (`cities.ts` nie ciągnie natywnych
+// modułów), więc da się go uruchomić pod `tsx` bez telefonu
+// (`npm run check:backup`).
+// Wersjonowanie: schemat 1 migrujemy do kubełka Wrocławia (taki był jego
+// jedyny sens), nowsze od naszego odrzucamy (nie umiemy ich czytać).
 // W obrębie sekcji dane są walidowane punkt po punkcie, a uszkodzone wpisy
 // są pomijane zamiast odrzucać całą kopię — inaczej jedno zepsute miejsce
 // zrobiłoby z kopii nie do odzyskania.
@@ -13,9 +15,10 @@ import type { TripHistoryItem } from './smartRanking';
 import type { RoutingSettings } from './settings';
 import type { NotificationPreferences } from './notifications/types';
 import type { LocaleSetting } from '../i18n';
+import { isCityId, type CityId } from '../cities';
 
 /** Wersja schematu. Bump przy zmianie kształtu `BackupData`. */
-export const BACKUP_SCHEMA = 1;
+export const BACKUP_SCHEMA = 2;
 
 export const BACKUP_FILE_KIND = 'kilometr-backup';
 export const BACKUP_APP_ID = 'kilometr';
@@ -25,12 +28,21 @@ export const BACKUP_EXTENSION = 'json';
 export const BACKUP_MIME = 'application/json';
 
 export interface BackupData {
-  places: SavedPlace[];
-  savedRoutes: SavedRoute[];
-  tripHistory: TripHistoryItem[];
+  // Dane użytkownika są per-miasto (sekcja = kubełek miasta). Wrocławskie
+  // wpisy nie mają gdzie indziej sensu: przystanki z innego miasta nie
+  // istnieją w lokalnej bazie, więc trasa do nich zawsze byłaby martwa.
+  places: BackupCitySection<SavedPlace>[];
+  savedRoutes: BackupCitySection<SavedRoute>[];
+  tripHistory: BackupCitySection<TripHistoryItem>[];
   routingSettings: RoutingSettings | null;
   notificationPrefs: NotificationPreferences | null;
   locale: LocaleSetting | null;
+}
+
+/** Jedno miasto w kopii: jego kubełek miejsc, tras albo historii. */
+export interface BackupCitySection<T> {
+  city: CityId;
+  items: T[];
 }
 
 export interface BackupEnvelope {
@@ -51,6 +63,11 @@ export const EMPTY_BACKUP_DATA: BackupData = {
   locale: null,
 };
 
+/** Suma wpisów ze wszystkich sekcji miast (do liczników w UI). */
+function sectionTotal<T>(sections: BackupCitySection<T>[]): number {
+  return sections.reduce((n, s) => n + s.items.length, 0);
+}
+
 /** Ile pozycji każdej sekcji — do potwierdzenia przed importem i do podsumowania. */
 export interface BackupCounts {
   places: number;
@@ -63,9 +80,9 @@ export interface BackupCounts {
 
 export function countBackupData(data: BackupData): BackupCounts {
   return {
-    places: data.places.length,
-    savedRoutes: data.savedRoutes.length,
-    tripHistory: data.tripHistory.length,
+    places: sectionTotal(data.places),
+    savedRoutes: sectionTotal(data.savedRoutes),
+    tripHistory: sectionTotal(data.tripHistory),
     routingSettings: data.routingSettings !== null,
     notificationPrefs: data.notificationPrefs !== null,
     locale: data.locale !== null,
@@ -254,6 +271,18 @@ function readLocale(v: unknown): LocaleSetting | null {
   return s && LOCALES.includes(s) ? (s as LocaleSetting) : null;
 }
 
+/**
+ * Sekcja miasta: `{ city, items }`. Nieznane miasto odrzuca całą sekcję
+ * (nie mamy kubełka, do którego mogłaby trafić), reszta kopii przeżywa.
+ */
+function readCitySection<T>(v: unknown, readItem: (item: unknown) => T | null): BackupCitySection<T> | null {
+  if (!isRecord(v)) return null;
+  const city = str(v.city);
+  if (!isCityId(city)) return null;
+  if (!Array.isArray(v.items)) return null;
+  return { city, items: v.items.map(readItem).filter((i): i is T => i !== null) };
+}
+
 // ─── Odczyt kopii ───────────────────────────────────────────────────────────
 
 export type BackupParseFailure = 'noFile' | 'unreadable' | 'notBackup' | 'schemaTooNew';
@@ -261,6 +290,24 @@ export type BackupParseFailure = 'noFile' | 'unreadable' | 'notBackup' | 'schema
 export type BackupParseResult =
   | { ok: true; envelope: BackupEnvelope; counts: BackupCounts; empty: boolean }
   | { ok: false; reason: BackupParseFailure };
+
+/**
+ * Migracja schematu 1 (sprzed multi-city): płaskie listy trafiają do kubełka
+ * Wrocławia, bo taki był ich jedyny sens. Kolejne odczyty miejsc i tak
+ * przeniosą wpisy z innych miast do właściwych kubełków (migracja w api.ts).
+ */
+function migrateSchema1(d: Record<string, unknown>): BackupData {
+  const data: BackupData = { ...EMPTY_BACKUP_DATA };
+  const flat = <T,>(v: unknown, readItem: (item: unknown) => T | null): BackupCitySection<T>[] => {
+    if (!Array.isArray(v)) return [];
+    const items = v.map(readItem).filter((i): i is T => i !== null);
+    return items.length > 0 ? [{ city: 'wroclaw', items }] : [];
+  };
+  data.places = flat(d.places, readPlace);
+  data.savedRoutes = flat(d.savedRoutes, readSavedRoute);
+  data.tripHistory = flat(d.tripHistory, readTrip);
+  return data;
+}
 
 /**
  * Parsuje i waliduje plik kopii. Nigdy nie rzuca — UI pokazuje powód
@@ -281,21 +328,28 @@ export function parseBackupFile(raw: string): BackupParseResult {
   if (schema === null || schema < 1) return { ok: false, reason: 'unreadable' };
   if (schema > BACKUP_SCHEMA) return { ok: false, reason: 'schemaTooNew' };
 
-  const data: BackupData = { ...EMPTY_BACKUP_DATA };
   const d = isRecord(parsed.data) ? parsed.data : {};
+  const data: BackupData =
+    schema === 1
+      ? migrateSchema1(d)
+      : { ...EMPTY_BACKUP_DATA };
 
-  if (Array.isArray(d.places)) {
-    data.places = d.places.map(readPlace).filter((p): p is SavedPlace => p !== null);
-  }
-  if (Array.isArray(d.savedRoutes)) {
-    data.savedRoutes = d.savedRoutes
-      .map(readSavedRoute)
-      .filter((r): r is SavedRoute => r !== null);
-  }
-  if (Array.isArray(d.tripHistory)) {
-    data.tripHistory = d.tripHistory
-      .map(readTrip)
-      .filter((t): t is TripHistoryItem => t !== null);
+  if (schema >= 2) {
+    if (Array.isArray(d.places)) {
+      data.places = d.places
+        .map((s) => readCitySection(s, readPlace))
+        .filter((s): s is BackupCitySection<SavedPlace> => s !== null);
+    }
+    if (Array.isArray(d.savedRoutes)) {
+      data.savedRoutes = d.savedRoutes
+        .map((s) => readCitySection(s, readSavedRoute))
+        .filter((s): s is BackupCitySection<SavedRoute> => s !== null);
+    }
+    if (Array.isArray(d.tripHistory)) {
+      data.tripHistory = d.tripHistory
+        .map((s) => readCitySection(s, readTrip))
+        .filter((s): s is BackupCitySection<TripHistoryItem> => s !== null);
+    }
   }
   data.routingSettings = readRoutingSettings(d.routingSettings);
   data.notificationPrefs = readNotificationPrefs(d.notificationPrefs);

@@ -1,4 +1,4 @@
-// Pakiet kafelków Wrocławia do archiwum gotowego do serwowania z telefonu.
+// Pakiet kafelków miasta do archiwum gotowego do serwowania z telefonu.
 //
 // Format archiwum (KMTP v1):
 //   nagłówek 32 B  : magic "KMTP" | wersja u32 | liczba kafelków u32 | maxzoom u32
@@ -8,18 +8,39 @@
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
 //
-// Uruchomienie: node scripts/build-tile-pack.mjs
+// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow] [output]
+//
+// Nowe miasto = wpis w CITY_PACKS niżej (bbox + maxzoom + nazwa pliku).
 
 import { mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 
 const TS = '20261004_113936_pt';
 const BASE = `https://tiles.openfreemap.org/planet/${TS}`;
-const OUT = process.argv[2] || 'wroclaw-tiles.ktp';
-const CACHE = 'tilecache';
 
-const BBOX = { minLon: 16.8, minLat: 51.0, maxLon: 17.28, maxLat: 51.22 };
-const MAXZOOM = 14;
+/** Bboxy pakietów: muszą pokrywać strefę obsługi miasta z zapasem. */
+const CITY_PACKS = {
+  wroclaw: {
+    out: 'wroclaw-tiles.ktp',
+    bbox: { minLon: 16.8, minLat: 51.0, maxLon: 17.28, maxLat: 51.22 },
+    maxZoom: 14,
+  },
+  krakow: {
+    out: 'krakow-tiles.ktp',
+    bbox: { minLon: 19.7, minLat: 49.96, maxLon: 20.3, maxLat: 50.16 },
+    maxZoom: 14,
+  },
+};
+
+const argv = process.argv.slice(2);
+const cityArg = argv.map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || 'wroclaw';
+const CITY = CITY_PACKS[cityArg] ? cityArg : 'wroclaw';
+const PACK = CITY_PACKS[CITY];
+const OUT = argv.find((a) => !a.startsWith('--')) || PACK.out;
+const CACHE = `tilecache-${CITY}`;
+
+const BBOX = PACK.bbox;
+const MAXZOOM = PACK.maxZoom;
 
 function lon2x(lon, z) { return Math.floor(((lon + 180) / 360) * 2 ** z); }
 function lat2y(lat, z) {

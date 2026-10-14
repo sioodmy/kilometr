@@ -9,6 +9,8 @@ const CDN_ASSETS = [
 
 export interface NavMapDocumentOptions {
   offlineBase: string | null;
+  /** Startowa kamera [lon, lat]. Default: środek aktywnego miasta. */
+  center?: [number, number] | null;
 }
 
 const runtime = (routeSourceId: string) => `
@@ -119,7 +121,7 @@ const runtime = (routeSourceId: string) => `
     map = new maplibregl.Map({
       container: 'map',
       style: window.__NAV__.style,
-      center: [17.0385, 51.1079],
+      center: window.__NAV__.center || [0, 0],
       zoom: 17,
       bearing: 0,
       interactive: false,
@@ -142,10 +144,10 @@ const runtime = (routeSourceId: string) => `
 })();
 `;
 
-export function buildNavMapDocument({ offlineBase }: NavMapDocumentOptions): string {
+export function buildNavMapDocument({ offlineBase, center }: NavMapDocumentOptions): string {
   const mapStyle = buildMapStyle(offlineBase);
   const assets = offlineBase ? [`${offlineBase}/assets`] : CDN_ASSETS;
-  const payload = JSON.stringify({ assets, style: mapStyle }).replace(/</g, '\\u003c');
+  const payload = JSON.stringify({ assets, style: mapStyle, center: center ?? null }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>',
     '<html><head>',

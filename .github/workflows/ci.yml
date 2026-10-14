@@ -64,6 +64,12 @@ jobs:
       - name: Run logic tests (Backup format)
         run: npm run check:backup
 
+      - name: Run logic tests (Places per city)
+        run: npm run check:places
+
+      - name: Run logic tests (Home pull gesture)
+        run: npm run check:pull
+
       - name: Run logic tests (Notifications)
         run: npm run check:notifications
 

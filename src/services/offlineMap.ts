@@ -1,4 +1,4 @@
-// Pobieranie zestawu mapy offline (Wrocław).
+// Pobieranie zestawu mapy offline aktywnego miasta (per-miasto plik `.ktp`).
 //
 // Wzorzec ten sam co przy rozkładzie: pobierz do pliku tymczasowego, sprawdź,
 // podmieniaj atomowo. Trzy rodzaje plików:
@@ -13,18 +13,28 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { MAP_GLYPHS_URL } from '../config';
+import { getCity } from '../cities';
+import { tr } from '../i18n';
+import { getActiveCityIdSync } from './cityStore';
 import { getMapDownloadGate, markMapDownloaded } from './downloadLimits';
 
 /** Katalog, z którego czyta natywny serwer mapy (filesDir/maps). */
 export const MAP_DIR_NAME = 'maps';
-export const TILE_PACK_NAME = 'wroclaw-tiles.ktp';
+
+/** Pakiet kafli aktywnego miasta. Inna nazwa na miasto = brak nadpisywania. */
+export function tilePackName(cityId?: string): string {
+  return getCity(cityId ?? getActiveCityIdSync()).tilePack;
+}
+
+function tilePackUrl(cityId?: string): string {
+  const city = getCity(cityId ?? getActiveCityIdSync());
+  const override = process.env.EXPO_PUBLIC_TILE_PACK_URL;
+  if (override && city.id === 'wroclaw') return override;
+  return `https://data.kilometr.wroclaw.pl/maps/${city.tilePack}`;
+}
 
 const FONTS = ['Noto Sans Regular', 'Noto Sans Bold', 'Noto Sans Italic'];
 const GLYPH_RANGES = ['0-255', '256-511'];
-
-const TILE_PACK_URL =
-  process.env.EXPO_PUBLIC_TILE_PACK_URL ??
-  'https://data.kilometr.wroclaw.pl/maps/wroclaw-tiles.ktp';
 
 const MAPLIBRE_VERSION = '4.7.1';
 
@@ -49,10 +59,10 @@ async function ensureDir(uri: string): Promise<void> {
   if (!info.exists) await FileSystem.makeDirectoryAsync(uri, { intermediates: true });
 }
 
-/** Czy zestaw mapy offline jest już na telefonie. */
-export async function hasOfflineMap(): Promise<boolean> {
+/** Czy zestaw mapy offline miasta jest już na telefonie. */
+export async function hasOfflineMap(cityId?: string): Promise<boolean> {
   try {
-    const info = await FileSystem.getInfoAsync(`${mapsUri()}${TILE_PACK_NAME}`);
+    const info = await FileSystem.getInfoAsync(`${mapsUri()}${tilePackName(cityId)}`);
     return info.exists && (info.size ?? 0) > 1024;
   } catch {
     return false;
@@ -99,8 +109,10 @@ async function downloadTo(url: string, dest: string): Promise<boolean> {
  */
 export async function downloadOfflineMap(
   onProgress?: (p: OfflineMapProgress) => void,
+  cityId?: string,
 ): Promise<OfflineMapDownloadResult> {
-  const gate = await getMapDownloadGate();
+  const city = getCity(cityId ?? getActiveCityIdSync());
+  const gate = await getMapDownloadGate(city.id);
   if (!gate.allowed) {
     return { ok: false, reason: 'cooldown', retryAfterMs: gate.retryAfterMs };
   }
@@ -140,18 +152,23 @@ export async function downloadOfflineMap(
   }
 
   // 3. Pakiet kafelków: największy, więc na końcu.
-  report(0.35, 'kafle Wrocławia');
-  const ok = await downloadTo(TILE_PACK_URL, `${root}${TILE_PACK_NAME}`);
+  const s = tr();
+  report(0.35, s.settings.offlineMapStepTiles(s.city.gen(city.id)));
+  const ok = await downloadTo(tilePackUrl(city.id), `${root}${city.tilePack}`);
   if (!ok) return { ok: false, reason: 'fail' };
-  await markMapDownloaded();
-  report(1, 'gotowe');
+  await markMapDownloaded(city.id);
+  report(1, s.settings.offlineMapStepDone);
   return { ok: true };
 }
 
-/** Usuwa zestaw mapy offline (odzyskanie ~31 MB). Znacznik limitu zostaje. */
-export async function deleteOfflineMap(): Promise<void> {
+/**
+ * Usuwa zestaw mapy offline miasta (odzyskanie ~31 MB). Znacznik limitu
+ * zostaje. Inne miasta nietknięte (osobne pliki w tym samym katalogu).
+ */
+export async function deleteOfflineMap(cityId?: string): Promise<void> {
+  const city = getCity(cityId ?? getActiveCityIdSync());
   try {
-    await FileSystem.deleteAsync(mapsUri(), { idempotent: true });
+    await FileSystem.deleteAsync(`${mapsUri()}${city.tilePack}`, { idempotent: true });
   } catch {
     // best-effort
   }

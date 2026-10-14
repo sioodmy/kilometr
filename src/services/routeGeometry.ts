@@ -585,7 +585,10 @@ export function interpolateRoute(
   progress: number,
 ): { point: Coord; heading: number; index: number } {
   if (!coords || coords.length === 0) {
-    return { point: [51.1079, 17.0385], heading: 0, index: 0 };
+    // Brak geometrii: zero zamiast środka jakiegokolwiek miasta. Caller
+    // (findNextStop) i tak odrzuca puste trasy wcześniej, więc to tylko
+    // ostatnia linia obrony, a nie pozycja na mapie.
+    return { point: [0, 0], heading: 0, index: 0 };
   }
   if (coords.length === 1) {
     return { point: coords[0], heading: 0, index: 0 };

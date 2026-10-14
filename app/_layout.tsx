@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
 import { initDynamicColors } from '../src/theme/dynamic';
 import { initLocale } from '../src/i18n';
+import { loadActiveCity } from '../src/services/cityStore';
 import { loadSettings } from '../src/services/settings';
 import { hasSeenOnboarding } from '../src/services/onboarding';
 import { loadNotificationPreferences } from '../src/services/notifications/preferences';
@@ -43,6 +44,7 @@ export default function RootLayout() {
     const safetyTimeout = setTimeout(() => {
       if (isMounted) setReady(true);
     }, 3000);
+    let initAppReady: Promise<void> = Promise.resolve();
 
     const initApp = async () => {
       // Kolory Material You z tapety muszą być w motywie zanim cokolwiek
@@ -50,6 +52,8 @@ export default function RootLayout() {
       // seedzie, a ekran przez sekundę migotałby między dwiema paletami.
       await initDynamicColors();
       await migrateFromSqliteKv();
+      // Miasto przed bazą: getGtfsDb() otwiera plik per-miasto po sync id.
+      await loadActiveCity();
       await loadSettings();
       await initLocale();
       await loadNotificationPreferences();
@@ -68,11 +72,12 @@ export default function RootLayout() {
       }
     };
 
-    initApp();
-    
+    initAppReady = initApp();
+
     // Śledzenie podróży przeżywa restart telefonu, więc podnosimy je,
-    // zanim użytkownik cokolwiek otworzy.
-    void restoreTrackedTrip();
+    // zanim użytkownik cokolwiek otworzy. Miasto musi być już wczytane:
+    // planowanie trasy odtwarza się na bazie aktywnego miasta.
+    void initAppReady.finally(() => restoreTrackedTrip());
     startTrackedTripListener();
 
     // Tap w powiadomienie lub przycisk akcji → ekran połączeń / koniec

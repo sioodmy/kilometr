@@ -8,9 +8,15 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 class KilometrRaptorModule : Module() {
-  private fun readTileFromLocalPack(z: Int, x: Int, y: Int): ByteArray? {
-    val ctx = appContext.reactContext?.applicationContext ?: return null
-    val packFile = File(File(ctx.filesDir, "maps"), "wroclaw-tiles.ktp")
+  /** Kafle piesze z pakietów offline (`{miasto}-tiles.ktp` w filesDir/maps). */
+  private fun packFiles(): List<File> {
+    val ctx = appContext.reactContext?.applicationContext ?: return emptyList()
+    val dir = File(ctx.filesDir, "maps")
+    return dir.listFiles { f -> f.isFile && f.name.endsWith("-tiles.ktp") }
+      ?.sortedBy { it.name } ?: emptyList()
+  }
+
+  private fun readTileFromPack(packFile: File, z: Int, x: Int, y: Int): ByteArray? {
     if (!packFile.exists() || packFile.length() < 32L) return null
     return try {
       RandomAccessFile(packFile, "r").use { raf ->
@@ -60,6 +66,13 @@ class KilometrRaptorModule : Module() {
     } catch (_: Throwable) {
       null
     }
+  }
+
+  private fun readTileFromLocalPack(z: Int, x: Int, y: Int): ByteArray? {
+    for (packFile in packFiles()) {
+      readTileFromPack(packFile, z, x, y)?.let { return it }
+    }
+    return null
   }
 
   private fun cachedTileFile(tx: Int, ty: Int): File? {
