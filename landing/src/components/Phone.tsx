@@ -92,11 +92,13 @@ function HomeRow({
         <b>{place}</b>
         <i>Przystanek</i>
       </div>
-      {/* badgeSlot 28 dp: LineBadge albo pusty slot */}
-      <div className="rn-row-badge">
-        {badge ? <LineBadge line={badge} /> : null}
+      {/* Prawa kolumna: badgeSlot 28 nad „za x min”, oba wyśrodkowane. */}
+      <div className="rn-row-right">
+        <div className="rn-row-badge">
+          {badge ? <LineBadge line={badge} /> : null}
+        </div>
+        <div className="rn-row-depart">{depart}</div>
       </div>
-      <div className="rn-row-depart">{depart}</div>
     </div>
   );
 }
