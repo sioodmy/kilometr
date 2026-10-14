@@ -59,6 +59,7 @@
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "check:backup": "tsx scripts/check-backup.ts",
     "check:places": "tsx scripts/check-places.ts",
+    "check:warsaw": "tsx --require ./scripts/stub-expo.cjs scripts/check-warsaw.ts",
     "check:pull": "tsx scripts/check-pull.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

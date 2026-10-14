@@ -67,6 +67,9 @@ jobs:
       - name: Run logic tests (Places per city)
         run: npm run check:places
 
+      - name: Run logic tests (Warsaw city)
+        run: npm run check:warsaw
+
       - name: Run logic tests (Home pull gesture)
         run: npm run check:pull
 

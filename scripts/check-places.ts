@@ -35,6 +35,7 @@ describe('Klucze kubełków per-miasto');
   expect('Wrocław trzyma legacy klucz', cityKey('kilometr.places', 'wroclaw'), 'kilometr.places');
   expect('Kraków dokleja sufiks', cityKey('kilometr.places', 'krakow'), 'kilometr.places.krakow');
   expect('GZM dokleja sufiks', cityKey('kilometr.places', 'gzm'), 'kilometr.places.gzm');
+  expect('Warszawa dokleja sufiks', cityKey('kilometr.places', 'warszawa'), 'kilometr.places.warszawa');
   expect('historia tak samo', cityKey('kilometr.trip_history', 'krakow'), 'kilometr.trip_history.krakow');
   expect('trasy tak samo', cityKey('kilometr.saved_routes', 'krakow'), 'kilometr.saved_routes.krakow');
   expect('dwa miasta to dwa klucze', cityKey('kilometr.places', 'wroclaw') !== cityKey('kilometr.places', 'krakow'), true);
@@ -52,16 +53,28 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Rudziniec Gliwicki w GZM', suggestCityForCoords(50.3666, 18.4042)?.id, 'gzm');
   // ...ale Bielsko (~49,5 km) już nie: promień ma sufit.
   expect('Bielsko poza GZM', suggestCityForCoords(49.8224, 19.0444)?.id ?? null, null);
-  expect('Warszawa do nikogo', suggestCityForCoords(52.2297, 21.0122)?.id ?? null, null);
+  expect('Pałac Kultury w Warszawie', suggestCityForCoords(52.2319, 21.0067)?.id, 'warszawa');
+  expect('Metro Młociny w Warszawie', suggestCityForCoords(52.2905, 20.9308)?.id, 'warszawa');
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
 
 describe('Rejestr miast');
 {
-  expect('trzy miasta', CITIES.map((c) => c.id).join(','), 'wroclaw,krakow,gzm');
+  expect('cztery miasta', CITIES.map((c) => c.id).join(','), 'wroclaw,krakow,gzm,warszawa');
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
-  expect('isCityId zna wszystkie', [isCityId('wroclaw'), isCityId('krakow'), isCityId('gzm'), isCityId('berlin')].join(','), 'true,true,true,false');
+  expect('isCityId zna wszystkie', [isCityId('wroclaw'), isCityId('krakow'), isCityId('gzm'), isCityId('warszawa'), isCityId('berlin')].join(','), 'true,true,true,true,false');
+}
+
+describe('Wpis Warszawy');
+{
+  const waw = getCity('warszawa');
+  expect('slug zbiorkom to warsaw (nie warszawa)', waw.zbiorkomSlug, 'warsaw');
+  expect('osobna baza', waw.dbFile, 'kilometr-gtfs-warszawa.db');
+  expect('osobny pakiet kafli', waw.tilePack, 'warszawa-tiles.ktp');
+  expect('kafle w z14 jak Kraków (limit R2)', waw.tileMaxZoom, 14);
+  expect('kolej regionalna (SKA/KM/WKD)', waw.features.regionalRail, true);
+  expect('bez bezpośredniego bus_position', waw.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);
