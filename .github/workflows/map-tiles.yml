@@ -24,7 +24,7 @@ on:
         required: true
         default: 'wroclaw'
         type: choice
-        options: [wroclaw, krakow]
+        options: [wroclaw, krakow, gzm]
 
 permissions:
   contents: read

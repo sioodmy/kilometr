@@ -8,7 +8,7 @@
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
 //
-// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow] [output]
+// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm] [output]
 //
 // Nowe miasto = wpis w CITY_PACKS niżej (bbox + maxzoom + nazwa pliku).
 
@@ -28,6 +28,11 @@ const CITY_PACKS = {
   krakow: {
     out: 'krakow-tiles.ktp',
     bbox: { minLon: 19.7, minLat: 49.96, maxLon: 20.3, maxLat: 50.16 },
+    maxZoom: 14,
+  },
+  gzm: {
+    out: 'gzm-tiles.ktp',
+    bbox: { minLon: 18.25, minLat: 49.9, maxLon: 19.85, maxLat: 50.65 },
     maxZoom: 14,
   },
 };
