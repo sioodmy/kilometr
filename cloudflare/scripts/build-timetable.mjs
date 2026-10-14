@@ -76,7 +76,7 @@ const KML_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@ki
 /**
  * GZM: ZTM publikuje eksporty dzienne (CKAN, URL-e rotowane codziennie),
  * każdy pokrywa inny zakres dat. Bierzemy wszystkie ZIP-y z datasetu
- * i mergujemy prefiksami GZM:{i} — ten sam wzorzec co feedy ZTP Krakowa.
+ * i mergujemy prefiksami GZM:{i} (ten sam wzorzec co feedy ZTP Krakowa).
  * Dataset: otwartedane.metropoliagzm.pl, „GTFS wersja rozszerzona”.
  */
 const GZM_CKAN_PACKAGE = 'https://otwartedane.metropoliagzm.pl/api/3/action/package_show?id=317435cc-0075-4d10-b8ef-6e9b0010e90a';
