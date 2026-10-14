@@ -165,7 +165,7 @@ export const pl = {
     backupFailNotBackup: 'To nie jest kopia zapasowa Kilometr.',
     backupFailSchemaTooNew: 'Ta kopia jest z nowszej wersji aplikacji.',
     dataTitle: (operator: string) => `Rozkład ${operator}`,
-    dataHint: (feeds: string) => `Rozkłady ${feeds} z serwera Kilometr. Jedno pobranie, potem offline.`,
+    dataHint: (feeds: string) => `Rozkłady z serwera Kilometr: ${feeds}. Jedno pobranie, potem offline.`,
     dataEmpty: 'Brak danych offline.',
     dataDownloading: (p: number) => `Pobieranie… ${p}%`,
     dataStep: (step: string, p: number) => `${step} ${p}%`,
