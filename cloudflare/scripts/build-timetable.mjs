@@ -422,6 +422,295 @@ async function discoverGzmExports() {
   }));
 }
 
+/** YYYYMMDD -> Date UTC (bez strefy, kalendarz GTFS to daty lokalne). */
+function ymdToDate(s) {
+  return new Date(Date.UTC(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1, Number(s.slice(6, 8))));
+}
+
+/** yyyymmdd z Date UTC. */
+function dateToYmd(d) {
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Zwarty import eksportów dziennych ZTM (tylko GZM).
+ *
+ * Eksporty pokrywają rozłączne zakresy dat, ale trip_id się powtarzają
+ * (ten sam kurs w różnych dniach). Zwykły merge prefiksami dałby ~4,4 mln
+ * wierszy stop_times (~390 MB bazy). Tutaj: jeden wiersz kursu na trip_id
+ * z sumą dat ze wszystkich eksportów (serwis scalony przez calendar_dates),
+ * więc baza ląduje w okolicy ~130 MB. Kurs, którego czasy zmieniono
+ * w trakcie okna, dostaje osobny wariant z sufiksem (poprawność > rozmiar).
+ */
+function importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds) {
+  // 1. Kalendarze -> konkretne daty per (eksport, serwis).
+  const serviceDates = new Map(); // `${i}:${sid}` -> Set<yyyymmdd>
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const readTxt = readers[fi];
+    const calTxt = readTxt('calendar.txt');
+    if (calTxt) {
+      eachRow(calTxt, (c, idx) => {
+        const sid = (c[idx.service_id] || '').trim();
+        const start = (c[idx.start_date] || '').trim();
+        const end = (c[idx.end_date] || '').trim();
+        if (!sid || start.length !== 8 || end.length !== 8) return;
+        const flags = [
+          Number(c[idx.sunday]) || 0, Number(c[idx.monday]) || 0, Number(c[idx.tuesday]) || 0,
+          Number(c[idx.wednesday]) || 0, Number(c[idx.thursday]) || 0, Number(c[idx.friday]) || 0,
+          Number(c[idx.saturday]) || 0,
+        ];
+        const set = new Set();
+        for (let d = ymdToDate(start); dateToYmd(d) <= end; d = new Date(d.getTime() + 86400000)) {
+          if (flags[d.getUTCDay()]) set.add(dateToYmd(d));
+        }
+        serviceDates.set(`${fi}:${sid}`, set);
+      });
+    }
+    const calDatesTxt = readTxt('calendar_dates.txt');
+    if (calDatesTxt) {
+      eachRow(calDatesTxt, (c, idx) => {
+        const sid = (c[idx.service_id] || '').trim();
+        const date = (c[idx.date] || '').trim();
+        const exc = Number(c[idx.exception_type]) || 0;
+        if (!sid || date.length !== 8) return;
+        const key = `${fi}:${sid}`;
+        if (!serviceDates.has(key)) serviceDates.set(key, new Set());
+        if (exc === 1) serviceDates.get(key).add(date);
+        else if (exc === 2) serviceDates.get(key).delete(date);
+      });
+    }
+  }
+
+  // 2. Przystanki i linie bez prefiksów (REPLACE deduplikuje między eksportami).
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const readTxt = readers[fi];
+    const stopsTxt = readTxt('stops.txt');
+    if (!stopsTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stops.txt, przerywam (nie nadpisuję R2 pustką).`);
+    const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
+    db.exec('BEGIN');
+    eachRow(stopsTxt, (c, idx) => {
+      const id = (c[idx.stop_id] || '').trim();
+      const name = (c[idx.stop_name] || '').trim();
+      if (!id || !name) return;
+      const lat = Number(c[idx.stop_lat]) || 0;
+      const lon = Number(c[idx.stop_lon]) || 0;
+      const norm = normalizePolish(name);
+      ins.run(id, (c[idx.stop_code] || '').trim(), name, lat, lon, norm);
+      if (lat && lon && !cityStopIds.has(id)) {
+        cityStopIds.add(id);
+        cityStops.push({ id, norm, lat, lon });
+      }
+      counts.stops++;
+    });
+    db.exec('COMMIT');
+    const routesTxt = readTxt('routes.txt');
+    if (routesTxt) {
+      const insR = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)');
+      db.exec('BEGIN');
+      eachRow(routesTxt, (c, idx) => {
+        const id = (c[idx.route_id] || '').trim();
+        if (!id) return;
+        const raw = (c[idx.route_type] || '').trim();
+        const num = raw !== '' && !isNaN(Number(raw)) ? Number(raw) : 3;
+        insR.run(id, (c[idx.route_short_name] || '').trim() || id, (c[idx.route_long_name] || '').trim(), num);
+        counts.routes++;
+      });
+      db.exec('COMMIT');
+    }
+  }
+
+  // 3. Wystąpienia kursów per eksport (daty z kalendarza tego eksportu).
+  const occ = new Map(); // tid -> Array<{route, headsign, direction, shape, dates:Set}>
+  let skippedNoService = 0;
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const tripsTxt = readers[fi]('trips.txt');
+    if (!tripsTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez trips.txt, przerywam.`);
+    eachRow(tripsTxt, (c, idx) => {
+      const tid = (c[idx.trip_id] || '').trim();
+      const rid = (c[idx.route_id] || '').trim();
+      const sid = (c[idx.service_id] || '').trim();
+      if (!tid || !rid || !sid) return;
+      const dates = serviceDates.get(`${fi}:${sid}`);
+      if (!dates || dates.size === 0) { skippedNoService++; return; }
+      if (!occ.has(tid)) occ.set(tid, []);
+      occ.get(tid).push({
+        fi,
+        route: rid,
+        headsign: (c[idx.trip_headsign] || '').trim(),
+        direction: Number(c[idx.direction_id]) || 0,
+        shape: (c[idx.shape_id] || '').trim(),
+        dates,
+      });
+    });
+  }
+  if (skippedNoService > 0) log(`GZM: pominięto ${skippedNoService} kursów bez dat serwisu`);
+
+  // 4. Warianty: ten sam trip_id o różnych czasach w różnych eksportach
+  // (zmiana rozkładu w trakcie okna) nie może dzielić jednego wiersza.
+  // Sygnatura = liczba postojów + pierwszy odjazd + ostatni przyjazd.
+  const kept = new Map(); // wiersz trips -> {sig, dates:Set, data}
+  let divergent = 0;
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const stTxt = readers[fi]('stop_times.txt');
+    if (!stTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stop_times.txt, przerywam.`);
+    const { header } = splitHeader(stTxt);
+    const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
+      di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+    const byTrip = new Map(); // tid -> {n, firstDep, lastArr}
+    let pos = stTxt.indexOf('\n') + 1;
+    const len = stTxt.length;
+    while (pos < len) {
+      let nl = stTxt.indexOf('\n', pos);
+      if (nl === -1) nl = len;
+      let line = stTxt.slice(pos, nl);
+      pos = nl + 1;
+      if (line.endsWith('\r')) line = line.slice(0, -1);
+      if (!line.trim()) continue;
+      const c = line.split(',');
+      const tid = (c[ti] || '').trim();
+      if (!tid || !occ.has(tid)) continue;
+      let g = byTrip.get(tid);
+      if (!g) { g = { n: 0, firstDep: '', lastArr: '' }; byTrip.set(tid, g); }
+      g.n++;
+      const dep = (c[di] || '').trim() || (c[ai] || '').trim();
+      const arr = (c[ai] || '').trim() || dep;
+      if (!g.firstDep) g.firstDep = dep;
+      g.lastArr = arr;
+    }
+    for (const [tid, g] of byTrip) {
+      const sig = `${g.n}|${g.firstDep}|${g.lastArr}`;
+      const list = occ.get(tid);
+      const o = list.find((e) => e.fi === fi) ?? list[0];
+      const cur = kept.get(tid);
+      if (!cur) {
+        kept.set(tid, { sig, dates: new Set(o.dates), data: o });
+      } else if (cur.sig === sig) {
+        for (const d of o.dates) cur.dates.add(d);
+      } else {
+        const alias = `${tid}#G${fi}`;
+        if (!kept.has(alias)) {
+          kept.set(alias, { sig, dates: new Set(o.dates), data: o });
+          divergent++;
+        } else {
+          const ex = kept.get(alias);
+          if (ex.sig === sig) for (const d of o.dates) ex.dates.add(d);
+        }
+      }
+    }
+  }
+  if (divergent > 0) log(`GZM: ${divergent} kursów ze zmienionym rozkładem w trakcie okna (osobne warianty)`);
+
+  // 5. Serwisy scalone: jeden serwis na unikalny zbiór dat (zwykle kilka
+  // wzorców: robocze/soboty/niedziele). Daty dopisujemy przez
+  // calendar_dates, więc getActiveServices działa bez zmian.
+  const svcByDates = new Map(); // klucz dat -> service_id
+  const insCal = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const insCalDate = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
+  const insTrip = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
+  db.exec('BEGIN');
+  for (const [key, k] of kept) {
+    const sorted = [...k.dates].sort();
+    const dkey = sorted.join(',');
+    let svc = svcByDates.get(dkey);
+    if (!svc) {
+      svc = `GZM:SVC:${svcByDates.size}`;
+      svcByDates.set(dkey, svc);
+      insCal.run(svc, 0, 0, 0, 0, 0, 0, 0, sorted[0] ?? '', sorted[sorted.length - 1] ?? '');
+      for (const d of sorted) insCalDate.run(svc, d, 1);
+    }
+    insTrip.run(key, k.data.route, svc, k.data.headsign, k.data.direction, k.data.shape);
+    counts.trips++;
+  }
+  db.exec('COMMIT');
+  log(`GZM: kursów po scaleniu=${kept.size} (serwisów=${svcByDates.size})`);
+
+  // 6. Czasy: drugi przebieg po stop_times, tylko dla trzymanych wariantów.
+  // Grupujemy wiersze kursu w mapie (jeden eksport naraz), bo plik nie
+  // jest gwarantowanie posortowany po trip_id.
+  const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
+  db.exec('BEGIN');
+  let batch = 0;
+  // Ten sam wariant kursu występuje w kilku eksportach: wiersze wstawiamy
+  // raz (pierwsze wystąpienie), reszta to duplikaty. Aliasy (#G{i}) są
+  // unikalne per eksport, więc wchodzą zawsze.
+  const inserted = new Set();
+  for (let fi = 0; fi < txtDirs.length; fi++) {
+    const stTxt = readers[fi]('stop_times.txt');
+    if (!stTxt) throw new Error(`ZIP ${txtDirs[fi].label} bez stop_times.txt, przerywam.`);
+    const { header } = splitHeader(stTxt);
+    const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
+      di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+    const byTrip = new Map(); // tid -> Array<[stop_id, arr, dep, seq]>
+    let pos = stTxt.indexOf('\n') + 1;
+    const len = stTxt.length;
+    while (pos < len) {
+      let nl = stTxt.indexOf('\n', pos);
+      if (nl === -1) nl = len;
+      let line = stTxt.slice(pos, nl);
+      pos = nl + 1;
+      if (line.endsWith('\r')) line = line.slice(0, -1);
+      if (!line.trim()) continue;
+      const c = line.split(',');
+      const tid = (c[ti] || '').trim();
+      if (!tid || (!kept.has(tid) && !kept.has(`${tid}#G${fi}`))) continue;
+      const arr = (c[ai] || '').trim() || '00:00:00';
+      if (!byTrip.has(tid)) byTrip.set(tid, []);
+      byTrip.get(tid).push([(c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0]);
+    }
+    for (const [tid, rows] of byTrip) {
+      const sig = rows.length ? `${rows.length}|${secToHms(rows[0][2])}|${secToHms(rows[rows.length - 1][1])}` : '|';
+      const base = kept.get(tid);
+      const target = base && base.sig === sig ? tid : `${tid}#G${fi}`;
+      if (!kept.has(target) || inserted.has(target)) continue;
+      inserted.add(target);
+      for (const r of rows) {
+        ins.run(target, r[0], r[1], r[2], r[3]);
+        counts.stopTimes++;
+        if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
+      }
+    }
+  }
+  db.exec('COMMIT');
+  log(`GZM: stopTimes po scaleniu=${counts.stopTimes}`);
+}
+
+/** Sekundy -> "HH:MM:SS" (ten sam format co w GTFS, do porównania sygnatur). */
+function secToHms(s) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+/** Sygnatury kursów w stop_times: tid -> "postojów|pierwszyOdjazd|ostatniPrzyjazd". */
+function tripSignatures(stTxt) {
+  const { header } = splitHeader(stTxt);
+  const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
+    di = header.indexOf('departure_time');
+  const acc = new Map(); // tid -> {n, firstDep, lastArr}
+  let pos = stTxt.indexOf('\n') + 1;
+  const len = stTxt.length;
+  while (pos < len) {
+    let nl = stTxt.indexOf('\n', pos);
+    if (nl === -1) nl = len;
+    let line = stTxt.slice(pos, nl);
+    pos = nl + 1;
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (!line.trim()) continue;
+    const c = line.split(',');
+    const tid = (c[ti] || '').trim();
+    if (!tid) continue;
+    let g = acc.get(tid);
+    if (!g) { g = { n: 0, firstDep: '', lastArr: '' }; acc.set(tid, g); }
+    g.n++;
+    const dep = (c[di] || '').trim() || (c[ai] || '').trim();
+    const arr = (c[ai] || '').trim() || dep;
+    if (!g.firstDep) g.firstDep = dep;
+    g.lastArr = arr;
+  }
+  const out = new Map();
+  for (const [tid, g] of acc) out.set(tid, `${g.n}|${g.firstDep}|${g.lastArr}`);
+  return out;
+}
+
 /* ─── PDP (KD): stacje Wrocławia → rozkład ────────────────────────────── */
 
 function pdpHeaders() {
@@ -673,7 +962,11 @@ async function main() {
 
   // 5. GTFS → tabele. Kraków merguje 3 feedy: przystanki współdzielone
   // (REPLACE po stop_id), reszta id z prefiksem KRK:{A,T,M} (brak kolizji).
+  // GZM merguje N eksportów dziennych zwartym importem (dedupe kursów).
   db.exec('DELETE FROM calendar_dates');
+  if (CITY === 'gzm') {
+    importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds);
+  } else {
   for (let fi = 0; fi < txtDirs.length; fi++) {
     const { prefix, label } = txtDirs[fi];
     const readTxt = readers[fi];
@@ -790,6 +1083,7 @@ async function main() {
       db.exec('COMMIT');
     }
     log(`${label}: routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
+  }
   }
   // Przystanki liczone z dupami między feedami, przelicz na stan faktyczny.
   try {
