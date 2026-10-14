@@ -1,5 +1,4 @@
 import type { LegMode } from '../types/models';
-import { getActiveCityIdSync } from './cityStore';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
@@ -32,8 +31,18 @@ export const TRANSIT_PALETTE = [
   '#1A237E', // Midnight Blue
 ];
 
-/** Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy). */
-export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'walk' {
+/**
+ * Rozpoznaje typ pojazdu (wrocławskie tramwaje to 1–33, reszta to autobusy).
+ * Moduł musi się dać importować w Node (skrypty check:*), więc `cityId` jest
+ * opcjonalnym parametrem, a nie odczytem aktywnego miasta: heurystyka niskich
+ * numerów dotyczy Wrocławia i Krakowa, a w GZM niskie numery mają też
+ * autobusy, więc komponent przekazuje `'gzm'` i fallback gaśnie.
+ */
+export function inferTransitMode(
+  mode?: LegMode,
+  line?: string,
+  cityId?: string,
+): 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'walk' {
   if (mode === 'walk') return 'walk';
   if (mode === 'tram') return 'tram';
   if (mode === 'train') return 'train';
@@ -43,20 +52,10 @@ export function inferTransitMode(mode?: LegMode, line?: string): 'tram' | 'bus' 
   if (!line) return 'bus';
   const clean = line.trim();
   const num = parseInt(clean, 10);
-  // Heurystyka numerów jak w classifyTransitMode: tylko poza GZM, gdzie
-  // niskie numery noszą też autobusy.
-  if (!isNaN(num) && num >= 1 && num <= 33 && numericFallbackApplies()) {
+  if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
   }
   return 'bus';
-}
-
-function numericFallbackApplies(): boolean {
-  try {
-    return getActiveCityIdSync() !== 'gzm';
-  } catch {
-    return true;
-  }
 }
 
 /**
@@ -95,8 +94,9 @@ function contrastFg(bg: string): string {
 export function getLineColors(
   line?: string,
   mode?: LegMode,
+  cityId?: string,
 ): { bg: string; fg: string; isTram: boolean; isTrain: boolean; isCable: boolean } {
-  const resolved = inferTransitMode(mode, line);
+  const resolved = inferTransitMode(mode, line, cityId);
   if (resolved === 'train') {
     return { bg: TRAIN_BADGE_BG, fg: contrastFg(TRAIN_BADGE_BG), isTram: false, isTrain: true, isCable: false };
   }
