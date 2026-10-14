@@ -46,10 +46,11 @@ export async function markMapDownloaded(cityId?: string): Promise<void> {
   await kvSet(mapKey(cityId), new Date().toISOString());
 }
 
-export async function getTimetableDownloadGate(_cityId?: string): Promise<DownloadGate> {
+export async function getTimetableDownloadGate(): Promise<DownloadGate> {
   try {
-    // Nowy znacznik; fallback na datę importu, żeby po aktualizacji apki
-    // istniejące instalacje nie odpalały od razu pełnego pobrania.
+    // Limit jest per-baza, nie per-miasto w kv: znacznik `gtfs_last_download`
+    // (i fallback na datę importu) żyją w meta aktywnego pliku SQLite, a każde
+    // miasto ma własny plik, więc zmiana miasta nie dziedziczy cudzego licznika.
     const last =
       (await getMeta(TIMETABLE_LAST_META)) ?? (await getMeta('gtfs_imported_at'));
     return gateFrom(last, TIMETABLE_DOWNLOAD_MIN_INTERVAL_MS);

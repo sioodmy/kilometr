@@ -312,7 +312,7 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
   }
 
   // Nowa wersja na serwerze, ale lokalna baza jest: szanujemy limit R2.
-  const gate = await getTimetableDownloadGate(cityId);
+  const gate = await getTimetableDownloadGate();
   if (!gate.allowed && local) {
     await setMeta('gtfs_last_check', new Date().toISOString());
     return 'cooldown';

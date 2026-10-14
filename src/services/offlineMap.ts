@@ -1,4 +1,4 @@
-// Pobieranie zestawu mapy offline (Wrocław).
+// Pobieranie zestawu mapy offline aktywnego miasta (per-miasto plik `.ktp`).
 //
 // Wzorzec ten sam co przy rozkładzie: pobierz do pliku tymczasowego, sprawdź,
 // podmieniaj atomowo. Trzy rodzaje plików:
