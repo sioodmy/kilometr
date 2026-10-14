@@ -38,11 +38,7 @@ export function UnsupportedCityCard({
   const title = insideSupported ? s.home.unsupportedTitleOther : s.home.unsupportedTitle;
 
   return (
-    <View
-      style={styles.card}
-      accessibilityRole="alert"
-      accessibilityLabel={`${title}. ${body}`}
-    >
+    <View style={styles.card} accessibilityRole="alert" accessibilityLabel={`${title}. ${body}`}>
       {/* Górny rząd: ikona + pigułka z miejscowością */}
       <View style={styles.topRow}>
         <View style={styles.iconWrap}>
@@ -62,7 +58,6 @@ export function UnsupportedCityCard({
       <Text style={styles.body}>{body}</Text>
 
       <View style={styles.hintRow}>
-        <View style={styles.hintDot} />
         <Text style={styles.hint}>{s.home.unsupportedHint}</Text>
       </View>
 
@@ -134,26 +129,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   hintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     marginTop: 4,
     backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.medium,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
-  hintDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: scheme.primary,
-  },
   hint: {
     ...type.labelMedium,
     color: scheme.onSurface,
     fontWeight: '500',
-    flex: 1,
   },
   cta: {
     flexDirection: 'row',
