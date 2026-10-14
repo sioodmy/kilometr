@@ -16,7 +16,7 @@ import java.io.File
  * tylko na pętli zwrotnej.
  */
 class MapRequestHandler(
-    private val pack: TilePack,
+    private val packs: List<TilePack>,
     private val assetsRoot: File? = null,
 ) : NanoHTTPD(ANY_PORT) {
 
@@ -42,7 +42,7 @@ class MapRequestHandler(
         val y = parts[2].substringBefore('.').toIntOrNull() ?: return notFound()
         if (z < 0 || z > 22) return notFound()
 
-        val data = pack.tile(z, x, y) ?: return notFound()
+        val data = firstTile(z, x, y) ?: return notFound()
         return cors(
             newFixedLengthResponse(
                 Response.Status.OK,
@@ -51,6 +51,14 @@ class MapRequestHandler(
                 data.size.toLong(),
             ),
         )
+    }
+
+    /** Pierwszy pakiet z kaflem wygrywa (miasta nie zachodzą na siebie). */
+    private fun firstTile(z: Int, x: Int, y: Int): ByteArray? {
+        for (pack in packs) {
+            pack.tile(z, x, y)?.let { return it }
+        }
+        return null
     }
 
     /** Silnik mapy, glify. Ścieżki z katalogu pobranego zestawu. */

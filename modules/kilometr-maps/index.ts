@@ -20,7 +20,7 @@ const native = requireOptionalNativeModule<MapServerNative>('KilometrMapServer')
 
 export const mapServerAvailable = native != null;
 
-/** Czy pakiet kafelków Wrocławia jest już na telefonie. */
+/** Czy jakikolwiek pakiet kafelków jest już na telefonie. */
 export async function hasTilePack(): Promise<boolean> {
   if (!native) return false;
   try {
