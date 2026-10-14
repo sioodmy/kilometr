@@ -20,7 +20,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbGzmRows, fetchZbIc, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbKs, fetchZbPr, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -235,16 +235,10 @@ class LiveTracker {
         return rows ? [{ vehicles: rows, prefix: 'KML:' }] : null;
       }
       if (id === 'gzm') {
-        const [ks, ic, pr] = await Promise.all([fetchZbKs(), fetchZbIc(), fetchZbPr()]);
-        const out: RailFeed[] = [];
-        if (ks) out.push({ vehicles: ks, prefix: 'KŚ:' });
-        if (ic) out.push({ vehicles: ic, prefix: 'IC:' });
-        if (pr) out.push({ vehicles: pr, prefix: 'PR:' });
-        if (out.length === 0) {
-          console.warn('[LiveTracker] rail fetch failed: KS+IC+PR wszystkie null');
-          return null;
-        }
-        return out;
+        const feeds = await fetchZbGzmRails();
+        if (feeds === null) return null;
+        const prefixes: Record<string, string> = { KS: 'KŚ:', IC: 'IC:', PR: 'PR:' };
+        return feeds.map((f) => ({ vehicles: f.vehicles, prefix: prefixes[f.agency] ?? `${f.agency}:` }));
       }
       const rows = await fetchZbKd();
       return rows ? [{ vehicles: rows, prefix: 'KD:' }] : null;

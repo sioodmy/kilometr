@@ -133,27 +133,28 @@ export async function fetchZbKml(): Promise<ZbKdVehicle[] | null> {
   return fetchZbRail('KML', getCity('krakow').zbiorkomBbox);
 }
 
-/** Pociągi Kolei Śląskich z zbiorkom.live (agencja KS, bbox GZM). */
-export async function fetchZbKs(): Promise<ZbKdVehicle[] | null> {
+/** Pociągi Kolei Śląskich, IC i POLREGIO z jednego zapytania (bbox GZM).
+ *  Trzy osobne zapytania na poll to zbędny ruch: API przyjmuje listę
+ *  agencji, a pojazdy rozdzielamy po `vehicle.agency`. */
+export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
   const { getCity } = await import('../cities');
-  return fetchZbRail('KS', getCity('gzm').zbiorkomBbox);
-}
-
-/** Pociągi PKP Intercity z zbiorkom.live (agencja IC, bbox GZM). */
-export async function fetchZbIc(): Promise<ZbKdVehicle[] | null> {
-  const { getCity } = await import('../cities');
-  return fetchZbRail('IC', getCity('gzm').zbiorkomBbox);
-}
-
-/** Pociągi POLREGIO z zbiorkom.live (agencja PR, bbox GZM). */
-export async function fetchZbPr(): Promise<ZbKdVehicle[] | null> {
-  const { getCity } = await import('../cities');
-  return fetchZbRail('PR', getCity('gzm').zbiorkomBbox);
+  const positions = await fetchPositions('pkp', 'KS,IC,PR', getCity('gzm').zbiorkomBbox);
+  if (positions === null) return null;
+  const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
+  for (const agency of ['KS', 'IC', 'PR']) {
+    const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
+    if (vehicles.length > 0) out.push({ agency, vehicles });
+  }
+  return out;
 }
 
 async function fetchZbRail(agency: string, bbox?: string): Promise<ZbKdVehicle[] | null> {
   const positions = await fetchPositions('pkp', agency, bbox);
   if (positions === null) return null;
+  return toRailVehicles(positions);
+}
+
+function toRailVehicles(positions: ZbPositionJson[]): ZbKdVehicle[] {
   const out: ZbKdVehicle[] = [];
   for (const p of positions) {
     const trainNumber = (p.brigade || '').trim();
