@@ -95,6 +95,9 @@ jobs:
 
       - name: Run logic tests (Lublin city)
         run: npm run check:lublin
+      - name: Run logic tests (Radom city)
+        run: npm run check:radom
+
 
       - name: Run logic tests (Home pull gesture)
         run: npm run check:pull

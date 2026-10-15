@@ -49,6 +49,7 @@ export const TRANSIT_PALETTE = [
  * musi gasnąć, inaczej linie 1–30 wyglądałyby jak tramwaje. Lublin też ma własną gałąź: tramwajów nie ma
  * wcale, więc niskie numery to autobusy, a trolejbusy to 150–162 i 950
  * (route_type 11 w feedzie ZDiTM).
+ * Radom to same autobusy (linie 1-27 i nocne N1-N3), więc nie spada do zgadywania 1–33.
  */
 export function inferTransitMode(
   mode?: LegMode,
@@ -120,6 +121,12 @@ export function inferTransitMode(
     }
     return 'bus';
   }
+
+
+  // Radom: same autobusy MZDiK (linie 1-27 i nocne N1-N3, route_type 3
+  // w feedzie). Bez tej gałęzi niskie numery wpadałyby w regułę tramwajową
+  // niżej (ten sam powód co wyjątek GZM).
+  if (cityId === 'radom') return 'bus';
 
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';

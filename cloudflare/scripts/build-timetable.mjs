@@ -2,7 +2,7 @@
 /**
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok|opole|rzeszow|lublin] [--force] [--write-coords] [--allow-mpk-only]
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok|opole|rzeszow|lublin|radom] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city buduje Wrocław (domyślne miasto).
  * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
@@ -92,6 +92,14 @@
  *   ETag z mirroru, odświeżany codziennie ok. 01:45 UTC, licencja CC0 1.0).
  *   Kolej (POLREGIO/IC przez Lublin) nie ma publicznego GTFS w zakresie
  *   budowy, więc miasto jedzie bez sekcji kolejowej. Bez PDP i bez klucza.
+ * Radom:
+ *   MZDiK Radom z feedu mkuran.pl/gtfs/radom.zip (autobusy 1–27 + nocne
+ *   N1–N3, licencja CC0 1.0; serwer zwraca poprawne Last-Modified/ETag,
+ *   więc fingerprint i skip buildu działają wprost na źródle; mirror
+ *   cdn.zbiorkom.live/gtfs/radom.zip w manifeście). Feed to eksport
+ *   dzienny: trip_id niosą datę, kalendarz siedzi wyłącznie
+ *   w calendar_dates.txt, więc import jest zwarty (kursy grupowane po
+ *   sygnaturze czasów jak Warszawa). Kolei nie ma wcale. Bez PDP i bez klucza.
  *
  * Wyjścia (cloudflare/dist/{miasto}/):
  *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
@@ -119,7 +127,7 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : CITY_ARG === 'bialystok' ? 'bialystok' : CITY_ARG === 'opole' ? 'opole' : CITY_ARG === 'rzeszow' ? 'rzeszow' : CITY_ARG === 'lublin' ? 'lublin' : 'wroclaw';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : CITY_ARG === 'bialystok' ? 'bialystok' : CITY_ARG === 'opole' ? 'opole' : CITY_ARG === 'rzeszow' ? 'rzeszow' : CITY_ARG === 'lublin' ? 'lublin' : CITY_ARG === 'radom' ? 'radom' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -372,6 +380,7 @@ const RZESZOW_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/rzeszow.zip';
 const RZESZOW_GTFS_UPSTREAM = 'https://mkuran.pl/gtfs/rzeszow.zip';
 const RZESZOW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
+/**
  * Lublin: statyczny zrzut ZDiTM (autobusy + trolejbusy 150–162 jako
  * route_type 11 + nocne N1–N3). Ten sam wzorzec co Łódź: mirror
  * cdn.zbiorkom.live z poprawnymi nagłówkami do skipu buildu
@@ -381,6 +390,18 @@ const RZESZOW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: de
  */
 const LUBLIN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/lublin.zip';
 const LUBLIN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+
+/**
+ * Radom: feed MZDiK (mkuran.pl/gtfs/radom.zip: autobusy 1–27 + nocne N1–N3,
+ * licencja CC0 1.0). Autor feedu zwraca poprawne Last-Modified/ETag, więc
+ * fingerprint i skip buildu idą wprost na źródle (jak Szczecin). Mirror
+ * cdn.zbiorkom.live/gtfs/radom.zip trafia tylko do manifestu jako źródło
+ * zapasowe, gdyby mkuran.pl kiedyś przestał odpowiadać.
+ */
+const RADOM_GTFS_URL = 'https://mkuran.pl/gtfs/radom.zip';
+const RADOM_GTFS_MIRROR = 'https://cdn.zbiorkom.live/gtfs/radom.zip';
+const RADOM_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
@@ -1455,6 +1476,182 @@ function importWawCompact(db, txtDir, counts, cityStops, cityStopIds) {
 }
 
 /**
+ * Zwarty import Radomia (tylko Radom).
+ *
+ * Feed MZDiK (mkuran.pl, licencja CC0 1.0) to eksport dzienny jak WTP:
+ * trip_id niosą datę w środku (`2026-09-29:1_4023580`), a oba okna
+ * eksportu (2026-09-29 i 2026-10-06) wiozą ten sam rozkład pod innymi id,
+ * więc prosty import dałby ~9,9 tys. kursów zamiast ~4,9 tys. Kalendarz
+ * siedzi wyłącznie w calendar_dates.txt (feed nie ma calendar.txt), więc
+ * kursy grupujemy po sygnaturze (linia + kierunek + pełne czasy, ten sam
+ * wzorzec co Warszawa), a daty scalają się w serwisy per zbiór dat.
+ * Wszystko to busy (route_type 3), feed nie ma frequencies.txt, więc nie
+ * ma czego rozwijać. Geometria tras pochodzi z live, nie z shapes.txt.
+ */
+function importRadomCompact(db, txtDir, counts, cityStops, cityStopIds) {
+  const readTxt = (n) => {
+    try { return readFileSync(join(txtDir, n), 'utf8'); } catch { return null; }
+  };
+  const stPath = join(txtDir, 'stop_times.txt');
+  try {
+    if (!statSync(stPath).isFile()) throw new Error('x');
+  } catch {
+    throw new Error('MZDiK bez stop_times.txt, przerywam (nie nadpisuję R2 pustką).');
+  }
+  // 1. Daty serwisów wyłącznie z calendar_dates.txt (feed nie ma calendar.txt).
+  // Kolumny czytamy po nagłówku: format MZDiK to standardowe
+  // service_id,date,exception_type (WTP ma odwrotnie, stąd osobny import).
+  const serviceDates = new Map(); // sid -> Set<yyyymmdd>
+  const calDatesTxt = readTxt('calendar_dates.txt');
+  if (!calDatesTxt) throw new Error('MZDiK bez calendar_dates.txt, przerywam (nie nadpisuję R2 pustką).');
+  const { header: cdHead } = splitHeader(calDatesTxt);
+  const dDate = cdHead.indexOf('date'), dSid = cdHead.indexOf('service_id'), dExc = cdHead.indexOf('exception_type');
+  if (dDate === -1 || dSid === -1) throw new Error('MZDiK calendar_dates.txt bez kolumn date/service_id, przerywam.');
+  {
+    const len = calDatesTxt.length;
+    let p = calDatesTxt.indexOf('\n') + 1;
+    while (p < len) {
+      let nl = calDatesTxt.indexOf('\n', p);
+      if (nl === -1) nl = len;
+      let line = calDatesTxt.slice(p, nl);
+      p = nl + 1;
+      if (line.endsWith('\r')) line = line.slice(0, -1);
+      if (!line.trim()) continue;
+      const c = line.split(',');
+      const sid = (c[dSid] || '').trim();
+      const date = (c[dDate] || '').trim();
+      const exc = Number(c[dExc ?? -1]) || 0;
+      if (!sid || date.length !== 8) continue;
+      if (!serviceDates.has(sid)) serviceDates.set(sid, new Set());
+      if (exc === 1) serviceDates.get(sid).add(date);
+      else if (exc === 2) serviceDates.get(sid).delete(date);
+    }
+  }
+
+  // 2. Przystanki i linie.
+  const stopsTxt = readTxt('stops.txt');
+  if (!stopsTxt) throw new Error('MZDiK bez stops.txt, przerywam (nie nadpisuję R2 pustką).');
+  {
+    const ins = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
+    db.exec('BEGIN');
+    eachRow(stopsTxt, (c, idx) => {
+      const id = (c[idx.stop_id] || '').trim();
+      const name = (c[idx.stop_name] || '').trim();
+      if (!id || !name) return;
+      const lat = Number(c[idx.stop_lat]) || 0;
+      const lon = Number(c[idx.stop_lon]) || 0;
+      ins.run(id, (c[idx.stop_code] || '').trim(), name, lat, lon, normalizePolish(name));
+      if (lat && lon && !cityStopIds.has(id)) {
+        cityStopIds.add(id);
+        cityStops.push({ id, norm: normalizePolish(name), lat, lon });
+      }
+      counts.stops++;
+    });
+    db.exec('COMMIT');
+  }
+  const routesTxt = readTxt('routes.txt');
+  if (!routesTxt) throw new Error('MZDiK bez routes.txt, przerywam.');
+  {
+    const ins = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, ?)');
+    db.exec('BEGIN');
+    eachRow(routesTxt, (c, idx) => {
+      const id = (c[idx.route_id] || '').trim();
+      if (!id) return;
+      const raw = (c[idx.route_type] || '').trim();
+      const num = raw !== '' && !isNaN(Number(raw)) ? Number(raw) : 3;
+      ins.run(id, (c[idx.route_short_name] || '').trim() || id, (c[idx.route_long_name] || '').trim(), num);
+      counts.routes++;
+    });
+    db.exec('COMMIT');
+  }
+
+  // 3. Kursy z trips.txt.
+  const tripsTxt = readTxt('trips.txt');
+  if (!tripsTxt) throw new Error('MZDiK bez trips.txt, przerywam.');
+  const occ = new Map(); // tid -> {route, headsign, direction, shape, dates}
+  let skippedNoService = 0;
+  eachRow(tripsTxt, (c, idx) => {
+    const tid = (c[idx.trip_id] || '').trim();
+    const rid = (c[idx.route_id] || '').trim();
+    const sid = (c[idx.service_id] || '').trim();
+    if (!tid || !rid || !sid) return;
+    const dates = serviceDates.get(sid);
+    if (!dates || dates.size === 0) { skippedNoService++; return; }
+    occ.set(tid, {
+      route: rid,
+      headsign: (c[idx.trip_headsign] || '').trim(),
+      direction: Number(c[idx.direction_id]) || 0,
+      shape: (c[idx.shape_id] || '').trim(),
+      dates,
+    });
+  });
+  if (skippedNoService > 0) log(`RADOM: pominięto ${skippedNoService} kursów bez dat serwisu`);
+
+  // 4. Jeden strumieniowy przebieg po stop_times.txt: sygnatura kursu ->
+  // jeden wiersz na unikalny rozkład z sumą dat (oba okna eksportu scalone).
+  const kept = new Map(); // klucz kursu -> {dates:Set, data, rows}
+  const keyOf = new Map(); // sygnatura kursu -> klucz
+  const absorb = (o, rows) => {
+    if (!rows || rows.length < 2) return;
+    const sig = hashTripRows(rows);
+    const gkey = `${o.route}|${o.headsign}|${o.direction}|${sig}`;
+    let key = keyOf.get(gkey);
+    if (!key) {
+      // Klucz z trasy i sygnatury czasów, NIE z trip_id feedu: id MZDiK noszą
+      // datę dnia (`2026-09-29:1_4023580`), więc ten sam kurs zmieniałby
+      // trip_id przy każdym dziennym eksporcie, a przypięte trasy traciłyby
+      // kurs. Sygnatura jest stabilna, dopóki rozkład się nie zmieni.
+      key = `${o.route}:${sig}`;
+      for (let n = 2; kept.has(key); n++) key = `${o.route}:${sig}#${n}`;
+      keyOf.set(gkey, key);
+      kept.set(key, { dates: new Set(), data: o, rows });
+    }
+    for (const d of o.dates) kept.get(key).dates.add(d);
+  };
+  streamTripBlocks(stPath, (tid, rows) => {
+    const o = occ.get(tid);
+    if (!o) return;
+    absorb(o, rows);
+  });
+  log(`RADOM: kursy po scaleniu=${kept.size}`);
+
+  // 5. Serwisy scalone po zbiorze dat (jak GZM i Warszawa).
+  const svcByDates = new Map();
+  const insCal = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const insCalDate = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
+  const insTrip = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES (?, ?, ?, ?, ?, ?)');
+  db.exec('BEGIN');
+  for (const [key, k] of kept) {
+    const sorted = [...k.dates].sort();
+    const dkey = sorted.join(',');
+    let svc = svcByDates.get(dkey);
+    if (!svc) {
+      svc = `RADOM:SVC:${svcByDates.size}`;
+      svcByDates.set(dkey, svc);
+      insCal.run(svc, 0, 0, 0, 0, 0, 0, 0, sorted[0] ?? '', sorted[sorted.length - 1] ?? '');
+      for (const d of sorted) insCalDate.run(svc, d, 1);
+    }
+    insTrip.run(key, k.data.route, svc, k.data.headsign, k.data.direction, k.data.shape);
+    counts.trips++;
+  }
+  db.exec('COMMIT');
+
+  // 6. Czasy raz na trzymany kurs.
+  const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
+  db.exec('BEGIN');
+  let batch = 0;
+  for (const [key, k] of kept) {
+    for (const r of k.rows) {
+      ins.run(key, r[0], r[1], r[2], r[3]);
+      counts.stopTimes++;
+      if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
+    }
+  }
+  db.exec('COMMIT');
+  log(`RADOM: stopTimes po scaleniu=${counts.stopTimes} (serwisów=${svcByDates.size})`);
+}
+
+/**
  * Zwarty import Gdańska (tylko trojmiasto).
  *
  * Feed ZTM Gdańsk to eksport dzienny jak WTP: każdy dzień ma własne trip_id
@@ -1948,6 +2145,7 @@ async function main() {
   let opoleFingerprint = '';
   let rzeszowFingerprint = '';
   let lublinFingerprint = '';
+  let radomFingerprint = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -2015,6 +2213,10 @@ async function main() {
     gtfsSources = [{ label: 'ZDiTM', url: LUBLIN_GTFS_URL, prefix: '', headers: LUBLIN_UA }];
     lublinFingerprint = await headVersion(LUBLIN_GTFS_URL, LUBLIN_UA);
     log('ZDiTM:', lublinFingerprint || '?');
+  } else if (CITY === 'radom') {
+    gtfsSources = [{ label: 'MZDiK', url: RADOM_GTFS_URL, prefix: '', headers: RADOM_UA }];
+    radomFingerprint = await headVersion(RADOM_GTFS_URL, RADOM_UA);
+    log('MZDiK:', radomFingerprint || '?');
   } else if (CITY === 'gzm') {
     if (!PDP_API_KEY) {
       throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
@@ -2067,6 +2269,9 @@ async function main() {
   const opoleVersionReliable = CITY !== 'opole' || !!opoleFingerprint;
   const rzeszowVersionReliable = CITY !== 'rzeszow' || !!rzeszowFingerprint;
   const lublinVersionReliable = CITY !== 'lublin' || !!lublinFingerprint;
+
+  const radomVersionReliable = CITY !== 'radom' || !!radomFingerprint;
+
 
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
@@ -2233,7 +2438,10 @@ async function main() {
         warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
       } else {
         log('brak zmian (ZTM), skip buildu.');
-
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
     if (CITY === 'lublin' && remote.sources.zditm?.fingerprint === lublinFingerprint && lublinFingerprint) {
       if (!lublinVersionReliable) {
         warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
@@ -2243,6 +2451,11 @@ async function main() {
         process.exit(2);
       }
     }
+    if (CITY === 'radom' && remote.sources.mzdik?.fingerprint === radomFingerprint && radomFingerprint) {
+      if (!radomVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log('brak zmian (MZDiK), skip buildu.');
         rmSync(work, { recursive: true, force: true });
         process.exit(2);
       }
@@ -2313,7 +2526,7 @@ async function main() {
   // 5. GTFS → tabele. Kraków merguje 3 feedy: przystanki współdzielone
   // (REPLACE po stop_id), reszta id z prefiksem KRK:{A,T,M} (brak kolizji).
   // GZM merguje N eksportów dziennych zwartym importem (dedupe kursów).
-  // Warszawa importuje zwarto jak GZM (eksport dzienny, trip_id z datą).
+  // Warszawa i Radom importują zwarto (eksport dzienny, trip_id z datą).
   // Trójmiasto merguje 2 feedy prefiksami GDA/GDY: Gdańsk zwarto (eksport
   // dzienny jak Warszawa), Gdynia generycznie (statyczny zrzut jak Poznań).
   // Poznań, Łódź, Szczecin, Kielce, Białystok, Opole, Rzeszów i Lublin to pojedyncze statyczne zrzuty
@@ -2327,6 +2540,8 @@ async function main() {
     importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds);
   } else if (CITY === 'warszawa') {
     importWawCompact(db, txtDirs[0].dir, counts, cityStops, cityStopIds);
+  } else if (CITY === 'radom') {
+    importRadomCompact(db, txtDirs[0].dir, counts, cityStops, cityStopIds);
   } else if (CITY === 'trojmiasto') {
     importGdaCompact(db, txtDirs[0].dir, counts, cityStops, cityStopIds);
     importGdyniaGeneric(db, txtDirs[1].dir, counts, cityStops, cityStopIds);
@@ -3629,6 +3844,33 @@ async function main() {
     }
     log(`LUBLIN: kursów autobusów ZDiTM=${zditmBusTrips} trolejbusów=${zditmTrolleyTrips}`);
 
+
+  // 6q. Twarda bramka, Radom:
+  // 6k. Twarda bramka, Radom: baza bez autobusów MZDiK nie nadpisuje R2.
+  // Kolei nie ma wcale (Radom nie ma publicznego GTFS kolejowego), więc jak
+  // w Szczecinie bramka nie wymaga przesiadek. Cały feed to busy (route_type
+  // 3), liczymy je wprost z tabeli.
+  if (CITY === 'radom') {
+    const problems = [];
+    let mzdikTrips = 0;
+    let mzdikServices = 0;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 3').get();
+      mzdikTrips = row?.n ?? 0;
+    } catch {}
+    try {
+      mzdikServices = db.prepare('SELECT COUNT(*) AS n FROM calendar_dates').get()?.n ?? 0;
+    } catch {}
+    if (mzdikTrips === 0) problems.push('0 kursów autobusów MZDiK');
+    if (mzdikServices === 0) problems.push('0 dat w calendar_dates (plik zgubiony?)');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełny Radom (${problems.join(', ')}): nie publikuję bazy.`);
+    }
+    log(`RADOM: kursów autobusów MZDiK=${mzdikTrips} (dat w kalendarzu=${mzdikServices})`);
+  }
+
+
   // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem
   // (trip_id, seq), więc żaden indeks na tej tabeli nie jest potrzebny.
   db.exec('PRAGMA synchronous = NORMAL;');
@@ -3666,12 +3908,14 @@ async function main() {
               ? `${todayCompact()}-rzeszow${createHash('sha256').update(`${rzeszowFingerprint}`).digest('hex').slice(0, 8)}`
             : CITY === 'lublin'
               ? `${todayCompact()}-lublin${createHash('sha256').update(`${lublinFingerprint}`).digest('hex').slice(0, 8)}`
+            : CITY === 'radom'
+              ? `${todayCompact()}-radom${createHash('sha256').update(`${radomFingerprint}`).digest('hex').slice(0, 8)}`
             : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -3856,6 +4100,11 @@ async function main() {
             trips: counts.trips, stopTimes: counts.stopTimes,
           },
         }
+      : CITY === 'radom'
+      ? {
+          mzdik: {
+            kind: 'gtfs-zip', url: RADOM_GTFS_URL, mirror: RADOM_GTFS_MIRROR,
+            fingerprint: radomFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },

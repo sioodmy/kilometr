@@ -91,6 +91,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.lublin',
   );
   expect(
+    'Radom dokleja sufiks',
+    cityKey('kilometr.places', 'radom'),
+    'kilometr.places.radom',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -192,9 +197,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'czternaście miast',
+    'piętnaście miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole,rzeszow,lublin',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole,rzeszow,lublin,radom',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -214,9 +219,10 @@ describe('Rejestr miast');
       isCityId('opole'),
       isCityId('rzeszow'),
       isCityId('lublin'),
+      isCityId('radom'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false',
   );
 }
 

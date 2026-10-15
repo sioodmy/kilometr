@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok' | 'opole' | 'rzeszow' | 'lublin';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok' | 'opole' | 'rzeszow' | 'lublin' | 'radom';
 
 export interface CityCenter {
   lat: number;
@@ -413,7 +413,40 @@ const LUBLIN: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK, OPOLE, RZESZOW, LUBLIN];
+
+const RADOM: CityDef = {
+  id: 'radom',
+  name: 'Radom',
+  center: { lat: 51.4027, lon: 21.1471 },
+  // Miasto zwarte z liniami podmiejskimi (Milejowice i Godów na północy,
+  // Wolanowska na południowym zachodzie): najdalszy przystanek GTFS
+  // to ok. 13 km od centrum.
+  radiusM: 18_000,
+  bounds: { minLat: 51.28, maxLat: 51.5, minLon: 21.0, maxLon: 21.36 },
+  nominatimViewbox: '21.0,51.5,21.36,51.28',
+  overpassBbox: '51.28,21.00,51.50,21.36',
+  // zbiorkom.live nazywa miasto `radom` (jedna agencja `default`,
+  // więc bez filtra); bbox jak bounds.
+  zbiorkomSlug: 'radom',
+  zbiorkomBbox: '21.0,51.28,21.36,51.5',
+  dbFile: 'kilometr-gtfs-radom.db',
+  tilePack: 'radom-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa
+  // do Milejowic działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 51.28, maxLat: 51.5, minLon: 21.0, maxLon: 21.36 },
+  // Mniejsza strefa niż Szczecin (0,08 vs 0,12 deg2), ale gęste centrum:
+  // pomiar próbką kafli z z14 (gzip -9) daje ~9,8 MB.
+  tileMaxZoom: 14,
+  tilePackMB: 10,
+  // Same autobusy MZDiK (linie 1-27 i nocne N1-N3, route_type 3 w GTFS).
+  // Kolei regionalnej nie ma w buildzie (KM dojeżdża do Radomia, ale
+  // statyczny feed mamy tylko dla obwiedni Warszawy), więc miasto jedzie
+  // bez sekcji kolejowej jak Szczecin. MZDiK nie ma publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+};
+
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK, OPOLE, RZESZOW, LUBLIN, RADOM];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 
