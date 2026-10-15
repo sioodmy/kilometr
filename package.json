@@ -68,6 +68,7 @@
     "check:kielce": "tsx --require ./scripts/stub-expo.cjs scripts/check-kielce.ts",
     "check:olsztyn": "tsx --require ./scripts/stub-expo.cjs scripts/check-olsztyn.ts",
     "check:bialystok": "tsx --require ./scripts/stub-expo.cjs scripts/check-bialystok.ts",
+    "check:opole": "tsx --require ./scripts/stub-expo.cjs scripts/check-opole.ts",
     "check:pull": "tsx scripts/check-pull.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

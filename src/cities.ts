@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok' | 'opole';
 
 export interface CityCenter {
   lat: number;
@@ -327,7 +327,35 @@ const BIALYSTOK: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK];
+const OPOLE: CityDef = {
+  id: 'opole',
+  name: 'Opole',
+  center: { lat: 50.6667, lon: 17.9233 },
+  // Sieć MZK z gminami ościennymi (Dobrzeń Wielki na północy, Prószków
+  // na południu, Wawelno na zachodzie): najdalszy przystanek to Dobrzeń
+  // Wielki (~12,6 km od Rynku).
+  radiusM: 15_000,
+  bounds: { minLat: 50.55, maxLat: 50.8, minLon: 17.7, maxLon: 18.1 },
+  nominatimViewbox: '17.7,50.8,18.1,50.55',
+  overpassBbox: '50.55,17.70,50.80,18.10',
+  // zbiorkom.live nazywa miasto `opole` (jedna agencja `default`,
+  // więc bez filtra); bbox jak bounds.
+  zbiorkomSlug: 'opole',
+  zbiorkomBbox: '17.7,50.55,18.1,50.8',
+  dbFile: 'kilometr-gtfs-opole.db',
+  tilePack: 'opole-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do
+  // Dobrzenia Wielkiego działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 50.55, maxLat: 50.8, minLon: 17.7, maxLon: 18.1 },
+  // Mniejsza strefa niż Szczecin (0,10 vs 0,12 deg2), więc ~8 MB w z14 z gzipem.
+  tileMaxZoom: 14,
+  tilePackMB: 8,
+  // Opole nie ma tramwajów ani kolei z publicznym GTFS (wszystkie 27 linii
+  // MZK to autobusy, route_type 3). MZK nie ma publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK, OPOLE];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

@@ -3,7 +3,8 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok`: awaryjne (Wrocław) albo podstawowe
+// - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
+//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok` / `opole`: awaryjne (Wrocław) albo podstawowe
 //   (reszta) pozycje autobusów, tramwajów, trolejbusów i metra, gdy
 //   bezpośredni feed nie odpowiada.
 //
@@ -220,6 +221,20 @@ export async function fetchZbBialystokRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const bial = getCity('bialystok');
   const positions = await fetchPositions(bial.zbiorkomSlug, 'default', bial.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
+ * Pozycje MZK Opole jako wiersze dla matchera. Podstawowy feed live.
+ * Bez filtra agencji: całe miasto jedzie pod jedną agencją `default`
+ * (same autobusy, route_type 3 w GTFS: dzienne 1–80, nocne N1–N2,
+ * szkolne SZ1–SZ20 i specjalne S1–S2).
+ */
+export async function fetchZbOpoleRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const opo = getCity('opole');
+  const positions = await fetchPositions(opo.zbiorkomSlug, undefined, opo.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }

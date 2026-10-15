@@ -87,6 +87,9 @@ jobs:
       - name: Run logic tests (Białystok city)
         run: npm run check:bialystok
 
+      - name: Run logic tests (Opole city)
+        run: npm run check:opole
+
       - name: Run logic tests (Home pull gesture)
         run: npm run check:pull
 
