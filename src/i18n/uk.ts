@@ -388,7 +388,6 @@ export const uk: Strings = {
     dlTitle: (gen: string) => `Завантажити розклад\n${gen}`,
     dlBody: (feeds: string) => `Готова база: ${feeds} із сервера Kilometr. Одне завантаження, далі офлайн.`,
     dlEmpty: 'Немає офлайн-даних.',
-    dlAction: 'Завантажити повний розклад',
     dlSize: 'Одне завантаження • кілька хвилин • далі офлайн',
     dlProgress: (p: number) => `Завантаження… ${p}%`,
     dlStep: (step: string, p: number) => `${step} ${p}%`,

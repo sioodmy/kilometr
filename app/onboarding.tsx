@@ -670,13 +670,6 @@ export default function OnboardingScreen() {
                     <WifiOff size={18} color={scheme.onSurfaceVariant} />
                     <Text style={st.statText}>{s.onboarding.dlEmpty}</Text>
                   </View>
-                  <Pressable
-                    onPress={() => void startDownload()}
-                    style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
-                  >
-                    <Download size={17} color={scheme.onPrimary} />
-                    <Text style={st.allowText}>{s.onboarding.dlAction}</Text>
-                  </Pressable>
                   <Text style={st.fine}>{s.onboarding.dlSize}</Text>
                 </>
               )}
