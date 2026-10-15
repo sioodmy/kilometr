@@ -245,9 +245,9 @@ const OPOLE: CityDef = {
   id: 'opole',
   name: 'Opole',
   center: { lat: 50.6667, lon: 17.9233 },
-  // Sieć MZK z gminami ościennymi (Sławice na północy, Wrzoski na
-  // zachodzie, Czarnowąsy na wschodzie): najdalszy przystanek to Sławice
-  // (~12 km od Rynku).
+  // Sieć MZK z gminami ościennymi (Dobrzeń Wielki na północy, Prószków
+  // na południu, Wawelno na zachodzie): najdalszy przystanek to Dobrzeń
+  // Wielki (~12,6 km od Rynku).
   radiusM: 15_000,
   bounds: { minLat: 50.55, maxLat: 50.8, minLon: 17.7, maxLon: 18.1 },
   nominatimViewbox: '17.7,50.8,18.1,50.55',
@@ -258,14 +258,14 @@ const OPOLE: CityDef = {
   zbiorkomBbox: '17.7,50.55,18.1,50.8',
   dbFile: 'kilometr-gtfs-opole.db',
   tilePack: 'opole-tiles.ktp',
-  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do Sławic
-  // działała offline bez dziur na krawędzi.
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do
+  // Dobrzenia Wielkiego działała offline bez dziur na krawędzi.
   tileBbox: { minLat: 50.55, maxLat: 50.8, minLon: 17.7, maxLon: 18.1 },
   // Mniejsza strefa niż Szczecin (0,10 vs 0,12 deg2), więc ~8 MB w z14 z gzipem.
   tileMaxZoom: 14,
   tilePackMB: 8,
   // Opole nie ma tramwajów ani kolei z publicznym GTFS (wszystkie 27 linii
-  // MZK to autobusy, route_type 3). ZDiT Opole nie ma publicznego bus_position.
+  // MZK to autobusy, route_type 3). MZK nie ma publicznego bus_position.
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 

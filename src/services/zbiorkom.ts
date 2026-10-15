@@ -186,8 +186,8 @@ export async function fetchZbSzczecinRows(): Promise<RawVehicleRow[] | null> {
 /**
  * Pozycje MZK Opole jako wiersze dla matchera. Podstawowy feed live.
  * Bez filtra agencji: całe miasto jedzie pod jedną agencją `default`
- * (same autobusy, route_type 3 w GTFS: dzienne 1-30, nocne N1-N2,
- * szkolne SZ1-SZ20 i specjalne S1-S2).
+ * (same autobusy, route_type 3 w GTFS: dzienne 1–80, nocne N1–N2,
+ * szkolne SZ1–SZ20 i specjalne S1–S2).
  */
 export async function fetchZbOpoleRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');

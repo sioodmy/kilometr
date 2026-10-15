@@ -1018,10 +1018,10 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
  * 20 i 22–29), bo gołe liczby w komunikatach to często coś innego niż
  * linie. Linie literowe przyjmujemy wzorcem (MZK dowozi nimi okazjonalne
  * kursy specjalne spoza statycznego GTFS).
- * Daty („11.10”, „3 października”, „1 Maja”), godziny („18:56”), liczby
- * kursów („13 par kursów”), odległości („80 metrów”) i liczby przystanków
- * („106 przystanków”) wycinamy wcześniej, a resztę liczb z tekstu odsiewa
- * walidacja numerów.
+ * Daty („11.10”, „3 października”, „1 Maja”), godziny („18:56”, a także
+ * literówka „16;36” z feedu), liczby kursów („13 par kursów”), odległości
+ * („80 metrów”) i liczby przystanków („106 przystanków”) wycinamy
+ * wcześniej, a resztę liczb z tekstu odsiewa walidacja numerów.
  */
 const OPOLE_LINE_RE = /\b(SZ\d{1,2}|S\d{1,2}|N\d{1,2}|\d{1,3})\b/gi;
 
@@ -1035,7 +1035,9 @@ function extractOpoleLines(title: string, description: string): string[] {
   const text = `${title} ${description}`
     .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
-    .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Średnik obok dwukropka: feed MZK pisze czasem „16;36” zamiast „16:36”,
+    // a gołe „16” wygląda wtedy jak linia 16.
+    .replace(/\d{1,2}[;:]\d{2}/g, ' ')
     .replace(/\b\d{1,3},\d+\b/g, ' ')
     .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
     .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
@@ -1062,6 +1064,18 @@ function extractOpoleLines(title: string, description: string): string[] {
 }
 
 /**
+ * Opisy RSS MZK kończą się śmieciami motywu WordPressa: linkiem
+ * „czytaj dalej … »” (div.w-100.text-end z a.more-link) i tekstem
+ * „Wyświetl mniej” z rozwijanego wpisu. Obcinamy je przed htmlToText,
+ * bo inaczej lądują na końcu karty komunikatu.
+ */
+function scrubOpoleDescription(html: string): string {
+  return html
+    .replace(/<div class="w-100 text-end[^"]*">[\s\S]*?<\/div>/gi, ' ')
+    .replace(/Wyświetl mniej/gi, ' ');
+}
+
+/**
  * Komunikaty MZK Opole (RSS 2.0 kategorii Aktualności: tytuł + link +
  * pubDate + opis). Cała kategoria dotyczy pasażera, więc nie filtrujemy
  * po słowach jak miejski RSS Wrocławia. Opis z feedu ląduje w karcie.
@@ -1074,7 +1088,7 @@ export function parseOpoleRss(xml: string): MpkNewsItem[] {
     const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
-    const description = htmlToText(rawDesc).slice(0, 600);
+    const description = htmlToText(scrubOpoleDescription(rawDesc)).slice(0, 600);
     const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
     const ts = pubRaw ? Date.parse(pubRaw) : NaN;
     const pubDate = Number.isFinite(ts) ? ts : null;

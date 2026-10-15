@@ -60,7 +60,7 @@ describe('Komunikaty MZK (RSS)');
 <title>Wydłużone kursy na mecz Odry Opole</title>
 <link>https://www.mzkopole.pl/aktualnosci/wydluzone-kursy-na-mecz-odry-opole/</link>
 <pubDate>Fri, 09 Oct 2026 10:01:11 +0000</pubDate>
-<description><![CDATA[W związku z niedzielnym (11.10) meczem Odry Opole, Miejski Zakład Komunikacyjny wydłuża warianty linii: 5, 12, 18 i 28.]]></description>
+<description><![CDATA[W związku z niedzielnym (11.10) meczem Odry Opole, Miejski Zakład Komunikacyjny wydłuża warianty linii: 5, 12, 18 i 28. <div class="w-100 text-end"><a class="more-link" href="https://www.mzkopole.pl/aktualnosci/wydluzone-kursy-na-mecz-odry-opole/#more-4459">czytaj dalej <span class="visually-hidden">Wydłużone kursy na mecz Odry Opole</span> »</a></div>]]></description>
 </item>
 <item>
 <title>Zawieszenie kursów linii 30</title>
@@ -72,7 +72,7 @@ describe('Komunikaty MZK (RSS)');
 <title>Przystanek &#8222;Częstochowska-Tysiąclecia&#8221; przesunięty</title>
 <link>https://www.mzkopole.pl/aktualnosci/przystanek-czestochowska-tysiaclecia-przesuniety/</link>
 <pubDate>Thu, 15 Oct 2026 12:14:57 +0000</pubDate>
-<description><![CDATA[W związku z wymianą nawierzchni jezdni przystanek &#8222;Częstochowska-Tysiąclecia&#8221; zostanie przesunięty o około 80 metrów w kierunku centrum miasta.]]></description>
+<description><![CDATA[W związku z wymianą nawierzchni jezdni przystanek &#8222;Częstochowska-Tysiąclecia&#8221; zostanie przesunięty o około 80 metrów w kierunku centrum miasta. Wyświetl mniej]]></description>
 </item>
 <item>
 <title>Półmaraton Opolski &#8211; objazdy dla linii MZK</title>
@@ -85,6 +85,11 @@ describe('Komunikaty MZK (RSS)');
   expect('cztery komunikaty', items.length, 4);
   expect('linie z meczu (5, 12, 18, 28)', items[0].lines, ['5', '12', '18', '28']);
   expect('opis z feedu w karcie', items[0].description.includes('warianty linii'), true);
+  // Motyw WordPressa dokleja do opisu link „czytaj dalej … »” i tekst
+  // „Wyświetl mniej”; parser musi je wyciąć przed htmlToText.
+  expect('bez „czytaj dalej” w opisie', items[0].description.includes('czytaj dalej'), false);
+  expect('bez „Wyświetl mniej” w opisie', items[2].description.includes('Wyświetl mniej'), false);
+  expect('opis kończy się treścią', items[0].description.endsWith('5, 12, 18 i 28.'), true);
   const d0 = items[0].pubDate ? new Date(items[0].pubDate) : null;
   expect('data z pubDate (dzień)', d0?.getDate(), 9);
   expect('data z pubDate (miesiąc)', d0?.getMonth(), 9);
@@ -120,6 +125,13 @@ describe('Numery linii MZK: daty, ulice, liczby z tekstu');
     '„18:56” i „8:00” to nie linie',
     parseOpoleRss(xml('Mecz', 'Odjazd o 18:56, organizacja od 8:00, linie 12 i 18')).map((i) => i.lines),
     [['12', '18']],
+  );
+  // Regresja: feed MZK ma literówkę „16;36” (średnik zamiast dwukropka),
+  // a gołe „16” wyglądało jak linia 16 w komunikacie o meczu.
+  expect(
+    '„16;36” (literówka z feedu) to nie linia 16',
+    parseOpoleRss(xml('Mecz', 'Odjazd z al. Pużaka o 16;36 oraz 16:58, linia 12')).map((i) => i.lines),
+    [['12']],
   );
   expect(
     'specjalne S1 i S2',
