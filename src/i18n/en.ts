@@ -76,13 +76,86 @@ export const en: Strings = {
   city: {
     section: 'City',
     settingsTitle: 'City',
-    settingsHint: 'Timetable, offline map and news follow the city. The other city’s data stays on the phone.',
+    settingsHint:
+      'Timetable, offline map and news follow the city. The other city’s data stays on the phone.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : id === 'rzeszow' ? 'Rzeszów' : 'Wrocław',
+      id === 'krakow'
+        ? 'Kraków'
+        : id === 'gzm'
+          ? 'GZM'
+          : id === 'warszawa'
+            ? 'Warszawa'
+            : id === 'poznan'
+              ? 'Poznań'
+              : id === 'trojmiasto'
+                ? 'Trójmiasto'
+                : id === 'lodz'
+                  ? 'Łódź'
+                  : id === 'szczecin'
+                    ? 'Szczecin'
+                    : id === 'kielce'
+                      ? 'Kielce'
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : id === 'bialystok'
+                          ? 'Białystok'
+                          : id === 'opole'
+                            ? 'Opole'
+                            : id === 'rzeszow'
+                              ? 'Rzeszów'
+                              : 'Wrocław',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : id === 'rzeszow' ? 'Rzeszów' : 'Wrocław',
+      id === 'krakow'
+        ? 'Kraków'
+        : id === 'gzm'
+          ? 'GZM'
+          : id === 'warszawa'
+            ? 'Warszawa'
+            : id === 'poznan'
+              ? 'Poznań'
+              : id === 'trojmiasto'
+                ? 'Trójmiasto'
+                : id === 'lodz'
+                  ? 'Łódź'
+                  : id === 'szczecin'
+                    ? 'Szczecin'
+                    : id === 'kielce'
+                      ? 'Kielce'
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : id === 'bialystok'
+                          ? 'Białystok'
+                          : id === 'opole'
+                            ? 'Opole'
+                            : id === 'rzeszow'
+                              ? 'Rzeszów'
+                              : 'Wrocław',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : id === 'rzeszow' ? 'Rzeszów' : 'Wrocław',
+      id === 'krakow'
+        ? 'Kraków'
+        : id === 'gzm'
+          ? 'GZM'
+          : id === 'warszawa'
+            ? 'Warszawa'
+            : id === 'poznan'
+              ? 'Poznań'
+              : id === 'trojmiasto'
+                ? 'Trójmiasto'
+                : id === 'lodz'
+                  ? 'Łódź'
+                  : id === 'szczecin'
+                    ? 'Szczecin'
+                    : id === 'kielce'
+                      ? 'Kielce'
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : id === 'bialystok'
+                          ? 'Białystok'
+                          : id === 'opole'
+                            ? 'Opole'
+                            : id === 'rzeszow'
+                              ? 'Rzeszów'
+                              : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP and Koleje Małopolskie'
@@ -94,13 +167,21 @@ export const en: Strings = {
               ? 'ZTM and Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia and SKM'
-              : id === 'lodz'
-                ? 'MPK and Łódzka Kolej Aglomeracyjna'
-              : id === 'szczecin'
-                ? 'ZDiTM Szczecin'
-                : id === 'rzeszow'
-                  ? 'ZTM Rzeszów'
-                  : 'MPK and Koleje Dolnośląskie',
+: id === 'lodz'
+                  ? 'MPK and Łódzka Kolej Aglomeracyjna'
+                  : id === 'szczecin'
+                    ? 'ZDiTM Szczecin'
+                    : id === 'kielce'
+                      ? 'ZTM Kielce'
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Olsztyn'
+                        : id === 'bialystok'
+                          ? 'BKM Białystok'
+                          : id === 'opole'
+                            ? 'MZK Opole'
+                            : id === 'rzeszow'
+                              ? 'ZTM Rzeszów'
+                              : 'MPK and Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -112,13 +193,21 @@ export const en: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-              : id === 'lodz'
-                ? 'MPK Łódź'
-              : id === 'szczecin'
-                ? 'ZDiTM Szczecin'
-                : id === 'rzeszow'
-                  ? 'ZTM Rzeszów'
-                  : 'MPK Wrocław • wroclaw.pl',
+: id === 'lodz'
+                  ? 'MPK Łódź'
+                  : id === 'szczecin'
+                    ? 'ZDiTM Szczecin'
+                    : id === 'kielce'
+                      ? 'ZTM Kielce'
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Olsztyn'
+                        : id === 'bialystok'
+                          ? 'BKM Białystok'
+                          : id === 'opole'
+                            ? 'MZK Opole'
+                            : id === 'rzeszow'
+                              ? 'ZTM Rzeszów'
+                              : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -130,15 +219,45 @@ export const en: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-              : id === 'lodz'
-                ? 'MPK Łódź'
-              : id === 'szczecin'
-                ? 'ZDiTM Szczecin'
-                : id === 'rzeszow'
-                  ? 'ZTM Rzeszów'
-                  : 'MPK Wrocław',
+: id === 'lodz'
+                  ? 'MPK Łódź'
+                  : id === 'szczecin'
+                    ? 'ZDiTM Szczecin'
+                    : id === 'kielce'
+                      ? 'ZTM Kielce'
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Olsztyn'
+                        : id === 'bialystok'
+                          ? 'BKM Białystok'
+                          : id === 'opole'
+                            ? 'MZK Opole'
+                            : id === 'rzeszow'
+                              ? 'ZTM Rzeszów'
+                              : 'MPK Wrocław',
     operatorShort: (id: string): string =>
-      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : id === 'trojmiasto' ? 'ZTM / ZKM' : id === 'szczecin' ? 'ZDiTM' : id === 'rzeszow' ? 'ZTM' : 'MPK',
+      id === 'krakow'
+        ? 'ZTP'
+        : id === 'gzm'
+          ? 'ZTM'
+          : id === 'warszawa'
+            ? 'WTP'
+            : id === 'poznan'
+              ? 'ZTM'
+              : id === 'trojmiasto'
+                ? 'ZTM / ZKM'
+                : id === 'szczecin'
+                  ? 'ZDiTM'
+                  : id === 'kielce'
+                    ? 'ZTM'
+                    : id === 'olsztyn'
+                      ? 'ZDZiT'
+                      : id === 'bialystok'
+                        ? 'BKM'
+                        : id === 'opole'
+                          ? 'MZK'
+                          : id === 'rzeszow'
+                            ? 'ZTM'
+                            : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -150,18 +269,35 @@ export const en: Strings = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-              : id === 'lodz'
-                ? 'mpk.lodz.pl'
-              : id === 'szczecin'
-                ? 'zditm.szczecin.pl'
-                : id === 'rzeszow'
-                  ? 'ztm.erzeszow.pl'
-                  : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Rzeszów',
+: id === 'lodz'
+                  ? 'mpk.lodz.pl'
+                  : id === 'szczecin'
+                    ? 'zditm.szczecin.pl'
+                    : id === 'kielce'
+                      ? 'ztm.kielce.pl'
+                      : id === 'olsztyn'
+                        ? 'zdzit.olsztyn.eu'
+                        : id === 'bialystok'
+                          ? 'komunikacja.bialystok.pl'
+                          : id === 'opole'
+                            ? 'mzkopole.pl'
+                            : id === 'rzeszow'
+                              ? 'ztm.erzeszow.pl'
+                              : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów',
     changed: (name: string) => `Switched to: ${name}.`,
     switching: 'Switching city…',
     blockedByDownload: 'Timetable download in progress. You can switch city once it finishes.',
     needDownload: 'This city has no timetable on the phone yet. Download it below.',
+    changeAction: 'Change',
+    selectTitle: 'Select city',
+    selectSub: 'Choose the transit area you want to travel in.',
+    searchPlaceholder: 'Search city or operator…',
+    noSearchResults: (q: string) => `No cities found for "${q}"`,
+    searchEmptyHint: 'Check the spelling or try searching for another metropolitan area.',
+    searchClearA11y: 'Clear search',
+    closeSheetA11y: 'Close city selection',
+    cityActiveBadge: 'Active',
   },
   settings: {
     title: 'Settings',
@@ -181,8 +317,10 @@ export const en: Strings = {
     notificationsSection: 'Notifications',
     notificationsFoot: 'Notifications work in a development build. Expo Go does not support them.',
     offlineMapTitle: (name: string) => `Offline map (${name})`,
-    offlineMapHint: (name: string, mb: number) => `Download ${name} map tiles (about ${mb} MB) so routes work without internet.`,
-    offlineMapReady: (name: string) => `The ${name} map is on your phone. Routes work without internet.`,
+    offlineMapHint: (name: string, mb: number) =>
+      `Download ${name} map tiles (about ${mb} MB) so routes work without internet.`,
+    offlineMapReady: (name: string) =>
+      `The ${name} map is on your phone. Routes work without internet.`,
     offlineMapDownload: 'Download map',
     offlineMapDownloadA11y: (name: string) => `Download the ${name} map for offline use`,
     offlineMapDownloading: (pct: number) => `Downloading… ${pct}%`,
@@ -229,7 +367,8 @@ export const en: Strings = {
     backupFailNotBackup: 'This is not a Kilometr backup.',
     backupFailSchemaTooNew: 'This backup comes from a newer version of the app.',
     dataTitle: (operator: string) => `${operator} timetable`,
-    dataHint: (feeds: string) => `${feeds} timetables from the Kilometr server. Download once, then offline.`,
+    dataHint: (feeds: string) =>
+      `${feeds} timetables from the Kilometr server. Download once, then offline.`,
     dataEmpty: 'No offline data.',
     dataDownloading: (p: number) => `Downloading… ${p}%`,
     dataStep: (step: string, p: number) => `${step} ${p}%`,
@@ -240,7 +379,8 @@ export const en: Strings = {
     downloadReady: 'Check for updates',
     downloadEmpty: 'Download full timetable',
     downloadFailTitle: 'Could not download the timetable',
-    downloadFailBody: (reason: string) => `${reason}. The app fetches a ready database from the Kilometr server, or the classic way from the city’s open data.`,
+    downloadFailBody: (reason: string) =>
+      `${reason}. The app fetches a ready database from the Kilometr server, or the classic way from the city’s open data.`,
     downloadFailFallback: 'Try again in a moment.',
     downloadDone: 'Timetable refreshed.',
     downloadUpToDate: 'The timetable is already up to date.',
@@ -250,7 +390,8 @@ export const en: Strings = {
         ? 'The timetable was downloaded recently. Another full download will be available in about an hour.'
         : `The timetable was downloaded recently. Another full download will be available in ${hours} h.`,
     diagTitle: 'Data diagnostics',
-    diagHint: 'Checks the timetable database on the phone. Copy the result when reporting a problem.',
+    diagHint:
+      'Checks the timetable database on the phone. Copy the result when reporting a problem.',
     diagRun: 'Check data',
     diagRerun: 'Check again',
     diagRunning: 'Checking…',
@@ -280,7 +421,8 @@ export const en: Strings = {
       days <= 1 ? 'Timetable expires tomorrow' : `Timetable expires in ${days} days`,
     diagCalendarServices: (n: number) => `Active services today: ${n}`,
     diagSearch: 'Search',
-    diagSearchOk: (weighted: number, pois: number) => `Ranking ready (${weighted} stops) • POIs: ${pois}`,
+    diagSearchOk: (weighted: number, pois: number) =>
+      `Ranking ready (${weighted} stops) • POIs: ${pois}`,
     diagSearchWeights: 'Suggestion ranking not computed',
     diagSearchPois: 'No POI points. Addresses need internet.',
     diagCopy: 'Copy report',
@@ -322,7 +464,8 @@ export const en: Strings = {
     trainBufferHint:
       'Minimum time to reach the platform after a transfer. Railway stations are not plain stops, the walk from the stop to the platform usually goes through the hall.',
     trainBufferHintShort: 'Time to reach the platform after a transfer.',
-    trainNoData: 'The downloaded timetable has no trains. Check for updates above to enable train transfers.',
+    trainNoData:
+      'The downloaded timetable has no trains. Check for updates above to enable train transfers.',
     cableTitle: 'Polinka',
     cableHint:
       'The Wrocław University of Science and Technology cable car over the Odra, between Wyspiański embankment and Na Grobli street. Runs on weekdays 7:00–21:00, with a 13:30–14:00 break, every 5 minutes. Closed at weekends. Only in “All” mode.',
@@ -363,13 +506,21 @@ export const en: Strings = {
             ? 'e.g. Głogowska 12'
             : id === 'trojmiasto'
               ? 'e.g. Długa 12'
-            : id === 'lodz'
-              ? 'e.g. Piotrkowska 12'
-            : id === 'szczecin'
-              ? 'e.g. Wojska Polskiego 12'
-              : id === 'rzeszow'
-                ? 'e.g. 3 Maja 12'
-                : 'e.g. Swojczycka 41',
+: id === 'lodz'
+                ? 'e.g. Piotrkowska 12'
+                : id === 'szczecin'
+                  ? 'e.g. Wojska Polskiego 12'
+                  : id === 'kielce'
+                    ? 'e.g. Sienkiewicza 12'
+                    : id === 'olsztyn'
+                      ? 'e.g. Partyzantów 12'
+                      : id === 'bialystok'
+                        ? 'e.g. Lipowa 12'
+                        : id === 'opole'
+                          ? 'e.g. Ozimska 12'
+                          : id === 'rzeszow'
+                            ? 'e.g. 3 Maja 12'
+                            : 'e.g. Swojczycka 41',
     slotWork: 'Work',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -380,13 +531,21 @@ export const en: Strings = {
             ? 'e.g. Stary Browar'
             : id === 'trojmiasto'
               ? 'e.g. Galeria Bałtycka'
-            : id === 'lodz'
-              ? 'e.g. Manufaktura'
-            : id === 'szczecin'
-              ? 'e.g. Galeria Kaskada'
-              : id === 'rzeszow'
-                ? 'e.g. Galeria Rzeszów'
-                : 'e.g. Sky Tower',
+: id === 'lodz'
+                ? 'e.g. Manufaktura'
+                : id === 'szczecin'
+                  ? 'e.g. Galeria Kaskada'
+                  : id === 'kielce'
+                    ? 'e.g. Galeria Echo'
+                    : id === 'olsztyn'
+                      ? 'e.g. Galeria Warmińska'
+                      : id === 'bialystok'
+                        ? 'e.g. Galeria Jurowiecka'
+                        : id === 'opole'
+                          ? 'e.g. Solaris Center'
+                          : id === 'rzeszow'
+                            ? 'e.g. Galeria Rzeszów'
+                            : 'e.g. Sky Tower',
     slotUni: 'University',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -397,13 +556,21 @@ export const en: Strings = {
             ? 'e.g. UAM'
             : id === 'trojmiasto'
               ? 'e.g. UG'
-            : id === 'lodz'
-              ? 'e.g. UŁ'
-            : id === 'szczecin'
-              ? 'e.g. US'
-              : id === 'rzeszow'
-                ? 'e.g. PRz'
-                : 'e.g. Politechnika',
+: id === 'lodz'
+                ? 'e.g. UŁ'
+                : id === 'szczecin'
+                  ? 'e.g. US'
+                  : id === 'kielce'
+                    ? 'e.g. UJK'
+                    : id === 'olsztyn'
+                      ? 'e.g. UWM'
+                      : id === 'bialystok'
+                        ? 'e.g. UwB'
+                        : id === 'opole'
+                          ? 'e.g. UO'
+                          : id === 'rzeszow'
+                            ? 'e.g. PRz'
+                            : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
     brand: 'Kilometr',
@@ -414,16 +581,19 @@ export const en: Strings = {
     permTitle: 'Permissions',
     permSub: 'Location and notifications. Both optional.',
     locTitle: 'Location',
-    locBody: 'Used to set the start point and sort stops by distance. Processed locally on your device.',
+    locBody:
+      'Used to set the start point and sort stops by distance. Processed locally on your device.',
     locOn: 'Location enabled.',
     locAllow: 'Allow location',
     notifTitle: 'Notifications',
     notifBody: 'Used to show the pinned connection and disruption alerts.',
     notifOn: 'Notifications enabled.',
-    notifExpoGo: 'Expo Go preview — notifications (pinned connection) work in the development build.',
+    notifExpoGo:
+      'Expo Go preview — notifications (pinned connection) work in the development build.',
     notifAllow: 'Enable notifications',
     cityTitle: 'Which city\ndo you ride in?',
-    cityBody: 'Timetable, map and news follow your choice. You can change the city later in settings.',
+    cityBody:
+      'Timetable, map and news follow your choice. You can change the city later in settings.',
     citySuggested: (name: string) => `Your GPS says: ${name}.`,
     cityNoGps: 'Without GPS access, pick a city from the list.',
     cityLocating: 'Finding your GPS position…',
@@ -431,7 +601,8 @@ export const en: Strings = {
     cityPickA11y: (name: string) => `Choose city: ${name}`,
     citySuggestedA11y: (name: string) => `Suggested city from GPS: ${name}`,
     dlTitle: (gen: string) => `Download the\n${gen} timetable`,
-    dlBody: (feeds: string) => `Ready database: ${feeds} from the Kilometr server. Download once, then offline.`,
+    dlBody: (feeds: string) =>
+      `Ready database: ${feeds} from the Kilometr server. Download once, then offline.`,
     dlEmpty: 'No offline data.',
     dlSize: 'One download • a few minutes • then offline',
     dlProgress: (p: number) => `Downloading… ${p}%`,
@@ -450,7 +621,8 @@ export const en: Strings = {
     closeAction: 'Close',
     addAction: '+ Add',
     addressFor: (name: string) => `Address for: ${name}…`,
-    noResults: (q: string) => `No results for “${q}”. Stops are searched offline, addresses need internet.`,
+    noResults: (q: string) =>
+      `No results for “${q}”. Stops are searched offline, addresses need internet.`,
     start: 'Let’s go',
     next: 'Next',
     later: 'Later',
@@ -474,7 +646,8 @@ export const en: Strings = {
     loading: 'Fetching announcements…',
     noConnection: 'No connection',
     emptyTitle: 'No announcements',
-    emptyBody: (name: string) => `${name} has published no disruptions right now. Pull down to check again.`,
+    emptyBody: (name: string) =>
+      `${name} has published no disruptions right now. Pull down to check again.`,
     sectionChanges: 'Line changes',
     sectionCity: 'News',
     sourceMpk: (operator: string) => operator,
@@ -487,8 +660,7 @@ export const en: Strings = {
     filterMyLines: 'My lines',
     filterMyLinesA11y: 'Show only updates for lines from your recent trips',
     filterEmptyTitle: 'Nothing on your lines',
-    filterEmptyBody:
-      'No updates match the lines from trips you checked in the last two weeks.',
+    filterEmptyBody: 'No updates match the lines from trips you checked in the last two weeks.',
     filterNoHistoryTitle: 'No lines yet',
     filterNoHistoryBody:
       'Look up a connection in the app, then you will see updates for those lines here.',
@@ -504,7 +676,8 @@ export const en: Strings = {
   map: {
     title: 'Route map',
     loadFail: 'Could not load the connection',
-    loadFailBody: 'The map shows a specific connection, so it must be available in memory or cache.',
+    loadFailBody:
+      'The map shows a specific connection, so it must be available in memory or cache.',
     backToDetails: 'Back to details',
     assembling: 'Assembling connection…',
     offlineTitle: 'Map unavailable — no network',
@@ -543,17 +716,20 @@ export const en: Strings = {
     gpsAddress: 'Use current position',
     destFallback: 'Destination',
     trackUnsupportedTitle: 'Tracking unavailable',
-    trackUnsupportedBody: 'Notifications require a development build. Expo Go does not support them.',
+    trackUnsupportedBody:
+      'Notifications require a development build. Expo Go does not support them.',
     noConnectionsTitle: 'No connections',
     noConnectionsBody: 'Wait for a departure to appear on this route.',
     stopTrackingTripA11y: 'Stop tracking the trip',
     trackNearestA11y: 'Track the nearest connection',
     pinUnsupportedTitle: 'Pin unavailable',
-    pinUnsupportedBody: 'Pinned notifications require a development build — Expo Go does not support notifications.',
+    pinUnsupportedBody:
+      'Pinned notifications require a development build — Expo Go does not support notifications.',
     notifOffTitle: 'Notifications off',
     notifOffBody: 'Allow notifications in system settings to pin a connection.',
     gpsFailTitle: 'Location error',
-    gpsFailBody: 'Could not get the current GPS position. Make sure location is enabled on your phone.',
+    gpsFailBody:
+      'Could not get the current GPS position. Make sure location is enabled on your phone.',
     now: 'Now',
     title: (operator: string) => `${operator} connections`,
     sortFastestA11y: 'Sorting: arrival. Tap to switch to departure.',
@@ -563,15 +739,18 @@ export const en: Strings = {
     unpinA11y: 'Unpin connection',
     pinA11y: 'Pin the nearest connection',
     changeFromA11y: (t: string) => `Change start, currently ${t}`,
-    changeFromAnchorA11y: (t: string, stop: string) => `Change start, currently ${t}, departing from stop ${stop}`,
+    changeFromAnchorA11y: (t: string, stop: string) =>
+      `Change start, currently ${t}, departing from stop ${stop}`,
     dismissAnchorA11y: 'Remove stop anchoring and search from GPS',
     swapA11y: 'Reverse route: swap start and destination',
     changeToA11y: (t: string) => `Change destination, currently ${t}`,
     searching: 'Searching connections…',
     calcFail: 'Could not compute connections',
     noTimetable: 'No timetable',
-    calcFailBody: 'The planner computes routes on your phone. Try again — if it always fails, refresh the timetable in settings.',
-    noTimetableBody: 'The app computes routes on your phone from the full timetable. Without it there are no connections. Download it once, then it works offline.',
+    calcFailBody:
+      'The planner computes routes on your phone. Try again — if it always fails, refresh the timetable in settings.',
+    noTimetableBody:
+      'The app computes routes on your phone from the full timetable. Without it there are no connections. Download it once, then it works offline.',
     downloadA11y: 'Download timetable',
     downloading: (p: number) => `Downloading… ${p}%`,
     downloadingStep: (step: string, p: number) => `${step} ${p}%`,
@@ -594,7 +773,8 @@ export const en: Strings = {
     emptyNone: 'No connections found',
     emptyModeDirect: (veh: string) =>
       `There is no ${veh} service on this route right now without transfers. Loosen the filters or check another time.`,
-    emptyDirect: 'There is no direct service on this route right now. Turn off the “Direct only” filter to see connections with transfers, or check another time.',
+    emptyDirect:
+      'There is no direct service on this route right now. Turn off the “Direct only” filter to see connections with transfers, or check another time.',
     emptyMode: (veh: string) =>
       `There is no ${veh} service on this route right now. Switch to “All” to see the rest.`,
     emptyPlain: 'Try a different destination or check another departure time.',
@@ -619,7 +799,8 @@ export const en: Strings = {
     scheduleCache: 'Cached timetable',
     schedule: 'Timetable',
     noTrip: 'No route geometry',
-    noTripBody: 'This connection has no saved stops, so the route can’t be drawn and the nearest stop can’t be shown. Go back and pick another connection.',
+    noTripBody:
+      'This connection has no saved stops, so the route can’t be drawn and the nearest stop can’t be shown. Go back and pick another connection.',
     lineAlertsTitle: 'Updates on your lines',
     lineAlertsAll: 'All news',
     lineAlertsEmpty: 'No updates for the lines on this trip.',
@@ -638,7 +819,7 @@ export const en: Strings = {
     searching: (city: string) => `Searching ${city}…`,
     noResults: 'No results',
     noResultsHint: (id: string) =>
-      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : id === 'szczecin' ? '“brama portowa”, “dąbie”, “police”, “pogodno”' : id === 'rzeszow' ? '“rynek”, “dworzec”, “rejtana”, “3 maja”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
+      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : id === 'szczecin' ? '“brama portowa”, “dąbie”, “police”, “pogodno”' : id === 'kielce' ? '“sienkiewicza”, “rynek”, “kadzielnia”, “herby”' : id === 'olsztyn' ? '“stare miasto”, “dworzec”, “jaroty”, “barczewo”' : id === 'bialystok' ? '“rynek kościuszki”, “lipowa”, “branicki”, “opera”' : id === 'opole' ? '“rynek”, “ozimska”, “solaris”, “dworzec”' : id === 'rzeszow' ? '“rynek”, “dworzec”, “rejtana”, “3 maja”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
     noResultsFor: (q: string) => `Nothing matches “${q}”`,
     yourPlaces: 'Your places',
     gpsOutsideNotice: 'GPS is outside the city, pick a point manually.',
@@ -776,12 +957,18 @@ export const en: Strings = {
     timeA11y: (label: string) => `Departure time: ${label}. Tap to change.`,
   },
   connection: {
-    transfers: (n: number) =>
-      n <= 0 ? 'direct' : n === 1 ? '1 transfer' : `${n} transfers`,
+    transfers: (n: number) => (n <= 0 ? 'direct' : n === 1 ? '1 transfer' : `${n} transfers`),
     connections: (n: number) => (n === 1 ? '1 connection' : `${n} connections`),
     walkAll: 'all on foot',
     walkLeg: 'on foot',
-    cardA11y: (dep: string, dur: number, depAt: string, arrAt: string, via: string, lines: string) =>
+    cardA11y: (
+      dep: string,
+      dur: number,
+      depAt: string,
+      arrAt: string,
+      via: string,
+      lines: string,
+    ) =>
       `${dep}, ride time ${dur} min, departure ${depAt}, arrival ${arrAt}, ${via}${lines ? `, lines ${lines}` : ''}`,
     walkRoute: 'walking route',
   },
@@ -836,7 +1023,8 @@ export const en: Strings = {
   },
   lastTrip: {
     backA11y: (from: string, to: string) => `Quick return: ${from} to ${to}. Release to search.`,
-    lastA11y: (from: string, to: string) => `Last connection: ${from} to ${to}. Pull further to reverse.`,
+    lastA11y: (from: string, to: string) =>
+      `Last connection: ${from} to ${to}. Pull further to reverse.`,
     pullHint: 'Last searched connection.\nRelease to search',
     pullHintBack: 'Way back.\nRelease to search',
   },

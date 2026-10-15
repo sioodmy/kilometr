@@ -13,8 +13,9 @@ let nextNetId = 1;
  * ta sama heurystyka co w backtrack i LineBadge (route_type 0 to tramwaj, 11 to
  * trolejbus, 2 to pociąg, 1 to metro, 6 i 7 to kolej powietrzna i funicular,
  * reszta to autobus). Numery 1–33 to wrocławski schemat (tam niskie numery
- * to tramwaje); w GZM niskie numery mają też autobusy, a w Trójmieście
- * trolejbusy (21–33), więc tam liczy się wyłącznie route_type z feedu.
+ * to tramwaje); w GZM niskie numery mają też autobusy, w Opolu wyłącznie
+ * autobusy (cała sieć MZK to route_type 3), w Trójmieście trolejbusy
+ * (21–33), a w Kielcach i Białymstoku same autobusy, więc tam liczy się wyłącznie route_type z feedu.
  */
 export function classifyTransitMode(
   routeType: number | undefined,
@@ -36,10 +37,9 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
   if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
   try {
     const id = getActiveCityIdSync();
-    // GZM i Trójmiasto mają autobusy o niskich numerach, a Rzeszów nie ma
-    // tramwajów wcale (cały GTFS to route_type 3): w tych miastach niski
-    // numer to nie tramwaj.
-    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'rzeszow';
+    // Miasta bez tramwajów (Kielce, Białystok, Opole, Rzeszów) oraz z własną numeracją (GZM, Trójmiasto)
+    // nie powinny zgadywać tramwaju po niskim numerze linii.
+    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'kielce' && id !== 'bialystok' && id !== 'opole' && id !== 'rzeszow';
   } catch {
     return true;
   }

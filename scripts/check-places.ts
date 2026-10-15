@@ -61,6 +61,26 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.szczecin',
   );
   expect(
+    'Kielce doklejają sufiks',
+    cityKey('kilometr.places', 'kielce'),
+    'kilometr.places.kielce',
+  );
+  expect(
+    'Olsztyn dokleja sufiks',
+    cityKey('kilometr.places', 'olsztyn'),
+    'kilometr.places.olsztyn',
+  );
+  expect(
+    'Białystok dokleja sufiks',
+    cityKey('kilometr.places', 'bialystok'),
+    'kilometr.places.bialystok',
+  );
+  expect(
+    'Opole dokleja sufiks',
+    cityKey('kilometr.places', 'opole'),
+    'kilometr.places.opole',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -115,6 +135,33 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
   // ...a Stargard (~33 km) już poza nią.
   expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
+  expect('Rynek w Kielcach', suggestCityForCoords(50.8717, 20.6314)?.id, 'kielce');
+  expect('Kadzielnia w Kielcach', suggestCityForCoords(50.8556, 20.6176)?.id, 'kielce');
+  // Obice Szkoła (~21 km) to najdalszy przystanek strefy ZTM...
+  expect('Obice w Kielcach', suggestCityForCoords(50.68369, 20.60016)?.id, 'kielce');
+  // ...a Skarżysko-Kamienna (~32 km) już poza nią.
+  expect('Skarżysko poza Kielcami', suggestCityForCoords(51.1146, 20.8693)?.id ?? null, null);
+  expect('Stare Miasto w Olsztynie', suggestCityForCoords(53.7778, 20.4778)?.id, 'olsztyn');
+  expect('Dworzec Główny w Olsztynie', suggestCityForCoords(53.7839, 20.4947)?.id, 'olsztyn');
+  expect('Kortowo w Olsztynie', suggestCityForCoords(53.759, 20.457)?.id, 'olsztyn');
+  // Barczewo (~16 km) to najdalszy punkt strefy...
+  expect('Barczewo w Olsztynie', suggestCityForCoords(53.8489, 20.6911)?.id, 'olsztyn');
+  // ...a Ostróda (~35 km) już poza nią.
+  expect('Ostróda poza Olsztynem', suggestCityForCoords(53.6965, 19.9651)?.id ?? null, null);
+  expect('Rynek Kościuszki w Białymstoku', suggestCityForCoords(53.1325, 23.1688)?.id, 'bialystok');
+  expect('Choroszcz w Białymstoku', suggestCityForCoords(53.1428, 22.9186)?.id, 'bialystok');
+  // Niewodnica (~24 km) to najdalszy punkt strefy...
+  expect('Niewodnica w Białymstoku', suggestCityForCoords(52.9213, 23.0966)?.id, 'bialystok');
+  // ...a Sokółka (~38 km) już poza nią.
+  expect('Sokółka poza Białymstokiem', suggestCityForCoords(53.4078, 23.5008)?.id ?? null, null);
+  expect('Dworzec Główny w Opolu', suggestCityForCoords(50.663364, 17.928717)?.id, 'opole');
+  expect('Czarnowąsy w Opolu', suggestCityForCoords(50.740002, 17.911322)?.id, 'opole');
+  expect('Wrzoski w Opolu', suggestCityForCoords(50.686375, 17.813322)?.id, 'opole');
+  // Prószków (~10 km) to najdalszy punkt strefy MZK na południu...
+  expect('Prószków w Opolu', suggestCityForCoords(50.579609, 17.869724)?.id, 'opole');
+  // ...a Brzeg (~39 km) już poza nią (i poza Wrocławiem).
+  expect('Brzeg poza Opolem', suggestCityForCoords(50.8606, 17.4707)?.id ?? null, null);
+  expect('Strzelce Opolskie poza Opolem', suggestCityForCoords(50.5105, 18.3006)?.id ?? null, null);
   expect('Rynek w Rzeszowie', suggestCityForCoords(50.0379, 22.0044)?.id, 'rzeszow');
   // Albigowa (~17 km) to najdalszy przystanek ZTM...
   expect('Albigowa w Rzeszowie', suggestCityForCoords(50.0151, 22.2293)?.id, 'rzeszow');
@@ -127,9 +174,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'dziewięć miast',
+    'trzynaście miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,rzeszow',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole,rzeszow',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -143,10 +190,14 @@ describe('Rejestr miast');
       isCityId('trojmiasto'),
       isCityId('lodz'),
       isCityId('szczecin'),
+      isCityId('kielce'),
+      isCityId('olsztyn'),
+      isCityId('bialystok'),
+      isCityId('opole'),
       isCityId('rzeszow'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -225,6 +276,50 @@ describe('Wpis Szczecina');
   expect('kafle w z14 jak reszta (limit R2)', szcz.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS SKM)', szcz.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
+}
+
+describe('Wpis Kielc');
+{
+  const kiel = getCity('kielce');
+  expect('slug zbiorkom to kielce', kiel.zbiorkomSlug, 'kielce');
+  expect('osobna baza', kiel.dbFile, 'kilometr-gtfs-kielce.db');
+  expect('osobny pakiet kafli', kiel.tilePack, 'kielce-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', kiel.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS kolei)', kiel.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', kiel.features.directBusPosition, false);
+}
+
+describe('Wpis Olsztyna');
+{
+  const olsz = getCity('olsztyn');
+  expect('slug zbiorkom to olsztyn', olsz.zbiorkomSlug, 'olsztyn');
+  expect('osobna baza', olsz.dbFile, 'kilometr-gtfs-olsztyn.db');
+  expect('osobny pakiet kafli', olsz.tilePack, 'olsztyn-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', olsz.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS)', olsz.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', olsz.features.directBusPosition, false);
+}
+
+describe('Wpis Białegostoku');
+{
+  const bial = getCity('bialystok');
+  expect('slug zbiorkom to bialystok', bial.zbiorkomSlug, 'bialystok');
+  expect('osobna baza', bial.dbFile, 'kilometr-gtfs-bialystok.db');
+  expect('osobny pakiet kafli', bial.tilePack, 'bialystok-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', bial.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS POLREGIO)', bial.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', bial.features.directBusPosition, false);
+}
+
+describe('Wpis Opola');
+{
+  const opo = getCity('opole');
+  expect('slug zbiorkom to opole', opo.zbiorkomSlug, 'opole');
+  expect('osobna baza', opo.dbFile, 'kilometr-gtfs-opole.db');
+  expect('osobny pakiet kafli', opo.tilePack, 'opole-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', opo.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS kolei)', opo.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', opo.features.directBusPosition, false);
 }
 
 describe('Wpis Rzeszowa');
