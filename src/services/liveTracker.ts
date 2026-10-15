@@ -20,7 +20,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbSkmtRails, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -222,8 +222,8 @@ class LiveTracker {
    * miasta. Wrocław: KD, Kraków: Koleje Małopolskie (agencja KML),
    * GZM: Koleje Śląskie, PKP Intercity i POLREGIO (agencje KS, IC, PR),
    * Warszawa: Koleje Mazowieckie i WKD (agencje KM, WKD), Poznań: Koleje
-   * Wielkopolskie i POLREGIO (agencje KW, PR). SKA nie ma feedu
-   * live, więc zostaje na rozkładzie.
+   * Wielkopolskie i POLREGIO (agencje KW, PR), Trójmiasto: SKM (agencja
+   * SKMT). SKA nie ma feedu live, więc zostaje na rozkładzie.
    */
   private async fetchRailSafe(): Promise<RailFeed[] | null> {
     const id = safeCityId();
@@ -250,6 +250,11 @@ class LiveTracker {
       }
       if (id === 'poznan') {
         const feeds = await fetchZbPoznanRails();
+        if (feeds === null) return null;
+        return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+      }
+      if (id === 'trojmiasto') {
+        const feeds = await fetchZbSkmtRails();
         if (feeds === null) return null;
         return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
       }
@@ -309,8 +314,9 @@ class LiveTracker {
   /**
    * Pozycje pojazdów per-miasto:
    * - Wrocław: wprost z MPK (POST bus_position), awaryjnie zbiorkom.live,
-   * - Kraków / GZM / Warszawa / Poznań: zbiorkom.live (ZTP, ZTM, WTP i ZTM
-   *   Poznań nie mają publicznego bus_position).
+   * - Kraków / GZM / Warszawa / Poznań / Trójmiasto: zbiorkom.live (ZTP,
+   *   ZTM, WTP, ZTM Poznań i ZTM Gdańsk + ZKM Gdynia nie mają publicznego
+   *   bus_position).
    *
    * Wrocław świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby
    * 100k requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK
@@ -352,6 +358,7 @@ class LiveTracker {
       if (id === 'gzm') return await fetchZbGzmRows();
       if (id === 'warszawa') return await fetchZbWarsawRows();
       if (id === 'poznan') return await fetchZbPoznanRows();
+      if (id === 'trojmiasto') return await fetchZbTricityRows();
       return await fetchZbWroclawRows();
     } catch (err) {
       console.warn('[LiveTracker] zbiorkom city fetch failed:', err);

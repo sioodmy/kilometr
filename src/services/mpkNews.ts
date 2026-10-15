@@ -7,6 +7,8 @@
 //   z opisu w feedzie).
 // - Poznań: RSS ZTM (www.ztm.poznan.pl/feed, zwykły RSS 2.0 WordPressa;
 //   numery linii w tytułach jak w WTP, treść z opisu w feedzie).
+// - Trójmiasto: JSON ZTM Gdańsk (files.cloudgdansk.pl, znt.json ze zmianami
+//   tras z gotową listą linii oraz bsk.json z bieżącymi awariami).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -64,6 +66,14 @@ export const WTP_FEED_URL = 'https://www.wtp.waw.pl/feed/';
  * „na trasę linii 0”), więc wyciągamy je regexem jak w WTP.
  */
 export const ZTM_POZNAN_FEED_URL = 'https://www.ztm.poznan.pl/feed/';
+/**
+ * Komunikaty ZTM Gdańsk: JSON, nie RSS. znt.json niesie zmiany tras
+ * ({ results: [{ lineNumbers: ["117","143","N4"], title, summary, content,
+ * url, alarmDateFrom/To, publishFrom/To }] }), bsk.json bieżące awarie
+ * ({ komunikaty: [...] }). Numery linii są gotowe, nie trzeba regexów.
+ */
+export const ZTM_GDANSK_ZNT_URL = 'https://files.cloudgdansk.pl/d/otwarte-dane/ztm/znt.json?v=1';
+export const ZTM_GDANSK_BSK_URL = 'https://files.cloudgdansk.pl/d/otwarte-dane/ztm/bsk.json?v=1';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -567,9 +577,156 @@ export function parsePoznanRss(xml: string): MpkNewsItem[] {
   return items;
 }
 
+/**
+ * Numery linii ZTM Gdańsk w tekście (gdy JSON nie niesie lineNumbers):
+ * N1–N89, M32, T8/T9 i zwykłe 100–999. Daty i godziny wycinamy wcześniej
+ * jak w WTP („18 października”, „14.10”), a rocznice typu „45-lecie”
+ * to nie linie.
+ */
+const GDANSK_LINE_RE = /\b(M\d{1,3}|N\d{1,3}|T\d{1,2}|\d{1,3})\b/gi;
+
+function extractGdanskLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  GDANSK_LINE_RE.lastIndex = 0;
+  while ((m = GDANSK_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    // Dwukropek to czas tylko z cyfrą po obu stronach ("13:30").
+    // Samodzielny dwukropek wprowadza opis ("...i 307: zmiany na trasie"),
+    // więc linii przed nim nie odrzucamy.
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' && /\d/.test(text[m.index - 2] ?? '')) continue;
+    if (after === ':' && /\d/.test(text[m.index + m[1].length + 1] ?? '')) continue;
+    // Sufiksy słupków („przystanek Oliwa PKP 03”) to nie linie.
+    if (/^0\d+$/.test(tok)) continue;
+    if (/^\d+$/.test(tok)) {
+      const n = Number(tok);
+      if (n < 1 || n > 999) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/** Data z JSON Gdańska ("2026-10-13 12:00:00", czas lokalny). */
+function parseGdanskDate(raw: unknown): number | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const ts = Date.parse(raw.trim().replace(' ', 'T'));
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function gdanskItemLines(item: Record<string, unknown>, title: string, summary: string): string[] {
+  const raw = item.lineNumbers ?? item.lines ?? item.linie;
+  if (Array.isArray(raw)) {
+    const seen = new Set<string>();
+    for (const l of raw) {
+      const tok = String(l ?? '').trim().toUpperCase();
+      if (!tok || seen.has(tok)) continue;
+      seen.add(tok);
+      if (seen.size >= 12) break;
+    }
+    if (seen.size > 0) return [...seen];
+  }
+  return extractGdanskLines(title, summary);
+}
+
+/**
+ * Zmiany tras ZTM Gdańsk (znt.json: { results: [{ lineNumbers, title,
+ * summary, content, url, alarmDateFrom/To, publishFrom/To }] }). Numery
+ * linii idą gotowe z API, opis z leadu (content bywa pusty).
+ */
+export function parseGdanskZnt(json: string): MpkNewsItem[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const raw = Array.isArray(data) ? data : (data as { results?: unknown })?.results;
+  if (!Array.isArray(raw)) return [];
+  const items: MpkNewsItem[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const item = r as Record<string, unknown>;
+    const title = cleanNewsTitle(String(item.title ?? ''));
+    const summary = htmlToText(String(item.summary ?? item.content ?? '')).slice(0, 600);
+    const link = String(item.url ?? item.link ?? '').trim();
+    const pubDate = parseGdanskDate(item.publishFrom) ?? parseGdanskDate(item.alarmDateFrom);
+    if (!title && !link) continue;
+    items.push({
+      id: link || `${title}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description: summary,
+      imageUrl: null,
+      urgent: isUrgentNews(title, summary),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: gdanskItemLines(item, title, summary),
+    });
+  }
+  return items;
+}
+
+/**
+ * Bieżące awarie ZTM Gdańsk (bsk.json: { komunikaty: [...] }). Kształt
+ * pozycji czytamy defensywnie (feed bywa pusty, więc kontraktu nie da się
+ * zamrozić na próbce): tytuł, treść, link i datę bierzemy z pierwszego
+ * pasującego pola. Wszystko z tego feedu to trwające utrudnienie.
+ */
+export function parseGdanskBsk(json: string): MpkNewsItem[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const raw = Array.isArray(data) ? data : (data as { komunikaty?: unknown })?.komunikaty;
+  if (!Array.isArray(raw)) return [];
+  const first = (item: Record<string, unknown>, keys: string[]): string =>
+    String(keys.map((k) => item[k]).find((v) => typeof v === 'string' && v.trim()) ?? '').trim();
+  const items: MpkNewsItem[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const item = r as Record<string, unknown>;
+    const title = cleanNewsTitle(first(item, ['title', 'tytul', 'naglowek', 'temat']));
+    const text = htmlToText(first(item, ['tresc', 'opis', 'komunikat', 'summary', 'content', 'message', 'text'])).slice(0, 600);
+    const link = first(item, ['url', 'link']);
+    const pubDate =
+      parseGdanskDate(item.publishFrom) ??
+      parseGdanskDate(item.alarmDateFrom) ??
+      parseGdanskDate(item.data) ??
+      parseGdanskDate(item.date) ??
+      parseGdanskDate(item.created);
+    if (!title && !link) continue;
+    items.push({
+      id: link || `${title}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description: text,
+      imageUrl: null,
+      urgent: true,
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: gdanskItemLines(item, title, text),
+    });
+  }
+  return items;
+}
+
 const ARTICLE_JUNK_RE =
   /^(galeria zdjęć|zobacz galerię|zobacz galerię zdjęć tego artykułu|rozwiń|czytaj także|polecane|udostępnij)$/i;
-
 function removeTaggedBlocks(html: string, openRe: RegExp): string {
   let out = html;
   for (let n = 0; n < 20; n++) {
@@ -596,8 +753,34 @@ function removeTaggedBlocks(html: string, openRe: RegExp): string {
   return out;
 }
 
-function scrubArticleHtml(raw: string): string {
-  let out = raw;
+/**
+ * Treść artykułu ztm.gda.pl: nagłówek, lead i akapity treści jako bloki.
+ * Puste article-content (sam lead) daje dwa bloki, nie pustkę.
+ */
+function extractGdanskArticle(html: string): ArticleBlock[] {
+  const blocks: ArticleBlock[] = [];
+  const title = htmlToText((html.match(/<h2 class="article-title">([\s\S]*?)<\/h2>/i) ?? [])[1] ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (title) blocks.push({ kind: 'h', text: title });
+  const summary = htmlToText((html.match(/<div class="article-summary[^"]*">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (summary && summary !== title) blocks.push({ kind: 'p', text: summary });
+  const content = (html.match(/<div class="article-content[^"]*">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '';
+  if (content.trim()) {
+    const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content))) {
+      const text = htmlToText(m[2]).replace(/\s+/g, ' ').trim();
+      if (!text || ARTICLE_JUNK_RE.test(text) || text === summary) continue;
+      blocks.push({ kind: m[1].toLowerCase().startsWith('h') ? 'h' : 'p', text });
+    }
+  }
+  return blocks;
+}
+
+function scrubArticleHtml(raw: string): string {  let out = raw;
   out = removeTaggedBlocks(out, /<div\b[^>]*(?:bbGallery|data-bbgallery-box|expandedSocial|socialEmbed)[^>]*>/gi);
   out = out
     .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, ' ')
@@ -615,6 +798,11 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // ZTM Poznań to WordPress, ale inny motyw niż WTP: treść artykułu siedzi
   // w <div class="row content mt-4"> wewnątrz sekcji (bez <article>).
   const ztmPoznan = /ztm\.poznan\.pl/i.test(url);
+  // ZTM Gdańsk: tytuł w h2.article-title, lead w div.article-summary, treść
+  // w div.article-content (często pusta, sam lead niesie komunikat). Sidebar
+  // z innymi komunikatami omijamy celowanymi klasami, nie całym <main>.
+  const ztmGdansk = /ztm\.gda\.pl/i.test(url);
+  if (ztmGdansk) return extractGdanskArticle(html);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : ztp
@@ -734,6 +922,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'gzm') return fetchGzmNews(signal, city.id);
   if (city.id === 'warszawa') return fetchWtpNews(signal, city.id);
   if (city.id === 'poznan') return fetchPoznanNews(signal, city.id);
+  if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -745,6 +934,28 @@ async function fetchPoznanNews(signal?: AbortSignal, cityId = 'poznan'): Promise
     const items = parsePoznanRss(xml);
     if (items.length === 0) console.warn('[News] Poznań: pusty feed (zmiana formatu?)');
     return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty ZTM Gdańsk: zmiany tras (znt) plus bieżące awarie (bsk). */
+async function fetchGdanskNews(signal?: AbortSignal, cityId = 'trojmiasto'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const [znt, bsk] = await Promise.allSettled([
+      fetchText(ZTM_GDANSK_ZNT_URL, scope.signal, 'application/json, */*').then(parseGdanskZnt),
+      fetchText(ZTM_GDANSK_BSK_URL, scope.signal, 'application/json, */*').then(parseGdanskBsk),
+    ]);
+    const changes = znt.status === 'fulfilled' ? znt.value : [];
+    const breakdowns = bsk.status === 'fulfilled' ? bsk.value : [];
+    if (changes.length === 0 && breakdowns.length === 0) {
+      if (znt.status === 'rejected' && bsk.status === 'rejected') {
+        throw znt.reason instanceof Error ? znt.reason : new Error('news');
+      }
+      console.warn('[News] Gdańsk: puste feedy (zmiana formatu?)');
+    }
+    return rememberNews(sortNews([...breakdowns, ...changes]), cityId);
   } finally {
     scope.dispose();
   }

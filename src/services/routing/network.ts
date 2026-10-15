@@ -13,8 +13,8 @@ let nextNetId = 1;
  * ta sama heurystyka co w backtrack i LineBadge (route_type 0 to tramwaj, 11 to
  * trolejbus, 2 to pociąg, 1 to metro, 6 i 7 to kolej powietrzna i funicular,
  * reszta to autobus). Numery 1–33 to wrocławski schemat (tam niskie numery
- * to tramwaje); w GZM niskie numery mają też autobusy, więc tam liczy się
- * wyłącznie route_type z feedu.
+ * to tramwaje); w GZM niskie numery mają też autobusy, a w Trójmieście
+ * trolejbusy (21–33), więc tam liczy się wyłącznie route_type z feedu.
  */
 export function classifyTransitMode(
   routeType: number | undefined,
@@ -35,7 +35,8 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
   const lineNum = parseInt((shortName || '').trim(), 10);
   if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
   try {
-    return getActiveCityIdSync() !== 'gzm';
+    const id = getActiveCityIdSync();
+    return id !== 'gzm' && id !== 'trojmiasto';
   } catch {
     return true;
   }
