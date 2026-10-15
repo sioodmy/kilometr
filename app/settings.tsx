@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -7,11 +16,13 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Coffee,
   Download,
   ExternalLink,
   Footprints,
+  MapPin,
   Minus,
   Plus,
   Rabbit,
@@ -22,7 +33,8 @@ import {
 import type { RouteStyle } from '../src/services/routing/types';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
-import { CITIES, getCity, type CityId } from '../src/cities';
+import { getCity, type CityId } from '../src/cities';
+import { CitySelectSheet } from '../src/components/CitySelectSheet';
 import { useActiveCity } from '../src/services/cityStore';
 import {
   SETTINGS_LIMITS,
@@ -159,16 +171,34 @@ export default function SettingsScreen() {
   const walkMps = useWalkSpeedMps();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const paceOptions: { value: WalkPaceProfile; icon: typeof Turtle; label: string; desc: string }[] = [
+  const paceOptions: {
+    value: WalkPaceProfile;
+    icon: typeof Turtle;
+    label: string;
+    desc: string;
+  }[] = [
     { value: 'slow', icon: Turtle, label: s.settings.paceSlow, desc: s.settings.paceSlowDesc },
-    { value: 'normal', icon: Footprints, label: s.settings.paceNormal, desc: s.settings.paceNormalDesc },
+    {
+      value: 'normal',
+      icon: Footprints,
+      label: s.settings.paceNormal,
+      desc: s.settings.paceNormalDesc,
+    },
     { value: 'fast', icon: Rabbit, label: s.settings.paceFast, desc: s.settings.paceFastDesc },
   ];
   const styleOptions: { value: RouteStyle; label: string; desc: string }[] = [
     { value: 'fastest', label: s.settings.styleFastest, desc: s.settings.styleFastestDesc },
     { value: 'balanced', label: s.settings.styleBalanced, desc: s.settings.styleBalancedDesc },
-    { value: 'lessWalking', label: s.settings.styleLessWalking, desc: s.settings.styleLessWalkingDesc },
-    { value: 'fewerTransfers', label: s.settings.styleFewerTransfers, desc: s.settings.styleFewerTransfersDesc },
+    {
+      value: 'lessWalking',
+      label: s.settings.styleLessWalking,
+      desc: s.settings.styleLessWalkingDesc,
+    },
+    {
+      value: 'fewerTransfers',
+      label: s.settings.styleFewerTransfers,
+      desc: s.settings.styleFewerTransfersDesc,
+    },
   ];
 
   const maxT = SETTINGS_LIMITS.maxTransfers;
@@ -179,6 +209,7 @@ export default function SettingsScreen() {
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [importing, setImporting] = useState(false);
   const [switchingCity, setSwitchingCity] = useState(false);
+  const [citySheetOpen, setCitySheetOpen] = useState(false);
   const [justSwitched, setJustSwitched] = useState<CityId | null>(null);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
   const [hasTrains, setHasTrains] = useState(true);
@@ -187,7 +218,9 @@ export default function SettingsScreen() {
   const cityHasCable = getCity(cityId).features.cable;
 
   useEffect(() => {
-    refreshDataStatus().then(setDataStatus).catch(() => {});
+    refreshDataStatus()
+      .then(setDataStatus)
+      .catch(() => {});
     return subscribeDataStatus(setDataStatus);
   }, [cityId]);
 
@@ -215,7 +248,9 @@ export default function SettingsScreen() {
     setOutcome(null);
     try {
       await setCity(id);
-      await refreshDataStatus().then(setDataStatus).catch(() => {});
+      await refreshDataStatus()
+        .then(setDataStatus)
+        .catch(() => {});
       // Potwierdzenie zostaje na ekranie po zakończeniu zmiany. Wcześniej
       // znikało razem ze spinnerem, więc użytkownik nie dostawał żadnego
       // znaku, że przełączenie w ogóle się udało.
@@ -274,7 +309,11 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+      >
         <SectionLabel>{s.settings.sectionSupport}</SectionLabel>
         <View style={styles.card}>
           <View style={styles.supportHead}>
@@ -303,31 +342,34 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{s.city.settingsTitle}</Text>
           <Text style={styles.settingHint}>{s.city.settingsHint}</Text>
-          <View style={styles.langRow} accessibilityRole="radiogroup">
-            {CITIES.map((c) => {
-              const active = cityId === c.id;
-              const label = s.city.name(c.id);
-              return (
-                <Pressable
-                  key={c.id}
-                  onPress={() => void handleCityChange(c.id)}
-                  disabled={switchingCity || busy}
-                  style={({ pressed }) => [
-                    styles.langChip,
-                    active && styles.langChipActive,
-                    (switchingCity || busy) && !active && styles.langChipDisabled,
-                    pressed && !active && { opacity: 0.7 },
-                  ]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: active, disabled: switchingCity || busy }}
-                  accessibilityLabel={label}
-                >
-                  {active && <Check size={14} color={scheme.onPrimaryContainer} />}
-                  <Text style={[styles.langChipText, active && styles.langChipTextActive]}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Pressable
+            onPress={() => setCitySheetOpen(true)}
+            disabled={switchingCity || busy}
+            style={({ pressed }) => [
+              styles.cityTile,
+              (switchingCity || busy) && { opacity: 0.6 },
+              pressed && !(switchingCity || busy) && { opacity: 0.8 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
+            accessibilityHint={s.city.settingsHint}
+          >
+            <View style={styles.cityTileIconWrap}>
+              <MapPin size={22} color={scheme.primary} />
+            </View>
+            <View style={styles.cityTileInfo}>
+              <View style={styles.cityTileHeaderRow}>
+                <Text style={styles.cityTileName}>{s.city.name(cityId)}</Text>
+                <View style={styles.cityChangeBadge}>
+                  <Text style={styles.cityChangeBadgeText}>{s.city.changeAction}</Text>
+                  <ChevronRight size={16} color={scheme.primary} />
+                </View>
+              </View>
+              <Text style={styles.cityTileFeeds} numberOfLines={2}>
+                {s.city.feeds(cityId)}
+              </Text>
+            </View>
+          </Pressable>
           {switchingCity ? (
             <View style={styles.switchRow}>
               <ActivityIndicator size="small" color={scheme.primary} />
@@ -339,7 +381,9 @@ export default function SettingsScreen() {
               <Text style={styles.switchText}>{s.city.changed(s.city.name(justSwitched))}</Text>
             </View>
           ) : null}
-          {busy && !switchingCity && <Text style={styles.warnHint}>{s.city.blockedByDownload}</Text>}
+          {busy && !switchingCity && (
+            <Text style={styles.warnHint}>{s.city.blockedByDownload}</Text>
+          )}
           {!busy && !switchingCity && dataStatus.state === 'empty' ? (
             <Text style={styles.warnHint}>{s.city.needDownload}</Text>
           ) : null}
@@ -358,7 +402,9 @@ export default function SettingsScreen() {
               busy && styles.stepBtnDisabled,
               pressed && !busy && { opacity: 0.7 },
             ]}
-            accessibilityLabel={hasTimetable ? s.settings.downloadCheckA11y : s.settings.downloadA11y}
+            accessibilityLabel={
+              hasTimetable ? s.settings.downloadCheckA11y : s.settings.downloadA11y
+            }
             accessibilityState={{ busy, disabled: busy }}
           >
             {busy ? (
@@ -415,7 +461,9 @@ export default function SettingsScreen() {
                   accessibilityLabel={label}
                 >
                   {active && <Check size={14} color={scheme.onPrimaryContainer} />}
-                  <Text style={[styles.langChipText, active && styles.langChipTextActive]}>{label}</Text>
+                  <Text style={[styles.langChipText, active && styles.langChipTextActive]}>
+                    {label}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -441,8 +489,13 @@ export default function SettingsScreen() {
                   accessibilityState={{ checked: active }}
                   accessibilityLabel={`${opt.label}, ${opt.desc}`}
                 >
-                  <Text style={[styles.styleLabel, active && styles.optLabelActive]}>{opt.label}</Text>
-                  <Text style={[styles.styleDesc, active && styles.optDescActive]} numberOfLines={2}>
+                  <Text style={[styles.styleLabel, active && styles.optLabelActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text
+                    style={[styles.styleDesc, active && styles.optDescActive]}
+                    numberOfLines={2}
+                  >
                     {opt.desc}
                   </Text>
                 </Pressable>
@@ -497,8 +550,13 @@ export default function SettingsScreen() {
                   accessibilityState={{ checked: active }}
                   accessibilityLabel={a11y}
                 >
-                  <Icon size={20} color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
-                  <Text style={[styles.paceLabel, active && styles.optLabelActive]}>{opt.label}</Text>
+                  <Icon
+                    size={20}
+                    color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                  />
+                  <Text style={[styles.paceLabel, active && styles.optLabelActive]}>
+                    {opt.label}
+                  </Text>
                   <Text style={[styles.paceKmh, active && styles.optDescActive]}>
                     {formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}
                   </Text>
@@ -547,7 +605,9 @@ export default function SettingsScreen() {
               <View style={styles.divider} />
               <View style={styles.toggleHead}>
                 <CableCar size={18} color={scheme.onSurfaceVariant} />
-                <Text style={[styles.settingTitle, styles.settingText]}>{s.settings.cableTitle}</Text>
+                <Text style={[styles.settingTitle, styles.settingText]}>
+                  {s.settings.cableTitle}
+                </Text>
                 <PrefsToggle
                   value={settings.cableEnabled}
                   onChange={(v) => update({ cableEnabled: v })}
@@ -566,9 +626,7 @@ export default function SettingsScreen() {
           style={({ pressed }) => [styles.advancedToggle, pressed && { opacity: 0.75 }]}
           accessibilityRole="button"
           accessibilityState={{ expanded: advancedOpen }}
-          accessibilityLabel={
-            advancedOpen ? s.settings.advancedHide : s.settings.advancedShow
-          }
+          accessibilityLabel={advancedOpen ? s.settings.advancedHide : s.settings.advancedShow}
         >
           <Text style={styles.advancedToggleText}>
             {advancedOpen ? s.settings.advancedHide : s.settings.advancedShow}
@@ -582,7 +640,10 @@ export default function SettingsScreen() {
 
         {advancedOpen ? (
           <View style={styles.card}>
-            <SettingRow title={s.settings.transferTimeTitle} hint={s.settings.transferTimeHintShort}>
+            <SettingRow
+              title={s.settings.transferTimeTitle}
+              hint={s.settings.transferTimeHintShort}
+            >
               <Stepper
                 value={formatTransferTime(settings.minTransferSec)}
                 onMinus={() => update({ minTransferSec: settings.minTransferSec - minT.step })}
@@ -609,6 +670,18 @@ export default function SettingsScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {citySheetOpen && (
+        <CitySelectSheet
+          selectedCityId={cityId}
+          onSelectCity={(id) => {
+            void handleCityChange(id);
+          }}
+          onClose={() => setCitySheetOpen(false)}
+          switchingCity={switchingCity}
+          switchingCityId={switchingCity ? cityId : null}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -743,6 +816,55 @@ const styles = StyleSheet.create({
   langChipDisabled: { opacity: 0.45 },
   langChipText: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
+  cityTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.large,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 64,
+  },
+  cityTileIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cityTileInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  cityTileHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  cityTileName: {
+    ...type.titleMedium,
+    color: scheme.onSurface,
+    fontWeight: '700',
+  },
+  cityChangeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  cityChangeBadgeText: {
+    ...type.labelLarge,
+    color: scheme.primary,
+    fontWeight: '600',
+  },
+  cityTileFeeds: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    lineHeight: 16,
+  },
   styleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   styleOpt: {
     flexBasis: '45%',
@@ -767,7 +889,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     minHeight: 88,
   },
-  paceLabel: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '700', textAlign: 'center' },
+  paceLabel: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   paceKmh: { ...type.labelMedium, color: scheme.onSurfaceVariant, fontWeight: '600' },
   optActive: { backgroundColor: scheme.primaryContainer },
   optLabelActive: { color: scheme.onPrimaryContainer },
