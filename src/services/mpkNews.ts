@@ -605,6 +605,8 @@ function extractGdanskLines(title: string, description: string): string[] {
     const after = text[m.index + m[1].length];
     if (before === ':' && /\d/.test(text[m.index - 2] ?? '')) continue;
     if (after === ':' && /\d/.test(text[m.index + m[1].length + 1] ?? '')) continue;
+    // Sufiksy słupków („przystanek Oliwa PKP 03”) to nie linie.
+    if (/^0\d+$/.test(tok)) continue;
     if (/^\d+$/.test(tok)) {
       const n = Number(tok);
       if (n < 1 || n > 999) continue;
@@ -623,7 +625,7 @@ function parseGdanskDate(raw: unknown): number | null {
 }
 
 function gdanskItemLines(item: Record<string, unknown>, title: string, summary: string): string[] {
-  const raw = item.lineNumbers ?? item.lines;
+  const raw = item.lineNumbers ?? item.lines ?? item.linie;
   if (Array.isArray(raw)) {
     const seen = new Set<string>();
     for (const l of raw) {

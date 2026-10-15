@@ -918,6 +918,9 @@ function importStaticRailFeed(db, o) {
 
   const stopsTxt = readTxt('stops.txt');
   if (!stopsTxt) throw new Error(`${o.tag} bez stops.txt, przerywam (nie nadpisuję R2 pustką).`);
+  // Feed SKM miesza caps-lock ("GDAŃSK GŁÓWNY") z Title Case; KML/KŚ
+  // title-case'ują zawsze, więc opcja wyrównuje stacje do reszty UI.
+  const nameOf = o.titleCase ? titleCasePl : (s) => s;
   const stopGeo = new Map();
   eachRow(stopsTxt, (c, idx) => {
     const id = (c[idx.stop_id] || '').trim();
@@ -926,7 +929,7 @@ function importStaticRailFeed(db, o) {
     const lat = Number(c[idx.stop_lat]) || 0;
     const lon = Number(c[idx.stop_lon]) || 0;
     if (!lat || !lon) return;
-    stopGeo.set(id, { name, lat, lon });
+    stopGeo.set(id, { name: nameOf(name), lat, lon });
   });
 
   const routesTxt = readTxt('routes.txt');
@@ -1552,13 +1555,32 @@ function importGdyniaGeneric(db, txtDir, counts, cityStops, cityStopIds) {
   const calDatesTxt = readTxt('calendar_dates.txt');
   if (calDatesTxt) {
     const rows = [];
+    // Zakres dat per serwis: GDY nie ma calendar.txt, więc po wstawieniu
+    // wyjątków dokładamy wiersz-placeholder do calendar (wszystkie dni 0
+    // plus min/max daty). Każde inne miasto trzyma ten niezmiennik
+    // (serwis kursu istnieje w calendar), a zapytania aplikacji czytają
+    // calendar i calendar_dates razem.
+    const dateRange = new Map(); // sid -> { min, max }
     eachRow(calDatesTxt, (c, idx) => {
       const id = (c[idx.service_id] || '').trim();
-      if (id) rows.push([P(id), (c[idx.date] || '').trim(), Number(c[idx.exception_type]) || 0]);
+      if (!id) return;
+      const date = (c[idx.date] || '').trim();
+      const exc = Number(c[idx.exception_type]) || 0;
+      rows.push([P(id), date, exc]);
+      if (date.length !== 8 || exc !== 1) return;
+      const r = dateRange.get(id);
+      if (!r) dateRange.set(id, { min: date, max: date });
+      else {
+        if (date < r.min) r.min = date;
+        if (date > r.max) r.max = date;
+      }
     });
     const ins = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
+    const insCalPlaceholder = db.prepare('INSERT OR IGNORE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, 0, 0, 0, 0, 0, 0, 0, ?, ?)');
     db.exec('BEGIN');
     for (const r of rows) ins.run(...r);
+    // OR IGNORE: gdy feed kiedyś dostarczy calendar.txt, prawdziwy wpis wygrywa.
+    for (const [sid, r] of dateRange) insCalPlaceholder.run(P(sid), r.min, r.max);
     db.exec('COMMIT');
   }
   const tripsTxt = readTxt('trips.txt');
@@ -2865,7 +2887,7 @@ async function main() {
     }
     const skmtStat = importStaticRailFeed(db, {
       tag: 'SKMT', dir: skmtDir, prefix: 'SKMT', agency: null, touchEnvelope: true,
-      envelope: TRI_ENVELOPE,
+      envelope: TRI_ENVELOPE, titleCase: true,
       trainNum: (c, idx) => ((c[idx.trip_short_name] || '').trim().split(/\s/)[0] || '').split('/')[0].trim(),
       counts, railGeo,
     });
@@ -3053,6 +3075,7 @@ async function main() {
     const problems = [];
     let gdaTramTrips = 0;
     let gdyTrolleyTrips = 0;
+    let gdyTrips = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 0 AND r.route_id LIKE 'GDA:%'").get();
       gdaTramTrips = row?.n ?? 0;
@@ -3061,17 +3084,30 @@ async function main() {
       const row = db.prepare("SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 11 AND r.route_id LIKE 'GDY:%'").get();
       gdyTrolleyTrips = row?.n ?? 0;
     } catch {}
+    try {
+      const row = db.prepare("SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.route_id LIKE 'GDY:%'").get();
+      gdyTrips = row?.n ?? 0;
+    } catch {}
     if (gdaTramTrips === 0) problems.push('0 kursów tramwajów ZTM Gdańsk');
+    if (gdyTrips === 0) problems.push('0 kursów ZKM Gdynia');
     if (gdyTrolleyTrips === 0) problems.push('0 kursów trolejbusów ZKM Gdynia');
     if (counts.skmtStations === 0) problems.push('0 stacji SKM');
     if (counts.skmtRoutes === 0) problems.push('0 tras SKM');
     if (counts.skmtTrips === 0) problems.push('0 kursów SKM');
     if (interchangeCount === 0) problems.push('0 przesiadek SKM<->ZTM/ZKM');
+    // Niezmiennik: każdy kurs wskazuje serwis obecny w calendar (GDY nie ma
+    // calendar.txt, więc build dokłada wiersz-placeholder z calendar_dates).
+    let orphanServices = 0;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM trips t LEFT JOIN calendar c ON c.service_id = t.service_id WHERE c.service_id IS NULL').get();
+      orphanServices = row?.n ?? 0;
+    } catch {}
+    if (orphanServices > 0) problems.push(`${orphanServices} kursów z serwisem spoza calendar`);
     if (problems.length > 0) {
       rmSync(work, { recursive: true, force: true });
       throw new Error(`niepełne Trójmiasto (${problems.join(', ')}): nie publikuję bazy.`);
     }
-    log(`TROJMIASTO: kursów tramwajów GDA=${gdaTramTrips} trolejbusów GDY=${gdyTrolleyTrips}`);
+    log(`TROJMIASTO: kursów tramwajów GDA=${gdaTramTrips} trolejbusów GDY=${gdyTrolleyTrips} (całe GDY=${gdyTrips})`);
   }
 
   // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem

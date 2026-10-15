@@ -168,6 +168,11 @@ describe('Numery linii Gdańsk bez lineNumbers (fallback)');
     parseGdanskZnt(znt('Utrudnienia od 19:30 na linii 138')).map((i) => i.lines),
     [['138']],
   );
+  expect(
+    'sufiks słupka („03”) to nie linia',
+    parseGdanskZnt(znt('Przystanek Oliwa PKP 03 tymczasowo przeniesiony, dotyczy 117')).map((i) => i.lines),
+    [['117']],
+  );
 }
 
 describe('Tryb linii: tramwaje, trolejbusy, nocne i zastępcze');
@@ -185,7 +190,7 @@ describe('Tryb linii: tramwaje, trolejbusy, nocne i zastępcze');
   expect('T9 (zastępczy) to autobus', inferTransitMode(undefined, 'T9', 'trojmiasto'), 'bus');
   expect('M32 to autobus', inferTransitMode(undefined, 'M32', 'trojmiasto'), 'bus');
   expect('138 to autobus', inferTransitMode(undefined, '138', 'trojmiasto'), 'bus');
-  expect('25 poza Trójmiastem bez zgadywania', inferTransitMode(undefined, '25', 'wroclaw'), 'tram');
+  expect('25 we Wrocławiu to tramwaj (heurystyka 1–33)', inferTransitMode(undefined, '25', 'wroclaw'), 'tram');
   expect('trolejbus ma stałą zieleń', getLineColors('25', undefined, 'trojmiasto').bg, '#2E7D32');
   expect('tramwaj 8 nie jest busem', getLineColors('8', undefined, 'trojmiasto').isTram, true);
 }
