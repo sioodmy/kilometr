@@ -73,6 +73,9 @@ jobs:
       - name: Run logic tests (Poznań city)
         run: npm run check:poznan
 
+      - name: Run logic tests (Łódź city)
+        run: npm run check:lodz
+
       - name: Run logic tests (Home pull gesture)
         run: npm run check:pull
 

@@ -78,11 +78,11 @@ export const de: Strings = {
     settingsTitle: 'Stadt',
     settingsHint: 'Fahrplan, Offline-Karte und Meldungen folgen der Stadt. Die Daten der anderen Stadt bleiben auf dem Telefon.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'lodz' ? 'Łódź' : 'Wrocław',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'lodz' ? 'Łódź' : 'Wrocław',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'lodz' ? 'Łódź' : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP und Koleje Małopolskie'
@@ -92,7 +92,9 @@ export const de: Strings = {
             ? 'WTP, SKA, Koleje Mazowieckie und WKD'
             : id === 'poznan'
               ? 'ZTM und Koleje Wielkopolskie'
-              : 'MPK und Koleje Dolnośląskie',
+              : id === 'lodz'
+                ? 'MPK und Łódzka Kolej Aglomeracyjna'
+                : 'MPK und Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -102,7 +104,9 @@ export const de: Strings = {
             ? 'WTP Warszawa'
             : id === 'poznan'
               ? 'ZTM Poznań'
-              : 'MPK Wrocław • wroclaw.pl',
+              : id === 'lodz'
+                ? 'MPK Łódź'
+                : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -112,7 +116,9 @@ export const de: Strings = {
             ? 'WTP Warszawa'
             : id === 'poznan'
               ? 'ZTM Poznań'
-              : 'MPK Wrocław',
+              : id === 'lodz'
+                ? 'MPK Łódź'
+                : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : 'MPK',
     portal: (id: string): string =>
@@ -124,8 +130,10 @@ export const de: Strings = {
             ? 'wtp.waw.pl'
             : id === 'poznan'
               ? 'ztm.poznan.pl'
-              : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań',
+              : id === 'lodz'
+                ? 'mpk.lodz.pl'
+                : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Łódź',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
@@ -329,7 +337,9 @@ export const de: Strings = {
           ? 'z. B. Marszałkowska 12'
           : id === 'poznan'
             ? 'z. B. Głogowska 12'
-            : 'z. B. Swojczycka 41',
+            : id === 'lodz'
+              ? 'z. B. Piotrkowska 12'
+              : 'z. B. Swojczycka 41',
     slotWork: 'Arbeit',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -338,7 +348,9 @@ export const de: Strings = {
           ? 'z. B. Złote Tarasy'
           : id === 'poznan'
             ? 'z. B. Stary Browar'
-            : 'z. B. Sky Tower',
+            : id === 'lodz'
+              ? 'z. B. Manufaktura'
+              : 'z. B. Sky Tower',
     slotUni: 'Uni',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -347,7 +359,9 @@ export const de: Strings = {
           ? 'z. B. Uniwersytet'
           : id === 'poznan'
             ? 'z. B. UAM'
-            : 'z. B. Politechnika',
+            : id === 'lodz'
+              ? 'z. B. UŁ'
+              : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',
@@ -582,7 +596,7 @@ export const de: Strings = {
     searching: (city: string) => `${city} wird durchsucht…`,
     noResults: 'Keine Ergebnisse',
     noResultsHint: (id: string) =>
-      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
+      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : id === 'lodz' ? '„piotrkowska“, „manufaktura“, „fabryczna“, „kaliska“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
     yourPlaces: 'Deine Orte',
     gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',

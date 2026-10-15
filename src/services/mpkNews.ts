@@ -7,6 +7,10 @@
 //   z opisu w feedzie).
 // - Poznań: RSS ZTM (www.ztm.poznan.pl/feed, zwykły RSS 2.0 WordPressa;
 //   numery linii w tytułach jak w WTP, treść z opisu w feedzie).
+// - Łódź: dwa kanały MPK (rozklady/rss/rozklady.jsp ze zmianami, showrss
+//   z utrudnieniami) w ISO-8859-2. Tytuły generyczne, więc tytuł niesie treść
+//   opisu, a linie wyciągamy z linków w opisie. Artykuł to podstrona
+//   wholemessage.jsp (treść w div#dWrkspc).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -64,6 +68,13 @@ export const WTP_FEED_URL = 'https://www.wtp.waw.pl/feed/';
  * „na trasę linii 0”), więc wyciągamy je regexem jak w WTP.
  */
 export const ZTM_POZNAN_FEED_URL = 'https://www.ztm.poznan.pl/feed/';
+/**
+ * Komunikaty MPK Łódź: zmiany w rozkładach (RSS z opisami pełnymi numerów
+ * linii w linkach) oraz utrudnienia w ruchu (pusty kanał, gdy nic się nie
+ * dzieje; parser zwraca wtedy zero pozycji bez błędu).
+ */
+export const MPK_LODZ_ROZKLADY_RSS = 'https://mpk.lodz.pl/rozklady/rss/rozklady.jsp';
+export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=1211';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -567,6 +578,137 @@ export function parsePoznanRss(xml: string): MpkNewsItem[] {
   return items;
 }
 
+/**
+ * MPK Łódź serwuje RSS w ISO-8859-2, a fetch.text() dekoduje wszystko jako
+ * UTF-8 (krzaki zamiast ogonków). Najpierw próbujemy TextDecoder, a gdy silnik
+ * go nie zna (RangeError), używamy własnej tablicy Latin-2.
+ */
+const LATIN2_HIGH =
+  ' Ą˘Ł¤ĽŚ§¨ŠŞŤŹ­ŽŻ°ą˛ł´ľśˇ¸šşťź˝žżŔÁÂĂÄĹĆÇČÉĘËĚÍÎĎĐŃŇÓÔŐÖ×ŘŮÚŰÜÝŢßŕáâăäĺćçčéęëěíîďđńňóôőö÷řůúűüýţ˙';
+
+function decodeLatin2(buf: ArrayBuffer): string {
+  try {
+    return new TextDecoder('iso-8859-2').decode(buf);
+  } catch {
+    const bytes = new Uint8Array(buf);
+    let out = '';
+    for (const byte of bytes) {
+      out += byte < 0x80 ? String.fromCharCode(byte) : (LATIN2_HIGH[byte - 0xa0] ?? '');
+    }
+    return out;
+  }
+}
+
+async function fetchLodzText(url: string, signal: AbortSignal): Promise<string> {
+  const res = await fetch(url, {
+    headers: { Accept: 'application/rss+xml, application/xml, text/xml, text/html, */*' },
+    signal,
+  });
+  if (!res.ok) throw new Error(`${res.status}`);
+  return decodeLatin2(await res.arrayBuffer());
+}
+
+/** Miesiące z komunikatów MPK (feed myli "październik" z "października"). */
+const LODZ_MONTHS: Record<string, number> = {
+  stycznia: 0, lutego: 1, marca: 2, kwietnia: 3, maja: 4, czerwca: 5,
+  lipca: 6, sierpnia: 7, 'września': 8, wrzesnia: 8, 'października': 9,
+  pazdziernika: 9, 'październik': 9, pazdziernik: 9, listopada: 10, grudnia: 11,
+};
+
+/** Pierwsza data słowna z tekstu ("16 października 2026", też zakres "12-16 ..."). */
+function parseLodzDate(text: string): number | null {
+  const m = text.match(
+    /(\d{1,2})(?:\s*[-–—]\s*\d{1,2})?\s+([a-ząćęłńóśźż]+)\s+(\d{4})/i,
+  );
+  if (!m) return null;
+  const month = LODZ_MONTHS[m[2].toLowerCase()];
+  if (month == null) return null;
+  const ts = new Date(Number(m[3]), month, Number(m[1]), 8, 0, 0).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
+/** Linie MPK Łódź z GTFS ZDiT: 1–202 z sufiksami, nocne N, zastępcze Z/R/P, F1/G1/G2/oP6. */
+const LODZ_LINE_RE = /\b([A-Z]{0,2}\d{1,3}[A-Z]?|OP6)\b/gi;
+/** Samotne H i W to linie tylko po słowie "linii": przyimek "w" jest wszędzie. */
+const LODZ_SINGLE_RE = /(?:linii|linia|linie)\s+([HW])\b/gi;
+
+function extractLodzLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{4}\s*r\.?/gi, ' ')
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    .replace(
+      new RegExp(
+        `\\b\\d{1,2}(?:\\s*[-–—]\\s*\\d{1,2})?\\s+(?:${Object.keys(LODZ_MONTHS).join('|')})(?:\\s+\\d{4})?\\b`,
+        'gi',
+      ),
+      ' ',
+    );
+  let m: RegExpExecArray | null;
+  LODZ_LINE_RE.lastIndex = 0;
+  while ((m = LODZ_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' || after === ':') continue;
+    if (/^\d+$/.test(tok)) {
+      const n = Number(tok);
+      if (n < 1 || n > 999) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  LODZ_SINGLE_RE.lastIndex = 0;
+  while ((m = LODZ_SINGLE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Komunikaty MPK Łódź (RSS 2.0 bez pubDate: datę niesie treść opisu).
+ * Tytuły w kanale są generyczne ("Aktualne zmiany..."), więc tytuł karty
+ * budujemy z nich plus numery linii; sam opis ląduje w karcie w całości.
+ */
+export function parseMpkLodzRss(xml: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const link = stripCdata(tagInner(b, 'link') || tagInner(b, 'guid')).trim();
+    const rawDesc = stripCdata(tagInner(b, 'description'));
+    const text = htmlToText(rawDesc).replace(/\s+/g, ' ').trim().slice(0, 600);
+    if (!rawTitle && !link && !text) continue;
+    // Zwykły tekst, nie HTML: w hrefach siedzą numery lineId (np. 904),
+    // które nie są liniami.
+    const lines = extractLodzLines(rawTitle, text);
+    const title =
+      lines.length > 0
+        ? `${cleanNewsTitle(rawTitle)}: ${lines.slice(0, 10).join(', ')}`
+        : cleanNewsTitle(text.slice(0, 140) || rawTitle);
+    const pubDate = parseLodzDate(text);
+    if (!title && !link) continue;
+    items.push({
+      id: link || `${title}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description: text,
+      imageUrl: extractImage(rawDesc),
+      urgent: isUrgentNews(title, text),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines,
+    });
+  }
+  return items;
+}
+
 const ARTICLE_JUNK_RE =
   /^(galeria zdjęć|zobacz galerię|zobacz galerię zdjęć tego artykułu|rozwiń|czytaj także|polecane|udostępnij)$/i;
 
@@ -609,6 +751,7 @@ function scrubArticleHtml(raw: string): string {
 
 export function extractArticleBlocks(html: string, url: string): ArticleBlock[] {
   const mpk = /mpk\.wroc\.pl/i.test(url);
+  const mpkLodz = /mpk\.lodz\.pl/i.test(url);
   const ztp = /ztp\.krakow\.pl/i.test(url);
   const gzm = /rj\.transportgzm\.pl/i.test(url);
   const wtp = /wtp\.waw\.pl/i.test(url);
@@ -617,7 +760,9 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   const ztmPoznan = /ztm\.poznan\.pl/i.test(url);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
-    : ztp
+    : mpkLodz
+      ? (html.match(/<div id="dWrkspc">([\s\S]*?)<\/td>/i)?.[1] ?? '')
+      : ztp
       ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
         html.match(/class="content"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i)?.[1] ??
         html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
@@ -636,6 +781,12 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   if (gzm) {
     // Tytuł niesie nagłówek ekranu (params.title), więc w treści go pomijamy.
     fragment = fragment.replace(/<h2\b[^>]*>[\s\S]*?<\/h2>/i, ' ');
+  }
+  if (mpkLodz) {
+    // Nagłówek "KOMUNIKAT" i wiersz tytułu z tabeli: ekran pokazuje je sam.
+    fragment = fragment
+      .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ')
+      .replace(/<th\b[^>]*>[\s\S]*?<\/th>/i, ' ');
   }
   fragment = scrubArticleHtml(fragment);
   if (!fragment.trim()) return [];
@@ -734,7 +885,40 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'gzm') return fetchGzmNews(signal, city.id);
   if (city.id === 'warszawa') return fetchWtpNews(signal, city.id);
   if (city.id === 'poznan') return fetchPoznanNews(signal, city.id);
+  if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   return fetchMpkNews(signal);
+}
+
+/**
+ * Komunikaty MPK Łódź: zmiany w rozkładach plus utrudnienia w ruchu.
+ * Kanał utrudnień bywa pusty (wtedy bierzemy same zmiany); oba martwe to błąd.
+ */
+async function fetchLodzNews(signal?: AbortSignal, cityId = 'lodz'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const [rozklady, utrudnienia] = await Promise.allSettled([
+      fetchLodzText(MPK_LODZ_ROZKLADY_RSS, scope.signal).then(parseMpkLodzRss),
+      fetchLodzText(MPK_LODZ_UTRUDNIENIA_RSS, scope.signal).then(parseMpkLodzRss),
+    ]);
+    const seen = new Set<string>();
+    const items = [
+      ...(rozklady.status === 'fulfilled' ? rozklady.value : []),
+      ...(utrudnienia.status === 'fulfilled' ? utrudnienia.value : []),
+    ].filter((i) => {
+      if (seen.has(i.id)) return false;
+      seen.add(i.id);
+      return true;
+    });
+    if (items.length === 0) {
+      if (rozklady.status === 'rejected' && utrudnienia.status === 'rejected') {
+        throw rozklady.reason instanceof Error ? rozklady.reason : new Error('news');
+      }
+      console.warn('[News] Łódź: oba kanały MPK puste (zmiana formatu?)');
+    }
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
 }
 
 /** Komunikaty ZTM Poznań: jedno źródło (RSS), brak fallbacku. */
@@ -839,7 +1023,10 @@ export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]>
 export async function fetchArticle(url: string, signal?: AbortSignal): Promise<ArticleBlock[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
-    const html = await fetchText(url, scope.signal, 'text/html, */*');
+    // mpk.lodz.pl serwuje ISO-8859-2: zwykły fetch.text() dałby krzaki.
+    const html = /mpk\.lodz\.pl/i.test(url)
+      ? await fetchLodzText(url, scope.signal)
+      : await fetchText(url, scope.signal, 'text/html, */*');
     return extractArticleBlocks(html, url);
   } finally {
     scope.dispose();

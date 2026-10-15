@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'lodz';
 
 export interface CityCenter {
   lat: number;
@@ -160,7 +160,34 @@ const POZNAN: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN];
+const LODZ: CityDef = {
+  id: 'lodz',
+  name: 'Łódź',
+  center: { lat: 51.7592, lon: 19.455 },
+  // Aglomeracja z liniami podmiejskimi (tramwaje 41/43 do Pabianic
+  // i Zgierza, Stryków na wschodzie): najdalszy punkt to Zgierz
+  // (~25 km od centrum).
+  radiusM: 28_000,
+  bounds: { minLat: 51.55, maxLat: 51.97, minLon: 19.05, maxLon: 19.85 },
+  nominatimViewbox: '19.05,51.97,19.85,51.55',
+  overpassBbox: '51.55,19.05,51.97,19.85',
+  // zbiorkom.live nazywa miasto `lodz`; bbox jak bounds.
+  zbiorkomSlug: 'lodz',
+  zbiorkomBbox: '19.05,51.55,19.85,51.97',
+  dbFile: 'kilometr-gtfs-lodz.db',
+  tilePack: 'lodz-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do Zgierza
+  // czy Strykowa działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 51.55, maxLat: 51.97, minLon: 19.05, maxLon: 19.85 },
+  // Aglomeracja w z14 z kompresją gzip zajmuje ~20 MB (pomiar próbką kafli).
+  tileMaxZoom: 14,
+  tilePackMB: 20,
+  // ŁKA siedzi we własnym publicznym GTFS (pkp-lka.zip), nie w PDP.
+  // ZDiT nie ma publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, LODZ];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

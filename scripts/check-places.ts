@@ -46,6 +46,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.poznan',
   );
   expect(
+    'Łódź dokleja sufiks',
+    cityKey('kilometr.places', 'lodz'),
+    'kilometr.places.lodz',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -82,13 +87,19 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Środa Wlkp. w Poznaniu', suggestCityForCoords(52.2277, 17.2787)?.id, 'poznan');
   // ...a Września (~50 km) już poza nią.
   expect('Września poza Poznaniem', suggestCityForCoords(52.326, 17.5866)?.id ?? null, null);
+  expect('Piotrkowska w Łodzi', suggestCityForCoords(51.7592, 19.455)?.id, 'lodz');
+  expect('Manufaktura w Łodzi', suggestCityForCoords(51.7813, 19.4448)?.id, 'lodz');
+  // Zgierz (~25 km) to najdalszy punkt aglomeracji...
+  expect('Zgierz w Łodzi', suggestCityForCoords(51.854, 19.125)?.id, 'lodz');
+  // ...a Sieradz (~53 km) już poza nią.
+  expect('Sieradz poza Łodzią', suggestCityForCoords(51.593, 18.73)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
 
 describe('Rejestr miast');
 {
-  expect('pięć miast', CITIES.map((c) => c.id).join(','), 'wroclaw,krakow,gzm,warszawa,poznan');
+  expect('sześć miast', CITIES.map((c) => c.id).join(','), 'wroclaw,krakow,gzm,warszawa,poznan,lodz');
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
     'isCityId zna wszystkie',
@@ -98,9 +109,10 @@ describe('Rejestr miast');
       isCityId('gzm'),
       isCityId('warszawa'),
       isCityId('poznan'),
+      isCityId('lodz'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,false',
+    'true,true,true,true,true,true,false',
   );
 }
 
@@ -146,6 +158,17 @@ describe('Wpis Poznania');
   expect('kafle w z14 jak reszta (limit R2)', pozn.tileMaxZoom, 14);
   expect('kolej regionalna (KW)', pozn.features.regionalRail, true);
   expect('bez bezpośredniego bus_position', pozn.features.directBusPosition, false);
+}
+
+describe('Wpis Łodzi');
+{
+  const lodz = getCity('lodz');
+  expect('slug zbiorkom to lodz', lodz.zbiorkomSlug, 'lodz');
+  expect('osobna baza', lodz.dbFile, 'kilometr-gtfs-lodz.db');
+  expect('osobny pakiet kafli', lodz.tilePack, 'lodz-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', lodz.tileMaxZoom, 14);
+  expect('kolej regionalna (ŁKA)', lodz.features.regionalRail, true);
+  expect('bez bezpośredniego bus_position', lodz.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);

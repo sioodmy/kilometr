@@ -1,10 +1,10 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
 // - miasto `pkp`: pozycje i opóźnienia pociągów regionalnych (agencja `KD`
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
-//   `KW` i `PR` dla Poznania),
-// - miasto `wroclaw` / `krakow` / `gzm` / `warsaw`: awaryjne (Wrocław) albo
-//   podstawowe (Kraków, GZM, Warszawa) pozycje autobusów, tramwajów i metra,
-//   gdy bezpośredni feed nie odpowiada.
+//   `KW` i `PR` dla Poznania, `LKA` dla Łodzi),
+// - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `lodz`:
+//   awaryjne (Wrocław) albo podstawowe (reszta miast) pozycje autobusów,
+//   tramwajów i metra, gdy bezpośredni feed nie odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -138,6 +138,23 @@ export async function fetchZbPoznanRows(): Promise<RawVehicleRow[] | null> {
   return toRawRows(positions);
 }
 
+/**
+ * Pozycje ZDiT Łódź jako wiersze dla matchera. Podstawowy feed live.
+ * Filtr `agencies=default` (jak Warszawa): agencje `PABIANICE`, `ZGIERZ`,
+ * `STRYKOW` i `ALEKSANDROW` numerują linie 1–8, czyli dokładnie jak łódzkie
+ * tramwaje, a ich kursów nie ma w GTFS ZDiT. Pojazdy nigdy nie dopasowałyby
+ * się do kursów, ale wisiałyby na mapie i w widoku linii jako widma
+ * tramwajów. Dojazd do Pabianic i Zgierza kryją tramwaje 41/43 z agencji
+ * `default`, więc aglomeracja nie traci live.
+ */
+export async function fetchZbLodzRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const lodz = getCity('lodz');
+  const positions = await fetchPositions(lodz.zbiorkomSlug, 'default', lodz.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
 function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
   const rows: RawVehicleRow[] = [];
   for (const p of positions) {
@@ -213,6 +230,23 @@ export async function fetchZbPoznanRails(): Promise<{ agency: string; vehicles: 
   if (positions === null) return null;
   const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
   for (const agency of ['KW', 'PR']) {
+    const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
+    if (vehicles.length > 0) out.push({ agency, vehicles });
+  }
+  return out;
+}
+
+/**
+ * Pociągi Łódzkiej Kolei Aglomeracyjnej z jednego zapytania (bbox Łodzi).
+ * Brygada z live to numer pociągu (trip_short_name przed "/" w GTFS ŁKA),
+ * oznaczenie linii w API to samo "Ł" dla całej siatki.
+ */
+export async function fetchZbLodzRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+  const { getCity } = await import('../cities');
+  const positions = await fetchPositions('pkp', 'LKA', getCity('lodz').zbiorkomBbox);
+  if (positions === null) return null;
+  const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
+  for (const agency of ['LKA']) {
     const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
     if (vehicles.length > 0) out.push({ agency, vehicles });
   }
