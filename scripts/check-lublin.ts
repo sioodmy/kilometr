@@ -122,6 +122,13 @@ describe('Numery linii ZDiTM Lublin: daty, liczebniki, stanowiska');
     [['6']],
   );
   expect(
+    '„7.lubelski” (liczebnik z kropką przy słowie) to nie linia',
+    parseLublinInfo(
+      card('Utrudnienia w ruchu', 'Zgromadzenie p.n. "7.lubelski Marsz Równości", autobusy linii 3 i 55 jadą objazdem'),
+    ).map((i) => i.lines),
+    [['3', '55']],
+  );
+  expect(
     'godziny i stanowiska to nie linie („6:38”, „WSEI 01”)',
     parseLublinInfo(card('Rozkład linii 801', 'Odjazdy z przystanku Mełgiewska WSEI 01: 6:38, 7:18')).map((i) => i.lines),
     [[]],
@@ -206,6 +213,8 @@ describe('Treść komunikatu ZDiTM Lublin (section.main-center-panel)');
 <div style="text-align: justify;">Linia na Biskupie otrzymała nr 801. Będzie kursować w dni powszednie.
 <ul><li>odjazdy z przystanku Mełgiewska WSEI 01: 6:38, 7:18</li>
 <li>odjazdy z przystanku Biskupie - obwodnica 02: 6:50, 7:30</li></ul></div>
+<div style="text-align: justify;">Linia obsługiwana taborem niskopodłogowym od pierwszego dnia kursowania.</div>
+<a href="javascript:window.history.back()" class="btn btn-default">Wstecz</a>
 </article>
 </section>
 <section class="main-right-panel col-xs-12 col-md-3 col-lg-3"><article><h4>Logotypy</h4></article></section>
@@ -214,6 +223,10 @@ describe('Treść komunikatu ZDiTM Lublin (section.main-center-panel)');
   expect('bez tytułu z h2', blocks.some((b) => b.text.startsWith('Zmiany w komunikacji miejskiej od 19')), false);
   expect('lead o linii 801 jest', blocks.some((b) => b.text.includes('Uruchomienie nowej linii')), true);
   expect('trasa po myślnikach jest', blocks.some((b) => b.text.includes('Metalurgiczna')), true);
+  // Akapit wprost w divie (bez p) musi dojść, a „Wstecz” z nawigacji nie.
+  expect('luźny akapit z diva jest', blocks.some((b) => b.text.includes('taborem niskopodłogowym')), true);
+  expect('luźny akapit w kolejności dokumentu', blocks.findIndex((b) => b.text.includes('taborem niskopodłogowym')) > blocks.findIndex((b) => b.text.includes('Uruchomienie nowej linii')), true);
+  expect('bez przycisku Wstecz', blocks.some((b) => b.text.includes('Wstecz')), false);
   expect('bez okruszków', blocks.some((b) => b.text.includes('Strona główna')), false);
   expect('bez lewego panelu', blocks.some((b) => b.text.includes('Przewoźnicy')), false);
   expect('bez prawego panelu', blocks.some((b) => b.text.includes('Logotypy')), false);
