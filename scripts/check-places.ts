@@ -56,6 +56,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.szczecin',
   );
   expect(
+    'Lublin dokleja sufiks',
+    cityKey('kilometr.places', 'lublin'),
+    'kilometr.places.lublin',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -110,6 +115,13 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
   // ...a Stargard (~33 km) już poza nią.
   expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
+  expect('Zamek w Lublinie', suggestCityForCoords(51.2515, 22.5695)?.id, 'lublin');
+  expect('Felicity w Lublinie', suggestCityForCoords(51.23, 22.6135)?.id, 'lublin');
+  // Świdnik (~10 km) i Niemce (~13 km) to najdalsze punkty strefy...
+  expect('Świdnik w Lublinie', suggestCityForCoords(51.22, 22.71)?.id, 'lublin');
+  expect('Niemce w Lublinie', suggestCityForCoords(51.36, 22.52)?.id, 'lublin');
+  // ...a Lubartów (~24 km) już poza nią.
+  expect('Lubartów poza Lublinem', suggestCityForCoords(51.46, 22.61)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
@@ -117,9 +129,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'osiem miast',
+    'dziewięć miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,lublin',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -133,9 +145,10 @@ describe('Rejestr miast');
       isCityId('trojmiasto'),
       isCityId('lodz'),
       isCityId('szczecin'),
+      isCityId('lublin'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -214,6 +227,17 @@ describe('Wpis Szczecina');
   expect('kafle w z14 jak reszta (limit R2)', szcz.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS SKM)', szcz.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
+}
+
+describe('Wpis Lublina');
+{
+  const lub = getCity('lublin');
+  expect('slug zbiorkom to lublin', lub.zbiorkomSlug, 'lublin');
+  expect('osobna baza', lub.dbFile, 'kilometr-gtfs-lublin.db');
+  expect('osobny pakiet kafli', lub.tilePack, 'lublin-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', lub.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS w zakresie budowy)', lub.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', lub.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);
