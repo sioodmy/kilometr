@@ -1126,11 +1126,19 @@ export function parseRzeszowRss(xml: string): MpkNewsItem[] {
     const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
-    const description = htmlToText(rawDesc)
+    let description = htmlToText(rawDesc)
       .replace(/\s*Czytaj dalej[\s\S]*?→\s*$/, '')
       .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 600);
+      .trim();
+    // Karta WordPressa ZTM startuje treścią z nagłówkiem, więc opis
+    // zaczyna się od tytułu („Sprzedaż biletów... Sprzedaż biletów...”).
+    if (description.toLowerCase().startsWith(title.toLowerCase())) {
+      const rest = description.slice(title.length);
+      if (rest === '' || /^[\s.,:;–—-]/.test(rest)) {
+        description = rest.replace(/^[\s.,:;–—-]+/, '').trim();
+      }
+    }
+    description = description.slice(0, 600);
     const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
     const ts = pubRaw ? Date.parse(pubRaw) : NaN;
     const pubDate = Number.isFinite(ts) ? ts : null;

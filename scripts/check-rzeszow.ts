@@ -155,9 +155,8 @@ describe('Numery linii ZTM: nocne, 0A/0B, PT, daty i godziny');
     parseRzeszowRss(xml('Zmiany od 24.10 do 2.11 na linii 43')).map((i) => i.lines),
     [['43']],
   );
-  // Regresje z żywego feedu (2026-10-15): telefon ZTM „17 748 13 45”
-  // dawał widma linii 17, 13, 45, 46 i 47, a ucięta data z karty
-  // WordPressa („do 15 …”) widmo linii 15.
+  // Regresje z żywego feedu: telefon ZTM „17 748 13 45” dawał widma
+  // linii 17, 13, 45, 46, 47, a ucięta data („do 15 …”) widmo linii 15.
   expect(
     'telefony stacjonarne („17 748 13 45”) to nie linie',
     parseRzeszowRss(xml('Bezpłatne przejazdy', 'kontakt telefoniczny: 17 748 13 45, 17 748 13 46, 17 748 13 47.')).map((i) => i.lines),
@@ -177,6 +176,14 @@ describe('Numery linii ZTM: nocne, 0A/0B, PT, daty i godziny');
     'ucięta data („do 15 …”) to nie linia',
     parseRzeszowRss(xml('Sprzedaż biletów', 'Bilety na okres od 1 października 2026 r. do 15 &#8230;')).map((i) => i.lines),
     [[]],
+  );
+  // WordPress ZTM powtarza tytuł na starcie treści (post startuje nagłówkiem).
+  expect(
+    'opis bez powtórzonego tytułu',
+    parseRzeszowRss(
+      xml('Sprzedaż biletów semestralnych studenckich', 'Sprzedaż biletów semestralnych studenckich Zarząd Transportu Miejskiego informuje o sprzedaży biletów.'),
+    ).map((i) => i.description),
+    ['Zarząd Transportu Miejskiego informuje o sprzedaży biletów.'],
   );
 }
 
