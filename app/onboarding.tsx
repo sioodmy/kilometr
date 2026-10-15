@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -591,36 +592,40 @@ export default function OnboardingScreen() {
 
         {/* ── 2 · Miasto ────────────────────────────────────────────── */}
         {step === 2 && (
-          <ScrollView
-            contentContainerStyle={st.body}
-            showsVerticalScrollIndicator={false}
-            overScrollMode="never"
-          >
-            <View style={st.heroMarkSmall}>
-              <MapPin size={30} color={scheme.onPrimaryContainer} />
+          <View style={st.cityStep}>
+            <View style={st.cityHead}>
+              <View style={st.heroMarkSmall}>
+                <MapPin size={30} color={scheme.onPrimaryContainer} />
+              </View>
+              <Text style={st.title}>{s.onboarding.cityTitle}</Text>
+              <Text style={st.leadSmall}>{s.onboarding.cityBody}</Text>
+
+              {suggested ? (
+                <Text style={st.suggestNote}>
+                  {s.onboarding.citySuggested(s.city.loc(suggested))}
+                </Text>
+              ) : perms.loc !== 'granted' ? (
+                <Text style={st.suggestNote}>{s.onboarding.cityNoGps}</Text>
+              ) : citySuggestionStatus === 'locating' ? (
+                <Text style={st.suggestNote}>{s.onboarding.cityLocating}</Text>
+              ) : citySuggestionStatus === 'nomatch' ? (
+                <Text style={st.suggestNote}>{s.onboarding.cityNoMatch}</Text>
+              ) : null}
             </View>
-            <Text style={st.title}>{s.onboarding.cityTitle}</Text>
-            <Text style={st.leadSmall}>{s.onboarding.cityBody}</Text>
 
-            {suggested ? (
-              <Text style={st.suggestNote}>
-                {s.onboarding.citySuggested(s.city.loc(suggested))}
-              </Text>
-            ) : perms.loc !== 'granted' ? (
-              <Text style={st.suggestNote}>{s.onboarding.cityNoGps}</Text>
-            ) : citySuggestionStatus === 'locating' ? (
-              <Text style={st.suggestNote}>{s.onboarding.cityLocating}</Text>
-            ) : citySuggestionStatus === 'nomatch' ? (
-              <Text style={st.suggestNote}>{s.onboarding.cityNoMatch}</Text>
-            ) : null}
-
-            <View style={st.cityList} accessibilityRole="radiogroup">
-              {CITIES.map((c) => {
+            <FlatList
+              data={CITIES}
+              keyExtractor={(c) => c.id}
+              style={st.cityList}
+              contentContainerStyle={st.cityListContent}
+              showsVerticalScrollIndicator
+              overScrollMode="never"
+              accessibilityRole="radiogroup"
+              renderItem={({ item: c }) => {
                 const active = cityId === c.id;
                 const isSuggested = suggested === c.id;
                 return (
                   <Pressable
-                    key={c.id}
                     onPress={() => pick(c.id)}
                     style={({ pressed }) => [st.cityChip, active && st.cityChipActive, pressed && !active && { opacity: 0.75 }]}
                     accessibilityRole="radio"
@@ -643,9 +648,9 @@ export default function OnboardingScreen() {
                     {active && <Check size={20} color={scheme.onPrimaryContainer} />}
                   </Pressable>
                 );
-              })}
-            </View>
-          </ScrollView>
+              }}
+            />
+          </View>
         )}
 
         {/* ── 3 · Rozkład ───────────────────────────────────────────── */}
@@ -1014,7 +1019,10 @@ const st = StyleSheet.create({
   cardWhy: { ...type.bodySmall, color: scheme.primary, marginTop: 1 },
   cardBody: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
   suggestNote: { ...type.bodyMedium, color: scheme.primary, fontWeight: '600' },
-  cityList: { gap: 10, marginTop: 4 },
+  cityStep: { flex: 1, paddingHorizontal: 20, paddingTop: 10, gap: 12 },
+  cityHead: { gap: 12 },
+  cityList: { flex: 1, marginTop: 4 },
+  cityListContent: { gap: 10, paddingBottom: 16 },
   cityChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1022,6 +1030,7 @@ const st = StyleSheet.create({
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.large,
     padding: 16,
+    minHeight: 56,
     ...elev.level1,
   },
   cityChipActive: { backgroundColor: scheme.primaryContainer },
