@@ -1086,6 +1086,7 @@ function extractLublinLines(title: string, description: string): string[] {
       if (/^0\d+$/.test(tok)) continue;
       const n = Number(tok);
       if (!LUBLIN_BUS_NUMBERS.has(n) && !LUBLIN_TROLLEY_NUMBERS.has(n)) continue;
+      if (!seen.has(tok)) seen.add(tok);
     }
     if (seen.size >= 12) break;
   }
