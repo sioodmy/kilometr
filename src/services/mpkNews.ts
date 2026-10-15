@@ -17,6 +17,9 @@
 //   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
 //   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
 //   A–C). Artykuł to podstrona informacji (treść w main#pageContent).
+// - Rzeszów: RSS ZTM (ztm.erzeszow.pl/feed, zwykły RSS 2.0 WordPressa;
+//   numery linii w tytułach i opisach jak w Poznaniu, treść z opisu
+//   w feedzie). Artykuł to podstrona ZTM (treść w div#blog).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -95,6 +98,13 @@ export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=12
  * bez JSON-a i paginacji na pierwszym ekranie.
  */
 export const ZDITM_SZCZECIN_INFO_URL = 'https://www.zditm.szczecin.pl/pl/pasazer/informacje';
+/**
+ * Komunikaty ZTM Rzeszów: zwykły kanał RSS 2.0 WordPressa (tytuł + link +
+ * pubDate + opis). Numery linii siedzą w tytułach („zmiany tras linii
+ * 5, 6 i 11”, „Linia nr 6”) i w opisach („Linia 2: Baligrodzka – …”),
+ * więc wyciągamy je regexem jak w Poznaniu (z allowlistą linii z GTFS).
+ */
+export const ZTM_RZESZOW_FEED_URL = 'https://ztm.erzeszow.pl/feed/';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -1037,6 +1047,131 @@ function extractSzczecinArticle(html: string): ArticleBlock[] {
   return blocks;
 }
 
+/**
+ * Linie ZTM Rzeszów w tekście: dokładnie te z routes.txt feedu GTFS
+ * (0A/0B, dzienne 1–62 z dziurami, nocne N1–N3, pracownicze PT).
+ * Allowlista zamiast zakresów: „7” czy „21” nie istnieją w GTFS, więc
+ * zakres 1–62 puszczałby widma. Gdy ZTM doda linię, dopisz ją tutaj
+ * (ta sama konserwacja co numery w innych miastach).
+ */
+const RZESZOW_LINES = new Set(
+  '0A,0B,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,22,23,24,26,27,28,29,30,31,32,33,34,35,36,37,39,40,41,42,43,44,45,46,47,49,51,52,54,57,58,59,60,61,62,N1,N2,N3,PT'.split(','),
+);
+
+const RZESZOW_LINE_RE = /(0[AB]|N[123]|PT|\d{1,2})/g;
+
+/**
+ * Granice tokenu po polsku (ta sama klasa co Szczecin): `\b` w JS zna
+ * tylko ASCII, więc „będą” łamie się na „b” i „ę”. Allowlista i tak
+ * odrzuciłaby literę, ale strażnik chroni też cyfry sklejone z tekstem.
+ */
+const RZESZOW_EDGE_RE = /[0-9A-Za-zÀ-ž]/;
+
+function extractRzeszowLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Ceny biletów („250,00 zł”) to nie linie.
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    // Numery komunikatów („KOMUNIKAT 201/26”) to nie pary linii.
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    // Czasy przejazdu („co 10 minut”) to nie linie.
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  RZESZOW_LINE_RE.lastIndex = 0;
+  while ((m = RZESZOW_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1] ?? '';
+    const after = text[m.index + m[1].length] ?? '';
+    if (RZESZOW_EDGE_RE.test(before) || RZESZOW_EDGE_RE.test(after)) continue;
+    if (/^\d+$/.test(tok)) {
+      // Godziny („5:30”) wycinamy wcześniej regexem, więc dwukropek przed
+      // tokenem to minuty. Dwukropka PO tokenie nie odrzucamy: ZTM pisze
+      // „Linia 2: Baligrodzka – …”, a to etykieta linii, nie godzina.
+      if (before === ':') continue;
+      if (!RZESZOW_LINES.has(String(Number(tok)))) continue;
+    } else if (!RZESZOW_LINES.has(tok)) {
+      continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Komunikaty ZTM Rzeszów (RSS 2.0: tytuł + link + pubDate + opis).
+ * Cały kanał dotyczy transportu, więc nie filtrujemy po słowach jak
+ * miejski RSS Wrocławia. Opis z feedu ląduje w karcie; ogon
+ * „Czytaj dalej … →” (streszczenie WordPressa) ucinamy.
+ */
+export function parseRzeszowRss(xml: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const link = stripCdata(tagInner(b, 'link')).trim();
+    const rawDesc = stripCdata(tagInner(b, 'description'));
+    const description = htmlToText(rawDesc)
+      .replace(/\s*Czytaj dalej[\s\S]*?→\s*$/, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
+    const ts = pubRaw ? Date.parse(pubRaw) : NaN;
+    const pubDate = Number.isFinite(ts) ? ts : null;
+    if (!title && !link) continue;
+    items.push({
+      id: link || `${rawTitle}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description,
+      imageUrl: extractImage(rawDesc),
+      urgent: isUrgentNews(title, description),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractRzeszowLines(title, description),
+    });
+  }
+  return items;
+}
+
+/**
+ * Treść artykułu ZTM Rzeszów: akapity po dacie publikacji w div#blog
+ * (blog-main single-post-content). Nagłówki (dział „Aktualności” i tytuł
+ * wpisu), miniaturkę, datę i przyciski share pomijamy, bo ekran pokazuje
+ * je sam. Boczny pasek (col-sm-3) z innymi wpisami odcinamy na końcu.
+ */
+function extractRzeszowArticle(html: string): ArticleBlock[] {
+  const main = (html.split(/id="blog"/i)[1]?.split(/col-sm-3|<footer/i)[0] ?? '')
+    .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/gi, ' ')
+    .replace(/<div class="entry-thumbnail"[\s\S]*?<\/div>/i, ' ')
+    .replace(/<div class="entry-date"[\s\S]*?<\/div>/i, ' ')
+    .replace(/<div class="social4i"[\s\S]*?(<div class="social4in"[\s\S]*?<\/div>\s*)?<\/div>/i, ' ');
+  if (!main.trim()) return [];
+  const blocks: ArticleBlock[] = [];
+  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(main))) {
+    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text)) continue;
+    const tag = match[1].toLowerCase();
+    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  }
+  if (blocks.length === 0) {
+    const plain = htmlToText(main).replace(/\s+/g, ' ').trim();
+    if (plain) blocks.push({ kind: 'p', text: plain });
+  }
+  return blocks;
+}
+
 const ARTICLE_JUNK_RE =
   /^(galeria zdjęć|zobacz galerię|zobacz galerię zdjęć tego artykułu|rozwiń|czytaj także|polecane|udostępnij)$/i;
 
@@ -1121,6 +1256,10 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // i spis treści wycinamy w extractorze, stopkę powiązanych też).
   const zditm = /zditm\.szczecin\.pl/i.test(url);
   if (zditm) return extractSzczecinArticle(html);
+  // ZTM Rzeszów: treść w div#blog (nagłówki, miniaturkę, datę i pasek
+  // boczny wycinamy w extractorze).
+  const ztmRzeszow = /ztm\.erzeszow\.pl/i.test(url);
+  if (ztmRzeszow) return extractRzeszowArticle(html);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -1262,6 +1401,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
+  if (city.id === 'rzeszow') return fetchRzeszowNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -1304,6 +1444,19 @@ async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Pro
     const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
     const items = parseSzczecinInfo(html);
     if (items.length === 0) console.warn('[News] Szczecin: pusta lista (zmiana markupu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty ZTM Rzeszów: jedno źródło (RSS), brak fallbacku. */
+async function fetchRzeszowNews(signal?: AbortSignal, cityId = 'rzeszow'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const xml = await fetchText(ZTM_RZESZOW_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const items = parseRzeszowRss(xml);
+    if (items.length === 0) console.warn('[News] Rzeszów: pusty feed (zmiana formatu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();

@@ -36,7 +36,10 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
   if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
   try {
     const id = getActiveCityIdSync();
-    return id !== 'gzm' && id !== 'trojmiasto';
+    // GZM i Trójmiasto mają autobusy o niskich numerach, a Rzeszów nie ma
+    // tramwajów wcale (cały GTFS to route_type 3): w tych miastach niski
+    // numer to nie tramwaj.
+    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'rzeszow';
   } catch {
     return true;
   }

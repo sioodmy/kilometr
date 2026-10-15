@@ -3,7 +3,7 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz` / `szczecin`: awaryjne (Wrocław) albo podstawowe (reszta)
+//   / `lodz` / `szczecin` / `rzeszow`: awaryjne (Wrocław) albo podstawowe (reszta)
 //   pozycje autobusów, tramwajów, trolejbusów i metra, gdy bezpośredni
 //   feed nie odpowiada.
 //
@@ -179,6 +179,21 @@ export async function fetchZbSzczecinRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const szcz = getCity('szczecin');
   const positions = await fetchPositions(szcz.zbiorkomSlug, undefined, szcz.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
+ * Pozycje ZTM Rzeszów jako wiersze dla matchera. Podstawowy feed live.
+ * Filtr `agencies=default` (jak Łódź): agencja `PKSRZESZOW` wozi wyłącznie
+ * linie podmiejskie 202/203/207/222/305/307/400, których nie ma w GTFS
+ * ZTM, więc jej pojazdy byłyby samymi kropkami bez rozkładu. Cała sieć
+ * miejska (0A/0B, 1–62, N1–N3, PT) jedzie pod agencją `default`.
+ */
+export async function fetchZbRzeszowRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const rze = getCity('rzeszow');
+  const positions = await fetchPositions(rze.zbiorkomSlug, 'default', rze.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }
