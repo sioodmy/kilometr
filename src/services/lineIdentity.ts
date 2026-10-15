@@ -42,8 +42,10 @@ export const TRANSIT_PALETTE = [
  * Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1 (route_type 0 w feedzie
  * ZDiT; "6." z kropką to autobus), Warszawa dokłada metro M1/M2 (route_type 1)
  * i SKA S1…S40 (route_type 2), a Trójmiasto ma własną gałąź (tramwaje 1–12,
- * trolejbusy 21–33/710/723): badge newsów nie zna trybu z planera, więc linie
- * rozpoznaje po nazwie.
+ * trolejbusy 21–33/710/723). Lublin też ma własną gałąź: tramwajów nie ma
+ * wcale, więc niskie numery to autobusy, a trolejbusy to 150–162 i 950
+ * (route_type 11 w feedzie ZDiTM): badge newsów nie zna trybu z planera,
+ * więc linie rozpoznaje po nazwie.
  */
 export function inferTransitMode(
   mode?: LegMode,
@@ -90,6 +92,20 @@ export function inferTransitMode(
     if (/^6\.$/.test(clean)) return 'bus';
     if (num === 41 || num === 43 || num === 45) return 'tram';
     if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
+  }
+  // Lublin: tramwajów nie ma (niskie numery to autobusy), trolejbusy to
+  // 150–162 i 950 (route_type 11 w feedzie ZDiTM). Nocne N1–N3, miejskie
+  // 301–303, 912/917/922 i imienne Biała/Gaj/Zielona to autobusy.
+  // Zakresy się nie przecinają, więc gałąź zwraca wprost i nie spada
+  // do zgadywania 1–33 (lubelskie autobusy 2–33 nie są tramwajami).
+  if (cityId === 'lublin') {
+    if (/^N[1-3]$/i.test(clean)) return 'bus';
+    if (!isNaN(num)) {
+      if (num === 950) return 'trolleybus';
+      if (num >= 150 && num <= 162) return 'trolleybus';
+      return 'bus';
+    }
+    return 'bus';
   }
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';

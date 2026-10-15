@@ -17,6 +17,12 @@
 //   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
 //   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
 //   A–C). Artykuł to podstrona informacji (treść w main#pageContent).
+// - Lublin: lista HTML ZDiTM (pl/aktualnosci: karty article.news z datą
+//   w h4 raz na grupę dnia i treścią w article.tiny z tytułem h3.inline
+//   i leadem p). Linie wyciągamy z tytułu i leadu (autobusy 2–85,
+//   trolejbusy 150–162, nocne N1–N3, miejskie 301–303, 912/917/922
+//   i 950). Artykuł to podstrona aktualności (treść w
+//   section.main-center-panel).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -95,6 +101,15 @@ export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=12
  * bez JSON-a i paginacji na pierwszym ekranie.
  */
 export const ZDITM_SZCZECIN_INFO_URL = 'https://www.zditm.szczecin.pl/pl/pasazer/informacje';
+/**
+ * Komunikaty ZDiTM Lublin: lista aktualności (tytuł h3.inline + link
+ * + lead w pierwszym p na karcie article.tiny). Data siedzi w h4
+ * (format "2026-10-15 11:48") tylko na pierwszej karcie grupy dnia,
+ * reszta kart dnia jej nie powtarza, więc parser dziedziczy ostatnią.
+ * Ikonki kategorii (uploads/Icons) to chrom UI, nie zdjęcia: imageUrl
+ * celowo null.
+ */
+export const ZDITM_LUBLIN_INFO_URL = 'https://www.zdtm.lublin.eu/pl/aktualnosci';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -1000,6 +1015,172 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
 }
 
 /**
+ * Numery linii ZDiTM Lublin wprost z routes.txt feedu GTFS (bez 0Bia/0GAJ/
+ * 0Zie i imiennych Biała/Gaj/Zielona, te idą osobnym kontekstem niżej).
+ * Dziury w numeracji: brak 9–11, 19, 27, 41, 46, 48–49, 51, 53, 56, 58–69,
+ * 71–72, 75–77, 80–84 oraz 152 wśród trolejbusów. Gdy ZDiTM doda linię
+ * (np. zapowiedziane 801 na Biskupie), dopisz ją tutaj (ta sama
+ * konserwacja co regexy linii w innych miastach).
+ */
+const LUBLIN_BUS_NUMBERS = new Set([
+  2, 3, 4, 5, 6, 7, 8, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23, 24, 25,
+  26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45,
+  47, 50, 52, 54, 55, 57, 70, 73, 74, 78, 79, 85, 301, 302, 303, 912, 917, 922,
+]);
+
+/** Trolejbusy ZDiTM Lublin z routes.txt (route_type 11, brak 152). */
+const LUBLIN_TROLLEY_NUMBERS = new Set([
+  150, 151, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 950,
+]);
+
+const LUBLIN_LINE_RE = /\b(N[1-3]|\d{1,3})\b/gi;
+
+/**
+ * Imienne linie specjalne ZDiTM (Biała, Gaj, Zielona) łapiemy wyłącznie
+ * po słowach "linii/linia/linie/nr": sam "Gaj" to też dzielnica i słowo
+ * ("Stary Gaj"), więc bez kontekstu byłby fałszywym trafieniem w co
+ * drugim komunikacie.
+ */
+const LUBLIN_NAMED_RE = /(?:linii|linia|linie|linię|nr\.?)\s+(biał\w*|gaj\w*|zielon\w*)/gi;
+
+function lublinNamedCanonical(prefix: string): string {
+  const p = prefix.toLowerCase();
+  if (p.startsWith('biał')) return 'BIAŁA';
+  if (p.startsWith('zielon')) return 'ZIELONA';
+  return 'GAJ';
+}
+
+function extractLublinLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    // Odjazdy z treści artykułów ("6:38", "Mełgiewska WSEI 01:") padły
+    // wyżej z godzinami; numery stanowisk bez dwukropka ("WSEI 01")
+    // odsiewa guard zera wiodącego niżej.
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  // Odwołania do linii z kropką ("linii nr 33.") najpierw tracą kropkę,
+  // żeby reguła liczebników niżej ich nie zjadła.
+  const dotted = text.replace(
+    /((?:linii|linia|linie|linię|nr\.?)\s+)(N[1-3]|\d{1,3}[A-Z]?)\./gi,
+    '$1$2 ',
+  );
+  // Liczebniki porządkowe ("7. Marsz Równości", "10. Półmaraton") to nie
+  // linie (choć 7 istnieje w GTFS, tu jest siódmą edycją marszu).
+  const clean = dotted.replace(/\b\d{1,3}\.(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  LUBLIN_LINE_RE.lastIndex = 0;
+  while ((m = LUBLIN_LINE_RE.exec(clean))) {
+    const tok = m[1].toUpperCase();
+    const before = clean[m.index - 1] ?? '';
+    const after = clean[m.index + m[1].length] ?? '';
+    if (before === ':' || after === ':') continue;
+    if (/^N[1-3]$/.test(tok)) {
+      if (!seen.has(tok)) seen.add(tok);
+    } else {
+      // Numery stanowisk ("WSEI 01") mają zero wiodące, linie nigdy.
+      if (/^0\d+$/.test(tok)) continue;
+      const n = Number(tok);
+      if (!LUBLIN_BUS_NUMBERS.has(n) && !LUBLIN_TROLLEY_NUMBERS.has(n)) continue;
+    }
+    if (seen.size >= 12) break;
+  }
+  LUBLIN_NAMED_RE.lastIndex = 0;
+  while ((m = LUBLIN_NAMED_RE.exec(`${title} ${description}`))) {
+    const tok = lublinNamedCanonical(m[1]);
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/** Data z karty ZDiTM Lublin (h4: "2026-10-15 11:48", czas lokalny). */
+function parseLublinDate(raw: string): number | null {
+  if (!raw.trim()) return null;
+  const ts = Date.parse(raw.trim().replace(' ', 'T'));
+  return Number.isFinite(ts) ? ts : null;
+}
+
+/**
+ * Komunikaty ZDiTM Lublin z listy (jeden fetch: tytuł + link + lead).
+ * Karta: article.news > (div.data.nowosc h4 z datą, tylko na pierwszej
+ * karcie grupy dnia) + article.tiny > h3.inline, pierwsze p, link
+ * "Zobacz więcej" do /pl/aktualnosci/xxx.html. Karty bez daty dziedziczą
+ * ostatnią (ta sama grupa dnia na stronie).
+ */
+export function parseLublinInfo(html: string): MpkNewsItem[] {
+  const cards = html.split(/<article class="news">/i).slice(1);
+  const items: MpkNewsItem[] = [];
+  let lastDate: number | null = null;
+  for (const card of cards) {
+    const dateRaw = (card.match(/<div class="data nowosc[\s\S]*?<h4>([^<]+)<\/h4>/i) ?? [])[1] ?? '';
+    const parsed = parseLublinDate(dateRaw);
+    if (parsed != null) lastDate = parsed;
+    const tinies = card.split(/<article class="tiny/i).slice(1);
+    // Gdyby markup się zmienił i tiny zniknęło, czytamy całą kartę jak jeden item.
+    const blocks = tinies.length > 0 ? tinies : [card];
+    for (const tiny of blocks) {
+      const linkM = tiny.match(
+        /<a href="(\/pl\/aktualnosci\/[^"]+\.html)"[^>]*>[\s\S]*?Zobacz więcej/i,
+      );
+      if (!linkM) continue;
+      const link = `https://www.zdtm.lublin.eu${decodeEntities(linkM[1]).trim()}`;
+      const rawTitle = htmlToText((tiny.match(/<h3 class="inline">([\s\S]*?)<\/h3>/i) ?? [])[1] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const title = cleanNewsTitle(rawTitle);
+      const lead = htmlToText((tiny.match(/<p[\s>][\s\S]*?<\/p>/i) ?? [])[0] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 600);
+      if (!title) continue;
+      items.push({
+        id: link,
+        title,
+        link,
+        description: lead,
+        imageUrl: null,
+        urgent: isUrgentNews(title, lead),
+        pubDate: lastDate,
+        dateLabel: formatNewsDate(lastDate),
+        source: 'mpk',
+        lines: extractLublinLines(title, lead),
+      });
+    }
+  }
+  return items;
+}
+
+/**
+ * Treść artykułu ZDiTM Lublin: tytuł niesie h2.text-header (ekran pokazuje
+ * go sam, więc w treści go pomijamy), akapity i punkty w article.tiny
+ * wewnątrz section.main-center-panel. Okruszki (breadcrumb) i prawy panel
+ * z logotypami wypadają przez zakres sekcji.
+ */
+function extractLublinArticle(html: string): ArticleBlock[] {
+  const blocks: ArticleBlock[] = [];
+  const center =
+    html.split(/class="main-center-panel/i)[1]?.split(/main-right-panel/i)[0] ?? '';
+  if (!center.trim()) return blocks;
+  const frag = center
+    .replace(/<ol class="breadcrumb"[\s\S]*?<\/ol>/gi, ' ')
+    .replace(/<h2 class="text-header"[\s\S]*?<\/h2>/i, ' ');
+  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(frag))) {
+    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text)) continue;
+    const tag = match[1].toLowerCase();
+    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  }
+  return blocks;
+}
+
+/**
  * Treść artykułu ZDiTM: lead z div.lead plus sekcje (h2) i akapity treści.
  * Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Odcinamy stopkę
  * „Więcej wiadomości” (powiązane z wiadomosci.szczecin.eu) i nawigację
@@ -1121,6 +1302,10 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // i spis treści wycinamy w extractorze, stopkę powiązanych też).
   const zditm = /zditm\.szczecin\.pl/i.test(url);
   if (zditm) return extractSzczecinArticle(html);
+  // ZDiTM Lublin: tytuł w h2.text-header, treść w article.tiny wewnątrz
+  // section.main-center-panel (okruszki i tytuł wycinamy w extractorze).
+  const zditmLublin = /zdtm\.lublin\.eu/i.test(url);
+  if (zditmLublin) return extractLublinArticle(html);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -1262,6 +1447,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
+  if (city.id === 'lublin') return fetchLublinNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -1291,6 +1477,19 @@ async function fetchLodzNews(signal?: AbortSignal, cityId = 'lodz'): Promise<Mpk
       }
       console.warn('[News] Łódź: oba kanały MPK puste (zmiana formatu?)');
     }
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty ZDiTM Lublin: jedno źródło (lista HTML), brak fallbacku. */
+async function fetchLublinNews(signal?: AbortSignal, cityId = 'lublin'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const html = await fetchText(ZDITM_LUBLIN_INFO_URL, scope.signal, 'text/html, */*');
+    const items = parseLublinInfo(html);
+    if (items.length === 0) console.warn('[News] Lublin: pusta lista (zmiana markupu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();
