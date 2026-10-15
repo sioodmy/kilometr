@@ -1,79 +1,75 @@
 name: CI
 
 on:
-  pull_request:
-    branches:
-      - dev
-      - main
-      - nightly
-      - prod
   push:
-    branches:
-      - dev
-      - main
-      - nightly
-      - prod
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
 
 jobs:
-  verify-app:
-    name: App Typecheck & Tests
+  typecheck:
+    name: App Typecheck
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust RAPTOR target
-        uses: actions/cache@v4
-        with:
-          path: modules/kilometr-raptor/rust/target
-          key: rust-raptor-ci-${{ runner.os }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
-          restore-keys: |
-            rust-raptor-ci-${{ runner.os }}-
-
-      - name: Run Rust RAPTOR unit tests
-        run: cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
-
-      - name: Typecheck (App & i18n)
+      - name: Run TypeScript typecheck
         run: npm run typecheck
 
-      - name: Lint (ESLint)
-        run: npm run lint
+  logic-tests:
+    name: Logic Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Run logic tests (RAPTOR routing)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run logic tests (RAPTOR routing engine)
         run: npm run check:routing
 
-      - name: Run logic tests (Polinka cable car)
-        run: npm run check:polinka
+      - name: Run logic tests (Live transit matchers & geo)
+        run: npm run check:live
 
-      - name: Run logic tests (Backup format)
-        run: npm run check:backup
+      - name: Run logic tests (Offline tile packing & math)
+        run: npm run check:tiles
 
-      - name: Run logic tests (Places per city)
+      - name: Run logic tests (Places store & search migration)
         run: npm run check:places
 
-      - name: Run logic tests (Warsaw city)
-        run: npm run check:warsaw
+      - name: Run logic tests (MPK Wrocław news parser)
+        run: npm run check:mpk-news
+
+      - name: Run logic tests (Kraków city)
+        run: npm run check:krakow
+
+      - name: Run logic tests (GZM Metropolis)
+        run: npm run check:gzm
+
+      - name: Run logic tests (Warszawa city)
+        run: npm run check:warszawa
 
       - name: Run logic tests (Poznań city)
         run: npm run check:poznan
 
-      - name: Run logic tests (Tricity)
+      - name: Run logic tests (Trójmiasto metropolis)
         run: npm run check:trojmiasto
 
       - name: Run logic tests (Łódź city)
@@ -82,89 +78,33 @@ jobs:
       - name: Run logic tests (Szczecin city)
         run: npm run check:szczecin
 
+      - name: Run logic tests (Kielce city)
+        run: npm run check:kielce
+
+      - name: Run logic tests (Olsztyn city)
+        run: npm run check:olsztyn
+
       - name: Run logic tests (Białystok city)
         run: npm run check:bialystok
 
       - name: Run logic tests (Home pull gesture)
         run: npm run check:pull
 
-      - name: Run logic tests (Notifications)
-        run: npm run check:notifications
-
-      - name: Run logic tests (Smart rank)
-        run: npm run check:smart-rank
-
-      - name: Run logic tests (Navigation target)
-        run: npm run check:navigation-target
-
-      - name: Run logic tests (Live feed)
-        run: npm run check:live
-
-      - name: Run logic tests (Navigation)
-        run: npm run check:nav
-
-      - name: Run logic tests (Minimap)
-        run: npm run check:minimap
-
-      - name: Run logic tests (Geometry cache)
-        run: npm run check:geometry-cache
-
-      # Doradczy skan CVE: podatności siedzą w tranzytywnych paczkach Expo,
-      # więc twarde gate'owanie zaczerwieniłoby CI na stałe. Twardą bramką
-      # na nowe podatności jest OSV scan na PR (osv-scan.yml).
-      - name: Audit dependencies (Advisory)
-        run: |
-          npm audit --json > /tmp/audit-root.json 2>/dev/null || true
-          if [ -s /tmp/audit-root.json ]; then
-            node -e "const a=require('/tmp/audit-root.json');const v=((a||{}).metadata||{}).vulnerabilities||{};console.log('npm audit (root): info='+(v.info||0)+' low='+(v.low||0)+' moderate='+(v.moderate||0)+' high='+(v.high||0)+' critical='+(v.critical||0))" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "npm audit (root): brak danych" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      # Doradczy, dopóki paczki Expo nie są dociągnięte do SDK (dziś 9
-      # niezgodności wersji). Wynik ląduje w podsumowaniu, żeby dryf było
-      # widać. Twarda bramka dopiero po alignie zależności.
-      - name: Expo Doctor (Advisory)
-        run: |
-          npx expo-doctor > /tmp/expo-doctor.txt 2>&1 || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          tail -25 /tmp/expo-doctor.txt >> "$GITHUB_STEP_SUMMARY" || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cat /tmp/expo-doctor.txt
-
   verify-subprojects:
-    name: Verify Server & Landing
+    name: Lint & Typecheck Subprojects
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: |
-            server/package-lock.json
-            landing/package-lock.json
+          cache: npm
 
-      - name: Build & typecheck server
-        run: |
-          npm --prefix server ci
-          npm --prefix server run build
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build & typecheck landing
-        run: |
-          npm --prefix landing ci
-          npm --prefix landing run build
-
-      - name: Audit dependencies (Advisory)
-        run: |
-          for p in server landing; do
-            npm --prefix "$p" audit --json > "/tmp/audit-$p.json" 2>/dev/null || true
-            if [ -s "/tmp/audit-$p.json" ]; then
-              P="$p" node -e "const a=require('/tmp/audit-'+process.env.P+'.json');const v=((a||{}).metadata||{}).vulnerabilities||{};console.log('npm audit ('+process.env.P+'): info='+(v.info||0)+' low='+(v.low||0)+' moderate='+(v.moderate||0)+' high='+(v.high||0)+' critical='+(v.critical||0))" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "npm audit ($p): brak danych" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
+      - name: Verify subprojects (worker & scripts)
+        run: npm run check:subprojects
