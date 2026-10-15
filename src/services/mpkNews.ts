@@ -208,6 +208,9 @@ function htmlToText(html: string): string {
     .replace(/[ \t]*\n[ \t]*/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
+    // Spacja po znaczniku przed interpunkcją („23:00 .”, „r. ,”) to artefakt
+    // zamiany tagów na spacje.
+    .replace(/\s+([,.;:!?])/g, '$1')
     .trim();
 }
 

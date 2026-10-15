@@ -191,7 +191,7 @@ describe('Treść komunikatu BKM (component-content-wysiwyg)');
   // treść redakcyjna w div.component-item, stopka z danymi urzędu w footer.
   const html = `<html><body><h1>Od 11 października br. – zmiana rozkładów jazdy autobusów linii 13, 16, 33 i 105</h1>
 <div class="component-content-wysiwyg item"><div class="component-wrapper"><div class="component-content">
-<div class="component-item clearfix"><p>Informujemy, że <strong>od 11 października br.</strong> zmianie ulegną rozkłady jazdy autobusów linii <strong>13, 16, 33 i 105</strong></p>
+<div class="component-item clearfix"><p>Informujemy, że <strong>od 11 października br.</strong>, zmianie ulegną rozkłady jazdy autobusów linii <strong>13, 16, 33 i 105</strong></p>
 <p>Zmiany w rozkładach jazdy są widoczne przed datą ich obowiązywania w sekcji przyszłego rozkładu jazdy.</p></div>
 </div></div></div>
 <footer id="footer"><h2>Zarząd Białostockiej Komunikacji Miejskiej</h2><p>ul. Składowa 11, 15-399 Białystok</p></footer>
@@ -200,6 +200,11 @@ describe('Treść komunikatu BKM (component-content-wysiwyg)');
   expect('dwa akapity treści', blocks.length, 2);
   expect('bez tytułu z h1', blocks.some((b) => b.text.startsWith('Od 11 października br. – zmiana rozkładów')), false);
   expect('pierwszy akapit o liniach', blocks[0]?.text.includes('13, 16, 33 i 105') ?? false, true);
+  expect(
+    'bez spacji przed interpunkcją („br.</strong>,”)',
+    /\s+[,.;:!?]/.test(blocks.map((b) => b.text).join(' ')),
+    false,
+  );
   expect('bez stopki z danymi urzędu', blocks.some((b) => b.text.includes('Składowa 11')), false);
 }
 
