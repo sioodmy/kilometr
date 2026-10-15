@@ -46,6 +46,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.poznan',
   );
   expect(
+    'Rzeszów dokleja sufiks',
+    cityKey('kilometr.places', 'rzeszow'),
+    'kilometr.places.rzeszow',
+  );
+  expect(
     'Łódź dokleja sufiks',
     cityKey('kilometr.places', 'lodz'),
     'kilometr.places.lodz',
@@ -157,6 +162,11 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   // ...a Brzeg (~39 km) już poza nią (i poza Wrocławiem).
   expect('Brzeg poza Opolem', suggestCityForCoords(50.8606, 17.4707)?.id ?? null, null);
   expect('Strzelce Opolskie poza Opolem', suggestCityForCoords(50.5105, 18.3006)?.id ?? null, null);
+  expect('Rynek w Rzeszowie', suggestCityForCoords(50.0379, 22.0044)?.id, 'rzeszow');
+  // Albigowa (~17 km) to najdalszy przystanek ZTM...
+  expect('Albigowa w Rzeszowie', suggestCityForCoords(50.0151, 22.2293)?.id, 'rzeszow');
+  // ...a Przemyśl (~60 km) już poza strefą.
+  expect('Przemyśl poza Rzeszowem', suggestCityForCoords(49.7835, 22.7846)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
@@ -164,9 +174,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'dwanaście miast',
+    'trzynaście miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole,rzeszow',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -184,9 +194,10 @@ describe('Rejestr miast');
       isCityId('olsztyn'),
       isCityId('bialystok'),
       isCityId('opole'),
+      isCityId('rzeszow'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -309,6 +320,17 @@ describe('Wpis Opola');
   expect('kafle w z14 jak reszta (limit R2)', opo.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS kolei)', opo.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', opo.features.directBusPosition, false);
+}
+
+describe('Wpis Rzeszowa');
+{
+  const rze = getCity('rzeszow');
+  expect('slug zbiorkom to rzeszow', rze.zbiorkomSlug, 'rzeszow');
+  expect('osobna baza', rze.dbFile, 'kilometr-gtfs-rzeszow.db');
+  expect('osobny pakiet kafli', rze.tilePack, 'rzeszow-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', rze.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS kolei)', rze.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', rze.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);

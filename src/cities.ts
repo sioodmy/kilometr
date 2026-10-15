@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok' | 'opole';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok' | 'opole' | 'rzeszow';
 
 export interface CityCenter {
   lat: number;
@@ -355,7 +355,35 @@ const OPOLE: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK, OPOLE];
+const RZESZOW: CityDef = {
+  id: 'rzeszow',
+  name: 'Rzeszów',
+  center: { lat: 50.0412, lon: 21.9991 },
+  // Strefa ZTM z gminami ościennymi (Albigowa na wschodzie, Hermanowa
+  // na zachodzie): najdalszy przystanek to Albigowa (~17 km od centrum).
+  radiusM: 20_000,
+  bounds: { minLat: 49.9, maxLat: 50.15, minLon: 21.78, maxLon: 22.26 },
+  nominatimViewbox: '21.78,50.15,22.26,49.9',
+  overpassBbox: '49.90,21.78,50.15,22.26',
+  // zbiorkom.live nazywa miasto `rzeszow` (agencje `default` i `PKSRZESZOW`);
+  // filtr w zbiorkom.ts zostawia samo `default`, bbox jak bounds.
+  zbiorkomSlug: 'rzeszow',
+  zbiorkomBbox: '21.78,49.9,22.26,50.15',
+  dbFile: 'kilometr-gtfs-rzeszow.db',
+  tilePack: 'rzeszow-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do Albigowej
+  // działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 49.9, maxLat: 50.15, minLon: 21.78, maxLon: 22.26 },
+  // Mała strefa jak Szczecin (621 kafli w z0-14), więc ~10 MB w z14 z gzipem.
+  tileMaxZoom: 14,
+  tilePackMB: 10,
+  // Kolej nie ma publicznego GTFS ani feedu live w bboxie (sprawdzone:
+  // zbiorkom `pkp` zwraca tu zero pojazdów). ZTM nie ma publicznego
+  // bus_position.
+  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK, OPOLE, RZESZOW];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

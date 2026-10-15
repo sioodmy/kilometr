@@ -38,7 +38,7 @@ export const TRANSIT_PALETTE = [
  * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), w Olsztynie
  * obejmuje tramwaje 1–5 (autobusy startują tam od 101), a w GZM niskie
  * numery mają też autobusy, w Opolu wyłącznie autobusy (cała sieć MZK),
- * a Kielce i Białystok mają wyłącznie autobusy, więc gałąź zwraca autobus wprost
+ * a Kielce, Białystok i Rzeszów mają wyłącznie autobusy, więc gałąź zwraca autobus wprost
  * i niski numer nigdy nie udaje tramwaju. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
  * Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1 (route_type 0 w feedzie
  * ZDiT; "6." z kropką to autobus), Warszawa dokłada metro M1/M2 (route_type 1)
@@ -100,6 +100,10 @@ export function inferTransitMode(
   if (cityId === 'bialystok') return 'bus';
   // Opole: cała sieć MZK to autobusy.
   if (cityId === 'opole') return 'bus';
+  // Rzeszów nie ma tramwajów wcale (cały GTFS ZTM to route_type 3),
+  // więc heurystyka niskich numerów nie ma tu zastosowania.
+  if (cityId === 'rzeszow') return 'bus';
+
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
   }

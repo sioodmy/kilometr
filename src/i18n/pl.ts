@@ -98,7 +98,7 @@ export const pl = {
                   ? 'Łódź'
                   : id === 'szczecin'
                     ? 'Szczecin'
-: id === 'kielce'
+                    : id === 'kielce'
                       ? 'Kielce'
                       : id === 'olsztyn'
                         ? 'Olsztyn'
@@ -106,7 +106,9 @@ export const pl = {
                           ? 'Białystok'
                           : id === 'opole'
                             ? 'Opole'
-                            : 'Wrocław',
+                            : id === 'rzeszow'
+                              ? 'Rzeszów'
+                              : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Krakowa'
@@ -122,7 +124,7 @@ export const pl = {
                   ? 'Łodzi'
                   : id === 'szczecin'
                     ? 'Szczecina'
-: id === 'kielce'
+                    : id === 'kielce'
                       ? 'Kielc'
                       : id === 'olsztyn'
                         ? 'Olsztyna'
@@ -130,7 +132,9 @@ export const pl = {
                           ? 'Białegostoku'
                           : id === 'opole'
                             ? 'Opola'
-                            : 'Wrocławia',
+                            : id === 'rzeszow'
+                              ? 'Rzeszowa'
+                              : 'Wrocławia',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Krakowie'
@@ -146,7 +150,7 @@ export const pl = {
                   ? 'Łodzi'
                   : id === 'szczecin'
                     ? 'Szczecinie'
-: id === 'kielce'
+                    : id === 'kielce'
                       ? 'Kielcach'
                       : id === 'olsztyn'
                         ? 'Olsztynie'
@@ -154,7 +158,9 @@ export const pl = {
                           ? 'Białymstoku'
                           : id === 'opole'
                             ? 'Opolu'
-                            : 'Wrocławiu',
+                            : id === 'rzeszow'
+                              ? 'Rzeszowie'
+                              : 'Wrocławiu',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP i Koleje Małopolskie'
@@ -170,7 +176,7 @@ export const pl = {
                   ? 'MPK i Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-: id === 'kielce'
+                    : id === 'kielce'
                       ? 'ZTM Kielce'
                       : id === 'olsztyn'
                         ? 'ZDZiT Olsztyn'
@@ -178,7 +184,9 @@ export const pl = {
                           ? 'BKM Białystok'
                           : id === 'opole'
                             ? 'MZK Opole'
-                            : 'MPK i Koleje Dolnośląskie',
+                            : id === 'rzeszow'
+                              ? 'ZTM Rzeszów'
+                              : 'MPK i Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -194,7 +202,7 @@ export const pl = {
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-: id === 'kielce'
+                    : id === 'kielce'
                       ? 'ZTM Kielce'
                       : id === 'olsztyn'
                         ? 'ZDZiT Olsztyn'
@@ -202,7 +210,9 @@ export const pl = {
                           ? 'BKM Białystok'
                           : id === 'opole'
                             ? 'MZK Opole'
-                            : 'MPK Wrocław • wroclaw.pl',
+                            : id === 'rzeszow'
+                              ? 'ZTM Rzeszów'
+                              : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -218,7 +228,7 @@ export const pl = {
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-: id === 'kielce'
+                    : id === 'kielce'
                       ? 'ZTM Kielce'
                       : id === 'olsztyn'
                         ? 'ZDZiT Olsztyn'
@@ -226,7 +236,9 @@ export const pl = {
                           ? 'BKM Białystok'
                           : id === 'opole'
                             ? 'MZK Opole'
-                            : 'MPK Wrocław',
+                            : id === 'rzeszow'
+                              ? 'ZTM Rzeszów'
+                              : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -240,14 +252,16 @@ export const pl = {
                 ? 'ZTM / ZKM'
                 : id === 'szczecin'
                   ? 'ZDiTM'
-: id === 'kielce'
-                      ? 'ZTM'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT'
-                        : id === 'bialystok'
-                          ? 'BKM'
-                          : id === 'opole'
-                            ? 'MZK'
+                  : id === 'kielce'
+                    ? 'ZTM'
+                    : id === 'olsztyn'
+                      ? 'ZDZiT'
+                      : id === 'bialystok'
+                        ? 'BKM'
+                        : id === 'opole'
+                          ? 'MZK'
+                          : id === 'rzeszow'
+                            ? 'ZTM'
                             : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
@@ -264,7 +278,7 @@ export const pl = {
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
-: id === 'kielce'
+                    : id === 'kielce'
                       ? 'ztm.kielce.pl'
                       : id === 'olsztyn'
                         ? 'zdzit.olsztyn.eu'
@@ -272,8 +286,10 @@ export const pl = {
                           ? 'komunikacja.bialystok.pl'
                           : id === 'opole'
                             ? 'mzkopole.pl'
-                            : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole',
+                            : id === 'rzeszow'
+                              ? 'ztm.erzeszow.pl'
+                              : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów',
     changed: (name: string) => `Przełączono na: ${name}.`,
     switching: 'Przełączam miasto…',
     blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
@@ -506,14 +522,16 @@ export const pl = {
                 ? 'np. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'np. Wojska Polskiego 12'
-: id === 'kielce'
-                      ? 'np. Sienkiewicza 12'
-                      : id === 'olsztyn'
-                        ? 'np. Partyzantów 12'
-                        : id === 'bialystok'
-                          ? 'np. Lipowa 12'
-                          : id === 'opole'
-                            ? 'np. Ozimska 12'
+                  : id === 'kielce'
+                    ? 'np. Sienkiewicza 12'
+                    : id === 'olsztyn'
+                      ? 'np. Partyzantów 12'
+                      : id === 'bialystok'
+                        ? 'np. Lipowa 12'
+                        : id === 'opole'
+                          ? 'np. Ozimska 12'
+                          : id === 'rzeszow'
+                            ? 'np. 3 Maja 12'
                             : 'np. Swojczycka 41',
     slotWork: 'Praca',
     slotWorkHint: (id: string): string =>
@@ -529,14 +547,16 @@ export const pl = {
                 ? 'np. Manufaktura'
                 : id === 'szczecin'
                   ? 'np. Galeria Kaskada'
-: id === 'kielce'
-                      ? 'np. Galeria Echo'
-                      : id === 'olsztyn'
-                        ? 'np. Galeria Warmińska'
-                        : id === 'bialystok'
-                          ? 'np. Galeria Jurowiecka'
-                          : id === 'opole'
-                            ? 'np. Solaris Center'
+                  : id === 'kielce'
+                    ? 'np. Galeria Echo'
+                    : id === 'olsztyn'
+                      ? 'np. Galeria Warmińska'
+                      : id === 'bialystok'
+                        ? 'np. Galeria Jurowiecka'
+                        : id === 'opole'
+                          ? 'np. Solaris Center'
+                          : id === 'rzeszow'
+                            ? 'np. Galeria Rzeszów'
                             : 'np. Sky Tower',
     slotUni: 'Uczelnia',
     slotUniHint: (id: string): string =>
@@ -552,14 +572,16 @@ export const pl = {
                 ? 'np. UŁ'
                 : id === 'szczecin'
                   ? 'np. US'
-: id === 'kielce'
-                      ? 'np. UJK'
-                      : id === 'olsztyn'
-                        ? 'np. UWM'
-                        : id === 'bialystok'
-                          ? 'np. UwB'
-                          : id === 'opole'
-                            ? 'np. UO'
+                  : id === 'kielce'
+                    ? 'np. UJK'
+                    : id === 'olsztyn'
+                      ? 'np. UWM'
+                      : id === 'bialystok'
+                        ? 'np. UwB'
+                        : id === 'opole'
+                          ? 'np. UO'
+                          : id === 'rzeszow'
+                            ? 'np. PRz'
                             : 'np. Politechnika',
     backA11y: 'Wstecz',
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
@@ -812,7 +834,7 @@ export const pl = {
     searching: (city: string) => `Szukam w ${city}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
-      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
+      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
     yourPlaces: 'Twoje miejsca',
     gpsOutsideNotice: 'GPS poza obsługiwanym miastem, wybierz punkt manualnie.',

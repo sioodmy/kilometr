@@ -37,9 +37,9 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
   if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
   try {
     const id = getActiveCityIdSync();
-    // Miasta bez tramwajów (Kielce, Białystok, Opole) oraz z własną numeracją (GZM, Trójmiasto)
+    // Miasta bez tramwajów (Kielce, Białystok, Opole, Rzeszów) oraz z własną numeracją (GZM, Trójmiasto)
     // nie powinny zgadywać tramwaju po niskim numerze linii.
-    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'kielce' && id !== 'bialystok' && id !== 'opole';
+    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'kielce' && id !== 'bialystok' && id !== 'opole' && id !== 'rzeszow';
   } catch {
     return true;
   }

@@ -2,7 +2,7 @@
 /**
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok|opole] [--force] [--write-coords] [--allow-mpk-only]
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok|opole|rzeszow] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city buduje Wrocław (domyślne miasto).
  * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
@@ -77,6 +77,14 @@
  *   tylko calendar_dates, więc idzie generyczną ścieżką). Kolei brak
  *   (żaden publiczny GTFS nie kryje Opola), więc miasto jedzie bez sekcji
  *   kolejowej. Bez PDP i bez klucza.
+ * Rzeszów:
+ *   ZTM Rzeszów (mirror cdn.zbiorkom.live/gtfs/rzeszow.zip; upstream to
+ *   mkuran.pl/gtfs/rzeszow.zip, ale mirror jest świeższy i odświeżany
+ *   codziennie ok. 01:45 UTC z poprawnymi nagłówkami do skipu buildu):
+ *   autobusy 0A/0B + 1–62 + nocne N1–N3 + PT, statyczny zrzut jak Poznań
+ *   (tylko calendar_dates.txt, bez calendar.txt). Kolej nie ma publicznego
+ *   GTFS ani feedu live w bboxie, więc miasto jedzie bez sekcji kolejowej.
+ *   Bez PDP i bez klucza.
  *
  * Wyjścia (cloudflare/dist/{miasto}/):
  *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
@@ -104,7 +112,7 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : CITY_ARG === 'bialystok' ? 'bialystok' : CITY_ARG === 'opole' ? 'opole' : 'wroclaw';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : CITY_ARG === 'bialystok' ? 'bialystok' : CITY_ARG === 'opole' ? 'opole' : CITY_ARG === 'rzeszow' ? 'rzeszow' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -345,6 +353,17 @@ const BIALYSTOK_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: 
  */
 const OPOLE_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/opole.zip';
 const OPOLE_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * Rzeszów: statyczny zrzut ZTM (autobusy + nocne N1–N3 + PT).
+ * Upstream to mkuran.pl/gtfs/rzeszow.zip, ale mirror cdn.zbiorkom.live
+ * jest świeższy (odświeżany codziennie ok. 01:45 UTC) i zwraca poprawne
+ * Last-Modified/ETag, więc fingerprint i pobieranie idą z mirroru
+ * (ten sam wzorzec co Poznań i Łódź).
+ */
+const RZESZOW_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/rzeszow.zip';
+const RZESZOW_GTFS_UPSTREAM = 'https://mkuran.pl/gtfs/rzeszow.zip';
+const RZESZOW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
@@ -1909,6 +1928,7 @@ async function main() {
   let olsztynFingerprint = '';
   let bialystokFingerprint = '';
   let opoleFingerprint = '';
+  let rzeszowFingerprint = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -1968,6 +1988,10 @@ async function main() {
     gtfsSources = [{ label: 'MZK', url: OPOLE_GTFS_URL, prefix: '', headers: OPOLE_UA }];
     opoleFingerprint = await headVersion(OPOLE_GTFS_URL, OPOLE_UA);
     log('MZK:', opoleFingerprint || '?');
+  } else if (CITY === 'rzeszow') {
+    gtfsSources = [{ label: 'ZTM', url: RZESZOW_GTFS_URL, prefix: '', headers: RZESZOW_UA }];
+    rzeszowFingerprint = await headVersion(RZESZOW_GTFS_URL, RZESZOW_UA);
+    log('ZTM:', rzeszowFingerprint || '?', '| upstream:', RZESZOW_GTFS_UPSTREAM);
   } else if (CITY === 'gzm') {
     if (!PDP_API_KEY) {
       throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
@@ -2018,6 +2042,7 @@ async function main() {
   const olsztynVersionReliable = CITY !== 'olsztyn' || !!olsztynFingerprint;
   const bialystokVersionReliable = CITY !== 'bialystok' || !!bialystokFingerprint;
   const opoleVersionReliable = CITY !== 'opole' || !!opoleFingerprint;
+  const rzeszowVersionReliable = CITY !== 'rzeszow' || !!rzeszowFingerprint;
 
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
@@ -2179,6 +2204,15 @@ async function main() {
         process.exit(2);
       }
     }
+    if (CITY === 'rzeszow' && remote.sources.ztm?.fingerprint === rzeszowFingerprint && rzeszowFingerprint) {
+      if (!rzeszowVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log('brak zmian (ZTM), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
     if (CITY === 'wroclaw'
       && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
       && (remote.sources.kd?.schedulesVersion || 'none') === kdVersion) {
@@ -2248,7 +2282,7 @@ async function main() {
   // Warszawa importuje zwarto jak GZM (eksport dzienny, trip_id z datą).
   // Trójmiasto merguje 2 feedy prefiksami GDA/GDY: Gdańsk zwarto (eksport
   // dzienny jak Warszawa), Gdynia generycznie (statyczny zrzut jak Poznań).
-  // Poznań, Łódź, Szczecin, Kielce, Białystok i Opole to pojedyncze statyczne zrzuty
+  // Poznań, Łódź, Szczecin, Kielce, Białystok, Opole i Rzeszów to pojedyncze statyczne zrzuty
   // ZTM/ZDiT/ZDiTM/BKM/MZK, więc idą generyczną ścieżką jak Wrocław (osobny
   // prefiks niepotrzebny, id unikalne w feedzie; inna kolejność kolumn w trips.txt
   // nie szkodzi, bo import czyta po nazwach z nagłówka). Olsztyn (ZDZiT) i Opole (MZK) też,
@@ -3514,6 +3548,25 @@ async function main() {
     }
     log(`OPOLE: kursów autobusów MZK=${mzkBusTrips}`);
   }
+
+  // 6o. Twarda bramka, Rzeszów: baza bez autobusów ZTM nie nadpisuje R2.
+  // Kolei nie ma wcale (brak publicznego GTFS i feedu live w bboxie), więc
+  // bramka nie wymaga ani stacji, ani przesiadek kolejowych. Cały GTFS to
+  // route_type 3, więc liczymy kursy autobusów wprost z tabeli.
+  if (CITY === 'rzeszow') {
+    const problems = [];
+    let ztmBusTrips = 0;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 3').get();
+      ztmBusTrips = row?.n ?? 0;
+    } catch {}
+    if (ztmBusTrips === 0) problems.push('0 kursów autobusów ZTM');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełny Rzeszów (${problems.join(', ')}): nie publikuję bazy.`);
+    }
+    log(`RZESZOW: kursów autobusów ZTM=${ztmBusTrips}`);
+  }
   }
 
   // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem
@@ -3549,12 +3602,14 @@ async function main() {
               ? `${todayCompact()}-bialystok${createHash('sha256').update(`${bialystokFingerprint}`).digest('hex').slice(0, 8)}`
             : CITY === 'opole'
               ? `${todayCompact()}-opole${createHash('sha256').update(`${opoleFingerprint}`).digest('hex').slice(0, 8)}`
+            : CITY === 'rzeszow'
+              ? `${todayCompact()}-rzeszow${createHash('sha256').update(`${rzeszowFingerprint}`).digest('hex').slice(0, 8)}`
             : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -3717,6 +3772,15 @@ async function main() {
           mzk: {
             kind: 'gtfs-zip', url: OPOLE_GTFS_URL,
             fingerprint: opoleFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
+        }
+      : CITY === 'rzeszow'
+      ? {
+          ztm: {
+            kind: 'gtfs-zip', url: RZESZOW_GTFS_URL, upstream: RZESZOW_GTFS_UPSTREAM,
+            fingerprint: rzeszowFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },
