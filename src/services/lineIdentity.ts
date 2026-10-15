@@ -1,9 +1,8 @@
 import type { LegMode } from '../types/models';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
-// Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
+// Wydzielone z komponentu LineBadge, bo zależy od nich silnik powiadomień
 // (kolor linii jako akcent powiadomienia i segmentu na pasku postępu).
-
 export const TRANSIT_PALETTE = [
   '#00897B', // Teal
   '#1976D2', // Blue
@@ -36,16 +35,20 @@ export const TRANSIT_PALETTE = [
  * reszta to autobusy). Moduł musi się dać importować w Node (skrypty check:*),
  * więc `cityId` jest opcjonalnym parametrem, a nie odczytem aktywnego miasta:
  * heurystyka niskich numerów dotyczy Wrocławia, Krakowa, Poznania, Łodzi
- * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), a w GZM niskie
- * numery mają też autobusy, więc komponent przekazuje `'gzm'` i fallback
- * gaśnie. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
+ * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), w Olsztynie
+ * obejmuje tramwaje 1–5 (autobusy startują tam od 101), a w GZM niskie
+ * numery mają też autobusy, w Opolu wyłącznie autobusy (cała sieć MZK),
+ * a Kielce, Białystok i Rzeszów mają wyłącznie autobusy, więc gałąź zwraca autobus wprost
+ * i niski numer nigdy nie udaje tramwaju. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
  * Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1 (route_type 0 w feedzie
  * ZDiT; "6." z kropką to autobus), Warszawa dokłada metro M1/M2 (route_type 1)
  * i SKA S1…S40 (route_type 2), a Trójmiasto ma własną gałąź (tramwaje 1–12,
- * trolejbusy 21–33/710/723). Lublin też ma własną gałąź: tramwajów nie ma
+ * trolejbusy 21–33/710/723): badge newsów nie zna trybu z planera, więc linie
+ * rozpoznaje po nazwie. Białystok to miasto w pełni autobusowe (BKM nie ma
+ * tramwajów), więc każda linia jest autobusem i heurystyka niskich numerów
+ * musi gasnąć, inaczej linie 1–30 wyglądałyby jak tramwaje. Lublin też ma własną gałąź: tramwajów nie ma
  * wcale, więc niskie numery to autobusy, a trolejbusy to 150–162 i 950
- * (route_type 11 w feedzie ZDiTM): badge newsów nie zna trybu z planera,
- * więc linie rozpoznaje po nazwie.
+ * (route_type 11 w feedzie ZDiTM).
  */
 export function inferTransitMode(
   mode?: LegMode,
@@ -93,6 +96,16 @@ export function inferTransitMode(
     if (num === 41 || num === 43 || num === 45) return 'tram';
     if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
   }
+  // Kielce: same autobusy, więc niski numer nie udaje tramwaju.
+  if (cityId === 'kielce') return 'bus';
+  // Białystok: wyłącznie autobusy BKM (1-30, 100+, J/J1-J6, N1-N6).
+  if (cityId === 'bialystok') return 'bus';
+  // Opole: cała sieć MZK to autobusy.
+  if (cityId === 'opole') return 'bus';
+  // Rzeszów nie ma tramwajów wcale (cały GTFS ZTM to route_type 3),
+  // więc heurystyka niskich numerów nie ma tu zastosowania.
+  if (cityId === 'rzeszow') return 'bus';
+
   // Lublin: tramwajów nie ma (niskie numery to autobusy), trolejbusy to
   // 150–162 i 950 (route_type 11 w feedzie ZDiTM). Nocne N1–N3, miejskie
   // 301–303, 912/917/922 i imienne Biała/Gaj/Zielona to autobusy.
@@ -107,6 +120,7 @@ export function inferTransitMode(
     }
     return 'bus';
   }
+
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
   }
