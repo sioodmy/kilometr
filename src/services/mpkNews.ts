@@ -971,16 +971,25 @@ function parseKielceDate(raw: string): number | null {
  * time[datetime], lead w pierwszym p za metadanymi, obrazek images/.
  */
 export function parseKielceNews(html: string): MpkNewsItem[] {
-  const cards = html.split(/com-content-category-blog__item/i).slice(1);
+  // (?!s) omija kontener __items (Joomla), żeby fragmenty były ciałem kart.
+  const cards = html.split(/com-content-category-blog__item(?!s)/i).slice(1);
   const items: MpkNewsItem[] = [];
   for (const card of cards) {
-    const linkM = card.match(
-      /<a href="(\/aktualnosci\/[^"]+\.html)"[^>]*>([\s\S]*?)<\/a>/i,
-    );
-    if (!linkM) continue;
-    const link = `https://ztm.kielce.pl${decodeEntities(linkM[1]).trim()}`;
-    const rawTitle = htmlToText(linkM[2]).replace(/\s+/g, ' ').trim();
-    const title = cleanNewsTitle(rawTitle);
+    // Tytuł to pierwszy link /aktualnosci/*.html z tekstem. Gdyby ZTM
+    // podlinkował grafikę karty, sam obrazek nie może przejąć tytułu.
+    const linkRe = /<a href="(\/aktualnosci\/[^"]+\.html)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let href = '';
+    let title = '';
+    let linkM: RegExpExecArray | null;
+    while ((linkM = linkRe.exec(card))) {
+      const text = cleanNewsTitle(htmlToText(linkM[2]).replace(/\s+/g, ' ').trim());
+      if (!text) continue;
+      href = decodeEntities(linkM[1]).trim();
+      title = text;
+      break;
+    }
+    if (!href) continue;
+    const link = `https://ztm.kielce.pl${href}`;
     const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
     const pubDate = parseKielceDate(datetime);
     const afterMeta = card.split(/<\/dl>/i)[1] ?? card;
@@ -990,7 +999,6 @@ export function parseKielceNews(html: string): MpkNewsItem[] {
       .slice(0, 600);
     const rawImage = extractImage(card);
     const imageUrl = rawImage && rawImage.startsWith('/') ? `https://ztm.kielce.pl${rawImage}` : rawImage;
-    if (!title) continue;
     items.push({
       id: link,
       title,

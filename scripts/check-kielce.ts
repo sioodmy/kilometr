@@ -113,6 +113,26 @@ ${image ? `<figure class="left item-image"><img src="${image}" width="500" heigh
   // Linia literowa w cudzysłowie w tytule: „E” nie może zniknąć.
   expect('linia „E” z cudzysłowu', items[1].lines, ['E']);
   expect('zmiana rozkładowa to nie pilne', items[1].urgent, false);
+
+  // Regresja: realna lista opakowuje karty w kontener __items (Joomla).
+  const container =
+    `<div class="com-content-category-blog__items blog-items ">` +
+    card('/aktualnosci/2775-informacja-200.html', 'Informacja', '2026-10-14T13:40:58+02:00', 'Autobusy linii 8 wracają na trasę') +
+    card('/aktualnosci/2776-test.html', 'Test', '2026-10-13T10:00:00+02:00', 'Autobusy linii 16 wracają na trasę') +
+    `</div>`;
+  expect('kontener __items nie gubi kart', parseKielceNews(container).length, 2);
+
+  // Gdyby ZTM podlinkował grafikę karty przed tytułem, sam obrazek
+  // (link bez tekstu) nie może przejąć tytułu i wykluczyć komunikatu.
+  const imgLinkCard =
+    `<div class="com-content-category-blog__item blog-item">` +
+    `<div class="item-image"><a href="/aktualnosci/2775-informacja-200.html"><img src="/images/a.jpg" alt=""></a></div>` +
+    `<div class="page-header"><h2><a href="/aktualnosci/2775-informacja-200.html">Informacja</a></h2></div>` +
+    `<dl class="article-info"><dd class="published"><time datetime="2026-10-14T13:40:58+02:00">14 październik 2026</time></dd></dl>` +
+    `<p>Autobusy linii 8 wracają na trasę</p></div>`;
+  const imgLinkItems = parseKielceNews(imgLinkCard);
+  expect('link obrazka nie zjada tytułu', imgLinkItems[0]?.title ?? '', 'Informacja');
+  expect('linie z leadu mimo linku obrazka', imgLinkItems[0]?.lines ?? [], ['8']);
 }
 
 describe('Numery linii ZTM: daty, godziny, numery przystanków');
