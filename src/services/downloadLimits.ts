@@ -1,4 +1,4 @@
-// Limity dużych pobrań z R2 (mapa ~31 MB, rozkład ~40–80 MB).
+// Limity dużych pobrań z R2 (mapa i rozkład: od kilkunastu do ponad 100 MB).
 // Chronią free tier przed wielokrotnym ściąganiem tego samego pakietu.
 // Limit liczy się od udanego pobrania; nieudana próba nie blokuje retry.
 
