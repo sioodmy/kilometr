@@ -56,6 +56,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.szczecin',
   );
   expect(
+    'Opole dokleja sufiks',
+    cityKey('kilometr.places', 'opole'),
+    'kilometr.places.opole',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -110,6 +115,14 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
   // ...a Stargard (~33 km) już poza nią.
   expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
+  expect('Dworzec Główny w Opolu', suggestCityForCoords(50.663364, 17.928717)?.id, 'opole');
+  expect('Czarnowąsy w Opolu', suggestCityForCoords(50.740002, 17.911322)?.id, 'opole');
+  expect('Wrzoski w Opolu', suggestCityForCoords(50.686375, 17.813322)?.id, 'opole');
+  // Prószków (~10 km) to najdalszy punkt strefy MZK na południu...
+  expect('Prószków w Opolu', suggestCityForCoords(50.579609, 17.869724)?.id, 'opole');
+  // ...a Brzeg (~39 km) już poza nią (i poza Wrocławiem).
+  expect('Brzeg poza Opolem', suggestCityForCoords(50.8606, 17.4707)?.id ?? null, null);
+  expect('Strzelce Opolskie poza Opolem', suggestCityForCoords(50.5105, 18.3006)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
@@ -117,9 +130,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'osiem miast',
+    'dziewięć miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,opole',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -133,9 +146,10 @@ describe('Rejestr miast');
       isCityId('trojmiasto'),
       isCityId('lodz'),
       isCityId('szczecin'),
+      isCityId('opole'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -214,6 +228,17 @@ describe('Wpis Szczecina');
   expect('kafle w z14 jak reszta (limit R2)', szcz.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS SKM)', szcz.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
+}
+
+describe('Wpis Opola');
+{
+  const opo = getCity('opole');
+  expect('slug zbiorkom to opole', opo.zbiorkomSlug, 'opole');
+  expect('osobna baza', opo.dbFile, 'kilometr-gtfs-opole.db');
+  expect('osobny pakiet kafli', opo.tilePack, 'opole-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', opo.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS kolei)', opo.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', opo.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);
