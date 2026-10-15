@@ -82,6 +82,9 @@ jobs:
       - name: Run logic tests (Szczecin city)
         run: npm run check:szczecin
 
+      - name: Run logic tests (Olsztyn city)
+        run: npm run check:olsztyn
+
       - name: Run logic tests (Home pull gesture)
         run: npm run check:pull
 

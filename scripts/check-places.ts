@@ -56,6 +56,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.szczecin',
   );
   expect(
+    'Olsztyn dokleja sufiks',
+    cityKey('kilometr.places', 'olsztyn'),
+    'kilometr.places.olsztyn',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -110,6 +115,13 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
   // ...a Stargard (~33 km) już poza nią.
   expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
+  expect('Stare Miasto w Olsztynie', suggestCityForCoords(53.7778, 20.4778)?.id, 'olsztyn');
+  expect('Dworzec Główny w Olsztynie', suggestCityForCoords(53.7839, 20.4947)?.id, 'olsztyn');
+  expect('Kortowo w Olsztynie', suggestCityForCoords(53.759, 20.457)?.id, 'olsztyn');
+  // Barczewo (~16 km) to najdalszy punkt strefy...
+  expect('Barczewo w Olsztynie', suggestCityForCoords(53.8489, 20.6911)?.id, 'olsztyn');
+  // ...a Ostróda (~35 km) już poza nią.
+  expect('Ostróda poza Olsztynem', suggestCityForCoords(53.6965, 19.9651)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
@@ -117,9 +129,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'osiem miast',
+    'dziewięć miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,olsztyn',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -133,9 +145,10 @@ describe('Rejestr miast');
       isCityId('trojmiasto'),
       isCityId('lodz'),
       isCityId('szczecin'),
+      isCityId('olsztyn'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -214,6 +227,17 @@ describe('Wpis Szczecina');
   expect('kafle w z14 jak reszta (limit R2)', szcz.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS SKM)', szcz.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
+}
+
+describe('Wpis Olsztyna');
+{
+  const olsz = getCity('olsztyn');
+  expect('slug zbiorkom to olsztyn', olsz.zbiorkomSlug, 'olsztyn');
+  expect('osobna baza', olsz.dbFile, 'kilometr-gtfs-olsztyn.db');
+  expect('osobny pakiet kafli', olsz.tilePack, 'olsztyn-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', olsz.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS)', olsz.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', olsz.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);
