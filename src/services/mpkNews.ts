@@ -1077,11 +1077,19 @@ function extractRzeszowLines(title: string, description: string): string[] {
     .replace(/\b\d{1,3},\d+\b/g, ' ')
     // Numery komunikatów („KOMUNIKAT 201/26”) to nie pary linii.
     .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    // Telefony ZTM („17 748 13 45”, komórki „500 100 200”) to nie linie.
+    .replace(/\b\d{3}[\s-]?\d{3}[\s-]?\d{3}\b/g, ' ')
+    .replace(/\b\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b/g, ' ')
     // Czasy przejazdu („co 10 minut”) to nie linie.
     .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
     .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    // Daty z nazwą miesiąca („27 września”, „od 1 do 15 października”);
+    // WTP_MONTHS to wspólna lista polskich miesięcy w dopełniaczu.
     .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ')
+    // Ucięty zakres daty z karty WordPressa („… od 1 października 2026 r.
+    // do 15 …”): samotne „do 15” zostaje po wycięciu miesiąca i udawałoby linię.
+    .replace(/\b(?:od|do)\s+\d{1,2}(?:\s+do\s+\d{1,2})?(?=\s*(?:[.…]|$))/gi, ' ');
   let m: RegExpExecArray | null;
   RZESZOW_LINE_RE.lastIndex = 0;
   while ((m = RZESZOW_LINE_RE.exec(text))) {

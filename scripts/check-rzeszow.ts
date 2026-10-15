@@ -155,6 +155,29 @@ describe('Numery linii ZTM: nocne, 0A/0B, PT, daty i godziny');
     parseRzeszowRss(xml('Zmiany od 24.10 do 2.11 na linii 43')).map((i) => i.lines),
     [['43']],
   );
+  // Regresje z żywego feedu (2026-10-15): telefon ZTM „17 748 13 45”
+  // dawał widma linii 17, 13, 45, 46 i 47, a ucięta data z karty
+  // WordPressa („do 15 …”) widmo linii 15.
+  expect(
+    'telefony stacjonarne („17 748 13 45”) to nie linie',
+    parseRzeszowRss(xml('Bezpłatne przejazdy', 'kontakt telefoniczny: 17 748 13 45, 17 748 13 46, 17 748 13 47.')).map((i) => i.lines),
+    [[]],
+  );
+  expect(
+    'telefony komórkowe („500 100 200”) to nie linie',
+    parseRzeszowRss(xml('Informacja', 'tel. 500 100 200')).map((i) => i.lines),
+    [[]],
+  );
+  expect(
+    'telefon nie gasi prawdziwej linii z tytułu',
+    parseRzeszowRss(xml('Zmiany na linii 32', 'tel. 17 748 13 45')).map((i) => i.lines),
+    [['32']],
+  );
+  expect(
+    'ucięta data („do 15 …”) to nie linia',
+    parseRzeszowRss(xml('Sprzedaż biletów', 'Bilety na okres od 1 października 2026 r. do 15 &#8230;')).map((i) => i.lines),
+    [[]],
+  );
 }
 
 describe('Tryb linii: Rzeszów to same autobusy');
