@@ -56,6 +56,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.szczecin',
   );
   expect(
+    'Białystok dokleja sufiks',
+    cityKey('kilometr.places', 'bialystok'),
+    'kilometr.places.bialystok',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -110,6 +115,12 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
   // ...a Stargard (~33 km) już poza nią.
   expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
+  expect('Rynek Kościuszki w Białymstoku', suggestCityForCoords(53.1325, 23.1688)?.id, 'bialystok');
+  expect('Choroszcz w Białymstoku', suggestCityForCoords(53.1428, 22.9186)?.id, 'bialystok');
+  // Niewodnica (~24 km) to najdalszy punkt strefy...
+  expect('Niewodnica w Białymstoku', suggestCityForCoords(52.9213, 23.0966)?.id, 'bialystok');
+  // ...a Sokółka (~38 km) już poza nią.
+  expect('Sokółka poza Białymstokiem', suggestCityForCoords(53.4078, 23.5008)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
@@ -117,9 +128,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'osiem miast',
+    'dziewięć miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,bialystok',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -133,9 +144,10 @@ describe('Rejestr miast');
       isCityId('trojmiasto'),
       isCityId('lodz'),
       isCityId('szczecin'),
+      isCityId('bialystok'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -214,6 +226,17 @@ describe('Wpis Szczecina');
   expect('kafle w z14 jak reszta (limit R2)', szcz.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS SKM)', szcz.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
+}
+
+describe('Wpis Białegostoku');
+{
+  const bial = getCity('bialystok');
+  expect('slug zbiorkom to bialystok', bial.zbiorkomSlug, 'bialystok');
+  expect('osobna baza', bial.dbFile, 'kilometr-gtfs-bialystok.db');
+  expect('osobny pakiet kafli', bial.tilePack, 'bialystok-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', bial.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS POLREGIO)', bial.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', bial.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);
