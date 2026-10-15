@@ -3,10 +3,10 @@
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
  * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa] [--force] [--write-coords] [--allow-mpk-only]
- * Bez --city zachowuje się jak dawniej (Wrocław → cloudflare/dist/).
- * Z --city artefakty lądują w cloudflare/dist/{miasto}/, a manifest niesie
+ * Bez --city buduje Wrocław (domyślne miasto).
+ * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
- * {miasto}/db/kilometr-gtfs.db).
+ * {miasto}/db/kilometr-gtfs.db.gz).
  *
  * Wrocław:
  *   Open Data Wrocław — katalog GTFS + ZIP (MPK: tramwaje + autobusy)
@@ -25,9 +25,10 @@
  *   feedu PLK (polish_trains.zip, tylko kursy dotykające Warszawy), WKD
  *   z własnego feedu (wkd.zip). Bez PDP i bez klucza.
  *
- * Wyjścia (cloudflare/dist[/{miasto}]/):
- *   kilometr-gtfs.db  — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
- *   manifest.json: miasto, wersja, statystyki, sha256 bazy
+ * Wyjścia (cloudflare/dist/{miasto}/):
+ *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
+ *   kilometr-gtfs.db.gz  — ta sama baza spakowana gzip (level 9) do R2
+ *   manifest.json: miasto, wersja, statystyki, sha256 bazy (.gz i surowej)
  *
  * Wymagania: Node.js ≥ 22.5 (node:sqlite), program `unzip` w PATH
  * (linux/macos: standard; Windows: Git Bash / WSL). Zero zależności npm.

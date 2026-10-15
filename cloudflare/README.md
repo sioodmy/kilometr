@@ -172,9 +172,9 @@ potrzebuje żadnej zmiennej środowiskowej ani sekretu.
 EXPO_PUBLIC_TIMETABLE_URL=http://127.0.0.1:8787
 ```
 
-Aplikacja pobiera `${baseUrl}/{miasto}/manifest.json` (Wrocław dodatkowo
-próbuje legacy `/manifest.json`), porównuje `version` z lokalną metą
-`timetable_version` i ściąga bazę tylko przy zmianie. Gdy manifest
+Aplikacja pobiera `${baseUrl}/{miasto}/manifest.json`, porównuje `version`
+z lokalną metą `timetable_version` i ściąga bazę (`.db.gz`) tylko przy
+zmianie. Gdy manifest
 nieosiągalny, wraca do starego importu z ZIP-a (kod w
 `src/services/gtfsDownloader.ts` zostaje jako fallback; ZIP-a pobiera tylko
 Wrocław, bo Kraków nie ma feedu MPK do sparsowania na telefonie).
