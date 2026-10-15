@@ -2,7 +2,7 @@
 /**
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa] [--force] [--write-coords] [--allow-mpk-only]
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city buduje Wrocław (domyślne miasto).
  * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
@@ -24,6 +24,13 @@
  *   odjazdy, inaczej M1/M2 miałyby po 2 kursy-szablony. KM z ogólno-polskiego
  *   feedu PLK (polish_trains.zip, tylko kursy dotykające Warszawy), WKD
  *   z własnego feedu (wkd.zip). Bez PDP i bez klucza.
+ * Poznań:
+ *   ZTM Poznań (mirror cdn.zbiorkom.live/gtfs/poznan.zip; upstream to
+ *   oficjalny permalink www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile,
+ *   ale nie zwraca Last-Modified/ETag, więc skip buildu nie wykryłby zmian)
+ *   + Koleje Wielkopolskie z własnego publicznego GTFS (pkp-kw.zip, linie
+ *   PKM1–PKM5). Bez PDP i bez klucza. Feed ZTM to statyczny zrzut na ~18 dni
+ *   (stop_times ~40 MB), więc zwykły import bez scalania jak GZM/Warszawa.
  *
  * Wyjścia (cloudflare/dist/{miasto}/):
  *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
@@ -51,7 +58,7 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : 'wroclaw';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -174,6 +181,30 @@ const WKD_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@ki
  * Mińsk, Żyrardów). Kurs łapiemy, gdy ma choć jeden postój w obwiedni.
  */
 const WAW_ENVELOPE = { minLat: 51.95, maxLat: 52.45, minLon: 20.75, maxLon: 21.35 };
+
+/**
+ * Poznań: statyczny zrzut ZTM (tramwaje + autobusy + linie podmiejskie).
+ * Upstream to oficjalny permalink ZTM, ale serwer nie zwraca Last-Modified
+ * ani ETag (a nazwa pliku z oknem ważności jest dopiero w nagłówku
+ * Content-Disposition po pobraniu całości), więc fingerprint i pobieranie
+ * idą z mirroru cdn.zbiorkom.live (ten sam zrzut, odświeżany codziennie
+ * ok. 01:45 UTC, z poprawnymi nagłówkami do skipu buildu).
+ */
+const POZNAN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/poznan.zip';
+const POZNAN_GTFS_UPSTREAM = 'https://www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile';
+const POZNAN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * Koleje Wielkopolskie: własny publiczny GTFS (linie PKM1–PKM5 + reszta
+ * regionalnych + ZKA jako route_type 3). Feed obejmuje całe województwo
+ * (Piła–Kalisz), więc do bazy trafiają tylko kursy dotykające obwiedni
+ * aglomeracji (ten sam wzorzec co KM w Warszawie), ale z pełną geometrią
+ * (da się jechać za miasto). Numer pociągu siedzi w trip_short_name.
+ */
+const KW_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-kw.zip';
+const KW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+/** Obwiednia aglomeracji: kurs KW łapiemy, gdy ma choć jeden postój w środku. */
+const POZ_ENVELOPE = { minLat: 52.1, maxLat: 52.65, minLon: 16.5, maxLon: 17.4 };
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
@@ -842,14 +873,16 @@ function streamTripBlocks(path, onBlock) {
  *
  * o: { tag, dir, prefix, agency (filtr agency_id albo null = wszystko),
  *      trainNum(row, idx) -> numer, touchEnvelope (tylko kursy ze stacją
- *      w WAW_ENVELOPE, dla KM), counts, railGeo }
+ *      w o.envelope, dla KM/KW), envelope (domyślnie WAW_ENVELOPE),
+ *      counts, railGeo }
  */
 function importStaticRailFeed(db, o) {
+  const ENV = o.envelope ?? WAW_ENVELOPE;
   const readTxt = (n) => {
     try { return readFileSync(join(o.dir, n), 'utf8'); } catch { return null; }
   };
-  const inEnv = (g) => g.lat >= WAW_ENVELOPE.minLat && g.lat <= WAW_ENVELOPE.maxLat &&
-    g.lon >= WAW_ENVELOPE.minLon && g.lon <= WAW_ENVELOPE.maxLon;
+  const inEnv = (g) => g.lat >= ENV.minLat && g.lat <= ENV.maxLat &&
+    g.lon >= ENV.minLon && g.lon <= ENV.maxLon;
   const stat = { stations: 0, routes: 0, trips: 0, stopTimes: 0, skippedNoNumber: 0, skippedNoService: 0, skippedOutside: 0 };
 
   const stopsTxt = readTxt('stops.txt');
@@ -1397,6 +1430,8 @@ async function main() {
   let wawFingerprint = '';
   let kmVersion = '';
   let wkdVersion = '';
+  let poznanFingerprint = '';
+  let kwVersion = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -1415,6 +1450,11 @@ async function main() {
     kmVersion = await headVersion(KM_GTFS_URL, KM_UA);
     wkdVersion = await headVersion(WKD_GTFS_URL, WKD_UA);
     log('WTP:', wawFingerprint || '?', '| KM:', kmVersion || '?', '| WKD:', wkdVersion || '?');
+  } else if (CITY === 'poznan') {
+    gtfsSources = [{ label: 'ZTM', url: POZNAN_GTFS_URL, prefix: '', headers: POZNAN_UA }];
+    poznanFingerprint = await headVersion(POZNAN_GTFS_URL, POZNAN_UA);
+    kwVersion = await headVersion(KW_GTFS_URL, KW_UA);
+    log('ZTM:', poznanFingerprint || '?', '| KW:', kwVersion || '?', '| upstream:', POZNAN_GTFS_UPSTREAM);
   } else if (CITY === 'gzm') {
     if (!PDP_API_KEY) {
       throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
@@ -1457,6 +1497,7 @@ async function main() {
   const gtmVersionsReliable = CITY !== 'gzm' || (gtfsSources.length > 0 && gtfsSources.every((s) => !!s.version));
   const ksVersionReliable = CITY !== 'gzm' || !!ksVersion;
   const wawVersionReliable = CITY !== 'warszawa' || (!!wawFingerprint && !!kmVersion && !!wkdVersion);
+  const poznanVersionReliable = CITY !== 'poznan' || (!!poznanFingerprint && !!kwVersion);
 
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
@@ -1521,6 +1562,23 @@ async function main() {
         warn('zdalny manifest bez realnych KM/WKD, przebudowuję zamiast skipować.');
       }
     }
+    if (CITY === 'poznan' && remote.sources.ztm?.fingerprint === poznanFingerprint && poznanFingerprint) {
+      // Ten sam zrzut ZTM wystarczy do skipu tylko wtedy, gdy zdalna baza
+      // faktycznie ma Koleje Wielkopolskie (manifest sprzed ich wdrożenia
+      // ma zgodny odcisk, ale pociągów nie zawiera).
+      const remoteKwReal =
+        (remote.sources.kw?.version || null) === (kwVersion || null) &&
+        Number(remote.sources.kw?.trips || 0) > 0;
+      if (!poznanVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else if (remoteKwReal) {
+        log('brak zmian (ZTM + KW), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      } else {
+        warn('zdalny manifest bez realnych KW, przebudowuję zamiast skipować.');
+      }
+    }
     if (CITY === 'wroclaw'
       && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
       && (remote.sources.kd?.schedulesVersion || 'none') === kdVersion) {
@@ -1579,7 +1637,7 @@ async function main() {
   db.exec(SCHEMA_SQL);
   db.exec('PRAGMA synchronous = OFF;');
 
-  const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0, kmlStations: 0, kmlRoutes: 0, kmlTrips: 0, kmlStopTimes: 0, ksStations: 0, ksRoutes: 0, ksTrips: 0, ksStopTimes: 0, icStations: 0, icRoutes: 0, icTrips: 0, icStopTimes: 0, prStations: 0, prRoutes: 0, prTrips: 0, prStopTimes: 0, kmStations: 0, kmRoutes: 0, kmTrips: 0, kmStopTimes: 0, wkdStations: 0, wkdRoutes: 0, wkdTrips: 0, wkdStopTimes: 0 };
+  const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0, kmlStations: 0, kmlRoutes: 0, kmlTrips: 0, kmlStopTimes: 0, ksStations: 0, ksRoutes: 0, ksTrips: 0, ksStopTimes: 0, icStations: 0, icRoutes: 0, icTrips: 0, icStopTimes: 0, prStations: 0, prRoutes: 0, prTrips: 0, prStopTimes: 0, kmStations: 0, kmRoutes: 0, kmTrips: 0, kmStopTimes: 0, wkdStations: 0, wkdRoutes: 0, wkdTrips: 0, wkdStopTimes: 0, kwStations: 0, kwRoutes: 0, kwTrips: 0, kwStopTimes: 0 };
   /** Przystanki miasta w pamięci (do liczenia przesiadek na kolej w kroku 6b). */
   const cityStops = [];
   const cityStopIds = new Set();
@@ -1588,6 +1646,8 @@ async function main() {
   // (REPLACE po stop_id), reszta id z prefiksem KRK:{A,T,M} (brak kolizji).
   // GZM merguje N eksportów dziennych zwartym importem (dedupe kursów).
   // Warszawa importuje zwarto jak GZM (eksport dzienny, trip_id z datą).
+  // Poznań to pojedynczy statyczny zrzut ZTM, więc idzie generyczną ścieżką
+  // jak Wrocław (osobny prefiks niepotrzebny, id unikalne w feedzie).
   db.exec('DELETE FROM calendar_dates');
   if (CITY === 'gzm') {
     importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds);
@@ -1721,10 +1781,11 @@ async function main() {
   } catch {}
   log(`GTFS: stops=${counts.stops} routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
 
-  // 6. Kolej regionalna: KD z PDP API (tylko Wrocław), KM/WKD z PDP API
-  // (tylko Warszawa) albo Koleje Małopolskie ze statycznego GTFS (tylko
-  // Kraków). Wspólny mianownik: mapa stacji railGeo (do przesiadek w kroku 6b).
-  const RAIL_PREFIX = CITY === 'krakow' ? 'KML' : CITY === 'gzm' ? 'KS' : CITY === 'warszawa' ? 'SKM' : 'KD';
+  // 6. Kolej regionalna: KD z PDP API (tylko Wrocław), KM/WKD ze statycznych
+  // feedów (tylko Warszawa), Koleje Małopolskie ze statycznego GTFS (tylko
+  // Kraków) albo Koleje Wielkopolskie ze statycznego GTFS (tylko Poznań).
+  // Wspólny mianownik: mapa stacji railGeo (do przesiadek w kroku 6b).
+  const RAIL_PREFIX = CITY === 'krakow' ? 'KML' : CITY === 'gzm' ? 'KS' : CITY === 'warszawa' ? 'SKM' : CITY === 'poznan' ? 'KW' : 'KD';
   let kdInfo = CITY === 'wroclaw'
     ? { kind: 'pdp-api', skippedReason: PDP_API_KEY ? null : 'no-key' }
     : { kind: 'none', skippedReason: 'krakow-pdp-unused' };
@@ -1746,6 +1807,9 @@ async function main() {
   let prInfo = CITY === 'gzm'
     ? { kind: 'pdp-api', skippedReason: 'not-fetched-yet' }
     : { kind: 'none', skippedReason: 'only-gzm-has-pr' };
+  let kwInfo = CITY === 'poznan'
+    ? { kind: 'gtfs-zip', skippedReason: 'not-fetched-yet' }
+    : { kind: 'none', skippedReason: 'only-poznan-has-kw' };
   /** Liczba stacji kolei bez współrzędnych (kursy z nimi są pomijane). */
   let unresolvedCount = 0;
   /** Stacje kolei ze współrzędnymi (do przesiadek w kroku 6b). */
@@ -2373,6 +2437,35 @@ async function main() {
     wkdInfo = { kind: 'gtfs-zip', url: WKD_GTFS_URL, version: wkdVersion || null, ...wkdStat };
   }
 
+  // 6a5. Koleje Wielkopolskie ze statycznego GTFS (tylko Poznań, bez klucza).
+  // Feed obejmuje całe województwo, więc łapiemy tylko kursy dotykające
+  // aglomeracji (ten sam wzorzec co KM w Warszawie). Numer pociągu siedzi
+  // w trip_short_name (goła liczba, np. "70272"), a brygada z live (zbiorkom,
+  // agencja KW) to ten sam numer. ZKA (route_type 3) jedzie jako autobus.
+  if (CITY === 'poznan') {
+    const kwZipPath = join(work, 'kw.zip');
+    log('pobieranie ZIP KW…');
+    const kwBuf = await fetchBuffer(KW_GTFS_URL, KW_UA, 180000);
+    writeFileSync(kwZipPath, kwBuf);
+    log('ZIP KW:', (kwBuf.length / 1048576).toFixed(1), 'MB');
+    const kwDir = join(work, 'kw');
+    mkdirSync(kwDir, { recursive: true });
+    try {
+      execFileSync('unzip', ['-o', '-j', kwZipPath, ...NEEDED, '-d', kwDir], { stdio: 'pipe' });
+    } catch (e) {
+      warn('unzip dla KW zwrócił błąd (kontynuuję, zweryfikuję pliki):', String((e && e.message) || e).slice(0, 160));
+    }
+    const kwStat = importStaticRailFeed(db, {
+      tag: 'KW', dir: kwDir, prefix: 'KW', agency: 'KW', touchEnvelope: true,
+      envelope: POZ_ENVELOPE,
+      trainNum: (c, idx) => ((c[idx.trip_short_name] || '').trim().split(/\s/)[0] || '').split('/')[0].trim(),
+      counts, railGeo,
+    });
+    counts.kwStations = kwStat.stations; counts.kwRoutes = kwStat.routes;
+    counts.kwTrips = kwStat.trips; counts.kwStopTimes = kwStat.stopTimes;
+    kwInfo = { kind: 'gtfs-zip', url: KW_GTFS_URL, version: kwVersion || null, ...kwStat };
+  }
+
   // 6b. Przesiadki miasto<->kolej. Stacja kolejowa to nie słupek przy torach:
   // perony bywają schowane (Dworzec Główny: przystanek ~300 m od peronów
   // + hala i schody), więc linki liczymy hojnie. Aplikacja dokleja je do
@@ -2417,7 +2510,7 @@ async function main() {
     if (links.size > 0) {
       const ins = db.prepare('INSERT INTO interchanges (from_stop_id, to_stop_id, walk_sec, kind) VALUES (?, ?, ?, ?)');
       db.exec('BEGIN');
-      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : CITY === 'gzm' ? 'rail-ztm' : CITY === 'warszawa' ? 'wtp-rail' : 'mpk-kd');
+      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : CITY === 'gzm' ? 'rail-ztm' : CITY === 'warszawa' ? 'wtp-rail' : CITY === 'poznan' ? 'ztm-kw' : 'mpk-kd');
       db.exec('COMMIT');
       interchangeCount = links.size;
     }
@@ -2433,6 +2526,7 @@ async function main() {
   if (prInfo && !prInfo.skippedReason) prInfo.interchanges = interchangeCount;
   if (kmInfo && !kmInfo.skippedReason) kmInfo.interchanges = interchangeCount;
   if (wkdInfo && !wkdInfo.skippedReason) wkdInfo.interchanges = interchangeCount;
+  if (kwInfo && !kwInfo.skippedReason) kwInfo.interchanges = interchangeCount;
 
   // 6c. Twarda bramka, tylko Wrocław: bez pełnego, realnego KD nie
   // nadpisujemy R2. Baza MPK-only albo z niekompletnym KD to dokładnie ta
@@ -2520,6 +2614,28 @@ async function main() {
     log(`WAW: metro kursów=${wtpMetroTrips} SKA kursów=${wtpSkmTrips}`);
   }
 
+  // 6g. Twarda bramka, Poznań: baza bez pełnych Kolei Wielkopolskich
+  // albo bez przesiadek na nie nie nadpisuje R2. Tramwaje (route_type 0)
+  // jadą z GTFS ZTM, więc liczymy je wprost z tabeli.
+  if (CITY === 'poznan') {
+    const problems = [];
+    let ztmTramTrips = 0;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 0').get();
+      ztmTramTrips = row?.n ?? 0;
+    } catch {}
+    if (ztmTramTrips === 0) problems.push('0 kursów tramwajów ZTM');
+    if (counts.kwStations === 0) problems.push('0 stacji KW');
+    if (counts.kwRoutes === 0) problems.push('0 tras KW');
+    if (counts.kwTrips === 0) problems.push('0 kursów KW');
+    if (interchangeCount === 0) problems.push('0 przesiadek KW<->ZTM');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełny Poznań (${problems.join(', ')}): nie publikuję bazy.`);
+    }
+    log(`POZNAN: kursów tramwajów ZTM=${ztmTramTrips}`);
+  }
+
   // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem
   // (trip_id, seq), więc żaden indeks na tej tabeli nie jest potrzebny.
   db.exec('PRAGMA synchronous = NORMAL;');
@@ -2537,12 +2653,14 @@ async function main() {
       ? `${todayCompact()}-gzm${createHash('sha256').update(`${gtmFingerprint}|${ksVersion}|${icprVersion}`).digest('hex').slice(0, 8)}`
       : CITY === 'warszawa'
         ? `${todayCompact()}-waw${createHash('sha256').update(`${wawFingerprint}|${kmVersion}|${wkdVersion}`).digest('hex').slice(0, 8)}`
-        : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
+        : CITY === 'poznan'
+          ? `${todayCompact()}-poznan${createHash('sha256').update(`${poznanFingerprint}|${kwVersion}`).digest('hex').slice(0, 8)}`
+          : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -2610,6 +2728,18 @@ async function main() {
           },
           km: kmInfo,
           wkd: wkdInfo,
+        }
+      : CITY === 'poznan'
+      ? {
+          ztm: {
+            kind: 'gtfs-zip', url: POZNAN_GTFS_URL, upstream: POZNAN_GTFS_UPSTREAM,
+            fingerprint: poznanFingerprint,
+            stops: counts.stops - counts.kwStations,
+            routes: counts.routes - counts.kwRoutes,
+            trips: counts.trips - counts.kwTrips,
+            stopTimes: counts.stopTimes - counts.kwStopTimes,
+          },
+          kw: kwInfo,
         }
       : {
           mpk: {

@@ -1,6 +1,7 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
 // - miasto `pkp`: pozycje i opóźnienia pociągów regionalnych (agencja `KD`
-//   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy),
+//   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
+//   `KW` i `PR` dla Poznania),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw`: awaryjne (Wrocław) albo
 //   podstawowe (Kraków, GZM, Warszawa) pozycje autobusów, tramwajów i metra,
 //   gdy bezpośredni feed nie odpowiada.
@@ -118,6 +119,25 @@ export async function fetchZbWarsawRows(): Promise<RawVehicleRow[] | null> {
   return toRawRows(positions);
 }
 
+/**
+ * Pozycje ZTM Poznań jako wiersze dla matchera. Podstawowy feed live.
+ * Filtr `agencies=default,PKSPOZNAN` (za issue #241): agencja `default`
+ * to ZTM Poznań, a `PKSPOZNAN` wozi zarówno linie ZTM pod swoją brygadą,
+ * jak i własne linie podmiejskie. Reszta agencji jest celowo wykluczona:
+ * `SRODAWLKP` (autobusy miejskie Środy Wlkp.) numeruje linie 1–11, czyli
+ * dokładnie jak poznańskie tramwaje: pojazdy nigdy nie dopasują się do
+ * kursów (30 km od trasy), ale wisiałyby na mapie i w widoku linii jako
+ * widma tramwajów. `KOMBUS` jeździ liniami 580–599, których nie ma
+ * w GTFS ZTM, więc też byłyby samymi kropkami bez rozkładu.
+ */
+export async function fetchZbPoznanRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const pozn = getCity('poznan');
+  const positions = await fetchPositions(pozn.zbiorkomSlug, 'default,PKSPOZNAN', pozn.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
 function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
   const rows: RawVehicleRow[] = [];
   for (const p of positions) {
@@ -175,6 +195,24 @@ export async function fetchZbWarsawRails(): Promise<{ agency: string; vehicles: 
   if (positions === null) return null;
   const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
   for (const agency of ['KM', 'WKD']) {
+    const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
+    if (vehicles.length > 0) out.push({ agency, vehicles });
+  }
+  return out;
+}
+
+/**
+ * Pociągi Kolei Wielkopolskich i POLREGIO z jednego zapytania (bbox
+ * Poznania). Statyczny GTFS mamy tylko dla KW (linie PKM1–PKM5): pojazdy
+ * PR bez dopasowania w bazie matcher odrzuca po numerze, więc feed jest
+ * przyszłościowy bez zmiany kodu.
+ */
+export async function fetchZbPoznanRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+  const { getCity } = await import('../cities');
+  const positions = await fetchPositions('pkp', 'KW,PR', getCity('poznan').zbiorkomBbox);
+  if (positions === null) return null;
+  const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
+  for (const agency of ['KW', 'PR']) {
     const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
     if (vehicles.length > 0) out.push({ agency, vehicles });
   }

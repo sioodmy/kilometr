@@ -78,11 +78,11 @@ export const en: Strings = {
     settingsTitle: 'City',
     settingsHint: 'Timetable, offline map and news follow the city. The other city’s data stays on the phone.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : 'Wrocław',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : 'Wrocław',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP and Koleje Małopolskie'
@@ -90,7 +90,9 @@ export const en: Strings = {
           ? 'ZTM, Koleje Śląskie, POLREGIO and PKP Intercity'
           : id === 'warszawa'
             ? 'WTP, SKA, Koleje Mazowieckie and WKD'
-            : 'MPK and Koleje Dolnośląskie',
+            : id === 'poznan'
+              ? 'ZTM and Koleje Wielkopolskie'
+              : 'MPK and Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -98,7 +100,9 @@ export const en: Strings = {
           ? 'ZTM GZM'
           : id === 'warszawa'
             ? 'WTP Warszawa'
-            : 'MPK Wrocław • wroclaw.pl',
+            : id === 'poznan'
+              ? 'ZTM Poznań'
+              : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -106,9 +110,11 @@ export const en: Strings = {
           ? 'ZTM GZM'
           : id === 'warszawa'
             ? 'WTP Warszawa'
-            : 'MPK Wrocław',
+            : id === 'poznan'
+              ? 'ZTM Poznań'
+              : 'MPK Wrocław',
     operatorShort: (id: string): string =>
-      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : 'MPK',
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -116,8 +122,10 @@ export const en: Strings = {
           ? 'metropoliaztm.pl'
           : id === 'warszawa'
             ? 'wtp.waw.pl'
-            : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa',
+            : id === 'poznan'
+              ? 'ztm.poznan.pl'
+              : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań',
     changed: (name: string) => `Switched to: ${name}.`,
     switching: 'Switching city…',
     blockedByDownload: 'Timetable download in progress. You can switch city once it finishes.',
@@ -319,21 +327,27 @@ export const en: Strings = {
         ? 'e.g. Krowoderska 12'
         : id === 'warszawa'
           ? 'e.g. Marszałkowska 12'
-          : 'e.g. Swojczycka 41',
+          : id === 'poznan'
+            ? 'e.g. Głogowska 12'
+            : 'e.g. Swojczycka 41',
     slotWork: 'Work',
     slotWorkHint: (id: string) =>
       id === 'krakow'
         ? 'e.g. Galeria Krakowska'
         : id === 'warszawa'
           ? 'e.g. Złote Tarasy'
-          : 'e.g. Sky Tower',
+          : id === 'poznan'
+            ? 'e.g. Stary Browar'
+            : 'e.g. Sky Tower',
     slotUni: 'University',
     slotUniHint: (id: string) =>
       id === 'krakow'
         ? 'e.g. AGH'
         : id === 'warszawa'
           ? 'e.g. Uniwersytet'
-          : 'e.g. Politechnika',
+          : id === 'poznan'
+            ? 'e.g. UAM'
+            : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
     brand: 'Kilometr',
@@ -569,7 +583,7 @@ export const en: Strings = {
     searching: (city: string) => `Searching ${city}…`,
     noResults: 'No results',
     noResultsHint: (id: string) =>
-      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
+      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
     noResultsFor: (q: string) => `Nothing matches “${q}”`,
     yourPlaces: 'Your places',
     gpsOutsideNotice: 'GPS is outside the city, pick a point manually.',

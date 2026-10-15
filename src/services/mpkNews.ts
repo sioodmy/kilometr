@@ -5,6 +5,8 @@
 // - Warszawa: RSS WTP (www.wtp.waw.pl/feed, zwykły RSS 2.0 z numerami linii
 //   w tytułach; podstrony artykułów blokuje CloudFront, więc treść bierzemy
 //   z opisu w feedzie).
+// - Poznań: RSS ZTM (www.ztm.poznan.pl/feed, zwykły RSS 2.0 WordPressa;
+//   numery linii w tytułach jak w WTP, treść z opisu w feedzie).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -56,6 +58,12 @@ export const GZM_NEWS_URL = 'https://rj.transportgzm.pl/v2/news/';
  * 108, 130 i 162”), więc wyciągamy je regexem jak w ZTP/GZM.
  */
 export const WTP_FEED_URL = 'https://www.wtp.waw.pl/feed/';
+/**
+ * Komunikaty ZTM Poznań: zwykły kanał RSS 2.0 WordPressa (tytuł + link +
+ * pubDate + opis). Numery linii siedzą w tytułach („objazdy dla 138”,
+ * „na trasę linii 0”), więc wyciągamy je regexem jak w WTP.
+ */
+export const ZTM_POZNAN_FEED_URL = 'https://www.ztm.poznan.pl/feed/';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -491,6 +499,74 @@ export function parseWtpRss(xml: string): MpkNewsItem[] {
   return items;
 }
 
+/**
+ * Numery linii ZTM Poznań w tekście: 1–999 oraz turystyczne T6/T7.
+ * Daty i godziny wycinamy wcześniej jak w WTP („5 października”,
+ * „22 września”, „16.09”), a rocznice typu „45-lecie” nie są liniami.
+ */
+const POZ_LINE_RE = /\b(T\d{1,2}|\d{1,3}[A-Z]?)\b/gi;
+
+function extractPoznanLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Rocznice („45-lecie Ikarusów”) to nie linie.
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  POZ_LINE_RE.lastIndex = 0;
+  while ((m = POZ_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' || after === ':') continue;
+    if (/^\d+$/.test(tok)) {
+      const n = Number(tok);
+      if (n < 1 || n > 999) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Komunikaty ZTM Poznań (RSS 2.0: tytuł + link + pubDate + opis).
+ * Cały kanał dotyczy transportu, więc nie filtrujemy po słowach jak
+ * miejski RSS Wrocławia. Opis z feedu ląduje w karcie.
+ */
+export function parsePoznanRss(xml: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const link = stripCdata(tagInner(b, 'link')).trim();
+    const rawDesc = stripCdata(tagInner(b, 'description'));
+    const description = htmlToText(rawDesc).slice(0, 600);
+    const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
+    const ts = pubRaw ? Date.parse(pubRaw) : NaN;
+    const pubDate = Number.isFinite(ts) ? ts : null;
+    if (!title && !link) continue;
+    items.push({
+      id: link || `${rawTitle}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description,
+      imageUrl: extractImage(rawDesc),
+      urgent: isUrgentNews(title, description),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractPoznanLines(title, description),
+    });
+  }
+  return items;
+}
+
 const ARTICLE_JUNK_RE =
   /^(galeria zdjęć|zobacz galerię|zobacz galerię zdjęć tego artykułu|rozwiń|czytaj także|polecane|udostępnij)$/i;
 
@@ -536,6 +612,9 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   const ztp = /ztp\.krakow\.pl/i.test(url);
   const gzm = /rj\.transportgzm\.pl/i.test(url);
   const wtp = /wtp\.waw\.pl/i.test(url);
+  // ZTM Poznań to WordPress, ale inny motyw niż WTP: treść artykułu siedzi
+  // w <div class="row content mt-4"> wewnątrz sekcji (bez <article>).
+  const ztmPoznan = /ztm\.poznan\.pl/i.test(url);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : ztp
@@ -550,8 +629,10 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
             html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ??
             html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
             '')
-          : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
-          '');
+          : ztmPoznan
+            ? (html.split(/class="row content mt-4"/i)[1]?.split(/<\/section>/i)[0] ?? '')
+            : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
+            '');
   if (gzm) {
     // Tytuł niesie nagłówek ekranu (params.title), więc w treści go pomijamy.
     fragment = fragment.replace(/<h2\b[^>]*>[\s\S]*?<\/h2>/i, ' ');
@@ -652,7 +733,21 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'krakow') return fetchZtpNews(signal, city.id);
   if (city.id === 'gzm') return fetchGzmNews(signal, city.id);
   if (city.id === 'warszawa') return fetchWtpNews(signal, city.id);
+  if (city.id === 'poznan') return fetchPoznanNews(signal, city.id);
   return fetchMpkNews(signal);
+}
+
+/** Komunikaty ZTM Poznań: jedno źródło (RSS), brak fallbacku. */
+async function fetchPoznanNews(signal?: AbortSignal, cityId = 'poznan'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const xml = await fetchText(ZTM_POZNAN_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const items = parsePoznanRss(xml);
+    if (items.length === 0) console.warn('[News] Poznań: pusty feed (zmiana formatu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
 }
 
 /** Komunikaty WTP Warszawa: jedno źródło (RSS), brak fallbacku. */
