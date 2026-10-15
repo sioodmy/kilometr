@@ -46,6 +46,7 @@ import { getTimetableDownloadGate, remainingHours } from '../src/services/downlo
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard, PrefsToggle } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
+import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
 
@@ -391,6 +392,7 @@ export default function SettingsScreen() {
           ) : null}
         </View>
         <OfflineMapCard />
+        <DiagnosticsCard />
 
         <SectionLabel>{s.settings.sectionApp}</SectionLabel>
         <View style={styles.card}>
