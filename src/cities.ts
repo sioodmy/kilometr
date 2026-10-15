@@ -66,7 +66,7 @@ const WROCLAW: CityDef = {
   tilePack: 'wroclaw-tiles.ktp',
   tileBbox: { minLat: 51.0, maxLat: 51.22, minLon: 16.8, maxLon: 17.28 },
   tileMaxZoom: 14,
-  tilePackMB: 31,
+  tilePackMB: 19,
   features: { cable: true, campusPois: true, regionalRail: true, directBusPosition: true },
 };
 
@@ -84,7 +84,7 @@ const KRAKOW: CityDef = {
   tilePack: 'krakow-tiles.ktp',
   tileBbox: { minLat: 49.96, maxLat: 50.16, minLon: 19.7, maxLon: 20.3 },
   tileMaxZoom: 14,
-  tilePackMB: 34,
+  tilePackMB: 21,
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
@@ -105,10 +105,10 @@ const GZM: CityDef = {
   dbFile: 'kilometr-gtfs-gzm.db',
   tilePack: 'gzm-tiles.ktp',
   tileBbox: { minLat: 49.9, maxLat: 50.65, minLon: 18.25, maxLon: 19.85 },
-  // z13, nie z14: cała metropolia w z14 to ~311 MB (limit 300 MB na obiekt
-  // w R2), a z13 daje ~80 MB i wystarczającą szczegółowość offline.
-  tileMaxZoom: 13,
-  tilePackMB: 80,
+  // Dzięki kompresji gzip z14 dla całej metropolii mieści się w ~104 MB
+  // (limit R2 to 300 MB) i odblokowuje pieszy routing offline w Raptorze.
+  tileMaxZoom: 14,
+  tilePackMB: 104,
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
@@ -126,9 +126,9 @@ const WARSZAWA: CityDef = {
   dbFile: 'kilometr-gtfs-warszawa.db',
   tilePack: 'warszawa-tiles.ktp',
   tileBbox: { minLat: 52.05, maxLat: 52.35, minLon: 20.85, maxLon: 21.28 },
-  // Warszawa w z14: powierzchnia porównywalna z Krakowem (~34 MB).
+  // Warszawa w z14 z kompresją gzip mieści się w ~39 MB z zapasem na lotnisko i SKM.
   tileMaxZoom: 14,
-  tilePackMB: 38,
+  tilePackMB: 39,
   // SKM siedzi w GTFS WTP, KM i WKD dociąga build z PDP (jak KD we Wrocławiu).
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };

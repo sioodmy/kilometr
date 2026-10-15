@@ -2,10 +2,12 @@ package pl.wroclaw.kilometr.raptor
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.zip.GZIPInputStream
 
 class KilometrRaptorModule : Module() {
   /** Kafle piesze z pakietów offline (`{miasto}-tiles.ktp` w filesDir/maps). */
@@ -27,7 +29,7 @@ class KilometrRaptorModule : Module() {
         if (magic != "KMTP") return null
         header.position(4)
         val version = header.int
-        if (version != 1) return null
+        if (version != 1 && version != 2) return null
         val count = header.int
         if (count <= 0) return null
 
@@ -55,7 +57,15 @@ class KilometrRaptorModule : Module() {
               val data = ByteArray(length)
               raf.seek(offset)
               raf.readFully(data)
-              return data
+              return if (version == 2) {
+                try {
+                  GZIPInputStream(ByteArrayInputStream(data)).use { it.readBytes() }
+                } catch (_: Throwable) {
+                  null
+                }
+              } else {
+                data
+              }
             }
             cmp < 0 -> lo = mid + 1
             else -> hi = mid - 1

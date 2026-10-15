@@ -6,7 +6,7 @@ import java.io.File
 
 /**
  * Obsługuje żądania mapy:
- *   `/tiles/z/x/y.pbf` kafel z archiwum KMTP,
+ *   `/tiles/z/x/y.pbf` kafel z archiwum KMTP (jeśli gzip, wysyłany z Content-Encoding: gzip),
  *   `/assets/...`      silnik mapy, style i glify z filesDir/maps.
  *
  * WebView z `source={{ html }}` ma origin `null` / `about:blank`, więc
@@ -42,21 +42,26 @@ class MapRequestHandler(
         val y = parts[2].substringBefore('.').toIntOrNull() ?: return notFound()
         if (z < 0 || z > 22) return notFound()
 
-        val data = firstTile(z, x, y) ?: return notFound()
-        return cors(
-            newFixedLengthResponse(
-                Response.Status.OK,
-                MIME_PBF,
-                ByteArrayInputStream(data),
-                data.size.toLong(),
-            ),
+        val tile = firstTile(z, x, y) ?: return notFound()
+        val res = newFixedLengthResponse(
+            Response.Status.OK,
+            MIME_PBF,
+            ByteArrayInputStream(tile.data),
+            tile.data.size.toLong(),
         )
+        if (tile.isGzipped) {
+            res.addHeader("Content-Encoding", "gzip")
+        }
+        return cors(res)
     }
 
+    private class FoundTile(val data: ByteArray, val isGzipped: Boolean)
+
     /** Pierwszy pakiet z kaflem wygrywa (miasta nie zachodzą na siebie). */
-    private fun firstTile(z: Int, x: Int, y: Int): ByteArray? {
+    private fun firstTile(z: Int, x: Int, y: Int): FoundTile? {
         for (pack in packs) {
-            pack.tile(z, x, y)?.let { return it }
+            val data = pack.tile(z, x, y) ?: continue
+            return FoundTile(data, pack.isGzipped)
         }
         return null
     }

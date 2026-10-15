@@ -1,9 +1,11 @@
 // Pakiet kafelków miasta do archiwum gotowego do serwowania z telefonu.
 //
-// Format archiwum (KMTP v1):
-//   nagłówek 32 B  : magic "KMTP" | wersja u32 | liczba kafelków u32 | maxzoom u32
-//   katalog       : pozycja + rozmiar kafla (offset u64, len u32) + z/x/y (u8/u16/u16)
-//   dane          : sklejone kafle, bez zmian (serwer wysyła jako application/x-protobuf)
+// Format archiwum (KMTP v2):
+//   nagłówek 32 B  : magic "KMTP" | wersja u32 (=2) | liczba kafelków u32 | maxzoom u32
+//   katalog       : pozycja + rozmiar kafla (offset u64, len u32) + z/x/y (u8/u16/u16) + pad u8
+//   dane          : sklejone kafle, każdy skompresowany gzipem (level 9).
+//                   Natywny serwer HTTP odsyła kafel z nagłówkiem `Content-Encoding: gzip`,
+//                   dzięki czemu silnik WebView rozpakowuje go sprzętowo/w C++ w locie.
 //
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
@@ -14,6 +16,7 @@
 
 import { mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
+import { gzipSync } from 'node:zlib';
 
 const TS = '20261004_113936_pt';
 const BASE = `https://tiles.openfreemap.org/planet/${TS}`;
@@ -33,15 +36,14 @@ const CITY_PACKS = {
   gzm: {
     out: 'gzm-tiles.ktp',
     bbox: { minLon: 18.25, minLat: 49.9, maxLon: 19.85, maxLat: 50.65 },
-    // z14 dla całej metropolii to ~311 MB, ponad limit 300 MB na obiekt w R2.
-    // z13 daje ~80 MB i wystarcza do offline.
-    maxZoom: 13,
+    // Dzięki kompresji gzip pełne z14 dla całej metropolii mieści się w ~104 MB
+    // (limit R2 to 300 MB) i odblokowuje pieszy routing offline w Raptorze.
+    maxZoom: 14,
   },
   warszawa: {
     out: 'warszawa-tiles.ktp',
     bbox: { minLon: 20.85, minLat: 52.05, maxLon: 21.28, maxLat: 52.35 },
-    // Powierzchnia jak Kraków (z14, ~34 MB): stolica wchodzi w jeden pakiet
-    // bez cięcia zoomu, z zapasem na lotnisko i SKM-korytarze.
+    // Stolica w z14 z kompresją gzip zajmuje ~39 MB z zapasem na lotnisko i SKM.
     maxZoom: 14,
   },
 };
@@ -56,7 +58,9 @@ const CACHE = `tilecache-${CITY}`;
 const BBOX = PACK.bbox;
 const MAXZOOM = PACK.maxZoom;
 
-function lon2x(lon, z) { return Math.floor(((lon + 180) / 360) * 2 ** z); }
+function lon2x(lon, z) {
+  return Math.floor(((lon + 180) / 360) * 2 ** z);
+}
 function lat2y(lat, z) {
   const r = (lat * Math.PI) / 180;
   return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z);
@@ -64,13 +68,13 @@ function lat2y(lat, z) {
 
 function tilesFor(z) {
   const out = [];
-  const x0 = lon2x(BBOX.minLon, z), x1 = lon2x(BBOX.maxLon, z);
-  const y0 = lat2y(BBOX.maxLat, z), y1 = lat2y(BBOX.minLat, z);
+  const x0 = lon2x(BBOX.minLon, z),
+    x1 = lon2x(BBOX.maxLon, z);
+  const y0 = lat2y(BBOX.maxLat, z),
+    y1 = lat2y(BBOX.minLat, z);
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push([z, x, y]);
   return out;
 }
-
-function key(z, x, y) { return `${z}/${x}/${y}`; }
 
 async function fetchTile(z, x, y, attempt = 1) {
   const url = `${BASE}/${z}/${x}/${y}.pbf`;
@@ -82,15 +86,25 @@ async function fetchTile(z, x, y, attempt = 1) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     return buf.length > 0 ? buf : null; // pusty kafel = poza zasięgiem, pomijamy
-  } catch (e) {
+  } catch {
     if (attempt >= 3) return null;
     await new Promise((r) => setTimeout(r, 800 * attempt));
     return fetchTile(z, x, y, attempt + 1);
   }
 }
 
+function compressTile(buf) {
+  // Jeśli z jakiegoś powodu bufor jest już gzipem (np. z zewnętrznego źródła)
+  if (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+    return buf;
+  }
+  return gzipSync(buf, { level: 9 });
+}
+
 (async () => {
-  try { mkdirSync(CACHE); } catch {}
+  try {
+    mkdirSync(CACHE);
+  } catch {}
   const all = [];
   for (let z = 0; z <= MAXZOOM; z++) all.push(...tilesFor(z));
   console.log(`Kafelkow do pobrania: ${all.length} (z0-${MAXZOOM})`);
@@ -108,7 +122,6 @@ async function fetchTile(z, x, y, attempt = 1) {
       const t = queue.shift();
       if (!t) return;
       const [z, x, y] = t;
-      const k = key(z, x, y);
       let buf = await fetchTile(z, x, y);
       const cpath = `${CACHE}/${z}/${x}/${y}.pbf`;
       if (buf) {
@@ -123,7 +136,7 @@ async function fetchTile(z, x, y, attempt = 1) {
         }
       }
       if (buf && buf.length > 0) {
-        entries.push({ z, x, y, data: buf });
+        entries.push({ z, x, y, data: compressTile(buf) });
       }
       done++;
       if (done % 25 === 0) {
@@ -144,30 +157,35 @@ async function fetchTile(z, x, y, attempt = 1) {
   const dirBytes = entries.length * 18;
   const header = Buffer.alloc(32);
   header.write('KMTP', 0, 'ascii');
-  header.writeUInt32LE(1, 4);
+  header.writeUInt32LE(2, 4); // KMTP v2: kafle skompresowane gzipem
   header.writeUInt32LE(entries.length, 8);
   header.writeUInt32LE(MAXZOOM, 12);
 
   const DATA_START = 32 + dirBytes;
   const dir = Buffer.alloc(dirBytes);
-  const ordered = Buffer.concat([header, dir]);
   let dataPos = DATA_START;
   let p = 0;
   for (const e of entries) {
     // Katalog ma stać szerokość 18 B na pozycję: offset u64, len u32, z u8,
     // x u16, y u16, pad u8. Bez paddingu pozycje rozjeżdżają się o bajt.
-    dir.writeBigUInt64LE(BigInt(dataPos), p); p += 8;
-    dir.writeUInt32LE(e.data.length, p); p += 4;
-    dir.writeUInt8(e.z, p); p += 1;
-    dir.writeUInt16LE(e.x, p); p += 2;
-    dir.writeUInt16LE(e.y, p); p += 2;
-    dir.writeUInt8(0, p); p += 1;
+    dir.writeBigUInt64LE(BigInt(dataPos), p);
+    p += 8;
+    dir.writeUInt32LE(e.data.length, p);
+    p += 4;
+    dir.writeUInt8(e.z, p);
+    p += 1;
+    dir.writeUInt16LE(e.x, p);
+    p += 2;
+    dir.writeUInt16LE(e.y, p);
+    p += 2;
+    dir.writeUInt8(0, p);
+    p += 1;
     dataPos += e.data.length;
   }
 
   writeFileSync(OUT, Buffer.concat([header, dir, ...entries.map((e) => e.data)]));
   const size = statSync(OUT).size;
-  console.log(`\nGotowe: ${OUT}`);
+  console.log(`\nGotowe: ${OUT} (KMTP v2)`);
   console.log(`  kafelkow: ${entries.length}`);
   console.log(`  rozmiar:  ${(size / 1048576).toFixed(1)} MB`);
   if (dataPos !== size) {

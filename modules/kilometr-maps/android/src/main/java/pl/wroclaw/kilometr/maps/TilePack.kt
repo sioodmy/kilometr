@@ -6,7 +6,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Czytnik archiwum kafelków KMTP v1 (patrz scripts/build-tile-pack.mjs).
+ * Czytnik archiwum kafelków KMTP (v1 raw / v2 gzip, patrz scripts/build-tile-pack.mjs).
  *
  * Katalog jest posortowany po (z, x, y), więc kafel szukamy wyszukiwaniem
  * binarnym wprost po pliku. Nie ładujemy indeksu do pamięci: pakiet ma
@@ -15,10 +15,10 @@ import java.nio.ByteOrder
  *
  * Format:
  *   0..3   magic "KMTP"
- *   4..7   wersja (u32)
+ *   4..7   wersja (u32): 1 = nieskompresowany, 2 = gzip per-tile
  *   8..11  liczba kafelków (u32)
  *   12..15 maxzoom (u32)
- *   16..   katalog: offset u64, len u32, z u8, x u16, y u16 (18 B na pozycję)
+ *   16..   katalog: offset u64, len u32, z u8, x u16, y u16, pad u8 (18 B na pozycję)
  *   potem  dane kafelków, kolejno wg katalogu
  */
 class TilePack(val file: File) {
@@ -31,6 +31,8 @@ class TilePack(val file: File) {
     class MissingTile : Exception("Brak kafla w pakiecie")
 
     private val raf: RandomAccessFile = RandomAccessFile(file, "r")
+    val version: Int
+    val isGzipped: Boolean
     val count: Int
     val maxZoom: Int
 
@@ -42,8 +44,9 @@ class TilePack(val file: File) {
         val magic = String(header.array(), 0, 4, Charsets.US_ASCII)
         if (magic != "KMTP") throw IllegalStateException("To nie jest archiwum KMTP")
         header.position(4)
-        val version = header.int
-        if (version != 1) throw IllegalStateException("Nieobsługiwana wersja pakietu: $version")
+        version = header.int
+        if (version != 1 && version != 2) throw IllegalStateException("Nieobsługiwana wersja pakietu: $version")
+        isGzipped = (version == 2)
         count = header.int
         maxZoom = header.int
     }
