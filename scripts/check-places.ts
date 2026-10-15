@@ -56,6 +56,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.szczecin',
   );
   expect(
+    'Kielce doklejają sufiks',
+    cityKey('kilometr.places', 'kielce'),
+    'kilometr.places.kielce',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -110,6 +115,12 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
   // ...a Stargard (~33 km) już poza nią.
   expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
+  expect('Rynek w Kielcach', suggestCityForCoords(50.8717, 20.6314)?.id, 'kielce');
+  expect('Kadzielnia w Kielcach', suggestCityForCoords(50.8556, 20.6176)?.id, 'kielce');
+  // Obice Szkoła (~21 km) to najdalszy przystanek strefy ZTM...
+  expect('Obice w Kielcach', suggestCityForCoords(50.68369, 20.60016)?.id, 'kielce');
+  // ...a Skarżysko-Kamienna (~32 km) już poza nią.
+  expect('Skarżysko poza Kielcami', suggestCityForCoords(51.1146, 20.8693)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
@@ -117,9 +128,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'osiem miast',
+    'dziewięć miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -133,9 +144,10 @@ describe('Rejestr miast');
       isCityId('trojmiasto'),
       isCityId('lodz'),
       isCityId('szczecin'),
+      isCityId('kielce'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -214,6 +226,17 @@ describe('Wpis Szczecina');
   expect('kafle w z14 jak reszta (limit R2)', szcz.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS SKM)', szcz.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
+}
+
+describe('Wpis Kielc');
+{
+  const kiel = getCity('kielce');
+  expect('slug zbiorkom to kielce', kiel.zbiorkomSlug, 'kielce');
+  expect('osobna baza', kiel.dbFile, 'kilometr-gtfs-kielce.db');
+  expect('osobny pakiet kafli', kiel.tilePack, 'kielce-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', kiel.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS kolei)', kiel.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', kiel.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);

@@ -98,7 +98,9 @@ export const pl = {
                   ? 'Łódź'
                   : id === 'szczecin'
                     ? 'Szczecin'
-                    : 'Wrocław',
+                    : id === 'kielce'
+                      ? 'Kielce'
+                      : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Krakowa'
@@ -114,7 +116,9 @@ export const pl = {
                   ? 'Łodzi'
                   : id === 'szczecin'
                     ? 'Szczecina'
-                    : 'Wrocławia',
+                    : id === 'kielce'
+                      ? 'Kielc'
+                      : 'Wrocławia',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Krakowie'
@@ -130,7 +134,9 @@ export const pl = {
                   ? 'Łodzi'
                   : id === 'szczecin'
                     ? 'Szczecinie'
-                    : 'Wrocławiu',
+                    : id === 'kielce'
+                      ? 'Kielcach'
+                      : 'Wrocławiu',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP i Koleje Małopolskie'
@@ -142,11 +148,13 @@ export const pl = {
               ? 'ZTM i Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia i SKM'
-                : id === 'lodz'
+: id === 'lodz'
                   ? 'MPK i Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-                    : 'MPK i Koleje Dolnośląskie',
+                    : id === 'kielce'
+                      ? 'ZTM Kielce'
+                      : 'MPK i Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -158,11 +166,13 @@ export const pl = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-                : id === 'lodz'
+: id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-                    : 'MPK Wrocław • wroclaw.pl',
+                    : id === 'kielce'
+                      ? 'ZTM Kielce'
+                      : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -174,11 +184,13 @@ export const pl = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-                : id === 'lodz'
+: id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-                    : 'MPK Wrocław',
+                    : id === 'kielce'
+                      ? 'ZTM Kielce'
+                      : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -192,7 +204,9 @@ export const pl = {
                 ? 'ZTM / ZKM'
                 : id === 'szczecin'
                   ? 'ZDiTM'
-                  : 'MPK',
+                  : id === 'kielce'
+                    ? 'ZTM'
+                    : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -204,12 +218,14 @@ export const pl = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-                : id === 'lodz'
+: id === 'lodz'
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
-                    : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin',
+                    : id === 'kielce'
+                      ? 'ztm.kielce.pl'
+                      : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce',
     changed: (name: string) => `Przełączono na: ${name}.`,
     switching: 'Przełączam miasto…',
     blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
@@ -438,11 +454,13 @@ export const pl = {
             ? 'np. Głogowska 12'
             : id === 'trojmiasto'
               ? 'np. Długa 12'
-              : id === 'lodz'
+: id === 'lodz'
                 ? 'np. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'np. Wojska Polskiego 12'
-                  : 'np. Swojczycka 41',
+                  : id === 'kielce'
+                    ? 'np. Sienkiewicza 12'
+                    : 'np. Swojczycka 41',
     slotWork: 'Praca',
     slotWorkHint: (id: string): string =>
       id === 'krakow'
@@ -453,11 +471,13 @@ export const pl = {
             ? 'np. Stary Browar'
             : id === 'trojmiasto'
               ? 'np. Galeria Bałtycka'
-              : id === 'lodz'
+: id === 'lodz'
                 ? 'np. Manufaktura'
                 : id === 'szczecin'
                   ? 'np. Galeria Kaskada'
-                  : 'np. Sky Tower',
+                  : id === 'kielce'
+                    ? 'np. Galeria Echo'
+                    : 'np. Sky Tower',
     slotUni: 'Uczelnia',
     slotUniHint: (id: string): string =>
       id === 'krakow'
@@ -468,11 +488,13 @@ export const pl = {
             ? 'np. UAM'
             : id === 'trojmiasto'
               ? 'np. UG'
-              : id === 'lodz'
+: id === 'lodz'
                 ? 'np. UŁ'
                 : id === 'szczecin'
                   ? 'np. US'
-                  : 'np. Politechnika',
+                  : id === 'kielce'
+                    ? 'np. UJK'
+                    : 'np. Politechnika',
     backA11y: 'Wstecz',
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
     brand: 'Kilometr',
@@ -724,7 +746,7 @@ export const pl = {
     searching: (city: string) => `Szukam w ${city}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
-      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
+      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
     yourPlaces: 'Twoje miejsca',
     gpsOutsideNotice: 'GPS poza obsługiwanym miastem, wybierz punkt manualnie.',
