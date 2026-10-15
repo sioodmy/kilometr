@@ -323,9 +323,5 @@ class KilometrRaptorModule : Module() {
     AsyncFunction("decompressGzipFile") { sourcePath: String, destPath: String ->
       decompressGzipFileInternal(sourcePath, destPath)
     }
-
-    Function("decompressGzipFileSync") { sourcePath: String, destPath: String ->
-      decompressGzipFileInternal(sourcePath, destPath)
-    }
   }
 }

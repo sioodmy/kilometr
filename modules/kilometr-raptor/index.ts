@@ -28,7 +28,6 @@ type NativeKilometrRaptorModule = {
   routeFoot(packedReq: Uint8Array): Promise<Uint8Array | null>;
   invoke(cmd: number, payload: Uint8Array): Promise<Uint8Array | null>;
   decompressGzipFile?(sourcePath: string, destPath: string): Promise<boolean>;
-  decompressGzipFileSync?(sourcePath: string, destPath: string): boolean;
 };
 
 type WasmExports = {
@@ -542,33 +541,6 @@ export async function decompressGzipFile(
           .on("finish", () => resolve(undefined))
           .on("error", reject);
       });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-
-export function decompressGzipFileSync(
-  sourcePath: string,
-  destPath: string
-): boolean {
-  const nativeMod = getNativeModule();
-  if (nativeMod && typeof nativeMod.decompressGzipFileSync === "function") {
-    return nativeMod.decompressGzipFileSync(sourcePath, destPath);
-  }
-  const isNode = typeof process !== "undefined" && !!process.versions?.node;
-  if (isNode) {
-    try {
-      const req: any = typeof globalThis !== "undefined" && (globalThis as any).__non_webpack_require__ ? (globalThis as any).__non_webpack_require__ : eval("require");
-      const fsModule = req("node:fs");
-      const zlibModule = req("node:zlib");
-      const src = sourcePath.replace(/^file:\/\//, "");
-      const dst = destPath.replace(/^file:\/\//, "");
-      const buf = fsModule.readFileSync(src);
-      const decompressed = zlibModule.gunzipSync(buf);
-      fsModule.writeFileSync(dst, decompressed);
       return true;
     } catch {
       return false;
