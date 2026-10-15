@@ -16,6 +16,7 @@ import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseMpkLodzRss, MPK_LODZ_ROZKLADY_RSS } from '../src/services/mpkNews';
+import { resolveActiveServices } from '../src/services/gtfsDatabase';
 import { pl } from '../src/i18n/pl';
 import { en } from '../src/i18n/en';
 import { de } from '../src/i18n/de';
@@ -76,6 +77,11 @@ describe('Komunikaty MPK (RSS)');
 </channel></rss>`;
   const items = parseMpkLodzRss(xml);
   expect('trzy komunikaty', items.length, 3);
+  expect(
+    'link po https (Android blokuje cleartext)',
+    items[0].link,
+    'https://mpk.lodz.pl/rozklady/wholemessage.jsp?articleId=39348',
+  );
   expect('tytuł z linią 75B', items[0].title, 'Planowane zmiany w rozkładach jazdy: 75B');
   expect('linie z linków', items[1].lines, ['10A', '10B', '12', '18']);
   expect('tytuł z czterema liniami', items[1].title, 'Aktualne zmiany w rozkładach jazdy: 10A, 10B, 12, 18');
@@ -170,22 +176,49 @@ describe('Podpowiedzi onboardingu per-miasto');
 describe('Treść komunikatu MPK (tabela div#dWrkspc)');
 {
   // Struktura 1:1 z realnej podstrony wholemessage.jsp: nagłówek KOMUNIKAT,
-  // tytuł w <th>, treść w <td>, nawigacja linii klasą normalRoute.
+  // tytuł w <th>, treść w <td> z <p> jako separatorami BEZ zamknięć (tak
+  // wygląda całe MPK Łódź: potwierdzone na 39348, 39266 i 39306).
   const html = `<html><body>
 <div id="dWrkspc"><h1>KOMUNIKAT</h1>
 <br>
 <table><tr><th>
     W dniu 16 października 2026r. (piątek), zmiany w kursowaniu linii 75B</th></tr>
 <tr><td><BR><p></b>KOMUNIKAT  201/26
-<p><p>W związku z organizacją meczu, zostaną wprowadzone poniższe zmiany w funkcjonowaniu komunikacji miejskiej:
-<p><p>- zawieszone zostanie kursowanie linii 75B.
+<p><p>W związku z organizacją meczu Widzew Łódź - Wisła Kraków, <b>w dniu 16 października 2026r.</b> zmiany:
+<p>- zawieszone zostanie kursowanie linii 75B.
 </td></tr></table>
 </div>
 </body></html>`;
-  const blocks = extractArticleBlocks(html, 'http://www.mpk.lodz.pl/rozklady/wholemessage.jsp?articleId=39348');
+  const blocks = extractArticleBlocks(html, 'https://mpk.lodz.pl/rozklady/wholemessage.jsp?articleId=39348');
+  expect('trzy akapity (nie jeden sklejony)', blocks.length, 3);
+  expect('pierwszy bez śmieci z nagłówka', blocks[0].text, 'KOMUNIKAT 201/26');
+  expect('drugi akapit', blocks[1].text.startsWith('W związku z organizacją meczu'), true);
+  expect('trzeci akapit', blocks[2].text, '- zawieszone zostanie kursowanie linii 75B.');
   expect('bez nagłówka KOMUNIKAT', blocks.some((b) => b.text === 'KOMUNIKAT'), false);
   expect('bez wiersza tytułu z tabeli', blocks.some((b) => b.text.includes('zmiany w kursowaniu linii 75B')), false);
-  expect('treść komunikatu jest', blocks.some((b) => b.text.includes('poniższe zmiany')), true);
+}
+
+describe('Kalendarz date-scoped (eksport dzienny ZDiT)');
+{
+  // Regresja z realnego feedu: piątek aktywował wszystkie 6 serwisów ZDiT
+  // (48 874 kursy zamiast 10 494), bo puste flagi tygodniowe wpadały
+  // w fallback „wszystko” i obok kursów roboczych szły weekendowe widma.
+  const friday = resolveActiveServices([], 63, true, [], [{ service_id: '11529_11', exc: 1 }]);
+  expect('piątek: tylko serwisy z datą', [...friday], ['11529_11']);
+  const sunday = resolveActiveServices(
+    [],
+    63,
+    true,
+    ['11529_14'],
+    [{ service_id: '11529_14', exc: 1 }],
+  );
+  expect('niedziela: bez widm z fallbacku', [...sunday], ['11529_14']);
+  const legacy = resolveActiveServices([], 0, true, ['a', 'b'], [{ service_id: 'a', exc: 2 }]);
+  expect('pusty kalendarz (stara baza): wszystko minus wyjątek', [...legacy], ['b']);
+  const flagged = resolveActiveServices(['w1'], 10, true, ['x'], [{ service_id: 'w2', exc: 1 }]);
+  expect('flagi tygodniowe + wyjątki', [...flagged], ['w1', 'w2']);
+  const noDate = resolveActiveServices([], 10, false, ['x'], []);
+  expect('brak daty przy niepustym kalendarzu: bezpieczny fallback', [...noDate], ['x']);
 }
 
 console.log(`\n${'='.repeat(52)}`);

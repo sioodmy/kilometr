@@ -141,10 +141,10 @@ export async function fetchZbPoznanRows(): Promise<RawVehicleRow[] | null> {
 /**
  * Pozycje ZDiT Łódź jako wiersze dla matchera. Podstawowy feed live.
  * Filtr `agencies=default` (jak Warszawa): agencje `PABIANICE`, `ZGIERZ`,
- * `STRYKOW` i `ALEKSANDROW` numerują linie 1–8, czyli dokładnie jak łódzkie
- * tramwaje, a ich kursów nie ma w GTFS ZDiT. Pojazdy nigdy nie dopasowałyby
- * się do kursów, ale wisiałyby na mapie i w widoku linii jako widma
- * tramwajów. Dojazd do Pabianic i Zgierza kryją tramwaje 41/43 z agencji
+ * `STRYKOW` i `ALEKSANDROW` mają własne rozkłady podmiejskie (numery 1–10
+ * oraz A3 i T-7), których nie ma w GTFS ZDiT. Ich niskie numery kolidują
+ * z łódzkimi tramwajami, więc pojazdy wisiałyby na mapie i w widoku linii
+ * jako widma. Dojazd do Pabianic i Zgierza kryją tramwaje 41/43 z agencji
  * `default`, więc aglomeracja nie traci live.
  */
 export async function fetchZbLodzRows(): Promise<RawVehicleRow[] | null> {
@@ -238,19 +238,16 @@ export async function fetchZbPoznanRails(): Promise<{ agency: string; vehicles: 
 
 /**
  * Pociągi Łódzkiej Kolei Aglomeracyjnej z jednego zapytania (bbox Łodzi).
- * Brygada z live to numer pociągu (trip_short_name przed "/" w GTFS ŁKA),
- * oznaczenie linii w API to samo "Ł" dla całej siatki.
+ * Brygada z live to numer pociągu (w GTFS ŁKA trip_short_name przed "/"),
+ * więc matcher dopina kursy po numerze jak przy KW. Pojazd spoza lokalnego
+ * rozkładu (świeższy eksport) matcher odrzuca po numerze bez błędu.
  */
 export async function fetchZbLodzRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'LKA', getCity('lodz').zbiorkomBbox);
   if (positions === null) return null;
-  const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
-  for (const agency of ['LKA']) {
-    const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
-    if (vehicles.length > 0) out.push({ agency, vehicles });
-  }
-  return out;
+  const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === 'LKA'));
+  return vehicles.length > 0 ? [{ agency: 'LKA', vehicles }] : [];
 }
 
 async function fetchZbRail(agency: string, bbox?: string): Promise<ZbKdVehicle[] | null> {

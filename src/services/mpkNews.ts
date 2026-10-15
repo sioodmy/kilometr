@@ -670,6 +670,11 @@ function extractLodzLines(title: string, description: string): string[] {
   return [...seen];
 }
 
+/** RSS MPK Łódź linkuje po http://; Android blokuje cleartext w release. */
+function httpsLodzUrl(url: string): string {
+  return url.replace(/^http:\/\/(?:www\.)?mpk\.lodz\.pl\//i, 'https://mpk.lodz.pl/');
+}
+
 /**
  * Komunikaty MPK Łódź (RSS 2.0 bez pubDate: datę niesie treść opisu).
  * Tytuły w kanale są generyczne ("Aktualne zmiany..."), więc tytuł karty
@@ -680,7 +685,7 @@ export function parseMpkLodzRss(xml: string): MpkNewsItem[] {
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
     const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
-    const link = stripCdata(tagInner(b, 'link') || tagInner(b, 'guid')).trim();
+    const link = httpsLodzUrl(stripCdata(tagInner(b, 'link') || tagInner(b, 'guid')).trim());
     const rawDesc = stripCdata(tagInner(b, 'description'));
     const text = htmlToText(rawDesc).replace(/\s+/g, ' ').trim().slice(0, 600);
     if (!rawTitle && !link && !text) continue;
@@ -791,6 +796,17 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   fragment = scrubArticleHtml(fragment);
   if (!fragment.trim()) return [];
   const blocks: ArticleBlock[] = [];
+  if (mpkLodz) {
+    // Markup MPK używa <p> jako separatora akapitów bez zamknięć, więc
+    // dzielimy po otwarciach; generyczne dopasowanie par nic nie łapie
+    // i skleiłoby cały komunikat w jeden blok.
+    for (const chunk of fragment.split(/<p\b[^>]*>/i).slice(1)) {
+      const text = htmlToText(chunk);
+      if (!text || ARTICLE_JUNK_RE.test(text)) continue;
+      blocks.push({ kind: 'p', text });
+    }
+    if (blocks.length > 0) return blocks;
+  }
   const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   let match: RegExpExecArray | null;
   while ((match = re.exec(fragment))) {
