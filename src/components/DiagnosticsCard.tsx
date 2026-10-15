@@ -4,7 +4,14 @@
 
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { CircleCheck, CircleX, Copy, Download, Stethoscope, TriangleAlert } from 'lucide-react-native';
+import {
+  CircleCheck,
+  CircleX,
+  Copy,
+  Download,
+  Stethoscope,
+  TriangleAlert,
+} from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
@@ -126,7 +133,9 @@ export function DiagnosticsCard() {
                   </Text>
                 ) : null}
               </View>
-              <Text style={[styles.level, { color: levelColor(item.level) }]}>{levelWord(item, t)}</Text>
+              <Text style={[styles.level, { color: levelColor(item.level) }]}>
+                {levelWord(item, t)}
+              </Text>
             </View>
           ))}
         </View>
@@ -143,7 +152,11 @@ export function DiagnosticsCard() {
         <Pressable
           onPress={() => void handleRun()}
           disabled={busy}
-          style={({ pressed }) => [styles.runBtn, busy && styles.btnDisabled, pressed && !busy && { opacity: 0.7 }]}
+          style={({ pressed }) => [
+            styles.runBtn,
+            busy && styles.btnDisabled,
+            pressed && !busy && { opacity: 0.7 },
+          ]}
           accessibilityRole="button"
           accessibilityLabel={t.diagRunA11y}
           accessibilityState={{ busy: running, disabled: busy }}
@@ -152,10 +165,35 @@ export function DiagnosticsCard() {
         </Pressable>
         {result ? (
           <View style={styles.actionRow}>
+            {needsFix ? (
+              <Pressable
+                onPress={() => void handleFix()}
+                disabled={busy}
+                style={({ pressed }) => [
+                  styles.ghostBtn,
+                  busy && styles.btnDisabled,
+                  pressed && !busy && { opacity: 0.7 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={t.diagFixA11y}
+                accessibilityState={{ busy: fixing, disabled: busy }}
+              >
+                {fixing ? (
+                  <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
+                ) : (
+                  <Download size={18} color={scheme.onSurfaceVariant} />
+                )}
+                <Text style={styles.ghostText}>{t.diagFix}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => void handleCopy()}
               disabled={busy}
-              style={({ pressed }) => [styles.ghostBtn, busy && styles.btnDisabled, pressed && !busy && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.ghostBtn,
+                busy && styles.btnDisabled,
+                pressed && !busy && { opacity: 0.7 },
+              ]}
               accessibilityRole="button"
               accessibilityLabel={t.diagCopyA11y}
               accessibilityState={{ busy: copying, disabled: busy }}
@@ -167,19 +205,6 @@ export function DiagnosticsCard() {
               )}
               <Text style={styles.ghostText}>{t.diagCopy}</Text>
             </Pressable>
-            {needsFix ? (
-              <Pressable
-                onPress={() => void handleFix()}
-                disabled={busy}
-                style={({ pressed }) => [styles.ghostBtn, busy && styles.btnDisabled, pressed && !busy && { opacity: 0.7 }]}
-                accessibilityRole="button"
-                accessibilityLabel={t.diagFixA11y}
-                accessibilityState={{ busy: fixing, disabled: busy }}
-              >
-                <Download size={18} color={scheme.onSurfaceVariant} />
-                <Text style={styles.ghostText}>{t.diagFix}</Text>
-              </Pressable>
-            ) : null}
           </View>
         ) : null}
       </View>
@@ -225,7 +250,7 @@ const styles = StyleSheet.create({
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   progressText: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   actions: { gap: 8 },
-  actionRow: { flexDirection: 'row', gap: 8 },
+  actionRow: { gap: 8 },
   runBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -234,10 +259,10 @@ const styles = StyleSheet.create({
     borderRadius: shape.medium,
     minHeight: 44,
     paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   runText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
   ghostBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -246,9 +271,15 @@ const styles = StyleSheet.create({
     borderRadius: shape.medium,
     minHeight: 44,
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
   },
-  ghostText: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '600', textAlign: 'center' },
+  ghostText: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+    textAlign: 'center',
+    flexShrink: 1,
+  },
   btnDisabled: { opacity: 0.6 },
   copiedText: { ...type.bodySmall, color: scheme.success, lineHeight: 18 },
   failText: { ...type.bodySmall, color: scheme.error, lineHeight: 18 },
