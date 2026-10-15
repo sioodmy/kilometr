@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:trojmiasto`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament). Chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (pozycje z api.zbiorkom.live z 2026-10-15, komunikaty
  * z files.cloudgdansk.pl z 2026-10-15, struktura artykułu z ztm.gda.pl,
  * linie i typy z feedów GTFS Gdańska/Gdyni/SKM).
