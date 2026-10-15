@@ -41,6 +41,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.warszawa',
   );
   expect(
+    'Poznań dokleja sufiks',
+    cityKey('kilometr.places', 'poznan'),
+    'kilometr.places.poznan',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -71,13 +76,19 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Bielsko poza GZM', suggestCityForCoords(49.8224, 19.0444)?.id ?? null, null);
   expect('Pałac Kultury w Warszawie', suggestCityForCoords(52.2319, 21.0067)?.id, 'warszawa');
   expect('Metro Młociny w Warszawie', suggestCityForCoords(52.2905, 20.9308)?.id, 'warszawa');
+  expect('Stary Rynek w Poznaniu', suggestCityForCoords(52.4084, 16.9336)?.id, 'poznan');
+  expect('Swarzędz w Poznaniu', suggestCityForCoords(52.4124, 17.0776)?.id, 'poznan');
+  // Środa Wielkopolska (~31 km) to najdalszy punkt aglomeracji...
+  expect('Środa Wlkp. w Poznaniu', suggestCityForCoords(52.2277, 17.2787)?.id, 'poznan');
+  // ...a Września (~50 km) już poza nią.
+  expect('Września poza Poznaniem', suggestCityForCoords(52.326, 17.5866)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
 
 describe('Rejestr miast');
 {
-  expect('cztery miasta', CITIES.map((c) => c.id).join(','), 'wroclaw,krakow,gzm,warszawa');
+  expect('pięć miast', CITIES.map((c) => c.id).join(','), 'wroclaw,krakow,gzm,warszawa,poznan');
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
     'isCityId zna wszystkie',
@@ -86,9 +97,10 @@ describe('Rejestr miast');
       isCityId('krakow'),
       isCityId('gzm'),
       isCityId('warszawa'),
+      isCityId('poznan'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,false',
+    'true,true,true,true,true,false',
   );
 }
 
@@ -123,6 +135,17 @@ describe('Wpis Warszawy');
   expect('kafle w z14 jak Kraków (limit R2)', waw.tileMaxZoom, 14);
   expect('kolej regionalna (SKA/KM/WKD)', waw.features.regionalRail, true);
   expect('bez bezpośredniego bus_position', waw.features.directBusPosition, false);
+}
+
+describe('Wpis Poznania');
+{
+  const pozn = getCity('poznan');
+  expect('slug zbiorkom to poznan', pozn.zbiorkomSlug, 'poznan');
+  expect('osobna baza', pozn.dbFile, 'kilometr-gtfs-poznan.db');
+  expect('osobny pakiet kafli', pozn.tilePack, 'poznan-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', pozn.tileMaxZoom, 14);
+  expect('kolej regionalna (KW)', pozn.features.regionalRail, true);
+  expect('bez bezpośredniego bus_position', pozn.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);

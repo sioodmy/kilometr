@@ -83,11 +83,11 @@ export const pl = {
     settingsTitle: 'Miasto',
     settingsHint: 'Rozkład, mapa offline i aktualności idą za miastem. Dane drugiego miasta zostają na telefonie.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : 'Wrocław',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Krakowa' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawy' : 'Wrocławia',
+      id === 'krakow' ? 'Krakowa' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawy' : id === 'poznan' ? 'Poznania' : 'Wrocławia',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Krakowie' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawie' : 'Wrocławiu',
+      id === 'krakow' ? 'Krakowie' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawie' : id === 'poznan' ? 'Poznaniu' : 'Wrocławiu',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP i Koleje Małopolskie'
@@ -95,7 +95,9 @@ export const pl = {
           ? 'ZTM, Koleje Śląskie, POLREGIO i PKP Intercity'
           : id === 'warszawa'
             ? 'WTP, SKA, Koleje Mazowieckie i WKD'
-            : 'MPK i Koleje Dolnośląskie',
+            : id === 'poznan'
+              ? 'ZTM i Koleje Wielkopolskie'
+              : 'MPK i Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -103,7 +105,9 @@ export const pl = {
           ? 'ZTM GZM'
           : id === 'warszawa'
             ? 'WTP Warszawa'
-            : 'MPK Wrocław • wroclaw.pl',
+            : id === 'poznan'
+              ? 'ZTM Poznań'
+              : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -111,9 +115,11 @@ export const pl = {
           ? 'ZTM GZM'
           : id === 'warszawa'
             ? 'WTP Warszawa'
-            : 'MPK Wrocław',
+            : id === 'poznan'
+              ? 'ZTM Poznań'
+              : 'MPK Wrocław',
     operatorShort: (id: string): string =>
-      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : 'MPK',
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -121,8 +127,10 @@ export const pl = {
           ? 'metropoliaztm.pl'
           : id === 'warszawa'
             ? 'wtp.waw.pl'
-            : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa',
+            : id === 'poznan'
+              ? 'ztm.poznan.pl'
+              : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań',
     changed: (name: string) => `Przełączono na: ${name}.`,
     switching: 'Przełączam miasto…',
     blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
@@ -581,7 +589,7 @@ export const pl = {
     searching: (city: string) => `Szukam w ${city}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
-      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
+      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
     yourPlaces: 'Twoje miejsca',
     gpsOutsideNotice: 'GPS poza obsługiwanym miastem, wybierz punkt manualnie.',

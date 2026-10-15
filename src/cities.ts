@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan';
 
 export interface CityCenter {
   lat: number;
@@ -133,7 +133,32 @@ const WARSZAWA: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA];
+const POZNAN: CityDef = {
+  id: 'poznan',
+  name: 'Poznań',
+  center: { lat: 52.4084, lon: 16.9336 },
+  // Aglomeracja z liniami podmiejskimi (PKS Poznań, Kombus, Środa Wlkp.):
+  // najdalszy regularny punkt to Środa Wielkopolska (~31 km od centrum).
+  radiusM: 32_000,
+  bounds: { minLat: 52.15, maxLat: 52.65, minLon: 16.6, maxLon: 17.3 },
+  nominatimViewbox: '16.6,52.65,17.3,52.15',
+  overpassBbox: '52.15,16.60,52.65,17.30',
+  // zbiorkom.live nazywa miasto `poznan` (agencje `default`, `PKSPOZNAN`,
+  // `KOMBUS`, `SRODAWLKP`); bbox jak bounds.
+  zbiorkomSlug: 'poznan',
+  zbiorkomBbox: '16.6,52.15,17.3,52.65',
+  dbFile: 'kilometr-gtfs-poznan.db',
+  tilePack: 'poznan-tiles.ktp',
+  tileBbox: { minLat: 52.2, maxLat: 52.6, minLon: 16.65, maxLon: 17.25 },
+  // Aglomeracja w z14 z kompresją gzip mieści się w ~30 MB.
+  tileMaxZoom: 14,
+  tilePackMB: 30,
+  // Kolej aglomeracyjna (KW/PKM) siedzi we własnym publicznym GTFS
+  // Kolei Wielkopolskich, nie w PDP. ZTM nie ma publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 
