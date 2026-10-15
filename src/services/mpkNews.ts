@@ -1069,9 +1069,9 @@ function extractLublinLines(title: string, description: string): string[] {
     /((?:linii|linia|linie|linię|nr\.?)\s+)(N[1-3]|\d{1,3}[A-Z]?)\./gi,
     '$1$2 ',
   );
-  // Liczebniki porządkowe ("7. Marsz Równości", "10. Półmaraton") to nie
+  // Liczebniki porządkowe ("7. Marsz Równości", "7.lubelski Marsz") to nie
   // linie (choć 7 istnieje w GTFS, tu jest siódmą edycją marszu).
-  const clean = dotted.replace(/\b\d{1,3}\.(?=\s|$)/g, ' ');
+  const clean = dotted.replace(/\b\d{1,3}\.(?=[a-ząćęłńóśźż]|\s|$)/gi, ' ');
   let m: RegExpExecArray | null;
   LUBLIN_LINE_RE.lastIndex = 0;
   while ((m = LUBLIN_LINE_RE.exec(clean))) {
@@ -1125,8 +1125,10 @@ export function parseLublinInfo(html: string): MpkNewsItem[] {
     // Gdyby markup się zmienił i tiny zniknęło, czytamy całą kartę jak jeden item.
     const blocks = tinies.length > 0 ? tinies : [card];
     for (const tiny of blocks) {
+      // Ograniczenie (?!<\/a>) pilnuje, żeby „Zobacz więcej” skleiło się
+      // z własnym linkiem, a nie z wcześniejszym odnośnikiem z leadu.
       const linkM = tiny.match(
-        /<a href="(\/pl\/aktualnosci\/[^"]+\.html)"[^>]*>[\s\S]*?Zobacz więcej/i,
+        /<a href="(\/pl\/aktualnosci\/[^"]+\.html)"[^>]*>(?:(?!<\/a>)[\s\S])*?Zobacz więcej/i,
       );
       if (!linkM) continue;
       const link = `https://www.zdtm.lublin.eu${decodeEntities(linkM[1]).trim()}`;
@@ -1165,19 +1167,50 @@ export function parseLublinInfo(html: string): MpkNewsItem[] {
 function extractLublinArticle(html: string): ArticleBlock[] {
   const blocks: ArticleBlock[] = [];
   const center =
-    html.split(/class="main-center-panel/i)[1]?.split(/main-right-panel/i)[0] ?? '';
+    html.split(/class="main-center-panel[^>]*>/i)[1]?.split(/main-right-panel/i)[0] ?? '';
   if (!center.trim()) return blocks;
   const frag = center
     .replace(/<ol class="breadcrumb"[\s\S]*?<\/ol>/gi, ' ')
-    .replace(/<h2 class="text-header"[\s\S]*?<\/h2>/i, ' ');
-  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    .replace(/<h2 class="text-header"[\s\S]*?<\/h2>/i, ' ')
+    // Cięcie na main-right-panel zostawia niedomknięty tag na końcu.
+    .replace(/<[^>]*$/, ' ');
+  // Bloki h/p/li zastępujemy znacznikami miejsca (kolejność dokumentu
+  // zostaje), a z reszty zbieramy luźny tekst: redakcja ZDiTM czasem
+  // wstawia akapit wprost do div, bez p, i regex bloków go nie widzi.
+  // Znacznik to \uE000 (private use area, w HTML ZDiTM nie występuje).
+  const found: ArticleBlock[] = [];
+  const blockRe = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  const marked = frag.replace(blockRe, (_full, rawTag: string, inner: string) => {
+    const text = htmlToText(inner).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text)) return ' ';
+    found.push({ kind: rawTag.toLowerCase().startsWith('h') ? 'h' : 'p', text });
+    return ` \uE000${found.length - 1}\uE000 `;
+  });
+  const inlineRe = /^<\/?(a|span|strong|em|b|i|u|small|sup|sub)\b/i;
+  const tokenRe = /<[^>]+>|\uE000\d+\uE000|[^<\uE000]+/g;
+  let loose = '';
+  const flushLoose = (): void => {
+    const text = htmlToText(loose).replace(/\s+/g, ' ').trim();
+    loose = '';
+    // Krótkie strzępy to nawigacja i przyciski („Wstecz”, „tutaj”), nie treść.
+    if (text.length >= 15 && !ARTICLE_JUNK_RE.test(text)) blocks.push({ kind: 'p', text });
+  };
   let match: RegExpExecArray | null;
-  while ((match = re.exec(frag))) {
-    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
-    if (!text || ARTICLE_JUNK_RE.test(text)) continue;
-    const tag = match[1].toLowerCase();
-    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  while ((match = tokenRe.exec(marked))) {
+    const tok = match[0];
+    const marker = /^\uE000(\d+)\uE000$/.exec(tok);
+    if (marker) {
+      flushLoose();
+      blocks.push(found[Number(marker[1])]);
+      continue;
+    }
+    if (tok.startsWith('<')) {
+      if (!inlineRe.test(tok)) flushLoose();
+      continue;
+    }
+    loose += tok;
   }
+  flushLoose();
   return blocks;
 }
 
