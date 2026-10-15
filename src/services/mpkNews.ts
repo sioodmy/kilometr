@@ -17,6 +17,12 @@
 //   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
 //   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
 //   A–C). Artykuł to podstrona informacji (treść w main#pageContent).
+// - Opole: RSS kategorii Aktualności MZK (tytuł + link + pubDate + opis;
+//   główny feed miesza przetargi i oferty pracy, więc bierzemy wprost
+//   kategorię). Linie wyciągamy regexem z tytułu i opisu (dzienne 1–80,
+//   nocne N1–N2, szkolne SZ1–SZ20 i specjalne S1–S2; liczby walidujemy
+//   po routes.txt feedu GTFS). Artykuł to WordPress (treść w article
+//   + div.entry-content, ten sam układ co WTP).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -95,6 +101,12 @@ export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=12
  * bez JSON-a i paginacji na pierwszym ekranie.
  */
 export const ZDITM_SZCZECIN_INFO_URL = 'https://www.zditm.szczecin.pl/pl/pasazer/informacje';
+/**
+ * Komunikaty MZK Opole: kanał RSS kategorii Aktualności (WordPress).
+ * Główny feed (/feed/) miesza przetargi i oferty pracy z komunikatami,
+ * więc bierzemy wprost kategorię z samymi aktualnościami dla pasażera.
+ */
+export const MZK_OPOLE_FEED_URL = 'https://www.mzkopole.pl/category/aktualnosci/feed/';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -1000,6 +1012,90 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
 }
 
 /**
+ * Numery linii MZK Opole w tekście: nocne N1–N2, specjalne S1–S2, szkolne
+ * SZ1–SZ20 oraz dzienne 1–80. Te ostatnie walidujemy po routes.txt feedu
+ * GTFS (dokładnie te, bez dziur do dopisywania: brak m.in. 2, 4, 6, 19,
+ * 20 i 22–29), bo gołe liczby w komunikatach to często coś innego niż
+ * linie. Linie literowe przyjmujemy wzorcem (MZK dowozi nimi okazjonalne
+ * kursy specjalne spoza statycznego GTFS).
+ * Daty („11.10”, „3 października”, „1 Maja”), godziny („18:56”), liczby
+ * kursów („13 par kursów”), odległości („80 metrów”) i liczby przystanków
+ * („106 przystanków”) wycinamy wcześniej, a resztę liczb z tekstu odsiewa
+ * walidacja numerów.
+ */
+const OPOLE_LINE_RE = /\b(SZ\d{1,2}|S\d{1,2}|N\d{1,2}|\d{1,3})\b/gi;
+
+/** Dzienne linie MZK Opole z routes.txt feedu GTFS (wszystkie route_type 3). */
+const OPOLE_DAY_LINES = new Set([
+  1, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 25, 28, 30, 80,
+]);
+
+function extractOpoleLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
+    .replace(/\b\d{1,3}\s*par(y|a)?\b/gi, ' ')
+    .replace(/\b\d{1,3}\s*metr\w*\b/gi, ' ')
+    .replace(/\b\d{1,3}\s*przystan\w*\b/gi, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  OPOLE_LINE_RE.lastIndex = 0;
+  while ((m = OPOLE_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' || after === ':') continue;
+    if (/^\d+$/.test(tok)) {
+      if (!OPOLE_DAY_LINES.has(Number(tok))) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Komunikaty MZK Opole (RSS 2.0 kategorii Aktualności: tytuł + link +
+ * pubDate + opis). Cała kategoria dotyczy pasażera, więc nie filtrujemy
+ * po słowach jak miejski RSS Wrocławia. Opis z feedu ląduje w karcie.
+ */
+export function parseOpoleRss(xml: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const link = stripCdata(tagInner(b, 'link')).trim();
+    const rawDesc = stripCdata(tagInner(b, 'description'));
+    const description = htmlToText(rawDesc).slice(0, 600);
+    const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
+    const ts = pubRaw ? Date.parse(pubRaw) : NaN;
+    const pubDate = Number.isFinite(ts) ? ts : null;
+    if (!title && !link) continue;
+    items.push({
+      id: link || `${rawTitle}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description,
+      imageUrl: extractImage(rawDesc),
+      urgent: isUrgentNews(title, description),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractOpoleLines(title, description),
+    });
+  }
+  return items;
+}
+
+/**
  * Treść artykułu ZDiTM: lead z div.lead plus sekcje (h2) i akapity treści.
  * Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Odcinamy stopkę
  * „Więcej wiadomości” (powiązane z wiadomosci.szczecin.eu) i nawigację
@@ -1109,6 +1205,9 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   const ztp = /ztp\.krakow\.pl/i.test(url);
   const gzm = /rj\.transportgzm\.pl/i.test(url);
   const wtp = /wtp\.waw\.pl/i.test(url);
+  // MZK Opole to WordPress z tym samym układem co WTP (article
+  // + div.entry-content), więc wpada do gałęzi wtp niżej.
+  const mzkOpole = /mzkopole\.pl/i.test(url);
   // ZTM Poznań to WordPress, ale inny motyw niż WTP: treść artykułu siedzi
   // w <div class="row content mt-4"> wewnątrz sekcji (bez <article>).
   const ztmPoznan = /ztm\.poznan\.pl/i.test(url);
@@ -1132,7 +1231,7 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
         '')
       : gzm
         ? (html.split(/id="mcontent"/i)[1]?.split(/<div class="modal"|<footer/i)[0] ?? '')
-        : wtp
+        : wtp || mzkOpole
           ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
             html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ??
             html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
@@ -1262,6 +1361,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
+  if (city.id === 'opole') return fetchOpoleNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -1304,6 +1404,19 @@ async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Pro
     const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
     const items = parseSzczecinInfo(html);
     if (items.length === 0) console.warn('[News] Szczecin: pusta lista (zmiana markupu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty MZK Opole: jedno źródło (RSS kategorii Aktualności), brak fallbacku. */
+async function fetchOpoleNews(signal?: AbortSignal, cityId = 'opole'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const xml = await fetchText(MZK_OPOLE_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const items = parseOpoleRss(xml);
+    if (items.length === 0) console.warn('[News] Opole: pusty feed (zmiana formatu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();
