@@ -1433,7 +1433,7 @@ function importRadomCompact(db, txtDir, counts, cityStops, cityStopIds) {
       if (!id || !name) return;
       const lat = Number(c[idx.stop_lat]) || 0;
       const lon = Number(c[idx.stop_lon]) || 0;
-      ins.run(id, '', name, lat, lon, normalizePolish(name));
+      ins.run(id, (c[idx.stop_code] || '').trim(), name, lat, lon, normalizePolish(name));
       if (lat && lon && !cityStopIds.has(id)) {
         cityStopIds.add(id);
         cityStops.push({ id, norm: normalizePolish(name), lat, lon });

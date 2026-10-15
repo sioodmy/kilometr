@@ -261,9 +261,10 @@ const RADOM: CityDef = {
   // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa
   // do Milejowic działała offline bez dziur na krawędzi.
   tileBbox: { minLat: 51.28, maxLat: 51.5, minLon: 21.0, maxLon: 21.36 },
-  // Mniejsza strefa niż Szczecin (0,08 vs 0,12 deg2), więc ~8 MB w z14 z gzipem.
+  // Mniejsza strefa niż Szczecin (0,08 vs 0,12 deg2), ale gęste centrum:
+  // pomiar próbką kafli z z14 (gzip -9) daje ~9,8 MB.
   tileMaxZoom: 14,
-  tilePackMB: 8,
+  tilePackMB: 10,
   // Same autobusy MZDiK (linie 1-27 i nocne N1-N3, route_type 3 w GTFS).
   // Kolei regionalnej nie ma w buildzie (KM dojeżdża do Radomia, ale
   // statyczny feed mamy tylko dla obwiedni Warszawy), więc miasto jedzie

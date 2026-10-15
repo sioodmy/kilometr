@@ -75,8 +75,8 @@ const CITY_PACKS = {
   radom: {
     out: 'radom-tiles.ktp',
     bbox: { minLon: 21.0, minLat: 51.28, maxLon: 21.36, maxLat: 51.5 },
-    // Najmniejsza strefa z miast, w z14 z gzipem to ok. 8 MB
-    // (jak tileBbox w cities.ts).
+    // Najmniejsza strefa z miast, ale gęste centrum: pomiar próbką kafli
+    // z z14 (gzip -9) daje ~9,8 MB (jak tileBbox w cities.ts).
     maxZoom: 14,
   },
 };

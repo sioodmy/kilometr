@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:radom`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament), więc chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (karty z mzdik.pl/komunikaty z 2026-10-15, struktura podstrony
  * komunikatu z tego samego dnia, linie z GTFS mkuran.pl/gtfs/radom.zip).
  */
@@ -27,7 +27,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -172,7 +172,7 @@ describe('Numery linii MZDiK: daty, godziny, ułamki, linie spoza siatki');
     ).map((i) => i.lines),
     [[]],
   );
-  // Przystanki MZDiK mają numery z wiodącym zerem ("Wałowa 01") — to nie linie.
+  // Przystanki MZDiK mają numery z wiodącym zerem ("Wałowa 01"): to nie linie.
   expect(
     '„Wałowa 01” to słupek, nie linia 1',
     parseMzdikRadomKomunikaty(
@@ -271,7 +271,7 @@ Kościuszki, Narutowicza, <strong>Podwalna, Wałowa</strong>, Limanowskiego;</p>
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);
