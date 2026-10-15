@@ -3,7 +3,8 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz` / `szczecin` / `kielce`: awaryjne (Wrocław) albo podstawowe
+//   / `lodz` / `szczecin` / `kielce` / `olsztyn`: awaryjne (Wrocław) albo podstawowe
+//   (reszta)
 //   pozycje autobusów, tramwajów, trolejbusów i metra, gdy bezpośredni
 //   feed nie odpowiada.
 //
@@ -192,6 +193,20 @@ export async function fetchZbKielceRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const kiel = getCity('kielce');
   const positions = await fetchPositions(kiel.zbiorkomSlug, undefined, kiel.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
+ * Pozycje ZDZiT Olsztyn jako wiersze dla matchera. Podstawowy feed live.
+ * Filtr `agencies=default` (jak Warszawa i Łódź): agencja `TRIBUS`
+ * wozi podmiejskie S7, którego nie ma w GTFS ZDZiT. Bez filtra autobus
+ * wisiałby na mapie i w widoku linii jako kropka bez rozkładu.
+ */
+export async function fetchZbOlsztynRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const ols = getCity('olsztyn');
+  const positions = await fetchPositions(ols.zbiorkomSlug, 'default', ols.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }

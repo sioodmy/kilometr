@@ -5,7 +5,8 @@
 # poznan (GTFS ZTM + KW ze statycznych feedów), trojmiasto (GTFS ZTM Gdańsk
 # + ZKM Gdynia + SKM ze statycznych feedów), lodz (GTFS ZDiT + ŁKA
 # ze statycznych feedów), szczecin (GTFS ZDiTM ze statycznego feedu,
-# bez kolei) oraz kielce (GTFS ZTM ze statycznego feedu, bez kolei).
+# bez kolei), kielce (GTFS ZTM ze statycznego feedu, bez kolei) oraz
+# olsztyn (GTFS ZDZiT z mirrora, bez kolei).
 # Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.
 # Wrocław dokłada legacy root (manifest.json, db/...) dla starych APK.
 #
@@ -13,7 +14,8 @@
 #   PDP_API_KEY            klucz https://pdp-api.plk-sa.pl (sekcje kolei
 #                          z PDP: KD Wrocławia oraz IC/PR GZM; Kraków,
 #                          Warszawa, Poznań, Trójmiasto i Łódź biorą koleje
-#                          ze statycznych feedów, Szczecin i Kielce nie mają kolei)
+#                          ze statycznych feedów, Szczecin, Kielce i Olsztyn
+#                          nie mają kolei)
 #   CLOUDFLARE_API_TOKEN   token z uprawnieniem R2 write na bucket kilometr-timetable
 #   CLOUDFLARE_ACCOUNT_ID  id konta Cloudflare
 #   TIMETABLE_PUBLIC_URL   URL Workera, np. https://kilometr-timetable.<sub>.workers.dev
@@ -36,7 +38,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce]
+        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn]
 
 permissions:
   contents: read
@@ -56,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce", "olsztyn"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -142,7 +144,7 @@ jobs:
 
       # Kolejność ma znaczenie. Telefon czyta manifest, potem dopiero ściąga
       # bazę. Manifest wrzucamy OSTATNI, bo to on jest sygnałem „baza jest
-      # nowa" — w drugą stronę przez ~13 s uploadu 90 MB telefon widziałby nowy
+      # nowa” — w drugą stronę przez ~13 s uploadu 90 MB telefon widziałby nowy
       # manifest przy starej bazie, porównanie rozmiarów by nie przeszło i
       # odświeżanie kończyłoby się błędem zamiast nowym rozkładem.
       - name: Upload bazy → R2

@@ -102,7 +102,9 @@ export const uk: Strings = {
                     ? 'Щецин'
                     : id === 'kielce'
                       ? 'Кельце'
-                      : 'Вроцлав',
+                      : id === 'olsztyn'
+                        ? 'Ольштин'
+                        : 'Вроцлав',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Кракова'
@@ -120,7 +122,9 @@ export const uk: Strings = {
                     ? 'Щецина'
                     : id === 'kielce'
                       ? 'Кельце'
-                      : 'Вроцлава',
+                      : id === 'olsztyn'
+                        ? 'Ольштина'
+                        : 'Вроцлава',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Кракові'
@@ -138,7 +142,9 @@ export const uk: Strings = {
                     ? 'Щецині'
                     : id === 'kielce'
                       ? 'Кельце'
-                      : 'Вроцлаві',
+                      : id === 'olsztyn'
+                        ? 'Ольштині'
+                        : 'Вроцлаві',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP і Koleje Małopolskie'
@@ -156,7 +162,9 @@ export const uk: Strings = {
                     ? 'ZDiTM Szczecin'
                     : id === 'kielce'
                       ? 'ZTM Кельце'
-                      : 'MPK і Koleje Dolnośląskie',
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Ольштин'
+                        : 'MPK і Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Краків'
@@ -174,7 +182,9 @@ export const uk: Strings = {
                     ? 'ZDiTM Щецин'
                     : id === 'kielce'
                       ? 'ZTM Кельце'
-                      : 'MPK Вроцлав • wroclaw.pl',
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Ольштин'
+                        : 'MPK Вроцлав • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Краків'
@@ -192,7 +202,9 @@ export const uk: Strings = {
                     ? 'ZDiTM Щецин'
                     : id === 'kielce'
                       ? 'ZTM Кельце'
-                      : 'MPK Вроцлав',
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Ольштин'
+                        : 'MPK Вроцлав',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -208,7 +220,9 @@ export const uk: Strings = {
                   ? 'ZDiTM'
                   : id === 'kielce'
                     ? 'ZTM'
-                    : 'MPK',
+                    : id === 'olsztyn'
+                      ? 'ZDZiT'
+                      : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -226,8 +240,10 @@ export const uk: Strings = {
                     ? 'zditm.szczecin.pl'
                     : id === 'kielce'
                       ? 'ztm.kielce.pl'
-                      : 'wroclaw.pl',
-    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце',
+                      : id === 'olsztyn'
+                        ? 'zdzit.olsztyn.eu'
+                        : 'wroclaw.pl',
+    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
@@ -469,7 +485,9 @@ export const uk: Strings = {
                   ? 'напр. Wojska Polskiego 12'
                   : id === 'kielce'
                     ? 'напр. Sienkiewicza 12'
-                    : 'напр. Swojczycka 41',
+                    : id === 'olsztyn'
+                      ? 'напр. Partyzantów 12'
+                      : 'напр. Swojczycka 41',
     slotWork: 'Робота',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -486,7 +504,9 @@ export const uk: Strings = {
                   ? 'напр. Galeria Kaskada'
                   : id === 'kielce'
                     ? 'напр. Galeria Echo'
-                    : 'напр. Sky Tower',
+                    : id === 'olsztyn'
+                      ? 'напр. Galeria Warmińska'
+                      : 'напр. Sky Tower',
     slotUni: 'Універ',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -503,7 +523,9 @@ export const uk: Strings = {
                   ? 'напр. US'
                   : id === 'kielce'
                     ? 'напр. UJK'
-                    : 'напр. Politechnika',
+                    : id === 'olsztyn'
+                      ? 'напр. UWM'
+                      : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',
@@ -763,7 +785,7 @@ export const uk: Strings = {
     searching: (city: string) => `Шукаю у ${city}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
-      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
+      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
     yourPlaces: 'Твої місця',
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',

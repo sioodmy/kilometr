@@ -95,7 +95,9 @@ export const en: Strings = {
                     ? 'Szczecin'
                     : id === 'kielce'
                       ? 'Kielce'
-                      : 'Wrocław',
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -113,7 +115,9 @@ export const en: Strings = {
                     ? 'Szczecin'
                     : id === 'kielce'
                       ? 'Kielce'
-                      : 'Wrocław',
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : 'Wrocław',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -131,7 +135,9 @@ export const en: Strings = {
                     ? 'Szczecin'
                     : id === 'kielce'
                       ? 'Kielce'
-                      : 'Wrocław',
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP and Koleje Małopolskie'
@@ -149,7 +155,9 @@ export const en: Strings = {
                     ? 'ZDiTM Szczecin'
                     : id === 'kielce'
                       ? 'ZTM Kielce'
-                      : 'MPK and Koleje Dolnośląskie',
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Olsztyn'
+                        : 'MPK and Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -167,7 +175,9 @@ export const en: Strings = {
                     ? 'ZDiTM Szczecin'
                     : id === 'kielce'
                       ? 'ZTM Kielce'
-                      : 'MPK Wrocław • wroclaw.pl',
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Olsztyn'
+                        : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -185,7 +195,9 @@ export const en: Strings = {
                     ? 'ZDiTM Szczecin'
                     : id === 'kielce'
                       ? 'ZTM Kielce'
-                      : 'MPK Wrocław',
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Olsztyn'
+                        : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -201,7 +213,9 @@ export const en: Strings = {
                   ? 'ZDiTM'
                   : id === 'kielce'
                     ? 'ZTM'
-                    : 'MPK',
+                    : id === 'olsztyn'
+                      ? 'ZDZiT'
+                      : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -219,8 +233,10 @@ export const en: Strings = {
                     ? 'zditm.szczecin.pl'
                     : id === 'kielce'
                       ? 'ztm.kielce.pl'
-                      : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce',
+                      : id === 'olsztyn'
+                        ? 'zdzit.olsztyn.eu'
+                        : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn',
     changed: (name: string) => `Switched to: ${name}.`,
     switching: 'Switching city…',
     blockedByDownload: 'Timetable download in progress. You can switch city once it finishes.',
@@ -448,7 +464,9 @@ export const en: Strings = {
                   ? 'e.g. Wojska Polskiego 12'
                   : id === 'kielce'
                     ? 'e.g. Sienkiewicza 12'
-                    : 'e.g. Swojczycka 41',
+                    : id === 'olsztyn'
+                      ? 'e.g. Partyzantów 12'
+                      : 'e.g. Swojczycka 41',
     slotWork: 'Work',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -465,7 +483,9 @@ export const en: Strings = {
                   ? 'e.g. Galeria Kaskada'
                   : id === 'kielce'
                     ? 'e.g. Galeria Echo'
-                    : 'e.g. Sky Tower',
+                    : id === 'olsztyn'
+                      ? 'e.g. Galeria Warmińska'
+                      : 'e.g. Sky Tower',
     slotUni: 'University',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -482,7 +502,9 @@ export const en: Strings = {
                   ? 'e.g. US'
                   : id === 'kielce'
                     ? 'e.g. UJK'
-                    : 'e.g. Politechnika',
+                    : id === 'olsztyn'
+                      ? 'e.g. UWM'
+                      : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
     brand: 'Kilometr',
@@ -731,7 +753,7 @@ export const en: Strings = {
     searching: (city: string) => `Searching ${city}…`,
     noResults: 'No results',
     noResultsHint: (id: string) =>
-      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : id === 'szczecin' ? '“brama portowa”, “dąbie”, “police”, “pogodno”' : id === 'kielce' ? '“sienkiewicza”, “rynek”, “kadzielnia”, “herby”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
+      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : id === 'szczecin' ? '“brama portowa”, “dąbie”, “police”, “pogodno”' : id === 'kielce' ? '“sienkiewicza”, “rynek”, “kadzielnia”, “herby”' : id === 'olsztyn' ? '“stare miasto”, “dworzec”, “jaroty”, “barczewo”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
     noResultsFor: (q: string) => `Nothing matches “${q}”`,
     yourPlaces: 'Your places',
     gpsOutsideNotice: 'GPS is outside the city, pick a point manually.',
