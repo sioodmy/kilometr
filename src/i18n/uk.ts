@@ -110,6 +110,8 @@ export const uk: Strings = {
                             ? 'Ополе'
                             : id === 'rzeszow'
                               ? 'Ряшів'
+                              : id === 'lublin'
+                                ? 'Люблін'
                               : 'Вроцлав',
     gen: (id: string): string =>
       id === 'krakow'
@@ -136,6 +138,8 @@ export const uk: Strings = {
                             ? 'Ополя'
                             : id === 'rzeszow'
                               ? 'Ряшева'
+                              : id === 'lublin'
+                                ? 'Любліна'
                               : 'Вроцлава',
     loc: (id: string): string =>
       id === 'krakow'
@@ -162,6 +166,8 @@ export const uk: Strings = {
                             ? 'Ополі'
                             : id === 'rzeszow'
                               ? 'Ряшеві'
+                              : id === 'lublin'
+                                ? 'Любліні'
                               : 'Вроцлаві',
     feeds: (id: string): string =>
       id === 'krakow'
@@ -188,6 +194,8 @@ export const uk: Strings = {
                             ? 'MZK Ополе'
                             : id === 'rzeszow'
                               ? 'ZTM Ряшів'
+                              : id === 'lublin'
+                                ? 'ZDiTM Lublin'
                               : 'MPK і Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
@@ -214,6 +222,8 @@ export const uk: Strings = {
                             ? 'MZK Ополе'
                             : id === 'rzeszow'
                               ? 'ZTM Ряшів'
+                              : id === 'lublin'
+                                ? 'ZDiTM Люблін'
                               : 'MPK Вроцлав • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
@@ -240,6 +250,8 @@ export const uk: Strings = {
                             ? 'MZK Ополе'
                             : id === 'rzeszow'
                               ? 'ZTM Ряшів'
+                              : id === 'lublin'
+                                ? 'ZDiTM Люблін'
                               : 'MPK Вроцлав',
     operatorShort: (id: string): string =>
       id === 'krakow'
@@ -264,6 +276,8 @@ export const uk: Strings = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
+                              : id === 'lublin'
+                                ? 'ZDiTM'
                             : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
@@ -290,8 +304,10 @@ export const uk: Strings = {
                             ? 'mzkopole.pl'
                             : id === 'rzeszow'
                               ? 'ztm.erzeszow.pl'
-                              : 'wroclaw.pl',
-    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів',
+                              : id === 'lublin'
+                                ? 'zdtm.lublin.eu'
+                                : 'wroclaw.pl',
+    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів, Lublin',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
@@ -541,6 +557,8 @@ export const uk: Strings = {
                           ? 'напр. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'напр. 3 Maja 12'
+                              : id === 'lublin'
+                                ? 'напр. Krakowskie Przedmieście 12'
                             : 'напр. Swojczycka 41',
     slotWork: 'Робота',
     slotWorkHint: (id: string) =>
@@ -566,6 +584,8 @@ export const uk: Strings = {
                           ? 'напр. Solaris Center'
                           : id === 'rzeszow'
                             ? 'напр. Galeria Rzeszów'
+                              : id === 'lublin'
+                                ? 'напр. Felicity'
                             : 'напр. Sky Tower',
     slotUni: 'Універ',
     slotUniHint: (id: string) =>
@@ -591,6 +611,8 @@ export const uk: Strings = {
                           ? 'напр. UO'
                           : id === 'rzeszow'
                             ? 'напр. PRz'
+                              : id === 'lublin'
+                                ? 'напр. UMCS'
                             : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
@@ -851,7 +873,7 @@ export const uk: Strings = {
     searching: (city: string) => `Шукаю у ${city}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
-      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
+      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
     yourPlaces: 'Твої місця',
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',

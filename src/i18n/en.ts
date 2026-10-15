@@ -103,6 +103,8 @@ export const en: Strings = {
                             ? 'Opole'
                             : id === 'rzeszow'
                               ? 'Rzeszów'
+                              : id === 'lublin'
+                                ? 'Lublin'
                               : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
@@ -129,6 +131,8 @@ export const en: Strings = {
                             ? 'Opole'
                             : id === 'rzeszow'
                               ? 'Rzeszów'
+                              : id === 'lublin'
+                                ? 'Lublin'
                               : 'Wrocław',
     loc: (id: string): string =>
       id === 'krakow'
@@ -155,6 +159,8 @@ export const en: Strings = {
                             ? 'Opole'
                             : id === 'rzeszow'
                               ? 'Rzeszów'
+                              : id === 'lublin'
+                                ? 'Lublin'
                               : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
@@ -181,6 +187,8 @@ export const en: Strings = {
                             ? 'MZK Opole'
                             : id === 'rzeszow'
                               ? 'ZTM Rzeszów'
+                              : id === 'lublin'
+                                ? 'ZDiTM Lublin'
                               : 'MPK and Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
@@ -207,6 +215,8 @@ export const en: Strings = {
                             ? 'MZK Opole'
                             : id === 'rzeszow'
                               ? 'ZTM Rzeszów'
+                              : id === 'lublin'
+                                ? 'ZDiTM Lublin'
                               : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
@@ -233,6 +243,8 @@ export const en: Strings = {
                             ? 'MZK Opole'
                             : id === 'rzeszow'
                               ? 'ZTM Rzeszów'
+                              : id === 'lublin'
+                                ? 'ZDiTM Lublin'
                               : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
@@ -257,6 +269,8 @@ export const en: Strings = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
+                              : id === 'lublin'
+                                ? 'ZDiTM'
                             : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
@@ -283,8 +297,10 @@ export const en: Strings = {
                             ? 'mzkopole.pl'
                             : id === 'rzeszow'
                               ? 'ztm.erzeszow.pl'
-                              : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów',
+                              : id === 'lublin'
+                                ? 'zdtm.lublin.eu'
+                                : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin',
     changed: (name: string) => `Switched to: ${name}.`,
     switching: 'Switching city…',
     blockedByDownload: 'Timetable download in progress. You can switch city once it finishes.',
@@ -520,6 +536,8 @@ export const en: Strings = {
                           ? 'e.g. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'e.g. 3 Maja 12'
+                              : id === 'lublin'
+                                ? 'e.g. Krakowskie Przedmieście 12'
                             : 'e.g. Swojczycka 41',
     slotWork: 'Work',
     slotWorkHint: (id: string) =>
@@ -545,6 +563,8 @@ export const en: Strings = {
                           ? 'e.g. Solaris Center'
                           : id === 'rzeszow'
                             ? 'e.g. Galeria Rzeszów'
+                              : id === 'lublin'
+                                ? 'e.g. Felicity'
                             : 'e.g. Sky Tower',
     slotUni: 'University',
     slotUniHint: (id: string) =>
@@ -570,6 +590,8 @@ export const en: Strings = {
                           ? 'e.g. UO'
                           : id === 'rzeszow'
                             ? 'e.g. PRz'
+                              : id === 'lublin'
+                                ? 'e.g. UMCS'
                             : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
@@ -819,7 +841,7 @@ export const en: Strings = {
     searching: (city: string) => `Searching ${city}…`,
     noResults: 'No results',
     noResultsHint: (id: string) =>
-      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : id === 'szczecin' ? '“brama portowa”, “dąbie”, “police”, “pogodno”' : id === 'kielce' ? '“sienkiewicza”, “rynek”, “kadzielnia”, “herby”' : id === 'olsztyn' ? '“stare miasto”, “dworzec”, “jaroty”, “barczewo”' : id === 'bialystok' ? '“rynek kościuszki”, “lipowa”, “branicki”, “opera”' : id === 'opole' ? '“rynek”, “ozimska”, “solaris”, “dworzec”' : id === 'rzeszow' ? '“rynek”, “dworzec”, “rejtana”, “3 maja”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
+      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : id === 'szczecin' ? '“brama portowa”, “dąbie”, “police”, “pogodno”' : id === 'kielce' ? '“sienkiewicza”, “rynek”, “kadzielnia”, “herby”' : id === 'olsztyn' ? '“stare miasto”, “dworzec”, “jaroty”, “barczewo”' : id === 'bialystok' ? '“rynek kościuszki”, “lipowa”, “branicki”, “opera”' : id === 'opole' ? '“rynek”, “ozimska”, “solaris”, “dworzec”' : id === 'rzeszow' ? '“rynek”, “dworzec”, “rejtana”, “3 maja”' : id === 'lublin' ? '“krakowskie”, “zamek”, “felicity”, “świdnik”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
     noResultsFor: (q: string) => `Nothing matches “${q}”`,
     yourPlaces: 'Your places',
     gpsOutsideNotice: 'GPS is outside the city, pick a point manually.',

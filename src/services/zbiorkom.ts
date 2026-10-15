@@ -4,7 +4,7 @@
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok` / `opole` / `rzeszow`: awaryjne (Wrocław) albo podstawowe
+//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok` / `opole` / `rzeszow` / `lublin`: awaryjne (Wrocław) albo podstawowe
 //   (reszta) pozycje autobusów, tramwajów, trolejbusów i metra, gdy
 //   bezpośredni feed nie odpowiada.
 //
@@ -250,6 +250,20 @@ export async function fetchZbRzeszowRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const rze = getCity('rzeszow');
   const positions = await fetchPositions(rze.zbiorkomSlug, 'default', rze.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
+ * Pozycje ZDiTM Lublin jako wiersze dla matchera. Podstawowy feed live.
+ * Bez filtra agencji: całe miasto jedzie pod jedną agencją `default`
+ * (autobusy 2–85 z route_type 3 w GTFS, trolejbusy 150–162 z route_type
+ * 11; typ z live koryguje matcher po meczu z bazą, jak Tychy w GZM).
+ */
+export async function fetchZbLublinRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const lub = getCity('lublin');
+  const positions = await fetchPositions(lub.zbiorkomSlug, undefined, lub.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }

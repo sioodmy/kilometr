@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok' | 'opole' | 'rzeszow';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok' | 'opole' | 'rzeszow' | 'lublin';
 
 export interface CityCenter {
   lat: number;
@@ -383,7 +383,37 @@ const RZESZOW: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK, OPOLE, RZESZOW];
+
+const LUBLIN: CityDef = {
+  id: 'lublin',
+  name: 'Lublin',
+  center: { lat: 51.2465, lon: 22.5684 },
+  // Strefa ZDiTM z gminami ościennymi (Świdnik na wschodzie, Niemce na
+  // północy, Głusk na południu): najdalsze przystanki z GTFS to ~18 km
+  // od centrum (51.09 na południu, 51.40 na północy).
+  radiusM: 20_000,
+  bounds: { minLat: 51.05, maxLat: 51.42, minLon: 22.3, maxLon: 22.8 },
+  nominatimViewbox: '22.3,51.42,22.8,51.05',
+  overpassBbox: '51.05,22.30,51.42,22.80',
+  // zbiorkom.live nazywa miasto `lublin` (jedna agencja `default`,
+  // więc bez filtra); bbox jak bounds.
+  zbiorkomSlug: 'lublin',
+  zbiorkomBbox: '22.3,51.05,22.8,51.42',
+  dbFile: 'kilometr-gtfs-lublin.db',
+  tilePack: 'lublin-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do Świdnika
+  // czy Niemiec działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 51.05, maxLat: 51.42, minLon: 22.3, maxLon: 22.8 },
+  // Strefa 0,19 deg2 (między Szczecinem a Łodzią), więc ~14 MB w z14 z gzipem.
+  tileMaxZoom: 14,
+  tilePackMB: 14,
+  // Kolej (POLREGIO/IC przez Lublin) nie ma publicznego GTFS w zakresie
+  // budowy, więc matcher nie miałby do czego spinać pojazdów z `pkp`.
+  // ZDiTM nie ma publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK, OPOLE, RZESZOW, LUBLIN];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

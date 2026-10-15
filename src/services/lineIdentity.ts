@@ -46,7 +46,9 @@ export const TRANSIT_PALETTE = [
  * trolejbusy 21–33/710/723): badge newsów nie zna trybu z planera, więc linie
  * rozpoznaje po nazwie. Białystok to miasto w pełni autobusowe (BKM nie ma
  * tramwajów), więc każda linia jest autobusem i heurystyka niskich numerów
- * musi gasnąć, inaczej linie 1–30 wyglądałyby jak tramwaje.
+ * musi gasnąć, inaczej linie 1–30 wyglądałyby jak tramwaje. Lublin też ma własną gałąź: tramwajów nie ma
+ * wcale, więc niskie numery to autobusy, a trolejbusy to 150–162 i 950
+ * (route_type 11 w feedzie ZDiTM).
  */
 export function inferTransitMode(
   mode?: LegMode,
@@ -103,6 +105,21 @@ export function inferTransitMode(
   // Rzeszów nie ma tramwajów wcale (cały GTFS ZTM to route_type 3),
   // więc heurystyka niskich numerów nie ma tu zastosowania.
   if (cityId === 'rzeszow') return 'bus';
+
+  // Lublin: tramwajów nie ma (niskie numery to autobusy), trolejbusy to
+  // 150–162 i 950 (route_type 11 w feedzie ZDiTM). Nocne N1–N3, miejskie
+  // 301–303, 912/917/922 i imienne Biała/Gaj/Zielona to autobusy.
+  // Zakresy się nie przecinają, więc gałąź zwraca wprost i nie spada
+  // do zgadywania 1–33 (lubelskie autobusy 2–33 nie są tramwajami).
+  if (cityId === 'lublin') {
+    if (/^N[1-3]$/i.test(clean)) return 'bus';
+    if (!isNaN(num)) {
+      if (num === 950) return 'trolleybus';
+      if (num >= 150 && num <= 162) return 'trolleybus';
+      return 'bus';
+    }
+    return 'bus';
+  }
 
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
