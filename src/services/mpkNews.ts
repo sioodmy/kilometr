@@ -886,12 +886,21 @@ export function parseMpkLodzRss(xml: string): MpkNewsItem[] {
  * Numery linii ZDiTM Szczecin w tekście: pospieszne A–C, tramwaje 1–12,
  * autobusy dzienne, podmiejskie 221–244, nocne 521–536 oraz 904/908
  * (dokładnie te z routes.txt feedu GTFS, z dziurami jak 4 czy 55).
- * Daty i godziny wycinamy wcześniej jak w WTP („24.10”, „13 października”,
- * „08:55”), a resztę liczb z tekstu („co 20 minut”) odsiewa walidacja
- * numerów. Numery przystanków („nr 34211”) nie są liniami (5 cyfr nie
- * łapie \d{1,3} z granicą słowa).
+ * Bez flagi `i` w klasie liter: spójnik „a” nie może udawać linii A,
+ * a ZDiTM pisze litery linii wielką literą („linia A”).
+ * Daty, godziny („24.10”, „13 października”, „08:55”), numery komunikatów
+ * („201/26”) i czasy przejazdu („co 10 minut”) wycinamy wcześniej, a resztę
+ * liczb z tekstu odsiewa walidacja numerów.
  */
-const SZCZECIN_LINE_RE = /\b([ABC]|\d{1,3})\b/gi;
+const SZCZECIN_LINE_RE = /([ABC]|\d{1,3})/g;
+
+/**
+ * Granice tokenu po polsku: `\b` w JS zna tylko ASCII, więc „będą” łamie
+ * się na „b” i „ę” (ę nie jest znakiem słowa) i „b” udawałoby linię B
+ * (tak samo „aż” przy linii A). Ta klasa traktuje polskie litery jak
+ * znaki słowa po obu stronach dopasowania.
+ */
+const SZCZECIN_EDGE_RE = /[0-9A-Za-zÀ-ž]/;
 
 function isSzczecinLineNumber(n: number): boolean {
   // Dziury w numeracji z routes.txt: brak 4 wśród tramwajów oraz 55, 71,
@@ -912,6 +921,12 @@ function extractSzczecinLines(title: string, description: string): string[] {
     .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Ułamki dziesiętne z przecinkiem („12,5 mln zł”) to nie linia 12.
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    // Numery komunikatów („KOMUNIKAT 201/26”) to nie pary linii.
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    // Czasy przejazdu („co 10 minut”, „co 20 min”, „2 godziny”) to nie linie.
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
     .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
     .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
     .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
@@ -919,10 +934,13 @@ function extractSzczecinLines(title: string, description: string): string[] {
   SZCZECIN_LINE_RE.lastIndex = 0;
   while ((m = SZCZECIN_LINE_RE.exec(text))) {
     const tok = m[1].toUpperCase();
-    const before = text[m.index - 1];
-    const after = text[m.index + m[1].length];
-    if (before === ':' || after === ':') continue;
-    if (/^\d+$/.test(tok) && !isSzczecinLineNumber(Number(tok))) continue;
+    const before = text[m.index - 1] ?? '';
+    const after = text[m.index + m[1].length] ?? '';
+    if (SZCZECIN_EDGE_RE.test(before) || SZCZECIN_EDGE_RE.test(after)) continue;
+    if (/^\d+$/.test(tok)) {
+      if (before === ':' || after === ':') continue;
+      if (!isSzczecinLineNumber(Number(tok))) continue;
+    }
     if (!seen.has(tok)) seen.add(tok);
     if (seen.size >= 12) break;
   }
@@ -960,13 +978,17 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 600);
+    // Hero obrazki ZDiTM są serwowane ścieżką względną (/storage/media/...),
+    // a aplikacja potrzebuje absolutnego URL, inaczej obrazek się nie wczyta.
+    const rawImage = extractImage(card);
+    const imageUrl = rawImage && rawImage.startsWith('/') ? `https://www.zditm.szczecin.pl${rawImage}` : rawImage;
     if (!title) continue;
     items.push({
       id: link,
       title,
       link,
       description: lead,
-      imageUrl: extractImage(card),
+      imageUrl,
       urgent: isUrgentNews(title, lead),
       pubDate,
       dateLabel: formatNewsDate(pubDate),
@@ -985,7 +1007,14 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
  */
 function extractSzczecinArticle(html: string): ArticleBlock[] {
   const blocks: ArticleBlock[] = [];
-  const main = (html.split(/id="pageContent"/i)[1]?.split(/<\/main>/i)[0] ?? '').split(/Więcej wiadomości/i)[0];
+  // Stopkę powiązanych (wiadomosci.szczecin.eu) odcinamy po nagłówku
+  // „Więcej wiadomości ze Szczecina”, a gdyby jego treść się zmieniła,
+  // po pierwszym linku do tego portalu. Mobilny spis treści siedzi
+  // w offcanvasie na końcu treści (lista bez nagłówka), więc też wypada.
+  const main = (html.split(/id="pageContent"/i)[1]?.split(/<\/main>/i)[0] ?? '')
+    .split(/Więcej wiadomości/i)[0]
+    .split(/wiadomosci\.szczecin\.eu/i)[0]
+    .split(/<div class="offcanvas/i)[0];
   if (!main.trim()) return blocks;
   const frag = main
     .replace(/<nav\b[\s\S]*?<\/nav>/gi, ' ')
@@ -999,7 +1028,9 @@ function extractSzczecinArticle(html: string): ArticleBlock[] {
   while ((match = re.exec(frag))) {
     const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
     if (!text || ARTICLE_JUNK_RE.test(text) || text === lead) continue;
-    if (/^(spis treści|ta informacja dotyczy linii:?)$/i.test(text)) continue;
+    // Nagłówek hero z datą publikacji („opublikowano: 12 października
+    // 2026 08:55”) dubluje etykietę daty, którą ekran pokazuje sam.
+    if (/^(spis treści|ta informacja dotyczy linii:?|opublikowano:)/i.test(text)) continue;
     const tag = match[1].toLowerCase();
     blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
   }
