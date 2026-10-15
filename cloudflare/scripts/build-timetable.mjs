@@ -2,7 +2,7 @@
 /**
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn] [--force] [--write-coords] [--allow-mpk-only]
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city buduje Wrocław (domyślne miasto).
  * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
@@ -62,6 +62,15 @@
  *   Last-Modified/ETag i skip buildu działa wprost. Kolei nie ma wcale
  *   (region nie ma publicznego GTFS kolejowego), więc miasto jedzie bez
  *   sekcji kolejowej. Bez PDP i bez klucza.
+ * Białystok:
+ *   BKM Białystok (mirror cdn.zbiorkom.live/gtfs/bialystok.zip: autobusy
+ *   1–30, 100+, J/J1–J6 i nocne N1–N6, statyczny zrzut z poprawnymi
+ *   Last-Modified/ETag do skipu buildu; upstream to oficjalny permalink
+ *   komunikacja.bialystok.pl/cms/File/download/gtfs/google_transit.zip,
+ *   ale nie zwraca Last-Modified ani ETag, więc fingerprint i pobieranie
+ *   idą z mirroru jak w Poznaniu i Łodzi). Kolej regionalna (POLREGIO)
+ *   nie ma publicznego GTFS, więc miasto jedzie bez sekcji kolejowej.
+ *   Bez PDP i bez klucza.
  *
  * Wyjścia (cloudflare/dist/{miasto}/):
  *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
@@ -89,7 +98,7 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : 'wroclaw';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : CITY_ARG === 'bialystok' ? 'bialystok' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -308,6 +317,19 @@ const KIELCE_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev
  */
 const OLSZTYN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/olsztyn.zip';
 const OLSZTYN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * Białystok: statyczny zrzut BKM (autobusy + linie J i nocne N).
+ * Upstream to oficjalny permalink BKM, ale serwer nie zwraca Last-Modified
+ * ani ETag (a nazwa pliku z datą modyfikacji jest dopiero w nagłówku
+ * Content-Disposition po pobraniu całości), więc fingerprint i pobieranie
+ * idą z mirroru cdn.zbiorkom.live (ten sam wzorzec co Poznań i Łódź:
+ * ten sam zrzut, odświeżany codziennie ok. 01:45 UTC, z poprawnymi
+ * nagłówkami do skipu buildu).
+ */
+const BIALYSTOK_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/bialystok.zip';
+const BIALYSTOK_GTFS_UPSTREAM = 'http://komunikacja.bialystok.pl/cms/File/download/gtfs/google_transit.zip';
+const BIALYSTOK_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
@@ -1870,6 +1892,7 @@ async function main() {
   let szczecinFingerprint = '';
   let kielceFingerprint = '';
   let olsztynFingerprint = '';
+  let bialystokFingerprint = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -1921,6 +1944,10 @@ async function main() {
     gtfsSources = [{ label: 'ZDZiT', url: OLSZTYN_GTFS_URL, prefix: '', headers: OLSZTYN_UA }];
     olsztynFingerprint = await headVersion(OLSZTYN_GTFS_URL, OLSZTYN_UA);
     log('ZDZiT:', olsztynFingerprint || '?');
+  } else if (CITY === 'bialystok') {
+    gtfsSources = [{ label: 'BKM', url: BIALYSTOK_GTFS_URL, prefix: '', headers: BIALYSTOK_UA }];
+    bialystokFingerprint = await headVersion(BIALYSTOK_GTFS_URL, BIALYSTOK_UA);
+    log('BKM:', bialystokFingerprint || '?', '| upstream:', BIALYSTOK_GTFS_UPSTREAM);
   } else if (CITY === 'gzm') {
     if (!PDP_API_KEY) {
       throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
@@ -1969,6 +1996,7 @@ async function main() {
   const szczecinVersionReliable = CITY !== 'szczecin' || !!szczecinFingerprint;
   const kielceVersionReliable = CITY !== 'kielce' || !!kielceFingerprint;
   const olsztynVersionReliable = CITY !== 'olsztyn' || !!olsztynFingerprint;
+  const bialystokVersionReliable = CITY !== 'bialystok' || !!bialystokFingerprint;
 
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
@@ -2112,6 +2140,15 @@ async function main() {
         process.exit(2);
       }
     }
+    if (CITY === 'bialystok' && remote.sources.bkm?.fingerprint === bialystokFingerprint && bialystokFingerprint) {
+      if (!bialystokVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log('brak zmian (BKM), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
         rmSync(work, { recursive: true, force: true });
         process.exit(2);
       }
@@ -2185,12 +2222,12 @@ async function main() {
   // Warszawa importuje zwarto jak GZM (eksport dzienny, trip_id z datą).
   // Trójmiasto merguje 2 feedy prefiksami GDA/GDY: Gdańsk zwarto (eksport
   // dzienny jak Warszawa), Gdynia generycznie (statyczny zrzut jak Poznań).
-  // Poznań, Łódź, Szczecin i Kielce to pojedyncze statyczne zrzuty
-  // ZTM/ZDiT/ZDiTM, więc idą generyczną ścieżką jak Wrocław (osobny prefiks
-  // id unikalne w feedzie; inna kolejność kolumn w trips.txt nie szkodzi,
-  // bo import czyta po nazwach z nagłówka). Olsztyn (ZDZiT) też, z tym że
-  // jego feed nie ma calendar.txt, więc generyczna ścieżka dokłada
-  // placeholdery do calendar z calendar_dates (jak import gdyński).
+  // Poznań, Łódź, Szczecin, Kielce i Białystok to pojedyncze statyczne zrzuty
+  // ZTM/ZDiT/ZDiTM/BKM, więc idą generyczną ścieżką jak Wrocław (osobny
+  // prefiks niepotrzebny, id unikalne w feedzie; inna kolejność kolumn w trips.txt
+  // nie szkodzi, bo import czyta po nazwach z nagłówka). Olsztyn (ZDZiT) też, z tym że
+  // jego feed nie ma calendar.txt, więc generyczna ścieżka dokłada placeholdery
+  // do calendar z calendar_dates (jak import gdyński).
   db.exec('DELETE FROM calendar_dates');
   if (CITY === 'gzm') {
     importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds);
@@ -3376,7 +3413,7 @@ async function main() {
     if (ztmRoutes < 30) problems.push(`${ztmRoutes} linii ZTM (feed niesie ponad 50)`);
     if (problems.length > 0) {
       rmSync(work, { recursive: true, force: true });
-      throw new Error(`niepełne Kielce (${problems.join(', ') }): nie publikuję bazy.`);
+      throw new Error(`niepełne Kielce (${problems.join(', ')}): nie publikuję bazy.`);
     }
     log(`KIELCE: kursów autobusów ZTM=${ztmBusTrips} linii=${ztmRoutes}`);
   }
@@ -3393,9 +3430,6 @@ async function main() {
       zdzitTramTrips = row?.n ?? 0;
     } catch {}
     if (zdzitTramTrips === 0) problems.push('0 kursów tramwajów ZDZiT');
-    // ZDZiT nie ma calendar.txt, więc planer działa na calendar_dates
-    // plus wierszach-placeholderach; kurs bez serwisu w calendar to błąd
-    // bazy (fallback „wszystko aktywne”), nie publikujemy.
     let orphanServices = 0;
     try {
       const row = db.prepare('SELECT COUNT(*) AS n FROM trips t LEFT JOIN calendar c ON c.service_id = t.service_id WHERE c.service_id IS NULL').get();
@@ -3404,9 +3438,36 @@ async function main() {
     if (orphanServices > 0) problems.push(`${orphanServices} kursów z serwisem spoza calendar`);
     if (problems.length > 0) {
       rmSync(work, { recursive: true, force: true });
-      throw new Error(`niepełny Olsztyn (${problems.join(', ') }): nie publikuję bazy.`);
+      throw new Error(`niepełny Olsztyn (${problems.join(', ')}): nie publikuję bazy.`);
     }
     log(`OLSZTYN: kursów tramwajów ZDZiT=${zdzitTramTrips}`);
+  }
+
+  // 6m. Twarda bramka, Białystok: baza bez autobusów BKM nie nadpisuje R2.
+  // Kolei nie ma wcale (POLREGIO nie ma publicznego GTFS), więc bramka
+  // nie wymaga ani stacji, ani przesiadek kolejowych. Białystok to miasto
+  // w pełni autobusowe (cały feed to route_type 3), więc liczymy kursy
+  // autobusów i liczbę linii. Sezonowych J/N nie wymuszamy twardo:
+  // poza semestrem ich brak to poprawny stan.
+  if (CITY === 'bialystok') {
+    const problems = [];
+    let bkmBusTrips = 0;
+    let bkmRoutes = 0;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 3').get();
+      bkmBusTrips = row?.n ?? 0;
+    } catch {}
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM routes').get();
+      bkmRoutes = row?.n ?? 0;
+    } catch {}
+    if (bkmBusTrips === 0) problems.push('0 kursów autobusów BKM');
+    if (bkmRoutes === 0) problems.push('0 linii BKM');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełny Białystok (${problems.join(', ')}): nie publikuję bazy.`);
+    }
+    log(`BIALYSTOK: linii BKM=${bkmRoutes} kursów autobusów BKM=${bkmBusTrips}`);
   }
   }
 
@@ -3439,12 +3500,14 @@ async function main() {
               ? `${todayCompact()}-kielce${createHash('sha256').update(`${kielceFingerprint}`).digest('hex').slice(0, 8)}`
             : CITY === 'olsztyn'
               ? `${todayCompact()}-olsztyn${createHash('sha256').update(`${olsztynFingerprint}`).digest('hex').slice(0, 8)}`
+            : CITY === 'bialystok'
+              ? `${todayCompact()}-bialystok${createHash('sha256').update(`${bialystokFingerprint}`).digest('hex').slice(0, 8)}`
             : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run(feeds, JSON.stringify(CITY === krakow ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === gzm ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === warszawa ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === poznan ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === trojmiasto ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === lodz ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === szczecin ? { zditm: szczecinFingerprint } : CITY === kielce ? { ztm: kielceFingerprint } : CITY === olsztyn ? { zdzit: olsztynFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -3575,24 +3638,29 @@ async function main() {
             trips: counts.trips, stopTimes: counts.stopTimes,
           },
         }
-      : CITY === kielce
+      : CITY === 'kielce'
       ? {
           ztm: {
-            kind: gtfs-zip, url: KIELCE_GTFS_URL,
+            kind: 'gtfs-zip', url: KIELCE_GTFS_URL,
             fingerprint: kielceFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },
         }
-      : CITY === olsztyn
+      : CITY === 'olsztyn'
       ? {
           zdzit: {
-            kind: gtfs-zip, url: OLSZTYN_GTFS_URL,
+            kind: 'gtfs-zip', url: OLSZTYN_GTFS_URL,
             fingerprint: olsztynFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },
         }
+      : CITY === 'bialystok'
+      ? {
+          bkm: {
+            kind: 'gtfs-zip', url: BIALYSTOK_GTFS_URL, upstream: BIALYSTOK_GTFS_UPSTREAM,
+            fingerprint: bialystokFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },

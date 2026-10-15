@@ -10,7 +10,7 @@
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
 //
-// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn] [output]
+// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok] [output]
 //
 // Nowe miasto = wpis w CITY_PACKS niżej (bbox + maxzoom + nazwa pliku).
 
@@ -73,16 +73,23 @@ const CITY_PACKS = {
     maxZoom: 14,
   },
   kielce: {
-    out: kielce-tiles.ktp,
+    out: 'kielce-tiles.ktp',
     bbox: { minLon: 20.3, minLat: 50.65, maxLon: 20.95, maxLat: 51.02 },
     // Strefa nieco mniejsza niż Łódź, w z14 z gzipem to ok. 15 MB
     // (jak tileBbox w cities.ts).
     maxZoom: 14,
   },
   olsztyn: {
-    out: olsztyn-tiles.ktp,
+    out: 'olsztyn-tiles.ktp',
     bbox: { minLon: 20.2, minLat: 53.6, maxLon: 20.75, maxLat: 53.95 },
     // Strefa ZDZiT z gminami ościennymi w z14 z gzipem to ok. 15 MB
+    // (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  bialystok: {
+    out: 'bialystok-tiles.ktp',
+    bbox: { minLon: 22.9, minLat: 52.9, maxLon: 23.35, maxLat: 53.26 },
+    // Strefa między Szczecinem a Łodzią, w z14 z gzipem to ok. 12 MB
     // (jak tileBbox w cities.ts).
     maxZoom: 14,
   },

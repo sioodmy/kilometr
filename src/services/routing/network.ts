@@ -37,7 +37,9 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
   if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
   try {
     const id = getActiveCityIdSync();
-    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'kielce';
+    // Miasta bez tramwajów (Kielce, Białystok) oraz z własną numeracją (GZM, Trójmiasto)
+    // nie powinny zgadywać tramwaju po niskim numerze linii.
+    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'kielce' && id !== 'bialystok';
   } catch {
     return true;
   }

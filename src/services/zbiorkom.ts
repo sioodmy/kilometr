@@ -3,10 +3,9 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz` / `szczecin` / `kielce` / `olsztyn`: awaryjne (Wrocław) albo podstawowe
-//   (reszta)
-//   pozycje autobusów, tramwajów, trolejbusów i metra, gdy bezpośredni
-//   feed nie odpowiada.
+//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok`: awaryjne (Wrocław) albo podstawowe
+//   (reszta) pozycje autobusów, tramwajów, trolejbusów i metra, gdy
+//   bezpośredni feed nie odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -207,6 +206,20 @@ export async function fetchZbOlsztynRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const ols = getCity('olsztyn');
   const positions = await fetchPositions(ols.zbiorkomSlug, 'default', ols.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
+ * Pozycje BKM Białystok jako wiersze dla matchera. Podstawowy feed live.
+ * Filtr `agencies=default` (jak Warszawa i Łódź): agencja `WSCHODEXPRESS`
+ * wozi linie podmiejskie 406 i 416, których nie ma w GTFS BKM, więc jej
+ * pojazdy wisiałyby na mapie i w widoku linii jako kropki bez rozkładu.
+ */
+export async function fetchZbBialystokRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const bial = getCity('bialystok');
+  const positions = await fetchPositions(bial.zbiorkomSlug, 'default', bial.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }
