@@ -2553,7 +2553,6 @@ async function main() {
     throw new Error(`pusta baza (stops=${guard?.s} trips=${guard?.t} times=${guard?.st}): nie publikuję.`);
   }
   const uncompressedSize = statSync(DB_FILE).size;
-  const uncompressedSha = createHash('sha256').update(readFileSync(DB_FILE)).digest('hex');
   db.close();
   rmSync(work, { recursive: true, force: true });
 
@@ -2574,7 +2573,6 @@ async function main() {
       sizeBytes: gzSize,
       sha256: gzSha,
       uncompressedSizeBytes: uncompressedSize,
-      uncompressedSha256: uncompressedSha,
     },
     sources: CITY === 'krakow'
       ? {

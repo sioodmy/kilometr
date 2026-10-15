@@ -38,7 +38,6 @@ export interface TimetableManifest {
     sizeBytes: number;
     sha256: string;
     uncompressedSizeBytes?: number;
-    uncompressedSha256?: string;
   };
   sources: {
     mpk?: { effectiveDate?: string };
