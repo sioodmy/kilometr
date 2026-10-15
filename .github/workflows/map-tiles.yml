@@ -47,12 +47,12 @@ jobs:
           node-version: 22
 
       - name: Build tile pack (${{ inputs.city }}, z0-14)
-        run: |\
+        run: |
           mkdir -p dist
           node scripts/build-tile-pack.mjs --city=${{ inputs.city }} dist/${{ inputs.city }}-tiles.ktp
 
       - name: Summary
-        run: |\
+        run: |
           SIZE=$(du -h "dist/${{ inputs.city }}-tiles.ktp" | cut -f1)
           echo "### Pakiet kafelków (${{ inputs.city }}): ${SIZE}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -67,7 +67,7 @@ jobs:
           retention-days: 7
 
       - name: Upload → R2
-        run: |\
+        run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload do R2. Pakiet jest w artefakcie."
             exit 0
@@ -81,7 +81,7 @@ jobs:
       # Worker musi mieć trasę /maps/{miasto}-tiles.ktp (wrangler deploy w cloudflare/).
       # Bez niej upload do R2 nic nie daje: telefon dostaje 404 not-found.
       - name: Verify public URL
-        run: |\
+        run: |
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
             "https://data.kilometr.wroclaw.pl/maps/${{ inputs.city }}-tiles.ktp")
           echo "HTTP ${CODE}"
