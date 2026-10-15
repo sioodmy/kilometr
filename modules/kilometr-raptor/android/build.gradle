@@ -17,7 +17,7 @@ import org.gradle.process.ExecOperations
 apply plugin: 'com.android.library'
 apply plugin: 'expo-module-gradle-plugin'
 
-group = 'pl.wroclaw.kilometr.raptor'
+group = 'my.siood.kilometr.raptor'
 version = '1.0.0'
 
 def rustJniOutputDir = layout.buildDirectory.dir("rustJniLibs")
@@ -181,7 +181,7 @@ abstract class CompileRustRaptorTask extends DefaultTask {
 }
 
 android {
-  namespace "pl.wroclaw.kilometr.raptor"
+  namespace "my.siood.kilometr.raptor"
   defaultConfig {
     versionCode 1
     versionName '1.0.0'
