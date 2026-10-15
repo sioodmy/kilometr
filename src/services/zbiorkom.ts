@@ -3,8 +3,9 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz`: awaryjne (Wrocław) albo podstawowe (reszta) pozycje autobusów,
-//   tramwajów, trolejbusów i metra, gdy bezpośredni feed nie odpowiada.
+//   / `lodz` / `szczecin`: awaryjne (Wrocław) albo podstawowe (reszta)
+//   pozycje autobusów, tramwajów, trolejbusów i metra, gdy bezpośredni
+//   feed nie odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -165,6 +166,19 @@ export async function fetchZbLodzRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const lodz = getCity('lodz');
   const positions = await fetchPositions(lodz.zbiorkomSlug, 'default', lodz.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
+ * Pozycje ZDiTM Szczecin jako wiersze dla matchera. Podstawowy feed live.
+ * Bez filtra agencji: całe miasto jedzie pod jedną agencją `default`
+ * (tramwaje 1–12 z route_type 0 w GTFS, autobusy 51+ i pospieszne A–C).
+ */
+export async function fetchZbSzczecinRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const szcz = getCity('szczecin');
+  const positions = await fetchPositions(szcz.zbiorkomSlug, undefined, szcz.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }

@@ -13,6 +13,10 @@
 //   z utrudnieniami) w ISO-8859-2. Tytuły generyczne, więc tytuł niesie treść
 //   opisu, a linie wyciągamy z linków w opisie. Artykuł to podstrona
 //   wholemessage.jsp (treść w div#dWrkspc).
+// - Szczecin: lista HTML ZDiTM (pl/pasazer/informacje: karty z tytułem,
+//   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
+//   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
+//   A–C). Artykuł to podstrona informacji (treść w main#pageContent).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -85,6 +89,12 @@ export const ZTM_GDANSK_BSK_URL = 'https://files.cloudgdansk.pl/d/otwarte-dane/z
  */
 export const MPK_LODZ_ROZKLADY_RSS = 'https://mpk.lodz.pl/rozklady/rss/rozklady.jsp';
 export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=1211';
+/**
+ * Komunikaty ZDiTM Szczecin: lista dla pasażera (tytuł + link + data
+ * w time[datetime] + lead p.card-text na karcie). Serwerowy HTML,
+ * bez JSON-a i paginacji na pierwszym ekranie.
+ */
+export const ZDITM_SZCZECIN_INFO_URL = 'https://www.zditm.szczecin.pl/pl/pasazer/informacje';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -872,6 +882,130 @@ export function parseMpkLodzRss(xml: string): MpkNewsItem[] {
   return items;
 }
 
+/**
+ * Numery linii ZDiTM Szczecin w tekście: pospieszne A–C, tramwaje 1–12,
+ * autobusy dzienne, podmiejskie 221–244, nocne 521–536 oraz 904/908
+ * (dokładnie te z routes.txt feedu GTFS, z dziurami jak 4 czy 55).
+ * Daty i godziny wycinamy wcześniej jak w WTP („24.10”, „13 października”,
+ * „08:55”), a resztę liczb z tekstu („co 20 minut”) odsiewa walidacja
+ * numerów. Numery przystanków („nr 34211”) nie są liniami (5 cyfr nie
+ * łapie \d{1,3} z granicą słowa).
+ */
+const SZCZECIN_LINE_RE = /\b([ABC]|\d{1,3})\b/gi;
+
+function isSzczecinLineNumber(n: number): boolean {
+  // Dziury w numeracji z routes.txt: brak 4 wśród tramwajów oraz 55, 71,
+  // 81, 83, 100, 104, 105 i 108 wśród autobusów. Gdy ZDiTM doda linię,
+  // dopisz ją tutaj (ta sama konserwacja co regexy linii w innych miastach).
+  if (n >= 1 && n <= 12) return n !== 4;
+  if (n >= 51 && n <= 99) return n !== 55 && n !== 71 && n !== 81 && n !== 83;
+  if (n === 101 || n === 102 || n === 103 || n === 106 || n === 107 || n === 109) return true;
+  if (n >= 221 && n <= 227) return true;
+  if (n >= 241 && n <= 244) return true;
+  if (n >= 521 && n <= 536) return true;
+  return n === 904 || n === 908;
+}
+
+function extractSzczecinLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  SZCZECIN_LINE_RE.lastIndex = 0;
+  while ((m = SZCZECIN_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' || after === ':') continue;
+    if (/^\d+$/.test(tok) && !isSzczecinLineNumber(Number(tok))) continue;
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/** Data z karty ZDiTM (time[datetime]: "2026-10-15T14:16:00+02:00"). */
+function parseSzczecinDate(raw: string): number | null {
+  if (!raw.trim()) return null;
+  const ts = Date.parse(raw.trim());
+  return Number.isFinite(ts) ? ts : null;
+}
+
+/**
+ * Komunikaty ZDiTM Szczecin z listy (jeden fetch: tytuł + link + data
+ * + lead). Karta: div.card > h2.h5 z a.stretched-link, time[datetime],
+ * p.card-text. Linki archiwum (bez stretched-link) pomijamy.
+ */
+export function parseSzczecinInfo(html: string): MpkNewsItem[] {
+  const cards = html.split(/<div class="card shadow img-hover/i).slice(1);
+  const items: MpkNewsItem[] = [];
+  for (const card of cards) {
+    const linkM = card.match(
+      /<a href="(https:\/\/www\.zditm\.szczecin\.pl\/pl\/pasazer\/informacje\/[^"]+)"[^>]*class="stretched-link"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    if (!linkM) continue;
+    const link = decodeEntities(linkM[1]).trim();
+    // Link „Archiwalne” z menu (gdyby wpadł w kartę) to nie komunikat.
+    if (/\/archiwum\/?$/.test(link)) continue;
+    const rawTitle = htmlToText(linkM[2]).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
+    const pubDate = parseSzczecinDate(datetime);
+    const lead = htmlToText((card.match(/<p class="card-text[^"]*">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    if (!title) continue;
+    items.push({
+      id: link,
+      title,
+      link,
+      description: lead,
+      imageUrl: extractImage(card),
+      urgent: isUrgentNews(title, lead),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractSzczecinLines(title, lead),
+    });
+  }
+  return items;
+}
+
+/**
+ * Treść artykułu ZDiTM: lead z div.lead plus sekcje (h2) i akapity treści.
+ * Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Odcinamy stopkę
+ * „Więcej wiadomości” (powiązane z wiadomosci.szczecin.eu) i nawigację
+ * (okruszki, spis treści).
+ */
+function extractSzczecinArticle(html: string): ArticleBlock[] {
+  const blocks: ArticleBlock[] = [];
+  const main = (html.split(/id="pageContent"/i)[1]?.split(/<\/main>/i)[0] ?? '').split(/Więcej wiadomości/i)[0];
+  if (!main.trim()) return blocks;
+  const frag = main
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ');
+  const lead = htmlToText((frag.match(/<div class="lead[^"]*">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (lead) blocks.push({ kind: 'p', text: lead });
+  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(frag))) {
+    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text) || text === lead) continue;
+    if (/^(spis treści|ta informacja dotyczy linii:?)$/i.test(text)) continue;
+    const tag = match[1].toLowerCase();
+    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  }
+  return blocks;
+}
+
 const ARTICLE_JUNK_RE =
   /^(galeria zdjęć|zobacz galerię|zobacz galerię zdjęć tego artykułu|rozwiń|czytaj także|polecane|udostępnij)$/i;
 
@@ -952,6 +1086,10 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // z innymi komunikatami omijamy celowanymi klasami, nie całym <main>.
   const ztmGdansk = /ztm\.gda\.pl/i.test(url);
   if (ztmGdansk) return extractGdanskArticle(html);
+  // ZDiTM Szczecin: lead w div.lead, treść w main#pageContent (okruszki
+  // i spis treści wycinamy w extractorze, stopkę powiązanych też).
+  const zditm = /zditm\.szczecin\.pl/i.test(url);
+  if (zditm) return extractSzczecinArticle(html);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -1092,6 +1230,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'poznan') return fetchPoznanNews(signal, city.id);
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
+  if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -1121,6 +1260,19 @@ async function fetchLodzNews(signal?: AbortSignal, cityId = 'lodz'): Promise<Mpk
       }
       console.warn('[News] Łódź: oba kanały MPK puste (zmiana formatu?)');
     }
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty ZDiTM Szczecin: jedno źródło (lista HTML), brak fallbacku. */
+async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
+    const items = parseSzczecinInfo(html);
+    if (items.length === 0) console.warn('[News] Szczecin: pusta lista (zmiana markupu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();

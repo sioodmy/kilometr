@@ -78,11 +78,11 @@ export const en: Strings = {
     settingsTitle: 'City',
     settingsHint: 'Timetable, offline map and news follow the city. The other city’s data stays on the phone.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : 'Wrocław',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : 'Wrocław',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP and Koleje Małopolskie'
@@ -96,6 +96,8 @@ export const en: Strings = {
                 ? 'ZTM Gdańsk, ZKM Gdynia and SKM'
               : id === 'lodz'
                 ? 'MPK and Łódzka Kolej Aglomeracyjna'
+              : id === 'szczecin'
+                ? 'ZDiTM'
                 : 'MPK and Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
@@ -110,6 +112,8 @@ export const en: Strings = {
                 ? 'ZTM Gdańsk'
               : id === 'lodz'
                 ? 'MPK Łódź'
+              : id === 'szczecin'
+                ? 'ZDiTM Szczecin'
                 : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
@@ -124,9 +128,11 @@ export const en: Strings = {
                 ? 'ZTM Gdańsk'
               : id === 'lodz'
                 ? 'MPK Łódź'
+              : id === 'szczecin'
+                ? 'ZDiTM Szczecin'
                 : 'MPK Wrocław',
     operatorShort: (id: string): string =>
-      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : id === 'trojmiasto' ? 'ZTM / ZKM' : 'MPK',
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : id === 'trojmiasto' ? 'ZTM / ZKM' : id === 'szczecin' ? 'ZDiTM' : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -140,8 +146,10 @@ export const en: Strings = {
                 ? 'ztm.gda.pl'
               : id === 'lodz'
                 ? 'mpk.lodz.pl'
+              : id === 'szczecin'
+                ? 'zditm.szczecin.pl'
                 : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin',
     changed: (name: string) => `Switched to: ${name}.`,
     switching: 'Switching city…',
     blockedByDownload: 'Timetable download in progress. You can switch city once it finishes.',
@@ -349,6 +357,8 @@ export const en: Strings = {
               ? 'e.g. Długa 12'
             : id === 'lodz'
               ? 'e.g. Piotrkowska 12'
+            : id === 'szczecin'
+              ? 'e.g. Wojska Polskiego 12'
               : 'e.g. Swojczycka 41',
     slotWork: 'Work',
     slotWorkHint: (id: string) =>
@@ -362,6 +372,8 @@ export const en: Strings = {
               ? 'e.g. Galeria Bałtycka'
             : id === 'lodz'
               ? 'e.g. Manufaktura'
+            : id === 'szczecin'
+              ? 'e.g. Galeria Kaskada'
               : 'e.g. Sky Tower',
     slotUni: 'University',
     slotUniHint: (id: string) =>
@@ -375,6 +387,8 @@ export const en: Strings = {
               ? 'e.g. UG'
             : id === 'lodz'
               ? 'e.g. UŁ'
+            : id === 'szczecin'
+              ? 'e.g. US'
               : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
@@ -610,7 +624,7 @@ export const en: Strings = {
     searching: (city: string) => `Searching ${city}…`,
     noResults: 'No results',
     noResultsHint: (id: string) =>
-      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
+      `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : id === 'szczecin' ? '“deptak”, “kaskada”, “dąbie”, “police”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
     noResultsFor: (q: string) => `Nothing matches “${q}”`,
     yourPlaces: 'Your places',
     gpsOutsideNotice: 'GPS is outside the city, pick a point manually.',

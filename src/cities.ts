@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin';
 
 export interface CityCenter {
   lat: number;
@@ -212,7 +212,36 @@ const LODZ: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ];
+const SZCZECIN: CityDef = {
+  id: 'szczecin',
+  name: 'Szczecin',
+  center: { lat: 53.4285, lon: 14.5528 },
+  // Strefa ZDiTM z gminami ościennymi (Police na północy, Dobra na
+  // zachodzie, Dąbie na wschodzie): najdalszy punkt to Police
+  // (~15 km od centrum).
+  radiusM: 20_000,
+  bounds: { minLat: 53.3, maxLat: 53.6, minLon: 14.35, maxLon: 14.75 },
+  nominatimViewbox: '14.35,53.6,14.75,53.3',
+  overpassBbox: '53.30,14.35,53.60,14.75',
+  // zbiorkom.live nazywa miasto `szczecin` (jedna agencja `default`,
+  // więc bez filtra); bbox jak bounds.
+  zbiorkomSlug: 'szczecin',
+  zbiorkomBbox: '14.35,53.3,14.75,53.6',
+  dbFile: 'kilometr-gtfs-szczecin.db',
+  tilePack: 'szczecin-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do Polic
+  // działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 53.3, maxLat: 53.6, minLon: 14.35, maxLon: 14.75 },
+  // Mniejsza strefa niż Łódź (0,12 vs 0,34 deg2), więc ~10 MB w z14 z gzipem.
+  tileMaxZoom: 14,
+  tilePackMB: 10,
+  // Kolej (SKM Szczecin) nie ma publicznego GTFS ani feedu live w bboxie
+  // (sprawdzone: zbiorkom `pkp` zwraca tu tylko dalekobieżne IC).
+  // ZDiTM nie ma publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

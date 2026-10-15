@@ -85,11 +85,11 @@ export const uk: Strings = {
     settingsTitle: 'Місто',
     settingsHint: 'Розклад, мапа офлайн і новини йдуть за містом. Дані іншого міста залишаються на телефоні.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Краків' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшава' : id === 'poznan' ? 'Познань' : id === 'trojmiasto' ? 'Труймясто' : id === 'lodz' ? 'Лодзь' : 'Вроцлав',
+      id === 'krakow' ? 'Краків' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшава' : id === 'poznan' ? 'Познань' : id === 'trojmiasto' ? 'Труймясто' : id === 'lodz' ? 'Лодзь' : id === 'szczecin' ? 'Щецин' : 'Вроцлав',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Кракова' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшави' : id === 'poznan' ? 'Познані' : id === 'trojmiasto' ? 'Труймяста' : id === 'lodz' ? 'Лодзі' : 'Вроцлава',
+      id === 'krakow' ? 'Кракова' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшави' : id === 'poznan' ? 'Познані' : id === 'trojmiasto' ? 'Труймяста' : id === 'lodz' ? 'Лодзі' : id === 'szczecin' ? 'Щецина' : 'Вроцлава',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Кракові' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшаві' : id === 'poznan' ? 'Познані' : id === 'trojmiasto' ? 'Труймясті' : id === 'lodz' ? 'Лодзі' : 'Вроцлаві',
+      id === 'krakow' ? 'Кракові' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшаві' : id === 'poznan' ? 'Познані' : id === 'trojmiasto' ? 'Труймясті' : id === 'lodz' ? 'Лодзі' : id === 'szczecin' ? 'Щецині' : 'Вроцлаві',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP і Koleje Małopolskie'
@@ -103,6 +103,8 @@ export const uk: Strings = {
                 ? 'ZTM Gdańsk, ZKM Gdynia і SKM'
               : id === 'lodz'
                 ? 'MPK і Лодзька агломераційна залізниця'
+              : id === 'szczecin'
+                ? 'ZDiTM'
                 : 'MPK і Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
@@ -117,6 +119,8 @@ export const uk: Strings = {
                 ? 'ZTM Ґданськ'
               : id === 'lodz'
                 ? 'MPK Лодзь'
+              : id === 'szczecin'
+                ? 'ZDiTM Щецин'
                 : 'MPK Вроцлав • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
@@ -131,9 +135,11 @@ export const uk: Strings = {
                 ? 'ZTM Ґданськ'
               : id === 'lodz'
                 ? 'MPK Лодзь'
+              : id === 'szczecin'
+                ? 'ZDiTM Щецин'
                 : 'MPK Вроцлав',
     operatorShort: (id: string): string =>
-      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : id === 'trojmiasto' ? 'ZTM / ZKM' : 'MPK',
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : id === 'trojmiasto' ? 'ZTM / ZKM' : id === 'szczecin' ? 'ZDiTM' : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -147,8 +153,10 @@ export const uk: Strings = {
                 ? 'ztm.gda.pl'
               : id === 'lodz'
                 ? 'mpk.lodz.pl'
+              : id === 'szczecin'
+                ? 'zditm.szczecin.pl'
                 : 'wroclaw.pl',
-    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь',
+    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
@@ -360,6 +368,8 @@ export const uk: Strings = {
               ? 'напр. Długa 12'
             : id === 'lodz'
               ? 'напр. Piotrkowska 12'
+            : id === 'szczecin'
+              ? 'напр. Wojska Polskiego 12'
               : 'напр. Swojczycka 41',
     slotWork: 'Робота',
     slotWorkHint: (id: string) =>
@@ -373,6 +383,8 @@ export const uk: Strings = {
               ? 'напр. Galeria Bałtycka'
             : id === 'lodz'
               ? 'напр. Manufaktura'
+            : id === 'szczecin'
+              ? 'напр. Galeria Kaskada'
               : 'напр. Sky Tower',
     slotUni: 'Універ',
     slotUniHint: (id: string) =>
@@ -386,6 +398,8 @@ export const uk: Strings = {
               ? 'напр. UG'
             : id === 'lodz'
               ? 'напр. UŁ'
+            : id === 'szczecin'
+              ? 'напр. US'
               : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
@@ -632,7 +646,7 @@ export const uk: Strings = {
     searching: (city: string) => `Шукаю у ${city}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
-      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
+      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„deptak”, „kaskada”, „dąbie”, „police”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
     yourPlaces: 'Твої місця',
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
