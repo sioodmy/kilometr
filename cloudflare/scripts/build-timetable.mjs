@@ -2,7 +2,7 @@
 /**
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz] [--force] [--write-coords] [--allow-mpk-only]
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city buduje Wrocław (domyślne miasto).
  * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
@@ -42,6 +42,12 @@
  *   + linie zastępcze Z/R i nocne N, statyczny zrzut jak Poznań)
  *   + Łódzka Kolej Aglomeracyjna z własnego publicznego GTFS (pkp-lka.zip,
  *   linie Ł/ŁP/ŁS + ZKA jako route_type 3). Bez PDP i bez klucza.
+ * Szczecin:
+ *   ZDiTM Szczecin wprost z oficjalnego linku (zditm.szczecin.pl/storage/
+ *   gtfs/gtfs.zip: tramwaje 1–12 + autobusy + pospieszne A–C i nocne 5xx,
+ *   statyczny zrzut z poprawnymi Last-Modified/ETag do skipu buildu,
+ *   licencja CC0 1.0). Kolej (SKM Szczecin) nie ma publicznego GTFS,
+ *   więc miasto jedzie bez sekcji kolejowej. Bez PDP i bez klucza.
  *
  * Wyjścia (cloudflare/dist/{miasto}/):
  *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
@@ -69,7 +75,7 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : 'wroclaw';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -262,6 +268,15 @@ const LKA_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-lka.zip';
 const LKA_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 /** Obwiednia aglomeracji: kurs ŁKA łapiemy, gdy ma choć jeden postój w środku. */
 const LODZ_ENVELOPE = { minLat: 51.5, maxLat: 52.0, minLon: 19.0, maxLon: 19.9 };
+
+/**
+ * Szczecin: oficjalny stały link ZDiTM (tramwaje + autobusy + pospieszne
+ * A–C i nocne 5xx, licencja CC0 1.0). W przeciwieństwie do Poznania i Łodzi
+ * nie potrzebuje mirroru: serwer zwraca poprawne Last-Modified i ETag,
+ * więc fingerprint i skip buildu działają wprost na źródle.
+ */
+const SZCZECIN_GTFS_URL = 'https://www.zditm.szczecin.pl/storage/gtfs/gtfs.zip';
+const SZCZECIN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
@@ -1821,6 +1836,7 @@ async function main() {
   let skmtVersion = '';
   let lodzFingerprint = '';
   let lkaVersion = '';
+  let szczecinFingerprint = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -1860,6 +1876,10 @@ async function main() {
     lodzFingerprint = await headVersion(LODZ_GTFS_URL, LODZ_UA);
     lkaVersion = await headVersion(LKA_GTFS_URL, LKA_UA);
     log('ZDiT:', lodzFingerprint || '?', '| ŁKA:', lkaVersion || '?');
+  } else if (CITY === 'szczecin') {
+    gtfsSources = [{ label: 'ZDiTM', url: SZCZECIN_GTFS_URL, prefix: '', headers: SZCZECIN_UA }];
+    szczecinFingerprint = await headVersion(SZCZECIN_GTFS_URL, SZCZECIN_UA);
+    log('ZDiTM:', szczecinFingerprint || '?');
   } else if (CITY === 'gzm') {
     if (!PDP_API_KEY) {
       throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
@@ -1905,6 +1925,7 @@ async function main() {
   const poznanVersionReliable = CITY !== 'poznan' || (!!poznanFingerprint && !!kwVersion);
   const tricityVersionReliable = CITY !== 'trojmiasto' || (!!gdaFingerprint && !!gdyFingerprint && !!skmtVersion);
   const lodzVersionReliable = CITY !== 'lodz' || (!!lodzFingerprint && !!lkaVersion);
+  const szczecinVersionReliable = CITY !== 'szczecin' || !!szczecinFingerprint;
 
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
@@ -2021,6 +2042,15 @@ async function main() {
         warn('zdalny manifest bez realnej ŁKA, przebudowuję zamiast skipować.');
       }
     }
+    if (CITY === 'szczecin' && remote.sources.zditm?.fingerprint === szczecinFingerprint && szczecinFingerprint) {
+      if (!szczecinVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log('brak zmian (ZDiTM), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
     if (CITY === 'wroclaw'
       && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
       && (remote.sources.kd?.schedulesVersion || 'none') === kdVersion) {
@@ -2090,10 +2120,10 @@ async function main() {
   // Warszawa importuje zwarto jak GZM (eksport dzienny, trip_id z datą).
   // Trójmiasto merguje 2 feedy prefiksami GDA/GDY: Gdańsk zwarto (eksport
   // dzienny jak Warszawa), Gdynia generycznie (statyczny zrzut jak Poznań).
-  // Poznań i Łódź to pojedyncze statyczne zrzuty ZTM/ZDiT, więc idą
-  // generyczną ścieżką jak Wrocław (osobny prefiks niepotrzebny, id unikalne
-  // w feedzie; inna kolejność kolumn w trips.txt nie szkodzi, bo import
-  // czyta po nazwach z nagłówka).
+  // Poznań, Łódź i Szczecin to pojedyncze statyczne zrzuty ZTM/ZDiT/ZDiTM,
+  // więc idą generyczną ścieżką jak Wrocław (osobny prefiks niepotrzebny,
+  // id unikalne w feedzie; inna kolejność kolumn w trips.txt nie szkodzi,
+  // bo import czyta po nazwach z nagłówka).
   db.exec('DELETE FROM calendar_dates');
   if (CITY === 'gzm') {
     importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds);
@@ -3221,6 +3251,25 @@ async function main() {
     log(`LODZ: kursów tramwajów ZDiT=${zditTramTrips}`);
   }
 
+  // 6j. Twarda bramka, Szczecin: baza bez tramwajów ZDiTM nie nadpisuje R2.
+  // Kolei nie ma wcale (SKM Szczecin nie ma publicznego GTFS), więc bramka
+  // nie wymaga ani stacji, ani przesiadek kolejowych. Tramwaje (route_type 0)
+  // liczymy wprost z tabeli jak w Poznaniu i Łodzi.
+  if (CITY === 'szczecin') {
+    const problems = [];
+    let zditmTramTrips = 0;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 0').get();
+      zditmTramTrips = row?.n ?? 0;
+    } catch {}
+    if (zditmTramTrips === 0) problems.push('0 kursów tramwajów ZDiTM');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełny Szczecin (${problems.join(', ')}): nie publikuję bazy.`);
+    }
+    log(`SZCZECIN: kursów tramwajów ZDiTM=${zditmTramTrips}`);
+  }
+
   // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem
   // (trip_id, seq), więc żaden indeks na tej tabeli nie jest potrzebny.
   db.exec('PRAGMA synchronous = NORMAL;');
@@ -3244,12 +3293,14 @@ async function main() {
             ? `${todayCompact()}-tri${createHash('sha256').update(`${gdaFingerprint}|${gdyFingerprint}|${skmtVersion}`).digest('hex').slice(0, 8)}`
             : CITY === 'lodz'
               ? `${todayCompact()}-lodz${createHash('sha256').update(`${lodzFingerprint}|${lkaVersion}`).digest('hex').slice(0, 8)}`
+            : CITY === 'szczecin'
+              ? `${todayCompact()}-szczecin${createHash('sha256').update(`${szczecinFingerprint}`).digest('hex').slice(0, 8)}`
             : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -3370,6 +3421,15 @@ async function main() {
             stopTimes: counts.stopTimes - counts.lkaStopTimes,
           },
           lka: lkaInfo,
+        }
+      : CITY === 'szczecin'
+      ? {
+          zditm: {
+            kind: 'gtfs-zip', url: SZCZECIN_GTFS_URL,
+            fingerprint: szczecinFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
         }
       : {
           mpk: {
