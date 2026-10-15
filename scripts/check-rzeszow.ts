@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:rzeszow`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament): chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (tytuły i opisy z ztm.erzeszow.pl/feed z 2026-10-15, struktura
  * podstrony artykułu z tego samego dnia, linie z GTFS ZTM).
  */
@@ -27,7 +27,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -228,7 +228,7 @@ async function checkNumericFallback(): Promise<void> {
 
 void checkNumericFallback().then(() => {
   if (failures.length === 0) {
-    console.log(`WSZYSTKO OK — ${passed} asercji`);
+    console.log(`WSZYSTKO OK: ${passed} asercji`);
     process.exit(0);
   }
   console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);
