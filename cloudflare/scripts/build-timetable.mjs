@@ -2226,14 +2226,36 @@ async function main() {
     const calDatesTxt = readTxt('calendar_dates.txt');
     if (calDatesTxt) {
       const rows = [];
+      // Zakres dat per serwis: feed bez calendar.txt (jak Lublin) nie zostawia
+      // pustej tabeli calendar, bo aplikacja czytałaby wtedy WSZYSTKIE serwisy
+      // w każdy dzień (ten sam niezmiennik co w importGdyniaGeneric: serwis
+      // kursu istnieje w calendar, a zapytania czytają obie tabele razem).
+      const dateRange = new Map(); // sid -> { min, max }
       eachRow(calDatesTxt, (c, idx) => {
         const id = (c[idx.service_id] || '').trim();
-        if (id) rows.push([P(id), (c[idx.date] || '').trim(), Number(c[idx.exception_type]) || 0]);
+        if (!id) return;
+        const date = (c[idx.date] || '').trim();
+        const exc = Number(c[idx.exception_type]) || 0;
+        rows.push([P(id), date, exc]);
+        if (date.length !== 8 || exc !== 1) return;
+        const r = dateRange.get(P(id));
+        if (!r) dateRange.set(P(id), { min: date, max: date });
+        else {
+          if (date < r.min) r.min = date;
+          if (date > r.max) r.max = date;
+        }
       });
       const ins = db.prepare('INSERT INTO calendar_dates (service_id, date, exc) VALUES (?, ?, ?)');
       db.exec('BEGIN');
       for (const r of rows) ins.run(...r);
       db.exec('COMMIT');
+      if (!calTxt) {
+        const insCalPlaceholder = db.prepare('INSERT OR IGNORE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, 0, 0, 0, 0, 0, 0, 0, ?, ?)');
+        db.exec('BEGIN');
+        // OR IGNORE: gdy feed kiedyś dostarczy calendar.txt, prawdziwy wpis wygrywa.
+        for (const [sid, r] of dateRange) insCalPlaceholder.run(sid, r.min, r.max);
+        db.exec('COMMIT');
+      }
     }
     const tripsTxt = readTxt('trips.txt');
     if (!tripsTxt) throw new Error(`ZIP ${label} bez trips.txt, przerywam.`);
