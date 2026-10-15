@@ -36,7 +36,10 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
   if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
   try {
     const id = getActiveCityIdSync();
-    return id !== 'gzm' && id !== 'trojmiasto';
+    // Białystok to miasto w pełni autobusowe: linie 1–30 to autobusy BKM,
+    // więc zgadywanie tramwaju po niskim numerze musi gasnąć jak w GZM
+    // (tam niskie numery mają też autobusy) i Trójmieście (własne zakresy).
+    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'bialystok';
   } catch {
     return true;
   }

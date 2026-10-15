@@ -20,7 +20,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbLodzRails, fetchZbLodzRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbSkmtRails, fetchZbSzczecinRows, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbBialystokRows, fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKml, fetchZbKrakowRows, fetchZbLodzRails, fetchZbLodzRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbSkmtRails, fetchZbSzczecinRows, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -224,8 +224,9 @@ class LiveTracker {
    * Warszawa: Koleje Mazowieckie i WKD (agencje KM, WKD), Poznań: Koleje
    * Wielkopolskie i POLREGIO (agencje KW, PR), Trójmiasto: SKM (agencja
    * SKMT), Łódź: ŁKA (agencja LKA). SKA nie ma feedu live, więc zostaje
-   * na rozkładzie. Szczecin nie ma kolei wcale (features.regionalRail
-   * gaśnie i fetchRailSafe zwraca pustą listę bez zapytań).
+   * na rozkładzie. Szczecin i Białystok nie mają kolei wcale
+   *   (features.regionalRail gaśnie i fetchRailSafe zwraca pustą listę
+   *   bez zapytań).
    */
   private async fetchRailSafe(): Promise<RailFeed[] | null> {
     const id = safeCityId();
@@ -321,9 +322,10 @@ class LiveTracker {
   /**
    * Pozycje pojazdów per-miasto:
    * - Wrocław: wprost z MPK (POST bus_position), awaryjnie zbiorkom.live,
-   * - Kraków / GZM / Warszawa / Poznań / Trójmiasto / Łódź / Szczecin:
-   *   zbiorkom.live (ZTP, ZTM, WTP, ZTM Poznań, ZTM Gdańsk + ZKM Gdynia,
-   *   ZDiT Łódź i ZDiTM Szczecin nie mają publicznego bus_position).
+   * - Kraków / GZM / Warszawa / Poznań / Trójmiasto / Łódź / Szczecin /
+   *   Białystok: zbiorkom.live (ZTP, ZTM, WTP, ZTM Poznań, ZTM Gdańsk
+   *   + ZKM Gdynia, ZDiT Łódź, ZDiTM Szczecin i BKM nie mają publicznego
+   *   bus_position).
    *
    * Wrocław świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby
    * 100k requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK
@@ -368,6 +370,7 @@ class LiveTracker {
       if (id === 'trojmiasto') return await fetchZbTricityRows();
       if (id === 'lodz') return await fetchZbLodzRows();
       if (id === 'szczecin') return await fetchZbSzczecinRows();
+      if (id === 'bialystok') return await fetchZbBialystokRows();
       return await fetchZbWroclawRows();
     } catch (err) {
       console.warn('[LiveTracker] zbiorkom city fetch failed:', err);

@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'bialystok';
 
 export interface CityCenter {
   lat: number;
@@ -241,7 +241,34 @@ const SZCZECIN: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN];
+const BIALYSTOK: CityDef = {
+  id: 'bialystok',
+  name: 'Białystok',
+  center: { lat: 53.1325, lon: 23.1688 },
+  // Sieć BKM z gminami ościennymi (Choroszcz na zachodzie, Supraśl na
+  // północnym wschodzie, Niewodnica na południu): najdalszy punkt to
+  // Niewodnica (~24 km od centrum).
+  radiusM: 26_000,
+  bounds: { minLat: 52.9, maxLat: 53.26, minLon: 22.9, maxLon: 23.35 },
+  nominatimViewbox: '22.9,53.26,23.35,52.9',
+  overpassBbox: '52.90,22.90,53.26,23.35',
+  // zbiorkom.live nazywa miasto `bialystok`; bbox jak bounds.
+  zbiorkomSlug: 'bialystok',
+  zbiorkomBbox: '22.9,52.9,23.35,53.26',
+  dbFile: 'kilometr-gtfs-bialystok.db',
+  tilePack: 'bialystok-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do
+  // Choroszczy czy Supraśla działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 52.9, maxLat: 53.26, minLon: 22.9, maxLon: 23.35 },
+  // Strefa ~0,16 deg2 (między Szczecinem a Łodzią), więc ~12 MB w z14 z gzipem.
+  tileMaxZoom: 14,
+  tilePackMB: 12,
+  // Kolej regionalna (POLREGIO) nie ma publicznego GTFS, więc miasto jedzie
+  // bez sekcji kolejowej. BKM nie ma publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, BIALYSTOK];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

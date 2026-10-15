@@ -3,7 +3,6 @@ import type { LegMode } from '../types/models';
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
 // (kolor linii jako akcent powiadomienia i segmentu na pasku postępu).
-
 export const TRANSIT_PALETTE = [
   '#00897B', // Teal
   '#1976D2', // Blue
@@ -43,7 +42,9 @@ export const TRANSIT_PALETTE = [
  * ZDiT; "6." z kropką to autobus), Warszawa dokłada metro M1/M2 (route_type 1)
  * i SKA S1…S40 (route_type 2), a Trójmiasto ma własną gałąź (tramwaje 1–12,
  * trolejbusy 21–33/710/723): badge newsów nie zna trybu z planera, więc linie
- * rozpoznaje po nazwie.
+ * rozpoznaje po nazwie. Białystok to miasto w pełni autobusowe (BKM nie ma
+ * tramwajów), więc każda linia jest autobusem i heurystyka niskich numerów
+ * musi gasnąć, inaczej linie 1–30 wyglądałyby jak tramwaje.
  */
 export function inferTransitMode(
   mode?: LegMode,
@@ -91,6 +92,8 @@ export function inferTransitMode(
     if (num === 41 || num === 43 || num === 45) return 'tram';
     if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
   }
+  // Białystok: wyłącznie autobusy BKM (1–30, 100+, J/J1–J6, N1–N6).
+  if (cityId === 'bialystok') return 'bus';
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
   }

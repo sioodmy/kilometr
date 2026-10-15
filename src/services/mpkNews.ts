@@ -17,6 +17,11 @@
 //   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
 //   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
 //   A–C). Artykuł to podstrona informacji (treść w main#pageContent).
+// - Białystok: lista HTML BKM (pl/informacje/wiadomosci/komunikaty:
+//   li.news__item z datą div.news__date i tytułem a.news__title, leady
+//   puste). Linie wyciągamy regexem z tytułu (autobusy 1–30, 100+,
+//   J/J1–J6, N1–N6; daty i godziny wycinamy wcześniej). Artykuł to
+//   podstrona komunikatu (treść w div.component-content-wysiwyg).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -95,6 +100,14 @@ export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=12
  * bez JSON-a i paginacji na pierwszym ekranie.
  */
 export const ZDITM_SZCZECIN_INFO_URL = 'https://www.zditm.szczecin.pl/pl/pasazer/informacje';
+/**
+ * Komunikaty BKM Białystok: lista dla pasażera (tytuł w a.news__title
+ * z pełną treścią w atrybucie title, data w div.news__date jako
+ * "DD.MM.RRRR HH:MM", leady news__lead puste). Serwerowy HTML (CMS BIT),
+ * paginacja na podstronach, pierwszy ekran wystarcza.
+ */
+export const BKM_BIALYSTOK_KOMUNIKATY_URL =
+  'https://komunikacja.bialystok.pl/pl/informacje/wiadomosci/komunikaty/';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -1000,6 +1013,122 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
 }
 
 /**
+ * Numery linii BKM Białystok w tekście: J/J1–J6 (meczowe), N1–N6 (nocne)
+ * i zwykłe 1–999. Miasto jest w pełni autobusowe, więc każda liczba to
+ * kandydat na linię (historyczne 200–202 też, BKM je likwiduje, ale
+ * komunikat o likwidacji ma je nieść). Daty („15 października”,
+ * „14.10.2026”), godziny („09:53”) i lata („2026 r.” odsiewa zakres
+ * 1–999) wycinamy wcześniej, a resztę liczb bierzemy wprost.
+ */
+const BIALYSTOK_LINE_RE = /(J[1-6]?|N[1-6]|\d{1,3})/gi;
+
+/** Granice tokenu jak w Szczecinie: polskie litery to znaki słowa. */
+const BIALYSTOK_EDGE_RE = /[0-9A-Za-zÀ-ž]/;
+
+function extractBialystokLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Lata („2026 r.”, „2026”): Białystok nie ma linii 4-cyfrowych
+    // (maks. 999), więc wycinamy je wprost, inaczej „2026” dałoby
+    // linie 202 i 6.
+    .replace(/\b\d{4}\b/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  BIALYSTOK_LINE_RE.lastIndex = 0;
+  while ((m = BIALYSTOK_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1] ?? '';
+    const after = text[m.index + m[1].length] ?? '';
+    // „Jagiellonii” to nie linia J: litera po obu stronach dyskwalifikuje.
+    // Małe „j” w środku słowa (np. „majowe”) też nie jest linią.
+    if (/[A-Z]/i.test(tok) && (BIALYSTOK_EDGE_RE.test(before) || BIALYSTOK_EDGE_RE.test(after))) continue;
+    if (/^\d+$/.test(tok)) {
+      if (before === ':' || after === ':') continue;
+      const n = Number(tok);
+      if (n < 1 || n > 999) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/** Data z listy BKM (div.news__date: "14.10.2026 09:53", czas lokalny). */
+function parseBialystokDate(raw: string): number | null {
+  const m = raw.trim().match(/(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  const ts = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 8), Number(m[5] ?? 0), 0).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
+/**
+ * Komunikaty BKM Białystok z listy (jeden fetch: tytuł + link + data).
+ * Pozycja: li.news__item > div.news__date + h2 > a.news__title (href
+ * względny, pełny tytuł w atrybucie title). Leady news__lead są puste,
+ * więc opis karty zostaje pusty, a linie idą z tytułu.
+ */
+export function parseBialystokNews(html: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = html.match(/<li class="news__item">[\s\S]*?<\/li>/gi) ?? [];
+  for (const b of blocks) {
+    const linkM = b.match(/<a class="news__title" href="([^"]+)"[^>]*title="([^"]*)"/i);
+    if (!linkM) continue;
+    const rawHref = decodeEntities(linkM[1]).trim();
+    const link = rawHref.startsWith('http') ? rawHref : `https://komunikacja.bialystok.pl${rawHref}`;
+    const rawTitle = decodeEntities(linkM[2]).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const dateRaw = decodeEntities((b.match(/<div class="news__date">([^<]*)/i) ?? [])[1] ?? '').trim();
+    const pubDate = parseBialystokDate(dateRaw);
+    const lead = htmlToText((b.match(/<div class="news__lead">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    if (!title) continue;
+    items.push({
+      id: link,
+      title,
+      link,
+      description: lead,
+      imageUrl: null,
+      urgent: isUrgentNews(title, lead),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractBialystokLines(title, lead),
+    });
+  }
+  return items;
+}
+
+/**
+ * Treść artykułu BKM: akapity i nagłówki z div.component-content-wysiwyg
+ * (treść redakcyjna w div.component-item). Tytuł (h1) pomijamy, bo ekran
+ * pokazuje go sam. Stopka (footer z danymi urzędu) leży poza wysiwyg,
+ * więc odpada samym zakresem.
+ */
+function extractBialystokArticle(html: string): ArticleBlock[] {
+  const blocks: ArticleBlock[] = [];
+  const wysiwyg = html.split(/component-content-wysiwyg/i)[1]?.split(/Cms_Attachment|Cms_Gallery|<footer/i)[0] ?? '';
+  if (!wysiwyg.trim()) return blocks;
+  const frag = wysiwyg.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ');
+  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(frag))) {
+    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text)) continue;
+    const tag = match[1].toLowerCase();
+    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  }
+  return blocks;
+}
+
+/**
  * Treść artykułu ZDiTM: lead z div.lead plus sekcje (h2) i akapity treści.
  * Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Odcinamy stopkę
  * „Więcej wiadomości” (powiązane z wiadomosci.szczecin.eu) i nawigację
@@ -1121,6 +1250,10 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // i spis treści wycinamy w extractorze, stopkę powiązanych też).
   const zditm = /zditm\.szczecin\.pl/i.test(url);
   if (zditm) return extractSzczecinArticle(html);
+  // BKM Białystok: treść redakcyjna w div.component-content-wysiwyg
+  // (stopka z danymi urzędu leży poza nim, więc odpada zakresem).
+  const bkm = /komunikacja\.bialystok\.pl/i.test(url);
+  if (bkm) return extractBialystokArticle(html);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -1262,6 +1395,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
+  if (city.id === 'bialystok') return fetchBialystokNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -1304,6 +1438,19 @@ async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Pro
     const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
     const items = parseSzczecinInfo(html);
     if (items.length === 0) console.warn('[News] Szczecin: pusta lista (zmiana markupu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty BKM Białystok: jedno źródło (lista HTML), brak fallbacku. */
+async function fetchBialystokNews(signal?: AbortSignal, cityId = 'bialystok'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const html = await fetchText(BKM_BIALYSTOK_KOMUNIKATY_URL, scope.signal, 'text/html, */*');
+    const items = parseBialystokNews(html);
+    if (items.length === 0) console.warn('[News] Białystok: pusta lista (zmiana markupu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();
