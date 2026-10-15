@@ -3,7 +3,7 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz` / `szczecin`: awaryjne (Wrocław) albo podstawowe (reszta)
+//   / `lodz` / `szczecin` / `radom`: awaryjne (Wrocław) albo podstawowe (reszta)
 //   pozycje autobusów, tramwajów, trolejbusów i metra, gdy bezpośredni
 //   feed nie odpowiada.
 //
@@ -179,6 +179,19 @@ export async function fetchZbSzczecinRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const szcz = getCity('szczecin');
   const positions = await fetchPositions(szcz.zbiorkomSlug, undefined, szcz.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
+ * Pozycje MZDiK Radom jako wiersze dla matchera. Podstawowy feed live.
+ * Bez filtra agencji: całe miasto jedzie pod jedną agencją `default`
+ * (same autobusy 1-27 i nocne N1-N3, route_type 3 w GTFS).
+ */
+export async function fetchZbRadomRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const rad = getCity('radom');
+  const positions = await fetchPositions(rad.zbiorkomSlug, undefined, rad.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }

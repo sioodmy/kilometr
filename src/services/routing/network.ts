@@ -36,7 +36,10 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
   if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
   try {
     const id = getActiveCityIdSync();
-    return id !== 'gzm' && id !== 'trojmiasto';
+    // GZM i Radom: niskie numery to też autobusy (w GZM siatka jest
+    // mieszana, w Radomiu tramwajów nie ma wcale), więc fallback gaśnie.
+    // Trójmiasto ma własną logikę wyżej i tu nie dociera.
+    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'radom';
   } catch {
     return true;
   }

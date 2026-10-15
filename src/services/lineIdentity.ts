@@ -43,7 +43,8 @@ export const TRANSIT_PALETTE = [
  * ZDiT; "6." z kropką to autobus), Warszawa dokłada metro M1/M2 (route_type 1)
  * i SKA S1…S40 (route_type 2), a Trójmiasto ma własną gałąź (tramwaje 1–12,
  * trolejbusy 21–33/710/723): badge newsów nie zna trybu z planera, więc linie
- * rozpoznaje po nazwie.
+ * rozpoznaje po nazwie. Radom to same autobusy (linie 1-27 i nocne N1-N3),
+ * więc ma własną gałąź jak Trójmiasto i nie spada do zgadywania 1–33.
  */
 export function inferTransitMode(
   mode?: LegMode,
@@ -91,6 +92,10 @@ export function inferTransitMode(
     if (num === 41 || num === 43 || num === 45) return 'tram';
     if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
   }
+  // Radom: same autobusy MZDiK (linie 1-27 i nocne N1-N3, route_type 3
+  // w feedzie). Bez tej gałęzi niskie numery wpadałyby w regułę tramwajową
+  // niżej (ten sam powód co wyjątek GZM).
+  if (cityId === 'radom') return 'bus';
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
   }
