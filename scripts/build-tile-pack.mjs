@@ -10,7 +10,7 @@
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
 //
-// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan] [output]
+// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|lodz] [output]
 //
 // Nowe miasto = wpis w CITY_PACKS niżej (bbox + maxzoom + nazwa pliku).
 
@@ -50,6 +50,12 @@ const CITY_PACKS = {
     out: 'poznan-tiles.ktp',
     bbox: { minLon: 16.6, minLat: 52.15, maxLon: 17.3, maxLat: 52.65 },
     // Pełna strefa aglomeracji w z14 z gzipem to ~23 MB (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  lodz: {
+    out: 'lodz-tiles.ktp',
+    bbox: { minLon: 19.05, minLat: 51.55, maxLon: 19.85, maxLat: 51.97 },
+    // Pełna strefa aglomeracji w z14 z gzipem to ~20 MB (pomiar próbką kafli).
     maxZoom: 14,
   },
 };
