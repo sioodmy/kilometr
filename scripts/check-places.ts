@@ -35,10 +35,26 @@ describe('Klucze kubełków per-miasto');
   expect('Wrocław trzyma legacy klucz', cityKey('kilometr.places', 'wroclaw'), 'kilometr.places');
   expect('Kraków dokleja sufiks', cityKey('kilometr.places', 'krakow'), 'kilometr.places.krakow');
   expect('GZM dokleja sufiks', cityKey('kilometr.places', 'gzm'), 'kilometr.places.gzm');
-  expect('Warszawa dokleja sufiks', cityKey('kilometr.places', 'warszawa'), 'kilometr.places.warszawa');
-  expect('historia tak samo', cityKey('kilometr.trip_history', 'krakow'), 'kilometr.trip_history.krakow');
-  expect('trasy tak samo', cityKey('kilometr.saved_routes', 'krakow'), 'kilometr.saved_routes.krakow');
-  expect('dwa miasta to dwa klucze', cityKey('kilometr.places', 'wroclaw') !== cityKey('kilometr.places', 'krakow'), true);
+  expect(
+    'Warszawa dokleja sufiks',
+    cityKey('kilometr.places', 'warszawa'),
+    'kilometr.places.warszawa',
+  );
+  expect(
+    'historia tak samo',
+    cityKey('kilometr.trip_history', 'krakow'),
+    'kilometr.trip_history.krakow',
+  );
+  expect(
+    'trasy tak samo',
+    cityKey('kilometr.saved_routes', 'krakow'),
+    'kilometr.saved_routes.krakow',
+  );
+  expect(
+    'dwa miasta to dwa klucze',
+    cityKey('kilometr.places', 'wroclaw') !== cityKey('kilometr.places', 'krakow'),
+    true,
+  );
 }
 
 describe('Klasyfikacja współrzędnych do miasta (migracja)');
@@ -63,7 +79,25 @@ describe('Rejestr miast');
 {
   expect('cztery miasta', CITIES.map((c) => c.id).join(','), 'wroclaw,krakow,gzm,warszawa');
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
-  expect('isCityId zna wszystkie', [isCityId('wroclaw'), isCityId('krakow'), isCityId('gzm'), isCityId('warszawa'), isCityId('berlin')].join(','), 'true,true,true,true,false');
+  expect(
+    'isCityId zna wszystkie',
+    [
+      isCityId('wroclaw'),
+      isCityId('krakow'),
+      isCityId('gzm'),
+      isCityId('warszawa'),
+      isCityId('berlin'),
+    ].join(','),
+    'true,true,true,true,false',
+  );
+}
+
+describe('Wpis GZM');
+{
+  const gzm = getCity('gzm');
+  expect('osobna baza', gzm.dbFile, 'kilometr-gtfs-gzm.db');
+  expect('osobny pakiet kafli', gzm.tilePack, 'gzm-tiles.ktp');
+  expect('kafle w z14 z kompresją gzip (limit R2)', gzm.tileMaxZoom, 14);
 }
 
 describe('Wpis Warszawy');
