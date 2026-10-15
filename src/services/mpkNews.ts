@@ -612,9 +612,9 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   const ztp = /ztp\.krakow\.pl/i.test(url);
   const gzm = /rj\.transportgzm\.pl/i.test(url);
   const wtp = /wtp\.waw\.pl/i.test(url);
-  // ZTM Poznań to ten sam WordPress co WTP: treść artykułu siedzi w tych
-  // samych selektorach, więc jedna gałąź dla obu.
-  const wordpress = wtp || /ztm\.poznan\.pl/i.test(url);
+  // ZTM Poznań to WordPress, ale inny motyw niż WTP: treść artykułu siedzi
+  // w <div class="row content mt-4"> wewnątrz sekcji (bez <article>).
+  const ztmPoznan = /ztm\.poznan\.pl/i.test(url);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : ztp
@@ -624,13 +624,15 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
         '')
       : gzm
         ? (html.split(/id="mcontent"/i)[1]?.split(/<div class="modal"|<footer/i)[0] ?? '')
-        : wordpress
+        : wtp
           ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
             html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ??
             html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
             '')
-          : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
-          '');
+          : ztmPoznan
+            ? (html.split(/class="row content mt-4"/i)[1]?.split(/<\/section>/i)[0] ?? '')
+            : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
+            '');
   if (gzm) {
     // Tytuł niesie nagłówek ekranu (params.title), więc w treści go pomijamy.
     fragment = fragment.replace(/<h2\b[^>]*>[\s\S]*?<\/h2>/i, ' ');

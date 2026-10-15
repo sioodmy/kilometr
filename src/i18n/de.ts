@@ -327,21 +327,27 @@ export const de: Strings = {
         ? 'z. B. Krowoderska 12'
         : id === 'warszawa'
           ? 'z. B. Marszałkowska 12'
-          : 'z. B. Swojczycka 41',
+          : id === 'poznan'
+            ? 'z. B. Głogowska 12'
+            : 'z. B. Swojczycka 41',
     slotWork: 'Arbeit',
     slotWorkHint: (id: string) =>
       id === 'krakow'
         ? 'z. B. Galeria Krakowska'
         : id === 'warszawa'
           ? 'z. B. Złote Tarasy'
-          : 'z. B. Sky Tower',
+          : id === 'poznan'
+            ? 'z. B. Stary Browar'
+            : 'z. B. Sky Tower',
     slotUni: 'Uni',
     slotUniHint: (id: string) =>
       id === 'krakow'
         ? 'z. B. AGH'
         : id === 'warszawa'
           ? 'z. B. Uniwersytet'
-          : 'z. B. Politechnika',
+          : id === 'poznan'
+            ? 'z. B. UAM'
+            : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',

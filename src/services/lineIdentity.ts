@@ -37,7 +37,7 @@ export const TRANSIT_PALETTE = [
  * więc `cityId` jest opcjonalnym parametrem, a nie odczytem aktywnego miasta:
  * heurystyka niskich numerów dotyczy Wrocławia, Krakowa i Poznania, a w GZM
  * niskie numery mają też autobusy, więc komponent przekazuje `'gzm'`
- * i fallback gaśnie. Poznań dokłada tramwaj 97 (Naramowice, route_type 0
+ * i fallback gaśnie. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0
  * w feedzie ZTM), Warszawa dokłada metro M1/M2 (route_type 1) i SKA S1…S40
  * (route_type 2): badge newsów nie zna trybu z planera, więc linie rozpoznaje
  * po nazwie.
@@ -61,12 +61,12 @@ export function inferTransitMode(
     if (/^S\d{1,2}$/i.test(clean)) return 'train';
   }
   const num = parseInt(clean, 10);
-  // Poznań: 97 to tramwaj (Naramowice, route_type 0 w feedzie ZTM),
-  // a T6/T7 to autobusy turystyczne (parseInt i tak dałby NaN → bus,
-  // jawny warunek dokumentuje wyjątek).
+  // Poznań: tramwaje to 1–19 plus 97, 201 i 203 (wszystkie z route_type 0
+  // w feedzie ZTM), a T6/T7 to autobusy turystyczne. Numery > 33 poza
+  // wymienionymi to autobusy (nocne 2xx też, oprócz 201/203).
   if (cityId === 'poznan') {
     if (/^T\d{1,2}$/i.test(clean)) return 'bus';
-    if (num === 97) return 'tram';
+    if (num === 97 || num === 201 || num === 203) return 'tram';
   }
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';

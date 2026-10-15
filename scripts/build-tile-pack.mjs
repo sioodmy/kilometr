@@ -48,8 +48,8 @@ const CITY_PACKS = {
   },
   poznan: {
     out: 'poznan-tiles.ktp',
-    bbox: { minLon: 16.65, minLat: 52.2, maxLon: 17.25, maxLat: 52.6 },
-    // Aglomeracja w z14 z kompresją gzip zajmuje ~30 MB.
+    bbox: { minLon: 16.6, minLat: 52.15, maxLon: 17.3, maxLat: 52.65 },
+    // Pełna strefa aglomeracji w z14 z gzipem to ~23 MB (jak tileBbox w cities.ts).
     maxZoom: 14,
   },
 };

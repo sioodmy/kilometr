@@ -120,16 +120,20 @@ export async function fetchZbWarsawRows(): Promise<RawVehicleRow[] | null> {
 }
 
 /**
- * Pozycje ZTM Poznań jako wiersze dla matchera. Podstawowy feed live:
- * miasto `poznan` agreguje też przewoźników podmiejskich (PKS Poznań
- * jako `PKSPOZNAN`, Kombus jako `KOMBUS`, Środa Wlkp. jako `SRODAWLKP`),
- * a te wchodzą w skład aglomeracji, więc nie filtrujemy po agencji
- * (odwrotnie niż w Warszawie, gdzie gminy ościenne kolidują numerami).
+ * Pozycje ZTM Poznań jako wiersze dla matchera. Podstawowy feed live.
+ * Filtr `agencies=default,PKSPOZNAN` (za issue #241): agencja `default`
+ * to ZTM Poznań, a `PKSPOZNAN` wozi zarówno linie ZTM pod swoją brygadą,
+ * jak i własne linie podmiejskie. Reszta agencji jest celowo wykluczona:
+ * `SRODAWLKP` (autobusy miejskie Środy Wlkp.) numeruje linie 1–11, czyli
+ * dokładnie jak poznańskie tramwaje: pojazdy nigdy nie dopasują się do
+ * kursów (30 km od trasy), ale wisiałyby na mapie i w widoku linii jako
+ * widma tramwajów. `KOMBUS` jeździ liniami 580–599, których nie ma
+ * w GTFS ZTM, więc też byłyby samymi kropkami bez rozkładu.
  */
 export async function fetchZbPoznanRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const pozn = getCity('poznan');
-  const positions = await fetchPositions(pozn.zbiorkomSlug, undefined, pozn.zbiorkomBbox);
+  const positions = await fetchPositions(pozn.zbiorkomSlug, 'default,PKSPOZNAN', pozn.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
 }

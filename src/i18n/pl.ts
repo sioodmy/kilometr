@@ -336,21 +336,27 @@ export const pl = {
         ? 'np. Krowoderska 12'
         : id === 'warszawa'
           ? 'np. Marszałkowska 12'
-          : 'np. Swojczycka 41'),
+          : id === 'poznan'
+            ? 'np. Głogowska 12'
+            : 'np. Swojczycka 41'),
     slotWork: 'Praca',
     slotWorkHint: (id: string): string =>
       (id === 'krakow'
         ? 'np. Galeria Krakowska'
         : id === 'warszawa'
           ? 'np. Złote Tarasy'
-          : 'np. Sky Tower'),
+          : id === 'poznan'
+            ? 'np. Stary Browar'
+            : 'np. Sky Tower'),
     slotUni: 'Uczelnia',
     slotUniHint: (id: string): string =>
       (id === 'krakow'
         ? 'np. AGH'
         : id === 'warszawa'
           ? 'np. Uniwersytet'
-          : 'np. Politechnika'),
+          : id === 'poznan'
+            ? 'np. UAM'
+            : 'np. Politechnika'),
     backA11y: 'Wstecz',
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
     brand: 'Kilometr',

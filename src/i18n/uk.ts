@@ -338,21 +338,27 @@ export const uk: Strings = {
         ? 'напр. Krowoderska 12'
         : id === 'warszawa'
           ? 'напр. Marszałkowska 12'
-          : 'напр. Swojczycka 41',
+          : id === 'poznan'
+            ? 'напр. Głogowska 12'
+            : 'напр. Swojczycka 41',
     slotWork: 'Робота',
     slotWorkHint: (id: string) =>
       id === 'krakow'
         ? 'напр. Galeria Krakowska'
         : id === 'warszawa'
           ? 'напр. Złote Tarasy'
-          : 'напр. Sky Tower',
+          : id === 'poznan'
+            ? 'напр. Stary Browar'
+            : 'напр. Sky Tower',
     slotUni: 'Універ',
     slotUniHint: (id: string) =>
       id === 'krakow'
         ? 'напр. AGH'
         : id === 'warszawa'
           ? 'напр. Університет'
-          : 'напр. Politechnika',
+          : id === 'poznan'
+            ? 'напр. UAM'
+            : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',

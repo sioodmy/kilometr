@@ -149,10 +149,12 @@ const POZNAN: CityDef = {
   zbiorkomBbox: '16.6,52.15,17.3,52.65',
   dbFile: 'kilometr-gtfs-poznan.db',
   tilePack: 'poznan-tiles.ktp',
-  tileBbox: { minLat: 52.2, maxLat: 52.6, minLon: 16.65, maxLon: 17.25 },
-  // Aglomeracja w z14 z kompresją gzip mieści się w ~30 MB.
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do Środy
+  // Wlkp. czy Murowanej Gośliny działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 52.15, maxLat: 52.65, minLon: 16.6, maxLon: 17.3 },
+  // Aglomeracja w z14 z kompresją gzip zajmuje ~23 MB (pomiar próbką kafli).
   tileMaxZoom: 14,
-  tilePackMB: 30,
+  tilePackMB: 23,
   // Kolej aglomeracyjna (KW/PKM) siedzi we własnym publicznym GTFS
   // Kolei Wielkopolskich, nie w PDP. ZTM nie ma publicznego bus_position.
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
