@@ -17,6 +17,12 @@
 //   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
 //   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
 //   A–C). Artykuł to podstrona informacji (treść w main#pageContent).
+// - Radom: lista HTML MZDiK (mzdik.pl/komunikaty: karty article z tytułem,
+//   linkiem względnym i leadem div.article__info; daty nie ma na karcie,
+//   więc bierzemy ją z tytułu jak "od dnia 6.10.2026"). Linie wyciągamy
+//   regexem z tytułu i leadu (dzienne 1-27 i nocne N1-N3 z GTFS MZDiK).
+//   Artykuł to podstrona komunikatu (lead w div.standard-page__intro,
+//   treść w div.content).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -95,6 +101,14 @@ export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=12
  * bez JSON-a i paginacji na pierwszym ekranie.
  */
 export const ZDITM_SZCZECIN_INFO_URL = 'https://www.zditm.szczecin.pl/pl/pasazer/informacje';
+/**
+ * Komunikaty MZDiK Radom: lista dla pasażera (tytuł + link względny
+ * + lead div.article__info na karcie article.section__article).
+ * Serwerowy HTML, bez JSON-a, daty ani obrazka na karcie (img 500x50
+ * to dekoracyjny pasek, nie hero). Datę niesie tytuł komunikatu
+ * ("od dnia 6.10.2026", "w nocy z 14 na 15.10.2026").
+ */
+export const MZDIK_RADOM_KOMUNIKATY_URL = 'https://mzdik.pl/komunikaty';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -1000,6 +1014,124 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
 }
 
 /**
+ * Numery linii MZDiK Radom w tekście: dzienne 1-27 i nocne N1-N3
+ * (dokładnie te z routes.txt feedu GTFS). Daty liczbowe ("15.10.2026",
+ * "14 na 15.10"), godziny ("23:20-4:20", "23:03"), daty słowne
+ * ("14 na 15 października"), nazwy ulic z liczebnikami ("25 Czerwca",
+ * "11 Listopada", "1 Maja" łapie wzorzec daty z miesiącem) i numery
+ * słupków z wiodącym zerem ("Limanowskiego / Wałowa 01") wycinamy
+ * wcześniej albo odsiewamy walidacją, a resztę liczb z tekstu odsiewa
+ * zakres 1-27.
+ */
+const RADOM_LINE_RE = /\b(N[1-3]|\d{1,2})\b/gi;
+
+function isRadomLineNumber(n: number): boolean {
+  return n >= 1 && n <= 27;
+}
+
+function extractRadomLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do|z|na)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|na|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})(?:\\s+\\d{4}(?:\\s*r(?:oku|\\.)?)?)?\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  RADOM_LINE_RE.lastIndex = 0;
+  while ((m = RADOM_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1] ?? '';
+    const after = text[m.index + m[1].length] ?? '';
+    if (/^\d+$/.test(tok)) {
+      if (before === ':' || after === ':') continue;
+      // Numery słupków ("przystanek 01", "Wałowa 01 i 02") to nie linie:
+      // prawdziwe linie nie zaczynają się od zera.
+      if (/^0\d+$/.test(tok)) continue;
+      if (!isRadomLineNumber(Number(tok))) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/** Data z tytułu komunikatu MZDiK ("od dnia 6.10.2026", "z 14 na 15.10.2026"). */
+function parseRadomDate(title: string): number | null {
+  const m = title.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if (!m) return null;
+  const ts = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), 8, 0, 0).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
+/**
+ * Komunikaty MZDiK Radom z listy (jeden fetch: tytuł + link + lead).
+ * Karta: article.section__article > h3.article__header z a[href^=komunikaty/]
+ * (link względny!) i div.article__info z leadem. Daty na karcie nie ma,
+ * więc bierzemy ją z tytułu; obrazek pomijamy (pasek 500x50, nie hero).
+ */
+export function parseMzdikRadomKomunikaty(html: string): MpkNewsItem[] {
+  const cards = html.split(/<article class="section__article"/i).slice(1);
+  const items: MpkNewsItem[] = [];
+  for (const card of cards) {
+    const linkM = card.match(
+      /<h3[^>]*class="article__header"[^>]*>[\s\S]*?<a href="(komunikaty\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    if (!linkM) continue;
+    const link = `https://mzdik.pl/${decodeEntities(linkM[1]).trim()}`;
+    const rawTitle = htmlToText(linkM[2]).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const pubDate = parseRadomDate(rawTitle);
+    const lead = htmlToText((card.match(/<div class="article__info">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    if (!title) continue;
+    items.push({
+      id: link,
+      title,
+      link,
+      description: lead,
+      imageUrl: null,
+      urgent: isUrgentNews(title, lead),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractRadomLines(title, lead),
+    });
+  }
+  return items;
+}
+
+/**
+ * Treść komunikatu MZDiK: lead z div.standard-page__intro plus akapity
+ * z div.content. Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Panel
+ * boczny z listą innych komunikatów (aside.page-content__aside) leży poza
+ * section, więc odpada sam; okruszki wycinamy z nagłówkiem.
+ */
+function extractMzdikRadomArticle(html: string): ArticleBlock[] {
+  const blocks: ArticleBlock[] = [];
+  const section = (html.split(/<section aria-labelledby="section-heading">/i)[1]?.split(/<\/section>/i)[0] ?? '')
+    .replace(/<header\b[\s\S]*?<\/header>/i, ' ');
+  if (!section.trim()) return blocks;
+  const lead = htmlToText((section.match(/<div class="standard-page__intro">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (lead) blocks.push({ kind: 'p', text: lead });
+  const content = (section.match(/<div class="content">([\s\S]*?)<\/div>/i) ?? [])[1] ?? section;
+  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content))) {
+    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text) || text === lead) continue;
+    const tag = match[1].toLowerCase();
+    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  }
+  return blocks;
+}
+
+/**
  * Treść artykułu ZDiTM: lead z div.lead plus sekcje (h2) i akapity treści.
  * Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Odcinamy stopkę
  * „Więcej wiadomości” (powiązane z wiadomosci.szczecin.eu) i nawigację
@@ -1121,6 +1253,11 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // i spis treści wycinamy w extractorze, stopkę powiązanych też).
   const zditm = /zditm\.szczecin\.pl/i.test(url);
   if (zditm) return extractSzczecinArticle(html);
+  // MZDiK Radom: lead w div.standard-page__intro, treść w div.content
+  // (panel boczny z innymi komunikatami leży poza section, więc odpada
+  // sam; nagłówek z okruszkami wycinamy w extractorze).
+  const mzdik = /mzdik\.pl/i.test(url);
+  if (mzdik) return extractMzdikRadomArticle(html);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -1262,6 +1399,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
+  if (city.id === 'radom') return fetchRadomNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -1304,6 +1442,19 @@ async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Pro
     const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
     const items = parseSzczecinInfo(html);
     if (items.length === 0) console.warn('[News] Szczecin: pusta lista (zmiana markupu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty MZDiK Radom: jedno źródło (lista HTML), brak fallbacku. */
+async function fetchRadomNews(signal?: AbortSignal, cityId = 'radom'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const html = await fetchText(MZDIK_RADOM_KOMUNIKATY_URL, scope.signal, 'text/html, */*');
+    const items = parseMzdikRadomKomunikaty(html);
+    if (items.length === 0) console.warn('[News] Radom: pusta lista (zmiana markupu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();

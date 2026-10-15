@@ -125,7 +125,13 @@ export const de: Strings = {
                   ? 'Łódź'
                   : id === 'szczecin'
                     ? 'Szczecin'
-                    : 'Wrocław',
+                    : id === 'radom'
+                      ? 'Radom'
+                      : id === 'radom'
+                        ? 'Radom'
+                        : id === 'radom'
+                          ? 'Radom'
+                          : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP und Koleje Małopolskie'
@@ -141,7 +147,9 @@ export const de: Strings = {
                   ? 'MPK und Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-                    : 'MPK und Koleje Dolnośląskie',
+                    : id === 'radom'
+                      ? 'MZDiK Radom'
+                      : 'MPK und Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -157,7 +165,9 @@ export const de: Strings = {
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-                    : 'MPK Wrocław • wroclaw.pl',
+                    : id === 'radom'
+                      ? 'MZDiK Radom'
+                      : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -173,7 +183,9 @@ export const de: Strings = {
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-                    : 'MPK Wrocław',
+                    : id === 'radom'
+                      ? 'MZDiK Radom'
+                      : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -187,7 +199,9 @@ export const de: Strings = {
                 ? 'ZTM / ZKM'
                 : id === 'szczecin'
                   ? 'ZDiTM'
-                  : 'MPK',
+                  : id === 'radom'
+                    ? 'MZDiK'
+                    : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -203,8 +217,10 @@ export const de: Strings = {
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
-                    : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin',
+                    : id === 'radom'
+                      ? 'mzdik.pl'
+                      : 'wroclaw.pl',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Radom',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
@@ -436,7 +452,9 @@ export const de: Strings = {
                 ? 'z. B. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'z. B. Wojska Polskiego 12'
-                  : 'z. B. Swojczycka 41',
+                  : id === 'radom'
+                    ? 'z. B. Żeromskiego 12'
+                    : 'z. B. Swojczycka 41',
     slotWork: 'Arbeit',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -451,7 +469,9 @@ export const de: Strings = {
                 ? 'z. B. Manufaktura'
                 : id === 'szczecin'
                   ? 'z. B. Galeria Kaskada'
-                  : 'z. B. Sky Tower',
+                  : id === 'radom'
+                    ? 'z. B. Galeria Słoneczna'
+                    : 'z. B. Sky Tower',
     slotUni: 'Uni',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -466,7 +486,9 @@ export const de: Strings = {
                 ? 'z. B. UŁ'
                 : id === 'szczecin'
                   ? 'z. B. US'
-                  : 'z. B. Politechnika',
+                  : id === 'radom'
+                    ? 'z. B. UTH'
+                    : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',
@@ -718,7 +740,7 @@ export const de: Strings = {
     searching: (city: string) => `${city} wird durchsucht…`,
     noResults: 'Keine Ergebnisse',
     noResultsHint: (id: string) =>
-      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : id === 'trojmiasto' ? '„oliwa“, „wrzeszcz“, „orłowo“, „przymorze“' : id === 'lodz' ? '„piotrkowska“, „manufaktura“, „fabryczna“, „kaliska“' : id === 'szczecin' ? '„brama portowa“, „dąbie“, „police“, „pogodno“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
+      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : id === 'trojmiasto' ? '„oliwa“, „wrzeszcz“, „orłowo“, „przymorze“' : id === 'lodz' ? '„piotrkowska“, „manufaktura“, „fabryczna“, „kaliska“' : id === 'szczecin' ? '„brama portowa“, „dąbie“, „police“, „pogodno“' : id === 'radom' ? '„żeromskiego“, „południe“, „gołębiów“, „idalin“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
     yourPlaces: 'Deine Orte',
     gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',

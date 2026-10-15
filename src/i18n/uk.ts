@@ -100,7 +100,9 @@ export const uk: Strings = {
                   ? 'Лодзь'
                   : id === 'szczecin'
                     ? 'Щецин'
-                    : 'Вроцлав',
+                    : id === 'radom'
+                      ? 'Радом'
+                      : 'Вроцлав',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Кракова'
@@ -116,7 +118,9 @@ export const uk: Strings = {
                   ? 'Лодзі'
                   : id === 'szczecin'
                     ? 'Щецина'
-                    : 'Вроцлава',
+                    : id === 'radom'
+                      ? 'Радома'
+                      : 'Вроцлава',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Кракові'
@@ -132,7 +136,9 @@ export const uk: Strings = {
                   ? 'Лодзі'
                   : id === 'szczecin'
                     ? 'Щецині'
-                    : 'Вроцлаві',
+                    : id === 'radom'
+                      ? 'Радомі'
+                      : 'Вроцлаві',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP і Koleje Małopolskie'
@@ -148,7 +154,9 @@ export const uk: Strings = {
                   ? 'MPK і Лодзька агломераційна залізниця'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
-                    : 'MPK і Koleje Dolnośląskie',
+                    : id === 'radom'
+                      ? 'MZDiK Radom'
+                      : 'MPK і Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Краків'
@@ -164,7 +172,9 @@ export const uk: Strings = {
                   ? 'MPK Лодзь'
                   : id === 'szczecin'
                     ? 'ZDiTM Щецин'
-                    : 'MPK Вроцлав • wroclaw.pl',
+                    : id === 'radom'
+                      ? 'MZDiK Радом'
+                      : 'MPK Вроцлав • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Краків'
@@ -180,7 +190,9 @@ export const uk: Strings = {
                   ? 'MPK Лодзь'
                   : id === 'szczecin'
                     ? 'ZDiTM Щецин'
-                    : 'MPK Вроцлав',
+                    : id === 'radom'
+                      ? 'MZDiK Радом'
+                      : 'MPK Вроцлав',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -194,7 +206,9 @@ export const uk: Strings = {
                 ? 'ZTM / ZKM'
                 : id === 'szczecin'
                   ? 'ZDiTM'
-                  : 'MPK',
+                  : id === 'radom'
+                    ? 'MZDiK'
+                    : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -210,8 +224,10 @@ export const uk: Strings = {
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
-                    : 'wroclaw.pl',
-    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин',
+                    : id === 'radom'
+                      ? 'mzdik.pl'
+                      : 'wroclaw.pl',
+    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Радом',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
@@ -451,7 +467,9 @@ export const uk: Strings = {
                 ? 'напр. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'напр. Wojska Polskiego 12'
-                  : 'напр. Swojczycka 41',
+                  : id === 'radom'
+                    ? 'напр. Żeromskiego 12'
+                    : 'напр. Swojczycka 41',
     slotWork: 'Робота',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -466,7 +484,9 @@ export const uk: Strings = {
                 ? 'напр. Manufaktura'
                 : id === 'szczecin'
                   ? 'напр. Galeria Kaskada'
-                  : 'напр. Sky Tower',
+                  : id === 'radom'
+                    ? 'напр. Galeria Słoneczna'
+                    : 'напр. Sky Tower',
     slotUni: 'Універ',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -481,7 +501,9 @@ export const uk: Strings = {
                 ? 'напр. UŁ'
                 : id === 'szczecin'
                   ? 'напр. US'
-                  : 'напр. Politechnika',
+                  : id === 'radom'
+                    ? 'напр. UTH'
+                    : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',
@@ -741,7 +763,7 @@ export const uk: Strings = {
     searching: (city: string) => `Шукаю у ${city}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
-      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
+      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
     yourPlaces: 'Твої місця',
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
