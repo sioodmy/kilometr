@@ -92,6 +92,20 @@ describe('Rejestr miast');
   );
 }
 
+describe('Wpis Wrocławia');
+{
+  const wro = getCity('wroclaw');
+  expect('osobna baza', wro.dbFile, 'kilometr-gtfs-wroclaw.db');
+  expect('osobny pakiet kafli', wro.tilePack, 'wroclaw-tiles.ktp');
+}
+
+describe('Wpis Krakowa');
+{
+  const krk = getCity('krakow');
+  expect('osobna baza', krk.dbFile, 'kilometr-gtfs-krakow.db');
+  expect('osobny pakiet kafli', krk.tilePack, 'krakow-tiles.ktp');
+}
+
 describe('Wpis GZM');
 {
   const gzm = getCity('gzm');

@@ -32,7 +32,7 @@ export interface CityDef {
   /** Zbiorkom: slug miasta + bbox minLon,minLat,maxLon,maxLat. */
   zbiorkomSlug: string;
   zbiorkomBbox: string;
-  /** Plik bazy w katalogu SQLite. Wrocław trzyma legacy nazwę. */
+  /** Plik bazy w katalogu SQLite per-miasto. */
   dbFile: string;
   /** Pakiet kafli offline w R2 i na telefonie. */
   tilePack: string;
@@ -62,7 +62,7 @@ const WROCLAW: CityDef = {
   overpassBbox: '50.95,16.70,51.25,17.25',
   zbiorkomSlug: 'wroclaw',
   zbiorkomBbox: '16.7,50.95,17.25,51.25',
-  dbFile: 'kilometr-gtfs.db',
+  dbFile: 'kilometr-gtfs-wroclaw.db',
   tilePack: 'wroclaw-tiles.ktp',
   tileBbox: { minLat: 51.0, maxLat: 51.22, minLon: 16.8, maxLon: 17.28 },
   tileMaxZoom: 14,

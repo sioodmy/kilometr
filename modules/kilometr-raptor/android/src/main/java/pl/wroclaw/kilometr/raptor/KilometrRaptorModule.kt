@@ -4,6 +4,8 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -116,6 +118,39 @@ class KilometrRaptorModule : Module() {
     if (KilometrRaptorBridge.nativeHasFootTile(tx, ty)) return true
     val bytes = readTileFromLocalPack(14, tx, ty) ?: readCachedTile(tx, ty) ?: return false
     return KilometrRaptorBridge.nativeLoadFootTile(tx, ty, bytes)
+  }
+
+  private fun decompressGzipFileInternal(sourcePath: String, destPath: String): Boolean {
+    val src = File(sourcePath.removePrefix("file://"))
+    val dst = File(destPath.removePrefix("file://"))
+    if (!src.exists()) return false
+    val parent = dst.parentFile ?: return false
+    parent.mkdirs()
+    val tmpDst = File(parent, "${dst.name}.tmp_${System.currentTimeMillis()}")
+    return try {
+      FileInputStream(src).use { fis ->
+        GZIPInputStream(fis, 65536).use { gis ->
+          FileOutputStream(tmpDst).use { fos ->
+            val buf = ByteArray(65536)
+            var n: Int
+            while (gis.read(buf).also { n = it } > 0) {
+              fos.write(buf, 0, n)
+            }
+            fos.flush()
+          }
+        }
+      }
+      if (dst.exists()) dst.delete()
+      val renamed = tmpDst.renameTo(dst)
+      if (!renamed) {
+        tmpDst.copyTo(dst, overwrite = true)
+        tmpDst.delete()
+      }
+      true
+    } catch (_: Throwable) {
+      if (tmpDst.exists()) tmpDst.delete()
+      false
+    }
   }
 
   override fun definition() = ModuleDefinition {
@@ -283,6 +318,10 @@ class KilometrRaptorModule : Module() {
       } else {
         KilometrRaptorBridge.nativeInvoke(cmd, payload)
       }
+    }
+
+    AsyncFunction("decompressGzipFile") { sourcePath: String, destPath: String ->
+      decompressGzipFileInternal(sourcePath, destPath)
     }
   }
 }

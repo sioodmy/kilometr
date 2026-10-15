@@ -3,10 +3,10 @@
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
  * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa] [--force] [--write-coords] [--allow-mpk-only]
- * Bez --city zachowuje się jak dawniej (Wrocław → cloudflare/dist/).
- * Z --city artefakty lądują w cloudflare/dist/{miasto}/, a manifest niesie
+ * Bez --city buduje Wrocław (domyślne miasto).
+ * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
- * {miasto}/db/kilometr-gtfs.db).
+ * {miasto}/db/kilometr-gtfs.db.gz).
  *
  * Wrocław:
  *   Open Data Wrocław — katalog GTFS + ZIP (MPK: tramwaje + autobusy)
@@ -25,9 +25,10 @@
  *   feedu PLK (polish_trains.zip, tylko kursy dotykające Warszawy), WKD
  *   z własnego feedu (wkd.zip). Bez PDP i bez klucza.
  *
- * Wyjścia (cloudflare/dist[/{miasto}]/):
- *   kilometr-gtfs.db  — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
- *   manifest.json: miasto, wersja, statystyki, sha256 bazy
+ * Wyjścia (cloudflare/dist/{miasto}/):
+ *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
+ *   kilometr-gtfs.db.gz  — ta sama baza spakowana gzip (level 9) do R2
+ *   manifest.json: miasto, wersja, statystyki, sha256 bazy (.gz i surowej)
  *
  * Wymagania: Node.js ≥ 22.5 (node:sqlite), program `unzip` w PATH
  * (linux/macos: standard; Windows: Git Bash / WSL). Zero zależności npm.
@@ -42,6 +43,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -51,14 +53,14 @@ const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
 const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
-const CITY_SCOPED = CITY_ARG !== '';
-const DIST = CITY_SCOPED ? join(ROOT, 'dist', CITY) : join(ROOT, 'dist');
+/** Każde miasto ma własny podkatalog dist/{miasto}/ */
+const DIST = join(ROOT, 'dist', CITY);
 const DATA = join(ROOT, 'data');
 const COORDS_FILE = process.env.KD_COORDS_FILE || join(DATA, 'kd-station-coords.json');
 const DB_FILE = join(DIST, 'kilometr-gtfs.db');
+const DB_GZ_FILE = join(DIST, 'kilometr-gtfs.db.gz');
 const MANIFEST_FILE = join(DIST, 'manifest.json');
-// Ścieżka bazy w R2 i w URL-u Workera (legacy Wrocław: bez prefiksu miasta).
-const DB_R2_PATH = CITY_SCOPED ? `${CITY}/db/kilometr-gtfs.db` : 'db/kilometr-gtfs.db';
+const DB_R2_PATH = `${CITY}/db/kilometr-gtfs.db.gz`;
 
 const MPK_CATALOGUE = 'https://api.open-data.cui.wroclaw.pl/od2/6/';
 const MPK_DOWNLOAD_BASE = 'https://open-data.cui.wroclaw.pl/hdb/download';
@@ -1376,7 +1378,7 @@ async function main() {
   let remote = null;
   if (PUBLIC_URL && !FORCE) {
     try {
-      remote = await fetchJson(`${PUBLIC_URL}/${CITY_SCOPED ? `${CITY}/` : ''}manifest.json`, {}, 15000);
+      remote = await fetchJson(`${PUBLIC_URL}/${CITY}/manifest.json`, {}, 15000);
       log('remote manifest version:', remote.version);
     } catch { log('brak zdalnego manifestu (pierwszy build?) — buduję pełny.'); }
   }
@@ -2550,16 +2552,28 @@ async function main() {
   if (!guard || guard.s <= 0 || guard.t <= 0 || guard.st <= 0) {
     throw new Error(`pusta baza (stops=${guard?.s} trips=${guard?.t} times=${guard?.st}): nie publikuję.`);
   }
-  const size = statSync(DB_FILE).size;
-  const sha = createHash('sha256').update(readFileSync(DB_FILE)).digest('hex');
+  const uncompressedSize = statSync(DB_FILE).size;
   db.close();
   rmSync(work, { recursive: true, force: true });
+
+  log(`Kompresja bazy gzip (level 9)...`);
+  const rawDb = readFileSync(DB_FILE);
+  const gzBuf = gzipSync(rawDb, { level: 9 });
+  writeFileSync(DB_GZ_FILE, gzBuf);
+  const gzSize = statSync(DB_GZ_FILE).size;
+  const gzSha = createHash('sha256').update(gzBuf).digest('hex');
+  log(`  raw: ${(uncompressedSize / 1048576).toFixed(1)} MB -> gz: ${(gzSize / 1048576).toFixed(1)} MB (-${((1 - gzSize / uncompressedSize) * 100).toFixed(0)}%)`);
 
   const manifest = {
     version,
     builtAt: new Date().toISOString(),
     city: CITY,
-    db: { path: DB_R2_PATH, sizeBytes: size, sha256: sha },
+    db: {
+      path: DB_R2_PATH,
+      sizeBytes: gzSize,
+      sha256: gzSha,
+      uncompressedSizeBytes: uncompressedSize,
+    },
     sources: CITY === 'krakow'
       ? {
           ztp: {
@@ -2609,8 +2623,8 @@ async function main() {
     stats: { stops: counts.stops, routes: counts.routes, trips: counts.trips, stopTimes: counts.stopTimes },
   };
   writeFileSync(MANIFEST_FILE, JSON.stringify(manifest, null, 2) + '\n');
-  log(`OK version=${version} size=${(size / 1048576).toFixed(1)} MB sha256=${sha.slice(0, 12)}…`);
-  log(`artefakty: ${DB_FILE}, ${MANIFEST_FILE}`);
+  log(`OK version=${version} gzSize=${(gzSize / 1048576).toFixed(1)} MB (raw=${(uncompressedSize / 1048576).toFixed(1)} MB) sha256=${gzSha.slice(0, 12)}…`);
+  log(`artefakty: ${DB_GZ_FILE}, ${DB_FILE}, ${MANIFEST_FILE}`);
 }
 
 main().catch((e) => {
