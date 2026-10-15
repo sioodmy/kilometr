@@ -12,6 +12,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
 import { TIMETABLE } from './gtfsConfig';
+import { decompressGzipFile } from '../../modules/kilometr-raptor';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
@@ -31,7 +32,14 @@ function syncDlTr(): Strings['downloader'] {
 export interface TimetableManifest {
   version: string;
   builtAt: string;
-  db: { path: string; sizeBytes: number; sha256: string };
+  city?: string;
+  db: {
+    path: string;
+    sizeBytes: number;
+    sha256: string;
+    uncompressedSizeBytes?: number;
+    uncompressedSha256?: string;
+  };
   sources: {
     mpk?: { effectiveDate?: string };
     kd?: { schedulesVersion?: string; skippedReason?: string | null };
@@ -39,6 +47,9 @@ export interface TimetableManifest {
     kml?: { version?: string | null; skippedReason?: string | null };
     ztm?: { fingerprint?: string };
     ks?: { version?: string | null; skippedReason?: string | null };
+    wtp?: { fingerprint?: string };
+    km?: { version?: string | null; skippedReason?: string | null };
+    wkd?: { version?: string | null; skippedReason?: string | null };
     ic?: { schedulesVersion?: string; skippedReason?: string | null };
     pr?: { schedulesVersion?: string; skippedReason?: string | null };
   };
@@ -52,16 +63,11 @@ export function timetableEnabled(): boolean {
 
 export function manifestUrl(cityId?: CityId | string): string {
   const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
-  // Wrocław trzyma legacy manifest w root (kompat ze starymi buildami R2),
-  // reszta miast siedzi pod /{miasto}/manifest.json.
-  if (city.id === 'wroclaw') return `${TIMETABLE.baseUrl}/manifest.json`;
   return `${TIMETABLE.baseUrl}/${city.id}/manifest.json`;
 }
 
 /**
- * URL bazy z manifestu. `db.path` jest już pełną ścieżką R2: legacy root
- * Wrocławia niesie `db/kilometr-gtfs.db`, nowe manifesty per-miasto
- * `{miasto}/db/kilometr-gtfs.db`. Oba wystarczy dokleić do bazowego URL-a.
+ * URL bazy z manifestu. `db.path` jest pełną ścieżką R2 (`{miasto}/db/kilometr-gtfs.db.gz`).
  */
 export function dbDownloadUrl(manifest: TimetableManifest): string {
   const path = manifest.db.path.startsWith('/') ? manifest.db.path : `/${manifest.db.path}`;
@@ -71,22 +77,11 @@ export function dbDownloadUrl(manifest: TimetableManifest): string {
 /** Manifest to ~500 B — tanie pytanie, które chroni limity (brak pobrań bez zmian). */
 export async function fetchManifest(cityId?: CityId | string): Promise<TimetableManifest> {
   const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
-  // Wrocław: najpierw kanoniczny /wroclaw/manifest.json, potem legacy root.
-  // Kolejność ma znaczenie: jeśli upload rootu padnie, root zostaje stary
-  // i klient preferujący legacy root nigdy nie widziałby nowego buildu.
-  const urls =
-    city.id === 'wroclaw'
-      ? [`${TIMETABLE.baseUrl}/wroclaw/manifest.json`, manifestUrl(city.id)]
-      : [manifestUrl(city.id)];
-  let lastErr: unknown = null;
-  for (const url of urls) {
-    try {
-      return await fetchManifestAt(url);
-    } catch (err) {
-      lastErr = err;
-    }
+  try {
+    return await fetchManifestAt(manifestUrl(city.id));
+  } catch (err) {
+    throw describeDownloadError(err);
   }
-  throw lastErr instanceof Error ? lastErr : new Error('manifest fetch failed');
 }
 
 async function fetchManifestAt(url: string): Promise<TimetableManifest> {
@@ -100,7 +95,7 @@ async function fetchManifestAt(url: string): Promise<TimetableManifest> {
     if (!res.ok) throw new Error(`manifest HTTP ${res.status}`);
     const m = (await res.json()) as TimetableManifest;
     if (!m || typeof m.version !== 'string' || !m.version
-      || !m.db || typeof m.db.sizeBytes !== 'number' || m.db.sizeBytes < 1_000_000
+      || !m.db || typeof m.db.sizeBytes !== 'number' || m.db.sizeBytes < 500_000
       || !m.stats || m.stats.stops <= 0 || m.stats.trips <= 0) {
       throw new Error('manifest ma niepełny kształt');
     }
@@ -184,18 +179,28 @@ export async function downloadPrebuiltDb(
   const city = getCity(cityId ?? getActiveCityIdSync());
   const mainName = city.dbFile;
   const tempName = tempDbName(mainName);
-  const dest = await sqliteUri(tempName);
-  await deleteSidecars(dest);
+  const destDb = await sqliteUri(tempName);
+  const isCompressed = manifest.db.path.endsWith('.gz') || typeof manifest.db.uncompressedSizeBytes === 'number';
+  const destDownload = isCompressed ? `${destDb}.gz` : destDb;
+
+  await deleteSidecars(destDb);
   try {
-    await FileSystem.deleteAsync(dest, { idempotent: true });
+    await FileSystem.deleteAsync(destDb, { idempotent: true });
   } catch {
     // best-effort (stary niekompletny temp)
+  }
+  if (isCompressed) {
+    try {
+      await FileSystem.deleteAsync(destDownload, { idempotent: true });
+    } catch {
+      // best-effort
+    }
   }
 
   // Download strumieniem na dysk (wznawialny) — RAM-u prawie nie rusza.
   const task = FileSystem.createDownloadResumable(
     dbDownloadUrl(manifest),
-    dest,
+    destDownload,
     { headers: { 'User-Agent': 'KilometrApp/1.0' } },
     (p) => onProgress?.(p.totalBytesWritten, p.totalBytesExpectedToWrite),
   );
@@ -204,12 +209,37 @@ export async function downloadPrebuiltDb(
   });
   if (!result?.uri) throw new GtfsDownloadError(T.noFile, 'download bez uri', T.hintTouch);
 
-  // Rozmiar musi się zgadzać co do bajta — inaczej nie ma podmiany.
-  const info = await FileSystem.getInfoAsync(dest);
+  // Rozmiar pobranego pliku musi się zgadzać co do bajta — inaczej nie ma podmiany.
+  const info = await FileSystem.getInfoAsync(destDownload);
   const size = info.exists && 'size' in info ? (info.size as number) : -1;
   if (size !== manifest.db.sizeBytes) {
-    await FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
+    await FileSystem.deleteAsync(destDownload, { idempotent: true }).catch(() => {});
     throw new GtfsDownloadError(T.unavailable, `rozmiar ${size} != ${manifest.db.sizeBytes}`, T.hintLater, 'unreachable');
+  }
+
+  // Dekompresja jeśli plik z R2 był skompresowany (.gz)
+  if (isCompressed) {
+    const ok = await decompressGzipFile(destDownload, destDb);
+    // Usuwamy pobrany .gz natychmiast po rozpakowaniu, żeby nie trzymać duplikatu na dysku
+    await FileSystem.deleteAsync(destDownload, { idempotent: true }).catch(() => {});
+    if (!ok) {
+      await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
+      throw new GtfsDownloadError(T.unavailable, 'błąd dekompresji bazy rozkładu (gzip)', T.hintLater, 'unreachable');
+    }
+
+    if (typeof manifest.db.uncompressedSizeBytes === 'number') {
+      const dbInfo = await FileSystem.getInfoAsync(destDb);
+      const dbSize = dbInfo.exists && 'size' in dbInfo ? (dbInfo.size as number) : -1;
+      if (dbSize !== manifest.db.uncompressedSizeBytes) {
+        await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
+        throw new GtfsDownloadError(
+          T.unavailable,
+          `rozmiar po dekompresji ${dbSize} != ${manifest.db.uncompressedSizeBytes}`,
+          T.hintLater,
+          'unreachable',
+        );
+      }
+    }
   }
 
   // Weryfikacja zawartości na pliku tymczasowym (osobny uchwyt!).
@@ -228,7 +258,7 @@ export async function downloadPrebuiltDb(
     } catch {
       // best-effort
     }
-    await FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
+    await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
     throw err instanceof GtfsDownloadError ? err : describeDownloadError(err);
   }
   try {
@@ -242,7 +272,7 @@ export async function downloadPrebuiltDb(
   // Miasto mogło się zmienić w trakcie pobierania: wtedy baza właśnie ściągnięta
   // należy do innego miasta niż aktywne i nie wolno jej podmienić.
   if (getActiveCityIdSync() !== city.id) {
-    await FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
+    await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
     throw new GtfsDownloadError(T.unavailable, 'city changed during download', T.hintLater, 'unreachable');
   }
   beginGtfsSwap();
@@ -255,7 +285,7 @@ export async function downloadPrebuiltDb(
       // best-effort
     }
     await deleteSidecars(mainUri);
-    await FileSystem.moveAsync({ from: dest, to: mainUri });
+    await FileSystem.moveAsync({ from: destDb, to: mainUri });
     await deleteSidecars(mainUri);
   } finally {
     endGtfsSwap();

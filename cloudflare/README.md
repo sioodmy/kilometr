@@ -17,7 +17,7 @@ OOM na słabszych urządzeniach).
 │   2. Pobiera ZIP-y feedów + kolej (Wrocław: PDP KD,        │
 │      Kraków: GTFS KMŁ) → buduje kilometr-gtfs.db           │
 │      (node:sqlite, VACUUM, wagi przystanków, meta)         │
-│   3. Upload do R2: {miasto}/db/kilometr-gtfs.db + manifest│
+│   3. Gzip level 9 + upload do R2: {miasto}/db/.db.gz      │
 └───────────────────────────┬───────────────────────────────┘
                             ▼
 ┌─ Cloudflare (free tier) ──────────────────────────────────┐
@@ -25,11 +25,9 @@ OOM na słabszych urządzeniach).
 │  Worker `kilometr-timetable` (100k req/dzień, wystarczy:   │
 │  aplikacja pyta o ~500-bajtowy manifest, bazę pobiera      │
 │  tylko przy nowej wersji):                                │
-│   GET /{miasto}/manifest.json        → manifest z R2       │
-│   GET /{miasto}/db/kilometr-gtfs.db  → baza z R2 (Range)   │
-│   GET /maps/{miasto}-tiles.ktp       → pakiet kafelków     │
-│   GET /manifest.json, /db/…, /maps/wroclaw-tiles.ktp       │
-│     → legacy root Wrocławia (kompat ze starymi APK)        │
+│   GET /{miasto}/manifest.json           → manifest z R2    │
+│   GET /{miasto}/db/kilometr-gtfs.db.gz  → baza z R2 (Range)│
+│   GET /maps/{miasto}-tiles.ktp          → pakiet kafelków  │
 │   GET /api/kd/departures    → PDP /operations, cache 120 s │
 │   GET /api/kd/schedule      → PDP /schedules, cache 1 h    │
 │   GET /health                → lista miast i status        │

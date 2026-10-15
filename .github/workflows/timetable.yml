@@ -84,7 +84,7 @@ jobs:
         if: steps.build.outputs.exit == '0'
         run: |
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          node -e "const m=require('./cloudflare/dist/${{ matrix.city }}/manifest.json');console.log(JSON.stringify({city:m.city||'${{ matrix.city }}',version:m.version,builtAt:m.builtAt,sizeMB:+(m.db.sizeBytes/1048576).toFixed(1),stats:m.stats},null,2))" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const m=require('./cloudflare/dist/${{ matrix.city }}/manifest.json');console.log(JSON.stringify({city:m.city||'${{ matrix.city }}',version:m.version,builtAt:m.builtAt,gzMB:+(m.db.sizeBytes/1048576).toFixed(1),rawMB:+((m.db.uncompressedSizeBytes||0)/1048576).toFixed(1),stats:m.stats},null,2))" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       # Budżet rozmiaru: ostrzega, gdy baza urośnie wyraźnie względem R2.
@@ -94,8 +94,9 @@ jobs:
         if: steps.build.outputs.exit == '0'
         run: |
           set -euo pipefail
-          NEW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db")
-          echo "Nowa baza (${{ matrix.city }}): $((NEW / 1048576)) MB" >> "$GITHUB_STEP_SUMMARY"
+          NEW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz")
+          RAW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db")
+          echo "Nowa baza gzip (${{ matrix.city }}): $((NEW / 1048576)) MB (nieskompresowana: $((RAW / 1048576)) MB)" >> "$GITHUB_STEP_SUMMARY"
           URL="${TIMETABLE_PUBLIC_URL:-}"
           if [ -z "$URL" ]; then
             echo "Brak TIMETABLE_PUBLIC_URL, pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
@@ -127,6 +128,7 @@ jobs:
         with:
           name: kilometr-timetable-${{ matrix.city }}
           path: |
+            cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz
             cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db
             cloudflare/dist/${{ matrix.city }}/manifest.json
             cloudflare/data/kd-station-coords.json
@@ -145,13 +147,8 @@ jobs:
             echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload bazy do R2."
             exit 0
           fi
-          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/db/kilometr-gtfs.db" \
-            --file="cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db" --content-type application/x-sqlite3
-          if [ "${{ matrix.city }}" = "wroclaw" ]; then
-            # Legacy root dla starych APK (ten sam plik, drugi klucz).
-            npx -y wrangler@3.114.0 r2 object put kilometr-timetable/db/kilometr-gtfs.db \
-              --file="cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db" --content-type application/x-sqlite3
-          fi
+          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/db/kilometr-gtfs.db.gz" \
+            --file="cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz" --content-type application/gzip
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -165,10 +162,6 @@ jobs:
           fi
           npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/manifest.json" \
             --file="cloudflare/dist/${{ matrix.city }}/manifest.json" --content-type application/json
-          if [ "${{ matrix.city }}" = "wroclaw" ]; then
-            npx -y wrangler@3.114.0 r2 object put kilometr-timetable/manifest.json \
-              --file="cloudflare/dist/${{ matrix.city }}/manifest.json" --content-type application/json
-          fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
