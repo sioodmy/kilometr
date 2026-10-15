@@ -1,13 +1,13 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import { LogBox } from 'react-native';
+import { LogBox, useColorScheme } from 'react-native';
 import { useEffect, useState } from 'react';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
-import { initDynamicColors } from '../src/theme/dynamic';
+import { initDynamicColors, setDeviceColorScheme } from '../src/theme/dynamic';
 import { initLocale } from '../src/i18n';
 import { loadActiveCity } from '../src/services/cityStore';
 import { loadSettings } from '../src/services/settings';
@@ -37,6 +37,11 @@ function navigateFromNotification(res: TripResponse) {
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
+  const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    setDeviceColorScheme(colorScheme);
+  }, [colorScheme]);
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu
   useEffect(() => {
@@ -58,7 +63,7 @@ export default function RootLayout() {
       await initLocale();
       await loadNotificationPreferences();
       await setupNotifications();
-      
+
       try {
         const seen = await hasSeenOnboarding();
         if (!seen && isMounted) router.replace('/onboarding');
@@ -96,7 +101,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: scheme.surface }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <StatusBar style={colorScheme === 'light' ? 'dark' : 'light'} />
         <Stack
           screenOptions={{
             headerShown: false,
