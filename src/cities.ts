@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'olsztyn';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn';
 
 export interface CityCenter {
   lat: number;
@@ -241,6 +241,35 @@ const SZCZECIN: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
+const KIELCE: CityDef = {
+  id: 'kielce',
+  name: 'Kielce',
+  center: { lat: 50.8711, lon: 20.6312 },
+  // Strefa ZTM z gminami ościennymi (Morawica i Chęciny na południu,
+  // Masłów na północy, Daleszyce na wschodzie): najdalszy przystanek
+  // to Obice Szkoła (~21 km od centrum).
+  radiusM: 24_000,
+  bounds: { minLat: 50.65, maxLat: 51.02, minLon: 20.3, maxLon: 20.95 },
+  nominatimViewbox: '20.3,51.02,20.95,50.65',
+  overpassBbox: '50.65,20.30,51.02,20.95',
+  // zbiorkom.live nazywa miasto `kielce` (jedna agencja `default`,
+  // więc bez filtra); bbox jak bounds.
+  zbiorkomSlug: 'kielce',
+  zbiorkomBbox: '20.3,50.65,20.95,51.02',
+  dbFile: 'kilometr-gtfs-kielce.db',
+  tilePack: 'kielce-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do Obic
+  // działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 50.65, maxLat: 51.02, minLon: 20.3, maxLon: 20.95 },
+  // Strefa nieco mniejsza niż Łódź (0,24 vs 0,34 deg2), więc ~15 MB w z14 z gzipem.
+  tileMaxZoom: 14,
+  tilePackMB: 15,
+  // Kielce mają wyłącznie autobusy (GTFS ZTM to sam route_type 3, linie
+  // 0W/0Z, 1-54, 102-114, E/F, N1/N2, T/Z). Kolej nie ma publicznego GTFS,
+  // ZTM nie ma publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+};
+
 const OLSZTYN: CityDef = {
   id: 'olsztyn',
   name: 'Olsztyn',
@@ -271,7 +300,7 @@ const OLSZTYN: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, OLSZTYN];
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

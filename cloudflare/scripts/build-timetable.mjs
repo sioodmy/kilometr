@@ -2,7 +2,7 @@
 /**
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|olsztyn] [--force] [--write-coords] [--allow-mpk-only]
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city buduje Wrocław (domyślne miasto).
  * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
@@ -48,6 +48,12 @@
  *   statyczny zrzut z poprawnymi Last-Modified/ETag do skipu buildu,
  *   licencja CC0 1.0). Kolej (SKM Szczecin) nie ma publicznego GTFS,
  *   więc miasto jedzie bez sekcji kolejowej. Bez PDP i bez klucza.
+ * Kielce:
+ *   ZTM Kielce wprost z eksportu mkuran.pl/gtfs/kielce.zip (same autobusy,
+ *   route_type 3: 0W/0Z, 1-54, 102-114, E/F, N1/N2, T/Z; kalendarz wyłącznie
+ *   w calendar_dates.txt, statyczny zrzut z poprawnymi Last-Modified/ETag
+ *   do skipu buildu). Kolej nie ma publicznego GTFS, więc miasto jedzie
+ *   bez sekcji kolejowej. Bez PDP i bez klucza.
  * Olsztyn:
  *   ZDZiT Olsztyn (mirror cdn.zbiorkom.live/gtfs/olsztyn.zip: tramwaje 1–5
  *   + autobusy + nocne N01/N02, statyczny zrzut, tylko calendar_dates).
@@ -83,7 +89,7 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'olsztyn' ? 'olsztyn' : 'wroclaw';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -285,6 +291,14 @@ const LODZ_ENVELOPE = { minLat: 51.5, maxLat: 52.0, minLon: 19.0, maxLon: 19.9 }
  */
 const SZCZECIN_GTFS_URL = 'https://www.zditm.szczecin.pl/storage/gtfs/gtfs.zip';
 const SZCZECIN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * Kielce: dzienny eksport ZTM (ten sam autor co feed WTP/KM/WKD). Serwer
+ * zwraca poprawne Last-Modified i ETag, więc fingerprint i skip buildu
+ * działają wprost na źródle, bez mirroru.
+ */
+const KIELCE_GTFS_URL = 'https://mkuran.pl/gtfs/kielce.zip';
+const KIELCE_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
  * Olsztyn: mirror ZDZiT (tramwaje 1–5 + autobusy + nocne N01/N02). Oficjalna
@@ -1854,6 +1868,7 @@ async function main() {
   let lodzFingerprint = '';
   let lkaVersion = '';
   let szczecinFingerprint = '';
+  let kielceFingerprint = '';
   let olsztynFingerprint = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
@@ -1898,6 +1913,10 @@ async function main() {
     gtfsSources = [{ label: 'ZDiTM', url: SZCZECIN_GTFS_URL, prefix: '', headers: SZCZECIN_UA }];
     szczecinFingerprint = await headVersion(SZCZECIN_GTFS_URL, SZCZECIN_UA);
     log('ZDiTM:', szczecinFingerprint || '?');
+  } else if (CITY === 'kielce') {
+    gtfsSources = [{ label: 'ZTM', url: KIELCE_GTFS_URL, prefix: '', headers: KIELCE_UA }];
+    kielceFingerprint = await headVersion(KIELCE_GTFS_URL, KIELCE_UA);
+    log('ZTM:', kielceFingerprint || '?');
   } else if (CITY === 'olsztyn') {
     gtfsSources = [{ label: 'ZDZiT', url: OLSZTYN_GTFS_URL, prefix: '', headers: OLSZTYN_UA }];
     olsztynFingerprint = await headVersion(OLSZTYN_GTFS_URL, OLSZTYN_UA);
@@ -1948,6 +1967,7 @@ async function main() {
   const tricityVersionReliable = CITY !== 'trojmiasto' || (!!gdaFingerprint && !!gdyFingerprint && !!skmtVersion);
   const lodzVersionReliable = CITY !== 'lodz' || (!!lodzFingerprint && !!lkaVersion);
   const szczecinVersionReliable = CITY !== 'szczecin' || !!szczecinFingerprint;
+  const kielceVersionReliable = CITY !== 'kielce' || !!kielceFingerprint;
   const olsztynVersionReliable = CITY !== 'olsztyn' || !!olsztynFingerprint;
 
   if (!FORCE && remote?.sources) {
@@ -2074,11 +2094,24 @@ async function main() {
         process.exit(2);
       }
     }
+    if (CITY === 'kielce' && remote.sources.ztm?.fingerprint === kielceFingerprint && kielceFingerprint) {
+      if (!kielceVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log('brak zmian (ZTM), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
     if (CITY === 'olsztyn' && remote.sources.zdzit?.fingerprint === olsztynFingerprint && olsztynFingerprint) {
       if (!olsztynVersionReliable) {
         warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
       } else {
         log('brak zmian (ZDZiT), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
         rmSync(work, { recursive: true, force: true });
         process.exit(2);
       }
@@ -2152,8 +2185,8 @@ async function main() {
   // Warszawa importuje zwarto jak GZM (eksport dzienny, trip_id z datą).
   // Trójmiasto merguje 2 feedy prefiksami GDA/GDY: Gdańsk zwarto (eksport
   // dzienny jak Warszawa), Gdynia generycznie (statyczny zrzut jak Poznań).
-  // Poznań, Łódź i Szczecin to pojedyncze statyczne zrzuty ZTM/ZDiT/ZDiTM,
-  // więc idą generyczną ścieżką jak Wrocław (osobny prefiks niepotrzebny,
+  // Poznań, Łódź, Szczecin i Kielce to pojedyncze statyczne zrzuty
+  // ZTM/ZDiT/ZDiTM, więc idą generyczną ścieżką jak Wrocław (osobny prefiks
   // id unikalne w feedzie; inna kolejność kolumn w trips.txt nie szkodzi,
   // bo import czyta po nazwach z nagłówka). Olsztyn (ZDZiT) też, z tym że
   // jego feed nie ma calendar.txt, więc generyczna ścieżka dokłada
@@ -3323,7 +3356,32 @@ async function main() {
     log(`SZCZECIN: kursów tramwajów ZDiTM=${zditmTramTrips}`);
   }
 
-  // 6k. Twarda bramka, Olsztyn: baza bez tramwajów ZDZiT nie nadpisuje R2.
+  // 6k. Twarda bramka, Kielce: baza bez autobusów ZTM nie nadpisuje R2.
+  // Kolei nie ma wcale, więc bramka nie wymaga ani stacji, ani przesiadek.
+  // Kielce nie mają tramwajów (cały GTFS to route_type 3), więc liczymy
+  // kursy autobusowe i liczbę linii (feed niesie ich ponad 50).
+  if (CITY === 'kielce') {
+    const problems = [];
+    let ztmBusTrips = 0;
+    let ztmRoutes = 0;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 3').get();
+      ztmBusTrips = row?.n ?? 0;
+    } catch {}
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM routes').get();
+      ztmRoutes = row?.n ?? 0;
+    } catch {}
+    if (ztmBusTrips === 0) problems.push('0 kursów autobusów ZTM');
+    if (ztmRoutes < 30) problems.push(`${ztmRoutes} linii ZTM (feed niesie ponad 50)`);
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełne Kielce (${problems.join(', ') }): nie publikuję bazy.`);
+    }
+    log(`KIELCE: kursów autobusów ZTM=${ztmBusTrips} linii=${ztmRoutes}`);
+  }
+
+  // 6l. Twarda bramka, Olsztyn: baza bez tramwajów ZDZiT nie nadpisuje R2.
   // Kolei nie ma wcale (region nie ma publicznego GTFS kolejowego), więc
   // bramka nie wymaga ani stacji, ani przesiadek kolejowych. Tramwaje
   // (route_type 0) liczymy wprost z tabeli jak w Szczecinie.
@@ -3346,9 +3404,10 @@ async function main() {
     if (orphanServices > 0) problems.push(`${orphanServices} kursów z serwisem spoza calendar`);
     if (problems.length > 0) {
       rmSync(work, { recursive: true, force: true });
-      throw new Error(`niepełny Olsztyn (${problems.join(', ')}): nie publikuję bazy.`);
+      throw new Error(`niepełny Olsztyn (${problems.join(', ') }): nie publikuję bazy.`);
     }
     log(`OLSZTYN: kursów tramwajów ZDZiT=${zdzitTramTrips}`);
+  }
   }
 
   // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem
@@ -3376,6 +3435,8 @@ async function main() {
               ? `${todayCompact()}-lodz${createHash('sha256').update(`${lodzFingerprint}|${lkaVersion}`).digest('hex').slice(0, 8)}`
             : CITY === 'szczecin'
               ? `${todayCompact()}-szczecin${createHash('sha256').update(`${szczecinFingerprint}`).digest('hex').slice(0, 8)}`
+            : CITY === 'kielce'
+              ? `${todayCompact()}-kielce${createHash('sha256').update(`${kielceFingerprint}`).digest('hex').slice(0, 8)}`
             : CITY === 'olsztyn'
               ? `${todayCompact()}-olsztyn${createHash('sha256').update(`${olsztynFingerprint}`).digest('hex').slice(0, 8)}`
             : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
@@ -3383,7 +3444,7 @@ async function main() {
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run(feeds, JSON.stringify(CITY === krakow ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === gzm ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === warszawa ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === poznan ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === trojmiasto ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === lodz ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === szczecin ? { zditm: szczecinFingerprint } : CITY === kielce ? { ztm: kielceFingerprint } : CITY === olsztyn ? { zdzit: olsztynFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -3514,11 +3575,24 @@ async function main() {
             trips: counts.trips, stopTimes: counts.stopTimes,
           },
         }
-      : CITY === 'olsztyn'
+      : CITY === kielce
+      ? {
+          ztm: {
+            kind: gtfs-zip, url: KIELCE_GTFS_URL,
+            fingerprint: kielceFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
+        }
+      : CITY === olsztyn
       ? {
           zdzit: {
-            kind: 'gtfs-zip', url: OLSZTYN_GTFS_URL,
+            kind: gtfs-zip, url: OLSZTYN_GTFS_URL,
             fingerprint: olsztynFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
+        }
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },

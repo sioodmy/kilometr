@@ -39,7 +39,8 @@ export const TRANSIT_PALETTE = [
  * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), w Olsztynie
  * obejmuje tramwaje 1–5 (autobusy startują tam od 101), a w GZM niskie
  * numery mają też autobusy, więc komponent przekazuje `'gzm'` i fallback
- * gaśnie. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
+ * gaśnie. Kielce mają wyłącznie autobusy (cały GTFS to route_type 3),
+ * więc gałąź zwraca autobus wprost i niski numer nigdy nie udaje tramwaju. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
  * Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1 (route_type 0 w feedzie
  * ZDiT; "6." z kropką to autobus), Warszawa dokłada metro M1/M2 (route_type 1)
  * i SKA S1…S40 (route_type 2), a Trójmiasto ma własną gałąź (tramwaje 1–12,
@@ -92,6 +93,8 @@ export function inferTransitMode(
     if (num === 41 || num === 43 || num === 45) return 'tram';
     if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
   }
+  // Kielce: same autobusy, więc niski numer nie udaje tramwaju.
+  if (cityId === 'kielce') return 'bus';
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
   }
