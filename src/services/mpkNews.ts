@@ -13,10 +13,25 @@
 //   z utrudnieniami) w ISO-8859-2. Tytuły generyczne, więc tytuł niesie treść
 //   opisu, a linie wyciągamy z linków w opisie. Artykuł to podstrona
 //   wholemessage.jsp (treść w div#dWrkspc).
+// - Kielce: lista Joomla ZTM (aktualnosci.html: karty blog-item z tytułem,
+//   linkiem, datą time[datetime], leadem w p i obrazkiem images/). Linie
+//   wyciągamy regexem z tytułu i leadu z walidacją po routes.txt feedu
+//   (0W/0Z, 1-54 z dziurami, 102-114, E/F, N1/N2, T/Z). Artykuł to podstrona
+//   aktualności (treść w div.com-content-article__body).
 // - Szczecin: lista HTML ZDiTM (pl/pasazer/informacje: karty z tytułem,
 //   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
 //   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
 //   A–C). Artykuł to podstrona informacji (treść w main#pageContent).
+// - Olsztyn: RSS WordPressa ZDZiT (zdzit.olsztyn.eu/feed, zwykły RSS 2.0;
+//   kanał miesza drogi z komunikacją, więc filtrujemy po słowach jak
+//   miejski RSS Wrocławia). Linie z tytułu i opisu z walidacją po
+//   routes.txt feedu (tramwaje 1–5, autobusy 101+, nocne N01/N02).
+//   Artykuł to wpis WordPressa (treść w div.entry-content jak w WTP).
+// - Białystok: lista HTML BKM (pl/informacje/wiadomosci/komunikaty:
+//   li.news__item z datą div.news__date i tytułem a.news__title, leady
+//   puste). Linie wyciągamy regexem z tytułu (autobusy 1–30, 100+,
+//   J/J1–J6, N1–N6; daty i godziny wycinamy wcześniej). Artykuł to
+//   podstrona komunikatu (treść w div.component-content-wysiwyg).
 // - Opole: RSS kategorii Aktualności MZK (tytuł + link + pubDate + opis;
 //   główny feed miesza przetargi i oferty pracy, więc bierzemy wprost
 //   kategorię). Linie wyciągamy regexem z tytułu i opisu (dzienne 1–80,
@@ -96,11 +111,33 @@ export const ZTM_GDANSK_BSK_URL = 'https://files.cloudgdansk.pl/d/otwarte-dane/z
 export const MPK_LODZ_ROZKLADY_RSS = 'https://mpk.lodz.pl/rozklady/rss/rozklady.jsp';
 export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=1211';
 /**
+ * Komunikaty ZTM Kielce: lista aktualności Joomla (tytuł + link + data
+ * w time[datetime] + lead w pierwszym p + obrazek images/). Serwerowy HTML,
+ * paginacja ?start=N na kolejnych ekranach (bierzemy pierwszy).
+ */
+export const ZTM_KIELCE_NEWS_URL = 'https://ztm.kielce.pl/aktualnosci.html';
+/**
  * Komunikaty ZDiTM Szczecin: lista dla pasażera (tytuł + link + data
  * w time[datetime] + lead p.card-text na karcie). Serwerowy HTML,
  * bez JSON-a i paginacji na pierwszym ekranie.
  */
 export const ZDITM_SZCZECIN_INFO_URL = 'https://www.zditm.szczecin.pl/pl/pasazer/informacje';
+/**
+ * Komunikaty ZDZiT Olsztyn: zwykły kanał RSS 2.0 WordPressa (tytuł + link
+ * + pubDate + opis). Kanał miesza drogi z komunikacją (remonty dla
+ * kierowców, sprzedaż majątku, oświetlenie), więc odsiewamy po słowach
+ * jak miejski RSS Wrocławia. Numery linii siedzą w tytułach („linii
+ * nr 303, 305”) i opisach, więc wyciągamy je regexem z walidacją.
+ */
+export const ZDZIT_OLSZTYN_FEED_URL = 'https://zdzit.olsztyn.eu/feed/';
+/**
+ * Komunikaty BKM Białystok: lista dla pasażera (tytuł w a.news__title
+ * z pełną treścią w atrybucie title, data w div.news__date jako
+ * "DD.MM.RRRR HH:MM", leady news__lead puste). Serwerowy HTML (CMS BIT),
+ * paginacja na podstronach, pierwszy ekran wystarcza.
+ */
+export const BKM_BIALYSTOK_KOMUNIKATY_URL =
+  'https://komunikacja.bialystok.pl/pl/informacje/wiadomosci/komunikaty/';
 /**
  * Komunikaty MZK Opole: kanał RSS kategorii Aktualności (WordPress).
  * Główny feed (/feed/) miesza przetargi i oferty pracy z komunikatami,
@@ -207,6 +244,9 @@ function htmlToText(html: string): string {
     .replace(/[ \t]*\n[ \t]*/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
+    // Spacja po znaczniku przed interpunkcją („23:00 .”, „r. ,”) to artefakt
+    // zamiany tagów na spacje.
+    .replace(/\s+([,.;:!?])/g, '$1')
     .trim();
 }
 
@@ -895,6 +935,155 @@ export function parseMpkLodzRss(xml: string): MpkNewsItem[] {
 }
 
 /**
+ * Linie ZTM Kielce z routes.txt feedu GTFS: 0W/0Z, dzienne 1-54 (bez 3, 6,
+ * 15, 17, 20, 22, 37, 39, 40, 42, 48, 49, 52), podmiejskie 102-114 (tylko
+ * 102, 103, 104, 107, 108, 112, 114), nocne N1/N2 oraz literowe E/F/T/Z.
+ * Gdy ZTM doda linię, dopisz ją tutaj (ta sama konserwacja co regexy
+ * linii w innych miastach).
+ */
+const KIELCE_LINES = new Set([
+  '0W', '0Z',
+  '1', '2', '4', '5', '7', '8', '9', '10', '11', '12', '13', '14', '16',
+  '18', '19', '21', '23', '24', '25', '26', '27', '28', '29', '30', '31',
+  '32', '33', '34', '35', '36', '38', '41', '43', '44', '45', '46', '47',
+  '50', '51', '53', '54',
+  '102', '103', '104', '107', '108', '112', '114',
+  'E', 'F', 'N1', 'N2', 'T', 'Z',
+]);
+
+const KIELCE_LINE_RE = /(0[WZ]|N[12]|\d{1,3}|[EFTZ])/g;
+
+// Polskie litery to też znaki słowa (ten sam problem co w Szczecinie:
+// \b łamie się na „będą”, więc spójnik nie może udawać linii).
+const KIELCE_EDGE_RE = /[0-9A-Za-zÀ-ž]/;
+
+// Linie literowe ZTM to E, F, T i Z. Samotne „Z” to jednak częsty przyimek
+// na początku zdania („Z uwagi na remont”, „Z dniem 1 listopada”), więc
+// literę liczymy tylko w kontekście: po „linia/linii/…” albo w cudzysłowie
+// (ZTM pisze „linia „E””).
+const KIELCE_LETTER_CTX_RE = /(?:linia|linii|linię|linią|linie|liniami)\s*[„"'(]?$/i;
+
+function extractKielceLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  KIELCE_LINE_RE.lastIndex = 0;
+  while ((m = KIELCE_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1] ?? '';
+    const after = text[m.index + m[1].length] ?? '';
+    if (KIELCE_EDGE_RE.test(before) || KIELCE_EDGE_RE.test(after)) continue;
+    // Litery linii ZTM pisze wielką literą („linia E”), mała to zwykłe słowo.
+    if (/^[EFTZ]$/.test(tok) && m[1] !== m[1].toUpperCase()) continue;
+    if (/^\d+$/.test(tok)) {
+      if (before === ':' || after === ':') continue;
+      if (!KIELCE_LINES.has(tok)) continue;
+    } else if (!KIELCE_LINES.has(tok)) {
+      continue;
+    } else if (/^[EFTZ]$/.test(tok)) {
+      const ctx = text.slice(Math.max(0, m.index - 14), m.index);
+      if (!KIELCE_LETTER_CTX_RE.test(ctx) && !/[„"'(]$/.test(ctx)) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/** Data z karty Joomla (time[datetime]: "2026-10-14T13:40:58+02:00"). */
+function parseKielceDate(raw: string): number | null {
+  if (!raw.trim()) return null;
+  const ts = Date.parse(raw.trim());
+  return Number.isFinite(ts) ? ts : null;
+}
+
+/**
+ * Komunikaty ZTM Kielce z listy (jeden fetch: tytuł + link + data + lead).
+ * Karta: div.com-content-category-blog__item > h2 z linkiem /aktualnosci/*,
+ * time[datetime], lead w pierwszym p za metadanymi, obrazek images/.
+ */
+export function parseKielceNews(html: string): MpkNewsItem[] {
+  // (?!s) omija kontener __items (Joomla), żeby fragmenty były ciałem kart.
+  const cards = html.split(/com-content-category-blog__item(?!s)/i).slice(1);
+  const items: MpkNewsItem[] = [];
+  for (const card of cards) {
+    // Tytuł to pierwszy link /aktualnosci/*.html z tekstem. Gdyby ZTM
+    // podlinkował grafikę karty, sam obrazek nie może przejąć tytułu.
+    const linkRe = /<a href="(\/aktualnosci\/[^"]+\.html)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let href = '';
+    let title = '';
+    let linkM: RegExpExecArray | null;
+    while ((linkM = linkRe.exec(card))) {
+      const text = cleanNewsTitle(htmlToText(linkM[2]).replace(/\s+/g, ' ').trim());
+      if (!text) continue;
+      href = decodeEntities(linkM[1]).trim();
+      title = text;
+      break;
+    }
+    if (!href) continue;
+    const link = `https://ztm.kielce.pl${href}`;
+    const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
+    const pubDate = parseKielceDate(datetime);
+    const afterMeta = card.split(/<\/dl>/i)[1] ?? card;
+    const lead = htmlToText((afterMeta.match(/<p>([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    const rawImage = extractImage(card);
+    const imageUrl = rawImage && rawImage.startsWith('/') ? `https://ztm.kielce.pl${rawImage}` : rawImage;
+    items.push({
+      id: link,
+      title,
+      link,
+      description: lead,
+      imageUrl,
+      urgent: isUrgentNews(title, lead),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractKielceLines(title, lead),
+    });
+  }
+  return items;
+}
+
+/**
+ * Treść artykułu ZTM: akapity i listy z div.com-content-article__body.
+ * Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Panel rozkładu
+ * (div.rozklad_jazdy_aticle z linkami linii i schematami objazdów) wycinamy:
+ * numery linii siedzą już w tekście, a alty schematów to szum.
+ */
+function extractKielceArticle(html: string): ArticleBlock[] {
+  const blocks: ArticleBlock[] = [];
+  const body = (html.split(/com-content-article__body/i)[1] ?? '')
+    .split(/rp-sidebarright/i)[0];
+  if (!body.trim()) return blocks;
+  const frag = body
+    .replace(/<div class="rozklad_jazdy_aticle"[\s\S]*$/i, ' ')
+    .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ');
+  const clean = scrubArticleHtml(frag);
+  if (!clean.trim()) return blocks;
+  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(clean))) {
+    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text)) continue;
+    const tag = match[1].toLowerCase();
+    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  }
+  return blocks;
+}
+
+/**
  * Numery linii ZDiTM Szczecin w tekście: pospieszne A–C, tramwaje 1–12,
  * autobusy dzienne, podmiejskie 221–244, nocne 521–536 oraz 904/908
  * (dokładnie te z routes.txt feedu GTFS, z dziurami jak 4 czy 55).
@@ -1009,6 +1198,235 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
     });
   }
   return items;
+}
+
+/**
+ * Numery linii ZDZiT Olsztyn w tekście: tramwaje 1–5, autobusy dzienne
+ * 101–145 (z dziurami jak 102 czy 104), 205, akademickie 303–305 oraz
+ * nocne N01/N02 (dokładnie te z routes.txt feedu GTFS, stan na 2026-10).
+ * Gdy ZDZiT doda linię, dopisz ją tutaj (ta sama konserwacja co regexy
+ * linii w innych miastach). Daty („19 października”, „03-04.10.2026”),
+ * godziny („9 – 19”), lata („2026 roku”) i numery pętli wycinamy
+ * wcześniej, a resztę liczb z tekstu odsiewa walidacja numerów.
+ */
+const OLSZTYN_LINE_RE = /\b(N0?[12]|\d{1,3}[A-Z]?)\b/gi;
+
+function isOlsztynLineNumber(n: number): boolean {
+  // Dokładnie te z routes.txt feedu (stan na 2026-10): tramwaje 1–5,
+  // autobusy 101, 103, 105–115, 117, 119, 121, 124–128, 130–132, 135,
+  // 136, 141, 145, 205 i akademickie 303–305. Brak m.in. 102, 104, 116,
+  // 118, 120, 122 i 129.
+  if (n >= 1 && n <= 5) return true;
+  if (n === 101 || n === 103) return true;
+  if (n >= 105 && n <= 115) return true;
+  if (n === 117 || n === 119 || n === 121) return true;
+  if (n >= 124 && n <= 128) return true;
+  if (n >= 130 && n <= 132) return true;
+  if (n === 135 || n === 136 || n === 141 || n === 145) return true;
+  if (n === 205) return true;
+  if (n >= 303 && n <= 305) return true;
+  return false;
+}
+
+function extractOlsztynLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    // Zakresy dat („03-04.10.2026”, „28.09-02.10”) przed pojedynczymi datami,
+    // inaczej po odcięciu pełnej daty zostaje goły „03” i wchodzi jak tramwaj.
+    .replace(/\d{1,2}\s*[-–—]\s*\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}\s*[-–—]\s*\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do|dnia)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ')
+    .replace(/\b\d{4}\s*r(?:oku)?\.?/gi, ' ');
+  let m: RegExpExecArray | null;
+  OLSZTYN_LINE_RE.lastIndex = 0;
+  while ((m = OLSZTYN_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' || after === ':') continue;
+    if (/^N/i.test(tok)) {
+      // Nocne N01/N02 (feed pisze też N1/N2): normalizujemy do N01/N02.
+      const digits = tok.replace(/\D/g, '');
+      const num = Number(digits);
+      if (num !== 1 && num !== 2) continue;
+      const norm = `N0${num}`;
+      if (!seen.has(norm)) seen.add(norm);
+      if (seen.size >= 12) break;
+      continue;
+    }
+    // Sufiks literowy („304A”) to nie linia Olsztyna: bierzemy same liczby.
+    if (!/^\d+$/.test(tok)) continue;
+    if (!isOlsztynLineNumber(Number(tok))) continue;
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Numery linii BKM Białystok w tekście: J/J1–J6 (meczowe), N1–N6 (nocne)
+ * i zwykłe 1–999 (BKM ma linie 1–30, 33, 50 i 100–142). Miasto jest w pełni
+ * autobusowe, więc każda liczba to kandydat na linię. Daty, godziny, ułamki
+ * („12,5 mln”), czasy przejazdu („co 10 minut”), lata i numery komunikatów
+ * wycinamy wcześniej. Litery linii tylko wielką literą (jak w Szczecinie:
+ * „spójnik j” to nie linia J), a token musi stać na granicy słowa.
+ */
+const BIALYSTOK_LINE_RE = /(J[1-6]?|N[1-6]|\d{1,3})/g;
+
+/**
+ * Granice tokenu jak w Szczecinie: polskie litery to znaki słowa.
+ * Sprawdzane dla każdego dopasowania, też liczb: „S19” to nie linia 19.
+ */
+const BIALYSTOK_EDGE_RE = /[0-9A-Za-zÀ-ž]/;
+
+function extractBialystokLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Ułamki dziesiętne z przecinkiem („12,5 mln zł”) to nie linie 12 i 5.
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    // Czasy przejazdu („co 10 minut”, „co 20 min”) to nie linie.
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
+    // Lata („2026 r.”, „2026”): Białystok nie ma linii 4-cyfrowych
+    // (maks. 999), więc wycinamy je wprost, inaczej „2026” dałoby
+    // linie 202 i 6.
+    .replace(/\b\d{4}\b/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  BIALYSTOK_LINE_RE.lastIndex = 0;
+  while ((m = BIALYSTOK_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1] ?? '';
+    const after = text[m.index + m[1].length] ?? '';
+    // „Jagiellonii” to nie linia J, „S19” to nie linia 19.
+    if (BIALYSTOK_EDGE_RE.test(before) || BIALYSTOK_EDGE_RE.test(after)) continue;
+    if (/^\d+$/.test(tok)) {
+      if (before === ':' || after === ':') continue;
+      const n = Number(tok);
+      if (n < 1 || n > 999) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Komunikaty ZDZiT Olsztyn (RSS 2.0 WordPressa: tytuł + link + pubDate
+ * + opis). Kanał miesza drogi z komunikacją, więc odsiewamy po słowach
+ * jak miejski RSS Wrocławia (sprzedaż VW Transportera i LED-y na Jarotach
+ * to nie komunikaty dla pasażera). Opis z feedu ląduje w karcie.
+ */
+export function parseZdzitOlsztynRss(xml: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const link = stripCdata(tagInner(b, 'link')).trim();
+    const rawDesc = stripCdata(tagInner(b, 'description') || tagInner(b, 'content:encoded'));
+    const description = htmlToText(rawDesc).slice(0, 600);
+    const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
+    const ts = pubRaw ? Date.parse(pubRaw) : NaN;
+    const pubDate = Number.isFinite(ts) ? ts : null;
+    if (!title && !link) continue;
+    if (!isTransitNews(rawTitle, description)) continue;
+    items.push({
+      id: link || `${rawTitle}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description,
+      imageUrl: extractImage(rawDesc),
+      urgent: isUrgentNews(title, description),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractOlsztynLines(title, description),
+    });
+  }
+  return items;
+}
+
+/** Data z listy BKM (div.news__date: "14.10.2026 09:53", czas lokalny). */
+function parseBialystokDate(raw: string): number | null {
+  const m = raw.trim().match(/(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  const ts = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 8), Number(m[5] ?? 0), 0).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
+/**
+ * Komunikaty BKM Białystok z listy (jeden fetch: tytuł + link + data).
+ * Pozycja: li.news__item > div.news__date + h2 > a.news__title (href
+ * względny, pełny tytuł w atrybucie title). Leady news__lead są puste,
+ * więc opis karty zostaje pusty, a linie idą z tytułu.
+ */
+export function parseBialystokNews(html: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = html.match(/<li class="news__item">[\s\S]*?<\/li>/gi) ?? [];
+  for (const b of blocks) {
+    const linkM = b.match(/<a class="news__title" href="([^"]+)"[^>]*title="([^"]*)"/i);
+    if (!linkM) continue;
+    const rawHref = decodeEntities(linkM[1]).trim();
+    const link = rawHref.startsWith('http') ? rawHref : `https://komunikacja.bialystok.pl${rawHref}`;
+    const rawTitle = decodeEntities(linkM[2]).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const dateRaw = decodeEntities((b.match(/<div class="news__date">([^<]*)/i) ?? [])[1] ?? '').trim();
+    const pubDate = parseBialystokDate(dateRaw);
+    const lead = htmlToText((b.match(/<div class="news__lead">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    if (!title) continue;
+    items.push({
+      id: link,
+      title,
+      link,
+      description: lead,
+      imageUrl: null,
+      urgent: isUrgentNews(title, lead),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractBialystokLines(title, lead),
+    });
+  }
+  return items;
+}
+
+/**
+ * Treść artykułu BKM: akapity i nagłówki z div.component-content-wysiwyg
+ * (treść redakcyjna w div.component-item). Tytuł (h1) pomijamy, bo ekran
+ * pokazuje go sam. Stopka (footer z danymi urzędu) leży poza wysiwyg,
+ * więc odpada samym zakresem.
+ */
+function extractBialystokArticle(html: string): ArticleBlock[] {
+  const blocks: ArticleBlock[] = [];
+  const wysiwyg = html.split(/component-content-wysiwyg/i)[1]?.split(/Cms_Attachment|Cms_Gallery|<footer/i)[0] ?? '';
+  if (!wysiwyg.trim()) return blocks;
+  const frag = wysiwyg.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ');
+  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(frag))) {
+    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text)) continue;
+    const tag = match[1].toLowerCase();
+    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  }
+  return blocks;
 }
 
 /**
@@ -1234,6 +1652,17 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // i spis treści wycinamy w extractorze, stopkę powiązanych też).
   const zditm = /zditm\.szczecin\.pl/i.test(url);
   if (zditm) return extractSzczecinArticle(html);
+  // ZTM Kielce: treść w div.com-content-article__body (panel rozkładu
+  // z linkami linii wycinamy w extractorze).
+  const ztmKielce = /ztm\.kielce\.pl/i.test(url);
+  if (ztmKielce) return extractKielceArticle(html);
+  // ZDZiT Olsztyn to WordPress jak WTP (artykuł w <article>, treść
+  // w div.entry-content): ta sama ścieżka co Warszawa.
+  const zdzitOlsztyn = /zdzit\.olsztyn\.eu/i.test(url);
+  // BKM Białystok: treść redakcyjna w div.component-content-wysiwyg
+  // (stopka z danymi urzędu leży poza nim, więc odpada zakresem).
+  const bkm = /komunikacja\.bialystok\.pl/i.test(url);
+  if (bkm) return extractBialystokArticle(html);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -1245,7 +1674,7 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
         '')
       : gzm
         ? (html.split(/id="mcontent"/i)[1]?.split(/<div class="modal"|<footer/i)[0] ?? '')
-        : wtp || mzkOpole
+        : wtp || zdzitOlsztyn || mzkOpole
           ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
             html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ??
             html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
@@ -1263,6 +1692,15 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
     fragment = fragment
       .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ')
       .replace(/<th\b[^>]*>[\s\S]*?<\/th>/i, ' ');
+  }
+  if (zdzitOlsztyn) {
+    // Tytuł (h1 w headerze) pokazuje ekran sam, tag kategorii
+    // („Bez kategorii”) to nie treść, a nawigacja Poprzedni/Następny
+    // post to nie komunikat.
+    fragment = fragment
+      .replace(/<header\b[\s\S]*?<\/header>/i, ' ')
+      .replace(/<div class="category-and-tags"[\s\S]*?<\/div>/i, ' ')
+      .replace(/<nav\b[\s\S]*?<\/nav>/gi, ' ');
   }
   fragment = scrubArticleHtml(fragment);
   if (!fragment.trim()) return [];
@@ -1375,6 +1813,9 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
+  if (city.id === 'kielce') return fetchKielceNews(signal, city.id);
+  if (city.id === 'olsztyn') return fetchOlsztynNews(signal, city.id);
+  if (city.id === 'bialystok') return fetchBialystokNews(signal, city.id);
   if (city.id === 'opole') return fetchOpoleNews(signal, city.id);
   return fetchMpkNews(signal);
 }
@@ -1411,6 +1852,19 @@ async function fetchLodzNews(signal?: AbortSignal, cityId = 'lodz'): Promise<Mpk
   }
 }
 
+/** Komunikaty ZDZiT Olsztyn: jedno źródło (RSS), brak fallbacku. */
+async function fetchOlsztynNews(signal?: AbortSignal, cityId = 'olsztyn'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const xml = await fetchText(ZDZIT_OLSZTYN_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const items = parseZdzitOlsztynRss(xml);
+    if (items.length === 0) console.warn('[News] Olsztyn: pusty feed (zmiana formatu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
 /** Komunikaty ZDiTM Szczecin: jedno źródło (lista HTML), brak fallbacku. */
 async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
@@ -1418,6 +1872,32 @@ async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Pro
     const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
     const items = parseSzczecinInfo(html);
     if (items.length === 0) console.warn('[News] Szczecin: pusta lista (zmiana markupu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty ZTM Kielce: jedno źródło (lista Joomla), brak fallbacku. */
+async function fetchKielceNews(signal?: AbortSignal, cityId = 'kielce'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const html = await fetchText(ZTM_KIELCE_NEWS_URL, scope.signal, 'text/html, */*');
+    const items = parseKielceNews(html);
+    if (items.length === 0) console.warn('[News] Kielce: pusta lista (zmiana markupu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty BKM Białystok: jedno źródło (lista HTML), brak fallbacku. */
+async function fetchBialystokNews(signal?: AbortSignal, cityId = 'bialystok'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const html = await fetchText(BKM_BIALYSTOK_KOMUNIKATY_URL, scope.signal, 'text/html, */*');
+    const items = parseBialystokNews(html);
+    if (items.length === 0) console.warn('[News] Białystok: pusta lista (zmiana markupu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();
