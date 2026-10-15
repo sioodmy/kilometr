@@ -5,8 +5,8 @@
  *
  * Uruchomienie: `npm run check:lodz`
  *
- * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * Samego pobrania feedu tu nie ma, bo sieć w teście jednostkowym to niestabilny
+ * fundament. Chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (wpisy z mpk.lodz.pl/rozklady/rss/rozklady.jsp z 2026-10-15,
  * struktura wholemessage.jsp z tej samej strony, linie i typy z GTFS ZDiT,
  * numery ŁKA z pkp-lka.zip).
