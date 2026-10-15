@@ -92,11 +92,11 @@ export default {
       if (rest === '/manifest.json') {
         return serveManifest(env, manifestKeyFor(city));
       }
-      if (rest === '/db/kilometr-gtfs.db.gz' || rest === '/db/kilometr-gtfs.db') {
+      if (rest === '/db/kilometr-gtfs.db.gz') {
         return serveDb(req, env, dbKeyFor(city));
       }
     }
-    const mapMatch = new RegExp("^/maps/([a-z]+)-tiles\\.ktp$").exec(url.pathname);
+    const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
     if (mapMatch && (CITIES as readonly string[]).includes(mapMatch[1])) {
       return serveObject(env, mapPackKeyFor(mapMatch[1]), 'application/octet-stream', 'map-tiles.yml');
     }

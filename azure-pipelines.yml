@@ -78,7 +78,7 @@ jobs:
       # osiągalny bez KD = twardy błąd.
       - bash: |
           set -euo pipefail
-          URL="${TIMETABLE_URL}/manifest.json"
+          URL="${TIMETABLE_URL}/wroclaw/manifest.json"
           if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
             echo "##vso[task.logissue type=warning]Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
             exit 0
