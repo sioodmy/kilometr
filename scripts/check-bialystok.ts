@@ -103,7 +103,7 @@ describe('Numery linii BKM: daty, godziny, nazwy własne');
     [['33']],
   );
   expect(
-    'likwidowane 200–202 też niosą linie',
+    'trzycyfrowe spoza siatki (200, 201, 202) też łapiemy',
     parseBialystokNews(item('Z dniem 01.07.2026 r. linie 200, 201 i 202 zostaną zlikwidowane')).map((i) => i.lines),
     [['200', '201', '202']],
   );
@@ -126,6 +126,26 @@ describe('Numery linii BKM: daty, godziny, nazwy własne');
     '„14.10.2026” to nie linie',
     parseBialystokNews(item('Rozkład od 14.10.2026, linia 21 bez zmian')).map((i) => i.lines),
     [['21']],
+  );
+  expect(
+    '„12,5 mln zł” to nie linie 12 i 5',
+    parseBialystokNews(item('Nowe autobusy za 12,5 mln zł wyjadą na linie 10 i 21')).map((i) => i.lines),
+    [['10', '21']],
+  );
+  expect(
+    '„co 10 minut” to nie linia 10',
+    parseBialystokNews(item('Autobusy linii 2 będą kursować co 10 minut')).map((i) => i.lines),
+    [['2']],
+  );
+  expect(
+    '„S19” to nie linia 19',
+    parseBialystokNews(item('Utrudnienia w rejonie drogi S19')).map((i) => i.lines),
+    [[]],
+  );
+  expect(
+    '„1000-lecia” to nie linia',
+    parseBialystokNews(item('Od 1 listopada zmiany na al. 1000-lecia, objazd linii 8')).map((i) => i.lines),
+    [['8']],
   );
   expect(
     'utrudnienia to pilne',

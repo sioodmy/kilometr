@@ -3311,7 +3311,8 @@ async function main() {
   // Kolei nie ma wcale (POLREGIO nie ma publicznego GTFS), więc bramka
   // nie wymaga ani stacji, ani przesiadek kolejowych. Białystok to miasto
   // w pełni autobusowe (cały feed to route_type 3), więc liczymy kursy
-  // autobusów i dodatkowo linie J oraz nocne N.
+  // autobusów i liczbę linii. Sezonowych J/N nie wymuszamy twardo:
+  // poza semestrem ich brak to poprawny stan.
   if (CITY === 'bialystok') {
     const problems = [];
     let bkmBusTrips = 0;

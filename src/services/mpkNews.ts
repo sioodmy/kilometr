@@ -1014,15 +1014,18 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
 
 /**
  * Numery linii BKM Białystok w tekście: J/J1–J6 (meczowe), N1–N6 (nocne)
- * i zwykłe 1–999. Miasto jest w pełni autobusowe, więc każda liczba to
- * kandydat na linię (historyczne 200–202 też, BKM je likwiduje, ale
- * komunikat o likwidacji ma je nieść). Daty („15 października”,
- * „14.10.2026”), godziny („09:53”) i lata („2026 r.” odsiewa zakres
- * 1–999) wycinamy wcześniej, a resztę liczb bierzemy wprost.
+ * i zwykłe 1–999 (BKM ma linie 1–30, 33, 50 i 100–142). Miasto jest w pełni
+ * autobusowe, więc każda liczba to kandydat na linię. Daty, godziny, ułamki
+ * („12,5 mln”), czasy przejazdu („co 10 minut”), lata i numery komunikatów
+ * wycinamy wcześniej. Litery linii tylko wielką literą (jak w Szczecinie:
+ * „spójnik j” to nie linia J), a token musi stać na granicy słowa.
  */
-const BIALYSTOK_LINE_RE = /(J[1-6]?|N[1-6]|\d{1,3})/gi;
+const BIALYSTOK_LINE_RE = /(J[1-6]?|N[1-6]|\d{1,3})/g;
 
-/** Granice tokenu jak w Szczecinie: polskie litery to znaki słowa. */
+/**
+ * Granice tokenu jak w Szczecinie: polskie litery to znaki słowa.
+ * Sprawdzane dla każdego dopasowania, też liczb: „S19” to nie linia 19.
+ */
 const BIALYSTOK_EDGE_RE = /[0-9A-Za-zÀ-ž]/;
 
 function extractBialystokLines(title: string, description: string): string[] {
@@ -1031,6 +1034,10 @@ function extractBialystokLines(title: string, description: string): string[] {
     .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Ułamki dziesiętne z przecinkiem („12,5 mln zł”) to nie linie 12 i 5.
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    // Czasy przejazdu („co 10 minut”, „co 20 min”) to nie linie.
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
     // Lata („2026 r.”, „2026”): Białystok nie ma linii 4-cyfrowych
     // (maks. 999), więc wycinamy je wprost, inaczej „2026” dałoby
     // linie 202 i 6.
@@ -1045,9 +1052,8 @@ function extractBialystokLines(title: string, description: string): string[] {
     const tok = m[1].toUpperCase();
     const before = text[m.index - 1] ?? '';
     const after = text[m.index + m[1].length] ?? '';
-    // „Jagiellonii” to nie linia J: litera po obu stronach dyskwalifikuje.
-    // Małe „j” w środku słowa (np. „majowe”) też nie jest linią.
-    if (/[A-Z]/i.test(tok) && (BIALYSTOK_EDGE_RE.test(before) || BIALYSTOK_EDGE_RE.test(after))) continue;
+    // „Jagiellonii” to nie linia J, „S19” to nie linia 19.
+    if (BIALYSTOK_EDGE_RE.test(before) || BIALYSTOK_EDGE_RE.test(after)) continue;
     if (/^\d+$/.test(tok)) {
       if (before === ':' || after === ':') continue;
       const n = Number(tok);
