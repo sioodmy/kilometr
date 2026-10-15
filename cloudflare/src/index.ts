@@ -6,7 +6,7 @@
  * - GET /{miasto}/db/kilometr-gtfs.db.gz  → skompresowany prebuilt SQLite z R2 (Range, ETag)
  * - GET /maps/{miasto}-tiles.ktp          → pakiet kafli offline z R2
  * Miasta: wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz,
- * szczecin (allowlista CITIES niżej).
+ * szczecin, rzeszow (allowlista CITIES niżej).
  *
  * - GET /api/kd/departures     → PDP /operations (sekret po stronie serwera,
  *                                 cache 120 s — aplikacja tego NA RAZIE nie woła)
@@ -24,7 +24,7 @@ export interface Env {
 }
 
 /** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
-const CITIES = ['wroclaw', 'krakow', 'gzm', 'warszawa', 'poznan', 'trojmiasto', 'lodz', 'szczecin'] as const;
+const CITIES = ['wroclaw', 'krakow', 'gzm', 'warszawa', 'poznan', 'trojmiasto', 'lodz', 'szczecin', 'rzeszow'] as const;
 
 /** Regex ścieżek per-miasto budowany z CITIES, żeby nowe miasto nie wymagało edycji routingu. */
 const CITY_PATH_RE = new RegExp(`^/(${CITIES.join('|')})(/.*)$`);

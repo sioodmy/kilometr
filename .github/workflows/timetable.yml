@@ -4,8 +4,8 @@
 # gzm (eksporty dzienne ZTM z CKAN + KŚ) i warszawa (GTFS WTP + KM/WKD z PDP),
 # poznan (GTFS ZTM + KW ze statycznych feedów), trojmiasto (GTFS ZTM Gdańsk
 # + ZKM Gdynia + SKM ze statycznych feedów), lodz (GTFS ZDiT + ŁKA
-# ze statycznych feedów) oraz szczecin (GTFS ZDiTM ze statycznego feedu,
-# bez kolei).
+# ze statycznych feedów), szczecin (GTFS ZDiTM ze statycznego feedu,
+# bez kolei) oraz rzeszow (GTFS ZTM ze statycznego feedu, bez kolei).
 # Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.
 # Wrocław dokłada legacy root (manifest.json, db/...) dla starych APK.
 #
@@ -36,7 +36,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin]
+        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, rzeszow]
 
 permissions:
   contents: read
@@ -56,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "rzeszow"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
