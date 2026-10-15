@@ -1,7 +1,7 @@
 import type { LegMode } from '../types/models';
 
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
-// Wydzielone z komponentu LineBadge, bo zależy ich silnik powiadomień
+// Wydzielone z komponentu LineBadge, bo zależy od nich silnik powiadomień
 // (kolor linii jako akcent powiadomienia i segmentu na pasku postępu).
 
 export const TRANSIT_PALETTE = [
@@ -36,9 +36,9 @@ export const TRANSIT_PALETTE = [
  * reszta to autobusy). Moduł musi się dać importować w Node (skrypty check:*),
  * więc `cityId` jest opcjonalnym parametrem, a nie odczytem aktywnego miasta:
  * heurystyka niskich numerów dotyczy Wrocławia, Krakowa, Poznania, Łodzi
- * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), a w GZM niskie
- * numery mają też autobusy, więc komponent przekazuje `'gzm'` i fallback
- * gaśnie. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
+ * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), a w GZM i Opolu niskie
+ * numery mają też (Opole: wyłącznie) autobusy, więc komponent przekazuje
+ * `'gzm'`/`'opole'` i fallback gaśnie. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
  * Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1 (route_type 0 w feedzie
  * ZDiT; "6." z kropką to autobus), Warszawa dokłada metro M1/M2 (route_type 1)
  * i SKA S1…S40 (route_type 2), a Trójmiasto ma własną gałąź (tramwaje 1–12,
@@ -91,7 +91,7 @@ export function inferTransitMode(
     if (num === 41 || num === 43 || num === 45) return 'tram';
     if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
   }
-  if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
+  if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm' && cityId !== 'opole') {
     return 'tram';
   }
   return 'bus';
