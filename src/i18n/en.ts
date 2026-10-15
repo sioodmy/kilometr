@@ -377,7 +377,6 @@ export const en: Strings = {
     dlTitle: (gen: string) => `Download the\n${gen} timetable`,
     dlBody: (feeds: string) => `Ready database: ${feeds} from the Kilometr server. Download once, then offline.`,
     dlEmpty: 'No offline data.',
-    dlAction: 'Download full timetable',
     dlSize: 'One download • a few minutes • then offline',
     dlProgress: (p: number) => `Downloading… ${p}%`,
     dlStep: (step: string, p: number) => `${step} ${p}%`,

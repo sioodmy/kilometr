@@ -377,7 +377,6 @@ export const de: Strings = {
     dlTitle: (gen: string) => `Fahrplan für\n${gen} laden`,
     dlBody: (feeds: string) => `Fertige Datenbank: ${feeds} vom Kilometr-Server. Einmal laden, dann offline.`,
     dlEmpty: 'Keine Offline-Daten.',
-    dlAction: 'Vollständigen Fahrplan laden',
     dlSize: 'Ein Download • wenige Minuten • dann offline',
     dlProgress: (p: number) => `Wird geladen… ${p} %`,
     dlStep: (step: string, p: number) => `${step} ${p} %`,

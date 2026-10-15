@@ -386,7 +386,6 @@ export const pl = {
     dlTitle: (gen: string) => `Pobierz rozkład\n${gen}`,
     dlBody: (feeds: string) => `Gotowa baza: ${feeds} z serwera Kilometr. Jedno pobranie, potem offline.`,
     dlEmpty: 'Brak danych offline.',
-    dlAction: 'Pobierz pełny rozkład',
     dlSize: 'Jedno pobranie • kilka minut • potem offline',
     dlProgress: (p: number) => `Pobieranie… ${p}%`,
     dlStep: (step: string, p: number) => `${step} ${p}%`,
