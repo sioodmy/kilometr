@@ -2,15 +2,16 @@
 #
 # Macierz: wroclaw (MPK + KD z PDP), krakow (3 feedy ZTP + KMŁ),
 # gzm (eksporty dzienne ZTM z CKAN + KŚ) i warszawa (GTFS WTP + KM/WKD z PDP),
-# poznan (GTFS ZTM + KW ze statycznych feedów) oraz trojmiasto (GTFS ZTM
-# Gdańsk + ZKM Gdynia + SKM ze statycznych feedów).
+# poznan (GTFS ZTM + KW ze statycznych feedów), trojmiasto (GTFS ZTM Gdańsk
+# + ZKM Gdynia + SKM ze statycznych feedów) oraz lodz (GTFS ZDiT + ŁKA
+# ze statycznych feedów).
 # Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.
 # Wrocław dokłada legacy root (manifest.json, db/...) dla starych APK.
 #
 # Wymagane sekrety (repo → Settings → Secrets → Actions):
 #   PDP_API_KEY            klucz https://pdp-api.plk-sa.pl (sekcje kolei
 #                          z PDP: KD Wrocławia oraz IC/PR GZM; Kraków,
-#                          Warszawa, Poznań i Trójmiasto biorą koleje
+#                          Warszawa, Poznań, Trójmiasto i Łódź biorą koleje
 #                          ze statycznych feedów)
 #   CLOUDFLARE_API_TOKEN   token z uprawnieniem R2 write na bucket kilometr-timetable
 #   CLOUDFLARE_ACCOUNT_ID  id konta Cloudflare
@@ -34,7 +35,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto]
+        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz]
 
 permissions:
   contents: read
@@ -54,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4

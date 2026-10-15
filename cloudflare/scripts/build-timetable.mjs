@@ -2,7 +2,7 @@
 /**
  * build-timetable.mjs: buduje prebuilt SQLite per-miasto.
  *
- * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto] [--force] [--write-coords] [--allow-mpk-only]
+ * Użycie: node build-timetable.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz] [--force] [--write-coords] [--allow-mpk-only]
  * Bez --city buduje Wrocław (domyślne miasto).
  * Artefakty zawsze lądują w cloudflare/dist/{miasto}/, a manifest niesie
  * db.path z prefiksem miasta (klucze R2: {miasto}/manifest.json,
@@ -29,7 +29,6 @@
  *   oficjalny permalink www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile,
  *   ale nie zwraca Last-Modified/ETag, więc skip buildu nie wykryłby zmian)
  *   + Koleje Wielkopolskie z własnego publicznego GTFS (pkp-kw.zip, linie
-  *   PKM1–PKM5). Bez PDP i bez klucza. Feed ZTM to statyczny zrzut na ~18 dni
   *   (stop_times ~40 MB), więc zwykły import bez scalania jak GZM/Warszawa.
   * Trójmiasto:
   *   ZTM Gdańsk (eksport dzienny jak WTP: trip_id z datą, tylko
@@ -38,6 +37,11 @@
   *   kanoniczne 11, tramwaje Gdańska 900 na 0, autobusy 700 na 3)
   *   + SKM z własnego publicznego GTFS (numer pociągu w trip_short_name,
   *   tylko kursy dotykające aglomeracji). Bez PDP i bez klucza.
+ * Łódź:
+ *   ZDiT Łódź (mirror cdn.zbiorkom.live/gtfs/lodz.zip: tramwaje + autobusy
+ *   + linie zastępcze Z/R i nocne N, statyczny zrzut jak Poznań)
+ *   + Łódzka Kolej Aglomeracyjna z własnego publicznego GTFS (pkp-lka.zip,
+ *   linie Ł/ŁP/ŁS + ZKA jako route_type 3). Bez PDP i bez klucza.
  *
  * Wyjścia (cloudflare/dist/{miasto}/):
  *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
@@ -65,7 +69,7 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : 'wroclaw';
+const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -236,6 +240,28 @@ const SKMT_GTFS_UPSTREAM = 'https://bip.skm.pkp.pl/otwarte-dane';
 const SKMT_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 /** Obwiednia Trójmiasta z zapasem: kurs SKM łapiemy, gdy ma postój w środku. */
 const TRI_ENVELOPE = { minLat: 54.05, maxLat: 54.7, minLon: 18.1, maxLon: 19.05 };
+
+/**
+ * Łódź: statyczny zrzut ZDiT (tramwaje + autobusy + linie zastępcze Z/R,
+ * nocne N i podmiejskie). Ten sam wzorzec co Poznań: mirror
+ * cdn.zbiorkom.live z poprawnymi nagłówkami do skipu buildu
+ * (Last-Modified/ETag, odświeżany codziennie ok. 01:45 UTC).
+ */
+const LODZ_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/lodz.zip';
+const LODZ_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+
+/**
+ * Łódzka Kolej Aglomeracyjna: własny publiczny GTFS (linie Ł/ŁP/ŁS + ZKA
+ * jako route_type 3, który jedzie w bazie jako autobus). Feed obejmuje całe
+ * województwo (Sieradz–Skierniewice), więc do bazy trafiają tylko kursy
+ * dotykające obwiedni aglomeracji (ten sam wzorzec co KM/KW), ale z pełną
+ * geometrią (da się jechać za miasto). Numer pociągu to pierwszy token
+ * trip_short_name przed "/" (np. "11572" z "11572/3").
+ */
+const LKA_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-lka.zip';
+const LKA_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+/** Obwiednia aglomeracji: kurs ŁKA łapiemy, gdy ma choć jeden postój w środku. */
+const LODZ_ENVELOPE = { minLat: 51.5, maxLat: 52.0, minLon: 19.0, maxLon: 19.9 };
 
 const PDP_BASE = process.env.PDP_BASE_URL || 'https://pdp-api.plk-sa.pl';
 const KD_WINDOW_DAYS = 14; // ≤ 31 (limit API: dateTo - dateFrom)
@@ -1793,6 +1819,8 @@ async function main() {
   let gdaFingerprint = '';
   let gdyFingerprint = '';
   let skmtVersion = '';
+  let lodzFingerprint = '';
+  let lkaVersion = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -1827,6 +1855,11 @@ async function main() {
     gdyFingerprint = await headVersion(TRICITY_GDY_GTFS_URL, TRICITY_UA);
     skmtVersion = await headVersion(SKMT_GTFS_URL, SKMT_UA);
     log('GDA:', gdaFingerprint || '?', '| GDY:', gdyFingerprint || '?', '| SKMT:', skmtVersion || '?');
+  } else if (CITY === 'lodz') {
+    gtfsSources = [{ label: 'ZDiT', url: LODZ_GTFS_URL, prefix: '', headers: LODZ_UA }];
+    lodzFingerprint = await headVersion(LODZ_GTFS_URL, LODZ_UA);
+    lkaVersion = await headVersion(LKA_GTFS_URL, LKA_UA);
+    log('ZDiT:', lodzFingerprint || '?', '| ŁKA:', lkaVersion || '?');
   } else if (CITY === 'gzm') {
     if (!PDP_API_KEY) {
       throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
@@ -1871,6 +1904,7 @@ async function main() {
   const wawVersionReliable = CITY !== 'warszawa' || (!!wawFingerprint && !!kmVersion && !!wkdVersion);
   const poznanVersionReliable = CITY !== 'poznan' || (!!poznanFingerprint && !!kwVersion);
   const tricityVersionReliable = CITY !== 'trojmiasto' || (!!gdaFingerprint && !!gdyFingerprint && !!skmtVersion);
+  const lodzVersionReliable = CITY !== 'lodz' || (!!lodzFingerprint && !!lkaVersion);
 
   if (!FORCE && remote?.sources) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
@@ -1970,6 +2004,23 @@ async function main() {
         warn('zdalny manifest bez realnej SKM, przebudowuję zamiast skipować.');
       }
     }
+    if (CITY === 'lodz' && remote.sources.mpk?.fingerprint === lodzFingerprint && lodzFingerprint) {
+      // Ten sam zrzut ZDiT wystarczy do skipu tylko wtedy, gdy zdalna baza
+      // faktycznie ma ŁKA (manifest sprzed jej wdrożenia ma zgodny odcisk,
+      // ale pociągów nie zawiera).
+      const remoteLkaReal =
+        (remote.sources.lka?.version || null) === (lkaVersion || null) &&
+        Number(remote.sources.lka?.trips || 0) > 0;
+      if (!lodzVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else if (remoteLkaReal) {
+        log('brak zmian (ZDiT + ŁKA), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      } else {
+        warn('zdalny manifest bez realnej ŁKA, przebudowuję zamiast skipować.');
+      }
+    }
     if (CITY === 'wroclaw'
       && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
       && (remote.sources.kd?.schedulesVersion || 'none') === kdVersion) {
@@ -2028,7 +2079,7 @@ async function main() {
   db.exec(SCHEMA_SQL);
   db.exec('PRAGMA synchronous = OFF;');
 
-  const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0, kmlStations: 0, kmlRoutes: 0, kmlTrips: 0, kmlStopTimes: 0, ksStations: 0, ksRoutes: 0, ksTrips: 0, ksStopTimes: 0, icStations: 0, icRoutes: 0, icTrips: 0, icStopTimes: 0, prStations: 0, prRoutes: 0, prTrips: 0, prStopTimes: 0, kmStations: 0, kmRoutes: 0, kmTrips: 0, kmStopTimes: 0, wkdStations: 0, wkdRoutes: 0, wkdTrips: 0, wkdStopTimes: 0, kwStations: 0, kwRoutes: 0, kwTrips: 0, kwStopTimes: 0, skmtStations: 0, skmtRoutes: 0, skmtTrips: 0, skmtStopTimes: 0 };
+  const counts = { stops: 0, routes: 0, trips: 0, stopTimes: 0, kdStations: 0, kdRoutes: 0, kdTrips: 0, kdStopTimes: 0, kmlStations: 0, kmlRoutes: 0, kmlTrips: 0, kmlStopTimes: 0, ksStations: 0, ksRoutes: 0, ksTrips: 0, ksStopTimes: 0, icStations: 0, icRoutes: 0, icTrips: 0, icStopTimes: 0, prStations: 0, prRoutes: 0, prTrips: 0, prStopTimes: 0, kmStations: 0, kmRoutes: 0, kmTrips: 0, kmStopTimes: 0, wkdStations: 0, wkdRoutes: 0, wkdTrips: 0, wkdStopTimes: 0, kwStations: 0, kwRoutes: 0, kwTrips: 0, kwStopTimes: 0, skmtStations: 0, skmtRoutes: 0, skmtTrips: 0, skmtStopTimes: 0, lkaStations: 0, lkaRoutes: 0, lkaTrips: 0, lkaStopTimes: 0 };
   /** Przystanki miasta w pamięci (do liczenia przesiadek na kolej w kroku 6b). */
   const cityStops = [];
   const cityStopIds = new Set();
@@ -2039,8 +2090,10 @@ async function main() {
   // Warszawa importuje zwarto jak GZM (eksport dzienny, trip_id z datą).
   // Trójmiasto merguje 2 feedy prefiksami GDA/GDY: Gdańsk zwarto (eksport
   // dzienny jak Warszawa), Gdynia generycznie (statyczny zrzut jak Poznań).
-  // Poznań to pojedynczy statyczny zrzut ZTM, więc idzie generyczną ścieżką
-  // jak Wrocław (osobny prefiks niepotrzebny, id unikalne w feedzie).
+  // Poznań i Łódź to pojedyncze statyczne zrzuty ZTM/ZDiT, więc idą
+  // generyczną ścieżką jak Wrocław (osobny prefiks niepotrzebny, id unikalne
+  // w feedzie; inna kolejność kolumn w trips.txt nie szkodzi, bo import
+  // czyta po nazwach z nagłówka).
   db.exec('DELETE FROM calendar_dates');
   if (CITY === 'gzm') {
     importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds);
@@ -2179,10 +2232,11 @@ async function main() {
 
   // 6. Kolej regionalna: KD z PDP API (tylko Wrocław), KM/WKD ze statycznych
   // feedów (tylko Warszawa), Koleje Małopolskie ze statycznego GTFS (tylko
-  // Kraków), Koleje Wielkopolskie ze statycznego GTFS (tylko Poznań) albo
-  // SKM ze statycznego GTFS (tylko Trójmiasto).
+  // Kraków), Koleje Wielkopolskie ze statycznego GTFS (tylko Poznań), SKM
+  // ze statycznego GTFS (tylko Trójmiasto) albo ŁKA ze statycznego GTFS
+  // (tylko Łódź).
   // Wspólny mianownik: mapa stacji railGeo (do przesiadek w kroku 6b).
-  const RAIL_PREFIX = CITY === 'krakow' ? 'KML' : CITY === 'gzm' ? 'KS' : CITY === 'warszawa' ? 'SKM' : CITY === 'poznan' ? 'KW' : CITY === 'trojmiasto' ? 'SKMT' : 'KD';
+  const RAIL_PREFIX = CITY === 'krakow' ? 'KML' : CITY === 'gzm' ? 'KS' : CITY === 'warszawa' ? 'SKM' : CITY === 'poznan' ? 'KW' : CITY === 'trojmiasto' ? 'SKMT' : CITY === 'lodz' ? 'LKA' : 'KD';
   let kdInfo = CITY === 'wroclaw'
     ? { kind: 'pdp-api', skippedReason: PDP_API_KEY ? null : 'no-key' }
     : { kind: 'none', skippedReason: 'krakow-pdp-unused' };
@@ -2210,6 +2264,9 @@ async function main() {
   let skmtInfo = CITY === 'trojmiasto'
     ? { kind: 'gtfs-zip', skippedReason: 'not-fetched-yet' }
     : { kind: 'none', skippedReason: 'only-trojmiasto-has-skmt' };
+  let lkaInfo = CITY === 'lodz'
+    ? { kind: 'gtfs-zip', skippedReason: 'not-fetched-yet' }
+    : { kind: 'none', skippedReason: 'only-lodz-has-lka' };
   /** Liczba stacji kolei bez współrzędnych (kursy z nimi są pomijane). */
   let unresolvedCount = 0;
   /** Stacje kolei ze współrzędnymi (do przesiadek w kroku 6b). */
@@ -2896,6 +2953,37 @@ async function main() {
     skmtInfo = { kind: 'gtfs-zip', url: SKMT_GTFS_URL, upstream: SKMT_GTFS_UPSTREAM, version: skmtVersion || null, ...skmtStat };
   }
 
+  // 6a7. Łódzka Kolej Aglomeracyjna ze statycznego GTFS (tylko Łódź, bez klucza).
+  // Feed obejmuje całe województwo, więc łapiemy tylko kursy dotykające
+  // aglomeracji (ten sam wzorzec co KM w Warszawie i KW w Poznaniu). Numer
+  // pociągu to pierwszy token trip_short_name przed "/" (np. "11572"
+  // z "11572/3" albo z "11545 Kopciuszek do Koluszek"), a brygada z live
+  // (zbiorkom, agencja LKA) to ten sam numer. ZKA (route_type 3) jedzie jako
+  // autobus.
+  if (CITY === 'lodz') {
+    const lkaZipPath = join(work, 'lka.zip');
+    log('pobieranie ZIP ŁKA…');
+    const lkaBuf = await fetchBuffer(LKA_GTFS_URL, LKA_UA, 180000);
+    writeFileSync(lkaZipPath, lkaBuf);
+    log('ZIP ŁKA:', (lkaBuf.length / 1048576).toFixed(1), 'MB');
+    const lkaDir = join(work, 'lka');
+    mkdirSync(lkaDir, { recursive: true });
+    try {
+      execFileSync('unzip', ['-o', '-j', lkaZipPath, ...NEEDED, '-d', lkaDir], { stdio: 'pipe' });
+    } catch (e) {
+      warn('unzip dla ŁKA zwrócił błąd (kontynuuję, zweryfikuję pliki):', String((e && e.message) || e).slice(0, 160));
+    }
+    const lkaStat = importStaticRailFeed(db, {
+      tag: 'ŁKA', dir: lkaDir, prefix: 'LKA', agency: 'LKA', touchEnvelope: true,
+      envelope: LODZ_ENVELOPE,
+      trainNum: (c, idx) => ((c[idx.trip_short_name] || '').trim().split(/\s/)[0] || '').split('/')[0].trim(),
+      counts, railGeo,
+    });
+    counts.lkaStations = lkaStat.stations; counts.lkaRoutes = lkaStat.routes;
+    counts.lkaTrips = lkaStat.trips; counts.lkaStopTimes = lkaStat.stopTimes;
+    lkaInfo = { kind: 'gtfs-zip', url: LKA_GTFS_URL, version: lkaVersion || null, ...lkaStat };
+  }
+
   // 6b. Przesiadki miasto<->kolej. Stacja kolejowa to nie słupek przy torach:
   // perony bywają schowane (Dworzec Główny: przystanek ~300 m od peronów
   // + hala i schody), więc linki liczymy hojnie. Aplikacja dokleja je do
@@ -2940,7 +3028,7 @@ async function main() {
     if (links.size > 0) {
       const ins = db.prepare('INSERT INTO interchanges (from_stop_id, to_stop_id, walk_sec, kind) VALUES (?, ?, ?, ?)');
       db.exec('BEGIN');
-      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : CITY === 'gzm' ? 'rail-ztm' : CITY === 'warszawa' ? 'wtp-rail' : CITY === 'poznan' ? 'ztm-kw' : CITY === 'trojmiasto' ? 'ztm-skm' : 'mpk-kd');
+      for (const l of links.values()) ins.run(l.a, l.b, l.walkSec, CITY === 'krakow' ? 'kml-ztp' : CITY === 'gzm' ? 'rail-ztm' : CITY === 'warszawa' ? 'wtp-rail' : CITY === 'poznan' ? 'ztm-kw' : CITY === 'trojmiasto' ? 'ztm-skm' : CITY === 'lodz' ? 'zdit-lka' : 'mpk-kd');
       db.exec('COMMIT');
       interchangeCount = links.size;
     }
@@ -2958,6 +3046,7 @@ async function main() {
   if (wkdInfo && !wkdInfo.skippedReason) wkdInfo.interchanges = interchangeCount;
   if (kwInfo && !kwInfo.skippedReason) kwInfo.interchanges = interchangeCount;
   if (skmtInfo && !skmtInfo.skippedReason) skmtInfo.interchanges = interchangeCount;
+  if (lkaInfo && !lkaInfo.skippedReason) lkaInfo.interchanges = interchangeCount;
 
   // 6c. Twarda bramka, tylko Wrocław: bez pełnego, realnego KD nie
   // nadpisujemy R2. Baza MPK-only albo z niekompletnym KD to dokładnie ta
@@ -3110,6 +3199,28 @@ async function main() {
     log(`TROJMIASTO: kursów tramwajów GDA=${gdaTramTrips} trolejbusów GDY=${gdyTrolleyTrips} (całe GDY=${gdyTrips})`);
   }
 
+  // 6i. Twarda bramka, Łódź: baza bez pełnej ŁKA albo bez przesiadek
+  // na nią nie nadpisuje R2. Tramwaje (route_type 0) jadą z GTFS ZDiT,
+  // więc liczymy je wprost z tabeli jak w Poznaniu.
+  if (CITY === 'lodz') {
+    const problems = [];
+    let zditTramTrips = 0;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE r.type = 0').get();
+      zditTramTrips = row?.n ?? 0;
+    } catch {}
+    if (zditTramTrips === 0) problems.push('0 kursów tramwajów ZDiT');
+    if (counts.lkaStations === 0) problems.push('0 stacji ŁKA');
+    if (counts.lkaRoutes === 0) problems.push('0 tras ŁKA');
+    if (counts.lkaTrips === 0) problems.push('0 kursów ŁKA');
+    if (interchangeCount === 0) problems.push('0 przesiadek ŁKA<->ZDiT');
+    if (problems.length > 0) {
+      rmSync(work, { recursive: true, force: true });
+      throw new Error(`niepełna Łódź (${problems.join(', ')}): nie publikuję bazy.`);
+    }
+    log(`LODZ: kursów tramwajów ZDiT=${zditTramTrips}`);
+  }
+
   // 7. Wagi, meta, porządki. stop_times jest WITHOUT ROWID z kluczem
   // (trip_id, seq), więc żaden indeks na tej tabeli nie jest potrzebny.
   db.exec('PRAGMA synchronous = NORMAL;');
@@ -3131,12 +3242,14 @@ async function main() {
           ? `${todayCompact()}-poznan${createHash('sha256').update(`${poznanFingerprint}|${kwVersion}`).digest('hex').slice(0, 8)}`
           : CITY === 'trojmiasto'
             ? `${todayCompact()}-tri${createHash('sha256').update(`${gdaFingerprint}|${gdyFingerprint}|${skmtVersion}`).digest('hex').slice(0, 8)}`
+            : CITY === 'lodz'
+              ? `${todayCompact()}-lodz${createHash('sha256').update(`${lodzFingerprint}|${lkaVersion}`).digest('hex').slice(0, 8)}`
             : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -3245,6 +3358,18 @@ async function main() {
             ...(triSplit?.gdynia ?? {}),
           },
           skmt: skmtInfo,
+        }
+      : CITY === 'lodz'
+      ? {
+          mpk: {
+            kind: 'gtfs-zip', url: LODZ_GTFS_URL,
+            fingerprint: lodzFingerprint,
+            stops: counts.stops - counts.lkaStations,
+            routes: counts.routes - counts.lkaRoutes,
+            trips: counts.trips - counts.lkaTrips,
+            stopTimes: counts.stopTimes - counts.lkaStopTimes,
+          },
+          lka: lkaInfo,
         }
       : {
           mpk: {

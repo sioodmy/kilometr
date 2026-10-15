@@ -76,6 +76,9 @@ jobs:
       - name: Run logic tests (Tricity)
         run: npm run check:trojmiasto
 
+      - name: Run logic tests (Łódź city)
+        run: npm run check:lodz
+
       - name: Run logic tests (Home pull gesture)
         run: npm run check:pull
 

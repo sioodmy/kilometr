@@ -35,13 +35,14 @@ export const TRANSIT_PALETTE = [
  * Rozpoznaje typ pojazdu (wrocławskie i poznańskie tramwaje to niskie numery,
  * reszta to autobusy). Moduł musi się dać importować w Node (skrypty check:*),
  * więc `cityId` jest opcjonalnym parametrem, a nie odczytem aktywnego miasta:
- * heurystyka niskich numerów dotyczy Wrocławia, Krakowa i Poznania, a w GZM
- * niskie numery mają też autobusy, więc komponent przekazuje `'gzm'`
+ * heurystyka niskich numerów dotyczy Wrocławia, Krakowa, Poznania i Łodzi,
+ * a w GZM niskie numery mają też autobusy, więc komponent przekazuje `'gzm'`
  * i fallback gaśnie. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0
- * w feedzie ZTM), Warszawa dokłada metro M1/M2 (route_type 1) i SKA S1…S40
- * (route_type 2), a Trójmiasto ma własną gałąź (tramwaje 1–12, trolejbusy
- * 21–33/710/723): badge newsów nie zna trybu z planera, więc linie rozpoznaje
- * po nazwie.
+ * w feedzie ZTM), Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1
+ * (route_type 0 w feedzie ZDiT; "6." z kropką to autobus), Warszawa dokłada
+ * metro M1/M2 (route_type 1) i SKA S1…S40 (route_type 2), a Trójmiasto ma
+ * własną gałąź (tramwaje 1–12, trolejbusy 21–33/710/723): badge newsów nie
+ * zna trybu z planera, więc linie rozpoznaje po nazwie.
  */
 export function inferTransitMode(
   mode?: LegMode,
@@ -81,6 +82,13 @@ export function inferTransitMode(
   if (cityId === 'poznan') {
     if (/^T\d{1,2}$/i.test(clean)) return 'bus';
     if (num === 97 || num === 201 || num === 203) return 'tram';
+  }
+  // Łódź: tramwaje to 1–19 plus podmiejskie 41/43/45 i jednoliterowe P1, R8,
+  // Z1 (wszystkie z route_type 0 w feedzie ZDiT). "6." z kropką to autobus.
+  if (cityId === 'lodz') {
+    if (/^6\.$/.test(clean)) return 'bus';
+    if (num === 41 || num === 43 || num === 45) return 'tram';
+    if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
   }
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';

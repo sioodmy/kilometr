@@ -554,28 +554,55 @@ export async function findPoiCandidates(query: string, limit = 60): Promise<PoiR
   );
 }
 
-/** Serwisy kursujące w dany dzień (0 = niedziela), z wyjątkami calendar_dates. */export async function getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
+/**
+ * Decyzja o zestawie aktywnych serwisów (czysta, testowalna).
+ *
+ * Brak flag w danym dniu przy niepustej tabeli calendar to feed date-scoped
+ * (eksporty dzienne GZM/WTP i ZDiT trzymają daty wyłącznie w calendar_dates):
+ * bez tego piątek aktywował wszystkie serwisy i planer pokazywał kursy
+ * weekendowe obok roboczych. Fallback „wszystko” zostaje dla zupełnie pustego
+ * kalendarza albo braku daty (stare bazy z ZIP-a; ta sama semantyka co serwer).
+ */
+export function resolveActiveServices(
+  weekdayServices: readonly string[],
+  calendarRowCount: number,
+  hasDate: boolean,
+  allTripServices: readonly string[],
+  dateExceptions: readonly { service_id: string; exc: number }[],
+): Set<string> {
+  const active = new Set(weekdayServices);
+  if (active.size === 0 && (calendarRowCount === 0 || !hasDate)) {
+    for (const id of allTripServices) active.add(id);
+  }
+  for (const r of dateExceptions) {
+    if (r.exc === 1) active.add(r.service_id);
+    else if (r.exc === 2) active.delete(r.service_id);
+  }
+  return active;
+}
+
+/** Serwisy kursujące w dany dzień (0 = niedziela), z wyjątkami calendar_dates. */
+export async function getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
   const db = await getGtfsDb();
   const day = ((weekday % 7) + 7) % 7;
   const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
   const rows = await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
-  const active = new Set(rows.map((r) => r.service_id));
-  if (active.size === 0) {
-    // Pusty kalendarz = wszystko zawsze (jak serwer).
-    const all = await db.getAllAsync<{ service_id: string }>('SELECT DISTINCT service_id FROM trips');
-    for (const r of all) active.add(r.service_id);
-  }
-  if (dateStr) {
-    const ex = await db.getAllAsync<{ service_id: string; exc: number }>(
-      'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
-      dateStr,
-    );
-    for (const r of ex) {
-      if (r.exc === 1) active.add(r.service_id);
-      else if (r.exc === 2) active.delete(r.service_id);
-    }
-  }
-  return active;
+  const weekdayServices = rows.map((r) => r.service_id);
+  const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
+  const calendarRowCount = total?.n ?? 0;
+  const needsEverything = weekdayServices.length === 0 && (calendarRowCount === 0 || !dateStr);
+  const allTripServices = needsEverything
+    ? (await db.getAllAsync<{ service_id: string }>('SELECT DISTINCT service_id FROM trips')).map(
+        (r) => r.service_id,
+      )
+    : [];
+  const dateExceptions = dateStr
+    ? await db.getAllAsync<{ service_id: string; exc: number }>(
+        'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
+        dateStr,
+      )
+    : [];
+  return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
 }
 
 /** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */
