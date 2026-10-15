@@ -246,8 +246,8 @@ const OLSZTYN: CityDef = {
   name: 'Olsztyn',
   center: { lat: 53.7784, lon: 20.4802 },
   // Strefa ZDZiT z gminami ościennymi (Barczewo na północnym wschodzie,
-  // Jonkowo na zachodzie, Nikielkowo na wschodzie): najdalszy punkt
-  // to Barczewo (~14 km od centrum).
+  // Jonkowo na zachodzie, Nikielkowo na wschodzie): najdalszy przystanek
+  // to Barczewo (~16 km od centrum; reszta strefy bliżej).
   radiusM: 22_000,
   bounds: { minLat: 53.6, maxLat: 53.95, minLon: 20.2, maxLon: 20.75 },
   nominatimViewbox: '20.2,53.95,20.75,53.6',

@@ -6,15 +6,17 @@
  * Uruchomienie: `npm run check:olsztyn`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
- * źródeł (itemy z zdzit.olsztyn.eu/feed z 2026-10-15, struktura podstrony
- * artykułu z tego samego dnia, linie i typy z GTFS ZDZiT).
+ * fundament) — chronimy czystą logikę na zamrożonych próbkach wzorowanych
+ * na realnych źródłach (itemy z zdzit.olsztyn.eu/feed z 2026-10-15,
+ * struktura podstrony artykułu z tego samego dnia, linie i typy z GTFS
+ * ZDZiT). Warstwę live pokrywa sekcja z zaślepionym fetch na końcu.
  */
 
 import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseZdzitOlsztynRss, ZDZIT_OLSZTYN_FEED_URL } from '../src/services/mpkNews';
+import { fetchZbOlsztynRows } from '../src/services/zbiorkom';
 import { pl } from '../src/i18n/pl';
 import { en } from '../src/i18n/en';
 import { de } from '../src/i18n/de';
@@ -265,11 +267,53 @@ describe('Treść komunikatu ZDZiT (article/entry-content)');
   expect('stopka serwisu poza artykułem', blocks.some((b) => b.text.includes('Stopka serwisu')), false);
 }
 
-console.log(`\n${'='.repeat(52)}`);
-if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
-  process.exit(0);
+describe('Live ZDZiT (zbiorkom.live)');
+async function main(): Promise<void> {
+  // Zaślepiony fetch, żeby sprawdzić samą warstwę live bez sieci: filtr
+  // agencji `default` w URL (TRIBUS wozi linie powiatowe spoza GTFS ZDZiT)
+  // i mapowanie odpowiedzi na wiersze trackera.
+  const realFetch = globalThis.fetch;
+  let seenUrl = '';
+  function stubFetchOnce(body: unknown, ok = true): void {
+    globalThis.fetch = (async (url: unknown) => {
+      seenUrl = String(url);
+      return { ok, json: async () => body };
+    }) as unknown as typeof fetch;
+  }
+  const liveBody = {
+    positions: [
+      { vehicle: { id: 'A818', type: '3', agency: 'default' }, routeName: '107', brigade: '12', location: [20.41721, 53.76804], timestamp: 1792097275000, delay: 0, headsign: 'Centrum', upcomingStops: [] },
+      { vehicle: { id: '3015', type: '0', agency: 'default' }, routeName: '4', brigade: '5', location: [20.48, 53.77], timestamp: 1792097275000, delay: 0, headsign: 'Pieczewo', upcomingStops: [] },
+      // Śmieci nie przechodzą: bez linii, bez id, zerowa pozycja.
+      { vehicle: { id: 'x', type: '3' }, routeName: '', location: [20.4, 53.7] },
+      { vehicle: { id: 'y', type: '3' }, routeName: '107', location: [0, 0] },
+    ],
+  };
+  stubFetchOnce(liveBody);
+  const rows = await fetchZbOlsztynRows();
+  expect(
+    'URL z filtrem agencji default',
+    seenUrl,
+    'https://api.zbiorkom.live/api6-open/olsztyn/positions/20.2,53.6,20.75,53.95?agencies=default',
+  );
+  expect('dwa pojazdy (śmieci odcięte)', rows?.length, 2);
+  expect('bus: nazwa linii', rows?.[0].name, '107');
+  expect('bus: typ', rows?.[0].type, 'bus');
+  expect('bus: x to szerokość', rows?.[0].x, 53.76804);
+  expect('bus: y to długość', rows?.[0].y, 20.41721);
+  expect('bus: k to numer taborowy', rows?.[0].k, 'A818');
+  expect('tram z type 0', rows?.[1].type, 'tram');
+  stubFetchOnce({}, false);
+  expect('HTTP nie-OK = null (sygnał do fallbacku)', await fetchZbOlsztynRows(), null);
+  globalThis.fetch = realFetch;
+
+  console.log(`\n${'='.repeat(52)}`);
+  if (failures.length === 0) {
+    console.log(`WSZYSTKO OK — ${passed} asercji`);
+    process.exit(0);
+  }
+  console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);
+  for (const f of failures) console.log(`  - ${f}`);
+  process.exit(1);
 }
-console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);
-for (const f of failures) console.log(`  - ${f}`);
-process.exit(1);
+void main();
