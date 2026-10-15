@@ -51,6 +51,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.lodz',
   );
   expect(
+    'Szczecin dokleja sufiks',
+    cityKey('kilometr.places', 'szczecin'),
+    'kilometr.places.szczecin',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -99,6 +104,12 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Zgierz w Łodzi', suggestCityForCoords(51.854, 19.125)?.id, 'lodz');
   // ...a Sieradz (~53 km) już poza nią.
   expect('Sieradz poza Łodzią', suggestCityForCoords(51.593, 18.73)?.id ?? null, null);
+  expect('Brama Portowa w Szczecinie', suggestCityForCoords(53.4285, 14.5528)?.id, 'szczecin');
+  expect('Dąbie w Szczecinie', suggestCityForCoords(53.39, 14.67)?.id, 'szczecin');
+  // Police (~13 km) to najdalszy punkt strefy...
+  expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
+  // ...a Stargard (~33 km) już poza nią.
+  expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
@@ -106,9 +117,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'siedem miast',
+    'osiem miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -121,9 +132,10 @@ describe('Rejestr miast');
       isCityId('poznan'),
       isCityId('trojmiasto'),
       isCityId('lodz'),
+      isCityId('szczecin'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -191,6 +203,17 @@ describe('Wpis Łodzi');
   expect('kafle w z14 jak reszta (limit R2)', lodz.tileMaxZoom, 14);
   expect('kolej regionalna (ŁKA)', lodz.features.regionalRail, true);
   expect('bez bezpośredniego bus_position', lodz.features.directBusPosition, false);
+}
+
+describe('Wpis Szczecina');
+{
+  const szcz = getCity('szczecin');
+  expect('slug zbiorkom to szczecin', szcz.zbiorkomSlug, 'szczecin');
+  expect('osobna baza', szcz.dbFile, 'kilometr-gtfs-szczecin.db');
+  expect('osobny pakiet kafli', szcz.tilePack, 'szczecin-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', szcz.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS SKM)', szcz.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);

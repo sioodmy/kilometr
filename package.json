@@ -64,6 +64,7 @@
     "check:poznan": "tsx --require ./scripts/stub-expo.cjs scripts/check-poznan.ts",
     "check:trojmiasto": "tsx --require ./scripts/stub-expo.cjs scripts/check-trojmiasto.ts",
     "check:lodz": "tsx --require ./scripts/stub-expo.cjs scripts/check-lodz.ts",
+    "check:szczecin": "tsx --require ./scripts/stub-expo.cjs scripts/check-szczecin.ts",
     "check:pull": "tsx scripts/check-pull.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
