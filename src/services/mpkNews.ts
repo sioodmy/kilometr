@@ -1035,8 +1035,15 @@ function extractRadomLines(title: string, description: string): string[] {
     .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
+    // Ułamki („12,5 mln zł”, „1,5 godziny”) to nie linie; przecinek musi
+    // sklejać cyfry, spacja po przecinku znaczy listę linii.
+    .replace(/\b\d{1,2},\d+\b/g, ' ')
     .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
     .replace(new RegExp(`\\b(?:(?:od|do|z|na)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|na|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})(?:\\s+\\d{4}(?:\\s*r(?:oku|\\.)?)?)?\\b`, 'gi'), ' ')
+    // Dni przy „od/do dnia” bez miesiąca („od dnia 24 i 25.09.2026” po
+    // wycięciu daty zostawia gołe 24) i „w nocy z 14 na 15” (zostawia 14).
+    .replace(/\b(?:od|do)\s+(?:dnia\s+)?\d{1,2}\b/gi, ' ')
+    .replace(/\bz\s+\d{1,2}\s+na\b/gi, ' ')
     .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   RADOM_LINE_RE.lastIndex = 0;

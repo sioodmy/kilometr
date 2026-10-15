@@ -56,6 +56,11 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.szczecin',
   );
   expect(
+    'Radom dokleja sufiks',
+    cityKey('kilometr.places', 'radom'),
+    'kilometr.places.radom',
+  );
+  expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
     'kilometr.trip_history.krakow',
@@ -110,6 +115,12 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
   // ...a Stargard (~33 km) już poza nią.
   expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
+  expect('Rynek w Radomiu', suggestCityForCoords(51.4027, 21.1471)?.id, 'radom');
+  expect('Gołębiów w Radomiu', suggestCityForCoords(51.418, 21.17)?.id, 'radom');
+  // Kres strefy na północnym wschodzie (w granicach bbox i promienia)...
+  expect('Zalesice w Radomiu', suggestCityForCoords(51.468, 21.32)?.id, 'radom');
+  // ...a Pionki (~22 km) już poza nią.
+  expect('Pionki poza Radomiem', suggestCityForCoords(51.475, 21.45)?.id ?? null, null);
   expect('ocean do nikogo', suggestCityForCoords(0, 0)?.id ?? null, null);
   expect('NaN do nikogo', suggestCityForCoords(NaN, 17)?.id ?? null, null);
 }
@@ -117,9 +128,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'osiem miast',
+    'dziewięć miast',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,radom',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -133,9 +144,10 @@ describe('Rejestr miast');
       isCityId('trojmiasto'),
       isCityId('lodz'),
       isCityId('szczecin'),
+      isCityId('radom'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,true,true,false',
   );
 }
 
@@ -214,6 +226,17 @@ describe('Wpis Szczecina');
   expect('kafle w z14 jak reszta (limit R2)', szcz.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS SKM)', szcz.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
+}
+
+describe('Wpis Radomia');
+{
+  const rad = getCity('radom');
+  expect('slug zbiorkom to radom', rad.zbiorkomSlug, 'radom');
+  expect('osobna baza', rad.dbFile, 'kilometr-gtfs-radom.db');
+  expect('osobny pakiet kafli', rad.tilePack, 'radom-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', rad.tileMaxZoom, 14);
+  expect('bez kolei regionalnej (brak GTFS)', rad.features.regionalRail, false);
+  expect('bez bezpośredniego bus_position', rad.features.directBusPosition, false);
 }
 
 console.log(`\n${'='.repeat(52)}`);
