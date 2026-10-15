@@ -24,7 +24,7 @@ on:
         required: true
         default: 'wroclaw'
         type: choice
-        options: [wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin]
+        options: [wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, opole]
 
 permissions:
   contents: read
