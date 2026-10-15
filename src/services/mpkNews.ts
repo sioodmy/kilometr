@@ -17,6 +17,11 @@
 //   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
 //   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
 //   A–C). Artykuł to podstrona informacji (treść w main#pageContent).
+// - Olsztyn: RSS WordPressa ZDZiT (zdzit.olsztyn.eu/feed, zwykły RSS 2.0;
+//   kanał miesza drogi z komunikacją, więc filtrujemy po słowach jak
+//   miejski RSS Wrocławia). Linie z tytułu i opisu z walidacją po
+//   routes.txt feedu (tramwaje 1–5, autobusy 101+, nocne N01/N02).
+//   Artykuł to wpis WordPressa (treść w div.entry-content jak w WTP).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -95,6 +100,14 @@ export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=12
  * bez JSON-a i paginacji na pierwszym ekranie.
  */
 export const ZDITM_SZCZECIN_INFO_URL = 'https://www.zditm.szczecin.pl/pl/pasazer/informacje';
+/**
+ * Komunikaty ZDZiT Olsztyn: zwykły kanał RSS 2.0 WordPressa (tytuł + link
+ * + pubDate + opis). Kanał miesza drogi z komunikacją (remonty dla
+ * kierowców, sprzedaż majątku, oświetlenie), więc odsiewamy po słowach
+ * jak miejski RSS Wrocławia. Numery linii siedzą w tytułach („linii
+ * nr 303, 305”) i opisach, więc wyciągamy je regexem z walidacją.
+ */
+export const ZDZIT_OLSZTYN_FEED_URL = 'https://zdzit.olsztyn.eu/feed/';
 
 /**
  * Komunikaty ZTM GZM. Lista to serwerowy HTML bez JSON-a i paginacji
@@ -1000,6 +1013,113 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
 }
 
 /**
+ * Numery linii ZDZiT Olsztyn w tekście: tramwaje 1–5, autobusy dzienne
+ * 101–145 (z dziurami jak 102 czy 104), 205, akademickie 303–305 oraz
+ * nocne N01/N02 (dokładnie te z routes.txt feedu GTFS, stan na 2026-10).
+ * Gdy ZDZiT doda linię, dopisz ją tutaj (ta sama konserwacja co regexy
+ * linii w innych miastach). Daty („19 października”, „03-04.10.2026”),
+ * godziny („9 – 19”), lata („2026 roku”) i numery pętli wycinamy
+ * wcześniej, a resztę liczb z tekstu odsiewa walidacja numerów.
+ */
+const OLSZTYN_LINE_RE = /\b(N0?[12]|\d{1,3}[A-Z]?)\b/gi;
+
+function isOlsztynLineNumber(n: number): boolean {
+  // Dokładnie te z routes.txt feedu (stan na 2026-10): tramwaje 1–5,
+  // autobusy 101, 103, 105–115, 117, 119, 121, 124–128, 130–132, 135,
+  // 136, 141, 145, 205 i akademickie 303–305. Brak m.in. 102, 104, 116,
+  // 118, 120, 122 i 129.
+  if (n >= 1 && n <= 5) return true;
+  if (n === 101 || n === 103) return true;
+  if (n >= 105 && n <= 115) return true;
+  if (n === 117 || n === 119 || n === 121) return true;
+  if (n >= 124 && n <= 128) return true;
+  if (n >= 130 && n <= 132) return true;
+  if (n === 135 || n === 136 || n === 141 || n === 145) return true;
+  if (n === 205) return true;
+  if (n >= 303 && n <= 305) return true;
+  return false;
+}
+
+function extractOlsztynLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    // Zakresy dat („03-04.10.2026”, „28.09-02.10”) przed pojedynczymi datami,
+    // inaczej po odcięciu pełnej daty zostaje goły „03” i wchodzi jak tramwaj.
+    .replace(/\d{1,2}\s*[-–—]\s*\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}\s*[-–—]\s*\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do|dnia)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ')
+    .replace(/\b\d{4}\s*r(?:oku)?\.?/gi, ' ');
+  let m: RegExpExecArray | null;
+  OLSZTYN_LINE_RE.lastIndex = 0;
+  while ((m = OLSZTYN_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1];
+    const after = text[m.index + m[1].length];
+    if (before === ':' || after === ':') continue;
+    if (/^N/i.test(tok)) {
+      // Nocne N01/N02 (feed pisze też N1/N2): normalizujemy do N01/N02.
+      const digits = tok.replace(/\D/g, '');
+      const num = Number(digits);
+      if (num !== 1 && num !== 2) continue;
+      const norm = `N0${num}`;
+      if (!seen.has(norm)) seen.add(norm);
+      if (seen.size >= 12) break;
+      continue;
+    }
+    // Sufiks literowy („304A”) to nie linia Olsztyna: bierzemy same liczby.
+    if (!/^\d+$/.test(tok)) continue;
+    if (!isOlsztynLineNumber(Number(tok))) continue;
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/**
+ * Komunikaty ZDZiT Olsztyn (RSS 2.0 WordPressa: tytuł + link + pubDate
+ * + opis). Kanał miesza drogi z komunikacją, więc odsiewamy po słowach
+ * jak miejski RSS Wrocławia (sprzedaż VW Transportera i LED-y na Jarotach
+ * to nie komunikaty dla pasażera). Opis z feedu ląduje w karcie.
+ */
+export function parseZdzitOlsztynRss(xml: string): MpkNewsItem[] {
+  const items: MpkNewsItem[] = [];
+  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const link = stripCdata(tagInner(b, 'link')).trim();
+    const rawDesc = stripCdata(tagInner(b, 'description') || tagInner(b, 'content:encoded'));
+    const description = htmlToText(rawDesc).slice(0, 600);
+    const pubRaw = stripCdata(tagInner(b, 'pubDate')).trim();
+    const ts = pubRaw ? Date.parse(pubRaw) : NaN;
+    const pubDate = Number.isFinite(ts) ? ts : null;
+    if (!title && !link) continue;
+    if (!isTransitNews(rawTitle, description)) continue;
+    items.push({
+      id: link || `${rawTitle}-${pubDate ?? ''}`,
+      title: title || newsTitleFallback(),
+      link,
+      description,
+      imageUrl: extractImage(rawDesc),
+      urgent: isUrgentNews(title, description),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractOlsztynLines(title, description),
+    });
+  }
+  return items;
+}
+
+/**
  * Treść artykułu ZDiTM: lead z div.lead plus sekcje (h2) i akapity treści.
  * Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Odcinamy stopkę
  * „Więcej wiadomości” (powiązane z wiadomosci.szczecin.eu) i nawigację
@@ -1121,6 +1241,9 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // i spis treści wycinamy w extractorze, stopkę powiązanych też).
   const zditm = /zditm\.szczecin\.pl/i.test(url);
   if (zditm) return extractSzczecinArticle(html);
+  // ZDZiT Olsztyn to WordPress jak WTP (artykuł w <article>, treść
+  // w div.entry-content): ta sama ścieżka co Warszawa.
+  const zdzitOlsztyn = /zdzit\.olsztyn\.eu/i.test(url);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -1132,7 +1255,7 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
         '')
       : gzm
         ? (html.split(/id="mcontent"/i)[1]?.split(/<div class="modal"|<footer/i)[0] ?? '')
-        : wtp
+        : wtp || zdzitOlsztyn
           ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
             html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ??
             html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
@@ -1150,6 +1273,15 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
     fragment = fragment
       .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ')
       .replace(/<th\b[^>]*>[\s\S]*?<\/th>/i, ' ');
+  }
+  if (zdzitOlsztyn) {
+    // Tytuł (h1 w headerze) pokazuje ekran sam, tag kategorii
+    // („Bez kategorii”) to nie treść, a nawigacja Poprzedni/Następny
+    // post to nie komunikat.
+    fragment = fragment
+      .replace(/<header\b[\s\S]*?<\/header>/i, ' ')
+      .replace(/<div class="category-and-tags"[\s\S]*?<\/div>/i, ' ')
+      .replace(/<nav\b[\s\S]*?<\/nav>/gi, ' ');
   }
   fragment = scrubArticleHtml(fragment);
   if (!fragment.trim()) return [];
@@ -1262,6 +1394,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
+  if (city.id === 'olsztyn') return fetchOlsztynNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -1291,6 +1424,19 @@ async function fetchLodzNews(signal?: AbortSignal, cityId = 'lodz'): Promise<Mpk
       }
       console.warn('[News] Łódź: oba kanały MPK puste (zmiana formatu?)');
     }
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty ZDZiT Olsztyn: jedno źródło (RSS), brak fallbacku. */
+async function fetchOlsztynNews(signal?: AbortSignal, cityId = 'olsztyn'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const xml = await fetchText(ZDZIT_OLSZTYN_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const items = parseZdzitOlsztynRss(xml);
+    if (items.length === 0) console.warn('[News] Olsztyn: pusty feed (zmiana formatu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();

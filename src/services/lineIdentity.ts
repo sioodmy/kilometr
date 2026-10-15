@@ -36,7 +36,8 @@ export const TRANSIT_PALETTE = [
  * reszta to autobusy). Moduł musi się dać importować w Node (skrypty check:*),
  * więc `cityId` jest opcjonalnym parametrem, a nie odczytem aktywnego miasta:
  * heurystyka niskich numerów dotyczy Wrocławia, Krakowa, Poznania, Łodzi
- * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), a w GZM niskie
+ * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), w Olsztynie
+ * obejmuje tramwaje 1–5 (autobusy startują tam od 101), a w GZM niskie
  * numery mają też autobusy, więc komponent przekazuje `'gzm'` i fallback
  * gaśnie. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
  * Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1 (route_type 0 w feedzie

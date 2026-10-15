@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'olsztyn';
 
 export interface CityCenter {
   lat: number;
@@ -241,7 +241,37 @@ const SZCZECIN: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN];
+const OLSZTYN: CityDef = {
+  id: 'olsztyn',
+  name: 'Olsztyn',
+  center: { lat: 53.7784, lon: 20.4802 },
+  // Strefa ZDZiT z gminami ościennymi (Barczewo na północnym wschodzie,
+  // Jonkowo na zachodzie, Nikielkowo na wschodzie): najdalszy punkt
+  // to Barczewo (~14 km od centrum).
+  radiusM: 22_000,
+  bounds: { minLat: 53.6, maxLat: 53.95, minLon: 20.2, maxLon: 20.75 },
+  nominatimViewbox: '20.2,53.95,20.75,53.6',
+  overpassBbox: '53.60,20.20,53.95,20.75',
+  // zbiorkom.live nazywa miasto `olsztyn`; filtr `agencies=default`
+  // odcina podmiejskie S7 agencji TRIBUS (nie ma ich w GTFS ZDZiT,
+  // więc wisiałyby na mapie jako kropki bez rozkładu); bbox jak bounds.
+  zbiorkomSlug: 'olsztyn',
+  zbiorkomBbox: '20.2,53.6,20.75,53.95',
+  dbFile: 'kilometr-gtfs-olsztyn.db',
+  tilePack: 'olsztyn-tiles.ktp',
+  // Kafle pokrywają całą strefę (jak bounds i live), żeby trasa do Barczewa
+  // czy Jonkowa działała offline bez dziur na krawędzi.
+  tileBbox: { minLat: 53.6, maxLat: 53.95, minLon: 20.2, maxLon: 20.75 },
+  // Strefa 0,19 deg2 (między Szczecinem a Łodzią), w z14 z gzipem ok. 15 MB.
+  tileMaxZoom: 14,
+  tilePackMB: 15,
+  // Kolej nie ma publicznego GTFS ani feedu live w bboxie (sprawdzone:
+  // zbiorkom `pkp` zwraca tu tylko dalekobieżne IC). ZDZiT nie ma
+  // publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
+};
+
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, OLSZTYN];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 
