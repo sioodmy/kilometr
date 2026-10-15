@@ -78,11 +78,11 @@ export const de: Strings = {
     settingsTitle: 'Stadt',
     settingsHint: 'Fahrplan, Offline-Karte und Meldungen folgen der Stadt. Die Daten der anderen Stadt bleiben auf dem Telefon.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : id === 'kielce' ? 'Kielce' : 'Wrocław',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : id === 'kielce' ? 'Kielce' : 'Wrocław',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : id === 'szczecin' ? 'Szczecin' : id === 'kielce' ? 'Kielce' : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP und Koleje Małopolskie'
@@ -98,6 +98,8 @@ export const de: Strings = {
                 ? 'MPK und Łódzka Kolej Aglomeracyjna'
               : id === 'szczecin'
                 ? 'ZDiTM Szczecin'
+              : id === 'kielce'
+                ? 'ZTM Kielce'
                 : 'MPK und Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
@@ -114,6 +116,8 @@ export const de: Strings = {
                 ? 'MPK Łódź'
               : id === 'szczecin'
                 ? 'ZDiTM Szczecin'
+              : id === 'kielce'
+                ? 'ZTM Kielce'
                 : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
@@ -130,9 +134,11 @@ export const de: Strings = {
                 ? 'MPK Łódź'
               : id === 'szczecin'
                 ? 'ZDiTM Szczecin'
+              : id === 'kielce'
+                ? 'ZTM Kielce'
                 : 'MPK Wrocław',
     operatorShort: (id: string): string =>
-      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : id === 'trojmiasto' ? 'ZTM / ZKM' : id === 'szczecin' ? 'ZDiTM' : 'MPK',
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : id === 'trojmiasto' ? 'ZTM / ZKM' : id === 'szczecin' ? 'ZDiTM' : id === 'kielce' ? 'ZTM' : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -148,8 +154,10 @@ export const de: Strings = {
                 ? 'mpk.lodz.pl'
               : id === 'szczecin'
                 ? 'zditm.szczecin.pl'
+              : id === 'kielce'
+                ? 'ztm.kielce.pl'
                 : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
@@ -359,6 +367,8 @@ export const de: Strings = {
               ? 'z. B. Piotrkowska 12'
             : id === 'szczecin'
               ? 'z. B. Wojska Polskiego 12'
+            : id === 'kielce'
+              ? 'z. B. Sienkiewicza 12'
               : 'z. B. Swojczycka 41',
     slotWork: 'Arbeit',
     slotWorkHint: (id: string) =>
@@ -374,6 +384,8 @@ export const de: Strings = {
               ? 'z. B. Manufaktura'
             : id === 'szczecin'
               ? 'z. B. Galeria Kaskada'
+            : id === 'kielce'
+              ? 'z. B. Galeria Echo'
               : 'z. B. Sky Tower',
     slotUni: 'Uni',
     slotUniHint: (id: string) =>
@@ -389,6 +401,8 @@ export const de: Strings = {
               ? 'z. B. UŁ'
             : id === 'szczecin'
               ? 'z. B. US'
+            : id === 'kielce'
+              ? 'z. B. UJK'
               : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
@@ -624,7 +638,7 @@ export const de: Strings = {
     searching: (city: string) => `${city} wird durchsucht…`,
     noResults: 'Keine Ergebnisse',
     noResultsHint: (id: string) =>
-      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : id === 'trojmiasto' ? '„oliwa“, „wrzeszcz“, „orłowo“, „przymorze“' : id === 'lodz' ? '„piotrkowska“, „manufaktura“, „fabryczna“, „kaliska“' : id === 'szczecin' ? '„brama portowa“, „dąbie“, „police“, „pogodno“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
+      `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : id === 'trojmiasto' ? '„oliwa“, „wrzeszcz“, „orłowo“, „przymorze“' : id === 'lodz' ? '„piotrkowska“, „manufaktura“, „fabryczna“, „kaliska“' : id === 'szczecin' ? '„brama portowa“, „dąbie“, „police“, „pogodno“' : id === 'kielce' ? '„sienkiewicza“, „rynek“, „kadzielnia“, „herby“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
     yourPlaces: 'Deine Orte',
     gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',

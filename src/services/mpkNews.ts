@@ -13,6 +13,11 @@
 //   z utrudnieniami) w ISO-8859-2. Tytuły generyczne, więc tytuł niesie treść
 //   opisu, a linie wyciągamy z linków w opisie. Artykuł to podstrona
 //   wholemessage.jsp (treść w div#dWrkspc).
+// - Kielce: lista Joomla ZTM (aktualnosci.html: karty blog-item z tytułem,
+//   linkiem, datą time[datetime], leadem w p i obrazkiem images/). Linie
+//   wyciągamy regexem z tytułu i leadu z walidacją po routes.txt feedu
+//   (0W/0Z, 1-54 z dziurami, 102-114, E/F, N1/N2, T/Z). Artykuł to podstrona
+//   aktualności (treść w div.com-content-article__body).
 // - Szczecin: lista HTML ZDiTM (pl/pasazer/informacje: karty z tytułem,
 //   datą time[datetime] i leadem p.card-text). Linie wyciągamy regexem
 //   z tytułu i leadu (tramwaje 1–12, autobusy 51+, nocne 5xx, pospieszne
@@ -89,6 +94,12 @@ export const ZTM_GDANSK_BSK_URL = 'https://files.cloudgdansk.pl/d/otwarte-dane/z
  */
 export const MPK_LODZ_ROZKLADY_RSS = 'https://mpk.lodz.pl/rozklady/rss/rozklady.jsp';
 export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=1211';
+/**
+ * Komunikaty ZTM Kielce: lista aktualności Joomla (tytuł + link + data
+ * w time[datetime] + lead w pierwszym p + obrazek images/). Serwerowy HTML,
+ * paginacja ?start=N na kolejnych ekranach (bierzemy pierwszy).
+ */
+export const ZTM_KIELCE_NEWS_URL = 'https://ztm.kielce.pl/aktualnosci.html';
 /**
  * Komunikaty ZDiTM Szczecin: lista dla pasażera (tytuł + link + data
  * w time[datetime] + lead p.card-text na karcie). Serwerowy HTML,
@@ -883,6 +894,147 @@ export function parseMpkLodzRss(xml: string): MpkNewsItem[] {
 }
 
 /**
+ * Linie ZTM Kielce z routes.txt feedu GTFS: 0W/0Z, dzienne 1-54 (bez 3, 6,
+ * 15, 17, 20, 22, 37, 39, 40, 42, 48, 49, 52), podmiejskie 102-114 (tylko
+ * 102, 103, 104, 107, 108, 112, 114), nocne N1/N2 oraz literowe E/F/T/Z.
+ * Gdy ZTM doda linię, dopisz ją tutaj (ta sama konserwacja co regexy
+ * linii w innych miastach).
+ */
+const KIELCE_LINES = new Set([
+  '0W', '0Z',
+  '1', '2', '4', '5', '7', '8', '9', '10', '11', '12', '13', '14', '16',
+  '18', '19', '21', '23', '24', '25', '26', '27', '28', '29', '30', '31',
+  '32', '33', '34', '35', '36', '38', '41', '43', '44', '45', '46', '47',
+  '50', '51', '53', '54',
+  '102', '103', '104', '107', '108', '112', '114',
+  'E', 'F', 'N1', 'N2', 'T', 'Z',
+]);
+
+const KIELCE_LINE_RE = /(0[WZ]|N[12]|\d{1,3}|[EFTZ])/g;
+
+// Polskie litery to też znaki słowa (ten sam problem co w Szczecinie:
+// \b łamie się na „będą”, więc spójnik nie może udawać linii).
+const KIELCE_EDGE_RE = /[0-9A-Za-zÀ-ž]/;
+
+// Linie literowe ZTM to E, F, T i Z. Samotne „Z” to jednak częsty przyimek
+// na początku zdania („Z uwagi na remont”, „Z dniem 1 listopada”), więc
+// literę liczymy tylko w kontekście: po „linia/linii/…” albo w cudzysłowie
+// (ZTM pisze „linia „E””).
+const KIELCE_LETTER_CTX_RE = /(?:linia|linii|linię|linią|linie|liniami)\s*[„"'(]?$/i;
+
+function extractKielceLines(title: string, description: string): string[] {
+  const seen = new Set<string>();
+  const text = `${title} ${description}`
+    .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/\b\d{1,3},\d+\b/g, ' ')
+    .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
+    .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
+    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+  let m: RegExpExecArray | null;
+  KIELCE_LINE_RE.lastIndex = 0;
+  while ((m = KIELCE_LINE_RE.exec(text))) {
+    const tok = m[1].toUpperCase();
+    const before = text[m.index - 1] ?? '';
+    const after = text[m.index + m[1].length] ?? '';
+    if (KIELCE_EDGE_RE.test(before) || KIELCE_EDGE_RE.test(after)) continue;
+    // Litery linii ZTM pisze wielką literą („linia E”), mała to zwykłe słowo.
+    if (/^[EFTZ]$/.test(tok) && m[1] !== m[1].toUpperCase()) continue;
+    if (/^\d+$/.test(tok)) {
+      if (before === ':' || after === ':') continue;
+      if (!KIELCE_LINES.has(tok)) continue;
+    } else if (!KIELCE_LINES.has(tok)) {
+      continue;
+    } else if (/^[EFTZ]$/.test(tok)) {
+      const ctx = text.slice(Math.max(0, m.index - 14), m.index);
+      if (!KIELCE_LETTER_CTX_RE.test(ctx) && !/[„"'(]$/.test(ctx)) continue;
+    }
+    if (!seen.has(tok)) seen.add(tok);
+    if (seen.size >= 12) break;
+  }
+  return [...seen];
+}
+
+/** Data z karty Joomla (time[datetime]: "2026-10-14T13:40:58+02:00"). */
+function parseKielceDate(raw: string): number | null {
+  if (!raw.trim()) return null;
+  const ts = Date.parse(raw.trim());
+  return Number.isFinite(ts) ? ts : null;
+}
+
+/**
+ * Komunikaty ZTM Kielce z listy (jeden fetch: tytuł + link + data + lead).
+ * Karta: div.com-content-category-blog__item > h2 z linkiem /aktualnosci/*,
+ * time[datetime], lead w pierwszym p za metadanymi, obrazek images/.
+ */
+export function parseKielceNews(html: string): MpkNewsItem[] {
+  const cards = html.split(/com-content-category-blog__item/i).slice(1);
+  const items: MpkNewsItem[] = [];
+  for (const card of cards) {
+    const linkM = card.match(
+      /<a href="(\/aktualnosci\/[^"]+\.html)"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    if (!linkM) continue;
+    const link = `https://ztm.kielce.pl${decodeEntities(linkM[1]).trim()}`;
+    const rawTitle = htmlToText(linkM[2]).replace(/\s+/g, ' ').trim();
+    const title = cleanNewsTitle(rawTitle);
+    const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
+    const pubDate = parseKielceDate(datetime);
+    const afterMeta = card.split(/<\/dl>/i)[1] ?? card;
+    const lead = htmlToText((afterMeta.match(/<p>([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    const rawImage = extractImage(card);
+    const imageUrl = rawImage && rawImage.startsWith('/') ? `https://ztm.kielce.pl${rawImage}` : rawImage;
+    if (!title) continue;
+    items.push({
+      id: link,
+      title,
+      link,
+      description: lead,
+      imageUrl,
+      urgent: isUrgentNews(title, lead),
+      pubDate,
+      dateLabel: formatNewsDate(pubDate),
+      source: 'mpk',
+      lines: extractKielceLines(title, lead),
+    });
+  }
+  return items;
+}
+
+/**
+ * Treść artykułu ZTM: akapity i listy z div.com-content-article__body.
+ * Tytuł (h1) pomijamy, bo ekran pokazuje go sam. Panel rozkładu
+ * (div.rozklad_jazdy_aticle z linkami linii i schematami objazdów) wycinamy:
+ * numery linii siedzą już w tekście, a alty schematów to szum.
+ */
+function extractKielceArticle(html: string): ArticleBlock[] {
+  const blocks: ArticleBlock[] = [];
+  const body = (html.split(/com-content-article__body/i)[1] ?? '')
+    .split(/rp-sidebarright/i)[0];
+  if (!body.trim()) return blocks;
+  const frag = body
+    .replace(/<div class="rozklad_jazdy_aticle"[\s\S]*$/i, ' ')
+    .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ');
+  const clean = scrubArticleHtml(frag);
+  if (!clean.trim()) return blocks;
+  const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(clean))) {
+    const text = htmlToText(match[2]).replace(/\s+/g, ' ').trim();
+    if (!text || ARTICLE_JUNK_RE.test(text)) continue;
+    const tag = match[1].toLowerCase();
+    blocks.push({ kind: tag.startsWith('h') ? 'h' : 'p', text });
+  }
+  return blocks;
+}
+
+/**
  * Numery linii ZDiTM Szczecin w tekście: pospieszne A–C, tramwaje 1–12,
  * autobusy dzienne, podmiejskie 221–244, nocne 521–536 oraz 904/908
  * (dokładnie te z routes.txt feedu GTFS, z dziurami jak 4 czy 55).
@@ -1121,6 +1273,10 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // i spis treści wycinamy w extractorze, stopkę powiązanych też).
   const zditm = /zditm\.szczecin\.pl/i.test(url);
   if (zditm) return extractSzczecinArticle(html);
+  // ZTM Kielce: treść w div.com-content-article__body (panel rozkładu
+  // z linkami linii wycinamy w extractorze).
+  const ztmKielce = /ztm\.kielce\.pl/i.test(url);
+  if (ztmKielce) return extractKielceArticle(html);
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -1262,6 +1418,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
   if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
   if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
+  if (city.id === 'kielce') return fetchKielceNews(signal, city.id);
   return fetchMpkNews(signal);
 }
 
@@ -1304,6 +1461,19 @@ async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Pro
     const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
     const items = parseSzczecinInfo(html);
     if (items.length === 0) console.warn('[News] Szczecin: pusta lista (zmiana markupu?)');
+    return rememberNews(sortNews(items), cityId);
+  } finally {
+    scope.dispose();
+  }
+}
+
+/** Komunikaty ZTM Kielce: jedno źródło (lista Joomla), brak fallbacku. */
+async function fetchKielceNews(signal?: AbortSignal, cityId = 'kielce'): Promise<MpkNewsItem[]> {
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
+  try {
+    const html = await fetchText(ZTM_KIELCE_NEWS_URL, scope.signal, 'text/html, */*');
+    const items = parseKielceNews(html);
+    if (items.length === 0) console.warn('[News] Kielce: pusta lista (zmiana markupu?)');
     return rememberNews(sortNews(items), cityId);
   } finally {
     scope.dispose();
