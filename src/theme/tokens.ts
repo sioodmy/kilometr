@@ -8,48 +8,20 @@
 import { StyleSheet } from 'react-native';
 
 export type SchemeKey =
-  | 'primary'
-  | 'onPrimary'
-  | 'primaryContainer'
-  | 'onPrimaryContainer'
-  | 'secondary'
-  | 'onSecondary'
-  | 'secondaryContainer'
-  | 'onSecondaryContainer'
-  | 'tertiary'
-  | 'onTertiary'
-  | 'tertiaryContainer'
-  | 'onTertiaryContainer'
-  | 'error'
-  | 'onError'
-  | 'errorContainer'
-  | 'onErrorContainer'
-  | 'surface'
-  | 'onSurface'
-  | 'onSurfaceVariant'
-  | 'surfaceDim'
-  | 'surfaceBright'
-  | 'surfaceContainerLowest'
-  | 'surfaceContainerLow'
-  | 'surfaceContainer'
-  | 'surfaceContainerHigh'
-  | 'surfaceContainerHighest'
-  | 'outline'
-  | 'outlineVariant'
-  | 'inverseSurface'
-  | 'inverseOnSurface'
-  | 'inversePrimary'
-  | 'scrim'
-  | 'success'
-  | 'onSuccess'
-  | 'successContainer'
-  | 'onSuccessContainer'
-  | 'warning'
-  | 'onWarning'
-  | 'warningContainer'
-  | 'onWarningContainer';
+  | 'primary' | 'onPrimary' | 'primaryContainer' | 'onPrimaryContainer'
+  | 'secondary' | 'onSecondary' | 'secondaryContainer' | 'onSecondaryContainer'
+  | 'tertiary' | 'onTertiary' | 'tertiaryContainer' | 'onTertiaryContainer'
+  | 'error' | 'onError' | 'errorContainer' | 'onErrorContainer'
+  | 'surface' | 'onSurface' | 'onSurfaceVariant'
+  | 'surfaceDim' | 'surfaceBright'
+  | 'surfaceContainerLowest' | 'surfaceContainerLow' | 'surfaceContainer'
+  | 'surfaceContainerHigh' | 'surfaceContainerHighest'
+  | 'outline' | 'outlineVariant'
+  | 'inverseSurface' | 'inverseOnSurface' | 'inversePrimary' | 'scrim'
+  | 'success' | 'onSuccess' | 'successContainer' | 'onSuccessContainer'
+  | 'warning' | 'onWarning' | 'warningContainer' | 'onWarningContainer';
 
-const darkScheme: Record<SchemeKey, string> = {
+export const scheme: Record<SchemeKey, string> = {
   // Primary (vibrant teal in dark mode for high accessibility and contrast)
   primary: '#5CDBBE',
   onPrimary: '#003831',
@@ -108,51 +80,6 @@ const darkScheme: Record<SchemeKey, string> = {
   onWarningContainer: '#FFDDB5',
 };
 
-const lightScheme: Record<SchemeKey, string> = {
-  primary: '#006A60',
-  onPrimary: '#FFFFFF',
-  primaryContainer: '#9CF2E2',
-  onPrimaryContainer: '#00201B',
-  secondary: '#4A635E',
-  onSecondary: '#FFFEFF',
-  secondaryContainer: '#CCE8E1',
-  onSecondaryContainer: '#06201C',
-  tertiary: '#426176',
-  onTertiary: '#FEFFFF',
-  tertiaryContainer: '#C4E7FF',
-  onTertiaryContainer: '#001E2C',
-  error: '#BA1A1A',
-  onError: '#FFFFFE',
-  errorContainer: '#FFDAD6',
-  onErrorContainer: '#410002',
-  surface: '#F7FAF8',
-  onSurface: '#191C1B',
-  onSurfaceVariant: '#404945',
-  surfaceDim: '#D8DBD9',
-  surfaceBright: '#F7FAF8',
-  surfaceContainerLowest: '#FFFFFF',
-  surfaceContainerLow: '#F1F4F2',
-  surfaceContainer: '#ECEFEE',
-  surfaceContainerHigh: '#E6E9E7',
-  surfaceContainerHighest: '#E0E3E1',
-  outline: '#707975',
-  outlineVariant: '#C0C9C5',
-  inverseSurface: '#2E3130',
-  inverseOnSurface: '#EFF1EF',
-  inversePrimary: '#5CDBBE',
-  scrim: '#000000',
-  success: '#006D35',
-  onSuccess: '#FEFFFE',
-  successContainer: '#8DF7A8',
-  onSuccessContainer: '#00210A',
-  warning: '#7A5900',
-  onWarning: '#FFFEFE',
-  warningContainer: '#FFE08A',
-  onWarningContainer: '#251A00',
-};
-
-export const scheme: Record<SchemeKey, string> = { ...darkScheme };
-
 // ─── Skąd braliśmy kolory ────────────────────────────────────────────────────
 //
 // `StyleSheet.create` w dev zamraża obiekty, które mu podamy, więc nie możemy
@@ -167,8 +94,12 @@ let hookInstalled = false;
 function installStyleSheetHook(): void {
   if (hookInstalled) return;
   hookInstalled = true;
-  const original = StyleSheet.create.bind(StyleSheet) as (obj: StyleSheetLike) => StyleSheetLike;
-  (StyleSheet as unknown as { create: (obj: StyleSheetLike) => StyleSheetLike }).create = (obj) => {
+  const original = StyleSheet.create.bind(StyleSheet) as (
+    obj: StyleSheetLike,
+  ) => StyleSheetLike;
+  (StyleSheet as unknown as { create: (obj: StyleSheetLike) => StyleSheetLike }).create = (
+    obj,
+  ) => {
     const copy: StyleSheetLike = {};
     for (const key in obj) copy[key] = { ...obj[key] };
     try {
@@ -186,10 +117,10 @@ installStyleSheetHook();
 const seedScheme: Record<string, string> = { ...scheme };
 
 /** Przemalowuje wcześniej utworzone arkusze stylów na nową paletę. */
-function repaintStyles(previous: Record<SchemeKey, string>, next: Record<SchemeKey, string>): void {
+function repaintStyles(next: Record<SchemeKey, string>): void {
   const from = new Map<string, string>();
   for (const key of Object.keys(seedScheme) as SchemeKey[]) {
-    const before = previous[key];
+    const before = seedScheme[key];
     const after = next[key];
     if (before !== after) from.set(before.toLowerCase(), after);
   }
@@ -199,8 +130,7 @@ function repaintStyles(previous: Record<SchemeKey, string>, next: Record<SchemeK
     if (Array.isArray(value)) return value.map(swap);
     if (value && typeof value === 'object') {
       const out: Record<string, unknown> = {};
-      for (const key in value as Record<string, unknown>)
-        out[key] = swap((value as Record<string, unknown>)[key]);
+      for (const key in value as Record<string, unknown>) out[key] = swap((value as Record<string, unknown>)[key]);
       return out;
     }
     return value;
@@ -218,27 +148,12 @@ function repaintStyles(previous: Record<SchemeKey, string>, next: Record<SchemeK
 
 // ─── Back-compat aliases ─────────────────────────────────────────────────────
 type ColorKey =
-  | 'bg'
-  | 'card'
-  | 'ink'
-  | 'muted'
-  | 'faint'
-  | 'line'
-  | 'primary'
-  | 'primaryDark'
-  | 'primarySoft'
-  | 'accent'
-  | 'accentSoft'
-  | 'success'
-  | 'successSoft'
-  | 'danger'
-  | 'dangerSoft'
-  | 'warning'
-  | 'warningSoft'
-  | 'lineTram'
-  | 'lineBus'
-  | 'lineNight'
-  | 'walk';
+  | 'bg' | 'card' | 'ink' | 'muted' | 'faint' | 'line'
+  | 'primary' | 'primaryDark' | 'primarySoft'
+  | 'accent' | 'accentSoft'
+  | 'success' | 'successSoft' | 'danger' | 'dangerSoft'
+  | 'warning' | 'warningSoft'
+  | 'lineTram' | 'lineBus' | 'lineNight' | 'walk';
 
 export const colors: Record<ColorKey, string> = {
   bg: scheme.surface,
@@ -273,7 +188,6 @@ export const colors: Record<ColorKey, string> = {
  * motywu i arkusze stylów powstałe przy imporcie modułów.
  */
 export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
-  const previous = { ...scheme };
   for (const key of Object.keys(next) as SchemeKey[]) {
     const value = next[key];
     if (typeof value === 'string' && value) scheme[key] = value;
@@ -296,11 +210,7 @@ export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
   colors.warning = scheme.warning;
   colors.warningSoft = scheme.warningContainer;
   colors.walk = scheme.onSurfaceVariant;
-  repaintStyles(previous, scheme);
-}
-
-export function setBaseScheme(mode: 'light' | 'dark'): void {
-  applyScheme(mode === 'light' ? lightScheme : darkScheme);
+  repaintStyles(scheme);
 }
 
 // ─── M3 shape scale ──────────────────────────────────────────────────────────

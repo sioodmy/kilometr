@@ -1,6 +1,6 @@
-import { Appearance, Platform, type ColorSchemeName } from 'react-native';
+import { Platform } from 'react-native';
 import { getTrackingNative } from '../services/notifications/module';
-import { applyScheme, setBaseScheme, type SchemeKey } from './tokens';
+import { applyScheme, type SchemeKey } from './tokens';
 
 // Kolory Material You z tapety.
 //
@@ -34,8 +34,8 @@ function parseLinear(hex: string): number[] | null {
   const match = /^#?([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(hex.trim());
   if (!match) return null;
   const int = Number.parseInt(match[1], 16);
-  return [((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255].map((c) =>
-    c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
+  return [((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255].map(
+    (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4),
   );
 }
 
@@ -104,7 +104,7 @@ function collect(palette: SystemPalette, family: string): Family {
  * Role motywu ciemnego w skali L* — te same, co w Material Theme Builder
  * (primary P80 na onPrimary P20, kontener P30 z P90, powierzchnie N4–N24).
  */
-const DARK_ROLE_L: Record<string, [family: string, lStar: number]> = {
+const ROLE_L: Record<string, [family: string, lStar: number]> = {
   primary: ['accent1', 80],
   onPrimary: ['accent1', 20],
   primaryContainer: ['accent1', 30],
@@ -139,45 +139,12 @@ const DARK_ROLE_L: Record<string, [family: string, lStar: number]> = {
   inversePrimary: ['accent1', 40],
 };
 
-const LIGHT_ROLE_L: Record<string, [family: string, lStar: number]> = {
-  primary: ['accent1', 40],
-  onPrimary: ['accent1', 100],
-  primaryContainer: ['accent1', 90],
-  onPrimaryContainer: ['accent1', 10],
-  secondary: ['accent2', 40],
-  onSecondary: ['accent2', 100],
-  secondaryContainer: ['accent2', 90],
-  onSecondaryContainer: ['accent2', 10],
-  tertiary: ['accent3', 40],
-  onTertiary: ['accent3', 100],
-  tertiaryContainer: ['accent3', 90],
-  onTertiaryContainer: ['accent3', 10],
-  surfaceContainerLowest: ['neutral1', 100],
-  surfaceDim: ['neutral1', 87],
-  surface: ['neutral1', 98],
-  surfaceContainerLow: ['neutral1', 96],
-  surfaceContainer: ['neutral1', 94],
-  surfaceContainerHigh: ['neutral1', 92],
-  surfaceContainerHighest: ['neutral1', 90],
-  surfaceBright: ['neutral1', 98],
-  onSurface: ['neutral1', 10],
-  onSurfaceVariant: ['neutral2', 30],
-  outline: ['neutral2', 50],
-  outlineVariant: ['neutral2', 80],
-  inverseSurface: ['neutral1', 20],
-  inverseOnSurface: ['neutral1', 95],
-  inversePrimary: ['accent1', 80],
-};
-
 /**
  * Buduje paletę motywu z surowych tonów systemu. Role, dla których w palecie
  * brakuje tonu (albo system ich nie wystawia), pomijamy — wtedy zostaje
  * wartość startowa motywu.
  */
-export function paletteFromSystem(
-  raw: SystemPalette,
-  mode: 'light' | 'dark' = 'dark',
-): Partial<Record<SchemeKey, string>> {
+export function paletteFromSystem(raw: SystemPalette): Partial<Record<SchemeKey, string>> {
   const families: Record<string, Family> = {
     accent1: collect(raw, 'accent1'),
     accent2: collect(raw, 'accent2'),
@@ -186,8 +153,7 @@ export function paletteFromSystem(
     neutral2: collect(raw, 'neutral2'),
   };
   const out: Partial<Record<SchemeKey, string>> = {};
-  const roleTones = mode === 'light' ? LIGHT_ROLE_L : DARK_ROLE_L;
-  for (const [role, [family, lStar]] of Object.entries(roleTones)) {
+  for (const [role, [family, lStar]] of Object.entries(ROLE_L)) {
     const picked = toneAt(families[family] ?? [], lStar);
     if (picked) out[role as SchemeKey] = picked;
   }
@@ -200,17 +166,7 @@ export function paletteFromSystem(
  *
  * Zwraca `true`, gdy motyw faktycznie poszedł z tapety — do logów i testów.
  */
-let systemPalette: SystemPalette | undefined;
-
-export function setDeviceColorScheme(colorScheme: ColorSchemeName): void {
-  const mode = colorScheme === 'light' ? 'light' : 'dark';
-  setBaseScheme(mode);
-  if (systemPalette) applyScheme(paletteFromSystem(systemPalette, mode));
-}
-
 export async function initDynamicColors(): Promise<boolean> {
-  const mode = Appearance.getColorScheme() === 'light' ? 'light' : 'dark';
-  setDeviceColorScheme(mode);
   if (Platform.OS !== 'android') return false;
   if (typeof Platform.Version === 'number' && Platform.Version < 31) return false;
   // Kolory czytamy tym samym lokalnym modułem co powiadomienia — to jedyny
@@ -218,8 +174,7 @@ export async function initDynamicColors(): Promise<boolean> {
   const native = getTrackingNative();
   if (typeof native?.getSystemPalette !== 'function') return false;
   try {
-    systemPalette = (await native.getSystemPalette()) ?? {};
-    const patch = paletteFromSystem(systemPalette, mode);
+    const patch = paletteFromSystem((await native.getSystemPalette()) ?? {});
     if (Object.keys(patch).length === 0) return false;
     applyScheme(patch);
     return true;
