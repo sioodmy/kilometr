@@ -83,11 +83,11 @@ export const pl = {
     settingsTitle: 'Miasto',
     settingsHint: 'Rozkład, mapa offline i aktualności idą za miastem. Dane drugiego miasta zostają na telefonie.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'lodz' ? 'Łódź' : 'Wrocław',
+      id === 'krakow' ? 'Kraków' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawa' : id === 'poznan' ? 'Poznań' : id === 'trojmiasto' ? 'Trójmiasto' : id === 'lodz' ? 'Łódź' : 'Wrocław',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Krakowa' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawy' : id === 'poznan' ? 'Poznania' : id === 'lodz' ? 'Łodzi' : 'Wrocławia',
+      id === 'krakow' ? 'Krakowa' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawy' : id === 'poznan' ? 'Poznania' : id === 'trojmiasto' ? 'Trójmiasta' : id === 'lodz' ? 'Łodzi' : 'Wrocławia',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Krakowie' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawie' : id === 'poznan' ? 'Poznaniu' : id === 'lodz' ? 'Łodzi' : 'Wrocławiu',
+      id === 'krakow' ? 'Krakowie' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Warszawie' : id === 'poznan' ? 'Poznaniu' : id === 'trojmiasto' ? 'Trójmieście' : id === 'lodz' ? 'Łodzi' : 'Wrocławiu',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP i Koleje Małopolskie'
@@ -97,6 +97,8 @@ export const pl = {
             ? 'WTP, SKA, Koleje Mazowieckie i WKD'
             : id === 'poznan'
               ? 'ZTM i Koleje Wielkopolskie'
+              : id === 'trojmiasto'
+                ? 'ZTM Gdańsk, ZKM Gdynia i SKM'
               : id === 'lodz'
                 ? 'MPK i Łódzka Kolej Aglomeracyjna'
                 : 'MPK i Koleje Dolnośląskie',
@@ -109,6 +111,8 @@ export const pl = {
             ? 'WTP Warszawa'
             : id === 'poznan'
               ? 'ZTM Poznań'
+              : id === 'trojmiasto'
+                ? 'ZTM Gdańsk'
               : id === 'lodz'
                 ? 'MPK Łódź'
                 : 'MPK Wrocław • wroclaw.pl',
@@ -121,11 +125,13 @@ export const pl = {
             ? 'WTP Warszawa'
             : id === 'poznan'
               ? 'ZTM Poznań'
+              : id === 'trojmiasto'
+                ? 'ZTM Gdańsk'
               : id === 'lodz'
                 ? 'MPK Łódź'
                 : 'MPK Wrocław',
     operatorShort: (id: string): string =>
-      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : 'MPK',
+      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : id === 'poznan' ? 'ZTM' : id === 'trojmiasto' ? 'ZTM / ZKM' : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -135,10 +141,12 @@ export const pl = {
             ? 'wtp.waw.pl'
             : id === 'poznan'
               ? 'ztm.poznan.pl'
+              : id === 'trojmiasto'
+                ? 'ztm.gda.pl'
               : id === 'lodz'
                 ? 'mpk.lodz.pl'
                 : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Łódź',
+    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź',
     changed: (name: string) => `Przełączono na: ${name}.`,
     switching: 'Przełączam miasto…',
     blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
@@ -346,6 +354,8 @@ export const pl = {
           ? 'np. Marszałkowska 12'
           : id === 'poznan'
             ? 'np. Głogowska 12'
+            : id === 'trojmiasto'
+              ? 'np. Długa 12'
             : id === 'lodz'
               ? 'np. Piotrkowska 12'
               : 'np. Swojczycka 41'),
@@ -357,6 +367,8 @@ export const pl = {
           ? 'np. Złote Tarasy'
           : id === 'poznan'
             ? 'np. Stary Browar'
+            : id === 'trojmiasto'
+              ? 'np. Galeria Bałtycka'
             : id === 'lodz'
               ? 'np. Manufaktura'
               : 'np. Sky Tower'),
@@ -368,6 +380,8 @@ export const pl = {
           ? 'np. Uniwersytet'
           : id === 'poznan'
             ? 'np. UAM'
+            : id === 'trojmiasto'
+              ? 'np. UG'
             : id === 'lodz'
               ? 'np. UŁ'
               : 'np. Politechnika'),
@@ -608,7 +622,7 @@ export const pl = {
     searching: (city: string) => `Szukam w ${city}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
-      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
+      `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
     yourPlaces: 'Twoje miejsca',
     gpsOutsideNotice: 'GPS poza obsługiwanym miastem, wybierz punkt manualnie.',

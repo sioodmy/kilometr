@@ -40,7 +40,8 @@ export const TRANSIT_PALETTE = [
  * i fallback gaśnie. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0
  * w feedzie ZTM), Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1
  * (route_type 0 w feedzie ZDiT; "6." z kropką to autobus), Warszawa dokłada
- * metro M1/M2 (route_type 1) i SKA S1…S40 (route_type 2): badge newsów nie
+ * metro M1/M2 (route_type 1) i SKA S1…S40 (route_type 2), a Trójmiasto ma
+ * własną gałąź (tramwaje 1–12, trolejbusy 21–33/710/723): badge newsów nie
  * zna trybu z planera, więc linie rozpoznaje po nazwie.
  */
 export function inferTransitMode(
@@ -65,6 +66,19 @@ export function inferTransitMode(
   // Poznań: tramwaje to 1–19 plus 97, 201 i 203 (wszystkie z route_type 0
   // w feedzie ZTM), a T6/T7 to autobusy turystyczne. Numery > 33 poza
   // wymienionymi to autobusy (nocne 2xx też, oprócz 201/203).
+  // Trójmiasto: gdańskie tramwaje to 1–12 (route_type 900 w feedzie),
+  // gdyńskie trolejbusy to 21–33, 710 i 723 (route_type 800). Nocne N1–N89
+  // i zastępcze T8/T9 to autobusy. Zakresy się nie przecinają, więc gałąź
+  // zwraca wprost i nie spada do zgadywania 1–33.
+  if (cityId === 'trojmiasto') {
+    if (/^(710|723)$/.test(clean)) return 'trolleybus';
+    if (!isNaN(num)) {
+      if (num >= 21 && num <= 33) return 'trolleybus';
+      if (num >= 1 && num <= 12) return 'tram';
+      return 'bus';
+    }
+    return 'bus';
+  }
   if (cityId === 'poznan') {
     if (/^T\d{1,2}$/i.test(clean)) return 'bus';
     if (num === 97 || num === 201 || num === 203) return 'tram';

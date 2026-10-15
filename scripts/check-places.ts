@@ -87,6 +87,12 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   expect('Środa Wlkp. w Poznaniu', suggestCityForCoords(52.2277, 17.2787)?.id, 'poznan');
   // ...a Września (~50 km) już poza nią.
   expect('Września poza Poznaniem', suggestCityForCoords(52.326, 17.5866)?.id ?? null, null);
+  expect('Długi Targ w Trójmieście', suggestCityForCoords(54.3485, 18.6533)?.id, 'trojmiasto');
+  expect('Orłowo w Trójmieście', suggestCityForCoords(54.48, 18.55)?.id, 'trojmiasto');
+  // Wejherowo (~28 km od Sopotu) to najdalszy punkt aglomeracji...
+  expect('Wejherowo w Trójmieście', suggestCityForCoords(54.6036, 18.2317)?.id, 'trojmiasto');
+  // ...a Słupsk (~70 km) już poza nią.
+  expect('Słupsk poza Trójmiastem', suggestCityForCoords(54.4647, 17.0286)?.id ?? null, null);
   expect('Piotrkowska w Łodzi', suggestCityForCoords(51.7592, 19.455)?.id, 'lodz');
   expect('Manufaktura w Łodzi', suggestCityForCoords(51.7813, 19.4448)?.id, 'lodz');
   // Zgierz (~25 km) to najdalszy punkt aglomeracji...
@@ -99,7 +105,11 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 
 describe('Rejestr miast');
 {
-  expect('sześć miast', CITIES.map((c) => c.id).join(','), 'wroclaw,krakow,gzm,warszawa,poznan,lodz');
+  expect(
+    'siedem miast',
+    CITIES.map((c) => c.id).join(','),
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz',
+  );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
     'isCityId zna wszystkie',
@@ -109,10 +119,11 @@ describe('Rejestr miast');
       isCityId('gzm'),
       isCityId('warszawa'),
       isCityId('poznan'),
+      isCityId('trojmiasto'),
       isCityId('lodz'),
       isCityId('berlin'),
     ].join(','),
-    'true,true,true,true,true,true,false',
+    'true,true,true,true,true,true,true,false',
   );
 }
 
@@ -158,6 +169,17 @@ describe('Wpis Poznania');
   expect('kafle w z14 jak reszta (limit R2)', pozn.tileMaxZoom, 14);
   expect('kolej regionalna (KW)', pozn.features.regionalRail, true);
   expect('bez bezpośredniego bus_position', pozn.features.directBusPosition, false);
+}
+
+describe('Wpis Trójmiasta');
+{
+  const tri = getCity('trojmiasto');
+  expect('slug zbiorkom to tricity (nie trojmiasto)', tri.zbiorkomSlug, 'tricity');
+  expect('osobna baza', tri.dbFile, 'kilometr-gtfs-trojmiasto.db');
+  expect('osobny pakiet kafli', tri.tilePack, 'trojmiasto-tiles.ktp');
+  expect('kafle w z14 jak reszta (limit R2)', tri.tileMaxZoom, 14);
+  expect('kolej regionalna (SKM)', tri.features.regionalRail, true);
+  expect('bez bezpośredniego bus_position', tri.features.directBusPosition, false);
 }
 
 describe('Wpis Łodzi');

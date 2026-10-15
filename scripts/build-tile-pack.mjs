@@ -10,7 +10,7 @@
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
 //
-// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|lodz] [output]
+// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz] [output]
 //
 // Nowe miasto = wpis w CITY_PACKS niżej (bbox + maxzoom + nazwa pliku).
 
@@ -50,6 +50,13 @@ const CITY_PACKS = {
     out: 'poznan-tiles.ktp',
     bbox: { minLon: 16.6, minLat: 52.15, maxLon: 17.3, maxLat: 52.65 },
     // Pełna strefa aglomeracji w z14 z gzipem to ~23 MB (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  trojmiasto: {
+    out: 'trojmiasto-tiles.ktp',
+    bbox: { minLon: 18.15, minLat: 54.1, maxLon: 18.9, maxLat: 54.66 },
+    // Pasmo Gdańsk - Sopot - Gdynia - Wejherowo w z14 z gzipem to ok. 30 MB
+    // (jak tileBbox w cities.ts; węższy wycinek niż strefa, bez wody Zatoki).
     maxZoom: 14,
   },
   lodz: {

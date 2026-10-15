@@ -3,7 +3,7 @@
 // Nowe miasto = jeden wpis tutaj + build workera. Zero ifów po id miasta
 // w reszcie kodu: serwisy czytają aktywny wpis przez cityStore.
 
-export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'lodz';
+export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz';
 
 export interface CityCenter {
   lat: number;
@@ -160,6 +160,31 @@ const POZNAN: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
+const TROJMIASTO: CityDef = {
+  id: 'trojmiasto',
+  name: 'Trójmiasto',
+  // Środek aglomeracji: Sopot leży między Gdańskiem a Gdynią.
+  center: { lat: 54.4418, lon: 18.5629 },
+  // Wejherowo to ~28 km od Sopotu, Pruszcz Gdański ~20 km.
+  radiusM: 32_000,
+  bounds: { minLat: 54.1, maxLat: 54.66, minLon: 18.15, maxLon: 18.98 },
+  nominatimViewbox: '18.15,54.66,18.98,54.1',
+  overpassBbox: '54.10,18.15,54.66,18.98',
+  // zbiorkom.live nazywa miasto `tricity` (agencje `default` dla Gdańska
+  // i `GDYNIA` dla Gdyni); bbox jak bounds.
+  zbiorkomSlug: 'tricity',
+  zbiorkomBbox: '18.15,54.1,18.98,54.66',
+  dbFile: 'kilometr-gtfs-trojmiasto.db',
+  tilePack: 'trojmiasto-tiles.ktp',
+  tileBbox: { minLat: 54.1, maxLat: 54.66, minLon: 18.15, maxLon: 18.9 },
+  // Pasmo Gdańsk - Sopot - Gdynia - Wejherowo w z14 z gzipem to ok. 30 MB.
+  tileMaxZoom: 14,
+  tilePackMB: 30,
+  // SKM siedzi we własnym publicznym GTFS (jak KW w Poznaniu). Ani ZTM
+  // Gdańsk, ani ZKM Gdynia nie mają publicznego bus_position.
+  features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
+};
+
 const LODZ: CityDef = {
   id: 'lodz',
   name: 'Łódź',
@@ -187,7 +212,7 @@ const LODZ: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
-export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, LODZ];
+export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
 

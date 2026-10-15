@@ -1,10 +1,10 @@
 // Klient zbiorkom.live Open Data API (bez klucza):
 // - miasto `pkp`: pozycje i opóźnienia pociągów regionalnych (agencja `KD`
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
-//   `KW` i `PR` dla Poznania, `LKA` dla Łodzi),
-// - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `lodz`:
-//   awaryjne (Wrocław) albo podstawowe (reszta miast) pozycje autobusów,
-//   tramwajów i metra, gdy bezpośredni feed nie odpowiada.
+//   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
+// - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
+//   / `lodz`: awaryjne (Wrocław) albo podstawowe (reszta) pozycje autobusów,
+//   tramwajów, trolejbusów i metra, gdy bezpośredni feed nie odpowiada.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -139,6 +139,20 @@ export async function fetchZbPoznanRows(): Promise<RawVehicleRow[] | null> {
 }
 
 /**
+ * Pozycje ZTM Gdańsk i ZKM Gdynia jako wiersze dla matchera. Podstawowy
+ * feed live Trójmiasta: zbiorkom agreguje je pod miastem `tricity`, Gdańsk
+ * pod agencją `default`, Gdynia pod `GDYNIA`. Bez filtra agencji, obie
+ * sieci są chciane (trolejbusy 21-33 jadą jako bus, jak Tychy w GZM).
+ */
+export async function fetchZbTricityRows(): Promise<RawVehicleRow[] | null> {
+  const { getCity } = await import('../cities');
+  const tri = getCity('trojmiasto');
+  const positions = await fetchPositions(tri.zbiorkomSlug, undefined, tri.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
  * Pozycje ZDiT Łódź jako wiersze dla matchera. Podstawowy feed live.
  * Filtr `agencies=default` (jak Warszawa): agencje `PABIANICE`, `ZGIERZ`,
  * `STRYKOW` i `ALEKSANDROW` mają własne rozkłady podmiejskie (numery 1–10
@@ -230,6 +244,23 @@ export async function fetchZbPoznanRails(): Promise<{ agency: string; vehicles: 
   if (positions === null) return null;
   const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
   for (const agency of ['KW', 'PR']) {
+    const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
+    if (vehicles.length > 0) out.push({ agency, vehicles });
+  }
+  return out;
+}
+
+/**
+ * Pociągi SKM Trójmiasto z jednego zapytania (bbox Trójmiasta, agencja
+ * SKMT). Statyczny GTFS mamy z mirroru feedu SKM, numer pociągu siedzi
+ * w trip_short_name, więc matcher spina po numerze jak KW/KM.
+ */
+export async function fetchZbSkmtRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+  const { getCity } = await import('../cities');
+  const positions = await fetchPositions('pkp', 'SKMT', getCity('trojmiasto').zbiorkomBbox);
+  if (positions === null) return null;
+  const out: { agency: string; vehicles: ZbKdVehicle[] }[] = [];
+  for (const agency of ['SKMT']) {
     const vehicles = toRailVehicles(positions.filter((p) => (p.vehicle?.agency || '') === agency));
     if (vehicles.length > 0) out.push({ agency, vehicles });
   }
