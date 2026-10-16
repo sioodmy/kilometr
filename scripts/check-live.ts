@@ -91,6 +91,14 @@ expect('zapis poza trackerem nie przecieka', liveTracker.getTripDelays().has('tr
 expect('każde wywołanie to nowa kopia', liveTracker.getTripDelays() === first, false);
 expect('pusty tracker = pusta mapa', liveTracker.getTripDelays().size, 0);
 
+// ─── getSourceHealth nie oddaje żywej mapy ────────────────────────────────
+
+describe('Zdrowie źródeł live');
+const health = liveTracker.getSourceHealth();
+health.mpk = { attempts: 1, failures: 1, lastSuccessAt: null, lastError: 'x' };
+expect('zapis poza trackerem nie przecieka', 'mpk' in liveTracker.getSourceHealth(), false);
+expect('brak źródeł przed odpytaniem = pusty obiekt', Object.keys(liveTracker.getSourceHealth()).length, 0);
+
 // ─── Pusta odpowiedź to nie awaria ────────────────────────────────────────
 
 describe('Rozróżnienie pustej odpowiedzi od awarii');
@@ -101,6 +109,12 @@ expect('obiekt zamiast tablicy = null', internals.parseRows('{"error":1}'), null
 expect('poprawna tablica przechodzi', internals.parseRows('[{"name":"1","type":"tram","x":51.1,"y":17.0,"k":7}]'), [
   { name: '1', type: 'tram', x: 51.1, y: 17.0, k: 7 },
 ]);
+expect('tablica bez ani jednego poprawnego wiersza = null', internals.parseRows('[{"foo":1},{"name":"","x":0,"y":0,"k":1}]'), null);
+expect('śmieci wśród poprawnych odsiane', internals.parseRows('[{"foo":1},{"name":"9","type":"bus","x":51.1,"y":17.0,"k":3}]'), [
+  { name: '9', type: 'bus', x: 51.1, y: 17.0, k: 3 },
+]);
+expect('brak k = wiersz odsiany', internals.parseRows('[{"name":"9","x":51.1,"y":17.0}]'), null);
+expect('nie-liczba w x = wiersz odsiany', internals.parseRows('[{"name":"9","x":"a","y":17.0,"k":1}]'), null);
 
 // ─── Odpytywanie nieznanych linii nie wywraca się ─────────────────────────
 

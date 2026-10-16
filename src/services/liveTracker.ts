@@ -85,6 +85,18 @@ export interface RawVehicleRow {
   k: number | string;
 }
 
+/**
+ * Zdrowie pojedynczego źródła live w obrębie sesji. `lastError` to ostatni
+ * powód porażki, a `lastSuccessAt` znacznik ostatniej udanej odpowiedzi, żeby
+ * dało się odróżnić „źródło padło” od „źródło nigdy nie odpowiedziało”.
+ */
+export interface SourceHealth {
+  attempts: number;
+  failures: number;
+  lastSuccessAt: number | null;
+  lastError: string | null;
+}
+
 export interface TrackedVehicle extends VehiclePosition {
   type: 'bus' | 'tram' | 'train' | 'trolleybus' | 'subway';
 }
@@ -112,6 +124,7 @@ class LiveTracker {
   private inFlight = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private restored = false;
+  private health = new Map<string, SourceHealth>();
 
   /**
    * Stan danych live: 'fresh' (mamy świeże opóźnienia), 'stale' (od dawna
@@ -170,6 +183,28 @@ class LiveTracker {
     return new Map(this.tripDelays);
   }
 
+  /** Zdrowie źródeł live w tej sesji (do diagnostyki i canary). */
+  getSourceHealth(): Record<string, SourceHealth> {
+    const out: Record<string, SourceHealth> = {};
+    for (const [name, h] of this.health) out[name] = { ...h };
+    return out;
+  }
+
+  private recordSource(name: string, ok: boolean, error?: unknown): void {
+    const h =
+      this.health.get(name) ??
+      { attempts: 0, failures: 0, lastSuccessAt: null, lastError: null };
+    h.attempts += 1;
+    if (ok) {
+      h.lastSuccessAt = Date.now();
+      h.lastError = null;
+    } else {
+      h.failures += 1;
+      if (error !== undefined) h.lastError = error instanceof Error ? error.message : String(error);
+    }
+    this.health.set(name, h);
+  }
+
   /** Ostatni snapshot (np. do spinania pozycji z kartą przejazdu). */
   lookup(vehicleId: string): TrackedVehicle | undefined {
     return this.byId.get(vehicleId);
@@ -178,6 +213,11 @@ class LiveTracker {
   snapshot(line?: string): TrackedVehicle[] {
     if (line) return this.byLine.get(line.trim().toUpperCase()) ?? [];
     return Array.from(this.byId.values());
+  }
+
+  /** Bezstanowe odpytanie źródła MPK (canary/diagnostyka), bez zapisu snapshotu. */
+  async probeMpkDirect(): Promise<RawVehicleRow[] | null> {
+    return this.fetchDirect();
   }
 
   async poll(): Promise<void> {
@@ -240,42 +280,49 @@ class LiveTracker {
       return null;
     }
     try {
-      if (id === 'krakow') {
-        const rows = await fetchZbKml();
-        return rows ? [{ vehicles: rows, prefix: 'KML:' }] : null;
-      }
-      if (id === 'gzm') {
-        const feeds = await fetchZbGzmRails();
-        if (feeds === null) return null;
-        const prefixes: Record<string, string> = { KS: 'KŚ:', IC: 'IC:', PR: 'PR:' };
-        return feeds.map((f) => ({ vehicles: f.vehicles, prefix: prefixes[f.agency] ?? `${f.agency}:` }));
-      }
-      if (id === 'warszawa') {
-        const feeds = await fetchZbWarsawRails();
-        if (feeds === null) return null;
-        return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
-      }
-      if (id === 'poznan') {
-        const feeds = await fetchZbPoznanRails();
-        if (feeds === null) return null;
-        return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
-      }
-      if (id === 'trojmiasto') {
-        const feeds = await fetchZbSkmtRails();
-        if (feeds === null) return null;
-        return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
-      }
-      if (id === 'lodz') {
-        const feeds = await fetchZbLodzRails();
-        if (feeds === null) return null;
-        return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
-      }
-      const rows = await fetchZbKd();
-      return rows ? [{ vehicles: rows, prefix: 'KD:' }] : null;
+      const feeds = await this.fetchRailByCity(id);
+      this.recordSource('rail', feeds !== null, feeds === null ? 'brak odpowiedzi' : undefined);
+      return feeds;
     } catch (err) {
+      this.recordSource('rail', false, err);
       console.warn('[LiveTracker] rail fetch failed:', err);
       return null;
     }
+  }
+
+  private async fetchRailByCity(id: string): Promise<RailFeed[] | null> {
+    if (id === 'krakow') {
+      const rows = await fetchZbKml();
+      return rows ? [{ vehicles: rows, prefix: 'KML:' }] : null;
+    }
+    if (id === 'gzm') {
+      const feeds = await fetchZbGzmRails();
+      if (feeds === null) return null;
+      const prefixes: Record<string, string> = { KS: 'KŚ:', IC: 'IC:', PR: 'PR:' };
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: prefixes[f.agency] ?? `${f.agency}:` }));
+    }
+    if (id === 'warszawa') {
+      const feeds = await fetchZbWarsawRails();
+      if (feeds === null) return null;
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+    }
+    if (id === 'poznan') {
+      const feeds = await fetchZbPoznanRails();
+      if (feeds === null) return null;
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+    }
+    if (id === 'trojmiasto') {
+      const feeds = await fetchZbSkmtRails();
+      if (feeds === null) return null;
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+    }
+    if (id === 'lodz') {
+      const feeds = await fetchZbLodzRails();
+      if (feeds === null) return null;
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+    }
+    const rows = await fetchZbKd();
+    return rows ? [{ vehicles: rows, prefix: 'KD:' }] : null;
   }
 
   /** Dopasowanie pojedynczego pojazdu na żądanie (np. przy wejściu w kartę przejazdu). */
@@ -355,9 +402,11 @@ class LiveTracker {
     if (second) return second;
     try {
       const fallback = await fetchZbWroclawRows();
+      this.recordSource('zbiorkom', fallback !== null, fallback === null ? 'brak odpowiedzi' : undefined);
       if (fallback) console.warn('[LiveTracker] MPK down, fallback zbiorkom.live');
       return fallback;
     } catch (err) {
+      this.recordSource('zbiorkom', false, err);
       console.warn('[LiveTracker] zbiorkom fallback failed:', err);
       return null;
     }
@@ -366,22 +415,26 @@ class LiveTracker {
   private async fetchZbCity(): Promise<RawVehicleRow[] | null> {
     try {
       const id = safeCityId();
-      if (id === 'krakow') return await fetchZbKrakowRows();
-      if (id === 'gzm') return await fetchZbGzmRows();
-      if (id === 'warszawa') return await fetchZbWarsawRows();
-      if (id === 'poznan') return await fetchZbPoznanRows();
-      if (id === 'trojmiasto') return await fetchZbTricityRows();
-      if (id === 'lodz') return await fetchZbLodzRows();
-      if (id === 'szczecin') return await fetchZbSzczecinRows();
-      if (id === 'kielce') return await fetchZbKielceRows();
-      if (id === 'olsztyn') return await fetchZbOlsztynRows();
-      if (id === 'bialystok') return await fetchZbBialystokRows();
-      if (id === 'opole') return await fetchZbOpoleRows();
-      if (id === 'rzeszow') return await fetchZbRzeszowRows();
-      if (id === 'lublin') return await fetchZbLublinRows();
-      if (id === 'radom') return await fetchZbRadomRows();
-      return await fetchZbWroclawRows();
+      let rows: RawVehicleRow[] | null;
+      if (id === 'krakow') rows = await fetchZbKrakowRows();
+      else if (id === 'gzm') rows = await fetchZbGzmRows();
+      else if (id === 'warszawa') rows = await fetchZbWarsawRows();
+      else if (id === 'poznan') rows = await fetchZbPoznanRows();
+      else if (id === 'trojmiasto') rows = await fetchZbTricityRows();
+      else if (id === 'lodz') rows = await fetchZbLodzRows();
+      else if (id === 'szczecin') rows = await fetchZbSzczecinRows();
+      else if (id === 'kielce') rows = await fetchZbKielceRows();
+      else if (id === 'olsztyn') rows = await fetchZbOlsztynRows();
+      else if (id === 'bialystok') rows = await fetchZbBialystokRows();
+      else if (id === 'opole') rows = await fetchZbOpoleRows();
+      else if (id === 'rzeszow') rows = await fetchZbRzeszowRows();
+      else if (id === 'lublin') rows = await fetchZbLublinRows();
+      else if (id === 'radom') rows = await fetchZbRadomRows();
+      else rows = await fetchZbWroclawRows();
+      this.recordSource('zbiorkom', rows !== null, rows === null ? 'brak odpowiedzi' : undefined);
+      return rows;
     } catch (err) {
+      this.recordSource('zbiorkom', false, err);
       console.warn('[LiveTracker] zbiorkom city fetch failed:', err);
       return null;
     }
@@ -403,9 +456,15 @@ class LiveTracker {
         body: body.toString(),
         signal: ctrl.signal,
       });
-      if (!res.ok) return null;
-      return this.parseRows(await res.text());
-    } catch {
+      if (!res.ok) {
+        this.recordSource('mpk', false, `HTTP ${res.status}`);
+        return null;
+      }
+      const rows = this.parseRows(await res.text());
+      this.recordSource('mpk', rows !== null, rows === null ? 'nieoczekiwany schemat' : undefined);
+      return rows;
+    } catch (err) {
+      this.recordSource('mpk', false, err);
       return null;
     } finally {
       clearTimeout(timer);
@@ -426,7 +485,20 @@ class LiveTracker {
       return null;
     }
     if (!Array.isArray(parsed)) return null;
-    return parsed as RawVehicleRow[];
+    if (parsed.length === 0) return [];
+    const rows: RawVehicleRow[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue;
+      const r = item as Record<string, unknown>;
+      if (typeof r.name !== 'string' || !r.name.trim()) continue;
+      if (typeof r.x !== 'number' || typeof r.y !== 'number') continue;
+      if (!Number.isFinite(r.x) || !Number.isFinite(r.y)) continue;
+      if (typeof r.k !== 'number' && typeof r.k !== 'string') continue;
+      rows.push(r as unknown as RawVehicleRow);
+    }
+    // Niepusta odpowiedź bez ani jednego poprawnego wiersza to zmiana schematu,
+    // nie noc. Zwracamy null, żeby uruchomił się fallback zamiast cichej pustki.
+    return rows.length > 0 ? rows : null;
   }
 
   private persistSnapshot(rows: RawVehicleRow[], rails?: RailFeed[], cityId?: string): void {

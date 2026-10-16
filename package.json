@@ -55,6 +55,7 @@
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
     "check:live": "tsx --require ./scripts/stub-expo.cjs scripts/check-live.ts",
+    "check:live-canary": "tsx --require ./scripts/stub-expo.cjs scripts/check-live-canary.ts",
     "check:polinka": "tsx --require ./scripts/stub-expo.cjs scripts/check-polinka.ts",
     "check:routing": "tsx --require ./scripts/stub-expo.cjs scripts/check-routing.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
