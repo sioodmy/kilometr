@@ -81,6 +81,7 @@ expect('na granicy 15 min użyteczny', snapshotIsUsable(nowMs - 15 * 60 * 1000, 
 expect('starszy niż 15 min odrzucony', snapshotIsUsable(nowMs - 15 * 60 * 1000 - 1, nowMs), false);
 expect('brak znacznika odrzucony', snapshotIsUsable(undefined, nowMs), false);
 expect('NaN odrzucony', snapshotIsUsable(NaN, nowMs), false);
+expect('znacznik z przyszłości odrzucony', snapshotIsUsable(nowMs + 60_000, nowMs), false);
 
 // ─── getTripDelays nie oddaje żywej mapy ──────────────────────────────────
 
