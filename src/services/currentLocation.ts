@@ -55,6 +55,19 @@ function getSnapshot() {
   return snapshot;
 }
 
+export function getCurrentLocationSnapshot(): LocationSnapshot {
+  return snapshot;
+}
+
+export function seedCurrentLocation(raw: RawLocationFix): void {
+  const filtered = filterLocationFix(filterState, raw);
+  if (!filtered) return;
+  publish({
+    state: 'ok',
+    location: filtered,
+  });
+}
+
 function removeWatch() {
   generation += 1;
   locationSub?.remove();
@@ -113,7 +126,10 @@ function startWatch(requestPermission: boolean): Promise<void> {
 
       if (!snapshot.location) {
         try {
-          const cached = await Location.getLastKnownPositionAsync({ maxAge: 60000 });
+          const cached = await Location.getLastKnownPositionAsync({
+            maxAge: 45000,
+            requiredAccuracy: 75,
+          });
           if (cached && token === generation && subscriberCount > 0) {
             handleLocationUpdate(cached);
           }

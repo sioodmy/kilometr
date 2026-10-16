@@ -54,7 +54,7 @@ const runtime = (routeSourceId: string) => `
     if (msg.stop) {
       features.push({
         type: 'Feature',
-        properties: { role: 'intermediate', walk: 0, sel: 2 },
+        properties: { role: 'intermediate', walk: 0, sel: 2, color: msg.accent || '#BFC9C5' },
         geometry: { type: 'Point', coordinates: [msg.stop[1], msg.stop[0]] },
       });
     }

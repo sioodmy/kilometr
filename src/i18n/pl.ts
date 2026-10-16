@@ -1072,8 +1072,8 @@ export const pl = {
     locOff: 'Lokalizacja jest wyłączona. Bez niej nie pokażę kierunku do przystanku.',
     locWaiting:
       'Nie mam jeszcze Twojej pozycji. Poczekaj na sygnał GPS albo skorzystaj z pełnej mapy.',
-    title: 'Lokalizacja przystanku',
-    followCompass: 'Kieruj się według kompasu',
+    title: 'Nawigacja do przystanku',
+    followCompass: 'Wskazówki dojścia krok po kroku',
     directionPrefix: (d: string) => `kierunek ${d}`,
     straight: 'w linii prostej',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`),

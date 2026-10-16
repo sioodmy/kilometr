@@ -17,8 +17,10 @@ const TURN_THRESHOLD_DEG = 32;
 const TURN_NOISE_DEG = 14;
 /** Drobne odchylenia łączy w jeden skręt, żeby nie mówić o każdym metrze. */
 const TURN_MERGE_M = 22;
-/** Poniżej tylu metrów manewr jest tuż przed Tobą (w promieniu słucha). */
+/** Poniżej tylu metrów manewr końcowy (przystanek / cel) ma priorytet nad załamaniem chodnika. */
 const MANEUVER_NEAR_M = 25;
+/** Dopóki do wierzchołka zakrętu zostało co najmniej tyle metrów, instrukcja skrętu pozostaje aktywna. */
+const TURN_PASS_M = 4;
 
 export type ManeuverKind =
   | 'depart'
@@ -107,7 +109,7 @@ function turnFromWindow(coords: Coord[], from: number, to: number): Turn {
   const before = Math.max(0, from - LOOKBACK_PTS);
   const after = Math.min(coords.length - 1, to + LOOKBACK_PTS);
   const delta = angleDelta(coords[before], coords[from], coords[after]);
-  return { index: to, kind: classify(delta), delta };
+  return { index: from, kind: classify(delta), delta, startIdx: from };
 }
 
 /** Ile wierzchołków w obie strony oceniamy jako kierunek dojazdu. */
@@ -133,15 +135,16 @@ export function findTurns(
     if (local === 'straight') continue;
 
     const prev = turns[turns.length - 1];
-    if (prev && cum[i] - prev.index === 0) continue;
+    if (prev && cum[i] - cum[prev.index] === 0) continue;
     // Skręty oddalone o kilka metrów i w tę samą stronę to jedno miejsce.
     if (prev && cum[i] - cum[prev.index] < TURN_MERGE_M) {
-      const window = turnFromWindow(coords, prev.startIdx ?? prev.index, i);
+      const startIdx = prev.startIdx ?? prev.index;
+      const window = turnFromWindow(coords, startIdx, i);
       if (window.kind !== 'straight' && window.kind !== 'uturn') {
-        prev.index = i;
+        prev.index = startIdx;
         prev.kind = window.kind;
         prev.delta = window.delta;
-        prev.startIdx = window.index;
+        prev.startIdx = startIdx;
         continue;
       }
     }
@@ -389,7 +392,7 @@ export interface LegSpan {
   leg: MapLeg;
   /** indeks pierwszego wierzchołka nogi w trasie */
   start: number;
-  /** indeks ostatniego wierzchołka nogi */
+  /** indeks ostatniego wierzchołka nogi w trasie */
   end: number;
 }
 
@@ -453,12 +456,13 @@ export function nextTurnOnPath(
   coords: Coord[],
   fromIndex: number,
 ): Maneuver | null {
-  const turns = findTurns(coords).filter((t) => t.index > fromIndex + 1);
-  const turn = turns.find((t) => t.alongM - distanceAlong(coords, 0, fromIndex) >= MANEUVER_NEAR_M);
+  const progressM = distanceAlong(coords, 0, fromIndex);
+  const turns = findTurns(coords).filter((t) => t.index > fromIndex);
+  const turn = turns.find((t) => t.alongM - progressM >= TURN_PASS_M);
   if (!turn) return null;
   return {
     kind: turn.kind,
-    distanceM: Math.max(0, turn.alongM - distanceAlong(coords, 0, fromIndex)),
+    distanceM: Math.max(0, turn.alongM - progressM),
     at: coords[turn.index],
     path: coords.slice(fromIndex, turn.index + 1),
   };
@@ -558,16 +562,8 @@ export function nextGuidance(
     return g;
   }
 
-  // Skręt liczymy tylko w obrębie bieżącej nogi. Na nodze kursowej między
-  // przystankami zakręt nie jest instrukcją dla pieszego, więc tam pomijamy
-  // skręty w ogóle i zostaje wsiadanie albo wysiadanie.
-  const turns = findTurns(coords);
-  const legTurns = leg.mode === 'walk'
-    ? turns.filter((t) => t.index > at + 1 && t.index <= span.end)
-    : [];
-
-  // Do końca bieżącej nogi zostało X metrów wzdłuż trasy (ciągle względem rzutowanej pozycji).
-  const legEndDist = Math.max(0, distanceAlong(coords, 0, span.end) - progressM);
+  const legEndAlongM = distanceAlong(coords, 0, span.end);
+  const legEndDist = Math.max(0, legEndAlongM - progressM);
 
   if (leg.mode !== 'walk') {
     // Stoisz przy końcu przebiegu: wysiadaj.
@@ -583,8 +579,23 @@ export function nextGuidance(
     return base('alight', span.end, legEndDist);
   }
 
-  // Noga piesza: najbliższy skręt na chodniku.
-  const turn = legTurns.find((t) => t.alongM - progressM >= MANEUVER_NEAR_M);
+  // Tuż przed przystankiem / celem podróży priorytet ma dotarcie lub wsiadanie.
+  if (legEndDist <= MANEUVER_NEAR_M) {
+    return base(legEndAction(leg, spans, span), span.end, legEndDist);
+  }
+
+  // Skręt liczymy w obrębie bieżącej nogi pieszej (z pominięciem drobnych załamań
+  // chodnika na ostatnich metrach tuż przy słupku przystankowym).
+  const turns = findTurns(coords);
+  const legTurns = turns.filter(
+    (t) =>
+      t.index > at &&
+      t.index <= span.end &&
+      legEndAlongM - t.alongM >= MANEUVER_NEAR_M,
+  );
+
+  // Noga piesza: najbliższy skręt przed użytkownikiem pozostaje aktywny aż do samego rogu.
+  const turn = legTurns.find((t) => t.alongM - progressM >= TURN_PASS_M);
   const endIsCloser = legEndDist <= (turn ? turn.alongM - progressM : Infinity);
 
   if (endIsCloser) {
@@ -593,12 +604,13 @@ export function nextGuidance(
   if (!turn) {
     return base('straight', span.end, legEndDist);
   }
-  return base(turn.kind, turn.index, turn.alongM - progressM);
+  return base(turn.kind, turn.index, Math.max(0, turn.alongM - progressM));
 }
 
 /**
- * Kolejny manewr po już wykonanym, do linijki „potem” pod instrukcją.
- * Zwraca null, gdy kolejny manewr jest tak blisko, że zabrzmi jak duplikat.
+ * Kolejny manewr po najbliższym skręcie, do linijki „potem” pod instrukcją.
+ * Zwraca null, gdy kolejny manewr jest zbyt blisko obecnego albo nie ma już
+ * żadnego skrętu przed celem.
  */
 export function nextGuidanceAfter(
   coords: Coord[],
@@ -607,28 +619,62 @@ export function nextGuidanceAfter(
   minGapM = 35,
   projOverride?: PathProjection | null,
 ): Guidance | null {
+  if (coords.length < 2 || spans.length === 0) return null;
   const proj = projOverride ?? projectOnPath(coords, userPos);
   if (!proj) return null;
   const at = Math.min(proj.index, coords.length - 2);
   const span = spanAt(spans, at);
-  if (!span) return null;
+  if (!span || span.leg.mode !== 'walk') return null;
 
-  const start = Math.max(at + 1, span.start + (span.leg.mode !== 'walk' ? 1 : 0));
-  const turns = findTurns(coords).filter((t) => t.index >= start);
-  const first = turns[0];
-  if (!first) return null;
-  const dist = first.alongM - proj.alongM;
-  if (dist < minGapM) return null;
+  const legEndAlongM = distanceAlong(coords, 0, span.end);
+  if (legEndAlongM - proj.alongM <= MANEUVER_NEAR_M) return null;
 
-  return {
-    maneuver: { kind: first.kind, distanceM: dist, at: coords[first.index], path: [] },
-    leg: spanAt(spans, first.index)?.leg ?? span.leg,
-    remainM: Math.max(0, distanceAlong(coords, 0, coords.length - 1) - proj.alongM),
-    offsetM: proj.offsetM,
-    path: coords,
-    toManeuver: coords.slice(at, first.index + 1),
-    overshot: false,
-  };
+  const legTurns = findTurns(coords).filter(
+    (t) =>
+      t.index > at &&
+      t.index <= span.end &&
+      legEndAlongM - t.alongM >= MANEUVER_NEAR_M &&
+      t.alongM - proj.alongM >= TURN_PASS_M,
+  );
+  const currentTurn = legTurns[0];
+  if (!currentTurn) return null;
+
+  const totalM = distanceAlong(coords, 0, coords.length - 1);
+  const remainToEnd = Math.max(0, totalM - proj.alongM);
+
+  const nextTurn = legTurns.find((t) => t.index > currentTurn.index && t.alongM - currentTurn.alongM >= minGapM);
+  if (nextTurn) {
+    const dist = Math.max(0, nextTurn.alongM - proj.alongM);
+    return {
+      maneuver: { kind: nextTurn.kind, distanceM: dist, at: coords[nextTurn.index], path: [] },
+      leg: span.leg,
+      remainM: remainToEnd,
+      offsetM: proj.offsetM,
+      path: coords,
+      toManeuver: coords.slice(at, nextTurn.index + 1),
+      overshot: false,
+    };
+  }
+
+  if (legEndAlongM - currentTurn.alongM >= minGapM) {
+    const dist = Math.max(0, legEndAlongM - proj.alongM);
+    return {
+      maneuver: {
+        kind: legEndAction(span.leg, spans, span),
+        distanceM: dist,
+        at: coords[span.end],
+        path: [],
+      },
+      leg: span.leg,
+      remainM: remainToEnd,
+      offsetM: proj.offsetM,
+      path: coords,
+      toManeuver: coords.slice(at, span.end + 1),
+      overshot: false,
+    };
+  }
+
+  return null;
 }
 
 /** Punkt manewru w trasie (zabezpieczony przed wyjściem poza zakres). */
