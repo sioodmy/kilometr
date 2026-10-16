@@ -3876,6 +3876,79 @@ async function main() {
   log('wagi przystanków…');
   db.exec('UPDATE stops SET weight = 0');
   db.exec('UPDATE stops SET weight = agg.c FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg WHERE agg.stop_id = stops.stop_id');
+  // 7b. Indeks czasowy kursów + blob wzorca. Wycinek aplikacji (GZM: 2,2 mln
+  // wierszy stop_times) czytał kursy przez GROUP BY po stop_times; po tym
+  // kroku czyta `trips` po (service_id, start_sec) i dostaje czasy kursu
+  // trzema blobami zamiast setek tysięcy wierszy przez mostek JS.
+  // seq_blob trzyma ref = pozycję stop_id po `ORDER BY stop_id`; aplikacja
+  // liczy tę samą kolejność z tabeli `stops`, więc nie trzeba ref-tabeli.
+  // Kursy z nieznanym stop_id zostają bez bloba (NULL) i lecą starą ścieżką.
+  log('blob wzorca kursów + indeks czasowy…');
+  db.exec('ALTER TABLE trips ADD COLUMN start_sec INTEGER');
+  db.exec('ALTER TABLE trips ADD COLUMN end_sec INTEGER');
+  db.exec('ALTER TABLE trips ADD COLUMN seq_blob BLOB');
+  db.exec('ALTER TABLE trips ADD COLUMN arr_blob BLOB');
+  db.exec('ALTER TABLE trips ADD COLUMN dep_blob BLOB');
+  {
+    const refOf = new Map();
+    db.prepare('SELECT stop_id FROM stops ORDER BY stop_id').all().forEach((r, i) => refOf.set(r.stop_id, i));
+    const upd = db.prepare('UPDATE trips SET seq_blob = ?, arr_blob = ?, dep_blob = ?, start_sec = ?, end_sec = ? WHERE trip_id = ?');
+    let curId = null;
+    let seqs = [];
+    let arrs = [];
+    let deps = [];
+    let minDep = Infinity;
+    let maxArr = -Infinity;
+    let bad = false;
+    let blobbed = 0;
+    let skipped = 0;
+    const flush = () => {
+      if (curId === null) return;
+      if (bad) {
+        skipped++;
+      } else {
+        const n = seqs.length;
+        const sb = Buffer.allocUnsafe(n * 4);
+        const ab = Buffer.allocUnsafe(n * 4);
+        const dbuf = Buffer.allocUnsafe(n * 4);
+        for (let i = 0; i < n; i++) {
+          sb.writeInt32LE(seqs[i], i * 4);
+          ab.writeInt32LE(arrs[i], i * 4);
+          dbuf.writeInt32LE(deps[i], i * 4);
+        }
+        upd.run(sb, ab, dbuf, minDep, maxArr, curId);
+        blobbed++;
+      }
+      curId = null;
+      seqs = [];
+      arrs = [];
+      deps = [];
+      minDep = Infinity;
+      maxArr = -Infinity;
+      bad = false;
+    };
+    db.exec('BEGIN');
+    for (const r of db.prepare('SELECT trip_id, stop_id, arr_sec, dep_sec FROM stop_times ORDER BY trip_id, seq').iterate()) {
+      if (r.trip_id !== curId) {
+        flush();
+        curId = r.trip_id;
+      }
+      const ref = refOf.get(r.stop_id);
+      if (ref === undefined) {
+        bad = true;
+        continue;
+      }
+      seqs.push(ref);
+      arrs.push(r.arr_sec);
+      deps.push(r.dep_sec);
+      if (r.dep_sec < minDep) minDep = r.dep_sec;
+      if (r.arr_sec > maxArr) maxArr = r.arr_sec;
+    }
+    flush();
+    db.exec('COMMIT');
+    log(`  kursów z blobem: ${blobbed}, pominiętych: ${skipped}`);
+  }
+  db.exec('CREATE INDEX idx_trips_time ON trips (service_id, start_sec)');
   // Statystyki planisty (sqlite_stat1): świeży plik nie ma historii zapytań,
   // więc PRAGMA optimize nic by nie dał — jawny ANALYZE robi to deterministycznie.
   // Na telefonie tego nie powtarzamy (import i tak jest ciężki, a indeksy wystarczą).
