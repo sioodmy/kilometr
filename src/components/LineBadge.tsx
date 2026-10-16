@@ -11,6 +11,7 @@ import { getActiveCityIdSync } from '../services/cityStore';
 export {
   getLineColors,
   inferTransitMode,
+  mapLineColor,
   TRANSIT_PALETTE,
   CABLE_BADGE_BG,
 } from '../services/lineIdentity';

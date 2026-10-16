@@ -143,6 +143,9 @@ jobs:
       - name: Run logic tests (Geometry cache)
         run: npm run check:geometry-cache
 
+      - name: Run logic tests (Map colors)
+        run: npm run check:map-colors
+
   verify-subprojects:
     name: Lint & Typecheck Subprojects
     runs-on: ubuntu-latest

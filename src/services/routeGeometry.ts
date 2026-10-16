@@ -21,7 +21,7 @@
 import { OSRM_BASE_URL } from '../config';
 import { routeFootLocal, routeFootLocalSync } from './footRouter';
 import { kvGet, kvSet } from './storage';
-import { getLineColors } from '../components/LineBadge';
+import { getLineColors, mapLineColor } from '../components/LineBadge';
 import { timeStringToSeconds } from '../gtfs/geo';
 import { selectEvictions } from './geometryEviction';
 import type { Connection, Leg } from '../types/models';
@@ -128,7 +128,7 @@ function legToMapLeg(leg: Leg): MapLeg {
     mode: leg.mode,
     line: leg.line,
     direction: leg.direction,
-    color: leg.mode === 'walk' ? '#BFC9C5' : bg,
+    color: leg.mode === 'walk' ? '#BFC9C5' : mapLineColor(bg),
     fromStop: leg.fromStop,
     toStop: leg.toStop,
     departAt: leg.departAt,
