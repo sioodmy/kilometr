@@ -67,7 +67,7 @@ import { liveTracker } from '../../src/services/liveTracker';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
-import { DepartureTimeSheet, type TimeMode } from '../../src/components/DepartureTimeSheet';
+import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import {
   RoutesThumbBar,
   type ModePreference,
@@ -379,14 +379,13 @@ export default function RoutesScreen() {
     };
   }, []);
 
-  // Stan wyboru godziny/daty: „wyjdź o” (depart) albo „bądź na” (arrive).
-  // Nad queryAt, bo zapytanie mapuje czas na właściwy parametr silnika.
+  // Stan wyboru godziny odjazdu — nad queryAt, bo zapytanie mapuje czas na
+  // parametr silnika (departureTimeSec).
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
   const [departureTimeSec, setDepartureTimeSec] = useState<number | undefined>(undefined);
-  const [timeMode, setTimeMode] = useState<TimeMode>('depart');
   const [timeLabel, setTimeLabel] = useState(s.routes.now);
 
-  const queryAt = (depSec: number | undefined, mode: TimeMode = timeMode) => {
+  const queryAt = (depSec: number | undefined) => {
     const cfg = getSettingsSync();
     return {
       fromTitle,
@@ -401,8 +400,7 @@ export default function RoutesScreen() {
       anchorStopId: activeAnchor?.stopId,
       anchorStopLat: activeAnchor?.lat,
       anchorStopLon: activeAnchor?.lon,
-      departureTimeSec: mode === 'depart' ? depSec : undefined,
-      arriveBySec: mode === 'arrive' ? depSec : undefined,
+      departureTimeSec: depSec,
       // Jednorazowe filtry nadpisują systemowe maxTransfers / typ pojazdów.
       maxTransfers: directOnly ? 0 : cfg.maxTransfers,
       modes: modeFilter,
@@ -637,7 +635,7 @@ export default function RoutesScreen() {
   // wyłapać import, który ruszył w trakcie zapytania).
   const noTimetable = () => getDataStatus().state !== 'ready';
 
-  const fetchRoutes = async (targetDepSec?: number, seamless = false, mode: TimeMode = timeMode) => {
+  const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
     const seq = ++fetchSeq.current;
     if (!seamless) {
       setLoading(true);
@@ -656,7 +654,7 @@ export default function RoutesScreen() {
         setLoadError(true);
         return;
       }
-      const q = queryAt(depSec, mode);
+      const q = queryAt(depSec);
       // Progresywne ładowanie "po kolei": pierwsze okno RAPTOR-a wpada szybko,
       // podmieniamy listę i gasimy pełny spinner od razu — reszta dociąga się
       // w tle bez migotania (stabilne klucze FlatList).
@@ -688,7 +686,7 @@ export default function RoutesScreen() {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
       // W trybie seamless nie czyścimy listy ani nie migoczemy spinnerem.
-      const cached = await loadCachedConnections(queryAt(depSec, mode));
+      const cached = await loadCachedConnections(queryAt(depSec));
       if (seq !== fetchSeq.current) return;
       if (cached) {
         setItems(applyLiveList(rehydrateConnections(cached.list, cached.savedAt), depSec));
@@ -763,9 +761,8 @@ export default function RoutesScreen() {
     const seq = ++fetchSeq.current;
 
     try {
-      // Paginacja zawsze kotwiczy się do czasów ODJAZDÓW z krawędzi listy —
-      // nawet w trybie przyjazdu (tam arriveBySec dotyczył tylko startu).
-      const c = await RoutingService.getConnections(queryAt(nextDeparture, 'depart'));
+      // Paginacja zawsze kotwiczy się do czasów ODJAZDÓW z krawędzi listy.
+      const c = await RoutingService.getConnections(queryAt(nextDeparture));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
@@ -792,8 +789,8 @@ export default function RoutesScreen() {
     const seq = ++fetchSeq.current;
 
     try {
-      // Jak wyżej: historia dokładana od czasu odjazdu, nie przyjazdu.
-      const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800, 'depart'));
+      // Historia dokładana od czasu odjazdu.
+      const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
@@ -1024,13 +1021,12 @@ export default function RoutesScreen() {
     setToLon(tempLon);
   };
 
-  const handleTimeSelect = (result: { timeSec: number | undefined; label: string; mode: TimeMode }) => {
+  const handleTimeSelect = (result: { timeSec: number | undefined; label: string }) => {
     setDepartureTimeSec(result.timeSec);
-    setTimeMode(result.mode);
     setTimeLabel(result.label);
     // Zmiana godziny przeładowuje praktycznie całą listę — pokazujemy pełny
     // spinner zamiast cichej podmiany (seamless tylko dokładałby wiersze).
-    fetchRoutes(result.timeSec, false, result.mode);
+    fetchRoutes(result.timeSec, false);
   };
 
   const isCustomTime = departureTimeSec !== undefined;
@@ -1356,7 +1352,7 @@ export default function RoutesScreen() {
           ListHeaderComponent={
             <View style={styles.countRow}>
               <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(items.length)} • {isCustomTime ? (timeMode === 'arrive' ? s.routes.countArrive(timeLabel) : s.routes.countDepart(timeLabel)) : s.routes.countNearest}
+                {connectionsLabel(items.length)} • {isCustomTime ? s.routes.countDepart(timeLabel) : s.routes.countNearest}
                 {directOnly ? s.routes.countDirect : ''}
                 {modeFilter === 'tram' ? s.routes.countTram : modeFilter === 'bus' ? s.routes.countBus : ''}
                 {loadingEarlier ? s.routes.countEarlier : ''}
@@ -1457,8 +1453,6 @@ export default function RoutesScreen() {
       {timeSheetOpen && (
         <DepartureTimeSheet
           initialTimeSec={departureTimeSec}
-          initialLabel={timeLabel}
-          initialMode={timeMode}
           onClose={() => setTimeSheetOpen(false)}
           onSelect={handleTimeSelect}
         />

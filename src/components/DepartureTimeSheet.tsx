@@ -11,26 +11,14 @@ import {
 } from 'react-native';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  Calendar,
-  Check,
-  Clock,
-  Flag,
-  Sparkles,
-  X,
-} from 'lucide-react-native';
+import { Calendar, Check, Clock, X } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 
-/** „Wyjdź o” vs „bądź na” — tryb przekazywany do silnika (departureTimeSec / arriveBySec). */
-export type TimeMode = 'depart' | 'arrive';
-
 interface DepartureTimeSheetProps {
   initialTimeSec?: number;
-  initialLabel?: string;
-  initialMode?: TimeMode;
   onClose: () => void;
-  onSelect: (result: { timeSec: number | undefined; label: string; mode: TimeMode }) => void;
+  onSelect: (result: { timeSec: number | undefined; label: string }) => void;
 }
 
 function pad(n: number): string {
@@ -134,7 +122,6 @@ function WheelPicker({
 
 export function DepartureTimeSheet({
   initialTimeSec,
-  initialMode,
   onClose,
   onSelect,
 }: DepartureTimeSheetProps) {
@@ -183,34 +170,24 @@ export function DepartureTimeSheet({
   const [day, setDay] = useState<'today' | 'tomorrow'>(initDay);
   const [hour, setHour] = useState(initHour);
   const [minute, setMinute] = useState(initMin);
-  const [mode, setMode] = useState<TimeMode>(initialMode ?? 'depart');
 
+  // Kolejne kliknięcia dokładają do WYBRANEJ godziny, nie do „teraz” —
+  // dwa razy +15 min daje 30 minut, a nie wraca do 15.
   const handleQuickAdd = (addMinutes: number) => {
     setIsNow(false);
-    const target = new Date(Date.now() + addMinutes * 60 * 1000);
-    setHour(target.getHours());
-    setMinute(target.getMinutes());
-    // Jeśli po dodaniu przeskoczyło na kolejny dzień kalendarzowy
-    if (target.getDate() !== now.getDate()) {
-      setDay('tomorrow');
-    } else {
-      setDay('today');
-    }
+    const baseSec = (day === 'tomorrow' ? 86400 : 0) + hour * 3600 + minute * 60;
+    const totalSec = baseSec + addMinutes * 60;
+    const secInDay = ((totalSec % 86400) + 86400) % 86400;
+    setHour(Math.floor(secInDay / 3600));
+    setMinute(Math.floor((secInDay % 3600) / 60));
+    setDay(totalSec >= 86400 ? 'tomorrow' : 'today');
   };
 
   const handleSetNow = () => {
     setIsNow(true);
-    setMode('depart');
     setDay('today');
     setHour(currentHour);
     setMinute(currentMinute);
-  };
-
-  const handleModeChange = (m: TimeMode) => {
-    setMode(m);
-    // „Teraz” ma sens tylko dla odjazdu — przejście na przyjazd od razu
-    // przełącza na konkretną godzinę (inaczej tryb nie miałby celu).
-    if (m === 'arrive' && isNow) setIsNow(false);
   };
 
   const setMinutePreset = (m: number) => {
@@ -223,7 +200,6 @@ export function DepartureTimeSheet({
       onSelect({
         timeSec: undefined,
         label: s.common.now,
-        mode: 'depart',
       });
     } else {
       const baseSec = hour * 3600 + minute * 60;
@@ -232,7 +208,6 @@ export function DepartureTimeSheet({
       onSelect({
         timeSec: totalSec,
         label: `${dayLabel}, ${pad(hour)}:${pad(minute)}`,
-        mode,
       });
     }
     onClose();
@@ -241,9 +216,7 @@ export function DepartureTimeSheet({
   const dayLower = day === 'today' ? s.common.todayLower : s.common.tomorrowLower;
   const confirmText = isNow
     ? s.timeSheet.confirmNow
-    : mode === 'arrive'
-      ? s.timeSheet.confirmArrive(dayLower, pad(hour), pad(minute))
-      : s.timeSheet.confirmDepart(dayLower, pad(hour), pad(minute));
+    : s.timeSheet.confirmDepart(dayLower, pad(hour), pad(minute));
 
   return (
     <BottomSheet
@@ -263,42 +236,11 @@ export function DepartureTimeSheet({
         {/* Nagłówek */}
         <View style={styles.header}>
           <View style={styles.titleRow}>
-            {mode === 'arrive' ? (
-              <Flag size={20} color={scheme.primary} />
-            ) : (
-              <Clock size={20} color={scheme.primary} />
-            )}
-            <Text style={styles.title}>{mode === 'arrive' ? s.timeSheet.titleArrive : s.timeSheet.titleDepart}</Text>
+            <Clock size={20} color={scheme.primary} />
+            <Text style={styles.title}>{s.timeSheet.titleDepart}</Text>
           </View>
           <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
             <X size={20} color={scheme.onSurfaceVariant} />
-          </Pressable>
-        </View>
-
-        {/* Toggle odjazd / przyjazd — ten sam segmented co wybór dnia */}
-        <View style={styles.daySelector}>
-          <Pressable
-            onPress={() => handleModeChange('depart')}
-            style={[styles.dayTab, mode === 'depart' && styles.dayTabActive]}
-            accessibilityRole="button"
-            accessibilityLabel={s.timeSheet.modeDepartA11y}
-          >
-            <Clock size={14} color={mode === 'depart' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
-            <Text style={[styles.dayTabText, mode === 'depart' && styles.dayTabTextActive]}>
-              {s.timeSheet.modeDepart}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => handleModeChange('arrive')}
-            style={[styles.dayTab, mode === 'arrive' && styles.dayTabActive]}
-            accessibilityRole="button"
-            accessibilityLabel={s.timeSheet.modeArriveA11y}
-          >
-            <Flag size={14} color={mode === 'arrive' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
-            <Text style={[styles.dayTabText, mode === 'arrive' && styles.dayTabTextActive]}>
-              {s.timeSheet.modeArrive}
-            </Text>
           </Pressable>
         </View>
 
@@ -308,7 +250,6 @@ export function DepartureTimeSheet({
             onPress={handleSetNow}
             style={[styles.presetChip, isNow && styles.presetChipActive]}
           >
-            <Sparkles size={14} color={isNow ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
             <Text style={[styles.presetText, isNow && styles.presetTextActive]}>{s.common.now}</Text>
           </Pressable>
 
