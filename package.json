@@ -80,7 +80,8 @@
     "check:nav": "tsx scripts/check-nav.ts",
     "check:navigation-target": "tsx scripts/check-navigation-target.ts",
     "check:minimap": "tsx scripts/check-minimap.ts",
-    "check:geometry-cache": "tsx scripts/check-geometry-cache.ts"
+    "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
+    "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,
   "overrides": {
