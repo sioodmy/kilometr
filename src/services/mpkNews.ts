@@ -2126,13 +2126,14 @@ function extractGdanskArticle(html: string): ArticleBlock[] {
   return blocks;
 }
 
-function scrubArticleHtml(raw: string): string {  let out = raw;
+function scrubArticleHtml(raw: string): string {
+  let out = raw;
   out = removeTaggedBlocks(out, /<div\b[^>]*(?:bbGallery|data-bbgallery-box|expandedSocial|socialEmbed)[^>]*>/gi);
   out = out
-    .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, ' ')
-    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<button\b[\s\S]*?<\/button>/gi, ' ')
-    .replace(/<figure\b[\s\S]*?<\/figure>/gi, ' ');
+    .replace(/<iframe\b[\s\S]*?<\/iframe\s*>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<button\b[\s\S]*?<\/button\s*>/gi, ' ')
+    .replace(/<figure\b[\s\S]*?<\/figure\s*>/gi, ' ');
   return out;
 }
 
