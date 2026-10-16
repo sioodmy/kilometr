@@ -72,6 +72,11 @@ export interface RailFeed {
 /** Ile wytrzymujemy snapshot z dysku bez odświeżenia. */
 const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000;
 
+/** Czy snapshot z dysku mieści się w oknie świeżości i ma sensowny znacznik czasu. */
+export function snapshotIsUsable(at: unknown, now: number): boolean {
+  return typeof at === 'number' && Number.isFinite(at) && now - at <= SNAPSHOT_MAX_AGE_MS;
+}
+
 export interface RawVehicleRow {
   name: string;
   type: string;
@@ -443,7 +448,7 @@ class LiveTracker {
       if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd) && !Array.isArray(parsed.rails))) return;
       // Stary snapshot to nie „live”: bez tego apka po dłuższej przerwie
       // pokazywałaby nieaktualne pojazdy, dopóki nie wróci pierwszy poll.
-      if (!parsed.at || Date.now() - parsed.at > SNAPSHOT_MAX_AGE_MS) return;
+      if (!snapshotIsUsable(parsed.at, Date.now())) return;
       if (Array.isArray(parsed.rows) && parsed.rows.length > 0) await this.matchAll(parsed.rows);
       const rails: RailFeed[] = Array.isArray(parsed.rails)
         ? parsed.rails
@@ -454,7 +459,8 @@ class LiveTracker {
         if (feed.vehicles.length > 0) await this.matchRailAll(feed.vehicles, feed.prefix);
       }
       if (this.byId.size === 0) return;
-      this.lastOk = Date.now();
+      // Wiek liczymy od chwili snapshotu, nie od teraz, żeby stare dane nie udawały świeżych.
+      this.lastOk = parsed.at;
     } catch (err) {
       console.warn('[LiveTracker] snapshot restore failed:', err);
     }

@@ -17,7 +17,7 @@
  * - brak połączenia z kodem grada za linię, której nie ma w rozkładzie.
  */
 
-import { liveTracker } from '../src/services/liveTracker';
+import { liveTracker, snapshotIsUsable } from '../src/services/liveTracker';
 import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from '../src/services/zbiorkom';
 import { gtfsStore } from '../src/services/routing/store';
 import { locateLiveStopPosition } from '../src/services/vehiclePosition';
@@ -71,6 +71,16 @@ internals.lastOk = Date.now() - 200_000;
 expect('200 s bez odpowiedzi = stale', liveTracker.getLiveState(), 'stale');
 internals.lastOk = 0;
 expect('z powrotem zero = unknown', liveTracker.getLiveState(), 'unknown');
+
+// ─── Snapshot z dysku tylko w oknie świeżości ─────────────────────────────
+
+describe('Snapshot z dysku: okno świeżości');
+const nowMs = Date.now();
+expect('świeży snapshot użyteczny', snapshotIsUsable(nowMs - 60_000, nowMs), true);
+expect('na granicy 15 min użyteczny', snapshotIsUsable(nowMs - 15 * 60 * 1000, nowMs), true);
+expect('starszy niż 15 min odrzucony', snapshotIsUsable(nowMs - 15 * 60 * 1000 - 1, nowMs), false);
+expect('brak znacznika odrzucony', snapshotIsUsable(undefined, nowMs), false);
+expect('NaN odrzucony', snapshotIsUsable(NaN, nowMs), false);
 
 // ─── getTripDelays nie oddaje żywej mapy ──────────────────────────────────
 
