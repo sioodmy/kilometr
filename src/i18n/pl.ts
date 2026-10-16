@@ -645,7 +645,7 @@ export const pl = {
     notifBody: 'Służą do wyświetlania przypiętego połączenia i alertów o utrudnieniach.',
     notifOn: 'Powiadomienia włączone.',
     notifExpoGo:
-      'Podgląd w Expo Go — powiadomienia (przypięte połączenie) działają w buildzie deweloperskim.',
+      'Podgląd w Expo Go: powiadomienia (przypięte połączenie) działają w buildzie deweloperskim.',
     notifAllow: 'Włącz powiadomienia',
     cityTitle: 'W którym mieście\njeździsz?',
     cityBody:
@@ -782,7 +782,7 @@ export const pl = {
     trackNearestA11y: 'Śledź najbliższe połączenie',
     pinUnsupportedTitle: 'Pinezka niedostępna',
     pinUnsupportedBody:
-      'Przypięte powiadomienie wymaga builda deweloperskiego — Expo Go nie wspiera powiadomień.',
+      'Przypięte powiadomienie wymaga builda deweloperskiego. Expo Go nie wspiera powiadomień.',
     notifOffTitle: 'Powiadomienia wyłączone',
     notifOffBody: 'Zezwól na powiadomienia w ustawieniach systemu, żeby przypiąć połączenie.',
     gpsFailTitle: 'Błąd lokalizacji',
@@ -806,7 +806,7 @@ export const pl = {
     calcFail: 'Nie udało się policzyć połączeń',
     noTimetable: 'Brak rozkładu',
     calcFailBody:
-      'Planer liczy trasy na telefonie. Spróbuj ponownie — jeśli powtarza się to zawsze, odśwież rozkład w ustawieniach.',
+      'Planer liczy trasy na telefonie. Spróbuj ponownie. Jeśli błąd się powtarza, odśwież rozkład w ustawieniach.',
     noTimetableBody:
       'Aplikacja liczy trasy na telefonie z pełnego rozkładu. Bez niego nie ma połączeń. Pobierz go raz, potem działa offline.',
     downloadA11y: 'Pobierz rozkład',
