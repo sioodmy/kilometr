@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   CloudOff,
   History,
+  Pin,
   RouteOff,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
@@ -26,8 +27,9 @@ import {
   areNotificationsSupported,
   ensureNotificationPermission,
   getTrackedTripSync,
-  loadNotificationPreferences,
+  permissionDeniedMessage,
   startTracking,
+  stopTracking,
   useTrackedTrip,
 } from '../../src/services/notifications';
 
@@ -53,43 +55,39 @@ export default function RouteDetailsScreen() {
 
   const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
 
-  // Wejście w szczegóły kursu uruchamia śledzenie samo z siebie, o ile
-  // „Śledzenie podróży” jest włączone w ustawieniach. Jedna próba na kurs,
-  // żeby powrót z tła nie odpalał śledzenia w kółko.
-  const autoTrackedId = useRef<string | null>(null);
-  useEffect(() => {
-    if (!item || isTrackedThis) return;
-    if (autoTrackedId.current === item.id) return;
-    autoTrackedId.current = item.id;
-    void (async () => {
-      if (!areNotificationsSupported()) return;
-      const prefs = await loadNotificationPreferences();
-      if (!prefs.trackingEnabled) return;
-      const ok = await ensureNotificationPermission();
-      if (!ok) return;
-      // Śledzimy właśnie ten kurs, nie całe zapytanie — patrz ekran połączeń.
-      // Współrzędne bierzemy z odcinków (Leg ma from/to lat/lon); fallback to
-      // domyślnego miejsca, bo planer i tak zakotwiczy się do najbliższego
-      // przystanku wokół tych współrzędnych.
-      const firstLeg = item.legs[0];
-      const lastLeg = item.legs[item.legs.length - 1];
-      // Środek aktywnego miasta, nie zawsze Wrocławia: odcinki zwykle niosą
-      // współrzędne, ale bez nich tracking musi zakotwiczyć się w mieście trasy.
-      const fallback = defaultLocationForCity(getActiveCityIdSync());
-      await startTracking({
-        id: item.id,
-        fromTitle: item.fromTitle,
-        fromLat: firstLeg?.fromLat ?? fallback.lat,
-        fromLon: firstLeg?.fromLon ?? fallback.lon,
-        toId: item.toTitle,
-        toTitle: item.toTitle,
-        toLat: lastLeg?.toLat ?? fallback.lat,
-        toLon: lastLeg?.toLon ?? fallback.lon,
-        connection: item,
-        startedAt: Date.now(),
-      });
-    })();
-  }, [item, isTrackedThis]);
+  // Śledzenie odpala się tylko przyciskiem w nagłówku. Jedno śledzenie
+  // na raz: start nowego kursu podmienia poprzedni w tripMonitor.
+  const toggleTracking = async () => {
+    if (!item) return;
+    if (isTrackedThis) {
+      await stopTracking();
+      return;
+    }
+    if (!areNotificationsSupported()) {
+      Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
+      return;
+    }
+    const ok = await ensureNotificationPermission();
+    if (!ok) {
+      Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
+      return;
+    }
+    const firstLeg = item.legs[0];
+    const lastLeg = item.legs[item.legs.length - 1];
+    const fallback = defaultLocationForCity(getActiveCityIdSync());
+    await startTracking({
+      id: item.id,
+      fromTitle: item.fromTitle,
+      fromLat: firstLeg?.fromLat ?? fallback.lat,
+      fromLon: firstLeg?.fromLon ?? fallback.lon,
+      toId: item.toTitle,
+      toTitle: item.toTitle,
+      toLat: lastLeg?.toLat ?? fallback.lat,
+      toLon: lastLeg?.toLon ?? fallback.lon,
+      connection: item,
+      startedAt: Date.now(),
+    });
+  };
 
   useEffect(() => {
     // Brak id to nie „wczytujemy” — inaczej ekran zostawał ze spinnerem w nieskończoność.
@@ -201,6 +199,32 @@ export default function RouteDetailsScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {s.routeDetails.title}
         </Text>
+        <Pressable
+          onPress={() => void toggleTracking()}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isTrackedThis }}
+          accessibilityLabel={
+            isTrackedThis ? s.routes.stopTrackingTripA11y : s.routes.trackTripA11y
+          }
+          style={({ pressed }) => [
+            styles.trackBtn,
+            isTrackedThis && styles.trackBtnActive,
+            pressed && { opacity: 0.7 },
+          ]}
+          hitSlop={8}
+        >
+          <Pin
+            size={17}
+            color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+            fill={isTrackedThis ? scheme.onPrimaryContainer : 'transparent'}
+          />
+          <Text
+            style={[styles.trackLabel, isTrackedThis && styles.trackLabelActive]}
+            numberOfLines={1}
+          >
+            {isTrackedThis ? s.routes.stopTrackTrip : s.routes.trackTrip}
+          </Text>
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
@@ -335,6 +359,20 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8 },
   iconBtn: { width: 40, height: 40, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
+  // Toggle śledzenia kursu: ikonka z listy plus label. Aktywny stan
+  // wyróżnia tło, ikonka i label przechodzą na kolor kontenera.
+  trackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  trackBtnActive: { backgroundColor: scheme.primaryContainer },
+  trackLabel: { ...type.labelLarge, fontWeight: '700', color: scheme.onSurfaceVariant },
+  trackLabelActive: { color: scheme.onPrimaryContainer },
   body: { paddingHorizontal: 14, gap: 12, paddingBottom: 24 },
   summary: { backgroundColor: scheme.surfaceContainer, borderRadius: shape.large, padding: 16, gap: 8, ...elev.level1 },
   timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

@@ -735,7 +735,9 @@ export const pl = {
     noConnectionsTitle: 'Brak połączeń',
     noConnectionsBody: 'Poczekaj aż pojawi się kurs na tej trasie.',
     stopTrackingTripA11y: 'Zatrzymaj śledzenie podróży',
-    trackNearestA11y: 'Śledź najbliższe połączenie',
+    trackTrip: 'Śledź kurs',
+    stopTrackTrip: 'Zakończ',
+    trackTripA11y: 'Śledź ten kurs',
     pinUnsupportedTitle: 'Pinezka niedostępna',
     pinUnsupportedBody:
       'Przypięte powiadomienie wymaga builda deweloperskiego — Expo Go nie wspiera powiadomień.',

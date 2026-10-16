@@ -721,7 +721,9 @@ export const en: Strings = {
     noConnectionsTitle: 'No connections',
     noConnectionsBody: 'Wait for a departure to appear on this route.',
     stopTrackingTripA11y: 'Stop tracking the trip',
-    trackNearestA11y: 'Track the nearest connection',
+    trackTrip: 'Track trip',
+    stopTrackTrip: 'Stop',
+    trackTripA11y: 'Track this trip',
     pinUnsupportedTitle: 'Pin unavailable',
     pinUnsupportedBody:
       'Pinned notifications require a development build — Expo Go does not support notifications.',
