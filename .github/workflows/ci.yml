@@ -61,7 +61,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust RAPTOR target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: modules/kilometr-raptor/rust/target
           key: rust-raptor-ci-${{ runner.os }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
