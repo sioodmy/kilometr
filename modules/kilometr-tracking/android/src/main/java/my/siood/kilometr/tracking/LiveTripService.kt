@@ -32,6 +32,9 @@ class LiveTripService : Service() {
   private var plan: LiveTripPlan? = null
   private var lastSignature: String? = null
 
+  /** Godziny końca przejazdów, o których już wibrowaliśmy. */
+  private val vibratedAlights = HashSet<Long>()
+
   private val tick = object : Runnable {
     override fun run() {
       val current = plan
@@ -46,6 +49,7 @@ class LiveTripService : Service() {
       }
 
       val phase = current.phaseAt(now)
+      maybeVibrateAlight(current, now)
       // Publikujemy tylko wtedy, gdy zmienia się coś widocznego. Pasek
       // postępu rusza się sekundowo, ale tekst nie, więc przed dojazdem
       // (gdzie postęp praktycznie stoi) budzimy się raz na kwadrans.
@@ -108,6 +112,25 @@ class LiveTripService : Service() {
     super.onDestroy()
   }
 
+  /**
+   * Przypomnienie przed wysiadaniem: lekka wibracja na dwie minuty przed
+   * końcem każdego przejazdu pojazdem. Koniec odcinka to zawsze moment,
+   * w którym trzeba coś zrobić (wysiąść na przesiadkę albo na miejscu),
+   * a przy zapatrzonym w telefon ekranie łatwo go przegapić.
+   *
+   * Wibrujemy raz na przejazd, kluczem jest godzina końca odcinka: nowe
+   * wersje planu przychodzą co kilkadziesiąt sekund i bez tego ten sam
+   * odcinek szturchałby przy każdym odświeżeniu.
+   */
+  private fun maybeVibrateAlight(current: LiveTripPlan, nowMs: Long) {
+    for (segment in current.segments) {
+      if (segment.mode == LiveTripPlan.MODE_WALK) continue
+      val at = segment.endAtMs - ALIGHT_LEAD_MS
+      if (nowMs < at || nowMs >= segment.endAtMs) continue
+      if (vibratedAlights.add(segment.endAtMs)) TripVibrator.alight(this)
+    }
+  }
+
   /** Render i publikacja. Zawsze przez startForeground, żeby FGS żyło dalej.
    *  Zwraca false, gdy startForeground się nie powiódł (usługa została wtedy
    *  zatrzymana, bo bez FGS system ubija proces po 5 s). */
@@ -148,6 +171,7 @@ class LiveTripService : Service() {
     }
     plan = null
     lastSignature = null
+    vibratedAlights.clear()
     isRunning = false
     stopSelf()
   }
@@ -156,6 +180,9 @@ class LiveTripService : Service() {
     const val ACTION_START = "my.siood.kilometr.tracking.START"
     const val ACTION_STOP = "my.siood.kilometr.tracking.STOP"
     const val EXTRA_PLAN = "plan"
+
+    /** Ile przed końcem przejazdu wibrujemy: czas, żeby odłożyć telefon i dojść do drzwi. */
+    private const val ALIGHT_LEAD_MS = 2 * 60_000L
 
     /** 1 Hz w trasie — pasek postępu ma płynąć tak jak w nawigacji. */
     private const val TICK_RIDING_MS = 1_000L

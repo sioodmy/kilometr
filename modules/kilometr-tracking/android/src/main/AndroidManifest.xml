@@ -3,6 +3,9 @@
        (Android 13+): system pokazuje prompt dopiero po utworzeniu kanału. -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+  <!-- Delikatna wibracja przed przystankiem, na którym trzeba wysiąść. -->
+  <uses-permission android:name="android.permission.VIBRATE" />
+
   <!-- Serwis śledzący podróż. Bez foreground service powiadomienie umiera
        razem z aplikacją, a po zamknięciu ekranu proces jest throttlowany —
        licznik i pasek postępu przestają wtedy żyć. -->
