@@ -48,16 +48,6 @@ function expect<T>(label: string, got: T, want: T): void {
   console.log(`   FAIL  ${label} = ${JSON.stringify(got)} (oczekiwano ${JSON.stringify(want)})`);
 }
 
-function expectClose(label: string, got: number, want: number, epsilon = 0.01): void {
-  if (Math.abs(got - want) <= epsilon) {
-    passed++;
-    console.log(`   ok    ${label} ≈ ${got.toFixed(3)}`);
-    return;
-  }
-  failures.push(`${section} → ${label}: ${got} ≠ ${want} (±${epsilon})`);
-  console.log(`   FAIL  ${label} = ${got} (oczekiwano ${want})`);
-}
-
 function expectWithin(label: string, got: number, min: number, max: number): void {
   if (got >= min && got <= max) {
     passed++;

@@ -549,8 +549,9 @@ export async function findPoiCandidates(query: string, limit = 60): Promise<PoiR
   const db = await getGtfsDb();
   const like = `%${q.replace(/[%_]/g, '')}%`;
   return db.getAllAsync<PoiRow>(
-    'SELECT osm_id, kind, category, name, norm_name, address, lat, lon, street, district FROM pois WHERE norm_name LIKE ? LIMIT 60',
+    'SELECT osm_id, kind, category, name, norm_name, address, lat, lon, street, district FROM pois WHERE norm_name LIKE ? LIMIT ?',
     like,
+    limit,
   );
 }
 

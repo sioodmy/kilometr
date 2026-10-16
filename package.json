@@ -55,6 +55,7 @@
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
     "check:live": "tsx --require ./scripts/stub-expo.cjs scripts/check-live.ts",
+    "check:live-canary": "tsx --require ./scripts/stub-expo.cjs scripts/check-live-canary.ts",
     "check:polinka": "tsx --require ./scripts/stub-expo.cjs scripts/check-polinka.ts",
     "check:routing": "tsx --require ./scripts/stub-expo.cjs scripts/check-routing.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
@@ -79,7 +80,8 @@
     "check:nav": "tsx scripts/check-nav.ts",
     "check:navigation-target": "tsx scripts/check-navigation-target.ts",
     "check:minimap": "tsx scripts/check-minimap.ts",
-    "check:geometry-cache": "tsx scripts/check-geometry-cache.ts"
+    "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
+    "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,
   "overrides": {

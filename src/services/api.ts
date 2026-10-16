@@ -5,7 +5,7 @@ import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
+import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 

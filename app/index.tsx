@@ -95,7 +95,6 @@ export default function HomeScreen() {
     const d = defaultLocationForCity(getActiveCityIdSync());
     return { lat: d.lat, lon: d.lon };
   });
-  const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [firstLegs, setFirstLegs] = useState<Record<string, { mode?: LegMode; line?: string }>>({});
   // Odliczanie „za X min" musi tykać: bez tego etykieta zapisana przy fetchu
@@ -226,7 +225,6 @@ export default function HomeScreen() {
   // refreshDataStatus ładuje status lokalnego GTFS — jeśli pusty, automatycznie
   // uruchamiamy pobieranie rozkładu, aby aplikacja działała bez serwera dev.
   useEffect(() => {
-    let cancelled = false;
     const check = async () => {
       const st = await refreshDataStatus().catch(() => ({ state: 'empty' } as const));
       if (st.state === 'empty') {
@@ -239,7 +237,6 @@ export default function HomeScreen() {
     });
     const timer = setInterval(check, 30000);
     return () => {
-      cancelled = true;
       sub.remove();
       clearInterval(timer);
     };
@@ -352,7 +349,6 @@ export default function HomeScreen() {
     const d = defaultLocationForCity(cityId);
     setLocTitle(d.title);
     setCurrentCoords({ lat: d.lat, lon: d.lon });
-    setNextDepart({});
     setFirstConns({});
     setFirstLegs({});
     refreshPlaces();
@@ -385,7 +381,6 @@ export default function HomeScreen() {
   // Przerwanie własnym szukaniem: podbicie routeSearchGen unieważnia pętlę.
   useEffect(() => {
     if (smart.length === 0) {
-      setNextDepart({});
       setFirstConns({});
       setFirstLegs({});
       return;
@@ -400,7 +395,6 @@ export default function HomeScreen() {
     const originKey = `${locTitle}|${currentCoords.lat},${currentCoords.lon}`;
     if (lastOriginRef.current !== originKey) {
       lastOriginRef.current = originKey;
-      setNextDepart({});
       setFirstConns({});
       setFirstLegs({});
     } else {
@@ -416,7 +410,6 @@ export default function HomeScreen() {
         }
         return changed ? next : prev;
       };
-      setNextDepart(prune);
       setFirstConns(prune);
       setFirstLegs(prune);
     }
@@ -444,9 +437,6 @@ export default function HomeScreen() {
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
           if (!first) continue;
-          setNextDepart((prev) =>
-            prev[d.id] === first.departInMin ? prev : { ...prev, [d.id]: first.departInMin },
-          );
           setFirstConns((prev) => ({ ...prev, [d.id]: first }));
           const transitLeg = first.legs.find((l) => l.mode !== 'walk' && l.line);
           if (transitLeg?.line) {
@@ -505,9 +495,6 @@ export default function HomeScreen() {
           if (quickRefreshGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
           if (!first) continue;
-          setNextDepart((prev) =>
-            prev[d.id] === first.departInMin ? prev : { ...prev, [d.id]: first.departInMin },
-          );
           setFirstConns((prev) => ({ ...prev, [d.id]: first }));
           const transitLeg = first.legs.find((l) => l.mode !== 'walk' && l.line);
           if (transitLeg?.line) {

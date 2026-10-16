@@ -433,7 +433,6 @@ export default function RoutesScreen() {
   const [savedQuick, setSavedQuick] = useState<Suggestion[]>([]);
   // GPS spoza strefy aktywnego miasta nie może być startem trasy.
   const [gpsOutside, setGpsOutside] = useState(false);
-  const [gpsOutsideCity, setGpsOutsideCity] = useState<string | null>(null);
 
   useEffect(() => {
     SearchService.recent().then(setRecent);
@@ -552,7 +551,6 @@ export default function RoutesScreen() {
         if (isOutsideServiceArea(l.lat, l.lon)) {
           const city = (l as { city?: string | null }).city ?? null;
           setGpsOutside(true);
-          setGpsOutsideCity(city);
           Alert.alert(
             s.home.gpsBlockedTitle,
             city ? s.home.gpsBlockedBody(city, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
@@ -569,7 +567,6 @@ export default function RoutesScreen() {
           return;
         }
         setGpsOutside(false);
-        setGpsOutsideCity(null);
         setGpsOrigin(true);
         refineAppliedRef.current = false;
         const currentSettings = getSettingsSync();
@@ -943,7 +940,6 @@ export default function RoutesScreen() {
   };
 
   const handleContentSizeChange = (_w: number, h: number) => {
-    const prevH = contentH.current;
     contentH.current = h;
     if (pendingAdjust.current != null) {
       const delta = h - pendingAdjust.current;

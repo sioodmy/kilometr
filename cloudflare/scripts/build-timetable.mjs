@@ -114,7 +114,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -3843,10 +3843,9 @@ async function main() {
       throw new Error(`niepełny Lublin (${problems.join(', ')}): nie publikuję bazy.`);
     }
     log(`LUBLIN: kursów autobusów ZDiTM=${zditmBusTrips} trolejbusów=${zditmTrolleyTrips}`);
+  }
 
-
-  // 6q. Twarda bramka, Radom:
-  // 6k. Twarda bramka, Radom: baza bez autobusów MZDiK nie nadpisuje R2.
+  // 6q. Twarda bramka, Radom: baza bez autobusów MZDiK nie nadpisuje R2.
   // Kolei nie ma wcale (Radom nie ma publicznego GTFS kolejowego), więc jak
   // w Szczecinie bramka nie wymaga przesiadek. Cały feed to busy (route_type
   // 3), liczymy je wprost z tabeli.
