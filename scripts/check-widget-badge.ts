@@ -25,8 +25,6 @@ const KOTLIN =
   'modules/kilometr-widgets/android/src/main/java/my/siood/kilometr/widgets/WidgetParts.kt';
 const DRAWABLE_DIR = 'modules/kilometr-widgets/android/src/main/res/drawable';
 
-const NOTICE = '────────────────────────────────────────────────────────────';
-
 console.log('=== Spójność badge\'a linii: paleta TS vs mapa widgetu Androida ===');
 
 // Klucz = hex, wartość = nazwa drawabla w res/drawable.
