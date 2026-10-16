@@ -3949,6 +3949,94 @@ async function main() {
     log(`  kursów z blobem: ${blobbed}, pominiętych: ${skipped}`);
   }
   db.exec('CREATE INDEX idx_trips_time ON trips (service_id, start_sec)');
+  // 7c. Footpaths jako blob: ta sama siatka, promień i wzory co
+  // store.ts buildFootpaths w aplikacji (liczymy je tu, żeby telefon nie
+  // skanował 17×17 komórek wokół każdego przystanku na starcie).
+  // Format LE: u32 magic 'FOOT', u32 liczba przystanków, potem wpisy:
+  // u32 ref_od, u32 n, n × (u32 ref_do, u32 dystans_m, u32 czas_s).
+  // Ref = pozycja stop_id po `ORDER BY stop_id` (jak seq_blob).
+  // Wrocław pomijamy: appka ma tam kolejkę linową (Polinka), której stacje
+  // dokłada dopiero aplikacja, więc jej footpaths zostają na JS i blob
+  // byłby martwym balastem w pobieranej bazie.
+  if (CITY !== 'wroclaw') {
+    log('footpaths do bloba…');
+    const GRID_DEG_LAT = 0.001;
+    const GRID_DEG_LON = 0.0015;
+    const SEARCH_RADIUS = 8;
+    const MAX_TRANSFER_METERS = 800;
+    const MIN_FOOTPATH_SEC = 45;
+    const WALK_DETOUR_FACTOR = 1.15;
+    const WALK_SPEED_MPS = 1.45;
+    // Ta sama formuła i kolejność operacji co src/gtfs/geo.ts (atan2, nie
+    // asin), żeby metry i sekundy wychodziły co do bitu jak w aplikacji.
+    const footDist = (lat1, lon1, lat2, lon2) => {
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return 6371000 * c;
+    };
+    const stopRows = db.prepare('SELECT stop_id, lat, lon FROM stops ORDER BY rowid').all();
+    const refOf = new Map();
+    db.prepare('SELECT stop_id FROM stops ORDER BY stop_id').all().forEach((r, i) => refOf.set(r.stop_id, i));
+    const grid = new Map();
+    for (const s of stopRows) {
+      const key = `${Math.floor(s.lon / GRID_DEG_LON)},${Math.floor(s.lat / GRID_DEG_LAT)}`;
+      let cell = grid.get(key);
+      if (!cell) {
+        cell = [];
+        grid.set(key, cell);
+      }
+      cell.push(s);
+    }
+    const parts = [];
+    let totalEdges = 0;
+    for (const s1 of stopRows) {
+      const gx = Math.floor(s1.lon / GRID_DEG_LON);
+      const gy = Math.floor(s1.lat / GRID_DEG_LAT);
+      const edges = [];
+      for (let dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+        for (let dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
+          const cell = grid.get(`${gx + dx},${gy + dy}`);
+          if (!cell) continue;
+          for (const s2 of cell) {
+            if (s1.stop_id === s2.stop_id) continue;
+            const dist = footDist(s1.lat, s1.lon, s2.lat, s2.lon);
+            if (dist <= MAX_TRANSFER_METERS) {
+              edges.push([
+                refOf.get(s2.stop_id),
+                Math.round(dist),
+                Math.max(MIN_FOOTPATH_SEC, Math.round((dist * WALK_DETOUR_FACTOR) / WALK_SPEED_MPS)),
+              ]);
+            }
+          }
+        }
+      }
+      if (edges.length === 0) continue;
+      parts.push([refOf.get(s1.stop_id), edges]);
+      totalEdges += edges.length;
+    }
+    let words = 2;
+    for (const [, edges] of parts) words += 2 + edges.length * 3;
+    const buf = Buffer.alloc(words * 4);
+    let w = 0;
+    buf.writeUInt32LE(0x464f4f54, w); w += 4; // 'FOOT'
+    buf.writeUInt32LE(stopRows.length, w); w += 4;
+    for (const [fromRef, edges] of parts) {
+      buf.writeUInt32LE(fromRef, w); w += 4;
+      buf.writeUInt32LE(edges.length, w); w += 4;
+      for (const [toRef, dist, dur] of edges) {
+        buf.writeUInt32LE(toRef, w); w += 4;
+        buf.writeUInt32LE(dist, w); w += 4;
+        buf.writeUInt32LE(dur, w); w += 4;
+      }
+    }
+    db.exec('CREATE TABLE footpaths (id INTEGER PRIMARY KEY, blob BLOB NOT NULL)');
+    db.prepare('INSERT INTO footpaths (id, blob) VALUES (1, ?)').run(buf);
+    log(`  footpaths: ${totalEdges} krawędzi, ${(buf.length / 1048576).toFixed(2)} MB`);
+  }
   // Statystyki planisty (sqlite_stat1): świeży plik nie ma historii zapytań,
   // więc PRAGMA optimize nic by nie dał — jawny ANALYZE robi to deterministycznie.
   // Na telefonie tego nie powtarzamy (import i tak jest ciężki, a indeksy wystarczą).
