@@ -1,5 +1,4 @@
 import { buildMapStyle, ROUTE_SOURCE_ID } from './mapStyle';
-import type { Coord } from '../services/routeGeometry';
 
 const MAPLIBRE_VERSION = '4.7.1';
 const CDN_ASSETS = [

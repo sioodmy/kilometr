@@ -619,7 +619,7 @@ class LiveTracker {
 
     // Fallback: dopasowanie do pojedynczych przystanków (np. pętla końcowa lub ostre zakręty)
     if (!bestTripId) {
-      for (const [patternId, pattern] of dayIndex.patterns.entries()) {
+      for (const pattern of dayIndex.patterns.values()) {
         if (!routeIds.includes(pattern.routeId)) continue;
         const trips = pattern.trips as any[];
         if (!trips) continue;

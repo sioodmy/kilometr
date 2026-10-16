@@ -121,7 +121,7 @@ export class VehicleTracker {
     return this.lastSuccessAt === 0 || Date.now() - this.lastSuccessAt > VehicleTracker.STALE_AFTER_MS;
   }
 
-  getLiveStatusForTrip(tripId?: string, line?: string): { delaySec: number; vehicle: VehicleMatch } | null {
+  getLiveStatusForTrip(tripId?: string): { delaySec: number; vehicle: VehicleMatch } | null {
     if (this.isStale()) return null;
     // Tylko konkretny pojazd dopasowany do tripId = prawdziwy GPS.
     // Celowo BEZ fallbacku po linii: "pierwszy pojazd linii" dawał fałszywe

@@ -19,7 +19,6 @@ import { useCurrentLocation, type CurrentLocation } from '../services/currentLoc
 import {
   buildFallbackStops,
   findUserSegment,
-  locateVehicle,
   locateLiveStopPosition,
   normalizeName,
 } from '../services/vehiclePosition';

@@ -134,7 +134,7 @@ function check(label: string, cond: boolean, detail = '') {
   // 5. Strzałka manewru zawsze wewnątrz.
   {
     for (const target of [path[2], path[path.length - 1], user]) {
-      const { project, c } = layout(path, user, 64, size);
+      const { project } = layout(path, user, 64, size);
       const t = project(toMeters(user, target));
       const ok = t.x >= 0 && t.x <= size && t.y >= 0 && t.y <= size;
       check('cel manewru w kadrze', ok, `(${t.x.toFixed(0)}, ${t.y.toFixed(0)})`);

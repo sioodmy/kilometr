@@ -50,7 +50,6 @@ import {
   Pill,
   Pizza,
   Plane,
-  Plus,
   Sandwich,
   Scissors,
   Search,
@@ -188,7 +187,6 @@ export function getPlaceIconOptions(s: Strings): PlaceIconItem[] {
 }
 
 export function AddPlaceSheet({
-  open = true,
   initialPlace,
   onClose,
   onSave,

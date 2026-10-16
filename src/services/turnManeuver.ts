@@ -510,14 +510,6 @@ function legEndAction(leg: MapLeg, spans: LegSpan[], span: LegSpan): ManeuverKin
   return 'arrive';
 }
 
-/** Na początku nogi kursowej trzeba wsiąść. */
-function legStartAction(leg: MapLeg): ManeuverKind | null {
-  if (leg.mode === 'walk') return null;
-  return leg.departAt ? 'board' : null;
-}
-
-const HEADING_PTS = 4;
-
 /**
  * Wyznacza następny manewr wzdłuż trasy od pozycji użytkownika.
  *
