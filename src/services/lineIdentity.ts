@@ -162,6 +162,48 @@ export const TROLLEY_BADGE_BG = '#2E7D32';
 export const SUBWAY_BADGE_BG: Record<string, string> = { M1: '#0000BB', M2: '#BB0000' };
 export const SUBWAY_BADGE_FALLBACK_BG = '#1A237E';
 
+/**
+ * Luminancja względna koloru (WCAG). Null dla wejścia, które nie jest
+ * 6-cyfrowym HEX-em, żeby wołający mógł oddać oryginał bez zmian.
+ */
+function relativeLuminance(hex: string): number | null {
+  const clean = hex.replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(clean)) return null;
+  const linear = [0, 2, 4].map((i) => {
+    const c = parseInt(clean.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+/** Tło mapy, po którym idzie linia trasy (MAP_COLORS.land i NavMiniMap). */
+const MAP_BG = '#101413';
+/**
+ * Minimalna luminancja linii trasy: kontrast 4.5:1 względem tła mapy.
+ * Elementy graficzne mają w WCAG próg 3:1, ale cienka linia pod
+ * przygaszeniem (opacity 0.4) potrzebuje zapasu.
+ */
+const MAP_LINE_MIN_LUM = (relativeLuminance(MAP_BG)! + 0.05) * 4.5 - 0.05;
+
+/**
+ * Kolor linii pod rysowanie trasy na ciemnej mapie. Część palety ginie na
+ * niej całkowicie (brąz #5D4037 tramwaju 19 ma kontrast 2:1, granat metra
+ * 1.4:1), więc za ciemny kolor mieszamy z bielą aż osiągnie próg. Jasne
+ * kolory wracają bez zmian i tożsamość linii zostaje ta sama co w badge'u.
+ */
+export function mapLineColor(bg: string): string {
+  const lum = relativeLuminance(bg);
+  if (lum == null || lum >= MAP_LINE_MIN_LUM) return bg;
+  const hex = bg.replace('#', '');
+  const channels = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  for (let t = 0.02; t < 1; t += 0.02) {
+    const mixed = channels.map((c) => Math.round(c + (255 - c) * t));
+    const candidate = `#${mixed.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+    if (relativeLuminance(candidate)! >= MAP_LINE_MIN_LUM) return candidate.toUpperCase();
+  }
+  return '#FFFFFF';
+}
+
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
 function contrastFg(bg: string): string {
   const hex = bg.replace('#', '');

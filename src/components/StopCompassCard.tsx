@@ -37,7 +37,7 @@ import {
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
-import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
+import { getLineColors, inferTransitMode, LineBadge, mapLineColor } from './LineBadge';
 import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { useStrings, type Strings } from '../i18n';
@@ -699,7 +699,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
               stop={stopPos}
               headingDeg={activeHeading}
               accuracyM={userLocation?.accuracy ?? null}
-              accent={lineAccent}
+              accent={mapLineColor(lineAccent)}
               style={styles.navMapPane}
             />
             <View style={styles.navCopy}>
