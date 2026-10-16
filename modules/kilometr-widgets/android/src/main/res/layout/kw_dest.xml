@@ -31,6 +31,7 @@
             android:ellipsize="end"
             android:fontFamily="sans-serif-medium"
             android:maxLines="1"
+            android:text="@string/kw_sample_origin"
             android:textColor="@color/kw_on_surface_variant"
             android:textSize="13sp" />
 
@@ -40,6 +41,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:maxLines="1"
+            android:text="@string/kw_sample_updated"
             android:textColor="@color/kw_on_surface_variant"
             android:textSize="12sp" />
     </LinearLayout>
@@ -50,7 +52,78 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center_vertical"
-        android:orientation="vertical" />
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="52dp"
+            android:orientation="horizontal"
+            android:paddingVertical="4dp">
+
+            <FrameLayout
+                android:layout_width="36dp"
+                android:layout_height="36dp">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/kw_circle" />
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/kw_ic_home"
+                    android:tint="@color/kw_on_primary_container" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:text="@string/kw_sample_place"
+                    android:textColor="@color/kw_on_surface"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/kw_sample_depart"
+                    android:textColor="@color/kw_on_surface_variant"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <include layout="@layout/kw_badge_sample" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="end"
+                android:maxLines="1"
+                android:minWidth="52dp"
+                android:text="@string/kw_sample_time"
+                android:textColor="@color/kw_primary"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </LinearLayout>
 
     <TextView
         android:id="@+id/kw_empty"

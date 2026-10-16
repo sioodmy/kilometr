@@ -2,6 +2,7 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/kw_dest_desc"
     android:initialLayout="@layout/kw_dest"
+    android:previewLayout="@layout/kw_dest"
     android:minWidth="250dp"
     android:minHeight="110dp"
     android:minResizeWidth="180dp"

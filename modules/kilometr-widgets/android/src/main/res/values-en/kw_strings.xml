@@ -14,4 +14,14 @@
     <string name="kw_open_app">Open Kilometr to load departures</string>
     <string name="kw_search_hint">Where to?</string>
     <string name="kw_sample_place">Home</string>
+    <string name="kw_sample_work">Work</string>
+    <string name="kw_sample_gym">Gym</string>
+    <string name="kw_sample_school">School</string>
+    <string name="kw_sample_origin">Center</string>
+    <string name="kw_sample_updated">as of 14:30</string>
+    <string name="kw_sample_depart">departs 14:32</string>
+    <string name="kw_sample_time">5 min</string>
+    <string name="kw_sample_trip_title">Home → Work</string>
+    <string name="kw_sample_status">On time</string>
+    <string name="kw_sample_phase">arrives in 12 min</string>
 </resources>
