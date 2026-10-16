@@ -994,7 +994,12 @@ export default function RoutesScreen() {
       {/* 1. Górny pasek: Wstecz, tytuł i toggle sortowania.
           Czas odjazdu, filtry i zamiana trasy żyją w dolnym menu pod kciukiem. */}
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
+        {/* Deep link z widgetu światkuje główny ekran; wstecz wtedy wraca do niego zamiast nic nie robić. */}
+        <Pressable
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          style={styles.back}
+          hitSlop={10}
+        >
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
 

@@ -2,6 +2,7 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/kw_saved_desc"
     android:initialLayout="@layout/kw_saved_places"
+    android:previewLayout="@layout/kw_saved_places"
     android:minWidth="110dp"
     android:minHeight="110dp"
     android:minResizeWidth="110dp"

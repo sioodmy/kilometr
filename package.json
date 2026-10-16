@@ -36,6 +36,7 @@
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
     "@types/react": "~19.2.2",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
@@ -83,6 +84,7 @@
     "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
     "check:map-colors": "tsx scripts/check-map-colors.ts",
     "check:line-badge": "tsx scripts/check-line-badge.ts",
+    "check:widget-badge": "tsx scripts/check-widget-badge.ts",
     "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,
