@@ -129,6 +129,10 @@ jobs:
           MODE="${{ parameters.mode }}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
 
+          # Numer podejścia joba (retry tego samego runu) trafia jako slot
+          # kompilacji do versionCode prod: v1.0.0 + podejście 2 -> 1000002.
+          BUILD_NUMBER="${SYSTEM_JOBATTEMPT:-1}"
+
           case "$MODE" in
             preview)
               CHANNEL="dev"
@@ -166,7 +170,8 @@ jobs:
           echo "##vso[task.setvariable variable=apk_name]$APK_NAME"
           echo "##vso[task.setvariable variable=arch]$ARCH"
           echo "##vso[task.setvariable variable=prerelease]$PRERELEASE"
-          echo "Resolved: mode=$MODE channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE"
+          echo "##vso[task.setvariable variable=build_number]$BUILD_NUMBER"
+          echo "Resolved: mode=$MODE channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE build=$BUILD_NUMBER"
         displayName: Resolve mode, channel, tag, version and asset name
 
       - task: Cache@2
@@ -208,11 +213,13 @@ jobs:
         displayName: Setup Rust Android targets and test RAPTOR engine
 
       # Wersja w metadanych APK (versionName/versionCode) zależy od tagu
-      # release'u; app.config.js czyta APP_VERSION.
+      # release'u; app.config.js czyta APP_VERSION. BUILD_NUMBER zajmuje
+      # dwie ostatnie cyfry versionCode (numer podejścia joba).
       - bash: npx expo prebuild --platform android --clean --no-install
         displayName: Expo Prebuild
         env:
           APP_VERSION: $(tag)
+          BUILD_NUMBER: $(build_number)
 
       - task: Cache@2
         displayName: Cache Gradle
@@ -260,9 +267,15 @@ jobs:
           AAPT="${ANDROID_SDK_ROOT}/build-tools/$(ANDROID_BUILD_TOOLS)/aapt"
           BADGING="$("$AAPT" dump badging "$APK")"
           APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
-          echo "APK versionName=$APK_VERSION, release tag=$(tag)"
+          APK_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p")"
+          EXPECTED_CODE="$(APP_VERSION="$(tag)" BUILD_NUMBER="$(build_number)" node -e "process.stdout.write(String(require('./app.config.js')({}).android.versionCode))")"
+          echo "APK versionName=$APK_VERSION (tag=$(tag)), versionCode=$APK_CODE (oczekiwany=$EXPECTED_CODE)"
           if [ "$APK_VERSION" != "$(tag)" ]; then
             echo "##vso[task.logissue type=error]Wersja APK ($APK_VERSION) nie zgadza się z tagiem release ($(tag))"
+            exit 1
+          fi
+          if [ "$APK_CODE" != "$EXPECTED_CODE" ]; then
+            echo "##vso[task.logissue type=error]versionCode APK ($APK_CODE) nie zgadza się z oczekiwanym ($EXPECTED_CODE)"
             exit 1
           fi
         displayName: Verify APK version matches release tag
