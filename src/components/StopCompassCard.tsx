@@ -1,9 +1,10 @@
 // Karta nawigacji pieszej do przystanku / celu na ekranie szczegółów trasy.
 //
-// Pokazuje obróconą w kierunku marszu minimapkę z dociągniętą trasą pieszą
-// oraz kolejny manewr („Skręć w lewo · 50 m”, „Potem skręć w prawo · 120 m”)
-// na każdym dystansie aż do samego słupka przystankowego. Dotknięcie całego
-// widgetu otwiera pełną mapę trasy.
+// Minimapka z dociągniętą trasą pieszą zajmuje górę widgetu (ok. 60%
+// wysokości ekranu), a pod nią leży panel instrukcji w stylu M3:
+// ikona manewru, „Skręć w lewo · 50 m”, potem następny manewr („Potem
+// skręć w prawo · 120 m”). Dotknięcie całego widgetu otwiera pełną mapę
+// trasy.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,6 +14,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {
   ArrowUp,
@@ -147,6 +149,10 @@ function roundNavM(m: number): number {
 
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
   const s = useStrings();
+  const { height: winH } = useWindowDimensions();
+  // Widget nawigacji sięga ok. 60% wysokości ekranu: mapa na górze,
+  // panel instrukcji pod nią (układ jak w Google Maps), całość klikalna.
+  const navWidgetH = Math.round(winH * 0.6);
   const walkMps = useWalkSpeedMps();
   const { location: userLocation, state: locState } = useCurrentLocation();
   const transitLegs = useMemo(() => {
@@ -640,53 +646,66 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       {/* Slot rezerwuje wysokość docelowego widgetu od pierwszego renderu,
           żeby karta nie skakała po otrzymaniu fixu GPS. */}
       {showNav && displayUserPos && stopPos ? (
+        // Cały widget jest jednym przyciskiem: dotknięcie otwiera pełną mapę.
         <AnimatedPressable
           onPress={openMap}
           style={({ pressed }) => [
             styles.navWidget,
-            styles.navSlot,
-            { opacity: navOpacity },
+            { height: navWidgetH, opacity: navOpacity },
             pressed && styles.navWidgetPressed,
           ]}
           accessibilityRole="button"
           accessibilityLabel={s.compass.navA11y(headLabel, headDist)}
         >
-          <View style={styles.navRow}>
-            <NavMiniMap
-              path={displayRoutePath}
-              user={displayUserPos}
-              stop={stopPos}
-              headingDeg={activeHeading}
-              accuracyM={userLocation?.accuracy ?? null}
-              accent={mapLineColor(lineAccent)}
-              style={styles.navMapPane}
-            />
-            <View style={styles.navCopy}>
-              <View style={styles.navDistanceRow}>
-                <ManeuverIcon size={22} strokeWidth={2.5} color={scheme.primary} />
+          {/* Mapa na pełną szerokość, góra widgetu. Instrukcje leżą pod nią
+              w panelu M3, jak w Google Maps. */}
+          <NavMiniMap
+            path={displayRoutePath}
+            user={displayUserPos}
+            stop={stopPos}
+            headingDeg={activeHeading}
+            accuracyM={userLocation?.accuracy ?? null}
+            accent={mapLineColor(lineAccent)}
+            style={styles.navMapPane}
+          />
+          <View style={styles.navSheet}>
+            {rerouting ? (
+              <View style={styles.navCopy}>
+                <Text style={styles.navInstruction} numberOfLines={2}>
+                  {s.compass.rerouting}
+                </Text>
+                {headDist ? (
+                  <Text style={styles.navDistance} numberOfLines={1}>
+                    {headDist}
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <View style={styles.navRowMain}>
+                <View style={styles.maneuverBadge}>
+                  <ManeuverIcon size={28} strokeWidth={2.2} color={scheme.onPrimary} />
+                </View>
+                <View style={styles.navCopy}>
+                  <Text style={styles.navInstruction} numberOfLines={2}>
+                    {headLabel}
+                  </Text>
+                  {nextUpText ? (
+                    <Text style={styles.navNext} numberOfLines={2}>
+                      {nextUpText}
+                    </Text>
+                  ) : null}
+                </View>
                 <Text style={styles.navDistance} numberOfLines={1}>
                   {headDist}
                 </Text>
               </View>
-              <Text style={styles.navInstruction} numberOfLines={3}>
-                {headLabel}
+            )}
+            <View style={styles.navFooter}>
+              <Text style={styles.navFooterText} numberOfLines={1}>
+                {footerText}
               </Text>
-              {rerouting ? (
-                <Text style={styles.navNext} numberOfLines={2}>
-                  {s.compass.rerouting}
-                </Text>
-              ) : nextUpText ? (
-                <Text style={styles.navNext} numberOfLines={2}>
-                  {nextUpText}
-                </Text>
-              ) : null}
+              <Maximize2 size={16} color={scheme.onSurfaceVariant} />
             </View>
-          </View>
-          <View style={styles.navFooter}>
-            <Text style={styles.navFooterText} numberOfLines={1}>
-              {footerText}
-            </Text>
-            <Maximize2 size={16} color={scheme.onSurfaceVariant} />
           </View>
         </AnimatedPressable>
       ) : (
@@ -802,51 +821,62 @@ const styles = StyleSheet.create({
   navWidget: {
     backgroundColor: scheme.surfaceContainerLowest,
     borderRadius: shape.large,
-    padding: 10,
+    padding: 8,
     gap: 8,
   },
   navWidgetPressed: {
     opacity: 0.85,
   },
-  navRow: {
+  // Mapa wypełnia górę widgetu (wysokość widgetu ustawiana inline: ok. 60%
+  // ekranu), panel instrukcji leży pod nią w tonalnym boxie.
+  navMapPane: {
+    flex: 1,
+    minWidth: 0,
+  },
+  navSheet: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.medium,
+    padding: 14,
+    gap: 10,
+  },
+  navRowMain: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  navMapPane: {
-    flex: 65,
-    minWidth: 0,
+  // Plakietka manewru w tonalnym kolorze akcentu, jak w komponentach M3.
+  maneuverBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   navCopy: {
-    flex: 35,
+    flex: 1,
     minWidth: 0,
-    justifyContent: 'center',
-    gap: 5,
-  },
-  navDistanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+    gap: 3,
   },
   navDistance: {
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: 22,
+    lineHeight: 26,
     fontWeight: '800',
     color: scheme.onSurface,
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
-    flexShrink: 1,
+    flexShrink: 0,
+    marginLeft: 2,
   },
   navInstruction: {
-    ...type.labelMedium,
-    fontWeight: '600',
+    ...type.titleMedium,
+    fontWeight: '700',
     color: scheme.onSurface,
-    lineHeight: 17,
+    lineHeight: 19,
     includeFontPadding: false,
   },
   navNext: {
-    fontSize: 10,
-    lineHeight: 13,
+    ...type.labelSmall,
     color: scheme.onSurfaceVariant,
   },
   navFooter: {
@@ -854,7 +884,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    paddingHorizontal: 2,
   },
   navFooterText: {
     ...type.labelMedium,
