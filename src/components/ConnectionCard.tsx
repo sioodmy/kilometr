@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { Fragment, memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArrowRight, Footprints } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
@@ -10,12 +10,12 @@ import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/set
 
 import { tr } from '../i18n';
 
-/** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2–4 / 5+). */
+/** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
 export function transfersLabel(n: number): string {
   return tr().connection.transfers(n);
 }
 
-/** Poprawna odmiana liczby połączeń (słownik i18n: 1 / 2–4 / 5+). */
+/** Poprawna odmiana liczby połączeń (słownik i18n: 1 / 2-4 / 5+). */
 export function connectionsLabel(n: number): string {
   return tr().connection.connections(n);
 }
@@ -25,11 +25,6 @@ function nowSec(): number {
   const d = new Date();
   return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
 }
-
-type SegmentItem =
-  | { type: 'walk'; key: string; minutes: number }
-  | { type: 'transit'; key: string; leg: Leg }
-  | { type: 'arrow'; key: string };
 
 function parseHMtoSec(hm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})/.exec(hm || '');
@@ -50,72 +45,76 @@ function getLegWalkMin(leg: Leg | undefined, walkMps: number): number {
   return 1;
 }
 
-function transitMinutes(leg: Leg): number {
-  const dep = parseHMtoSec(leg.departAt);
-  const arr = parseHMtoSec(leg.arriveAt);
-  if (dep != null && arr != null && arr > dep) {
-    return Math.max(1, Math.round((arr - dep) / 60));
-  }
-  return 3;
+interface TransitLegItem {
+  key: string;
+  leg: Leg;
+  transferWalkMinAfter: number;
 }
 
-function buildLegSegments(legs: Leg[], walkMps: number): SegmentItem[] {
-  const transitLegs = legs.filter((l) => l.mode !== 'walk');
-  if (transitLegs.length === 0) {
-    return [];
+interface JourneyStripData {
+  initialWalkMin: number;
+  transitLegs: TransitLegItem[];
+  finalWalkMin: number;
+}
+
+function buildJourneyStripData(legs: Leg[], walkMps: number): JourneyStripData {
+  const transitLegs: Leg[] = [];
+  const transitIndices: number[] = [];
+
+  for (let i = 0; i < legs.length; i++) {
+    if (legs[i].mode !== 'walk') {
+      transitLegs.push(legs[i]);
+      transitIndices.push(i);
+    }
   }
 
-  const items: SegmentItem[] = [];
+  if (transitLegs.length === 0) {
+    return { initialWalkMin: 0, transitLegs: [], finalWalkMin: 0 };
+  }
 
-  const firstTransitIdx = legs.findIndex((l) => l.mode !== 'walk');
+  let initialWalkMin = 0;
+  const firstTransitIdx = transitIndices[0];
   if (firstTransitIdx > 0) {
     const initialWalks = legs.slice(0, firstTransitIdx);
     const walkM = initialWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-    const min = walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(initialWalks[0], walkMps);
-    if (min > 0) {
-      items.push({ type: 'walk', key: 'walk-initial', minutes: min });
-    }
+    initialWalkMin = walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(initialWalks[0], walkMps);
   }
 
+  let finalWalkMin = 0;
+  const lastTransitIdx = transitIndices[transitIndices.length - 1];
+  if (lastTransitIdx < legs.length - 1) {
+    const finalWalks = legs.slice(lastTransitIdx + 1);
+    const walkM = finalWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
+    finalWalkMin = walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(finalWalks[0], walkMps);
+  }
+
+  const items: TransitLegItem[] = [];
   for (let i = 0; i < transitLegs.length; i++) {
-    const tLeg = transitLegs[i];
-    items.push({ type: 'transit', key: `transit-${tLeg.id || i}`, leg: tLeg });
+    const leg = transitLegs[i];
+    let transferWalkMinAfter = 0;
 
     if (i < transitLegs.length - 1) {
-      const nextTLeg = transitLegs[i + 1];
-      const curIdx = legs.indexOf(tLeg);
-      const nextIdx = legs.indexOf(nextTLeg);
-
-      let transferWalkMin = 0;
-      if (curIdx >= 0 && nextIdx > curIdx + 1) {
+      const curIdx = transitIndices[i];
+      const nextIdx = transitIndices[i + 1];
+      if (nextIdx > curIdx + 1) {
         const intermediateWalks = legs.slice(curIdx + 1, nextIdx).filter((l) => l.mode === 'walk');
         const transferM = intermediateWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
         if (transferM > 0) {
-          transferWalkMin = walkMinutesFor(transferM, walkMps);
+          transferWalkMinAfter = walkMinutesFor(transferM, walkMps);
         } else if (intermediateWalks.length > 0) {
-          transferWalkMin = getLegWalkMin(intermediateWalks[0], walkMps);
+          transferWalkMinAfter = getLegWalkMin(intermediateWalks[0], walkMps);
         }
       }
-
-      if (transferWalkMin > 0) {
-        items.push({ type: 'walk', key: `walk-transfer-${tLeg.id || i}`, minutes: transferWalkMin });
-      }
-
-      items.push({ type: 'arrow', key: `arrow-${tLeg.id || i}` });
     }
+
+    items.push({
+      key: `transit-${leg.id || i}`,
+      leg,
+      transferWalkMinAfter,
+    });
   }
 
-  const lastTransitIdx = legs.reduce((last, l, idx) => (l.mode !== 'walk' ? idx : last), -1);
-  if (lastTransitIdx >= 0 && lastTransitIdx < legs.length - 1) {
-    const finalWalks = legs.slice(lastTransitIdx + 1);
-    const walkM = finalWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-    const min = walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(finalWalks[0], walkMps);
-    if (min > 0) {
-      items.push({ type: 'walk', key: 'walk-final', minutes: min });
-    }
-  }
-
-  return items;
+  return { initialWalkMin, transitLegs: items, finalWalkMin };
 }
 
 /** Nazwy przystanków przesiadkowych z pola interchange silnika. */
@@ -130,44 +129,72 @@ function interchangeStops(raw?: string): string[] {
 }
 
 const BADGE_H = 28;
-const WALK_H = 18;
 const STRIP_H = 43;
-const STRIP_CELL_MIN_W = 54;
 
-function JourneyStrip({ segments }: { segments: SegmentItem[] }) {
-  const parts = segments.filter((s) => s.type === 'walk' || s.type === 'transit');
-  if (parts.length === 0) return null;
+function JourneyStrip({ data }: { data: JourneyStripData }) {
+  if (data.transitLegs.length === 0) return null;
 
-  const weights = parts.map((p) =>
-    p.type === 'walk' ? Math.max(p.minutes, 1) : transitMinutes(p.leg),
-  );
+  const count = data.transitLegs.length;
+  const isCompact = count >= 3;
 
   return (
     <View style={styles.strip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {parts.map((part, i) => {
-        const color =
-          part.type === 'transit'
-            ? getLineColors(part.leg.line, part.leg.mode).bg
-            : scheme.outlineVariant;
-        return (
-          <View key={part.key} style={[styles.stripCell, { flex: weights[i] }]}>
-            <View style={[styles.stripLine, { backgroundColor: color }]} />
-            <View style={styles.stripBadge}>
-              {part.type === 'walk' ? (
-                <View style={[styles.walkPill, { marginTop: (BADGE_H - WALK_H) / 2 }]}>
-                  <Footprints size={10} color={scheme.onSurfaceVariant} strokeWidth={2.4} />
-                  <Text style={styles.walkPillText}>{part.minutes}m</Text>
-                </View>
-              ) : (
-                <>
-                  <LineBadge mode={part.leg.mode} line={part.leg.line} compact={parts.length > 4} />
-                  <Text style={styles.stripDepart}>{part.leg.departAt}</Text>
-                </>
-              )}
-            </View>
+      {data.initialWalkMin > 0 ? (
+        <View style={styles.stripEdgeWalk}>
+          <View style={styles.walkPill}>
+            <Footprints size={9} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
+            <Text style={styles.walkPillText}>{data.initialWalkMin}m</Text>
           </View>
+          <View style={styles.stripEdgeConnectorLine} />
+        </View>
+      ) : null}
+
+      {data.transitLegs.map((item, i) => {
+        const color = getLineColors(item.leg.line, item.leg.mode).bg;
+        const isLast = i === count - 1;
+
+        return (
+          <Fragment key={item.key}>
+            <View style={styles.stripCell}>
+              <View style={[styles.stripLine, { backgroundColor: color }]} />
+              <View style={styles.stripBadge}>
+                <LineBadge
+                  mode={item.leg.mode}
+                  line={item.leg.line}
+                  compact={count > 1}
+                />
+                <Text style={styles.stripDepart}>{item.leg.departAt}</Text>
+              </View>
+            </View>
+
+            {!isLast ? (
+              <View style={[styles.stripConnector, isCompact && styles.stripConnectorCompact]}>
+                <View style={styles.stripConnectorLine} />
+                {item.transferWalkMinAfter > 0 ? (
+                  <View style={[styles.transferWalkPill, isCompact && styles.transferWalkPillCompact]}>
+                    <Footprints size={8} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
+                    <Text style={styles.transferWalkText}>{item.transferWalkMinAfter}m</Text>
+                  </View>
+                ) : (
+                  <View style={styles.transferDirectPill}>
+                    <ArrowRight size={9} color={scheme.onSurfaceVariant} strokeWidth={2.4} />
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </Fragment>
         );
       })}
+
+      {data.finalWalkMin > 0 ? (
+        <View style={styles.stripEdgeWalk}>
+          <View style={styles.stripEdgeConnectorLine} />
+          <View style={styles.walkPill}>
+            <Footprints size={9} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
+            <Text style={styles.walkPillText}>{data.finalWalkMin}m</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -180,7 +207,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 }: {
   item: Connection;
   onPress: (item: Connection) => void;
-  /** historyczne (przeszłe) połączenie — przygaszony wygląd */
+  /** historyczne (przeszłe) połączenie - przygaszony wygląd */
   dimmed?: boolean;
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;
@@ -189,7 +216,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   const now = useMemo(() => nowSec(), [tick]);
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
-  const segments = useMemo(() => buildLegSegments(item.legs, walkMps), [item.legs, walkMps]);
+  const stripData = useMemo(() => buildJourneyStripData(item.legs, walkMps), [item.legs, walkMps]);
   const transfers = useMemo(() => interchangeStops(item.interchange), [item.interchange]);
 
   const minsAgo =
@@ -320,8 +347,8 @@ export const ConnectionCard = memo(function ConnectionCard({
           </View>
           <Text style={styles.walkLabel}>{tr().connection.walkAll}</Text>
         </View>
-      ) : segments.length > 0 ? (
-        <JourneyStrip segments={segments} />
+      ) : stripData.transitLegs.length > 0 ? (
+        <JourneyStrip data={stripData} />
       ) : null}
 
       {transfers.length > 0 ? (
@@ -435,22 +462,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     height: STRIP_H,
+    width: '100%',
   },
   stripCell: {
+    flex: 1,
     height: STRIP_H,
-    minWidth: STRIP_CELL_MIN_W,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   stripLine: {
     position: 'absolute',
     left: 0,
     right: 0,
-    height: 4,
-    top: BADGE_H / 2 - 2,
+    height: 3,
+    top: Math.round(BADGE_H / 2 - 1.5),
   },
   stripBadge: {
-    alignSelf: 'center',
     alignItems: 'center',
     height: STRIP_H,
+    zIndex: 1,
   },
   stripDepart: {
     marginTop: 2,
@@ -460,6 +491,68 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     opacity: 0.72,
     fontVariant: ['tabular-nums'],
+  },
+  stripConnector: {
+    width: 36,
+    height: BADGE_H,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stripConnectorCompact: {
+    width: 30,
+  },
+  stripConnectorLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    top: Math.round(BADGE_H / 2 - 1),
+    backgroundColor: scheme.outlineVariant,
+  },
+  transferWalkPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    height: 18,
+    backgroundColor: scheme.surfaceContainerHighest,
+    paddingHorizontal: 5,
+    borderRadius: shape.full,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    zIndex: 1,
+  },
+  transferWalkPillCompact: {
+    paddingHorizontal: 4,
+    gap: 1,
+  },
+  transferWalkText: {
+    fontSize: 9,
+    lineHeight: 11,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  transferDirectPill: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 18,
+    height: 18,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    zIndex: 1,
+  },
+  stripEdgeWalk: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: BADGE_H,
+  },
+  stripEdgeConnectorLine: {
+    width: 8,
+    height: 2,
+    backgroundColor: scheme.outlineVariant,
   },
   walkOnlyWrap: {
     flexDirection: 'row',
@@ -471,10 +564,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    height: WALK_H,
+    height: 18,
     backgroundColor: scheme.outlineVariant,
-    paddingHorizontal: 9,
-    borderRadius: 999,
+    paddingHorizontal: 8,
+    borderRadius: shape.full,
   },
   walkPillText: {
     fontSize: 10,
