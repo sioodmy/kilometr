@@ -154,8 +154,17 @@ export class LocalGtfsStore {
     // (tylko miasta z koleją linową, Kraków jej nie ma i nie dostaje atrapy)
     if (cableInCity()) this.injectPolinkaStopsAndRoute();
 
-    // 4. Build footpaths
-    this.buildFootpaths();
+    // 4. Przesiadki piesze: blob z buildera (liczony natywnie w buildzie), a gdy
+    // go nie ma, dawny grid w JS. Miasta z koleją linową zostają na JS, bo
+    // stacje Polinki dokładamy dopiero tutaj i nie ma ich w blobie.
+    let footpathsFromBlob = false;
+    if (!cableInCity()) {
+      footpathsFromBlob = await this.loadFootpathsBlob(db).catch((err) => {
+        console.warn('[LocalGtfsStore] footpaths blob nie wyszedł, liczę w JS:', err);
+        return false;
+      });
+    }
+    if (!footpathsFromBlob) this.buildFootpaths();
 
     // 5. Przesiadki na pociągi (tabela z prebuilt; brak = baza bez KD)
     await this.loadInterchanges().catch(() => {});
@@ -528,6 +537,53 @@ export class LocalGtfsStore {
       this.stopRefsCache = rows.map((r) => r.stop_id);
     }
     return this.stopRefsCache;
+  }
+
+  /**
+   * Przesiadki piesze z buildera: jeden blob zamiast siatki 17×17 liczonej
+   * wokół każdego przystanku na starcie. false = brak blobu (stara baza albo
+   * inna wersja danych) i wołający liczy po staremu.
+   */
+  private async loadFootpathsBlob(
+    db: Awaited<ReturnType<typeof getGtfsDb>>,
+  ): Promise<boolean> {
+    const row = await db.getFirstAsync<{ blob: Uint8Array | ArrayBuffer }>(
+      'SELECT blob FROM footpaths WHERE id = 1',
+    );
+    if (!row?.blob) return false;
+    const bytes = row.blob instanceof Uint8Array ? row.blob : new Uint8Array(row.blob);
+    if (bytes.byteLength < 8) return false;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let w = 0;
+    if (view.getUint32(w, true) !== 0x464f4f54) return false;
+    w += 4;
+    const stopCount = view.getUint32(w, true);
+    w += 4;
+    // Inna liczba przystanków niż w bazie = blob z innej wersji danych.
+    if (stopCount !== this.stops.size) return false;
+    const stopRefs = await this.getStopRefs(db);
+    while (w + 8 <= bytes.byteLength) {
+      const fromRef = view.getInt32(w, true);
+      w += 4;
+      const n = view.getInt32(w, true);
+      w += 4;
+      const fromId = stopRefs[fromRef];
+      if (fromId === undefined || n < 0 || w + n * 12 > bytes.byteLength) {
+        this.footpaths.clear();
+        return false;
+      }
+      const list = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const toRef = view.getInt32(w, true);
+        const distance_m = view.getInt32(w + 4, true);
+        const duration_sec = view.getInt32(w + 8, true);
+        w += 12;
+        list[i] = { from_stop_id: fromId, to_stop_id: stopRefs[toRef], distance_m, duration_sec };
+      }
+      this.footpaths.set(fromId, list);
+    }
+    console.log(`[LocalGtfsStore] Footpaths z bloba: ${this.footpaths.size} przystanków.`);
+    return true;
   }
 
   /** Wczytuje stop_times porcjami do mapy kursów (nadpisuje wpisy). */
