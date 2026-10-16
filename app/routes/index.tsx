@@ -7,8 +7,6 @@ import {
   ArrowRight,
   ChevronLeft,
   Clock3,
-  Pin,
-  Radio,
   Rocket,
   X,
 } from 'lucide-react-native';
@@ -43,14 +41,7 @@ import {
 import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import {
-  areNotificationsSupported,
-  ensureNotificationPermission,
-  isSameQuery,
-  permissionDeniedMessage,
-  startTracking,
   stopTracking,
-  useTrackedTrip,
-  type TrackedTrip,
 } from '../../src/services/notifications';
 import {
   loadCachedConnections,
@@ -271,9 +262,6 @@ export default function RoutesScreen() {
     };
   });
 
-  // Aktywna podróż: ten sam plan, który zasila natywne Live Update.
-  const { trip: trackedTrip } = useTrackedTrip();
-
   // Toggle sortowania w topBar (iOS-style, z maina): 0 = odjazd
   // (zegar, lewo), 1 = przyjazd (rakieta, prawo). Kciuk dociąga timingiem —
   // spring overshootował i kciuk wyskakiwał poza tor w trakcie animacji.
@@ -291,75 +279,6 @@ export default function RoutesScreen() {
   const animatedSortThumb = useAnimatedStyle(() => ({
     transform: [{ translateX: sortProgress.value * SORT_TRAVEL }],
   }));
-
-  const currentQuery = useMemo(
-    () => ({
-      fromTitle,
-      fromLat,
-      fromLon,
-      toId,
-      toTitle,
-      toLat,
-      toLon,
-      anchorStopId: activeAnchor?.stopId,
-      anchorStopLat: activeAnchor?.lat,
-      anchorStopLon: activeAnchor?.lon,
-    }),
-    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
-  );
-
-  // Czy właśnie śledzimy tę trasę (niezależnie od wybranego kursu).
-  const isTrackingThisRoute = trackedTrip != null && isSameQuery(trackedTrip, currentQuery);
-
-  /**
-   * Śledzenie konkretnego kursu, a nie całego zapytania. Użytkownik widzi
-   * na liście godziny i linie — gdybyśmy śledzili zapytanie, powiadomienie
-   * mogłoby w międzyczasie przeskoczyć na inny kurs i kłamać.
-   */
-  const startTrackingConnection = useCallback(
-    async (conn: Connection) => {
-      if (!areNotificationsSupported()) {
-        Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
-        return;
-      }
-      const ok = await ensureNotificationPermission();
-      if (!ok) {
-        Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
-        return;
-      }
-      const track: TrackedTrip = {
-        id: conn.id,
-        fromTitle,
-        fromLat,
-        fromLon,
-        toId,
-        toTitle,
-        toLat,
-        toLon,
-        anchorStopId: activeAnchor?.stopId,
-        anchorStopLat: activeAnchor?.lat,
-        anchorStopLon: activeAnchor?.lon,
-        connection: conn,
-        startedAt: Date.now(),
-      };
-      await startTracking(track);
-    },
-    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor, s],
-  );
-
-  /** Przycisk w pasku: śledzimy najbliższe połączenie z listy. */
-  const toggleTracking = useCallback(async () => {
-    if (isTrackingThisRoute) {
-      await stopTracking();
-      return;
-    }
-    const next = displayed[0] ?? items[0];
-    if (!next) {
-      Alert.alert(s.routes.noConnectionsTitle, s.routes.noConnectionsBody);
-      return;
-    }
-    await startTrackingConnection(next);
-  }, [isTrackingThisRoute, displayed, items, startTrackingConnection, s]);
 
   // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
   const listRef = useRef<FlatList<Connection>>(null);
@@ -1080,7 +999,7 @@ export default function RoutesScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* 1. Górny pasek: Wstecz, tytuł, toggle sortowania i przypięcie.
+      {/* 1. Górny pasek: Wstecz, tytuł i toggle sortowania.
           Czas odjazdu, filtry i zamiana trasy żyją w dolnym menu pod kciukiem. */}
       <View style={styles.topBar}>
         <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
@@ -1125,36 +1044,6 @@ export default function RoutesScreen() {
           </Text>
         </View>
 
-        {/* Śledzenie podróży w slocie pinezki (którą ten PR zastępuje): ten sam
-            przycisk-pasek 1:1 ze strzałką wstecz i sortowaniem, tylko robi
-            coś innego. Opis zostaje w accessibilityLabel, bo nagłówek ma
-            już etykiety sąsiadów. */}
-        <Pressable
-          onPress={toggleTracking}
-          accessibilityRole="button"
-          accessibilityState={{ selected: isTrackingThisRoute }}
-          accessibilityLabel={
-            isTrackingThisRoute
-              ? s.routes.stopTrackingTripA11y
-              : s.routes.trackNearestA11y
-          }
-          style={({ pressed }) => [
-            styles.pinBtn,
-            isTrackingThisRoute && styles.pinBtnActive,
-            pressed && { opacity: 0.7 },
-          ]}
-          hitSlop={8}
-        >
-          {isTrackingThisRoute ? (
-            <Radio size={19} color={scheme.onPrimaryContainer} />
-          ) : (
-            <Pin
-              size={19}
-              color={scheme.onSurface}
-              fill="transparent"
-            />
-          )}
-        </Pressable>
       </View>
 
       {/* 2. Nagłówek trasy w stylu One UI: bez tła, jedna linia
@@ -1572,20 +1461,8 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
   },
-  // Pinezka 1:1 ze strzałką wstecz — dwa okrągłe akcje na końcach paska.
-  pinBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   // Karta aktywnej podróży nad listą połączeń
   activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
-  pinBtnActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
   // Dopiska kotwicy pod tytułem startu: ta sama typografia co nagłówek,
   // tylko mniejsza i w kolorze primary — zero pigułek, zero tła.
   anchorSub: {
