@@ -798,7 +798,9 @@ export const uk: Strings = {
     noConnectionsTitle: 'Немає сполучень',
     noConnectionsBody: 'Зачекайте, поки на цьому маршруті з’явиться рейс.',
     stopTrackingTripA11y: 'Зупинити відстеження подорожі',
-    trackNearestA11y: 'Відстежувати найближчий рейс',
+    trackTrip: 'Відстежувати рейс',
+    stopTrackTrip: 'Зупинити',
+    trackTripA11y: 'Відстежувати цей рейс',
     pinUnsupportedTitle: 'Закріплення недоступне',
     pinUnsupportedBody:
       'Закріплені сповіщення потребують dev-збірки. Expo Go не підтримує сповіщень.',

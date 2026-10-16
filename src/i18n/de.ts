@@ -771,7 +771,9 @@ export const de: Strings = {
     noConnectionsTitle: 'Keine Verbindungen',
     noConnectionsBody: 'Warte, bis eine Abfahrt auf dieser Route erscheint.',
     stopTrackingTripA11y: 'Reiseverfolgung beenden',
-    trackNearestA11y: 'Nächste Verbindung verfolgen',
+    trackTrip: 'Fahrt verfolgen',
+    stopTrackTrip: 'Stopp',
+    trackTripA11y: 'Diese Fahrt verfolgen',
     pinUnsupportedTitle: 'Anheften nicht verfügbar',
     pinUnsupportedBody:
       'Angeheftete Mitteilungen brauchen einen Entwicklungs-Build. Expo Go unterstützt keine Mitteilungen.',
