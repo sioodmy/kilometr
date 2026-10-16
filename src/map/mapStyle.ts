@@ -344,7 +344,7 @@ export function buildRouteLayers() {
       source: ROUTE_SOURCE_ID,
       filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'walk'], 1]] as never,
       paint: {
-        'line-color': motif().walk,
+        'line-color': ['coalesce', ['get', 'color'], motif().walk] as never,
         'line-width': bySel(4.5, 4, 4),
         'line-opacity': bySel(0.9, 0.35, 0.85),
         'line-dasharray': [1, 3.2],
@@ -377,8 +377,8 @@ export function buildRouteLayers() {
       source: ROUTE_SOURCE_ID,
       filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'role'], 'intermediate']] as never,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 16, 4, 19, 6],
-        'circle-color': motif().stopMid,
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 16, 4.5, 19, 6.5],
+        'circle-color': ['coalesce', ['get', 'color'], motif().stopMid] as never,
         'circle-stroke-color': C.land,
         'circle-stroke-width': 1.5,
         'circle-opacity': bySel(0.9, 0.35, 0.95),
@@ -392,7 +392,7 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
 /**
  * Pełny styl mapy: podkład OSM + warstwy trasy. Trasa siedzi w tym samym
  * stylu, więc WebView nie musi nic doklejać po wczytaniu — wystarczy
- * `setData` na źródle GeoJSON.
+ * `setData` na źródłe GeoJSON.
  *
  * `base` (opcjonalnie) przestawia kafle i glify na lokalny serwer mapy:
  * `base` to np. `http://127.0.0.1:45999`. Schemat kafli jest ten sam co
@@ -416,4 +416,3 @@ export function buildMapStyle(base?: string | null) {
     ],
   };
 }
-

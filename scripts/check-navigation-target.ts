@@ -2,6 +2,7 @@ import { navigationTarget } from '../src/services/navigationTarget';
 import {
   matchOnPath,
   nextGuidance,
+  nextGuidanceAfter,
   slicePathFromProjection,
   type LegSpan,
 } from '../src/services/turnManeuver';
@@ -106,6 +107,30 @@ for (const user of [footPath[0], [51.1005, 17] as Coord, footPath[2], footPath[3
   );
 }
 
+// Pierwszy zakręt na końcu pierwszego odcinka (footPath[1]) nie jest pomijany.
+const startGuidance = nextGuidance(footPath, footSpans, footPath[0]);
+check(
+  'first turn at end of current segment is reported',
+  startGuidance?.maneuver.kind === 'right' && startGuidance.maneuver.distanceM > 90,
+);
+
+// Zakręt pozostaje widoczny również 13 m przed skrzyżowaniem (nie znika 25 m przed rogiem).
+const nearCornerGuidance = nextGuidance(footPath, footSpans, [51.10088, 17.0]);
+check(
+  'turn instruction stays active within 25 m of the corner',
+  nearCornerGuidance?.maneuver.kind === 'right' &&
+    nearCornerGuidance.maneuver.distanceM > 10 &&
+    nearCornerGuidance.maneuver.distanceM < 20,
+);
+
+// nextGuidanceAfter zwraca KOLEJNY manewr (lewo na footPath[2]), a nie duplikat bieżącego.
+const afterStart = nextGuidanceAfter(footPath, footSpans, footPath[0]);
+check(
+  'nextGuidanceAfter returns the subsequent turn after the active one',
+  afterStart?.maneuver.kind === 'left' &&
+    afterStart.maneuver.distanceM > (startGuidance?.maneuver.distanceM ?? 0) + 50,
+);
+
 // Testy stabilizacji lokalizacji (Kalman + anty-multipath + strefa martwa).
 const filter = createLocationFilterState();
 const f0 = filterLocationFix(filter, {
@@ -160,6 +185,57 @@ check(
   fStationary != null && Math.abs(fStationary.lat - 51.1079) < 0.00001,
 );
 
+// Przejście ze zgrubnego odczytu sieciowego (accuracy 60 m) na dokładny GPS (accuracy 10 m)
+// oddalony o ~110 m natychmiast przestawia filtr na prawdziwą pozycję GPS.
+const coarseSeedFilter = createLocationFilterState();
+filterLocationFix(coarseSeedFilter, {
+  lat: 51.1,
+  lon: 17.0,
+  accuracy: 60,
+  speed: null,
+  heading: null,
+  timestamp: 1000,
+});
+const fPreciseReset = filterLocationFix(coarseSeedFilter, {
+  lat: 51.101,
+  lon: 17.0,
+  accuracy: 10,
+  speed: 1.2,
+  heading: 0,
+  timestamp: 5000,
+});
+check(
+  'accurate GPS fix immediately replaces coarse network seed',
+  fPreciseReset != null && Math.abs(fPreciseReset.lat - 51.101) < 1e-6,
+);
+
+// Marsz pieszego z speed: null (częste na Androidzie) wychodzi ze strefy martwej
+// i wylicza kierunek ruchu (course-over-ground) bez magnetometru.
+const walkNullSpeedFilter = createLocationFilterState();
+filterLocationFix(walkNullSpeedFilter, {
+  lat: 51.1,
+  lon: 17.0,
+  accuracy: 8,
+  speed: null,
+  heading: null,
+  timestamp: 1000,
+});
+const fWalkStep = filterLocationFix(walkNullSpeedFilter, {
+  lat: 51.10012,
+  lon: 17.0,
+  accuracy: 8,
+  speed: null,
+  heading: null,
+  timestamp: 8000,
+});
+check(
+  'walking with null speed tracks movement and derives heading',
+  fWalkStep != null &&
+    fWalkStep.lat > 51.10005 &&
+    fWalkStep.heading != null &&
+    (fWalkStep.heading < 15 || fWalkStep.heading > 345),
+);
+
 // Testy map-matchingu (monotoniczny postęp i przycięcie trasy przed użytkownikiem).
 const m1 = matchOnPath(footPath, [51.1005, 17.00004], 0, 10, 0);
 check('map matching snaps user onto the route segment', m1 != null && Math.abs(m1.snappedPoint[1] - 17.0) < 1e-6);
@@ -178,4 +254,3 @@ check(
     Math.abs(sliced[0][0] - m2!.snappedPoint[0]) < 1e-7 &&
     Math.abs(sliced[0][1] - m2!.snappedPoint[1]) < 1e-7,
 );
-
