@@ -31,25 +31,24 @@ export const TRANSIT_PALETTE = [
 ];
 
 /**
- * Rozpoznaje typ pojazdu (wrocławskie i poznańskie tramwaje to niskie numery,
- * reszta to autobusy). Moduł musi się dać importować w Node (skrypty check:*),
- * więc `cityId` jest opcjonalnym parametrem, a nie odczytem aktywnego miasta:
- * heurystyka niskich numerów dotyczy Wrocławia, Krakowa, Poznania, Łodzi
- * i Szczecina (tramwaje 1–12, autobusy 51+ i pospieszne A–C), w Olsztynie
- * obejmuje tramwaje 1–5 (autobusy startują tam od 101), a w GZM niskie
- * numery mają też autobusy, w Opolu wyłącznie autobusy (cała sieć MZK),
- * a Kielce, Białystok i Rzeszów mają wyłącznie autobusy, więc gałąź zwraca autobus wprost
- * i niski numer nigdy nie udaje tramwaju. Poznań dokłada tramwaje 97, 201 i 203 (route_type 0 w feedzie ZTM),
- * Łódź dokłada podmiejskie 41/43/45 oraz P1, R8 i Z1 (route_type 0 w feedzie
- * ZDiT; "6." z kropką to autobus), Warszawa dokłada metro M1/M2 (route_type 1)
- * i SKA S1…S40 (route_type 2), a Trójmiasto ma własną gałąź (tramwaje 1–12,
- * trolejbusy 21–33/710/723): badge newsów nie zna trybu z planera, więc linie
- * rozpoznaje po nazwie. Białystok to miasto w pełni autobusowe (BKM nie ma
- * tramwajów), więc każda linia jest autobusem i heurystyka niskich numerów
- * musi gasnąć, inaczej linie 1–30 wyglądałyby jak tramwaje. Lublin też ma własną gałąź: tramwajów nie ma
- * wcale, więc niskie numery to autobusy, a trolejbusy to 150–162 i 950
- * (route_type 11 w feedzie ZDiTM).
- * Radom to same autobusy (linie 1-27 i nocne N1-N3), więc nie spada do zgadywania 1–33.
+ * Rozpoznaje typ pojazdu po nazwie linii. Moduł musi się dać importować
+ * w Node (skrypty check:*), więc `cityId` jest opcjonalnym parametrem, a nie
+ * odczytem aktywnego miasta. Badge newsów nie zna trybu z planera, więc linie
+ * rozpoznaje po nazwie; RAPTOR ma osobny `classifyTransitMode` (route_type).
+ *
+ * Reguła bazowa: niski numer (1–33) to tramwaj, o ile miasto nie ma własnej
+ * gałęzi (patrz niżej) albo niskich numerów autobusów (GZM). Miasta bez
+ * własnej gałęzi opierają się na tej regule, bo ich rozkład numerów jest z nią
+ * zgodny: Szczecin i Olsztyn (tramwaje w niskim zakresie, autobusy od 51 / 101).
+ *
+ * Własne gałęzie (numeracja odbiega od reguły bazowej, gałąź zwraca wprost):
+ * - Warszawa: M1/M2 to metro, S1…S40 to pociąg.
+ * - Trójmiasto: trolejbusy 21–33, 710 i 723; tramwaje 1–12; reszta to autobus.
+ * - Poznań: T6/T7 to autobus, 97/201/203 to tramwaj (reszta wg reguły bazowej).
+ * - Łódź: "6." z kropką to autobus, 41/43/45 oraz P1/R8/Z1 to tramwaj.
+ * - Lublin: trolejbusy 150–162 i 950, N1–N3 to autobus, reszta to autobus.
+ * - Kielce, Białystok, Opole, Rzeszów, Radom: wyłącznie autobusy, więc każda
+ *   linia jest autobusem i niski numer nigdy nie udaje tramwaju.
  */
 export function inferTransitMode(
   mode?: LegMode,
@@ -121,7 +120,6 @@ export function inferTransitMode(
     }
     return 'bus';
   }
-
 
   // Radom: same autobusy MZDiK (linie 1-27 i nocne N1-N3, route_type 3
   // w feedzie). Bez tej gałęzi niskie numery wpadałyby w regułę tramwajową

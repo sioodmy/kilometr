@@ -3,7 +3,6 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-// - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
 //   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok` / `opole` / `rzeszow` / `lublin` / `radom`: awaryjne (Wrocław) albo podstawowe
 //   (reszta) pozycje autobusów, tramwajów, trolejbusów i metra, gdy
 //   bezpośredni feed nie odpowiada.
