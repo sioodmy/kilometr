@@ -209,6 +209,7 @@ export default function SettingsScreen() {
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [importing, setImporting] = useState(false);
   const [switchingCity, setSwitchingCity] = useState(false);
+  const [switchingCityId, setSwitchingCityId] = useState<CityId | null>(null);
   const [citySheetOpen, setCitySheetOpen] = useState(false);
   const [justSwitched, setJustSwitched] = useState<CityId | null>(null);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
@@ -244,6 +245,7 @@ export default function SettingsScreen() {
   const handleCityChange = async (id: CityId) => {
     if (id === cityId || switchingCity || busy) return;
     setSwitchingCity(true);
+    setSwitchingCityId(id);
     setJustSwitched(null);
     setOutcome(null);
     try {
@@ -257,6 +259,7 @@ export default function SettingsScreen() {
       setJustSwitched(id);
     } finally {
       setSwitchingCity(false);
+      setSwitchingCityId(null);
       setReloadKey((k) => k + 1);
     }
   };
@@ -679,7 +682,7 @@ export default function SettingsScreen() {
           }}
           onClose={() => setCitySheetOpen(false)}
           switchingCity={switchingCity}
-          switchingCityId={switchingCity ? cityId : null}
+          switchingCityId={switchingCityId}
         />
       )}
     </SafeAreaView>

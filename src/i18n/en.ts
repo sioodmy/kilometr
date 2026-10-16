@@ -443,6 +443,7 @@ export const en: Strings = {
     diagTrains: 'Regional trains',
     diagTrainsLine: (n: number) => (n === 1 ? '1 rail line' : `${n} rail lines`),
     diagTrainsNone: 'No rail lines. Download a newer timetable.',
+    diagTrainsNotSupported: 'Not applicable for this city (transit without rail)',
     diagCalendar: 'GTFS calendar',
     diagCalendarLine: (from: string, to: string) => `Timetable valid ${from} to ${to}`,
     diagCalendarEmpty: 'No calendar in the database',

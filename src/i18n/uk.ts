@@ -461,6 +461,7 @@ export const uk: Strings = {
           ? `${n} залізничні маршрути`
           : `${n} залізничних маршрутів`,
     diagTrainsNone: 'Немає залізничних маршрутів. Завантаж новіший розклад.',
+    diagTrainsNotSupported: 'Не застосовується для цього міста (громадський транспорт без залізниці)',
     diagCalendar: 'Календар GTFS',
     diagCalendarLine: (from: string, to: string) => `Розклад дійсний ${from} – ${to}`,
     diagCalendarEmpty: 'Немає календаря в базі',

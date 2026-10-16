@@ -158,11 +158,19 @@ export async function runDiagnostics(): Promise<DiagResult> {
   } catch {
     trains = 0;
   }
+  const railSupported = city.features.regionalRail;
   items.push({
     id: 'trains',
-    level: trains > 0 ? 'ok' : empty ? 'error' : 'warn',
+    level: !railSupported || trains > 0 ? 'ok' : empty ? 'error' : 'warn',
     title: t.diagTrains,
-    detail: trains > 0 ? t.diagTrainsLine(trains) : empty ? t.diagCountsEmpty : t.diagTrainsNone,
+    detail:
+      trains > 0
+        ? t.diagTrainsLine(trains)
+        : !railSupported
+          ? t.diagTrainsNotSupported
+          : empty
+            ? t.diagCountsEmpty
+            : t.diagTrainsNone,
   });
 
   let calendar: DiagResult['calendar'] = null;

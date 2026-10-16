@@ -456,6 +456,7 @@ export const pl = {
     diagTrainsLine: (n: number) =>
       n === 1 ? '1 trasa kolejowa' : isFew(n) ? `${n} trasy kolejowe` : `${n} tras kolejowych`,
     diagTrainsNone: 'Brak tras kolejowych. Pobierz nowszy rozkład.',
+    diagTrainsNotSupported: 'Brak w ofercie miasta (komunikacja miejska bez kolei)',
     diagCalendar: 'Kalendarz GTFS',
     diagCalendarLine: (from: string, to: string) => `Rozkład ważny ${from} – ${to}`,
     diagCalendarEmpty: 'Brak kalendarza w bazie',

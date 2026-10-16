@@ -447,6 +447,7 @@ export const de: Strings = {
     diagTrains: 'Regionalzüge',
     diagTrainsLine: (n: number) => (n === 1 ? '1 Bahnlinie' : `${n} Bahnlinien`),
     diagTrainsNone: 'Keine Bahnlinien. Lade einen neueren Fahrplan.',
+    diagTrainsNotSupported: 'Nicht zutreffend für diese Stadt (ÖPNV ohne Bahn)',
     diagCalendar: 'GTFS-Kalender',
     diagCalendarLine: (from: string, to: string) => `Fahrplan gültig ${from} bis ${to}`,
     diagCalendarEmpty: 'Kein Kalender in der Datenbank',

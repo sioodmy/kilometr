@@ -79,6 +79,13 @@ const CITY_ALIASES: Record<string, string[]> = {
   ],
   lodz: ['łódź', 'lodz', 'zgierz', 'pabianice', 'aleksandrów łódzki', 'konstantynów łódzki'],
   szczecin: ['szczecin', 'pomorze zachodnie', 'police', 'dobra', 'gryfino', 'stargard', 'stettin'],
+  kielce: ['kielce', 'świętokrzyskie', 'swietokrzyskie', 'chęciny', 'checiny', 'morawica', 'masłów', 'maslow', 'daleszyce', 'zagnańsk', 'zagnansk'],
+  olsztyn: ['olsztyn', 'warmia', 'mazury', 'allenstein', 'dywity', 'stawiguda', 'barczewo'],
+  bialystok: ['białystok', 'bialystok', 'podlasie', 'podlaskie', 'wasilków', 'wasilkow', 'choroszcz', 'supraśl', 'suprasl', 'zabłudów', 'zabludow'],
+  opole: ['opole', 'opolskie', 'opolszczyzna', 'oppeln', 'komprachcice', 'tarnów opolski', 'tarnow opolski', 'prószków', 'proszkow'],
+  rzeszow: ['rzeszów', 'rzeszow', 'podkarpacie', 'podkarpackie', 'jasionka', 'łańcut', 'lancut', 'krasne', 'tyczyn', 'boguchwała', 'boguchwala', 'głogów małopolski', 'glogow malopolski'],
+  lublin: ['lublin', 'lubelskie', 'lubelszczyzna', 'świdnik', 'swidnik', 'niemce', 'konopnica', 'głusk', 'glusk', 'jastków', 'jastkow'],
+  radom: ['radom', 'radomskie', 'ziemia radomska', 'pionki', 'jedlnia', 'iłża', 'ilza', 'skaryszew', 'wolanów', 'wolanow', 'zakrzew'],
 };
 
 export interface CitySelectSheetProps {
