@@ -158,7 +158,7 @@ export async function runDiagnostics(): Promise<DiagResult> {
   } catch {
     trains = 0;
   }
-  const railSupported = city.features.regionalRail;
+  const railSupported = getCity(cityId).features.regionalRail;
   items.push({
     id: 'trains',
     level: !railSupported || trains > 0 ? 'ok' : empty ? 'error' : 'warn',
