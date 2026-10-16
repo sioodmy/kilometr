@@ -1,8 +1,8 @@
 # Ręczny build pakietu kafelków mapy per-miasto → Cloudflare R2.
 #
 # Uruchamiaj rzadko i ręcznie: kafle OSM zmieniają się powoli, a pakiet waży
-# ~31 MB. Gdy go odpalasz z gałęzi innej niż domyślna, wybierz tę gałąź
-# w „Run workflow". Miasto wybierasz inputem `city`.
+# ~19–104 MB (KMTP v2 z kompresją gzip). Gdy go odpalasz z gałęzi innej niż domyślna,
+# wybierz tę gałąź w „Run workflow”. Miasto wybierasz inputem `city`.
 #
 # Wymagane sekrety (te same co timetable.yml):
 #   CLOUDFLARE_API_TOKEN   token z uprawnieniem R2 write na bucket kilometr-timetable
@@ -24,7 +24,7 @@ on:
         required: true
         default: 'wroclaw'
         type: choice
-        options: [wroclaw, krakow, gzm, warszawa]
+        options: [wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom]
 
 permissions:
   contents: read
@@ -56,7 +56,7 @@ jobs:
           SIZE=$(du -h "dist/${{ inputs.city }}-tiles.ktp" | cut -f1)
           echo "### Pakiet kafelków (${{ inputs.city }}): ${SIZE}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          node -e "const fs=require('fs');const b=fs.readFileSync('dist/${{ inputs.city }}-tiles.ktp');console.log(JSON.stringify({kafelkow:b.readUInt32LE(8),maxzoom:b.readUInt32LE(12),rozmiarMB:+(b.length/1048576).toFixed(1)}))" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const fs=require('fs');const b=fs.readFileSync('dist/${{ inputs.city }}-tiles.ktp');console.log(JSON.stringify({wersja:b.readUInt32LE(4),kafelkow:b.readUInt32LE(8),maxzoom:b.readUInt32LE(12),rozmiarMB:+(b.length/1048576).toFixed(1)}))" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Artefakt (7 dni, do ręcznego wgrania)

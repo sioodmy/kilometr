@@ -7,8 +7,6 @@ import {
   ArrowRight,
   ChevronLeft,
   Clock3,
-  Pin,
-  Radio,
   Rocket,
   X,
 } from 'lucide-react-native';
@@ -43,14 +41,7 @@ import {
 import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import {
-  areNotificationsSupported,
-  ensureNotificationPermission,
-  isSameQuery,
-  permissionDeniedMessage,
-  startTracking,
   stopTracking,
-  useTrackedTrip,
-  type TrackedTrip,
 } from '../../src/services/notifications';
 import {
   loadCachedConnections,
@@ -67,7 +58,7 @@ import { liveTracker } from '../../src/services/liveTracker';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
-import { DepartureTimeSheet, type TimeMode } from '../../src/components/DepartureTimeSheet';
+import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import {
   RoutesThumbBar,
   type ModePreference,
@@ -271,9 +262,6 @@ export default function RoutesScreen() {
     };
   });
 
-  // Aktywna podróż: ten sam plan, który zasila natywne Live Update.
-  const { trip: trackedTrip } = useTrackedTrip();
-
   // Toggle sortowania w topBar (iOS-style, z maina): 0 = odjazd
   // (zegar, lewo), 1 = przyjazd (rakieta, prawo). Kciuk dociąga timingiem —
   // spring overshootował i kciuk wyskakiwał poza tor w trakcie animacji.
@@ -291,75 +279,6 @@ export default function RoutesScreen() {
   const animatedSortThumb = useAnimatedStyle(() => ({
     transform: [{ translateX: sortProgress.value * SORT_TRAVEL }],
   }));
-
-  const currentQuery = useMemo(
-    () => ({
-      fromTitle,
-      fromLat,
-      fromLon,
-      toId,
-      toTitle,
-      toLat,
-      toLon,
-      anchorStopId: activeAnchor?.stopId,
-      anchorStopLat: activeAnchor?.lat,
-      anchorStopLon: activeAnchor?.lon,
-    }),
-    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
-  );
-
-  // Czy właśnie śledzimy tę trasę (niezależnie od wybranego kursu).
-  const isTrackingThisRoute = trackedTrip != null && isSameQuery(trackedTrip, currentQuery);
-
-  /**
-   * Śledzenie konkretnego kursu, a nie całego zapytania. Użytkownik widzi
-   * na liście godziny i linie — gdybyśmy śledzili zapytanie, powiadomienie
-   * mogłoby w międzyczasie przeskoczyć na inny kurs i kłamać.
-   */
-  const startTrackingConnection = useCallback(
-    async (conn: Connection) => {
-      if (!areNotificationsSupported()) {
-        Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
-        return;
-      }
-      const ok = await ensureNotificationPermission();
-      if (!ok) {
-        Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
-        return;
-      }
-      const track: TrackedTrip = {
-        id: conn.id,
-        fromTitle,
-        fromLat,
-        fromLon,
-        toId,
-        toTitle,
-        toLat,
-        toLon,
-        anchorStopId: activeAnchor?.stopId,
-        anchorStopLat: activeAnchor?.lat,
-        anchorStopLon: activeAnchor?.lon,
-        connection: conn,
-        startedAt: Date.now(),
-      };
-      await startTracking(track);
-    },
-    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor, s],
-  );
-
-  /** Przycisk w pasku: śledzimy najbliższe połączenie z listy. */
-  const toggleTracking = useCallback(async () => {
-    if (isTrackingThisRoute) {
-      await stopTracking();
-      return;
-    }
-    const next = displayed[0] ?? items[0];
-    if (!next) {
-      Alert.alert(s.routes.noConnectionsTitle, s.routes.noConnectionsBody);
-      return;
-    }
-    await startTrackingConnection(next);
-  }, [isTrackingThisRoute, displayed, items, startTrackingConnection, s]);
 
   // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
   const listRef = useRef<FlatList<Connection>>(null);
@@ -379,14 +298,13 @@ export default function RoutesScreen() {
     };
   }, []);
 
-  // Stan wyboru godziny/daty: „wyjdź o” (depart) albo „bądź na” (arrive).
-  // Nad queryAt, bo zapytanie mapuje czas na właściwy parametr silnika.
+  // Stan wyboru godziny odjazdu — nad queryAt, bo zapytanie mapuje czas na
+  // parametr silnika (departureTimeSec).
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
   const [departureTimeSec, setDepartureTimeSec] = useState<number | undefined>(undefined);
-  const [timeMode, setTimeMode] = useState<TimeMode>('depart');
   const [timeLabel, setTimeLabel] = useState(s.routes.now);
 
-  const queryAt = (depSec: number | undefined, mode: TimeMode = timeMode) => {
+  const queryAt = (depSec: number | undefined) => {
     const cfg = getSettingsSync();
     return {
       fromTitle,
@@ -401,8 +319,7 @@ export default function RoutesScreen() {
       anchorStopId: activeAnchor?.stopId,
       anchorStopLat: activeAnchor?.lat,
       anchorStopLon: activeAnchor?.lon,
-      departureTimeSec: mode === 'depart' ? depSec : undefined,
-      arriveBySec: mode === 'arrive' ? depSec : undefined,
+      departureTimeSec: depSec,
       // Jednorazowe filtry nadpisują systemowe maxTransfers / typ pojazdów.
       maxTransfers: directOnly ? 0 : cfg.maxTransfers,
       modes: modeFilter,
@@ -433,7 +350,6 @@ export default function RoutesScreen() {
   const [savedQuick, setSavedQuick] = useState<Suggestion[]>([]);
   // GPS spoza strefy aktywnego miasta nie może być startem trasy.
   const [gpsOutside, setGpsOutside] = useState(false);
-  const [gpsOutsideCity, setGpsOutsideCity] = useState<string | null>(null);
 
   useEffect(() => {
     SearchService.recent().then(setRecent);
@@ -552,7 +468,6 @@ export default function RoutesScreen() {
         if (isOutsideServiceArea(l.lat, l.lon)) {
           const city = (l as { city?: string | null }).city ?? null;
           setGpsOutside(true);
-          setGpsOutsideCity(city);
           Alert.alert(
             s.home.gpsBlockedTitle,
             city ? s.home.gpsBlockedBody(city, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
@@ -569,7 +484,6 @@ export default function RoutesScreen() {
           return;
         }
         setGpsOutside(false);
-        setGpsOutsideCity(null);
         setGpsOrigin(true);
         refineAppliedRef.current = false;
         const currentSettings = getSettingsSync();
@@ -640,7 +554,7 @@ export default function RoutesScreen() {
   // wyłapać import, który ruszył w trakcie zapytania).
   const noTimetable = () => getDataStatus().state !== 'ready';
 
-  const fetchRoutes = async (targetDepSec?: number, seamless = false, mode: TimeMode = timeMode) => {
+  const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
     const seq = ++fetchSeq.current;
     if (!seamless) {
       setLoading(true);
@@ -659,7 +573,7 @@ export default function RoutesScreen() {
         setLoadError(true);
         return;
       }
-      const q = queryAt(depSec, mode);
+      const q = queryAt(depSec);
       // Progresywne ładowanie "po kolei": pierwsze okno RAPTOR-a wpada szybko,
       // podmieniamy listę i gasimy pełny spinner od razu — reszta dociąga się
       // w tle bez migotania (stabilne klucze FlatList).
@@ -691,7 +605,7 @@ export default function RoutesScreen() {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
       // W trybie seamless nie czyścimy listy ani nie migoczemy spinnerem.
-      const cached = await loadCachedConnections(queryAt(depSec, mode));
+      const cached = await loadCachedConnections(queryAt(depSec));
       if (seq !== fetchSeq.current) return;
       if (cached) {
         setItems(applyLiveList(rehydrateConnections(cached.list, cached.savedAt), depSec));
@@ -766,9 +680,8 @@ export default function RoutesScreen() {
     const seq = ++fetchSeq.current;
 
     try {
-      // Paginacja zawsze kotwiczy się do czasów ODJAZDÓW z krawędzi listy —
-      // nawet w trybie przyjazdu (tam arriveBySec dotyczył tylko startu).
-      const c = await RoutingService.getConnections(queryAt(nextDeparture, 'depart'));
+      // Paginacja zawsze kotwiczy się do czasów ODJAZDÓW z krawędzi listy.
+      const c = await RoutingService.getConnections(queryAt(nextDeparture));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
@@ -795,8 +708,8 @@ export default function RoutesScreen() {
     const seq = ++fetchSeq.current;
 
     try {
-      // Jak wyżej: historia dokładana od czasu odjazdu, nie przyjazdu.
-      const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800, 'depart'));
+      // Historia dokładana od czasu odjazdu.
+      const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeSorted(prev, c);
@@ -943,7 +856,6 @@ export default function RoutesScreen() {
   };
 
   const handleContentSizeChange = (_w: number, h: number) => {
-    const prevH = contentH.current;
     contentH.current = h;
     if (pendingAdjust.current != null) {
       const delta = h - pendingAdjust.current;
@@ -1028,13 +940,12 @@ export default function RoutesScreen() {
     setToLon(tempLon);
   };
 
-  const handleTimeSelect = (result: { timeSec: number | undefined; label: string; mode: TimeMode }) => {
+  const handleTimeSelect = (result: { timeSec: number | undefined; label: string }) => {
     setDepartureTimeSec(result.timeSec);
-    setTimeMode(result.mode);
     setTimeLabel(result.label);
     // Zmiana godziny przeładowuje praktycznie całą listę — pokazujemy pełny
     // spinner zamiast cichej podmiany (seamless tylko dokładałby wiersze).
-    fetchRoutes(result.timeSec, false, result.mode);
+    fetchRoutes(result.timeSec, false);
   };
 
   const isCustomTime = departureTimeSec !== undefined;
@@ -1080,10 +991,15 @@ export default function RoutesScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* 1. Górny pasek: Wstecz, tytuł, toggle sortowania i przypięcie.
+      {/* 1. Górny pasek: Wstecz, tytuł i toggle sortowania.
           Czas odjazdu, filtry i zamiana trasy żyją w dolnym menu pod kciukiem. */}
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
+        {/* Deep link z widgetu światkuje główny ekran; wstecz wtedy wraca do niego zamiast nic nie robić. */}
+        <Pressable
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          style={styles.back}
+          hitSlop={10}
+        >
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
 
@@ -1125,36 +1041,6 @@ export default function RoutesScreen() {
           </Text>
         </View>
 
-        {/* Śledzenie podróży w slocie pinezki (którą ten PR zastępuje): ten sam
-            przycisk-pasek 1:1 ze strzałką wstecz i sortowaniem, tylko robi
-            coś innego. Opis zostaje w accessibilityLabel, bo nagłówek ma
-            już etykiety sąsiadów. */}
-        <Pressable
-          onPress={toggleTracking}
-          accessibilityRole="button"
-          accessibilityState={{ selected: isTrackingThisRoute }}
-          accessibilityLabel={
-            isTrackingThisRoute
-              ? s.routes.stopTrackingTripA11y
-              : s.routes.trackNearestA11y
-          }
-          style={({ pressed }) => [
-            styles.pinBtn,
-            isTrackingThisRoute && styles.pinBtnActive,
-            pressed && { opacity: 0.7 },
-          ]}
-          hitSlop={8}
-        >
-          {isTrackingThisRoute ? (
-            <Radio size={19} color={scheme.onPrimaryContainer} />
-          ) : (
-            <Pin
-              size={19}
-              color={scheme.onSurface}
-              fill="transparent"
-            />
-          )}
-        </Pressable>
       </View>
 
       {/* 2. Nagłówek trasy w stylu One UI: bez tła, jedna linia
@@ -1360,7 +1246,7 @@ export default function RoutesScreen() {
           ListHeaderComponent={
             <View style={styles.countRow}>
               <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(items.length)} • {isCustomTime ? (timeMode === 'arrive' ? s.routes.countArrive(timeLabel) : s.routes.countDepart(timeLabel)) : s.routes.countNearest}
+                {connectionsLabel(items.length)} • {isCustomTime ? s.routes.countDepart(timeLabel) : s.routes.countNearest}
                 {directOnly ? s.routes.countDirect : ''}
                 {modeFilter === 'tram' ? s.routes.countTram : modeFilter === 'bus' ? s.routes.countBus : ''}
                 {loadingEarlier ? s.routes.countEarlier : ''}
@@ -1461,8 +1347,6 @@ export default function RoutesScreen() {
       {timeSheetOpen && (
         <DepartureTimeSheet
           initialTimeSec={departureTimeSec}
-          initialLabel={timeLabel}
-          initialMode={timeMode}
           onClose={() => setTimeSheetOpen(false)}
           onSelect={handleTimeSelect}
         />
@@ -1572,20 +1456,8 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
   },
-  // Pinezka 1:1 ze strzałką wstecz — dwa okrągłe akcje na końcach paska.
-  pinBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   // Karta aktywnej podróży nad listą połączeń
   activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
-  pinBtnActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
   // Dopiska kotwicy pod tytułem startu: ta sama typografia co nagłówek,
   // tylko mniejsza i w kolorze primary — zero pigułek, zero tła.
   anchorSub: {

@@ -27,7 +27,7 @@ import {
   pinRouteGeometry,
 } from '../src/services/routeGeometry';
 import { RouteMap, type RouteMapHandle } from '../src/components/RouteMap';
-import { getLineColors, inferTransitMode, LineBadge } from '../src/components/LineBadge';
+import { getLineColors, inferTransitMode, LineBadge, mapLineColor } from '../src/components/LineBadge';
 import { acquireMapServer } from '../src/services/mapServerLease';
 import { useCurrentLocation } from '../src/services/currentLocation';
 import { LiveDot } from '../src/components/LiveDot';
@@ -298,7 +298,7 @@ export default function RouteMapScreen() {
         legId: leg.id,
         line: match.vehicle.line,
         mode: vehMode === 'walk' ? 'bus' : vehMode,
-        color: bg,
+        color: mapLineColor(bg),
         lat: match.vehicle.lat,
         lon: match.vehicle.lon,
         heading: match.heading,

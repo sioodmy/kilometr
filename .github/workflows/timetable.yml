@@ -1,14 +1,21 @@
 # Codzienny build prebuilt SQLite per-miasto → Cloudflare R2.
 #
 # Macierz: wroclaw (MPK + KD z PDP), krakow (3 feedy ZTP + KMŁ),
-# gzm (eksporty dzienne ZTM z CKAN + KŚ) i warszawa (GTFS WTP + KM/WKD z PDP).
-# Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.
-# Wrocław dokłada legacy root (manifest.json, db/...) dla starych APK.
+# gzm (eksporty dzienne ZTM z CKAN + KŚ) i warszawa (GTFS WTP + KM/WKD z PDP),
+# poznan (GTFS ZTM + KW ze statycznych feedów), trojmiasto (GTFS ZTM Gdańsk
+# + ZKM Gdynia + SKM ze statycznych feedów), lodz (GTFS ZDiT + ŁKA
+# ze statycznych feedów), szczecin (GTFS ZDiTM ze statycznego feedu,
+# bez kolei), kielce (GTFS ZTM ze statycznego feedu, bez kolei), olsztyn (GTFS ZDZiT z mirrora, bez kolei), bialystok (GTFS BKM ze statycznego feedu, bez kolei), opole (GTFS MZK ze statycznego feedu, bez kolei), rzeszow (GTFS ZTM ze statycznego feedu, bez kolei), lublin (GTFS ZDiTM ze statycznego feedu, bez kolei) oraz radom (GTFS MZDiK z mkuran.pl ze statycznego feedu, bez kolei).
+# Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.gz (gzip).
+# Brak legacy rootu (manifest.json, db/...) i wsparcia starych APK: pakiet
+# zmienił id na my.siood.kilometr, a stare buildy nie umiały czytać bazy .gz,
+# więc świadomie nie mają ścieżki aktualizacji.
 #
 # Wymagane sekrety (repo → Settings → Secrets → Actions):
 #   PDP_API_KEY            klucz https://pdp-api.plk-sa.pl (sekcje kolei
-#                          z PDP: KD Wrocławia oraz IC/PR GZM; Kraków
-#                          i Warszawa biorą koleje ze statycznych feedów)
+#                          z PDP: KD Wrocławia oraz IC/PR GZM; Kraków,
+#                          Warszawa, Poznań, Trójmiasto i Łódź biorą koleje
+#                          ze statycznych feedów, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin i Radom nie mają kolei)
 #   CLOUDFLARE_API_TOKEN   token z uprawnieniem R2 write na bucket kilometr-timetable
 #   CLOUDFLARE_ACCOUNT_ID  id konta Cloudflare
 #   TIMETABLE_PUBLIC_URL   URL Workera, np. https://kilometr-timetable.<sub>.workers.dev
@@ -31,7 +38,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow, gzm, warszawa]
+        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom]
 
 permissions:
   contents: read
@@ -51,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce", "olsztyn", "bialystok", "opole", "rzeszow", "lublin", "radom"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -84,7 +91,7 @@ jobs:
         if: steps.build.outputs.exit == '0'
         run: |
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          node -e "const m=require('./cloudflare/dist/${{ matrix.city }}/manifest.json');console.log(JSON.stringify({city:m.city||'${{ matrix.city }}',version:m.version,builtAt:m.builtAt,sizeMB:+(m.db.sizeBytes/1048576).toFixed(1),stats:m.stats},null,2))" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const m=require('./cloudflare/dist/${{ matrix.city }}/manifest.json');console.log(JSON.stringify({city:m.city||'${{ matrix.city }}',version:m.version,builtAt:m.builtAt,gzMB:+(m.db.sizeBytes/1048576).toFixed(1),rawMB:+((m.db.uncompressedSizeBytes||0)/1048576).toFixed(1),stats:m.stats},null,2))" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       # Budżet rozmiaru: ostrzega, gdy baza urośnie wyraźnie względem R2.
@@ -94,8 +101,9 @@ jobs:
         if: steps.build.outputs.exit == '0'
         run: |
           set -euo pipefail
-          NEW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db")
-          echo "Nowa baza (${{ matrix.city }}): $((NEW / 1048576)) MB" >> "$GITHUB_STEP_SUMMARY"
+          NEW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz")
+          RAW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db")
+          echo "Nowa baza gzip (${{ matrix.city }}): $((NEW / 1048576)) MB (nieskompresowana: $((RAW / 1048576)) MB)" >> "$GITHUB_STEP_SUMMARY"
           URL="${TIMETABLE_PUBLIC_URL:-}"
           if [ -z "$URL" ]; then
             echo "Brak TIMETABLE_PUBLIC_URL, pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
@@ -127,6 +135,7 @@ jobs:
         with:
           name: kilometr-timetable-${{ matrix.city }}
           path: |
+            cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz
             cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db
             cloudflare/dist/${{ matrix.city }}/manifest.json
             cloudflare/data/kd-station-coords.json
@@ -135,7 +144,7 @@ jobs:
 
       # Kolejność ma znaczenie. Telefon czyta manifest, potem dopiero ściąga
       # bazę. Manifest wrzucamy OSTATNI, bo to on jest sygnałem „baza jest
-      # nowa" — w drugą stronę przez ~13 s uploadu 90 MB telefon widziałby nowy
+      # nowa” — w drugą stronę przez ~13 s uploadu 90 MB telefon widziałby nowy
       # manifest przy starej bazie, porównanie rozmiarów by nie przeszło i
       # odświeżanie kończyłoby się błędem zamiast nowym rozkładem.
       - name: Upload bazy → R2
@@ -145,13 +154,8 @@ jobs:
             echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload bazy do R2."
             exit 0
           fi
-          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/db/kilometr-gtfs.db" \
-            --file="cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db" --content-type application/x-sqlite3
-          if [ "${{ matrix.city }}" = "wroclaw" ]; then
-            # Legacy root dla starych APK (ten sam plik, drugi klucz).
-            npx -y wrangler@3.114.0 r2 object put kilometr-timetable/db/kilometr-gtfs.db \
-              --file="cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db" --content-type application/x-sqlite3
-          fi
+          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/db/kilometr-gtfs.db.gz" \
+            --file="cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz" --content-type application/gzip
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -165,10 +169,6 @@ jobs:
           fi
           npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/manifest.json" \
             --file="cloudflare/dist/${{ matrix.city }}/manifest.json" --content-type application/json
-          if [ "${{ matrix.city }}" = "wroclaw" ]; then
-            npx -y wrangler@3.114.0 r2 object put kilometr-timetable/manifest.json \
-              --file="cloudflare/dist/${{ matrix.city }}/manifest.json" --content-type application/json
-          fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

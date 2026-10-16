@@ -5,6 +5,10 @@
 // zmiennej zostaje wersja z app.json.
 const appJson = require('./app.json');
 
+// Slot na numer kompilacji/hotfixu z CI (BUILD_NUMBER, np. GITHUB_RUN_ATTEMPT).
+// Dwie ostatnie cyfry versionCode prod, więc zakres 1-99; domyślnie 1.
+const BUILD_NUMBER = Math.min(Math.max(Number(process.env.BUILD_NUMBER) || 1, 1), 99);
+
 function staticExpo(config) {
   if (config) return config.expo || config;
   return appJson.expo || appJson;
@@ -18,23 +22,27 @@ function minutesSince2020(year, month, day, hour, minute) {
 
 /**
  * Banda podglądów z PR-ów (dev-/test-). Jest wyższa niż nightly (minuty od
- * 2020, dziś ok. 3,5 mln) i niż prod (X*1000000 + Y*1000 + Z), więc APK
- * podglądu instaluje się nad wydaniem. Bez tego podglądy miały versionCode 1,
- * a Android blokuje instalację niższego numeru nad zainstalowaną aplikacją i
- * kończy to komunikatem „app not installed”. Po instalacji podglądu powrót na
- * nightly/prod wymaga odinstalowania.
+ * 2020, dziś ok. 3,5 mln) i niż prod (X*1000000 + Y*10000 + Z*100 + numer
+ * kompilacji), więc APK podglądu instaluje się nad wydaniem. Bez tego podglądy
+ * miały versionCode 1, a Android blokuje instalację niższego numeru nad
+ * zainstalowaną aplikacją i kończy to komunikatem „app not installed”. Po
+ * instalacji podglądu powrót na nightly/prod wymaga odinstalowania.
  */
 const PREVIEW_VERSION_CODE_BAND = 500000000;
 
 // versionCode musi być liczbą całkowitą i rosnąć wraz z wydaniami.
-// prod: vX.Y.Z -> X*1000000 + Y*1000 + Z.
+// prod: vX.Y.Z -> X*1000000 + Y*10000 + Z*100 + BUILD_NUMBER (slot kompilacji
+//       z CI; 1.0.0 -> 1000001, kolejny build tego samego wydania -> 1000002).
 // nightly: nightly-YYYYMMDD-HHMM-* -> minuty od 2020-01-01.
 // podglądy: dev-YYYYMMDD-HHMM-*, test-YYYYMMDD-HHMM-* -> banda podglądów + minuty.
 // Brak dopasowania (np. wersja z app.json) -> 1.
 function versionCodeFromVersion(version) {
   const semver = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (semver) {
-    return Number(semver[1]) * 1000000 + Number(semver[2]) * 1000 + Number(semver[3]);
+    const major = Number(semver[1]);
+    const minor = Number(semver[2]);
+    const patch = Number(semver[3]);
+    return major * 1000000 + minor * 10000 + patch * 100 + BUILD_NUMBER;
   }
 
   const dated = /^(nightly|dev|test)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(version);

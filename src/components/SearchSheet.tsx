@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import BottomSheet, { BottomSheetFlatList, TouchableOpacity } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,7 +25,6 @@ export function SearchSheetHost({ children }: { children: React.ReactNode }) {
 }
 
 export function SearchSheet({
-  open = true,
   query,
   loading,
   results,

@@ -26,7 +26,10 @@
                 android:id="@+id/kw_badge_slot"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal" />
+                android:orientation="horizontal">
+
+                <include layout="@layout/kw_badge_sample" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/kw_status"

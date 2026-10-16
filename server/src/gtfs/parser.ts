@@ -4,7 +4,6 @@ import {
   GtfsCalendar,
   GtfsCalendarDate,
   GtfsRoute,
-  GtfsShapePoint,
   GtfsStop,
   GtfsStopTime,
   GtfsTrip,

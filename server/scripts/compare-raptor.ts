@@ -1,6 +1,5 @@
 import { gtfsStore } from '../src/gtfs/store';
 import { planConnections } from '../src/routing/engine';
-import { Connection } from '../src/routing/types';
 
 interface TestRoute {
   name: string;

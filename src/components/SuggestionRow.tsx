@@ -15,11 +15,10 @@ import {
   BusFront,
   Store,
   Train,
-  TreePine,
   Utensils,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type, type SchemeKey } from '../theme/tokens';
-import type { Suggestion, SuggestionKind } from '../types/models';
+import { scheme, shape, type, type SchemeKey } from '../theme/tokens';
+import type { Suggestion } from '../types/models';
 import { formatDistance } from '../services/settings';
 import { useStrings } from '../i18n';
 import { normalizePolish } from '../gtfs/geo';

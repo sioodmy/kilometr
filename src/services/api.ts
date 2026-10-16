@@ -5,9 +5,10 @@ import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
+import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
+import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
 
 let cachedLocation: LocationResult | null = null;
 let cachedAt = 0;
@@ -20,8 +21,31 @@ const locationListeners = new Set<(loc: LocationResult) => void>();
 const FRESH_FIX_MS = 45_000;
 /** Minimalny odstęp między odczytami High, chroni GPS i sieć przed młynkiem. */
 const REFINE_MIN_INTERVAL_MS = 15_000;
+/** Maksymalny czas oczekiwania na pojedynczy odczyt GPS w budynku. */
+const HIGH_FIX_TIMEOUT_MS = 8_000;
 /** Ruch o tyle metrów (albo zmiana przystanku) znaczy fix istotnie lepszy. */
 export const LOCATION_REFINE_DELTA_M = 25;
+
+function getPositionWithTimeout(
+  options: Location.LocationOptions,
+  timeoutMs: number,
+): Promise<Location.LocationObject> {
+  return new Promise<Location.LocationObject>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Location request timed out'));
+    }, timeoutMs);
+    Location.getCurrentPositionAsync(options).then(
+      (pos) => {
+        clearTimeout(timer);
+        resolve(pos);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6371000;
@@ -63,6 +87,17 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
   let foundStop = false;
   let hadReverse = false;
 
+  if (Number.isFinite(lat) && Number.isFinite(lon) && (accuracyM == null || accuracyM <= 65)) {
+    seedCurrentLocation({
+      lat,
+      lon,
+      accuracy: accuracyM ?? null,
+      speed: null,
+      heading: null,
+      timestamp: Date.now(),
+    });
+  }
+
   // Miejscowość z reverse-geocode trzymamy od razu, bo karta
   // „Nieobsługiwane miasto" pokazuje ją bez drugiego zapytania.
   try {
@@ -93,12 +128,18 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
     }
   }
 
-  if (seq === cacheWriteSeq) {
+  const existingIsMuchBetter =
+    cachedLocation != null &&
+    Date.now() - cachedAt < FRESH_FIX_MS &&
+    (cachedLocation.accuracyM ?? 999) <= 25 &&
+    (accuracyM ?? 999) > 60;
+
+  if (seq === cacheWriteSeq && !existingIsMuchBetter) {
     cachedLocation = result;
     cachedAt = Date.now();
     if (foundStop) void saveLastLocation(result);
   }
-  return result;
+  return existingIsMuchBetter && cachedLocation ? cachedLocation : result;
 }
 
 /**
@@ -107,16 +148,22 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
  * realnie się przesunęła albo zmienił się najbliższy przystanek; drobny szum
  * nie może restartować wyszukiwania tras.
  */
-async function refineLocation(): Promise<LocationResult | null> {
+async function refineLocation(force?: boolean): Promise<LocationResult | null> {
   if (refineInFlight) return refineInFlight;
+  const cachedIsCoarse = (cachedLocation?.accuracyM ?? 999) > 35;
   // Kolejne przebudzenia stanu nie mogą mielić odczytami High co chwilę.
-  if (cachedLocation && Date.now() - lastRefineAt < REFINE_MIN_INTERVAL_MS) return cachedLocation;
+  if (!force && !cachedIsCoarse && cachedLocation && Date.now() - lastRefineAt < REFINE_MIN_INTERVAL_MS) {
+    return cachedLocation;
+  }
   refineInFlight = (async () => {
     lastRefineAt = Date.now();
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') return null;
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const pos = await getPositionWithTimeout(
+        { accuracy: Location.Accuracy.High },
+        HIGH_FIX_TIMEOUT_MS,
+      );
       const prev = cachedLocation;
       const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
       const movedM = prev ? distanceM(prev.lat, prev.lon, loc.lat, loc.lon) : Infinity;
@@ -157,6 +204,13 @@ export const LocationService: ILocationService = {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return { ...defaultLocationForCity(activeCityDef().id) };
 
+      const live = getCurrentLocationSnapshot().location;
+      if (live && Date.now() - live.timestamp < 15_000 && (live.accuracy ?? 99) <= 30) {
+        const loc = await resolveLocation(live.lat, live.lon, live.accuracy);
+        if (options?.force) void refineLocation(true);
+        return loc;
+      }
+
       if (!options?.force) {
         // Świeży fix oddajemy od razu; precyzja dociąga się w tle i sama
         // powiadomi subskrybentów, więc UI nigdy nie czeka na GPS.
@@ -164,17 +218,32 @@ export const LocationService: ILocationService = {
           void refineLocation();
           return cachedLocation;
         }
-        const last = await Location.getLastKnownPositionAsync({ maxAge: 120_000, requiredAccuracy: 300 });
+        const last = await Location.getLastKnownPositionAsync({ maxAge: 90_000, requiredAccuracy: 180 });
         if (last) {
           const loc = await resolveLocation(last.coords.latitude, last.coords.longitude, last.coords.accuracy);
           void refineLocation();
           return loc;
         }
+      } else {
+        try {
+          const highPos = await getPositionWithTimeout(
+            { accuracy: Location.Accuracy.High },
+            3500,
+          );
+          return await resolveLocation(
+            highPos.coords.latitude,
+            highPos.coords.longitude,
+            highPos.coords.accuracy,
+          );
+        } catch {}
       }
 
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const pos = await getPositionWithTimeout(
+        { accuracy: Location.Accuracy.Balanced },
+        5000,
+      );
       const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-      void refineLocation();
+      void refineLocation(Boolean(options?.force));
       return loc;
     } catch (err) {
       console.warn('[LocationService] Failed to acquire device location:', err);

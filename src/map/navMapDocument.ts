@@ -1,5 +1,4 @@
 import { buildMapStyle, ROUTE_SOURCE_ID } from './mapStyle';
-import type { Coord } from '../services/routeGeometry';
 
 const MAPLIBRE_VERSION = '4.7.1';
 const CDN_ASSETS = [
@@ -55,7 +54,7 @@ const runtime = (routeSourceId: string) => `
     if (msg.stop) {
       features.push({
         type: 'Feature',
-        properties: { role: 'intermediate', walk: 0, sel: 2 },
+        properties: { role: 'intermediate', walk: 0, sel: 2, color: msg.accent || '#BFC9C5' },
         geometry: { type: 'Point', coordinates: [msg.stop[1], msg.stop[0]] },
       });
     }

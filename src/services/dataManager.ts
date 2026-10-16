@@ -13,7 +13,6 @@ import {
   downloadArchiveWithFallback,
   GtfsDownloadError,
   gtfsDir,
-  hasExtractedGtfs,
   readGtfsText,
   unzipGtfs,
 } from './gtfsDownloader';

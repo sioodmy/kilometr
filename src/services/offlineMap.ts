@@ -2,7 +2,7 @@
 //
 // Wzorzec ten sam co przy rozkładzie: pobierz do pliku tymczasowego, sprawdź,
 // podmieniaj atomowo. Trzy rodzaje plików:
-//   - pakiet kafelków `.ktp` (kafle OSM, ~31 MB) z R2,
+//   - pakiet kafelków `.ktp` (kafle OSM, rozmiar zależny od miasta) z R2,
 //   - silnik MapLibre (`maplibre-gl.js` + `.css`) z CDN-u,
 //   - glify (czcionki etykiet) z OpenFreeMap.
 //
@@ -162,7 +162,7 @@ export async function downloadOfflineMap(
 }
 
 /**
- * Usuwa zestaw mapy offline miasta (odzyskanie ~31 MB). Znacznik limitu
+ * Usuwa zestaw mapy offline miasta (odzyskanie miejsca zajętego przez pakiet). Znacznik limitu
  * zostaje. Inne miasta nietknięte (osobne pliki w tym samym katalogu).
  */
 export async function deleteOfflineMap(cityId?: string): Promise<void> {

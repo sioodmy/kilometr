@@ -9,7 +9,6 @@ import { vehicleTracker } from '../realtime/tracker';
 // ────────────────────────────────────────────────────────────────────────────
 const WALK_SPEED_MPS = 1.45;
 const WALK_DETOUR_FACTOR = 1.15;
-const MIN_WALK_LEG_METERS = 50;
 
 /** Pełna sekwencja przystanków kursu (cała linia) z GTFS stop_times + stops. */
 export function buildTripStops(tripId: string): LegStop[] {

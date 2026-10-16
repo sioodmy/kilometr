@@ -1,11 +1,11 @@
 apply plugin: 'com.android.library'
 apply plugin: 'expo-module-gradle-plugin'
 
-group = 'pl.wroclaw.kilometr.maps'
+group = 'my.siood.kilometr.maps'
 version = '1.0.0'
 
 android {
-  namespace "pl.wroclaw.kilometr.maps"
+  namespace "my.siood.kilometr.maps"
   defaultConfig {
     versionCode 1
     versionName '1.0.0'
@@ -15,6 +15,6 @@ android {
 
 dependencies {
   // NanoHTTPD (~60 kB) jako jedyna zależność: lokalny serwer HTTP dla kafelków
-  // i glifów mapy. Działa na Androidzie od API 21, więc bez dodatkowych prógów.
+  // i glifów mapy. Działa na Androidzie od API 21, więc bez dodatkowych progów.
   implementation "org.nanohttpd:nanohttpd:2.3.1"
 }

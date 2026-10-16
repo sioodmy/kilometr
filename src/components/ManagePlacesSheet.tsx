@@ -22,7 +22,6 @@ import type { SavedPlace } from '../types/models';
 import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
 
 export function ManagePlacesSheet({
-  open = true,
   places,
   onClose,
   onEditPlace,

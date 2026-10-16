@@ -1,14 +1,12 @@
 /**
  * kilometr-timetable — Worker serwujący gotowe rozkłady (Cloudflare free tier).
  *
- * Per-miasto (nowe ścieżki):
- * - GET /{miasto}/manifest.json     → manifest buildu z R2
- * - GET /{miasto}/db/kilometr-gtfs.db → prebuilt SQLite z R2 (Range, ETag)
- * - GET /maps/{miasto}-tiles.ktp    → pakiet kafli offline z R2
- * Miasta: wroclaw, krakow, gzm, warszawa (allowlista CITIES niżej).
- *
- * Legacy (Wrocław, kompat ze starymi APK):
- * - GET /manifest.json, GET /db/kilometr-gtfs.db, GET /maps/wroclaw-tiles.ktp
+ * Per-miasto:
+ * - GET /{miasto}/manifest.json           → manifest buildu z R2
+ * - GET /{miasto}/db/kilometr-gtfs.db.gz  → skompresowany prebuilt SQLite z R2 (Range, ETag)
+ * - GET /maps/{miasto}-tiles.ktp          → pakiet kafli offline z R2
+ * Miasta: wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz,
+ * szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom (allowlista CITIES niżej).
  *
  * - GET /api/kd/departures     → PDP /operations (sekret po stronie serwera,
  *                                 cache 120 s — aplikacja tego NA RAZIE nie woła)
@@ -26,18 +24,14 @@ export interface Env {
 }
 
 /** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
-const CITIES = ['wroclaw', 'krakow', 'gzm', 'warszawa'] as const;
+const CITIES = ['wroclaw', 'krakow', 'gzm', 'warszawa', 'poznan', 'trojmiasto', 'lodz', 'szczecin', 'kielce', 'olsztyn', 'bialystok', 'opole', 'rzeszow', 'lublin', 'radom'] as const;
 
 /** Regex ścieżek per-miasto budowany z CITIES, żeby nowe miasto nie wymagało edycji routingu. */
 const CITY_PATH_RE = new RegExp(`^/(${CITIES.join('|')})(/.*)$`);
 
 const PDP_BASE = 'https://pdp-api.plk-sa.pl';
-/** Legacy klucze Wrocławia w root bucketa (kompat ze starymi APK). */
-const LEGACY_DB_KEY = 'db/kilometr-gtfs.db';
-const LEGACY_MANIFEST_KEY = 'manifest.json';
-const LEGACY_MAP_PACK_KEY = 'maps/wroclaw-tiles.ktp';
 
-const dbKeyFor = (city: string): string => `${city}/db/kilometr-gtfs.db`;
+const dbKeyFor = (city: string): string => `${city}/db/kilometr-gtfs.db.gz`;
 const manifestKeyFor = (city: string): string => `${city}/manifest.json`;
 /**
  * Pakiet kafelków mapy offline. Buduje go workflow map-tiles.yml (--city),
@@ -99,7 +93,7 @@ export default {
       if (rest === '/manifest.json') {
         return serveManifest(env, manifestKeyFor(city));
       }
-      if (rest === '/db/kilometr-gtfs.db') {
+      if (rest === '/db/kilometr-gtfs.db.gz') {
         return serveDb(req, env, dbKeyFor(city));
       }
     }
@@ -108,22 +102,8 @@ export default {
       return serveObject(env, mapPackKeyFor(mapMatch[1]), 'application/octet-stream', 'map-tiles.yml');
     }
 
-    // Legacy root (Wrocław, stare APK).
-    if (url.pathname === '/manifest.json') {
-      return serveManifest(env, LEGACY_MANIFEST_KEY);
-    }
-
-    if (url.pathname === '/db/kilometr-gtfs.db') {
-      return serveDb(req, env, LEGACY_DB_KEY);
-    }
-
     if (url.pathname === '/api/kd/departures' || url.pathname === '/api/kd/schedule') {
       return proxyPdp(req, env, ctx, url.pathname === '/api/kd/departures' ? 'operations' : 'schedules');
-    }
-
-    // Legacy kafle Wrocławia (nowe ścieżki: /maps/{miasto}-tiles.ktp wyżej).
-    if (url.pathname === '/maps/wroclaw-tiles.ktp') {
-      return serveObject(env, LEGACY_MAP_PACK_KEY, 'application/octet-stream', 'map-tiles.yml');
     }
 
     return json({ error: 'not-found' }, 404);
@@ -138,14 +118,19 @@ async function serveManifest(env: Env, key: string): Promise<Response> {
       404,
     );
   }
-  const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8' });
-  headers.set('Cache-Control', 'public, max-age=300');
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/json; charset=utf-8');
   if (obj.etag) headers.set('ETag', obj.etag);
+  // 60 s cache w przeglądarce / CDN, żeby nie dusić R2 przy wielu sprawdzeniach.
+  headers.set('Cache-Control', 'public, max-age=60');
   return new Response(obj.body, { headers });
 }
 
+/**
+ * Serwuje bazę SQLite (skompresowaną gzipem) z obsługą Range requests
+ * (potrzebne do wznawiania downloadu w aplikacji przez expo-file-system).
+ */
 async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
-  // Uwaga: HEAD działa tak samo (Runtime sam ucina body).
   const range = req.headers.get('Range');
   if (range) {
     const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
@@ -170,7 +155,7 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
         });
         if (obj) {
           const headers = new Headers();
-          headers.set('Content-Type', 'application/x-sqlite3');
+          headers.set('Content-Type', 'application/gzip');
           headers.set('Accept-Ranges', 'bytes');
           headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
           headers.set('Content-Length', String(end - start + 1));
@@ -189,7 +174,7 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
     );
   }
   const headers = new Headers();
-  headers.set('Content-Type', 'application/x-sqlite3');
+  headers.set('Content-Type', 'application/gzip');
   headers.set('Accept-Ranges', 'bytes');
   headers.set('Content-Length', String(obj.size));
   if (obj.etag) headers.set('ETag', obj.etag);

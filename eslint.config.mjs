@@ -14,6 +14,8 @@ export default tseslint.config(
       '.expo/',
       'android/',
       'ios/',
+      // Vendored skille (1:1 z upstream), nie nasz kod.
+      '.agents/',
     ],
   },
   js.configs.recommended,
@@ -42,10 +44,15 @@ export default tseslint.config(
   {
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
-      // no-unused-vars zostaje ostrzeżeniem: martwy kod widać, ale historyczne
-      // znaleziska nie czerwienią bramki. Reszta łapie wyłącznie istniejący
-      // kod (puste catch, cause przy rethrow), więc bazowo wyłączona.
-      '@typescript-eslint/no-unused-vars': 'warn',
+      // no-unused-vars to twarda bramka: martwy kod blokuje PR zamiast migać
+      // w logu. Parametry/zmienne z podkreśleniem zostają (świadomie ignorowane,
+      // np. parametr miasta trzymany dla parzystości API). Reszta reguł łapie
+      // wyłącznie istniejący kod (puste catch, cause przy rethrow), więc bazowo
+      // wyłączona.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       'no-empty': 'off',
       'no-useless-assignment': 'off',
       'no-useless-escape': 'off',

@@ -30,6 +30,7 @@
                 android:ellipsize="end"
                 android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
+                android:text="@string/kw_sample_trip_title"
                 android:textColor="@color/kw_on_surface"
                 android:textSize="15sp" />
 
@@ -40,7 +41,8 @@
                 android:layout_marginStart="8dp"
                 android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
-                android:textColor="@color/kw_on_surface_variant"
+                android:text="@string/kw_sample_status"
+                android:textColor="@color/kw_success"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -56,6 +58,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:maxLines="1"
+                android:text="14:32"
                 android:textColor="@color/kw_on_surface"
                 android:textSize="24sp" />
 
@@ -73,6 +76,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:maxLines="1"
+                android:text="14:58"
                 android:textColor="@color/kw_on_surface_variant"
                 android:textSize="24sp" />
 
@@ -86,6 +90,7 @@
                 android:fontFamily="sans-serif-medium"
                 android:gravity="end"
                 android:maxLines="1"
+                android:text="@string/kw_sample_phase"
                 android:textColor="@color/kw_primary"
                 android:textSize="15sp" />
         </LinearLayout>
@@ -100,7 +105,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:orientation="horizontal" />
+            android:orientation="horizontal">
+
+            <include layout="@layout/kw_badge_sample" />
+
+            <include layout="@layout/kw_leg_sep" />
+
+            <include layout="@layout/kw_badge_sample_alt" />
+
+            <include layout="@layout/kw_leg_sep" />
+
+            <include layout="@layout/kw_badge_sample" />
+        </LinearLayout>
 
         <ProgressBar
             android:id="@+id/kw_progress"
@@ -109,6 +125,7 @@
             android:layout_height="4dp"
             android:layout_marginTop="10dp"
             android:max="1000"
+            android:progress="400"
             android:progressDrawable="@drawable/kw_progress" />
     </LinearLayout>
 

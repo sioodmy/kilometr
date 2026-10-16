@@ -83,13 +83,98 @@ export const uk: Strings = {
   city: {
     section: 'Місто',
     settingsTitle: 'Місто',
-    settingsHint: 'Розклад, мапа офлайн і новини йдуть за містом. Дані іншого міста залишаються на телефоні.',
+    settingsHint:
+      'Розклад, мапа офлайн і новини йдуть за містом. Дані іншого міста залишаються на телефоні.',
     name: (id: string): string =>
-      id === 'krakow' ? 'Краків' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшава' : 'Вроцлав',
+      id === 'krakow'
+        ? 'Краків'
+        : id === 'gzm'
+          ? 'GZM'
+          : id === 'warszawa'
+            ? 'Варшава'
+            : id === 'poznan'
+              ? 'Познань'
+              : id === 'trojmiasto'
+                ? 'Труймясто'
+                : id === 'lodz'
+                  ? 'Лодзь'
+                  : id === 'szczecin'
+                    ? 'Щецин'
+                    : id === 'kielce'
+                      ? 'Кельце'
+                      : id === 'olsztyn'
+                        ? 'Ольштин'
+                        : id === 'bialystok'
+                          ? 'Білосток'
+                          : id === 'opole'
+                            ? 'Ополе'
+                            : id === 'rzeszow'
+                              ? 'Ряшів'
+                              : id === 'lublin'
+                                ? 'Люблін'
+                              : id === 'radom'
+                                ? 'Радом'
+                              : 'Вроцлав',
     gen: (id: string): string =>
-      id === 'krakow' ? 'Кракова' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшави' : 'Вроцлава',
+      id === 'krakow'
+        ? 'Кракова'
+        : id === 'gzm'
+          ? 'GZM'
+          : id === 'warszawa'
+            ? 'Варшави'
+            : id === 'poznan'
+              ? 'Познані'
+              : id === 'trojmiasto'
+                ? 'Труймяста'
+                : id === 'lodz'
+                  ? 'Лодзі'
+                  : id === 'szczecin'
+                    ? 'Щецина'
+                    : id === 'kielce'
+                      ? 'Кельце'
+                      : id === 'olsztyn'
+                        ? 'Ольштина'
+                        : id === 'bialystok'
+                          ? 'Білостока'
+                          : id === 'opole'
+                            ? 'Ополя'
+                            : id === 'rzeszow'
+                              ? 'Ряшева'
+                              : id === 'lublin'
+                                ? 'Любліна'
+                              : id === 'radom'
+                                ? 'Радома'
+                              : 'Вроцлава',
     loc: (id: string): string =>
-      id === 'krakow' ? 'Кракові' : id === 'gzm' ? 'GZM' : id === 'warszawa' ? 'Варшаві' : 'Вроцлаві',
+      id === 'krakow'
+        ? 'Кракові'
+        : id === 'gzm'
+          ? 'GZM'
+          : id === 'warszawa'
+            ? 'Варшаві'
+            : id === 'poznan'
+              ? 'Познані'
+              : id === 'trojmiasto'
+                ? 'Труймясті'
+                : id === 'lodz'
+                  ? 'Лодзі'
+                  : id === 'szczecin'
+                    ? 'Щецині'
+                    : id === 'kielce'
+                      ? 'Кельце'
+                      : id === 'olsztyn'
+                        ? 'Ольштині'
+                        : id === 'bialystok'
+                          ? 'Білостоці'
+                          : id === 'opole'
+                            ? 'Ополі'
+                            : id === 'rzeszow'
+                              ? 'Ряшеві'
+                              : id === 'lublin'
+                                ? 'Любліні'
+                              : id === 'radom'
+                                ? 'Радомі'
+                              : 'Вроцлаві',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP і Koleje Małopolskie'
@@ -97,7 +182,29 @@ export const uk: Strings = {
           ? 'ZTM, Koleje Śląskie, POLREGIO і PKP Intercity'
           : id === 'warszawa'
             ? 'WTP, SKA, Koleje Mazowieckie і WKD'
-            : 'MPK і Koleje Dolnośląskie',
+            : id === 'poznan'
+              ? 'ZTM і Koleje Wielkopolskie'
+              : id === 'trojmiasto'
+                ? 'ZTM Gdańsk, ZKM Gdynia і SKM'
+: id === 'lodz'
+                  ? 'MPK і Лодзька агломераційна залізниця'
+                  : id === 'szczecin'
+                    ? 'ZDiTM Szczecin'
+                    : id === 'kielce'
+                      ? 'ZTM Кельце'
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Ольштин'
+                        : id === 'bialystok'
+                          ? 'BKM Białystok'
+                          : id === 'opole'
+                            ? 'MZK Ополе'
+                            : id === 'rzeszow'
+                              ? 'ZTM Ряшів'
+                              : id === 'lublin'
+                                ? 'ZDiTM Lublin'
+                              : id === 'radom'
+                                ? 'MZDiK Radom'
+                              : 'MPK і Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Краків'
@@ -105,7 +212,29 @@ export const uk: Strings = {
           ? 'ZTM GZM'
           : id === 'warszawa'
             ? 'WTP Варшава'
-            : 'MPK Вроцлав • wroclaw.pl',
+            : id === 'poznan'
+              ? 'ZTM Познань'
+              : id === 'trojmiasto'
+                ? 'ZTM Ґданськ'
+: id === 'lodz'
+                  ? 'MPK Лодзь'
+                  : id === 'szczecin'
+                    ? 'ZDiTM Щецин'
+                    : id === 'kielce'
+                      ? 'ZTM Кельце'
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Ольштин'
+                        : id === 'bialystok'
+                          ? 'BKM Білосток'
+                          : id === 'opole'
+                            ? 'MZK Ополе'
+                            : id === 'rzeszow'
+                              ? 'ZTM Ряшів'
+                              : id === 'lublin'
+                                ? 'ZDiTM Люблін'
+                              : id === 'radom'
+                                ? 'MZDiK Радом'
+                              : 'MPK Вроцлав • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Краків'
@@ -113,9 +242,57 @@ export const uk: Strings = {
           ? 'ZTM GZM'
           : id === 'warszawa'
             ? 'WTP Варшава'
-            : 'MPK Вроцлав',
+            : id === 'poznan'
+              ? 'ZTM Познань'
+              : id === 'trojmiasto'
+                ? 'ZTM Ґданськ'
+: id === 'lodz'
+                  ? 'MPK Лодзь'
+                  : id === 'szczecin'
+                    ? 'ZDiTM Щецин'
+                    : id === 'kielce'
+                      ? 'ZTM Кельце'
+                      : id === 'olsztyn'
+                        ? 'ZDZiT Ольштин'
+                        : id === 'bialystok'
+                          ? 'BKM Білосток'
+                          : id === 'opole'
+                            ? 'MZK Ополе'
+                            : id === 'rzeszow'
+                              ? 'ZTM Ряшів'
+                              : id === 'lublin'
+                                ? 'ZDiTM Люблін'
+                              : id === 'radom'
+                                ? 'MZDiK Радом'
+                              : 'MPK Вроцлав',
     operatorShort: (id: string): string =>
-      id === 'krakow' ? 'ZTP' : id === 'gzm' ? 'ZTM' : id === 'warszawa' ? 'WTP' : 'MPK',
+      id === 'krakow'
+        ? 'ZTP'
+        : id === 'gzm'
+          ? 'ZTM'
+          : id === 'warszawa'
+            ? 'WTP'
+            : id === 'poznan'
+              ? 'ZTM'
+              : id === 'trojmiasto'
+                ? 'ZTM / ZKM'
+                : id === 'szczecin'
+                  ? 'ZDiTM'
+                  : id === 'kielce'
+                    ? 'ZTM'
+                    : id === 'olsztyn'
+                      ? 'ZDZiT'
+                      : id === 'bialystok'
+                        ? 'BKM'
+                        : id === 'opole'
+                          ? 'MZK'
+                          : id === 'rzeszow'
+                            ? 'ZTM'
+                              : id === 'lublin'
+                                ? 'ZDiTM'
+                              : id === 'radom'
+                                ? 'MZDiK'
+                            : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -123,12 +300,43 @@ export const uk: Strings = {
           ? 'metropoliaztm.pl'
           : id === 'warszawa'
             ? 'wtp.waw.pl'
-            : 'wroclaw.pl',
-    supportedList: 'Вроцлав, Краків, GZM, Варшава',
+            : id === 'poznan'
+              ? 'ztm.poznan.pl'
+              : id === 'trojmiasto'
+                ? 'ztm.gda.pl'
+: id === 'lodz'
+                  ? 'mpk.lodz.pl'
+                  : id === 'szczecin'
+                    ? 'zditm.szczecin.pl'
+                    : id === 'kielce'
+                      ? 'ztm.kielce.pl'
+                      : id === 'olsztyn'
+                        ? 'zdzit.olsztyn.eu'
+                        : id === 'bialystok'
+                          ? 'komunikacja.bialystok.pl'
+                          : id === 'opole'
+                            ? 'mzkopole.pl'
+                            : id === 'rzeszow'
+                              ? 'ztm.erzeszow.pl'
+                              : id === 'lublin'
+                                ? 'zdtm.lublin.eu'
+                              : id === 'radom'
+                                ? 'mzdik.pl'
+                                : 'wroclaw.pl',
+    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів, Lublin',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
     needDownload: 'Для цього міста ще немає розкладу на телефоні. Завантаж його нижче.',
+    changeAction: 'Змінити',
+    selectTitle: 'Оберіть місто',
+    selectSub: 'Оберіть агломерацію для планування поїздок.',
+    searchPlaceholder: 'Пошук міста або перевізника…',
+    noSearchResults: (q: string) => `Міст за запитом «${q}» не знайдено`,
+    searchEmptyHint: 'Перевірте написання або спробуйте знайти іншу агломерацію.',
+    searchClearA11y: 'Очистити пошук',
+    closeSheetA11y: 'Закрити вибір міста',
+    cityActiveBadge: 'Активне',
   },
   settings: {
     title: 'Налаштування',
@@ -148,8 +356,10 @@ export const uk: Strings = {
     notificationsSection: 'Сповіщення',
     notificationsFoot: 'Сповіщення працюють у dev-збірці. Expo Go їх не підтримує.',
     offlineMapTitle: (name: string) => `Мапа офлайн (${name})`,
-    offlineMapHint: (name: string, mb: number) => `Завантаж тайли мапи ${name} (близько ${mb} МБ), щоб маршрути працювали без інтернету.`,
-    offlineMapReady: (name: string) => `Мапа ${name} вже на телефоні. Маршрути працюють без інтернету.`,
+    offlineMapHint: (name: string, mb: number) =>
+      `Завантаж тайли мапи ${name} (близько ${mb} МБ), щоб маршрути працювали без інтернету.`,
+    offlineMapReady: (name: string) =>
+      `Мапа ${name} вже на телефоні. Маршрути працюють без інтернету.`,
     offlineMapDownload: 'Завантажити мапу',
     offlineMapDownloadA11y: (name: string) => `Завантажити мапу ${name} для офлайну`,
     offlineMapDownloading: (pct: number) => `Завантаження… ${pct}%`,
@@ -161,7 +371,7 @@ export const uk: Strings = {
     offlineMapDeleteBody: (mb: number) =>
       `Звільниться близько ${mb} МБ. Мапа далі працюватиме онлайн. Повторне завантаження буде доступне лише за місяць.`,
     offlineMapFailTitle: 'Не вдалося завантажити мапу',
-    offlineMapFailBody: 'Перевір з\'єднання і спробуй ще раз. Решта застосунку працює як звичайно.',
+    offlineMapFailBody: "Перевір з'єднання і спробуй ще раз. Решта застосунку працює як звичайно.",
     offlineMapCooldownTitle: 'Мапу вже завантажували',
     offlineMapCooldownBody: (days: number) =>
       days <= 1
@@ -183,7 +393,8 @@ export const uk: Strings = {
     backupExportDoneTitle: 'Готово',
     backupExportDoneBody: (path: string) => `Файл збережено в ${path}`,
     backupExportFailTitle: 'Не вдалося зберегти файл',
-    backupExportFailBody: (reason: string) => `${reason}. Перевірте вільне місце та спробуйте ще раз.`,
+    backupExportFailBody: (reason: string) =>
+      `${reason}. Перевірте вільне місце та спробуйте ще раз.`,
     backupExportFailFallback: 'Спробуйте ще раз за хвилину.',
     backupImportConfirmTitle: 'Імпортувати ці дані?',
     backupImportConfirmBody: (summary: string) =>
@@ -198,18 +409,21 @@ export const uk: Strings = {
     backupFailNotBackup: 'Це не копія Kilometr.',
     backupFailSchemaTooNew: 'Ця копія з новішої версії застосунку.',
     dataTitle: (operator: string) => `Розклад ${operator}`,
-    dataHint: (feeds: string) => `Розклади ${feeds} із сервера Kilometr. Одне завантаження, далі офлайн.`,
+    dataHint: (feeds: string) =>
+      `Розклади ${feeds} із сервера Kilometr. Одне завантаження, далі офлайн.`,
     dataEmpty: 'Немає офлайн-даних.',
     dataDownloading: (p: number) => `Завантаження… ${p}%`,
     dataStep: (step: string, p: number) => `${step} ${p}%`,
-    dataReady: (stops: number, trips: number) => `Повний розклад: ${stops} зупинок, ${trips} рейсів`,
+    dataReady: (stops: number, trips: number) =>
+      `Повний розклад: ${stops} зупинок, ${trips} рейсів`,
     dataError: (msg: string) => `Помилка: ${msg}`,
     downloadA11y: 'Завантажити розклад',
     downloadCheckA11y: 'Перевірити, чи є новіший розклад',
     downloadReady: 'Перевірити оновлення',
     downloadEmpty: 'Завантажити повний розклад',
     downloadFailTitle: 'Не вдалося завантажити розклад',
-    downloadFailBody: (reason: string) => `${reason}. Застосунок бере готову базу із сервера Kilometr або класично з відкритих даних міста.`,
+    downloadFailBody: (reason: string) =>
+      `${reason}. Застосунок бере готову базу із сервера Kilometr або класично з відкритих даних міста.`,
     downloadFailFallback: 'Спробуй за мить.',
     downloadDone: 'Розклад оновлено.',
     downloadUpToDate: 'Розклад уже актуальний.',
@@ -218,6 +432,63 @@ export const uk: Strings = {
       hours <= 1
         ? 'Розклад нещодавно завантажували. Наступне повне завантаження буде доступне приблизно за годину.'
         : `Розклад нещодавно завантажували. Наступне повне завантаження буде доступне через ${hours} год.`,
+    diagTitle: 'Діагностика даних',
+    diagHint:
+      'Перевіряє базу розкладу на телефоні. Скопіюй результат, коли повідомляєш про проблему.',
+    diagRun: 'Перевірити дані',
+    diagRerun: 'Перевірити ще раз',
+    diagRunning: 'Перевіряю…',
+    diagRunA11y: 'Запустити діагностику даних',
+    diagOk: 'OK',
+    diagWarn: 'Попередження',
+    diagError: 'Помилка',
+    diagDb: 'База SQLite',
+    diagDbDamaged: 'Базу пошкоджено',
+    diagDbSize: (mb: string) => `Розмір бази: ${mb} МБ`,
+    diagDbOrphan: (name: string) => `Залишковий тимчасовий файл: ${name}`,
+    diagDbWal: (mb: string) => `WAL: ${mb} МБ`,
+    diagDbNoAccess: 'Немає доступу до файлу бази',
+    diagCounts: 'Лічильники розкладу',
+    diagCountsLine: (stops: number, routes: number, trips: number, times: number) =>
+      `${stops} зупинок • ${routes} маршрутів • ${trips} рейсів • ${times} відправлень`,
+    diagCountsEmpty: 'База порожня. Завантаж розклад нижче.',
+    diagCountsNoRoutes: 'Немає маршрутів у базі',
+    diagTrains: 'Регіональні поїзди',
+    diagTrainsLine: (n: number) =>
+      n === 1
+        ? '1 залізничний маршрут'
+        : isFew(n)
+          ? `${n} залізничні маршрути`
+          : `${n} залізничних маршрутів`,
+    diagTrainsNone: 'Немає залізничних маршрутів. Завантаж новіший розклад.',
+    diagTrainsNotSupported: 'Не застосовується для цього міста (громадський транспорт без залізниці)',
+    diagCalendar: 'Календар GTFS',
+    diagCalendarLine: (from: string, to: string) => `Розклад дійсний ${from} – ${to}`,
+    diagCalendarEmpty: 'Немає календаря в базі',
+    diagCalendarOutside: 'Сьогоднішня дата поза розкладом',
+    diagCalendarExpiring: (days: number) =>
+      days <= 1
+        ? 'Розклад спливає завтра'
+        : isFew(days)
+          ? `Розклад спливе за ${days} дні`
+          : `Розклад спливе за ${days} днів`,
+    diagCalendarServices: (n: number) => `Активних сервісів сьогодні: ${n}`,
+    diagSearch: 'Пошук',
+    diagSearchOk: (weighted: number, pois: number) =>
+      `Рейтинг готовий (${weighted} зупинок) • POI: ${pois}`,
+    diagSearchWeights: 'Рейтинг підказок не пораховано',
+    diagSearchPois: 'Немає точок POI. Адреси потребують інтернету.',
+    diagCopy: 'Скопіювати звіт',
+    diagCopyA11y: 'Скопіювати звіт діагностики в буфер обміну',
+    diagCopied: 'Звіт скопійовано в буфер обміну',
+    diagCopyFail: 'Не вдалося скопіювати звіт',
+    diagFix: 'Завантажити розклад ще раз',
+    diagFixA11y: 'Примусово завантажити розклад знову',
+    diagReportCity: 'Місто',
+    diagReportTimetable: 'Розклад',
+    diagReportImported: 'Завантажено',
+    diagReportDb: 'База',
+    diagReportUnknown: 'невідомо',
     routeStyleTitle: 'Стиль маршруту',
     routeStyleHint:
       'Визначає, що перемагає, коли маршрути відрізняються на кілька хвилин: раніше прибуття, коротша прогулянка чи менше пересадок. Ліміти нижче діють для кожного стилю.',
@@ -246,10 +517,11 @@ export const uk: Strings = {
     trainBufferHint:
       'Мінімальний час, щоб дійти до перону після пересадки. Вокзали не звичайні зупинки: шлях від зупинки до перону зазвичай йде через хол.',
     trainBufferHintShort: 'Час дійти до перону після пересадки.',
-    trainNoData: 'У завантаженому розкладі немає потягів. Перевір оновлення вище, щоб увімкнути пересадки на потяги.',
+    trainNoData:
+      'У завантаженому розкладі немає потягів. Перевір оновлення вище, щоб увімкнути пересадки на потяги.',
     cableTitle: 'Polinka',
     cableHint:
-      'Канатна дорога Полтехніки Вроцлава через Одру, між набережною Висп\'янського та вулицею На Гроблі. Курює у будні 7:00–21:00 з перервою 13:30–14:00, кожні 5 хвилин. У вихідні не курює. Лише в режимі «Транспорт».',
+      "Канатна дорога Полтехніки Вроцлава через Одру, між набережною Висп'янського та вулицею На Гроблі. Курює у будні 7:00–21:00 з перервою 13:30–14:00, кожні 5 хвилин. У вихідні не курює. Лише в режимі «Транспорт».",
     cableHintShort: 'Канатна дорога через Одру. Лише в режимі «Всі».',
     walkTitle: 'Макс. пішки',
     walkHint:
@@ -284,21 +556,87 @@ export const uk: Strings = {
         ? 'напр. Krowoderska 12'
         : id === 'warszawa'
           ? 'напр. Marszałkowska 12'
-          : 'напр. Swojczycka 41',
+          : id === 'poznan'
+            ? 'напр. Głogowska 12'
+            : id === 'trojmiasto'
+              ? 'напр. Długa 12'
+: id === 'lodz'
+                ? 'напр. Piotrkowska 12'
+                : id === 'szczecin'
+                  ? 'напр. Wojska Polskiego 12'
+                  : id === 'kielce'
+                    ? 'напр. Sienkiewicza 12'
+                    : id === 'olsztyn'
+                      ? 'напр. Partyzantów 12'
+                      : id === 'bialystok'
+                        ? 'напр. Lipowa 12'
+                        : id === 'opole'
+                          ? 'напр. Ozimska 12'
+                          : id === 'rzeszow'
+                            ? 'напр. 3 Maja 12'
+                              : id === 'lublin'
+                                ? 'напр. Krakowskie Przedmieście 12'
+                              : id === 'radom'
+                                ? 'напр. Żeromskiego 12'
+                            : 'напр. Swojczycka 41',
     slotWork: 'Робота',
     slotWorkHint: (id: string) =>
       id === 'krakow'
         ? 'напр. Galeria Krakowska'
         : id === 'warszawa'
           ? 'напр. Złote Tarasy'
-          : 'напр. Sky Tower',
+          : id === 'poznan'
+            ? 'напр. Stary Browar'
+            : id === 'trojmiasto'
+              ? 'напр. Galeria Bałtycka'
+: id === 'lodz'
+                ? 'напр. Manufaktura'
+                : id === 'szczecin'
+                  ? 'напр. Galeria Kaskada'
+                  : id === 'kielce'
+                    ? 'np. Galeria Echo'
+                    : id === 'olsztyn'
+                      ? 'напр. Galeria Warmińska'
+                      : id === 'bialystok'
+                        ? 'напр. Galeria Jurowiecka'
+                        : id === 'opole'
+                          ? 'напр. Solaris Center'
+                          : id === 'rzeszow'
+                            ? 'напр. Galeria Rzeszów'
+                              : id === 'lublin'
+                                ? 'напр. Felicity'
+                              : id === 'radom'
+                                ? 'напр. Galeria Słoneczna'
+                            : 'напр. Sky Tower',
     slotUni: 'Універ',
     slotUniHint: (id: string) =>
       id === 'krakow'
         ? 'напр. AGH'
         : id === 'warszawa'
           ? 'напр. Університет'
-          : 'напр. Politechnika',
+          : id === 'poznan'
+            ? 'напр. UAM'
+            : id === 'trojmiasto'
+              ? 'напр. UG'
+: id === 'lodz'
+                ? 'напр. UŁ'
+                : id === 'szczecin'
+                  ? 'напр. US'
+                  : id === 'kielce'
+                    ? 'напр. UJK'
+                    : id === 'olsztyn'
+                      ? 'напр. UWM'
+                      : id === 'bialystok'
+                        ? 'напр. UwB'
+                        : id === 'opole'
+                          ? 'напр. UO'
+                          : id === 'rzeszow'
+                            ? 'напр. PRz'
+                              : id === 'lublin'
+                                ? 'напр. UMCS'
+                              : id === 'radom'
+                                ? 'напр. UTH'
+                            : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',
@@ -309,7 +647,8 @@ export const uk: Strings = {
     permTitle: 'Доступи',
     permSub: 'Локація та сповіщення. Обидва необов’язкові.',
     locTitle: 'Локація',
-    locBody: 'Потрібна для точки старту та сортування зупинок за відстанню. Обробляється локально на пристрої.',
+    locBody:
+      'Потрібна для точки старту та сортування зупинок за відстанню. Обробляється локально на пристрої.',
     locOn: 'Локацію ввімкнено.',
     locAllow: 'Дозволити локацію',
     notifTitle: 'Сповіщення',
@@ -318,7 +657,8 @@ export const uk: Strings = {
     notifExpoGo: 'Перегляд в Expo Go — сповіщення (закріплене сполучення) працюють у dev-збірці.',
     notifAllow: 'Увімкнути сповіщення',
     cityTitle: 'У якому місті\nїздиш?',
-    cityBody: 'Розклад, мапа й новини підлаштуються під вибір. Місто можна змінити пізніше в налаштуваннях.',
+    cityBody:
+      'Розклад, мапа й новини підлаштуються під вибір. Місто можна змінити пізніше в налаштуваннях.',
     citySuggested: (name: string) => `За GPS ти в: ${name}.`,
     cityNoGps: 'Без доступу до GPS вибери місто зі списку.',
     cityLocating: 'Шукаю твою позицію GPS…',
@@ -326,9 +666,9 @@ export const uk: Strings = {
     cityPickA11y: (name: string) => `Вибрати місто: ${name}`,
     citySuggestedA11y: (name: string) => `Запропоноване місто за GPS: ${name}`,
     dlTitle: (gen: string) => `Завантажити розклад\n${gen}`,
-    dlBody: (feeds: string) => `Готова база: ${feeds} із сервера Kilometr. Одне завантаження, далі офлайн.`,
+    dlBody: (feeds: string) =>
+      `Готова база: ${feeds} із сервера Kilometr. Одне завантаження, далі офлайн.`,
     dlEmpty: 'Немає офлайн-даних.',
-    dlAction: 'Завантажити повний розклад',
     dlSize: 'Одне завантаження • кілька хвилин • далі офлайн',
     dlProgress: (p: number) => `Завантаження… ${p}%`,
     dlStep: (step: string, p: number) => `${step} ${p}%`,
@@ -346,7 +686,8 @@ export const uk: Strings = {
     closeAction: 'Закрити',
     addAction: '+ Додати',
     addressFor: (name: string) => `Адреса для: ${name}…`,
-    noResults: (q: string) => `Немає результатів для „${q}“. Зупинки шукаємо офлайн, адреси потребують інтернету.`,
+    noResults: (q: string) =>
+      `Немає результатів для „${q}“. Зупинки шукаємо офлайн, адреси потребують інтернету.`,
     start: 'Почали',
     next: 'Далі',
     later: 'Пізніше',
@@ -368,14 +709,20 @@ export const uk: Strings = {
     count: (n: number, urgent: number) => {
       const items = n === 1 ? `${n} новина` : isFew(n) ? `${n} новини` : `${n} новин`;
       if (urgent <= 0) return items;
-      const u = urgent === 1 ? `${urgent} термінова` : isFew(urgent) ? `${urgent} термінові` : `${urgent} термінових`;
+      const u =
+        urgent === 1
+          ? `${urgent} термінова`
+          : isFew(urgent)
+            ? `${urgent} термінові`
+            : `${urgent} термінових`;
       return `${items} • ${u}`;
     },
     refreshA11y: 'Оновити новини',
     loading: 'Завантаження повідомлень…',
     noConnection: 'Немає з’єднання',
     emptyTitle: 'Немає повідомлень',
-    emptyBody: (name: string) => `${name} зараз не опублікував жодних ускладнень. Потягни вниз, щоб перевірити знову.`,
+    emptyBody: (name: string) =>
+      `${name} зараз не опублікував жодних ускладнень. Потягни вниз, щоб перевірити знову.`,
     sectionChanges: 'Зміни на лініях',
     sectionCity: 'Новини',
     sourceMpk: (operator: string) => operator,
@@ -388,8 +735,7 @@ export const uk: Strings = {
     filterMyLines: 'Мої лінії',
     filterMyLinesA11y: 'Показати лише повідомлення про лінії з твоїх останніх маршрутів',
     filterEmptyTitle: 'Нічого на твоїх лініях',
-    filterEmptyBody:
-      'Немає повідомлень про лінії з маршрутів, які ти перевіряв останні два тижні.',
+    filterEmptyBody: 'Немає повідомлень про лінії з маршрутів, які ти перевіряв останні два тижні.',
     filterNoHistoryTitle: 'Ще немає ліній',
     filterNoHistoryBody:
       'Знайди сполучення в застосунку — тоді тут з’являться повідомлення про ці лінії.',
@@ -408,7 +754,7 @@ export const uk: Strings = {
   map: {
     title: 'Мапа маршруту',
     loadFail: 'Не вдалося завантажити сполучення',
-    loadFailBody: 'Мапа показує конкретне сполучення, тож воно має бути в пам\'яті або в кеші.',
+    loadFailBody: "Мапа показує конкретне сполучення, тож воно має бути в пам'яті або в кеші.",
     backToDetails: 'Назад до деталей',
     assembling: 'Збираю сполучення…',
     offlineTitle: 'Мапа недоступна — немає мережі',
@@ -421,8 +767,7 @@ export const uk: Strings = {
     walkStageA11y: (dist: string) => `Піший етап ${dist}`,
     lineStageA11y: (line: string, dir: string) => `Лінія ${line} напрямок ${dir}`,
     lineLabel: (line: string) => `Лінія ${line}`,
-    legStops: (n: number) =>
-      n === 1 ? '1 зуп.' : isFew(n) ? `${n} зуп.` : `${n} зуп.`,
+    legStops: (n: number) => (n === 1 ? '1 зуп.' : isFew(n) ? `${n} зуп.` : `${n} зуп.`),
     board: 'Сідай',
     alight: 'Виходь',
     mapLoadFail: 'Не вдалося завантажити мапу',
@@ -453,9 +798,12 @@ export const uk: Strings = {
     noConnectionsTitle: 'Немає сполучень',
     noConnectionsBody: 'Зачекайте, поки на цьому маршруті з’явиться рейс.',
     stopTrackingTripA11y: 'Зупинити відстеження подорожі',
-    trackNearestA11y: 'Відстежувати найближчий рейс',
+    trackTrip: 'Відстежувати рейс',
+    stopTrackTrip: 'Зупинити',
+    trackTripA11y: 'Відстежувати цей рейс',
     pinUnsupportedTitle: 'Закріплення недоступне',
-    pinUnsupportedBody: 'Закріплені сповіщення потребують dev-збірки — Expo Go не підтримує сповіщень.',
+    pinUnsupportedBody:
+      'Закріплені сповіщення потребують dev-збірки. Expo Go не підтримує сповіщень.',
     notifOffTitle: 'Сповіщення вимкнено',
     notifOffBody: 'Дозволь сповіщення в системних налаштуваннях, щоб закріпити сполучення.',
     gpsFailTitle: 'Помилка локації',
@@ -469,15 +817,18 @@ export const uk: Strings = {
     unpinA11y: 'Відкріпити сполучення',
     pinA11y: 'Закріпити найближче сполучення',
     changeFromA11y: (t: string) => `Змінити старт, зараз ${t}`,
-    changeFromAnchorA11y: (t: string, stop: string) => `Змінити старт, зараз ${t}, відправлення з зупинки ${stop}`,
+    changeFromAnchorA11y: (t: string, stop: string) =>
+      `Змінити старт, зараз ${t}, відправлення з зупинки ${stop}`,
     dismissAnchorA11y: 'Прибрати прив’язку зупинки і шукати з GPS',
     swapA11y: 'Обернути маршрут: поміняти старт і ціль',
     changeToA11y: (t: string) => `Змінити ціль, зараз ${t}`,
     searching: 'Шукаю сполучення…',
     calcFail: 'Не вдалося порахувати сполучення',
     noTimetable: 'Немає розкладу',
-    calcFailBody: 'Планувальник рахує маршрути на телефоні. Спробуй знову — якщо повторюється завжди, онови розклад у налаштуваннях.',
-    noTimetableBody: 'Застосунок рахує маршрути на телефоні з повного розкладу. Без нього немає сполучень. Завантаж раз, далі працює офлайн.',
+    calcFailBody:
+      'Планувальник рахує маршрути на телефоні. Спробуй знову. Якщо повторюється завжди, онови розклад у налаштуваннях.',
+    noTimetableBody:
+      'Застосунок рахує маршрути на телефоні з повного розкладу. Без нього немає сполучень. Завантаж раз, далі працює офлайн.',
     downloadA11y: 'Завантажити розклад',
     downloading: (p: number) => `Завантаження… ${p}%`,
     downloadingStep: (step: string, p: number) => `${step} ${p}%`,
@@ -485,7 +836,6 @@ export const uk: Strings = {
     downloadAction: 'Завантажити розклад',
     countNearest: 'найближчі відправлення',
     countDepart: (label: string) => `відправлення ${label}`,
-    countArrive: (label: string) => `прибуття ${label}`,
     countDirect: ' • лише прямі',
     countTram: ' • трамваї',
     countBus: ' • автобуси',
@@ -500,7 +850,8 @@ export const uk: Strings = {
     emptyNone: 'Сполучень не знайдено',
     emptyModeDirect: (veh: string) =>
       `На цьому маршруті зараз немає рейсу ${veh} без пересадок. Послаб фільтри або перевір інший час.`,
-    emptyDirect: 'На цьому маршруті зараз немає прямого рейсу. Вимкни фільтр „Лише прямі“, щоб бачити сполучення з пересадками, або перевір інший час.',
+    emptyDirect:
+      'На цьому маршруті зараз немає прямого рейсу. Вимкни фільтр „Лише прямі“, щоб бачити сполучення з пересадками, або перевір інший час.',
     emptyMode: (veh: string) =>
       `На цьому маршруті зараз немає рейсу ${veh}. Перемкни на „Всі“, щоб бачити решту.`,
     emptyPlain: 'Спробуй іншу ціль або перевір інший час відправлення.',
@@ -525,7 +876,8 @@ export const uk: Strings = {
     scheduleCache: 'Розклад з кешу',
     schedule: 'Розклад',
     noTrip: 'Немає геометрії маршруту',
-    noTripBody: 'Це сполучення не має збережених зупинок, тож намалювати маршрут і показати найближчу зупинку не вийде. Повернись і вибери інше сполучення.',
+    noTripBody:
+      'Це сполучення не має збережених зупинок, тож намалювати маршрут і показати найближчу зупинку не вийде. Повернись і вибери інше сполучення.',
     lineAlertsTitle: 'Зміни на твоїх лініях',
     lineAlertsAll: 'Усі новини',
     lineAlertsEmpty: 'Немає повідомлень про лінії цього маршруту.',
@@ -545,7 +897,7 @@ export const uk: Strings = {
     searching: (city: string) => `Шукаю у ${city}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
-      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
+      `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
     yourPlaces: 'Твої місця',
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
@@ -654,18 +1006,12 @@ export const uk: Strings = {
   },
   timeSheet: {
     titleDepart: 'Час відправлення',
-    titleArrive: 'Час прибуття',
-    modeDepart: 'Відправлення',
-    modeDepartA11y: 'Шукати з указаного часу',
-    modeArrive: 'Прибуття',
-    modeArriveA11y: 'Бути на місці на указаний час',
     dayToday: 'Сьогодні',
     dayTomorrow: 'Завтра',
     hourLabel: 'година',
     minuteLabel: 'хвилина',
     confirmNow: 'Шукати від зараз',
     confirmDepart: (day: string, hh: string, mm: string) => `Застосувати: ${day}, ${hh}:${mm}`,
-    confirmArrive: (day: string, hh: string, mm: string) => `Бути на: ${day}, ${hh}:${mm}`,
   },
   routesBar: {
     modeTram: 'Трам',
@@ -689,7 +1035,14 @@ export const uk: Strings = {
       n === 1 ? '1 сполучення' : isFew(n) ? `${n} сполучення` : `${n} сполучень`,
     walkAll: 'цілком пішки',
     walkLeg: 'пішки',
-    cardA11y: (dep: string, dur: number, depAt: string, arrAt: string, via: string, lines: string) =>
+    cardA11y: (
+      dep: string,
+      dur: number,
+      depAt: string,
+      arrAt: string,
+      via: string,
+      lines: string,
+    ) =>
       `${dep}, час їзди ${dur} хв, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
     walkRoute: 'піший маршрут',
   },
@@ -730,8 +1083,8 @@ export const uk: Strings = {
     noCoords: 'Ця зупинка не має координат у розкладі.',
     locOff: 'Локацію вимкнено. Без неї не покажу напрямок до зупинки.',
     locWaiting: 'Позиції ще немає. Зачекай на GPS або відкрий повну мапу.',
-    title: 'Локація зупинки',
-    followCompass: 'Орієнтуйся за компасом',
+    title: 'Навігація до зупинки',
+    followCompass: 'Піший маршрут крок за кроком',
     directionPrefix: (d: string) => `напрямок ${d}`,
     straight: 'по прямій',
     distanceText: (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} км` : `${m} м`),
@@ -745,8 +1098,10 @@ export const uk: Strings = {
     enableLoc: 'Увімкни локацію в налаштуваннях',
   },
   lastTrip: {
-    backA11y: (from: string, to: string) => `Швидке повернення: ${from} до ${to}. Відпусти, щоб шукати.`,
-    lastA11y: (from: string, to: string) => `Останнє сполучення: ${from} до ${to}. Тягни далі, щоб обернути.`,
+    backA11y: (from: string, to: string) =>
+      `Швидке повернення: ${from} до ${to}. Відпусти, щоб шукати.`,
+    lastA11y: (from: string, to: string) =>
+      `Останнє сполучення: ${from} до ${to}. Тягни далі, щоб обернути.`,
     pullHint: 'Останнє шукане сполучення.\nВідпусти, щоб шукати',
     pullHintBack: 'Дорога назад.\nВідпусти, щоб шукати',
   },
@@ -803,8 +1158,7 @@ export const uk: Strings = {
     modeTrolleybus: 'Тролейбус',
     departTitle: (service: string, at: string) => `${service} • відправлення о ${at}`,
     rideTitle: (service: string, at: string) => `${service} • прибуття о ${at}`,
-    transferTitle: (service: string, at: string) =>
-      `Пересадка • ${service} • відправлення о ${at}`,
+    transferTitle: (service: string, at: string) => `Пересадка • ${service} • відправлення о ${at}`,
     arrivedTitle: 'Ти на місці',
     arrivedBody: (at: string, dur: string) => `Прибуття о ${at} • поїздка тривала ${dur}`,
     nextStop: (name: string) => `наступна ${name}`,
@@ -819,12 +1173,12 @@ export const uk: Strings = {
     arriveAt: (at: string) => `прибуття о ${at}`,
     delayLate: (min: number) => `затримка +${Math.round(min)} хв`,
     delayEarly: (min: number) => `на ${Math.abs(Math.round(min))} хв раніше`,
-    stops: (n: number) =>
-      n === 1 ? '1 зупинка' : isFew(n) ? `${n} зупинки` : `${n} зупинок`,
+    stops: (n: number) => (n === 1 ? '1 зупинка' : isFew(n) ? `${n} зупинки` : `${n} зупинок`),
     transfers: (n: number) =>
       n === 1 ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     leaveNow: (service: string, at: string) => `Час виходити • ${service} ${at}`,
-    leaveIn: (min: number, service: string, at: string) => `Виходь через ${min} хв • ${service} ${at}`,
+    leaveIn: (min: number, service: string, at: string) =>
+      `Виходь через ${min} хв • ${service} ${at}`,
     walkToStop: (dist: string) => `${dist} до зупинки`,
     newDeparture: (at: string) => `новий рейс о ${at}`,
     delayTitle: (line: string, eta: string) => `Затримка • ${line} • ${eta}`,
@@ -845,8 +1199,7 @@ export const uk: Strings = {
       'Система не показує це сповіщення в Live Updates. Дозволь Live Updates у налаштуваннях сповіщень kilometr.',
     openNotificationSettings: 'Відкрити налаштування сповіщень',
     leaveTitle: 'Сповіщення «час виходити»',
-    leaveHint:
-      'Губий нагадування перед відправленням. Планується заздалегідь, тож працює й у тлі.',
+    leaveHint: 'Губий нагадування перед відправленням. Планується заздалегідь, тож працює й у тлі.',
     leadTitle: 'За скільки попередити',
     leadHint: 'Скільки хвилин до відправлення прозвучить нагадування.',
     leadLessA11y: 'Менше хвилин попередження',
