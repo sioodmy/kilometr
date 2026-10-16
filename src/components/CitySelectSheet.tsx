@@ -238,7 +238,7 @@ export function CitySelectSheet({
           keyboardDismissMode="on-drag"
           overScrollMode="never"
           style={styles.list}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 24 + insets.bottom }]}
           renderItem={({ item }: { item: CityDef }) => {
             const active = item.id === selectedCityId;
             const isSwitchingThis = switchingCity && switchingCityId === item.id;
@@ -372,7 +372,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingBottom: 24,
     gap: 8,
   },
   cityItem: {
