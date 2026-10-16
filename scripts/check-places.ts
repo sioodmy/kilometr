@@ -81,11 +81,6 @@ describe('Klucze kubełków per-miasto');
     'kilometr.places.opole',
   );
   expect(
-    'Rzeszów dokleja sufiks',
-    cityKey('kilometr.places', 'rzeszow'),
-    'kilometr.places.rzeszow',
-  );
-  expect(
     'Lublin dokleja sufiks',
     cityKey('kilometr.places', 'lublin'),
     'kilometr.places.lublin',

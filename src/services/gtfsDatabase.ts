@@ -12,7 +12,8 @@ import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 
-/** Plik bazy dla miasta. Wrocław trzyma legacy nazwę (zero migracji). */
+/** Plik bazy dla miasta. Każde miasto ma osobny plik; zmiana nazwy oznacza
+ *  świeży pobyt (nowy plik startuje pusty, więc wersja wymusza re-download). */
 export function gtfsDbName(cityId?: string): string {
   return getCity(cityId ?? getActiveCityIdSync()).dbFile;
 }

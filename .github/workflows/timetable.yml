@@ -6,8 +6,10 @@
 # + ZKM Gdynia + SKM ze statycznych feedów), lodz (GTFS ZDiT + ŁKA
 # ze statycznych feedów), szczecin (GTFS ZDiTM ze statycznego feedu,
 # bez kolei), kielce (GTFS ZTM ze statycznego feedu, bez kolei), olsztyn (GTFS ZDZiT z mirrora, bez kolei), bialystok (GTFS BKM ze statycznego feedu, bez kolei), opole (GTFS MZK ze statycznego feedu, bez kolei), rzeszow (GTFS ZTM ze statycznego feedu, bez kolei), lublin (GTFS ZDiTM ze statycznego feedu, bez kolei) oraz radom (GTFS MZDiK z mkuran.pl ze statycznego feedu, bez kolei).
-# Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.
-# Wrocław dokłada legacy root (manifest.json, db/...) dla starych APK.
+# Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.gz (gzip).
+# Brak legacy rootu (manifest.json, db/...) i wsparcia starych APK: pakiet
+# zmienił id na my.siood.kilometr, a stare buildy nie umiały czytać bazy .gz,
+# więc świadomie nie mają ścieżki aktualizacji.
 #
 # Wymagane sekrety (repo → Settings → Secrets → Actions):
 #   PDP_API_KEY            klucz https://pdp-api.plk-sa.pl (sekcje kolei

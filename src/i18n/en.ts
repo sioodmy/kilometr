@@ -632,7 +632,7 @@ export const en: Strings = {
     notifBody: 'Used to show the pinned connection and disruption alerts.',
     notifOn: 'Notifications enabled.',
     notifExpoGo:
-      'Expo Go preview — notifications (pinned connection) work in the development build.',
+      'Expo Go preview: notifications (pinned connection) work in the development build.',
     notifAllow: 'Enable notifications',
     cityTitle: 'Which city\ndo you ride in?',
     cityBody:
@@ -767,7 +767,7 @@ export const en: Strings = {
     trackNearestA11y: 'Track the nearest connection',
     pinUnsupportedTitle: 'Pin unavailable',
     pinUnsupportedBody:
-      'Pinned notifications require a development build — Expo Go does not support notifications.',
+      'Pinned notifications require a development build. Expo Go does not support notifications.',
     notifOffTitle: 'Notifications off',
     notifOffBody: 'Allow notifications in system settings to pin a connection.',
     gpsFailTitle: 'Location error',
@@ -791,7 +791,7 @@ export const en: Strings = {
     calcFail: 'Could not compute connections',
     noTimetable: 'No timetable',
     calcFailBody:
-      'The planner computes routes on your phone. Try again — if it always fails, refresh the timetable in settings.',
+      'The planner computes routes on your phone. Try again. If it keeps failing, refresh the timetable in settings.',
     noTimetableBody:
       'The app computes routes on your phone from the full timetable. Without it there are no connections. Download it once, then it works offline.',
     downloadA11y: 'Download timetable',

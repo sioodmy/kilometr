@@ -74,7 +74,10 @@ const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000;
 
 /** Czy snapshot z dysku mieści się w oknie świeżości i ma sensowny znacznik czasu. */
 export function snapshotIsUsable(at: unknown, now: number): boolean {
-  return typeof at === 'number' && Number.isFinite(at) && now - at <= SNAPSHOT_MAX_AGE_MS;
+  if (typeof at !== 'number' || !Number.isFinite(at)) return false;
+  // Znacznik z przyszłości (przestawiony zegar, uszkodzony plik) odrzucamy:
+  // bez tego ujemny wiek zawsze mieściłby się w oknie świeżości.
+  return at <= now && now - at <= SNAPSHOT_MAX_AGE_MS;
 }
 
 export interface RawVehicleRow {

@@ -636,7 +636,7 @@ export const de: Strings = {
     notifBody: 'Dienen zur angehefteten Verbindung und Störungsmeldungen.',
     notifOn: 'Mitteilungen aktiviert.',
     notifExpoGo:
-      'Expo-Go-Vorschau — Mitteilungen (angeheftete Verbindung) funktionieren im Entwicklungs-Build.',
+      'Expo-Go-Vorschau: Mitteilungen (angeheftete Verbindung) funktionieren im Entwicklungs-Build.',
     notifAllow: 'Mitteilungen aktivieren',
     cityTitle: 'In welcher Stadt\nbist du unterwegs?',
     cityBody:
@@ -774,7 +774,7 @@ export const de: Strings = {
     trackNearestA11y: 'Nächste Verbindung verfolgen',
     pinUnsupportedTitle: 'Anheften nicht verfügbar',
     pinUnsupportedBody:
-      'Angeheftete Mitteilungen brauchen einen Entwicklungs-Build — Expo Go unterstützt keine Mitteilungen.',
+      'Angeheftete Mitteilungen brauchen einen Entwicklungs-Build. Expo Go unterstützt keine Mitteilungen.',
     notifOffTitle: 'Mitteilungen aus',
     notifOffBody: 'Erlaube Mitteilungen in den Systemeinstellungen, um eine Verbindung anzuheften.',
     gpsFailTitle: 'Standortfehler',
@@ -798,7 +798,7 @@ export const de: Strings = {
     calcFail: 'Verbindungen konnten nicht berechnet werden',
     noTimetable: 'Kein Fahrplan',
     calcFailBody:
-      'Der Planer rechnet Routen auf deinem Telefon. Versuch es erneut — bei Dauerfehlern den Fahrplan in den Einstellungen aktualisieren.',
+      'Der Planer rechnet Routen auf deinem Telefon. Versuch es erneut. Bei Dauerfehlern den Fahrplan in den Einstellungen aktualisieren.',
     noTimetableBody:
       'Die App berechnet Routen auf deinem Telefon aus dem vollen Fahrplan. Ohne ihn gibt es keine Verbindungen. Einmal laden, danach offline nutzbar.',
     downloadA11y: 'Fahrplan laden',
