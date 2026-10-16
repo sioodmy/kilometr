@@ -153,6 +153,43 @@ internal fun placeIcon(icon: String?): Int = when (icon) {
   else -> R.drawable.kw_ic_pin
 }
 
+/**
+ * Tło badge'a z hexu z snapshotu. RemoteViews nie zrenderuje kształtu przez
+ * setColorFilter, więc każdy kolor palety apki ma własny shape w res/.
+ * Słownik musi pokrywać się z src/services/lineIdentity.ts (sprawdza check:widget-badge).
+ */
+internal fun badgeBgResource(bg: String?): Int = when (bg?.trim()?.uppercase(Locale.ROOT)) {
+  "00897B" -> R.drawable.kw_badge_00897b
+  "1976D2" -> R.drawable.kw_badge_1976d2
+  "D32F2F" -> R.drawable.kw_badge_d32f2f
+  "7B1FA2" -> R.drawable.kw_badge_7b1fa2
+  "F57C00" -> R.drawable.kw_badge_f57c00
+  "303F9F" -> R.drawable.kw_badge_303f9f
+  "2E7D32" -> R.drawable.kw_badge_2e7d32
+  "C2185B" -> R.drawable.kw_badge_c2185b
+  "0097A7" -> R.drawable.kw_badge_0097a7
+  "E64A19" -> R.drawable.kw_badge_e64a19
+  "512DA8" -> R.drawable.kw_badge_512da8
+  "0288D1" -> R.drawable.kw_badge_0288d1
+  "558B2F" -> R.drawable.kw_badge_558b2f
+  "AD1457" -> R.drawable.kw_badge_ad1457
+  "00838F" -> R.drawable.kw_badge_00838f
+  "455A64" -> R.drawable.kw_badge_455a64
+  "5D4037" -> R.drawable.kw_badge_5d4037
+  "388E3C" -> R.drawable.kw_badge_388e3c
+  "0D47A1" -> R.drawable.kw_badge_0d47a1
+  "880E4F" -> R.drawable.kw_badge_880e4f
+  "00695C" -> R.drawable.kw_badge_00695c
+  "BF360C" -> R.drawable.kw_badge_bf360c
+  "311B92" -> R.drawable.kw_badge_311b92
+  "1A237E" -> R.drawable.kw_badge_1a237e
+  "FFB957" -> R.drawable.kw_badge_train
+  "A5CCE8" -> R.drawable.kw_badge_cable
+  "0000BB" -> R.drawable.kw_badge_m1
+  "BB0000" -> R.drawable.kw_badge_m2
+  else -> R.drawable.kw_badge_container
+}
+
 /** Badge linii jak LineBadge w apce. Odcinek pieszy to sama ikona na neutralnym tle. */
 internal fun lineBadge(
   context: Context,
@@ -164,13 +201,19 @@ internal fun lineBadge(
   val views = RemoteViews(context.packageName, R.layout.kw_badge_item)
   views.setImageViewResource(R.id.kw_badge_icon, modeIcon(mode))
   if (mode == "walk" || line.isNullOrBlank()) {
-    views.setInt(R.id.kw_badge_bg, "setColorFilter", context.getColor(R.color.kw_surface_high))
+    views.setInt(R.id.kw_badge_body, "setBackgroundResource", R.drawable.kw_badge_walk)
     views.setInt(R.id.kw_badge_icon, "setColorFilter", context.getColor(R.color.kw_on_surface_variant))
     views.setViewVisibility(R.id.kw_badge_text, View.GONE)
     return views
   }
-  val fgColor = parseColor(fg, Color.WHITE)
-  views.setInt(R.id.kw_badge_bg, "setColorFilter", parseColor(bg, context.getColor(R.color.kw_primary_container)))
+  val bgRes = badgeBgResource(bg)
+  val fallbackFg = if (bgRes == R.drawable.kw_badge_container) {
+    context.getColor(R.color.kw_on_primary_container)
+  } else {
+    Color.WHITE
+  }
+  val fgColor = parseColor(fg, fallbackFg)
+  views.setInt(R.id.kw_badge_body, "setBackgroundResource", bgRes)
   views.setInt(R.id.kw_badge_icon, "setColorFilter", fgColor)
   views.setTextViewText(R.id.kw_badge_text, line)
   views.setTextColor(R.id.kw_badge_text, fgColor)
