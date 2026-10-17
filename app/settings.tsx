@@ -12,6 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  BusFront,
   CableCar,
   Check,
   ChevronDown,
@@ -28,16 +29,18 @@ import {
   Rabbit,
   RotateCcw,
   TrainFront,
+  TramFront,
   Turtle,
 } from 'lucide-react-native';
-import type { RouteStyle } from '../src/services/routing/types';
+import type { RouteStyle, TransitVehicleMode } from '../src/services/routing/types';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
-import { getCity, type CityId } from '../src/cities';
+import { type CityId } from '../src/cities';
 import { CitySelectSheet } from '../src/components/CitySelectSheet';
 import { useActiveCity } from '../src/services/cityStore';
 import {
   SETTINGS_LIMITS,
+  TRANSIT_MODES,
   WALK_PACE_DEFAULTS_MPS,
   formatTransferTime,
   formatWalkDistance,
@@ -56,7 +59,7 @@ import {
 } from '../src/services/dataManager';
 import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { transfersLabel } from '../src/components/ConnectionCard';
-import { NotificationPrefsCard, PrefsToggle } from '../src/components/NotificationPrefsCard';
+import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
 import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
@@ -200,6 +203,15 @@ export default function SettingsScreen() {
       desc: s.settings.styleFewerTransfersDesc,
     },
   ];
+  const modePills: { value: TransitVehicleMode; icon: typeof TramFront; label: string }[] = [
+    { value: 'tram', icon: TramFront, label: s.settings.modeTram },
+    { value: 'bus', icon: BusFront, label: s.settings.modeBus },
+    { value: 'trolleybus', icon: BusFront, label: s.settings.modeTrolleybus },
+    { value: 'subway', icon: TrainFront, label: s.settings.modeSubway },
+    { value: 'train', icon: TrainFront, label: s.settings.modeTrain },
+    { value: 'cable', icon: CableCar, label: s.settings.modeCable },
+  ];
+  const enabledModes = TRANSIT_MODES.filter((m) => settings.allowedModes[m]);
 
   const maxT = SETTINGS_LIMITS.maxTransfers;
   const minT = SETTINGS_LIMITS.minTransferSec;
@@ -216,7 +228,6 @@ export default function SettingsScreen() {
   const [hasTrains, setHasTrains] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [cooldownHours, setCooldownHours] = useState(1);
-  const cityHasCable = getCity(cityId).features.cable;
 
   useEffect(() => {
     refreshDataStatus()
@@ -571,22 +582,49 @@ export default function SettingsScreen() {
 
         <SectionLabel>{s.settings.sectionTransport}</SectionLabel>
         <View style={styles.card}>
-          <View style={styles.toggleBlock}>
-            <View style={styles.toggleHead}>
-              <TrainFront size={18} color={scheme.onSurfaceVariant} />
-              <Text style={[styles.settingTitle, styles.settingText]}>{s.settings.trainTitle}</Text>
-              <PrefsToggle
-                value={settings.trainsEnabled}
-                onChange={(v) => update({ trainsEnabled: v })}
-                disabled={!hasTrains}
-                label={s.settings.trainTitle}
-                hint={s.settings.trainHintShort}
-                onText={s.notificationPrefs.on}
-                offText={s.notificationPrefs.off}
-              />
-            </View>
-            {!hasTrains ? <Text style={styles.warnHint}>{s.settings.trainNoData}</Text> : null}
-            {settings.trainsEnabled && hasTrains ? (
+          <Text style={styles.cardTitle}>{s.settings.allowTransferTitle}</Text>
+          <Text style={styles.settingHint}>{s.settings.allowTransferHint}</Text>
+          <View style={styles.langRow}>
+            {modePills.map((pill) => {
+              const active = settings.allowedModes[pill.value];
+              const lastEnabled = active && enabledModes.length === 1;
+              const Icon = pill.icon;
+              return (
+                <Pressable
+                  key={pill.value}
+                  onPress={() =>
+                    update({
+                      allowedModes: { ...settings.allowedModes, [pill.value]: !active },
+                    })
+                  }
+                  disabled={lastEnabled}
+                  style={({ pressed }) => [
+                    styles.langChip,
+                    active && styles.langChipActive,
+                    lastEnabled && styles.langChipDisabled,
+                    pressed && !active && { opacity: 0.7 },
+                  ]}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: active, disabled: lastEnabled }}
+                  accessibilityLabel={pill.label}
+                  accessibilityHint={s.settings.allowTransferHint}
+                >
+                  <Icon
+                    size={16}
+                    color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                  />
+                  <Text style={[styles.langChipText, active && styles.langChipTextActive]}>
+                    {pill.label}
+                  </Text>
+                  {active && <Check size={14} color={scheme.onPrimaryContainer} />}
+                </Pressable>
+              );
+            })}
+          </View>
+          {!hasTrains ? <Text style={styles.warnHint}>{s.settings.trainNoData}</Text> : null}
+          {settings.allowedModes.train && hasTrains ? (
+            <>
+              <View style={styles.divider} />
               <SettingRow title={s.settings.trainBufferTitle}>
                 <Stepper
                   value={formatTransferTime(settings.trainMinTransferSec)}
@@ -600,26 +638,6 @@ export default function SettingsScreen() {
                   plusDisabled={settings.trainMinTransferSec >= trainBuf.max}
                 />
               </SettingRow>
-            ) : null}
-          </View>
-
-          {cityHasCable ? (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.toggleHead}>
-                <CableCar size={18} color={scheme.onSurfaceVariant} />
-                <Text style={[styles.settingTitle, styles.settingText]}>
-                  {s.settings.cableTitle}
-                </Text>
-                <PrefsToggle
-                  value={settings.cableEnabled}
-                  onChange={(v) => update({ cableEnabled: v })}
-                  label={s.settings.cableTitle}
-                  hint={s.settings.cableHintShort}
-                  onText={s.notificationPrefs.on}
-                  offText={s.notificationPrefs.off}
-                />
-              </View>
             </>
           ) : null}
         </View>
