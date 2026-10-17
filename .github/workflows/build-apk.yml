@@ -248,6 +248,11 @@ jobs:
       - name: Build Android Release APK
         env:
           TARGET_ARCH: ${{ steps.release.outputs.arch }}
+          # Gradle regeneruje assets/app.config przy każdym buildzie i bez
+          # APP_VERSION wpisuje tam wersję z app.json. Constants.expoConfig.version
+          # musi zgadzać się z tagiem, bo kanał Contributor czyta z niego wersję.
+          APP_VERSION: ${{ steps.release.outputs.version }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
         run: |
           set -euo pipefail
           ARCH_FLAG=""
@@ -281,6 +286,14 @@ jobs:
           fi
           if [ "$APK_CODE" != "$EXPECTED_CODE" ]; then
             echo "::error::versionCode APK ($APK_CODE) nie zgadza się z oczekiwanym ($EXPECTED_CODE)"
+            exit 1
+          fi
+          # app.config jest wersją widzianą przez Constants.expoConfig w runtime
+          # i to z niej kod rozpoznaje kanał builda.
+          EMBEDDED_VERSION="$(unzip -p "$APK" assets/app.config | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).version||'')}catch{}})")"
+          echo "app.config version=$EMBEDDED_VERSION (tag=$TAG)"
+          if [ "$EMBEDDED_VERSION" != "$TAG" ]; then
+            echo "::error::Wersja w assets/app.config ($EMBEDDED_VERSION) nie zgadza się z tagiem ($TAG); Constants.expoConfig.version byłby błędny w runtime"
             exit 1
           fi
 
