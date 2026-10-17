@@ -74,6 +74,13 @@ export class LocalGtfsStore {
   /** Wycinki horyzontu (szybkie): klucz dzien+kubelki godzin, max 4 w pamięci. */
   private sliceIndexes = new Map<string, DayIndex>();
   private slicePromises = new Map<string, Promise<DayIndex>>();
+  /**
+   * Zbudowany horyzont wycinka [from, to] (z marginesami kubelków). Wycinek
+   * pokrywający szersze zapytanie może je obsłużyć bez przebudowy i bez nowej
+   * kompilacji sieci RAPTOR-a, np. wycinek z rozgrzewki na "teraz" obsługuje
+   * wyszukiwanie z godzinę później, mimo innej godziny w kluczu.
+   */
+  private sliceHorizons = new WeakMap<DayIndex, { from: number; to: number }>();
   // Liczenie referencji kursów per wycinek: kurs bywa we wielu wycinkach, więc
   // `trips`/`stopTimes` zwalniamy dopiero, gdy ostatni wycinek go puści.
   private sliceTripIds = new Map<string, string[]>();
@@ -346,6 +353,23 @@ export class LocalGtfsStore {
     const inFlight = this.slicePromises.get(cacheKey);
     if (inFlight) return inFlight;
 
+    // Wycinek, który budował SZERSZY horyzont (np. rozgrzewka godzinę
+    // wcześniej), obsługuje to zapytanie bez przebudowy. Bez tego pierwsze
+    // wyszukiwanie po przekroczeniu kubłka płaci za nowy SQL, buildPatterns,
+    // pakowanie sieci i wczytanie jej do Rusta, choć dane już leżą w pamięci.
+    const wantFrom = qFrom * 3600 - 1800;
+    const wantTo = (qTo + 1) * 3600 + 1800;
+    const dayPrefix = `${day}|${dateStr ?? ''}|`;
+    for (const [key, idx] of this.sliceIndexes) {
+      if (!key.startsWith(dayPrefix)) continue;
+      const horizon = this.sliceHorizons.get(idx);
+      if (!horizon || horizon.from > wantFrom || horizon.to < wantTo) continue;
+      // LRU: odśwież kolejność, żeby wybrany wycinek nie wyleciał z LRU (≤4 wpisy).
+      this.sliceIndexes.delete(key);
+      this.sliceIndexes.set(key, idx);
+      return idx;
+    }
+
     const promise = this.buildSlice(day, dateStr, qFrom, qTo).finally(() => {
       this.slicePromises.delete(cacheKey);
     });
@@ -375,6 +399,10 @@ export class LocalGtfsStore {
     const serviceIds = Array.from(activeServices);
     if (serviceIds.length === 0) {
       this.rememberSlice(cacheKey, emptyIdx);
+      // Pusty wycinek (np. noc, brak serwisów) nadaje się tylko na dokładnie
+      // swój klucz — pokrycia nie rejestrujemy, żeby inny horyzont go nie
+      // uznał za wystarczający.
+      this.sliceHorizons.delete(emptyIdx);
       return emptyIdx;
     }
     const servicePlaceholders = serviceIds.map(() => '?').join(',');
@@ -513,6 +541,7 @@ export class LocalGtfsStore {
     const idx = this.buildPatterns(mergePolinkaTrips(sortedByRoute, polinka.byRouteId));
     this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
     this.rememberSlice(cacheKey, idx);
+    this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
     console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length + polinka.tripIds.length}`);
     return idx;
   }

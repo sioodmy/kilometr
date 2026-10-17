@@ -146,24 +146,30 @@ export async function refreshDataStatus(): Promise<DataStatus> {
 }
 
 /**
- * Tło po starcie: wagi przystanków (ranking podpowiedzi) i rozgrzany indeks
- * RAPTOR-a na bieżącą porę — żeby pierwsze wyszukiwanie tras nie płaciło
- * pełnego kosztu budowy indeksu.
+ * Tło po starcie: rozgrzany indeks RAPTOR-a na bieżącą porę (żeby pierwsze
+ * wyszukiwanie tras nie płaciło pełnego kosztu budowy indeksu) oraz wagi
+ * przystanków (ranking podpowiedzi). Oba równolegle: kolejka wag przed
+ * rozgrzewką opóźniała ją o własny czas, a pierwsze wyszukiwanie traciło.
  */
 async function ensureSearchReady(): Promise<void> {
-  try {
-    if (await needsStopWeights()) {
-      await computeStopWeights();
+  const weights = (async () => {
+    try {
+      if (await needsStopWeights()) {
+        await computeStopWeights();
+      }
+    } catch (err) {
+      console.warn('[DataManager] stop weights failed:', err);
     }
-  } catch (err) {
-    console.warn('[DataManager] stop weights failed:', err);
-  }
-  try {
-    const { warmupRouting } = await import('./routing/engine');
-    await warmupRouting();
-  } catch (err) {
-    console.warn('[DataManager] routing warmup failed:', err);
-  }
+  })();
+  const warmup = (async () => {
+    try {
+      const { warmupRouting } = await import('./routing/engine');
+      await warmupRouting();
+    } catch (err) {
+      console.warn('[DataManager] routing warmup failed:', err);
+    }
+  })();
+  await Promise.all([weights, warmup]);
 }
 
 export let importInProgress = false;
