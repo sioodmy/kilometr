@@ -13,18 +13,11 @@ import { PrefsToggle } from './NotificationPrefsCard';
 import {
   contributorVersion,
   getContributorSettingsSync,
-  isContributorAvailable,
   loadContributorSettings,
   saveContributorSettings,
 } from '../services/contributor/config';
+import { BYTES_PER_SAMPLE, clearAll, stats, type StatsResult } from '../services/contributor/store';
 import {
-  BYTES_PER_SAMPLE,
-  clearAll,
-  stats,
-  type StatsResult,
-} from '../services/contributor/store';
-import {
-  getActiveSessionId,
   metaFromTracked,
   requestBackgroundLocationPermission,
   setNativeNotificationCopy,
@@ -47,11 +40,13 @@ export function ContributorCard() {
   const s = useStrings();
   const b = s.settings;
   const [state, setState] = useState<CollectorState>(() => getCollectorState());
-  const [autoFollow, setAutoFollow] = useState<boolean>(() => getContributorSettingsSync().autoFollow);
-  const [usage, setUsage] = useState<StatsResult | null>(null);
-  const [busy, setBusy] = useState<'start' | 'stop' | 'export' | 'upload' | 'delete' | 'toggle' | null>(
-    null,
+  const [autoFollow, setAutoFollow] = useState<boolean>(
+    () => getContributorSettingsSync().autoFollow,
   );
+  const [usage, setUsage] = useState<StatsResult | null>(null);
+  const [busy, setBusy] = useState<
+    'start' | 'stop' | 'export' | 'upload' | 'delete' | 'toggle' | null
+  >(null);
 
   useEffect(() => {
     let alive = true;

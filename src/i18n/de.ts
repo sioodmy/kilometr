@@ -341,7 +341,7 @@ export const de: Strings = {
     sectionRoute: 'Route',
     sectionTransport: 'Verkehrsmittel',
     sectionData: 'Deine Daten',
-    sectionContributor: 'Telemetrie',
+    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Erweitert',
     advancedHide: 'Erweitert ausblenden',
     notificationsSection: 'Benachrichtigungen',

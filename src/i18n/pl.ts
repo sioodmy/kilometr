@@ -349,7 +349,7 @@ export const pl = {
     sectionRoute: 'Trasa',
     sectionTransport: 'Transport',
     sectionData: 'Twoje dane',
-    sectionContributor: 'Telemetria',
+    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Zaawansowane',
     advancedHide: 'Ukryj zaawansowane',
     notificationsSection: 'Powiadomienia',

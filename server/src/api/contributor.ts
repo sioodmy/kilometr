@@ -15,7 +15,7 @@ const contributorRouter = Router();
 const DATA_DIR = path.join(config.dataDir, 'contributor');
 
 /** id/deviceId stają się częścią ścieżki pliku - walidujemy całość. */
-const SAFE_ID = /^[A-Za-z0-9._-]{1,80}$/;
+const SAFE_ID = /^[A-Za-z0-9_-]{1,80}$/;
 const MAX_SESSIONS_PER_UPLOAD = 200;
 const MAX_SAMPLES_PER_SESSION = 200_000;
 const MAX_SESSION_BYTES = 50_000_000;
@@ -64,9 +64,33 @@ function allowUpload(deviceId: string): boolean {
 
 /** Zapisuje plik sesji (header + próbki). Zwraca liczbę próbek. */
 function writeSessionFile(deviceId: string, sessionId: string, lines: string[]): number {
-  const dir = path.join(DATA_DIR, deviceId);
+  if (!isSafeId(deviceId) || !isSafeId(sessionId)) {
+    throw new Error('invalid identifier in session file write');
+  }
+
+  const rootDir = path.resolve(DATA_DIR);
+  const dir = path.resolve(rootDir, deviceId);
+  const filePath = path.resolve(dir, `${sessionId}.jsonl`);
+
+  const rootPrefix = rootDir.endsWith(path.sep) ? rootDir : rootDir + path.sep;
+  const dirPrefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
+
+  const relDir = path.relative(rootDir, dir);
+  const relFile = path.relative(dir, filePath);
+
+  if (
+    !dir.startsWith(rootPrefix) ||
+    !filePath.startsWith(dirPrefix) ||
+    relDir.startsWith('..') ||
+    path.isAbsolute(relDir) ||
+    relFile.startsWith('..') ||
+    path.isAbsolute(relFile)
+  ) {
+    throw new Error('path traversal detected');
+  }
+
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, `${sessionId}.jsonl`), `${lines.join('\n')}\n`, 'utf8');
+  fs.writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
   return lines.length - 1;
 }
 
@@ -100,52 +124,66 @@ function recordSession(
   }
 }
 
-contributorRouter.post('/upload', express.json({ limit: '30mb' }), (req: Request, res: Response) => {
-  const body = req.body as UploadEnvelope | undefined;
-  const manifest = body?.manifest;
-  const data = body?.data;
-  if (typeof manifest !== 'object' || manifest === null || typeof data !== 'object' || data === null) {
-    res.status(400).json({ error: 'unsupported envelope' });
-    return;
-  }
-  if (manifest.kind !== 'kilometr-contributor' || manifest.schema !== 1) {
-    res.status(400).json({ error: 'unsupported manifest' });
-    return;
-  }
-  const deviceId = manifest.deviceId;
-  if (!isSafeId(deviceId)) {
-    res.status(400).json({ error: 'invalid deviceId' });
-    return;
-  }
-  if (!allowUpload(deviceId)) {
-    res.status(429).json({ error: 'too many uploads' });
-    return;
-  }
-
-  const requested = Array.isArray(manifest.sessions)
-    ? manifest.sessions.filter(isSafeId).slice(0, MAX_SESSIONS_PER_UPLOAD)
-    : [];
-  const accepted: string[] = [];
-
-  for (const sessionId of requested) {
-    const raw = (data as Record<string, unknown>)[sessionId];
-    if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_SESSION_BYTES) continue;
-
-    const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
-    if (lines.length < 2 || lines.length - 1 > MAX_SAMPLES_PER_SESSION) continue;
-
-    try {
-      const header = JSON.parse(lines[0]) as SessionHeader;
-      if (header.kind !== 'session' || header.schema !== 1 || header.id !== sessionId) continue;
-      const samples = writeSessionFile(deviceId, sessionId, lines);
-      recordSession(deviceId, sessionId, header, samples);
-      accepted.push(sessionId);
-    } catch {
-      // uszkodzony nagłówek dyskwalifikuje sesję; reszta paczki przechodzi dalej
+contributorRouter.post(
+  '/upload',
+  express.json({ limit: '30mb' }),
+  (req: Request, res: Response) => {
+    const body = req.body as UploadEnvelope | undefined;
+    const manifest = body?.manifest;
+    const data = body?.data;
+    if (
+      typeof manifest !== 'object' ||
+      manifest === null ||
+      typeof data !== 'object' ||
+      data === null
+    ) {
+      res.status(400).json({ error: 'unsupported envelope' });
+      return;
     }
-  }
+    if (manifest.kind !== 'kilometr-contributor' || manifest.schema !== 1) {
+      res.status(400).json({ error: 'unsupported manifest' });
+      return;
+    }
+    const deviceId = manifest.deviceId;
+    if (!isSafeId(deviceId)) {
+      res.status(400).json({ error: 'invalid deviceId' });
+      return;
+    }
+    if (!allowUpload(deviceId)) {
+      res.status(429).json({ error: 'too many uploads' });
+      return;
+    }
 
-  res.json({ ok: true, accepted });
-});
+    const requested = Array.isArray(manifest.sessions)
+      ? manifest.sessions.filter(isSafeId).slice(0, MAX_SESSIONS_PER_UPLOAD)
+      : [];
+    const accepted: string[] = [];
+
+    for (const sessionId of requested) {
+      const raw =
+        (data as Record<string, unknown>)[sessionId] ??
+        (data as Record<string, unknown>)[`${sessionId}.jsonl`];
+      if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_SESSION_BYTES) continue;
+
+      const lines = raw
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (lines.length < 2 || lines.length - 1 > MAX_SAMPLES_PER_SESSION) continue;
+
+      try {
+        const header = JSON.parse(lines[0]) as SessionHeader;
+        if (header.kind !== 'session' || header.schema !== 1 || header.id !== sessionId) continue;
+        const samples = writeSessionFile(deviceId, sessionId, lines);
+        recordSession(deviceId, sessionId, header, samples);
+        accepted.push(sessionId);
+      } catch {
+        // uszkodzony nagłówek dyskwalifikuje sesję; reszta paczki przechodzi dalej
+      }
+    }
+
+    res.json({ ok: true, accepted });
+  },
+);
 
 export { contributorRouter };

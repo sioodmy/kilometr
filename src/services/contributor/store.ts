@@ -4,6 +4,7 @@
 // bo tester ma ją głównie po to, by ją wysłać.
 
 import * as SQLite from 'expo-sqlite';
+import { randomId } from './config';
 
 /** ~120 B na próbkę wyeksportowaną w JSONL, do liczenia rozmiaru w UI. */
 export const BYTES_PER_SAMPLE = 120;
@@ -238,7 +239,7 @@ async function runInsert(
 }
 
 function sessionId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${Date.now().toString(36)}-${randomId().slice(0, 12)}`;
 }
 
 function sampleParams(sessionId: string, s: SampleRow): (number | string | null)[] {
@@ -293,14 +294,18 @@ export async function appendSessionContext(
       sessionId,
     ]);
   } else {
-    await db.runAsync('UPDATE sessions SET context_json = ? WHERE id = ?', [JSON.stringify(current), sessionId]);
+    await db.runAsync('UPDATE sessions SET context_json = ? WHERE id = ?', [
+      JSON.stringify(current),
+      sessionId,
+    ]);
   }
 }
 
 function safeContext(raw: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      return parsed as Record<string, unknown>;
   } catch {
     // uszkodzony wpis nadpisujemy świeżą wersją
   }
@@ -432,12 +437,7 @@ function sampleJsonLine(s: RowSampleRaw): string {
     hacc: s.hacc,
     spd: s.spd,
     brg: s.brg,
-    a: [
-      s.a_min,
-      s.a_max,
-      s.a_avg,
-      s.a_std,
-    ],
+    a: [s.a_min, s.a_max, s.a_avg, s.a_std],
     xyz: [s.x_avg, s.y_avg, s.z_avg],
     moved: s.moved === 1,
   });
@@ -483,9 +483,6 @@ export async function sweepRetention(): Promise<number> {
     `DELETE FROM samples WHERE session_id IN (${ids.map(() => '?').join(',')})`,
     ids,
   );
-  await db.runAsync(
-    `DELETE FROM sessions WHERE id IN (${ids.map(() => '?').join(',')})`,
-    ids,
-  );
+  await db.runAsync(`DELETE FROM sessions WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
   return ids.length;
 }
