@@ -39,7 +39,7 @@ async function buildEnvelope(pending: SessionRow[], deviceId: string) {
   for (const session of pending) {
     const jsonl = await sessionJsonl(session.id);
     bytes += jsonl.length;
-    data[`${session.id}.jsonl`] = jsonl;
+    data[session.id] = jsonl;
   }
   const payload: UploadEnvelope = {
     manifest: {
@@ -73,7 +73,9 @@ export async function uploadContributorSessions(): Promise<ContributorUploadResu
   const body = (await res.json()) as { ok?: boolean; accepted?: string[] };
   const accepted = Array.isArray(body.accepted) ? body.accepted : [];
   // Serwer potwierdza sesjami, które faktycznie zapisał - nie odznaczamy
-  // danych, których tam jeszcze nie ma.
-  await markUploaded(accepted.length > 0 ? accepted : pending.map((s) => s.id));
-  return { sessions: accepted.length || pending.length, bytes };
+  // danych, których serwer nie przyjął.
+  if (accepted.length > 0) {
+    await markUploaded(accepted);
+  }
+  return { sessions: accepted.length, bytes };
 }

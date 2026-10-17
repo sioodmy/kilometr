@@ -351,7 +351,7 @@ export const uk: Strings = {
     sectionRoute: 'Маршрут',
     sectionTransport: 'Транспорт',
     sectionData: 'Ваші дані',
-    sectionContributor: 'Телеметрія',
+    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Розширені',
     advancedHide: 'Сховати розширені',
     notificationsSection: 'Сповіщення',

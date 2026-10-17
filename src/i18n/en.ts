@@ -342,7 +342,7 @@ export const en: Strings = {
     sectionRoute: 'Route',
     sectionTransport: 'Transport',
     sectionData: 'Your data',
-    sectionContributor: 'Telemetry',
+    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Advanced',
     advancedHide: 'Hide advanced',
     notificationsSection: 'Notifications',

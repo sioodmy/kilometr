@@ -19,7 +19,11 @@ import {
   type SampleRow,
   type SessionMeta,
 } from './store';
-import { getContributorDeviceId, getContributorSettingsSync, isContributorAvailable } from './config';
+import {
+  getContributorDeviceId,
+  getContributorSettingsSync,
+  isContributorAvailable,
+} from './config';
 import { getActiveCitySync } from '../cityStore';
 import { getTrackedTripSync, subscribeTracked } from '../notifications/tripMonitor';
 import type { TrackedTrip, TripProgress } from '../notifications/types';
@@ -63,7 +67,10 @@ let bucketZ: number[] = [];
 let writtenLastMag = 0;
 let sessionMeta: SessionMeta | null = null;
 let sessionSrc: 'manual' | 'trip' | null = null;
-let nativeCopy: NativeNotificationCopy = { title: 'Contributor', text: 'Zbieram telemetrię' };
+let nativeCopy: NativeNotificationCopy = {
+  title: 'Kilometr Contributor',
+  text: 'Zbieram telemetrię',
+};
 
 const stateListeners = new Set<() => void>();
 
@@ -399,10 +406,7 @@ async function ingestFile(dbRecorded: (id: string) => void, name: string): Promi
   return true;
 }
 
-async function finalizeNativeSession(
-  sessionId: string,
-  header: NativeHeader,
-): Promise<void> {
+async function finalizeNativeSession(sessionId: string, header: NativeHeader): Promise<void> {
   await closeNativeSession(sessionId, header.endedAt ?? Date.now());
 }
 

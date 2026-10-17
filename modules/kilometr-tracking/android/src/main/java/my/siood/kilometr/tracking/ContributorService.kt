@@ -104,7 +104,10 @@ class ContributorService : Service(), SensorEventListener, LocationListener {
       return START_NOT_STICKY
     }
 
-    if (!startForegroundSafe(parsed)) return START_NOT_STICKY
+    if (!startForegroundSafe(parsed)) {
+      shutdown()
+      return START_NOT_STICKY
+    }
 
     meta = parsed
     sessionId = newSessionId()
@@ -151,7 +154,7 @@ class ContributorService : Service(), SensorEventListener, LocationListener {
     val channel = ensureContributorChannel(
       this,
       // Nazwa i opis kanału przychodzą z JS przetłumaczone (jak w LiveTripPlan).
-      channelName = parsed.optString("channelName", parsed.optString("title", "Contributor")),
+      channelName = parsed.optString("channelName", parsed.optString("title", "Kilometr Contributor")),
       channelDescription = parsed.optString("channelDescription", ""),
     )
     return NotificationCompat.Builder(this, channel)
