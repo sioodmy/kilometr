@@ -23,6 +23,15 @@ import {
   stopTracking,
   type TripResponse,
 } from '../src/services/notifications';
+import {
+  initContributorAutoFollow,
+  ingestNativeSessions,
+} from '../src/services/contributor/collector';
+import {
+  isContributorAvailable,
+  loadContributorSettings,
+} from '../src/services/contributor/config';
+import { sweepRetention } from '../src/services/contributor/store';
 
 LogBox.ignoreAllLogs(true);
 
@@ -79,6 +88,17 @@ export default function RootLayout() {
     // planowanie trasy odtwarza się na bazie aktywnego miasta.
     void initAppReady.finally(() => restoreTrackedTrip());
     startTrackedTripListener();
+
+    // Contributor: po podstawowych inicjalizacjach przenosimy pliki z
+    // serwisu natywnego do bazy (GPS mógł zbierać przez noc), retencję
+    // dbamy przy każdym starcie. Na prodzie wszystko jest no-opem.
+    void initAppReady.then(async () => {
+      if (!isContributorAvailable()) return;
+      await loadContributorSettings();
+      await sweepRetention();
+      await ingestNativeSessions();
+      initContributorAutoFollow();
+    }).catch((err) => console.warn('[RootLayout] contributor init:', err));
 
     // Tap w powiadomienie lub przycisk akcji → ekran połączeń / koniec
     getLastTripResponse().then(navigateFromNotification);
