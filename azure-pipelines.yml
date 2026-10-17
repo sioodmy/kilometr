@@ -260,6 +260,11 @@ jobs:
         displayName: Build Android Release APK
         env:
           GRADLE_USER_HOME: $(Pipeline.Workspace)/.gradle
+          # Gradle regeneruje assets/app.config przy każdym buildzie i bez
+          # APP_VERSION wpisuje tam wersję z app.json. Constants.expoConfig.version
+          # musi zgadzać się z tagiem, bo kanał Contributor czyta z niego wersję.
+          APP_VERSION: $(tag)
+          BUILD_NUMBER: $(build_number)
 
       - bash: |
           set -euo pipefail
@@ -276,6 +281,14 @@ jobs:
           fi
           if [ "$APK_CODE" != "$EXPECTED_CODE" ]; then
             echo "##vso[task.logissue type=error]versionCode APK ($APK_CODE) nie zgadza się z oczekiwanym ($EXPECTED_CODE)"
+            exit 1
+          fi
+          # app.config jest wersją widzianą przez Constants.expoConfig w runtime
+          # i to z niej kod rozpoznaje kanał builda.
+          EMBEDDED_VERSION="$(unzip -p "$APK" assets/app.config | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).version||'')}catch{}})")"
+          echo "app.config version=$EMBEDDED_VERSION (tag=$(tag))"
+          if [ "$EMBEDDED_VERSION" != "$(tag)" ]; then
+            echo "##vso[task.logissue type=error]Wersja w assets/app.config ($EMBEDDED_VERSION) nie zgadza się z tagiem ($(tag)); Constants.expoConfig.version byłby błędny w runtime"
             exit 1
           fi
         displayName: Verify APK version matches release tag

@@ -6,12 +6,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection } from '../types/models';
-import {
-  fetchCityNews,
-  getCachedNews,
-  loadNewsCache,
-  type MpkNewsItem,
-} from '../services/mpkNews';
+import { fetchCityNews, getCachedNews, loadNewsCache, type MpkNewsItem } from '../services/mpkNews';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
 
 const MAX_ROWS = 3;
@@ -20,7 +15,10 @@ function overlappingLines(item: MpkNewsItem, lineSet: Set<string>): string[] {
   const fromBadge = item.lines.filter((l) => lineSet.has(l.trim().toUpperCase()));
   if (fromBadge.length > 0) return fromBadge;
   return [...lineSet].filter((line) =>
-    newsTouchesLines({ lines: [], title: item.title, description: item.description }, new Set([line])),
+    newsTouchesLines(
+      { lines: [], title: item.title, description: item.description },
+      new Set([line]),
+    ),
   );
 }
 
@@ -66,7 +64,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return news.filter((item) => newsTouchesLines(item, lineSet));
   }, [news, lineSet]);
 
-  // Bez zmian — zero UI. Spinner/placeholder też nie, żeby nie migał pustą kartą.
+  // Bez zmian - zero UI. Spinner/placeholder też nie, żeby nie migał pustą kartą.
   if (!ready || matched.length === 0) return null;
 
   const openItem = (item: MpkNewsItem) => {

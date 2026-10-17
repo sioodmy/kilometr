@@ -5,14 +5,7 @@
 // na mapie, przystanki, etapy na dole i opcjonalny punkt pojazdu na żywo.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, WifiOff } from 'lucide-react-native';
@@ -27,7 +20,12 @@ import {
   pinRouteGeometry,
 } from '../src/services/routeGeometry';
 import { RouteMap, type RouteMapHandle } from '../src/components/RouteMap';
-import { getLineColors, inferTransitMode, LineBadge, mapLineColor } from '../src/components/LineBadge';
+import {
+  getLineColors,
+  inferTransitMode,
+  LineBadge,
+  mapLineColor,
+} from '../src/components/LineBadge';
 import { acquireMapServer } from '../src/services/mapServerLease';
 import { useCurrentLocation } from '../src/services/currentLocation';
 import { LiveDot } from '../src/components/LiveDot';
@@ -39,7 +37,7 @@ import { useStrings } from '../src/i18n';
 type Coord = [number, number];
 
 const VEHICLE_POLL_MS = 6000;
-/** Grace przed żółtym pillem — kafle lokalne/CDN czasem padają przy starcie. */
+/** Grace przed żółtym pillem - kafle lokalne/CDN czasem padają przy starcie. */
 const OFFLINE_PILL_MS = 2500;
 
 function nowSec(): number {
@@ -86,18 +84,15 @@ export default function RouteMapScreen() {
     setMapError(null);
   }, [clearOfflinePillTimer]);
 
-  const markTilesDown = useCallback(
-    (errorMsg?: string | null) => {
-      setTilesDown(true);
-      if (errorMsg) setMapError(errorMsg);
-      if (offlinePillTimer.current) return;
-      offlinePillTimer.current = setTimeout(() => {
-        offlinePillTimer.current = null;
-        setShowOfflinePill(true);
-      }, OFFLINE_PILL_MS);
-    },
-    [],
-  );
+  const markTilesDown = useCallback((errorMsg?: string | null) => {
+    setTilesDown(true);
+    if (errorMsg) setMapError(errorMsg);
+    if (offlinePillTimer.current) return;
+    offlinePillTimer.current = setTimeout(() => {
+      offlinePillTimer.current = null;
+      setShowOfflinePill(true);
+    }, OFFLINE_PILL_MS);
+  }, []);
 
   useEffect(() => () => clearOfflinePillTimer(), [clearOfflinePillTimer]);
 
@@ -138,7 +133,10 @@ export default function RouteMapScreen() {
     const connId = item.id;
     const legs = item.legs;
     if (
-      !legs.some((l) => l.mode !== 'walk' && l.tripId && (!l.intermediateStops || l.intermediateStops.length < 2))
+      !legs.some(
+        (l) =>
+          l.mode !== 'walk' && l.tripId && (!l.intermediateStops || l.intermediateStops.length < 2),
+      )
     ) {
       return;
     }
@@ -146,7 +144,12 @@ export default function RouteMapScreen() {
     (async () => {
       const enriched = await Promise.all(
         legs.map(async (l) => {
-          if (l.mode === 'walk' || !l.tripId || (l.intermediateStops && l.intermediateStops.length >= 2)) return l;
+          if (
+            l.mode === 'walk' ||
+            !l.tripId ||
+            (l.intermediateStops && l.intermediateStops.length >= 2)
+          )
+            return l;
           try {
             const full = await RoutingService.getTripStops(l.tripId);
             if (!full || full.length < 2) return l;
@@ -389,13 +392,11 @@ export default function RouteMapScreen() {
         <View style={styles.mapPlaceholder} />
       )}
 
-      {/* Offline chip — po grace, żeby start lokalnych kafelków nie migał */}
+      {/* Offline chip - po grace, żeby start lokalnych kafelków nie migał */}
       {offlineBase !== undefined && tilesDown && showOfflinePill && (
         <View style={[styles.offlineChip, { top: insets.top + 72 }]} pointerEvents="none">
           <WifiOff size={13} color={scheme.onWarningContainer} />
-          <Text style={styles.offlineText}>
-            {mapError ? s.map.offlineTitle : s.map.offlineSub}
-          </Text>
+          <Text style={styles.offlineText}>{mapError ? s.map.offlineTitle : s.map.offlineSub}</Text>
         </View>
       )}
 

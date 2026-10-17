@@ -1,13 +1,13 @@
 // Bundlowany pierwowzór danych MPK (seed): leci razem z APK, zero sieci.
 // Po pierwszym starcie ląduje w SQLite i od razu da się szukać przystanków
-// oraz planować trasy — idealne do debugowania w Expo bez pobierania ~46 MB
+// oraz planować trasy - idealne do debugowania w Expo bez pobierania ~46 MB
 // stop_times.txt. Użytkownik nadpisuje go pełnym rozkładem z Ustawień
 // (import z sieci robi clearGtfsTables, więc seed znika w całości).
 //
 // Dwie linie na prawdziwych współrzędnych Wrocławia (Rynek ↔ pl. Grunwaldzki
 // tramwajem, Galeria ↔ Dworzec Autobusowy autobusem), kursy co 10 min
 // 05:00–23:00 w obie strony, serwis 7 dni w tygodniu. Celowo bez nocnych
-// kursów — jak w prawdziwym GTFS, po północy RAPTOR nic nie znajduje.
+// kursów - jak w prawdziwym GTFS, po północy RAPTOR nic nie znajduje.
 
 import { normalizePolish } from './geo';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from './types';
@@ -25,14 +25,62 @@ interface SeedStopDef {
 }
 
 const SEED_STOP_DEFS: SeedStopDef[] = [
-  { stop_id: 'seed-nadodrze', stop_code: '120616', stop_name: 'DWORZEC NADODRZE', stop_lat: 51.12484091, stop_lon: 17.03481634 },
-  { stop_id: 'seed-rynek', stop_code: '10103', stop_name: 'Rynek', stop_lat: 51.1110606, stop_lon: 17.0272088 },
-  { stop_id: 'seed-galeria', stop_code: '10111', stop_name: 'GALERIA DOMINIKAŃSKA', stop_lat: 51.10740171, stop_lon: 17.03975322 },
-  { stop_id: 'seed-most', stop_code: '120822', stop_name: 'most Grunwaldzki', stop_lat: 51.11021216, stop_lon: 17.05538488 },
-  { stop_id: 'seed-grunwaldzki', stop_code: '20920', stop_name: 'PL. GRUNWALDZKI', stop_lat: 51.11198112, stop_lon: 17.06403361 },
-  { stop_id: 'seed-renoma', stop_code: '10335', stop_name: 'Renoma', stop_lat: 51.10412651, stop_lon: 17.03231779 },
-  { stop_id: 'seed-arkady', stop_code: '10233', stop_name: 'Arkady (Capitol)', stop_lat: 51.10165238, stop_lon: 17.02925954 },
-  { stop_id: 'seed-dworzec', stop_code: '11321', stop_name: 'DWORZEC AUTOBUSOWY', stop_lat: 51.09726779, stop_lon: 17.03228367 },
+  {
+    stop_id: 'seed-nadodrze',
+    stop_code: '120616',
+    stop_name: 'DWORZEC NADODRZE',
+    stop_lat: 51.12484091,
+    stop_lon: 17.03481634,
+  },
+  {
+    stop_id: 'seed-rynek',
+    stop_code: '10103',
+    stop_name: 'Rynek',
+    stop_lat: 51.1110606,
+    stop_lon: 17.0272088,
+  },
+  {
+    stop_id: 'seed-galeria',
+    stop_code: '10111',
+    stop_name: 'GALERIA DOMINIKAŃSKA',
+    stop_lat: 51.10740171,
+    stop_lon: 17.03975322,
+  },
+  {
+    stop_id: 'seed-most',
+    stop_code: '120822',
+    stop_name: 'most Grunwaldzki',
+    stop_lat: 51.11021216,
+    stop_lon: 17.05538488,
+  },
+  {
+    stop_id: 'seed-grunwaldzki',
+    stop_code: '20920',
+    stop_name: 'PL. GRUNWALDZKI',
+    stop_lat: 51.11198112,
+    stop_lon: 17.06403361,
+  },
+  {
+    stop_id: 'seed-renoma',
+    stop_code: '10335',
+    stop_name: 'Renoma',
+    stop_lat: 51.10412651,
+    stop_lon: 17.03231779,
+  },
+  {
+    stop_id: 'seed-arkady',
+    stop_code: '10233',
+    stop_name: 'Arkady (Capitol)',
+    stop_lat: 51.10165238,
+    stop_lon: 17.02925954,
+  },
+  {
+    stop_id: 'seed-dworzec',
+    stop_code: '11321',
+    stop_name: 'DWORZEC AUTOBUSOWY',
+    stop_lat: 51.09726779,
+    stop_lon: 17.03228367,
+  },
 ];
 
 export const SEED_STOPS: GtfsStop[] = SEED_STOP_DEFS.map((s) => ({
@@ -41,8 +89,18 @@ export const SEED_STOPS: GtfsStop[] = SEED_STOP_DEFS.map((s) => ({
 }));
 
 export const SEED_ROUTES: GtfsRoute[] = [
-  { route_id: 'seed-4', route_short_name: '4', route_long_name: 'DWORZEC NADODRZE – PL. GRUNWALDZKI (seed)', route_type: 0 },
-  { route_id: 'seed-133', route_short_name: '133', route_long_name: 'GALERIA DOMINIKAŃSKA – DWORZEC AUTOBUSOWY (seed)', route_type: 3 },
+  {
+    route_id: 'seed-4',
+    route_short_name: '4',
+    route_long_name: 'DWORZEC NADODRZE – PL. GRUNWALDZKI (seed)',
+    route_type: 0,
+  },
+  {
+    route_id: 'seed-133',
+    route_short_name: '133',
+    route_long_name: 'GALERIA DOMINIKAŃSKA – DWORZEC AUTOBUSOWY (seed)',
+    route_type: 3,
+  },
 ];
 
 export const SEED_CALENDAR: GtfsCalendar[] = [
@@ -98,7 +156,7 @@ function toHms(totalSec: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-/** Kursy seeda: deterministyczne, niezależne od dnia — serwis jeździ codziennie. */
+/** Kursy seeda: deterministyczne, niezależne od dnia - serwis jeździ codziennie. */
 export function buildSeedTrips(): GtfsTrip[] {
   const out: GtfsTrip[] = [];
   for (const line of SEED_LINES) {

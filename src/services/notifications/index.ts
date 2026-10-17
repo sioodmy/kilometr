@@ -1,4 +1,4 @@
-// Publiczne API powiadomień. Reszta katalogu to wnętrze — importujemy tylko
+// Publiczne API powiadomień. Reszta katalogu to wnętrze - importujemy tylko
 // stąd, żeby nie mieszać warstw (np. ekran nie powinien wiedzieć, na jakim
 // kanale leci alert).
 
@@ -14,11 +14,7 @@ export type {
 } from './types';
 export { DEFAULT_NOTIFICATION_PREFERENCES } from './types';
 
-export {
-  ALERTS_CHANNEL_ID,
-  TRACKING_CHANNEL_ID,
-  setupNotificationChannels,
-} from './channels';
+export { ALERTS_CHANNEL_ID, TRACKING_CHANNEL_ID, setupNotificationChannels } from './channels';
 export {
   ACTION_OPEN_ROUTES,
   ACTION_STOP,
@@ -75,10 +71,5 @@ export {
   stopTracking,
   subscribeTracked,
 } from './tripMonitor';
-export {
-  clockFromMs,
-  formatClock,
-  formatDistance,
-  toAbsoluteMs,
-} from './format';
+export { clockFromMs, formatClock, formatDistance, toAbsoluteMs } from './format';
 export { useTrackedTrip } from './useTrackedTrip';

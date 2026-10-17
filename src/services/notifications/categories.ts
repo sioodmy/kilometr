@@ -3,7 +3,7 @@ import { getNotifications } from './module';
 
 // Kategorie powiadomień = przyciski akcji (iOS) oraz app actions (Android).
 // Dzięki nim użytkownik nie musi otwierać aplikacji, żeby zakończyć
-// śledzenie albo zobaczyć trasę — to najczęstsze reakcje na alert odjazdu.
+// śledzenie albo zobaczyć trasę - to najczęstsze reakcje na alert odjazdu.
 //
 // Na Androidzie te przyciski są wariantem awaryjnym: natywne Live Update
 // dostaje własne akcje w `LiveUpdateFactory` (i obsługuje „Zakończ" bez
@@ -40,7 +40,7 @@ export async function setupNotificationCategories(): Promise<void> {
       },
     ]);
   } catch {
-    // kategorie są best-effort — bez nich powiadomienie nadal działa
+    // kategorie są best-effort - bez nich powiadomienie nadal działa
   }
   try {
     await N.setNotificationCategoryAsync(ALERT_CATEGORY, [

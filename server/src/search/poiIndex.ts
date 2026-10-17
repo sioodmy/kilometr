@@ -21,7 +21,7 @@ interface PoiRow {
   district: string | null;
 }
 
-// Wersja formatu adresu — bump wymusza pełny refresh (stare wiersze miały
+// Wersja formatu adresu - bump wymusza pełny refresh (stare wiersze miały
 // samo "• Wrocław" i brak kolumn street/district).
 const ADDR_VERSION = '2';
 
@@ -29,9 +29,7 @@ const ADDR_VERSION = '2';
 function ensureAddrColumns() {
   try {
     const db = getDb();
-    const cols = db
-      .prepare('PRAGMA table_info(pois)')
-      .all() as { name: string }[];
+    const cols = db.prepare('PRAGMA table_info(pois)').all() as { name: string }[];
     const names = new Set(cols.map((c) => c.name));
     if (!names.has('street')) {
       db.exec('ALTER TABLE pois ADD COLUMN street TEXT');
@@ -40,14 +38,14 @@ function ensureAddrColumns() {
       db.exec('ALTER TABLE pois ADD COLUMN district TEXT');
     }
   } catch {
-    // tabela jeszcze nie istnieje — utworzy ją CREATE TABLE
+    // tabela jeszcze nie istnieje - utworzy ją CREATE TABLE
   }
 }
 
-/** Buduje linię adresu: "Label • Osiedle, Ulica Nr" (bez miasta — tylko Wrocław). */
+/** Buduje linię adresu: "Label • Osiedle, Ulica Nr" (bez miasta - tylko Wrocław). */
 function buildAddress(
   label: string,
-  tags: Record<string, string>
+  tags: Record<string, string>,
 ): { address: string; street: string | null; district: string | null } {
   const district =
     tags['addr:suburb'] ||
@@ -80,7 +78,9 @@ const OVERPASS_FILTERS = [
   'node["leisure"~"^(park|garden|stadium|swimming_pool|sports_centre|fitness_centre)$"]',
   'node["railway"="station"]',
   'node["amenity"="fuel"]',
-].map((f) => `${f}(${config.overpass.bbox});`).join('\n  ');
+]
+  .map((f) => `${f}(${config.overpass.bbox});`)
+  .join('\n  ');
 
 const POI_QUERY = `[out:json][timeout:30];\n(\n  ${OVERPASS_FILTERS}\n);\nout center;`;
 
@@ -130,9 +130,8 @@ function classify(tags: Record<string, string>): { category: string; label: stri
 
 function getMeta(key: string): string | null {
   try {
-    const row = getDb()
-      .prepare('SELECT value FROM poi_meta WHERE key = ?')
-      .get(key) as { value: string } | undefined;
+    const row = getDb().prepare('SELECT value FROM poi_meta WHERE key = ?').get(key) as
+      { value: string } | undefined;
     return row?.value ?? null;
   } catch {
     return null;
@@ -141,9 +140,7 @@ function getMeta(key: string): string | null {
 
 function setMeta(key: string, value: string) {
   try {
-    getDb()
-      .prepare('INSERT OR REPLACE INTO poi_meta (key, value) VALUES (?, ?)')
-      .run(key, value);
+    getDb().prepare('INSERT OR REPLACE INTO poi_meta (key, value) VALUES (?, ?)').run(key, value);
   } catch {
     // meta opcjonalna
   }
@@ -165,7 +162,7 @@ function isStale(): boolean {
   return days >= config.overpass.refreshDays;
 }
 
-/** Pobiera POI z Overpass i podmienia tabelę. Best-effort — błąd zostawia stare dane. */
+/** Pobiera POI z Overpass i podmienia tabelę. Best-effort - błąd zostawia stare dane. */
 export async function refreshPoiIndex(): Promise<number> {
   if (refreshInFlight) return poiCount();
   refreshInFlight = true;
@@ -185,7 +182,7 @@ export async function refreshPoiIndex(): Promise<number> {
 
     const db = getDb();
     const insert = db.prepare(
-      'INSERT OR REPLACE INTO pois (osm_id, kind, category, name, norm_name, address, lat, lon, street, district) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT OR REPLACE INTO pois (osm_id, kind, category, name, norm_name, address, lat, lon, street, district) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
 
     const rows: PoiRow[] = [];
@@ -219,7 +216,18 @@ export async function refreshPoiIndex(): Promise<number> {
     try {
       db.exec('DELETE FROM pois');
       for (const r of rows) {
-        insert.run(r.osm_id, r.kind, r.category, r.name, r.norm_name, r.address, r.lat, r.lon, r.street, r.district);
+        insert.run(
+          r.osm_id,
+          r.kind,
+          r.category,
+          r.name,
+          r.norm_name,
+          r.address,
+          r.lat,
+          r.lon,
+          r.street,
+          r.district,
+        );
       }
       db.exec('COMMIT');
     } catch {
@@ -253,7 +261,7 @@ export function ensurePoiIndex() {
       refreshPoiIndex().catch(() => {});
     }
   } catch {
-    // indeks opcjonalny — search działa bez niego
+    // indeks opcjonalny - search działa bez niego
   }
 }
 
@@ -269,13 +277,13 @@ function loadAll(): PoiRow[] {
 
 /**
  * Szukanie po lokalnym indeksie. Scoring: dopasowanie nazwy (prefix > wyraz >
- * zawiera) minus kara za dystans — najbliższe wygrywają jak w Jakdojade.
+ * zawiera) minus kara za dystans - najbliższe wygrywają jak w Jakdojade.
  */
 export function searchPois(
   query: string,
   userLat?: number,
   userLon?: number,
-  limit = 8
+  limit = 8,
 ): Suggestion[] {
   const normQ = normalizePolish(query.trim());
   if (!normQ || normQ.length < 2) return [];

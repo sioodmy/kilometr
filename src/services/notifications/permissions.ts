@@ -32,15 +32,13 @@ export async function ensureNotificationPermission(): Promise<boolean> {
     const next = await N.requestPermissionsAsync({
       ios: { allowAlert: true, allowBadge: true, allowSound: true },
     });
-    return (
-      next.granted || next.ios?.status === N.IosAuthorizationStatus.PROVISIONAL
-    );
+    return next.granted || next.ios?.status === N.IosAuthorizationStatus.PROVISIONAL;
   } catch {
     return false;
   }
 }
 
-/** Tekst do pokazania, gdy brak uprawnień — bez zaglądania w ustawienia systemu. */
+/** Tekst do pokazania, gdy brak uprawnień - bez zaglądania w ustawienia systemu. */
 export function permissionDeniedMessage(): string {
   return tr().notification.permDenied;
 }

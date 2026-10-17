@@ -1,4 +1,4 @@
-// View-model mapy — to, co WebView dostaje do narysowania. Świadomie oddzielone
+// View-model mapy - to, co WebView dostaje do narysowania. Świadomie oddzielone
 // od domenowego `Connection`: mapa potrzebuje kolorów, ról przystanków i flag
 // „geometria jeszcze się dociąga”, a nie całej reszty planera.
 
@@ -72,7 +72,14 @@ export interface MapVehicle extends LatLon {
 export type MapOutMessage =
   | { t: 'ready' }
   | { t: 'error'; message: string }
-  | { t: 'stopTap'; stopId: string; legId: string; name: string; role: MapStopRole; arriveSec?: number }
+  | {
+      t: 'stopTap';
+      stopId: string;
+      legId: string;
+      name: string;
+      role: MapStopRole;
+      arriveSec?: number;
+    }
   | { t: 'legTap'; legId: string }
   | { t: 'tiles'; ok: boolean }
   | { t: 'open'; url: string };
@@ -86,4 +93,3 @@ export type MapInMessage =
   | { t: 'fit'; pad?: [number, number, number, number] }
   | { t: 'vehicle'; vehicle: MapVehicle | null }
   | { t: 'user'; lat: number; lon: number; heading: number | null };
-

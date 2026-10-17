@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-// M3-style live indicator: solid dot + expanding halo. No text needed —
+// M3-style live indicator: solid dot + expanding halo. No text needed -
 // pulsing = tracked live, static = schedule. Replaces "• GPS" labels.
 export function LiveDot({
   color,
@@ -43,7 +43,9 @@ export function LiveDot({
       <Animated.View
         style={[styles.halo, { backgroundColor: color, borderRadius: size * 2 }, haloStyle]}
       />
-      <View style={[styles.dot, { backgroundColor: color, width: size, height: size, borderRadius: r }]} />
+      <View
+        style={[styles.dot, { backgroundColor: color, width: size, height: size, borderRadius: r }]}
+      />
     </View>
   );
 }

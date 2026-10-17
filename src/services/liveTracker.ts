@@ -20,7 +20,32 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbBialystokRows, fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKielceRows, fetchZbKml, fetchZbKrakowRows, fetchZbLodzRails, fetchZbLodzRows, fetchZbLublinRows, fetchZbOlsztynRows, fetchZbOpoleRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbRadomRows, fetchZbRzeszowRows, fetchZbSkmtRails, fetchZbSzczecinRows, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import {
+  fetchZbBialystokRows,
+  fetchZbGzmRails,
+  fetchZbGzmRows,
+  fetchZbKd,
+  fetchZbKielceRows,
+  fetchZbKml,
+  fetchZbKrakowRows,
+  fetchZbLodzRails,
+  fetchZbLodzRows,
+  fetchZbLublinRows,
+  fetchZbOlsztynRows,
+  fetchZbOpoleRows,
+  fetchZbPoznanRails,
+  fetchZbPoznanRows,
+  fetchZbRadomRows,
+  fetchZbRzeszowRows,
+  fetchZbSkmtRails,
+  fetchZbSzczecinRows,
+  fetchZbTricityRows,
+  fetchZbWarsawRails,
+  fetchZbWarsawRows,
+  fetchZbWroclawRows,
+  matchZbKd,
+  type ZbKdVehicle,
+} from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -165,7 +190,7 @@ class LiveTracker {
   }
 
   /**
-   * Szybka ścieżka przed planowaniem: gdy snapshot świeży — nic nie robi,
+   * Szybka ścieżka przed planowaniem: gdy snapshot świeży - nic nie robi,
    * w przeciwnym razie odpala poll W TLE i wraca od razu (planowanie nigdy
    * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤20 s).
    */
@@ -194,9 +219,12 @@ class LiveTracker {
   }
 
   private recordSource(name: string, ok: boolean, error?: unknown): void {
-    const h =
-      this.health.get(name) ??
-      { attempts: 0, failures: 0, lastSuccessAt: null, lastError: null };
+    const h = this.health.get(name) ?? {
+      attempts: 0,
+      failures: 0,
+      lastSuccessAt: null,
+      lastError: null,
+    };
     h.attempts += 1;
     if (ok) {
       h.lastSuccessAt = Date.now();
@@ -302,7 +330,10 @@ class LiveTracker {
       const feeds = await fetchZbGzmRails();
       if (feeds === null) return null;
       const prefixes: Record<string, string> = { KS: 'KŚ:', IC: 'IC:', PR: 'PR:' };
-      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: prefixes[f.agency] ?? `${f.agency}:` }));
+      return feeds.map((f) => ({
+        vehicles: f.vehicles,
+        prefix: prefixes[f.agency] ?? `${f.agency}:`,
+      }));
     }
     if (id === 'warszawa') {
       const feeds = await fetchZbWarsawRails();
@@ -405,7 +436,11 @@ class LiveTracker {
     if (second) return second;
     try {
       const fallback = await fetchZbWroclawRows();
-      this.recordSource('zbiorkom', fallback !== null, fallback === null ? 'brak odpowiedzi' : undefined);
+      this.recordSource(
+        'zbiorkom',
+        fallback !== null,
+        fallback === null ? 'brak odpowiedzi' : undefined,
+      );
       if (fallback) console.warn('[LiveTracker] MPK down, fallback zbiorkom.live');
       return fallback;
     } catch (err) {
@@ -505,7 +540,10 @@ class LiveTracker {
   }
 
   private persistSnapshot(rows: RawVehicleRow[], rails?: RailFeed[], cityId?: string): void {
-    void kvSet(snapshotKey(cityId), JSON.stringify({ at: Date.now(), rows, rails: rails ?? [] } satisfies StoredSnapshot));
+    void kvSet(
+      snapshotKey(cityId),
+      JSON.stringify({ at: Date.now(), rows, rails: rails ?? [] } satisfies StoredSnapshot),
+    );
   }
 
   /**
@@ -520,7 +558,11 @@ class LiveTracker {
       const raw = await kvGet(snapshotKey());
       if (!raw) return;
       const parsed = JSON.parse(raw) as StoredSnapshot;
-      if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd) && !Array.isArray(parsed.rails))) return;
+      if (
+        !parsed ||
+        (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd) && !Array.isArray(parsed.rails))
+      )
+        return;
       // Stary snapshot to nie „live”: bez tego apka po dłuższej przerwie
       // pokazywałaby nieaktualne pojazdy, dopóki nie wróci pierwszy poll.
       if (!snapshotIsUsable(parsed.at, Date.now())) return;
@@ -720,7 +762,9 @@ class LiveTracker {
               bestTripId = trip.trip_id;
               bestDelay = delay;
               bestCurrentStop = stop.stop_name;
-              bestNextStop = times[i + 1] ? gtfsStore.stops.get(times[i + 1].stop_id)?.stop_name : undefined;
+              bestNextStop = times[i + 1]
+                ? gtfsStore.stops.get(times[i + 1].stop_id)?.stop_name
+                : undefined;
             }
           }
         }
@@ -729,7 +773,7 @@ class LiveTracker {
 
     // Poza DELAY_CAP_SEC opóźnienie nie znaczy „pojazd 40 minut spóźniony”
     // tylko „dopasowanie do kursu jest podejrzane”. Wcześniej taki wynik
-    // zerowano, a pojazd zostawał `live: true` — użytkownik dostawał zielony
+    // zerowano, a pojazd zostawał `live: true` - użytkownik dostawał zielony
     // „Na czas” przy tramwaju, który wyraźnie nie jest na czas. Teraz zamiast
     // kłamstwa jest brak informacji: delaySec = null, a UI pada z powrotem na
     // „Rozkład”, bo `live` jest wyprowadzane z `delaySec`.
@@ -774,16 +818,17 @@ class LiveTracker {
   /**
    * Rozwiązanie konfliktów po jednym pollu. Bez tego kilka pojazdów tej samej
    * linii dostawało ten sam `matchedTripId`, a `tripDelays` zapisywał
-   * opóźnienie ostatniego z nich — kolejność z odpowiedzi MPK, czyli losowa.
+   * opóźnienie ostatniego z nich - kolejność z odpowiedzi MPK, czyli losowa.
    * Stąd „ Tramwaj pokazuje się w losowym miejscu” i skoki opóźnienia.
    *
    * Zasada: kurs ma dokładnie jeden pojazd (najlepiej dopasowany), a pojazd
    * ma dokładnie jeden kurs. Przy remisie wygrywa ten, którego pozycja
    * pokrywa się z rozkładem najlepiej.
    */
-  private resolveConflicts(
-    matched: Map<string, { tracked: TrackedVehicle; score: number }>,
-  ): { byId: Map<string, TrackedVehicle>; delays: Map<string, number> } {
+  private resolveConflicts(matched: Map<string, { tracked: TrackedVehicle; score: number }>): {
+    byId: Map<string, TrackedVehicle>;
+    delays: Map<string, number>;
+  } {
     // Który pojazd wygrywa każdy kurs.
     const byTrip = new Map<string, { vehicleId: string; score: number }>();
     for (const [vehicleId, entry] of matched) {
@@ -802,11 +847,11 @@ class LiveTracker {
         byId.set(vehicleId, entry.tracked);
         if (tripId && entry.tracked.delaySec !== null) delays.set(tripId, entry.tracked.delaySec);
       } else {
-        // Ten pojazd przegrał spór o kurs (albo w ogóle się nie dopasował) —
+        // Ten pojazd przegrał spór o kurs (albo w ogóle się nie dopasował) -
         // zostaje w snapshocie, ale bez kursu, żeby nie wmieszać go w cudzą
         // podróż. Dla RAPTOR-a brak opóźnienia jest bezpieczniejszy niż zły.
         // `null`, nie `0`: zero oznaczałoby „na czas”, a tu po prostu nie
-        // wiemy — i UI pokazałoby zielony badge dla pojazdu bez pomiaru.
+        // wiemy - i UI pokazałoby zielony badge dla pojazdu bez pomiaru.
         byId.set(vehicleId, { ...entry.tracked, matchedTripId: undefined, delaySec: null });
       }
     }
@@ -822,7 +867,9 @@ class LiveTracker {
     const byLine = new Map<string, any[]>();
     for (const pattern of dayIndex.patterns.values()) {
       const route = gtfsStore.routes.get(pattern.routeId);
-      const line = String(route?.route_short_name ?? pattern.routeId ?? '').trim().toUpperCase();
+      const line = String(route?.route_short_name ?? pattern.routeId ?? '')
+        .trim()
+        .toUpperCase();
       if (!line) continue;
       let list = byLine.get(line);
       if (!list) {
@@ -852,8 +899,7 @@ class LiveTracker {
         w.u32(trips.length);
         for (const trip of trips) {
           const times = gtfsStore.stopTimes.get(trip.trip_id) as
-            | { stop_id: string; departure_sec: number; arrival_sec: number }[]
-            | undefined;
+            { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
           const tripIdx = tripIds.length;
           tripIds.push(trip.trip_id);
           w.u32(tripIdx);
@@ -874,7 +920,11 @@ class LiveTracker {
             }
           }
           w.u16(fallback.length);
-          for (const fb of fallback) w.u32(fb.nameIdx).f64(fb.lat).f64(fb.lon).i32(fb.dep | 0);
+          for (const fb of fallback)
+            w.u32(fb.nameIdx)
+              .f64(fb.lat)
+              .f64(fb.lon)
+              .i32(fb.dep | 0);
         }
       }
     }
@@ -977,7 +1027,10 @@ class LiveTracker {
         // (zdarza się np. dla linii 153). Taki wiersz nie ma pozycji, więc
         // dopasowanie do kursu byłoby zmyślone.
         if (!row.x || !row.y || !row.name) continue;
-        matched.set(row.name.trim().toUpperCase() + '-' + row.k, this.matchRow(row, dayIndex, nowSec, patternPolylines));
+        matched.set(
+          row.name.trim().toUpperCase() + '-' + row.k,
+          this.matchRow(row, dayIndex, nowSec, patternPolylines),
+        );
       }
     }
 
@@ -992,7 +1045,8 @@ class LiveTracker {
     for (const [id, kept] of this.byId) {
       if (!id.includes(':')) continue;
       byId.set(id, kept);
-      if (kept.matchedTripId && kept.delaySec !== null) delays.set(kept.matchedTripId, kept.delaySec);
+      if (kept.matchedTripId && kept.delaySec !== null)
+        delays.set(kept.matchedTripId, kept.delaySec);
     }
     const newByLine = new Map<string, TrackedVehicle[]>();
     for (const tracked of byId.values()) {

@@ -42,11 +42,11 @@ import { useActiveCity } from '../src/services/cityStore';
 import { suggestCityForGps } from '../src/services/serviceArea';
 import { setOnboardingSeen } from '../src/services/onboarding';
 import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
-import { ensureNotificationPermission, hasNotificationPermission } from '../src/services/notifications';
 import {
-  FavoritesService,
-  SearchService,
-} from '../src/services';
+  ensureNotificationPermission,
+  hasNotificationPermission,
+} from '../src/services/notifications';
+import { FavoritesService, SearchService } from '../src/services';
 import {
   getDataStatus,
   importGtfsFromNetwork,
@@ -113,7 +113,7 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
 // ─── Krok 1: uprawnienia ─────────────────────────────────────────────────────
 
 // Push w Expo Go nie istnieje od SDK 53 (sam require + getPermissionsAsync
-// rzuca błąd do LogBoxa), więc nawet nie próbujemy — ten sam guard co
+// rzuca błąd do LogBoxa), więc nawet nie próbujemy - ten sam guard co
 // w notifications.getNotifications(). Powiadomienia działają w dev buildzie.
 const NOTIF_SUPPORTED = Constants.appOwnership !== 'expo';
 
@@ -185,7 +185,9 @@ function StatusPill({ v }: { v: 'unknown' | 'granted' | 'denied' }) {
     return (
       <View style={[st.pill, st.pillOk]}>
         <Check size={12} color={scheme.onSuccessContainer} />
-        <Text style={[st.pillText, { color: scheme.onSuccessContainer }]}>{s.onboarding.granted}</Text>
+        <Text style={[st.pillText, { color: scheme.onSuccessContainer }]}>
+          {s.onboarding.granted}
+        </Text>
       </View>
     );
   if (v === 'denied')
@@ -222,7 +224,9 @@ function useCitySuggestion(locGranted: boolean) {
     setStatus('locating');
     void (async () => {
       try {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
         const hit = suggestCityForGps(pos.coords.latitude, pos.coords.longitude);
         if (!live) return;
         if (hit) {
@@ -364,7 +368,19 @@ function useOnboardingPlaces() {
     [reload],
   );
 
-  return { places, bySlot, activeSlot, setActiveSlot, query, setQuery, results, searching, saving, saveForSlot, remove };
+  return {
+    places,
+    bySlot,
+    activeSlot,
+    setActiveSlot,
+    query,
+    setQuery,
+    results,
+    searching,
+    saving,
+    saveForSlot,
+    remove,
+  };
 }
 
 // ─── Ekran ───────────────────────────────────────────────────────────────────
@@ -375,7 +391,12 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const perms = usePermissionStates();
-  const { cityId, pick, suggested, status: citySuggestionStatus } = useCitySuggestion(perms.loc === 'granted');
+  const {
+    cityId,
+    pick,
+    suggested,
+    status: citySuggestionStatus,
+  } = useCitySuggestion(perms.loc === 'granted');
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [downloading, setDownloading] = useState(false);
   const slots = useOnboardingPlaces();
@@ -383,9 +404,24 @@ export default function OnboardingScreen() {
   const cityGen = s.city.gen(cityId);
   const cityFeeds = s.city.feeds(cityId);
   const placeSlots = [
-    { key: 'home' as SlotKey, name: s.onboarding.slotHome, icon: Home, hint: s.onboarding.slotHomeHint(cityId) },
-    { key: 'work' as SlotKey, name: s.onboarding.slotWork, icon: Briefcase, hint: s.onboarding.slotWorkHint(cityId) },
-    { key: 'school' as SlotKey, name: s.onboarding.slotUni, icon: GraduationCap, hint: s.onboarding.slotUniHint(cityId) },
+    {
+      key: 'home' as SlotKey,
+      name: s.onboarding.slotHome,
+      icon: Home,
+      hint: s.onboarding.slotHomeHint(cityId),
+    },
+    {
+      key: 'work' as SlotKey,
+      name: s.onboarding.slotWork,
+      icon: Briefcase,
+      hint: s.onboarding.slotWorkHint(cityId),
+    },
+    {
+      key: 'school' as SlotKey,
+      name: s.onboarding.slotUni,
+      icon: GraduationCap,
+      hint: s.onboarding.slotUniHint(cityId),
+    },
   ];
   const startedDownload = useRef(false);
   // Krok 3: przewijanie otwartego slotu nad klawiaturę.
@@ -407,7 +443,7 @@ export default function OnboardingScreen() {
   // Na kroku rozkładu od razu odśwież status.
   useEffect(() => {
     if (step === 3) void refreshDataStatus().catch(() => {});
-  }, [step ]);
+  }, [step]);
 
   const finish = useCallback(async () => {
     if (leaving) return;
@@ -442,7 +478,12 @@ export default function OnboardingScreen() {
       {/* Pasek postępu */}
       <View style={st.top}>
         {step > 0 ? (
-          <Pressable onPress={back} hitSlop={10} style={st.back} accessibilityLabel={s.onboarding.backA11y}>
+          <Pressable
+            onPress={back}
+            hitSlop={10}
+            style={st.back}
+            accessibilityLabel={s.onboarding.backA11y}
+          >
             <ChevronLeft size={22} color={scheme.onSurface} />
           </Pressable>
         ) : (
@@ -526,9 +567,7 @@ export default function OnboardingScreen() {
                 </View>
                 <StatusPill v={perms.loc} />
               </View>
-              <Text style={st.cardBody}>
-                {s.onboarding.locBody}
-              </Text>
+              <Text style={st.cardBody}>{s.onboarding.locBody}</Text>
               {perms.loc === 'granted' ? (
                 <View style={st.doneRow}>
                   <Check size={16} color={scheme.success} />
@@ -560,18 +599,14 @@ export default function OnboardingScreen() {
                 </View>
                 <StatusPill v={perms.notif} />
               </View>
-              <Text style={st.cardBody}>
-                {s.onboarding.notifBody}
-              </Text>
+              <Text style={st.cardBody}>{s.onboarding.notifBody}</Text>
               {perms.notif === 'granted' ? (
                 <View style={st.doneRow}>
                   <Check size={16} color={scheme.success} />
                   <Text style={st.doneText}>{s.onboarding.notifOn}</Text>
                 </View>
               ) : !NOTIF_SUPPORTED ? (
-                <Text style={st.fine}>
-                  {s.onboarding.notifExpoGo}
-                </Text>
+                <Text style={st.fine}>{s.onboarding.notifExpoGo}</Text>
               ) : (
                 <Pressable
                   onPress={() => void perms.requestNotif()}
@@ -627,14 +662,20 @@ export default function OnboardingScreen() {
                 return (
                   <Pressable
                     onPress={() => pick(c.id)}
-                    style={({ pressed }) => [st.cityChip, active && st.cityChipActive, pressed && !active && { opacity: 0.75 }]}
+                    style={({ pressed }) => [
+                      st.cityChip,
+                      active && st.cityChipActive,
+                      pressed && !active && { opacity: 0.75 },
+                    ]}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: active }}
                     // Etykieta opisuje wybór, nie podpowiedź GPS: TalkBack czyta „Proponowane
-                  // miasto według GPS" jako nazwę przycisku, a stan i tak
-                  // ogłasza przez accessibilityState.
+                    // miasto według GPS" jako nazwę przycisku, a stan i tak
+                    // ogłasza przez accessibilityState.
                     accessibilityLabel={s.onboarding.cityPickA11y(s.city.name(c.id))}
-                    accessibilityHint={isSuggested ? s.onboarding.citySuggestedA11y(s.city.name(c.id)) : undefined}
+                    accessibilityHint={
+                      isSuggested ? s.onboarding.citySuggestedA11y(s.city.name(c.id)) : undefined
+                    }
                   >
                     <MapPin size={20} color={active ? scheme.onPrimaryContainer : scheme.primary} />
                     <View style={{ flex: 1 }}>
@@ -664,9 +705,7 @@ export default function OnboardingScreen() {
               <Database size={30} color={scheme.onPrimaryContainer} />
             </View>
             <Text style={st.title}>{s.onboarding.dlTitle(cityGen)}</Text>
-            <Text style={st.leadSmall}>
-              {s.onboarding.dlBody(cityFeeds)}
-            </Text>
+            <Text style={st.leadSmall}>{s.onboarding.dlBody(cityFeeds)}</Text>
 
             <View style={st.card}>
               {dataStatus.state === 'empty' && !busyGtfs && (
@@ -686,11 +725,16 @@ export default function OnboardingScreen() {
                     <Text style={st.statText}>
                       {dataStatus.state === 'downloading'
                         ? s.onboarding.dlProgress(Math.round(dataStatus.progress * 100))
-                        : s.onboarding.dlStep(dataStatus.step, Math.round(dataStatus.progress * 100))}
+                        : s.onboarding.dlStep(
+                            dataStatus.step,
+                            Math.round(dataStatus.progress * 100),
+                          )}
                     </Text>
                   </View>
                   <View style={st.bar}>
-                    <View style={[st.barFill, { width: `${Math.round(dataStatus.progress * 100)}%` }]} />
+                    <View
+                      style={[st.barFill, { width: `${Math.round(dataStatus.progress * 100)}%` }]}
+                    />
                   </View>
                   <Text style={st.fine}>{s.onboarding.dlKeepOpen}</Text>
                 </>
@@ -737,126 +781,130 @@ export default function OnboardingScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={80}
           >
-          <ScrollView
-            ref={step3Scroll}
-            contentContainerStyle={[st.body, { paddingBottom: 240 }]}
-            showsVerticalScrollIndicator={false}
-            overScrollMode="never"
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-          >
-            <Text style={st.title}>{s.onboarding.placesTitle}</Text>
-            <Text style={st.leadSmall}>
-              {s.onboarding.placesBody}
-            </Text>
+            <ScrollView
+              ref={step3Scroll}
+              contentContainerStyle={[st.body, { paddingBottom: 240 }]}
+              showsVerticalScrollIndicator={false}
+              overScrollMode="never"
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              <Text style={st.title}>{s.onboarding.placesTitle}</Text>
+              <Text style={st.leadSmall}>{s.onboarding.placesBody}</Text>
 
-            {placeSlots.map((slot) => {
-              const Icon = slot.icon;
-              const saved = slots.bySlot[slot.key];
-              const open = slots.activeSlot === slot.key;
-              return (
-                <View
-                  key={slot.key}
-                  style={st.card}
-                  onLayout={(e) => {
-                    slotY.current[slot.key] = e.nativeEvent.layout.y;
-                  }}
-                >
-                  <View style={st.slotRow}>
-                    <View style={st.cardIcon}>
-                      <Icon size={20} color={scheme.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={st.cardTitle}>{slot.name}</Text>
-                      <Text style={st.cardWhy} numberOfLines={1}>
-                        {saved ? saved.address : slot.hint}
-                      </Text>
-                    </View>
-                    {saved ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={[st.pill, st.pillOk]}>
-                          <Check size={12} color={scheme.onSuccessContainer} />
-                          <Text style={[st.pillText, { color: scheme.onSuccessContainer }]}>{s.onboarding.added}</Text>
-                        </View>
-                        <Pressable
-                          onPress={() => void slots.remove(saved.id)}
-                          hitSlop={8}
-                          style={st.miniX}
-                          accessibilityLabel={s.onboarding.removeSlotA11y(slot.name)}
-                        >
-                          <X size={15} color={scheme.onSurfaceVariant} />
-                        </Pressable>
+              {placeSlots.map((slot) => {
+                const Icon = slot.icon;
+                const saved = slots.bySlot[slot.key];
+                const open = slots.activeSlot === slot.key;
+                return (
+                  <View
+                    key={slot.key}
+                    style={st.card}
+                    onLayout={(e) => {
+                      slotY.current[slot.key] = e.nativeEvent.layout.y;
+                    }}
+                  >
+                    <View style={st.slotRow}>
+                      <View style={st.cardIcon}>
+                        <Icon size={20} color={scheme.primary} />
                       </View>
-                    ) : (
-                      <Pressable
-                        onPress={() => {
-                          slots.setActiveSlot(open ? null : slot.key);
-                          slots.setQuery('');
-                        }}
-                        style={({ pressed }) => [st.addPill, pressed && { opacity: 0.75 }]}
-                      >
-                        <Text style={st.addPillText}>{open ? s.onboarding.closeAction : s.onboarding.addAction}</Text>
-                      </Pressable>
+                      <View style={{ flex: 1 }}>
+                        <Text style={st.cardTitle}>{slot.name}</Text>
+                        <Text style={st.cardWhy} numberOfLines={1}>
+                          {saved ? saved.address : slot.hint}
+                        </Text>
+                      </View>
+                      {saved ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={[st.pill, st.pillOk]}>
+                            <Check size={12} color={scheme.onSuccessContainer} />
+                            <Text style={[st.pillText, { color: scheme.onSuccessContainer }]}>
+                              {s.onboarding.added}
+                            </Text>
+                          </View>
+                          <Pressable
+                            onPress={() => void slots.remove(saved.id)}
+                            hitSlop={8}
+                            style={st.miniX}
+                            accessibilityLabel={s.onboarding.removeSlotA11y(slot.name)}
+                          >
+                            <X size={15} color={scheme.onSurfaceVariant} />
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <Pressable
+                          onPress={() => {
+                            slots.setActiveSlot(open ? null : slot.key);
+                            slots.setQuery('');
+                          }}
+                          style={({ pressed }) => [st.addPill, pressed && { opacity: 0.75 }]}
+                        >
+                          <Text style={st.addPillText}>
+                            {open ? s.onboarding.closeAction : s.onboarding.addAction}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+
+                    {open && !saved && (
+                      <View style={{ marginTop: 12, gap: 8 }}>
+                        <View style={st.searchBox}>
+                          <Search size={17} color={scheme.onSurfaceVariant} />
+                          <TextInput
+                            value={slots.query}
+                            onChangeText={slots.setQuery}
+                            onFocus={() => scrollSlotIntoView(slot.key)}
+                            placeholder={s.onboarding.addressFor(slot.name)}
+                            placeholderTextColor={scheme.onSurfaceVariant}
+                            style={st.searchInput}
+                            autoFocus
+                            returnKeyType="search"
+                          />
+                          {slots.searching && (
+                            <ActivityIndicator size="small" color={scheme.primary} />
+                          )}
+                        </View>
+                        {/* Bez tego użytkownik widział pole z wpisanym tekstem
+                          i nic więcej - bez informacji, czy szukanie w ogóle
+                          działa. Adresy wymagają internetu, przystanki nie. */}
+                        {slots.results.length === 0 &&
+                          !slots.searching &&
+                          slots.query.trim().length >= 2 && (
+                            <View style={st.noResults}>
+                              <Text style={st.noResultsText}>
+                                {s.onboarding.noResults(slots.query.trim())}
+                              </Text>
+                            </View>
+                          )}
+                        {slots.results.map((r) => (
+                          <Pressable
+                            key={r.id}
+                            onPress={() => void slots.saveForSlot(slot.key, r)}
+                            disabled={slots.saving}
+                            style={({ pressed }) => [st.resultRow, pressed && { opacity: 0.7 }]}
+                          >
+                            <MapPin size={16} color={scheme.primary} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={st.resultTitle} numberOfLines={1}>
+                                {suggestionDisplayTitle(r)}
+                              </Text>
+                              <Text style={st.resultSub} numberOfLines={1}>
+                                {r.address}
+                              </Text>
+                            </View>
+                            {slots.saving ? (
+                              <ActivityIndicator size="small" color={scheme.primary} />
+                            ) : (
+                              <ChevronRight size={16} color={scheme.onSurfaceVariant} />
+                            )}
+                          </Pressable>
+                        ))}
+                      </View>
                     )}
                   </View>
-
-                  {open && !saved && (
-                    <View style={{ marginTop: 12, gap: 8 }}>
-                      <View style={st.searchBox}>
-                        <Search size={17} color={scheme.onSurfaceVariant} />
-                        <TextInput
-                          value={slots.query}
-                          onChangeText={slots.setQuery}
-                          onFocus={() => scrollSlotIntoView(slot.key)}
-                          placeholder={s.onboarding.addressFor(slot.name)}
-                          placeholderTextColor={scheme.onSurfaceVariant}
-                          style={st.searchInput}
-                          autoFocus
-                          returnKeyType="search"
-                        />
-                        {slots.searching && <ActivityIndicator size="small" color={scheme.primary} />}
-                      </View>
-                      {/* Bez tego użytkownik widział pole z wpisanym tekstem
-                          i nic więcej — bez informacji, czy szukanie w ogóle
-                          działa. Adresy wymagają internetu, przystanki nie. */}
-                      {slots.results.length === 0 &&
-                        !slots.searching &&
-                        slots.query.trim().length >= 2 && (
-                          <View style={st.noResults}>
-                            <Text style={st.noResultsText}>
-                              {s.onboarding.noResults(slots.query.trim())}
-                            </Text>
-                          </View>
-                        )}
-                      {slots.results.map((r) => (
-                        <Pressable
-                          key={r.id}
-                          onPress={() => void slots.saveForSlot(slot.key, r)}
-                          disabled={slots.saving}
-                          style={({ pressed }) => [st.resultRow, pressed && { opacity: 0.7 }]}
-                        >
-                          <MapPin size={16} color={scheme.primary} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={st.resultTitle} numberOfLines={1}>
-                              {suggestionDisplayTitle(r)}
-                            </Text>
-                            <Text style={st.resultSub} numberOfLines={1}>
-                              {r.address}
-                            </Text>
-                          </View>
-                          {slots.saving ? (
-                            <ActivityIndicator size="small" color={scheme.primary} />
-                          ) : (
-                            <ChevronRight size={16} color={scheme.onSurfaceVariant} />
-                          )}
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </ScrollView>
+                );
+              })}
+            </ScrollView>
           </KeyboardAvoidingView>
         )}
       </Animated.View>
@@ -872,12 +920,20 @@ export default function OnboardingScreen() {
         )}
         {step === 1 && (
           <>
-            <PrimaryBtn label={s.onboarding.next} onPress={next} icon={<ChevronRight size={18} color={scheme.onPrimary} />} />
+            <PrimaryBtn
+              label={s.onboarding.next}
+              onPress={next}
+              icon={<ChevronRight size={18} color={scheme.onPrimary} />}
+            />
             <GhostBtn label={s.onboarding.later} onPress={next} />
           </>
         )}
         {step === 2 && (
-          <PrimaryBtn label={s.onboarding.next} onPress={next} icon={<ChevronRight size={18} color={scheme.onPrimary} />} />
+          <PrimaryBtn
+            label={s.onboarding.next}
+            onPress={next}
+            icon={<ChevronRight size={18} color={scheme.onPrimary} />}
+          />
         )}
         {step === 3 && (
           <>
@@ -904,9 +960,7 @@ export default function OnboardingScreen() {
                 )
               }
             />
-            {!gtfsReady && (
-              <Text style={st.lockNote}>{s.onboarding.needTimetable}</Text>
-            )}
+            {!gtfsReady && <Text style={st.lockNote}>{s.onboarding.needTimetable}</Text>}
             {/* Bez tego kroku apka jest nie do przejścia: rozkład miasta może nie
                 być na serwerze albo pobieranie może paść, a „Dalej" odblokowuje
                 się dopiero po gotowej bazie. Użytkownik zostawałby w ekranie
@@ -931,7 +985,13 @@ export default function OnboardingScreen() {
 
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
-  top: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, minHeight: 56 },
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    minHeight: 56,
+  },
   back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   dots: { flexDirection: 'row', gap: 6 },
   dot: { width: 22, height: 5, borderRadius: 3, backgroundColor: scheme.surfaceContainerHighest },
@@ -969,9 +1029,27 @@ const st = StyleSheet.create({
     marginTop: 8,
     ...elev.level1,
   },
-  hero: { fontSize: 52, fontWeight: '700', color: scheme.onSurface, textAlign: 'center', letterSpacing: -1 },
-  title: { fontSize: 34, fontWeight: '700', color: scheme.onSurface, letterSpacing: -0.5, lineHeight: 40 },
-  lead: { ...type.bodyLarge, color: scheme.onSurfaceVariant, textAlign: 'center', lineHeight: 24, paddingHorizontal: 8 },
+  hero: {
+    fontSize: 52,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    textAlign: 'center',
+    letterSpacing: -1,
+  },
+  title: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    letterSpacing: -0.5,
+    lineHeight: 40,
+  },
+  lead: {
+    ...type.bodyLarge,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: 8,
+  },
   leadSmall: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
   featList: { gap: 10, marginTop: 6 },
   feat: {
@@ -1058,7 +1136,12 @@ const st = StyleSheet.create({
   doneText: { ...type.bodyMedium, color: scheme.success, fontWeight: '600' },
   statRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   statText: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '600', flex: 1 },
-  bar: { height: 10, borderRadius: 5, backgroundColor: scheme.surfaceContainerHighest, overflow: 'hidden' },
+  bar: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: scheme.surfaceContainerHighest,
+    overflow: 'hidden',
+  },
   barFill: { height: '100%', backgroundColor: scheme.primary, borderRadius: 5 },
   fine: { ...type.labelSmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
   successRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -1130,5 +1213,10 @@ const st = StyleSheet.create({
   primaryTextDisabled: { color: scheme.onSurfaceVariant },
   ghost: { alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
   ghostText: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '600' },
-  lockNote: { ...type.labelSmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingTop: 2 },
+  lockNote: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    paddingTop: 2,
+  },
 });

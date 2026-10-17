@@ -1,5 +1,5 @@
 // Lokalny magazyn GTFS w expo-sqlite (v57 API: openDatabaseAsync).
-// Telefon nie trzyma rozkładu w Mapach jak serwer — pyta SQLite z indeksami,
+// Telefon nie trzyma rozkładu w Mapach jak serwer - pyta SQLite z indeksami,
 // więc stop_times (~mln wierszy) nie musi wchodzić w całości do RAM.
 //
 // Schemat celowo minimalny (tylko to, czego potrzebuje routing/search):
@@ -26,8 +26,8 @@ export function currentGtfsDbName(): string {
 const dbPromises = new Map<string, Promise<SQLite.SQLiteDatabase>>();
 
 async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
-      const db = await SQLite.openDatabaseAsync(name);
-      await db.execAsync(`
+  const db = await SQLite.openDatabaseAsync(name);
+  await db.execAsync(`
         PRAGMA journal_mode = WAL;
         PRAGMA busy_timeout = 15000;
         CREATE TABLE IF NOT EXISTS stops (
@@ -99,18 +99,18 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_pois_norm ON pois (norm_name);
       `);
-      // Migracje istniejących baz (CREATE TABLE IF NOT EXISTS ich nie rusza).
-      // Upewnij się, że kolumna weight istnieje w tabeli stops:
-      try {
-        await db.execAsync('ALTER TABLE stops ADD COLUMN weight INTEGER NOT NULL DEFAULT 0');
-      } catch {
-        // Ignoruj jeśli kolumna już istnieje
-      }
-      try {
-        await db.execAsync('CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC)');
-      } catch (err) {
-        console.warn('idx_stops_weight failed, rebuilding stops table:', err);
-        await db.execAsync(`
+  // Migracje istniejących baz (CREATE TABLE IF NOT EXISTS ich nie rusza).
+  // Upewnij się, że kolumna weight istnieje w tabeli stops:
+  try {
+    await db.execAsync('ALTER TABLE stops ADD COLUMN weight INTEGER NOT NULL DEFAULT 0');
+  } catch {
+    // Ignoruj jeśli kolumna już istnieje
+  }
+  try {
+    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC)');
+  } catch (err) {
+    console.warn('idx_stops_weight failed, rebuilding stops table:', err);
+    await db.execAsync(`
           DROP TABLE IF EXISTS stops;
           CREATE TABLE stops (
             stop_id TEXT PRIMARY KEY NOT NULL,
@@ -125,8 +125,8 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
           CREATE INDEX IF NOT EXISTS idx_stops_norm ON stops (norm);
           CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC);
         `);
-      }
-      return db;
+  }
+  return db;
 }
 
 export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
@@ -172,7 +172,7 @@ export function endGtfsSwap(): void {
 
 /**
  * Zamyka uchwyt bazy (przed podmianą pliku .db na nowy z serwera).
- * Po replace plik trzeba otworzyć od nowa — zrobi to getGtfsDb().
+ * Po replace plik trzeba otworzyć od nowa - zrobi to getGtfsDb().
  * Bez zamknięcia nadpisany plik = `database disk image is malformed`
  * albo blokada na Androidzie.
  */
@@ -196,7 +196,10 @@ export async function setMeta(key: string, value: string): Promise<void> {
 
 export async function getMeta(key: string): Promise<string | null> {
   const db = await getGtfsDb();
-  const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM meta WHERE key = ?', key);
+  const row = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM meta WHERE key = ?',
+    key,
+  );
   return row?.value ?? null;
 }
 
@@ -272,7 +275,14 @@ export async function importTrips(trips: GtfsTrip[]): Promise<void> {
       const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
       const params: (string | number)[] = [];
       for (const t of chunk) {
-        params.push(t.trip_id, t.route_id, t.service_id, t.trip_headsign, t.direction_id, t.shape_id);
+        params.push(
+          t.trip_id,
+          t.route_id,
+          t.service_id,
+          t.trip_headsign,
+          t.direction_id,
+          t.shape_id,
+        );
       }
       await db.runAsync(
         `INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES ${placeholders}`,
@@ -313,7 +323,9 @@ export async function importCalendar(cals: GtfsCalendar[]): Promise<void> {
   });
 }
 
-export async function importCalendarDates(rows: { service_id: string; date: string; exception_type: number }[]): Promise<void> {
+export async function importCalendarDates(
+  rows: { service_id: string; date: string; exception_type: number }[],
+): Promise<void> {
   if (rows.length === 0) return;
   const db = await getGtfsDb();
   const CHUNK_SIZE = 50;
@@ -371,7 +383,7 @@ export interface NearestStopRow {
   distanceM: number;
 }
 
-/** Najbliższe przystanki — bounding box w SQL, dokładny Haversine w JS. */
+/** Najbliższe przystanki - bounding box w SQL, dokładny Haversine w JS. */
 export async function findNearestStops(
   lat: number,
   lon: number,
@@ -408,7 +420,7 @@ export interface StopSearchHit {
   lat: number;
   lon: number;
   score: number;
-  /** liczba obsłużonych odjazdów — przystanki z większą wagą wyżej */
+  /** liczba obsłużonych odjazdów - przystanki z większą wagą wyżej */
   weight: number;
 }
 
@@ -421,7 +433,9 @@ export interface StopSearchHit {
 export async function searchStops(query: string, limit = 8): Promise<StopSearchHit[]> {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  const tokens = normalizePolish(q).split(/[\s,./()\\-]+/).filter(Boolean);
+  const tokens = normalizePolish(q)
+    .split(/[\s,./()\\-]+/)
+    .filter(Boolean);
   if (!tokens.length) return [];
 
   // Prefiltr SQL jest tańszy niż fuzzy na całej tabeli, ale nie może gubić
@@ -437,7 +451,14 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
   }
 
   const db = await getGtfsDb();
-  const rows = await db.getAllAsync<{ stop_id: string; code: string; name: string; lat: number; lon: number; weight: number }>(
+  const rows = await db.getAllAsync<{
+    stop_id: string;
+    code: string;
+    name: string;
+    lat: number;
+    lon: number;
+    weight: number;
+  }>(
     `SELECT stop_id, code, name, lat, lon, weight FROM stops WHERE ${clauses.join(' AND ')} LIMIT 120`,
     ...params,
   );
@@ -448,12 +469,23 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
     seen.add(r.name);
     return true;
   });
-  const matches = fuzzyMatchBatch(q, uniqueRows.map((r) => r.name));
+  const matches = fuzzyMatchBatch(
+    q,
+    uniqueRows.map((r) => r.name),
+  );
   for (let i = 0; i < uniqueRows.length; i++) {
     const m = matches[i];
     if (!m?.matches) continue;
     const r = uniqueRows[i];
-    scored.push({ stop_id: r.stop_id, code: r.code, name: r.name, lat: r.lat, lon: r.lon, score: m.score, weight: r.weight ?? 0 });
+    scored.push({
+      stop_id: r.stop_id,
+      code: r.code,
+      name: r.name,
+      lat: r.lat,
+      lon: r.lon,
+      score: m.score,
+      weight: r.weight ?? 0,
+    });
   }
   scored.sort((a, b) => {
     if (Math.abs(a.score - b.score) > 12) return b.score - a.score;
@@ -475,7 +507,9 @@ export async function computeStopWeights(): Promise<number> {
         FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg
         WHERE agg.stop_id = stops.stop_id;
     `);
-    const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
+    const row = await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM stops WHERE weight > 0',
+    );
     return row?.n ?? 0;
   } catch (err) {
     console.warn('[GtfsDatabase] computeStopWeights failed:', err);
@@ -489,7 +523,9 @@ export async function needsStopWeights(): Promise<boolean> {
     const db = await getGtfsDb();
     const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
     if (!s || s.n === 0) return false;
-    const w = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
+    const w = await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM stops WHERE weight > 0',
+    );
     return (w?.n ?? 0) === 0;
   } catch {
     return false;
@@ -520,10 +556,22 @@ export async function replacePois(rows: PoiRow[]): Promise<void> {
       const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
       const params: (string | number | null)[] = [];
       for (const r of chunk) {
-        params.push(r.osm_id, r.kind, r.category, r.name, r.norm_name, r.address, r.lat, r.lon, r.street, r.district);
+        params.push(
+          r.osm_id,
+          r.kind,
+          r.category,
+          r.name,
+          r.norm_name,
+          r.address,
+          r.lat,
+          r.lon,
+          r.street,
+          r.district,
+        );
       }
       await db.runAsync(
-        'INSERT OR REPLACE INTO pois (osm_id, kind, category, name, norm_name, address, lat, lon, street, district) VALUES ' + placeholders,
+        'INSERT OR REPLACE INTO pois (osm_id, kind, category, name, norm_name, address, lat, lon, street, district) VALUES ' +
+          placeholders,
         ...params,
       );
     }
@@ -542,7 +590,7 @@ export async function poiCount(): Promise<number> {
 
 /**
  * Kandydaci POI po tanim LIKE (ranking robi JS: fuzzy + kara za dystans).
- * Samo zawężenie — szybko nawet na tysiącach wierszy.
+ * Samo zawężenie - szybko nawet na tysiącach wierszy.
  */
 export async function findPoiCandidates(query: string, limit = 60): Promise<PoiRow[]> {
   const q = query.trim().toLowerCase();
@@ -588,7 +636,9 @@ export async function getActiveServices(weekday: number, dateStr?: string): Prom
   const db = await getGtfsDb();
   const day = ((weekday % 7) + 7) % 7;
   const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
-  const rows = await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
+  const rows = await db.getAllAsync<{ service_id: string }>(
+    `SELECT service_id FROM calendar WHERE ${col} > 0`,
+  );
   const weekdayServices = rows.map((r) => r.service_id);
   const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
   const calendarRowCount = total?.n ?? 0;
@@ -604,26 +654,42 @@ export async function getActiveServices(weekday: number, dateStr?: string): Prom
         dateStr,
       )
     : [];
-  return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
+  return resolveActiveServices(
+    weekdayServices,
+    calendarRowCount,
+    !!dateStr,
+    allTripServices,
+    dateExceptions,
+  );
 }
 
-/** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */
+/** route_ids dla oznaczenia linii ("4", "K") - case-insensitive. */
 export async function getRouteIdsByShortName(shortName: string): Promise<string[]> {
   const db = await getGtfsDb();
   const key = shortName.trim().toUpperCase();
-  const rows = await db.getAllAsync<{ route_id: string; short: string }>('SELECT route_id, short FROM routes');
+  const rows = await db.getAllAsync<{ route_id: string; short: string }>(
+    'SELECT route_id, short FROM routes',
+  );
   return rows.filter((r) => r.short.trim().toUpperCase() === key).map((r) => r.route_id);
 }
 
 /** Czasy kursu posortowane po stop_sequence (do list rozwijanych + RAPTOR-a). */
-export async function getTripStopTimes(tripId: string): Promise<
-  { stop_id: string; arr_sec: number; dep_sec: number; seq: number }[]
-> {
+export async function getTripStopTimes(
+  tripId: string,
+): Promise<{ stop_id: string; arr_sec: number; dep_sec: number; seq: number }[]> {
   const db = await getGtfsDb();
-  return db.getAllAsync('SELECT stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id = ? ORDER BY seq ASC', tripId);
+  return db.getAllAsync(
+    'SELECT stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id = ? ORDER BY seq ASC',
+    tripId,
+  );
 }
 
-export async function getGtfsStats(): Promise<{ stops: number; routes: number; trips: number; stopTimes: number }> {
+export async function getGtfsStats(): Promise<{
+  stops: number;
+  routes: number;
+  trips: number;
+  stopTimes: number;
+}> {
   const db = await getGtfsDb();
   const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
   const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routes');
@@ -639,7 +705,9 @@ export async function getGtfsStats(): Promise<{ stops: number; routes: number; t
 export async function hasTrainRoutes(): Promise<boolean> {
   try {
     const db = await getGtfsDb();
-    const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routes WHERE type = 2');
+    const row = await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM routes WHERE type = 2',
+    );
     return (row?.n ?? 0) > 0;
   } catch {
     return false;

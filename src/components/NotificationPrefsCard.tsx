@@ -16,10 +16,10 @@ import {
 
 // Ustawienia powiadomień. Świadomie wyjaśniamy DLACZEGO coś jest włączone:
 // „pasek postępu" brzmi dla użytkownika jak gadżet, a to jest realna,
-// mierzalna rzecz — odliczanie liczone przez system, które działa, gdy
+// mierzalna rzecz - odliczanie liczone przez system, które działa, gdy
 // aplikacja jest zamknięta.
 //
-// Przełącznik to naciskany pill, nie M3 Switch — w dolnym menu aplikacji
+// Przełącznik to naciskany pill, nie M3 Switch - w dolnym menu aplikacji
 // (i przy okazji na ekranie tras) zrezygnowano z przełączników na rzecz
 // przycisków, więc nie wprowadzamy ich z powrotem w Ustawieniach.
 
@@ -156,8 +156,7 @@ export function NotificationPrefsCard() {
   };
 
   const guarded =
-    (makePatch: (next: boolean) => Parameters<typeof update>[0]) =>
-    async (next: boolean) => {
+    (makePatch: (next: boolean) => Parameters<typeof update>[0]) => async (next: boolean) => {
       if (!(await requirePermission(next))) return;
       await update(makePatch(next));
     };
@@ -252,9 +251,7 @@ export function NotificationPrefsCard() {
           </View>
           <View style={styles.stepper}>
             <Pressable
-              onPress={() =>
-                update({ departureAlertLeadMin: LEAD_MIN[Math.max(0, leadIdx - 1)] })
-              }
+              onPress={() => update({ departureAlertLeadMin: LEAD_MIN[Math.max(0, leadIdx - 1)] })}
               disabled={leadIdx <= 0}
               style={({ pressed }) => [
                 styles.stepBtn,
@@ -265,12 +262,17 @@ export function NotificationPrefsCard() {
               accessibilityState={{ disabled: leadIdx <= 0 }}
               accessibilityLabel={p.leadLessA11y}
             >
-              <Minus size={18} color={leadIdx <= 0 ? scheme.outline : scheme.onSecondaryContainer} />
+              <Minus
+                size={18}
+                color={leadIdx <= 0 ? scheme.outline : scheme.onSecondaryContainer}
+              />
             </Pressable>
             <Text style={styles.stepValue}>{s.common.durMin(prefs.departureAlertLeadMin)}</Text>
             <Pressable
               onPress={() =>
-                update({ departureAlertLeadMin: LEAD_MIN[Math.min(LEAD_MIN.length - 1, leadIdx + 1)] })
+                update({
+                  departureAlertLeadMin: LEAD_MIN[Math.min(LEAD_MIN.length - 1, leadIdx + 1)],
+                })
               }
               disabled={leadIdx >= LEAD_MIN.length - 1}
               style={({ pressed }) => [
@@ -282,7 +284,12 @@ export function NotificationPrefsCard() {
               accessibilityState={{ disabled: leadIdx >= LEAD_MIN.length - 1 }}
               accessibilityLabel={p.leadMoreA11y}
             >
-              <Plus size={18} color={leadIdx >= LEAD_MIN.length - 1 ? scheme.outline : scheme.onSecondaryContainer} />
+              <Plus
+                size={18}
+                color={
+                  leadIdx >= LEAD_MIN.length - 1 ? scheme.outline : scheme.onSecondaryContainer
+                }
+              />
             </Pressable>
           </View>
         </View>

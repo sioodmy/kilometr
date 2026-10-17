@@ -18,7 +18,12 @@
  */
 
 import { liveTracker, snapshotIsUsable } from '../src/services/liveTracker';
-import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from '../src/services/zbiorkom';
+import {
+  fetchZbKd,
+  fetchZbWroclawRows,
+  matchZbKd,
+  type ZbKdVehicle,
+} from '../src/services/zbiorkom';
 import { gtfsStore } from '../src/services/routing/store';
 import { locateLiveStopPosition } from '../src/services/vehiclePosition';
 import type { Leg, LegStop } from '../src/types/models';
@@ -31,7 +36,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -40,7 +45,9 @@ function expect<T>(label: string, got: T, want: T): void {
     console.log(`   ok    ${label} = ${JSON.stringify(got)}`);
     return;
   }
-  failures.push(`${section} → ${label}: ${JSON.stringify(got)} (oczekiwano ${JSON.stringify(want)})`);
+  failures.push(
+    `${section} → ${label}: ${JSON.stringify(got)} (oczekiwano ${JSON.stringify(want)})`,
+  );
   console.log(`   FAIL  ${label} = ${JSON.stringify(got)} (oczekiwano ${JSON.stringify(want)})`);
 }
 
@@ -98,7 +105,11 @@ describe('Zdrowie źródeł live');
 const health = liveTracker.getSourceHealth();
 health.mpk = { attempts: 1, failures: 1, lastSuccessAt: null, lastError: 'x' };
 expect('zapis poza trackerem nie przecieka', 'mpk' in liveTracker.getSourceHealth(), false);
-expect('brak źródeł przed odpytaniem = pusty obiekt', Object.keys(liveTracker.getSourceHealth()).length, 0);
+expect(
+  'brak źródeł przed odpytaniem = pusty obiekt',
+  Object.keys(liveTracker.getSourceHealth()).length,
+  0,
+);
 
 // ─── Pusta odpowiedź to nie awaria ────────────────────────────────────────
 
@@ -107,15 +118,27 @@ expect('pusty body = pusta lista', internals.parseRows(''), []);
 expect('sam whitespace = pusta lista', internals.parseRows('   \n '), []);
 expect('HTML zamiast JSON = null', internals.parseRows('<html>502</html>'), null);
 expect('obiekt zamiast tablicy = null', internals.parseRows('{"error":1}'), null);
-expect('poprawna tablica przechodzi', internals.parseRows('[{"name":"1","type":"tram","x":51.1,"y":17.0,"k":7}]'), [
-  { name: '1', type: 'tram', x: 51.1, y: 17.0, k: 7 },
-]);
-expect('tablica bez ani jednego poprawnego wiersza = null', internals.parseRows('[{"foo":1},{"name":"","x":0,"y":0,"k":1}]'), null);
-expect('śmieci wśród poprawnych odsiane', internals.parseRows('[{"foo":1},{"name":"9","type":"bus","x":51.1,"y":17.0,"k":3}]'), [
-  { name: '9', type: 'bus', x: 51.1, y: 17.0, k: 3 },
-]);
+expect(
+  'poprawna tablica przechodzi',
+  internals.parseRows('[{"name":"1","type":"tram","x":51.1,"y":17.0,"k":7}]'),
+  [{ name: '1', type: 'tram', x: 51.1, y: 17.0, k: 7 }],
+);
+expect(
+  'tablica bez ani jednego poprawnego wiersza = null',
+  internals.parseRows('[{"foo":1},{"name":"","x":0,"y":0,"k":1}]'),
+  null,
+);
+expect(
+  'śmieci wśród poprawnych odsiane',
+  internals.parseRows('[{"foo":1},{"name":"9","type":"bus","x":51.1,"y":17.0,"k":3}]'),
+  [{ name: '9', type: 'bus', x: 51.1, y: 17.0, k: 3 }],
+);
 expect('brak k = wiersz odsiany', internals.parseRows('[{"name":"9","x":51.1,"y":17.0}]'), null);
-expect('nie-liczba w x = wiersz odsiany', internals.parseRows('[{"name":"9","x":"a","y":17.0,"k":1}]'), null);
+expect(
+  'nie-liczba w x = wiersz odsiany',
+  internals.parseRows('[{"name":"9","x":"a","y":17.0,"k":1}]'),
+  null,
+);
 
 // ─── Odpytywanie nieznanych linii nie wywraca się ─────────────────────────
 
@@ -147,41 +170,59 @@ const routeLeg: Leg = {
 const routeNow = new Date(2026, 9, 10, 10, 0).getTime();
 expect(
   'świeży pojazd po nazwach przystanków wskazuje właściwą przerwę',
-  locateLiveStopPosition(routeStops, routeLeg, {
-    vehicleId: '4-1',
-    line: '4',
-    lat: 51.1075,
-    lon: 17,
-    delaySec: 0,
-    currentStopName: 'Środek',
-    nextStopName: 'Koniec',
-    matchedTripId: 'trip-4',
-    updatedAt: routeNow,
-  }, null, routeNow),
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    {
+      vehicleId: '4-1',
+      line: '4',
+      lat: 51.1075,
+      lon: 17,
+      delaySec: 0,
+      currentStopName: 'Środek',
+      nextStopName: 'Koniec',
+      matchedTripId: 'trip-4',
+      updatedAt: routeNow,
+    },
+    null,
+    routeNow,
+  ),
   { gap: 1, source: 'vehicle' },
 );
 expect(
   'dokładny, poruszający się GPS na trasie koryguje brak pozycji API',
-  locateLiveStopPosition(routeStops, routeLeg, null, {
-    lat: 51.1075,
-    lon: 17,
-    accuracy: 8,
-    speed: 6,
-    heading: 0,
-    timestamp: routeNow,
-  }, routeNow),
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    null,
+    {
+      lat: 51.1075,
+      lon: 17,
+      accuracy: 8,
+      speed: 6,
+      heading: 0,
+      timestamp: routeNow,
+    },
+    routeNow,
+  ),
   { gap: 1, source: 'device' },
 );
 expect(
   'GPS daleko od trasy zostaje odrzucony i spada na szacunek z rozkładu',
-  locateLiveStopPosition(routeStops, routeLeg, null, {
-    lat: 51.1075,
-    lon: 17.003,
-    accuracy: 8,
-    speed: 6,
-    heading: 0,
-    timestamp: routeNow,
-  }, routeNow),
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    null,
+    {
+      lat: 51.1075,
+      lon: 17.003,
+      accuracy: 8,
+      speed: 6,
+      heading: 0,
+      timestamp: routeNow,
+    },
+    routeNow,
+  ),
   { gap: 0, source: 'estimate' },
 );
 expect(
@@ -234,14 +275,20 @@ expect(
 );
 expect(
   'wolny GPS nie udaje pozycji jadącego pojazdu (leci szacunek z rozkładu)',
-  locateLiveStopPosition(routeStops, routeLeg, null, {
-    lat: 51.1075,
-    lon: 17,
-    accuracy: 8,
-    speed: 0.5,
-    heading: 0,
-    timestamp: routeNow,
-  }, routeNow),
+  locateLiveStopPosition(
+    routeStops,
+    routeLeg,
+    null,
+    {
+      lat: 51.1075,
+      lon: 17,
+      accuracy: 8,
+      speed: 0.5,
+      heading: 0,
+      timestamp: routeNow,
+    },
+    routeNow,
+  ),
   { gap: 0, source: 'estimate' },
 );
 expect(
@@ -251,35 +298,17 @@ expect(
 );
 expect(
   'szacunek w połowie kursu wskazuje środkową przerwę',
-  locateLiveStopPosition(
-    routeStops,
-    routeLeg,
-    null,
-    null,
-    new Date(2026, 9, 10, 10, 5).getTime(),
-  ),
+  locateLiveStopPosition(routeStops, routeLeg, null, null, new Date(2026, 9, 10, 10, 5).getTime()),
   { gap: 1, source: 'estimate' },
 );
 expect(
   'szacunek przed odjazdem stawia ikonę przed przystankiem startowym (gap -1)',
-  locateLiveStopPosition(
-    routeStops,
-    routeLeg,
-    null,
-    null,
-    new Date(2026, 9, 10, 9, 50).getTime(),
-  ),
+  locateLiveStopPosition(routeStops, routeLeg, null, null, new Date(2026, 9, 10, 9, 50).getTime()),
   { gap: -1, source: 'estimate' },
 );
 expect(
   'szacunek dawno po odjeździe nie udaje pozycji (kurs za 3 godziny)',
-  locateLiveStopPosition(
-    routeStops,
-    routeLeg,
-    null,
-    null,
-    new Date(2026, 9, 10, 7, 0).getTime(),
-  ),
+  locateLiveStopPosition(routeStops, routeLeg, null, null, new Date(2026, 9, 10, 7, 0).getTime()),
   null,
 );
 
@@ -335,149 +364,169 @@ expect(
 );
 expect(
   'opóźnienie z efektywnego odjazdu przesuwa szacunek',
-  locateLiveStopPosition(secondTrip, { ...secondLeg, departAt: '10:02' }, null, null, new Date(2026, 9, 10, 9, 55).getTime()),
+  locateLiveStopPosition(
+    secondTrip,
+    { ...secondLeg, departAt: '10:02' },
+    null,
+    null,
+    new Date(2026, 9, 10, 9, 55).getTime(),
+  ),
   { gap: 0, source: 'estimate' },
 );
 
 // ─── zbiorkom.live: mapowanie odpowiedzi ─────────────────────────────────
 
 async function main(): Promise<void> {
-describe('zbiorkom.live: parsowanie pozycji');
-const realFetch = globalThis.fetch;
-function stubFetchOnce(body: unknown, ok = true): void {
-  globalThis.fetch = (async () => ({ ok, json: async () => body })) as unknown as typeof fetch;
-}
-const wroclawBody = {
-  positions: [
-    {
-      vehicle: { id: '9247', type: '3', agency: 'default' },
-      routeName: '612',
-      brigade: '32',
-      location: [16.98, 51.03],
-      timestamp: 1791643596000,
-      delay: 847000,
-      headsign: 'Krzyki',
-      upcomingStops: [],
-    },
-    {
-      vehicle: { id: 'T123', type: '0', agency: 'default' },
-      routeName: '1',
-      brigade: '7',
-      location: [17.0, 51.1],
-      timestamp: 1791643596000,
-      delay: 0,
-      headsign: 'Biskupin',
-      upcomingStops: [],
-    },
-    // Śmieci nie przechodzą: brak linii, brak id, zerowa pozycja.
-    { vehicle: { id: 'x', type: '3' }, routeName: '', brigade: '', location: [17, 51] },
-    { vehicle: { id: '', type: '3' }, routeName: '100', brigade: '', location: [17, 51] },
-    { vehicle: { id: 'y', type: '3' }, routeName: '100', brigade: '', location: [0, 0] },
-  ],
-};
-stubFetchOnce(wroclawBody);
-const zbRows = await fetchZbWroclawRows();
-expect('fallback zwraca 2 wiersze (śmieci odcięte)', zbRows?.length, 2);
-expect('bus: nazwa linii', zbRows?.[0].name, '612');
-expect('bus: typ', zbRows?.[0].type, 'bus');
-expect('bus: x to szerokość', zbRows?.[0].x, 51.03);
-expect('bus: y to długość', zbRows?.[0].y, 16.98);
-expect('tram z type 0', zbRows?.[1].type, 'tram');
-expect('k to string fleet number', zbRows?.[0].k, '9247');
-stubFetchOnce({}, false);
-expect('HTTP nie-OK = null (sygnał do dalszego fallbacku)', await fetchZbWroclawRows(), null);
+  describe('zbiorkom.live: parsowanie pozycji');
+  const realFetch = globalThis.fetch;
+  function stubFetchOnce(body: unknown, ok = true): void {
+    globalThis.fetch = (async () => ({ ok, json: async () => body })) as unknown as typeof fetch;
+  }
+  const wroclawBody = {
+    positions: [
+      {
+        vehicle: { id: '9247', type: '3', agency: 'default' },
+        routeName: '612',
+        brigade: '32',
+        location: [16.98, 51.03],
+        timestamp: 1791643596000,
+        delay: 847000,
+        headsign: 'Krzyki',
+        upcomingStops: [],
+      },
+      {
+        vehicle: { id: 'T123', type: '0', agency: 'default' },
+        routeName: '1',
+        brigade: '7',
+        location: [17.0, 51.1],
+        timestamp: 1791643596000,
+        delay: 0,
+        headsign: 'Biskupin',
+        upcomingStops: [],
+      },
+      // Śmieci nie przechodzą: brak linii, brak id, zerowa pozycja.
+      { vehicle: { id: 'x', type: '3' }, routeName: '', brigade: '', location: [17, 51] },
+      { vehicle: { id: '', type: '3' }, routeName: '100', brigade: '', location: [17, 51] },
+      { vehicle: { id: 'y', type: '3' }, routeName: '100', brigade: '', location: [0, 0] },
+    ],
+  };
+  stubFetchOnce(wroclawBody);
+  const zbRows = await fetchZbWroclawRows();
+  expect('fallback zwraca 2 wiersze (śmieci odcięte)', zbRows?.length, 2);
+  expect('bus: nazwa linii', zbRows?.[0].name, '612');
+  expect('bus: typ', zbRows?.[0].type, 'bus');
+  expect('bus: x to szerokość', zbRows?.[0].x, 51.03);
+  expect('bus: y to długość', zbRows?.[0].y, 16.98);
+  expect('tram z type 0', zbRows?.[1].type, 'tram');
+  expect('k to string fleet number', zbRows?.[0].k, '9247');
+  stubFetchOnce({}, false);
+  expect('HTTP nie-OK = null (sygnał do dalszego fallbacku)', await fetchZbWroclawRows(), null);
 
-const kdBody = {
-  positions: [
-    {
-      vehicle: { id: '48WEc-040', type: '2', agency: 'KD' },
-      routeName: 'D30',
-      brigade: '67604',
-      location: [17.038129, 51.097549],
-      timestamp: 1791643584000,
-      delay: 17000,
-      headsign: 'Leszno',
-      upcomingStops: [
-        { sequence: 0, name: 'Wrocław Główny', scheduledArrival: 1791643800000, scheduledDeparture: 1791643800000 },
-        { sequence: 1, name: 'Wrocław Mikołajów', scheduledArrival: 1791644050000, scheduledDeparture: 1791644110000 },
-      ],
-    },
-  ],
-};
-stubFetchOnce(kdBody);
-const kd = await fetchZbKd();
-expect('KD: jeden pojazd', kd?.length, 1);
-expect('KD: numer pociągu z brygady', kd?.[0].trainNumber, '67604');
-expect('KD: linia D informacyjnie', kd?.[0].line, 'D30');
-expect('KD: delay ms → s', kd?.[0].delaySec, 17);
-expect('KD: lat z location[1]', kd?.[0].lat, 51.097549);
-expect('KD: current stop', kd?.[0].currentStopName, 'Wrocław Główny');
-expect('KD: next stop', kd?.[0].nextStopName, 'Wrocław Mikołajów');
-expect('KD: dwa postoje do matchowania', kd?.[0].stops.length, 2);
-globalThis.fetch = realFetch;
+  const kdBody = {
+    positions: [
+      {
+        vehicle: { id: '48WEc-040', type: '2', agency: 'KD' },
+        routeName: 'D30',
+        brigade: '67604',
+        location: [17.038129, 51.097549],
+        timestamp: 1791643584000,
+        delay: 17000,
+        headsign: 'Leszno',
+        upcomingStops: [
+          {
+            sequence: 0,
+            name: 'Wrocław Główny',
+            scheduledArrival: 1791643800000,
+            scheduledDeparture: 1791643800000,
+          },
+          {
+            sequence: 1,
+            name: 'Wrocław Mikołajów',
+            scheduledArrival: 1791644050000,
+            scheduledDeparture: 1791644110000,
+          },
+        ],
+      },
+    ],
+  };
+  stubFetchOnce(kdBody);
+  const kd = await fetchZbKd();
+  expect('KD: jeden pojazd', kd?.length, 1);
+  expect('KD: numer pociągu z brygady', kd?.[0].trainNumber, '67604');
+  expect('KD: linia D informacyjnie', kd?.[0].line, 'D30');
+  expect('KD: delay ms → s', kd?.[0].delaySec, 17);
+  expect('KD: lat z location[1]', kd?.[0].lat, 51.097549);
+  expect('KD: current stop', kd?.[0].currentStopName, 'Wrocław Główny');
+  expect('KD: next stop', kd?.[0].nextStopName, 'Wrocław Mikołajów');
+  expect('KD: dwa postoje do matchowania', kd?.[0].stops.length, 2);
+  globalThis.fetch = realFetch;
 
-// ─── zbiorkom.live: spinanie KD z lokalnym rozkładem ────────────────────────
+  // ─── zbiorkom.live: spinanie KD z lokalnym rozkładem ────────────────────────
 
-describe('zbiorkom.live: matchowanie KD');
-gtfsStore.routes.set('KD:R:1:2', { route_short_name: '67604' });
-gtfsStore.stops.set('KD:S:1', { stop_name: 'Wrocław Główny' });
-gtfsStore.stops.set('KD:S:2', { stop_name: 'Wrocław Mikołajów' });
-gtfsStore.stopTimes.set('KD:T:1:2:20261010', [
-  { stop_id: 'KD:S:1', departure_sec: 36000, arrival_sec: 36000 },
-  { stop_id: 'KD:S:2', departure_sec: 36300, arrival_sec: 36300 },
-]);
-const kdIndex = {
-  stopRoutes: new Map(),
-  routeStops: new Map(),
-  routeTrips: new Map(),
-  patterns: new Map([
-    ['KD:P:1', { routeId: 'KD:R:1:2', trips: [{ trip_id: 'KD:T:1:2:20261010' }] }],
-  ]),
-};
-const mkVeh = (over: Partial<ZbKdVehicle>): ZbKdVehicle => ({
-  id: '48WEc-040',
-  trainNumber: '67604',
-  line: 'D30',
-  lat: 51.09,
-  lon: 17.03,
-  delaySec: 60,
-  updatedAt: Date.now(),
-  currentStopName: 'Wrocław Główny',
-  nextStopName: 'Wrocław Mikołajów',
-  stops: [
-    { name: 'Wrocław Główny', schedSec: 36000 },
-    { name: 'Wrocław Mikołajów', schedSec: 36300 },
-  ],
-  ...over,
-});
-expect('znany numer + zgodne postoje = trip', matchZbKd(mkVeh({}), kdIndex)?.tripId, 'KD:T:1:2:20261010');
-expect('nieznany numer = null', matchZbKd(mkVeh({ trainNumber: '99999' }), kdIndex), null);
-expect('brak postojów = null', matchZbKd(mkVeh({ stops: [] }), kdIndex), null);
-expect(
-  'dryf czasu >10 min = null (inny kurs tego składu)',
-  matchZbKd(mkVeh({ stops: [{ name: 'Wrocław Główny', schedSec: 36000 + 3600 }] }), kdIndex),
-  null,
-);
-expect(
-  'obca nazwa postoju = null',
-  matchZbKd(mkVeh({ stops: [{ name: 'Poznań Główny', schedSec: 36000 }] }), kdIndex),
-  null,
-);
-gtfsStore.routes.delete('KD:R:1:2');
-gtfsStore.stops.delete('KD:S:1');
-gtfsStore.stops.delete('KD:S:2');
-gtfsStore.stopTimes.delete('KD:T:1:2:20261010');
+  describe('zbiorkom.live: matchowanie KD');
+  gtfsStore.routes.set('KD:R:1:2', { route_short_name: '67604' });
+  gtfsStore.stops.set('KD:S:1', { stop_name: 'Wrocław Główny' });
+  gtfsStore.stops.set('KD:S:2', { stop_name: 'Wrocław Mikołajów' });
+  gtfsStore.stopTimes.set('KD:T:1:2:20261010', [
+    { stop_id: 'KD:S:1', departure_sec: 36000, arrival_sec: 36000 },
+    { stop_id: 'KD:S:2', departure_sec: 36300, arrival_sec: 36300 },
+  ]);
+  const kdIndex = {
+    stopRoutes: new Map(),
+    routeStops: new Map(),
+    routeTrips: new Map(),
+    patterns: new Map([
+      ['KD:P:1', { routeId: 'KD:R:1:2', trips: [{ trip_id: 'KD:T:1:2:20261010' }] }],
+    ]),
+  };
+  const mkVeh = (over: Partial<ZbKdVehicle>): ZbKdVehicle => ({
+    id: '48WEc-040',
+    trainNumber: '67604',
+    line: 'D30',
+    lat: 51.09,
+    lon: 17.03,
+    delaySec: 60,
+    updatedAt: Date.now(),
+    currentStopName: 'Wrocław Główny',
+    nextStopName: 'Wrocław Mikołajów',
+    stops: [
+      { name: 'Wrocław Główny', schedSec: 36000 },
+      { name: 'Wrocław Mikołajów', schedSec: 36300 },
+    ],
+    ...over,
+  });
+  expect(
+    'znany numer + zgodne postoje = trip',
+    matchZbKd(mkVeh({}), kdIndex)?.tripId,
+    'KD:T:1:2:20261010',
+  );
+  expect('nieznany numer = null', matchZbKd(mkVeh({ trainNumber: '99999' }), kdIndex), null);
+  expect('brak postojów = null', matchZbKd(mkVeh({ stops: [] }), kdIndex), null);
+  expect(
+    'dryf czasu >10 min = null (inny kurs tego składu)',
+    matchZbKd(mkVeh({ stops: [{ name: 'Wrocław Główny', schedSec: 36000 + 3600 }] }), kdIndex),
+    null,
+  );
+  expect(
+    'obca nazwa postoju = null',
+    matchZbKd(mkVeh({ stops: [{ name: 'Poznań Główny', schedSec: 36000 }] }), kdIndex),
+    null,
+  );
+  gtfsStore.routes.delete('KD:R:1:2');
+  gtfsStore.stops.delete('KD:S:1');
+  gtfsStore.stops.delete('KD:S:2');
+  gtfsStore.stopTimes.delete('KD:T:1:2:20261010');
 
-// ─── Podsumowanie ─────────────────────────────────────────────────────────
+  // ─── Podsumowanie ─────────────────────────────────────────────────────────
 
-console.log(`\n${'='.repeat(52)}`);
-if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
-} else {
-  console.log(`NIEPOWODZENIA (${failures.length} z ${passed + failures.length}):`);
-  for (const f of failures) console.log(`  - ${f}`);
-}
-process.exit(failures.length === 0 ? 0 : 1);
+  console.log(`\n${'='.repeat(52)}`);
+  if (failures.length === 0) {
+    console.log(`WSZYSTKO OK - ${passed} asercji`);
+  } else {
+    console.log(`NIEPOWODZENIA (${failures.length} z ${passed + failures.length}):`);
+    for (const f of failures) console.log(`  - ${f}`);
+  }
+  process.exit(failures.length === 0 ? 0 : 1);
 }
 
 void main();

@@ -2,7 +2,7 @@
 //
 // Kafelki rastrowe odpadły: CARTO i Stadia wymagają klucza, a jasny OSM kłóci
 // się z ciemnym interfejsem. Dlatego rysujemy wektorowe kafelki OSM
-// (OpenFreeMap — bez klucza i bez limitu) i nadpisujemy każdą warstwę
+// (OpenFreeMap - bez klucza i bez limitu) i nadpisujemy każdą warstwę
 // kolorami z `src/theme/tokens`. Dane to nadal OpenStreetMap (ODbL).
 //
 // Schemat źródła to OpenMapTiles (`planet`), więc filtry `class`/`subclass`
@@ -56,7 +56,13 @@ const isLine = ['match', ['geometry-type'], ['LineString', 'MultiLineString'], t
 const isArea = ['match', ['geometry-type'], ['MultiPolygon', 'Polygon'], true, false];
 
 const ROAD_MOTORWAY = ['==', ['get', 'class'], 'motorway'];
-const ROAD_MAJOR = ['match', ['get', 'class'], ['primary', 'secondary', 'tertiary', 'trunk'], true, false];
+const ROAD_MAJOR = [
+  'match',
+  ['get', 'class'],
+  ['primary', 'secondary', 'tertiary', 'trunk'],
+  true,
+  false,
+];
 const ROAD_MINOR = ['match', ['get', 'class'], ['minor', 'service', 'track'], true, false];
 
 const nameField = [
@@ -265,7 +271,12 @@ function baseLayers() {
       ['match', ['get', 'class'], ['primary', 'secondary', 'tertiary', 'trunk'], true, false],
       C.roadLabel,
       ['interpolate', ['linear'], ['zoom'], 13, 11, 18, 14],
-      { 'symbol-placement': 'line', 'text-font': ['Noto Sans Regular'], 'text-max-width': 8, 'text-rotation-alignment': 'map' },
+      {
+        'symbol-placement': 'line',
+        'text-font': ['Noto Sans Regular'],
+        'text-max-width': 8,
+        'text-rotation-alignment': 'map',
+      },
     ),
     nameSymbol(
       'nazwa-ulicy-drobna',
@@ -273,7 +284,12 @@ function baseLayers() {
       ['all', isLine, ['match', ['get', 'class'], ['minor', 'service'], true, false]],
       C.roadLabel,
       ['interpolate', ['linear'], ['zoom'], 15, 10, 18, 13],
-      { 'symbol-placement': 'line', 'text-font': ['Noto Sans Regular'], 'text-max-width': 7, 'text-rotation-alignment': 'map' },
+      {
+        'symbol-placement': 'line',
+        'text-font': ['Noto Sans Regular'],
+        'text-max-width': 7,
+        'text-rotation-alignment': 'map',
+      },
     ),
     nameSymbol(
       'miejsce-miasto',
@@ -375,7 +391,11 @@ export function buildRouteLayers() {
       id: 'przystanki-posrednie',
       type: 'circle' as const,
       source: ROUTE_SOURCE_ID,
-      filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'role'], 'intermediate']] as never,
+      filter: [
+        'all',
+        ['==', ['geometry-type'], 'Point'],
+        ['==', ['get', 'role'], 'intermediate'],
+      ] as never,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 16, 4.5, 19, 6.5],
         'circle-color': ['coalesce', ['get', 'color'], motif().stopMid] as never,
@@ -391,7 +411,7 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
 
 /**
  * Pełny styl mapy: podkład OSM + warstwy trasy. Trasa siedzi w tym samym
- * stylu, więc WebView nie musi nic doklejać po wczytaniu — wystarczy
+ * stylu, więc WebView nie musi nic doklejać po wczytaniu - wystarczy
  * `setData` na źródłe GeoJSON.
  *
  * `base` (opcjonalnie) przestawia kafle i glify na lokalny serwer mapy:
@@ -410,9 +430,6 @@ export function buildMapStyle(base?: string | null) {
       [ROUTE_SOURCE_ID]: { type: 'geojson', data: EMPTY },
     },
     glyphs: base ? `${base}/assets/fonts/{fontstack}/{range}.pbf` : MAP_GLYPHS_URL,
-    layers: [
-      ...baseLayers(),
-      ...buildRouteLayers(),
-    ],
+    layers: [...baseLayers(), ...buildRouteLayers()],
   };
 }

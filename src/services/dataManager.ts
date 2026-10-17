@@ -4,9 +4,16 @@
 //
 // Kolejność importu (od najmniejszego):
 // stops → routes → calendar → calendar_dates → trips → stop_times.
-// stop_times jest ~46 MB — importujemy batched po 5000 rekordów w transakcjach.
+// stop_times jest ~46 MB - importujemy batched po 5000 rekordów w transakcjach.
 
-import { parseCalendarContent, parseCalendarDatesContent, parseRoutesContent, parseStopsContent, parseTripsContent, parseStopTimesBatched } from '../gtfs/csv';
+import {
+  parseCalendarContent,
+  parseCalendarDatesContent,
+  parseRoutesContent,
+  parseStopsContent,
+  parseTripsContent,
+  parseStopTimesBatched,
+} from '../gtfs/csv';
 import { GTFS, TIMETABLE } from './gtfsConfig';
 import {
   cleanupRawGtfs,
@@ -54,7 +61,13 @@ export type DataStatus =
   | { state: 'empty' }
   | { state: 'downloading'; progress: number }
   | { state: 'importing'; step: string; progress: number }
-  | { state: 'ready'; stops: number; trips: number; updatedAt: string | null; source: GtfsSource | null }
+  | {
+      state: 'ready';
+      stops: number;
+      trips: number;
+      updatedAt: string | null;
+      source: GtfsSource | null;
+    }
   | { state: 'error'; message: string; hint?: string; detail?: string };
 
 let status: DataStatus = { state: 'empty' };
@@ -106,7 +119,7 @@ export async function getGtfsSource(): Promise<GtfsSource | null> {
   }
 }
 
-/** Po imporcie pamięć RAPTOR-a jest nieaktualna — czyścimy, warmup dociągnie. */
+/** Po imporcie pamięć RAPTOR-a jest nieaktualna - czyścimy, warmup dociągnie. */
 async function resetRoutingStore(): Promise<void> {
   try {
     const { gtfsStore } = await import('./routing/store');
@@ -120,7 +133,7 @@ async function resetRoutingStore(): Promise<void> {
 
 /** Szybki start: pełny rozkład w SQLite uznajemy za gotowy. */
 export async function refreshDataStatus(): Promise<DataStatus> {
-  // Trwający import sam emituje postęp — nie nadpisuj go fałszywym statusem.
+  // Trwający import sam emituje postęp - nie nadpisuj go fałszywym statusem.
   // Bez tego każde odświeżenie w połowie importu (przystanki już są, kursów
   // jeszcze nie) pokazywałoby "gotowe", a UI wracałoby potem do pobierania.
   if (importInProgress) return status;
@@ -128,12 +141,18 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     const stats = await getGtfsStats();
     if (stats.stops > 0 && stats.trips > 0 && stats.stopTimes > 0) {
       const updatedAt = await getMeta('gtfs_imported_at');
-      emit({ state: 'ready', stops: stats.stops, trips: stats.trips, updatedAt, source: await getGtfsSource() });
+      emit({
+        state: 'ready',
+        stops: stats.stops,
+        trips: stats.trips,
+        updatedAt,
+        source: await getGtfsSource(),
+      });
       // Dokończenie przerwanego importu: wagi + warmup w tle.
       void ensureSearchReady();
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
-      // To nie jest działający rozkład — czyścimy, żeby UI wymusił pobieranie.
+      // To nie jest działający rozkład - czyścimy, żeby UI wymusił pobieranie.
       if (stats.stops > 0 || stats.trips > 0 || stats.stopTimes > 0) {
         await clearGtfsTables().catch(() => {});
       }
@@ -146,24 +165,30 @@ export async function refreshDataStatus(): Promise<DataStatus> {
 }
 
 /**
- * Tło po starcie: wagi przystanków (ranking podpowiedzi) i rozgrzany indeks
- * RAPTOR-a na bieżącą porę — żeby pierwsze wyszukiwanie tras nie płaciło
- * pełnego kosztu budowy indeksu.
+ * Tło po starcie: rozgrzany indeks RAPTOR-a na bieżącą porę (żeby pierwsze
+ * wyszukiwanie tras nie płaciło pełnego kosztu budowy indeksu) oraz wagi
+ * przystanków (ranking podpowiedzi). Oba równolegle: kolejka wag przed
+ * rozgrzewką opóźniała ją o własny czas, a pierwsze wyszukiwanie traciło.
  */
 async function ensureSearchReady(): Promise<void> {
-  try {
-    if (await needsStopWeights()) {
-      await computeStopWeights();
+  const weights = (async () => {
+    try {
+      if (await needsStopWeights()) {
+        await computeStopWeights();
+      }
+    } catch (err) {
+      console.warn('[DataManager] stop weights failed:', err);
     }
-  } catch (err) {
-    console.warn('[DataManager] stop weights failed:', err);
-  }
-  try {
-    const { warmupRouting } = await import('./routing/engine');
-    await warmupRouting();
-  } catch (err) {
-    console.warn('[DataManager] routing warmup failed:', err);
-  }
+  })();
+  const warmup = (async () => {
+    try {
+      const { warmupRouting } = await import('./routing/engine');
+      await warmupRouting();
+    } catch (err) {
+      console.warn('[DataManager] routing warmup failed:', err);
+    }
+  })();
+  await Promise.all([weights, warmup]);
 }
 
 export let importInProgress = false;
@@ -210,10 +235,13 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
   const cityChanged = () => getActiveCityIdSync() !== importCityId;
   try {
     // Ścieżka 1 (domyślna po skonfigurowaniu serwera): prebuilt SQLite.
-    // Brak parsowania na telefonie — download strumieniem + podmiana pliku.
+    // Brak parsowania na telefonie - download strumieniem + podmiana pliku.
     if (TIMETABLE.baseUrl) {
       const synced = await tryImportPrebuilt(importCityId).catch((err) => {
-        console.warn('[DataManager] prebuilt sync failed:', err instanceof Error ? err.message : String(err));
+        console.warn(
+          '[DataManager] prebuilt sync failed:',
+          err instanceof Error ? err.message : String(err),
+        );
         return null;
       });
       if (cityChanged()) {
@@ -259,7 +287,7 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
     }
     await importGtfsLegacy();
     await markTimetableDownloaded();
-    // Flaga w dół przed końcowym odświeżeniem — inaczej refresh uzna, że
+    // Flaga w dół przed końcowym odświeżeniem - inaczej refresh uzna, że
     // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
     importInProgress = false;
     await refreshDataStatus();
@@ -267,10 +295,9 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
-    // do UI — pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
+    // do UI - pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
     const Terr = dataTr();
-    const message =
-      err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
+    const message = err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
     console.warn('[DataManager] import failed:', detail);
     emit({
       state: 'error',
@@ -297,7 +324,9 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
  * 'cooldown' gdy jest nowsza wersja, ale pełne pobranie było za niedawno.
  * Rzuca przy problemach, wtedy caller decyduje o fallbacku do ZIP.
  */
-async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upToDate' | 'cooldown'> {
+async function tryImportPrebuilt(
+  pinnedCityId: string,
+): Promise<'updated' | 'upToDate' | 'cooldown'> {
   // Miasto pinujemy na całą operację: pobieranie trwa minuty, a użytkownik
   // może w międzyczasie zmienić miasto. Manifest, plik tymczasowy i cel
   // podmiany muszą dotyczyć tego samego miasta.
@@ -347,64 +376,68 @@ async function importGtfsLegacy(): Promise<void> {
 
   const T = dataTr();
   emit({ state: 'importing', step: T.stepUnpack, progress: 0 });
-    await unzipGtfs(zipUri);
+  await unzipGtfs(zipUri);
 
-    await clearGtfsTables();
-    await prepareForBulkImport();
+  await clearGtfsTables();
+  await prepareForBulkImport();
 
-    emit({ state: 'importing', step: T.stepStops, progress: 0.05 });
-    const stopsTxt = await readGtfsText('stops.txt');
-    if (!stopsTxt) throw new Error(T.errStops);
-    await importStops(parseStopsContent(stopsTxt));
+  emit({ state: 'importing', step: T.stepStops, progress: 0.05 });
+  const stopsTxt = await readGtfsText('stops.txt');
+  if (!stopsTxt) throw new Error(T.errStops);
+  await importStops(parseStopsContent(stopsTxt));
 
-    emit({ state: 'importing', step: T.stepLines, progress: 0.15 });
-    const routesTxt = await readGtfsText('routes.txt');
-    if (routesTxt) await importRoutes(parseRoutesContent(routesTxt));
+  emit({ state: 'importing', step: T.stepLines, progress: 0.15 });
+  const routesTxt = await readGtfsText('routes.txt');
+  if (routesTxt) await importRoutes(parseRoutesContent(routesTxt));
 
-    emit({ state: 'importing', step: T.stepCalendar, progress: 0.25 });
-    const calTxt = await readGtfsText('calendar.txt');
-    if (calTxt) await importCalendar(parseCalendarContent(calTxt));
-    const calDatesTxt = await readGtfsText('calendar_dates.txt');
-    await importCalendarDates(calDatesTxt ? parseCalendarDatesContent(calDatesTxt) : []);
+  emit({ state: 'importing', step: T.stepCalendar, progress: 0.25 });
+  const calTxt = await readGtfsText('calendar.txt');
+  if (calTxt) await importCalendar(parseCalendarContent(calTxt));
+  const calDatesTxt = await readGtfsText('calendar_dates.txt');
+  await importCalendarDates(calDatesTxt ? parseCalendarDatesContent(calDatesTxt) : []);
 
-    emit({ state: 'importing', step: T.stepTrips, progress: 0.35 });
-    const tripsTxt = await readGtfsText('trips.txt');
-    if (!tripsTxt) throw new Error(T.errTrips);
-    // Tripsy całego miasta na raz to ~2.2 MB tekstu — wchodzi bez chunkowania.
-    await importTrips(parseTripsContent(tripsTxt));
+  emit({ state: 'importing', step: T.stepTrips, progress: 0.35 });
+  const tripsTxt = await readGtfsText('trips.txt');
+  if (!tripsTxt) throw new Error(T.errTrips);
+  // Tripsy całego miasta na raz to ~2.2 MB tekstu - wchodzi bez chunkowania.
+  await importTrips(parseTripsContent(tripsTxt));
 
-    emit({ state: 'importing', step: T.stepTimes, progress: 0.5 });
-    const stopTimesTxt = await readGtfsText('stop_times.txt');
-    if (!stopTimesTxt) throw new Error(T.errTimes);
-    let done = 0;
-    await parseStopTimesBatched(
-      stopTimesTxt,
-      async (batch) => {
-        await importStopTimesBatch(batch);
-        done += batch.length;
-        // Progres orientacyjny: ~1.5M wierszy w stop_times dużego miasta.
-        emit({ state: 'importing', step: T.stepTimesK(Math.round(done / 1000)), progress: Math.min(0.95, 0.5 + done / 1500000 / 2) });
-      },
-      { batchSize: 5000 },
-    );
+  emit({ state: 'importing', step: T.stepTimes, progress: 0.5 });
+  const stopTimesTxt = await readGtfsText('stop_times.txt');
+  if (!stopTimesTxt) throw new Error(T.errTimes);
+  let done = 0;
+  await parseStopTimesBatched(
+    stopTimesTxt,
+    async (batch) => {
+      await importStopTimesBatch(batch);
+      done += batch.length;
+      // Progres orientacyjny: ~1.5M wierszy w stop_times dużego miasta.
+      emit({
+        state: 'importing',
+        step: T.stepTimesK(Math.round(done / 1000)),
+        progress: Math.min(0.95, 0.5 + done / 1500000 / 2),
+      });
+    },
+    { batchSize: 5000 },
+  );
 
-    emit({ state: 'importing', step: T.stepIndex, progress: 0.97 });
-    await finishBulkImport();
+  emit({ state: 'importing', step: T.stepIndex, progress: 0.97 });
+  await finishBulkImport();
 
-    emit({ state: 'importing', step: T.stepWeights, progress: 0.98 });
-    await computeStopWeights();
+  emit({ state: 'importing', step: T.stepWeights, progress: 0.98 });
+  await computeStopWeights();
 
-    await setMeta('gtfs_imported_at', new Date().toISOString());
-    await setMeta('gtfs_dir', gtfsDir());
-    await setMeta('gtfs_source', 'network');
-    await cleanupRawGtfs();
-    await resetRoutingStore();
+  await setMeta('gtfs_imported_at', new Date().toISOString());
+  await setMeta('gtfs_dir', gtfsDir());
+  await setMeta('gtfs_source', 'network');
+  await cleanupRawGtfs();
+  await resetRoutingStore();
 }
 
 /**
- * Sprawdza manifest raz dziennie — true, gdy na serwerze czeka nowsza baza.
+ * Sprawdza manifest raz dziennie - true, gdy na serwerze czeka nowsza baza.
  * Bez skonfigurowanego serwera (pusty TIMETABLE.baseUrl) zawsze false.
- * Uwaga: NIE pobiera automatycznie (~80 MB) — decyzję zostawia UI.
+ * Uwaga: NIE pobiera automatycznie (~80 MB) - decyzję zostawia UI.
  */
 export async function checkForGtfsUpdate(): Promise<boolean> {
   try {

@@ -7,7 +7,7 @@
 // Wersjonowanie: schemat 1 migrujemy do kubełka Wrocławia (taki był jego
 // jedyny sens), nowsze od naszego odrzucamy (nie umiemy ich czytać).
 // W obrębie sekcji dane są walidowane punkt po punkcie, a uszkodzone wpisy
-// są pomijane zamiast odrzucać całą kopię — inaczej jedno zepsute miejsce
+// są pomijane zamiast odrzucać całą kopię - inaczej jedno zepsute miejsce
 // zrobiłoby z kopii nie do odzyskania.
 
 import type { Connection, Leg, SavedPlace, SavedRoute, SavedPlaceIcon } from '../types/models';
@@ -22,7 +22,7 @@ export const BACKUP_SCHEMA = 2;
 
 export const BACKUP_FILE_KIND = 'kilometr-backup';
 export const BACKUP_APP_ID = 'kilometr';
-/** Rozszerzenie pliku — Android rozpoznaje po nim JSON w meniu udostępniania. */
+/** Rozszerzenie pliku - Android rozpoznaje po nim JSON w meniu udostępniania. */
 export const BACKUP_EXTENSION = 'json';
 /** MIME type przy udostępnianiu. */
 export const BACKUP_MIME = 'application/json';
@@ -68,7 +68,7 @@ function sectionTotal<T>(sections: BackupCitySection<T>[]): number {
   return sections.reduce((n, s) => n + s.items.length, 0);
 }
 
-/** Ile pozycji każdej sekcji — do potwierdzenia przed importem i do podsumowania. */
+/** Ile pozycji każdej sekcji - do potwierdzenia przed importem i do podsumowania. */
 export interface BackupCounts {
   places: number;
   savedRoutes: number;
@@ -89,7 +89,7 @@ export function countBackupData(data: BackupData): BackupCounts {
   };
 }
 
-/** Czy kopia w ogóle coś wnosi — pusty plik nie jest wart importu. */
+/** Czy kopia w ogóle coś wnosi - pusty plik nie jest wart importu. */
 export function isBackupEmpty(data: BackupData): boolean {
   const c = countBackupData(data);
   return !(
@@ -112,7 +112,7 @@ function str(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
 
-/** Skończona liczba — `NaN`/`Infinity` z uszkodzonego pliku odpadają. */
+/** Skończona liczba - `NaN`/`Infinity` z uszkodzonego pliku odpadają. */
 function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
@@ -125,7 +125,7 @@ function text(v: unknown, max = MAX_TEXT): string | null {
 }
 
 /** Ikona miejsca: UI już zna fallback (`SAVED_PLACE_ICONS[icon] ?? MapPin`),
- *  więc nieznana ikona nie może nam zepsuć importu — zostawiamy jak jest. */
+ *  więc nieznana ikona nie może nam zepsuć importu - zostawiamy jak jest. */
 function placeIcon(v: unknown): SavedPlaceIcon {
   const s = str(v);
   return (s as SavedPlaceIcon) ?? 'home';
@@ -138,7 +138,7 @@ function readPlace(v: unknown): SavedPlace | null {
   const lat = num(v.lat);
   const lon = num(v.lon);
   // Bez id i nazwy miejsce nie ma sensu, a bez współrzędnych nie da się
-  // zaplanować dojazdu — to już nie miejsce, tylko śmieć.
+  // zaplanować dojazdu - to już nie miejsce, tylko śmieć.
   if (!id || !name || lat === null || lon === null) return null;
   return {
     id,
@@ -158,7 +158,15 @@ function readPlace(v: unknown): SavedPlace | null {
 // Pełna lista trybów z LegMode. Brak wpisu po cichu gubił nogę przy
 // przywracaniu zapisanej trasy: 'train' i 'cable' wpadły przy pociągach
 // i Polince, 'trolleybus' i 'subway' przy GZM (Tychy) i metrze Warszawy.
-const LEG_MODES: readonly string[] = ['tram', 'bus', 'train', 'cable', 'trolleybus', 'subway', 'walk'];
+const LEG_MODES: readonly string[] = [
+  'tram',
+  'bus',
+  'train',
+  'cable',
+  'trolleybus',
+  'subway',
+  'walk',
+];
 
 function readLeg(v: unknown): Leg | null {
   if (!isRecord(v)) return null;
@@ -169,7 +177,7 @@ function readLeg(v: unknown): Leg | null {
   const departAt = text(v.departAt, 8);
   const arriveAt = text(v.arriveAt, 8);
   // Odcinek bez id, przystanków albo godzin nie da się narysować na osi
-  // czasu — lepiej go wyrzucić niż pokazać dziurę w trasie.
+  // czasu - lepiej go wyrzucić niż pokazać dziurę w trasie.
   if (!id || !mode || !LEG_MODES.includes(mode) || !fromStop || !toStop) return null;
   if (!departAt || !arriveAt) return null;
   const walkM = num(v.walkM);
@@ -193,7 +201,7 @@ function readLeg(v: unknown): Leg | null {
 }
 
 /** Zapisane połączenie: wymagamy id i niepustej listy odcinków. Głębiej nie
- *  walidujemy — `Connection` jest typem strukturalnym, a uszkodzony odcinek
+ *  walidujemy - `Connection` jest typem strukturalnym, a uszkodzony odcinek
  *  i tak zostanie odrzucony przez renderer. */
 function readSavedRoute(v: unknown): SavedRoute | null {
   if (!isRecord(v)) return null;
@@ -276,7 +284,10 @@ function readLocale(v: unknown): LocaleSetting | null {
  * Sekcja miasta: `{ city, items }`. Nieznane miasto odrzuca całą sekcję
  * (nie mamy kubełka, do którego mogłaby trafić), reszta kopii przeżywa.
  */
-function readCitySection<T>(v: unknown, readItem: (item: unknown) => T | null): BackupCitySection<T> | null {
+function readCitySection<T>(
+  v: unknown,
+  readItem: (item: unknown) => T | null,
+): BackupCitySection<T> | null {
   if (!isRecord(v)) return null;
   const city = str(v.city);
   if (!isCityId(city)) return null;
@@ -299,7 +310,7 @@ export type BackupParseResult =
  */
 function migrateSchema1(d: Record<string, unknown>): BackupData {
   const data: BackupData = { ...EMPTY_BACKUP_DATA };
-  const flat = <T,>(v: unknown, readItem: (item: unknown) => T | null): BackupCitySection<T>[] => {
+  const flat = <T>(v: unknown, readItem: (item: unknown) => T | null): BackupCitySection<T>[] => {
     if (!Array.isArray(v)) return [];
     const items = v.map(readItem).filter((i): i is T => i !== null);
     return items.length > 0 ? [{ city: 'wroclaw', items }] : [];
@@ -311,7 +322,7 @@ function migrateSchema1(d: Record<string, unknown>): BackupData {
 }
 
 /**
- * Parsuje i waliduje plik kopii. Nigdy nie rzuca — UI pokazuje powód
+ * Parsuje i waliduje plik kopii. Nigdy nie rzuca - UI pokazuje powód
  * nieczytelności zamiast wyjątku.
  */
 export function parseBackupFile(raw: string): BackupParseResult {
@@ -330,10 +341,7 @@ export function parseBackupFile(raw: string): BackupParseResult {
   if (schema > BACKUP_SCHEMA) return { ok: false, reason: 'schemaTooNew' };
 
   const d = isRecord(parsed.data) ? parsed.data : {};
-  const data: BackupData =
-    schema === 1
-      ? migrateSchema1(d)
-      : { ...EMPTY_BACKUP_DATA };
+  const data: BackupData = schema === 1 ? migrateSchema1(d) : { ...EMPTY_BACKUP_DATA };
 
   if (schema >= 2) {
     if (Array.isArray(d.places)) {
@@ -382,7 +390,7 @@ export function buildBackupFile(data: BackupData, appVersion: string | null): st
   return JSON.stringify(envelope, null, 2);
 }
 
-/** `kilometr-backup-2026-10-05-184205.json` — sortowanie po nazwie daje chronologię.
+/** `kilometr-backup-2026-10-05-184205.json` - sortowanie po nazwie daje chronologię.
  *  Sekundy w nazwie: dwa eksporty w tej samej minucie nie nadpisują się. */
 export function backupFileName(now: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');

@@ -9,7 +9,7 @@ const SLICE_MS = 100;
  * Czeka na slot rate-limitu, ale co SLICE_MS sprawdza czy zapytanie nie jest
  * już przestarzałe (użytkownik pisze dalej). Przestarzałe odpuszcza kolejkę
  * natychmiast zamiast blokować świeże zapytania za sobą (head-of-line).
- * Zwraca false gdy przestarzałe — wołający ma zwrócić pusty wynik.
+ * Zwraca false gdy przestarzałe - wołający ma zwrócić pusty wynik.
  */
 export async function rateLimit(isFresh: () => boolean): Promise<boolean> {
   for (;;) {
@@ -23,11 +23,14 @@ export async function rateLimit(isFresh: () => boolean): Promise<boolean> {
   return true;
 }
 
-export async function searchNominatim(query: string, isFresh: () => boolean = () => true): Promise<Suggestion[]> {
+export async function searchNominatim(
+  query: string,
+  isFresh: () => boolean = () => true,
+): Promise<Suggestion[]> {
   const q = query.trim();
   if (!q || q.length < 2) return [];
 
-  // Przestarzałe zapytanie nie dostaje slotu — nie blokuje kolejki
+  // Przestarzałe zapytanie nie dostaje slotu - nie blokuje kolejki
   if (!(await rateLimit(isFresh))) return [];
 
   const url = new URL(config.nominatim.baseUrl);
@@ -61,17 +64,39 @@ export async function searchNominatim(query: string, isFresh: () => boolean = ()
     const suggestions: Suggestion[] = [];
 
     const typeTranslations: Record<string, string> = {
-      restaurant: 'Restauracja', cafe: 'Kawiarnia', fast_food: 'Fast food',
-      bar: 'Bar', pub: 'Pub', pharmacy: 'Apteka', hospital: 'Szpital',
-      clinic: 'Przychodnia', doctors: 'Lekarz', dentist: 'Dentysta',
-      school: 'Szkoła', university: 'Uniwersytet', college: 'Uczelnia',
-      library: 'Biblioteka', kindergarten: 'Przedszkole', cinema: 'Kino',
-      theatre: 'Teatr', nightclub: 'Klub nocny', fuel: 'Stacja paliw',
-      car_wash: 'Myjnia', parking: 'Parking', charging_station: 'Stacja ładowania',
-      station: 'Stacja kolejowa', park: 'Park', playground: 'Plac zabaw',
-      bank: 'Bank', atm: 'Bankomat', post_office: 'Poczta',
-      place_of_worship: 'Kościół', sports_centre: 'Centrum sportowe',
-      swimming_pool: 'Basen', stadium: 'Stadion', fitness_centre: 'Siłownia'
+      restaurant: 'Restauracja',
+      cafe: 'Kawiarnia',
+      fast_food: 'Fast food',
+      bar: 'Bar',
+      pub: 'Pub',
+      pharmacy: 'Apteka',
+      hospital: 'Szpital',
+      clinic: 'Przychodnia',
+      doctors: 'Lekarz',
+      dentist: 'Dentysta',
+      school: 'Szkoła',
+      university: 'Uniwersytet',
+      college: 'Uczelnia',
+      library: 'Biblioteka',
+      kindergarten: 'Przedszkole',
+      cinema: 'Kino',
+      theatre: 'Teatr',
+      nightclub: 'Klub nocny',
+      fuel: 'Stacja paliw',
+      car_wash: 'Myjnia',
+      parking: 'Parking',
+      charging_station: 'Stacja ładowania',
+      station: 'Stacja kolejowa',
+      park: 'Park',
+      playground: 'Plac zabaw',
+      bank: 'Bank',
+      atm: 'Bankomat',
+      post_office: 'Poczta',
+      place_of_worship: 'Kościół',
+      sports_centre: 'Centrum sportowe',
+      swimming_pool: 'Basen',
+      stadium: 'Stadion',
+      fitness_centre: 'Siłownia',
     };
 
     for (const item of items) {
@@ -99,14 +124,40 @@ export async function searchNominatim(query: string, isFresh: () => boolean = ()
 
       let category = 'place';
       if (c === 'shop') category = 'shop';
-      else if (c === 'amenity' && ['restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court', 'ice_cream'].includes(t)) category = 'restaurant';
-      else if (c === 'amenity' && ['pharmacy', 'hospital', 'doctors', 'dentist', 'clinic'].includes(t)) category = 'medical';
-      else if (c === 'amenity' && ['school', 'university', 'college', 'library', 'kindergarten'].includes(t)) category = 'school';
-      else if (c === 'amenity' && ['cinema', 'theatre', 'nightclub', 'arts_centre'].includes(t)) category = 'entertainment';
-      else if (c === 'amenity' && ['fuel', 'car_wash', 'parking', 'charging_station'].includes(t)) category = 'fuel';
+      else if (
+        c === 'amenity' &&
+        ['restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court', 'ice_cream'].includes(t)
+      )
+        category = 'restaurant';
+      else if (
+        c === 'amenity' &&
+        ['pharmacy', 'hospital', 'doctors', 'dentist', 'clinic'].includes(t)
+      )
+        category = 'medical';
+      else if (
+        c === 'amenity' &&
+        ['school', 'university', 'college', 'library', 'kindergarten'].includes(t)
+      )
+        category = 'school';
+      else if (c === 'amenity' && ['cinema', 'theatre', 'nightclub', 'arts_centre'].includes(t))
+        category = 'entertainment';
+      else if (c === 'amenity' && ['fuel', 'car_wash', 'parking', 'charging_station'].includes(t))
+        category = 'fuel';
       else if (c === 'railway' || (c === 'public_transport' && t === 'station')) category = 'train';
       else if (c === 'tourism') category = 'tourism';
-      else if (c === 'leisure' && ['park', 'garden', 'playground', 'sports_centre', 'fitness_centre', 'swimming_pool', 'stadium'].includes(t)) category = 'sport';
+      else if (
+        c === 'leisure' &&
+        [
+          'park',
+          'garden',
+          'playground',
+          'sports_centre',
+          'fitness_centre',
+          'swimming_pool',
+          'stadium',
+        ].includes(t)
+      )
+        category = 'sport';
       else if (c === 'amenity' && ['bank', 'atm', 'post_office'].includes(t)) category = 'bank';
       else if (c === 'amenity' && t === 'place_of_worship') category = 'church';
 
@@ -116,11 +167,10 @@ export async function searchNominatim(query: string, isFresh: () => boolean = ()
       const houseNo = item.address?.house_number;
       const title =
         item.name ||
-        (road && houseNo
-          ? `${road} ${houseNo}`
-          : road || item.display_name.split(',')[0]);
-      const suburb = item.address?.suburb || item.address?.neighbourhood || item.address?.quarter || 'Wrocław';
-      
+        (road && houseNo ? `${road} ${houseNo}` : road || item.display_name.split(',')[0]);
+      const suburb =
+        item.address?.suburb || item.address?.neighbourhood || item.address?.quarter || 'Wrocław';
+
       let typeName = 'Miejsce';
       if (kind === 'address') typeName = 'Adres';
       else if (c === 'shop') typeName = 'Sklep';

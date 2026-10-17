@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Ikona pociągu/metra: "tracker" na pasku postępu powiadomienia. Ten sam
-  wzorzec co ic_kilometr_tram (Material, 24 dp, wypełnienie białe — system
+  wzorzec co ic_kilometr_tram (Material, 24 dp, wypełnienie białe - system
   tintuje ikonę progresu). Metro dzieli glif z pociągiem: na 24 dp osobny
   znak wagonu metra nie odróżniłby się od tramwaju.
 -->

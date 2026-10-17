@@ -3,13 +3,20 @@ import { getLineColors, inferTransitMode } from '../lineIdentity';
 import type { Connection } from '../../types/models';
 import { clockFromMs, formatDistance, parseClock } from './format';
 import { computeLegTimeline } from './tripProgress';
-import type { LivePlan, LivePlanPhaseCopy, LivePlanSegment, TripPhase, TripProgress, TrackedTrip } from './types';
+import type {
+  LivePlan,
+  LivePlanPhaseCopy,
+  LivePlanSegment,
+  TripPhase,
+  TripProgress,
+  TrackedTrip,
+} from './types';
 
-// Tekst powiadomienia — warstwa czysta.
+// Tekst powiadomienia - warstwa czysta.
 //
 // Zasada, która za tym stoi: liczbę, która zmienia się co sekundę, rysuje
 // system (chronometr `setWhen` + `setUsesChronometer`), a my dostarczamy
-// tekst, który z definicji nie zestarzeje — bezwzględne godziny („odjazd
+// tekst, który z definicji nie zestarzeje - bezwzględne godziny („odjazd
 // 14:32”), kierunki, nazwy przystanków, liczby przystanków. Dzięki temu plan
 // można wysłać raz na fazę, a serwis Androida sam przelicza fazę i postęp co
 // sekundę, także wtedy, gdy proces aplikacji leży.
@@ -18,7 +25,7 @@ import type { LivePlan, LivePlanPhaseCopy, LivePlanSegment, TripPhase, TripProgr
 // ciągnąć `react-native` za sobą, bo `check:notifications` liczy te same
 // rzeczy w czystym node. Wywołujący (`presenter.ts`, `alerts.ts`) używają `tr()`.
 
-/** Neutralny kolor dojść i przesiadek — wspólny dla wszystkich linii. */
+/** Neutralny kolor dojść i przesiadek - wspólny dla wszystkich linii. */
 export const WALK_SEGMENT_COLOR = '#8A8F98';
 
 export interface TripCopy {
@@ -29,16 +36,16 @@ export interface TripCopy {
 
 /**
  * Treść powiadomienia dla każdej fazy naraz. Serwis nie zna polskiej odmiany
- * ani słownika, więc wybiera gotowy wariant na podstawie zegara — dzięki
+ * ani słownika, więc wybiera gotowy wariant na podstawie zegara - dzięki
  * temu po zamknięciu aplikacji faza zmienia się dalej, a tekst wciąż jest
  * przetłumaczony i poprawnie odmieniony.
  *
  * Układ jest jednolity i odpowiada na jedno pytanie: „co teraz robię?”.
  * Tytuł zawsze niesie kurs i GODZINĘ BEZWZGLĘDNĄ (razem z etykietą „odjazd”
- * w jednej linii — zegar systemowy tyka obok, ale sam nie wie, do czego
+ * w jednej linii - zegar systemowy tyka obok, ale sam nie wie, do czego
  * liczy), a pod spodem stoją odpowiedzi na pytania właściwe dla fazy:
- * przy dojściu — który przystanek i w jakim kierunku, przy przesiadce — to
- * samo plus ile dojścia, w trakcie jazdy — gdzie wysiadam i ile przystanków
+ * przy dojściu - który przystanek i w jakim kierunku, przy przesiadce - to
+ * samo plus ile dojścia, w trakcie jazdy - gdzie wysiadam i ile przystanków
  * zostało. Nigdzie nie ma czasu względnego („za 4 min”), bo zamarzałby po
  * zamknięciu aplikacji.
  */
@@ -50,7 +57,7 @@ export function buildPhaseCopy(
   const n = s.notification;
   const mode = modeLabel(p.lineMode, s);
   const service = p.line ? `${mode} ${p.line}` : mode;
-  // Godzina z tego samego znacznika, na który celuje licznik systemowy —
+  // Godzina z tego samego znacznika, na który celuje licznik systemowy -
   // inaczej tytuł obiecywałby jeden odjazd, a odliczanie szło do drugiego.
   const boardAt = clockFromMs(p.boardAtMs);
   const arriveAt = p.arriveAt;
@@ -65,18 +72,11 @@ export function buildPhaseCopy(
   const walkMeters = upcomingWalkMeters(p, conn);
   const walkText = walkMeters != null && walkMeters > 0 ? formatDistance(walkMeters) : '';
   const walkMin = p.walkSec != null ? Math.round(p.walkSec / 60) : null;
-  const walk = join(
-    walkText,
-    walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '',
-  );
+  const walk = join(walkText, walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '');
   const stops = p.stopsLeft != null && p.stopsLeft > 0 ? n.stops(p.stopsLeft) : '';
   const transfers = p.transfers > 0 ? n.transfers(p.transfers) : '';
   const delay =
-    p.delayMin >= 2
-      ? n.delayLate(p.delayMin)
-      : p.delayMin <= -2
-        ? n.delayEarly(p.delayMin)
-        : '';
+    p.delayMin >= 2 ? n.delayLate(p.delayMin) : p.delayMin <= -2 ? n.delayEarly(p.delayMin) : '';
   const position =
     p.vehicleTracked && p.vehicleLabel
       ? p.vehicleLabel
@@ -104,7 +104,7 @@ export function buildPhaseCopy(
 
     transfer: {
       title: n.transferTitle(service, boardAt),
-      // Nazwa przesiadki już mówi, na którym przystanku przesiadam — nie
+      // Nazwa przesiadki już mówi, na którym przystanku przesiadam - nie
       // powtarzamy jej w „przystanek X".
       text: interchangeName(p.interchange) ?? boarding,
       subText: join(walk, stops, delay),
@@ -112,7 +112,7 @@ export function buildPhaseCopy(
 
     riding: {
       title: n.rideTitle(service, arriveAt),
-      // Godziny przyjazdu nie powtarzamy — jest już w tytule. Tu liczy się
+      // Godziny przyjazdu nie powtarzamy - jest już w tytule. Tu liczy się
       // tylko to, czego tytuł nie mówi: gdzie dojeżdżamy i ile to potrwa.
       text: join(
         p.leg?.toStop ? n.alightAt(p.leg.toStop) : '',
@@ -133,7 +133,7 @@ export function buildPhaseCopy(
 
 /**
  * Nazwa przesiadki bez etykiety. Planer często zwraca „Przesiadka: Rondo”,
- * a tytuł i tak zaczyna się od słowa „Przesiadka” — zdejmujemy wyłącznie
+ * a tytuł i tak zaczyna się od słowa „Przesiadka” - zdejmujemy wyłącznie
  * powtórzony wyraz, a jak nazwa jest nietypowa, zostawiamy ją w całości.
  */
 function interchangeName(raw: string | null | undefined): string | null {
@@ -146,7 +146,7 @@ function interchangeName(raw: string | null | undefined): string | null {
 
 /**
  * Ile minut trwa przejazd pojazdem, na którym użytkownik czeka. Bierzemy
- * różnicę godzin odcinka, a nie `durationMin` całej podróży — przy
+ * różnicę godzin odcinka, a nie `durationMin` całej podróży - przy
  * przesiadce to dwie różne liczby, a myślimy o tym, co zaraz się ruszy.
  */
 function rideLengthMin(p: TripProgress, s: Strings): string {
@@ -160,7 +160,7 @@ function rideLengthMin(p: TripProgress, s: Strings): string {
 }
 
 /**
- * Trzy pola zamiast całego planu — tyle potrzebują alerty odjazdu („wyjdź za
+ * Trzy pola zamiast całego planu - tyle potrzebują alerty odjazdu („wyjdź za
  * 5 minut", opóźnienie, „jesteś na miejscu"). Zdanie budujemy z bieżącej
  * fazy, żeby banner i powiadomienie nie opowiadały o różnych rzeczach.
  */
@@ -170,7 +170,7 @@ export function buildTripCopy(p: TripProgress, conn: Connection, s: Strings): Tr
   return {
     title: current.title,
     subtitle: current.text,
-    // Tylko fakty, których nie ma ani w tytule, ani w podtitle — powtórzenie
+    // Tylko fakty, których nie ma ani w tytule, ani w podtitle - powtórzenie
     // „na miejscu 14:25" w trzech miejscach wygląda jak błąd.
     body: join(
       p.leg?.platformCode ? n.platform(p.leg.platformCode) : '',
@@ -182,7 +182,7 @@ export function buildTripCopy(p: TripProgress, conn: Connection, s: Strings): Tr
 
 /**
  * Odcinki na pasku postępu. Dojścia pieszo dostają kolor neutralny, żeby nie
- * udawały linii, a przejazdy — kolor linii. Czasy przycinamy do okna
+ * udawały linii, a przejazdy - kolor linii. Czasy przycinamy do okna
  * podróży, bo ostatni odcinek bywa wyliczony z `durationMin`, nie z rozkładu.
  */
 export function buildSegments(
@@ -216,7 +216,7 @@ export interface BuildPlanOptions {
 }
 
 /**
- * Plan w całości — to leci do `LiveTripService` jako jeden JSON. Poza
+ * Plan w całości - to leci do `LiveTripService` jako jeden JSON. Poza
  * godzinami i listą odcinków serwis sam liczy fazę i postęp z zegara, więc
  * tekst musi być bezwzględny: „odjazd 14:32" nie starzeje się, „za 4 min"
  * starzeje się przy pierwszym odświeżeniu.
@@ -235,11 +235,10 @@ export function buildLivePlan(
   const startAtMs = timeline.length > 0 ? timeline[0].departMs : p.departAtMs;
   const endAtMs = p.arriveAtMs;
   // Do czego liczy zegar systemowy. Przed odjazdem (i przy przesiadce)
-  // użytkownik myśli o ODJEŹDZIE, w trakcie jazdy — o PRZYJEŹDZIE.
+  // użytkownik myśli o ODJEŹDZIE, w trakcie jazdy - o PRZYJEŹDZIE.
   // `boardAtMs` w fazie „jadę" celuje w odjazd, który już był, więc licznik
   // zamarzałby na tej samej wartości przez całą trasę.
-  const waiting =
-    p.phase === 'walking' || p.phase === 'waiting' || p.phase === 'transfer';
+  const waiting = p.phase === 'walking' || p.phase === 'waiting' || p.phase === 'transfer';
   const countdownAtMs = waiting ? p.boardAtMs : p.arriveAtMs;
   // Po przekroczeniu celu licznik liczy w górę („14:51 • 3 min") zamiast
   // pokazywać ujemne minuty.
@@ -251,7 +250,8 @@ export function buildLivePlan(
     channelName: s.notification.channelTracking,
     channelDescription: s.notification.channelTrackingDesc,
     accentColor:
-      p.lineColor || getLineColors(p.line || undefined, p.lineMode === 'walk' ? 'walk' : undefined).bg,
+      p.lineColor ||
+      getLineColors(p.line || undefined, p.lineMode === 'walk' ? 'walk' : undefined).bg,
     startAtMs,
     endAtMs,
     countdownAtMs,
@@ -260,7 +260,7 @@ export function buildLivePlan(
     stopAfterMs: options.stopAfterMs ?? 0,
     segments: buildSegments(timeline, startAtMs, endAtMs),
     copy: buildPhaseCopy(p, conn, s),
-    // Po przyjeździe „Zakończ" nie ma już czego kończyć — przycisk zmienia się
+    // Po przyjeździe „Zakończ" nie ma już czego kończyć - przycisk zmienia się
     // na potwierdzenie. Plan i tak przychodzi na każdą zmianę fazy, więc etykieta
     // dojeżdża razem z resztą treści.
     actions: [
@@ -305,7 +305,7 @@ function modeLabel(mode: TripProgress['lineMode'], s: Strings): string {
  *
  * `TripProgress.walkMeters` bywa zerem przed startem dojścia, bo `tripProgress`
  * szuka tylko ODCINKA, który już trwa. Tymczasem to jest właśnie chwila, w
- * której dystans jest najważniejszy — użytkownik stoi w domu i musi zdecydować,
+ * której dystans jest najważniejszy - użytkownik stoi w domu i musi zdecydować,
  * czy zdąży. Dlatego przy pierwszym wsiadaniu sięgamy po dojście stojące
  * przed pierwszym pojazdem, nawet jeśli jeszcze nie ruszyliśmy.
  */
@@ -324,7 +324,7 @@ function join(...parts: (string | null | undefined)[]): string {
 
 // ─── Deep linki ────────────────────────────────────────────────────────────
 
-/** Deep link do ekranu połączeń — te same parametry co w buildRoutesLink. */
+/** Deep link do ekranu połączeń - te same parametry co w buildRoutesLink. */
 export function buildTripLink(trip: TrackedTrip): string {
   return `kilometr://routes?${queryString(tripParams(trip))}`;
 }
@@ -351,7 +351,7 @@ function queryString(q: Record<string, string>): string {
  * `data` powiadomienia. Płaskie pola, bo po tapnięciu `expo-notifications`
  * oddaje je niezmienione i `app/_layout` przekłada je 1:1 na parametry
  * trasy. Znacznik czasu jest potrzebny, bo `getLastNotificationResponseAsync`
- * zwraca ostatnią odpowiedź **w całej historii** — bez niego apka otwarta
+ * zwraca ostatnią odpowiedź **w całej historii** - bez niego apka otwarta
  * godzinę po tapnięciu znowu skoczyłaby na ekran połączeń.
  */
 export function tripNotificationData(trip: TrackedTrip, alert?: string): Record<string, unknown> {

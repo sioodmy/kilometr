@@ -107,7 +107,7 @@ export interface SmartDestination extends LatLon {
   id: string;
   title: string;
   address: string;
-  /** Ile razy sprawdzano tę trasę z tego miejsca — napędza ranking */
+  /** Ile razy sprawdzano tę trasę z tego miejsca - napędza ranking */
   frequency: number;
   /** Szacowany czas dojazdu w minutach (pomiar z planera albo wartość domyślna) */
   avgDurationMin: number;
@@ -143,14 +143,14 @@ export interface VehiclePosition {
   currentStopName?: string;
   nextStopName?: string;
   updatedAt: number;
-  /** GTFS trip_id dopasowany przez backend (matcher) — do matchowania z Leg.tripId */
+  /** GTFS trip_id dopasowany przez backend (matcher) - do matchowania z Leg.tripId */
   matchedTripId?: string;
 }
 
 export interface Leg {
   id: string;
   mode: LegMode;
-  /** e.g. "4", "K", "D" — undefined for walk */
+  /** e.g. "4", "K", "D" - undefined for walk */
   line?: string;
   /** headsign, e.g. "BISKUPIN" */
   direction?: string;
@@ -171,7 +171,7 @@ export interface Leg {
   toLon?: number;
   /** GTFS stop_code / numer słupka (np. 10121) */
   platformCode?: string;
-  /** GTFS trip_id kursu — klucz do /trips/:id/stops i matchowania pojazdu */
+  /** GTFS trip_id kursu - klucz do /trips/:id/stops i matchowania pojazdu */
   tripId?: string;
   routeId?: string;
   /** pełna sekwencja przystanków kursu (cała linia); nasz odcinek to podzbiór */
@@ -218,6 +218,8 @@ export interface RouteQuery {
   trainsEnabled?: boolean;
   /** Koleje linowe (Polinka) w trybie 'all' (default true). Jak trainsEnabled. */
   cableEnabled?: boolean;
+  /** Na które pojazdy wolno się przesiadać (default wszystko true). */
+  allowedTransferModes?: Partial<Record<Leg['mode'], boolean>>;
   /** Minimalny zapas na wsiadanie do pociągu po przesiadce (default 300). */
   trainMinTransferSec?: number;
   /** sekundy, default 120 */

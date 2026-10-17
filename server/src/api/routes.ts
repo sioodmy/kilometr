@@ -28,7 +28,7 @@ apiRouter.get('/health', (req, res) => {
 /**
  * Archiwum GTFS, które backend już ma na dysku. Telefon sięga tu dopiero
  * wtedy, gdy Open Data Wrocław jest nieosiągalne (captive portal, sieć
- * blokująca host, brak DNS) — dzięki temu pierwszy import ma drugi
+ * blokująca host, brak DNS) - dzięki temu pierwszy import ma drugi
  * szansę zamiast kończyć się komunikatem o błędzie.
  */
 apiRouter.get('/gtfs/archive', (req, res) => {
@@ -79,7 +79,7 @@ apiRouter.post('/history/trip', (req, res) => {
     lon,
     originTitle || 'Twoja lokalizacja',
     dest,
-    Number.isFinite(Number(durationMin)) ? Number(durationMin) : 15
+    Number.isFinite(Number(durationMin)) ? Number(durationMin) : 15,
   );
   res.json({ success: true });
 });
@@ -112,26 +112,41 @@ apiRouter.get('/routes', async (req, res) => {
   const toLat = Number(req.query.toLat ?? 0);
   const toLon = Number(req.query.toLon ?? 0);
   const toId = req.query.toId ? String(req.query.toId) : undefined;
-  const departureTimeSec = req.query.departureTimeSec ? Number(req.query.departureTimeSec) : undefined;
-  const maxTransfers = req.query.maxTransfers !== undefined ? Number(req.query.maxTransfers) : undefined;
+  const departureTimeSec = req.query.departureTimeSec
+    ? Number(req.query.departureTimeSec)
+    : undefined;
+  const maxTransfers =
+    req.query.maxTransfers !== undefined ? Number(req.query.maxTransfers) : undefined;
   const modesRaw = req.query.modes ? String(req.query.modes) : undefined;
   const modes = modesRaw === 'tram' || modesRaw === 'bus' ? modesRaw : undefined;
-  const minTransferSec = req.query.minTransferSec !== undefined ? Number(req.query.minTransferSec) : undefined;
+  const minTransferSec =
+    req.query.minTransferSec !== undefined ? Number(req.query.minTransferSec) : undefined;
   const maxWalkM = req.query.maxWalkM !== undefined ? Number(req.query.maxWalkM) : undefined;
-  const walkSpeedMps = req.query.walkSpeedMps !== undefined ? Number(req.query.walkSpeedMps) : undefined;
+  const walkSpeedMps =
+    req.query.walkSpeedMps !== undefined ? Number(req.query.walkSpeedMps) : undefined;
   const anchorStopId = req.query.anchorStopId ? String(req.query.anchorStopId) : undefined;
-  const anchorStopLat = req.query.anchorStopLat !== undefined ? Number(req.query.anchorStopLat) : undefined;
-  const anchorStopLon = req.query.anchorStopLon !== undefined ? Number(req.query.anchorStopLon) : undefined;
+  const anchorStopLat =
+    req.query.anchorStopLat !== undefined ? Number(req.query.anchorStopLat) : undefined;
+  const anchorStopLon =
+    req.query.anchorStopLon !== undefined ? Number(req.query.anchorStopLon) : undefined;
 
   if (!toLat || !toLon) {
     res.status(400).json({ error: 'Missing destination coordinates (toLat, toLon)' });
     return;
   }
-  if (!Number.isFinite(fromLat) || !Number.isFinite(fromLon) || !Number.isFinite(toLat) || !Number.isFinite(toLon)) {
+  if (
+    !Number.isFinite(fromLat) ||
+    !Number.isFinite(fromLon) ||
+    !Number.isFinite(toLat) ||
+    !Number.isFinite(toLon)
+  ) {
     res.status(400).json({ error: 'Coordinates must be valid numbers' });
     return;
   }
-  if (departureTimeSec !== undefined && (!Number.isFinite(departureTimeSec) || departureTimeSec < 0)) {
+  if (
+    departureTimeSec !== undefined &&
+    (!Number.isFinite(departureTimeSec) || departureTimeSec < 0)
+  ) {
     res.status(400).json({ error: 'departureTimeSec must be a non-negative number' });
     return;
   }
@@ -152,8 +167,10 @@ apiRouter.get('/routes', async (req, res) => {
       maxWalkM: Number.isFinite(maxWalkM) ? maxWalkM : undefined,
       walkSpeedMps: Number.isFinite(walkSpeedMps) ? walkSpeedMps : undefined,
       anchorStopId,
-      anchorStopLat: anchorStopLat !== undefined && Number.isFinite(anchorStopLat) ? anchorStopLat : undefined,
-      anchorStopLon: anchorStopLon !== undefined && Number.isFinite(anchorStopLon) ? anchorStopLon : undefined,
+      anchorStopLat:
+        anchorStopLat !== undefined && Number.isFinite(anchorStopLat) ? anchorStopLat : undefined,
+      anchorStopLon:
+        anchorStopLon !== undefined && Number.isFinite(anchorStopLon) ? anchorStopLon : undefined,
     });
 
     // Cache connections in memory so /api/routes/:id can retrieve them
@@ -174,7 +191,7 @@ apiRouter.get('/routes', async (req, res) => {
         fromLon,
         fromTitle,
         { id: toId || `dest-${toLat}-${toLon}`, title: toTitle, lat: toLat, lon: toLon },
-        connections[0].durationMin
+        connections[0].durationMin,
       );
     }
 
@@ -185,7 +202,7 @@ apiRouter.get('/routes', async (req, res) => {
   }
 });
 
-// Saved routes CRUD (MUSZĄ być przed /routes/:id — inaczej "saved" wpada w :id)
+// Saved routes CRUD (MUSZĄ być przed /routes/:id - inaczej "saved" wpada w :id)
 apiRouter.get('/routes/saved', (req, res) => {
   res.json(FavoritesService.listSavedRoutes());
 });
@@ -292,7 +309,7 @@ apiRouter.get('/stops/nearest', async (req, res) => {
         lat: n.stop.stop_lat,
         lon: n.stop.stop_lon,
         distanceM: Math.round(n.distanceM),
-      }))
+      })),
     );
   } catch (err: any) {
     console.error('[API /stops/nearest error]', err);
@@ -306,10 +323,27 @@ apiRouter.get('/places', (req, res) => {
 });
 
 apiRouter.post('/places', (req, res) => {
-  const { name, icon, address, lat, lon, placeId, anchorStopId, anchorStopName, anchorStopLat, anchorStopLon } = req.body;
+  const {
+    name,
+    icon,
+    address,
+    lat,
+    lon,
+    placeId,
+    anchorStopId,
+    anchorStopName,
+    anchorStopLat,
+    anchorStopLon,
+  } = req.body;
   const latN = Number(lat);
   const lonN = Number(lon);
-  if (!name || lat === undefined || lon === undefined || !Number.isFinite(latN) || !Number.isFinite(lonN)) {
+  if (
+    !name ||
+    lat === undefined ||
+    lon === undefined ||
+    !Number.isFinite(latN) ||
+    !Number.isFinite(lonN)
+  ) {
     res.status(400).json({ error: 'Missing name or valid coordinates' });
     return;
   }

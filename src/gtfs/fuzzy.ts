@@ -1,4 +1,4 @@
-// Fuzzy search — wykonywany natywnie w Rust (JNI na Androidzie / inline WASM w Node/Hermes).
+// Fuzzy search - wykonywany natywnie w Rust (JNI na Androidzie / inline WASM w Node/Hermes).
 import {
   BinaryReader,
   BinaryWriter,

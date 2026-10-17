@@ -15,7 +15,11 @@
 import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
-import { extractArticleBlocks, parseMpkLodzRss, MPK_LODZ_ROZKLADY_RSS } from '../src/services/mpkNews';
+import {
+  extractArticleBlocks,
+  parseMpkLodzRss,
+  MPK_LODZ_ROZKLADY_RSS,
+} from '../src/services/mpkNews';
 import { resolveActiveServices } from '../src/services/gtfsDatabase';
 import { pl } from '../src/i18n/pl';
 import { en } from '../src/i18n/en';
@@ -28,7 +32,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -48,7 +52,11 @@ describe('Rejestr miasta');
   expect('nazwa', lodz.name, 'Łódź');
   expect('slug live to lodz', lodz.zbiorkomSlug, 'lodz');
   expect('bbox live', lodz.zbiorkomBbox, '19.05,51.55,19.85,51.97');
-  expect('feed komunikatów', MPK_LODZ_ROZKLADY_RSS, 'https://mpk.lodz.pl/rozklady/rss/rozklady.jsp');
+  expect(
+    'feed komunikatów',
+    MPK_LODZ_ROZKLADY_RSS,
+    'https://mpk.lodz.pl/rozklady/rss/rozklady.jsp',
+  );
   expect('kolej regionalna (ŁKA)', lodz.features.regionalRail, true);
   expect('bez bezpośredniego bus_position', lodz.features.directBusPosition, false);
 }
@@ -84,15 +92,31 @@ describe('Komunikaty MPK (RSS)');
   );
   expect('tytuł z linią 75B', items[0].title, 'Planowane zmiany w rozkładach jazdy: 75B');
   expect('linie z linków', items[1].lines, ['10A', '10B', '12', '18']);
-  expect('tytuł z czterema liniami', items[1].title, 'Aktualne zmiany w rozkładach jazdy: 10A, 10B, 12, 18');
-  expect('nocne i zwykłe z opisu', items[2].lines, ['82A', '82B', 'N5A', 'N5B', '72A', 'Z2', 'Z11']);
+  expect(
+    'tytuł z czterema liniami',
+    items[1].title,
+    'Aktualne zmiany w rozkładach jazdy: 10A, 10B, 12, 18',
+  );
+  expect('nocne i zwykłe z opisu', items[2].lines, [
+    '82A',
+    '82B',
+    'N5A',
+    'N5B',
+    '72A',
+    'Z2',
+    'Z11',
+  ]);
   expect('daty to nie linie', items[2].lines.includes('11'), false);
   expect('rok to nie linia', items[0].lines.includes('2026'), false);
   const d0 = items[0].pubDate ? new Date(items[0].pubDate) : null;
   expect('data z opisu (dzień)', d0?.getDate(), 16);
   expect('data z opisu (miesiąc)', d0?.getMonth(), 9);
   expect('data z opisu (rok)', d0?.getFullYear(), 2026);
-  expect('zakres dat od pierwszego dnia', items[1].pubDate ? new Date(items[1].pubDate).getDate() : null, 12);
+  expect(
+    'zakres dat od pierwszego dnia',
+    items[1].pubDate ? new Date(items[1].pubDate).getDate() : null,
+    12,
+  );
   expect('opis z feedu w karcie', items[0].description.includes('75B'), true);
   expect('zwykła zmiana to nie pilne', items[0].urgent, false);
 }
@@ -103,7 +127,9 @@ describe('Numery linii MPK: daty, numery komunikatów, litery');
     `<?xml version="1.0"?><rss version="2.0"><channel><item><title>Aktualne zmiany w rozkładach jazdy</title><link>https://mpk.lodz.pl/x</link><description><![CDATA[<p>${desc}</p>]]></description></item></channel></rss>`;
   expect(
     '„16 października 2026r.” to nie linie',
-    parseMpkLodzRss(xml('W dniu 16 października 2026r. zmiany w kursowaniu linii 75B')).map((i) => i.lines),
+    parseMpkLodzRss(xml('W dniu 16 października 2026r. zmiany w kursowaniu linii 75B')).map(
+      (i) => i.lines,
+    ),
     [['75B']],
   );
   expect(
@@ -123,7 +149,9 @@ describe('Numery linii MPK: daty, numery komunikatów, litery');
   );
   expect(
     'przyimek "w" to nie linia W',
-    parseMpkLodzRss(xml('W dniu 16 października zmiany w kursowaniu linii 75B')).map((i) => i.lines),
+    parseMpkLodzRss(xml('W dniu 16 października zmiany w kursowaniu linii 75B')).map(
+      (i) => i.lines,
+    ),
     [['75B']],
   );
   expect(
@@ -164,7 +192,12 @@ describe('Podpowiedzi onboardingu per-miasto');
   expect('pl dom', pl.onboarding.slotHomeHint('lodz'), 'np. Piotrkowska 12');
   expect('pl praca', pl.onboarding.slotWorkHint('lodz'), 'np. Manufaktura');
   expect('pl uczelnia', pl.onboarding.slotUniHint('lodz'), 'np. UŁ');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
+  for (const [lang, dict] of [
+    ['pl', pl],
+    ['en', en],
+    ['de', de],
+    ['uk', uk],
+  ] as const) {
     expect(
       `${lang}: lodz nie dziedziczy Wrocławia`,
       dict.onboarding.slotHomeHint('lodz') !== dict.onboarding.slotHomeHint('wroclaw'),
@@ -189,13 +222,24 @@ describe('Treść komunikatu MPK (tabela div#dWrkspc)');
 </td></tr></table>
 </div>
 </body></html>`;
-  const blocks = extractArticleBlocks(html, 'https://mpk.lodz.pl/rozklady/wholemessage.jsp?articleId=39348');
+  const blocks = extractArticleBlocks(
+    html,
+    'https://mpk.lodz.pl/rozklady/wholemessage.jsp?articleId=39348',
+  );
   expect('trzy akapity (nie jeden sklejony)', blocks.length, 3);
   expect('pierwszy bez śmieci z nagłówka', blocks[0].text, 'KOMUNIKAT 201/26');
   expect('drugi akapit', blocks[1].text.startsWith('W związku z organizacją meczu'), true);
   expect('trzeci akapit', blocks[2].text, '- zawieszone zostanie kursowanie linii 75B.');
-  expect('bez nagłówka KOMUNIKAT', blocks.some((b) => b.text === 'KOMUNIKAT'), false);
-  expect('bez wiersza tytułu z tabeli', blocks.some((b) => b.text.includes('zmiany w kursowaniu linii 75B')), false);
+  expect(
+    'bez nagłówka KOMUNIKAT',
+    blocks.some((b) => b.text === 'KOMUNIKAT'),
+    false,
+  );
+  expect(
+    'bez wiersza tytułu z tabeli',
+    blocks.some((b) => b.text.includes('zmiany w kursowaniu linii 75B')),
+    false,
+  );
 }
 
 describe('Kalendarz date-scoped (eksport dzienny ZDiT)');
@@ -223,7 +267,7 @@ describe('Kalendarz date-scoped (eksport dzienny ZDiT)');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

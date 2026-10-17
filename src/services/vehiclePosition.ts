@@ -6,7 +6,7 @@ import { bearingDegrees, projectPointToPolyline } from '../gtfs/geo';
 import type { CurrentLocation } from './currentLocation';
 
 // Czysta logika „gdzie jest pojazd". Wydzielona z komponentu LegTimeline,
-// bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień —
+// bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień -
 // serwis nie powinien importować komponentu (i nie da się go wtedy
 // przetestować bez react-native).
 
@@ -69,7 +69,7 @@ export function findUserSegment(stops: LegStop[], leg: Leg): { start: number; en
   }
   if (end < 0) {
     const n = normalizeName(leg.toStop);
-    // ostatni match — nazwy przystanków potrafią się powtarzać na linii
+    // ostatni match - nazwy przystanków potrafią się powtarzać na linii
     for (let i = stops.length - 1; i >= 0; i--) {
       if (normalizeName(stops[i].name) === n) {
         end = i;
@@ -119,11 +119,10 @@ function projectToStops(
     const from = stops[i];
     const to = stops[i + 1];
     if (from.lat == null || from.lon == null || to.lat == null || to.lon == null) continue;
-    const projection = projectPointToPolyline(
-      lat,
-      lon,
-      [{ lat: from.lat, lon: from.lon }, { lat: to.lat, lon: to.lon }],
-    );
+    const projection = projectPointToPolyline(lat, lon, [
+      { lat: from.lat, lon: from.lon },
+      { lat: to.lat, lon: to.lon },
+    ]);
     if (!best || projection.distanceMeters < best.distanceM) {
       best = {
         gap: i,
@@ -152,7 +151,8 @@ function adjacentStopGap(
   let best = -1;
   let bestDistance = Infinity;
   for (let i = 0; i < stops.length - 1; i++) {
-    if (normalizeName(stops[i].name) !== current || normalizeName(stops[i + 1].name) !== next) continue;
+    if (normalizeName(stops[i].name) !== current || normalizeName(stops[i + 1].name) !== next)
+      continue;
     const projection = projectToStops(stops, lat, lon, i, i + 1);
     const distance = projection?.distanceM ?? Number.MAX_VALUE;
     if (best < 0 || distance < bestDistance) {
@@ -173,7 +173,12 @@ function stopTimeSec(stop: LegStop): number | undefined {
  * którego odjazd już minął. Przesunięcie o różnicę między efektywnym odjazdem
  * nogi (z opóźnieniem) a rozkładowym odjazdem z przystanku wsiadania.
  */
-function estimateGapFromStopTimes(stops: LegStop[], leg: Leg, window: LegWindow, now: number): number | null {
+function estimateGapFromStopTimes(
+  stops: LegStop[],
+  leg: Leg,
+  window: LegWindow,
+  now: number,
+): number | null {
   const times = stops.map(stopTimeSec);
   if (times.some((t) => t == null)) return null;
   const boardingDeparture = parseHMtoSec(leg.departAt);
@@ -280,10 +285,7 @@ export function locateLiveStopPosition(
   location: CurrentLocation | null,
   now = Date.now(),
 ): LiveStopPosition | null {
-  if (
-    stops.length < 2 ||
-    (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')
-  ) {
+  if (stops.length < 2 || (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')) {
     return null;
   }
 

@@ -10,7 +10,14 @@ import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { classifyPoi, buildPoiAddress } from './poiClassify';
 import type { Suggestion } from '../types/models';
-import { findPoiCandidates, getMeta, poiCount, replacePois, setMeta, type PoiRow } from './gtfsDatabase';
+import {
+  findPoiCandidates,
+  getMeta,
+  poiCount,
+  replacePois,
+  setMeta,
+  type PoiRow,
+} from './gtfsDatabase';
 
 const ADDR_VERSION = '2';
 const REFRESH_DAYS = 7;
@@ -45,7 +52,7 @@ function isStale(last: string | null): boolean {
   return days >= REFRESH_DAYS;
 }
 
-/** Pobiera POI z Overpass i podmienia tabelę. Best-effort — błąd zostawia stare. */
+/** Pobiera POI z Overpass i podmienia tabelę. Best-effort - błąd zostawia stare. */
 export async function refreshPoiIndex(): Promise<number> {
   if (refreshInFlight) return poiCount();
   // Zapytanie potrafi trwać 45 s, a użytkownik zmieni miasto w międzyczasie.
@@ -132,14 +139,14 @@ export function ensurePoiIndex(): void {
         void refreshPoiIndex();
       }
     } catch {
-      // indeks opcjonalny — search działa bez niego
+      // indeks opcjonalny - search działa bez niego
     }
   })();
 }
 
 /**
  * Szukanie po lokalnym indeksie. Scoring: dopasowanie nazwy minus
- * kara za dystans — najbliższe wygrywają jak w Jakdojade.
+ * kara za dystans - najbliższe wygrywają jak w Jakdojade.
  */
 export async function searchPois(
   query: string,
@@ -152,7 +159,10 @@ export async function searchPois(
   const hasPos = userLat !== undefined && userLon !== undefined;
 
   const candidates = await findPoiCandidates(normQ).catch(() => [] as PoiRow[]);
-  const matches = fuzzyMatchBatch(normQ, candidates.map((row) => row.name));
+  const matches = fuzzyMatchBatch(
+    normQ,
+    candidates.map((row) => row.name),
+  );
   const scored: { row: PoiRow; score: number; distM?: number }[] = [];
   for (let i = 0; i < candidates.length; i++) {
     const row = candidates[i];

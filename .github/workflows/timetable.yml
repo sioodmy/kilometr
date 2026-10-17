@@ -22,13 +22,13 @@
 #                          (do pomijania buildów, gdy źródła bez zmian)
 #
 # Bez sekretów Cloudflare workflow kończy się na artefakcie Actions
-# (do ręcznego podejrzenia) — R2 nie jest dotykane.
+# (do ręcznego podejrzenia) - R2 nie jest dotykane.
 
 name: Timetable build → R2
 
 on:
   schedule:
-    # Codziennie 03:17 UTC — celowo nie o pełnej godzinie (mniejsze kolejki),
+    # Codziennie 03:17 UTC - celowo nie o pełnej godzinie (mniejsze kolejki),
     # rozkłady zmieniają się co kilka dni, KD śledzimy przez /data-version.
     - cron: '17 3 * * *'
   workflow_dispatch:
@@ -38,7 +38,25 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom]
+        options:
+          [
+            '',
+            wroclaw,
+            krakow,
+            gzm,
+            warszawa,
+            poznan,
+            trojmiasto,
+            lodz,
+            szczecin,
+            kielce,
+            olsztyn,
+            bialystok,
+            opole,
+            rzeszow,
+            lublin,
+            radom,
+          ]
 
 permissions:
   contents: read
@@ -144,14 +162,14 @@ jobs:
 
       # Kolejność ma znaczenie. Telefon czyta manifest, potem dopiero ściąga
       # bazę. Manifest wrzucamy OSTATNI, bo to on jest sygnałem „baza jest
-      # nowa” — w drugą stronę przez ~13 s uploadu 90 MB telefon widziałby nowy
+      # nowa” - w drugą stronę przez ~13 s uploadu 90 MB telefon widziałby nowy
       # manifest przy starej bazie, porównanie rozmiarów by nie przeszło i
       # odświeżanie kończyłoby się błędem zamiast nowym rozkładem.
       - name: Upload bazy → R2
         if: steps.build.outputs.exit == '0'
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload bazy do R2."
+            echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload bazy do R2."
             exit 0
           fi
           npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/db/kilometr-gtfs.db.gz" \
@@ -164,7 +182,7 @@ jobs:
         if: steps.build.outputs.exit == '0'
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload manifestu do R2."
+            echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload manifestu do R2."
             exit 0
           fi
           npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/manifest.json" \

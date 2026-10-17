@@ -1,4 +1,4 @@
-# Kilometr — rozkłady na Cloudflare (darmowy tier)
+# Kilometr - rozkłady na Cloudflare (darmowy tier)
 
 Serwerownia rozkładów jazdy dla aplikacji Kilometr. Telefon pobiera gotową,
 lekką bazę SQLite zamiast parsować 12 MB ZIP-a GTFS w pamięci (to powodowało
@@ -49,7 +49,7 @@ dysku telefonu.
 
 ### Dlaczego parsowanie NIE jest w Workerze
 
-Workers Free ma **10 ms CPU i 128 MB RAM na żądanie** — sparsowanie
+Workers Free ma **10 ms CPU i 128 MB RAM na żądanie** - sparsowanie
 46 MB `stop_times.txt` jest tam fizycznie niewykonalne. Dlatego ciężką
 robotę robi GitHub Actions (też darmowy: ~5 min dziennie z puli 2000 min),
 a Cloudflare trzyma gotowe pliki (R2: 10 GB i 10M odczytów/mies. gratis)
@@ -58,14 +58,14 @@ w wersji, która nie wybucha na limitach.
 
 ### Budżet free tier (miesięcznie, szacunki)
 
-| Usługa              | Zużycie                | Limit darmowy |
-|---------------------|------------------------|---------------|
-| Actions (build)     | ~300 min (2 miasta)    | 2000 min      |
-| PDP API (Basic)     | ~120 req (build) + 0*  | 1000/dzień    |
-| R2 storage          | < 1 GB                 | 10 GB         |
-| R2 odczyty          | tysiące                | 10M (klasa B) |
-| Worker requests     | tysiące                | 100k/dzień    |
-| R2 egress           | darmowy bez limitu     | —             |
+| Usługa          | Zużycie               | Limit darmowy |
+| --------------- | --------------------- | ------------- |
+| Actions (build) | ~300 min (2 miasta)   | 2000 min      |
+| PDP API (Basic) | ~120 req (build) + 0* | 1000/dzień    |
+| R2 storage      | < 1 GB                | 10 GB         |
+| R2 odczyty      | tysiące               | 10M (klasa B) |
+| Worker requests | tysiące               | 100k/dzień    |
+| R2 egress       | darmowy bez limitu    | -             |
 
 \* `/api/kd/*` woła PDP **tylko na żądanie** (cache 120 s / 1 h).
 Aplikacja na razie tego nie używa (gotowość na przyszłość) → 0 req/dzień.
@@ -88,29 +88,31 @@ to z cache'em w R2 odczytywanym raz na dobę, nie z proxy na każdy poll.
 ## Strażnik 0 zł (jak spać spokojnie)
 
 **GitHub Actions (prywatne repo: 2000 min/mies. gratis):**
-- Nasze zużycie: rozkłady ~2–5 min/dobę (zwykle ~1 min — skip przy braku
+
+- Nasze zużycie: rozkłady ~2–5 min/dobę (zwykle ~1 min - skip przy braku
   zmian), APK ~20 min tylko przy pushu z kodem aplikacji, CI ~3 min.
   Razem grubo poniżej limitu.
 - Twarda gwarancja: dopóki nie podepniesz karty i nie podniesiesz limitu
   (Settings → Billing and plans → Spending limit, domyślnie **$0**),
   GitHub NIE MA jak Cię obciążyć. Po wyczerpaniu minut joby po prostu
-  stają — rachunek nie przyjdzie.
+  stają - rachunek nie przyjdzie.
 - Dependabot: jego PR-y odpalają tylko lekkie CI (typecheck). Ciężki build
   APK pomija pushy z `dependabot` w tytule commita (`if` w build-apk.yml);
   release poczeka na push z kodem albo ręczny Run workflow.
 
 **Cloudflare (R2 + Worker):**
+
 - Architektura jest z natury tania: Worker nie ma płatnych bindingów
   (bez D1/KV/Queues), egress z R2 jest darmowy, odczyty idą w tysiące
   wobec 10M limitu, a PDP wołamy kilka razy dziennie z cache.
-- Token w GitHub Secrets ma TYLKO zapis do jednego bucketa R2 — nawet
+- Token w GitHub Secrets ma TYLKO zapis do jednego bucketa R2 - nawet
   wyciek nie pozwala naklikać płatnych usług.
 - Włącz alerty: Dashboard → Manage Account → Notifications → usage
   alerts dla Workers i R2 (mail przy przekroczeniu progów) + raz
   w miesiącu rzuć okiem na metryki (Workers → Metrics, R2 → Metrics).
-- Uczciwie: Cloudflare nie ma twardego kill-switcha $0 — alerty
-  + monitoring to Twoja gwarancja. Przy naszym zużyciu jesteś ~100×
-  poniżej progów płatnych.
+- Uczciwie: Cloudflare nie ma twardego kill-switcha $0 - alerty
+  - monitoring to Twoja gwarancja. Przy naszym zużyciu jesteś ~100×
+    poniżej progów płatnych.
 
 ## Setup krok po kroku (reproducible)
 
@@ -143,17 +145,17 @@ certyfikat. Nic ręcznie w dashboardzie nie trzeba klikać.
 npx wrangler secret put PDP_API_KEY   # wklej klucz, Enter
 ```
 
-Aplikacja mobilna **nigdy** nie widzi tego klucza — woła `/api/kd/*`
+Aplikacja mobilna **nigdy** nie widzi tego klucza - woła `/api/kd/*`
 Workera, a Worker dokleja klucz po stronie serwera.
 
 ### 4. Sekrety GitHub Actions (repo → Settings → Secrets → Actions)
 
-| Secret                  | Skąd                                              |
-|-------------------------|---------------------------------------------------|
-| `PDP_API_KEY`           | klucz z https://pdp-api.plk-sa.pl (ten sam)       |
+| Secret                  | Skąd                                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `PDP_API_KEY`           | klucz z https://pdp-api.plk-sa.pl (ten sam)                                                                                           |
 | `CLOUDFLARE_API_TOKEN`  | Dashboard → My Profile → API Tokens → template „Workers R2” na bucket `kilometr-timetable` (min. uprawnienia: R2 write na ten bucket) |
-| `CLOUDFLARE_ACCOUNT_ID` | Dashboard → adres w URL / `wrangler whoami`       |
-| `TIMETABLE_PUBLIC_URL`  | `https://data.kilometr.wroclaw.pl` (tylko do pomijania buildów w timetable.yml; build APK nie używa tego sekretu) |
+| `CLOUDFLARE_ACCOUNT_ID` | Dashboard → adres w URL / `wrangler whoami`                                                                                           |
+| `TIMETABLE_PUBLIC_URL`  | `https://data.kilometr.wroclaw.pl` (tylko do pomijania buildów w timetable.yml; build APK nie używa tego sekretu)                     |
 
 Bez `PDP_API_KEY` build **przerywa się błędem**, bo realne KD jest domyślnie
 wymagane (żadnej bazy MPK-only do R2). Jedyny wyjątek to jawne
@@ -222,7 +224,7 @@ uploaduje i nie jest błędem.
 - Stacje: resolve przez `GET /dictionaries/cities?search=WROC` →
   miasto `WROCŁAW` → jego `stationIds` (dynamicznie, bez hardkodu ID).
 - Rozkład: `GET /schedules/shortened?stations=<ids>&carriersInclude=KD
-  &dateFrom=<dziś>&dateTo=<dziś+13>`, `dictionaries=true`. Nazwy stacji są
+&dateFrom=<dziś>&dateTo=<dziś+13>`, `dictionaries=true`. Nazwy stacji są
   w `dc.st` (`{ "60103": "Wrocław Główny" }`, ten sam kształt co `st` w
   `/operations`). Czasy: `atm` przyjazd, `dtm` odjazd, `ady`/`ddy` przesunięcie
   dnia (kursy przez północ). Stacja końcowa ma tylko jedną godzinę.
@@ -246,29 +248,29 @@ uploaduje i nie jest błędem.
 - W bazie KD ląduje w tych samych tabelach co MPK, z prefiksami ID:
   przystanki `KD:S:<id>`, trasy `KD:R:<sid>:<oid>`,
   kursy `KD:T:<sid>:<oid>:<YYYYMMDD>`, serwisy `KD:svc:<sid>:<oid>`
-  (wiersz kalendarza same zera + `calendar_dates` per data kursowania —
+  (wiersz kalendarza same zera + `calendar_dates` per data kursowania -
   `getActiveServices()` w aplikacji to rozumie).
   `route_type = 2` (kolej). Nazwy stacji title-case (`WROCŁAW GŁÓWNY` →
   `Wrocław Główny`), bo PDP zwraca caps-lock.
 - Przesiadki piesze stacja KD ↔ słupki MPK liczy build (tabela
   `interchanges`, promień 600 m, hojny czas): stacja to nie słupek.
   Dworzec Główny ma twardy override **600 s** na wszystkie słupki
-  `Dworzec Główny*` — w linii prostej to ~150 m, ale pieszo idzie się
+  `Dworzec Główny*` - w linii prostej to ~150 m, ale pieszo idzie się
   przez halę i przejście podziemne na perony. Aplikacja podmienia tymi
   linkami gridowe footpathy między tymi samymi parami.
 - Na końcu buildu leci jawny `ANALYZE` (statystyki planisty `sqlite_stat1`
-  — świeży plik nie ma historii zapytań, więc `PRAGMA optimize` nic by nie
-  dał) i `VACUUM`, potem `integrity_check`.
+  - świeży plik nie ma historii zapytań, więc `PRAGMA optimize` nic by nie
+    dał) i `VACUUM`, potem `integrity_check`.
 - Okno 14 dni: jeden request na build (limit `dateTo ≤ dateFrom+31d`).
-  Przy ~100 pociągach KD dziennie we Wrocławiu to kilka tysięcy kursów —
+  Przy ~100 pociągach KD dziennie we Wrocławiu to kilka tysięcy kursów -
   ułamek 1,5M wierszy MPK.
 
 ## Opóźnienia KD (gotowość, BEZ implementacji w aplikacji)
 
 Worker ma gotowe, cache'owane passthrough:
 `GET /api/kd/departures?stations=<ids>&withPlanned=true`
-(PDP `/operations/shortened`, cache 120 s — wielu użytkowników dzieli
-jeden request do PDP). Aplikacja tego **nie woła** — dopóki nie będzie
+(PDP `/operations/shortened`, cache 120 s - wielu użytkowników dzieli
+jeden request do PDP). Aplikacja tego **nie woła** - dopóki nie będzie
 ekranu/tablicy odjazdów KD, koszt PDP = 0.
 
 ## Pliki

@@ -1,6 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ArrowRight, BusFront, ChevronDown, Footprints, TrainFront, TramFront } from 'lucide-react-native';
+import {
+  ArrowRight,
+  BusFront,
+  ChevronDown,
+  Footprints,
+  TrainFront,
+  TramFront,
+} from 'lucide-react-native';
 import Animated, {
   LinearTransition,
   useAnimatedStyle,
@@ -43,7 +50,7 @@ export type { VehicleGap } from '../services/vehiclePosition';
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
 // pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
-// najstarszy wpis — bez dodatkowej kolejki.
+// najstarszy wpis - bez dodatkowej kolejki.
 const STOPS_CACHE_MAX = 80;
 const stopsCache = new Map<string, LegStop[]>();
 const stopsPromise = new Map<string, Promise<LegStop[]>>();
@@ -61,7 +68,8 @@ function cacheStops(key: string, stops: LegStop[]) {
 const LEAD_STOPS = 3;
 
 function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
-  const Icon = mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
+  const Icon =
+    mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
   return <Icon size={14} color={scheme.onPrimary} strokeWidth={2.4} />;
 }
 
@@ -87,7 +95,7 @@ const StopRow = memo(function StopRow({
   segmentStart: number;
   vehicleMode: Leg['mode'];
   inSegment: boolean;
-  /** Przystanek startowy albo końcowy odcinka — wyróżniony wagą. */
+  /** Przystanek startowy albo końcowy odcinka - wyróżniony wagą. */
   emphasis: boolean;
   accent: string;
   connectorAccent: boolean;
@@ -107,8 +115,8 @@ const StopRow = memo(function StopRow({
             passed
               ? { backgroundColor: scheme.outline, borderColor: scheme.outline }
               : inSegment
-              ? { backgroundColor: accent, borderColor: accent }
-              : { backgroundColor: scheme.surface, borderColor: scheme.outlineVariant },
+                ? { backgroundColor: accent, borderColor: accent }
+                : { backgroundColor: scheme.surface, borderColor: scheme.outlineVariant },
           ]}
         />
         {markerHere && (
@@ -139,7 +147,11 @@ const StopRow = memo(function StopRow({
       </View>
       <View style={s.stopBody}>
         <Text
-          style={[s.stopName, emphasis && s.stopNameStrong, passed ? s.stopNamePassed : !inSegment && s.stopNameDim]}
+          style={[
+            s.stopName,
+            emphasis && s.stopNameStrong,
+            passed ? s.stopNamePassed : !inSegment && s.stopNameDim,
+          ]}
           numberOfLines={1}
         >
           {stop.name}
@@ -161,9 +173,14 @@ function LegStopsList({
 }) {
   const t = useStrings();
   const cacheKey = leg.tripId || leg.id;
-  const [stops, setStops] = useState<LegStop[]>(() => stopsCache.get(cacheKey) ?? buildFallbackStops(leg));
+  const [stops, setStops] = useState<LegStop[]>(
+    () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
+  );
   const [loading, setLoading] = useState(
-    () => !stopsCache.has(cacheKey) && !!leg.tripId && !(leg.intermediateStops && leg.intermediateStops.length >= 2),
+    () =>
+      !stopsCache.has(cacheKey) &&
+      !!leg.tripId &&
+      !(leg.intermediateStops && leg.intermediateStops.length >= 2),
   );
   const [vehicle, setVehicle] = useState<TrackedVehicle | null>(null);
   const mounted = useRef(true);
@@ -197,7 +214,7 @@ function LegStopsList({
       // Odrzucenie NIE jest zapamiętywane. Wcześniej `.catch(() => [])` trafiał
       // do `stopsPromise` razem z sukcesem, więc jedna chwilowa awaria (zamknięta
       // baza, odjęty slot importu) zostawiała ten kurs z dwoma przystankami
-      // do końca życia procesu — użytkownik dostawał „trasa niepełna” bez
+      // do końca życia procesu - użytkownik dostawał „trasa niepełna” bez
       // możliwości naprawienia.
       promise = RoutingService.getTripStops(leg.tripId)
         .then((stops) => {
@@ -214,7 +231,7 @@ function LegStopsList({
       (fetched) => {
         if (!mounted.current) return;
         // Do cache trafiają TYLKO przystanki z bazy. Wersja z `buildFallbackStops`
-        // to dwa przystanki z etykiety — zapisana w cache na stałe psuła
+        // to dwa przystanki z etykiety - zapisana w cache na stałe psuła
         // wyświetlanie przy następnym otwarciu tego samego odcinka.
         if (fetched.length >= 2) cacheStops(cacheKey, fetched);
         setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
@@ -239,13 +256,15 @@ function LegStopsList({
         setVehicle(null);
         return;
       }
-      const match = liveTracker.snapshot(leg.line).find(
-        (candidate) =>
-          candidate.type === leg.mode &&
-          candidate.matchedTripId === leg.tripId &&
-          now - candidate.updatedAt >= 0 &&
-          now - candidate.updatedAt <= 120_000,
-      );
+      const match = liveTracker
+        .snapshot(leg.line)
+        .find(
+          (candidate) =>
+            candidate.type === leg.mode &&
+            candidate.matchedTripId === leg.tripId &&
+            now - candidate.updatedAt >= 0 &&
+            now - candidate.updatedAt <= 120_000,
+        );
       setVehicle(match ?? null);
     };
     refreshVehicle();
@@ -319,7 +338,11 @@ function LegStopsList({
             accent={accent}
             connectorAccent={connectorAccent}
             vehicleGap={vehicleGap}
-            vehicleLabel={t.leg.vehicleBetween(genericModeGen(t, leg.mode), stop.name, stops[i + 1]?.name ?? stop.name)}
+            vehicleLabel={t.leg.vehicleBetween(
+              genericModeGen(t, leg.mode),
+              stop.name,
+              stops[i + 1]?.name ?? stop.name,
+            )}
           />
         );
       })}
@@ -426,9 +449,7 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
                 {!last && <View style={s.walkLine} />}
               </View>
               <View style={s.body}>
-                <Text style={s.walkText}>
-                  {formatWalkTime(walkMin)}
-                </Text>
+                <Text style={s.walkText}>{formatWalkTime(walkMin)}</Text>
                 {isSameStop ? (
                   <Text style={s.walkSub} numberOfLines={1}>
                     {leg.fromStop}
@@ -492,7 +513,7 @@ const s = StyleSheet.create({
   innerDot: { width: 8, height: 8, borderRadius: 99 },
   body: { flex: 1, paddingVertical: 8, gap: 2 },
   cardWrap: { flex: 1, marginBottom: 10 },
-  // M3 filled card: tonal surface, bez obramowań — kolor linii niosą
+  // M3 filled card: tonal surface, bez obramowań - kolor linii niosą
   // badge linii oraz kropki/linia na railu po lewej, więc pasek jest zbędny
   card: {
     flex: 1,
@@ -509,9 +530,15 @@ const s = StyleSheet.create({
   hour: { color: scheme.onSurfaceVariant, fontWeight: '400' },
   meta: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   walkText: { ...type.titleSmall, color: scheme.onSurface },
-  walkSubRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 1 },
+  walkSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 1,
+  },
   walkSub: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  // Rozwinięta lista kropek — wysokość animowana layout-animation przez rodzica,
+  // Rozwinięta lista kropek - wysokość animowana layout-animation przez rodzica,
   // tutaj zwykły kontener bez własnych animacji wejścia/wyjścia
   stopsWrap: { marginTop: 8, gap: 0 },
   stopsCollapsed: { height: 0, opacity: 0, overflow: 'hidden', marginTop: 0 },
@@ -549,7 +576,10 @@ const s = StyleSheet.create({
   stopNameStrong: { fontWeight: '700' },
   stopNameDim: { color: scheme.onSurfaceVariant },
   stopNamePassed: { color: scheme.outline },
-  skeletonDot: { borderColor: scheme.outlineVariant, backgroundColor: scheme.surfaceContainerHighest },
+  skeletonDot: {
+    borderColor: scheme.outlineVariant,
+    backgroundColor: scheme.surfaceContainerHighest,
+  },
   skeletonLine: {
     height: 12,
     borderRadius: 6,

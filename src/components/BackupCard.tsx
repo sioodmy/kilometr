@@ -1,10 +1,10 @@
 // Karta „Twoje dane" na ekranie Ustawień: eksport i import kopii zapasowej.
 //
 // Dwie ścieżki z dwoma różnymi charakterystykami ryzyka, stąd dwie różne
-// reakcje na błąd. Eksport tylko zapisuje nowy plik — nic nie psuje, więc przy
+// reakcje na błąd. Eksport tylko zapisuje nowy plik - nic nie psuje, więc przy
 // błędzie nie blokujemy przyciskiem. Import czyje dane, więc najpierw
 // wybieramy plik, pokazujemy co jest w środku i dopiero po potwierdzeniu
-// zapisujemy (Alert, nie własny modal — spójnie z resztą Ustawień).
+// zapisujemy (Alert, nie własny modal - spójnie z resztą Ustawień).
 
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -31,7 +31,7 @@ function AppVersion(): string | null {
   }
 }
 
-/** `Miejsca: 4 • Przejazdy: 12`. Bez własnych reguł liczby mnogiej —
+/** `Miejsca: 4 • Przejazdy: 12`. Bez własnych reguł liczby mnogiej -
  *  formatowanie (wraz z nim ewentualne liczby mnogie) żyje w słowniku. */
 function summarize(counts: BackupCounts, t: Strings['settings']): string {
   return t.backupCurrent(counts.places, counts.savedRoutes, counts.tripHistory);
@@ -74,7 +74,7 @@ export function BackupCard() {
     try {
       const { path, shared } = await exportBackupToFile(AppVersion());
       // Okno udostępniania samo w sobie jest potwierdzeniem („wysłałeś
-      // plik"). Ścieżkę pokazujemy tylko gdy go nie było — wtedy plik naprawdę
+      // plik"). Ścieżkę pokazujemy tylko gdy go nie było - wtedy plik naprawdę
       // zostaje w pamięci telefonu i warto wiedzieć, gdzie go szukać.
       if (!shared) Alert.alert(b.backupExportDoneTitle, b.backupExportDoneBody(path));
     } catch (err) {
@@ -93,7 +93,7 @@ export function BackupCard() {
         onPress: () => {
           setBusy('import');
           // `applyBackup` zapisuje do KV, więc wyjątek tu znaczy „coś się
-          // nie udało", a nie „użytkownik się rozmyślił" — stąd `catch`.
+          // nie udało", a nie „użytkownik się rozmyślił" - stąd `catch`.
           void applyBackup(data)
             .then((applied) => {
               setCounts(applied);
@@ -124,7 +124,7 @@ export function BackupCard() {
         return;
       }
       // Ścieżka importu jest dwuetapowa, więc `busy` zdejmujemy przed
-      // potwierdzeniem — `Alert` nie ma własnego stanu zajętości, a przycisk
+      // potwierdzeniem - `Alert` nie ma własnego stanu zajętości, a przycisk
       // musi dać się dostać do reszty ekranu.
       setIdle();
       confirmImport(summarize(picked.counts, b), picked.envelope.data, (applied) => {
@@ -135,10 +135,10 @@ export function BackupCard() {
     }
   };
 
-  // Pustą kopię wyeksportujemy tylko wtedy, gdy naprawdę nie ma nic — ale
-// przycisk zostaje aktywny, bo sama kopia (ustawienia, język) coś wnosi.
-const empty =
-  counts !== null && counts.places === 0 && counts.savedRoutes === 0 && counts.tripHistory === 0;
+  // Pustą kopię wyeksportujemy tylko wtedy, gdy naprawdę nie ma nic - ale
+  // przycisk zostaje aktywny, bo sama kopia (ustawienia, język) coś wnosi.
+  const empty =
+    counts !== null && counts.places === 0 && counts.savedRoutes === 0 && counts.tripHistory === 0;
 
   return (
     <View style={styles.card}>

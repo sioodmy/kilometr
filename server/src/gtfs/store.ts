@@ -9,21 +9,29 @@ import {
   parseStopTimes,
   parseTrips,
 } from './parser';
-import { Footpath, GtfsCalendar, GtfsCalendarDate, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from './types';
+import {
+  Footpath,
+  GtfsCalendar,
+  GtfsCalendarDate,
+  GtfsRoute,
+  GtfsStop,
+  GtfsStopTime,
+  GtfsTrip,
+} from './types';
 import { distanceMeters, normalizePolish } from './geo';
 import { fuzzyMatch } from '../search/fuzzy';
 
 // ────────────────────────────────────────────────────────────────────────────
-// Trip Pattern — unikalna sekwencja przystanków.
+// Trip Pattern - unikalna sekwencja przystanków.
 // Jeden GTFS route_id (np. tramwaj 4) ma tripy w OBU kierunkach i z wariantami
 // trasy. Grupujemy tripy po identycznej sekwencji stop_id → „pattern".
-// RAPTOR skanuje patterny zamiast route_ids — eliminuje bug odwrotnych kursów.
+// RAPTOR skanuje patterny zamiast route_ids - eliminuje bug odwrotnych kursów.
 // ────────────────────────────────────────────────────────────────────────────
 export interface TripPattern {
-  patternId: string;            // np. "route_4_dir0_patA"
-  routeId: string;              // oryginalny GTFS route_id
-  stopSequence: string[];       // uporządkowana lista stop_id
-  trips: GtfsTrip[];            // tripy tego patternu, posortowane po departure_sec
+  patternId: string; // np. "route_4_dir0_patA"
+  routeId: string; // oryginalny GTFS route_id
+  stopSequence: string[]; // uporządkowana lista stop_id
+  trips: GtfsTrip[]; // tripy tego patternu, posortowane po departure_sec
   /** Pre-indeksowane departure_sec na każdym przystanku per trip.
    *  departures[stopIndex] = tablica departure_sec posortowana rosnąco,
    *  z odpowiadającym tripIndex w tripIndices[stopIndex]. */
@@ -34,29 +42,24 @@ export interface TripPattern {
 /** Indeks RAPTOR dla jednego dnia (klucz = weekday lub weekday+dateStr).
  *  Zamiast route → stops, operuje na TripPattern. */
 export interface DayIndex {
-  stopRoutes: Map<string, Set<string>>;     // stop_id → Set of patternIds
-  routeStops: Map<string, string[]>;        // patternId → stop sequence
-  routeTrips: Map<string, GtfsTrip[]>;      // patternId → sorted trips
-  patterns: Map<string, TripPattern>;       // patternId → full pattern data
+  stopRoutes: Map<string, Set<string>>; // stop_id → Set of patternIds
+  routeStops: Map<string, string[]>; // patternId → stop sequence
+  routeTrips: Map<string, GtfsTrip[]>; // patternId → sorted trips
+  patterns: Map<string, TripPattern>; // patternId → full pattern data
 }
 
-const WEEKDAY_FIELDS: (keyof Pick<GtfsCalendar, 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'>)[] = [
-  'sunday',
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-];
+const WEEKDAY_FIELDS: (keyof Pick<
+  GtfsCalendar,
+  'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
+>)[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry pieszych (footpaths i access/egress)
 // ────────────────────────────────────────────────────────────────────────────
-const WALK_SPEED_MPS = 1.45;          // 1.45 m/s (~5.2 km/h) — jak Jakdojade, żwawy marsz
-const WALK_DETOUR_FACTOR = 1.15;     // ulice nie biegną po prostej — mnożnik ~15%
-const MAX_TRANSFER_METERS = 800;     // footpath do 800 m — węzły przesiadkowe (jakdojade grupuje perony w promieniu ~1 km i liczy czas, nie dystans)
-const MIN_FOOTPATH_SEC = 45;         // minimum 45s na przesiadkę pieszo
+const WALK_SPEED_MPS = 1.45; // 1.45 m/s (~5.2 km/h) - jak Jakdojade, żwawy marsz
+const WALK_DETOUR_FACTOR = 1.15; // ulice nie biegną po prostej - mnożnik ~15%
+const MAX_TRANSFER_METERS = 800; // footpath do 800 m - węzły przesiadkowe (jakdojade grupuje perony w promieniu ~1 km i liczy czas, nie dystans)
+const MIN_FOOTPATH_SEC = 45; // minimum 45s na przesiadkę pieszo
 
 export class GtfsStore {
   stops = new Map<string, GtfsStop>();
@@ -66,7 +69,7 @@ export class GtfsStore {
   shapes = new Map<string, { lat: number; lon: number }[]>();
   footpaths = new Map<string, Footpath[]>();
 
-  // RAPTOR acceleration structures (per weekday/date — sobota/niedziela mają
+  // RAPTOR acceleration structures (per weekday/date - sobota/niedziela mają
   // własny rozkład; indeks budowany leniwie i cachowany)
   private dayIndexes = new Map<string, DayIndex>();
   private servicesByWeekday = new Map<number, Set<string>>();
@@ -74,7 +77,7 @@ export class GtfsStore {
   private calendarLoaded = false;
 
   routeTrips = new Map<string, GtfsTrip[]>(); // route_id → WSZYSTKIE tripy (dla matchera live; filtr czasu i tak obowiązuje)
-  stopWeights = new Map<string, number>();    // normalized_name → sum of departures
+  stopWeights = new Map<string, number>(); // normalized_name → sum of departures
 
   isLoaded = false;
 
@@ -124,7 +127,7 @@ export class GtfsStore {
     this.servicesByWeekday.clear();
     for (let d = 0; d < 7; d++) this.servicesByWeekday.set(d, new Set());
     if (calendar.size === 0) {
-      // brak kalendarza — wszystkie serwisy aktywne codziennie (ustawiane niżej)
+      // brak kalendarza - wszystkie serwisy aktywne codziennie (ustawiane niżej)
     } else {
       for (const [id, c] of calendar.entries()) {
         WEEKDAY_FIELDS.forEach((field, day) => {
@@ -134,15 +137,15 @@ export class GtfsStore {
     }
     this.calendarLoaded = true;
 
-    // 2. Parse trips — WSZYSTKIE (filtrowanie po dniu przy budowie indeksu)
+    // 2. Parse trips - WSZYSTKIE (filtrowanie po dniu przy budowie indeksu)
     const { tripsById, tripsByRouteId } = parseTrips(
       path.join(extractedDir, 'trips.txt'),
-      undefined
+      undefined,
     );
     this.trips = tripsById;
     this.allTripsByRouteId = tripsByRouteId;
 
-    // Jeśli kalendarz był pusty — wszystkie serwisy codziennie
+    // Jeśli kalendarz był pusty - wszystkie serwisy codziennie
     if (calendar.size === 0) {
       const allServices = new Set<string>();
       for (const t of this.trips.values()) allServices.add(t.service_id);
@@ -151,10 +154,7 @@ export class GtfsStore {
 
     // 3. Parse stop times
     const activeTripIds = new Set(this.trips.keys());
-    this.stopTimes = await parseStopTimes(
-      path.join(extractedDir, 'stop_times.txt'),
-      activeTripIds
-    );
+    this.stopTimes = await parseStopTimes(path.join(extractedDir, 'stop_times.txt'), activeTripIds);
 
     // 4. Parse shapes (for live vehicle matching & polyline geometry)
     this.shapes = await parseShapes(path.join(extractedDir, 'shapes.txt'));
@@ -169,7 +169,7 @@ export class GtfsStore {
     console.log(
       `[GTFS Store] Loaded ${this.stops.size} stops, ${this.routes.size} routes, ${this.trips.size} trips, ${this.stopTimes.size} stop_time sequences in ${(
         performance.now() - t0
-      ).toFixed(0)} ms`
+      ).toFixed(0)} ms`,
     );
   }
 
@@ -193,7 +193,7 @@ export class GtfsStore {
     return base;
   }
 
-  /** Indeks RAPTOR dla dnia tygodnia — budowany raz, potem z cache.
+  /** Indeks RAPTOR dla dnia tygodnia - budowany raz, potem z cache.
    *  dateStr (YYYYMMDD) uwzględnia calendar_dates.txt. */
   getDayIndex(weekday: number, dateStr?: string): DayIndex {
     const day = ((weekday % 7) + 7) % 7;
@@ -284,7 +284,7 @@ export class GtfsStore {
   }
 
   private buildAllRouteTrips(tripsByRouteId: Map<string, GtfsTrip[]>) {
-    // Wszystkie tripy per linia (dla matchera live — on i tak filtruje oknem czasu)
+    // Wszystkie tripy per linia (dla matchera live - on i tak filtruje oknem czasu)
     for (const [routeId, trips] of tripsByRouteId.entries()) {
       if (!trips.length) continue;
       const validTrips = trips.filter((t) => this.stopTimes.has(t.trip_id));
@@ -298,7 +298,7 @@ export class GtfsStore {
   }
 
   private buildFootpaths() {
-    // Spatial grid — dzielimy przystanki na kratki ~100m × ~100m
+    // Spatial grid - dzielimy przystanki na kratki ~100m × ~100m
     // O(N) budowa + O(1) lookup zamiast O(N²) brute-force.
     const GRID_DEG_LAT = 0.001; // ~111m
     const GRID_DEG_LON = 0.0015; // ~104m przy 51°N
@@ -342,7 +342,10 @@ export class GtfsStore {
                 from_stop_id: s1.stop_id,
                 to_stop_id: s2.stop_id,
                 distance_m: Math.round(dist),
-                duration_sec: Math.max(MIN_FOOTPATH_SEC, Math.round(effectiveDist / WALK_SPEED_MPS)),
+                duration_sec: Math.max(
+                  MIN_FOOTPATH_SEC,
+                  Math.round(effectiveDist / WALK_SPEED_MPS),
+                ),
               });
             }
           }
@@ -370,13 +373,13 @@ export class GtfsStore {
     lat: number,
     lon: number,
     maxDistanceMeters = 800,
-    limit = 12
+    limit = 12,
   ): { stop: GtfsStop; distanceM: number }[] {
     const results: { stop: GtfsStop; distanceM: number }[] = [];
 
     // Quick bounding box pre-filter (degrees)
     const latRange = maxDistanceMeters / 111000;
-    const lonRange = maxDistanceMeters / (111000 * Math.cos(lat * Math.PI / 180));
+    const lonRange = maxDistanceMeters / (111000 * Math.cos((lat * Math.PI) / 180));
 
     for (const stop of this.stops.values()) {
       if (Math.abs(stop.stop_lat - lat) > latRange) continue;

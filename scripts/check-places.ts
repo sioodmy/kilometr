@@ -3,7 +3,7 @@
  *
  * Uruchomienie: `npm run check:places`
  *
- * Samo KV i locki to I/O, którego nie da się zasymulować sensownie — tu
+ * Samo KV i locki to I/O, którego nie da się zasymulować sensownie - tu
  * chronimy czystą logikę, od której zależy, czy miejsce trafi do dobrego
  * kubełka: `cityKey` (Wrocław trzyma legacy klucz) i `suggestCityForCoords`
  * (decyduje o przenosinach z legacy kubełka przy migracji).
@@ -17,7 +17,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -40,31 +40,19 @@ describe('Klucze kubełków per-miasto');
     cityKey('kilometr.places', 'warszawa'),
     'kilometr.places.warszawa',
   );
-  expect(
-    'Poznań dokleja sufiks',
-    cityKey('kilometr.places', 'poznan'),
-    'kilometr.places.poznan',
-  );
+  expect('Poznań dokleja sufiks', cityKey('kilometr.places', 'poznan'), 'kilometr.places.poznan');
   expect(
     'Rzeszów dokleja sufiks',
     cityKey('kilometr.places', 'rzeszow'),
     'kilometr.places.rzeszow',
   );
-  expect(
-    'Łódź dokleja sufiks',
-    cityKey('kilometr.places', 'lodz'),
-    'kilometr.places.lodz',
-  );
+  expect('Łódź dokleja sufiks', cityKey('kilometr.places', 'lodz'), 'kilometr.places.lodz');
   expect(
     'Szczecin dokleja sufiks',
     cityKey('kilometr.places', 'szczecin'),
     'kilometr.places.szczecin',
   );
-  expect(
-    'Kielce doklejają sufiks',
-    cityKey('kilometr.places', 'kielce'),
-    'kilometr.places.kielce',
-  );
+  expect('Kielce doklejają sufiks', cityKey('kilometr.places', 'kielce'), 'kilometr.places.kielce');
   expect(
     'Olsztyn dokleja sufiks',
     cityKey('kilometr.places', 'olsztyn'),
@@ -75,21 +63,9 @@ describe('Klucze kubełków per-miasto');
     cityKey('kilometr.places', 'bialystok'),
     'kilometr.places.bialystok',
   );
-  expect(
-    'Opole dokleja sufiks',
-    cityKey('kilometr.places', 'opole'),
-    'kilometr.places.opole',
-  );
-  expect(
-    'Lublin dokleja sufiks',
-    cityKey('kilometr.places', 'lublin'),
-    'kilometr.places.lublin',
-  );
-  expect(
-    'Radom dokleja sufiks',
-    cityKey('kilometr.places', 'radom'),
-    'kilometr.places.radom',
-  );
+  expect('Opole dokleja sufiks', cityKey('kilometr.places', 'opole'), 'kilometr.places.opole');
+  expect('Lublin dokleja sufiks', cityKey('kilometr.places', 'lublin'), 'kilometr.places.lublin');
+  expect('Radom dokleja sufiks', cityKey('kilometr.places', 'radom'), 'kilometr.places.radom');
   expect(
     'historia tak samo',
     cityKey('kilometr.trip_history', 'krakow'),
@@ -366,7 +342,7 @@ describe('Wpis Lublina');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

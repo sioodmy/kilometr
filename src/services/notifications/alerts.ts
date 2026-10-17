@@ -8,15 +8,15 @@ import { buildTripCopy, tripNotificationData } from './content';
 import { formatDistance } from './format';
 import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 
-// Alerty odjazdu — odpowiednik tego, co Mapy Google robią przed trasą:
+// Alerty odjazdu - odpowiednik tego, co Mapy Google robią przed trasą:
 // „wyjdź za 5 minut”, potem „wyjdź teraz”, plus ostrzeżenie, gdy kurs się
 // posypał. Kluczowe: harmonogram ustawiamy z wyprzedzeniem (DateTriggerInput),
-// więc alarm zadzwoni nawet jeśli aplikacja jest w tle albo uśpiona —
+// więc alarm zadzwoni nawet jeśli aplikacja jest w tle albo uśpiona -
 // to, czego nie da się osiągnąć samym odświeżaniem co minutę.
 
 const ALERT_IDS_KEY = 'kilometr.alertIds.v1';
 
-/** Ile wyprzedzenia odprawiamy przed każdym odjazdem — w sekundach. */
+/** Ile wyprzedzenia odprawiamy przed każdym odjazdem - w sekundach. */
 const IMMINENT_LEAD_SEC = 90;
 /** Minimalnie ile musi zostać do odjazdu, żeby w ogóle zaplanować alert. */
 const MIN_SCHEDULE_AHEAD_SEC = 20;
@@ -57,14 +57,14 @@ async function writeAlertIds(ids: string[]): Promise<void> {
   try {
     await kvSet(ALERT_IDS_KEY, JSON.stringify(ids.slice(-12)));
   } catch {
-    // ignorujemy — wycieki identyfikatorów kosztują tylko banner po restarcie
+    // ignorujemy - wycieki identyfikatorów kosztują tylko banner po restarcie
   }
 }
 
 /**
  * Usuwa wszystkie alerty podróży: i te zaplanowane, i te, które już się
  * pokazały. samo `cancelScheduledNotificationAsync` wystarcza tylko dla
- * oczekujących — po „Wyjdź teraz" baner zostaje na ekranie blokady, a użytkownik
+ * oczekujących - po „Wyjdź teraz" baner zostaje na ekranie blokady, a użytkownik
  * właśnie zakończył śledzenie i nie powinien dostawać przypomnień o kursie,
  * który go nie dotyczy.
  */
@@ -93,7 +93,7 @@ export async function cancelScheduledAlerts(): Promise<void> {
 
 /**
  * Ostatnio zaplanowany czas dla danego alertu. Planowanie wołujemy przy każdym
- * odświeżeniu, a godzina odjazdu zmienia się rzadko — bez tego pchaliśmy
+ * odświeżeniu, a godzina odjazdu zmienia się rzadko - bez tego pchaliśmy
  * cancel + schedule dwa razy co 20 s niepotrzebnie.
  */
 const scheduledAt = new Map<string, number>();
@@ -129,7 +129,7 @@ function alertTrigger(atMs: number) {
   return Platform.OS === 'android' ? { ...base, channelId: ALERTS_CHANNEL_ID } : base;
 }
 
-/** Zawartość alertu „wyjdź”. Świadomie krótka — to banner na ekranie blokady. */
+/** Zawartość alertu „wyjdź”. Świadomie krótka - to banner na ekranie blokady. */
 function leaveContent(p: TripProgress, trip: TrackedTrip, imminent: boolean, leadMin: number) {
   const s = tr();
   const n = s.notification;
@@ -139,9 +139,7 @@ function leaveContent(p: TripProgress, trip: TrackedTrip, imminent: boolean, lea
     ? n.leaveNow(service, p.departAt)
     : n.leaveIn(leadMin, service, p.departAt);
   const walk =
-    p.walkMeters != null && p.walkMeters > 0
-      ? n.walkToStop(formatDistance(p.walkMeters))
-      : null;
+    p.walkMeters != null && p.walkMeters > 0 ? n.walkToStop(formatDistance(p.walkMeters)) : null;
   return {
     title,
     body: [p.leg ? n.stopHere(p.leg.fromStop) : null, walk, copy.subtitle]
@@ -171,7 +169,7 @@ async function schedule(
   // Dźwięk na Androidzie pochodzi z kanału (alertów), więc `sound` ma znaczenie
   // tylko na iOS. Różnicujemy natomiast pilność: uprzedzenie to zwykłe
   // „aktywne" powiadomienie, a „wyjdź teraz" jest czasowo wrażliwe i ma
-  // przebić się przez tryb „nie przeszkadzać" — kurs zaraz odjeżdża.
+  // przebić się przez tryb „nie przeszkadzać" - kurs zaraz odjeżdża.
   const timeSensitive = kind === 'imminent';
   try {
     await N.scheduleNotificationAsync({
@@ -225,7 +223,7 @@ export async function scheduleDepartureAlerts(
     const id = alertId(kind, trip.id);
     const soon = atMs - nowMs > MIN_SCHEDULE_AHEAD_SEC * 1000;
     // Alert poza horyzontem, alert wyłączony albo identyczny z zaplanowanym
-    // wcześniej — nie ruszamy niczego.
+    // wcześniej - nie ruszamy niczego.
     if (!soon || (kind === 'imminent' && !prefs.imminentAlert) || alreadyScheduled(id, atMs)) {
       if (!soon) forgetSchedule(id);
       continue;
@@ -234,7 +232,7 @@ export async function scheduleDepartureAlerts(
   }
 }
 
-/** Wysyła alert natychmiast (nie harmonogramowany) — np. o dużym opóźnieniu. */
+/** Wysyła alert natychmiast (nie harmonogramowany) - np. o dużym opóźnieniu. */
 export async function sendDisruptionAlert(
   p: TripProgress,
   trip: TrackedTrip,
@@ -255,7 +253,10 @@ export async function sendDisruptionAlert(
     await N.scheduleNotificationAsync({
       identifier: alertId('disruption', trip.id),
       content: {
-        title: n.delayTitle(p.line, tr().common.durMin(Math.max(1, Math.round(p.departInSec / 60)))),
+        title: n.delayTitle(
+          p.line,
+          tr().common.durMin(Math.max(1, Math.round(p.departInSec / 60))),
+        ),
         body,
         data: tripNotificationData(trip, 'disruption'),
         sound: 'default',
@@ -272,11 +273,8 @@ export async function sendDisruptionAlert(
   }
 }
 
-/** Komunikat o zakończeniu podróży — zostawiamy go chwilę na ekranie blokady. */
-export async function sendArrivedNotification(
-  p: TripProgress,
-  trip: TrackedTrip,
-): Promise<void> {
+/** Komunikat o zakończeniu podróży - zostawiamy go chwilę na ekranie blokady. */
+export async function sendArrivedNotification(p: TripProgress, trip: TrackedTrip): Promise<void> {
   const N = getNotifications();
   if (!N) return;
   const s = tr();

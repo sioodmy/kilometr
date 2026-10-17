@@ -1,4 +1,4 @@
-// English dictionary. Must satisfy `Strings` (typeof pl) — a missing key
+// English dictionary. Must satisfy `Strings` (typeof pl) - a missing key
 // or a wrong function signature is a compile error, not an empty label.
 import type { Strings } from './pl';
 
@@ -105,9 +105,9 @@ export const en: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : id === 'radom'
-                                ? 'Radom'
-                              : 'Wrocław',
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -135,7 +135,7 @@ export const en: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : 'Wrocław',
+                                : 'Wrocław',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -163,7 +163,7 @@ export const en: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : 'Wrocław',
+                                : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP and Koleje Małopolskie'
@@ -175,7 +175,7 @@ export const en: Strings = {
               ? 'ZTM and Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia and SKM'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK and Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -191,11 +191,11 @@ export const en: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK and Koleje Dolnośląskie',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : id === 'radom'
+                                    ? 'MZDiK Radom'
+                                    : 'MPK and Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -207,7 +207,7 @@ export const en: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -223,9 +223,9 @@ export const en: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław • wroclaw.pl',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -237,7 +237,7 @@ export const en: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -253,9 +253,9 @@ export const en: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -279,11 +279,11 @@ export const en: Strings = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
-                              : id === 'lublin'
-                                ? 'ZDiTM'
+                            : id === 'lublin'
+                              ? 'ZDiTM'
                               : id === 'radom'
                                 ? 'MZDiK'
-                            : 'MPK',
+                                : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -295,7 +295,7 @@ export const en: Strings = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
@@ -311,10 +311,11 @@ export const en: Strings = {
                               ? 'ztm.erzeszow.pl'
                               : id === 'lublin'
                                 ? 'zdtm.lublin.eu'
-                              : id === 'radom'
-                                ? 'mzdik.pl'
-                                : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
+                                : id === 'radom'
+                                  ? 'mzdik.pl'
+                                  : 'wroclaw.pl',
+    supportedList:
+      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
     changed: (name: string) => `Switched to: ${name}.`,
     switching: 'Switching city…',
     blockedByDownload: 'Timetable download in progress. You can switch city once it finishes.',
@@ -342,6 +343,7 @@ export const en: Strings = {
     sectionRoute: 'Route',
     sectionTransport: 'Transport',
     sectionData: 'Your data',
+    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Advanced',
     advancedHide: 'Hide advanced',
     notificationsSection: 'Notifications',
@@ -386,7 +388,7 @@ export const en: Strings = {
     backupExportFailFallback: 'Please try again in a moment.',
     backupImportConfirmTitle: 'Import this data?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nSaved places and trips are merged with what you already have — nothing is lost. Settings are overwritten.`,
+      `${summary}\n\nSaved places and trips are merged with what you already have - nothing is lost. Settings are overwritten.`,
     backupImportAction: 'Import',
     backupImportCancel: 'Cancel',
     backupImportDoneTitle: 'Data imported',
@@ -396,6 +398,40 @@ export const en: Strings = {
     backupFailUnreadable: 'Could not read the file.',
     backupFailNotBackup: 'This is not a Kilometr backup.',
     backupFailSchemaTooNew: 'This backup comes from a newer version of the app.',
+    contribTitle: 'Kilometr Contributor',
+    contribHint:
+      'GPS and accelerometer telemetry for app testers. The data stays on your device first and you decide when to export it. Production builds do not show this card.',
+    contribAutoToggle: 'Collect during trips',
+    contribAutoToggleA11y: 'Collect telemetry automatically while a trip is being tracked',
+    contribStartNow: 'Collect now',
+    contribStartNowA11y: 'Start collecting telemetry',
+    contribStopNow: 'Stop collecting',
+    contribStopNowA11y: 'Stop collecting telemetry',
+    contribStatusIdle: 'Not collecting right now.',
+    contribStatusNative:
+      'Collecting in the background (GPS and accelerometer, one sample per second).',
+    contribStatusForeground:
+      'Collecting while the app is open. Grant background location access and collection will continue after the screen turns off.',
+    contribPermissionNeeded:
+      'Collecting needs location permission. Nothing happens without your action.',
+    contribSessionsCount: (n: number) => `${n === 1 ? '1 session' : `${n} sessions`}`,
+    contribSize: (mb: string) => `Data: ~${mb} MB`,
+    contribExport: 'Export ZIP',
+    contribExportA11y: 'Save collected data to a ZIP file',
+    contribExportDoneTitle: 'Archive ready',
+    contribExportDoneBody: (path: string) => `File saved at ${path}`,
+    contribExportFailTitle: 'Could not save the archive',
+    contribExportFailBody: (reason: string) => `${reason}. Check free space and try again.`,
+    contribExportFailFallback: 'Try again in a moment.',
+    contribDelete: 'Delete collected data',
+    contribDeleteA11y: 'Delete all collected data from this device',
+    contribDeleteConfirmTitle: 'Delete all data?',
+    contribDeleteConfirmBody: 'The telemetry will be permanently deleted from this phone.',
+    contribDeleteAction: 'Delete',
+    contribNotifTitle: 'Kilometr Contributor',
+    contribNotifText: 'Collecting trip telemetry',
+    contribNotifChannelName: 'Kilometr Contributor',
+    contribNotifChannelDescription: 'Telemetry collection notification for testers',
     dataTitle: (operator: string) => `${operator} timetable`,
     dataHint: (feeds: string) =>
       `${feeds} timetables from the Kilometr server. Download once, then offline.`,
@@ -483,6 +519,14 @@ export const en: Strings = {
       'The most transfers one route may have. The route style sets the penalty for each transfer, so a 300 m walk to a stop with a direct line usually beats changing from the nearest pole.',
     transfersHintShort: 'Upper limit on one route.',
     directValue: 'Direct only',
+    allowTransferTitle: 'Allow transfers to:',
+    allowTransferHint: 'A switched-off vehicle never shows up in results.',
+    modeTram: 'Tram',
+    modeBus: 'Bus',
+    modeTrolleybus: 'Trolleybus',
+    modeSubway: 'Metro',
+    modeTrain: 'Train',
+    modeCable: 'Cable car',
     transferTimeTitle: 'Min. transfer time',
     transferTimeHint:
       'How much time we reserve between getting off and the next departure. Higher values reject risky one-minute transfers.',
@@ -537,7 +581,7 @@ export const en: Strings = {
             ? 'e.g. Głogowska 12'
             : id === 'trojmiasto'
               ? 'e.g. Długa 12'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'e.g. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'e.g. Wojska Polskiego 12'
@@ -551,11 +595,11 @@ export const en: Strings = {
                           ? 'e.g. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'e.g. 3 Maja 12'
-                              : id === 'lublin'
-                                ? 'e.g. Krakowskie Przedmieście 12'
+                            : id === 'lublin'
+                              ? 'e.g. Krakowskie Przedmieście 12'
                               : id === 'radom'
                                 ? 'e.g. Żeromskiego 12'
-                            : 'e.g. Swojczycka 41',
+                                : 'e.g. Swojczycka 41',
     slotWork: 'Work',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -566,7 +610,7 @@ export const en: Strings = {
             ? 'e.g. Stary Browar'
             : id === 'trojmiasto'
               ? 'e.g. Galeria Bałtycka'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'e.g. Manufaktura'
                 : id === 'szczecin'
                   ? 'e.g. Galeria Kaskada'
@@ -580,11 +624,11 @@ export const en: Strings = {
                           ? 'e.g. Solaris Center'
                           : id === 'rzeszow'
                             ? 'e.g. Galeria Rzeszów'
-                              : id === 'lublin'
-                                ? 'e.g. Felicity'
+                            : id === 'lublin'
+                              ? 'e.g. Felicity'
                               : id === 'radom'
                                 ? 'e.g. Galeria Słoneczna'
-                            : 'e.g. Sky Tower',
+                                : 'e.g. Sky Tower',
     slotUni: 'University',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -595,7 +639,7 @@ export const en: Strings = {
             ? 'e.g. UAM'
             : id === 'trojmiasto'
               ? 'e.g. UG'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'e.g. UŁ'
                 : id === 'szczecin'
                   ? 'e.g. US'
@@ -609,11 +653,11 @@ export const en: Strings = {
                           ? 'e.g. UO'
                           : id === 'rzeszow'
                             ? 'e.g. PRz'
-                              : id === 'lublin'
-                                ? 'e.g. UMCS'
+                            : id === 'lublin'
+                              ? 'e.g. UMCS'
                               : id === 'radom'
                                 ? 'e.g. UTH'
-                            : 'e.g. Politechnika',
+                                : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
     brand: 'Kilometr',
@@ -723,7 +767,7 @@ export const en: Strings = {
       'The map shows a specific connection, so it must be available in memory or cache.',
     backToDetails: 'Back to details',
     assembling: 'Assembling connection…',
-    offlineTitle: 'Map unavailable — no network',
+    offlineTitle: 'Map unavailable - no network',
     offlineSub: 'Tiles are not loading',
     backA11y: 'Back',
     transfersSuffix: (n: number) => (n === 1 ? ' • 1 transfer.' : ` • ${n} transfers.`),
@@ -837,8 +881,8 @@ export const en: Strings = {
     title: 'Connection details',
     loadFail: 'Could not load the connection.',
     backToList: 'Back to list',
-    offlineNote: 'From offline memory — timetable times, no live data',
-    noLiveNote: 'No live data — timetable times',
+    offlineNote: 'From offline memory - timetable times, no live data',
+    noLiveNote: 'No live data - timetable times',
     onTime: 'On time',
     scheduleCache: 'Cached timetable',
     schedule: 'Timetable',

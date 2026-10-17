@@ -1,6 +1,6 @@
 // Synchronizacja gotowej bazy z serwera Kilometr (Cloudflare R2 + Worker).
 // Telefon pobiera prebuilt SQLite (~80 MB, strumień na dysk) zamiast
-// parsować ZIP-a GTFS w pamięci — po stronie RAM-u nie dzieje się nic
+// parsować ZIP-a GTFS w pamięci - po stronie RAM-u nie dzieje się nic
 // cięższego niż zwykły download (koniec z OOM przy unzip + base64).
 //
 // Kolejność jest bezpieczna dla działającej aplikacji:
@@ -15,7 +15,14 @@ import { TIMETABLE } from './gtfsConfig';
 import { decompressGzipFile } from '../../modules/kilometr-raptor';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
+import {
+  beginGtfsSwap,
+  closeGtfsDb,
+  endGtfsSwap,
+  getGtfsDb,
+  getMeta,
+  setMeta,
+} from './gtfsDatabase';
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -73,7 +80,7 @@ export function dbDownloadUrl(manifest: TimetableManifest): string {
   return `${TIMETABLE.baseUrl}${path}`;
 }
 
-/** Manifest to ~500 B — tanie pytanie, które chroni limity (brak pobrań bez zmian). */
+/** Manifest to ~500 B - tanie pytanie, które chroni limity (brak pobrań bez zmian). */
 export async function fetchManifest(cityId?: CityId | string): Promise<TimetableManifest> {
   const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
   try {
@@ -93,9 +100,17 @@ async function fetchManifestAt(url: string): Promise<TimetableManifest> {
     });
     if (!res.ok) throw new Error(`manifest HTTP ${res.status}`);
     const m = (await res.json()) as TimetableManifest;
-    if (!m || typeof m.version !== 'string' || !m.version
-      || !m.db || typeof m.db.sizeBytes !== 'number' || m.db.sizeBytes < 500_000
-      || !m.stats || m.stats.stops <= 0 || m.stats.trips <= 0) {
+    if (
+      !m ||
+      typeof m.version !== 'string' ||
+      !m.version ||
+      !m.db ||
+      typeof m.db.sizeBytes !== 'number' ||
+      m.db.sizeBytes < 500_000 ||
+      !m.stats ||
+      m.stats.stops <= 0 ||
+      m.stats.trips <= 0
+    ) {
       throw new Error('manifest ma niepełny kształt');
     }
     return m;
@@ -130,7 +145,9 @@ function tempDbName(mainName: string): string {
 function sqliteDirUri(): string {
   const base = FileSystem.documentDirectory;
   if (base) return `${base.replace(/\/+$/, '')}/SQLite`;
-  const raw = String((SQLite as unknown as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory ?? '').replace(/\/+$/, '');
+  const raw = String(
+    (SQLite as unknown as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory ?? '',
+  ).replace(/\/+$/, '');
   if (!raw) throw new Error('Brak katalogu bazy (expo-file-system/expo-sqlite)');
   return raw.startsWith('file://') ? raw : `file://${raw}`;
 }
@@ -179,7 +196,8 @@ export async function downloadPrebuiltDb(
   const mainName = city.dbFile;
   const tempName = tempDbName(mainName);
   const destDb = await sqliteUri(tempName);
-  const isCompressed = manifest.db.path.endsWith('.gz') || typeof manifest.db.uncompressedSizeBytes === 'number';
+  const isCompressed =
+    manifest.db.path.endsWith('.gz') || typeof manifest.db.uncompressedSizeBytes === 'number';
   const destDownload = isCompressed ? `${destDb}.gz` : destDb;
 
   await deleteSidecars(destDb);
@@ -196,7 +214,7 @@ export async function downloadPrebuiltDb(
     }
   }
 
-  // Download strumieniem na dysk (wznawialny) — RAM-u prawie nie rusza.
+  // Download strumieniem na dysk (wznawialny) - RAM-u prawie nie rusza.
   const task = FileSystem.createDownloadResumable(
     dbDownloadUrl(manifest),
     destDownload,
@@ -208,12 +226,17 @@ export async function downloadPrebuiltDb(
   });
   if (!result?.uri) throw new GtfsDownloadError(T.noFile, 'download bez uri', T.hintTouch);
 
-  // Rozmiar pobranego pliku musi się zgadzać co do bajta — inaczej nie ma podmiany.
+  // Rozmiar pobranego pliku musi się zgadzać co do bajta - inaczej nie ma podmiany.
   const info = await FileSystem.getInfoAsync(destDownload);
   const size = info.exists && 'size' in info ? (info.size as number) : -1;
   if (size !== manifest.db.sizeBytes) {
     await FileSystem.deleteAsync(destDownload, { idempotent: true }).catch(() => {});
-    throw new GtfsDownloadError(T.unavailable, `rozmiar ${size} != ${manifest.db.sizeBytes}`, T.hintLater, 'unreachable');
+    throw new GtfsDownloadError(
+      T.unavailable,
+      `rozmiar ${size} != ${manifest.db.sizeBytes}`,
+      T.hintLater,
+      'unreachable',
+    );
   }
 
   // Dekompresja jeśli plik z R2 był skompresowany (.gz)
@@ -223,7 +246,12 @@ export async function downloadPrebuiltDb(
     await FileSystem.deleteAsync(destDownload, { idempotent: true }).catch(() => {});
     if (!ok) {
       await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
-      throw new GtfsDownloadError(T.unavailable, 'błąd dekompresji bazy rozkładu (gzip)', T.hintLater, 'unreachable');
+      throw new GtfsDownloadError(
+        T.unavailable,
+        'błąd dekompresji bazy rozkładu (gzip)',
+        T.hintLater,
+        'unreachable',
+      );
     }
 
     if (typeof manifest.db.uncompressedSizeBytes === 'number') {
@@ -249,7 +277,9 @@ export async function downloadPrebuiltDb(
     const t = await probe.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
     const st = await probe.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stop_times');
     if (chk?.integrity_check !== 'ok' || !s?.n || !t?.n || !st?.n) {
-      throw new Error(`weryfikacja bazy: integrity=${chk?.integrity_check} stops=${s?.n} trips=${t?.n} times=${st?.n}`);
+      throw new Error(
+        `weryfikacja bazy: integrity=${chk?.integrity_check} stops=${s?.n} trips=${t?.n} times=${st?.n}`,
+      );
     }
   } catch (err) {
     try {
@@ -272,7 +302,12 @@ export async function downloadPrebuiltDb(
   // należy do innego miasta niż aktywne i nie wolno jej podmienić.
   if (getActiveCityIdSync() !== city.id) {
     await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
-    throw new GtfsDownloadError(T.unavailable, 'city changed during download', T.hintLater, 'unreachable');
+    throw new GtfsDownloadError(
+      T.unavailable,
+      'city changed during download',
+      T.hintLater,
+      'unreachable',
+    );
   }
   beginGtfsSwap();
   const mainUri = await sqliteUri(mainName);
@@ -290,20 +325,23 @@ export async function downloadPrebuiltDb(
     endGtfsSwap();
   }
 
-  // Reopen (initDb robi CREATE IF NOT EXISTS — na gotowej bazie to no-op)
+  // Reopen (initDb robi CREATE IF NOT EXISTS - na gotowej bazie to no-op)
   // i zapisz mety wersji, żeby manifest nie ściągał w kółko tego samego.
   await getGtfsDb();
   await setMeta('timetable_version', manifest.version);
   await setMeta('gtfs_imported_at', new Date().toISOString());
   await setMeta('gtfs_source', 'network');
   try {
-    await setMeta('feeds', JSON.stringify({
-      mpk: manifest.sources.mpk?.effectiveDate ?? null,
-      kd: manifest.sources.kd?.schedulesVersion ?? null,
-      ztp: manifest.sources.ztp?.fingerprint ?? null,
-      kml: manifest.sources.kml?.version ?? null,
-    }));
+    await setMeta(
+      'feeds',
+      JSON.stringify({
+        mpk: manifest.sources.mpk?.effectiveDate ?? null,
+        kd: manifest.sources.kd?.schedulesVersion ?? null,
+        ztp: manifest.sources.ztp?.fingerprint ?? null,
+        kml: manifest.sources.kml?.version ?? null,
+      }),
+    );
   } catch {
-    // meta opisowa — nie blokuje gotowości
+    // meta opisowa - nie blokuje gotowości
   }
 }

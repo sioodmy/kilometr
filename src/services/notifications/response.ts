@@ -4,7 +4,7 @@ import { isStopAction } from './categories';
 // Reakcja na tapnięcie powiadomienia i na przyciski akcji.
 //
 // `getLastNotificationResponseAsync` zwraca ostatnią odpowiedź w CAŁEJ
-// historii procesu, nie „ostatnią w ciągu minuty" — a proces po restarcie
+// historii procesu, nie „ostatnią w ciągu minuty" - a proces po restarcie
 // telefonu bywa żywy godzinami. Dlatego każde powiadomienie podróży nosi
 // znacznik czasu i starsze odpowiedzi ignorujemy, zamiast otwierać ekran
 // połączeń na starcie aplikacji.
@@ -15,7 +15,7 @@ const RESPONSE_TTL_MS = 5 * 60 * 1000;
 const LINK_KEYS = ['fromTitle', 'fromLat', 'fromLon', 'toId', 'toTitle', 'toLat', 'toLon'];
 
 export interface TripResponse {
-  /** Dane do nawigacji — null, gdy to nie powiadomienie podróży. */
+  /** Dane do nawigacji - null, gdy to nie powiadomienie podróży. */
   link: Record<string, string> | null;
   /** Użytkownik wcisnął „Zakończ śledzenie”. */
   stop: boolean;

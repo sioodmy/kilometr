@@ -11,7 +11,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 /**
  * Most między JS a natywnym Live Update.
  *
- * JS nie rysuje powiadomienia — dostarcza plan podróży (odcinki, teksty dla
+ * JS nie rysuje powiadomienia - dostarcza plan podróży (odcinki, teksty dla
  * każdej fazy, akcje) i od tego momentu pilnuje go `LiveTripService`. Dzięki
  * temu powiadomienie przeżywa zamknięcie aplikacji, a licznik i pasek postępu
  * tykają bez udziału procesu JS.
@@ -22,7 +22,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 class KilometrTrackingModule : Module() {
 
   /**
-   * `AppContext` nie wystawia `context` — jedynym bezpiecznym źródłem jest
+   * `AppContext` nie wystawia `context` - jedynym bezpiecznym źródłem jest
    * `reactContext`. Bierzemy `applicationContext`, żeby nie trzymać Activity.
    */
   private val appContextOrNull: Context?
@@ -58,7 +58,7 @@ class KilometrTrackingModule : Module() {
 
     /**
      * Surowa paleta Material You z tapety (`rodzina_ton` → `#RRGGBBAA`).
-     * Pusta na Androidzie 11 i starszych — wtedy zostaje własna paleta.
+     * Pusta na Androidzie 11 i starszych - wtedy zostaje własna paleta.
      */
     AsyncFunction("getSystemPalette") {
       appContextOrNull?.let { DynamicColors.read(it) } ?: emptyMap<String, String>()
@@ -76,7 +76,7 @@ class KilometrTrackingModule : Module() {
       try {
         if (LiveTripService.isRunning) {
           // Usługa już stoi w pierwszym planie, więc zwykły startService
-          // wystarczy — i jest jedynym legalnym wariantem z tła (Android 12+
+          // wystarczy - i jest jedynym legalnym wariantem z tła (Android 12+
           // rzuca wyjątkiem na startForegroundService spoza pierwszego planu).
           context.startService(intent)
         } else {
@@ -98,7 +98,7 @@ class KilometrTrackingModule : Module() {
       try {
         context.startService(intent)
       } catch (_: Throwable) {
-        // Serwis nie istnieje — wystarczy zdjąć powiadomienie.
+        // Serwis nie istnieje - wystarczy zdjąć powiadomienie.
       }
       try {
         NotificationManagerCompat.from(context).cancel(LiveUpdateFactory.NOTIFICATION_ID)
@@ -112,5 +112,20 @@ class KilometrTrackingModule : Module() {
     AsyncFunction("consumeStopRequest") {
       appContextOrNull?.let { LocalStopSignal.consume(it) } ?: false
     }
+
+    /** Startuje ContributorService z metadanymi sesji (deviceId, kurs, teksty). */
+    AsyncFunction("startContributor") { json: String ->
+      val context = appContextOrNull ?: return@AsyncFunction false
+      ContributorService.start(context, json)
+    }
+
+    /** Zatrzymuje ContributorService i zdejmie powiadomienie. */
+    AsyncFunction("stopContributor") {
+      val context = appContextOrNull ?: return@AsyncFunction false
+      ContributorService.stop(context)
+    }
+
+    /** Czy FGS telemetrii obecnie biega. */
+    Function("isContributorRunning") { ContributorService.isRunning }
   }
 }

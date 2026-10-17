@@ -16,7 +16,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
 
       # Landing (src/App.tsx) robi HEAD na ./app-release.apk i bez niego
       # przechodzi na fallback releases/latest/download/app-release.apk.
-      # To tylko przyspiesza pierwsze wejście — brak pliku nie jest błędem.
+      # To tylko przyspiesza pierwsze wejście - brak pliku nie jest błędem.
       - name: Fetch latest APK from release (optional)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -57,7 +57,7 @@ jobs:
             echo "Dodano APK z release 'latest' do artifactu Pages:"
             ls -lh docs/app-release.apk*
           else
-            echo "::warning::Brak release 'latest' — landing użyje fallbacku na releases/latest/download/app-release.apk"
+            echo "::warning::Brak release 'latest' - landing użyje fallbacku na releases/latest/download/app-release.apk"
           fi
 
       - name: Upload Pages Artifact

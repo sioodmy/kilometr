@@ -10,7 +10,7 @@ import android.content.Intent
  * Świadomie nie robimy deep linku do aplikacji: użytkownik kończy śledzenie
  * jednym dotknięciem i oczekuje, że powiadomienie zniknie, a nie że
  * wskoczy mu ekran połączeń. Akcję obsługujemy natywnie, a JS dowiaduje się
- * o niej przy najbliższym aktywnym ticku albo przy starcie aplikacji — do
+ * o niej przy najbliższym aktywnym ticku albo przy starcie aplikacji - do
  * tego czasu powiadomienia już nie ma, więc nie ma też okna, w którym
  * śledzenie udawałoby, że trwa.
  */
@@ -25,7 +25,7 @@ class TripActionReceiver : BroadcastReceiver() {
     try {
       context.startService(stop)
     } catch (_: Throwable) {
-      // Android 26+ nie pozwala podnieść usługi z tła — powiadomienie i tak
+      // Android 26+ nie pozwala podnieść usługi z tła - powiadomienie i tak
       // zniknie razem z procesem, a `LocalStopSignal` dowozi decyzję do JS.
       LocalStopSignal.mark(context)
     }
@@ -40,7 +40,7 @@ class TripActionReceiver : BroadcastReceiver() {
  * Jednokierunkowy kanał „natywny zakończył śledzenie → JS jeszcze nie wie".
  *
  * Zapis w SharedPreferences, bo intencja do odbiorcy nie wraca do procesu
- * aplikacji. Zakładka z flagą, którą JS zjada raz — inaczej zatrzymanie
+ * aplikacji. Zakładka z flagą, którą JS zjada raz - inaczej zatrzymanie
  * powtórzyłoby się po każdym restarcie procesu.
  */
 internal object LocalStopSignal {

@@ -9,14 +9,7 @@ import Animated, {
   withTiming,
   type AnimatedStyle,
 } from 'react-native-reanimated';
-import {
-  ArrowUpDown,
-  BusFront,
-  Clock3,
-  Layers,
-  TramFront,
-  Zap,
-} from 'lucide-react-native';
+import { ArrowUpDown, BusFront, Clock3, Layers, TramFront, Zap } from 'lucide-react-native';
 import { scheme } from '../theme/tokens';
 import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
 import { useStrings } from '../i18n';
@@ -60,7 +53,7 @@ export interface RoutesThumbBarProps {
 }
 
 /**
- * Dolne menu ekranu połączeń — filtry i akcje pod kciukiem.
+ * Dolne menu ekranu połączeń - filtry i akcje pod kciukiem.
  * Wszystko, czym sterujemy jedną ręką w tramwaju, mieszka na dole:
  * odwrócenie trasy, filtr bezpośrednich, typ pojazdu i czas odjazdu.
  * Sortowanie wróciło do górnego paska (toggle iOS), a odświeżanie
@@ -86,9 +79,18 @@ export function RoutesThumbBar({
   };
 
   // Krótko, żeby nie ucinało w wąskim guziku (pełne nazwy w a11y).
-  const modeLabel = modeFilter === 'tram' ? s.routesBar.modeTram : modeFilter === 'bus' ? s.routesBar.modeBus : s.routesBar.modeAll;
+  const modeLabel =
+    modeFilter === 'tram'
+      ? s.routesBar.modeTram
+      : modeFilter === 'bus'
+        ? s.routesBar.modeBus
+        : s.routesBar.modeAll;
   const modeA11y =
-    modeFilter === 'tram' ? s.routesBar.modeTramA11y : modeFilter === 'bus' ? s.routesBar.modeBusA11y : s.routesBar.modeAllA11y;
+    modeFilter === 'tram'
+      ? s.routesBar.modeTramA11y
+      : modeFilter === 'bus'
+        ? s.routesBar.modeBusA11y
+        : s.routesBar.modeAllA11y;
 
   // Etykieta czasu bywa pełna („Jutro, 08:15”) i nie mieściłaby się w kolumnie,
   // więc w docku zostaje sama godzina. Dzień i tak widać w nagłówku listy,
@@ -96,15 +98,12 @@ export function RoutesThumbBar({
   const timeShort = timeLabel.includes(', ') ? timeLabel.split(', ')[1] : timeLabel;
 
   // Pop przy swapie: pełny obrót 360° + minimalny pop skali, w tym samym
-  // timingu co rolka tekstu nagłówka (FadeInUp 240 ms) — góra i dół kręcą się razem.
+  // timingu co rolka tekstu nagłówka (FadeInUp 240 ms) - góra i dół kręcą się razem.
   const swapSpin = useSharedValue(0);
   const swapStyle = useAnimatedStyle(() => {
     const p = swapSpin.value % 1;
     return {
-      transform: [
-        { rotate: `${p * 360}deg` },
-        { scale: 1 + 0.28 * Math.sin(Math.PI * p) },
-      ],
+      transform: [{ rotate: `${p * 360}deg` }, { scale: 1 + 0.28 * Math.sin(Math.PI * p) }],
     };
   });
   const handleSwapPress = () => {
@@ -117,7 +116,7 @@ export function RoutesThumbBar({
 
   return (
     // Dock przyjmuje gotowy styl animowany (chowanie się przy scrollu),
-    // więc rzutujemy go na zwykły styl — ThumbBar opakowuje go w Animated.View.
+    // więc rzutujemy go na zwykły styl - ThumbBar opakowuje go w Animated.View.
     <ThumbBar style={animatedStyle as StyleProp<ViewStyle>}>
       <ThumbBarItem
         onPress={handleSwapPress}
@@ -149,11 +148,7 @@ export function RoutesThumbBar({
           </Animated.View>
         }
         label={s.routesBar.direct}
-        accessibilityLabel={
-          directOnly
-            ? s.routesBar.directOnA11y
-            : s.routesBar.directOffA11y
-        }
+        accessibilityLabel={directOnly ? s.routesBar.directOnA11y : s.routesBar.directOffA11y}
       />
 
       <ThumbBarDivider />

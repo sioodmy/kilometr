@@ -3,7 +3,7 @@
  *
  * Uruchomienie: `npm run check:backup`
  *
- * Format pliku jest jedyną rzeczą, którą da się testować bez telefonu —
+ * Format pliku jest jedyną rzeczą, którą da się testować bez telefonu -
  * dlatego `backupFormat.ts` nie importuje `expo-*`. Reszta (zapis pliku,
  * picker, scalanie z KV) to I/O, którego nie da się zasymulować sensownie.
  *
@@ -37,7 +37,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -56,7 +56,7 @@ function expectTrue(label: string, got: boolean): void {
 
 // ─── Dane testowe ──────────────────────────────────────────────────────────
 
-/** Odcinek w minimalnej, poprawnej postaci — bazowy budulek dla testów tras. */
+/** Odcinek w minimalnej, poprawnej postaci - bazowy budulek dla testów tras. */
 const FULL_LEG: Leg = {
   id: 'l1',
   mode: 'tram',
@@ -148,7 +148,25 @@ const FULL: BackupData = {
     { city: 'wroclaw', items: [trip('t1')] },
     { city: 'krakow', items: [krakowTrip('t2')] },
   ],
-  routingSettings: { maxTransfers: 1, minTransferSec: 180, maxWalkM: 600, walkPace: 'normal', anchorRadiusM: 400, trainsEnabled: false, trainMinTransferSec: 420, cableEnabled: false, routeStyle: 'lessWalking' },
+  routingSettings: {
+    maxTransfers: 1,
+    minTransferSec: 180,
+    maxWalkM: 600,
+    walkPace: 'normal',
+    anchorRadiusM: 400,
+    trainsEnabled: false,
+    trainMinTransferSec: 420,
+    cableEnabled: false,
+    allowedModes: {
+      tram: true,
+      bus: true,
+      trolleybus: true,
+      subway: true,
+      train: false,
+      cable: false,
+    },
+    routeStyle: 'lessWalking',
+  },
   notificationPrefs: {
     trackingEnabled: true,
     departureAlertsEnabled: true,
@@ -167,7 +185,7 @@ function parse(data: unknown) {
 /**
  * Pełna kopia w formacie aplikacji. `data` celowo przyjmuje `unknown`:
  * testy podają tu kształty, których `BackupData` nie opisuje (uszkodzone
- * wpisy, brakujące pola) — to jest właśnie to, co walidacja ma złapać.
+ * wpisy, brakujące pola) - to jest właśnie to, co walidacja ma złapać.
  */
 function envelope(data: unknown, schema = BACKUP_SCHEMA) {
   return {
@@ -192,7 +210,11 @@ describe('Round-trip: zapis → odczyt');
   const res = parseBackupFile(file);
   expectTrue('plik się parsuje', res.ok);
   if (res.ok) {
-    expect('sekcje miejsc per-miasto', res.envelope.data.places.map((s) => s.city).join(','), 'wroclaw,krakow');
+    expect(
+      'sekcje miejsc per-miasto',
+      res.envelope.data.places.map((s) => s.city).join(','),
+      'wroclaw,krakow',
+    );
     expect('liczba miejsc (suma)', res.counts.places, 3);
     expect('liczba tras (suma)', res.counts.savedRoutes, 1);
     expect('liczba przejazdów (suma)', res.counts.tripHistory, 2);
@@ -201,8 +223,16 @@ describe('Round-trip: zapis → odczyt');
     expect('wersja aplikacji', res.envelope.appVersion, '1.0.0');
     expect('nazwa miejsca przeżywa', res.envelope.data.places[0].items[0].name, 'Dom');
     expect('kotwica miejsca przeżywa', res.envelope.data.places[0].items[0].lat, 51.1);
-    expect('krakowskie miejsce w swojej sekcji', res.envelope.data.places[1].items[0].name, 'Rynek');
-    expect('odcinek trasy przeżywa', res.envelope.data.savedRoutes[0].items[0].connection.legs.length, 1);
+    expect(
+      'krakowskie miejsce w swojej sekcji',
+      res.envelope.data.places[1].items[0].name,
+      'Rynek',
+    );
+    expect(
+      'odcinek trasy przeżywa',
+      res.envelope.data.savedRoutes[0].items[0].connection.legs.length,
+      1,
+    );
     expect('użycia przejazdu przeżywają', res.envelope.data.tripHistory[0].items[0].uses, 3);
     expect('nie jest pusta', res.empty, false);
     expect('licznik miejsc', res.counts.places, 3);
@@ -215,8 +245,16 @@ describe('Odrzucanie: plik nie jest kopią');
 {
   expect('zdjęcie (nie JSON)', parseBackupFile('nie json').ok, false);
   expect('JSON, ale bez znacznika', parseBackupFile('{"a":1}').ok, false);
-  expect('inny format', parse({ kind: 'other-backup', app: 'kilometr', schema: 2, data: {} }).ok, false);
-  expect('inna aplikacja', parse({ kind: 'kilometr-backup', app: 'czarna', schema: 2, data: {} }).ok, false);
+  expect(
+    'inny format',
+    parse({ kind: 'other-backup', app: 'kilometr', schema: 2, data: {} }).ok,
+    false,
+  );
+  expect(
+    'inna aplikacja',
+    parse({ kind: 'kilometr-backup', app: 'czarna', schema: 2, data: {} }).ok,
+    false,
+  );
   const r = parseBackupFile('[]');
   expect('tablica zamiast obiektu', r.ok, false);
 }
@@ -252,7 +290,13 @@ describe('Migracja: schemat 1 ląduje w kubełku Wrocławia');
   expectTrue('stara kopia nadal się parsuje', r.ok);
   if (r.ok) {
     expect('miejsca we Wrocławiu', r.envelope.data.places.map((s) => s.city).join(','), 'wroclaw');
-    expect('dobre miejsce przeżywa', items(r.envelope.data.places).map((p) => p.id).join(','), 'p1');
+    expect(
+      'dobre miejsce przeżywa',
+      items(r.envelope.data.places)
+        .map((p) => p.id)
+        .join(','),
+      'p1',
+    );
     expect('trasa we Wrocławiu', r.envelope.data.savedRoutes[0]?.city, 'wroclaw');
     expect('przejazd we Wrocławiu', r.envelope.data.tripHistory[0]?.city, 'wroclaw');
     expect('licznik miejsc', r.counts.places, 1);
@@ -267,11 +311,20 @@ describe('Odporność: jeden śmieciowy wpis nie zabija kopii');
     envelope({
       ...FULL,
       places: [
-        { city: 'wroclaw', items: [place('ok', 'Dom'), { id: 'bad' }, null, { name: 'Bez id', lat: 1, lon: 2 }] },
+        {
+          city: 'wroclaw',
+          items: [place('ok', 'Dom'), { id: 'bad' }, null, { name: 'Bez id', lat: 1, lon: 2 }],
+        },
         { city: 'krakow', items: [krakowPlace('ok2', 'Rynek')] },
       ],
       tripHistory: [
-        { city: 'wroclaw', items: [{ id: 't-ok', dest_id: 'd', dest_title: 'Rynek', dest_lat: 1, dest_lon: 2 }, { dest_title: 'Bez id' }] },
+        {
+          city: 'wroclaw',
+          items: [
+            { id: 't-ok', dest_id: 'd', dest_title: 'Rynek', dest_lat: 1, dest_lon: 2 },
+            { dest_title: 'Bez id' },
+          ],
+        },
       ],
       savedRoutes: [{ city: 'wroclaw', items: [{ id: 'r', connection: { id: 'r' } }] }],
     }),
@@ -300,7 +353,11 @@ describe('Odporność: sekcja nieznanego miasta odpada, reszta zostaje');
   );
   expectTrue('kopia się parsuje', r.ok);
   if (r.ok) {
-    expect('zostaje tylko znane miasto', r.envelope.data.places.map((s) => s.city).join(','), 'wroclaw');
+    expect(
+      'zostaje tylko znane miasto',
+      r.envelope.data.places.map((s) => s.city).join(','),
+      'wroclaw',
+    );
     expect('zostaje dobre miejsce', items(r.envelope.data.places).length, 1);
     expect('trasy nietknięte', items(r.envelope.data.savedRoutes).length, 1);
   }
@@ -320,12 +377,40 @@ describe('Odporność: odcinek bez godzin odpada, reszta trasy zostaje');
               connection: {
                 legs: [
                   { id: 'broken', mode: 'tram', fromStop: 'A', toStop: 'B' },
-                  { id: 'l2', mode: 'walk', fromStop: 'A', toStop: 'C', departAt: '11:05', arriveAt: '11:10' },
-                  { id: 'l3', mode: 'teleport', fromStop: 'C', toStop: 'D', departAt: '11:10', arriveAt: '11:20' },
+                  {
+                    id: 'l2',
+                    mode: 'walk',
+                    fromStop: 'A',
+                    toStop: 'C',
+                    departAt: '11:05',
+                    arriveAt: '11:10',
+                  },
+                  {
+                    id: 'l3',
+                    mode: 'teleport',
+                    fromStop: 'C',
+                    toStop: 'D',
+                    departAt: '11:10',
+                    arriveAt: '11:20',
+                  },
                   // Metro i trolejbus muszą przeżyć: bez nich w LEG_MODES
                   // zapisana trasa z M1/M2 albo z Tychów cicho gubiła nogę.
-                  { id: 'l4', mode: 'subway', fromStop: 'C', toStop: 'D', departAt: '11:12', arriveAt: '11:18' },
-                  { id: 'l5', mode: 'trolleybus', fromStop: 'D', toStop: 'E', departAt: '11:20', arriveAt: '11:26' },
+                  {
+                    id: 'l4',
+                    mode: 'subway',
+                    fromStop: 'C',
+                    toStop: 'D',
+                    departAt: '11:12',
+                    arriveAt: '11:18',
+                  },
+                  {
+                    id: 'l5',
+                    mode: 'trolleybus',
+                    fromStop: 'D',
+                    toStop: 'E',
+                    departAt: '11:20',
+                    arriveAt: '11:26',
+                  },
                 ],
               },
             },
@@ -346,7 +431,7 @@ describe('Odporność: NaN i nieskończoność odpadają');
   const r = parse(
     envelope({
       ...FULL,
-      // JSON nie ma NaN/Infinity — tu symulujemy to, co dałby `JSON.parse`
+      // JSON nie ma NaN/Infinity - tu symulujemy to, co dałby `JSON.parse`
       // na pliku, w którym ktoś podmienił liczby na stringi.
       places: [{ city: 'wroclaw', items: [{ ...place('x', 'Złe'), lat: '51.1', lon: 2 }] }],
     }),
@@ -376,7 +461,12 @@ describe('Normalizacja: brakujące pola dostają wartości domyślne');
     envelope({
       places: [{ city: 'wroclaw', items: [{ id: 'p', name: 'Dom', lat: 1, lon: 2 }] }],
       savedRoutes: [{ city: 'krakow', items: [{ id: 'r', connection: { legs: [FULL_LEG] } }] }],
-      tripHistory: [{ city: 'wroclaw', items: [{ id: 't', dest_id: 'd', dest_title: 'Rynek', dest_lat: 1, dest_lon: 2 }] }],
+      tripHistory: [
+        {
+          city: 'wroclaw',
+          items: [{ id: 't', dest_id: 'd', dest_title: 'Rynek', dest_lat: 1, dest_lon: 2 }],
+        },
+      ],
       locale: 'xx',
     }),
   );
@@ -386,8 +476,16 @@ describe('Normalizacja: brakujące pola dostają wartości domyślne');
     expect('brak icon → home', r.envelope.data.places[0].items[0].icon, 'home');
     expect('brak placeId → id', r.envelope.data.places[0].items[0].placeId, 'p');
     expect('odcinek przeżywa', r.envelope.data.savedRoutes[0].items[0].connection.legs.length, 1);
-    expect('godziny w odcinku nie znikają', r.envelope.data.savedRoutes[0].items[0].connection.legs[0].departAt, '11:10');
-    expect('brak savedAt → teraz (liczba)', typeof r.envelope.data.savedRoutes[0].items[0].savedAt, 'number');
+    expect(
+      'godziny w odcinku nie znikają',
+      r.envelope.data.savedRoutes[0].items[0].connection.legs[0].departAt,
+      '11:10',
+    );
+    expect(
+      'brak savedAt → teraz (liczba)',
+      typeof r.envelope.data.savedRoutes[0].items[0].savedAt,
+      'number',
+    );
     expect('brak uses → undefined', r.envelope.data.tripHistory[0].items[0].uses ?? null, null);
     expect('uses < 1 → undefined', r.envelope.data.tripHistory[0].items[0].uses ?? null, null);
     expect('nieznany język → null', r.envelope.data.locale, null);
@@ -398,7 +496,12 @@ describe('Normalizacja: uses i znaki');
 {
   const r = parse(
     envelope({
-      tripHistory: [{ city: 'wroclaw', items: [{ id: 't', dest_id: 'd', dest_title: 'x', dest_lat: 1, dest_lon: 2, uses: 2.6 }] }],
+      tripHistory: [
+        {
+          city: 'wroclaw',
+          items: [{ id: 't', dest_id: 'd', dest_title: 'x', dest_lat: 1, dest_lon: 2, uses: 2.6 }],
+        },
+      ],
       places: [{ city: 'krakow', items: [{ id: 'p', name: 'D'.repeat(1000), lat: 1, lon: 2 }] }],
     }),
   );
@@ -421,8 +524,16 @@ describe('Pusty eksport to poprawna kopia');
     locale: null,
   };
   expect('pusty', isBackupEmpty(empty), true);
-  expect('nie pusty gdy są miejsca', isBackupEmpty({ ...empty, places: [{ city: 'wroclaw', items: FULL.places[0].items }] }), false);
-  expect('nie pusty gdy są ustawienia', isBackupEmpty({ ...empty, routingSettings: FULL.routingSettings }), false);
+  expect(
+    'nie pusty gdy są miejsca',
+    isBackupEmpty({ ...empty, places: [{ city: 'wroclaw', items: FULL.places[0].items }] }),
+    false,
+  );
+  expect(
+    'nie pusty gdy są ustawienia',
+    isBackupEmpty({ ...empty, routingSettings: FULL.routingSettings }),
+    false,
+  );
   const res = parseBackupFile(buildBackupFile(empty, '1.0.0'));
   expectTrue('parsuje się', res.ok);
   if (res.ok) expect('pusta po odczycie', res.empty, true);
@@ -449,7 +560,7 @@ describe('Nazwa pliku');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

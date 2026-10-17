@@ -5,7 +5,7 @@ import { BENCHMARK } from '../data';
 // Podstrona raportu z benchmarku (widok `#raport`). Wszystkie liczby
 // z realnych przebiegów harnessa (r4_*.txt, 72 trasy): 46 wygranych,
 // 24 remisy, 2 straty poza silnikiem (pociąg KD + dryf rozkładu).
-// Celowo jednostronna narracja dla inwestora — ale na prawdziwych danych:
+// Celowo jednostronna narracja dla inwestora - ale na prawdziwych danych:
 // każda liczba ma pokrycie w outputach, a „porażki" dostają dowody zamiast
 // być chowane (wiarygodność sprzedaje lepiej niż same zera).
 //
@@ -55,7 +55,11 @@ function Donut() {
   let acc = 25;
   return (
     <div className="rp-donut-card">
-      <div className="rp-donut-wrap" role="img" aria-label={`Bilans: ${S.wins} wygranych, ${S.ties} remisów, ${S.losses} straty`}>
+      <div
+        className="rp-donut-wrap"
+        role="img"
+        aria-label={`Bilans: ${S.wins} wygranych, ${S.ties} remisów, ${S.losses} straty`}
+      >
         <svg viewBox="0 0 120 120" className="rp-donut">
           <circle cx="60" cy="60" r="48" className="donut-track" pathLength={100} />
           {segs.map((s) => {
@@ -106,7 +110,10 @@ function TopWins() {
               {w.route} <em>{w.when}</em>
             </span>
             <span className="rp-bar-track">
-              <i className="rp-bar-fill" style={{ ['--w' as string]: `${(Math.abs(w.delta) / max) * 100}%` }} />
+              <i
+                className="rp-bar-fill"
+                style={{ ['--w' as string]: `${(Math.abs(w.delta) / max) * 100}%` }}
+              />
             </span>
             <b className="rp-bar-num">{w.delta}</b>
           </li>
@@ -190,8 +197,8 @@ export function Report() {
       <header className="rp-hero">
         <h1>Raport z benchmarku.</h1>
         <p>
-          72 prawdziwe trasy po Wrocławiu: Kilometr przeciwko jakdojade
-          i mobilempk. Minuta w minutę, ten sam tydzień, to samo okno odjazdów.
+          72 prawdziwe trasy po Wrocławiu: Kilometr przeciwko jakdojade i mobilempk. Minuta w
+          minutę, ten sam tydzień, to samo okno odjazdów.
         </p>
       </header>
 
@@ -204,8 +211,8 @@ export function Report() {
 
       <h2 className="rp-h">Dwanaście tras pod lupą</h2>
       <p className="rp-sub">
-        Te same zapytania we wszystkich trzech silnikach. Ujemna delta to
-        wcześniejszy przyjazd Kilometra.
+        Te same zapytania we wszystkich trzech silnikach. Ujemna delta to wcześniejszy przyjazd
+        Kilometra.
       </p>
       <ThreeWayTable />
 
@@ -214,13 +221,12 @@ export function Report() {
 
       <h2 className="rp-h">Metodologia</h2>
       <p className="rp-fine">
-        Zbiór: 72 zapytania punkt-punkt (przystanek początkowy, przystanek
-        docelowy, dzień tygodnia, godzina odjazdu). Dane referencyjne pobrano
-        z oficjalnych stron obu serwisów dnia 06.10.2023 o 23:00. Metryka:
-        najlepszy przyjazd w oknie odjazdów +120         minut (tolerancja odjazdu: -5 minut). Silnik Kilometra: algorytm RAPTOR na rozkładzie GTFS MPK
-        Wrocław, zasięg przesiadek do 800 m, limit 3 przesiadek. jakdojade:
-        profil OPTIMAL z czasem rzeczywistym, 7 propozycji na zapytanie.
-        mobilempk: profil opt, limit przesiadki 300 m / 1 minuta.
+        Zbiór: 72 zapytania punkt-punkt (przystanek początkowy, przystanek docelowy, dzień tygodnia,
+        godzina odjazdu). Dane referencyjne pobrano z oficjalnych stron obu serwisów dnia 06.10.2023
+        o 23:00. Metryka: najlepszy przyjazd w oknie odjazdów +120 minut (tolerancja odjazdu: -5
+        minut). Silnik Kilometra: algorytm RAPTOR na rozkładzie GTFS MPK Wrocław, zasięg przesiadek
+        do 800 m, limit 3 przesiadek. jakdojade: profil OPTIMAL z czasem rzeczywistym, 7 propozycji
+        na zapytanie. mobilempk: profil opt, limit przesiadki 300 m / 1 minuta.
       </p>
     </div>
   );

@@ -1,10 +1,10 @@
-// Wspólny „pasek kciuka” — jedna wizualna baza dla całego dolnego menu.
+// Wspólny „pasek kciuka” - jedna wizualna baza dla całego dolnego menu.
 // Wszystkie ekrany mają sterowanie w dolnej, naturalnej strefie kciuka,
 // więc wygląd, wysokość dotyku i odległość od krawędzi są tu zdefiniowane raz.
 //
 // Dwie części:
-//  - `ThumbBar`      — pływająca pigułka przyklejona do dołu ekranu,
-//  - `ThumbBarItem`  — pojedynczy przycisk ikona + etykieta (>= 44 px,
+//  - `ThumbBar`      - pływająca pigułka przyklejona do dołu ekranu,
+//  - `ThumbBarItem`  - pojedynczy przycisk ikona + etykieta (>= 44 px,
 //                      czyli próg dotyku dla palca w ruchu).
 
 import React, { useEffect, useState, type ReactNode } from 'react';
@@ -24,7 +24,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 
 /** Odstęp pigułki od krawędzi ekranu (nad `bottom` z insetów). */
 const BAR_EDGE_GAP = 10;
-/** Wysokość z `styles.bar` — stan początkowy, zanim `onLayout` ją zmierzy. */
+/** Wysokość z `styles.bar` - stan początkowy, zanim `onLayout` ją zmierzy. */
 const BAR_MIN_HEIGHT = 58;
 /** Dodatkowy oddech między paskiem a ostatnim elementem treści. */
 const CONTENT_GAP = 12;
@@ -37,7 +37,7 @@ const insetListeners = new Set<() => void>();
  * kciuka niczego nie zasłonił.
  *
  * Każdy ekran miał tu własną zgadywaną liczbę (90, 80, 96 px) i wszystkie
- * były za małe — na telefonie z paskiem nawigacji pasek zajmuje ~116 px, więc
+ * były za małe - na telefonie z paskiem nawigacji pasek zajmuje ~116 px, więc
  * ostatni przycisk („Mapa trasy”) lądował pod nim i był nieosiągalny. Teraz
  * wysokość jest mierzona, a nie zgadnięta.
  */
@@ -61,7 +61,7 @@ interface ThumbBarProps {
   children: ReactNode;
   /** Odstęp od dołu ekranu nad plikiem `bottom` (domyślnie 10 px). */
   bottom?: number;
-  /** Dopasowanie szerokości — np. `left`/`right` dla menu przypiętego do krawędzi. */
+  /** Dopasowanie szerokości - np. `left`/`right` dla menu przypiętego do krawędzi. */
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
   /** Wyłącza pływanie (np. gdy pasek siedzi już w kontenerze panelu). */
@@ -73,8 +73,8 @@ export function ThumbBar({ children, bottom = 10, style, contentStyle, inline }:
   if (inline) {
     return <View style={[styles.bar, contentStyle]}>{children}</View>;
   }
-  // Wysokość rzeczywista (liczba przycisków, zawinięte etykiety) — nie
-  // minHeight — bo od niej zależy zapas treści z useThumbBarInset().
+  // Wysokość rzeczywista (liczba przycisków, zawinięte etykiety) - nie
+  // minHeight - bo od niej zależy zapas treści z useThumbBarInset().
   const handleBarLayout = (e: LayoutChangeEvent) => {
     const h = e.nativeEvent.layout.height;
     if (h > 0 && Math.abs(h - measuredBarHeight) > 0.5) {
@@ -83,7 +83,7 @@ export function ThumbBar({ children, bottom = 10, style, contentStyle, inline }:
     }
   };
   // Animated.View, bo rodzic potrafi chować/pokazywać dock stylem z useAnimatedStyle
-  // (zwykle przy przewijaniu listy) — na zwykłym View to nie zadziała.
+  // (zwykle przy przewijaniu listy) - na zwykłym View to nie zadziała.
   return (
     <Animated.View
       pointerEvents="box-none"
@@ -111,7 +111,7 @@ interface ThumbBarItemProps {
   accessibilityState?: { selected?: boolean; disabled?: boolean; busy?: boolean };
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
-  /** Chwilowo niedostępny (np. trwa operacja) — przygaszony, nieklikalny. */
+  /** Chwilowo niedostępny (np. trwa operacja) - przygaszony, nieklikalny. */
   disabled?: boolean;
 }
 

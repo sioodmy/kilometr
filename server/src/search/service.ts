@@ -7,13 +7,13 @@ import { fuzzyMatch } from './fuzzy';
 import { Suggestion } from './types';
 import { config } from '../config';
 
-// Pamięciowy cache najczęstszych zapytań (przed SQLite — podpowiedzi "śmigają").
+// Pamięciowy cache najczęstszych zapytań (przed SQLite - podpowiedzi "śmigają").
 const memCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MEM_CACHE_TTL_MS = 10 * 60 * 1000;
 const MEM_CACHE_MAX = 300;
 
 // Generacja zapytań: gdy użytkownik pisze, starsze zapytania still waiting
-// na rate-limit Nominatim są przestarzałe — zwracają od razu same przystanki
+// na rate-limit Nominatim są przestarzałe - zwracają od razu same przystanki
 // GTFS zamiast blokować kolejkę i opóźniać aktualne zapytanie.
 let searchGen = 0;
 
@@ -38,7 +38,7 @@ function memSet(key: string, data: Suggestion[]) {
 export async function searchSuggestions(
   query: string,
   userLat?: number,
-  userLon?: number
+  userLon?: number,
 ): Promise<Suggestion[]> {
   const q = query.trim();
   if (!q) return [];
@@ -53,7 +53,7 @@ export async function searchSuggestions(
 
   const db = getDb();
 
-  // 1. Lokalne źródła (synchroniczne, in-memory — zawsze natychmiast):
+  // 1. Lokalne źródła (synchroniczne, in-memory - zawsze natychmiast):
   // przystanki GTFS + indeks miejsc (POI) Wrocławia. Liczone ZAWSZE świeżo,
   // także przy trafieniu w cache Nominatim.
   ensurePoiIndex(); // leniwy trigger odświeżania Overpass w tle, nie blokuje
@@ -77,7 +77,7 @@ export async function searchSuggestions(
   const localSuggestions = [...stopSuggestions, ...poiSuggestions];
 
   // 2. Nominatim: najpierw cache (pamięć, potem SQLite), potem sieć.
-  // Przestarzałe zapytanie nie dostaje slotu rate-limitu i zwraca [] —
+  // Przestarzałe zapytanie nie dostaje slotu rate-limitu i zwraca [] -
   // frontend i tak je anulował, a pusta odpowiedź nie nadpisze nic gorszego.
   // Sieć omijamy też gdy lokalny indeks już daje dobre wyniki, a query nie
   // wygląda na adres (adresy z numerami są domeną Nominatim).
@@ -104,12 +104,12 @@ export async function searchSuggestions(
     const needNetwork = looksLikeAddress || localSuggestions.length < 5;
     if (needNetwork && isFresh()) {
       nominatimSuggestions = await searchNominatim(q, isFresh);
-      if (!isFresh()) return []; // w międzyczasie przyszło nowsze — nic nie zwracaj
+      if (!isFresh()) return []; // w międzyczasie przyszło nowsze - nic nie zwracaj
       if ((nominatimSuggestions?.length ?? 0) > 0) {
         const expiresAt = now + config.nominatim.cacheTtlMs;
         try {
           db.prepare(
-            'INSERT OR REPLACE INTO search_cache (cache_key, response_json, expires_at) VALUES (?, ?, ?)'
+            'INSERT OR REPLACE INTO search_cache (cache_key, response_json, expires_at) VALUES (?, ?, ?)',
           ).run(cacheKey, JSON.stringify(nominatimSuggestions), expiresAt);
         } catch {
           // cache opcjonalny
@@ -130,11 +130,7 @@ export async function searchSuggestions(
 }
 
 /** Odległości liczone na końcu (cache trzyma surowe wyniki bez pozycji usera). */
-function withDistances(
-  items: Suggestion[],
-  userLat?: number,
-  userLon?: number
-): Suggestion[] {
+function withDistances(items: Suggestion[], userLat?: number, userLon?: number): Suggestion[] {
   if (userLat === undefined || userLon === undefined) return items;
   return items.map((item) => ({
     ...item,
@@ -146,7 +142,7 @@ function dedupeAndSort(
   local: Suggestion[],
   nominatim: Suggestion[],
   hasUserPos: boolean,
-  normQ?: string
+  normQ?: string,
 ): Suggestion[] {
   const seen = new Set<string>();
   const out: Suggestion[] = [];
@@ -193,10 +189,10 @@ function dedupeAndSort(
 
     // 3. Score wg nazwy (priorytet) - kara za dystans + nagroda za popularność przystanku
     const weightBonus = (s: Suggestion): number => (s.weight ?? 0) / 100;
-    
+
     const scoreA = nameScore(a) - distPenalty(a) + weightBonus(a);
     const scoreB = nameScore(b) - distPenalty(b) + weightBonus(b);
-    
+
     return scoreB - scoreA;
   });
   return out;

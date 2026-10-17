@@ -1,6 +1,6 @@
 // Render miniapki do SVG na hoście i sprawdzenie kadrowania: skala,
 // obrót kompasem i to, że strzałka manewru nie wypada poza kwadrat.
-// Zero React Native — powtarzamy dokładnie matematykę z NavMiniMap.tsx.
+// Zero React Native - powtarzamy dokładnie matematykę z NavMiniMap.tsx.
 
 import { routeFootLocal } from '../src/services/footRouter';
 
@@ -59,11 +59,7 @@ function check(label: string, cond: boolean, detail = '') {
   console.log('=== Miniapka: kadrowanie i obrot ===');
 
   const user: Coord = [51.1035, 17.0425];
-  const path = await fetchRoute(FOOT, 'foot', [
-    user,
-    [51.1052, 17.0381],
-    [51.1078, 17.0392],
-  ]);
+  const path = await fetchRoute(FOOT, 'foot', [user, [51.1052, 17.0381], [51.1078, 17.0392]]);
   const size = 124;
   console.log(`  sciezka: ${path.length} pkt`);
 
@@ -95,18 +91,19 @@ function check(label: string, cond: boolean, detail = '') {
 
     const long = await fetchRoute(CAR, 'driving', [
       [51.1035, 17.0425],
-      [51.1250, 17.0560],
+      [51.125, 17.056],
     ]);
     const { maxExtent: farExtent } = layout(long, user, 0, size);
     check('daleki końiec daje szeroki kadr', farExtent > 1500, `kadr ±${farExtent.toFixed(0)} m`);
   }
 
   // 4. Obrót kompasem: góra mapy pokazuje kierunek, w który PATRZYSZ.
-//    Stoisz na wschód (kurs 90°) → punkt na północ ląduje po lewej,
-//    bo północ jest wtedy na Twojej lewej ręce.
+  //    Stoisz na wschód (kurs 90°) → punkt na północ ląduje po lewej,
+  //    bo północ jest wtedy na Twojej lewej ręce.
   {
     const north: Coord = [user[0] + 0.001, user[1]];
-    const headingOf = (h: number) => layout([user, north], user, h, size).project(toMeters(user, north));
+    const headingOf = (h: number) =>
+      layout([user, north], user, h, size).project(toMeters(user, north));
     const mid = size / 2;
     const h0 = headingOf(0);
     const h90 = headingOf(90);
@@ -125,7 +122,10 @@ function check(label: string, cond: boolean, detail = '') {
       const rad = toRad(h);
       // Przesuwamy się o ~100 m w azymucie = kursie.
       const kx = Math.cos(toRad(user[0])) * 111320;
-      const ahead: Coord = [user[0] + (100 * Math.cos(rad)) / 111320, user[1] + (100 * Math.sin(rad)) / kx];
+      const ahead: Coord = [
+        user[0] + (100 * Math.cos(rad)) / 111320,
+        user[1] + (100 * Math.sin(rad)) / kx,
+      ];
       const p = layout([user, ahead], user, h, size).project(toMeters(user, ahead));
       check(`kurs ${h}°: punkt przed Tobą na górze`, p.y < size / 2 - 5, `y=${p.y.toFixed(0)}`);
     }

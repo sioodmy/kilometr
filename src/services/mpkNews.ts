@@ -216,15 +216,39 @@ const ENTITIES: Record<string, string> = {
 };
 
 const NAMED: Record<string, string> = {
-  oacute: 'ó', Oacute: 'Ó', aacute: 'á', Aacute: 'Á',
-  eacute: 'é', Eacute: 'É', iacute: 'í', Iacute: 'Í',
-  uacute: 'ú', Uacute: 'Ú', yacute: 'ý',
-  sacute: 'ś', Sacute: 'Ś', cacute: 'ć', Cacute: 'Ć',
-  nacute: 'ń', Nacute: 'Ń', zacute: 'ź', Zacute: 'Ź',
-  lstrok: 'ł', Lstrok: 'Ł', zdot: 'ż', Zdot: 'Ż',
-  ndash: '\u2013', mdash: '\u2014', hellip: '…',
-  laquo: '«', raquo: '»', bdquo: '„', ldquo: '“', rdquo: '”',
-  lsquo: '‘', rsquo: '’',
+  oacute: 'ó',
+  Oacute: 'Ó',
+  aacute: 'á',
+  Aacute: 'Á',
+  eacute: 'é',
+  Eacute: 'É',
+  iacute: 'í',
+  Iacute: 'Í',
+  uacute: 'ú',
+  Uacute: 'Ú',
+  yacute: 'ý',
+  sacute: 'ś',
+  Sacute: 'Ś',
+  cacute: 'ć',
+  Cacute: 'Ć',
+  nacute: 'ń',
+  Nacute: 'Ń',
+  zacute: 'ź',
+  Zacute: 'Ź',
+  lstrok: 'ł',
+  Lstrok: 'Ł',
+  zdot: 'ż',
+  Zdot: 'Ż',
+  ndash: '\u2013',
+  mdash: '\u2014',
+  hellip: '…',
+  laquo: '«',
+  raquo: '»',
+  bdquo: '„',
+  ldquo: '“',
+  rdquo: '”',
+  lsquo: '‘',
+  rsquo: '’',
 };
 
 function decodeEntities(s: string): string {
@@ -248,11 +272,11 @@ function extractImage(html: string): string | null {
   return decodeEntities(m[1]).replace(/&amp;/g, '&').trim() || null;
 }
 
-// Pilne = utrudnienia / wypadki / wykolejenia — to user chce sprawdzać najszybciej.
+// Pilne = utrudnienia / wypadki / wykolejenia - to user chce sprawdzać najszybciej.
 const URGENT_RE =
   /(wykolej|wypadek|kolizj|zderzenie|utrudnien|objazd|awari|przerwa w ruchu|wstrzyman|zablokowan|korek|zamknię)/i;
 
-/** RSS miasta miesza loty i PR z komunikacją — zostawiamy tylko treść dla pasażera. */
+/** RSS miasta miesza loty i PR z komunikacją - zostawiamy tylko treść dla pasażera. */
 const TRANSIT_RE =
   /(mpk|tramwaj|autobus|linia\b|przystank|bilet|komunikacj|utrudnien|objazd|torowisk|kasownik|rozkład|przejazd|kursowan|zajezdn|pantograf|wykolej|agglomeracyj|międzymiast|aglo)/i;
 
@@ -267,8 +291,8 @@ export function isTransitNews(title: string, description: string): boolean {
 /** Daty z mpk.wroc.pl i ogonki typu „| ZDJĘCIA, AKTUALIZACJA” z portalu miasta. */
 export function cleanNewsTitle(title: string): string {
   const cleaned = title
-    .replace(/^\d{1,2}\.\d{1,2}\.\d{4}\s*r\.?\s*[-–—:]\s*/i, '')
-    .replace(/^\d{1,2}\.\d{1,2}\.\d{4}\s*[-–—:]\s*/i, '')
+    .replace(/^\d{1,2}\.\d{1,2}\.\d{4}\s*r\.?\s*[-–-:]\s*/i, '')
+    .replace(/^\d{1,2}\.\d{1,2}\.\d{4}\s*[-–-:]\s*/i, '')
     .split('|')[0]
     .trim();
   if (!cleaned) return cleaned;
@@ -278,15 +302,17 @@ export function cleanNewsTitle(title: string): string {
 function htmlToText(html: string): string {
   const noImg = html.replace(/<img[^>]*>/gi, ' ');
   const noTags = noImg.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ' ');
-  return decodeEntities(noTags)
-    .replace(/\r/g, '')
-    .replace(/[ \t]*\n[ \t]*/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    // Spacja po znaczniku przed interpunkcją („23:00 .”, „r. ,”) to artefakt
-    // zamiany tagów na spacje.
-    .replace(/\s+([,.;:!?])/g, '$1')
-    .trim();
+  return (
+    decodeEntities(noTags)
+      .replace(/\r/g, '')
+      .replace(/[ \t]*\n[ \t]*/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      // Spacja po znaczniku przed interpunkcją („23:00 .”, „r. ,”) to artefakt
+      // zamiany tagów na spacje.
+      .replace(/\s+([,.;:!?])/g, '$1')
+      .trim()
+  );
 }
 
 export function formatNewsDate(ts: number | null): string {
@@ -310,7 +336,9 @@ export function parseMpkRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title')))
+      .replace(/\s+/g, ' ')
+      .trim();
     const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
@@ -359,7 +387,9 @@ export function parseMpkChanges(html: string): MpkNewsItem[] {
     const lines = [...card.matchAll(/class="message__number">([^<]+)/gi)].map((m) =>
       decodeEntities(m[1]).trim(),
     );
-    const range = decodeEntities((card.match(/class="date__value">([^<]+)/i) ?? [])[1] ?? '').trim();
+    const range = decodeEntities(
+      (card.match(/class="date__value">([^<]+)/i) ?? [])[1] ?? '',
+    ).trim();
     const pubDate = range ? parsePlDate(range.split(/\s*-\s*/)[0] ?? '') : null;
     if (!title) continue;
     items.push({
@@ -401,7 +431,9 @@ export function parseZtpKomunikaty(html: string): MpkNewsItem[] {
       .split(/[,/]/)
       .map((t) => decodeEntities(t).trim().toUpperCase())
       .filter((t) => /^(LR\d{1,2}|\d{1,3})$/.test(t));
-    const range = decodeEntities((card.match(/<div class="date">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+    const range = decodeEntities(
+      (card.match(/<div class="date">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '',
+    )
       .replace(/\s+/g, ' ')
       .trim();
     const pubDate = range ? parsePlDate(range.split(/\s*(do|–|-)\s*/i)[0] ?? '') : null;
@@ -454,7 +486,9 @@ export function parseZtpRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title')))
+      .replace(/\s+/g, ' ')
+      .trim();
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description') || tagInner(b, 'content:encoded'));
     const description = htmlToText(rawDesc).slice(0, 600);
@@ -504,7 +538,9 @@ export function parseGzmNews(html: string): MpkNewsItem[] {
     );
     const dateLabel = dateM ? (dateM[2] ? `${dateM[1]} ${dateM[2]}` : dateM[1]) : '';
     const pubDate = dateM ? parsePlDate(dateM[1]) : null;
-    const lead = htmlToText((card.match(/<p class="lead list_lead">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+    const lead = htmlToText(
+      (card.match(/<p class="lead list_lead">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '',
+    )
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 600);
@@ -564,11 +600,17 @@ function extractWtpLines(title: string, description: string): string[] {
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
     // Daty z nazwą miesiąca w każdej formie z feedu: „19 października”,
-    // „17-25 października” (też – i —), „od 17 do 25 października”,
+    // „17-25 października” (też – i -), „od 17 do 25 października”,
     // „1 i 2 listopada”, „do 19 października”.
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
     // Sam zakres dni bez miesiąca („w dniach 17-25”): też data, nie linie.
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   WTP_LINE_RE.lastIndex = 0;
   while ((m = WTP_LINE_RE.exec(text))) {
@@ -596,7 +638,9 @@ export function parseWtpRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title')))
+      .replace(/\s+/g, ' ')
+      .trim();
     const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
@@ -635,9 +679,15 @@ function extractPoznanLines(title: string, description: string): string[] {
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
     // Rocznice („45-lecie Ikarusów”) to nie linie.
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   POZ_LINE_RE.lastIndex = 0;
   while ((m = POZ_LINE_RE.exec(text))) {
@@ -664,7 +714,9 @@ export function parsePoznanRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title')))
+      .replace(/\s+/g, ' ')
+      .trim();
     const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
@@ -703,9 +755,15 @@ function extractGdanskLines(title: string, description: string): string[] {
     .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   GDANSK_LINE_RE.lastIndex = 0;
   while ((m = GDANSK_LINE_RE.exec(text))) {
@@ -741,7 +799,9 @@ function gdanskItemLines(item: Record<string, unknown>, title: string, summary: 
   if (Array.isArray(raw)) {
     const seen = new Set<string>();
     for (const l of raw) {
-      const tok = String(l ?? '').trim().toUpperCase();
+      const tok = String(l ?? '')
+        .trim()
+        .toUpperCase();
       if (!tok || seen.has(tok)) continue;
       seen.add(tok);
       if (seen.size >= 12) break;
@@ -812,7 +872,9 @@ export function parseGdanskBsk(json: string): MpkNewsItem[] {
     if (!r || typeof r !== 'object') continue;
     const item = r as Record<string, unknown>;
     const title = cleanNewsTitle(first(item, ['title', 'tytul', 'naglowek', 'temat']));
-    const text = htmlToText(first(item, ['tresc', 'opis', 'komunikat', 'summary', 'content', 'message', 'text'])).slice(0, 600);
+    const text = htmlToText(
+      first(item, ['tresc', 'opis', 'komunikat', 'summary', 'content', 'message', 'text']),
+    ).slice(0, 600);
     const link = first(item, ['url', 'link']);
     const pubDate =
       parseGdanskDate(item.publishFrom) ??
@@ -869,16 +931,27 @@ async function fetchLodzText(url: string, signal: AbortSignal): Promise<string> 
 
 /** Miesiące z komunikatów MPK (feed myli "październik" z "października"). */
 const LODZ_MONTHS: Record<string, number> = {
-  stycznia: 0, lutego: 1, marca: 2, kwietnia: 3, maja: 4, czerwca: 5,
-  lipca: 6, sierpnia: 7, 'września': 8, wrzesnia: 8, 'października': 9,
-  pazdziernika: 9, 'październik': 9, pazdziernik: 9, listopada: 10, grudnia: 11,
+  stycznia: 0,
+  lutego: 1,
+  marca: 2,
+  kwietnia: 3,
+  maja: 4,
+  czerwca: 5,
+  lipca: 6,
+  sierpnia: 7,
+  września: 8,
+  wrzesnia: 8,
+  października: 9,
+  pazdziernika: 9,
+  październik: 9,
+  pazdziernik: 9,
+  listopada: 10,
+  grudnia: 11,
 };
 
 /** Pierwsza data słowna z tekstu ("16 października 2026", też zakres "12-16 ..."). */
 function parseLodzDate(text: string): number | null {
-  const m = text.match(
-    /(\d{1,2})(?:\s*[-–—]\s*\d{1,2})?\s+([a-ząćęłńóśźż]+)\s+(\d{4})/i,
-  );
+  const m = text.match(/(\d{1,2})(?:\s*[-–-]\s*\d{1,2})?\s+([a-ząćęłńóśźż]+)\s+(\d{4})/i);
   if (!m) return null;
   const month = LODZ_MONTHS[m[2].toLowerCase()];
   if (month == null) return null;
@@ -901,7 +974,7 @@ function extractLodzLines(title: string, description: string): string[] {
     .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
     .replace(
       new RegExp(
-        `\\b\\d{1,2}(?:\\s*[-–—]\\s*\\d{1,2})?\\s+(?:${Object.keys(LODZ_MONTHS).join('|')})(?:\\s+\\d{4})?\\b`,
+        `\\b\\d{1,2}(?:\\s*[-–-]\\s*\\d{1,2})?\\s+(?:${Object.keys(LODZ_MONTHS).join('|')})(?:\\s+\\d{4})?\\b`,
         'gi',
       ),
       ' ',
@@ -943,7 +1016,9 @@ export function parseMpkLodzRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title')))
+      .replace(/\s+/g, ' ')
+      .trim();
     const link = httpsLodzUrl(stripCdata(tagInner(b, 'link') || tagInner(b, 'guid')).trim());
     const rawDesc = stripCdata(tagInner(b, 'description'));
     const text = htmlToText(rawDesc).replace(/\s+/g, ' ').trim().slice(0, 600);
@@ -981,13 +1056,62 @@ export function parseMpkLodzRss(xml: string): MpkNewsItem[] {
  * linii w innych miastach).
  */
 const KIELCE_LINES = new Set([
-  '0W', '0Z',
-  '1', '2', '4', '5', '7', '8', '9', '10', '11', '12', '13', '14', '16',
-  '18', '19', '21', '23', '24', '25', '26', '27', '28', '29', '30', '31',
-  '32', '33', '34', '35', '36', '38', '41', '43', '44', '45', '46', '47',
-  '50', '51', '53', '54',
-  '102', '103', '104', '107', '108', '112', '114',
-  'E', 'F', 'N1', 'N2', 'T', 'Z',
+  '0W',
+  '0Z',
+  '1',
+  '2',
+  '4',
+  '5',
+  '7',
+  '8',
+  '9',
+  '10',
+  '11',
+  '12',
+  '13',
+  '14',
+  '16',
+  '18',
+  '19',
+  '21',
+  '23',
+  '24',
+  '25',
+  '26',
+  '27',
+  '28',
+  '29',
+  '30',
+  '31',
+  '32',
+  '33',
+  '34',
+  '35',
+  '36',
+  '38',
+  '41',
+  '43',
+  '44',
+  '45',
+  '46',
+  '47',
+  '50',
+  '51',
+  '53',
+  '54',
+  '102',
+  '103',
+  '104',
+  '107',
+  '108',
+  '112',
+  '114',
+  'E',
+  'F',
+  'N1',
+  'N2',
+  'T',
+  'Z',
 ]);
 
 const KIELCE_LINE_RE = /(0[WZ]|N[12]|\d{1,3}|[EFTZ])/g;
@@ -1011,9 +1135,15 @@ function extractKielceLines(title: string, description: string): string[] {
     .replace(/\b\d{1,3},\d+\b/g, ' ')
     .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
     .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   KIELCE_LINE_RE.lastIndex = 0;
   while ((m = KIELCE_LINE_RE.exec(text))) {
@@ -1078,7 +1208,8 @@ export function parseKielceNews(html: string): MpkNewsItem[] {
       .trim()
       .slice(0, 600);
     const rawImage = extractImage(card);
-    const imageUrl = rawImage && rawImage.startsWith('/') ? `https://ztm.kielce.pl${rawImage}` : rawImage;
+    const imageUrl =
+      rawImage && rawImage.startsWith('/') ? `https://ztm.kielce.pl${rawImage}` : rawImage;
     items.push({
       id: link,
       title,
@@ -1103,8 +1234,7 @@ export function parseKielceNews(html: string): MpkNewsItem[] {
  */
 function extractKielceArticle(html: string): ArticleBlock[] {
   const blocks: ArticleBlock[] = [];
-  const body = (html.split(/com-content-article__body/i)[1] ?? '')
-    .split(/rp-sidebarright/i)[0];
+  const body = (html.split(/com-content-article__body/i)[1] ?? '').split(/rp-sidebarright/i)[0];
   if (!body.trim()) return blocks;
   const frag = body
     .replace(/<div class="rozklad_jazdy_aticle"[\s\S]*$/i, ' ')
@@ -1167,9 +1297,15 @@ function extractSzczecinLines(title: string, description: string): string[] {
     .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
     // Czasy przejazdu („co 10 minut”, „co 20 min”, „2 godziny”) to nie linie.
     .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   SZCZECIN_LINE_RE.lastIndex = 0;
   while ((m = SZCZECIN_LINE_RE.exec(text))) {
@@ -1224,13 +1360,19 @@ function extractRadomLines(title: string, description: string): string[] {
     // Ułamki („12,5 mln zł”, „1,5 godziny”) to nie linie; przecinek musi
     // sklejać cyfry, spacja po przecinku znaczy listę linii.
     .replace(/\b\d{1,2},\d+\b/g, ' ')
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do|z|na)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|na|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})(?:\\s+\\d{4}(?:\\s*r(?:oku|\\.)?)?)?\\b`, 'gi'), ' ')
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do|z|na)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|na|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})(?:\\s+\\d{4}(?:\\s*r(?:oku|\\.)?)?)?\\b`,
+        'gi',
+      ),
+      ' ',
+    )
     // Dni przy „od/do dnia” bez miesiąca („od dnia 24 i 25.09.2026” po
     // wycięciu daty zostawia gołe 24) i „w nocy z 14 na 15” (zostawia 14).
     .replace(/\b(?:od|do)\s+(?:dnia\s+)?\d{1,2}\b/gi, ' ')
     .replace(/\bz\s+\d{1,2}\s+na\b/gi, ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   RADOM_LINE_RE.lastIndex = 0;
   while ((m = RADOM_LINE_RE.exec(text))) {
@@ -1276,7 +1418,9 @@ export function parseMzdikRadomKomunikaty(html: string): MpkNewsItem[] {
     const rawTitle = htmlToText(linkM[2]).replace(/\s+/g, ' ').trim();
     const title = cleanNewsTitle(rawTitle);
     const pubDate = parseRadomDate(rawTitle);
-    const lead = htmlToText((card.match(/<div class="article__info">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+    const lead = htmlToText(
+      (card.match(/<div class="article__info">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '',
+    )
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 600);
@@ -1305,10 +1449,13 @@ export function parseMzdikRadomKomunikaty(html: string): MpkNewsItem[] {
  */
 function extractMzdikRadomArticle(html: string): ArticleBlock[] {
   const blocks: ArticleBlock[] = [];
-  const section = (html.split(/<section aria-labelledby="section-heading">/i)[1]?.split(/<\/section>/i)[0] ?? '')
-    .replace(/<header\b[\s\S]*?<\/header>/i, ' ');
+  const section = (
+    html.split(/<section aria-labelledby="section-heading">/i)[1]?.split(/<\/section>/i)[0] ?? ''
+  ).replace(/<header\b[\s\S]*?<\/header>/i, ' ');
   if (!section.trim()) return blocks;
-  const lead = htmlToText((section.match(/<div class="standard-page__intro">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+  const lead = htmlToText(
+    (section.match(/<div class="standard-page__intro">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '',
+  )
     .replace(/\s+/g, ' ')
     .trim();
   if (lead) blocks.push({ kind: 'p', text: lead });
@@ -1339,14 +1486,17 @@ export function parseSzczecinInfo(html: string): MpkNewsItem[] {
     const title = cleanNewsTitle(rawTitle);
     const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
     const pubDate = parseSzczecinDate(datetime);
-    const lead = htmlToText((card.match(/<p class="card-text[^"]*">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+    const lead = htmlToText(
+      (card.match(/<p class="card-text[^"]*">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '',
+    )
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 600);
     // Hero obrazki ZDiTM są serwowane ścieżką względną (/storage/media/...),
     // a aplikacja potrzebuje absolutnego URL, inaczej obrazek się nie wczyta.
     const rawImage = extractImage(card);
-    const imageUrl = rawImage && rawImage.startsWith('/') ? `https://www.zditm.szczecin.pl${rawImage}` : rawImage;
+    const imageUrl =
+      rawImage && rawImage.startsWith('/') ? `https://www.zditm.szczecin.pl${rawImage}` : rawImage;
     if (!title) continue;
     items.push({
       id: link,
@@ -1397,17 +1547,23 @@ function extractOlsztynLines(title: string, description: string): string[] {
   const text = `${title} ${description}`
     // Zakresy dat („03-04.10.2026”, „28.09-02.10”) przed pojedynczymi datami,
     // inaczej po odcięciu pełnej daty zostaje goły „03” i wchodzi jak tramwaj.
-    .replace(/\d{1,2}\s*[-–—]\s*\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
-    .replace(/\d{1,2}\.\d{1,2}\s*[-–—]\s*\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}\s*[-–-]\s*\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
+    .replace(/\d{1,2}\.\d{1,2}\s*[-–-]\s*\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}\.\d{1,2}\.\d{2,4}/g, ' ')
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
     .replace(/\b\d{1,3},\d+\b/g, ' ')
     .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
     .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do|dnia)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ')
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do|dnia)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ')
     .replace(/\b\d{4}\s*r(?:oku)?\.?/gi, ' ');
   let m: RegExpExecArray | null;
   OLSZTYN_LINE_RE.lastIndex = 0;
@@ -1466,9 +1622,15 @@ function extractBialystokLines(title: string, description: string): string[] {
     // linie 202 i 6.
     .replace(/\b\d{4}\b/g, ' ')
     .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   BIALYSTOK_LINE_RE.lastIndex = 0;
   while ((m = BIALYSTOK_LINE_RE.exec(text))) {
@@ -1498,7 +1660,9 @@ export function parseZdzitOlsztynRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title')))
+      .replace(/\s+/g, ' ')
+      .trim();
     const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description') || tagInner(b, 'content:encoded'));
@@ -1528,7 +1692,14 @@ export function parseZdzitOlsztynRss(xml: string): MpkNewsItem[] {
 function parseBialystokDate(raw: string): number | null {
   const m = raw.trim().match(/(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
   if (!m) return null;
-  const ts = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 8), Number(m[5] ?? 0), 0).getTime();
+  const ts = new Date(
+    Number(m[3]),
+    Number(m[2]) - 1,
+    Number(m[1]),
+    Number(m[4] ?? 8),
+    Number(m[5] ?? 0),
+    0,
+  ).getTime();
   return Number.isFinite(ts) ? ts : null;
 }
 
@@ -1545,10 +1716,14 @@ export function parseBialystokNews(html: string): MpkNewsItem[] {
     const linkM = b.match(/<a class="news__title" href="([^"]+)"[^>]*title="([^"]*)"/i);
     if (!linkM) continue;
     const rawHref = decodeEntities(linkM[1]).trim();
-    const link = rawHref.startsWith('http') ? rawHref : `https://komunikacja.bialystok.pl${rawHref}`;
+    const link = rawHref.startsWith('http')
+      ? rawHref
+      : `https://komunikacja.bialystok.pl${rawHref}`;
     const rawTitle = decodeEntities(linkM[2]).replace(/\s+/g, ' ').trim();
     const title = cleanNewsTitle(rawTitle);
-    const dateRaw = decodeEntities((b.match(/<div class="news__date">([^<]*)/i) ?? [])[1] ?? '').trim();
+    const dateRaw = decodeEntities(
+      (b.match(/<div class="news__date">([^<]*)/i) ?? [])[1] ?? '',
+    ).trim();
     const pubDate = parseBialystokDate(dateRaw);
     const lead = htmlToText((b.match(/<div class="news__lead">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
       .replace(/\s+/g, ' ')
@@ -1579,7 +1754,9 @@ export function parseBialystokNews(html: string): MpkNewsItem[] {
  */
 function extractBialystokArticle(html: string): ArticleBlock[] {
   const blocks: ArticleBlock[] = [];
-  const wysiwyg = html.split(/component-content-wysiwyg/i)[1]?.split(/Cms_Attachment|Cms_Gallery|<footer/i)[0] ?? '';
+  const wysiwyg =
+    html.split(/component-content-wysiwyg/i)[1]?.split(/Cms_Attachment|Cms_Gallery|<footer/i)[0] ??
+    '';
   if (!wysiwyg.trim()) return blocks;
   const frag = wysiwyg.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ');
   const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
@@ -1626,9 +1803,15 @@ function extractOpoleLines(title: string, description: string): string[] {
     .replace(/\b\d{1,3}\s*par(y|a)?\b/gi, ' ')
     .replace(/\b\d{1,3}\s*metr\w*\b/gi, ' ')
     .replace(/\b\d{1,3}\s*przystan\w*\b/gi, ' ')
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   let m: RegExpExecArray | null;
   OPOLE_LINE_RE.lastIndex = 0;
   while ((m = OPOLE_LINE_RE.exec(text))) {
@@ -1666,7 +1849,9 @@ export function parseOpoleRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title')))
+      .replace(/\s+/g, ' ')
+      .trim();
     const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
@@ -1700,9 +1885,9 @@ export function parseOpoleRss(xml: string): MpkNewsItem[] {
  * konserwacja co regexy linii w innych miastach).
  */
 const LUBLIN_BUS_NUMBERS = new Set([
-  2, 3, 4, 5, 6, 7, 8, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23, 24, 25,
-  26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45,
-  47, 50, 52, 54, 55, 57, 70, 73, 74, 78, 79, 85, 301, 302, 303, 912, 917, 922,
+  2, 3, 4, 5, 6, 7, 8, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32,
+  33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 47, 50, 52, 54, 55, 57, 70, 73, 74, 78, 79, 85,
+  301, 302, 303, 912, 917, 922,
 ]);
 
 /** Trolejbusy ZDiTM Lublin z routes.txt (route_type 11, brak 152). */
@@ -1737,9 +1922,15 @@ function extractLublinLines(title: string, description: string): string[] {
     // Odjazdy z treści artykułów ("6:38", "Mełgiewska WSEI 01:") padły
     // wyżej z godzinami; numery stanowisk bez dwukropka ("WSEI 01")
     // odsiewa guard zera wiodącego niżej.
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ');
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ');
   // Odwołania do linii z kropką ("linii nr 33.") najpierw tracą kropkę,
   // żeby reguła liczebników niżej ich nie zjadła.
   const dotted = text.replace(
@@ -1795,7 +1986,8 @@ export function parseLublinInfo(html: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   let lastDate: number | null = null;
   for (const card of cards) {
-    const dateRaw = (card.match(/<div class="data nowosc[\s\S]*?<h4>([^<]+)<\/h4>/i) ?? [])[1] ?? '';
+    const dateRaw =
+      (card.match(/<div class="data nowosc[\s\S]*?<h4>([^<]+)<\/h4>/i) ?? [])[1] ?? '';
     const parsed = parseLublinDate(dateRaw);
     if (parsed != null) lastDate = parsed;
     const tinies = card.split(/<article class="tiny/i).slice(1);
@@ -1809,7 +2001,9 @@ export function parseLublinInfo(html: string): MpkNewsItem[] {
       );
       if (!linkM) continue;
       const link = `https://www.zdtm.lublin.eu${decodeEntities(linkM[1]).trim()}`;
-      const rawTitle = htmlToText((tiny.match(/<h3 class="inline">([\s\S]*?)<\/h3>/i) ?? [])[1] ?? '')
+      const rawTitle = htmlToText(
+        (tiny.match(/<h3 class="inline">([\s\S]*?)<\/h3>/i) ?? [])[1] ?? '',
+      )
         .replace(/\s+/g, ' ')
         .trim();
       const title = cleanNewsTitle(rawTitle);
@@ -1937,7 +2131,9 @@ function extractSzczecinArticle(html: string): ArticleBlock[] {
  * (ta sama konserwacja co numery w innych miastach).
  */
 const RZESZOW_LINES = new Set(
-  '0A,0B,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,22,23,24,26,27,28,29,30,31,32,33,34,35,36,37,39,40,41,42,43,44,45,46,47,49,51,52,54,57,58,59,60,61,62,N1,N2,N3,PT'.split(','),
+  '0A,0B,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,22,23,24,26,27,28,29,30,31,32,33,34,35,36,37,39,40,41,42,43,44,45,46,47,49,51,52,54,57,58,59,60,61,62,N1,N2,N3,PT'.split(
+    ',',
+  ),
 );
 
 const RZESZOW_LINE_RE = /(0[AB]|N[123]|PT|\d{1,2})/g;
@@ -1964,11 +2160,17 @@ function extractRzeszowLines(title: string, description: string): string[] {
     .replace(/\b\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b/g, ' ')
     // Czasy przejazdu („co 10 minut”) to nie linie.
     .replace(/\b\d{1,3}\s*(?:min\.|min(?:ut[aeyę]?)?|godz\.|godz(?:in[aeyę]?)?)\b/gi, ' ')
-    .replace(/\b\d+\s*[-–—]\s*lecie\b/gi, ' ')
+    .replace(/\b\d+\s*[-–-]\s*lecie\b/gi, ' ')
     // Daty z nazwą miesiąca („27 września”, „od 1 do 15 października”);
     // WTP_MONTHS to wspólna lista polskich miesięcy w dopełniaczu.
-    .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
-    .replace(/\b\d{1,2}\s*[-–—]\s*\d{1,2}\b(?=\s|$)/g, ' ')
+    .replace(
+      new RegExp(
+        `\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–-])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`,
+        'gi',
+      ),
+      ' ',
+    )
+    .replace(/\b\d{1,2}\s*[-–-]\s*\d{1,2}\b(?=\s|$)/g, ' ')
     // Ucięty zakres daty z karty WordPressa („… od 1 października 2026 r.
     // do 15 …”): samotne „do 15” zostaje po wycięciu miesiąca i udawałoby linię.
     .replace(/\b(?:od|do)\s+\d{1,2}(?:\s+do\s+\d{1,2})?(?=\s*(?:[.…]|$))/gi, ' ');
@@ -2004,7 +2206,9 @@ export function parseRzeszowRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
-    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title'))).replace(/\s+/g, ' ').trim();
+    const rawTitle = decodeEntities(stripCdata(tagInner(b, 'title')))
+      .replace(/\s+/g, ' ')
+      .trim();
     const title = cleanNewsTitle(rawTitle);
     const link = stripCdata(tagInner(b, 'link')).trim();
     const rawDesc = stripCdata(tagInner(b, 'description'));
@@ -2016,8 +2220,8 @@ export function parseRzeszowRss(xml: string): MpkNewsItem[] {
     // zaczyna się od tytułu („Sprzedaż biletów... Sprzedaż biletów...”).
     if (description.toLowerCase().startsWith(title.toLowerCase())) {
       const rest = description.slice(title.length);
-      if (rest === '' || /^[\s.,:;–—-]/.test(rest)) {
-        description = rest.replace(/^[\s.,:;–—-]+/, '').trim();
+      if (rest === '' || /^[\s.,:;–--]/.test(rest)) {
+        description = rest.replace(/^[\s.,:;–--]+/, '').trim();
       }
     }
     description = description.slice(0, 600);
@@ -2052,7 +2256,10 @@ function extractRzeszowArticle(html: string): ArticleBlock[] {
     .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/gi, ' ')
     .replace(/<div class="entry-thumbnail"[\s\S]*?<\/div>/i, ' ')
     .replace(/<div class="entry-date"[\s\S]*?<\/div>/i, ' ')
-    .replace(/<div class="social4i"[\s\S]*?(<div class="social4in"[\s\S]*?<\/div>\s*)?<\/div>/i, ' ');
+    .replace(
+      /<div class="social4i"[\s\S]*?(<div class="social4in"[\s\S]*?<\/div>\s*)?<\/div>/i,
+      ' ',
+    );
   if (!main.trim()) return [];
   const blocks: ArticleBlock[] = [];
   const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
@@ -2105,15 +2312,20 @@ function removeTaggedBlocks(html: string, openRe: RegExp): string {
  */
 function extractGdanskArticle(html: string): ArticleBlock[] {
   const blocks: ArticleBlock[] = [];
-  const title = htmlToText((html.match(/<h2 class="article-title">([\s\S]*?)<\/h2>/i) ?? [])[1] ?? '')
+  const title = htmlToText(
+    (html.match(/<h2 class="article-title">([\s\S]*?)<\/h2>/i) ?? [])[1] ?? '',
+  )
     .replace(/\s+/g, ' ')
     .trim();
   if (title) blocks.push({ kind: 'h', text: title });
-  const summary = htmlToText((html.match(/<div class="article-summary[^"]*">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+  const summary = htmlToText(
+    (html.match(/<div class="article-summary[^"]*">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '',
+  )
     .replace(/\s+/g, ' ')
     .trim();
   if (summary && summary !== title) blocks.push({ kind: 'p', text: summary });
-  const content = (html.match(/<div class="article-content[^"]*">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '';
+  const content =
+    (html.match(/<div class="article-content[^"]*">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '';
   if (content.trim()) {
     const re = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
     let m: RegExpExecArray | null;
@@ -2128,7 +2340,10 @@ function extractGdanskArticle(html: string): ArticleBlock[] {
 
 function scrubArticleHtml(raw: string): string {
   let out = raw;
-  out = removeTaggedBlocks(out, /<div\b[^>]*(?:bbGallery|data-bbgallery-box|expandedSocial|socialEmbed)[^>]*>/gi);
+  out = removeTaggedBlocks(
+    out,
+    /<div\b[^>]*(?:bbGallery|data-bbgallery-box|expandedSocial|socialEmbed)[^>]*>/gi,
+  );
   out = out
     .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe[^>]*>/gi, ' ')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, ' ')
@@ -2187,21 +2402,22 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
     : mpkLodz
       ? (html.match(/<div id="dWrkspc">([\s\S]*?)<\/td>/i)?.[1] ?? '')
       : ztp
-      ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
-        html.match(/class="content"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i)?.[1] ??
-        html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
-        '')
-      : gzm
-        ? (html.split(/id="mcontent"/i)[1]?.split(/<div class="modal"|<footer/i)[0] ?? '')
-        : wtp || zdzitOlsztyn || mzkOpole
-          ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
-            html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ??
-            html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
-            '')
-          : ztmPoznan
-            ? (html.split(/class="row content mt-4"/i)[1]?.split(/<\/section>/i)[0] ?? '')
-            : (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i)?.[1] ??
-            '');
+        ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
+          html.match(/class="content"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i)?.[1] ??
+          html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
+          '')
+        : gzm
+          ? (html.split(/id="mcontent"/i)[1]?.split(/<div class="modal"|<footer/i)[0] ?? '')
+          : wtp || zdzitOlsztyn || mzkOpole
+            ? (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
+              html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ??
+              html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
+              '')
+            : ztmPoznan
+              ? (html.split(/class="row content mt-4"/i)[1]?.split(/<\/section>/i)[0] ?? '')
+              : (html.match(
+                  /id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container c-tags/i,
+                )?.[1] ?? '');
   if (gzm) {
     // Tytuł niesie nagłówek ekranu (params.title), więc w treści go pomijamy.
     fragment = fragment.replace(/<h2\b[^>]*>[\s\S]*?<\/h2>/i, ' ');
@@ -2242,9 +2458,7 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
     if (!text || ARTICLE_JUNK_RE.test(text)) continue;
     const tag = match[1].toLowerCase();
     const capsHead =
-      text.length <= 48 &&
-      text === text.toLocaleUpperCase('pl') &&
-      /[A-ZĄĆĘŁŃÓŚŹŻ]/.test(text);
+      text.length <= 48 && text === text.toLocaleUpperCase('pl') && /[A-ZĄĆĘŁŃÓŚŹŻ]/.test(text);
     blocks.push({
       kind: tag.startsWith('h') || capsHead ? 'h' : 'p',
       text,
@@ -2378,7 +2592,11 @@ async function fetchLodzNews(signal?: AbortSignal, cityId = 'lodz'): Promise<Mpk
 async function fetchOlsztynNews(signal?: AbortSignal, cityId = 'olsztyn'): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
-    const xml = await fetchText(ZDZIT_OLSZTYN_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const xml = await fetchText(
+      ZDZIT_OLSZTYN_FEED_URL,
+      scope.signal,
+      'application/rss+xml, application/xml, text/xml, */*',
+    );
     const items = parseZdzitOlsztynRss(xml);
     if (items.length === 0) console.warn('[News] Olsztyn: pusty feed (zmiana formatu?)');
     return rememberNews(sortNews(items), cityId);
@@ -2415,7 +2633,10 @@ async function fetchRadomNews(signal?: AbortSignal, cityId = 'radom'): Promise<M
   }
 }
 
-async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Promise<MpkNewsItem[]> {
+async function fetchSzczecinNews(
+  signal?: AbortSignal,
+  cityId = 'szczecin',
+): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
@@ -2441,7 +2662,10 @@ async function fetchKielceNews(signal?: AbortSignal, cityId = 'kielce'): Promise
 }
 
 /** Komunikaty BKM Białystok: jedno źródło (lista HTML), brak fallbacku. */
-async function fetchBialystokNews(signal?: AbortSignal, cityId = 'bialystok'): Promise<MpkNewsItem[]> {
+async function fetchBialystokNews(
+  signal?: AbortSignal,
+  cityId = 'bialystok',
+): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const html = await fetchText(BKM_BIALYSTOK_KOMUNIKATY_URL, scope.signal, 'text/html, */*');
@@ -2457,7 +2681,11 @@ async function fetchBialystokNews(signal?: AbortSignal, cityId = 'bialystok'): P
 async function fetchOpoleNews(signal?: AbortSignal, cityId = 'opole'): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
-    const xml = await fetchText(MZK_OPOLE_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const xml = await fetchText(
+      MZK_OPOLE_FEED_URL,
+      scope.signal,
+      'application/rss+xml, application/xml, text/xml, */*',
+    );
     const items = parseOpoleRss(xml);
     if (items.length === 0) console.warn('[News] Opole: pusty feed (zmiana formatu?)');
     return rememberNews(sortNews(items), cityId);
@@ -2470,7 +2698,11 @@ async function fetchOpoleNews(signal?: AbortSignal, cityId = 'opole'): Promise<M
 async function fetchRzeszowNews(signal?: AbortSignal, cityId = 'rzeszow'): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
-    const xml = await fetchText(ZTM_RZESZOW_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const xml = await fetchText(
+      ZTM_RZESZOW_FEED_URL,
+      scope.signal,
+      'application/rss+xml, application/xml, text/xml, */*',
+    );
     const items = parseRzeszowRss(xml);
     if (items.length === 0) console.warn('[News] Rzeszów: pusty feed (zmiana formatu?)');
 
@@ -2484,7 +2716,11 @@ async function fetchRzeszowNews(signal?: AbortSignal, cityId = 'rzeszow'): Promi
 async function fetchPoznanNews(signal?: AbortSignal, cityId = 'poznan'): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
-    const xml = await fetchText(ZTM_POZNAN_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const xml = await fetchText(
+      ZTM_POZNAN_FEED_URL,
+      scope.signal,
+      'application/rss+xml, application/xml, text/xml, */*',
+    );
     const items = parsePoznanRss(xml);
     if (items.length === 0) console.warn('[News] Poznań: pusty feed (zmiana formatu?)');
     return rememberNews(sortNews(items), cityId);
@@ -2494,7 +2730,10 @@ async function fetchPoznanNews(signal?: AbortSignal, cityId = 'poznan'): Promise
 }
 
 /** Komunikaty ZTM Gdańsk: zmiany tras (znt) plus bieżące awarie (bsk). */
-async function fetchGdanskNews(signal?: AbortSignal, cityId = 'trojmiasto'): Promise<MpkNewsItem[]> {
+async function fetchGdanskNews(
+  signal?: AbortSignal,
+  cityId = 'trojmiasto',
+): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const [znt, bsk] = await Promise.allSettled([
@@ -2519,7 +2758,11 @@ async function fetchGdanskNews(signal?: AbortSignal, cityId = 'trojmiasto'): Pro
 async function fetchWtpNews(signal?: AbortSignal, cityId = 'warszawa'): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
-    const xml = await fetchText(WTP_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
+    const xml = await fetchText(
+      WTP_FEED_URL,
+      scope.signal,
+      'application/rss+xml, application/xml, text/xml, */*',
+    );
     const items = parseWtpRss(xml);
     if (items.length === 0) console.warn('[News] WTP: pusty feed (zmiana formatu?)');
     return rememberNews(sortNews(items), cityId);
@@ -2546,9 +2789,11 @@ async function fetchZtpNews(signal?: AbortSignal, cityId = 'krakow'): Promise<Mp
   try {
     const [list, rss] = await Promise.allSettled([
       fetchText(ZTP_KOMUNIKATY_URL, scope.signal, 'text/html, */*').then(parseZtpKomunikaty),
-      fetchText(ZTP_KOMUNIKATY_RSS, scope.signal, 'application/rss+xml, application/xml, text/xml, */*').then(
-        parseZtpRss,
-      ),
+      fetchText(
+        ZTP_KOMUNIKATY_RSS,
+        scope.signal,
+        'application/rss+xml, application/xml, text/xml, */*',
+      ).then(parseZtpRss),
     ]);
     const fromList = list.status === 'fulfilled' ? list.value : [];
     if (fromList.length > 0) {
@@ -2579,9 +2824,11 @@ export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]>
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const [city, mpk] = await Promise.allSettled([
-      fetchText(MPK_NEWS_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*').then(
-        parseMpkRss,
-      ),
+      fetchText(
+        MPK_NEWS_URL,
+        scope.signal,
+        'application/rss+xml, application/xml, text/xml, */*',
+      ).then(parseMpkRss),
       fetchText(MPK_CHANGES_URL, scope.signal, 'text/html, */*').then(parseMpkChanges),
     ]);
     const changes = mpk.status === 'fulfilled' ? mpk.value : [];
@@ -2643,9 +2890,7 @@ export async function markNewsSeen(items?: MpkNewsItem[]): Promise<void> {
   inMemorySeenCity = cityId;
 
   const currentItems = items || (cachedNewsCity === cityId ? cachedNewsItems : null) || [];
-  const urgentIds = currentItems
-    .filter((i) => i.urgent && isToday(i.pubDate))
-    .map((i) => i.id);
+  const urgentIds = currentItems.filter((i) => i.urgent && isToday(i.pubDate)).map((i) => i.id);
 
   inMemorySeenUrgentIds = new Set(urgentIds);
 

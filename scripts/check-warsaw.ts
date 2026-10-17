@@ -4,7 +4,7 @@
  * Uruchomienie: `npm run check:warsaw`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (tytuły z www.wtp.waw.pl/feed z 2026-10-14, kolory linii M1/M2
  * z routes.txt feedu WTP, numery KM/WKD z feedów mkuran.pl).
  */
@@ -20,7 +20,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -153,7 +153,7 @@ describe('Metro M1/M2: tryb i kolory');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

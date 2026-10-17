@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { kvGet, kvSet } from './storage';
-import type { RouteStyle } from './routing/types';
+import type { AllowedTransferModes, RouteStyle, TransitVehicleMode } from './routing/types';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -9,7 +9,7 @@ import { uk } from '../i18n/uk';
 
 const SETTINGS_DICTS: Record<string, Strings> = { pl, en, de, uk };
 
-/** Słownik pod bieżące locale — do synchronicznych helperów formatujących. */
+/** Słownik pod bieżące locale - do synchronicznych helperów formatujących. */
 function tr(): Strings {
   return SETTINGS_DICTS[getLocaleSync()] ?? pl;
 }
@@ -53,9 +53,29 @@ export interface RoutingSettings {
    * wzorce na poziomie skanowania.
    */
   cableEnabled: boolean;
+  /** Na które pojazdy wolno się przesiadać. Default wszystko true. */
+  allowedModes: AllowedTransferModes;
   /** Wagi spaceru i przesiadek w koszcie planera. Default 'balanced'. */
   routeStyle: RouteStyle;
 }
+
+export const TRANSIT_MODES: readonly TransitVehicleMode[] = [
+  'tram',
+  'bus',
+  'trolleybus',
+  'subway',
+  'train',
+  'cable',
+];
+
+export const DEFAULT_ALLOWED_MODES: AllowedTransferModes = {
+  tram: true,
+  bus: true,
+  trolleybus: true,
+  subway: true,
+  train: true,
+  cable: true,
+};
 
 export const DEFAULT_SETTINGS: RoutingSettings = {
   maxTransfers: 2,
@@ -66,6 +86,7 @@ export const DEFAULT_SETTINGS: RoutingSettings = {
   trainsEnabled: true,
   trainMinTransferSec: 300,
   cableEnabled: true,
+  allowedModes: { ...DEFAULT_ALLOWED_MODES },
   routeStyle: 'balanced',
 };
 
@@ -85,7 +106,12 @@ function clampInt(value: unknown, def: number, min: number, max: number): number
 }
 
 const WALK_PACES: readonly WalkPaceProfile[] = ['slow', 'normal', 'fast'];
-export const ROUTE_STYLES: readonly RouteStyle[] = ['fastest', 'balanced', 'lessWalking', 'fewerTransfers'];
+export const ROUTE_STYLES: readonly RouteStyle[] = [
+  'fastest',
+  'balanced',
+  'lessWalking',
+  'fewerTransfers',
+];
 
 /** Stare tempo (m/s) na profil: migracja danych z wcześniejszych wersji. */
 function paceFromLegacyMps(mps: number): WalkPaceProfile {
@@ -95,7 +121,33 @@ function paceFromLegacyMps(mps: number): WalkPaceProfile {
 }
 
 /** Wpis, który mógł przyjść ze starego zapisu albo kopii: ma jeszcze walkSpeedMps. */
-type StoredSettings = Partial<RoutingSettings> & { walkSpeedMps?: number };
+type StoredSettings = Partial<RoutingSettings> & {
+  walkSpeedMps?: number;
+  allowedModes?: Partial<Record<TransitVehicleMode, unknown>>;
+};
+
+function clampAllowedModes(
+  raw: StoredSettings['allowedModes'],
+  trainsEnabled: boolean,
+  cableEnabled: boolean,
+): AllowedTransferModes {
+  // Stare zapisy nie znają allowedModes: składamy je z przełączników
+  // pociągów i Polinki, reszta domyślnie włączona.
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_ALLOWED_MODES, train: trainsEnabled, cable: cableEnabled };
+  }
+  const out = { ...DEFAULT_ALLOWED_MODES };
+  for (const mode of TRANSIT_MODES) {
+    if (typeof raw[mode] === 'boolean') out[mode] = raw[mode] as boolean;
+  }
+  // Przełączniki pociągów i Polinki to to samo co pille: wygrywa jawny
+  // wpis w allowedModes, inaczej bierzemy wartość przełącznika.
+  if (typeof raw.train !== 'boolean') out.train = trainsEnabled;
+  if (typeof raw.cable !== 'boolean') out.cable = cableEnabled;
+  // Zawsze coś musi jeździć, inaczej planer zwraca pustkę.
+  if (!TRANSIT_MODES.some((m) => out[m])) return { ...DEFAULT_ALLOWED_MODES };
+  return out;
+}
 
 function clampSettings(s: StoredSettings): RoutingSettings {
   // Profile nie było wcześniej, tylko tempo w m/s. Mapujemy je raz przy
@@ -105,16 +157,49 @@ function clampSettings(s: StoredSettings): RoutingSettings {
     : s.walkSpeedMps != null
       ? paceFromLegacyMps(s.walkSpeedMps)
       : DEFAULT_SETTINGS.walkPace;
+  const trainsEnabled =
+    typeof s.trainsEnabled === 'boolean' ? s.trainsEnabled : DEFAULT_SETTINGS.trainsEnabled;
+  const cableEnabled =
+    typeof s.cableEnabled === 'boolean' ? s.cableEnabled : DEFAULT_SETTINGS.cableEnabled;
+  const allowedModes = clampAllowedModes(s.allowedModes, trainsEnabled, cableEnabled);
   return {
-    maxTransfers: clampInt(s.maxTransfers, DEFAULT_SETTINGS.maxTransfers, SETTINGS_LIMITS.maxTransfers.min, SETTINGS_LIMITS.maxTransfers.max),
-    minTransferSec: clampInt(s.minTransferSec, DEFAULT_SETTINGS.minTransferSec, SETTINGS_LIMITS.minTransferSec.min, SETTINGS_LIMITS.minTransferSec.max),
-    maxWalkM: clampInt(s.maxWalkM, DEFAULT_SETTINGS.maxWalkM, SETTINGS_LIMITS.maxWalkM.min, SETTINGS_LIMITS.maxWalkM.max),
+    maxTransfers: clampInt(
+      s.maxTransfers,
+      DEFAULT_SETTINGS.maxTransfers,
+      SETTINGS_LIMITS.maxTransfers.min,
+      SETTINGS_LIMITS.maxTransfers.max,
+    ),
+    minTransferSec: clampInt(
+      s.minTransferSec,
+      DEFAULT_SETTINGS.minTransferSec,
+      SETTINGS_LIMITS.minTransferSec.min,
+      SETTINGS_LIMITS.minTransferSec.max,
+    ),
+    maxWalkM: clampInt(
+      s.maxWalkM,
+      DEFAULT_SETTINGS.maxWalkM,
+      SETTINGS_LIMITS.maxWalkM.min,
+      SETTINGS_LIMITS.maxWalkM.max,
+    ),
     walkPace,
-    anchorRadiusM: clampInt(s.anchorRadiusM, DEFAULT_SETTINGS.anchorRadiusM, SETTINGS_LIMITS.anchorRadiusM.min, SETTINGS_LIMITS.anchorRadiusM.max),
-    trainsEnabled: typeof s.trainsEnabled === 'boolean' ? s.trainsEnabled : DEFAULT_SETTINGS.trainsEnabled,
-    trainMinTransferSec: clampInt(s.trainMinTransferSec, DEFAULT_SETTINGS.trainMinTransferSec, SETTINGS_LIMITS.trainMinTransferSec.min, SETTINGS_LIMITS.trainMinTransferSec.max),
-    cableEnabled: typeof s.cableEnabled === 'boolean' ? s.cableEnabled : DEFAULT_SETTINGS.cableEnabled,
-    routeStyle: ROUTE_STYLES.includes(s.routeStyle as RouteStyle) ? (s.routeStyle as RouteStyle) : DEFAULT_SETTINGS.routeStyle,
+    anchorRadiusM: clampInt(
+      s.anchorRadiusM,
+      DEFAULT_SETTINGS.anchorRadiusM,
+      SETTINGS_LIMITS.anchorRadiusM.min,
+      SETTINGS_LIMITS.anchorRadiusM.max,
+    ),
+    trainsEnabled: allowedModes.train,
+    trainMinTransferSec: clampInt(
+      s.trainMinTransferSec,
+      DEFAULT_SETTINGS.trainMinTransferSec,
+      SETTINGS_LIMITS.trainMinTransferSec.min,
+      SETTINGS_LIMITS.trainMinTransferSec.max,
+    ),
+    cableEnabled: allowedModes.cable,
+    allowedModes,
+    routeStyle: ROUTE_STYLES.includes(s.routeStyle as RouteStyle)
+      ? (s.routeStyle as RouteStyle)
+      : DEFAULT_SETTINGS.routeStyle,
   };
 }
 
@@ -135,7 +220,7 @@ export async function loadSettings(): Promise<RoutingSettings> {
       cached = clampSettings(parsed);
     }
   } catch {
-    // storage niedostępny — zostają defaulty
+    // storage niedostępny - zostają defaulty
   }
   loaded = true;
   notify();
@@ -143,7 +228,22 @@ export async function loadSettings(): Promise<RoutingSettings> {
 }
 
 export async function saveSettings(next: Partial<RoutingSettings>): Promise<RoutingSettings> {
-  cached = clampSettings({ ...cached, ...next });
+  // Pille i stare przełączniki to jedno ustawienie: zmiana z jednej strony
+  // przepisuje drugą, żeby silnik i kopia zapasowa widziały to samo.
+  const merged: StoredSettings = { ...cached, ...next };
+  if (next.allowedModes && next.trainsEnabled === undefined) {
+    merged.trainsEnabled = next.allowedModes.train;
+  }
+  if (next.allowedModes && next.cableEnabled === undefined) {
+    merged.cableEnabled = next.allowedModes.cable;
+  }
+  if (!next.allowedModes && (next.trainsEnabled !== undefined || next.cableEnabled !== undefined)) {
+    const modes = { ...cached.allowedModes };
+    if (next.trainsEnabled !== undefined) modes.train = next.trainsEnabled;
+    if (next.cableEnabled !== undefined) modes.cable = next.cableEnabled;
+    merged.allowedModes = modes;
+  }
+  cached = clampSettings(merged);
   notify();
   try {
     await kvSet(STORAGE_KEY, JSON.stringify(cached));
@@ -201,8 +301,6 @@ export function walkMetersPerMinute(speedMps: number = WALK_PACE_DEFAULTS_MPS.no
 export function walkMinutesFor(meters: number, speedMps?: number): number {
   return Math.max(1, Math.round(meters / walkMetersPerMinute(speedMps)));
 }
-
-
 
 export function formatTransferTime(sec: number): string {
   const min = Math.round(sec / 60);

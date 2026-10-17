@@ -1,6 +1,6 @@
 // Karta „Nieobsługiwane miasto": pokazywana, gdy GPS jest poza strefą
 // aktywnego miasta. Ma wyglądać jak pełnoprawny empty-state,
-// nie jak błąd — stąd spokojna kompozycja M3: ikona w kole, pigułka
+// nie jak błąd - stąd spokojna kompozycja M3: ikona w kole, pigułka
 // z wykrytą miejscowością, tytuł, opis i jedno wyraźne CTA.
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';

@@ -15,13 +15,13 @@ import androidx.core.app.ServiceCompat
  * Serwis, który naprawdę śledzi podróż.
  *
  * Powiadomienie aktualizowane z JS umiera razem z aplikacją: po odejściu od
- * ekranu proces jest throttlowany, a po ubiciu — w ogóle. Stąd ten serwis.
+ * ekranu proces jest throttlowany, a po ubiciu - w ogóle. Stąd ten serwis.
  * Trzyma plan podróży, sam przelicza fazę i postęp (czyste działania na
  * zeglem) i sam przestaje, kiedy podróż się skończy. JS odpowiada tylko za
  * dostarczenie treści i za dane z planera.
  *
  * Render korzysta z `Notification.ProgressStyle` (Android 16), a typ usługi
- * to `specialUse` — śledzenie podróży użytkownika nie mieści się w żadnej
+ * to `specialUse` - śledzenie podróży użytkownika nie mieści się w żadnej
  * z typów „lokalizacja / telefon / kamera", a dokumentacja Androida wprost
  * wskazuje śledzenie przejazdu jako przykład `specialUse`.
  */
@@ -78,7 +78,7 @@ class LiveTripService : Service() {
     if (!json.isNullOrBlank()) {
       LiveTripPlan.fromJson(json)?.let {
         plan = it
-        // Nowy plan unieważnia podpis — inaczej pierwsza klatka po starcie
+        // Nowy plan unieważnia podpis - inaczej pierwsza klatka po starcie
         // zostałaby wstrzymana jako „bez zmian".
         lastSignature = null
       }
@@ -155,7 +155,7 @@ class LiveTripService : Service() {
       try {
         NotificationManagerCompat.from(this).notify(LiveUpdateFactory.NOTIFICATION_ID, notification)
       } catch (_: Throwable) {
-        // brak POST_NOTIFICATIONS — JS dostało wtedy false przy starcie
+        // brak POST_NOTIFICATIONS - JS dostało wtedy false przy starcie
       }
       shutdown()
       return false
@@ -184,7 +184,7 @@ class LiveTripService : Service() {
     /** Ile przed końcem przejazdu wibrujemy: czas, żeby odłożyć telefon i dojść do drzwi. */
     private const val ALIGHT_LEAD_MS = 2 * 60_000L
 
-    /** 1 Hz w trasie — pasek postępu ma płynąć tak jak w nawigacji. */
+    /** 1 Hz w trasie - pasek postępu ma płynąć tak jak w nawigacji. */
     private const val TICK_RIDING_MS = 1_000L
 
     /** Poza trasą licznik odlicza system, więc JS-owy render nie jest potrzebny. */

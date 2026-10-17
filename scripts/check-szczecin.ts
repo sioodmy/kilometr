@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:szczecin`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (karty z zditm.szczecin.pl/pl/pasazer/informacje z 2026-10-15,
  * struktura podstrony informacji z tego samego dnia, linie i typy
  * z GTFS ZDiTM).
@@ -15,7 +15,11 @@
 import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
-import { extractArticleBlocks, parseSzczecinInfo, ZDITM_SZCZECIN_INFO_URL } from '../src/services/mpkNews';
+import {
+  extractArticleBlocks,
+  parseSzczecinInfo,
+  ZDITM_SZCZECIN_INFO_URL,
+} from '../src/services/mpkNews';
 import { pl } from '../src/i18n/pl';
 import { en } from '../src/i18n/en';
 import { de } from '../src/i18n/de';
@@ -27,7 +31,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -47,7 +51,11 @@ describe('Rejestr miasta');
   expect('nazwa', szcz.name, 'Szczecin');
   expect('slug live to szczecin', szcz.zbiorkomSlug, 'szczecin');
   expect('bbox live', szcz.zbiorkomBbox, '14.35,53.3,14.75,53.6');
-  expect('feed komunikatów', ZDITM_SZCZECIN_INFO_URL, 'https://www.zditm.szczecin.pl/pl/pasazer/informacje');
+  expect(
+    'feed komunikatów',
+    ZDITM_SZCZECIN_INFO_URL,
+    'https://www.zditm.szczecin.pl/pl/pasazer/informacje',
+  );
   expect('bez kolei regionalnej', szcz.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', szcz.features.directBusPosition, false);
 }
@@ -78,7 +86,11 @@ describe('Komunikaty ZDiTM (lista)');
 </div>`;
   const items = parseSzczecinInfo(html);
   expect('dwa komunikaty', items.length, 2);
-  expect('tytuł bez daty na początku', items[0].title, 'Reduty Ordona: Zmiany w kursowaniu komunikacji od 13 października');
+  expect(
+    'tytuł bez daty na początku',
+    items[0].title,
+    'Reduty Ordona: Zmiany w kursowaniu komunikacji od 13 października',
+  );
   expect('linie z leadu (75 i nocne 521)', items[0].lines, ['75', '521']);
   expect('opis z leadu w karcie', items[0].description.includes('Reduty Ordona'), true);
   const d0 = items[0].pubDate ? new Date(items[0].pubDate) : null;
@@ -104,7 +116,9 @@ describe('Numery linii ZDiTM: daty, godziny, numery przystanków');
     `<p class="card-text">${lead}</p></div></div>`;
   expect(
     '„od 24.10 do 2.11” to nie linie',
-    parseSzczecinInfo(card('Wszystkich Świętych: zmiany od 24.10 do 2.11', 'Dodatkowe linie C i 53')).map((i) => i.lines),
+    parseSzczecinInfo(
+      card('Wszystkich Świętych: zmiany od 24.10 do 2.11', 'Dodatkowe linie C i 53'),
+    ).map((i) => i.lines),
     [['C', '53']],
   );
   // Regresja: \b w JS nie zna polskich liter, więc „będą” łamało się na
@@ -112,47 +126,68 @@ describe('Numery linii ZDiTM: daty, godziny, numery przystanków');
   // komunikacie („będącego”, „będzie”, „będą”).
   expect(
     '„będą” i „będącego” to nie linia B',
-    parseSzczecinInfo(card('Te ulice obecnie się zmieniają', 'Roboty prowadzone są i będą w październiku, będącego kontynuacją')).map((i) => i.lines),
+    parseSzczecinInfo(
+      card(
+        'Te ulice obecnie się zmieniają',
+        'Roboty prowadzone są i będą w październiku, będącego kontynuacją',
+      ),
+    ).map((i) => i.lines),
     [[]],
   );
   expect(
     'spójnik „a” to nie linia A',
-    parseSzczecinInfo(card('Zmiany na liniach', 'Zmiany linii 75, a także 521 oraz autobusów')).map((i) => i.lines),
+    parseSzczecinInfo(card('Zmiany na liniach', 'Zmiany linii 75, a także 521 oraz autobusów')).map(
+      (i) => i.lines,
+    ),
     [['75', '521']],
   );
   expect(
     'mała litera to nie linia (ZDiTM pisze linie wielką)',
-    parseSzczecinInfo(card('Zmiany na liniach', 'Zmiany na linii b w Policach')).map((i) => i.lines),
+    parseSzczecinInfo(card('Zmiany na liniach', 'Zmiany na linii b w Policach')).map(
+      (i) => i.lines,
+    ),
     [[]],
   );
   expect(
     '„KOMUNIKAT 201/26” to nie linia 201',
-    parseSzczecinInfo(card('KOMUNIKAT 201/26: zmiana trasy', 'Zmiana trasy autobusów linii 86')).map((i) => i.lines),
+    parseSzczecinInfo(
+      card('KOMUNIKAT 201/26: zmiana trasy', 'Zmiana trasy autobusów linii 86'),
+    ).map((i) => i.lines),
     [['86']],
   );
   expect(
     '„12,5 mln zł” to nie linia 12',
-    parseSzczecinInfo(card('Inwestycje drogowe', 'Koszt to 12,5 mln zł, a prace potrwają do listopada')).map((i) => i.lines),
+    parseSzczecinInfo(
+      card('Inwestycje drogowe', 'Koszt to 12,5 mln zł, a prace potrwają do listopada'),
+    ).map((i) => i.lines),
     [[]],
   );
   expect(
     '„13 października” to nie linia 13',
-    parseSzczecinInfo(card('Zmiany od 13 października', 'Objazd dla linii 6 i B')).map((i) => i.lines),
+    parseSzczecinInfo(card('Zmiany od 13 października', 'Objazd dla linii 6 i B')).map(
+      (i) => i.lines,
+    ),
     [['6', 'B']],
   );
   expect(
     '„nr 34211” to numer przystanku, nie linia',
-    parseSzczecinInfo(card('Organizacja przystanków', 'Wyłączone: Chłopickiego (nr 34211), linia 86')).map((i) => i.lines),
+    parseSzczecinInfo(
+      card('Organizacja przystanków', 'Wyłączone: Chłopickiego (nr 34211), linia 86'),
+    ).map((i) => i.lines),
     [['86']],
   );
   expect(
     '„08:55” i „co 20 minut” to nie linie',
-    parseSzczecinInfo(card('Komunikat poranny', 'Od 08:55 linia 107 co 20 minut')).map((i) => i.lines),
+    parseSzczecinInfo(card('Komunikat poranny', 'Od 08:55 linia 107 co 20 minut')).map(
+      (i) => i.lines,
+    ),
     [['107']],
   );
   expect(
     '„co 10 minut” to nie linia 10',
-    parseSzczecinInfo(card('Zmiany częstotliwości', 'Tramwaje będą kursować co 10 minut')).map((i) => i.lines),
+    parseSzczecinInfo(card('Zmiany częstotliwości', 'Tramwaje będą kursować co 10 minut')).map(
+      (i) => i.lines,
+    ),
     [[]],
   );
   expect(
@@ -184,7 +219,11 @@ describe('Tryb linii: tramwaje 1-12, reszta to autobusy');
   expect('53 to autobus', inferTransitMode(undefined, '53', 'szczecin'), 'bus');
   expect('A to autobus pospieszny', inferTransitMode(undefined, 'A', 'szczecin'), 'bus');
   expect('521 to autobus nocny', inferTransitMode(undefined, '521', 'szczecin'), 'bus');
-  expect('reguła niskich numerów działa też poza Szczecinem', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
+  expect(
+    'reguła niskich numerów działa też poza Szczecinem',
+    inferTransitMode(undefined, '5', 'wroclaw'),
+    'tram',
+  );
 }
 
 describe('Podpowiedzi onboardingu per-miasto');
@@ -193,7 +232,12 @@ describe('Podpowiedzi onboardingu per-miasto');
   expect('pl dom', pl.onboarding.slotHomeHint('szczecin'), 'np. Wojska Polskiego 12');
   expect('pl praca', pl.onboarding.slotWorkHint('szczecin'), 'np. Galeria Kaskada');
   expect('pl uczelnia', pl.onboarding.slotUniHint('szczecin'), 'np. US');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
+  for (const [lang, dict] of [
+    ['pl', pl],
+    ['en', en],
+    ['de', de],
+    ['uk', uk],
+  ] as const) {
     expect(
       `${lang}: szczecin nie dziedziczy Wrocławia`,
       dict.onboarding.slotHomeHint('szczecin') !== dict.onboarding.slotHomeHint('wroclaw'),
@@ -226,13 +270,40 @@ describe('Treść komunikatu ZDiTM (main#pageContent)');
 <h2><a>Więcej wiadomości ze Szczecina</a></h2>
 <div class="row"><div class="col"><div class="card"><h3><a href="https://wiadomosci.szczecin.eu/artykul/x">Darmowe kursy online</a></h3></div></div></div>
 </main></body></html>`;
-  const blocks = extractArticleBlocks(html, 'https://www.zditm.szczecin.pl/pl/pasazer/informacje/6ac8c1e79fd85/reduty-ordona');
-  expect('bez tytułu z h1', blocks.some((b) => b.text.startsWith('Reduty Ordona:')), false);
-  expect('lead jest pierwszym akapitem', blocks[0]?.text.includes('W związku z pracami') ?? false, true);
-  expect('sekcja o autobusach jest', blocks.some((b) => b.text.includes('Łukasińskiego')), true);
-  expect('bez spisu treści z nav', blocks.some((b) => b.text === 'Spis treści'), false);
-  expect('bez nagłówka z publikacją', blocks.some((b) => b.text.startsWith('opublikowano:')), false);
-  expect('bez stopki powiązanych', blocks.some((b) => b.text.includes('Darmowe kursy online')), false);
+  const blocks = extractArticleBlocks(
+    html,
+    'https://www.zditm.szczecin.pl/pl/pasazer/informacje/6ac8c1e79fd85/reduty-ordona',
+  );
+  expect(
+    'bez tytułu z h1',
+    blocks.some((b) => b.text.startsWith('Reduty Ordona:')),
+    false,
+  );
+  expect(
+    'lead jest pierwszym akapitem',
+    blocks[0]?.text.includes('W związku z pracami') ?? false,
+    true,
+  );
+  expect(
+    'sekcja o autobusach jest',
+    blocks.some((b) => b.text.includes('Łukasińskiego')),
+    true,
+  );
+  expect(
+    'bez spisu treści z nav',
+    blocks.some((b) => b.text === 'Spis treści'),
+    false,
+  );
+  expect(
+    'bez nagłówka z publikacją',
+    blocks.some((b) => b.text.startsWith('opublikowano:')),
+    false,
+  );
+  expect(
+    'bez stopki powiązanych',
+    blocks.some((b) => b.text.includes('Darmowe kursy online')),
+    false,
+  );
   expect(
     'nagłówek sekcji istnieje dokładnie raz (spis z offcanvasu odcięty)',
     blocks.filter((b) => b.text === 'Autobusy linii 75 i 521').length,
@@ -245,13 +316,21 @@ describe('Treść komunikatu ZDiTM (main#pageContent)');
     fallbackHtml,
     'https://www.zditm.szczecin.pl/pl/pasazer/informacje/6ac8c1e79fd85/reduty-ordona',
   );
-  expect('fallback: bez stopki powiązanych', fallbackBlocks.some((b) => b.text.includes('Darmowe kursy online')), false);
-  expect('fallback: sekcja o autobusach jest', fallbackBlocks.some((b) => b.text.includes('Łukasińskiego')), true);
+  expect(
+    'fallback: bez stopki powiązanych',
+    fallbackBlocks.some((b) => b.text.includes('Darmowe kursy online')),
+    false,
+  );
+  expect(
+    'fallback: sekcja o autobusach jest',
+    fallbackBlocks.some((b) => b.text.includes('Łukasińskiego')),
+    true,
+  );
 }
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);
