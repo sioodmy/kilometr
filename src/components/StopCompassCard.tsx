@@ -1,10 +1,10 @@
 // Karta nawigacji pieszej do przystanku / celu na ekranie szczegółów trasy.
 //
-// Minimapka z dociągniętą trasą pieszą zajmuje górę widgetu (2,5x miejsca,
-// które miała w slocie 60% ekranu), a pod nią, bez szczeliny i bez promieni
-// na styku, leży panel instrukcji w stylu M3: ikona manewru, „Skręć w lewo
-// · 50 m”, potem następny manewr („Potem skręć w prawo · 120 m”).
-// Dotknięcie całego widgetu otwiera pełną mapę trasy.
+// Minimapka z dociągniętą trasą pieszą zajmuje górę widgetu (70% wysokości
+// ekranu minus panel), a pod nią, bez szczeliny i bez promieni na styku,
+// leży panel instrukcji w stylu M3: ikona manewru, „Skręć w lewo · 50 m”,
+// potem następny manewr („Potem skręć w prawo · 120 m”). Cały widget
+// mieści się na ekranie. Dotknięcie widgetu otwiera pełną mapę trasy.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -58,14 +58,14 @@ interface StopCompassCardProps {
 }
 
 const OFF_ROUTE_M = 38;
-// Stary slot widgetu: 60% wysokości ekranu. Mapa rośnie 2,5x względem
-// miejsca, które miała w tym slocie (slot minus panel instrukcji i odstępy).
-const NAV_SLOT_FRACTION = 0.6;
-const MAP_SCALE = 2.5;
+// Cały widget (mapa + panel instrukcji) ma zmieścić się na ekranie: 70%
+// wysokości okna zostawia miejsce na paski systemowe i naraz widoczny
+// nagłówek strony szczegółów.
+const NAV_WIDGET_FRACTION = 0.7;
 // Panel instrukcji M3 (~98 px treści) plus padding 8 widgetu i dystans 8
-// mapy od panelu. Stała, żeby wysokość mapy nie skakała wraz z treścią
-// panelu (np. przy „Wyznaczam nową trasę”).
-const MAP_SLOT_RESERVE = 122;
+// mapy od panelu. Stała: mapa dostaje resztę widgetu, więc wysokość mapy
+// nie skacze wraz z treścią panelu (np. przy „Wyznaczam nową trasę”).
+const MAP_WIDGET_RESERVE = 122;
 const ARRIVED_M = 20;
 const REROUTE_COOLDOWN_MS = 4000;
 const REROUTE_MIN_MOVE_M = 12;
@@ -158,9 +158,10 @@ function roundNavM(m: number): number {
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
   const s = useStrings();
   const { height: winH } = useWindowDimensions();
-  // Wysokość mapy: 2,5x dawnego slotu na mapę (60% ekranu minus odstępy
-  // i panel instrukcji). Widget jest auto, więc rośnie razem z mapą.
-  const navMapH = Math.round((winH * NAV_SLOT_FRACTION - MAP_SLOT_RESERVE) * MAP_SCALE);
+  // Cały widget (mapa + panel instrukcji) mieści się na ekranie:
+  // 70% wysokości okna, mapa dostaje resztę nad panelem instrukcji.
+  const navWidgetH = Math.round(winH * NAV_WIDGET_FRACTION);
+  const navMapH = Math.max(180, navWidgetH - MAP_WIDGET_RESERVE);
   const walkMps = useWalkSpeedMps();
   const { location: userLocation, state: locState } = useCurrentLocation();
   const transitLegs = useMemo(() => {
@@ -659,7 +660,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           onPress={openMap}
           style={({ pressed }) => [
             styles.navWidget,
-            { opacity: navOpacity },
+            { height: navWidgetH, opacity: navOpacity },
             pressed && styles.navWidgetPressed,
           ]}
           accessibilityRole="button"
@@ -834,9 +835,9 @@ const styles = StyleSheet.create({
   navWidgetPressed: {
     opacity: 0.85,
   },
-  // Mapa ma stałą wysokość (inline: 2,5x dawnego slotu) i styka się z panelem
-  // instrukcji bez promieni na styku; góra zostaje zaokrąglona (14 odpowiada
-  // defaultowi NavMiniMap).
+  // Mapa ma stałą wysokość (inline: reszta widgetu 70% ekranu nad panelem)
+  // i styka się z panelem instrukcji bez promieni na styku; góra zostaje
+  // zaokrąglona (14 odpowiada defaultowi NavMiniMap).
   navMapPane: {
     minWidth: 0,
     borderTopLeftRadius: 14,
