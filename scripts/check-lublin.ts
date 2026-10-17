@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:lublin`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (karty z zdtm.lublin.eu/pl/aktualnosci z 2026-10-15, struktura
  * podstrony aktualności z tego samego dnia, linie i typy z GTFS ZDiTM).
  */
@@ -15,7 +15,11 @@ import { getCity } from '../src/cities';
 import { setActiveCityId } from '../src/services/cityStore';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
-import { extractArticleBlocks, parseLublinInfo, ZDITM_LUBLIN_INFO_URL } from '../src/services/mpkNews';
+import {
+  extractArticleBlocks,
+  parseLublinInfo,
+  ZDITM_LUBLIN_INFO_URL,
+} from '../src/services/mpkNews';
 import { pl } from '../src/i18n/pl';
 import { en } from '../src/i18n/en';
 import { de } from '../src/i18n/de';
@@ -27,7 +31,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -78,8 +82,16 @@ describe('Komunikaty ZDiTM Lublin (lista)');
 </article>`;
   const items = parseLublinInfo(html);
   expect('dwa komunikaty', items.length, 2);
-  expect('tytuł pierwszej karty', items[0].title, 'Utrudnienia w ruchu w związku z kolejnym etapem prac w ciągu ul. Janowskiej');
-  expect('link absolutny', items[0].link, 'https://www.zdtm.lublin.eu/pl/aktualnosci/utrudnienia-w-ruchu-w-zwiazku-z-kolejnym-etapem-prac-w-ciagu-ul-janowskiej.html');
+  expect(
+    'tytuł pierwszej karty',
+    items[0].title,
+    'Utrudnienia w ruchu w związku z kolejnym etapem prac w ciągu ul. Janowskiej',
+  );
+  expect(
+    'link absolutny',
+    items[0].link,
+    'https://www.zdtm.lublin.eu/pl/aktualnosci/utrudnienia-w-ruchu-w-zwiazku-z-kolejnym-etapem-prac-w-ciagu-ul-janowskiej.html',
+  );
   expect('opis z leadu w karcie', items[0].description.includes('warstwy ścieralnej'), true);
   const d0 = items[0].pubDate ? new Date(items[0].pubDate) : null;
   expect('data z h4 (dzień)', d0?.getDate(), 15);
@@ -97,50 +109,72 @@ describe('Numery linii ZDiTM Lublin: daty, liczebniki, stanowiska');
 {
   const card = (title: string, lead: string, date = true) =>
     `<article class="news">` +
-    (date ? `<div class="data nowosc inline"><div>&nbsp;</div><h4>2026-10-15 11:48</h4></div>` : ``) +
+    (date
+      ? `<div class="data nowosc inline"><div>&nbsp;</div><h4>2026-10-15 11:48</h4></div>`
+      : ``) +
     `<article class="tiny "><h3 class="inline">${title}</h3><p>${lead}</p>` +
     `<a href="/pl/aktualnosci/x.html" target="_self"><span class="icon-zobacz"></span>Zobacz więcej</a>` +
     `</article></article>`;
   expect(
     '„19-30 października” to nie linie',
-    parseLublinInfo(card('Utrudnienia w ruchu: 19-30 października', 'Zdjęcia filmowe, objazdy linii 17')).map((i) => i.lines),
+    parseLublinInfo(
+      card('Utrudnienia w ruchu: 19-30 października', 'Zdjęcia filmowe, objazdy linii 17'),
+    ).map((i) => i.lines),
     [['17']],
   );
   expect(
     '„7. Marsz Równości” i „10. Półmaraton” to liczebniki, nie linie',
-    parseLublinInfo(card('Utrudnienia w ruchu: 7. Marsz Równości oraz Stokrotka 10. Półmaraton', 'Objazdy w centrum')).map((i) => i.lines),
+    parseLublinInfo(
+      card(
+        'Utrudnienia w ruchu: 7. Marsz Równości oraz Stokrotka 10. Półmaraton',
+        'Objazdy w centrum',
+      ),
+    ).map((i) => i.lines),
     [[]],
   );
   expect(
     '„linii nr 33.” z kropką na końcu zdania to linia',
-    parseLublinInfo(card('Zmiany na liniach', 'Wydłużenie trasy linii nr 33. Dodatkowe kursy.')).map((i) => i.lines),
+    parseLublinInfo(
+      card('Zmiany na liniach', 'Wydłużenie trasy linii nr 33. Dodatkowe kursy.'),
+    ).map((i) => i.lines),
     [['33']],
   );
   expect(
     '„od 2026 r.” to nie linia',
-    parseLublinInfo(card('Zmiany od 19 października 2026 r.', 'Korekty rozkładów linii 6')).map((i) => i.lines),
+    parseLublinInfo(card('Zmiany od 19 października 2026 r.', 'Korekty rozkładów linii 6')).map(
+      (i) => i.lines,
+    ),
     [['6']],
   );
   expect(
     '„7.lubelski” (liczebnik z kropką przy słowie) to nie linia',
     parseLublinInfo(
-      card('Utrudnienia w ruchu', 'Zgromadzenie p.n. "7.lubelski Marsz Równości", autobusy linii 3 i 55 jadą objazdem'),
+      card(
+        'Utrudnienia w ruchu',
+        'Zgromadzenie p.n. "7.lubelski Marsz Równości", autobusy linii 3 i 55 jadą objazdem',
+      ),
     ).map((i) => i.lines),
     [['3', '55']],
   );
   expect(
     'godziny i stanowiska to nie linie („6:38”, „WSEI 01”)',
-    parseLublinInfo(card('Rozkład linii 801', 'Odjazdy z przystanku Mełgiewska WSEI 01: 6:38, 7:18')).map((i) => i.lines),
+    parseLublinInfo(
+      card('Rozkład linii 801', 'Odjazdy z przystanku Mełgiewska WSEI 01: 6:38, 7:18'),
+    ).map((i) => i.lines),
     [[]],
   );
   expect(
     'nocne N1–N3 i trolejbusy 150–162',
-    parseLublinInfo(card('Komunikacja nocna', 'Linie N1, N2 i trolejbusy 150, 155 oraz 162')).map((i) => i.lines),
+    parseLublinInfo(card('Komunikacja nocna', 'Linie N1, N2 i trolejbusy 150, 155 oraz 162')).map(
+      (i) => i.lines,
+    ),
     [['N1', 'N2', '150', '155', '162']],
   );
   expect(
     '950 to trolejbus, a 152 nie istnieje w GTFS',
-    parseLublinInfo(card('Zmiany na liniach', 'Linie 950 i 152 pojadą objazdem')).map((i) => i.lines),
+    parseLublinInfo(card('Zmiany na liniach', 'Linie 950 i 152 pojadą objazdem')).map(
+      (i) => i.lines,
+    ),
     [['950']],
   );
   expect(
@@ -150,7 +184,9 @@ describe('Numery linii ZDiTM Lublin: daty, liczebniki, stanowiska');
   );
   expect(
     '„linii Gaj” to linia imienna, a sam „Stary Gaj” to dzielnica',
-    parseLublinInfo(card('Zmiany na liniach', 'Objazd linii Gaj przez Stary Gaj')).map((i) => i.lines),
+    parseLublinInfo(card('Zmiany na liniach', 'Objazd linii Gaj przez Stary Gaj')).map(
+      (i) => i.lines,
+    ),
     [['GAJ']],
   );
   expect(
@@ -168,40 +204,53 @@ async function main(): Promise<void> {
   // tramwajowy 1–33, więc test przełącza miasto jak aplikacja.
   await setActiveCityId('lublin');
 
-describe('Tryb linii: autobusy 2–85, trolejbusy 150–162 i 950');
-{
-  expect('klasyfikacja route_type 11', classifyTransitMode(11, '155'), 'trolleybus');
-  expect('klasyfikacja route_type 3 (ZDiTM)', classifyTransitMode(3, '33'), 'bus');
-  expect('6 to autobus (Lublin nie ma tramwajów)', inferTransitMode(undefined, '6', 'lublin'), 'bus');
-  expect('33 to autobus', inferTransitMode(undefined, '33', 'lublin'), 'bus');
-  expect('150 to trolejbus', inferTransitMode(undefined, '150', 'lublin'), 'trolleybus');
-  expect('162 to trolejbus', inferTransitMode(undefined, '162', 'lublin'), 'trolleybus');
-  expect('950 to trolejbus', inferTransitMode(undefined, '950', 'lublin'), 'trolleybus');
-  expect('N1 to autobus nocny', inferTransitMode(undefined, 'N1', 'lublin'), 'bus');
-  expect('801 to autobus', inferTransitMode(undefined, '801', 'lublin'), 'bus');
-  expect('reguła niskich numerów działa poza Lublinem', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla lublin hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('lublin'), 'np. Krakowskie Przedmieście 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('lublin'), 'np. Felicity');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('lublin'), 'np. UMCS');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
+  describe('Tryb linii: autobusy 2–85, trolejbusy 150–162 i 950');
+  {
+    expect('klasyfikacja route_type 11', classifyTransitMode(11, '155'), 'trolleybus');
+    expect('klasyfikacja route_type 3 (ZDiTM)', classifyTransitMode(3, '33'), 'bus');
     expect(
-      `${lang}: lublin nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('lublin') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
+      '6 to autobus (Lublin nie ma tramwajów)',
+      inferTransitMode(undefined, '6', 'lublin'),
+      'bus',
+    );
+    expect('33 to autobus', inferTransitMode(undefined, '33', 'lublin'), 'bus');
+    expect('150 to trolejbus', inferTransitMode(undefined, '150', 'lublin'), 'trolleybus');
+    expect('162 to trolejbus', inferTransitMode(undefined, '162', 'lublin'), 'trolleybus');
+    expect('950 to trolejbus', inferTransitMode(undefined, '950', 'lublin'), 'trolleybus');
+    expect('N1 to autobus nocny', inferTransitMode(undefined, 'N1', 'lublin'), 'bus');
+    expect('801 to autobus', inferTransitMode(undefined, '801', 'lublin'), 'bus');
+    expect(
+      'reguła niskich numerów działa poza Lublinem',
+      inferTransitMode(undefined, '5', 'wroclaw'),
+      'tram',
     );
   }
-}
 
-describe('Treść komunikatu ZDiTM Lublin (section.main-center-panel)');
-{
-  // Struktura 1:1 z realnej podstrony aktualności: okruszki w ol.breadcrumb,
-  // tytuł w h2.text-header, treść w article.tiny, prawy panel z logotypami.
-  const html = `<html><body><section class="container textowa"><section class="row news-main main">
+  describe('Podpowiedzi onboardingu per-miasto');
+  {
+    // Regresja: bez gałęzi dla lublin hinty spadały na adresy Wrocławia.
+    expect('pl dom', pl.onboarding.slotHomeHint('lublin'), 'np. Krakowskie Przedmieście 12');
+    expect('pl praca', pl.onboarding.slotWorkHint('lublin'), 'np. Felicity');
+    expect('pl uczelnia', pl.onboarding.slotUniHint('lublin'), 'np. UMCS');
+    for (const [lang, dict] of [
+      ['pl', pl],
+      ['en', en],
+      ['de', de],
+      ['uk', uk],
+    ] as const) {
+      expect(
+        `${lang}: lublin nie dziedziczy Wrocławia`,
+        dict.onboarding.slotHomeHint('lublin') !== dict.onboarding.slotHomeHint('wroclaw'),
+        true,
+      );
+    }
+  }
+
+  describe('Treść komunikatu ZDiTM Lublin (section.main-center-panel)');
+  {
+    // Struktura 1:1 z realnej podstrony aktualności: okruszki w ol.breadcrumb,
+    // tytuł w h2.text-header, treść w article.tiny, prawy panel z logotypami.
+    const html = `<html><body><section class="container textowa"><section class="row news-main main">
 <ol class="breadcrumb"><li><a href="/">Strona główna</a></li><li><a href="/pl/aktualnosci">Aktualności</a></li></ol>
 <section class="main-left-panel hidden-xs hidden-sm col-md-3 col-lg-3"><article><h3>Przewoźnicy</h3></article></section>
 <section class="main-center-panel col-xs-12 col-md-6 col-lg-6">
@@ -219,27 +268,67 @@ describe('Treść komunikatu ZDiTM Lublin (section.main-center-panel)');
 </section>
 <section class="main-right-panel col-xs-12 col-md-3 col-lg-3"><article><h4>Logotypy</h4></article></section>
 </section></section></body></html>`;
-  const blocks = extractArticleBlocks(html, 'https://www.zdtm.lublin.eu/pl/aktualnosci/zmiany-w-komunikacji-miejskiej-od-19-pazdziernika-2026-r-poniedzialek.html');
-  expect('bez tytułu z h2', blocks.some((b) => b.text.startsWith('Zmiany w komunikacji miejskiej od 19')), false);
-  expect('lead o linii 801 jest', blocks.some((b) => b.text.includes('Uruchomienie nowej linii')), true);
-  expect('trasa po myślnikach jest', blocks.some((b) => b.text.includes('Metalurgiczna')), true);
-  // Akapit wprost w divie (bez p) musi dojść, a „Wstecz” z nawigacji nie.
-  expect('luźny akapit z diva jest', blocks.some((b) => b.text.includes('taborem niskopodłogowym')), true);
-  expect('luźny akapit w kolejności dokumentu', blocks.findIndex((b) => b.text.includes('taborem niskopodłogowym')) > blocks.findIndex((b) => b.text.includes('Uruchomienie nowej linii')), true);
-  expect('bez przycisku Wstecz', blocks.some((b) => b.text.includes('Wstecz')), false);
-  expect('bez okruszków', blocks.some((b) => b.text.includes('Strona główna')), false);
-  expect('bez lewego panelu', blocks.some((b) => b.text.includes('Przewoźnicy')), false);
-  expect('bez prawego panelu', blocks.some((b) => b.text.includes('Logotypy')), false);
-}
+    const blocks = extractArticleBlocks(
+      html,
+      'https://www.zdtm.lublin.eu/pl/aktualnosci/zmiany-w-komunikacji-miejskiej-od-19-pazdziernika-2026-r-poniedzialek.html',
+    );
+    expect(
+      'bez tytułu z h2',
+      blocks.some((b) => b.text.startsWith('Zmiany w komunikacji miejskiej od 19')),
+      false,
+    );
+    expect(
+      'lead o linii 801 jest',
+      blocks.some((b) => b.text.includes('Uruchomienie nowej linii')),
+      true,
+    );
+    expect(
+      'trasa po myślnikach jest',
+      blocks.some((b) => b.text.includes('Metalurgiczna')),
+      true,
+    );
+    // Akapit wprost w divie (bez p) musi dojść, a „Wstecz” z nawigacji nie.
+    expect(
+      'luźny akapit z diva jest',
+      blocks.some((b) => b.text.includes('taborem niskopodłogowym')),
+      true,
+    );
+    expect(
+      'luźny akapit w kolejności dokumentu',
+      blocks.findIndex((b) => b.text.includes('taborem niskopodłogowym')) >
+        blocks.findIndex((b) => b.text.includes('Uruchomienie nowej linii')),
+      true,
+    );
+    expect(
+      'bez przycisku Wstecz',
+      blocks.some((b) => b.text.includes('Wstecz')),
+      false,
+    );
+    expect(
+      'bez okruszków',
+      blocks.some((b) => b.text.includes('Strona główna')),
+      false,
+    );
+    expect(
+      'bez lewego panelu',
+      blocks.some((b) => b.text.includes('Przewoźnicy')),
+      false,
+    );
+    expect(
+      'bez prawego panelu',
+      blocks.some((b) => b.text.includes('Logotypy')),
+      false,
+    );
+  }
 
-console.log(`\n${'='.repeat(52)}`);
-if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
-  process.exit(0);
-}
-console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);
-for (const f of failures) console.log(`  - ${f}`);
-process.exit(1);
+  console.log(`\n${'='.repeat(52)}`);
+  if (failures.length === 0) {
+    console.log(`WSZYSTKO OK - ${passed} asercji`);
+    process.exit(0);
+  }
+  console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);
+  for (const f of failures) console.log(`  - ${f}`);
+  process.exit(1);
 }
 
 void main();

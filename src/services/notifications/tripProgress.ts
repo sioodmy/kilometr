@@ -11,7 +11,7 @@ export interface TripProgressInput {
   now?: Date;
   /** Pojazd dopasowany do odcinka (z liveTracker). */
   vehicle?: VehiclePosition | null;
-  /** Tempo chodzenia — do estymacji dojścia do przystanku. */
+  /** Tempo chodzenia - do estymacji dojścia do przystanku. */
   walkSpeedMps?: number;
 }
 
@@ -68,7 +68,7 @@ interface ActiveLeg {
   arriveMs: number;
 }
 
-/** Ostatni odcinek, który się już zaczął — nie pierwszy! */
+/** Ostatni odcinek, który się już zaczął - nie pierwszy! */
 function findActiveLeg(
   legs: Leg[],
   departMs: number[],
@@ -126,7 +126,7 @@ function vehicleProgress(
   const hops = Math.max(1, leg.stopsCount || span);
   // Lista przystanków bywa tylko wejściowa (gdy plan nie zdążył dociągnąć
   // sekwencji kursu). Wtedy nie znamy nazw pośrednich, ale nadal wiemy, ile
-  // ich zostało — dzielimy po prostu odcinek na `stopsCount` części.
+  // ich zostało - dzielimy po prostu odcinek na `stopsCount` części.
   const synthetic = stops.length < 3;
 
   if (!synthetic && vehicleMatchesLeg(leg, vehicle)) {
@@ -143,15 +143,27 @@ function vehicleProgress(
         hopsLeft: isLast ? 0 : Math.max(1, Math.round((1 - done) * hops)),
       };
     }
-    return { tracked: false, label: gap.label, legProgress: timeProgress, nextStop: null, hopsLeft: null };
+    return {
+      tracked: false,
+      label: gap.label,
+      legProgress: timeProgress,
+      nextStop: null,
+      hopsLeft: null,
+    };
   }
 
   const byTime = Math.max(0, Math.round((1 - timeProgress) * hops));
   if (synthetic) {
-    return { tracked: false, label: null, legProgress: timeProgress, nextStop: null, hopsLeft: byTime };
+    return {
+      tracked: false,
+      label: null,
+      legProgress: timeProgress,
+      nextStop: null,
+      hopsLeft: byTime,
+    };
   }
 
-  // Brak GPS — interpolujemy po czasie i nazywamy przybliżony przystanek.
+  // Brak GPS - interpolujemy po czasie i nazywamy przybliżony przystanek.
   // `+ 1`, bo w chwili odjazdu stoimy jeszcze na stops[start]; następny jest
   // dopiero stops[start + 1].
   const idx = Math.min(segment.end, segment.start + 1 + Math.floor(timeProgress * span));
@@ -178,10 +190,7 @@ function vehicleMatchesLeg(leg: Leg, vehicle: VehiclePosition | null | undefined
  * (connection, now, vehicle) zawsze daje ten sam TripProgress, więc można
  * ją bezpiecznie wołać z tickera, z odświeżenia i z testów.
  */
-export function computeTripProgress(
-  conn: Connection,
-  input: TripProgressInput = {},
-): TripProgress {
+export function computeTripProgress(conn: Connection, input: TripProgressInput = {}): TripProgress {
   const now = input.now ?? new Date();
   const nowMs = now.getTime();
   const walkSpeed = input.walkSpeedMps ?? 1.3;
@@ -244,7 +253,7 @@ export function computeTripProgress(
 
   if (vp.tracked && activeTransit) legProgress = vp.legProgress;
 
-  // Postęp samego dojścia do przystanku — jedyna liczba, która ma sens
+  // Postęp samego dojścia do przystanku - jedyna liczba, która ma sens
   // w fazie „idę", bo podróż jeszcze się nie zaczęła.
   const approachProgress = activeWalk ? legProgress : null;
 
@@ -279,7 +288,7 @@ export function computeTripProgress(
   // Przystanek, na którym stoimy: idziemy do `toStop` odcinka pieszego,
   // a w pojeździe jesteśmy na `fromStop` odcinka, którym jedziemy.
   const stopName = activeWalk
-    ? (activeWalk.leg.toStop || lineLeg?.fromStop)
+    ? activeWalk.leg.toStop || lineLeg?.fromStop
     : (lineLeg?.fromStop ?? conn.toTitle);
 
   return {
@@ -303,7 +312,7 @@ export function computeTripProgress(
     direction: lineLeg?.direction ?? '',
     // Następny przystanek ma sens tylko w fazie „jadę". Stojąc na przystanku
     // albo idąc na przesiadkę jesteśmy już NA przystanku, więc raportowanie
-    // „następny: <przystanek>" myliłoby — wtedy pokazujemy `stopName`.
+    // „następny: <przystanek>" myliłoby - wtedy pokazujemy `stopName`.
     nextStop: phase === 'riding' ? (vp.nextStop ?? null) : arrived ? conn.toTitle : null,
     stopName,
     nextStopInMin,
@@ -325,7 +334,7 @@ export function computeTripProgress(
 
 /**
  * Odcinki z bezwzględnymi godzinami. Ten sam zegar, którego używa
- * `computeTripProgress` — wydzielenie go tutaj pilnuje, że faza podróży
+ * `computeTripProgress` - wydzielenie go tutaj pilnuje, że faza podróży
  * i pasek postępu w powiadomieniu liczą się z tych samych liczb.
  */
 export interface LegTimelineEntry {
@@ -335,10 +344,7 @@ export interface LegTimelineEntry {
   arriveMs: number;
 }
 
-export function computeLegTimeline(
-  conn: Connection,
-  now: Date = new Date(),
-): LegTimelineEntry[] {
+export function computeLegTimeline(conn: Connection, now: Date = new Date()): LegTimelineEntry[] {
   const legs = conn.legs;
   const boardIndex = firstTransitLegIndex(legs);
   const clock = legClock(legs, boardIndex, conn.departureSec);

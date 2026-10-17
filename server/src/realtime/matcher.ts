@@ -19,7 +19,7 @@ export function matchVehicleToSchedule(
   store: GtfsStore,
   raw: { name: string; type: string; x: number; y: number; k: number },
   prevLat?: number,
-  prevLon?: number
+  prevLon?: number,
 ): VehicleMatch {
   const line = raw.name.trim().toUpperCase();
   const lat = raw.x;
@@ -35,7 +35,7 @@ export function matchVehicleToSchedule(
   }
 
   // Find candidate route for this line.
-  // routeTrips jest kluczowane po GTFS route_id — szukamy po route_short_name,
+  // routeTrips jest kluczowane po GTFS route_id - szukamy po route_short_name,
   // bo MPK zwraca oznaczenie linii ("4", "K"), nie route_id.
   const candidateRouteIds = store.getRouteIdsByShortName(line);
   // Fallback: gdyby jakieś route_id było równe oznaczeniu linii
@@ -94,7 +94,10 @@ export function matchVehicleToSchedule(
     // Find current/next stop
     const times = store.stopTimes.get(bestTrip.trip_id) || [];
     for (let i = 0; i < times.length - 1; i++) {
-      if (bestExpectedSec >= times[i].departure_sec && bestExpectedSec <= times[i + 1].arrival_sec) {
+      if (
+        bestExpectedSec >= times[i].departure_sec &&
+        bestExpectedSec <= times[i + 1].arrival_sec
+      ) {
         currentStopName = store.stops.get(times[i].stop_id)?.stop_name;
         nextStopName = store.stops.get(times[i + 1].stop_id)?.stop_name;
         break;

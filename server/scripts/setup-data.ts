@@ -1,6 +1,6 @@
 // Pre-warm generowanych danych backendu: rozkład GTFS (pobieranie ~12 MB
 // przy pierwszym uruchomieniu) + plik SQLite z migracjami i seedami.
-// Idempotentny — przy istniejących danych kończy się natychmiast.
+// Idempotentny - przy istniejących danych kończy się natychmiast.
 // Uruchamiany automatycznie przez hooki `predev`/`prestart` oraz ręcznie:
 // `npm run setup --prefix server`.
 import { ensureGtfsData } from '../src/gtfs/downloader';

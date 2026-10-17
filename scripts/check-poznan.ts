@@ -5,7 +5,7 @@
  * Uruchomienie: `npm run check:poznan`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (tytuły z www.ztm.poznan.pl/feed z 2026-10-15, struktura artykułu
  * z tej samej strony, linie i typy z GTFS ZTM, numery KW z pkp-kw.zip).
  */
@@ -25,7 +25,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -145,7 +145,12 @@ describe('Podpowiedzi onboardingu per-miasto');
   expect('pl dom', pl.onboarding.slotHomeHint('poznan'), 'np. Głogowska 12');
   expect('pl praca', pl.onboarding.slotWorkHint('poznan'), 'np. Stary Browar');
   expect('pl uczelnia', pl.onboarding.slotUniHint('poznan'), 'np. UAM');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
+  for (const [lang, dict] of [
+    ['pl', pl],
+    ['en', en],
+    ['de', de],
+    ['uk', uk],
+  ] as const) {
     expect(
       `${lang}: poznan nie dziedziczy Wrocławia`,
       dict.onboarding.slotHomeHint('poznan') !== dict.onboarding.slotHomeHint('wroclaw'),
@@ -176,16 +181,23 @@ describe('Treść artykułu ZTM (motyw inny niż WTP)');
   </div></div>
 </section>
 </main></body></html>`;
-  const blocks = extractArticleBlocks(html, 'https://www.ztm.poznan.pl/aktualnosci/komunikaty/test/');
+  const blocks = extractArticleBlocks(
+    html,
+    'https://www.ztm.poznan.pl/aktualnosci/komunikaty/test/',
+  );
   expect('dwa akapity treści', blocks.length, 2);
   expect('bez breadcrumbów', blocks[0].text, 'Pierwszy akapit.');
-  expect('bez sidebara („Według kategorii”)', blocks.some((b) => b.text.includes('Według kategorii')), false);
+  expect(
+    'bez sidebara („Według kategorii”)',
+    blocks.some((b) => b.text.includes('Według kategorii')),
+    false,
+  );
   expect('drugi akapit', blocks[1].text, 'Drugi akapit komunikatu.');
 }
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

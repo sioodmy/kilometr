@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:opole`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (wpisy z mzkopole.pl/category/aktualnosci/feed/ z 2026-10-15,
  * struktura podstrony aktualności z tego samego dnia, linie i typy
  * z GTFS MZK z cdn.zbiorkom.live/gtfs/opole.zip).
@@ -27,7 +27,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -47,7 +47,11 @@ describe('Rejestr miasta');
   expect('nazwa', opo.name, 'Opole');
   expect('slug live to opole', opo.zbiorkomSlug, 'opole');
   expect('bbox live', opo.zbiorkomBbox, '17.7,50.55,18.1,50.8');
-  expect('feed komunikatów', MZK_OPOLE_FEED_URL, 'https://www.mzkopole.pl/category/aktualnosci/feed/');
+  expect(
+    'feed komunikatów',
+    MZK_OPOLE_FEED_URL,
+    'https://www.mzkopole.pl/category/aktualnosci/feed/',
+  );
   expect('bez kolei regionalnej', opo.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', opo.features.directBusPosition, false);
 }
@@ -108,34 +112,46 @@ describe('Numery linii MZK: daty, ulice, liczby z tekstu');
     `<?xml version="1.0"?><rss version="2.0"><channel><item><title>${title}</title><link>https://www.mzkopole.pl/x</link><description><![CDATA[${desc}]]></description></item></channel></rss>`;
   expect(
     '„11.10” i „27.09” to nie linie',
-    parseOpoleRss(xml('Mecz Odry', 'Mecz w niedzielę (11.10), kursy linii 5 i 28, powrót (27.09)')).map((i) => i.lines),
+    parseOpoleRss(
+      xml('Mecz Odry', 'Mecz w niedzielę (11.10), kursy linii 5 i 28, powrót (27.09)'),
+    ).map((i) => i.lines),
     [['5', '28']],
   );
   expect(
     '„106 przystanków” to nie linia',
-    parseOpoleRss(xml('Przystanki na życzenie', 'Od 1 października 106 przystanków zyska status na życzenie')).map((i) => i.lines),
+    parseOpoleRss(
+      xml('Przystanki na życzenie', 'Od 1 października 106 przystanków zyska status na życzenie'),
+    ).map((i) => i.lines),
     [[]],
   );
   expect(
     'ulica „1 Maja” to nie linia 1',
-    parseOpoleRss(xml('Zmiana postoju', 'Przystanek 1 Maja - Dworzec Główny dla linii 21')).map((i) => i.lines),
+    parseOpoleRss(xml('Zmiana postoju', 'Przystanek 1 Maja - Dworzec Główny dla linii 21')).map(
+      (i) => i.lines,
+    ),
     [['21']],
   );
   expect(
     '„18:56” i „8:00” to nie linie',
-    parseOpoleRss(xml('Mecz', 'Odjazd o 18:56, organizacja od 8:00, linie 12 i 18')).map((i) => i.lines),
+    parseOpoleRss(xml('Mecz', 'Odjazd o 18:56, organizacja od 8:00, linie 12 i 18')).map(
+      (i) => i.lines,
+    ),
     [['12', '18']],
   );
   // Regresja: feed MZK ma literówkę „16;36” (średnik zamiast dwukropka),
   // a gołe „16” wyglądało jak linia 16 w komunikacie o meczu.
   expect(
     '„16;36” (literówka z feedu) to nie linia 16',
-    parseOpoleRss(xml('Mecz', 'Odjazd z al. Pużaka o 16;36 oraz 16:58, linia 12')).map((i) => i.lines),
+    parseOpoleRss(xml('Mecz', 'Odjazd z al. Pużaka o 16;36 oraz 16:58, linia 12')).map(
+      (i) => i.lines,
+    ),
     [['12']],
   );
   expect(
     'specjalne S1 i S2',
-    parseOpoleRss(xml('Dzień Otwarty', 'Liniami specjalnymi S1 i S2 dojedziesz na Dzień Otwarty Zajezdni')).map((i) => i.lines),
+    parseOpoleRss(
+      xml('Dzień Otwarty', 'Liniami specjalnymi S1 i S2 dojedziesz na Dzień Otwarty Zajezdni'),
+    ).map((i) => i.lines),
     [['S1', 'S2']],
   );
   expect(
@@ -173,7 +189,11 @@ describe('Tryb linii: w Opolu wszystko to autobusy');
   expect('N1 to autobus nocny', inferTransitMode(undefined, 'N1', 'opole'), 'bus');
   expect('SZ1 to autobus szkolny', inferTransitMode(undefined, 'SZ1', 'opole'), 'bus');
   expect('S1 to autobus specjalny', inferTransitMode(undefined, 'S1', 'opole'), 'bus');
-  expect('reguła niskich numerów działa poza Opolem', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
+  expect(
+    'reguła niskich numerów działa poza Opolem',
+    inferTransitMode(undefined, '5', 'wroclaw'),
+    'tram',
+  );
 }
 
 describe('Podpowiedzi onboardingu per-miasto');
@@ -182,7 +202,12 @@ describe('Podpowiedzi onboardingu per-miasto');
   expect('pl dom', pl.onboarding.slotHomeHint('opole'), 'np. Ozimska 12');
   expect('pl praca', pl.onboarding.slotWorkHint('opole'), 'np. Solaris Center');
   expect('pl uczelnia', pl.onboarding.slotUniHint('opole'), 'np. UO');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
+  for (const [lang, dict] of [
+    ['pl', pl],
+    ['en', en],
+    ['de', de],
+    ['uk', uk],
+  ] as const) {
     expect(
       `${lang}: opole nie dziedziczy Wrocławia`,
       dict.onboarding.slotHomeHint('opole') !== dict.onboarding.slotHomeHint('wroclaw'),
@@ -204,16 +229,27 @@ describe('Treść komunikatu MZK (WordPress article + entry-content)');
 <div id="sidebar-container"><section class="widget"><h2 class="wp-block-heading">Kategorie</h2>
 <ul><li><a href="https://www.mzkopole.pl/category/aktualnosci/">Aktualności</a></li></ul>
 </section></div></div></body></html>`;
-  const blocks = extractArticleBlocks(html, 'https://www.mzkopole.pl/aktualnosci/zawieszenie-kursow-linii-30/');
+  const blocks = extractArticleBlocks(
+    html,
+    'https://www.mzkopole.pl/aktualnosci/zawieszenie-kursow-linii-30/',
+  );
   expect('dwa akapity', blocks.length, 2);
-  expect('pierwszy o zawieszeniu', blocks[0]?.text.includes('zawieszone zostaną weekendowe kursy linii 30') ?? false, true);
+  expect(
+    'pierwszy o zawieszeniu',
+    blocks[0]?.text.includes('zawieszone zostaną weekendowe kursy linii 30') ?? false,
+    true,
+  );
   expect('drugi o kursowaniu', blocks[1]?.text.includes('13 par kursów') ?? false, true);
-  expect('bez sidebara z kategoriami', blocks.some((b) => b.text === 'Kategorie'), false);
+  expect(
+    'bez sidebara z kategoriami',
+    blocks.some((b) => b.text === 'Kategorie'),
+    false,
+  );
 }
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

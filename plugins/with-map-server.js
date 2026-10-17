@@ -5,7 +5,7 @@
 // pobierze ani kafelków, ani silnika mapy, i zostanie tylko mapa online.
 //
 // Otwieramy cleartext WYŁĄCZNIE dla localhosta. Cały pozostały ruch (rozkłady,
-// OSRM, kafle online) dalej wymaga https — nie osłabiamy bezpieczeństwa.
+// OSRM, kafle online) dalej wymaga https - nie osłabiamy bezpieczeństwa.
 //
 // Wymaga builda deweloperskiego; w Expo Go modułu mapy i tak nie ma.
 

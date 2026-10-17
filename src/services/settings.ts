@@ -9,7 +9,7 @@ import { uk } from '../i18n/uk';
 
 const SETTINGS_DICTS: Record<string, Strings> = { pl, en, de, uk };
 
-/** Słownik pod bieżące locale — do synchronicznych helperów formatujących. */
+/** Słownik pod bieżące locale - do synchronicznych helperów formatujących. */
 function tr(): Strings {
   return SETTINGS_DICTS[getLocaleSync()] ?? pl;
 }
@@ -106,7 +106,12 @@ function clampInt(value: unknown, def: number, min: number, max: number): number
 }
 
 const WALK_PACES: readonly WalkPaceProfile[] = ['slow', 'normal', 'fast'];
-export const ROUTE_STYLES: readonly RouteStyle[] = ['fastest', 'balanced', 'lessWalking', 'fewerTransfers'];
+export const ROUTE_STYLES: readonly RouteStyle[] = [
+  'fastest',
+  'balanced',
+  'lessWalking',
+  'fewerTransfers',
+];
 
 /** Stare tempo (m/s) na profil: migracja danych z wcześniejszych wersji. */
 function paceFromLegacyMps(mps: number): WalkPaceProfile {
@@ -158,16 +163,43 @@ function clampSettings(s: StoredSettings): RoutingSettings {
     typeof s.cableEnabled === 'boolean' ? s.cableEnabled : DEFAULT_SETTINGS.cableEnabled;
   const allowedModes = clampAllowedModes(s.allowedModes, trainsEnabled, cableEnabled);
   return {
-    maxTransfers: clampInt(s.maxTransfers, DEFAULT_SETTINGS.maxTransfers, SETTINGS_LIMITS.maxTransfers.min, SETTINGS_LIMITS.maxTransfers.max),
-    minTransferSec: clampInt(s.minTransferSec, DEFAULT_SETTINGS.minTransferSec, SETTINGS_LIMITS.minTransferSec.min, SETTINGS_LIMITS.minTransferSec.max),
-    maxWalkM: clampInt(s.maxWalkM, DEFAULT_SETTINGS.maxWalkM, SETTINGS_LIMITS.maxWalkM.min, SETTINGS_LIMITS.maxWalkM.max),
+    maxTransfers: clampInt(
+      s.maxTransfers,
+      DEFAULT_SETTINGS.maxTransfers,
+      SETTINGS_LIMITS.maxTransfers.min,
+      SETTINGS_LIMITS.maxTransfers.max,
+    ),
+    minTransferSec: clampInt(
+      s.minTransferSec,
+      DEFAULT_SETTINGS.minTransferSec,
+      SETTINGS_LIMITS.minTransferSec.min,
+      SETTINGS_LIMITS.minTransferSec.max,
+    ),
+    maxWalkM: clampInt(
+      s.maxWalkM,
+      DEFAULT_SETTINGS.maxWalkM,
+      SETTINGS_LIMITS.maxWalkM.min,
+      SETTINGS_LIMITS.maxWalkM.max,
+    ),
     walkPace,
-    anchorRadiusM: clampInt(s.anchorRadiusM, DEFAULT_SETTINGS.anchorRadiusM, SETTINGS_LIMITS.anchorRadiusM.min, SETTINGS_LIMITS.anchorRadiusM.max),
+    anchorRadiusM: clampInt(
+      s.anchorRadiusM,
+      DEFAULT_SETTINGS.anchorRadiusM,
+      SETTINGS_LIMITS.anchorRadiusM.min,
+      SETTINGS_LIMITS.anchorRadiusM.max,
+    ),
     trainsEnabled: allowedModes.train,
-    trainMinTransferSec: clampInt(s.trainMinTransferSec, DEFAULT_SETTINGS.trainMinTransferSec, SETTINGS_LIMITS.trainMinTransferSec.min, SETTINGS_LIMITS.trainMinTransferSec.max),
+    trainMinTransferSec: clampInt(
+      s.trainMinTransferSec,
+      DEFAULT_SETTINGS.trainMinTransferSec,
+      SETTINGS_LIMITS.trainMinTransferSec.min,
+      SETTINGS_LIMITS.trainMinTransferSec.max,
+    ),
     cableEnabled: allowedModes.cable,
     allowedModes,
-    routeStyle: ROUTE_STYLES.includes(s.routeStyle as RouteStyle) ? (s.routeStyle as RouteStyle) : DEFAULT_SETTINGS.routeStyle,
+    routeStyle: ROUTE_STYLES.includes(s.routeStyle as RouteStyle)
+      ? (s.routeStyle as RouteStyle)
+      : DEFAULT_SETTINGS.routeStyle,
   };
 }
 
@@ -188,7 +220,7 @@ export async function loadSettings(): Promise<RoutingSettings> {
       cached = clampSettings(parsed);
     }
   } catch {
-    // storage niedostępny — zostają defaulty
+    // storage niedostępny - zostają defaulty
   }
   loaded = true;
   notify();
@@ -269,8 +301,6 @@ export function walkMetersPerMinute(speedMps: number = WALK_PACE_DEFAULTS_MPS.no
 export function walkMinutesFor(meters: number, speedMps?: number): number {
   return Math.max(1, Math.round(meters / walkMetersPerMinute(speedMps)));
 }
-
-
 
 export function formatTransferTime(sec: number): string {
   const min = Math.round(sec / 60);

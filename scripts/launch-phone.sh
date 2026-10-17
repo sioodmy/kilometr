@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Uruchamia apkę Kilometr na telefonie przez USB (ADB + Expo Go).
-# Sam stawia Metro i backend, jeśli nie działają — wystarczy `npm run phone`.
+# Sam stawia Metro i backend, jeśli nie działają - wystarczy `npm run phone`.
 #
 # Wymagania: podłączony telefon (debugowanie USB), zainstalowane Expo Go.
 set -euo pipefail
@@ -56,7 +56,7 @@ wait_for() {
 if curl -sf -o /dev/null "$METRO_STATUS" 2>/dev/null; then
   echo "🟢 Metro Bundler działa (port 8081)"
 else
-  echo "🟡 Metro nie działa — uruchamiam 'npx expo start --localhost' w tle..."
+  echo "🟡 Metro nie działa - uruchamiam 'npx expo start --localhost' w tle..."
   echo "   Log: $METRO_LOG"
   mkdir -p "$ROOT/.expo"
   # ipv4first: bez tego Node bywa na [::1], a adb reverse + Expo Go chodzą po 127.0.0.1.
@@ -69,7 +69,7 @@ fi
 if curl -sf -o /dev/null "$API_HEALTH" 2>/dev/null; then
   echo "🟢 Backend API działa (port 3000)"
 else
-  echo "🟡 Backend nie działa — uruchamiam 'npm run server:dev' w tle..."
+  echo "🟡 Backend nie działa - uruchamiam 'npm run server:dev' w tle..."
   echo "   (pierwszy start może pobierać rozkład GTFS ~12 MB; log: $SERVER_LOG)"
   mkdir -p "$ROOT/.expo"
   (cd "$ROOT" && TMPDIR=/tmp nohup npm run server:dev >"$SERVER_LOG" 2>&1 &)

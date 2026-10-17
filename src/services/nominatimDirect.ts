@@ -88,7 +88,10 @@ export function toSuggestion(row: NominatimRow): Suggestion | null {
   const addr = row.address ?? {};
   const road = addr.road || addr.pedestrian || addr.residential || addr.footway || addr.cycleway;
   const houseNo = addr.house_number;
-  const parts = row.display_name.split(',').map((p) => p.trim()).filter(Boolean);
+  const parts = row.display_name
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
   // GZM i Trójmiasto to strefy z wieloma miastami naraz: sam adres nie mówi,
   // o które miasto chodzi (Długa w Gdańsku czy Lipowa w Bytomiu).
   const city = isMultiCityArea(getActiveCityIdSync()) ? addressCity(addr) : null;
@@ -96,7 +99,11 @@ export function toSuggestion(row: NominatimRow): Suggestion | null {
   let address: string;
   if (road && houseNo) {
     title = `${road} ${houseNo}`;
-    address = parts.filter((p) => p !== road && p !== houseNo).slice(0, 2).join(', ') || fallback;
+    address =
+      parts
+        .filter((p) => p !== road && p !== houseNo)
+        .slice(0, 2)
+        .join(', ') || fallback;
   } else if (row.name) {
     title = row.name;
     address = parts.slice(1, 3).join(', ') || fallback;
@@ -128,7 +135,10 @@ export function toSuggestion(row: NominatimRow): Suggestion | null {
  * czasu nigdy nie zadziałał, a wiszące połączenie z Nominatim zostawiało
  * wyszukiwarkę bez wyników na zawsze.
  */
-function scopedSignal(timeoutMs: number, outer?: AbortSignal): { signal: AbortSignal; dispose: () => void } {
+function scopedSignal(
+  timeoutMs: number,
+  outer?: AbortSignal,
+): { signal: AbortSignal; dispose: () => void } {
   const ctrl = new AbortController();
   const onOuter = () => ctrl.abort();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -153,7 +163,7 @@ export async function searchNominatimDirect(
 ): Promise<Suggestion[]> {
   const q = query.trim();
   if (!q || q.length < 2) return [];
-  // Cache BEZ pozycji (dystanse dokładamy przy zwrocie — trafienia niezależne od GPS).
+  // Cache BEZ pozycji (dystanse dokładamy przy zwrocie - trafienia niezależne od GPS).
   // Klucz zawiera miasto (po id, nie po nazwie wyświetlanej): te same zapytania w
   // Krakowie i Wrocławiu to inne wyniki, a zmiana nazwy w rejestrze nie może
   // wyczyścić całego cache.
@@ -224,7 +234,10 @@ export async function reverseNominatimDirect(
       address?: Record<string, string>;
     };
     if (!row?.display_name) return null;
-    const parts = row.display_name.split(',').map((p) => p.trim()).filter(Boolean);
+    const parts = row.display_name
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
     const addr = row.address ?? {};
     const road = addr.road || addr.pedestrian || addr.residential || addr.footway || addr.cycleway;
     const houseNo = addr.house_number;
@@ -243,7 +256,11 @@ export async function reverseNominatimDirect(
     if (road && houseNo) {
       return {
         title: `${road} ${houseNo}`,
-        address: parts.filter((p) => p !== road && p !== houseNo).slice(0, 2).join(', ') || fallback,
+        address:
+          parts
+            .filter((p) => p !== road && p !== houseNo)
+            .slice(0, 2)
+            .join(', ') || fallback,
         city,
       };
     }

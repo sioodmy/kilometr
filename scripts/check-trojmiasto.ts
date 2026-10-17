@@ -33,7 +33,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -57,8 +57,16 @@ describe('Rejestr aglomeracji');
   expect('osobny pakiet kafli', tri.tilePack, 'trojmiasto-tiles.ktp');
   expect('kolej regionalna (SKM)', tri.features.regionalRail, true);
   expect('bez bezpośredniego bus_position', tri.features.directBusPosition, false);
-  expect('feed zmian tras', ZTM_GDANSK_ZNT_URL, 'https://files.cloudgdansk.pl/d/otwarte-dane/ztm/znt.json?v=1');
-  expect('feed awarii', ZTM_GDANSK_BSK_URL, 'https://files.cloudgdansk.pl/d/otwarte-dane/ztm/bsk.json?v=1');
+  expect(
+    'feed zmian tras',
+    ZTM_GDANSK_ZNT_URL,
+    'https://files.cloudgdansk.pl/d/otwarte-dane/ztm/znt.json?v=1',
+  );
+  expect(
+    'feed awarii',
+    ZTM_GDANSK_BSK_URL,
+    'https://files.cloudgdansk.pl/d/otwarte-dane/ztm/bsk.json?v=1',
+  );
 }
 
 describe('Zmiany tras ZTM Gdańsk (znt.json)');
@@ -118,7 +126,11 @@ describe('Zmiany tras ZTM Gdańsk (znt.json)');
 describe('Bieżące awarie ZTM Gdańsk (bsk.json)');
 {
   // Feed bywa pusty (stan z 2026-10-15): pusta lista to nie błąd parsera.
-  expect('puste komunikaty', parseGdanskBsk('{"data_wygenerowania":"2026-10-15 19:26:04","komunikaty":[]}'), []);
+  expect(
+    'puste komunikaty',
+    parseGdanskBsk('{"data_wygenerowania":"2026-10-15 19:26:04","komunikaty":[]}'),
+    [],
+  );
   const json = JSON.stringify({
     data_wygenerowania: '2026-10-15 08:00:00',
     komunikaty: [
@@ -142,7 +154,11 @@ describe('Bieżące awarie ZTM Gdańsk (bsk.json)');
 describe('Numery linii Gdańsk bez lineNumbers (fallback)');
 {
   const znt = (title: string) =>
-    JSON.stringify({ results: [{ title, summary: 'info', url: 'https://ztm.gda.pl/x', publishFrom: '2026-10-15 08:00:00' }] });
+    JSON.stringify({
+      results: [
+        { title, summary: 'info', url: 'https://ztm.gda.pl/x', publishFrom: '2026-10-15 08:00:00' },
+      ],
+    });
   expect(
     'N4 z tytułu',
     parseGdanskZnt(znt('Utrudnienia na linii N4')).map((i) => i.lines),
@@ -170,7 +186,9 @@ describe('Numery linii Gdańsk bez lineNumbers (fallback)');
   );
   expect(
     'sufiks słupka („03”) to nie linia',
-    parseGdanskZnt(znt('Przystanek Oliwa PKP 03 tymczasowo przeniesiony, dotyczy 117')).map((i) => i.lines),
+    parseGdanskZnt(znt('Przystanek Oliwa PKP 03 tymczasowo przeniesiony, dotyczy 117')).map(
+      (i) => i.lines,
+    ),
     [['117']],
   );
 }
@@ -190,7 +208,11 @@ describe('Tryb linii: tramwaje, trolejbusy, nocne i zastępcze');
   expect('T9 (zastępczy) to autobus', inferTransitMode(undefined, 'T9', 'trojmiasto'), 'bus');
   expect('M32 to autobus', inferTransitMode(undefined, 'M32', 'trojmiasto'), 'bus');
   expect('138 to autobus', inferTransitMode(undefined, '138', 'trojmiasto'), 'bus');
-  expect('25 we Wrocławiu to tramwaj (heurystyka 1–33)', inferTransitMode(undefined, '25', 'wroclaw'), 'tram');
+  expect(
+    '25 we Wrocławiu to tramwaj (heurystyka 1–33)',
+    inferTransitMode(undefined, '25', 'wroclaw'),
+    'tram',
+  );
   expect('trolejbus ma stałą zieleń', getLineColors('25', undefined, 'trojmiasto').bg, '#2E7D32');
   expect('tramwaj 8 nie jest busem', getLineColors('8', undefined, 'trojmiasto').isTram, true);
 }
@@ -201,7 +223,12 @@ describe('Podpowiedzi onboardingu per-miasto');
   expect('pl dom', pl.onboarding.slotHomeHint('trojmiasto'), 'np. Długa 12');
   expect('pl praca', pl.onboarding.slotWorkHint('trojmiasto'), 'np. Galeria Bałtycka');
   expect('pl uczelnia', pl.onboarding.slotUniHint('trojmiasto'), 'np. UG');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
+  for (const [lang, dict] of [
+    ['pl', pl],
+    ['en', en],
+    ['de', de],
+    ['uk', uk],
+  ] as const) {
     expect(
       `${lang}: trojmiasto nie dziedziczy Wrocławia`,
       dict.onboarding.slotHomeHint('trojmiasto') !== dict.onboarding.slotHomeHint('wroclaw'),
@@ -222,11 +249,28 @@ describe('Treść artykułu ztm.gda.pl (tytuł + lead + treść)');
 <div class="row"><div class="col"><div class="article-content mt-3"><p>Pierwszy akapit treści.</p><p>Drugi akapit treści.</p></div></div></div>
 </div><div class="col-lg-3"><div class="menu-right sticky-top"><ul><li><a href="https://ztm.gda.pl/komunikaty/inny,a,1"><span>Inny komunikat z listy</span></a></li></ul></div></div>
 </div></div></div></main></body></html>`;
-  const blocks = extractArticleBlocks(html, 'https://ztm.gda.pl/komunikaty/linie-8-9-11-zmiany,a,11920');
-  expect('tytuł jako nagłówek', blocks[0], { kind: 'h', text: 'Linie 8, 9, 11: zmiany na Podwalu' });
-  expect('lead jako akapit', blocks[1], { kind: 'p', text: 'Od poniedziałku tramwaje pojadą objazdem.' });
-  expect('dwa akapity treści', blocks.slice(2).map((b) => b.text), ['Pierwszy akapit treści.', 'Drugi akapit treści.']);
-  expect('bez sidebara', blocks.some((b) => b.text.includes('Inny komunikat')), false);
+  const blocks = extractArticleBlocks(
+    html,
+    'https://ztm.gda.pl/komunikaty/linie-8-9-11-zmiany,a,11920',
+  );
+  expect('tytuł jako nagłówek', blocks[0], {
+    kind: 'h',
+    text: 'Linie 8, 9, 11: zmiany na Podwalu',
+  });
+  expect('lead jako akapit', blocks[1], {
+    kind: 'p',
+    text: 'Od poniedziałku tramwaje pojadą objazdem.',
+  });
+  expect(
+    'dwa akapity treści',
+    blocks.slice(2).map((b) => b.text),
+    ['Pierwszy akapit treści.', 'Drugi akapit treści.'],
+  );
+  expect(
+    'bez sidebara',
+    blocks.some((b) => b.text.includes('Inny komunikat')),
+    false,
+  );
   // Puste article-content (częsty stan: sam lead niesie komunikat).
   const leadOnly = html.replace(/<div class="article-content[^]*$/s, '</div>');
   const leadBlocks = extractArticleBlocks(leadOnly, 'https://ztm.gda.pl/komunikaty/x,a,1');
@@ -235,7 +279,7 @@ describe('Treść artykułu ztm.gda.pl (tytuł + lead + treść)');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

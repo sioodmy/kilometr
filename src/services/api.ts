@@ -3,9 +3,32 @@ import { kvGet, kvGetStrict, kvSet } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
-import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
+import {
+  Connection,
+  LegStop,
+  RouteQuery,
+  SavedPlace,
+  SmartDestination,
+  Suggestion,
+} from '../types/models';
+import {
+  IFavoritesService,
+  ILocationService,
+  IRoutingService,
+  ISearchService,
+  LocationResult,
+} from './types';
+import {
+  addRecentSuggestion,
+  loadLastLocation,
+  loadRecent,
+  loadSuggestions,
+  rehydrateConnections,
+  saveConnections,
+  saveLastLocation,
+  saveSuggestions,
+  findCachedConnection,
+} from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
@@ -58,7 +81,7 @@ function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): numb
 }
 
 /**
- * Identyfikator nowego zapisu. Nie `Math.random().toString(36).substring(7)` —
+ * Identyfikator nowego zapisu. Nie `Math.random().toString(36).substring(7)` -
  * `substring(7)` potrafi zwrócić `''`, gdy zapis jest krótszy niż 7 znaków.
  * Wycinamy z końca, więc długość wyniku jest zawsze stała.
  */
@@ -79,10 +102,20 @@ function activeCityDef() {
   }
 }
 
-async function resolveLocation(lat: number, lon: number, accuracyM?: number | null): Promise<LocationResult> {
+async function resolveLocation(
+  lat: number,
+  lon: number,
+  accuracyM?: number | null,
+): Promise<LocationResult> {
   const seq = ++cacheWriteSeq;
   const fallback = defaultLocationForCity(activeCityDef().id);
-  let result: LocationResult = { title: fallback.title, address: fallback.address, lat, lon, accuracyM };
+  let result: LocationResult = {
+    title: fallback.title,
+    address: fallback.address,
+    lat,
+    lon,
+    accuracyM,
+  };
   let city: string | null = null;
   let foundStop = false;
   let hadReverse = false;
@@ -116,7 +149,15 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
     const nearest = await findNearestStops(lat, lon, 500, 1);
     if (nearest.length > 0) {
       const n = nearest[0];
-      result = { title: n.name, address: 'Przystanek', lat, lon, stopId: n.stop_id, city, accuracyM };
+      result = {
+        title: n.name,
+        address: 'Przystanek',
+        lat,
+        lon,
+        stopId: n.stop_id,
+        city,
+        accuracyM,
+      };
       foundStop = true;
     }
   } catch {}
@@ -124,7 +165,14 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
   if (!foundStop && !hadReverse) {
     const last = await loadLastLocation();
     if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
-      result = { title: last.title, address: last.address, lat, lon, stopId: last.stopId, accuracyM };
+      result = {
+        title: last.title,
+        address: last.address,
+        lat,
+        lon,
+        stopId: last.stopId,
+        accuracyM,
+      };
     }
   }
 
@@ -152,7 +200,12 @@ async function refineLocation(force?: boolean): Promise<LocationResult | null> {
   if (refineInFlight) return refineInFlight;
   const cachedIsCoarse = (cachedLocation?.accuracyM ?? 999) > 35;
   // Kolejne przebudzenia stanu nie mogą mielić odczytami High co chwilę.
-  if (!force && !cachedIsCoarse && cachedLocation && Date.now() - lastRefineAt < REFINE_MIN_INTERVAL_MS) {
+  if (
+    !force &&
+    !cachedIsCoarse &&
+    cachedLocation &&
+    Date.now() - lastRefineAt < REFINE_MIN_INTERVAL_MS
+  ) {
     return cachedLocation;
   }
   refineInFlight = (async () => {
@@ -165,7 +218,11 @@ async function refineLocation(force?: boolean): Promise<LocationResult | null> {
         HIGH_FIX_TIMEOUT_MS,
       );
       const prev = cachedLocation;
-      const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      const loc = await resolveLocation(
+        pos.coords.latitude,
+        pos.coords.longitude,
+        pos.coords.accuracy,
+      );
       const movedM = prev ? distanceM(prev.lat, prev.lon, loc.lat, loc.lon) : Infinity;
       if (movedM >= LOCATION_REFINE_DELTA_M || prev?.stopId !== loc.stopId) {
         for (const listener of locationListeners) {
@@ -218,18 +275,22 @@ export const LocationService: ILocationService = {
           void refineLocation();
           return cachedLocation;
         }
-        const last = await Location.getLastKnownPositionAsync({ maxAge: 90_000, requiredAccuracy: 180 });
+        const last = await Location.getLastKnownPositionAsync({
+          maxAge: 90_000,
+          requiredAccuracy: 180,
+        });
         if (last) {
-          const loc = await resolveLocation(last.coords.latitude, last.coords.longitude, last.coords.accuracy);
+          const loc = await resolveLocation(
+            last.coords.latitude,
+            last.coords.longitude,
+            last.coords.accuracy,
+          );
           void refineLocation();
           return loc;
         }
       } else {
         try {
-          const highPos = await getPositionWithTimeout(
-            { accuracy: Location.Accuracy.High },
-            3500,
-          );
+          const highPos = await getPositionWithTimeout({ accuracy: Location.Accuracy.High }, 3500);
           return await resolveLocation(
             highPos.coords.latitude,
             highPos.coords.longitude,
@@ -238,11 +299,12 @@ export const LocationService: ILocationService = {
         } catch {}
       }
 
-      const pos = await getPositionWithTimeout(
-        { accuracy: Location.Accuracy.Balanced },
-        5000,
+      const pos = await getPositionWithTimeout({ accuracy: Location.Accuracy.Balanced }, 5000);
+      const loc = await resolveLocation(
+        pos.coords.latitude,
+        pos.coords.longitude,
+        pos.coords.accuracy,
       );
-      const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
       void refineLocation(Boolean(options?.force));
       return loc;
     } catch (err) {
@@ -262,7 +324,7 @@ export const LocationService: ILocationService = {
  * miejsca startowego otwiera wyszukiwarkę po zapisaniu). Przy jednym
  * wspólnym `AbortController` nowsze zapytanie z drugiego pola zabijało
  * pierwsze, a przegrany dostawał `SearchAbortedError` zamieniany przez
- * wywołującego w „brak wyników” — czyli wynik znikiał bez powodu.
+ * wywołującego w „brak wyników” - czyli wynik znikiał bez powodu.
  */
 const searchAborts = new Map<string, AbortController>();
 const DEFAULT_SEARCH_SCOPE = 'default';
@@ -278,7 +340,7 @@ export class SearchAbortedError extends Error {
   }
 }
 
-// Cache scalonych podpowiedzi (query + zaokrąglona pozycja) — powtórki migają.
+// Cache scalonych podpowiedzi (query + zaokrąglona pozycja) - powtórki migają.
 const mergedCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MERGED_TTL_MS = 120 * 1000;
 const MERGED_MAX = 60;
@@ -365,7 +427,7 @@ export const SearchService: ISearchService = {
       ];
 
       // 2. Sieć (Nominatim) tylko gdy lokalnie za mało albo to adres z numerem.
-      // Adresy z numerami są domeną Nominatim — lokalny indeks ich nie ma.
+      // Adresy z numerami są domeną Nominatim - lokalny indeks ich nie ma.
       const normQ = normalizePolish(q);
       const looksLikeAddress = /\d/.test(normQ);
       const needNetwork = q.length >= 2 && (looksLikeAddress || localSuggestions.length < 5);
@@ -378,12 +440,14 @@ export const SearchService: ISearchService = {
         }
         await new Promise((r) => setTimeout(r, NETWORK_DELAY_MS));
         if (!isCurrent()) throw new SearchAbortedError();
-        remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(() => []);
+        remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(
+          () => [],
+        );
         if (!isCurrent()) throw new SearchAbortedError();
       }
 
       // 3. Merge: przystanki absolutnie pierwsze (w kolejności trafienie+waga),
-      // reszta wg nazwy z karą za dystans — bliższe wyżej.
+      // reszta wg nazwy z karą za dystans - bliższe wyżej.
       const merged = dedupeAndSort(localSuggestions, remoteHits, hasPos, normQ).slice(0, 15);
       if (merged.length > 0) {
         mergedSet(cacheKey, merged);
@@ -391,7 +455,7 @@ export const SearchService: ISearchService = {
         return merged;
       }
     } catch {
-      // offline / błąd — fallback niżej
+      // offline / błąd - fallback niżej
     }
 
     if (!isCurrent()) throw new SearchAbortedError();
@@ -411,7 +475,10 @@ export const SearchService: ISearchService = {
 const recentPlannedConnections = new Map<string, Connection>();
 
 export const RoutingService: IRoutingService = {
-  async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
+  async getConnections(
+    query: RouteQuery,
+    onProgress?: (partial: Connection[]) => void,
+  ): Promise<Connection[]> {
     try {
       const connections = await planConnections({
         fromTitle: query.fromTitle,
@@ -447,7 +514,7 @@ export const RoutingService: IRoutingService = {
             }
           : undefined,
       });
-      
+
       for (const c of connections) {
         recentPlannedConnections.set(c.id, c);
       }
@@ -465,14 +532,16 @@ export const RoutingService: IRoutingService = {
     }
   },
 
-  async getConnectionById(id: string): Promise<{ connection: Connection; source: 'live' | 'cache' } | undefined> {
+  async getConnectionById(
+    id: string,
+  ): Promise<{ connection: Connection; source: 'live' | 'cache' } | undefined> {
     const found = recentPlannedConnections.get(id);
     if (found) return { connection: found, source: 'live' };
 
     const saved = await this.isRouteSaved(id);
     if (saved) {
       const allSaved = await getSavedRoutes();
-      const hit = allSaved.find(r => r.id === id)?.connection;
+      const hit = allSaved.find((r) => r.id === id)?.connection;
       if (hit) return { connection: hit, source: 'live' };
     }
 
@@ -500,7 +569,7 @@ export const RoutingService: IRoutingService = {
   async deleteSavedRoute(id: string): Promise<void> {
     try {
       const all = await getSavedRoutes();
-      const filtered = all.filter(r => r.id !== id);
+      const filtered = all.filter((r) => r.id !== id);
       await kvSet(savedRoutesKey(), JSON.stringify(filtered));
     } catch (err) {
       console.warn('[RoutingService] Failed to delete saved route:', err);
@@ -510,7 +579,7 @@ export const RoutingService: IRoutingService = {
   async isRouteSaved(id: string): Promise<boolean> {
     try {
       const all = await getSavedRoutes();
-      return all.some(r => r.id === id);
+      return all.some((r) => r.id === id);
     } catch {
       return false;
     }
@@ -523,7 +592,6 @@ export const RoutingService: IRoutingService = {
       return [];
     }
   },
-
 };
 
 // Zapisane trasy też są per-miasto (połączenie ma sens tylko w bazie miasta,
@@ -534,7 +602,9 @@ function savedRoutesKey(cityId?: string): string {
   return cityKey(SAVED_ROUTES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
 }
 
-async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
+async function getSavedRoutes(): Promise<
+  { id: string; savedAt: number; connection: Connection }[]
+> {
   try {
     const raw = await kvGet(savedRoutesKey());
     if (raw) return JSON.parse(raw);
@@ -636,11 +706,14 @@ export const FavoritesService: IFavoritesService = {
     }
   },
 
-  async smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]> {
+  async smartFromOrigin(
+    originId: string,
+    coords?: { lat: number; lon: number },
+  ): Promise<SmartDestination[]> {
     try {
       const { getSmartDestinationsForLocation } = await import('./smartRanker');
       const city = activeCityDef();
-      // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS — a
+      // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS - a
       // ranking na `NaN` wypadałby z każdego promienia, czyli pokazałby
       // historię z całego miasta jako „w okolicy".
       const lat = Number.isFinite(coords?.lat) ? coords!.lat! : city.center.lat;
@@ -670,7 +743,7 @@ export const FavoritesService: IFavoritesService = {
       // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
       // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
       // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
-      // obcinamy dopiero na jego końcu — długość jest wtedy stała.
+      // obcinamy dopiero na jego końcu - długość jest wtedy stała.
       const id = newId();
       const newPlace: SavedPlace = {
         id,
@@ -695,7 +768,7 @@ export const FavoritesService: IFavoritesService = {
     return withPlacesLock(async () => {
       await ensurePlacesMigrated();
       const places = await readPlaces();
-      const idx = places.findIndex(p => p.id === id);
+      const idx = places.findIndex((p) => p.id === id);
       if (idx === -1) return null;
       places[idx] = { ...places[idx], ...updates };
       await kvSet(placesKey(), JSON.stringify(places));
@@ -714,7 +787,7 @@ export const FavoritesService: IFavoritesService = {
         console.warn('[FavoritesService] deletePlace read failed:', err);
         return false;
       }
-      const filtered = places.filter(p => p.id !== id);
+      const filtered = places.filter((p) => p.id !== id);
       if (filtered.length === places.length) return false;
       await kvSet(placesKey(), JSON.stringify(filtered));
       return true;
@@ -731,7 +804,12 @@ export interface NearestStop {
   distanceM: number;
 }
 
-export async function fetchNearestStops(lat: number, lon: number, limit = 6, maxDistance = 1200): Promise<NearestStop[]> {
+export async function fetchNearestStops(
+  lat: number,
+  lon: number,
+  limit = 6,
+  maxDistance = 1200,
+): Promise<NearestStop[]> {
   try {
     const { findNearestStops } = await import('./gtfsDatabase');
     const local = await findNearestStops(lat, lon, maxDistance, limit);

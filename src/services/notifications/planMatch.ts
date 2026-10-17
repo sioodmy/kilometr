@@ -8,7 +8,7 @@ import type { Connection } from '../../types/models';
 import { normalizeName } from '../vehiclePosition';
 
 // Dopasowanie świeżego planu do tego, co już śledzimy. Wydzielone z monitora,
-// bo to czysta funkcja na danych z RAPTOR-a — dzięki temu da się ją
+// bo to czysta funkcja na danych z RAPTOR-a - dzięki temu da się ją
 // przetestować bez react-native i bez bazy GTFS.
 
 /** Ile przesunięcia odjazdu tolerujemy, gdy nie mamy trip_id do porównania. */
@@ -20,7 +20,7 @@ const LOOSE_WINDOW_SEC = 30 * 60;
  * Odróżniamy dwie rzeczy, które wyglądają podobnie: tramwaj ten sam, który
  * spóźnił się o kilka minut, i tramwaj tej samej linii, który po prostu
  * odjeżdża później. Przy oknie pół godziny nie da się ich rozróżnić i plan
- * potrafił podmienić śledzony kurs na inny egzemplarz tej samej linii —
+ * potrafił podmienić śledzony kurs na inny egzemplarz tej samej linii -
  * użytkownik widział wtedy „Tramwaj 3 o 11:50", czekając na 11:30.
  * Przed odjazdem zostajemy więc przy kursie, który przesunął się najwyżej
  * o kwadrans; szersze okno zostaje dopiero na wypadek zmiany kursu po
@@ -52,14 +52,14 @@ function tripSignature(c: Connection): string | null {
  * minutę widzi inną liczbę przystanków i inny odjazd.
  *
  * Kolejność kryteriów:
- *  1. ten sam zestaw trip_id — jednoznaczne, RAPTOR daje je zawsze dla
+ *  1. ten sam zestaw trip_id - jednoznaczne, RAPTOR daje je zawsze dla
  *     odcinków pojazdowych, więc to rozwiązuje zdecydowaną większość;
- *  2. ten sam podpis kursu (linie + przystanek startowy) — łapie plan
+ *  2. ten sam podpis kursu (linie + przystanek startowy) - łapie plan
  *     z cache albo renormalizację, gdzie trip_id zniknęło. `windowSec`
  *     decyduje, jak duże przesunięcie uznajemy za opóźnienie tego samego
  *     kursu: przed odjazdem przekazujemy wąskie okno, żeby nie wziąć innego
  *     egzemplarza linii;
- *  3. dokładnie ten sam odjazd — tylko gdy podpisu nie mamy (brak danych).
+ *  3. dokładnie ten sam odjazd - tylko gdy podpisu nie mamy (brak danych).
  *
  * Świadomie NIE dopasowujemy po samym odjeździe: dwie linie mogą odjechać
  * w tej samej minucie, a przeskoczenie z „Tramwaj 4" na „Tramwaj 12" w
@@ -67,7 +67,11 @@ function tripSignature(c: Connection): string | null {
  */
 function packPlanConn(w: BinaryWriter, c: Connection, idx: number): void {
   const ids = tripIdsOf(c);
-  w.u32(idx).i32(c.departureSec | 0).i32(c.durationMin | 0).str(tripSignature(c) ?? '').u16(ids.length);
+  w.u32(idx)
+    .i32(c.departureSec | 0)
+    .i32(c.durationMin | 0)
+    .str(tripSignature(c) ?? '')
+    .u16(ids.length);
   for (const id of ids) w.str(id);
 }
 
@@ -116,7 +120,7 @@ export function matchTrackedConnection(
   return conns.find((c) => c.departureSec === committed.departureSec) ?? null;
 }
 
-/** Kurs, którym właśnie jedziemy — gdy plan już go nie zawiera. */
+/** Kurs, którym właśnie jedziemy - gdy plan już go nie zawiera. */
 export function connectionInProgress(conns: Connection[], nowSec: number): Connection | null {
   const ongoing = conns.filter((c) => {
     const end = c.departureSec + c.durationMin * 60;
@@ -139,10 +143,10 @@ export function nextDeparture(
 }
 
 /**
- * Wybór kursu po odświeżeniu planu — cała polityka w jednym miejscu.
+ * Wybór kursu po odświeżeniu planu - cała polityka w jednym miejscu.
  *
  * Kolejność:
- *  1. ten sam kurs (`trip_id`, a w razie jego braku podpis) — zawsze wygrywa,
+ *  1. ten sam kurs (`trip_id`, a w razie jego braku podpis) - zawsze wygrywa,
  *     dzięki temu opóźnienie nie zmienia pokazywanego odjazdu;
  *  2. dopóki śledzony odjazd nie minął, zostajemy przy nim, nawet jeśli planer
  *     go nie zwrócił. Bez tego powiadomienie co odświeżenie potrafiło przeskoczyć
@@ -151,7 +155,7 @@ export function nextDeparture(
  *     na „Czekaj na pojazd", liczba przystanków skakała 4↔5, a godzina odjazdu
  *     w karcie nie zgadzała się z odliczanym licznikiem;
  *  3. po odjeździe (z grzecznością na wsiadanie): kurs, którym właśnie jedziemy,
- *     a dopiero gdy żadnego nie ma — następny.
+ *     a dopiero gdy żadnego nie ma - następny.
  *
  * Świadomie zostajemy przy starym planie zamiast przeskakiwać: użytkownik
  * świadomie wcisnął „Śledź ten kurs", więc stabilność jest tu wartością, a
@@ -167,7 +171,11 @@ export function resolveTrackedConnection(
   if (conns.length === 0) return null;
 
   const packed = new BinaryWriter(64 + conns.length * 48);
-  packed.u8Val(1).i32(nowSec | 0).i32(graceSec | 0).u8Val(1);
+  packed
+    .u8Val(1)
+    .i32(nowSec | 0)
+    .i32(graceSec | 0)
+    .u8Val(1);
   packPlanConn(packed, committed, 0);
   packed.u32(conns.length);
   for (let i = 0; i < conns.length; i++) packPlanConn(packed, conns[i], i);
@@ -185,7 +193,7 @@ export function resolveTrackedConnection(
 
   // Przed odjazdem wolno tylko ten sam kurs. `trip_id` przeżywa opóźnienie,
   // więc spóźniony odjazd nadal się przepisze, a przy braku trip_id zostaje
-  // wąskie okno opóźnienia — inny egzemplarz tej samej linii nas nie ruszy.
+  // wąskie okno opóźnienia - inny egzemplarz tej samej linii nas nie ruszy.
   const match = stillAhead
     ? matchTrackedConnection(conns, committed, DELAY_WINDOW_SEC)
     : matchTrackedConnection(conns, committed);

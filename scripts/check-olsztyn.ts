@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:olsztyn`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach wzorowanych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach wzorowanych
  * na realnych źródłach (itemy z zdzit.olsztyn.eu/feed z 2026-10-15,
  * struktura podstrony artykułu z tego samego dnia, linie i typy z GTFS
  * ZDZiT). Warstwę live pokrywa sekcja z zaślepionym fetch na końcu.
@@ -15,7 +15,11 @@
 import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
-import { extractArticleBlocks, parseZdzitOlsztynRss, ZDZIT_OLSZTYN_FEED_URL } from '../src/services/mpkNews';
+import {
+  extractArticleBlocks,
+  parseZdzitOlsztynRss,
+  ZDZIT_OLSZTYN_FEED_URL,
+} from '../src/services/mpkNews';
 import { fetchZbOlsztynRows } from '../src/services/zbiorkom';
 import { pl } from '../src/i18n/pl';
 import { en } from '../src/i18n/en';
@@ -28,7 +32,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n- ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -42,7 +46,12 @@ function expect<T>(label: string, got: T, want: T): void {
 }
 
 /** Minimalny item RSS w formacie WordPressa (jak z zdzit.olsztyn.eu/feed). */
-function rssItem(title: string, description: string, link = 'https://zdzit.olsztyn.eu/x/', pubDate = 'Wed, 30 Sep 2026 08:31:41 +0000'): string {
+function rssItem(
+  title: string,
+  description: string,
+  link = 'https://zdzit.olsztyn.eu/x/',
+  pubDate = 'Wed, 30 Sep 2026 08:31:41 +0000',
+): string {
   return `<item>
 		<title>${title}</title>
 		<link>${link}</link>
@@ -114,14 +123,21 @@ describe('Komunikaty ZDZiT (RSS WordPressa)');
   expect('linie z drugiego komunikatu', items[1].lines, ['303', '305', '3', '103', '130']);
   // RSS ZDZiT nie ma obrazków w description (feed bez wyróżnionych zdjęć).
   expect('bez obrazka w karcie', items[0].imageUrl, null);
-  expect('link komunikatu', items[0].link, 'https://zdzit.olsztyn.eu/komunikacja-miejska-w-czasie-biegow-03-04-10-2026/');
+  expect(
+    'link komunikatu',
+    items[0].link,
+    'https://zdzit.olsztyn.eu/komunikacja-miejska-w-czasie-biegow-03-04-10-2026/',
+  );
 }
 
 describe('Numery linii ZDZiT: daty, godziny, numery przystanków');
 {
   expect(
     '„03-04.10.2026” to data, nie tramwaj 03 (regresja)',
-    linesOf('KOMUNIKACJA MIEJSKA W CZASIE BIEGÓW 03-04.10.2026', 'Autobusy linii 101 pojadą objazdami.'),
+    linesOf(
+      'KOMUNIKACJA MIEJSKA W CZASIE BIEGÓW 03-04.10.2026',
+      'Autobusy linii 101 pojadą objazdami.',
+    ),
     ['101'],
   );
   expect(
@@ -146,7 +162,10 @@ describe('Numery linii ZDZiT: daty, godziny, numery przystanków');
   );
   expect(
     '„nr 34211” to nie linia',
-    linesOf('Organizacja przystanków', 'Wyłączony przystanek Partyzantów (nr 34211), kursuje linia 101.'),
+    linesOf(
+      'Organizacja przystanków',
+      'Wyłączony przystanek Partyzantów (nr 34211), kursuje linia 101.',
+    ),
     ['101'],
   );
   expect(
@@ -199,7 +218,11 @@ describe('Tryb linii: tramwaje 1-5, reszta to autobusy');
   expect('101 to autobus', inferTransitMode(undefined, '101', 'olsztyn'), 'bus');
   expect('303 to autobus akademicki', inferTransitMode(undefined, '303', 'olsztyn'), 'bus');
   expect('N01 to autobus nocny', inferTransitMode(undefined, 'N01', 'olsztyn'), 'bus');
-  expect('reguła niskich numerów działa też poza Olsztynem', inferTransitMode(undefined, '3', 'wroclaw'), 'tram');
+  expect(
+    'reguła niskich numerów działa też poza Olsztynem',
+    inferTransitMode(undefined, '3', 'wroclaw'),
+    'tram',
+  );
 }
 
 describe('Podpowiedzi onboardingu per-miasto');
@@ -208,7 +231,12 @@ describe('Podpowiedzi onboardingu per-miasto');
   expect('pl dom', pl.onboarding.slotHomeHint('olsztyn'), 'np. Partyzantów 12');
   expect('pl praca', pl.onboarding.slotWorkHint('olsztyn'), 'np. Galeria Warmińska');
   expect('pl uczelnia', pl.onboarding.slotUniHint('olsztyn'), 'np. UWM');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
+  for (const [lang, dict] of [
+    ['pl', pl],
+    ['en', en],
+    ['de', de],
+    ['uk', uk],
+  ] as const) {
     expect(
       `${lang}: olsztyn nie dziedziczy Wrocławia`,
       dict.onboarding.slotHomeHint('olsztyn') !== dict.onboarding.slotHomeHint('wroclaw'),
@@ -220,7 +248,12 @@ describe('Podpowiedzi onboardingu per-miasto');
   expect('pl miejscownik', pl.city.loc('olsztyn'), 'Olsztynie');
   expect('pl przewoźnik', pl.city.operatorShort('olsztyn'), 'ZDZiT');
   expect('pl portal', pl.city.portal('olsztyn'), 'zdzit.olsztyn.eu');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
+  for (const [lang, dict] of [
+    ['pl', pl],
+    ['en', en],
+    ['de', de],
+    ['uk', uk],
+  ] as const) {
     expect(
       `${lang}: źródła komunikatów`,
       dict.city.feeds('olsztyn') !== dict.city.feeds('wroclaw'),
@@ -255,16 +288,51 @@ describe('Treść komunikatu ZDZiT (article/entry-content)');
 </article>
 <footer>Stopka serwisu</footer>
 </body></html>`;
-  const blocks = extractArticleBlocks(html, 'https://zdzit.olsztyn.eu/komunikacja-miejska-w-czasie-biegow-03-04-10-2026/');
-  expect('bez tytułu z h1', blocks.some((b) => b.text.startsWith('KOMUNIKACJA MIEJSKA')), false);
-  expect('bez tagu kategorii', blocks.some((b) => b.text.includes('Bez kategorii')), false);
-  expect('bez nawigacji wpisu', blocks.some((b) => b.text.includes('POPRZEDNI WPIS') || b.text.includes('NASTĘPNY WPIS')), false);
-  expect('bez CSS ze style', blocks.some((b) => b.text.includes('font-family') || b.text.includes('color: #333')), false);
-  expect('lead jest pierwszym akapitem', blocks[0]?.text.startsWith('W związku z „Olsztyn Półmaratonem”') ?? false, true);
+  const blocks = extractArticleBlocks(
+    html,
+    'https://zdzit.olsztyn.eu/komunikacja-miejska-w-czasie-biegow-03-04-10-2026/',
+  );
+  expect(
+    'bez tytułu z h1',
+    blocks.some((b) => b.text.startsWith('KOMUNIKACJA MIEJSKA')),
+    false,
+  );
+  expect(
+    'bez tagu kategorii',
+    blocks.some((b) => b.text.includes('Bez kategorii')),
+    false,
+  );
+  expect(
+    'bez nawigacji wpisu',
+    blocks.some((b) => b.text.includes('POPRZEDNI WPIS') || b.text.includes('NASTĘPNY WPIS')),
+    false,
+  );
+  expect(
+    'bez CSS ze style',
+    blocks.some((b) => b.text.includes('font-family') || b.text.includes('color: #333')),
+    false,
+  );
+  expect(
+    'lead jest pierwszym akapitem',
+    blocks[0]?.text.startsWith('W związku z „Olsztyn Półmaratonem”') ?? false,
+    true,
+  );
   expect('kind nagłówka', blocks.find((b) => b.text === '3.10.2026 (Sobota)')?.kind, 'h');
-  expect('pozycja listy w treści', blocks.some((b) => b.text.includes('103 – objazd przez Pstrowskiego')), true);
-  expect('sekcja o wyłączonych przystankach jest', blocks.some((b) => b.text.includes('Kortowo')), true);
-  expect('stopka serwisu poza artykułem', blocks.some((b) => b.text.includes('Stopka serwisu')), false);
+  expect(
+    'pozycja listy w treści',
+    blocks.some((b) => b.text.includes('103 – objazd przez Pstrowskiego')),
+    true,
+  );
+  expect(
+    'sekcja o wyłączonych przystankach jest',
+    blocks.some((b) => b.text.includes('Kortowo')),
+    true,
+  );
+  expect(
+    'stopka serwisu poza artykułem',
+    blocks.some((b) => b.text.includes('Stopka serwisu')),
+    false,
+  );
 }
 
 describe('Live ZDZiT (zbiorkom.live)');
@@ -282,8 +350,26 @@ async function main(): Promise<void> {
   }
   const liveBody = {
     positions: [
-      { vehicle: { id: 'A818', type: '3', agency: 'default' }, routeName: '107', brigade: '12', location: [20.41721, 53.76804], timestamp: 1792097275000, delay: 0, headsign: 'Centrum', upcomingStops: [] },
-      { vehicle: { id: '3015', type: '0', agency: 'default' }, routeName: '4', brigade: '5', location: [20.48, 53.77], timestamp: 1792097275000, delay: 0, headsign: 'Pieczewo', upcomingStops: [] },
+      {
+        vehicle: { id: 'A818', type: '3', agency: 'default' },
+        routeName: '107',
+        brigade: '12',
+        location: [20.41721, 53.76804],
+        timestamp: 1792097275000,
+        delay: 0,
+        headsign: 'Centrum',
+        upcomingStops: [],
+      },
+      {
+        vehicle: { id: '3015', type: '0', agency: 'default' },
+        routeName: '4',
+        brigade: '5',
+        location: [20.48, 53.77],
+        timestamp: 1792097275000,
+        delay: 0,
+        headsign: 'Pieczewo',
+        upcomingStops: [],
+      },
       // Śmieci nie przechodzą: bez linii, bez id, zerowa pozycja.
       { vehicle: { id: 'x', type: '3' }, routeName: '', location: [20.4, 53.7] },
       { vehicle: { id: 'y', type: '3' }, routeName: '107', location: [0, 0] },
@@ -309,7 +395,7 @@ async function main(): Promise<void> {
 
   console.log(`\n${'='.repeat(52)}`);
   if (failures.length === 0) {
-    console.log(`WSZYSTKO OK — ${passed} asercji`);
+    console.log(`WSZYSTKO OK - ${passed} asercji`);
     process.exit(0);
   }
   console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

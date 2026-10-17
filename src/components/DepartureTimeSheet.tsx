@@ -73,7 +73,10 @@ function WheelPicker({
   return (
     <View style={styles.wheelCol}>
       <View style={[styles.wheelContainer, { height: ITEM_HEIGHT * 3 }]}>
-        <View pointerEvents="none" style={[styles.wheelHighlight, { top: ITEM_HEIGHT, height: ITEM_HEIGHT }]} />
+        <View
+          pointerEvents="none"
+          style={[styles.wheelHighlight, { top: ITEM_HEIGHT, height: ITEM_HEIGHT }]}
+        />
 
         <ScrollView
           ref={scrollRef}
@@ -120,14 +123,11 @@ function WheelPicker({
   );
 }
 
-export function DepartureTimeSheet({
-  initialTimeSec,
-  onClose,
-  onSelect,
-}: DepartureTimeSheetProps) {
+export function DepartureTimeSheet({ initialTimeSec, onClose, onSelect }: DepartureTimeSheetProps) {
   // Android back / gest wstecz zamyka sheet zamiast wyjścia z apki
   const s = useStrings();
-  const closeRef = useRef(onClose);  closeRef.current = onClose;
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       closeRef.current();
@@ -171,7 +171,7 @@ export function DepartureTimeSheet({
   const [hour, setHour] = useState(initHour);
   const [minute, setMinute] = useState(initMin);
 
-  // Kolejne kliknięcia dokładają do WYBRANEJ godziny, nie do „teraz” —
+  // Kolejne kliknięcia dokładają do WYBRANEJ godziny, nie do „teraz” -
   // dwa razy +15 min daje 30 minut, a nie wraca do 15.
   const handleQuickAdd = (addMinutes: number) => {
     setIsNow(false);
@@ -250,27 +250,20 @@ export function DepartureTimeSheet({
             onPress={handleSetNow}
             style={[styles.presetChip, isNow && styles.presetChipActive]}
           >
-            <Text style={[styles.presetText, isNow && styles.presetTextActive]}>{s.common.now}</Text>
+            <Text style={[styles.presetText, isNow && styles.presetTextActive]}>
+              {s.common.now}
+            </Text>
           </Pressable>
 
-          <Pressable
-            onPress={() => handleQuickAdd(15)}
-            style={styles.presetChip}
-          >
+          <Pressable onPress={() => handleQuickAdd(15)} style={styles.presetChip}>
             <Text style={styles.presetText}>{s.common.add15}</Text>
           </Pressable>
 
-          <Pressable
-            onPress={() => handleQuickAdd(30)}
-            style={styles.presetChip}
-          >
+          <Pressable onPress={() => handleQuickAdd(30)} style={styles.presetChip}>
             <Text style={styles.presetText}>{s.common.add30}</Text>
           </Pressable>
 
-          <Pressable
-            onPress={() => handleQuickAdd(60)}
-            style={styles.presetChip}
-          >
+          <Pressable onPress={() => handleQuickAdd(60)} style={styles.presetChip}>
             <Text style={styles.presetText}>{s.common.add60}</Text>
           </Pressable>
         </View>
@@ -284,7 +277,12 @@ export function DepartureTimeSheet({
             }}
             style={[styles.dayTab, day === 'today' && !isNow && styles.dayTabActive]}
           >
-            <Calendar size={14} color={day === 'today' && !isNow ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
+            <Calendar
+              size={14}
+              color={
+                day === 'today' && !isNow ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+              }
+            />
             <Text style={[styles.dayTabText, day === 'today' && !isNow && styles.dayTabTextActive]}>
               {s.timeSheet.dayToday}
             </Text>
@@ -297,8 +295,15 @@ export function DepartureTimeSheet({
             }}
             style={[styles.dayTab, day === 'tomorrow' && !isNow && styles.dayTabActive]}
           >
-            <Calendar size={14} color={day === 'tomorrow' && !isNow ? scheme.onSecondaryContainer : scheme.onSurfaceVariant} />
-            <Text style={[styles.dayTabText, day === 'tomorrow' && !isNow && styles.dayTabTextActive]}>
+            <Calendar
+              size={14}
+              color={
+                day === 'tomorrow' && !isNow ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+              }
+            />
+            <Text
+              style={[styles.dayTabText, day === 'tomorrow' && !isNow && styles.dayTabTextActive]}
+            >
               {s.timeSheet.dayTomorrow}
             </Text>
           </Pressable>
@@ -361,9 +366,7 @@ export function DepartureTimeSheet({
           style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.88 }]}
         >
           <Check size={19} color={scheme.onPrimary} />
-          <Text style={styles.confirmText}>
-            {confirmText}
-          </Text>
+          <Text style={styles.confirmText}>{confirmText}</Text>
         </Pressable>
       </View>
     </BottomSheet>

@@ -112,7 +112,7 @@ export async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
  * Liczy się nawyk, a nie historia wyszukiwania: powtórna kontrola tej samej
  * pary zwiększa `uses`, a wybór celu z innego miejsca tworzy osobny wpis
  * (szczegóły w `mergeTripSearch`). `measuredMinutes` to prawdziwy czas dojazdu
- * z planera — bez niego zostajemy przy `FALLBACK_TRIP_MIN`.
+ * z planera - bez niego zostajemy przy `FALLBACK_TRIP_MIN`.
  */
 export async function recordTripSearch(
   originLat: number,
@@ -143,7 +143,7 @@ export async function getSmartDestinationsForLocation(
   userLon: number,
   limit = 5,
 ): Promise<SmartDestination[]> {
-  // Dystans kotwiczenia z ustawień: miejsce bliżej niż to nie jest celem —
+  // Dystans kotwiczenia z ustawień: miejsce bliżej niż to nie jest celem -
   // skipujemy je i pokazujemy następne w rankingu.
   let exclusionRadiusM = EXCLUSION_RADIUS_FALLBACK_M;
   try {
@@ -169,19 +169,30 @@ export async function getSmartDestinationsForLocation(
   const { activeBounds } = await import('./gtfsConfig');
   const bounds = activeBounds();
   const inCity = (lat: number, lon: number): boolean =>
-    Number.isFinite(lat) && Number.isFinite(lon) &&
-    lat >= bounds.minLat && lat <= bounds.maxLat &&
-    lon >= bounds.minLon && lon <= bounds.maxLon;
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= bounds.minLat &&
+    lat <= bounds.maxLat &&
+    lon >= bounds.minLon &&
+    lon <= bounds.maxLon;
   const history = (await loadTripHistory()).filter(
     (t) => inCity(t.dest_lat, t.dest_lon) && inCity(t.origin_lat, t.origin_lon),
   );
   savedPlaces = savedPlaces.filter((p) => inCity(p.lat, p.lon));
-  return rankSmartDestinations(history, savedPlaces, userLat, userLon, Date.now(), limit, exclusionRadiusM);
+  return rankSmartDestinations(
+    history,
+    savedPlaces,
+    userLat,
+    userLon,
+    Date.now(),
+    limit,
+    exclusionRadiusM,
+  );
 }
 
 // ─── Natychmiastowy start: cache ostatniej listy ────────────────────────────
 // GPS potrafi myśleć parę sekund, więc na starcie malujemy gołe ostatnie
-// miejsca z cache (bez ikon i odjazdów — te dociągają się jak zwykle),
+// miejsca z cache (bez ikon i odjazdów - te dociągają się jak zwykle),
 // a gdy GPS + świeży ranking dotrą, lista zamienia się w miejscu.
 const smartCacheKey = (): string => cityKey('kilometr.smart_cache.v1', getActiveCityIdSync());
 const SMART_CACHE_MAX = 5;
@@ -193,7 +204,10 @@ export async function loadCachedSmartDestinations(): Promise<SmartDestination[]>
     const parsed = JSON.parse(raw) as { items?: SmartDestination[] };
     const items = Array.isArray(parsed?.items) ? parsed.items : [];
     return items
-      .filter((d) => d && typeof d.id === 'string' && typeof d.lat === 'number' && typeof d.lon === 'number')
+      .filter(
+        (d) =>
+          d && typeof d.id === 'string' && typeof d.lat === 'number' && typeof d.lon === 'number',
+      )
       .slice(0, SMART_CACHE_MAX);
   } catch {
     return [];
@@ -203,6 +217,9 @@ export async function loadCachedSmartDestinations(): Promise<SmartDestination[]>
 export async function saveCachedSmartDestinations(items: SmartDestination[]): Promise<void> {
   try {
     if (!Array.isArray(items) || items.length === 0) return;
-    await kvSet(smartCacheKey(), JSON.stringify({ savedAt: Date.now(), items: items.slice(0, SMART_CACHE_MAX) }));
+    await kvSet(
+      smartCacheKey(),
+      JSON.stringify({ savedAt: Date.now(), items: items.slice(0, SMART_CACHE_MAX) }),
+    );
   } catch {}
 }

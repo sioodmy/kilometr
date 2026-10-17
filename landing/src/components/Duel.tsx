@@ -7,7 +7,7 @@ import { BENCHMARK } from '../data';
 // Sekcja „Najlepsze rozwiązanie na rynku": pojedynek na realnej trasie
 // Kozanów → Rynek (sob 03:40, nocny powrót). Oba warianty z outputu harnessa
 // (r3_4.txt): my 253 bezpośrednio 03:54 → 04:10, jakdojade dopiero 245
-// o 04:20 → 04:46. Delta −36 min, 0 vs 0 przesiadek — ta sama noc, ten sam
+// o 04:20 → 04:46. Delta −36 min, 0 vs 0 przesiadek - ta sama noc, ten sam
 // kierunek, inny silnik.
 //
 // Karta jakdojade odwzorowuje ich listę wyników 1:1 (ciemny motyw jd:
@@ -25,7 +25,10 @@ const OURS_MIN = DUEL.ours.durationMin; // 16
 const JD_MIN = DUEL.jd.durationMin; // 26
 
 /** Licznik od 0 do `target` po wejściu w kadr (rAF, raz). */
-function useCountUp(target: number, durationMs = 1100): { ref: React.RefObject<HTMLSpanElement | null>; value: number } {
+function useCountUp(
+  target: number,
+  durationMs = 1100,
+): { ref: React.RefObject<HTMLSpanElement | null>; value: number } {
   const ref = useRef<HTMLSpanElement | null>(null);
   const [value, setValue] = useState(0);
   useEffect(() => {
@@ -131,11 +134,18 @@ function Chart() {
         <span className="duel-unit">min</span>
       </div>
       <p className="duel-big-sub">wcześniej na miejscu tą samą nocą</p>
-      <div className="duel-bars" role="img" aria-label={`Czas podróży: Kilometr ${OURS_MIN} minut, jakdojade ${JD_MIN} minut`}>
+      <div
+        className="duel-bars"
+        role="img"
+        aria-label={`Czas podróży: Kilometr ${OURS_MIN} minut, jakdojade ${JD_MIN} minut`}
+      >
         <div className="duel-bar-row">
           <span className="duel-bar-label">Kilometr · {OURS_MIN} min</span>
           <div className="duel-track">
-            <i className="duel-fill duel-fill-ours" style={{ ['--w' as string]: `${(OURS_MIN / JD_MIN) * 100}%` }} />
+            <i
+              className="duel-fill duel-fill-ours"
+              style={{ ['--w' as string]: `${(OURS_MIN / JD_MIN) * 100}%` }}
+            />
           </div>
         </div>
         <div className="duel-bar-row">
@@ -156,7 +166,12 @@ function Chart() {
           <b>{BENCHMARK.sample.notWorsePct}%</b> nie gorzej
         </li>
       </ul>
-      <a className="cta cta-primary duel-cta" href="#raport" target="_blank" rel="noopener noreferrer">
+      <a
+        className="cta cta-primary duel-cta"
+        href="#raport"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         <span>Zobacz pełny raport</span>
         <ArrowUpRight size={15} strokeWidth={2.4} />
       </a>
@@ -174,7 +189,11 @@ export function DuelSection() {
           <span className="duel-grad">Totalna deklasacja.</span>
         </h2>
       </div>
-      <div className="duel-route" role="img" aria-label={`Trasa ${DUEL.from} do ${DUEL.to}, ${DUEL.queryDay} o ${DUEL.queryTime}`}>
+      <div
+        className="duel-route"
+        role="img"
+        aria-label={`Trasa ${DUEL.from} do ${DUEL.to}, ${DUEL.queryDay} o ${DUEL.queryTime}`}
+      >
         <div className="duel-route-places">
           <div className="duel-route-main">
             <b>{DUEL.from}</b>

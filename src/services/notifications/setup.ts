@@ -3,7 +3,7 @@ import { setupNotificationCategories } from './categories';
 import { setupNotificationChannels } from './channels';
 
 // Jednorazowa konfiguracja powiadomień przy starcie aplikacji. Wołana z
-// `app/_layout` — kanały MUSZĄ istnieć przed prośbą o pozwolenie (Android 13+
+// `app/_layout` - kanały MUSZĄ istnieć przed prośbą o pozwolenie (Android 13+
 // pokazuje prompt dopiero po utworzeniu pierwszego kanału), więc nie czekamy
 // na moment przypięcia trasy.
 
@@ -13,7 +13,7 @@ export function setupNotificationHandler(): void {
   try {
     N.setNotificationHandler({
       handleNotification: async () => ({
-        // Kanał śledzenia ma LOW, więc dźwięk i tak nie zagra — ale gdyby
+        // Kanał śledzenia ma LOW, więc dźwięk i tak nie zagra - ale gdyby
         // użytkownik podniósł ważność kanału ręcznie, i tak nie chcemy
         // budzić go co minutę odliczaniem.
         shouldPlaySound: false,
@@ -23,7 +23,7 @@ export function setupNotificationHandler(): void {
       }),
     });
   } catch {
-    // ignoruj — brak handlera oznacza tylko brak banerów w foregroundzie
+    // ignoruj - brak handlera oznacza tylko brak banerów w foregroundzie
   }
 }
 

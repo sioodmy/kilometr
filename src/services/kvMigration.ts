@@ -5,7 +5,7 @@
 // po jednym pliku na klucz w documentDirectory/.kv/.
 //
 // Migracja czyta starą bazę raz i kopiuje klucze do nowego backendu.
-// Jeśli stara baza nie istnieje (fresh install) lub expo-sqlite znów padnie —
+// Jeśli stara baza nie istnieje (fresh install) lub expo-sqlite znów padnie -
 // po prostu pomijamy. Flagę migracji trzymamy w samym nowym KV.
 //
 // Wywoływać RAZ w _layout przed initApp().
@@ -30,7 +30,7 @@ async function performMigration(): Promise<void> {
   const dbPath = `${base}SQLite/ExpoSQLiteStorage`;
   const info = await FileSystem.getInfoAsync(dbPath);
   if (!info.exists) {
-    // Fresh install — nie ma co migrować
+    // Fresh install - nie ma co migrować
     await kvSet(MIGRATED_FLAG, '1');
     return;
   }
@@ -44,7 +44,7 @@ async function performMigration(): Promise<void> {
 
   try {
     const rows = await db.getAllAsync<{ key: string; value: string }>(
-      'SELECT key, value FROM storage'
+      'SELECT key, value FROM storage',
     );
     for (const row of rows) {
       if (!row || typeof row.key !== 'string' || row.value == null) continue;
@@ -64,9 +64,9 @@ async function performMigration(): Promise<void> {
 
 export async function migrateFromSqliteKv(): Promise<void> {
   try {
-    // Limit czasowy 1.5s — migracja nigdy nie może zablokować startu apki
+    // Limit czasowy 1.5s - migracja nigdy nie może zablokować startu apki
     const timeout = new Promise<void>((_, reject) =>
-      setTimeout(() => reject(new Error('kvMigration timeout')), 1500)
+      setTimeout(() => reject(new Error('kvMigration timeout')), 1500),
     );
     await Promise.race([performMigration(), timeout]);
   } catch (err) {

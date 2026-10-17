@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  InteractionManager,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  ArrowRight,
-  ChevronLeft,
-  CloudOff,
-  History,
-  Pin,
-  RouteOff,
-} from 'lucide-react-native';
+import { ArrowRight, ChevronLeft, CloudOff, History, Pin, RouteOff } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
@@ -90,7 +92,7 @@ export default function RouteDetailsScreen() {
   };
 
   useEffect(() => {
-    // Brak id to nie „wczytujemy” — inaczej ekran zostawał ze spinnerem w nieskończoność.
+    // Brak id to nie „wczytujemy” - inaczej ekran zostawał ze spinnerem w nieskończoność.
     if (!id) {
       setLoadFailed(true);
       return;
@@ -104,7 +106,7 @@ export default function RouteDetailsScreen() {
       const load = async () => {
         try {
           // Przycisk „Trasa” pod powiadomieniem ma otwierać Szczegóły kursu,
-          // który właśnie śledzimy — a ten plan po odjeździe nie wraca już
+          // który właśnie śledzimy - a ten plan po odjeździe nie wraca już
           // z planera (śledzenie jest zablokowane) i po północy w ogóle
           // wypada z bazy. Bez tego cofnięcie na ekran listy wyglądało jak
           // awaria. Dane śledzonej podróży mamy w pamięci, więc najpierw
@@ -227,9 +229,13 @@ export default function RouteDetailsScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+      >
         {/* Skąd pochodzą dane. Lista połączeń ma taki komunikat od dawna,
-            ekran szczegółów milczał — a pokazywał te same czasy bez opóźnień,
+            ekran szczegółów milczał - a pokazywał te same czasy bez opóźnień,
             jakby pochodziły z MPK na żywo. */}
         {dataNote && (
           <View style={styles.offlineBanner}>
@@ -259,7 +265,7 @@ export default function RouteDetailsScreen() {
           </View>
           <View style={styles.routeRow}>
             {/* Dwie linie: nazwy przystanków bywają długie („DWORZEC GŁÓWNY
-                (Dworcowa)”) i przy jednej linii ucinały się obie naraz —
+                (Dworcowa)”) i przy jednej linii ucinały się obie naraz -
                 widać było „Twoja lokaliz...” → „DWORZEC GŁÓWNY (Dwo...”. */}
             <Text style={styles.routeStop} numberOfLines={2}>
               {item.fromTitle}
@@ -296,7 +302,9 @@ export default function RouteDetailsScreen() {
           ) : onTime ? (
             <View style={[styles.statusBadge, { backgroundColor: scheme.successContainer }]}>
               <LiveDot color={scheme.success} size={7} />
-              <Text style={[styles.statusText, { color: scheme.onSuccessContainer }]}>{s.routeDetails.onTime}</Text>
+              <Text style={[styles.statusText, { color: scheme.onSuccessContainer }]}>
+                {s.routeDetails.onTime}
+              </Text>
             </View>
           ) : (
             <View style={[styles.statusBadge, { backgroundColor: scheme.surfaceContainerHighest }]}>
@@ -312,9 +320,7 @@ export default function RouteDetailsScreen() {
           <View style={styles.emptyCard}>
             <RouteOff size={20} color={scheme.onSurfaceVariant} strokeWidth={2} />
             <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
-            <Text style={styles.emptyText}>
-              {s.routeDetails.noTripBody}
-            </Text>
+            <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
             <Pressable
               onPress={() => router.back()}
               style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
@@ -355,8 +361,21 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  iconBtn: { width: 40, height: 40, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
   // Toggle śledzenia kursu: ikonka z listy plus label. Aktywny stan
   // wyróżnia tło, ikonka i label przechodzą na kolor kontenera.
@@ -373,7 +392,13 @@ const styles = StyleSheet.create({
   trackLabel: { ...type.labelLarge, fontWeight: '700', color: scheme.onSurfaceVariant },
   trackLabelActive: { color: scheme.onPrimaryContainer },
   body: { paddingHorizontal: 14, gap: 12, paddingBottom: 24 },
-  summary: { backgroundColor: scheme.surfaceContainer, borderRadius: shape.large, padding: 16, gap: 8, ...elev.level1 },
+  summary: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.large,
+    padding: 16,
+    gap: 8,
+    ...elev.level1,
+  },
   timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   times: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   timeBig: {

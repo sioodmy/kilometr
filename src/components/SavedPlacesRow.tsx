@@ -128,28 +128,43 @@ export function SavedPlacesRow({
 }) {
   const s = useStrings();
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} overScrollMode="never" contentContainerStyle={styles.row}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      overScrollMode="never"
+      contentContainerStyle={styles.row}
+    >
       {places.map((p) => {
         const Icon = SAVED_PLACE_ICONS[p.icon] ?? Star;
         return (
-          <Pressable 
-            key={p.id} 
-            onPress={() => onSelect(p)} 
+          <Pressable
+            key={p.id}
+            onPress={() => onSelect(p)}
             onLongPress={() => onEdit?.(p)}
             delayLongPress={300}
-            style={({ pressed }) => [styles.card, pressed && { backgroundColor: scheme.surfaceContainerHighest, transform: [{ scale: 0.98 }] }]}
+            style={({ pressed }) => [
+              styles.card,
+              pressed && {
+                backgroundColor: scheme.surfaceContainerHighest,
+                transform: [{ scale: 0.98 }],
+              },
+            ]}
           >
             <View style={styles.icon}>
               <Icon size={20} color={scheme.onSecondaryContainer} />
             </View>
             <View style={styles.textContainer}>
-              <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
-              <Text style={styles.addr} numberOfLines={1}>{p.address.split(',')[0]}</Text>
+              <Text style={styles.name} numberOfLines={1}>
+                {p.name}
+              </Text>
+              <Text style={styles.addr} numberOfLines={1}>
+                {p.address.split(',')[0]}
+              </Text>
             </View>
           </Pressable>
         );
       })}
-      {/* Edycja jak zwykła karta (to samo pudełko i rytm), tylko z ołówkiem —
+      {/* Edycja jak zwykła karta (to samo pudełko i rytm), tylko z ołówkiem -
           dodawanie żyje w menu edycji. */}
       <Pressable
         onPress={onManage}
@@ -157,7 +172,10 @@ export function SavedPlacesRow({
         accessibilityLabel={s.home.editSavedA11y}
         style={({ pressed }) => [
           styles.card,
-          pressed && { backgroundColor: scheme.surfaceContainerHighest, transform: [{ scale: 0.98 }] },
+          pressed && {
+            backgroundColor: scheme.surfaceContainerHighest,
+            transform: [{ scale: 0.98 }],
+          },
         ]}
       >
         <View style={[styles.icon, styles.addIcon]}>

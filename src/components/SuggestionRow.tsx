@@ -37,7 +37,7 @@ const KIND_TONES: Record<string, { Icon: any; bg: SchemeKey; fg: SchemeKey }> = 
   place: { Icon: ShoppingBag, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
 };
 
-/** Kategorie Nominatim — kolory stałe, bo są poza skalą motywu. */
+/** Kategorie Nominatim - kolory stałe, bo są poza skalą motywu. */
 const KIND_LITERALS: Record<string, { Icon: any; bg: string; fg: string }> = {
   restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
   medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
@@ -56,9 +56,13 @@ export function suggestionDisplayTitle(item: Pick<Suggestion, 'title' | 'kind'>)
   return item.kind === 'stop' ? item.title.toUpperCase() : item.title;
 }
 
-export interface SuggestionIconMeta { Icon: any; bg: string; fg: string; }
+export interface SuggestionIconMeta {
+  Icon: any;
+  bg: string;
+  fg: string;
+}
 
-/** Ta sama ikonka co w wierszu wyszukiwarki — po kategorii, inaczej po rodzaju. */
+/** Ta sama ikonka co w wierszu wyszukiwarki - po kategorii, inaczej po rodzaju. */
 export function getSuggestionIconMeta(
   item: Pick<Suggestion, 'id' | 'kind'> & { category?: string },
 ): SuggestionIconMeta {
@@ -81,7 +85,9 @@ export function getSuggestionIconMeta(
 function highlightRanges(title: string, query: string): [number, number][] {
   const normT = normalizePolish(title);
   if (normT.length !== title.length) return [];
-  const tokens = normalizePolish(query).split(/[\s,./()\\-]+/).filter((t) => t.length > 0);
+  const tokens = normalizePolish(query)
+    .split(/[\s,./()\\-]+/)
+    .filter((t) => t.length > 0);
   const ranges: [number, number][] = [];
   for (const tok of tokens) {
     let start = -1;
@@ -107,16 +113,29 @@ function highlightRanges(title: string, query: string): [number, number][] {
 
 function HighlightedTitle({ text, query }: { text: string; query?: string }) {
   const ranges = query ? highlightRanges(text, query) : [];
-  if (!ranges.length) return <Text style={styles.title} numberOfLines={1}>{text}</Text>;
+  if (!ranges.length)
+    return (
+      <Text style={styles.title} numberOfLines={1}>
+        {text}
+      </Text>
+    );
   const parts: React.ReactNode[] = [];
   let pos = 0;
   ranges.forEach(([a, b], i) => {
     if (a > pos) parts.push(text.slice(pos, a));
-    parts.push(<Text key={i} style={styles.match}>{text.slice(a, b)}</Text>);
+    parts.push(
+      <Text key={i} style={styles.match}>
+        {text.slice(a, b)}
+      </Text>,
+    );
     pos = b;
   });
   if (pos < text.length) parts.push(text.slice(pos));
-  return <Text style={[styles.title, styles.dim]} numberOfLines={1}>{parts}</Text>;
+  return (
+    <Text style={[styles.title, styles.dim]} numberOfLines={1}>
+      {parts}
+    </Text>
+  );
 }
 
 export function SuggestionRow({
@@ -184,7 +203,13 @@ const styles = StyleSheet.create({
     borderRadius: shape.large,
     minHeight: 56,
   },
-  icon: { width: 44, height: 44, borderRadius: shape.full, alignItems: 'center', justifyContent: 'center' },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   mid: { flex: 1, gap: 1 },
   title: { ...type.bodyLarge, color: scheme.onSurface },
   dim: { color: scheme.onSurfaceVariant },

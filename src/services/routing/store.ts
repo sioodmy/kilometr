@@ -124,7 +124,7 @@ export class LocalGtfsStore {
     // Import w toku = sklep musi zostać pusty do jego końca (reset() czyści
     // je na końcu importu). Bez czekania load() wracał „wstecz" z pustymi
     // przystankami, a planer oddawał zero połączeń zamiast „rozkład się
-    // importuje" — ekran pokazywał wtedy „nie znaleziono połączeń".
+    // importuje" - ekran pokazywał wtedy „nie znaleziono połączeń".
     if (importInProgress) {
       await awaitImportSettled();
       if (this.isLoaded) return;
@@ -134,7 +134,14 @@ export class LocalGtfsStore {
     const db = await getGtfsDb();
 
     // 1. Load stops
-    const stopsRows = await db.getAllAsync<{stop_id: string, code: string, name: string, lat: number, lon: number, norm: string}>('SELECT * FROM stops');
+    const stopsRows = await db.getAllAsync<{
+      stop_id: string;
+      code: string;
+      name: string;
+      lat: number;
+      lon: number;
+      norm: string;
+    }>('SELECT * FROM stops');
     for (const r of stopsRows) {
       this.stops.set(r.stop_id, {
         stop_id: r.stop_id,
@@ -142,18 +149,23 @@ export class LocalGtfsStore {
         stop_name: r.name,
         stop_lat: r.lat,
         stop_lon: r.lon,
-        normalized_name: r.norm
+        normalized_name: r.norm,
       });
     }
 
     // 2. Load routes
-    const routesRows = await db.getAllAsync<{route_id: string, short: string, long_name: string, type: number}>('SELECT * FROM routes');
+    const routesRows = await db.getAllAsync<{
+      route_id: string;
+      short: string;
+      long_name: string;
+      type: number;
+    }>('SELECT * FROM routes');
     for (const r of routesRows) {
       this.routes.set(r.route_id, {
         route_id: r.route_id,
         route_short_name: r.short,
         route_long_name: r.long_name,
-        route_type: r.type
+        route_type: r.type,
       });
     }
 
@@ -180,7 +192,7 @@ export class LocalGtfsStore {
     console.log(`[LocalGtfsStore] Loaded ${this.stops.size} stops, ${this.routes.size} routes.`);
   }
 
-/**
+  /**
    * Polinka to kolej uczelniana, nie MPK, więc nie ma jej w GTFS i dokładamy
    * stacje i linię syntetycznie. Wstrzyknięcie PRZED buildFootpaths jest
    * kluczowe: grid przesiadek traktuje stacje Polinki jak zwykłe przystanki
@@ -271,7 +283,10 @@ export class LocalGtfsStore {
                 from_stop_id: s1.stop_id,
                 to_stop_id: s2.stop_id,
                 distance_m: Math.round(dist),
-                duration_sec: Math.max(MIN_FOOTPATH_SEC, Math.round(effectiveDist / WALK_SPEED_MPS)),
+                duration_sec: Math.max(
+                  MIN_FOOTPATH_SEC,
+                  Math.round(effectiveDist / WALK_SPEED_MPS),
+                ),
               });
             }
           }
@@ -287,7 +302,7 @@ export class LocalGtfsStore {
   /**
    * Przesiadki MPK<->KD z tabeli `interchanges` (liczone w buildzie, bo
    * stacja kolejowa to nie słupek: perony, hala, schody). Doklejamy je do
-   * footpaths i ZASTĘPUJEMY nimi gridowe linki między tymi samymi parami —
+   * footpaths i ZASTĘPUJEMY nimi gridowe linki między tymi samymi parami -
    * grid liczy sam dystans w linii prostej, bez zapasu na peron.
    * Stare bazy (legacy ZIP, bez tabeli i bez pociągów) przechodzą cicho.
    */
@@ -310,7 +325,13 @@ export class LocalGtfsStore {
       ] as const) {
         const list = this.footpaths.get(from) ?? [];
         const filtered = list.filter((fp: any) => fp.to_stop_id !== to);
-        filtered.push({ from_stop_id: from, to_stop_id: to, distance_m: distM, duration_sec: dur, fixed: true });
+        filtered.push({
+          from_stop_id: from,
+          to_stop_id: to,
+          distance_m: distM,
+          duration_sec: dur,
+          fixed: true,
+        });
         this.footpaths.set(from, filtered);
       }
       applied++;
@@ -318,19 +339,24 @@ export class LocalGtfsStore {
     if (applied > 0) console.log(`[LocalGtfsStore] Interchanges MPK<->KD: ${applied}.`);
   }
 
-  /** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */
+  /** route_ids dla oznaczenia linii ("4", "K") - case-insensitive. */
   getRouteIdsByShortName(shortName: string): string[] {
     const key = shortName.trim().toUpperCase();
     const out: string[] = [];
     for (const [id, r] of this.routes.entries()) {
-      if (String(r.route_short_name ?? '').trim().toUpperCase() === key) out.push(id);
+      if (
+        String(r.route_short_name ?? '')
+          .trim()
+          .toUpperCase() === key
+      )
+        out.push(id);
     }
     return out;
   }
 
   /**
    * Wycinkowy indeks na horyzont [fromSec, toSec] (sekundy, mogą >86400).
-   * Ładuje tylko kursy nachodzące na horyzont — ~6× mniej wierszy przez mostek
+   * Ładuje tylko kursy nachodzące na horyzont - ~6× mniej wierszy przez mostek
    * JS niż pełny indeks dobowy. Cache kubelkowany po godzinach (max 4).
    */
   async getDayIndexSlice(
@@ -384,14 +410,17 @@ export class LocalGtfsStore {
     qTo: number,
   ): Promise<DayIndex> {
     const cacheKey = `${day}|${dateStr ?? ''}|${qFrom}|${qTo}`;
-    // Wycinek budujemy z marginesem całego kubła — zapytania z tej samej
+    // Wycinek budujemy z marginesem całego kubła - zapytania z tej samej
     // godziny (i ticker co minutę) trafiają w ten sam klucz.
     const bFrom = qFrom * 3600 - 1800;
     const bTo = (qTo + 1) * 3600 + 1800;
     const t0 = performance.now();
 
     const emptyIdx: DayIndex = {
-      stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map(),
+      stopRoutes: new Map(),
+      routeStops: new Map(),
+      routeTrips: new Map(),
+      patterns: new Map(),
     };
     if (importInProgress) return emptyIdx;
     const activeServices = await getActiveServices(day, dateStr);
@@ -400,7 +429,7 @@ export class LocalGtfsStore {
     if (serviceIds.length === 0) {
       this.rememberSlice(cacheKey, emptyIdx);
       // Pusty wycinek (np. noc, brak serwisów) nadaje się tylko na dokładnie
-      // swój klucz — pokrycia nie rejestrujemy, żeby inny horyzont go nie
+      // swój klucz - pokrycia nie rejestrujemy, żeby inny horyzont go nie
       // uznał za wystarczający.
       this.sliceHorizons.delete(emptyIdx);
       return emptyIdx;
@@ -497,7 +526,14 @@ export class LocalGtfsStore {
       for (let i = 0; i < tripIds.length; i += CHUNK) {
         const chunk = tripIds.slice(i, i + CHUNK);
         const placeholders = chunk.map(() => '?').join(',');
-        const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
+        const tripsRows = await db.getAllAsync<{
+          trip_id: string;
+          route_id: string;
+          service_id: string;
+          headsign: string;
+          direction: number;
+          shape: string;
+        }>(
           `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${placeholders})`,
           ...chunk,
         );
@@ -542,7 +578,9 @@ export class LocalGtfsStore {
     this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
     this.rememberSlice(cacheKey, idx);
     this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
-    console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length + polinka.tripIds.length}`);
+    console.log(
+      `[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length + polinka.tripIds.length}`,
+    );
     return idx;
   }
 
@@ -562,7 +600,9 @@ export class LocalGtfsStore {
   /** Refy stopów: pozycja stop_id po `ORDER BY stop_id` (tak numeruje builder). */
   private async getStopRefs(db: Awaited<ReturnType<typeof getGtfsDb>>): Promise<string[]> {
     if (!this.stopRefsCache) {
-      const rows = await db.getAllAsync<{ stop_id: string }>('SELECT stop_id FROM stops ORDER BY stop_id');
+      const rows = await db.getAllAsync<{ stop_id: string }>(
+        'SELECT stop_id FROM stops ORDER BY stop_id',
+      );
       this.stopRefsCache = rows.map((r) => r.stop_id);
     }
     return this.stopRefsCache;
@@ -573,9 +613,7 @@ export class LocalGtfsStore {
    * wokół każdego przystanku na starcie. false = brak blobu (stara baza albo
    * inna wersja danych) i wołający liczy po staremu.
    */
-  private async loadFootpathsBlob(
-    db: Awaited<ReturnType<typeof getGtfsDb>>,
-  ): Promise<boolean> {
+  private async loadFootpathsBlob(db: Awaited<ReturnType<typeof getGtfsDb>>): Promise<boolean> {
     const row = await db.getFirstAsync<{ blob: Uint8Array | ArrayBuffer }>(
       'SELECT blob FROM footpaths WHERE id = 1',
     );
@@ -624,7 +662,13 @@ export class LocalGtfsStore {
     for (let i = 0; i < ids.length; i += CHUNK) {
       const chunk = ids.slice(i, i + CHUNK);
       const placeholders = chunk.map(() => '?').join(',');
-      const stRows = await db.getAllAsync<{trip_id: string, stop_id: string, arr_sec: number, dep_sec: number, seq: number}>(
+      const stRows = await db.getAllAsync<{
+        trip_id: string;
+        stop_id: string;
+        arr_sec: number;
+        dep_sec: number;
+        seq: number;
+      }>(
         `SELECT trip_id, stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id IN (${placeholders}) ORDER BY trip_id, seq`,
         ...chunk,
       );
@@ -782,25 +826,35 @@ export class LocalGtfsStore {
 
     console.log(`[LocalGtfsStore] Building DayIndex for ${cacheKey}...`);
     const activeServices = await getActiveServices(weekday, dateStr);
-    
+
     const emptyIdx: DayIndex = {
-      stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map()
+      stopRoutes: new Map(),
+      routeStops: new Map(),
+      routeTrips: new Map(),
+      patterns: new Map(),
     };
     if (importInProgress) return emptyIdx;
     const db = await getGtfsDb();
 
     const serviceIds = Array.from(activeServices);
     if (serviceIds.length === 0) {
-       console.warn('[LocalGtfsStore] No active services found for the day.');
-       this.dayIndexes.set(cacheKey, emptyIdx);
-       return emptyIdx;
+      console.warn('[LocalGtfsStore] No active services found for the day.');
+      this.dayIndexes.set(cacheKey, emptyIdx);
+      return emptyIdx;
     }
     const servicePlaceholders = serviceIds.map(() => '?').join(',');
 
     const t0 = performance.now();
 
     // Fetch active trips
-    const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
+    const tripsRows = await db.getAllAsync<{
+      trip_id: string;
+      route_id: string;
+      service_id: string;
+      headsign: string;
+      direction: number;
+      shape: string;
+    }>(
       `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE service_id IN (${servicePlaceholders})`,
       ...serviceIds,
     );
@@ -815,10 +869,10 @@ export class LocalGtfsStore {
         service_id: r.service_id,
         trip_headsign: r.headsign,
         direction_id: r.direction,
-        shape_id: r.shape
+        shape_id: r.shape,
       };
       this.trips.set(r.trip_id, t);
-      // Pełny indeks dnia trzyma kursy na stałe — ewangelizacja wycinków nie
+      // Pełny indeks dnia trzyma kursy na stałe - ewangelizacja wycinków nie
       // może ich usunąć.
       this.retainedTrips.add(r.trip_id);
       activeTripsById.set(r.trip_id, t);
@@ -831,7 +885,13 @@ export class LocalGtfsStore {
     }
 
     // Fetch active stop times
-    const stRows = await db.getAllAsync<{trip_id: string, stop_id: string, arr_sec: number, dep_sec: number, seq: number}>(
+    const stRows = await db.getAllAsync<{
+      trip_id: string;
+      stop_id: string;
+      arr_sec: number;
+      dep_sec: number;
+      seq: number;
+    }>(
       `SELECT st.trip_id, st.stop_id, st.arr_sec, st.dep_sec, st.seq 
        FROM stop_times st
        JOIN trips t ON st.trip_id = t.trip_id
@@ -851,7 +911,7 @@ export class LocalGtfsStore {
         stop_id: r.stop_id,
         arrival_sec: r.arr_sec,
         departure_sec: r.dep_sec,
-        stop_sequence: r.seq
+        stop_sequence: r.seq,
       });
     }
 
@@ -861,7 +921,9 @@ export class LocalGtfsStore {
     for (const id of polinka.tripIds) this.retainedTrips.add(id);
     const idx = this.buildPatterns(mergePolinkaTrips(tripsByRouteId, polinka.byRouteId));
     this.dayIndexes.set(cacheKey, idx);
-    console.log(`[LocalGtfsStore] DayIndex built in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${activeTripsById.size + polinka.tripIds.length}`);
+    console.log(
+      `[LocalGtfsStore] DayIndex built in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${activeTripsById.size + polinka.tripIds.length}`,
+    );
     return idx;
   }
 

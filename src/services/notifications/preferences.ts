@@ -13,15 +13,19 @@ let loaded = false;
 const listeners = new Set<(p: NotificationPreferences) => void>();
 
 function clampPrefs(p: Partial<NotificationPreferences>): NotificationPreferences {
-  const lead = Math.round(p.departureAlertLeadMin ?? DEFAULT_NOTIFICATION_PREFERENCES.departureAlertLeadMin);
+  const lead = Math.round(
+    p.departureAlertLeadMin ?? DEFAULT_NOTIFICATION_PREFERENCES.departureAlertLeadMin,
+  );
   return {
     trackingEnabled: p.trackingEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.trackingEnabled,
-    departureAlertsEnabled: p.departureAlertsEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.departureAlertsEnabled,
+    departureAlertsEnabled:
+      p.departureAlertsEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.departureAlertsEnabled,
     disruptionAlertsEnabled:
       p.disruptionAlertsEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.disruptionAlertsEnabled,
     departureAlertLeadMin: Math.max(1, Math.min(30, isFinite(lead) ? lead : 5)),
     imminentAlert: p.imminentAlert ?? DEFAULT_NOTIFICATION_PREFERENCES.imminentAlert,
-    liveProgressEnabled: p.liveProgressEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.liveProgressEnabled,
+    liveProgressEnabled:
+      p.liveProgressEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.liveProgressEnabled,
   };
 }
 
@@ -35,7 +39,7 @@ export async function loadNotificationPreferences(): Promise<NotificationPrefere
     const raw = await kvGet(STORAGE_KEY);
     if (raw) cached = clampPrefs(JSON.parse(raw) as Partial<NotificationPreferences>);
   } catch {
-    // storage niedostępny — zostają domyślne
+    // storage niedostępny - zostają domyślne
   }
   loaded = true;
   notify();

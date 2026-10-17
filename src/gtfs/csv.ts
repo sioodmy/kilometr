@@ -1,9 +1,16 @@
-// Parsery CSV pracujące na stringach (nie na plikach) — dzięki temu te same
+// Parsery CSV pracujące na stringach (nie na plikach) - dzięki temu te same
 // funkcje działają w Node (skrypt budujący .db) i w Hermes na telefonie
 // (import chunków GTFS z expo-file-system). Bez node:fs / node:readline.
 
 import { normalizePolish, timeStringToSeconds } from './geo';
-import type { GtfsCalendar, GtfsCalendarDate, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from './types';
+import type {
+  GtfsCalendar,
+  GtfsCalendarDate,
+  GtfsRoute,
+  GtfsStop,
+  GtfsStopTime,
+  GtfsTrip,
+} from './types';
 
 /** Dzieli linię CSV z uwzględnieniem cudzysłowów. */
 export function parseCsvLine(line: string): string[] {
@@ -83,7 +90,8 @@ export function parseRoutesContent(content: string): GtfsRoute[] {
       route_id,
       route_short_name: cols[shortIdx]?.trim() || route_id,
       route_long_name: cols[longIdx]?.trim() || '',
-      route_type: rawType !== '' && rawType !== undefined && !isNaN(Number(rawType)) ? Number(rawType) : 3,
+      route_type:
+        rawType !== '' && rawType !== undefined && !isNaN(Number(rawType)) ? Number(rawType) : 3,
     });
   }
   return out;
@@ -190,7 +198,7 @@ export function parseTripsContent(content: string, activeServiceIds?: Set<string
 }
 
 /**
- * Parsuje stop_times w chunkach — stop_times.txt ma ~46 MB, więc nie trzymamy
+ * Parsuje stop_times w chunkach - stop_times.txt ma ~46 MB, więc nie trzymamy
  * całego pliku w pamięci jako tablicy linii na telefonie. `onBatch` dostaje
  * porcje po `batchSize` rekordów; caller wrzuca je do SQLite w transakcji.
  */
@@ -227,7 +235,7 @@ export async function parseStopTimesBatched(
 
     const trimmed = line.trim();
     if (!trimmed) continue;
-    // stop_times.txt nie zawiera cudzysłowów ani przecinków w wartościach — szybki split
+    // stop_times.txt nie zawiera cudzysłowów ani przecinków w wartościach - szybki split
     const cols = trimmed.split(',');
     const trip_id = cols[tripIdx]?.trim();
     if (!trip_id) continue;

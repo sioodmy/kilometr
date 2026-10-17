@@ -7,7 +7,7 @@
 //  - śledzony kurs `trackedTrip.v2` (przestaje mieć sens po zmianie planu),
 //  - `onboardingSeen`, znaczniki przeczytanych aktualności, flagi migracji.
 //
-// Format pliku żyje w `backupFormat.ts` (czysty, testowany przez tsx) — tu
+// Format pliku żyje w `backupFormat.ts` (czysty, testowany przez tsx) - tu
 // tylko I/O i decyzje o scalaniu z istniejącymi danymi.
 
 import * as FileSystem from 'expo-file-system/legacy';
@@ -51,7 +51,7 @@ function bucketKey(base: string, cityId: CityId): string {
  *  zapisuje tędy, więc dłuższa kopia i tak zostanie ucięta. */
 const MAX_TRIP_HISTORY = 80;
 
-/** Ile kopii zostawiamy na urządzeniu. Więcej nie ma sensu — export jest
+/** Ile kopii zostawiamy na urządzeniu. Więcej nie ma sensu - export jest
  *  jednym kliknięciem, a bez limitu katalog rośnie w nieskończoność. */
 const KEEP_BACKUPS = 3;
 
@@ -81,15 +81,31 @@ async function readCityBucket<T>(base: string, cityId: CityId): Promise<T[]> {
 async function collectBackupData(): Promise<BackupData> {
   const perCity = CITIES.map((c) => c.id);
   const [placesByCity, routesByCity, historyByCity, routing, prefs] = await Promise.all([
-    Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<SavedPlace>(KEYS.places, city) }))),
-    Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<SavedRoute>(KEYS.savedRoutes, city) }))),
-    Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<TripHistoryItem>(KEYS.tripHistory, city) }))),
+    Promise.all(
+      perCity.map(async (city) => ({
+        city,
+        items: await readCityBucket<SavedPlace>(KEYS.places, city),
+      })),
+    ),
+    Promise.all(
+      perCity.map(async (city) => ({
+        city,
+        items: await readCityBucket<SavedRoute>(KEYS.savedRoutes, city),
+      })),
+    ),
+    Promise.all(
+      perCity.map(async (city) => ({
+        city,
+        items: await readCityBucket<TripHistoryItem>(KEYS.tripHistory, city),
+      })),
+    ),
     loadSettings(),
     loadNotificationPreferences(),
   ]);
   // Puste kubełki pomijamy: kopia z samego Wrocławia nie musi wozić
   // pustych sekcji Krakowa (import pustej sekcji i tak jest no-opem).
-  const nonEmpty = <T,>(sections: { city: CityId; items: T[] }[]) => sections.filter((s) => s.items.length > 0);
+  const nonEmpty = <T>(sections: { city: CityId; items: T[] }[]) =>
+    sections.filter((s) => s.items.length > 0);
   // Język bierzemy z modułu, nie z KV: `getLocaleSettingSync` to jedyne
   // miejsce, które zna aktualny wybór (również 'system', gdy klucza nie ma).
   const locale: LocaleSetting = getLocaleSettingSync();
@@ -120,7 +136,7 @@ export async function writeBackupFile(appVersion: string | null): Promise<string
   try {
     await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
   } catch {
-    // katalog może już istnieć — makeDirectory rzuca wtedy, więc ignorujemy
+    // katalog może już istnieć - makeDirectory rzuca wtedy, więc ignorujemy
   }
   const path = `${dir}${backupFileName(new Date())}`;
   await FileSystem.writeAsStringAsync(path, json, {
@@ -142,7 +158,7 @@ async function pruneOldBackups(dir: string): Promise<void> {
       await FileSystem.deleteAsync(`${dir}${old}`, { idempotent: true });
     }
   } catch (err) {
-    // sprzątanie jest best-effort — brak katalogu nie może zepsuć eksportu
+    // sprzątanie jest best-effort - brak katalogu nie może zepsuć eksportu
     console.warn('[Backup] prune failed:', err);
   }
 }
@@ -167,7 +183,7 @@ export async function exportBackupToFile(appVersion: string | null): Promise<Bac
   return { path, shared: true };
 }
 
-/** Ile sekcji faktycznie wypełniliśmy — do informacji po ekranie. */
+/** Ile sekcji faktycznie wypełniliśmy - do informacji po ekranie. */
 export async function previewBackupCounts(): Promise<BackupCounts> {
   return countBackupData(await collectBackupData());
 }
@@ -177,7 +193,7 @@ export async function previewBackupCounts(): Promise<BackupCounts> {
 // Sam zapis do KV nie wystarczy: ekran główny trzyma miejsca i ranking
 // „ostatnich miejsc" w `useState`, więc po imporcie pokazałby dane sprzed
 // wczytania aż do restartu aplikacji. Ten kanał pozwala ekranowi odświeżyć
-// stan od razu — bez niego import działałby „na pół".
+// stan od razu - bez niego import działałby „na pół".
 const appliedListeners = new Set<() => void>();
 
 /** Subskrypcja na zapis wczytanej kopii. Zwraca funkcję odsubskrybującą. */
@@ -195,7 +211,7 @@ function notifyApplied(): void {
 // ─── Import ────────────────────────────────────────────────────────────────
 
 /**
- * Wybiera plik i wczytuje go, NIE zapisując nic — żeby UI mogło pokazać
+ * Wybiera plik i wczytuje go, NIE zapisując nic - żeby UI mogło pokazać
  * zawartość kopii przed potwierdzeniem (`applyBackup`).
  * `null` = użytkownik anulował wybór (nie błąd, nie pokazujemy nic).
  */
@@ -229,7 +245,7 @@ export async function pickBackupFile(): Promise<BackupParseResult | null> {
 }
 
 /**
- * Scalenie po `id` — import nie może wygenerować duplikatów miejsc o tej
+ * Scalenie po `id` - import nie może wygenerować duplikatów miejsc o tej
  * samej nazwie, a przy ponownym imporcie tej samej kopii nie może ich dublować.
  */
 function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
@@ -253,7 +269,7 @@ function byNewest(a: TripHistoryItem, b: TripHistoryItem): number {
  * możliwym zachowaniem („import" nie znaczy „wywal wszystko").
  *
  * Zwracamy licznik tego, co NAPRAWDĘ jest teraz na urządzeniu (po scaleniu),
- * a nie tego, co było w kopercie — inaczej po imporcie telefon z 4 miejscami
+ * a nie tego, co było w kopercie - inaczej po imporcie telefon z 4 miejscami
  * i kopią z 2 miejscami zgłosiłby „scalono 2", co jest prawdą na połowę.
  */
 /** Wszystkie kubełki klucza (do liczników po scaleniu). */

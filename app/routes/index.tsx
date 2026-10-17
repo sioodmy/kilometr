@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, InteractionManager, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+  InteractionManager,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  Anchor,
-  ArrowRight,
-  ChevronLeft,
-  Clock3,
-  Rocket,
-  X,
-} from 'lucide-react-native';
+import { Anchor, ArrowRight, ChevronLeft, Clock3, Rocket, X } from 'lucide-react-native';
 import Animated, {
   Easing,
   FadeInUp,
@@ -40,9 +45,7 @@ import {
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
 import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
-import {
-  stopTracking,
-} from '../../src/services/notifications';
+import { stopTracking } from '../../src/services/notifications';
 import {
   loadCachedConnections,
   hasLocalTimetable,
@@ -68,7 +71,7 @@ import { useThumbBarInset } from '../../src/components/ThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 import { useStrings } from '../../src/i18n';
 
-/** Sekundy od północy — jeden zegar dla całego ekranu. */
+/** Sekundy od północy - jeden zegar dla całego ekranu. */
 function nowSeconds(): number {
   const d = new Date();
   return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
@@ -139,7 +142,7 @@ export default function RoutesScreen() {
   }, [params.action]);
 
   // Przycisk „Trasa” pod powiadomieniem prowadzi prosto do szczegółów
-  // śledzonego kursu. Listę połączeń użytkownik już widział — teraz chce
+  // śledzonego kursu. Listę połączeń użytkownik już widział - teraz chce
   // sprawdzić ten jeden kurs, więc oszczędzamy mu jedno przeskakiwanie ekranu.
   const handledOpenRef = useRef<string | null>(null);
   useEffect(() => {
@@ -169,7 +172,7 @@ export default function RoutesScreen() {
     if (!activeAnchor) return;
     dismissedAnchorsRef.current.add(activeAnchor.placeId);
     // Pozycja już jest prawdziwym GPS (kotwica to tylko preferencja
-    // w zapytaniu) — dismiss czyści samą preferencję i odświeża listę.
+    // w zapytaniu) - dismiss czyści samą preferencję i odświeża listę.
     setActiveAnchor(null);
   };
 
@@ -181,8 +184,7 @@ export default function RoutesScreen() {
   // pusty wynik to nie „brak serwera", tylko brak danych offline.
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   useEffect(() => subscribeDataStatus(setDataStatus), []);
-  const timetableBusy =
-    dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+  const timetableBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
   const timetableReady = dataStatus.state === 'ready';
   // Brak sieci = brak opóźnień z MPK. Bez komunikatu użytkownik myśli,
   // że planer po prostu nie umie opóźnień.
@@ -214,9 +216,9 @@ export default function RoutesScreen() {
   // Sortowanie listy: 'fastest' = najwcześniejsze przybycie (domyślnie,
   // żeby jednym tapnięciem wrócić szybko do domu), 'earliest' = jak w
   // Jakdojade, od najwcześniejszego odjazdu. Magazyn (items) zawsze
-  // posortowany po odjeździe — paginacja i hold-to-load na tym bazują.
+  // posortowany po odjeździe - paginacja i hold-to-load na tym bazują.
   const [sortMode, setSortMode] = useState<SortMode>('fastest');
-  // Filtry mieszkają w dolnym menu (RoutesThumbBar) — na górze ekranu nie ma
+  // Filtry mieszkają w dolnym menu (RoutesThumbBar) - na górze ekranu nie ma
   // ich wcale, żeby nic nie powtarzać się w dwóch miejscach. To wciąż
   // filtry jednorazowe, NIE ustawienia systemowe (maxTransfers w /settings
   // zostaje nietknięte): toggle wymusza maxTransfers=0, a typ pojazdu
@@ -240,11 +242,11 @@ export default function RoutesScreen() {
   }, [items, sortMode, directOnly]);
 
   // Dolny dock (RoutesThumbBar) chowa się przy zjeździe w dół i wraca przy
-  // powrocie w górę — spring zamiast sztywnego timing, żeby było „fajnie".
+  // powrocie w górę - spring zamiast sztywnego timing, żeby było „fajnie".
   // W przeciwieństwie do starego zwijanego panelu na górze nie ruszamy
   // layoutu FlatListy (zero flickeru): dock pływa nad listą (absolute).
   const dockProgress = useSharedValue(1);
-  // Zapas pod listą liczony z zmierzonej wysokości docka — wpisane wcześniej
+  // Zapas pod listą liczony z zmierzonej wysokości docka - wpisane wcześniej
   // 96 px nie wystarczało i ostatnia karta chowała się pod paskiem.
   const thumbInset = useThumbBarInset();
 
@@ -257,13 +259,13 @@ export default function RoutesScreen() {
         { scale: interpolate(p, [0, 1], [0.94, 1]) },
       ],
       // Po schowaniu dock nie łapie dotyków znad listy.
-      // (pointerEvents na Animated.View nie jest animowalne — znika sam,
+      // (pointerEvents na Animated.View nie jest animowalne - znika sam,
       //  bo opacity 0 + translate poza ekran.)
     };
   });
 
   // Toggle sortowania w topBar (iOS-style, z maina): 0 = odjazd
-  // (zegar, lewo), 1 = przyjazd (rakieta, prawo). Kciuk dociąga timingiem —
+  // (zegar, lewo), 1 = przyjazd (rakieta, prawo). Kciuk dociąga timingiem -
   // spring overshootował i kciuk wyskakiwał poza tor w trakcie animacji.
   const SORT_TRACK_W = 78;
   const SORT_THUMB = 34;
@@ -298,7 +300,7 @@ export default function RoutesScreen() {
     };
   }, []);
 
-  // Stan wyboru godziny odjazdu — nad queryAt, bo zapytanie mapuje czas na
+  // Stan wyboru godziny odjazdu - nad queryAt, bo zapytanie mapuje czas na
   // parametr silnika (departureTimeSec).
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
   const [departureTimeSec, setDepartureTimeSec] = useState<number | undefined>(undefined);
@@ -314,7 +316,7 @@ export default function RoutesScreen() {
       toTitle,
       toLat,
       toLon,
-      // Kotwica to preferencja startowa — pozycja zostaje prawdziwym GPS,
+      // Kotwica to preferencja startowa - pozycja zostaje prawdziwym GPS,
       // silnik liczy realny spacer do kotwicy (ułatwienie, nie sztywna zasada).
       anchorStopId: activeAnchor?.stopId,
       anchorStopLat: activeAnchor?.lat,
@@ -335,14 +337,17 @@ export default function RoutesScreen() {
     };
   };
 
-  const mergeSorted = (prev: Connection[], batch: Connection[]): { list: Connection[]; added: number } => {
+  const mergeSorted = (
+    prev: Connection[],
+    batch: Connection[],
+  ): { list: Connection[]; added: number } => {
     const existingIds = new Set(prev.map((p) => p.id));
     const fresh = batch.filter((item) => !existingIds.has(item.id));
     const list = [...prev, ...fresh].sort((a, b) => a.departureSec - b.departureSec);
     return { list, added: fresh.length };
   };
 
-  // Wyszukiwarka startu / celu — ta sama co na ekranie głównym
+  // Wyszukiwarka startu / celu - ta sama co na ekranie głównym
   const [sheetFor, setSheetFor] = useState<'from' | 'to' | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Suggestion[]>([]);
@@ -379,7 +384,7 @@ export default function RoutesScreen() {
           startTitle,
           places,
           currentSettings.anchorRadiusM,
-          dismissedAnchorsRef.current
+          dismissedAnchorsRef.current,
         );
         if (anchor) {
           // Kotwica NIE przepisuje pozycji na przystanek (to generowało
@@ -405,7 +410,8 @@ export default function RoutesScreen() {
       if (cancelled || refineAppliedRef.current || activeAnchorRef.current) return;
       if (isOutsideServiceArea(loc.lat, loc.lon)) return;
       const origin = originCoordsRef.current;
-      if (distanceMeters(loc.lat, loc.lon, origin.lat, origin.lon) < LOCATION_REFINE_DELTA_M) return;
+      if (distanceMeters(loc.lat, loc.lon, origin.lat, origin.lon) < LOCATION_REFINE_DELTA_M)
+        return;
       refineAppliedRef.current = true;
       setFromTitle(loc.title);
       setFromLat(loc.lat);
@@ -450,12 +456,7 @@ export default function RoutesScreen() {
   }, [query, sheetFor, fromLat, fromLon]);
 
   const recentWithGps = useMemo(
-    () =>
-      sheetFor === 'from'
-        ? gpsOutside
-          ? recent
-          : [gpsItem, ...recent]
-        : recent,
+    () => (sheetFor === 'from' ? (gpsOutside ? recent : [gpsItem, ...recent]) : recent),
     [sheetFor, recent, gpsItem, gpsOutside],
   );
 
@@ -495,7 +496,7 @@ export default function RoutesScreen() {
           l.title,
           savedPlaces,
           currentSettings.anchorRadiusM,
-          dismissedAnchorsRef.current
+          dismissedAnchorsRef.current,
         );
         if (anchor) {
           setActiveAnchor(anchor);
@@ -510,10 +511,7 @@ export default function RoutesScreen() {
         }
       } catch (err) {
         console.warn('[handleSuggestionSelect] GPS error:', err);
-        Alert.alert(
-          s.routes.gpsFailTitle,
-          s.routes.gpsFailBody
-        );
+        Alert.alert(s.routes.gpsFailTitle, s.routes.gpsFailBody);
       }
       return;
     }
@@ -537,7 +535,7 @@ export default function RoutesScreen() {
   };
 
   const applyLiveList = (c: Connection[], depSec: number | undefined) => {
-    // Default: tylko aktualne i przyszłe — bez historycznych.
+    // Default: tylko aktualne i przyszłe - bez historycznych.
     // Przeszłe dociąga użytkownik gestem (scroll w górę + przytrzymanie).
     // Przy jawnie wybranej godzinie (np. z przeszłości) pokazuj wszystko jak jest.
     let list = [...c].sort((a, b) => a.departureSec - b.departureSec);
@@ -576,7 +574,7 @@ export default function RoutesScreen() {
       }
       const q = queryAt(depSec);
       // Progresywne ładowanie "po kolei": pierwsze okno RAPTOR-a wpada szybko,
-      // podmieniamy listę i gasimy pełny spinner od razu — reszta dociąga się
+      // podmieniamy listę i gasimy pełny spinner od razu - reszta dociąga się
       // w tle bez migotania (stabilne klucze FlatList).
       const c = await RoutingService.getConnections(q, (partial) => {
         if (seq !== fetchSeq.current) return;
@@ -596,12 +594,18 @@ export default function RoutesScreen() {
       // okna), żeby „Ostatnie miejsca" nie pokazywały w kartce zawsze
       // domyślnych 18 min. `mergeTripSearch` i tak potraktuje to jako to samo
       // sprawdzenie, które zapisał ekran główny.
-      void recordTripSearch(q.fromLat, q.fromLon, q.fromTitle, {
-        id: q.toId || q.toTitle,
-        title: q.toTitle,
-        lat: q.toLat,
-        lon: q.toLon,
-      }, typicalDurationMin(c));
+      void recordTripSearch(
+        q.fromLat,
+        q.fromLon,
+        q.fromTitle,
+        {
+          id: q.toId || q.toTitle,
+          title: q.toTitle,
+          lat: q.toLat,
+          lon: q.toLon,
+        },
+        typicalDurationMin(c),
+      );
     } catch {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
@@ -626,7 +630,7 @@ export default function RoutesScreen() {
   };
 
   /**
-   * Cichy refresh BEZ spinnera i BEZ czyszczenia listy — podmiana jest
+   * Cichy refresh BEZ spinnera i BEZ czyszczenia listy - podmiana jest
    * niewidoczna, gdy dane te same (stabilne klucze FlatList = brak flickeru).
    * Używany przy powrocie sieci i zmianie czasu w trybie offline.
    */
@@ -672,7 +676,8 @@ export default function RoutesScreen() {
   }, [offline]);
 
   const handleLoadMore = async () => {
-    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreLater || offline) return;
+    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreLater || offline)
+      return;
 
     setLoadingMore(true);
     setLoadMoreFailed(false);
@@ -699,9 +704,10 @@ export default function RoutesScreen() {
     }
   };
 
-  // Starsze (historyczne, już odjechane) — dokładane Z GÓRY
+  // Starsze (historyczne, już odjechane) - dokładane Z GÓRY
   const handleLoadEarlier = async () => {
-    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreEarlier || offline) return;
+    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreEarlier || offline)
+      return;
     const firstDeparture = items[0].departureSec;
     if (!firstDeparture || firstDeparture <= 0) return;
 
@@ -718,7 +724,7 @@ export default function RoutesScreen() {
           setNoMoreEarlier(true);
           return list;
         }
-        // Bazę do korekty scrolla bierzemy dopiero TU — czyli jeszcze przed
+        // Bazę do korekty scrolla bierzemy dopiero TU - czyli jeszcze przed
         // renderem, w którym dojdą nowe wiersze. Pomiar na starcie
         // zapytania bywał nieaktualny (np. rozciągał się nagłówek), przez co
         // lista skakała dwa razy zamiast raz.
@@ -726,7 +732,7 @@ export default function RoutesScreen() {
         return list;
       });
     } catch {
-      // po cichu — lista zostaje
+      // po cichu - lista zostaje
     } finally {
       // Jak w handleLoadMore: spinner gaśnie nawet gdy zapytanie zostało
       // unieważnione przez nowszy fetchSeq.
@@ -746,7 +752,7 @@ export default function RoutesScreen() {
   const lastDockToggleAt = useRef(0);
 
   // Próg jest wysoki, bo dock reaguje dopiero na ustabilizowanym
-  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) — 80 px
+  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) - 80 px
   // to jedno świadome przejście, a nie drgnięcie palcem.
   const HIDE_THRESHOLD = 80;
   const SHOW_THRESHOLD = 40;
@@ -761,9 +767,9 @@ export default function RoutesScreen() {
   const SPRING_SNAPPY = { damping: 55, stiffness: 550 } as const;
 
   // Jedno miejsce do zmiany stanu docka. Przeskok stanu jest możliwy tylko
-  // raz na DOCK_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
+  // raz na DOCK_COOLDOWN_MS - szarpnięcia się nie zbiją w serię, a gest
   // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
-  // niej (pendingDockState). `force` omija pauzę — przy powrocie na samą
+  // niej (pendingDockState). `force` omija pauzę - przy powrocie na samą
   // górę listy dock musi być od razu.
   const applyDockState = (visible: boolean) => {
     if (isDockVisible.current === visible) return;
@@ -794,7 +800,7 @@ export default function RoutesScreen() {
   };
 
   // Decyzja o docku zapada, gdy lista przestała się ruszać. W trakcie
-  // przeciągania dock tylko liczy deltę — animacja leci na wątku UI
+  // przeciągania dock tylko liczy deltę - animacja leci na wątku UI
   // (Reanimated), więc nie blokuje gestu ani nie przelicza layoutu listy.
   const evaluateDockOnSettle = () => {
     if (accumulatedDelta.current >= HIDE_THRESHOLD) {
@@ -828,7 +834,7 @@ export default function RoutesScreen() {
 
   // Handler scrolla pilnuje pozycji (korekta po dociągnięciu starszych
   // odjazdów z góry) i kierunku do chowania docka. Historyczne odjazdy
-  // dociąga JUŻ TYLKO gest pull-to-load znad listy (RefreshControl niżej) —
+  // dociąga JUŻ TYLKO gest pull-to-load znad listy (RefreshControl niżej) -
   // automatyczne dokładanie po samym dotknięciu góry było za łatwe.
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
@@ -836,7 +842,7 @@ export default function RoutesScreen() {
     lastScrollY.current = y;
     scrollY.current = y;
 
-    // 1. Na samej górze listy (y <= 12) — dock wraca od razu, bez
+    // 1. Na samej górze listy (y <= 12) - dock wraca od razu, bez
     //    czekania na puszczenie palca: tam scroll i tak się kończy.
     if (y <= 12) {
       accumulatedDelta.current = 0;
@@ -879,9 +885,20 @@ export default function RoutesScreen() {
     // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
     // importu dostawał pustą listę i nigdy sam się nie odpytywał, więc
     // połączenia zostawały niewidoczne mimo gotowego rozkładu.
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady]);
+  }, [
+    fromLat,
+    fromLon,
+    toLat,
+    toLon,
+    fromTitle,
+    toTitle,
+    activeAnchor,
+    directOnly,
+    modeFilter,
+    timetableReady,
+  ]);
 
-  // Pull znad listy NIE odświeża — dociąga historyczne (już odjechane)
+  // Pull znad listy NIE odświeża - dociąga historyczne (już odjechane)
   // połączenia. To JEDYNY sposób na ich wczytanie; odświeżanie listy robią
   // filtry, czas i powrót na ekran (fetchRoutes w efektach).
   const handlePullEarlier = () => {
@@ -899,20 +916,17 @@ export default function RoutesScreen() {
   };
 
   // Znacznik odwrócenia trasy: wiersze zamontowane tuż po swapie wjeżdżają
-  // pionowym flipem karty (FlipInEasyX) zamiast zwykłego fade-up. Ref, nie stan —
+  // pionowym flipem karty (FlipInEasyX) zamiast zwykłego fade-up. Ref, nie stan -
   // nie wymusza dodatkowego rendera, odczyt w renderItem wystarczy.
   const swapAtRef = useRef(0);
 
   // Strzałka w nagłówku: pełny obrót 360° + minimalny pop (skala).
-  // Licznik rośnie o 1 na swap — obrót zawsze do przodu, bez resetowania.
+  // Licznik rośnie o 1 na swap - obrót zawsze do przodu, bez resetowania.
   const arrowSpin = useSharedValue(0);
   const animatedArrowStyle = useAnimatedStyle(() => {
     const p = arrowSpin.value % 1;
     return {
-      transform: [
-        { rotate: `${p * 360}deg` },
-        { scale: 1 + 0.28 * Math.sin(Math.PI * p) },
-      ],
+      transform: [{ rotate: `${p * 360}deg` }, { scale: 1 + 0.28 * Math.sin(Math.PI * p) }],
     };
   });
 
@@ -922,7 +936,7 @@ export default function RoutesScreen() {
       duration: 450,
       easing: Easing.inOut(Easing.ease),
     });
-    // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
+    // Wyniki po swapie to zupełnie nowa lista - wracamy na górę.
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
     // Start = stary cel (ręczny punkt), więc doprecyzowanie GPS już nie dotyczy.
     setGpsOrigin(false);
@@ -944,7 +958,7 @@ export default function RoutesScreen() {
   const handleTimeSelect = (result: { timeSec: number | undefined; label: string }) => {
     setDepartureTimeSec(result.timeSec);
     setTimeLabel(result.label);
-    // Zmiana godziny przeładowuje praktycznie całą listę — pokazujemy pełny
+    // Zmiana godziny przeładowuje praktycznie całą listę - pokazujemy pełny
     // spinner zamiast cichej podmiany (seamless tylko dokładałby wiersze).
     fetchRoutes(result.timeSec, false);
   };
@@ -955,8 +969,8 @@ export default function RoutesScreen() {
   // nowe closures, przez co wiersze (pamiętane przez React.memo) przeliczały
   // się od nowa i lista „przybliżała” zamiast płynnie się toczyć.
   // Karty wskakują kaskadą (stagger po indeksie, max ~440 ms), żeby progresywne
-  // dokładanie wyglądało płynnie; tuż po swapie — flipem karty.
-  // UWAGA: świeża instancja buildera na wiersz — .delay() mutuje współdzielony
+  // dokładanie wyglądało płynnie; tuż po swapie - flipem karty.
+  // UWAGA: świeża instancja buildera na wiersz - .delay() mutuje współdzielony
   // obiekt, więc współdzielenie jednego FlipInEasyX/FadeInUp rozwaliłoby delaya.
   const openConnection = useCallback(
     (item: Connection) => {
@@ -978,12 +992,7 @@ export default function RoutesScreen() {
               : new FadeInUp().duration(280).delay(stagger)
           }
         >
-          <ConnectionCard
-            item={item}
-            dimmed={past}
-            onPress={openConnection}
-            tick={nowTick}
-          />
+          <ConnectionCard item={item} dimmed={past} onPress={openConnection} tick={nowTick} />
         </Animated.View>
       );
     },
@@ -1015,25 +1024,24 @@ export default function RoutesScreen() {
             accessibilityRole="switch"
             accessibilityState={{ checked: sortMode === 'fastest' }}
             accessibilityLabel={
-              sortMode === 'fastest'
-                ? s.routes.sortFastestA11y
-                : s.routes.sortEarliestA11y
+              sortMode === 'fastest' ? s.routes.sortFastestA11y : s.routes.sortEarliestA11y
             }
-            style={({ pressed }) => [
-              styles.sortToggle,
-              pressed && { opacity: 0.85 },
-            ]}
+            style={({ pressed }) => [styles.sortToggle, pressed && { opacity: 0.85 }]}
             hitSlop={8}
           >
             <Animated.View style={[styles.sortThumb, animatedSortThumb]} />
             <View style={styles.sortIcons} pointerEvents="none">
               <Clock3
                 size={15}
-                color={sortMode === 'earliest' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+                color={
+                  sortMode === 'earliest' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                }
               />
               <Rocket
                 size={15}
-                color={sortMode === 'fastest' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+                color={
+                  sortMode === 'fastest' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                }
               />
             </View>
           </Pressable>
@@ -1041,7 +1049,6 @@ export default function RoutesScreen() {
             {sortMode === 'fastest' ? s.routes.sortFastest : s.routes.sortEarliest}
           </Text>
         </View>
-
       </View>
 
       {/* 2. Nagłówek trasy w stylu One UI: bez tła, jedna linia
@@ -1058,7 +1065,7 @@ export default function RoutesScreen() {
           style={({ pressed }) => [styles.routeSide, pressed && { opacity: 0.6 }]}
           hitSlop={6}
         >
-          {/* Tytuł startu zawsze ten sam co cel (ta sama rolka FadeInUp) —
+          {/* Tytuł startu zawsze ten sam co cel (ta sama rolka FadeInUp) -
               kotwica to już tylko cicha dopiska pod spodem, nie osobny
               pigułkowy świat. Cały slot dalej otwiera wyszukiwarkę startu. */}
           <Animated.View
@@ -1147,8 +1154,15 @@ export default function RoutesScreen() {
               <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
             </View>
             <View style={[styles.skel, { width: '70%', height: 12, marginTop: 10 }]} />
-            <View style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]} />
-            <View style={[styles.skel, { width: '55%', height: 28, marginTop: 12, borderRadius: shape.small }]} />
+            <View
+              style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]}
+            />
+            <View
+              style={[
+                styles.skel,
+                { width: '55%', height: 28, marginTop: 12, borderRadius: shape.small },
+              ]}
+            />
           </View>
           <View style={styles.skelCard}>
             <View style={styles.skelRow}>
@@ -1156,8 +1170,15 @@ export default function RoutesScreen() {
               <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
             </View>
             <View style={[styles.skel, { width: '62%', height: 12, marginTop: 10 }]} />
-            <View style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]} />
-            <View style={[styles.skel, { width: '72%', height: 28, marginTop: 12, borderRadius: shape.small }]} />
+            <View
+              style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]}
+            />
+            <View
+              style={[
+                styles.skel,
+                { width: '72%', height: 28, marginTop: 12, borderRadius: shape.small },
+              ]}
+            />
           </View>
           <View style={[styles.skelCard, { opacity: 0.55 }]}>
             <View style={styles.skelRow}>
@@ -1173,9 +1194,7 @@ export default function RoutesScreen() {
             {timetableReady ? s.routes.calcFail : s.routes.noTimetable}
           </Text>
           <Text style={styles.emptySub}>
-            {timetableReady
-              ? s.routes.calcFailBody
-              : s.routes.noTimetableBody}
+            {timetableReady ? s.routes.calcFailBody : s.routes.noTimetableBody}
           </Text>
           {!timetableReady && (
             <Pressable
@@ -1194,7 +1213,10 @@ export default function RoutesScreen() {
                   {dataStatus.state === 'downloading'
                     ? s.routes.downloading(Math.round(dataStatus.progress * 100))
                     : dataStatus.state === 'importing'
-                      ? s.routes.downloadingStep(dataStatus.step, Math.round(dataStatus.progress * 100))
+                      ? s.routes.downloadingStep(
+                          dataStatus.step,
+                          Math.round(dataStatus.progress * 100),
+                        )
                       : s.routes.downloadingPlain}
                 </Text>
               ) : (
@@ -1247,9 +1269,14 @@ export default function RoutesScreen() {
           ListHeaderComponent={
             <View style={styles.countRow}>
               <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(items.length)} • {isCustomTime ? s.routes.countDepart(timeLabel) : s.routes.countNearest}
+                {connectionsLabel(items.length)} •{' '}
+                {isCustomTime ? s.routes.countDepart(timeLabel) : s.routes.countNearest}
                 {directOnly ? s.routes.countDirect : ''}
-                {modeFilter === 'tram' ? s.routes.countTram : modeFilter === 'bus' ? s.routes.countBus : ''}
+                {modeFilter === 'tram'
+                  ? s.routes.countTram
+                  : modeFilter === 'bus'
+                    ? s.routes.countBus
+                    : ''}
                 {loadingEarlier ? s.routes.countEarlier : ''}
               </Text>
               {offline && (
@@ -1274,9 +1301,9 @@ export default function RoutesScreen() {
           }
           // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
           // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
-          // widać, to spinner, a po błędzie — nic, czyli lista po cichu
+          // widać, to spinner, a po błędzie - nic, czyli lista po cichu
           // przestawała się dociągać.
-          // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć —
+          // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć -
           // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
           ListFooterComponent={
             loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
@@ -1285,9 +1312,7 @@ export default function RoutesScreen() {
                   <ActivityIndicator size="small" color={scheme.primary} />
                 ) : loadMoreFailed ? (
                   <>
-                    <Text style={styles.footerText}>
-                      {s.routes.moreFail}
-                    </Text>
+                    <Text style={styles.footerText}>{s.routes.moreFail}</Text>
                     <Pressable
                       onPress={() => void handleLoadMore()}
                       style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
@@ -1306,17 +1331,19 @@ export default function RoutesScreen() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyTitle}>
-                {directOnly || modeFilter !== 'all'
-                  ? s.routes.emptyFiltered
-                  : s.routes.emptyNone}
+                {directOnly || modeFilter !== 'all' ? s.routes.emptyFiltered : s.routes.emptyNone}
               </Text>
               <Text style={styles.emptySub}>
                 {directOnly && modeFilter !== 'all'
-                  ? s.routes.emptyModeDirect(modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen)
+                  ? s.routes.emptyModeDirect(
+                      modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen,
+                    )
                   : directOnly
                     ? s.routes.emptyDirect
                     : modeFilter !== 'all'
-                      ? s.routes.emptyMode(modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen)
+                      ? s.routes.emptyMode(
+                          modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen,
+                        )
                       : s.routes.emptyPlain}
               </Text>
               {directOnly && (
@@ -1353,10 +1380,12 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 5. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
+      {/* 5. Wyszukiwarka startu / celu - ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
-          placeholder={sheetFor === 'from' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
+          placeholder={
+            sheetFor === 'from' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo
+          }
           query={query}
           loading={searchLoading}
           results={results}
@@ -1372,7 +1401,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 6. Dolne menu — filtry i akcje pod kciukiem (swap, bezpośr.,
+      {/* 6. Dolne menu - filtry i akcje pod kciukiem (swap, bezpośr.,
           pojazd, czas), ze springowym chowaniem się przy przewijaniu listy.
           Sortowanie wróciło do toggla w górnym pasku. */}
       {!sheetFor && !timeSheetOpen && (
@@ -1460,7 +1489,7 @@ const styles = StyleSheet.create({
   // Karta aktywnej podróży nad listą połączeń
   activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
   // Dopiska kotwicy pod tytułem startu: ta sama typografia co nagłówek,
-  // tylko mniejsza i w kolorze primary — zero pigułek, zero tła.
+  // tylko mniejsza i w kolorze primary - zero pigułek, zero tła.
   anchorSub: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1478,7 +1507,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: scheme.onSurfaceVariant,
   },
-  // Cichy X bez kółka — dopiska ma wyglądać jak tekst, nie jak chip.
+  // Cichy X bez kółka - dopiska ma wyglądać jak tekst, nie jak chip.
   anchorX: {
     width: 20,
     height: 20,
@@ -1511,7 +1540,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 9,
   },
-  // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
+  // Wewnętrzny wrapper rolki tekstu - musi przenosić zwężanie, żeby długie
   // nazwy dalej ucinały się z elipsą w jednej linii.
   routeSlide: {
     flexShrink: 1,

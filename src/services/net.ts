@@ -6,11 +6,11 @@
 // do żądania, więc `setTimeout(() => ctrl.abort(), 5000)` nigdy nie przerywa
 // zawieszonego połączenia. Ekran zostaje w stanie „pobieranie…” na zawsze.
 //
-// `AbortSignal.any` nie wchodzi w grę — Hermes go nie ma.
+// `AbortSignal.any` nie wchodzi w grę - Hermes go nie ma.
 
 export type TimeoutScope = {
   signal: AbortSignal;
-  /** Wywołaj w `finally` — czyści licznik i rozłącza nasłuch na cudzym sygnale. */
+  /** Wywołaj w `finally` - czyści licznik i rozłącza nasłuch na cudzym sygnale. */
   dispose: () => void;
 };
 

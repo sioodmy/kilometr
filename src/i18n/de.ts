@@ -1,4 +1,4 @@
-// Deutsche Übersetzungen. Muss `Strings` (typeof pl) erfüllen — ein fehlender
+// Deutsche Übersetzungen. Muss `Strings` (typeof pl) erfüllen - ein fehlender
 // Schlüssel oder eine falsche Funktionssignatur ist ein Compile-Fehler.
 import type { Strings } from './pl';
 
@@ -43,7 +43,7 @@ export const de: Strings = {
     editCardSub: 'gespeicherte Orte',
     historyTitle: 'Letzte Orte',
     historyEmptyTitle: 'Keine letzten Orte',
-    historyEmptyBody: 'Suche eine Verbindung — sie erscheint hier als Schnellziel.',
+    historyEmptyBody: 'Suche eine Verbindung - sie erscheint hier als Schnellziel.',
     historyEmptyAction: 'Verbindung suchen',
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
     gpsTitle: 'Mein Standort (GPS)',
@@ -105,9 +105,9 @@ export const de: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : id === 'radom'
-                                ? 'Radom'
-                              : 'Wrocław',
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -135,7 +135,7 @@ export const de: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : 'Wrocław',
+                                : 'Wrocław',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -163,7 +163,7 @@ export const de: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : 'Wrocław',
+                                : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP und Koleje Małopolskie'
@@ -175,7 +175,7 @@ export const de: Strings = {
               ? 'ZTM und Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia und SKM'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK und Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -191,9 +191,9 @@ export const de: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK und Koleje Dolnośląskie',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK und Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -205,7 +205,7 @@ export const de: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -221,9 +221,9 @@ export const de: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław • wroclaw.pl',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -235,7 +235,7 @@ export const de: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -251,9 +251,9 @@ export const de: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -277,11 +277,11 @@ export const de: Strings = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
-                              : id === 'lublin'
-                                ? 'ZDiTM'
+                            : id === 'lublin'
+                              ? 'ZDiTM'
                               : id === 'radom'
                                 ? 'MZDiK'
-                            : 'MPK',
+                                : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -293,7 +293,7 @@ export const de: Strings = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
@@ -309,10 +309,11 @@ export const de: Strings = {
                               ? 'ztm.erzeszow.pl'
                               : id === 'lublin'
                                 ? 'zdtm.lublin.eu'
-                              : id === 'radom'
-                                ? 'mzdik.pl'
-                                : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
+                                : id === 'radom'
+                                  ? 'mzdik.pl'
+                                  : 'wroclaw.pl',
+    supportedList:
+      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
@@ -372,7 +373,7 @@ export const de: Strings = {
         : `Die Karte kannst du in ${days} Tagen erneut laden. Einmal geladen reicht lange.`,
     backupTitle: 'Deine Daten',
     backupHint:
-      'Gespeicherte Orte, letzte Fahrten und Einstellungen in einer Datei. Exportiere vor dem Handywechsel — oder einfach zur Sicherheit.',
+      'Gespeicherte Orte, letzte Fahrten und Einstellungen in einer Datei. Exportiere vor dem Handywechsel - oder einfach zur Sicherheit.',
     backupExcludeHint: 'Fahrplan, Cache und Daten zur Kursverfolgung bleiben auf dem Gerät.',
     backupExport: 'In Datei exportieren',
     backupImport: 'Aus Datei importieren',
@@ -389,7 +390,7 @@ export const de: Strings = {
     backupExportFailFallback: 'Bitte gleich noch einmal versuchen.',
     backupImportConfirmTitle: 'Diese Daten importieren?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nGespeicherte Orte und Fahrten werden mit deinen vorhandenen zusammengeführt — nichts geht verloren. Einstellungen werden überschrieben.`,
+      `${summary}\n\nGespeicherte Orte und Fahrten werden mit deinen vorhandenen zusammengeführt - nichts geht verloren. Einstellungen werden überschrieben.`,
     backupImportAction: 'Importieren',
     backupImportCancel: 'Abbrechen',
     backupImportDoneTitle: 'Daten importiert',
@@ -428,8 +429,7 @@ export const de: Strings = {
     contribDelete: 'Gesammelte Daten löschen',
     contribDeleteA11y: 'Alle gesammelten Daten von diesem Gerät löschen',
     contribDeleteConfirmTitle: 'Alle Daten löschen?',
-    contribDeleteConfirmBody:
-      'Die Telemetrie wird dauerhaft von diesem Telefon gelöscht.',
+    contribDeleteConfirmBody: 'Die Telemetrie wird dauerhaft von diesem Telefon gelöscht.',
     contribDeleteAction: 'Löschen',
     contribNotifTitle: 'Kilometr Contributor',
     contribNotifText: 'Telemetrie der Fahrt wird aufgezeichnet',
@@ -586,7 +586,7 @@ export const de: Strings = {
             ? 'z. B. Głogowska 12'
             : id === 'trojmiasto'
               ? 'z. B. Długa 12'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'z. B. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'z. B. Wojska Polskiego 12'
@@ -600,11 +600,11 @@ export const de: Strings = {
                           ? 'z. B. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'z. B. 3 Maja 12'
-                              : id === 'lublin'
-                                ? 'z. B. Krakowskie Przedmieście 12'
+                            : id === 'lublin'
+                              ? 'z. B. Krakowskie Przedmieście 12'
                               : id === 'radom'
                                 ? 'z. B. Żeromskiego 12'
-                            : 'z. B. Swojczycka 41',
+                                : 'z. B. Swojczycka 41',
     slotWork: 'Arbeit',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -615,7 +615,7 @@ export const de: Strings = {
             ? 'z. B. Stary Browar'
             : id === 'trojmiasto'
               ? 'z. B. Galeria Bałtycka'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'z. B. Manufaktura'
                 : id === 'szczecin'
                   ? 'z. B. Galeria Kaskada'
@@ -629,11 +629,11 @@ export const de: Strings = {
                           ? 'z. B. Solaris Center'
                           : id === 'rzeszow'
                             ? 'z. B. Galeria Rzeszów'
-                              : id === 'lublin'
-                                ? 'z. B. Felicity'
+                            : id === 'lublin'
+                              ? 'z. B. Felicity'
                               : id === 'radom'
                                 ? 'z. B. Galeria Słoneczna'
-                            : 'z. B. Sky Tower',
+                                : 'z. B. Sky Tower',
     slotUni: 'Uni',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -644,7 +644,7 @@ export const de: Strings = {
             ? 'z. B. UAM'
             : id === 'trojmiasto'
               ? 'z. B. UG'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'z. B. UŁ'
                 : id === 'szczecin'
                   ? 'z. B. US'
@@ -658,11 +658,11 @@ export const de: Strings = {
                           ? 'z. B. UO'
                           : id === 'rzeszow'
                             ? 'z. B. PRz'
-                              : id === 'lublin'
-                                ? 'z. B. UMCS'
+                            : id === 'lublin'
+                              ? 'z. B. UMCS'
                               : id === 'radom'
                                 ? 'z. B. UTH'
-                            : 'z. B. Politechnika',
+                                : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',
@@ -758,7 +758,7 @@ export const de: Strings = {
       'Keine Meldungen zu Linien aus Verbindungen, die du in den letzten zwei Wochen geprüft hast.',
     filterNoHistoryTitle: 'Noch keine Linien',
     filterNoHistoryBody:
-      'Suche eine Verbindung in der App — danach siehst du hier Meldungen zu diesen Linien.',
+      'Suche eine Verbindung in der App - danach siehst du hier Meldungen zu diesen Linien.',
   },
   newsSvc: {
     justNow: 'gerade eben',
@@ -775,7 +775,7 @@ export const de: Strings = {
       'Die Karte zeigt eine konkrete Verbindung, sie muss daher im Speicher oder Cache verfügbar sein.',
     backToDetails: 'Zurück zu den Details',
     assembling: 'Verbindung wird zusammengesetzt…',
-    offlineTitle: 'Karte nicht verfügbar — kein Netz',
+    offlineTitle: 'Karte nicht verfügbar - kein Netz',
     offlineSub: 'Kacheln laden nicht',
     backA11y: 'Zurück',
     transfersSuffix: (n: number) => (n === 1 ? ' • 1 Umstieg.' : ` • ${n} Umstiege.`),
@@ -889,8 +889,8 @@ export const de: Strings = {
     title: 'Verbindungsdetails',
     loadFail: 'Verbindung konnte nicht geladen werden.',
     backToList: 'Zurück zur Liste',
-    offlineNote: 'Aus dem Offline-Speicher — Fahrplanzeiten, keine Live-Daten',
-    noLiveNote: 'Keine Live-Daten — Fahrplanzeiten',
+    offlineNote: 'Aus dem Offline-Speicher - Fahrplanzeiten, keine Live-Daten',
+    noLiveNote: 'Keine Live-Daten - Fahrplanzeiten',
     onTime: 'Pünktlich',
     scheduleCache: 'Fahrplan aus Cache',
     schedule: 'Fahrplan',

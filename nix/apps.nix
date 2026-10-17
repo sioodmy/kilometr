@@ -58,7 +58,7 @@
         if [ ! -d android ]; then
           NEEDS_PREBUILD=1
         elif [ -d modules ] && [ modules -nt android ]; then
-          echo "== modules/ nowsze od android/ — regenerujemy =="
+          echo "== modules/ nowsze od android/ - regenerujemy =="
           NEEDS_PREBUILD=1
         fi
         if [ "$NEEDS_PREBUILD" = "1" ]; then
@@ -80,7 +80,7 @@
 
         if [ "$INSTALL_FLAG" = "true" ]; then
           if ! command -v adb >/dev/null; then
-            echo "Brak adb w PATH — podłącz telefon i spróbuj ponownie." >&2
+            echo "Brak adb w PATH - podłącz telefon i spróbuj ponownie." >&2
             exit 1
           fi
           echo "== Instalowanie $APK na urządzeniu =="

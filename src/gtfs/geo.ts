@@ -1,4 +1,4 @@
-// Czyste funkcje geo — bez zależności natywnych, działają w Hermes.
+// Czyste funkcje geo - bez zależności natywnych, działają w Hermes.
 // Port server/src/gtfs/geo.ts (bez zmian logiki).
 
 const EARTH_RADIUS_METERS = 6371000;
@@ -62,7 +62,7 @@ export function secondsToTimeString(totalSec: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/** Rzutuje punkt na polyline {lat, lon} — do dopasowania GPS do kształtu kursu. */
+/** Rzutuje punkt na polyline {lat, lon} - do dopasowania GPS do kształtu kursu. */
 export function projectPointToPolyline(
   lat: number,
   lon: number,
@@ -104,7 +104,12 @@ export function projectPointToPolyline(
 
   const segmentLengths: number[] = [];
   for (let i = 0; i < polyline.length - 1; i++) {
-    const d = distanceMeters(polyline[i].lat, polyline[i].lon, polyline[i + 1].lat, polyline[i + 1].lon);
+    const d = distanceMeters(
+      polyline[i].lat,
+      polyline[i].lon,
+      polyline[i + 1].lat,
+      polyline[i + 1].lon,
+    );
     segmentLengths.push(d);
     totalPolylineDistance += d;
   }
@@ -140,7 +145,8 @@ export function projectPointToPolyline(
     runningDistance += segmentLengths[i];
   }
 
-  const fractionAlongShape = totalPolylineDistance > 0 ? cumulativeDistanceBeforeBest / totalPolylineDistance : 0;
+  const fractionAlongShape =
+    totalPolylineDistance > 0 ? cumulativeDistanceBeforeBest / totalPolylineDistance : 0;
 
   return {
     distanceMeters: minDistance,

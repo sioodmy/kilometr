@@ -4,7 +4,7 @@ import { getActiveCityIdSync } from './cityStore';
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
 /**
- * Czy telefon ma lokalny rozkład — czyli czy w ogóle da się zaplanować
+ * Czy telefon ma lokalny rozkład - czyli czy w ogóle da się zaplanować
  * trasę. Planer jeździ po SQLite, nie po serwerze, więc nazwa „pingBackend”
  * wprowadzała w błąd (a komunikat „Offline” na ekranie głównym był
  * mylący: brak rozkładu to nie brak internetu).
@@ -21,7 +21,7 @@ export async function hasLocalTimetable(): Promise<boolean> {
 
 // Offline-first cache (kv-store): trasy, podpowiedzi, recent.
 // Gdy backend nie odpowiada, ekrany serwują ostatnie prawdziwe dane
-// zamiast pustki — a po powrocie sieci cicho podmieniają na świeże.
+// zamiast pustki - a po powrocie sieci cicho podmieniają na świeże.
 
 const KEYS = {
   connections: 'kilometr.cache.connections.v1',
@@ -142,7 +142,7 @@ export async function findCachedConnection(id: string): Promise<Connection | nul
 
 /**
  * Odświeża czasy względne na bazie absolutnego departureSec.
- * Live wyłączamy — offline nie ma realtime, pokazujemy wg rozkładu.
+ * Live wyłączamy - offline nie ma realtime, pokazujemy wg rozkładu.
  *
  * Ujemnych wartości NIE obcinamy do zera: połączenie sprzed 20 minut ma pokazać
  * „20 min temu”, a nie „za chwilę”. Docięcie zamieniało nieodejazd w najbliższy
@@ -157,7 +157,9 @@ export function rehydrateConnections(list: Connection[], savedAtMs = Date.now())
   return list.map((c) => ({
     ...c,
     departInMin:
-      c.departureSec > 0 ? Math.round((baseMs + c.departureSec * 1000 - nowMs) / 60000) : c.departInMin,
+      c.departureSec > 0
+        ? Math.round((baseMs + c.departureSec * 1000 - nowMs) / 60000)
+        : c.departInMin,
     live: false,
   }));
 }
@@ -172,7 +174,9 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
   const key = normQuery(query);
   if (!key || results.length === 0) return;
   try {
-    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions))) ?? {};
+    const all =
+      (await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions))) ??
+      {};
     all[key] = { savedAt: Date.now(), data: results };
     const keys = Object.keys(all);
     if (keys.length > MAX_SUGGESTION_ENTRIES) {
@@ -187,11 +191,13 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
   }
 }
 
-/** Offline: dokładny query, a jak brak — najdłuższy zapamiętany prefiks. */
+/** Offline: dokładny query, a jak brak - najdłuższy zapamiętany prefiks. */
 export async function loadSuggestions(query: string): Promise<Suggestion[]> {
   const key = normQuery(query);
   if (!key) return [];
-  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions));
+  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(
+    cityScopedKey(KEYS.suggestions),
+  );
   if (!all) return [];
   const fresh = (e: Stamped<Suggestion[]> | undefined) =>
     e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS ? e.data : null;
@@ -206,9 +212,7 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
     if (data) {
       const low = key;
       const filtered = data.filter(
-        (s) =>
-          s.title.toLowerCase().includes(low) ||
-          s.address.toLowerCase().includes(low),
+        (s) => s.title.toLowerCase().includes(low) || s.address.toLowerCase().includes(low),
       );
       if (filtered.length > 0) return filtered;
     }
@@ -236,7 +240,10 @@ export async function addRecentSuggestion(item: Suggestion): Promise<Suggestion[
     const current = await loadRecent();
     const updated = [
       item,
-      ...current.filter((x) => x.id !== item.id && (x.title !== item.title || x.lat !== item.lat || x.lon !== item.lon)),
+      ...current.filter(
+        (x) =>
+          x.id !== item.id && (x.title !== item.title || x.lat !== item.lat || x.lon !== item.lon),
+      ),
     ].slice(0, 10);
     await saveRecent(updated);
     return updated;
@@ -266,10 +273,7 @@ export async function saveLastLocation(loc: {
   city?: string | null;
 }): Promise<void> {
   try {
-    await kvSet(
-      KEYS.location,
-      JSON.stringify({ ...loc, savedAt: Date.now() }),
-    );
+    await kvSet(KEYS.location, JSON.stringify({ ...loc, savedAt: Date.now() }));
   } catch {
     // best-effort
   }

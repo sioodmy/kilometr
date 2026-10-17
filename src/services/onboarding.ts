@@ -17,6 +17,6 @@ export async function setOnboardingSeen(): Promise<void> {
   try {
     await kvSet(KEY, '1');
   } catch {
-    // flaga opcjonalna — najgorszy wypadek to powtórka onboardingu
+    // flaga opcjonalna - najgorszy wypadek to powtórka onboardingu
   }
 }

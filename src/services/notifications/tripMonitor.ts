@@ -34,7 +34,7 @@ import type { NotificationPreferences, TripProgress, TrackedTrip } from './types
 // TripProgress i aktualizuje plan powiadomienia.
 //
 // Od planu liczb (godziny, odcinki) pilnuje `LiveTripService`, więc ten
-// ticker nie musi tykać co sekundę — wystarczy dowieźć zmiany z planera i
+// ticker nie musi tykać co sekundę - wystarczy dowieźć zmiany z planera i
 // przeliczenia pozycji pojazdu. Rytm jest adaptive: przed odjazdem i w trakcie
 // jazdy częściej, po przyjeździe rzadko. Zawsze dodatkowo odświeżamy przy
 // powrocie aplikacji na pierwszy plan.
@@ -48,7 +48,7 @@ let progress: TripProgress | null = null;
 let lastDelayMin = 0;
 let arrivedAt = 0;
 /**
- * Po odjeździe przestajemy przeliczać plan. Śledzony jest już konkretny kurs —
+ * Po odjeździe przestajemy przeliczać plan. Śledzony jest już konkretny kurs -
  * kolejne zapytania do RAPTOR-a tylko marnowałyby baterię, a po północy
  * potrafiłyby podmienić plan na jutrzejszy.
  */
@@ -81,7 +81,7 @@ export function getTripProgressSync(): TripProgress | null {
 /**
  * Czy dwa zapytania trasy opisują tę samą podróż. Używane przez ekran
  * połączeń do rozpoznania, czy śledzimy właśnie tę trasę (a nie inną),
- * oraz po przywróceniu stanu. Epsilon 0.0005° ≈ 55 m — mniejszy niż
+ * oraz po przywróceniu stanu. Epsilon 0.0005° ≈ 55 m - mniejszy niż
  * rozrzut współrzędnych z wyszukiwarki, więc nie łapie sąsiednich przystanków.
  */
 export function isSameQuery(a: RouteQuery, b: RouteQuery): boolean {
@@ -144,7 +144,7 @@ async function planTracked(): Promise<Connection | null> {
   });
   if (conns.length === 0) return null;
 
-  // Całą politykę doboru kursu trzyma `resolveTrackedConnection` — jest czysta
+  // Całą politykę doboru kursu trzyma `resolveTrackedConnection` - jest czysta
   // i da się ją przetestować bez planera (patrz scripts/check-notifications.ts).
   return resolveTrackedConnection(conns, tracked.connection, nowSecOfDay(), BOARDING_GRACE_SEC);
 }
@@ -172,7 +172,7 @@ async function refresh(): Promise<void> {
       try {
         const fresh = await planTracked();
         if (!fresh) {
-          // Brak połączeń (albo awaria sieci) — zostaje ostatni znany plan.
+          // Brak połączeń (albo awaria sieci) - zostaje ostatni znany plan.
           // Oddajemy śledzenie dopiero wtedy, gdy minęło pół godziny od
           // ODJAZDU (nie od rozpoczęcia śledzenia): przypięty na dwie
           // godziny kurs nie może zniknąć tylko dlatego, że planer chwilowo
@@ -188,14 +188,14 @@ async function refresh(): Promise<void> {
         if (tracked !== before) return;
         tracked = { ...before, connection: fresh };
       } catch {
-        // offline — zostaje ostatni plan
+        // offline - zostaje ostatni plan
       }
     }
 
     const trip = tracked;
     if (!trip) return;
 
-    // Użytkownik wyłączył wszystkie powiadomienia — nie ma po co dalej
+    // Użytkownik wyłączył wszystkie powiadomienia - nie ma po co dalej
     // planować, tym bardziej że samo śledzenie kosztuje odpytania planera.
     if (!prefs.trackingEnabled && !prefs.departureAlertsEnabled && !prefs.disruptionAlertsEnabled) {
       await stopTracking();
@@ -227,7 +227,7 @@ async function refresh(): Promise<void> {
     await scheduleDepartureAlerts(p, trip, prefs);
 
     if (p.phase === 'arrived') {
-      // „Jesteś na miejscu" to komunikat, a nie stan — bez alertów go nie ma.
+      // „Jesteś na miejscu" to komunikat, a nie stan - bez alertów go nie ma.
       if (arrivedAt === 0) {
         arrivedAt = Date.now();
         if (prefs.departureAlertsEnabled) await sendArrivedNotification(p, trip);
@@ -254,7 +254,7 @@ async function refresh(): Promise<void> {
 /**
  * Rytm odświeżania zależy od tego, jak daleko jesteśmy od odjazdu. Licznik
  * i pasek postępu liczy serwis Androida z zegara, więc JS nie musi tykać co
- * sekundę — wystarczy, że dowieziemy mu plan. Im bliżej odjazdu, tym
+ * sekundę - wystarczy, że dowieziemy mu plan. Im bliżej odjazdu, tym
  * częściej, bo wtedy zmienia się to, czego użytkownik realnie potrzebuje:
  * pozycja pojazdu, liczba przystanków, opóźnienie.
  */
@@ -327,7 +327,7 @@ export async function stopTracking(): Promise<void> {
 /** Wznawia śledzenie po restarcie aplikacji (telefon zrestartowany, ubity proces). */
 export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
   if (tracked) return { ...tracked };
-  // Użytkownik mógł w międzyczasie wcisnąć „Zakończ" pod powiadomieniem —
+  // Użytkownik mógł w międzyczasie wcisnąć „Zakończ" pod powiadomieniem -
   // obsłużył to natywny odbiorca, więc myśląc o wznowieniu tylko byśmy
   // odpalili śledzenie, które on właśnie zakończył.
   if (await consumeNativeStop()) {
@@ -366,7 +366,7 @@ export function refreshTrackedTrip(): Promise<void> {
 
 /**
  * Przycisk „Zakończ" pod powiadomieniem obsługuje `TripActionReceiver`
- * natywnie — powiadomienie znika natychmiast, bez otwierania aplikacji. Do
+ * natywnie - powiadomienie znika natychmiast, bez otwierania aplikacji. Do
  * JS informacja wraca flagą w SharedPreferences, bo intencja do odbiorcy nie
  * trafia do procesu aplikacji. Sprawdzamy ją przy każdym wyjściu na plan.
  */
@@ -402,11 +402,11 @@ async function persist(): Promise<void> {
   try {
     await kvSet(STORAGE_KEY, JSON.stringify(tracked));
   } catch {
-    // persist opcjonalny — bez niego śledzenie nie przeżywa restartu
+    // persist opcjonalny - bez niego śledzenie nie przeżywa restartu
   }
 }
 
-/** Sekcja przypięcia w snapshocie widgetów — godziny dokłada odświeżenie. */
+/** Sekcja przypięcia w snapshocie widgetów - godziny dokłada odświeżenie. */
 function pushWidgetPinned(trip: TrackedTrip | null): Promise<void> {
   if (!trip) return mergeWidgetSnapshot({ pinned: null });
   const conn = trip.connection;

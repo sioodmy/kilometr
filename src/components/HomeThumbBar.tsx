@@ -7,7 +7,7 @@ import { useStrings } from '../i18n';
 
 interface HomeThumbBarProps {
   onOpenSearch: () => void;
-  /** Miejsce odjazdu — w miejscu dawnego skrótu do ulubionego. */
+  /** Miejsce odjazdu - w miejscu dawnego skrótu do ulubionego. */
   startTitle: string;
   isCustomStart: boolean;
   onOpenStart: () => void;
@@ -17,7 +17,7 @@ interface HomeThumbBarProps {
 }
 
 /**
- * Dolne menu ekranu głównego — jeden wiersz, dwa wejścia:
+ * Dolne menu ekranu głównego - jeden wiersz, dwa wejścia:
  * z lewej wyszukiwarka celu, z prawej wybór startu („z: …” z ikonką
  * po prawej). Ten sam font, te same ikony (18) i wyśrodkowane labele.
  */
@@ -49,13 +49,15 @@ export function HomeThumbBar({
         style={({ pressed }) => [styles.startItem, pressed && { opacity: 0.7 }]}
         accessibilityRole="button"
         accessibilityLabel={
-          isCustomStart
-            ? s.home.startCustomA11y(startTitle)
-            : s.home.startGpsA11y(startTitle)
+          isCustomStart ? s.home.startCustomA11y(startTitle) : s.home.startGpsA11y(startTitle)
         }
       >
         <Text
-          style={[styles.startText, isCustomStart && styles.startTextCustom, gpsUnsupported && styles.startTextWarn]}
+          style={[
+            styles.startText,
+            isCustomStart && styles.startTextCustom,
+            gpsUnsupported && styles.startTextWarn,
+          ]}
           numberOfLines={1}
           ellipsizeMode="tail"
         >
@@ -85,13 +87,13 @@ export function HomeThumbBar({
 }
 
 const styles = StyleSheet.create({
-  // Szukanie bierze wolne miejsce, start ma maks. 45% i ucina się z elipsą —
+  // Szukanie bierze wolne miejsce, start ma maks. 45% i ucina się z elipsą -
   // label „Dokąd jedziesz?” nigdy nie ginie. Oba wiersze: bodyMedium,
   // ikony 18, min. 50 px, wyśrodkowane w pionie (bar rozciąga, items centrują).
   searchItem: {
     flex: 1,
     minWidth: 0,
-    // Bazowy ThumbBarItem centruje treść — tu ma hugować lewą (symetria
+    // Bazowy ThumbBarItem centruje treść - tu ma hugować lewą (symetria
     // do startu hugującego prawą: 12 + 4 z obu stron pigułki).
     justifyContent: 'flex-start',
   },

@@ -126,9 +126,7 @@ export async function rememberLinesFromConnectionCache(): Promise<void> {
 }
 
 /** Zbierz linie z cache + zapisanych tras, potem oddaj listę z okna 2 tygodni. */
-export async function loadRecentRouteLines(
-  withinMs: number = TWO_WEEKS_MS,
-): Promise<string[]> {
+export async function loadRecentRouteLines(withinMs: number = TWO_WEEKS_MS): Promise<string[]> {
   await rememberLinesFromConnectionCache();
   try {
     // Zapisane trasy czytamy z kubełka aktywnego miasta: linie z drugiego
@@ -145,9 +143,7 @@ export async function loadRecentRouteLines(
 }
 
 /** Linie widziane w trasach w ostatnich 14 dniach. */
-export async function getRecentRouteLines(
-  withinMs: number = TWO_WEEKS_MS,
-): Promise<string[]> {
+export async function getRecentRouteLines(withinMs: number = TWO_WEEKS_MS): Promise<string[]> {
   const stamps = await readStamps();
   const cutoff = Date.now() - withinMs;
   return Object.entries(stamps)
@@ -156,7 +152,10 @@ export async function getRecentRouteLines(
     .map(([line]) => line);
 }
 
-export function newsTouchesLines(item: { lines: string[]; title: string; description: string }, lines: Set<string>): boolean {
+export function newsTouchesLines(
+  item: { lines: string[]; title: string; description: string },
+  lines: Set<string>,
+): boolean {
   if (lines.size === 0) return false;
   for (const raw of item.lines) {
     if (lines.has(normalizeLine(raw))) return true;
@@ -164,7 +163,7 @@ export function newsTouchesLines(item: { lines: string[]; title: string; descrip
   const hay = `${item.title} ${item.description}`;
   for (const line of lines) {
     const escaped = line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Linie MPK to cyfry / litery (N, D, A) — bez unicode property (Hermes).
+    // Linie MPK to cyfry / litery (N, D, A) - bez unicode property (Hermes).
     const re = new RegExp(`(?:^|[^0-9A-Za-z])${escaped}(?![0-9A-Za-z])`, 'i');
     if (re.test(hay)) return true;
   }

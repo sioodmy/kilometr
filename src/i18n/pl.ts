@@ -1,4 +1,4 @@
-// Polski słownik — WZORZEC typów dla pozostałych języków.
+// Polski słownik - WZORZEC typów dla pozostałych języków.
 // `Strings = typeof pl`: brak klucza w en/de/uk = błąd kompilacji.
 // Zasady (patrz AGENTS.md): zero hardkodu PL w UI, liczby mnogie jako funkcje.
 function isFew(n: number): boolean {
@@ -110,9 +110,9 @@ export const pl = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : id === 'radom'
-                                ? 'Radom'
-                              : 'Wrocław',
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Krakowa'
@@ -140,9 +140,9 @@ export const pl = {
                               ? 'Rzeszowa'
                               : id === 'lublin'
                                 ? 'Lublina'
-                              : id === 'radom'
-                                ? 'Radomia'
-                              : 'Wrocławia',
+                                : id === 'radom'
+                                  ? 'Radomia'
+                                  : 'Wrocławia',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Krakowie'
@@ -170,9 +170,9 @@ export const pl = {
                               ? 'Rzeszowie'
                               : id === 'lublin'
                                 ? 'Lublinie'
-                              : id === 'radom'
-                                ? 'Radomiu'
-                              : 'Wrocławiu',
+                                : id === 'radom'
+                                  ? 'Radomiu'
+                                  : 'Wrocławiu',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP i Koleje Małopolskie'
@@ -184,7 +184,7 @@ export const pl = {
               ? 'ZTM i Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia i SKM'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK i Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -200,9 +200,9 @@ export const pl = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK i Koleje Dolnośląskie',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK i Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -214,7 +214,7 @@ export const pl = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -230,9 +230,9 @@ export const pl = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław • wroclaw.pl',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -244,7 +244,7 @@ export const pl = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -260,9 +260,9 @@ export const pl = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -286,11 +286,11 @@ export const pl = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
-                              : id === 'lublin'
-                                ? 'ZDiTM'
+                            : id === 'lublin'
+                              ? 'ZDiTM'
                               : id === 'radom'
                                 ? 'MZDiK'
-                            : 'MPK',
+                                : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -302,7 +302,7 @@ export const pl = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
@@ -318,10 +318,11 @@ export const pl = {
                               ? 'ztm.erzeszow.pl'
                               : id === 'lublin'
                                 ? 'zdtm.lublin.eu'
-                              : id === 'radom'
-                                ? 'mzdik.pl'
-                                : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
+                                : id === 'radom'
+                                  ? 'mzdik.pl'
+                                  : 'wroclaw.pl',
+    supportedList:
+      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
     changed: (name: string) => `Przełączono na: ${name}.`,
     switching: 'Przełączam miasto…',
     blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
@@ -398,7 +399,7 @@ export const pl = {
     backupExportFailFallback: 'Spróbuj ponownie za chwilę.',
     backupImportConfirmTitle: 'Wczytać te dane?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nZapisane miejsca i przejazdy zostaną scalone z obecnymi — nic nie zniknie. Ustawienia zostaną nadpisane.`,
+      `${summary}\n\nZapisane miejsca i przejazdy zostaną scalone z obecnymi - nic nie zniknie. Ustawienia zostaną nadpisane.`,
     backupImportAction: 'Wczytaj',
     backupImportCancel: 'Anuluj',
     backupImportDoneTitle: 'Dane wczytane',
@@ -421,7 +422,8 @@ export const pl = {
     contribStatusNative: 'Zbieram w tle (GPS i akcelerometr, jedna próbka na sekundę).',
     contribStatusForeground:
       'Zbieram, dopóki aplikacja jest otwarta. Zgoda na lokalizację w tle uruchomi zbieranie również po zamknięciu ekranu.',
-    contribPermissionNeeded: 'Zbieranie wymaga zgody na lokalizację. Nic nie dzieje się bez Twojej akcji.',
+    contribPermissionNeeded:
+      'Zbieranie wymaga zgody na lokalizację. Nic nie dzieje się bez Twojej akcji.',
     contribSessionsCount: (n: number) =>
       `${n === 1 ? '1 sesja' : isFew(n) ? `${n} sesje` : `${n} sesji`}`,
     contribSize: (mb: string) => `Dane: ~${mb} MB`,
@@ -436,8 +438,7 @@ export const pl = {
     contribDelete: 'Usuń zebrane dane',
     contribDeleteA11y: 'Usuń wszystkie zebrane dane z urządzenia',
     contribDeleteConfirmTitle: 'Usunąć wszystkie dane?',
-    contribDeleteConfirmBody:
-      'Telemetria zostanie bezpowrotnie usunięta z tego telefonu.',
+    contribDeleteConfirmBody: 'Telemetria zostanie bezpowrotnie usunięta z tego telefonu.',
     contribDeleteAction: 'Usuń',
     contribNotifTitle: 'Kilometr Contributor',
     contribNotifText: 'Zbieram telemetrię podróży',
@@ -595,7 +596,7 @@ export const pl = {
             ? 'np. Głogowska 12'
             : id === 'trojmiasto'
               ? 'np. Długa 12'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'np. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'np. Wojska Polskiego 12'
@@ -609,11 +610,11 @@ export const pl = {
                           ? 'np. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'np. 3 Maja 12'
-                              : id === 'lublin'
-                                ? 'np. Krakowskie Przedmieście 12'
+                            : id === 'lublin'
+                              ? 'np. Krakowskie Przedmieście 12'
                               : id === 'radom'
                                 ? 'np. Żeromskiego 12'
-                            : 'np. Swojczycka 41',
+                                : 'np. Swojczycka 41',
     slotWork: 'Praca',
     slotWorkHint: (id: string): string =>
       id === 'krakow'
@@ -624,7 +625,7 @@ export const pl = {
             ? 'np. Stary Browar'
             : id === 'trojmiasto'
               ? 'np. Galeria Bałtycka'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'np. Manufaktura'
                 : id === 'szczecin'
                   ? 'np. Galeria Kaskada'
@@ -638,11 +639,11 @@ export const pl = {
                           ? 'np. Solaris Center'
                           : id === 'rzeszow'
                             ? 'np. Galeria Rzeszów'
-                              : id === 'lublin'
-                                ? 'np. Felicity'
+                            : id === 'lublin'
+                              ? 'np. Felicity'
                               : id === 'radom'
                                 ? 'np. Galeria Słoneczna'
-                            : 'np. Sky Tower',
+                                : 'np. Sky Tower',
     slotUni: 'Uczelnia',
     slotUniHint: (id: string): string =>
       id === 'krakow'
@@ -653,7 +654,7 @@ export const pl = {
             ? 'np. UAM'
             : id === 'trojmiasto'
               ? 'np. UG'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'np. UŁ'
                 : id === 'szczecin'
                   ? 'np. US'
@@ -667,11 +668,11 @@ export const pl = {
                           ? 'np. UO'
                           : id === 'rzeszow'
                             ? 'np. PRz'
-                              : id === 'lublin'
-                                ? 'np. UMCS'
+                            : id === 'lublin'
+                              ? 'np. UMCS'
                               : id === 'radom'
                                 ? 'np. UTH'
-                            : 'np. Politechnika',
+                                : 'np. Politechnika',
     backA11y: 'Wstecz',
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
     brand: 'Kilometr',
@@ -783,7 +784,7 @@ export const pl = {
       'Mapa pokazuje konkretne połączenie, więc musi być dostępne w pamięci lub w cache.',
     backToDetails: 'Wróć do szczegółów',
     assembling: 'Składam połączenie…',
-    offlineTitle: 'Mapa niedostępna — brak sieci',
+    offlineTitle: 'Mapa niedostępna - brak sieci',
     offlineSub: 'Kafelki się nie ładują',
     backA11y: 'Wróć',
     transfersSuffix: (n: number) =>
@@ -897,8 +898,8 @@ export const pl = {
     title: 'Szczegóły połączenia',
     loadFail: 'Nie udało się wczytać połączenia.',
     backToList: 'Wróć do listy',
-    offlineNote: 'Z pamięci offline — czasy według rozkładu, bez danych live',
-    noLiveNote: 'Brak danych live — czasy według rozkładu',
+    offlineNote: 'Z pamięci offline - czasy według rozkładu, bez danych live',
+    noLiveNote: 'Brak danych live - czasy według rozkładu',
     onTime: 'Na czas',
     scheduleCache: 'Rozkład z cache',
     schedule: 'Rozkład',
@@ -1171,14 +1172,14 @@ export const pl = {
     noFile: 'Pobieranie GTFS nie zwróciło pliku',
   },
   notification: {
-    // Kanały powiadomień — nazwy widoczne w ustawieniach systemu.
+    // Kanały powiadomień - nazwy widoczne w ustawieniach systemu.
     channelTracking: 'Śledzenie podróży',
     channelTrackingDesc: 'Ciche powiadomienie z postępem i licznikiem do odjazdu lub przyjazdu.',
     channelAlerts: 'Alerty odjazdu',
     channelAlertsDesc: '„Wyjdź teraz”, opóźnienia i zmiany kursu. Z dźwiękiem.',
     permDenied:
       'Powiadomienia są wyłączone. Włącz je w ustawieniach systemu dla kilometr, żeby śledzić odjazd i postęp podróży.',
-    // Przyciski pod powiadomieniem. „Zakończ” jest krótkie celowo — Android
+    // Przyciski pod powiadomieniem. „Zakończ” jest krótkie celowo - Android
     // pokazuje najwyżej trzy przyciski i skraca dłuższe tytuły.
     actionStop: 'Zakończ',
     actionRoute: 'Trasa',
@@ -1191,7 +1192,7 @@ export const pl = {
     modeSubway: 'Metro',
     modeCable: 'Kolej linowa',
     modeTrolleybus: 'Trolejbus',
-    // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii —
+    // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii -
     // zegar systemowy tyka w nagłówku i sam z siebie nie wie, do czego liczy.
     // Względne „za 4 min” w treści zestarzałoby się przy pierwszym
     // odświeżeniu, więc go tu nie ma w ogóle.
@@ -1218,7 +1219,7 @@ export const pl = {
       n === 1 ? '1 przystanek' : isFew(n) ? `${n} przystanki` : `${n} przystanków`,
     transfers: (n: number) =>
       n === 1 ? '1 przesiadka' : isFew(n) ? `${n} przesiadki` : `${n} przesiadek`,
-    // Alerty odjazdu — osobne, głośne powiadomienia przed podróżą.
+    // Alerty odjazdu - osobne, głośne powiadomienia przed podróżą.
     leaveNow: (service: string, at: string) => `Wyjdź teraz • ${service} ${at}`,
     leaveIn: (min: number, service: string, at: string) =>
       `Wyjdź za ${min} ${min === 1 ? 'minutę' : isFew(min) ? 'minuty' : 'minut'} • ${service} ${at}`,

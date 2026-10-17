@@ -1,5 +1,5 @@
 /**
- * kilometr-timetable — Worker serwujący gotowe rozkłady (Cloudflare free tier).
+ * kilometr-timetable - Worker serwujący gotowe rozkłady (Cloudflare free tier).
  *
  * Per-miasto:
  * - GET /{miasto}/manifest.json           → manifest buildu z R2
@@ -9,7 +9,7 @@
  * szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom (allowlista CITIES niżej).
  *
  * - GET /api/kd/departures     → PDP /operations (sekret po stronie serwera,
- *                                 cache 120 s — aplikacja tego NA RAZIE nie woła)
+ *                                 cache 120 s - aplikacja tego NA RAZIE nie woła)
  * - GET /api/kd/schedule       → PDP /schedules (cache 1 h, jw.)
  * - GET /health
  *
@@ -24,7 +24,23 @@ export interface Env {
 }
 
 /** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
-const CITIES = ['wroclaw', 'krakow', 'gzm', 'warszawa', 'poznan', 'trojmiasto', 'lodz', 'szczecin', 'kielce', 'olsztyn', 'bialystok', 'opole', 'rzeszow', 'lublin', 'radom'] as const;
+const CITIES = [
+  'wroclaw',
+  'krakow',
+  'gzm',
+  'warszawa',
+  'poznan',
+  'trojmiasto',
+  'lodz',
+  'szczecin',
+  'kielce',
+  'olsztyn',
+  'bialystok',
+  'opole',
+  'rzeszow',
+  'lublin',
+  'radom',
+] as const;
 
 /** Regex ścieżek per-miasto budowany z CITIES, żeby nowe miasto nie wymagało edycji routingu. */
 const CITY_PATH_RE = new RegExp(`^/(${CITIES.join('|')})(/.*)$`);
@@ -79,11 +95,17 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
-    // HEAD działa jak GET (Runtime sam ucina body) — klient sprawdza rozmiar/ETag.
-    if (req.method !== 'GET' && req.method !== 'HEAD') return json({ error: 'method-not-allowed' }, 405);
+    // HEAD działa jak GET (Runtime sam ucina body) - klient sprawdza rozmiar/ETag.
+    if (req.method !== 'GET' && req.method !== 'HEAD')
+      return json({ error: 'method-not-allowed' }, 405);
 
     if (url.pathname === '/health') {
-      return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString(), cities: [...CITIES] });
+      return json({
+        ok: true,
+        service: 'kilometr-timetable',
+        ts: new Date().toISOString(),
+        cities: [...CITIES],
+      });
     }
 
     // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
@@ -99,11 +121,21 @@ export default {
     }
     const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
     if (mapMatch && (CITIES as readonly string[]).includes(mapMatch[1])) {
-      return serveObject(env, mapPackKeyFor(mapMatch[1]), 'application/octet-stream', 'map-tiles.yml');
+      return serveObject(
+        env,
+        mapPackKeyFor(mapMatch[1]),
+        'application/octet-stream',
+        'map-tiles.yml',
+      );
     }
 
     if (url.pathname === '/api/kd/departures' || url.pathname === '/api/kd/schedule') {
-      return proxyPdp(req, env, ctx, url.pathname === '/api/kd/departures' ? 'operations' : 'schedules');
+      return proxyPdp(
+        req,
+        env,
+        ctx,
+        url.pathname === '/api/kd/departures' ? 'operations' : 'schedules',
+      );
     }
 
     return json({ error: 'not-found' }, 404);
@@ -114,7 +146,10 @@ async function serveManifest(env: Env, key: string): Promise<Response> {
   const obj = await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
     return json(
-      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
+      {
+        error: 'not-built-yet',
+        hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).',
+      },
       404,
     );
   }
@@ -137,7 +172,10 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
     const head = await env.TIMETABLE_BUCKET.head(key);
     if (!head) {
       return json(
-        { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
+        {
+          error: 'not-built-yet',
+          hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).',
+        },
         404,
       );
     }
@@ -169,7 +207,10 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
   const obj = await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
     return json(
-      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
+      {
+        error: 'not-built-yet',
+        hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).',
+      },
       404,
     );
   }
@@ -183,31 +224,61 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
 }
 
 /**
- * Gotowość pod przyszłe opóźnienia KD — passthrough do PDP z cache,
+ * Gotowość pod przyszłe opóźnienia KD - passthrough do PDP z cache,
  * żeby wielu użytkowników dzieliło jeden request (limity Basic!).
  * Aplikacja mobilna tego NA RAZIE nie woła → koszt PDP = 0.
  */
-async function proxyPdp(req: Request, env: Env, ctx: ExecutionContext, kind: 'operations' | 'schedules'): Promise<Response> {
+async function proxyPdp(
+  req: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  kind: 'operations' | 'schedules',
+): Promise<Response> {
   if (!env.PDP_API_KEY) {
-    return json({ error: 'kd-not-configured', hint: 'Brak sekretu PDP_API_KEY w Workerze (wrangler secret put).' }, 503);
+    return json(
+      {
+        error: 'kd-not-configured',
+        hint: 'Brak sekretu PDP_API_KEY w Workerze (wrangler secret put).',
+      },
+      503,
+    );
   }
   const url = new URL(req.url);
   const stations = (url.searchParams.get('stations') ?? '').trim();
   if (!/^[0-9, ]{1,200}$/.test(stations) || !/\d/.test(stations)) {
-    return json({ error: 'bad-stations', hint: 'Podaj stations=jako ID po przecinku, np. ?stations=33506,33512.' }, 400);
+    return json(
+      {
+        error: 'bad-stations',
+        hint: 'Podaj stations=jako ID po przecinku, np. ?stations=33506,33512.',
+      },
+      400,
+    );
   }
   // Deduplikacja + sortowanie normalizuje klucz cache: ta sama lista w innej
   // kolejności trafia w ten sam wpis, zamiast omijać cache i palić limit PDP.
-  const idList = Array.from(new Set(stations.split(',').map((s) => s.trim()).filter(Boolean)));
+  const idList = Array.from(
+    new Set(
+      stations
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  );
   if (idList.length === 0 || idList.length > 30) {
     return json({ error: 'bad-stations', hint: 'Podaj od 1 do 30 unikalnych ID stacji.' }, 400);
   }
   const ids = idList.join(',');
 
-  const upstream = new URL(PDP_BASE + (kind === 'operations' ? '/api/v1/operations/shortened' : '/api/v1/schedules/shortened'));
+  const upstream = new URL(
+    PDP_BASE +
+      (kind === 'operations' ? '/api/v1/operations/shortened' : '/api/v1/schedules/shortened'),
+  );
   upstream.searchParams.set('stations', ids);
   if (kind === 'operations') {
-    upstream.searchParams.set('withPlanned', url.searchParams.get('withPlanned') === 'false' ? 'false' : 'true');
+    upstream.searchParams.set(
+      'withPlanned',
+      url.searchParams.get('withPlanned') === 'false' ? 'false' : 'true',
+    );
     const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize')) || 1000, 1), 5000);
     upstream.searchParams.set('pageSize', String(pageSize));
   } else {
@@ -239,7 +310,10 @@ async function proxyPdp(req: Request, env: Env, ctx: ExecutionContext, kind: 'op
   const body = await res.text();
   const ttl = kind === 'operations' ? 120 : 3600;
   const out = new Response(body, {
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': `public, max-age=${ttl}` },
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': `public, max-age=${ttl}`,
+    },
   });
   ctx.waitUntil(cache.put(cacheKey, out.clone()));
   return out;

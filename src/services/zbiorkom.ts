@@ -29,7 +29,7 @@ export interface ZbUpcomingStop {
 
 export interface ZbKdVehicle {
   id: string;
-  /** numer pociągu (brygada) — u nas to route_short_name kursu KD */
+  /** numer pociągu (brygada) - u nas to route_short_name kursu KD */
   trainNumber: string;
   /** oznaczenie linii z API (D1, D30...), tylko informacyjnie */
   line: string;
@@ -54,7 +54,11 @@ interface ZbPositionJson {
   upcomingStops?: { name?: string; scheduledArrival?: number; scheduledDeparture?: number }[];
 }
 
-async function fetchPositions(city: string, agencies?: string, bbox?: string): Promise<ZbPositionJson[] | null> {
+async function fetchPositions(
+  city: string,
+  agencies?: string,
+  bbox?: string,
+): Promise<ZbPositionJson[] | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ZBIORKOM.timeoutMs);
   try {
@@ -273,8 +277,8 @@ export async function fetchZbLublinRows(): Promise<RawVehicleRow[] | null> {
  * (same autobusy 1-27 i nocne N1-N3, route_type 3 w GTFS).
  */
 export async function fetchZbRadomRows(): Promise<RawVehicleRow[] | null> {
-  const { getCity } = await import("../cities");
-  const rad = getCity("radom");
+  const { getCity } = await import('../cities');
+  const rad = getCity('radom');
   const positions = await fetchPositions(rad.zbiorkomSlug, undefined, rad.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
@@ -290,7 +294,13 @@ function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
     const lat = loc[1];
     const lon = loc[0];
     if (!lat || !lon) continue;
-    rows.push({ name: line, type: p.vehicle?.type === '0' ? 'tram' : 'bus', x: lat, y: lon, k: id });
+    rows.push({
+      name: line,
+      type: p.vehicle?.type === '0' ? 'tram' : 'bus',
+      x: lat,
+      y: lon,
+      k: id,
+    });
   }
   return rows;
 }
@@ -314,7 +324,9 @@ export async function fetchZbKml(): Promise<ZbKdVehicle[] | null> {
 /** Pociągi Kolei Śląskich, IC i POLREGIO z jednego zapytania (bbox GZM).
  *  Trzy osobne zapytania na poll to zbędny ruch: API przyjmuje listę
  *  agencji, a pojazdy rozdzielamy po `vehicle.agency`. */
-export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbGzmRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'KS,IC,PR', getCity('gzm').zbiorkomBbox);
   if (positions === null) return null;
@@ -331,7 +343,9 @@ export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbK
  * live (sprawdzone: nie ma jej ani w mieście `warsaw`, ani pod agencją
  * SKM w `pkp`), więc zostaje na rozkładzie jak kolej w innych miastach.
  */
-export async function fetchZbWarsawRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbWarsawRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'KM,WKD', getCity('warszawa').zbiorkomBbox);
   if (positions === null) return null;
@@ -349,7 +363,9 @@ export async function fetchZbWarsawRails(): Promise<{ agency: string; vehicles: 
  * PR bez dopasowania w bazie matcher odrzuca po numerze, więc feed jest
  * przyszłościowy bez zmiany kodu.
  */
-export async function fetchZbPoznanRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbPoznanRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'KW,PR', getCity('poznan').zbiorkomBbox);
   if (positions === null) return null;
@@ -366,7 +382,9 @@ export async function fetchZbPoznanRails(): Promise<{ agency: string; vehicles: 
  * SKMT). Statyczny GTFS mamy z mirroru feedu SKM, numer pociągu siedzi
  * w trip_short_name, więc matcher spina po numerze jak KW/KM.
  */
-export async function fetchZbSkmtRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbSkmtRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'SKMT', getCity('trojmiasto').zbiorkomBbox);
   if (positions === null) return null;
@@ -384,7 +402,9 @@ export async function fetchZbSkmtRails(): Promise<{ agency: string; vehicles: Zb
  * więc matcher dopina kursy po numerze jak przy KW. Pojazd spoza lokalnego
  * rozkładu (świeższy eksport) matcher odrzuca po numerze bez błędu.
  */
-export async function fetchZbLodzRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbLodzRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'LKA', getCity('lodz').zbiorkomBbox);
   if (positions === null) return null;
@@ -441,7 +461,11 @@ export interface ZbKdMatch {
  * postojów. Bez weryfikacji czasowej sam numer to za mało: ten sam skład
  * potrafi jechać rano i wieczorem.
  */
-function matchZbKdRust(veh: ZbKdVehicle, dayIndex: DayIndex, routeIds: string[]): ZbKdMatch | null | undefined {
+function matchZbKdRust(
+  veh: ZbKdVehicle,
+  dayIndex: DayIndex,
+  routeIds: string[],
+): ZbKdMatch | null | undefined {
   const tripIds: string[] = [];
   let candCount = 0;
   const body = new BinaryWriter(256);
@@ -451,8 +475,7 @@ function matchZbKdRust(veh: ZbKdVehicle, dayIndex: DayIndex, routeIds: string[])
     if (!trips) continue;
     for (const trip of trips) {
       const times = gtfsStore.stopTimes.get(trip.trip_id) as
-        | { stop_id: string; departure_sec: number; arrival_sec: number }[]
-        | undefined;
+        { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
       if (!times || times.length === 0) continue;
       const packed: { name: string; sec: number }[] = [];
       for (const t of times) {
@@ -508,8 +531,7 @@ export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | nul
     if (!trips || trips.length === 0) continue;
     for (const trip of trips) {
       const times = gtfsStore.stopTimes.get(trip.trip_id) as
-        | { stop_id: string; departure_sec: number; arrival_sec: number }[]
-        | undefined;
+        { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
       if (!times || times.length === 0) continue;
       let matched = 0;
       let totalDiff = 0;

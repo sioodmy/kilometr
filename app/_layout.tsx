@@ -57,7 +57,7 @@ export default function RootLayout() {
 
     const initApp = async () => {
       // Kolory Material You z tapety muszą być w motywie zanim cokolwiek
-      // się wyrysuje — inaczej pierwsze arkusze stylów powstałyby na starym
+      // się wyrysuje - inaczej pierwsze arkusze stylów powstałyby na starym
       // seedzie, a ekran przez sekundę migotałby między dwiema paletami.
       await initDynamicColors();
       await migrateFromSqliteKv();
@@ -67,7 +67,7 @@ export default function RootLayout() {
       await initLocale();
       await loadNotificationPreferences();
       await setupNotifications();
-      
+
       try {
         const seen = await hasSeenOnboarding();
         if (!seen && isMounted) router.replace('/onboarding');
@@ -92,13 +92,15 @@ export default function RootLayout() {
     // Contributor: po podstawowych inicjalizacjach przenosimy pliki z
     // serwisu natywnego do bazy (GPS mógł zbierać przez noc), retencję
     // dbamy przy każdym starcie. Na prodzie wszystko jest no-opem.
-    void initAppReady.then(async () => {
-      if (!isContributorAvailable()) return;
-      await loadContributorSettings();
-      await sweepRetention();
-      await ingestNativeSessions();
-      initContributorAutoFollow();
-    }).catch((err) => console.warn('[RootLayout] contributor init:', err));
+    void initAppReady
+      .then(async () => {
+        if (!isContributorAvailable()) return;
+        await loadContributorSettings();
+        await sweepRetention();
+        await ingestNativeSessions();
+        initContributorAutoFollow();
+      })
+      .catch((err) => console.warn('[RootLayout] contributor init:', err));
 
     // Tap w powiadomienie lub przycisk akcji → ekran połączeń / koniec
     getLastTripResponse().then(navigateFromNotification);
@@ -134,17 +136,17 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
           <Stack.Screen name="routes" options={{ headerShown: false }} />
-          {/* Mapa ma własny gest przesuwania — natywny swipe-back zjadałby
+          {/* Mapa ma własny gest przesuwania - natywny swipe-back zjadałby
               przeciąganie widoku i mapa skakałaby przy powrocie. */}
           <Stack.Screen name="map" options={{ gestureEnabled: false }} />
           <Stack.Screen
             name="news"
             options={{
               presentation: 'modal',
-              animation: 'slide_from_bottom',
+              animation: 'slide_from_right',
               animationDuration: 300,
               animationMatchesGesture: true,
-              gestureDirection: 'vertical',
+              gestureDirection: 'horizontal',
             }}
           />
           <Stack.Screen
@@ -159,10 +161,10 @@ export default function RootLayout() {
             name="settings"
             options={{
               presentation: 'modal',
-              animation: 'slide_from_bottom',
-              animationDuration: 300,
+              animation: 'slide_from_right',
+              animationDuration: 240,
               animationMatchesGesture: true,
-              gestureDirection: 'vertical',
+              gestureDirection: 'horizontal',
             }}
           />
         </Stack>

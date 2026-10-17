@@ -1,25 +1,53 @@
-// Material 3 (Material You) Dark scheme — seed: Wrocław MPK teal (#006A60).
+// Material 3 (Material You) Dark scheme - seed: Wrocław MPK teal (#006A60).
 // Hand-built M3 Dark tonal palette with deep surfaces and vibrant tonal containers.
 //
 // Paleta jest zmienna, bo na Androidzie 12+ podmieniamy ją na kolory z tapety
 // (patrz `dynamic.ts`). Role, których nie da się przeliczyć z tapety (błędy,
-// ostrzeżenia, kolory linii), zostają statyczne — kolor linii to informacja,
+// ostrzeżenia, kolory linii), zostają statyczne - kolor linii to informacja,
 // a nie dekoracja.
 import { StyleSheet } from 'react-native';
 
 export type SchemeKey =
-  | 'primary' | 'onPrimary' | 'primaryContainer' | 'onPrimaryContainer'
-  | 'secondary' | 'onSecondary' | 'secondaryContainer' | 'onSecondaryContainer'
-  | 'tertiary' | 'onTertiary' | 'tertiaryContainer' | 'onTertiaryContainer'
-  | 'error' | 'onError' | 'errorContainer' | 'onErrorContainer'
-  | 'surface' | 'onSurface' | 'onSurfaceVariant'
-  | 'surfaceDim' | 'surfaceBright'
-  | 'surfaceContainerLowest' | 'surfaceContainerLow' | 'surfaceContainer'
-  | 'surfaceContainerHigh' | 'surfaceContainerHighest'
-  | 'outline' | 'outlineVariant'
-  | 'inverseSurface' | 'inverseOnSurface' | 'inversePrimary' | 'scrim'
-  | 'success' | 'onSuccess' | 'successContainer' | 'onSuccessContainer'
-  | 'warning' | 'onWarning' | 'warningContainer' | 'onWarningContainer';
+  | 'primary'
+  | 'onPrimary'
+  | 'primaryContainer'
+  | 'onPrimaryContainer'
+  | 'secondary'
+  | 'onSecondary'
+  | 'secondaryContainer'
+  | 'onSecondaryContainer'
+  | 'tertiary'
+  | 'onTertiary'
+  | 'tertiaryContainer'
+  | 'onTertiaryContainer'
+  | 'error'
+  | 'onError'
+  | 'errorContainer'
+  | 'onErrorContainer'
+  | 'surface'
+  | 'onSurface'
+  | 'onSurfaceVariant'
+  | 'surfaceDim'
+  | 'surfaceBright'
+  | 'surfaceContainerLowest'
+  | 'surfaceContainerLow'
+  | 'surfaceContainer'
+  | 'surfaceContainerHigh'
+  | 'surfaceContainerHighest'
+  | 'outline'
+  | 'outlineVariant'
+  | 'inverseSurface'
+  | 'inverseOnSurface'
+  | 'inversePrimary'
+  | 'scrim'
+  | 'success'
+  | 'onSuccess'
+  | 'successContainer'
+  | 'onSuccessContainer'
+  | 'warning'
+  | 'onWarning'
+  | 'warningContainer'
+  | 'onWarningContainer';
 
 export const scheme: Record<SchemeKey, string> = {
   // Primary (vibrant teal in dark mode for high accessibility and contrast)
@@ -94,18 +122,14 @@ let hookInstalled = false;
 function installStyleSheetHook(): void {
   if (hookInstalled) return;
   hookInstalled = true;
-  const original = StyleSheet.create.bind(StyleSheet) as (
-    obj: StyleSheetLike,
-  ) => StyleSheetLike;
-  (StyleSheet as unknown as { create: (obj: StyleSheetLike) => StyleSheetLike }).create = (
-    obj,
-  ) => {
+  const original = StyleSheet.create.bind(StyleSheet) as (obj: StyleSheetLike) => StyleSheetLike;
+  (StyleSheet as unknown as { create: (obj: StyleSheetLike) => StyleSheetLike }).create = (obj) => {
     const copy: StyleSheetLike = {};
     for (const key in obj) copy[key] = { ...obj[key] };
     try {
       original(copy);
     } catch {
-      // Arkusz spoza naszego motywu — zostawiamy go w spokoju.
+      // Arkusz spoza naszego motywu - zostawiamy go w spokoju.
     }
     createdSheets.push(obj);
     return obj;
@@ -113,7 +137,7 @@ function installStyleSheetHook(): void {
 }
 installStyleSheetHook();
 
-/** Wartości startowe — na nich opieramy podmianę hexów w stylach. */
+/** Wartości startowe - na nich opieramy podmianę hexów w stylach. */
 const seedScheme: Record<string, string> = { ...scheme };
 
 /** Przemalowuje wcześniej utworzone arkusze stylów na nową paletę. */
@@ -130,7 +154,8 @@ function repaintStyles(next: Record<SchemeKey, string>): void {
     if (Array.isArray(value)) return value.map(swap);
     if (value && typeof value === 'object') {
       const out: Record<string, unknown> = {};
-      for (const key in value as Record<string, unknown>) out[key] = swap((value as Record<string, unknown>)[key]);
+      for (const key in value as Record<string, unknown>)
+        out[key] = swap((value as Record<string, unknown>)[key]);
       return out;
     }
     return value;
@@ -148,12 +173,27 @@ function repaintStyles(next: Record<SchemeKey, string>): void {
 
 // ─── Back-compat aliases ─────────────────────────────────────────────────────
 type ColorKey =
-  | 'bg' | 'card' | 'ink' | 'muted' | 'faint' | 'line'
-  | 'primary' | 'primaryDark' | 'primarySoft'
-  | 'accent' | 'accentSoft'
-  | 'success' | 'successSoft' | 'danger' | 'dangerSoft'
-  | 'warning' | 'warningSoft'
-  | 'lineTram' | 'lineBus' | 'lineNight' | 'walk';
+  | 'bg'
+  | 'card'
+  | 'ink'
+  | 'muted'
+  | 'faint'
+  | 'line'
+  | 'primary'
+  | 'primaryDark'
+  | 'primarySoft'
+  | 'accent'
+  | 'accentSoft'
+  | 'success'
+  | 'successSoft'
+  | 'danger'
+  | 'dangerSoft'
+  | 'warning'
+  | 'warningSoft'
+  | 'lineTram'
+  | 'lineBus'
+  | 'lineNight'
+  | 'walk';
 
 export const colors: Record<ColorKey, string> = {
   bg: scheme.surface,
@@ -184,7 +224,7 @@ export const colors: Record<ColorKey, string> = {
  * Podmienia paletę na kolory z tapety (Material You).
  *
  * Robimy to PRZED pierwszym renderem (`initDynamicColors` w `_layout`), więc
- * nie ma potrzeby przerysowywać drzewa — wystarczy zaktualizować obiekty
+ * nie ma potrzeby przerysowywać drzewa - wystarczy zaktualizować obiekty
  * motywu i arkusze stylów powstałe przy imporcie modułów.
  */
 export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
