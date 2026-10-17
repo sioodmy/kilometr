@@ -3,10 +3,11 @@
 // Cache: AsyncStorageowy recent + memory (jak serwerowy memCache).
 
 import { NOMINATIM, nominatimViewbox } from './gtfsConfig';
-import { getCity } from '../cities';
+import { getCity, isMultiCityArea } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import type { Suggestion } from '../types/models';
 import { inCity, withDistances } from './searchRank';
+import { normalizePolish } from '../gtfs/geo';
 
 const memCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MEM_TTL_MS = 10 * 60 * 1000;
@@ -54,8 +55,30 @@ function fallbackCityName(): string {
   }
 }
 
+/** Miasto z hierarchii OSM wyniku (Katowice, Gdańsk, Rumia…). */
+export function addressCity(addr: Record<string, string>): string | null {
+  return addr.city || addr.town || addr.village || addr.municipality || null;
+}
+
+/**
+ * Miasto na początek linii adresu. Wiersze ucina `numberOfLines={1}`, a kafelek
+ * zapisanego miejsca pokazuje tylko pierwszy człon adresu, więc miasto musi
+ * stać pierwsze, żeby nigdy nie zniknęło. Gdy miasto już siedzi w adresie
+ * („Koszutka, Katowice”), przenosimy je na przód zamiast dublować.
+ */
+export function cityFirstAddress(address: string, city: string | null, fallback: string): string {
+  if (!city) return address;
+  if (address === fallback) return city;
+  const normCity = normalizePolish(city);
+  const rest = address
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && normalizePolish(p) !== normCity);
+  return [city, ...rest].join(', ');
+}
+
 /** Zamienia display_name na krótki tytuł + adres w stylu serwera. Bez pozycji usera. */
-function toSuggestion(row: NominatimRow): Suggestion | null {
+export function toSuggestion(row: NominatimRow): Suggestion | null {
   const lat = Number(row.lat);
   const lon = Number(row.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
@@ -66,6 +89,9 @@ function toSuggestion(row: NominatimRow): Suggestion | null {
   const road = addr.road || addr.pedestrian || addr.residential || addr.footway || addr.cycleway;
   const houseNo = addr.house_number;
   const parts = row.display_name.split(',').map((p) => p.trim()).filter(Boolean);
+  // GZM i Trójmiasto to strefy z wieloma miastami naraz: sam adres nie mówi,
+  // o które miasto chodzi (Długa w Gdańsku czy Lipowa w Bytomiu).
+  const city = isMultiCityArea(getActiveCityIdSync()) ? addressCity(addr) : null;
   let title: string;
   let address: string;
   if (road && houseNo) {
@@ -81,6 +107,7 @@ function toSuggestion(row: NominatimRow): Suggestion | null {
     title = parts[0] || row.display_name;
     address = parts.slice(1, 3).join(', ') || fallback;
   }
+  address = cityFirstAddress(address, city, fallback);
   const kind = row.class === 'place' || row.type === 'bus_stop' ? 'stop' : 'address';
   return {
     id: `nominatim-${row.place_id}`,
