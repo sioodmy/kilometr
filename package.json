@@ -15,7 +15,7 @@
     "expo-linking": "~57.0.10",
     "expo-localization": "~57.0.2",
     "expo-location": "~57.0.19",
-    "expo-notifications": "~57.0.20",
+    "expo-notifications": "~58.1.3",
     "expo-router": "~57.0.22",
     "expo-sensors": "~57.0.3",
     "expo-sharing": "~57.0.22",
