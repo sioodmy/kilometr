@@ -4,7 +4,6 @@ import {
   BackHandler,
   Dimensions,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -15,6 +14,10 @@ import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
+// Poziome listy w arkuszu muszą iść przez ScrollView z gesture-handlera:
+// natywny z react-native gubi pionowe gesty i pigułki przestają się przewijać
+// razem z formularzem (gorhom, troubleshooting: horizontal FlatList/ScrollView).
+import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Anchor,
@@ -863,6 +866,7 @@ export function AddPlaceSheet({
                 showsHorizontalScrollIndicator={false}
                 nestedScrollEnabled
                 overScrollMode="never"
+                style={styles.iconRowScroll}
                 contentContainerStyle={styles.iconRow}
               >
                 {quickIconOptions.map((item) => {
@@ -1172,10 +1176,14 @@ const styles = StyleSheet.create({
   iconSection: {
     marginBottom: 14,
   },
+  iconRowScroll: {
+    flexGrow: 0,
+    paddingVertical: 4,
+  },
   iconRow: {
     gap: 8,
-    paddingVertical: 4,
     paddingHorizontal: 1,
+    alignItems: 'center',
   },
   // Modernized pill chip
   iconChip: {
@@ -1192,7 +1200,6 @@ const styles = StyleSheet.create({
   iconChipSelected: {
     backgroundColor: scheme.primaryContainer,
     borderColor: scheme.primary,
-    borderWidth: 1.5,
   },
   iconLabel: {
     ...type.labelSmall,
