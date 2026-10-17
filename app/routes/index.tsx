@@ -326,6 +326,7 @@ export default function RoutesScreen() {
       minTransferSec: cfg.minTransferSec,
       trainsEnabled: cfg.trainsEnabled,
       cableEnabled: cfg.cableEnabled,
+      allowedTransferModes: cfg.allowedModes,
       trainMinTransferSec: cfg.trainMinTransferSec,
       maxWalkM: cfg.maxWalkM,
       // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).

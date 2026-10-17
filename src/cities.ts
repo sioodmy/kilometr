@@ -459,6 +459,15 @@ export function isCityId(id: string | null | undefined): id is CityId {
 }
 
 /**
+ * Metropolia z wieloma miastami w jednej strefie (GZM, Trójmiasto). Tu sama
+ * ulica i dzielnica nie mówią, w którym mieście jest wynik, więc UI dopisuje
+ * nazwę miasta do adresów w wyszukiwarce, zapisanych miejscach i historii.
+ */
+export function isMultiCityArea(id: CityId): boolean {
+  return id === 'gzm' || id === 'trojmiasto';
+}
+
+/**
  * Klucz KV per-miasto. Wrocław trzyma legacy klucz bez sufiksu (kompat
  * ze starymi instalacjami), reszta miast dokleja `.id`. Jawny parametr,
  * bez odczytu aktywnego miasta: funkcja jest czysta i testowalna.

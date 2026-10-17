@@ -135,6 +135,8 @@ async function planTracked(): Promise<Connection | null> {
     maxTransfers: s.maxTransfers,
     minTransferSec: s.minTransferSec,
     trainsEnabled: s.trainsEnabled,
+    cableEnabled: s.cableEnabled,
+    allowedTransferModes: s.allowedModes,
     trainMinTransferSec: s.trainMinTransferSec,
     maxWalkM: s.maxWalkM,
     walkSpeedMps,

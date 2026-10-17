@@ -1,10 +1,10 @@
 // Karta nawigacji pieszej do przystanku / celu na ekranie szczegółów trasy.
 //
-// Minimapka z dociągniętą trasą pieszą zajmuje górę widgetu (ok. 60%
-// wysokości ekranu), a pod nią leży panel instrukcji w stylu M3:
-// ikona manewru, „Skręć w lewo · 50 m”, potem następny manewr („Potem
-// skręć w prawo · 120 m”). Dotknięcie całego widgetu otwiera pełną mapę
-// trasy.
+// Minimapka z dociągniętą trasą pieszą zajmuje górę widgetu (70% wysokości
+// ekranu minus panel), a pod nią, bez szczeliny i bez promieni na styku,
+// leży panel instrukcji w stylu M3: ikona manewru, „Skręć w lewo · 50 m”,
+// potem następny manewr („Potem skręć w prawo · 120 m”). Cały widget
+// mieści się na ekranie. Dotknięcie widgetu otwiera pełną mapę trasy.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -58,6 +58,14 @@ interface StopCompassCardProps {
 }
 
 const OFF_ROUTE_M = 38;
+// Cały widget (mapa + panel instrukcji) ma zmieścić się na ekranie: 70%
+// wysokości okna zostawia miejsce na paski systemowe i naraz widoczny
+// nagłówek strony szczegółów.
+const NAV_WIDGET_FRACTION = 0.7;
+// Panel instrukcji M3 (~98 px treści) plus padding 8 widgetu i dystans 8
+// mapy od panelu. Stała: mapa dostaje resztę widgetu, więc wysokość mapy
+// nie skacze wraz z treścią panelu (np. przy „Wyznaczam nową trasę”).
+const MAP_WIDGET_RESERVE = 122;
 const ARRIVED_M = 20;
 const REROUTE_COOLDOWN_MS = 4000;
 const REROUTE_MIN_MOVE_M = 12;
@@ -150,9 +158,10 @@ function roundNavM(m: number): number {
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
   const s = useStrings();
   const { height: winH } = useWindowDimensions();
-  // Widget nawigacji sięga ok. 60% wysokości ekranu: mapa na górze,
-  // panel instrukcji pod nią (układ jak w Google Maps), całość klikalna.
-  const navWidgetH = Math.round(winH * 0.6);
+  // Cały widget (mapa + panel instrukcji) mieści się na ekranie:
+  // 70% wysokości okna, mapa dostaje resztę nad panelem instrukcji.
+  const navWidgetH = Math.round(winH * NAV_WIDGET_FRACTION);
+  const navMapH = Math.max(180, navWidgetH - MAP_WIDGET_RESERVE);
   const walkMps = useWalkSpeedMps();
   const { location: userLocation, state: locState } = useCurrentLocation();
   const transitLegs = useMemo(() => {
@@ -657,8 +666,8 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           accessibilityRole="button"
           accessibilityLabel={s.compass.navA11y(headLabel, headDist)}
         >
-          {/* Mapa na pełną szerokość, góra widgetu. Instrukcje leżą pod nią
-              w panelu M3, jak w Google Maps. */}
+          {/* Mapa bez dolnych promieni styka się krawędzią z panelem M3
+              pod nią (układ jak w Google Maps). */}
           <NavMiniMap
             path={displayRoutePath}
             user={displayUserPos}
@@ -666,7 +675,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
             headingDeg={activeHeading}
             accuracyM={userLocation?.accuracy ?? null}
             accent={mapLineColor(lineAccent)}
-            style={styles.navMapPane}
+            style={[styles.navMapPane, { height: navMapH }]}
           />
           <View style={styles.navSheet}>
             {rerouting ? (
@@ -822,22 +831,29 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLowest,
     borderRadius: shape.large,
     padding: 8,
-    gap: 8,
   },
   navWidgetPressed: {
     opacity: 0.85,
   },
-  // Mapa wypełnia górę widgetu (wysokość widgetu ustawiana inline: ok. 60%
-  // ekranu), panel instrukcji leży pod nią w tonalnym boxie.
+  // Mapa ma stałą wysokość (inline: reszta widgetu 70% ekranu nad panelem)
+  // i styka się z panelem instrukcji bez promieni na styku; góra zostaje
+  // zaokrąglona (14 odpowiada defaultowi NavMiniMap).
   navMapPane: {
-    flex: 1,
     minWidth: 0,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   navSheet: {
     backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.medium,
     padding: 14,
     gap: 10,
+    // Bez promieni u góry: box styka się z mapą; dół zachowuje zaokrąglenie.
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderBottomLeftRadius: shape.medium,
+    borderBottomRightRadius: shape.medium,
   },
   navRowMain: {
     flexDirection: 'row',
