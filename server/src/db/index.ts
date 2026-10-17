@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config';
-import { CREATE_TABLES_SQL, CREATE_CONTRIBUTOR_TABLE_SQL, INITIAL_SAVED_PLACES, SEED_TRIPS } from './schema';
+import { CREATE_TABLES_SQL, INITIAL_SAVED_PLACES, SEED_TRIPS } from './schema';
 
 let dbInstance: DatabaseSync | null = null;
 
@@ -14,7 +14,6 @@ export function getDb(): DatabaseSync {
     const dbPath = path.join(config.dataDir, 'kilometr.db');
     dbInstance = new DatabaseSync(dbPath);
     dbInstance.exec(CREATE_TABLES_SQL);
-    dbInstance.exec(CREATE_CONTRIBUTOR_TABLE_SQL);
 
     // Migrations for existing tables
     try {

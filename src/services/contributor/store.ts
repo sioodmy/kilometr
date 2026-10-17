@@ -1,7 +1,7 @@
 // Magazyn telemetrii: osobna baza expo-sqlite (contributor.db) w stylu
 // gtfsDatabase. Append-only: próbki dochodzą, edycja nigdy. Retencję
 // zamyka `sweepRetention` (30 dni) - baza nie może rosnąć bez końca,
-// bo tester ma ją głównie po to, by ją wysłać.
+// bo tester ma ją głównie po to, by wyeksportować ZIP i przekazać dane.
 
 import * as SQLite from 'expo-sqlite';
 import { randomId } from './config';
@@ -41,7 +41,6 @@ export interface SessionRow {
   delayMin: number | null;
   contextJson: string;
   samples: number;
-  uploaded: number;
   origin: string;
 }
 
@@ -66,7 +65,6 @@ export interface SampleRow {
 export interface StatsResult {
   sessions: number;
   samples: number;
-  uploaded: number;
 }
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -92,7 +90,6 @@ async function initDb(): Promise<SQLite.SQLiteDatabase> {
       delay_min INTEGER,
       context_json TEXT NOT NULL DEFAULT '{}',
       samples INTEGER NOT NULL DEFAULT 0,
-      uploaded INTEGER NOT NULL DEFAULT 0,
       origin TEXT NOT NULL DEFAULT 'js'
     );
     CREATE TABLE IF NOT EXISTS samples (
@@ -217,8 +214,8 @@ async function runInsert(
   await db.runAsync(
     `INSERT INTO sessions
        (id, device_id, started_at, ended_at, source, city, line, route_id, trip_id, headsign,
-        from_title, to_title, delay_min, context_json, samples, uploaded, origin)
-     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+        from_title, to_title, delay_min, context_json, samples, origin)
+     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     [
       id,
       deviceId,
@@ -338,7 +335,6 @@ type OHraw = {
   delay_min: number | null;
   context_json: string;
   samples: number;
-  uploaded: number;
   origin: string;
 };
 
@@ -359,16 +355,15 @@ function mapSession(r: OHraw): SessionRow {
     delayMin: r.delay_min,
     contextJson: r.context_json,
     samples: r.samples,
-    uploaded: r.uploaded,
     origin: r.origin,
   };
 }
 
-/** Niewysłane, dokończone sesje, od nowszych do starszych. */
-export async function listPendingSessions(limit = 50): Promise<SessionRow[]> {
+/** Dokończone sesje do eksportu, od nowszych do starszych. */
+export async function listCompletedSessions(limit = 50): Promise<SessionRow[]> {
   const db = await openContributorDb();
   const rows = await db.getAllAsync<OHraw>(
-    'SELECT * FROM sessions WHERE ended_at IS NOT NULL AND uploaded = 0 ORDER BY started_at DESC LIMIT ?',
+    'SELECT * FROM sessions WHERE ended_at IS NOT NULL ORDER BY started_at DESC LIMIT ?',
     [limit],
   );
   return rows.map(mapSession);
@@ -443,24 +438,14 @@ function sampleJsonLine(s: RowSampleRaw): string {
   });
 }
 
-export async function markUploaded(sessionIds: string[]): Promise<void> {
-  if (sessionIds.length === 0) return;
-  const db = await openContributorDb();
-  await db.runAsync(
-    `UPDATE sessions SET uploaded = 1 WHERE id IN (${sessionIds.map(() => '?').join(',')})`,
-    sessionIds,
-  );
-}
-
 export async function stats(): Promise<StatsResult> {
   const db = await openContributorDb();
-  const row = await db.getFirstAsync<{ sessions: number; samples: number; uploaded: number }>(
+  const row = await db.getFirstAsync<{ sessions: number; samples: number }>(
     `SELECT
        (SELECT COUNT(*) FROM sessions) AS sessions,
-       (SELECT COALESCE(SUM(samples), 0) FROM sessions) AS samples,
-       (SELECT COALESCE(SUM(samples), 0) FROM sessions WHERE uploaded = 1) AS uploaded`,
+       (SELECT COALESCE(SUM(samples), 0) FROM sessions) AS samples`,
   );
-  return { sessions: row?.sessions ?? 0, samples: row?.samples ?? 0, uploaded: row?.uploaded ?? 0 };
+  return { sessions: row?.sessions ?? 0, samples: row?.samples ?? 0 };
 }
 
 export async function clearAll(): Promise<void> {

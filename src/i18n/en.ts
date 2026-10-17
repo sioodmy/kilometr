@@ -399,7 +399,7 @@ export const en: Strings = {
     backupFailSchemaTooNew: 'This backup comes from a newer version of the app.',
     contribTitle: 'Kilometr Contributor',
     contribHint:
-      'GPS and accelerometer telemetry for app testers. The data stays on your device first and you decide what happens to it: upload it or export it. Production builds do not show this card.',
+      'GPS and accelerometer telemetry for app testers. The data stays on your device first and you decide when to export it. Production builds do not show this card.',
     contribAutoToggle: 'Collect during trips',
     contribAutoToggleA11y: 'Collect telemetry automatically while a trip is being tracked',
     contribStartNow: 'Collect now',
@@ -415,14 +415,6 @@ export const en: Strings = {
     contribSize: (mb: string) => `Data: ~${mb} MB`,
     contribExport: 'Export ZIP',
     contribExportA11y: 'Save collected data to a ZIP file',
-    contribUpload: 'Send data',
-    contribUploadA11y: 'Upload collected data to the test server',
-    contribUploadNothing: 'There is no new data to send.',
-    contribUploadDoneTitle: 'Data sent',
-    contribUploadDoneBody: (mb: string) => `Received (~${mb} MB). Thank you for the data!`,
-    contribUploadFailTitle: 'Could not send the data',
-    contribUploadFailBody:
-      'The test server may be unreachable. Try again or use the ZIP export instead.',
     contribExportDoneTitle: 'Archive ready',
     contribExportDoneBody: (path: string) => `File saved at ${path}`,
     contribExportFailTitle: 'Could not save the archive',
@@ -433,7 +425,7 @@ export const en: Strings = {
     contribDeleteA11y: 'Delete all collected data from this device',
     contribDeleteConfirmTitle: 'Delete all data?',
     contribDeleteConfirmBody:
-      'The telemetry will be permanently deleted from this phone. Data already uploaded to the server stays there.',
+      'The telemetry will be permanently deleted from this phone.',
     contribDeleteAction: 'Delete',
     contribNotifTitle: 'Kilometr Contributor',
     contribNotifText: 'Collecting trip telemetry',

@@ -1,12 +1,12 @@
 // Karta „Kilometr Contributor" na Ustawieniach: ręczne zbieranie telemetrii,
-// eksport ZIP, wysyłka na serwer testowy i sprzątanie danych.
+// eksport ZIP i sprzątanie danych.
 //
 // Renderuje się tylko poza kanałem prod (`isContributorAvailable`), więc na
 // buildach testera jest realną sekcją, a w wersji sklepowej jej w ogóle nie ma.
 
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { CloudUpload, FileDown, Play, Radar, Square, Trash2 } from 'lucide-react-native';
+import { FileDown, Play, Radar, Square, Trash2 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { PrefsToggle } from './NotificationPrefsCard';
@@ -28,7 +28,6 @@ import {
   type CollectorState,
 } from '../services/contributor/collector';
 import { writeContributorZip } from '../services/contributor/export';
-import { uploadContributorSessions } from '../services/contributor/upload';
 import { getTrackedTripSync } from '../services/notifications/tripMonitor';
 import { getActiveCitySync } from '../services/cityStore';
 
@@ -45,7 +44,7 @@ export function ContributorCard() {
   );
   const [usage, setUsage] = useState<StatsResult | null>(null);
   const [busy, setBusy] = useState<
-    'start' | 'stop' | 'export' | 'upload' | 'delete' | 'toggle' | null
+    'start' | 'stop' | 'export' | 'delete' | 'toggle' | null
   >(null);
 
   useEffect(() => {
@@ -135,23 +134,6 @@ export function ContributorCard() {
       Alert.alert(b.contribExportFailTitle, b.contribExportFailBody(reason));
     } finally {
       setBusy(null);
-    }
-  };
-
-  const handleUpload = async () => {
-    setBusy('upload');
-    try {
-      const result = await uploadContributorSessions();
-      if (!result) {
-        Alert.alert(b.contribUploadDoneTitle, b.contribUploadNothing);
-        return;
-      }
-      Alert.alert(b.contribUploadDoneTitle, b.contribUploadDoneBody(mbString(result.bytes)));
-    } catch {
-      Alert.alert(b.contribUploadFailTitle, b.contribUploadFailBody);
-    } finally {
-      setBusy(null);
-      refreshUsage();
     }
   };
 
@@ -263,19 +245,6 @@ export function ContributorCard() {
         >
           <FileDown size={18} color={scheme.onSecondaryContainer} />
           <Text style={styles.btnText}>{b.contribExport}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleUpload()}
-          disabled={busy !== null}
-          accessibilityLabel={b.contribUploadA11y}
-          style={({ pressed }) => [
-            styles.btn,
-            busy !== null && styles.btnDisabled,
-            pressed && busy === null && { opacity: 0.7 },
-          ]}
-        >
-          <CloudUpload size={18} color={scheme.onSecondaryContainer} />
-          <Text style={styles.btnText}>{b.contribUpload}</Text>
         </Pressable>
         <Pressable
           onPress={confirmDelete}
