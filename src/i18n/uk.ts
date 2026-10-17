@@ -411,7 +411,7 @@ export const uk: Strings = {
     backupFailSchemaTooNew: 'Ця копія з новішої версії застосунку.',
     contribTitle: 'Kilometr Contributor',
     contribHint:
-      'Телеметрія GPS і акселерометра для тестувальників застосунку. Дані спочатку лишаються на пристрої, а ви вирішуєте, що з ними робити: надіслати або експортувати. У продуктових збірках ця картка вимкнена.',
+      'Телеметрія GPS і акселерометра для тестувальників застосунку. Дані спочатку лишаються на пристрої, а ви вирішуєте, коли їх експортувати. У продуктових збірках ця картка вимкнена.',
     contribAutoToggle: 'Збирати під час поїздок',
     contribAutoToggleA11y: 'Збирати телеметрію автоматично під час відстеження поїздки',
     contribStartNow: 'Збирати зараз',
@@ -428,14 +428,6 @@ export const uk: Strings = {
     contribSize: (mb: string) => `Дані: ~${mb} МБ`,
     contribExport: 'Експорт ZIP',
     contribExportA11y: 'Зберегти зібрані дані у файл ZIP',
-    contribUpload: 'Надіслати дані',
-    contribUploadA11y: 'Надіслати зібрані дані на тестовий сервер',
-    contribUploadNothing: 'Немає нових даних для надсилання.',
-    contribUploadDoneTitle: 'Дані надіслано',
-    contribUploadDoneBody: (mb: string) => `Прийнято (приблизно ${mb} МБ). Дякуємо за дані!`,
-    contribUploadFailTitle: 'Не вдалося надіслати дані',
-    contribUploadFailBody:
-      'Тестовий сервер міг бути недоступний. Спробуйте ще раз або скористайтеся експортом ZIP.',
     contribExportDoneTitle: 'Архів готовий',
     contribExportDoneBody: (path: string) => `Файл збережено у ${path}`,
     contribExportFailTitle: 'Не вдалося зберегти архів',

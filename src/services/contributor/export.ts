@@ -8,7 +8,7 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { zipSync } from 'fflate';
-import { listPendingSessions, sessionJsonl } from './store';
+import { listCompletedSessions, sessionJsonl } from './store';
 import { getContributorDeviceId } from './config';
 
 const KEEP_EXPORTS = 3;
@@ -46,10 +46,10 @@ async function collectExportEntries(): Promise<{
   entries: Record<string, Uint8Array>;
   usedSessions: string[];
 }> {
-  const pending = await listPendingSessions(MAX_SESSIONS_PER_ZIP);
+  const completed = await listCompletedSessions(MAX_SESSIONS_PER_ZIP);
   const entries: Record<string, Uint8Array> = {};
   const usedSessions: string[] = [];
-  for (const session of pending) {
+  for (const session of completed) {
     const jsonl = await sessionJsonl(session.id);
     if (!jsonl) continue;
     entries[`${session.id}.jsonl`] = new TextEncoder().encode(jsonl);

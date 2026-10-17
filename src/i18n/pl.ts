@@ -410,7 +410,7 @@ export const pl = {
     backupFailSchemaTooNew: 'Ta kopia jest z nowszej wersji aplikacji.',
     contribTitle: 'Kilometr Contributor',
     contribHint:
-      'Telemetria GPS i akcelerometru dla testerów aplikacji. Dane zostają na urządzeniu, a Ty decydujesz, co z nimi zrobić: wyślesz albo wyeksportujesz. W buildach produkcyjnych ta zakładka jest wyłączona.',
+      'Telemetria GPS i akcelerometru dla testerów aplikacji. Dane zostają na urządzeniu, a Ty decydujesz, kiedy je wyeksportować. W buildach produkcyjnych ta zakładka jest wyłączona.',
     contribAutoToggle: 'Zbieraj przy przejazdach',
     contribAutoToggleA11y: 'Zbieraj telemetrię automatycznie podczas śledzenia przejazdu',
     contribStartNow: 'Zbieraj teraz',
@@ -427,14 +427,6 @@ export const pl = {
     contribSize: (mb: string) => `Dane: ~${mb} MB`,
     contribExport: 'Eksportuj ZIP',
     contribExportA11y: 'Zapisz zebrane dane do pliku ZIP',
-    contribUpload: 'Wyślij dane',
-    contribUploadA11y: 'Wyślij zebrane dane na serwer testowy',
-    contribUploadNothing: 'Nie ma nowych danych do wysłania.',
-    contribUploadDoneTitle: 'Dane wysłane',
-    contribUploadDoneBody: (mb: string) => `Przyjęto (ok. ${mb} MB). Dziękujemy za dane!`,
-    contribUploadFailTitle: 'Nie udało się wysłać danych',
-    contribUploadFailBody:
-      'Serwer testowy mógł być nieosiągalny. Spróbuj ponownie albo użyj eksportu ZIP.',
     contribExportDoneTitle: 'Archiwum gotowe',
     contribExportDoneBody: (path: string) => `Plik zapisany w ${path}`,
     contribExportFailTitle: 'Nie udało się zapisać archiwum',
@@ -445,7 +437,7 @@ export const pl = {
     contribDeleteA11y: 'Usuń wszystkie zebrane dane z urządzenia',
     contribDeleteConfirmTitle: 'Usunąć wszystkie dane?',
     contribDeleteConfirmBody:
-      'Telemetria zostanie bezpowrotnie usunięta z tego telefonu. Dane już wysłane na serwer tam pozostają.',
+      'Telemetria zostanie bezpowrotnie usunięta z tego telefonu.',
     contribDeleteAction: 'Usuń',
     contribNotifTitle: 'Kilometr Contributor',
     contribNotifText: 'Zbieram telemetrię podróży',

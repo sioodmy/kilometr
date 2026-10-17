@@ -74,24 +74,6 @@ CREATE INDEX IF NOT EXISTS idx_search_cache_expires ON search_cache(expires_at);
 CREATE INDEX IF NOT EXISTS idx_pois_name ON pois(norm_name);
 `;
 
-export const CREATE_CONTRIBUTOR_TABLE_SQL = `
--- Telemetria Contributor: podgląd sesji, które przysłali testerzy.
--- Surowe próbki żyją jako pliki JSONL w data/contributor/<deviceId>/.
-CREATE TABLE IF NOT EXISTS contributor_sessions (
-  id TEXT PRIMARY KEY,
-  device_id TEXT NOT NULL,
-  city TEXT NOT NULL DEFAULT '',
-  line TEXT NOT NULL DEFAULT '',
-  trip_id TEXT NOT NULL DEFAULT '',
-  samples INTEGER NOT NULL DEFAULT 0,
-  started_at INTEGER NOT NULL DEFAULT 0,
-  ended_at INTEGER NOT NULL DEFAULT 0,
-  received_at INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_contributor_sessions_received ON contributor_sessions(received_at DESC);
-`;
-
 export const INITIAL_SAVED_PLACES = [
   {
     id: 'home',

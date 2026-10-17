@@ -401,7 +401,7 @@ export const de: Strings = {
     backupFailSchemaTooNew: 'Diese Sicherung stammt aus einer neueren App-Version.',
     contribTitle: 'Kilometr Contributor',
     contribHint:
-      'GPS- und Beschleunigungsmesser-Telemetrie für App-Tester:innen. Die Daten bleiben zunächst auf dem Gerät und du entscheidest, was damit passiert: hochladen oder exportieren. In Produktions-Builds ist diese Karte ausgeblendet.',
+      'GPS- und Beschleunigungsmesser-Telemetrie für App-Tester:innen. Die Daten bleiben auf dem Gerät und du entscheidest, wann du sie exportierst. In Produktions-Builds ist diese Karte ausgeblendet.',
     contribAutoToggle: 'Bei Fahrten aufzeichnen',
     contribAutoToggleA11y: 'Telemetrie automatisch während einer verfolgten Fahrt aufzeichnen',
     contribStartNow: 'Jetzt aufzeichnen',
@@ -419,14 +419,6 @@ export const de: Strings = {
     contribSize: (mb: string) => `Daten: ~${mb} MB`,
     contribExport: 'ZIP exportieren',
     contribExportA11y: 'Gesammelte Daten als ZIP-Datei speichern',
-    contribUpload: 'Daten senden',
-    contribUploadA11y: 'Gesammelte Daten an den Tests-Server senden',
-    contribUploadNothing: 'Keine neuen Daten zum Senden.',
-    contribUploadDoneTitle: 'Daten gesendet',
-    contribUploadDoneBody: (mb: string) => `Empfangen (ca. ${mb} MB). Danke für die Daten!`,
-    contribUploadFailTitle: 'Daten konnten nicht gesendet werden',
-    contribUploadFailBody:
-      'Der Tests-Server war eventuell nicht erreichbar. Versuche es erneut oder nutze den ZIP-Export.',
     contribExportDoneTitle: 'Archiv fertig',
     contribExportDoneBody: (path: string) => `Datei gespeichert unter ${path}`,
     contribExportFailTitle: 'Archiv konnte nicht gespeichert werden',
@@ -437,7 +429,7 @@ export const de: Strings = {
     contribDeleteA11y: 'Alle gesammelten Daten von diesem Gerät löschen',
     contribDeleteConfirmTitle: 'Alle Daten löschen?',
     contribDeleteConfirmBody:
-      'Die Telemetrie wird dauerhaft von diesem Telefon gelöscht. Bereits hochgeladene Daten bleiben auf dem Server.',
+      'Die Telemetrie wird dauerhaft von diesem Telefon gelöscht.',
     contribDeleteAction: 'Löschen',
     contribNotifTitle: 'Kilometr Contributor',
     contribNotifText: 'Telemetrie der Fahrt wird aufgezeichnet',
