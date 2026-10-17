@@ -58,6 +58,8 @@ import { getTimetableDownloadGate, remainingHours } from '../src/services/downlo
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard, PrefsToggle } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
+import { ContributorCard } from '../src/components/ContributorCard';
+import { isContributorAvailable } from '../src/services/contributor/config';
 import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
@@ -170,6 +172,9 @@ export default function SettingsScreen() {
   const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
   const walkMps = useWalkSpeedMps();
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Kanał builda nie zmienia się w trakcie życia procesu, więc wystarczy
+  // jednorazowy odczyt: metryka oldalnej (prod ukrywa kartę).
+  const [contributorAvailable] = useState(() => isContributorAvailable());
 
   const paceOptions: {
     value: WalkPaceProfile;
@@ -666,6 +671,13 @@ export default function SettingsScreen() {
               />
             </SettingRow>
           </View>
+        ) : null}
+
+        {contributorAvailable ? (
+          <>
+            <SectionLabel>{s.settings.sectionContributor}</SectionLabel>
+            <ContributorCard />
+          </>
         ) : null}
 
         <NotificationPrefsCard />
