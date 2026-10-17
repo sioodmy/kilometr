@@ -15,11 +15,7 @@
 
 import { isMultiCityArea } from '../src/cities';
 import { setActiveCityId } from '../src/services/cityStore';
-import {
-  addressCity,
-  cityFirstAddress,
-  toSuggestion,
-} from '../src/services/nominatimDirect';
+import { addressCity, cityFirstAddress, toSuggestion } from '../src/services/nominatimDirect';
 
 let passed = 0;
 const failures: string[] = [];
@@ -50,11 +46,7 @@ describe('Strefy z wieloma miastami');
 
 describe('Miasto z addressdetails');
 {
-  expect(
-    'miasto',
-    addressCity({ city: 'Katowice', state: 'śląskie' }),
-    'Katowice',
-  );
+  expect('miasto', addressCity({ city: 'Katowice', state: 'śląskie' }), 'Katowice');
   expect('miasteczko', addressCity({ town: 'Rumia' }), 'Rumia');
   expect('wieś', addressCity({ village: 'Żukowo' }), 'Żukowo');
   expect('gmina', addressCity({ municipality: 'gmina Wejherowo' }), 'gmina Wejherowo');
@@ -64,7 +56,11 @@ describe('Miasto z addressdetails');
 describe('Miasto na przodzie adresu');
 {
   expect('bez miasta bez zmian', cityFirstAddress('Koszutka', null, 'GZM'), 'Koszutka');
-  expect('miasto przed dzielnicą', cityFirstAddress('Koszutka', 'Katowice', 'GZM'), 'Katowice, Koszutka');
+  expect(
+    'miasto przed dzielnicą',
+    cityFirstAddress('Koszutka', 'Katowice', 'GZM'),
+    'Katowice, Koszutka',
+  );
   expect(
     'miasto już na przodzie bez duplikatu',
     cityFirstAddress('Katowice, Koszutka', 'Katowice', 'GZM'),
@@ -118,7 +114,11 @@ async function main(): Promise<void> {
       type: 'house',
       address: { road: 'Rynek', house_number: '15', suburb: 'Śródmieście' },
     });
-    expect('bez city w addressdetails zostaje kolejność z display_name', s?.address, 'Śródmieście, Chorzów');
+    expect(
+      'bez city w addressdetails zostaje kolejność z display_name',
+      s?.address,
+      'Śródmieście, Chorzów',
+    );
   }
 
   describe('Trójmiasto: miasto w adresie wyniku');
@@ -128,7 +128,8 @@ async function main(): Promise<void> {
     // „Główne Miasto, Śródmieście” i nie było widać, że to Gdańsk.
     const s = toSuggestion({
       place_id: 3,
-      display_name: '1, Długa, Główne Miasto, Śródmieście, Gdańsk, województwo pomorskie, 80-827, Polska',
+      display_name:
+        '1, Długa, Główne Miasto, Śródmieście, Gdańsk, województwo pomorskie, 80-827, Polska',
       lat: '54.3520',
       lon: '18.6466',
       class: 'place',
