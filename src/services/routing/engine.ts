@@ -1,6 +1,6 @@
 import { DayIndex, gtfsStore } from './store';
 import { costParamsFor, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
-import { Connection, Leg, LegStop, RawJourney, RouteStyle, TransitModePreference } from './types';
+import { AllowedTransferModes, Connection, Leg, LegStop, RawJourney, RouteStyle, TransitModePreference } from './types';
 import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 
@@ -140,6 +140,11 @@ export interface PlanOptions {
   trainsEnabled?: boolean;
   /** Koleje linowe (Polinka) w trybie 'all' (default true). Jak trainsEnabled. */
   cableEnabled?: boolean;
+  /**
+   * Na które pojazdy wolno się przesiadać (default wszystko true).
+   * Wyłączony środek nie pojawia się w wynikach wcale.
+   */
+  allowedTransferModes?: Partial<AllowedTransferModes>;
   /** sekundy, default 300. Minimalny zapas na wsiadanie do pociągu po przesiadce. */
   trainMinTransferSec?: number;
   /** sekundy, default 90. Minimalny czas na przesiadkę. */
@@ -399,8 +404,11 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const modes: TransitModePreference =
     options.modes === 'tram' || options.modes === 'bus' ? options.modes : 'all';
   const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 60)));
-  const trainsEnabled = options.trainsEnabled ?? true;
-  const cableEnabled = options.cableEnabled ?? true;
+  // Pille z ustawień wygrywają ze starymi przełącznikami: jawny wpis w
+  // allowedTransferModes nadpisuje trainsEnabled i cableEnabled.
+  const allow = options.allowedTransferModes;
+  const trainsEnabled = allow?.train ?? options.trainsEnabled ?? true;
+  const cableEnabled = allow?.cable ?? options.cableEnabled ?? true;
   const trainMinTransferSec = Math.max(0, Math.min(1200, Math.round(options.trainMinTransferSec ?? 300)));
   const maxWalkM = Math.max(100, Math.min(2000, Math.round(options.maxWalkM ?? 800)));
   const userWalkSpeed = Math.max(0.8, Math.min(2.0, options.walkSpeedMps ?? WALK_SPEED_MPS));
@@ -492,14 +500,22 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Pociągi (mode 'train') i metro (mode 'subway') wypadają z wąskich filtrów
   // same, bo nigdy nie są równe 'tram' ani 'bus'. Trolejbus jedzie z filtrem
   // autobusowym.
+  // Pille z ustawień odcinają zbanowane środki na poziomie podróży: wyłączony
+  // pojazd nie pojawia się w wynikach wcale (ani na start, ani na przesiadce).
+  const isBanned = (mode: string | undefined): boolean => {
+    if (!mode || mode === 'walk') return false;
+    if (mode === 'train') return !trainsEnabled;
+    if (mode === 'cable') return !cableEnabled;
+    const v = (allow as Record<string, boolean | undefined> | undefined)?.[mode];
+    return v === false;
+  };
   const applyModeFilter = (list: RawJourney[]) =>
-    modes === 'all'
-      ? list
-      : list.filter((j) =>
-          j.segments
-            .filter((s) => s.type === 'transit')
-            .every((s) => s.mode === modes || (modes === 'bus' && s.mode === 'trolleybus')),
-        );
+    list.filter((j) => {
+      const transit = j.segments.filter((s) => s.type === 'transit');
+      if (transit.some((s) => isBanned(s.mode))) return false;
+      if (modes === 'all') return true;
+      return transit.every((s) => s.mode === modes || (modes === 'bus' && s.mode === 'trolleybus'));
+    });
   const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays };
   // W trybie przyjazdu odrzucamy wszystko z przybyciem po celu
   // (RAPTOR liczy w przód, więc część okien wystaje za cel).

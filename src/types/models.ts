@@ -218,6 +218,8 @@ export interface RouteQuery {
   trainsEnabled?: boolean;
   /** Koleje linowe (Polinka) w trybie 'all' (default true). Jak trainsEnabled. */
   cableEnabled?: boolean;
+  /** Na które pojazdy wolno się przesiadać (default wszystko true). */
+  allowedTransferModes?: Partial<Record<Leg['mode'], boolean>>;
   /** Minimalny zapas na wsiadanie do pociągu po przesiadce (default 300). */
   trainMinTransferSec?: number;
   /** sekundy, default 120 */
