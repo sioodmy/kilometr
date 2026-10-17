@@ -8,8 +8,11 @@ import { vehicleTracker } from '../realtime/tracker';
 import { reverseGeocodeLocation } from '../location/service';
 import { FavoritesService } from '../favorites/service';
 import { gtfsStore } from '../gtfs/store';
+import { contributorRouter } from './contributor';
 
 export const apiRouter = Router();
+
+apiRouter.use('/contributor', contributorRouter);
 
 // In-memory cache for recent planned journeys so /api/routes/:id is instant
 const recentPlannedConnections = new Map<string, any>();
