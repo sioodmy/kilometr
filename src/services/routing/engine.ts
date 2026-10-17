@@ -71,20 +71,75 @@ export async function buildTripStops(tripId: string): Promise<LegStop[]> {
   return [];
 }
 
+/** Wycinek (i nocny merge) na parametry wyszukiwania: jedno źródło prawdy */
+export interface SearchSlices {
+  /** Porą dnia (bez przesunięcia dnia serwisowego). */
+  departureSec: number;
+  /** Sekundy od teraz co dzień docelowego (dodawane do wyników, nie do RAPTOR-a). */
+  dayOffsetSec: number;
+  searchStartSec: number;
+  searchIndex: DayIndex;
+  /** Offsets zegara nocnego (patternTimeOffsets w opcjach RAPTOR-a). */
+  patternOffsets?: Map<string, number>;
+}
+
+/**
+ * Buduje wycinek planera dla odjazdu (lub przyjazdu) o rawTargetSec — pełny
+ * czas RAW (pora dnia + offset dni). planConnections i rozgrzewka idą przez
+ * TEN SAM kod, żeby rozgrzany indeks był dokładnie tym, na który wyszukiwanie
+ * zaraz wpadnie (w tym nocny merge przed 07:00).
+ */
+export async function buildSearchSlices(rawTargetSec: number, arrivalMode = false): Promise<SearchSlices> {
+  const now = new Date();
+  // departureTimeSec / arriveBySec mogą wskazywać jutro (DepartureTimeSheet
+  // dodaje +86400). RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.
+  const dayOffsetSec = Math.floor(rawTargetSec / 86400) * 86400;
+  const departureSec = rawTargetSec % 86400;
+  const targetDate = new Date(now);
+  targetDate.setDate(targetDate.getDate() + Math.round(dayOffsetSec / 86400));
+  const weekday = targetDate.getDay();
+  const dateStr = toDateStr(targetDate);
+  // Wycinek horyzontu zamiast pełnej doby: okna RAPTOR-a sięgają +3600 s,
+  // a przesiadkowe nogi jeszcze dalej — bierzemy zapas do +3 h.
+  // W trybie przyjazdu szukamy od ~2 h przed celem do samego celu.
+  const searchStartSec = arrivalMode ? Math.max(0, departureSec - 7200) : departureSec;
+  const dayIndex = arrivalMode
+    ? await gtfsStore.getDayIndexSlice(weekday, dateStr, searchStartSec - 1800, departureSec + 600)
+    : await gtfsStore.getDayIndexSlice(weekday, dateStr, departureSec - 1800, departureSec + 10800);
+
+  // Nocny indeks ZUNIFIKOWANY (mergeDayIndexes): po północy kursy 24:xx+
+  // należą do wczorajszego dnia serwisowego, ale nogi z obu dni muszą łączyć
+  // się w JEDNEJ podróży (np. 145 dziś + 255 wczoraj o 04:30).
+  let searchIndex = dayIndex;
+  let patternOffsets: Map<string, number> | undefined;
+  if (searchStartSec < 7 * 3600) {
+    const yDate = new Date(targetDate);
+    yDate.setDate(yDate.getDate() - 1);
+    const overnightIdx = await gtfsStore.getDayIndexSlice(
+      yDate.getDay(),
+      toDateStr(yDate),
+      86400 - 7200,
+      86400 + departureSec + 10800,
+    );
+    const merged = mergedOvernight(dayIndex, overnightIdx);
+    searchIndex = merged.index;
+    patternOffsets = merged.offsets;
+  }
+  return { departureSec, dayOffsetSec, searchStartSec, searchIndex, patternOffsets };
+}
+
 /**
  * Rozgrzewka po starcie / imporcie: buduje wycinek na bieżącą porę w tle,
  * żeby pierwsze wyszukiwanie nie płaciło pełnego kosztu budowy indeksu.
+ * Idzie przez buildSearchSlices, więc obejmuje też nocny merge przed 07:00.
  */
 export async function warmupRouting(): Promise<void> {
   try {
     await gtfsStore.load();
     const now = new Date();
     const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    const slice = await gtfsStore.getDayIndexSlice(now.getDay(), `${y}${m}${d}`, currentSec - 1800, currentSec + 10800);
-    await warmupRaptorNet(gtfsStore, slice);
+    const slices = await buildSearchSlices(currentSec);
+    await warmupRaptorNet(gtfsStore, slices.searchIndex, slices.patternOffsets);
   } catch (err) {
     console.warn('[Routing] warmup failed:', err);
   }
@@ -354,46 +409,15 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const now = new Date();
   const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
-  // departureTimeSec / arriveBySec mogą wskazywać jutro (DepartureTimeSheet
-  // dodaje +86400). RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.
+  // Wycinek dnia (+ nocny merge) przez SHARED buildSearchSlices: rozgrzewka
+  // uruchamiana tym samym kodem, co samo wyszukiwanie.
   const arrivalMode = options.arriveBySec !== undefined && Number.isFinite(options.arriveBySec);
   const rawTarget = Math.max(
     0,
     Math.round(arrivalMode ? (options.arriveBySec as number) : (options.departureTimeSec ?? currentSec)),
   );
-  const dayOffsetSec = Math.floor(rawTarget / 86400) * 86400;
-  const departureSec = rawTarget % 86400;
-  const dayOffsetDays = Math.round(dayOffsetSec / 86400);
-  const targetDate = new Date(now);
-  targetDate.setDate(targetDate.getDate() + dayOffsetDays);
-  const weekday = targetDate.getDay();
-  const dateStr = toDateStr(targetDate);
-  // Wycinek horyzontu zamiast pełnej doby: okna RAPTOR-a sięgają +3600 s,
-  // a przesiadkowe nogi jeszcze dalej — bierzemy zapas do +3 h.
-  // W trybie przyjazdu szukamy od ~2 h przed celem do samego celu.
-  const searchStartSec = arrivalMode ? Math.max(0, departureSec - 7200) : departureSec;
-  const dayIndex = arrivalMode
-    ? await gtfsStore.getDayIndexSlice(weekday, dateStr, searchStartSec - 1800, departureSec + 600)
-    : await gtfsStore.getDayIndexSlice(weekday, dateStr, departureSec - 1800, departureSec + 10800);
-
-  // Nocny indeks ZUNIFIKOWANY (mergeDayIndexes): po północy kursy 24:xx+
-  // należą do wczorajszego dnia serwisowego, ale nogi z obu dni muszą łączyć
-  // się w JEDNEJ podróży (np. 145 dziś + 255 wczoraj o 04:30).
-  let searchIndex = dayIndex;
-  let patternOffsets: Map<string, number> | undefined;
-  if (searchStartSec < 7 * 3600) {
-    const yDate = new Date(targetDate);
-    yDate.setDate(yDate.getDate() - 1);
-    const overnightIdx = await gtfsStore.getDayIndexSlice(
-      yDate.getDay(),
-      toDateStr(yDate),
-      86400 - 7200,
-      86400 + departureSec + 10800,
-    );
-    const merged = mergedOvernight(dayIndex, overnightIdx);
-    searchIndex = merged.index;
-    patternOffsets = merged.offsets;
-  }
+  const slices = await buildSearchSlices(rawTarget, arrivalMode);
+  const { departureSec, dayOffsetSec, searchStartSec, searchIndex, patternOffsets } = slices;
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));
   const modes: TransitModePreference =
