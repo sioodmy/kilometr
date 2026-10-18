@@ -760,8 +760,11 @@ export const pl = {
     title: 'Aktualności',
     sourceLoading: (feeds: string) => feeds,
     sourceEmpty: (combined: string) => combined,
-    count: (n: number, urgent: number) =>
-      `${n} wiadomości${urgent > 0 ? ` • ${urgent} pilne` : ''}`,
+    count: (n: number, urgent: number) => {
+      const items = `${n} ${n === 1 ? 'wiadomość' : 'wiadomości'}`;
+      const few = urgent % 10 >= 2 && urgent % 10 <= 4 && (urgent % 100 < 12 || urgent % 100 > 14);
+      return urgent > 0 ? `${items} • ${urgent} ${urgent === 1 ? 'pilna' : few ? 'pilne' : 'pilnych'}` : items;
+    },
     refreshA11y: 'Odśwież aktualności',
     loading: 'Pobieranie komunikatów…',
     noConnection: 'Brak połączenia',
