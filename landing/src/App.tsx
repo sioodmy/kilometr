@@ -7,6 +7,7 @@ import { AnchorSection } from './components/Anchor';
 import { LiveUpdateSection } from './components/LiveUpdate';
 import { DuelSection } from './components/Duel';
 import { Report } from './components/Report';
+import { Privacy } from './components/Privacy';
 import {
   APK_FALLBACK,
   APK_FILE,
@@ -14,6 +15,15 @@ import {
   GITHUB_URL,
   OBTAINIUM_URL,
 } from './data';
+
+type View = 'strona' | 'raport' | 'polityka';
+
+function readView(): View {
+  const hash = window.location.hash;
+  if (hash === '#raport') return 'raport';
+  if (hash === '#polityka') return 'polityka';
+  return 'strona';
+}
 
 function useApkHref() {
   const [href, setHref] = useState(APK_FILE);
@@ -53,37 +63,61 @@ function DownloadButtons({ apkHref }: { apkHref: string }) {
   );
 }
 
+function Foot() {
+  return (
+    <footer className="foot">
+      <span>Kilometr</span>
+      <span className="foot-motto">Socjalizm albo barbarzyństwo</span>
+      <div className="foot-links">
+        <a href="#polityka">Polityka prywatności</a>
+        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+          <Github size={15} strokeWidth={2} />
+          Kod źródłowy
+        </a>
+      </div>
+    </footer>
+  );
+}
+
 export default function App() {
   const apkHref = useApkHref();
   const conn = CONFIRMED.connection;
-  const [isReport, setIsReport] = useState(() => window.location.hash === '#raport');
+  const [view, setView] = useState<View>(readView);
   useEffect(() => {
     const onHash = () => {
-      setIsReport(window.location.hash === '#raport');
+      setView(readView());
       window.scrollTo(0, 0);
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   useEffect(() => {
-    document.title = isReport ? 'Raport z benchmarku: Kilometr' : 'Kilometr: Tym razem dojedziesz';
-  }, [isReport]);
+    document.title =
+      view === 'raport'
+        ? 'Raport z benchmarku: Kilometr'
+        : view === 'polityka'
+          ? 'Polityka prywatności: Kilometr'
+          : 'Kilometr: Tym razem dojedziesz';
+  }, [view]);
 
-  if (isReport) {
+  if (view === 'raport') {
     return (
       <div className="page">
         <main>
           <Report />
         </main>
+        <Foot />
+      </div>
+    );
+  }
 
-        <footer className="foot">
-          <span>Kilometr</span>
-          <span className="foot-motto">Socjalizm albo barbarzyństwo</span>
-          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
-            <Github size={15} strokeWidth={2} />
-            Kod źródłowy
-          </a>
-        </footer>
+  if (view === 'polityka') {
+    return (
+      <div className="page">
+        <main>
+          <Privacy />
+        </main>
+        <Foot />
       </div>
     );
   }
@@ -145,14 +179,7 @@ export default function App() {
         <DuelSection />
       </main>
 
-      <footer className="foot">
-        <span>Kilometr</span>
-        <span className="foot-motto">Socjalizm albo barbarzyństwo</span>
-        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
-          <Github size={15} strokeWidth={2} />
-          Kod źródłowy
-        </a>
-      </footer>
+      <Foot />
     </div>
   );
 }

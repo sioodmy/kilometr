@@ -1849,13 +1849,20 @@ body {
   font-size: 12px;
 }
 
-.foot a {
+.foot-links {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.foot a {
   color: var(--muted);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  padding: 4px 0;
 }
 
 .foot a:hover {
@@ -2840,6 +2847,122 @@ body {
   font-size: 13.5px;
   line-height: 1.7;
   max-width: 72ch;
+}
+
+/* ── Polityka prywatności (#polityka) ──────────────────── */
+/* Tekst dokumentu, nie landing: bez kart i kalibracji, jedna szpalda
+   akapitów na pełnej szerokości strony. Akcent brandu tylko w podkreśleniu
+   linku i wstawkach listy, żeby strona nie wyglądała na cudzą. */
+.pv {
+  padding: 64px 0 96px;
+  max-width: 760px;
+}
+
+.pv-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.pv-back:hover {
+  color: var(--ink);
+}
+
+.pv-hero {
+  margin-top: 26px;
+  max-width: 640px;
+}
+
+.pv-hero h1 {
+  font-size: clamp(38px, 5vw, 60px);
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.pv-hero p {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.6;
+  max-width: 54ch;
+}
+
+.pv-h {
+  margin-top: 44px;
+  font-size: clamp(21px, 2.6vw, 27px);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.pv-p {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 15.5px;
+  line-height: 1.65;
+  max-width: 62ch;
+}
+
+.pv-list {
+  margin-top: 14px;
+  list-style: none;
+  display: grid;
+  gap: 12px 0;
+  max-width: 62ch;
+}
+
+.pv-list li {
+  color: var(--muted);
+  font-size: 15.5px;
+  line-height: 1.6;
+  padding-left: 18px;
+  position: relative;
+}
+
+.pv-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--brand);
+}
+
+.pv-list b {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.pv-dim {
+  color: var(--faint);
+}
+
+.pv-link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--brand);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.pv-link:hover {
+  color: var(--brand);
+}
+
+@media (max-width: 900px) {
+  .pv {
+    padding: 44px 0 72px;
+  }
+
+  .pv-h {
+    margin-top: 34px;
+  }
 }
 
 .rp-cta {
