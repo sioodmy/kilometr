@@ -14,6 +14,7 @@ import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
 import { getPlannedConnection } from '../../src/services/api';
+import { normalizeConnectionId } from '../../src/services/routing/connectionIdentity';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
@@ -34,7 +35,8 @@ export default function RouteDetailsScreen() {
   const s = useStrings();
   const router = useRouter();
   const goBack = () => router.canGoBack() ? router.back() : router.replace('/routes');
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: routeId } = useLocalSearchParams<{ id: string }>();
+  const id = normalizeConnectionId(routeId ?? '');
   const cachedItem = getTrackedTripSync()?.connection;
   const immediateItem = cachedItem?.id === id ? cachedItem : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);

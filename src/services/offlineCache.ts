@@ -1,5 +1,6 @@
 import { kvGet, kvSet } from './storage';
 import { getActiveCityIdSync } from './cityStore';
+import { normalizeConnectionId } from './routing/connectionIdentity';
 
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
@@ -141,6 +142,7 @@ export async function loadConnections(query: RouteQuery): Promise<Connection[] |
 
 /** Szuka połączenia po id we WSZYSTKICH cachowanych zapytaniach (dla szczegółów offline). */
 export async function findCachedConnection(id: string): Promise<Connection | null> {
+  id = normalizeConnectionId(id);
   const all = await readJSON<Record<string, Stamped<Connection[]>>>(KEYS.connections);
   if (!all) return null;
   for (const key of Object.keys(all)) {

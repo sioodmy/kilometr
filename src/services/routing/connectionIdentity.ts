@@ -23,6 +23,11 @@ export function stableConnectionId(connection: Connection): string {
   return `conn-${encodeURIComponent(connectionIdentity(connection))}`;
 }
 
+/** Expo Router odkodowuje parametry, ale cache przechowuje ID z zakodowanym JSON-em. */
+export function normalizeConnectionId(id: string): string {
+  return id.startsWith('conn-[') ? `conn-${encodeURIComponent(id.slice(5))}` : id;
+}
+
 // Kolejność kosztowa planera wybiera wariant, ID kursów GTFS nie rozróżnia duplikatów.
 export function deduplicateConnections(connections: Connection[]): Connection[] {
   const seen = new Set<string>();

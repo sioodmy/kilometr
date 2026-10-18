@@ -9,6 +9,7 @@ import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, sav
 import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
+import { normalizeConnectionId } from './routing/connectionIdentity';
 
 let cachedLocation: LocationResult | null = null;
 let cachedAt = 0;
@@ -411,7 +412,7 @@ export const SearchService: ISearchService = {
 const recentPlannedConnections = new Map<string, Connection>();
 
 export function getPlannedConnection(id: string): Connection | undefined {
-  return recentPlannedConnections.get(id);
+  return recentPlannedConnections.get(normalizeConnectionId(id));
 }
 
 export const RoutingService: IRoutingService = {
@@ -470,7 +471,8 @@ export const RoutingService: IRoutingService = {
   },
 
   async getConnectionById(id: string): Promise<{ connection: Connection; source: 'live' | 'cache' } | undefined> {
-    const found = recentPlannedConnections.get(id);
+    id = normalizeConnectionId(id);
+    const found = getPlannedConnection(id);
     if (found) return { connection: found, source: 'live' };
 
     const saved = await this.isRouteSaved(id);

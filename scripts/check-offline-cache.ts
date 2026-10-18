@@ -11,6 +11,7 @@ import {
 } from '../src/services/recentRouteLines';
 import { kvSet } from '../src/services/storage';
 import type { Connection, RouteQuery } from '../src/types/models';
+import { stableConnectionId } from '../src/services/routing/connectionIdentity';
 
 const query: RouteQuery = {
   fromTitle: 'Start',
@@ -75,6 +76,14 @@ async function main() {
     assert.equal((await findCachedConnection('yesterday'))?.departInMin, -15);
     assert.equal((await findCachedConnection('yesterday'))?.live, false);
     assert.equal(await findCachedConnection('missing'), null);
+    const encodedId = stableConnectionId({ ...connection, fromTitle: 'Dworzec Główny 100%' });
+    await kvSet('kilometr.cache.connections.v1', JSON.stringify({
+      [connectionCacheKey(query)]: { savedAt, data: [{ ...connection, id: encodedId }] },
+    }));
+    assert.equal((await findCachedConnection(decodeURIComponent(encodedId)))?.id, encodedId);
+    await kvSet('kilometr.cache.connections.v1', JSON.stringify({
+      [connectionCacheKey(query)]: { savedAt, data: [connection] },
+    }));
     assert.equal(await loadCachedConnections({ ...query, trainsEnabled: false }), null);
     assert.equal(
       rehydrateConnections([{ ...connection, departureSec: 0 }], now)[0].departInMin,

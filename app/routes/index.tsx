@@ -5,12 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Anchor,
   ChevronLeft,
-  Clock3,
   CloudOff,
-  Rocket,
   X,
 } from 'lucide-react-native';
-import Animated, {
+import {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
@@ -60,7 +58,6 @@ import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import {
   RoutesThumbBar,
   type ModePreference,
-  type SortMode,
 } from '../../src/components/RoutesThumbBar';
 import { useThumbBarInset } from '../../src/components/ThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
@@ -210,11 +207,6 @@ export default function RoutesScreen() {
   // lista po cichu przestawała się dociągać. Bez tego użytkownik scrollował
   // do końca i nie dostawał żadnej odpowiedzi.
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
-  // Sortowanie listy: 'fastest' = najwcześniejsze przybycie (domyślnie,
-  // żeby jednym tapnięciem wrócić szybko do domu), 'earliest' = jak w
-  // Jakdojade, od najwcześniejszego odjazdu. Magazyn (items) zawsze
-  // posortowany po odjeździe — paginacja i hold-to-load na tym bazują.
-  const [sortMode, setSortMode] = useState<SortMode>('fastest');
   // Filtry mieszkają w dolnym menu (RoutesThumbBar) — na górze ekranu nie ma
   // ich wcale, żeby nic nie powtarzać się w dwóch miejscach. To wciąż
   // filtry jednorazowe, NIE ustawienia systemowe (maxTransfers w /settings
@@ -235,13 +227,12 @@ export default function RoutesScreen() {
         leg.mode === 'walk' || leg.mode === modeFilter || (modeFilter === 'bus' && leg.mode === 'trolleybus'),
       ));
     }
-    if (sortMode === 'earliest') return list;
     return [...list].sort(
       (a, b) =>
         a.departureSec + a.durationMin * 60 - (b.departureSec + b.durationMin * 60) ||
         a.departureSec - b.departureSec,
     );
-  }, [items, sortMode, directOnly, modeFilter]);
+  }, [items, directOnly, modeFilter]);
 
   // Dock przesuwa się nad listą bez zmiany wysokości jej viewportu.
   const dockProgress = useSharedValue(1);
@@ -258,23 +249,6 @@ export default function RoutesScreen() {
       ],
     };
   });
-
-  // Toggle sortowania w topBar (iOS-style, z maina): 0 = odjazd
-  // (zegar, lewo), 1 = przyjazd (rakieta, prawo). Kciuk dociąga timingiem —
-  // spring overshootował i kciuk wyskakiwał poza tor w trakcie animacji.
-  const SORT_TRACK_W = 78;
-  const SORT_THUMB = 34;
-  const SORT_PAD = 4;
-  const SORT_TRAVEL = SORT_TRACK_W - SORT_THUMB - SORT_PAD * 2;
-  const sortProgress = useSharedValue(sortMode === 'fastest' ? 1 : 0);
-  useEffect(() => {
-    sortProgress.value = withTiming(sortMode === 'fastest' ? 1 : 0, {
-      ...motion.state,
-    });
-  }, [sortMode, sortProgress]);
-  const animatedSortThumb = useAnimatedStyle(() => ({
-    transform: [{ translateX: sortProgress.value * SORT_TRAVEL }],
-  }));
 
   // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
   const listRef = useRef<FlatList<Connection>>(null);
@@ -879,10 +853,6 @@ export default function RoutesScreen() {
     else setModeFilter('all');
   };
 
-  const handleCycleSort = () => {
-    setSortMode((prev) => (prev === 'fastest' ? 'earliest' : 'fastest'));
-  };
-
   const handleSwap = () => {
     if (fromLat === toLat && fromLon === toLon && fromTitle === toTitle) return;
     setItems([]);
@@ -983,41 +953,6 @@ export default function RoutesScreen() {
         <Text style={styles.screenTitle} numberOfLines={1}>
           {s.routes.title(operator)}
         </Text>
-
-        {/* Sortowanie z paska (z main): 0 = odjazd, 1 = przyjazd. */}
-        <View style={styles.sortWrap}>
-          <Pressable
-            onPress={handleCycleSort}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: sortMode === 'fastest' }}
-            accessibilityLabel={
-              sortMode === 'fastest'
-                ? s.routes.sortFastestA11y
-                : s.routes.sortEarliestA11y
-            }
-            style={({ pressed }) => [
-              styles.sortToggle,
-              pressed && { opacity: 0.85 },
-            ]}
-            hitSlop={8}
-          >
-            <Animated.View style={[styles.sortThumb, animatedSortThumb]} />
-            <View style={styles.sortIcons} pointerEvents="none">
-              <Clock3
-                size={15}
-                color={sortMode === 'earliest' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-              />
-              <Rocket
-                size={15}
-                color={sortMode === 'fastest' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-              />
-            </View>
-          </Pressable>
-          <Text style={styles.sortLabel} numberOfLines={1}>
-            {sortMode === 'fastest' ? s.routes.sortFastest : s.routes.sortEarliest}
-          </Text>
-        </View>
-
       </View>
 
       {/* 3. Lista połączeń */}
@@ -1310,44 +1245,6 @@ const styles = StyleSheet.create({
     ...type.titleMedium,
     fontWeight: '500',
     color: scheme.onSurface,
-  },
-  // Toggle sortowania w stylu przełącznika iOS: tor z dwiema ikonami
-  // (zegar = odjazd, rakieta = przyjazd), kciuk suwa się timingiem.
-  sortWrap: {
-    width: 78,
-    alignItems: 'center',
-  },
-  sortToggle: {
-    width: 78,
-    height: 44,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    justifyContent: 'center',
-    // Twardy clip: kciuk nigdy nie wystaje poza tor, nawet w locie.
-    overflow: 'hidden',
-  },
-  sortThumb: {
-    position: 'absolute',
-    left: 4,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: scheme.secondaryContainer,
-  },
-  sortIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-  },
-  sortLabel: {
-    marginTop: 3,
-    ...type.labelSmall,
-    fontWeight: '600',
-    color: scheme.onSurfaceVariant,
-    textAlign: 'center',
   },
   // Karta aktywnej podróży nad listą połączeń
   activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },

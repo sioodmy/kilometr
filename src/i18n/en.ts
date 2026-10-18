@@ -745,7 +745,7 @@ export const en: Strings = {
     title: 'News',
     sourceLoading: (feeds: string) => feeds,
     sourceEmpty: (combined: string) => combined,
-    count: (n: number, urgent: number) => `${n} items${urgent > 0 ? ` • ${urgent} urgent` : ''}`,
+    count: (n: number, urgent: number) => `${n} ${n === 1 ? 'item' : 'items'}${urgent > 0 ? ` • ${urgent} urgent` : ''}`,
     refreshA11y: 'Refresh news',
     loading: 'Fetching announcements…',
     noConnection: 'No connection',
