@@ -86,6 +86,15 @@ jobs:
       - name: Run logic tests (Backup format)
         run: npm run check:backup
 
+      - name: Run logic tests (Storage)
+        run: npm run check:storage
+
+      - name: Run logic tests (KV migration)
+        run: npm run check:kv-migration
+
+      - name: Run logic tests (Offline cache)
+        run: npm run check:offline-cache
+
       - name: Run logic tests (Places per city)
         run: npm run check:places
 

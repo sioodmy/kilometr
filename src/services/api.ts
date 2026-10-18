@@ -5,7 +5,7 @@ import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
+import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
@@ -485,7 +485,7 @@ export const RoutingService: IRoutingService = {
       // Z dysku: czasy przeliczamy na teraz i gasiemy `live`, żeby szczegóły
       // nie udawały, że mają opóźnienie z serwera. Ekran dostanie
       // `source: 'cache'` i powie o tym wprost użytkownikowi.
-      return { connection: rehydrateConnections([cached])[0], source: 'cache' };
+      return { connection: cached, source: 'cache' };
     }
 
     return undefined;
