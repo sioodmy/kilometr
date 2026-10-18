@@ -55,6 +55,7 @@ import {
   type DataStatus,
 } from '../../src/services/dataManager';
 import { liveTracker } from '../../src/services/liveTracker';
+import { deduplicateConnections, mergeConnections } from '../../src/services/routing/connectionIdentity';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
@@ -335,13 +336,6 @@ export default function RoutesScreen() {
     };
   };
 
-  const mergeSorted = (prev: Connection[], batch: Connection[]): { list: Connection[]; added: number } => {
-    const existingIds = new Set(prev.map((p) => p.id));
-    const fresh = batch.filter((item) => !existingIds.has(item.id));
-    const list = [...prev, ...fresh].sort((a, b) => a.departureSec - b.departureSec);
-    return { list, added: fresh.length };
-  };
-
   // Wyszukiwarka startu / celu — ta sama co na ekranie głównym
   const [sheetFor, setSheetFor] = useState<'from' | 'to' | null>(null);
   const [query, setQuery] = useState('');
@@ -540,7 +534,7 @@ export default function RoutesScreen() {
     // Default: tylko aktualne i przyszłe — bez historycznych.
     // Przeszłe dociąga użytkownik gestem (scroll w górę + przytrzymanie).
     // Przy jawnie wybranej godzinie (np. z przeszłości) pokazuj wszystko jak jest.
-    let list = [...c].sort((a, b) => a.departureSec - b.departureSec);
+    let list = deduplicateConnections(c).sort((a, b) => a.departureSec - b.departureSec);
     if (depSec === undefined) {
       const d = new Date();
       const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
@@ -685,7 +679,7 @@ export default function RoutesScreen() {
       const c = await RoutingService.getConnections(queryAt(nextDeparture));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
-        const { list, added } = mergeSorted(prev, c);
+        const { list, added } = mergeConnections(prev, c);
         if (added === 0) setNoMoreLater(true);
         return list;
       });
@@ -713,7 +707,7 @@ export default function RoutesScreen() {
       const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
-        const { list, added } = mergeSorted(prev, c);
+        const { list, added } = mergeConnections(prev, c);
         if (added === 0) {
           setNoMoreEarlier(true);
           return list;
