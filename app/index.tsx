@@ -243,7 +243,10 @@ export default function HomeScreen() {
   }, []);
 
   const refreshPlaces = () => {
-    FavoritesService.list().then(setSaved);
+    const requestedCity = getActiveCityIdSync();
+    FavoritesService.list().then((places) => {
+      if (requestedCity === getActiveCityIdSync()) setSaved(places);
+    });
   };
 
   // Świeży ranking zapisujemy do cache, żeby następny start namalował
@@ -264,25 +267,30 @@ export default function HomeScreen() {
     (originStop: string, coords: { lat: number; lon: number }) => {
       originStopRef.current = originStop;
       const gen = ++smartGen.current;
+      const requestedCity = getActiveCityIdSync();
       FavoritesService.smartFromOrigin(originStop, coords).then((list) => {
-        if (gen !== smartGen.current) return;
+        if (gen !== smartGen.current || requestedCity !== getActiveCityIdSync()) return;
         applySmart(list);
+      }).catch(() => {
+        if (gen === smartGen.current && requestedCity === getActiveCityIdSync()) setSmartReady(true);
       });
     },
     [applySmart],
   );
 
   useEffect(() => {
+    let cancelled = false;
+    const cacheGen = smartGen.current;
     refreshPlaces();
-    SearchService.recent().then(setRecent);
-    loadTripHistory().then((h) => {
-      if (h.length > 0) setLastTrip(h[0]);
+    SearchService.recent().then((list) => {
+      if (!cancelled) setRecent(list);
     });
-    // Instant: gołe ostatnie miejsca z cache malujemy od razu, zanim GPS
-    // w ogóle odpowie. Świeży ranking zamieni je w miejscu (stabilne klucze
-    // + layout-animacja w liście — bez flickeru).
+    loadTripHistory().then((h) => {
+      if (!cancelled && h.length > 0) setLastTrip(h[0]);
+    });
+    // Spóźniony cache nie może nadpisać rankingu wyliczonego z nowej pozycji.
     loadCachedSmartDestinations().then((cached) => {
-      if (cached.length > 0) setSmart(cached);
+      if (!cancelled && cacheGen === smartGen.current && cached.length > 0) setSmart(cached);
     });
     // Live GPS od startu (ticker w tle) — opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
@@ -291,6 +299,7 @@ export default function HomeScreen() {
     // (dokładniejszy w tle) przechodzą tędy, żeby ranking i start tras zawsze
     // używały najlepszej znanej pozycji.
     const applyGpsFix = (l: LocationResult) => {
+      if (cancelled) return;
       const outside = isOutsideServiceArea(l.lat, l.lon);
       const city = l.city ?? null;
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
@@ -318,10 +327,14 @@ export default function HomeScreen() {
     LocationService.getCurrentLocation().then(applyGpsFix).catch(() => {
       // Brak GPS (brak zgody / emulator): lista zostaje z cache, a flaga
       // gotowości pozwala pokazać uczciwy pusty stan zamiast wiecznej dziury.
-      setSmartReady(true);
+      if (!cancelled) setSmartReady(true);
     });
     const unsubscribeGps = LocationService.subscribe(applyGpsFix);
-    return () => unsubscribeGps();
+    return () => {
+      cancelled = true;
+      smartGen.current++;
+      unsubscribeGps();
+    };
     // Zmiana miasta to nowy kontekst: GPS, historia i cache ulubionych należą
     // do poprzedniego miasta, więc efekt startuje od nowa.
   }, [cityId]);
@@ -341,6 +354,7 @@ export default function HomeScreen() {
     setQuery('');
     setResults([]);
     setSmart([]);
+    setSaved([]);
     setSmartReady(false);
     setRecent([]);
     setLastTrip(null);
@@ -351,12 +365,6 @@ export default function HomeScreen() {
     setCurrentCoords({ lat: d.lat, lon: d.lon });
     setFirstConns({});
     setFirstLegs({});
-    refreshPlaces();
-    SearchService.recent().then(setRecent);
-    loadTripHistory().then((h) => setLastTrip(h.length > 0 ? h[0] : null));
-    loadCachedSmartDestinations().then((cached) => {
-      if (cached.length > 0) setSmart(cached);
-    });
   }, [cityId]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy

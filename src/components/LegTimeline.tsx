@@ -390,7 +390,7 @@ function TransitLegCard({
           <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
           {leg.toStop} <Text style={s.hour}>{leg.arriveAt}</Text>
         </Text>
-        {hasOpened && (
+        {(expanded || hasOpened) && (
           <Animated.View
             layout={legTransition}
             style={expanded ? s.stopsWrap : s.stopsCollapsed}
