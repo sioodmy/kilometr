@@ -23,6 +23,9 @@ import {
   normalizeName,
 } from '../services/vehiclePosition';
 import { useStrings, type Strings } from '../i18n';
+import { motion } from '../theme/motion';
+
+const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
 // Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
 // pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
@@ -346,11 +349,11 @@ function TransitLegCard({
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
   const chevron = useSharedValue(0);
-  const [hasOpened, setHasOpened] = useState(false);
+  const [hasOpened, setHasOpened] = useState(expanded);
 
   useEffect(() => {
     if (expanded) setHasOpened(true);
-    chevron.value = withTiming(expanded ? 1 : 0, { duration: 220 });
+    chevron.value = withTiming(expanded ? 1 : 0, motion.state);
   }, [chevron, expanded]);
 
   const chevronStyle = useAnimatedStyle(() => ({
@@ -358,7 +361,7 @@ function TransitLegCard({
   }));
 
   return (
-    <Animated.View layout={LinearTransition.duration(280)}>
+    <Animated.View layout={legTransition}>
       <Pressable
         onPress={onToggle}
         accessibilityRole="button"
@@ -389,8 +392,10 @@ function TransitLegCard({
         </Text>
         {hasOpened && (
           <Animated.View
-            layout={LinearTransition.duration(280)}
+            layout={legTransition}
             style={expanded ? s.stopsWrap : s.stopsCollapsed}
+            accessibilityElementsHidden={!expanded}
+            importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
           >
             <LegStopsList leg={leg} accent={accent} userLocation={userLocation} />
           </Animated.View>
@@ -417,7 +422,7 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
 
           return (
-            <Animated.View key={leg.id} layout={LinearTransition.duration(280)} style={s.row}>
+            <Animated.View key={leg.id} layout={legTransition} style={s.row}>
               <View style={s.rail}>
                 <View style={s.walkLine} />
                 <View style={[s.node, s.walkNode]}>
@@ -450,7 +455,7 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
         }
         const { bg: accent } = getLineColors(leg.line, leg.mode);
         return (
-          <Animated.View key={leg.id} layout={LinearTransition.duration(280)} style={s.row}>
+          <Animated.View key={leg.id} layout={legTransition} style={s.row}>
             <View style={s.rail}>
               {!last && <View style={[s.spine, { backgroundColor: accent }]} />}
               <View style={[s.node, { borderColor: accent }]}>

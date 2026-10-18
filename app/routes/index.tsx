@@ -11,17 +11,13 @@ import {
   X,
 } from 'lucide-react-native';
 import Animated, {
-  Easing,
-  FadeInUp,
-  FadeOutUp,
-  FlipInEasyX,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { motion } from '../../src/theme/motion';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../../src/services/cityStore';
 import {
@@ -199,6 +195,7 @@ export default function RoutesScreen() {
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
   // (departInMin liczone przy pobraniu). Przerysowujemy wiersze, nie listę.
   const [nowTick, setNowTick] = useState(0);
+  const historyBoundary = useRef(nowSeconds() - 60);
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 30000);
     return () => clearInterval(t);
@@ -232,18 +229,20 @@ export default function RoutesScreen() {
     if (directOnly) {
       list = list.filter((c) => c.transfers === 0);
     }
+    if (modeFilter !== 'all') {
+      list = list.filter((c) => c.legs.every((leg) =>
+        leg.mode === 'walk' || leg.mode === modeFilter || (modeFilter === 'bus' && leg.mode === 'trolleybus'),
+      ));
+    }
     if (sortMode === 'earliest') return list;
     return [...list].sort(
       (a, b) =>
         a.departureSec + a.durationMin * 60 - (b.departureSec + b.durationMin * 60) ||
         a.departureSec - b.departureSec,
     );
-  }, [items, sortMode, directOnly]);
+  }, [items, sortMode, directOnly, modeFilter]);
 
-  // Dolny dock (RoutesThumbBar) chowa się przy zjeździe w dół i wraca przy
-  // powrocie w górę — spring zamiast sztywnego timing, żeby było „fajnie".
-  // W przeciwieństwie do starego zwijanego panelu na górze nie ruszamy
-  // layoutu FlatListy (zero flickeru): dock pływa nad listą (absolute).
+  // Dock przesuwa się nad listą bez zmiany wysokości jej viewportu.
   const dockProgress = useSharedValue(1);
   // Zapas pod listą liczony z zmierzonej wysokości docka — wpisane wcześniej
   // 96 px nie wystarczało i ostatnia karta chowała się pod paskiem.
@@ -254,12 +253,8 @@ export default function RoutesScreen() {
     return {
       opacity: interpolate(p, [0, 1], [0, 1]),
       transform: [
-        { translateY: interpolate(p, [0, 1], [110, 0]) },
-        { scale: interpolate(p, [0, 1], [0.94, 1]) },
+        { translateY: interpolate(p, [0, 1], [thumbInset, 0]) },
       ],
-      // Po schowaniu dock nie łapie dotyków znad listy.
-      // (pointerEvents na Animated.View nie jest animowalne — znika sam,
-      //  bo opacity 0 + translate poza ekran.)
     };
   });
 
@@ -273,8 +268,7 @@ export default function RoutesScreen() {
   const sortProgress = useSharedValue(sortMode === 'fastest' ? 1 : 0);
   useEffect(() => {
     sortProgress.value = withTiming(sortMode === 'fastest' ? 1 : 0, {
-      duration: 190,
-      easing: Easing.out(Easing.cubic),
+      ...motion.state,
     });
   }, [sortMode, sortProgress]);
   const animatedSortThumb = useAnimatedStyle(() => ({
@@ -517,12 +511,20 @@ export default function RoutesScreen() {
     });
 
     if (sheetFor === 'from') {
+      if (sug.lat !== fromLat || sug.lon !== fromLon || sug.title !== fromTitle) {
+        setItems([]);
+        setLoading(true);
+      }
       setGpsOrigin(false);
       setActiveAnchor(null);
       setFromTitle(sug.title);
       setFromLat(sug.lat);
       setFromLon(sug.lon);
     } else {
+      if (sug.lat !== toLat || sug.lon !== toLon || sug.title !== toTitle) {
+        setItems([]);
+        setLoading(true);
+      }
       setToId(sug.id);
       setToTitle(sug.title);
       setToLat(sug.lat);
@@ -551,9 +553,7 @@ export default function RoutesScreen() {
 
   const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
     const seq = ++fetchSeq.current;
-    if (!seamless) {
-      setLoading(true);
-    }
+    setLoading(true);
     setLoadError(false);
     setOffline(false);
     setNoMoreEarlier(false);
@@ -569,16 +569,7 @@ export default function RoutesScreen() {
         return;
       }
       const q = queryAt(depSec);
-      // Progresywne ładowanie "po kolei": pierwsze okno RAPTOR-a wpada szybko,
-      // podmieniamy listę i gasimy pełny spinner od razu — reszta dociąga się
-      // w tle bez migotania (stabilne klucze FlatList).
-      const c = await RoutingService.getConnections(q, (partial) => {
-        if (seq !== fetchSeq.current) return;
-        const live = applyLiveList(partial, depSec);
-        if (live.length === 0) return;
-        setItems(live);
-        setLoading(false);
-      });
+      const c = await RoutingService.getConnections(q);
       if (seq !== fetchSeq.current) return;
       if (noTimetable()) {
         setItems([]);
@@ -751,9 +742,6 @@ export default function RoutesScreen() {
   // „rzucanie” listy (momentum). Jeśli tak, decyzja zapada po nim.
   const SCROLL_SETTLE_MS = 120;
 
-  // Szybki, prawie krytycznie tłumiony spring: bez podskoku, ~200 ms.
-  const SPRING_SNAPPY = { damping: 55, stiffness: 550 } as const;
-
   // Jedno miejsce do zmiany stanu docka. Przeskok stanu jest możliwy tylko
   // raz na DOCK_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
   // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
@@ -768,7 +756,7 @@ export default function RoutesScreen() {
       clearTimeout(dockCooldownTimer.current);
       dockCooldownTimer.current = null;
     }
-    dockProgress.value = withSpring(visible ? 1 : 0, SPRING_SNAPPY);
+    dockProgress.value = withTiming(visible ? 1 : 0, motion.state);
   };
 
   const setDockVisible = (visible: boolean, force = false) => {
@@ -865,15 +853,17 @@ export default function RoutesScreen() {
   };
 
   useEffect(() => {
-    // Wait for the screen transition animation to finish before blocking JS thread with fetch
     const task = InteractionManager.runAfterInteractions(() => {
       fetchRoutes(departureTimeSec, items.length > 0);
     });
-    return () => task.cancel();
+    return () => {
+      task.cancel();
+      fetchSeq.current++;
+    };
     // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
     // importu dostawał pustą listę i nigdy sam się nie odpytywał, więc
     // połączenia zostawały niewidoczne mimo gotowego rozkładu.
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady]);
+  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady, departureTimeSec]);
 
   // Pull znad listy NIE odświeża — dociąga historyczne (już odjechane)
   // połączenia. To JEDYNY sposób na ich wczytanie; odświeżanie listy robią
@@ -892,29 +882,19 @@ export default function RoutesScreen() {
     setSortMode((prev) => (prev === 'fastest' ? 'earliest' : 'fastest'));
   };
 
-  // Znacznik odwrócenia trasy: wiersze zamontowane tuż po swapie wjeżdżają
-  // pionowym flipem karty (FlipInEasyX) zamiast zwykłego fade-up. Ref, nie stan —
-  // nie wymusza dodatkowego rendera, odczyt w renderItem wystarczy.
-  const swapAtRef = useRef(0);
-
-  // Strzałka w nagłówku: pełny obrót 360° + minimalny pop (skala).
-  // Licznik rośnie o 1 na swap — obrót zawsze do przodu, bez resetowania.
   const arrowSpin = useSharedValue(0);
   const animatedArrowStyle = useAnimatedStyle(() => {
-    const p = arrowSpin.value % 1;
     return {
-      transform: [
-        { rotate: `${p * 360}deg` },
-        { scale: 1 + 0.28 * Math.sin(Math.PI * p) },
-      ],
+      transform: [{ rotate: `${arrowSpin.value * 180}deg` }],
     };
   });
 
   const handleSwap = () => {
-    swapAtRef.current = Date.now();
+    if (fromLat === toLat && fromLon === toLon && fromTitle === toTitle) return;
+    setItems([]);
+    setLoading(true);
     arrowSpin.value = withTiming(Math.round(arrowSpin.value) + 1, {
-      duration: 450,
-      easing: Easing.inOut(Easing.ease),
+      ...motion.state,
     });
     // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -938,20 +918,10 @@ export default function RoutesScreen() {
   const handleTimeSelect = (result: { timeSec: number | undefined; label: string }) => {
     setDepartureTimeSec(result.timeSec);
     setTimeLabel(result.label);
-    // Zmiana godziny przeładowuje praktycznie całą listę — pokazujemy pełny
-    // spinner zamiast cichej podmiany (seamless tylko dokładałby wiersze).
-    fetchRoutes(result.timeSec, false);
   };
 
   const isCustomTime = departureTimeSec !== undefined;
 
-  // Stabilne referencje dla FlatList: bez nich każdy render rodzica tworzył
-  // nowe closures, przez co wiersze (pamiętane przez React.memo) przeliczały
-  // się od nowa i lista „przybliżała” zamiast płynnie się toczyć.
-  // Karty wskakują kaskadą (stagger po indeksie, max ~440 ms), żeby progresywne
-  // dokładanie wyglądało płynnie; tuż po swapie — flipem karty.
-  // UWAGA: świeża instancja buildera na wiersz — .delay() mutuje współdzielony
-  // obiekt, więc współdzielenie jednego FlipInEasyX/FadeInUp rozwaliłoby delaya.
   const openConnection = useCallback(
     (item: Connection) => {
       router.push({ pathname: '/routes/[id]', params: { id: item.id } });
@@ -960,25 +930,15 @@ export default function RoutesScreen() {
   );
 
   const renderConnection = useCallback(
-    ({ item, index }: { item: Connection; index: number }) => {
-      const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
-      const stagger = Math.min(index * 55, 440);
-      const freshSwap = Date.now() - swapAtRef.current < 2500;
+    ({ item }: { item: Connection }) => {
+      const past = item.departureSec > 0 && item.departureSec < historyBoundary.current;
       return (
-        <Animated.View
-          entering={
-            freshSwap
-              ? new FlipInEasyX().duration(320).delay(stagger)
-              : new FadeInUp().duration(280).delay(stagger)
-          }
-        >
-          <ConnectionCard
-            item={item}
-            dimmed={past}
-            onPress={openConnection}
-            tick={nowTick}
-          />
-        </Animated.View>
+        <ConnectionCard
+          item={item}
+          dimmed={past}
+          onPress={openConnection}
+          tick={nowTick}
+        />
       );
     },
     [openConnection, nowTick],
@@ -1052,26 +1012,13 @@ export default function RoutesScreen() {
           style={({ pressed }) => [styles.routeSide, pressed && { opacity: 0.6 }]}
           hitSlop={6}
         >
-          {/* Tytuł startu zawsze ten sam co cel (ta sama rolka FadeInUp) —
-              kotwica to już tylko cicha dopiska pod spodem, nie osobny
-              pigułkowy świat. Cały slot dalej otwiera wyszukiwarkę startu. */}
-          <Animated.View
-            key={`from-${fromTitle}`}
-            entering={new FadeInUp().duration(240)}
-            exiting={new FadeOutUp().duration(200)}
-            style={styles.routeSlide}
-          >
+          <View style={styles.routeSlide}>
             <Text style={styles.routeText} numberOfLines={1}>
               {fromTitle}
             </Text>
-          </Animated.View>
+          </View>
           {activeAnchor && (
-            <Animated.View
-              key={`anchor-${activeAnchor.stopId ?? activeAnchor.stopName}`}
-              entering={new FadeInUp().duration(240)}
-              exiting={new FadeOutUp().duration(200)}
-              style={styles.anchorSub}
-            >
+            <View style={styles.anchorSub}>
               <Anchor size={12} color={scheme.primary} />
               <Text style={styles.anchorSubText} numberOfLines={1}>
                 {activeAnchor.stopName}
@@ -1092,7 +1039,7 @@ export default function RoutesScreen() {
               >
                 <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
               </Pressable>
-            </Animated.View>
+            </View>
           )}
         </Pressable>
 
@@ -1118,21 +1065,16 @@ export default function RoutesScreen() {
           style={({ pressed }) => [styles.routeSideGrow, pressed && { opacity: 0.6 }]}
           hitSlop={6}
         >
-          <Animated.View
-            key={`to-${toTitle}`}
-            entering={new FadeInUp().duration(240)}
-            exiting={new FadeOutUp().duration(200)}
-            style={styles.routeSlide}
-          >
+          <View style={styles.routeSlide}>
             <Text style={styles.routeTextStrong} numberOfLines={1}>
               {toTitle}
             </Text>
-          </Animated.View>
+          </View>
         </Pressable>
       </View>
 
       {/* 3. Lista połączeń */}
-      {loading ? (
+      {loading && items.length === 0 ? (
         <View style={styles.skeletonList}>
           <Text style={styles.loadingText}>{s.routes.searching}</Text>
           <View style={styles.skelCard}>
@@ -1208,6 +1150,8 @@ export default function RoutesScreen() {
       ) : (
         <FlatList
           ref={listRef}
+          accessibilityState={{ busy: loading }}
+          pointerEvents={loading ? 'none' : 'auto'}
           refreshControl={
             <RefreshControl
               refreshing={loadingEarlier}
@@ -1218,6 +1162,8 @@ export default function RoutesScreen() {
             />
           }
           data={displayed}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
           // wymusza przeliczenie etykiet „za X min” bez refetchu
           extraData={nowTick}
           keyExtractor={connectionKey}
@@ -1240,8 +1186,9 @@ export default function RoutesScreen() {
           renderItem={renderConnection}
           ListHeaderComponent={
             <View style={styles.countRow}>
+              {loading && <ActivityIndicator size="small" color={scheme.primary} accessibilityLabel={s.routes.searching} />}
               <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(items.length)} • {isCustomTime ? s.routes.countDepart(timeLabel) : s.routes.countNearest}
+                {connectionsLabel(displayed.length)} • {isCustomTime ? s.routes.countDepart(timeLabel) : s.routes.countNearest}
                 {directOnly ? s.routes.countDirect : ''}
                 {modeFilter === 'tram' ? s.routes.countTram : modeFilter === 'bus' ? s.routes.countBus : ''}
                 {loadingEarlier ? s.routes.countEarlier : ''}

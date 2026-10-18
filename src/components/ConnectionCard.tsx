@@ -274,7 +274,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 
   // Przeszłe: zwarta linia zamiast pełnej karty, żeby kolejne odjazdy
   // były pierwszym, na co spada wzrok.
-  if (historical || dimmed) {
+  if (dimmed) {
     return (
       <Pressable
         onPress={() => onPress(item)}
