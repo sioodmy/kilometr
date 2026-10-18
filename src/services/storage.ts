@@ -21,7 +21,10 @@ let dirReady = false;
 
 function serialize<T>(key: string, operation: () => Promise<T>): Promise<T> {
   const result = (pending.get(key) ?? Promise.resolve()).then(operation);
-  const settled = result.then(() => undefined, () => undefined);
+  const settled = result.then(
+    () => undefined,
+    () => undefined,
+  );
   pending.set(key, settled);
   void settled.then(() => {
     if (pending.get(key) === settled) pending.delete(key);
@@ -95,23 +98,27 @@ async function readValue(key: string): Promise<string | null> {
 }
 
 export async function kvSet(key: string, value: string): Promise<void> {
+  try {
+    await kvSetStrict(key, value);
+  } catch (err) {
+    console.warn('[Storage] setItem failed:', err);
+  }
+}
+
+export async function kvSetStrict(key: string, value: string): Promise<void> {
   return serialize(key, () => writeValue(key, value));
 }
 
 async function writeValue(key: string, value: string): Promise<void> {
-  try {
-    const dir = await ensureDir();
-    if (!dir) throw new Error('kv storage directory unavailable');
-    const path = keyToFile(dir, key);
-    // Zapis atomowy: najpierw plik tymczasowy, potem podmiana. Przerwany
-    // zapis nie zostawi wtedy uciętego JSON-a, który kasowałby całą listę.
-    const tmp = `${path}.tmp`;
-    await FileSystem.writeAsStringAsync(tmp, value);
-    await FileSystem.moveAsync({ from: tmp, to: path });
-    memCache.set(key, value);
-  } catch (err) {
-    console.warn('[Storage] setItem failed:', err);
-  }
+  const dir = await ensureDir();
+  if (!dir) throw new Error('kv storage directory unavailable');
+  const path = keyToFile(dir, key);
+  // Zapis atomowy: najpierw plik tymczasowy, potem podmiana. Przerwany
+  // zapis nie zostawi wtedy uciętego JSON-a, który kasowałby całą listę.
+  const tmp = `${path}.tmp`;
+  await FileSystem.writeAsStringAsync(tmp, value);
+  await FileSystem.moveAsync({ from: tmp, to: path });
+  memCache.set(key, value);
 }
 
 export async function kvRemove(key: string): Promise<void> {

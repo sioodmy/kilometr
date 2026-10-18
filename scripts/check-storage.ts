@@ -26,7 +26,9 @@ Object.assign(fs, {
     files.set(to, files.get(from)!);
     files.delete(from);
   },
-  deleteAsync: async (name: string) => { files.delete(name); },
+  deleteAsync: async (name: string) => {
+    files.delete(name);
+  },
 });
 
 async function main() {
@@ -41,9 +43,16 @@ async function main() {
   files.set(path('read-write'), 'old');
   let started!: () => void;
   let resume!: () => void;
-  const reading = new Promise<void>((resolve) => { started = resolve; });
-  const gate = new Promise<void>((resolve) => { resume = resolve; });
-  pauseRead = async () => { started(); await gate; };
+  const reading = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  pauseRead = async () => {
+    started();
+    await gate;
+  };
   const read = kvGetStrict('read-write');
   await reading;
   const write = kvSet('read-write', 'new');
@@ -65,4 +74,7 @@ async function main() {
   console.log('PASS: concurrent writes, removal, stale reads, retry, read after write');
 }
 
-void main().catch((error) => { console.error(error); process.exitCode = 1; });
+void main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

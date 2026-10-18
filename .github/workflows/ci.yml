@@ -89,6 +89,9 @@ jobs:
       - name: Run logic tests (Storage)
         run: npm run check:storage
 
+      - name: Run logic tests (KV migration)
+        run: npm run check:kv-migration
+
       - name: Run logic tests (Offline cache)
         run: npm run check:offline-cache
 
