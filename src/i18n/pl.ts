@@ -1038,6 +1038,9 @@ export const pl = {
     savePlace: 'Zapisz miejsce',
   },
   timeSheet: {
+    confirmAction: 'Pokaż połączenia',
+    selectedDeparture: (day: string, hh: string, mm: string) => `${day}, ${hh}:${mm}`,
+    minutePreset: (mm: string) => `Ustaw minutę: ${mm}`,
     titleDepart: 'Czas odjazdu',
     dayToday: 'Dzisiaj',
     dayTomorrow: 'Jutro',

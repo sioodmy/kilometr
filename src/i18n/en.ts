@@ -1020,6 +1020,9 @@ export const en: Strings = {
     savePlace: 'Save place',
   },
   timeSheet: {
+    confirmAction: 'Show connections',
+    selectedDeparture: (day: string, hh: string, mm: string) => `${day}, ${hh}:${mm}`,
+    minutePreset: (mm: string) => `Set minute to ${mm}`,
     titleDepart: 'Departure time',
     dayToday: 'Today',
     dayTomorrow: 'Tomorrow',
