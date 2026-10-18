@@ -1,5 +1,6 @@
 import { kvGet, kvSet } from './storage';
 import { getActiveCityIdSync } from './cityStore';
+import { normalizeConnectionId } from './routing/connectionIdentity';
 
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
@@ -86,6 +87,18 @@ export function connectionCacheKey(q: RouteQuery): string {
     q.maxWalkM ?? '',
     q.anchorStopId ?? '',
     q.routeStyle ?? '',
+    q.departureTimeSec ?? '',
+    q.arriveBySec ?? '',
+    q.minTransferSec ?? '',
+    q.walkSpeedMps ?? '',
+    q.trainsEnabled ?? '',
+    q.cableEnabled ?? '',
+    q.trainMinTransferSec ?? '',
+    q.anchorStopLat ?? '',
+    q.anchorStopLon ?? '',
+    ...(['walk', 'tram', 'bus', 'train', 'cable', 'trolleybus', 'subway'] as const).map(
+      (mode) => q.allowedTransferModes?.[mode] ?? '',
+    ),
   ].join('|');
 }
 
@@ -129,13 +142,14 @@ export async function loadConnections(query: RouteQuery): Promise<Connection[] |
 
 /** Szuka połączenia po id we WSZYSTKICH cachowanych zapytaniach (dla szczegółów offline). */
 export async function findCachedConnection(id: string): Promise<Connection | null> {
+  id = normalizeConnectionId(id);
   const all = await readJSON<Record<string, Stamped<Connection[]>>>(KEYS.connections);
   if (!all) return null;
   for (const key of Object.keys(all)) {
     const entry = all[key];
-    if (Date.now() - entry.savedAt > CONNECTIONS_TTL_MS) continue;
+    if (!entry || Date.now() - entry.savedAt > CONNECTIONS_TTL_MS || !Array.isArray(entry.data)) continue;
     const hit = entry.data.find((c) => c.id === id);
-    if (hit) return hit;
+    if (hit) return rehydrateConnections([hit], entry.savedAt)[0];
   }
   return null;
 }
@@ -157,7 +171,7 @@ export function rehydrateConnections(list: Connection[], savedAtMs = Date.now())
   return list.map((c) => ({
     ...c,
     departInMin:
-      c.departureSec > 0 ? Math.round((baseMs + c.departureSec * 1000 - nowMs) / 60000) : c.departInMin,
+      c.departureSec >= 0 ? Math.round((baseMs + c.departureSec * 1000 - nowMs) / 60000) : c.departInMin,
     live: false,
   }));
 }
@@ -171,8 +185,9 @@ function normQuery(q: string): string {
 export async function saveSuggestions(query: string, results: Suggestion[]): Promise<void> {
   const key = normQuery(query);
   if (!key || results.length === 0) return;
+  const storageKey = cityScopedKey(KEYS.suggestions);
   try {
-    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions))) ?? {};
+    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(storageKey)) ?? {};
     all[key] = { savedAt: Date.now(), data: results };
     const keys = Object.keys(all);
     if (keys.length > MAX_SUGGESTION_ENTRIES) {
@@ -181,7 +196,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
         .slice(0, keys.length - MAX_SUGGESTION_ENTRIES)
         .forEach((k) => delete all[k]);
     }
-    await kvSet(cityScopedKey(KEYS.suggestions), JSON.stringify(all));
+    await kvSet(storageKey, JSON.stringify(all));
   } catch {
     // best-effort
   }

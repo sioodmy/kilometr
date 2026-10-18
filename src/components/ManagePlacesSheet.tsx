@@ -1,22 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  BackHandler,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  MapPin,
-  Pencil,
-  Plus,
-  Star,
-  Trash2,
-  X,
-} from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { MapPin, Pencil, Plus, Trash2, X } from 'lucide-react-native';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { SavedPlace } from '../types/models';
 import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
@@ -40,11 +27,8 @@ export function ManagePlacesSheet({
   const sheetRef = useRef<BottomSheet>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const s = useStrings();
-  // Arkusz leży na spodzie ekranu (edge-to-edge), więc pasek nawigacji
-  // zasłania ostatnią pozycję listy i przycisk „Dodaj miejsce”.
   const insets = useSafeAreaInsets();
-
-  // Android back / gest wstecz zamyka sheet zamiast wyjścia z apki
+  const { fontScale } = useWindowDimensions();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
@@ -55,164 +39,148 @@ export function ManagePlacesSheet({
     return () => sub.remove();
   }, []);
 
-  const handleClose = () => {
-    sheetRef.current?.close();
-  };
-
   return (
     <BottomSheet
       ref={sheetRef}
       index={0}
-      snapPoints={['65%', '92%']}
+      snapPoints={fontScale > 1.3 ? ['96%'] : ['78%', '94%']}
+      topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
-      onChange={(idx) => {
-        if (idx === -1) onClose();
-      }}
+      onClose={onClose}
+      backdropComponent={(props) => (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          accessibilityLabel={s.common.close}
+        />
+      )}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.titleRow}>
-              <Text style={styles.title}>{s.places.manageTitle}</Text>
-              <View style={styles.countBadge}>
-                <Text style={styles.countText}>{places.length}</Text>
-              </View>
-            </View>
-            <Text style={styles.subtitle}>
-              {s.places.manageSub}
-            </Text>
-          </View>
-          <View style={styles.headerActions}>
-            <Pressable
-              onPress={onAddNew}
-              hitSlop={8}
-              style={({ pressed }) => [styles.headerAddBtn, pressed && { opacity: 0.7 }]}
-            >
-              <Plus size={18} color={scheme.primary} />
-            </Pressable>
-            <Pressable
-              onPress={handleClose}
-              hitSlop={8}
-              style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.7 }]}
-            >
-              <X size={20} color={scheme.onSurfaceVariant} />
-            </Pressable>
-          </View>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.title} accessibilityRole="header">
+            {s.places.manageTitle}
+          </Text>
+          <Text style={styles.subtitle}>{s.places.manageSub}</Text>
         </View>
-
-        {/* Places List */}
-        {places.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconWrap}>
-              <Star size={32} color={scheme.onSurfaceVariant} />
-            </View>
+        <Pressable
+          onPress={() => sheetRef.current?.close()}
+          accessibilityRole="button"
+          accessibilityLabel={s.common.close}
+          style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
+        >
+          <X size={22} color={scheme.onSurfaceVariant} />
+        </Pressable>
+      </View>
+      <BottomSheetFlatList
+        data={places}
+        keyExtractor={(place: SavedPlace) => place.id}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        overScrollMode="never"
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <MapPin size={32} color={scheme.primary} />
             <Text style={styles.emptyTitle}>{s.places.emptyTitle}</Text>
-            <Text style={styles.emptySubtitle}>
-              {s.places.emptyBody}
-            </Text>
-            <Pressable
-              onPress={onAddNew}
-              style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }]}
-            >
-              <Plus size={20} color={scheme.onPrimary} />
-              <Text style={styles.addBtnText}>{s.places.addNew}</Text>
-            </Pressable>
+            <Text style={styles.emptyBody}>{s.places.emptyBody}</Text>
           </View>
-        ) : (
-          <BottomSheetFlatList
-            data={places}
-            keyExtractor={(item: SavedPlace, index: number) => `${item.id}-${index}`}
-            overScrollMode="never"
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-            ListFooterComponent={
+        }
+        renderItem={({ item }: { item: SavedPlace }) => {
+          const Icon = SAVED_PLACE_ICONS[item.icon] ?? MapPin;
+          return (
+            <View style={styles.card}>
               <Pressable
-                onPress={onAddNew}
-                style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }]}
+                onPress={() => (onSelectPlace ? onSelectPlace(item) : onEditPlace(item))}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  onSelectPlace ? s.home.searchToA11y(item.name) : s.places.editA11y(item.name)
+                }
+                style={({ pressed }) => [styles.place, pressed && styles.pressed]}
               >
-                <Plus size={20} color={scheme.onPrimary} />
-                <Text style={styles.addBtnText}>{s.places.addNew}</Text>
+                <View style={styles.placeIcon}>
+                  <Icon size={22} color={scheme.onSecondaryContainer} />
+                </View>
+                <View style={styles.placeText}>
+                  <Text style={styles.name} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.address} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                    {item.address}
+                  </Text>
+                </View>
               </Pressable>
-            }
-            renderItem={({ item }: { item: SavedPlace }) => {
-              const Icon = SAVED_PLACE_ICONS[item.icon] ?? MapPin;
-              const isConfirming = deletingId === item.id;
-
-              if (isConfirming) {
-                return (
-                  <View style={styles.confirmRow}>
-                    <View style={styles.confirmLeft}>
-                      <Trash2 size={18} color={scheme.error} />
-                      <Text style={styles.confirmText} numberOfLines={1}>
-                        {s.places.removeTitle(item.name)}
-                      </Text>
-                    </View>
-                    <View style={styles.confirmActions}>
-                      <Pressable
-                        onPress={() => setDeletingId(null)}
-                        style={({ pressed }) => [styles.cancelInlineBtn, pressed && { opacity: 0.7 }]}
-                      >
-                        <Text style={styles.cancelInlineText}>{s.common.no}</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => {
-                          setDeletingId(null);
-                          onDeletePlace(item.id);
-                        }}
-                        style={({ pressed }) => [styles.deleteInlineBtn, pressed && { opacity: 0.7 }]}
-                      >
-                        <Text style={styles.deleteInlineText}>{s.places.removeConfirm}</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                );
-              }
-
-              return (
-                <View style={styles.placeItem}>
-                  <View style={styles.itemIconWrap}>
-                    <Icon size={20} color={scheme.onSecondaryContainer} />
-                  </View>
-
-                  <Pressable
-                    onPress={() => onSelectPlace?.(item)}
-                    style={({ pressed }) => [styles.itemTextWrap, pressed && { opacity: 0.7 }]}
-                  >
-                    <Text style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">
-                      {item.name}
-                    </Text>
-                    <Text style={styles.itemAddress} numberOfLines={1} ellipsizeMode="tail">
-                      {item.address}
-                    </Text>
-                  </Pressable>
-
-                  <View style={styles.itemActions}>
+              {deletingId === item.id ? (
+                <View style={styles.confirm}>
+                  <Text style={styles.confirmText}>{s.places.removeTitle(item.name)}</Text>
+                  <View style={styles.actions}>
                     <Pressable
-                      onPress={() => onEditPlace(item)}
-                      hitSlop={10}
-                      style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
+                      onPress={() => setDeletingId(null)}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.action,
+                        styles.cancelBtn,
+                        pressed && styles.pressed,
+                      ]}
                     >
-                      <Pencil size={17} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.actionText}>{s.common.cancel}</Text>
                     </Pressable>
-
                     <Pressable
-                      onPress={() => setDeletingId(item.id)}
-                      hitSlop={10}
-                      style={({ pressed }) => [styles.actionBtn, styles.deleteBtn, pressed && { opacity: 0.7 }]}
+                      onPress={() => {
+                        setDeletingId(null);
+                        onDeletePlace(item.id);
+                      }}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.action,
+                        styles.deleteBtn,
+                        pressed && styles.pressed,
+                      ]}
                     >
-                      <Trash2 size={17} color={scheme.error} />
+                      <Text style={styles.deleteText}>{s.places.removeConfirm}</Text>
                     </Pressable>
                   </View>
                 </View>
-              );
-            }}
-          />
-        )}
+              ) : (
+                <View style={[styles.actions, styles.cardActions]}>
+                  <Pressable
+                    onPress={() => onEditPlace(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.places.editA11y(item.name)}
+                    style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                  >
+                    <Pencil size={18} color={scheme.onSurfaceVariant} />
+                    <Text style={styles.actionText}>{s.places.editAction}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setDeletingId(item.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.places.removeA11y(item.name)}
+                    style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                  >
+                    <Trash2 size={18} color={scheme.error} />
+                    <Text style={[styles.actionText, styles.errorText]}>
+                      {s.places.removeConfirm}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          );
+        }}
+      />
+      <View style={styles.footer}>
+        <Pressable
+          onPress={onAddNew}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
+        >
+          <Plus size={22} color={scheme.onPrimary} />
+          <Text style={styles.addText}>{s.places.addNew}</Text>
+        </Pressable>
       </View>
     </BottomSheet>
   );
@@ -220,231 +188,92 @@ export function ManagePlacesSheet({
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: scheme.surfaceContainer,
+    backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    ...elev.level3,
   },
-  handle: {
-    backgroundColor: scheme.outlineVariant,
-    width: 44,
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 4,
-  },
+  handle: { backgroundColor: scheme.outlineVariant, width: 36 },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: scheme.outlineVariant,
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
-  headerLeft: {
-    flex: 1,
-    gap: 4,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  title: {
-    ...type.titleLarge,
-    fontWeight: '700',
-    color: scheme.onSurface,
-  },
-  countBadge: {
-    backgroundColor: scheme.secondaryContainer,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: shape.full,
-  },
-  countText: {
-    ...type.labelSmall,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '700',
-  },
-  subtitle: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerAddBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  headerText: { flex: 1, gap: 6 },
+  title: { ...type.headlineSmall, fontWeight: '500', color: scheme.onSurface },
+  subtitle: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: shape.full,
+    width: 48,
+    height: 48,
+    borderRadius: shape.large,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  list: {
-    flex: 1,
-  },
-  listContent: {
-    gap: 10,
-    paddingBottom: 32,
-  },
-  placeItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: 20, paddingBottom: 16, gap: 12 },
+  card: {
+    padding: 16,
+    borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    padding: 12,
     gap: 12,
   },
-  itemIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: shape.full,
+  place: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64 },
+  placeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.medium,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  itemTextWrap: {
+  placeText: { flex: 1, gap: 4 },
+  name: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface },
+  address: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  actions: { flexDirection: 'row', gap: 10 },
+  cardActions: {
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+  },
+  action: {
     flex: 1,
-    minWidth: 0,
-    gap: 2,
-    justifyContent: 'center',
-    paddingRight: 6,
-  },
-  itemName: {
-    ...type.titleMedium,
-    color: scheme.onSurface,
-    fontWeight: '600',
-  },
-  itemAddress: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-  },
-  itemActions: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    flexShrink: 0,
+    padding: 10,
+    borderRadius: shape.medium,
   },
-  actionBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
+  actionText: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    flexShrink: 1,
+    textAlign: 'center',
   },
-  deleteBtn: {
-    backgroundColor: scheme.errorContainer,
-  },
-  // Inline confirmation
-  confirmRow: {
+  errorText: { color: scheme.error },
+  confirm: { gap: 12 },
+  confirmText: { ...type.bodyLarge, color: scheme.onSurface },
+  cancelBtn: { backgroundColor: scheme.surfaceContainerHighest },
+  deleteBtn: { backgroundColor: scheme.error },
+  deleteText: { ...type.labelLarge, color: scheme.onError, flexShrink: 1, textAlign: 'center' },
+  empty: { paddingHorizontal: 12, paddingVertical: 28, gap: 16, alignItems: 'center' },
+  emptyTitle: { ...type.titleLarge, color: scheme.onSurface, textAlign: 'center' },
+  emptyBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  footer: { padding: 20, paddingTop: 12 },
+  addBtn: {
+    minHeight: 56,
+    padding: 16,
+    borderRadius: shape.large,
+    backgroundColor: scheme.primary,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: scheme.error,
-    borderRadius: shape.large,
-    padding: 12,
+    justifyContent: 'center',
     gap: 10,
   },
-  confirmLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    minWidth: 0,
-  },
-  confirmText: {
-    ...type.bodyMedium,
-    color: scheme.error,
-    fontWeight: '600',
-    flex: 1,
-  },
-  confirmActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
-  },
-  cancelInlineBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
-  },
-  cancelInlineText: {
-    ...type.labelSmall,
-    color: scheme.onSurface,
-  },
-  deleteInlineBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: shape.full,
-    backgroundColor: scheme.error,
-  },
-  deleteInlineText: {
-    ...type.labelSmall,
-    fontWeight: '700',
-    color: scheme.onError,
-  },
-  // Empty state
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 36,
-    paddingHorizontal: 24,
-    gap: 12,
-  },
-  emptyIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  emptyTitle: {
-    ...type.titleMedium,
-    color: scheme.onSurface,
-    fontWeight: '600',
-  },
-  emptySubtitle: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: scheme.primary,
-    height: 52,
-    borderRadius: shape.full,
-    paddingHorizontal: 28,
-    marginTop: 8,
-    ...elev.level2,
-  },
-  addBtnText: {
-    ...type.labelLarge,
-    fontWeight: '700',
-    color: scheme.onPrimary,
-  },
+  addText: { ...type.labelLarge, color: scheme.onPrimary, flexShrink: 1, textAlign: 'center' },
+  pressed: { opacity: 0.75 },
 });

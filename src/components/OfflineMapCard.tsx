@@ -3,16 +3,9 @@
 // nie ma przycisku „pobierz ponownie” (limit R2: raz na miesiąc, per miasto).
 
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Download, MapPinned, Trash2 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
 import { getMapDownloadGate, remainingDays } from '../services/downloadLimits';
@@ -53,7 +46,10 @@ export function OfflineMapCard() {
     setBusy(true);
     setProgress(0);
     try {
-      const result = await downloadOfflineMap((p: OfflineMapProgress) => setProgress(p.progress), cityId);
+      const result = await downloadOfflineMap(
+        (p: OfflineMapProgress) => setProgress(p.progress),
+        cityId,
+      );
       if (result.ok) {
         await refresh();
         return;
@@ -75,19 +71,23 @@ export function OfflineMapCard() {
   }, [busy, refresh, s, cityId]);
 
   const handleDelete = useCallback(() => {
-    Alert.alert(s.settings.offlineMapDeleteTitle, s.settings.offlineMapDeleteBody(city.tilePackMB), [
-      { text: s.common.cancel, style: 'cancel' },
-      {
-        text: s.settings.offlineMapDelete,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            await deleteOfflineMap(cityId);
-            await refresh();
-          })();
+    Alert.alert(
+      s.settings.offlineMapDeleteTitle,
+      s.settings.offlineMapDeleteBody(city.tilePackMB),
+      [
+        { text: s.common.cancel, style: 'cancel' },
+        {
+          text: s.settings.offlineMapDelete,
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await deleteOfflineMap(cityId);
+              await refresh();
+            })();
+          },
         },
-      },
-    ]);
+      ],
+    );
   }, [refresh, s, city, cityId]);
 
   const pct = Math.round(progress * 100);
@@ -147,11 +147,10 @@ export function OfflineMapCard() {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 16,
-    gap: 12,
-    ...elev.level1,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 20,
+    gap: 18,
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   iconWrap: {
@@ -164,7 +163,7 @@ const styles = StyleSheet.create({
   },
   titleWrap: { flex: 1, minWidth: 0 },
   title: { ...type.titleSmall, color: scheme.onSurface },
-  hint: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
+  hint: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   progressText: { ...type.labelMedium, color: scheme.onSurfaceVariant },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -175,21 +174,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: scheme.primary,
-    borderRadius: shape.full,
-    height: 44,
+    borderRadius: shape.medium,
+    minHeight: 52,
+    padding: 14,
   },
-  primaryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
+  primaryText: {
+    ...type.labelLarge,
+    fontWeight: '500',
+    color: scheme.onPrimary,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   deleteBtnWide: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 44,
-    borderRadius: shape.full,
+    minHeight: 52,
+    padding: 14,
+    borderRadius: shape.medium,
     backgroundColor: scheme.surfaceContainerHighest,
   },
-  deleteText: { ...type.labelLarge, fontWeight: '700', color: scheme.error },
+  deleteText: {
+    ...type.labelLarge,
+    fontWeight: '500',
+    color: scheme.error,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
 });
 
 export default OfflineMapCard;

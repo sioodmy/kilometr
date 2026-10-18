@@ -5,10 +5,11 @@ import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
+import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
+import { normalizeConnectionId } from './routing/connectionIdentity';
 
 let cachedLocation: LocationResult | null = null;
 let cachedAt = 0;
@@ -410,6 +411,10 @@ export const SearchService: ISearchService = {
 // In-memory recent connections for getConnectionById
 const recentPlannedConnections = new Map<string, Connection>();
 
+export function getPlannedConnection(id: string): Connection | undefined {
+  return recentPlannedConnections.get(normalizeConnectionId(id));
+}
+
 export const RoutingService: IRoutingService = {
   async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
     try {
@@ -428,6 +433,7 @@ export const RoutingService: IRoutingService = {
         minTransferSec: query.minTransferSec,
         trainsEnabled: query.trainsEnabled,
         cableEnabled: query.cableEnabled,
+        allowedTransferModes: query.allowedTransferModes,
         trainMinTransferSec: query.trainMinTransferSec,
         maxWalkM: query.maxWalkM,
         walkSpeedMps: query.walkSpeedMps,
@@ -465,7 +471,8 @@ export const RoutingService: IRoutingService = {
   },
 
   async getConnectionById(id: string): Promise<{ connection: Connection; source: 'live' | 'cache' } | undefined> {
-    const found = recentPlannedConnections.get(id);
+    id = normalizeConnectionId(id);
+    const found = getPlannedConnection(id);
     if (found) return { connection: found, source: 'live' };
 
     const saved = await this.isRouteSaved(id);
@@ -480,7 +487,7 @@ export const RoutingService: IRoutingService = {
       // Z dysku: czasy przeliczamy na teraz i gasiemy `live`, żeby szczegóły
       // nie udawały, że mają opóźnienie z serwera. Ekran dostanie
       // `source: 'cache'` i powie o tym wprost użytkownikowi.
-      return { connection: rehydrateConnections([cached])[0], source: 'cache' };
+      return { connection: cached, source: 'cache' };
     }
 
     return undefined;

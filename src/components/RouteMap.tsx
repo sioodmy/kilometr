@@ -141,7 +141,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
 
   useEffect(() => {
     send({ t: 'select', legId: selectedLegId, pad: padRef.current });
-  }, [send, selectedLegId]);
+  }, [send, selectedLegId, paddingTop, paddingBottom]);
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {

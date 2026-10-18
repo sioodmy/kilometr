@@ -1,8 +1,10 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import { LogBox } from 'react-native';
+import { LogBox, Platform } from 'react-native';
 import { useEffect, useState } from 'react';
-import { Stack, router } from 'expo-router';
+import { Stack, router, usePathname } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -23,8 +25,18 @@ import {
   stopTracking,
   type TripResponse,
 } from '../src/services/notifications';
+import {
+  initContributorAutoFollow,
+  ingestNativeSessions,
+} from '../src/services/contributor/collector';
+import {
+  isContributorAvailable,
+  loadContributorSettings,
+} from '../src/services/contributor/config';
+import { sweepRetention } from '../src/services/contributor/store';
 
 LogBox.ignoreAllLogs(true);
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function navigateFromNotification(res: TripResponse) {
   if (res.stop) {
@@ -37,19 +49,16 @@ function navigateFromNotification(res: TripResponse) {
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const pathname = usePathname();
+  const reduceMotion = useReducedMotion();
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu
   useEffect(() => {
     let isMounted = true;
-    const safetyTimeout = setTimeout(() => {
-      if (isMounted) setReady(true);
-    }, 3000);
-    let initAppReady: Promise<void> = Promise.resolve();
 
     const initApp = async () => {
-      // Kolory Material You z tapety muszą być w motywie zanim cokolwiek
-      // się wyrysuje — inaczej pierwsze arkusze stylów powstałyby na starym
-      // seedzie, a ekran przez sekundę migotałby między dwiema paletami.
+      // Paleta musi być gotowa przed pierwszym renderem ekranów.
       await initDynamicColors();
       await migrateFromSqliteKv();
       // Miasto przed bazą: getGtfsDb() otwiera plik per-miasto po sync id.
@@ -57,41 +66,69 @@ export default function RootLayout() {
       await loadSettings();
       await initLocale();
       await loadNotificationPreferences();
-      await setupNotifications();
-      
       try {
         const seen = await hasSeenOnboarding();
-        if (!seen && isMounted) router.replace('/onboarding');
+        if (isMounted) setNeedsOnboarding(!seen);
       } catch (err) {
         console.warn('[RootLayout] onboarding flag unreadable:', err);
-      } finally {
-        if (isMounted) {
-          clearTimeout(safetyTimeout);
-          setReady(true);
-        }
       }
     };
 
-    initAppReady = initApp();
+    const initAppReady = initApp()
+      .catch((err) => console.warn('[RootLayout] init:', err))
+      .finally(() => {
+        if (isMounted) setReady(true);
+      });
 
-    // Śledzenie podróży przeżywa restart telefonu, więc podnosimy je,
-    // zanim użytkownik cokolwiek otworzy. Miasto musi być już wczytane:
-    // planowanie trasy odtwarza się na bazie aktywnego miasta.
-    void initAppReady.finally(() => restoreTrackedTrip());
+    // Odtwarzanie podróży wymaga wczytanego miasta i kanałów powiadomień.
+    void initAppReady.then(async () => {
+      await setupNotifications();
+      await restoreTrackedTrip();
+    }).catch((err) => console.warn('[RootLayout] notifications init:', err));
     startTrackedTripListener();
 
-    // Tap w powiadomienie lub przycisk akcji → ekran połączeń / koniec
-    getLastTripResponse().then(navigateFromNotification);
-    const remove = addTripResponseListener(navigateFromNotification);
+    // Contributor: po podstawowych inicjalizacjach przenosimy pliki z
+    // serwisu natywnego do bazy (GPS mógł zbierać przez noc), retencję
+    // dbamy przy każdym starcie. Na prodzie wszystko jest no-opem.
+    void initAppReady.then(async () => {
+      if (!isContributorAvailable()) return;
+      await loadContributorSettings();
+      await sweepRetention();
+      await ingestNativeSessions();
+      initContributorAutoFollow();
+    }).catch((err) => console.warn('[RootLayout] contributor init:', err));
+
     return () => {
       isMounted = false;
-      clearTimeout(safetyTimeout);
-      remove();
     };
   }, []);
-  if (!ready) {
-    return <GestureHandlerRootView style={{ flex: 1, backgroundColor: scheme.surface }} />;
-  }
+
+  useEffect(() => {
+    if (ready && needsOnboarding) router.replace('/onboarding');
+  }, [ready, needsOnboarding]);
+
+  useEffect(() => {
+    if (!ready || !needsOnboarding || pathname === '/onboarding') return;
+    void hasSeenOnboarding().then((seen) => {
+      if (seen) setNeedsOnboarding(false);
+    });
+  }, [ready, needsOnboarding, pathname]);
+
+  useEffect(() => {
+    if (!ready || (needsOnboarding && pathname !== '/onboarding')) return;
+    const frame = requestAnimationFrame(() => SplashScreen.hide());
+    return () => cancelAnimationFrame(frame);
+  }, [ready, needsOnboarding, pathname]);
+
+  useEffect(() => {
+    if (!ready || needsOnboarding) return;
+    void getLastTripResponse().then(navigateFromNotification).catch((err) => {
+      console.warn('[RootLayout] notification response:', err);
+    });
+    return addTripResponseListener(navigateFromNotification);
+  }, [ready, needsOnboarding]);
+
+  if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: scheme.surface }}>
@@ -103,8 +140,8 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: scheme.surface },
             // Jednolite, szybkie przejścia między ekranami (iOS + Android).
             // animationMatchesGesture synchronizuje animację z gestem wstecz.
-            animation: 'slide_from_right',
-            animationDuration: 240,
+            animation: reduceMotion ? 'none' : Platform.OS === 'android' ? 'fade_from_bottom' : 'slide_from_right',
+            animationDuration: 300,
             animationMatchesGesture: true,
             gestureEnabled: true,
             gestureDirection: 'horizontal',
@@ -121,7 +158,7 @@ export default function RootLayout() {
             name="news"
             options={{
               presentation: 'modal',
-              animation: 'slide_from_bottom',
+              animation: reduceMotion ? 'none' : 'slide_from_bottom',
               animationDuration: 300,
               animationMatchesGesture: true,
               gestureDirection: 'vertical',
@@ -131,15 +168,15 @@ export default function RootLayout() {
             name="article"
             options={{
               presentation: 'card',
-              animation: 'slide_from_right',
-              animationDuration: 240,
+              animation: reduceMotion ? 'none' : Platform.OS === 'android' ? 'fade_from_bottom' : 'slide_from_right',
+              animationDuration: 300,
             }}
           />
           <Stack.Screen
             name="settings"
             options={{
               presentation: 'modal',
-              animation: 'slide_from_bottom',
+              animation: reduceMotion ? 'none' : 'slide_from_bottom',
               animationDuration: 300,
               animationMatchesGesture: true,
               gestureDirection: 'vertical',

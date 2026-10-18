@@ -110,7 +110,7 @@ export async function rememberLinesFromConnectionCache(): Promise<void> {
     for (const [key, entry] of Object.entries(all)) {
       const savedAt = entry?.savedAt;
       if (typeof savedAt !== 'number' || savedAt < cutoff || !Array.isArray(entry.data)) continue;
-      const [fromLat, fromLon] = key.split(',').map(Number);
+      const [fromLat, fromLon] = key.split('|').map(Number);
       if (suggestCityForCoords(fromLat, fromLon)?.id !== activeId) continue;
       for (const line of linesFromConnections(entry.data)) {
         if ((stamps[line] ?? 0) < savedAt) {

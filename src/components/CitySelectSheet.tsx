@@ -7,9 +7,9 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, MapPin, MapPinOff, Search, X } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
-import { useStrings } from '../i18n';
+import { Check, MapPinOff, Search, X } from 'lucide-react-native';
+import { scheme, shape, type } from '../theme/tokens';
+import { getLocaleSync, useStrings } from '../i18n';
 import { CITIES, type CityDef, type CityId } from '../cities';
 import { normalizePolish } from '../gtfs/geo';
 
@@ -79,13 +79,85 @@ const CITY_ALIASES: Record<string, string[]> = {
   ],
   lodz: ['łódź', 'lodz', 'zgierz', 'pabianice', 'aleksandrów łódzki', 'konstantynów łódzki'],
   szczecin: ['szczecin', 'pomorze zachodnie', 'police', 'dobra', 'gryfino', 'stargard', 'stettin'],
-  kielce: ['kielce', 'świętokrzyskie', 'swietokrzyskie', 'chęciny', 'checiny', 'morawica', 'masłów', 'maslow', 'daleszyce', 'zagnańsk', 'zagnansk'],
+  kielce: [
+    'kielce',
+    'świętokrzyskie',
+    'swietokrzyskie',
+    'chęciny',
+    'checiny',
+    'morawica',
+    'masłów',
+    'maslow',
+    'daleszyce',
+    'zagnańsk',
+    'zagnansk',
+  ],
   olsztyn: ['olsztyn', 'warmia', 'mazury', 'allenstein', 'dywity', 'stawiguda', 'barczewo'],
-  bialystok: ['białystok', 'bialystok', 'podlasie', 'podlaskie', 'wasilków', 'wasilkow', 'choroszcz', 'supraśl', 'suprasl', 'zabłudów', 'zabludow'],
-  opole: ['opole', 'opolskie', 'opolszczyzna', 'oppeln', 'komprachcice', 'tarnów opolski', 'tarnow opolski', 'prószków', 'proszkow'],
-  rzeszow: ['rzeszów', 'rzeszow', 'podkarpacie', 'podkarpackie', 'jasionka', 'łańcut', 'lancut', 'krasne', 'tyczyn', 'boguchwała', 'boguchwala', 'głogów małopolski', 'glogow malopolski'],
-  lublin: ['lublin', 'lubelskie', 'lubelszczyzna', 'świdnik', 'swidnik', 'niemce', 'konopnica', 'głusk', 'glusk', 'jastków', 'jastkow'],
-  radom: ['radom', 'radomskie', 'ziemia radomska', 'pionki', 'jedlnia', 'iłża', 'ilza', 'skaryszew', 'wolanów', 'wolanow', 'zakrzew'],
+  bialystok: [
+    'białystok',
+    'bialystok',
+    'podlasie',
+    'podlaskie',
+    'wasilków',
+    'wasilkow',
+    'choroszcz',
+    'supraśl',
+    'suprasl',
+    'zabłudów',
+    'zabludow',
+  ],
+  opole: [
+    'opole',
+    'opolskie',
+    'opolszczyzna',
+    'oppeln',
+    'komprachcice',
+    'tarnów opolski',
+    'tarnow opolski',
+    'prószków',
+    'proszkow',
+  ],
+  rzeszow: [
+    'rzeszów',
+    'rzeszow',
+    'podkarpacie',
+    'podkarpackie',
+    'jasionka',
+    'łańcut',
+    'lancut',
+    'krasne',
+    'tyczyn',
+    'boguchwała',
+    'boguchwala',
+    'głogów małopolski',
+    'glogow malopolski',
+  ],
+  lublin: [
+    'lublin',
+    'lubelskie',
+    'lubelszczyzna',
+    'świdnik',
+    'swidnik',
+    'niemce',
+    'konopnica',
+    'głusk',
+    'glusk',
+    'jastków',
+    'jastkow',
+  ],
+  radom: [
+    'radom',
+    'radomskie',
+    'ziemia radomska',
+    'pionki',
+    'jedlnia',
+    'iłża',
+    'ilza',
+    'skaryszew',
+    'wolanów',
+    'wolanow',
+    'zakrzew',
+  ],
 };
 
 export interface CitySelectSheetProps {
@@ -130,15 +202,21 @@ export function CitySelectSheet({
         appearsOnIndex={0}
         opacity={0.6}
         pressBehavior="close"
+        accessibilityRole="button"
+        accessibilityLabel={s.city.closeSheetA11y}
       />
     ),
-    [],
+    [s.city.closeSheetA11y],
   );
 
   const filteredCities = useMemo(() => {
     const norm = normalizePolish(query);
     if (!norm) {
-      return [...CITIES].sort((a, b) => s.city.name(a.id).localeCompare(s.city.name(b.id), 'pl'));
+      return [...CITIES].sort((a, b) => {
+        if (a.id === selectedCityId) return -1;
+        if (b.id === selectedCityId) return 1;
+        return s.city.name(a.id).localeCompare(s.city.name(b.id), getLocaleSync());
+      });
     }
 
     return [...CITIES]
@@ -161,9 +239,9 @@ export function CitySelectSheet({
         const bStarts = bName.startsWith(norm);
         if (aStarts && !bStarts) return -1;
         if (!aStarts && bStarts) return 1;
-        return aName.localeCompare(bName, 'pl');
+        return aName.localeCompare(bName, getLocaleSync());
       });
-  }, [query, s]);
+  }, [query, s, selectedCityId]);
 
   const handleCityPress = (city: CityDef) => {
     if (switchingCity) return;
@@ -179,21 +257,22 @@ export function CitySelectSheet({
     <BottomSheet
       ref={sheetRef}
       index={0}
-      snapPoints={['75%', '92%']}
+      snapPoints={['82%', '96%']}
+      topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
       backdropComponent={renderBackdrop}
-      onChange={(idx) => {
-        if (idx === -1) onClose();
-      }}
+      onClose={onClose}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
-      <View style={styles.container}>
+      <View style={styles.container} accessibilityViewIsModal>
         <View style={styles.header}>
           <View style={styles.headerText}>
-            <Text style={styles.title}>{s.city.selectTitle}</Text>
+            <Text style={styles.title} accessibilityRole="header">
+              {s.city.selectTitle}
+            </Text>
             <Text style={styles.subtitle}>{s.city.selectSub}</Text>
           </View>
           <Pressable
@@ -213,6 +292,7 @@ export function CitySelectSheet({
             value={query}
             onChangeText={setQuery}
             placeholder={s.city.searchPlaceholder}
+            accessibilityLabel={s.city.searchPlaceholder}
             placeholderTextColor={scheme.onSurfaceVariant}
             style={styles.searchInput}
             autoCorrect={false}
@@ -259,34 +339,18 @@ export function CitySelectSheet({
                 accessibilityState={{ checked: active, disabled: switchingCity }}
                 accessibilityLabel={`${cityName}, ${feeds}`}
               >
-                <View style={[styles.cityItemIcon, active && styles.cityItemIconActive]}>
-                  <MapPin size={20} color={active ? scheme.onPrimaryContainer : scheme.primary} />
-                </View>
-
                 <View style={styles.cityItemContent}>
-                  <View style={styles.cityNameRow}>
-                    <Text style={[styles.cityName, active && styles.cityNameActive]}>
-                      {cityName}
-                    </Text>
-                    {active ? (
-                      <View style={styles.cityActiveBadge}>
-                        <Text style={styles.cityActiveBadgeText}>{s.city.cityActiveBadge}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Text
-                    style={[styles.cityFeeds, active && styles.cityFeedsActive]}
-                    numberOfLines={2}
-                  >
-                    {feeds}
-                  </Text>
+                  <Text style={[styles.cityName, active && styles.cityNameActive]}>{cityName}</Text>
+                  <Text style={[styles.cityFeeds, active && styles.cityFeedsActive]}>{feeds}</Text>
                 </View>
 
                 {isSwitchingThis ? (
                   <ActivityIndicator size="small" color={scheme.primary} />
                 ) : active ? (
-                  <Check size={20} color={scheme.onPrimaryContainer} />
-                ) : null}
+                  <Check size={22} color={scheme.onPrimaryContainer} />
+                ) : (
+                  <View style={styles.radioOutline} />
+                )}
               </Pressable>
             );
           }}
@@ -307,23 +371,22 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainer,
-    ...elev.level3,
+    backgroundColor: scheme.surfaceContainerLow,
   },
   handle: {
     backgroundColor: scheme.outlineVariant,
-    width: 44,
+    width: 36,
   },
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 4,
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 20,
     gap: 12,
   },
   headerText: {
@@ -331,57 +394,60 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    ...type.titleMedium,
+    ...type.titleLarge,
     color: scheme.onSurface,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   subtitle: {
-    ...type.bodySmall,
+    ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
-    lineHeight: 18,
-    marginTop: 2,
+    lineHeight: 21,
+    marginTop: 6,
   },
   closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
     alignItems: 'center',
     justifyContent: 'center',
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingHorizontal: 14,
-    minHeight: 44,
-    gap: 8,
-    marginBottom: 12,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.large,
+    paddingLeft: 16,
+    paddingRight: 4,
+    minHeight: 56,
+    gap: 10,
+    marginBottom: 20,
   },
   searchInput: {
     flex: 1,
-    ...type.bodyMedium,
+    ...type.bodyLarge,
     color: scheme.onSurface,
-    paddingVertical: 8,
+    paddingVertical: 14,
   },
   searchClearBtn: {
-    padding: 4,
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   list: {
     flex: 1,
   },
   listContent: {
-    gap: 8,
+    gap: 4,
   },
   cityItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.large,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 64,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    minHeight: 84,
     gap: 12,
   },
   cityItemActive: {
@@ -390,54 +456,33 @@ const styles = StyleSheet.create({
   cityItemDisabled: {
     opacity: 0.5,
   },
-  cityItemIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cityItemIconActive: {
-    backgroundColor: scheme.surfaceContainerHighest,
-  },
   cityItemContent: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
-  },
-  cityNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   cityName: {
-    ...type.titleSmall,
+    ...type.titleMedium,
     color: scheme.onSurface,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   cityNameActive: {
     color: scheme.onPrimaryContainer,
   },
-  cityActiveBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
-  },
-  cityActiveBadgeText: {
-    ...type.labelSmall,
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
+  radioOutline: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: scheme.outline,
   },
   cityFeeds: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-    lineHeight: 16,
+    lineHeight: 19,
   },
   cityFeedsActive: {
     color: scheme.onPrimaryContainer,
-    opacity: 0.85,
   },
   emptyContainer: {
     alignItems: 'center',

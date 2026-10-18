@@ -1,0 +1,266 @@
+name: Build Play AAB
+
+# AAB (Android App Bundle) do ręcznego wgrania w Google Play Console:
+# Testing -> Internal testing -> New release -> Upload app-release.aab.
+# Bundle jest podpisywany kluczem upload z sekretów repo, więc Play go
+# przyjmie od razu. Z założenia ręczny (workflow_dispatch) i zamyka się
+# w artefakcie Actions: żadnego release'u ani tagu na GitHubie.
+#
+# Sekrety (Settings -> Secrets and variables -> Actions -> Repository secrets):
+#   ANDROID_KEYSTORE_BASE64       - klucz upload zakodowany base64
+#   ANDROID_KEYSTORE_PASSWORD     - hasło keystore'a
+#   ANDROID_KEYSTORE_ALIAS        - alias klucza w keystore
+#   ANDROID_KEYSTORE_KEY_PASSWORD - hasło klucza (opcjonalne, domyślnie
+#                                   jak ANDROID_KEYSTORE_PASSWORD)
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Architektura procesora (arm64-v8a to 99% nowoczesnych telefonów)'
+        required: true
+        default: 'arm64-v8a'
+        type: choice
+        options:
+          - 'arm64-v8a'
+          - 'all'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "build-aab-${{ github.ref_name }}"
+  cancel-in-progress: false
+
+env:
+  # Wersje muszą być zgodne z node_modules/react-native/gradle/libs.versions.toml
+  # (compileSdk/targetSdk=36, buildTools=36.0.0, ndkVersion=27.1.12297006)
+  # oraz z CMAKE_VERSION używanym przez react-native (3.30.5).
+  ANDROID_COMPILE_SDK: '36'
+  ANDROID_BUILD_TOOLS: '36.0.0'
+  ANDROID_NDK: '27.1.12297006'
+  ANDROID_CMAKE: '3.30.5'
+
+jobs:
+  build-aab:
+    name: Build & Sign Play AAB
+    runs-on: ubuntu-latest
+    steps:
+      # Pełna historia, żeby versionCode (minuty od 2020) miał sensowny
+      # krótki SHA w versionName.
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # AAB trafia do testerów z Google Play, więc gra tymi samymi regułami
+      # co wydania APK: bez realnego KD (MPK-only/atrapa) nie budujemy.
+      - name: Verify timetable has real KD
+        env:
+          TIMETABLE_URL: ${{ vars.TIMETABLE_URL }}
+        run: |
+          set -euo pipefail
+          URL="${TIMETABLE_URL:-https://data.kilometr.wroclaw.pl}/manifest.json"
+          if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
+            echo "::warning::Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
+            exit 0
+          fi
+          node -e '
+            const m = require("/tmp/timetable-manifest.json");
+            const kd = (m.sources && m.sources.kd) || {};
+            const stations = Number(kd.stations || 0);
+            const trips = Number(kd.trips || 0);
+            if (kd.skippedReason || stations <= 0 || trips <= 0) {
+              console.error("::error::Manifest bez realnego KD (skippedReason=" + (kd.skippedReason || "null") + ", stations=" + stations + ", trips=" + trips + "). Nie buduję AAB na bazie bez KD.");
+              process.exit(1);
+            }
+            console.log("KD OK: stations=" + stations + ", routes=" + (kd.routes || 0) + ", trips=" + trips + ", interchanges=" + (kd.interchanges || 0));
+          '
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+
+      # Bez `packages` domyślnie: pakiet `tools` usunięto z repozytorium
+      # Google, sdkmanager kończy się błędem "Failed to find package 'tools'".
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android SDK platforms, build-tools, NDK and CMake
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_COMPILE_SDK}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK}" \
+            "cmake;${ANDROID_CMAKE}"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      # Wersja z minutą dnia: każdy build jest na Play unikalny, bo versionCode
+      # (banda Play z app.config.js: 600 mln + minuty od 2020-01-01) rośnie
+      # z każdą minutą. Ponowny run w tej samej minucie da ten sam versionCode
+      # i Play odrzuci duplikat; wystarczy wrzucić jeszcze raz po minucie.
+      - name: Resolve version and versionCode
+        id: version
+        env:
+          INPUT_ARCH: ${{ inputs.arch }}
+        run: |
+          set -euo pipefail
+          ARCH="${INPUT_ARCH:-arm64-v8a}"
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          VERSION="play-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+          VERSION_CODE="$(APP_VERSION="$VERSION" node -e "process.stdout.write(String(require('./app.config.js')({}).android.versionCode))")"
+          echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "aab_name=app-release.aab" >> "$GITHUB_OUTPUT"
+          echo "Play: versionName=$VERSION versionCode=$VERSION_CODE arch=$ARCH"
+
+      - name: Setup Rust toolchain and Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ steps.version.outputs.arch == 'arm64-v8a' && 'aarch64-linux-android' || 'aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android' }}
+
+      - name: Cache Rust RAPTOR target
+        uses: actions/cache@v4
+        with:
+          path: modules/kilometr-raptor/rust/target
+          key: rust-raptor-${{ runner.os }}-${{ steps.version.outputs.arch }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
+          restore-keys: |
+            rust-raptor-${{ runner.os }}-${{ steps.version.outputs.arch }}-
+            rust-raptor-${{ runner.os }}-
+
+      - name: Test Rust RAPTOR engine
+        run: cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+
+      # Klucz upload ląduje w RUNNER_TEMP poza workspace: runner czyści katalog
+      # po budzie, a pliku keystore nigdy nie powinno być w repo.
+      - name: Decode upload keystore from secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+        run: |
+          set -euo pipefail
+          for V in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS; do
+            if [ -z "${!V:-}" ]; then
+              echo "::error::Brak sekretu repo zależnego od $V. Wgraj ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD i ANDROID_KEYSTORE_ALIAS w Settings -> Secrets and variables -> Actions."
+              exit 1
+            fi
+          done
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload-key.jks"
+          echo "Klucz upload zdekodowany: $RUNNER_TEMP/upload-key.jks"
+
+      - name: Expo Prebuild
+        env:
+          # Wersja i versionCode z kroków wyżej; app.config.js czyta APP_VERSION.
+          APP_VERSION: ${{ steps.version.outputs.version }}
+          # Sekrety klucza wypełniają signingConfigs.release w wygenerowanym
+          # build.gradle (wtyczka withAndroidSigning w app.config.js).
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/upload-key.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Tune Gradle for CI
+        run: |
+          set -euo pipefail
+          GP=android/gradle.properties
+          # Domyślne 2 GB JVM za mało dla równoległej kompilacji C++ (RN 0.86, new arch).
+          # expo prebuild generuje gradle.properties bez końcowej nowej linii, więc
+          # najpierw printf, potem doklejka inaczej zlepiłoby się w jedną wartość.
+          printf '\n' >> "$GP"
+          cat >> "$GP" <<'EOF'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          org.gradle.caching=true
+          EOF
+
+      - name: Build Android App Bundle
+        env:
+          TARGET_ARCH: ${{ steps.version.outputs.arch }}
+        run: |
+          set -euo pipefail
+          ARCH_FLAG=""
+          if [ "$TARGET_ARCH" = "arm64-v8a" ]; then
+            echo "Szybki build: kompilacja tylko pod arm64-v8a (Play zrobi splity per urządzenie)"
+            ARCH_FLAG="-PreactNativeArchitectures=arm64-v8a"
+          else
+            echo "Pełny build: wszystkie architektury"
+          fi
+
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease -x lint --no-daemon --console=plain --stacktrace $ARCH_FLAG
+
+      - name: Verify signed AAB
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          AAB="android/app/build/outputs/bundle/release/app-release.aab"
+          if [ ! -f "$AAB" ]; then
+            echo "::error::Nie znaleziono $AAB"
+            exit 1
+          fi
+          echo "Wersja deklarowana: versionName=$VERSION versionCode=$VERSION_CODE"
+          echo "AAB: $(du -h "$AAB" | cut -f1)"
+          # Gradle podpisuje bundle jarsignerem (v1); brak "jar verified" znaczy,
+          # że signingConfig nie wszedł i Play taki plik odrzuci.
+          if ! jarsigner -verify "$AAB" 2>&1 | grep -q "jar verified"; then
+            echo "::error::AAB nie jest podpisany kluczem upload. Sprawdź sekrety ANDROID_KEYSTORE_*."
+            exit 1
+          fi
+          echo "jarsigner: podpis ok"
+
+      - name: Stage AAB
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          mkdir -p aab-dist
+          cp android/app/build/outputs/bundle/release/app-release.aab aab-dist/app-release.aab
+          (cd aab-dist && sha256sum app-release.aab > app-release.aab.sha256)
+          {
+            echo "versionName=$VERSION"
+            echo "versionCode=$VERSION_CODE"
+          } > aab-dist/version.txt
+          ls -lh aab-dist
+
+      - name: Upload AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kilometr-play-aab
+          path: aab-dist/*
+          if-no-files-found: error
+
+      - name: Summarize
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          echo "### AAB dla Google Play (podpisany kluczem upload)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "versionName: \`$VERSION\` | versionCode: \`$VERSION_CODE\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pobierz \`app-release.aab\` z dołu tej strony (Artifacts: \`kilometr-play-aab\`)" >> "$GITHUB_STEP_SUMMARY"
+          echo "i wgraj w: Play Console -> Testing -> Internal testing -> Create new release." >> "$GITHUB_STEP_SUMMARY"

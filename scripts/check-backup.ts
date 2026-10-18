@@ -148,7 +148,7 @@ const FULL: BackupData = {
     { city: 'wroclaw', items: [trip('t1')] },
     { city: 'krakow', items: [krakowTrip('t2')] },
   ],
-  routingSettings: { maxTransfers: 1, minTransferSec: 180, maxWalkM: 600, walkPace: 'normal', anchorRadiusM: 400, trainsEnabled: false, trainMinTransferSec: 420, cableEnabled: false, routeStyle: 'lessWalking' },
+  routingSettings: { maxTransfers: 1, minTransferSec: 180, maxWalkM: 600, walkPace: 'normal', anchorRadiusM: 400, trainsEnabled: false, trainMinTransferSec: 420, cableEnabled: false, allowedModes: { tram: true, bus: true, trolleybus: true, subway: true, train: false, cable: false }, routeStyle: 'lessWalking' },
   notificationPrefs: {
     trackingEnabled: true,
     departureAlertsEnabled: true,

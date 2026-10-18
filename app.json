@@ -21,9 +21,11 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_PROMOTED_NOTIFICATIONS",
         "android.permission.VIBRATE"
       ],

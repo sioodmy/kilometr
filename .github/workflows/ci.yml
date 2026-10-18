@@ -74,6 +74,9 @@ jobs:
       - name: Run logic tests (RAPTOR routing engine)
         run: npm run check:routing
 
+      - name: Run logic tests (Duplicate connections)
+        run: npm run check:connections
+
       - name: Run logic tests (Live transit matchers & geo)
         run: npm run check:live
 
@@ -83,8 +86,20 @@ jobs:
       - name: Run logic tests (Backup format)
         run: npm run check:backup
 
+      - name: Run logic tests (Storage)
+        run: npm run check:storage
+
+      - name: Run logic tests (KV migration)
+        run: npm run check:kv-migration
+
+      - name: Run logic tests (Offline cache)
+        run: npm run check:offline-cache
+
       - name: Run logic tests (Places per city)
         run: npm run check:places
+
+      - name: Run logic tests (Address search)
+        run: npm run check:search
 
       - name: Run logic tests (Warsaw city)
         run: npm run check:warsaw

@@ -8,9 +8,9 @@
 
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { DatabaseBackup, FileDown, FileUp } from 'lucide-react-native';
+import { FileDown, FileUp } from 'lucide-react-native';
 import Constants from 'expo-constants';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings, type Strings } from '../i18n';
 import {
   applyBackup,
@@ -136,16 +136,12 @@ export function BackupCard() {
   };
 
   // Pustą kopię wyeksportujemy tylko wtedy, gdy naprawdę nie ma nic — ale
-// przycisk zostaje aktywny, bo sama kopia (ustawienia, język) coś wnosi.
-const empty =
-  counts !== null && counts.places === 0 && counts.savedRoutes === 0 && counts.tripHistory === 0;
+  // przycisk zostaje aktywny, bo sama kopia (ustawienia, język) coś wnosi.
+  const empty =
+    counts !== null && counts.places === 0 && counts.savedRoutes === 0 && counts.tripHistory === 0;
 
   return (
     <View style={styles.card}>
-      <View style={styles.cardTop}>
-        <DatabaseBackup size={18} color={scheme.primary} />
-        <Text style={styles.cardTitle}>{b.backupTitle}</Text>
-      </View>
       <Text style={styles.hint}>{b.backupHint}</Text>
       <Text style={styles.hintMuted}>{b.backupExcludeHint}</Text>
       {counts && !empty ? <Text style={styles.summary}>{summarize(counts, b)}</Text> : null}
@@ -154,6 +150,7 @@ const empty =
       <View style={styles.row}>
         <Pressable
           onPress={handleExport}
+          accessibilityRole="button"
           disabled={busy !== null}
           accessibilityLabel={b.backupExportA11y}
           style={({ pressed }) => [
@@ -167,6 +164,7 @@ const empty =
         </Pressable>
         <Pressable
           onPress={handleImport}
+          accessibilityRole="button"
           disabled={busy !== null}
           accessibilityLabel={b.backupImportA11y}
           style={({ pressed }) => [
@@ -185,29 +183,31 @@ const empty =
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 16,
-    gap: 10,
-    ...elev.level1,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 20,
+    gap: 18,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  cardTitle: { ...type.titleSmall, color: scheme.onSurface },
-  hint: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
-  hintMuted: { ...type.bodySmall, color: scheme.outline, lineHeight: 18 },
+  hint: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
+  hintMuted: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 19 },
   summary: { ...type.labelLarge, color: scheme.primary },
-  row: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  row: { gap: 10, marginTop: 2 },
   btn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
+    minHeight: 52,
     paddingVertical: 12,
     paddingHorizontal: 8,
   },
   btnDisabled: { opacity: 0.55 },
-  btnText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
+  btnText: {
+    ...type.titleSmall,
+    color: scheme.onSecondaryContainer,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
 });

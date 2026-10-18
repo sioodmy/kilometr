@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
-import BottomSheet, { BottomSheetFlatList, TouchableOpacity } from '@gorhom/bottom-sheet';
+import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
+import BottomSheet, {
+  BottomSheetFlatList,
+  BottomSheetTextInput,
+  TouchableOpacity,
+} from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, MapPinOff, X } from 'lucide-react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { ArrowLeft, LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
+import { GestureHandlerRootView, type TextInput } from 'react-native-gesture-handler';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
 import type { Suggestion } from '../types/models';
@@ -125,7 +129,10 @@ export function SearchSheet({
   const rows = useMemo<Row[]>(() => {
     if (!trimmed) {
       return recent.length
-        ? [{ type: 'header', label: s.search.recentTrips }, ...recent.map((item) => ({ type: 'item' as const, item }))]
+        ? [
+            { type: 'header', label: s.search.recentTrips },
+            ...recent.map((item) => ({ type: 'item' as const, item })),
+          ]
         : [];
     }
     const out: Row[] = [];
@@ -155,6 +162,7 @@ export function SearchSheet({
       ref={ref}
       index={0}
       snapPoints={['92%']}
+      topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
@@ -176,7 +184,7 @@ export function SearchSheet({
             accessibilityRole="button"
             accessibilityLabel={s.search.originA11y(originTitle)}
           >
-            <View style={styles.originHintDot} />
+            <LocateFixed size={16} color={scheme.onSurfaceVariant} />
             <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
             <Text style={styles.originHintTitle} numberOfLines={1}>
               {originTitle}
@@ -185,53 +193,59 @@ export function SearchSheet({
           </TouchableOpacity>
         )}
 
-        {/* M3 search field z powiększonymi celami dotykowymi */}
-        <View style={styles.inputBox}>
+        <View style={styles.searchRow}>
           <TouchableOpacity
             onPress={handleClose}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.leadingBtn}
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel={s.search.closeA11y}
           >
-            <ArrowLeft size={21} color={scheme.onSurface} />
+            <ArrowLeft size={23} color={scheme.onSurface} />
           </TouchableOpacity>
-          <TextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={onQuery}
-            placeholder={placeholder}
-            placeholderTextColor={scheme.onSurfaceVariant}
-            style={styles.input}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-            blurOnSubmit={false}
-            onSubmitEditing={() => first && handleSelect(first)}
-          />
-          {loading && <ActivityIndicator size="small" color={scheme.primary} style={styles.spinner} />}
-          {query ? (
-            <TouchableOpacity
-              onPress={() => {
-                onQuery('');
-                inputRef.current?.focus();
-              }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              style={styles.trailingBtn}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={s.search.clearA11y}
-            >
-              <X size={19} color={scheme.onSurfaceVariant} />
-            </TouchableOpacity>
-          ) : null}
+          <View style={styles.inputBox}>
+            <Search size={20} color={scheme.onSurfaceVariant} />
+            <BottomSheetTextInput
+              ref={inputRef}
+              value={query}
+              onChangeText={onQuery}
+              placeholder={placeholder}
+              accessibilityLabel={placeholder}
+              placeholderTextColor={scheme.onSurfaceVariant}
+              style={styles.input}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              blurOnSubmit={false}
+              onSubmitEditing={() => first && handleSelect(first)}
+            />
+            {loading && (
+              <ActivityIndicator size="small" color={scheme.primary} style={styles.spinner} />
+            )}
+            {query ? (
+              <TouchableOpacity
+                onPress={() => {
+                  onQuery('');
+                  inputRef.current?.focus();
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.trailingBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={s.search.clearA11y}
+              >
+                <X size={19} color={scheme.onSurfaceVariant} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
       </View>
 
       <BottomSheetFlatList
         data={rows}
-        keyExtractor={(r: Row, idx: number) => (r.type === 'header' ? `h-${r.label}` : `${r.item.id}-${idx}`)}
+        keyExtractor={(r: Row, idx: number) =>
+          r.type === 'header' ? `h-${r.label}` : `${r.item.id}-${idx}`
+        }
         overScrollMode="never"
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
@@ -291,39 +305,30 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainer,
-    ...elev.level3,
+    backgroundColor: scheme.surfaceContainerLow,
   },
-  handle: { backgroundColor: scheme.outlineVariant, width: 44 },
-  head: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, gap: 10 },
+  handle: { backgroundColor: scheme.outlineVariant, width: 36 },
+  head: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 18, gap: 12 },
   originHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    alignSelf: 'flex-start',
+    borderRadius: shape.medium,
     maxWidth: '100%',
-    minHeight: 38,
-  },
-  originHintDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: scheme.primary,
+    minHeight: 48,
   },
   originHintLabel: {
-    ...type.labelSmall,
+    ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     fontWeight: '700',
   },
   originHintTitle: {
-    ...type.labelSmall,
+    ...type.bodyMedium,
     color: scheme.onSurface,
     fontWeight: '600',
-    flexShrink: 1,
+    flex: 1,
   },
   originHintChange: {
     ...type.labelSmall,
@@ -331,37 +336,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 2,
   },
-  // M3 search view field: surfaceContainerHighest, full-width, no border
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   inputBox: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingLeft: 4,
-    paddingRight: 6,
-    height: 56,
-    ...elev.level1,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.large,
+    paddingLeft: 14,
+    paddingRight: 4,
+    minHeight: 56,
+    gap: 6,
   },
   leadingBtn: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
   },
   spinner: { marginHorizontal: 4 },
   trailingBtn: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
   },
   input: {
     flex: 1,
     ...type.bodyLarge,
     color: scheme.onSurface,
-    paddingVertical: 0,
+    paddingVertical: 14,
     paddingHorizontal: 4,
   },
   list: { paddingHorizontal: 4, paddingBottom: 40, gap: 2 },
@@ -379,13 +385,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     flexWrap: 'wrap',
   },
-  // M3 suggestion chip z ergonomicznym rozmiarem dla kciuka (minHeight: 42)
   quick: {
     backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    minHeight: 42,
+    minHeight: 48,
+    maxWidth: '100%',
     justifyContent: 'center',
   },
   quickText: {

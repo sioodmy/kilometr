@@ -3,8 +3,8 @@ import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, ScrollView
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
-import { Bell, History, Settings2 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../src/theme/tokens';
+import { Bell, History, MapPin, Settings2 } from 'lucide-react-native';
+import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { defaultLocationForCity } from '../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
@@ -71,9 +71,7 @@ export default function HomeScreen() {
   const [smartReady, setSmartReady] = useState(false);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
-  // Zapas na dole zamiast wpisanych 90 px — wysokość paska kciuka mierzy się
-  // w trakcie layoutu, a na telefonach z paskiem nawigacji jest wyższy.
-  const thumbInset = useThumbBarInset();
+  const thumbInset = useThumbBarInset('home');
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string; city?: string | null } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
   // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
@@ -243,7 +241,10 @@ export default function HomeScreen() {
   }, []);
 
   const refreshPlaces = () => {
-    FavoritesService.list().then(setSaved);
+    const requestedCity = getActiveCityIdSync();
+    FavoritesService.list().then((places) => {
+      if (requestedCity === getActiveCityIdSync()) setSaved(places);
+    });
   };
 
   // Świeży ranking zapisujemy do cache, żeby następny start namalował
@@ -264,25 +265,30 @@ export default function HomeScreen() {
     (originStop: string, coords: { lat: number; lon: number }) => {
       originStopRef.current = originStop;
       const gen = ++smartGen.current;
+      const requestedCity = getActiveCityIdSync();
       FavoritesService.smartFromOrigin(originStop, coords).then((list) => {
-        if (gen !== smartGen.current) return;
+        if (gen !== smartGen.current || requestedCity !== getActiveCityIdSync()) return;
         applySmart(list);
+      }).catch(() => {
+        if (gen === smartGen.current && requestedCity === getActiveCityIdSync()) setSmartReady(true);
       });
     },
     [applySmart],
   );
 
   useEffect(() => {
+    let cancelled = false;
+    const cacheGen = smartGen.current;
     refreshPlaces();
-    SearchService.recent().then(setRecent);
-    loadTripHistory().then((h) => {
-      if (h.length > 0) setLastTrip(h[0]);
+    SearchService.recent().then((list) => {
+      if (!cancelled) setRecent(list);
     });
-    // Instant: gołe ostatnie miejsca z cache malujemy od razu, zanim GPS
-    // w ogóle odpowie. Świeży ranking zamieni je w miejscu (stabilne klucze
-    // + layout-animacja w liście — bez flickeru).
+    loadTripHistory().then((h) => {
+      if (!cancelled && h.length > 0) setLastTrip(h[0]);
+    });
+    // Spóźniony cache nie może nadpisać rankingu wyliczonego z nowej pozycji.
     loadCachedSmartDestinations().then((cached) => {
-      if (cached.length > 0) setSmart(cached);
+      if (!cancelled && cacheGen === smartGen.current && cached.length > 0) setSmart(cached);
     });
     // Live GPS od startu (ticker w tle) — opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
@@ -291,6 +297,7 @@ export default function HomeScreen() {
     // (dokładniejszy w tle) przechodzą tędy, żeby ranking i start tras zawsze
     // używały najlepszej znanej pozycji.
     const applyGpsFix = (l: LocationResult) => {
+      if (cancelled) return;
       const outside = isOutsideServiceArea(l.lat, l.lon);
       const city = l.city ?? null;
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
@@ -318,10 +325,14 @@ export default function HomeScreen() {
     LocationService.getCurrentLocation().then(applyGpsFix).catch(() => {
       // Brak GPS (brak zgody / emulator): lista zostaje z cache, a flaga
       // gotowości pozwala pokazać uczciwy pusty stan zamiast wiecznej dziury.
-      setSmartReady(true);
+      if (!cancelled) setSmartReady(true);
     });
     const unsubscribeGps = LocationService.subscribe(applyGpsFix);
-    return () => unsubscribeGps();
+    return () => {
+      cancelled = true;
+      smartGen.current++;
+      unsubscribeGps();
+    };
     // Zmiana miasta to nowy kontekst: GPS, historia i cache ulubionych należą
     // do poprzedniego miasta, więc efekt startuje od nowa.
   }, [cityId]);
@@ -341,6 +352,7 @@ export default function HomeScreen() {
     setQuery('');
     setResults([]);
     setSmart([]);
+    setSaved([]);
     setSmartReady(false);
     setRecent([]);
     setLastTrip(null);
@@ -351,12 +363,6 @@ export default function HomeScreen() {
     setCurrentCoords({ lat: d.lat, lon: d.lon });
     setFirstConns({});
     setFirstLegs({});
-    refreshPlaces();
-    SearchService.recent().then(setRecent);
-    loadTripHistory().then((h) => setLastTrip(h.length > 0 ? h[0] : null));
-    loadCachedSmartDestinations().then((cached) => {
-      if (cached.length > 0) setSmart(cached);
-    });
   }, [cityId]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy
@@ -429,6 +435,8 @@ export default function HomeScreen() {
             maxTransfers: s.maxTransfers,
             minTransferSec: s.minTransferSec,
             trainsEnabled: s.trainsEnabled,
+            cableEnabled: s.cableEnabled,
+            allowedTransferModes: s.allowedModes,
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
@@ -487,6 +495,8 @@ export default function HomeScreen() {
             maxTransfers: s.maxTransfers,
             minTransferSec: s.minTransferSec,
             trainsEnabled: s.trainsEnabled,
+            cableEnabled: s.cableEnabled,
+            allowedTransferModes: s.allowedModes,
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
@@ -977,7 +987,10 @@ export default function HomeScreen() {
         >
           {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
           <View style={styles.topBar}>
-            <Text style={styles.headerTitle}>{s.home.title}</Text>
+            <View style={styles.cityContext}>
+              <MapPin size={16} color={scheme.primary} />
+              <Text style={styles.cityName}>{s.city.name(cityId)}</Text>
+            </View>
             <View style={styles.topActions}>
               <Pressable
                 style={styles.iconBtn}
@@ -997,11 +1010,19 @@ export default function HomeScreen() {
                   </View>
                 )}
               </Pressable>
-              <Pressable style={styles.iconBtn} hitSlop={10} onPress={() => router.push('/settings')}>
+              <Pressable
+                style={styles.iconBtn}
+                onPress={() => router.push('/settings')}
+                accessibilityRole="button"
+                accessibilityLabel={s.settings.title}
+              >
                 <Settings2 size={20} color={scheme.onSurfaceVariant} />
               </Pressable>
             </View>
           </View>
+          <Text style={styles.headerTitle} accessibilityRole="header">
+            {s.home.title}
+          </Text>
 
           {dataStatus.state === 'downloading' && (
             <View style={styles.importCard}>
@@ -1024,7 +1045,11 @@ export default function HomeScreen() {
           )}
 
           {dataStatus.state === 'error' && (
-            <Pressable style={styles.importCardError} onPress={() => void importGtfsFromNetwork()}>
+            <Pressable
+              style={styles.importCardError}
+              accessibilityRole="button"
+              onPress={() => void importGtfsFromNetwork()}
+            >
               <Text style={styles.importTitleError}>{s.home.importErrorTitle}</Text>
               <Text style={styles.importSubError}>
                 {dataStatus.message}. {dataStatus.hint ?? s.home.importErrorRetry}
@@ -1044,11 +1069,7 @@ export default function HomeScreen() {
             />
           )}
 
-          {/* Listy tuż pod nagłówkiem, bez wypychania na dół. */}
-          <View style={{ height: 12 }} />
-
-          {/* Wyszukiwarka celu jest tylko w dolnym menu pod kciukiem —
-              drugi raz na górze ekranu to ta sama akcja w dwóch miejscach. */}
+          <View style={{ height: 24 }} />
           {smartOrdered.length === 0 && smartReady ? (
             <View style={styles.emptyCard}>
               <View style={styles.emptyIcon}>
@@ -1072,7 +1093,7 @@ export default function HomeScreen() {
             <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
           )}
 
-          <View style={{ height: 20 }} />
+          <View style={{ height: 28 }} />
           <View style={styles.sectionHeader}>
             <Text style={styles.section}>{s.home.savedTitle}</Text>
           </View>
@@ -1187,14 +1208,16 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1 },
-  body: { paddingHorizontal: 16, paddingTop: 6, flexGrow: 1 },
-  topBar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44 },
+  body: { paddingHorizontal: 20, paddingTop: 4, flexGrow: 1 },
+  topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, marginBottom: 16 },
+  cityContext: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  cityName: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1212,19 +1235,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
-  // Nagłówek: pytanie o cel nad wolnym powietrzem.
-  headerTitle: { ...type.headlineSmall, fontWeight: '700', color: scheme.onSurface, flex: 1 },
+  headerTitle: { fontSize: 32, fontWeight: '500', color: scheme.onSurface, letterSpacing: -0.8 },
   sectionHeader: {
     marginBottom: 10,
   },
-  section: { ...type.titleMedium, color: scheme.onSurface },
+  section: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
   emptyCard: {
     gap: 8,
     marginTop: 12,
-    padding: 16,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    ...elev.level1,
+    padding: 22,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
   },
   emptyIcon: {
     width: 44,
@@ -1238,8 +1259,9 @@ const styles = StyleSheet.create({
   emptyBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   emptyCta: {
     marginTop: 6,
-    paddingVertical: 11,
-    borderRadius: shape.full,
+    paddingVertical: 16,
+    minHeight: 52,
+    borderRadius: shape.medium,
     backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1253,7 +1275,6 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.medium,
-    ...elev.level1,
   },
   importTitle: {
     ...type.bodyMedium,
@@ -1268,17 +1289,17 @@ const styles = StyleSheet.create({
   importCardError: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: scheme.errorContainer,
+    backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.medium,
   },
   importTitleError: {
     ...type.bodyMedium,
-    color: scheme.onErrorContainer,
+    color: scheme.error,
     fontWeight: '700',
   },
   importSubError: {
     ...type.labelSmall,
-    color: scheme.onErrorContainer,
+    color: scheme.onSurfaceVariant,
     marginTop: 2,
   },
 });

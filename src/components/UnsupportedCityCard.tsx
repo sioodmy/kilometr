@@ -1,11 +1,6 @@
-// Karta „Nieobsługiwane miasto": pokazywana, gdy GPS jest poza strefą
-// aktywnego miasta. Ma wyglądać jak pełnoprawny empty-state,
-// nie jak błąd — stąd spokojna kompozycja M3: ikona w kole, pigułka
-// z wykrytą miejscowością, tytuł, opis i jedno wyraźne CTA.
-
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MapPinOff, MapPin, Navigation } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { MapPinOff, Navigation } from 'lucide-react-native';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { CITIES } from '../cities';
 
@@ -39,27 +34,12 @@ export function UnsupportedCityCard({
 
   return (
     <View style={styles.card} accessibilityRole="alert" accessibilityLabel={`${title}. ${body}`}>
-      {/* Górny rząd: ikona + pigułka z miejscowością */}
       <View style={styles.topRow}>
-        <View style={styles.iconWrap}>
-          <MapPinOff size={22} color={scheme.onWarningContainer} />
-        </View>
-        {city ? (
-          <View style={styles.cityPill}>
-            <MapPin size={13} color={scheme.onTertiaryContainer} />
-            <Text style={styles.cityPillText} numberOfLines={1}>
-              {city}
-            </Text>
-          </View>
-        ) : null}
+        <MapPinOff size={20} color={scheme.warning} />
+        <Text style={styles.title}>{title}</Text>
       </View>
 
-      <Text style={styles.title}>{title}</Text>
       <Text style={styles.body}>{body}</Text>
-
-      <View style={styles.hintRow}>
-        <Text style={styles.hint}>{s.home.unsupportedHint}</Text>
-      </View>
 
       <Pressable
         onPress={onPickStart}
@@ -78,81 +58,41 @@ const styles = StyleSheet.create({
   card: {
     marginTop: 12,
     padding: 18,
-    gap: 8,
-    backgroundColor: scheme.surfaceContainerHigh,
+    gap: 14,
+    backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.extraLarge,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    ...elev.level1,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.full,
-    backgroundColor: scheme.warningContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-  },
-  cityPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    maxWidth: '55%',
-    backgroundColor: scheme.tertiaryContainer,
-    borderRadius: shape.full,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  cityPillText: {
-    ...type.labelMedium,
-    fontWeight: '700',
-    color: scheme.onTertiaryContainer,
-    flexShrink: 1,
+    gap: 10,
   },
   title: {
-    ...type.titleLarge,
-    fontWeight: '700',
+    ...type.titleMedium,
+    fontWeight: '500',
     color: scheme.onSurface,
-    letterSpacing: -0.2,
+    flex: 1,
   },
   body: {
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
     lineHeight: 20,
   },
-  hintRow: {
-    marginTop: 4,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.medium,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  hint: {
-    ...type.labelMedium,
-    color: scheme.onSurface,
-    fontWeight: '500',
-  },
   cta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 8,
     paddingVertical: 13,
-    borderRadius: shape.full,
+    minHeight: 52,
+    borderRadius: shape.medium,
     backgroundColor: scheme.primary,
   },
   ctaText: {
     ...type.labelLarge,
     color: scheme.onPrimary,
-    fontWeight: '700',
+    fontWeight: '500',
+    flexShrink: 1,
+    textAlign: 'center',
   },
 });
