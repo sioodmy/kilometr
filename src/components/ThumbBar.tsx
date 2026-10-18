@@ -1,12 +1,3 @@
-// Wspólny „pasek kciuka” — jedna wizualna baza dla całego dolnego menu.
-// Wszystkie ekrany mają sterowanie w dolnej, naturalnej strefie kciuka,
-// więc wygląd, wysokość dotyku i odległość od krawędzi są tu zdefiniowane raz.
-//
-// Dwie części:
-//  - `ThumbBar`      — pływająca pigułka przyklejona do dołu ekranu,
-//  - `ThumbBarItem`  — pojedynczy przycisk ikona + etykieta (>= 44 px,
-//                      czyli próg dotyku dla palca w ruchu).
-
 import React, { useEffect, useState, type ReactNode } from 'react';
 import {
   LayoutChangeEvent,
@@ -24,35 +15,35 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 
 /** Odstęp pigułki od krawędzi ekranu (nad `bottom` z insetów). */
 const BAR_EDGE_GAP = 10;
-/** Wysokość z `styles.bar` — stan początkowy, zanim `onLayout` ją zmierzy. */
+/** Wysokość początkowa, zanim `onLayout` zmierzy pasek. */
 const BAR_MIN_HEIGHT = 58;
 /** Dodatkowy oddech między paskiem a ostatnim elementem treści. */
 const CONTENT_GAP = 12;
 
-let measuredBarHeight = BAR_MIN_HEIGHT;
-const insetListeners = new Set<() => void>();
+const measuredBarHeights = new Map<string, number>();
+const insetListeners = new Map<string, Set<() => void>>();
 
-/**
- * Ile pikseli od dołu musi zostawić przewijana treść, żeby pływający pasek
- * kciuka niczego nie zasłonił.
- *
- * Każdy ekran miał tu własną zgadywaną liczbę (90, 80, 96 px) i wszystkie
- * były za małe — na telefonie z paskiem nawigacji pasek zajmuje ~116 px, więc
- * ostatni przycisk („Mapa trasy”) lądował pod nim i był nieosiągalny. Teraz
- * wysokość jest mierzona, a nie zgadnięta.
- */
-export function useThumbBarInset(): number {
+/** Zapas treści pod paskiem; różne układy paska muszą używać osobnych kluczy. */
+export function useThumbBarInset(measurementKey = 'default'): number {
   const insets = useSafeAreaInsets();
-  const [barHeight, setBarHeight] = useState(measuredBarHeight);
+  const [barHeight, setBarHeight] = useState(
+    () => measuredBarHeights.get(measurementKey) ?? BAR_MIN_HEIGHT,
+  );
 
   useEffect(() => {
-    const update = () => setBarHeight(measuredBarHeight);
-    insetListeners.add(update);
+    const update = () => setBarHeight(measuredBarHeights.get(measurementKey) ?? BAR_MIN_HEIGHT);
+    let listeners = insetListeners.get(measurementKey);
+    if (!listeners) {
+      listeners = new Set();
+      insetListeners.set(measurementKey, listeners);
+    }
+    listeners.add(update);
     update();
     return () => {
-      insetListeners.delete(update);
+      listeners.delete(update);
+      if (listeners.size === 0) insetListeners.delete(measurementKey);
     };
-  }, []);
+  }, [measurementKey]);
 
   return Math.max(insets.bottom, BAR_EDGE_GAP) + BAR_EDGE_GAP + barHeight + CONTENT_GAP;
 }
@@ -61,29 +52,35 @@ interface ThumbBarProps {
   children: ReactNode;
   /** Odstęp od dołu ekranu nad plikiem `bottom` (domyślnie 10 px). */
   bottom?: number;
-  /** Dopasowanie szerokości — np. `left`/`right` dla menu przypiętego do krawędzi. */
+  /** Dopasowanie szerokości przez `left`/`right`. */
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
   /** Wyłącza pływanie (np. gdy pasek siedzi już w kontenerze panelu). */
   inline?: boolean;
+  measurementKey?: string;
 }
 
-export function ThumbBar({ children, bottom = 10, style, contentStyle, inline }: ThumbBarProps) {
+export function ThumbBar({
+  children,
+  bottom = 10,
+  style,
+  contentStyle,
+  inline,
+  measurementKey = 'default',
+}: ThumbBarProps) {
   const insets = useSafeAreaInsets();
   if (inline) {
     return <View style={[styles.bar, contentStyle]}>{children}</View>;
   }
-  // Wysokość rzeczywista (liczba przycisków, zawinięte etykiety) — nie
-  // minHeight — bo od niej zależy zapas treści z useThumbBarInset().
+  // Zawijanie etykiet zmienia wysokość paska i potrzebny zapas treści.
   const handleBarLayout = (e: LayoutChangeEvent) => {
     const h = e.nativeEvent.layout.height;
-    if (h > 0 && Math.abs(h - measuredBarHeight) > 0.5) {
-      measuredBarHeight = h;
-      for (const l of insetListeners) l();
+    if (h > 0 && Math.abs(h - (measuredBarHeights.get(measurementKey) ?? BAR_MIN_HEIGHT)) > 0.5) {
+      measuredBarHeights.set(measurementKey, h);
+      for (const listener of insetListeners.get(measurementKey) ?? []) listener();
     }
   };
-  // Animated.View, bo rodzic potrafi chować/pokazywać dock stylem z useAnimatedStyle
-  // (zwykle przy przewijaniu listy) — na zwykłym View to nie zadziała.
+  // Rodzic może ukrywać pasek przez useAnimatedStyle podczas przewijania.
   return (
     <Animated.View
       pointerEvents="box-none"

@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   Baby,
   Beer,
@@ -53,7 +53,7 @@ import {
   Waves,
   Wine,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon } from '../types/models';
 import { useStrings } from '../i18n';
 
@@ -112,8 +112,6 @@ export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, any> = {
   laptop: Laptop,
 };
 
-// M3 filled cards: tonal icon container, no borders, shape large.
-// Kwadraty (bok = szerokość), nie pionowe prostokąty.
 export function SavedPlacesRow({
   places,
   onSelect,
@@ -127,37 +125,56 @@ export function SavedPlacesRow({
   onEdit?: (p: SavedPlace) => void;
 }) {
   const s = useStrings();
+  const { width, fontScale } = useWindowDimensions();
+  const cardWidth = Math.min(width - 40, 156 * Math.max(1, fontScale));
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} overScrollMode="never" contentContainerStyle={styles.row}>
+    <ScrollView
+      style={styles.scroller}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      overScrollMode="never"
+      contentContainerStyle={styles.row}
+    >
       {places.map((p) => {
         const Icon = SAVED_PLACE_ICONS[p.icon] ?? Star;
         return (
-          <Pressable 
-            key={p.id} 
-            onPress={() => onSelect(p)} 
+          <Pressable
+            key={p.id}
+            onPress={() => onSelect(p)}
+            accessibilityRole="button"
+            accessibilityLabel={s.home.searchToA11y(p.name)}
+            accessibilityHint={onEdit ? s.home.editPlaceHint : undefined}
             onLongPress={() => onEdit?.(p)}
             delayLongPress={300}
-            style={({ pressed }) => [styles.card, pressed && { backgroundColor: scheme.surfaceContainerHighest, transform: [{ scale: 0.98 }] }]}
+            style={({ pressed }) => [
+              styles.card,
+              { width: cardWidth },
+              pressed && { backgroundColor: scheme.surfaceContainerHighest },
+            ]}
           >
             <View style={styles.icon}>
               <Icon size={20} color={scheme.onSecondaryContainer} />
             </View>
             <View style={styles.textContainer}>
-              <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
-              <Text style={styles.addr} numberOfLines={1}>{p.address.split(',')[0]}</Text>
+              <Text style={styles.name} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                {p.name}
+              </Text>
+              <Text style={styles.addr} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                {p.address.split(',')[0]}
+              </Text>
             </View>
           </Pressable>
         );
       })}
-      {/* Edycja jak zwykła karta (to samo pudełko i rytm), tylko z ołówkiem —
-          dodawanie żyje w menu edycji. */}
       <Pressable
         onPress={onManage}
         accessibilityRole="button"
         accessibilityLabel={s.home.editSavedA11y}
         style={({ pressed }) => [
           styles.card,
-          pressed && { backgroundColor: scheme.surfaceContainerHighest, transform: [{ scale: 0.98 }] },
+          styles.manageCard,
+          { width: cardWidth },
+          pressed && { backgroundColor: scheme.surfaceContainerHighest },
         ]}
       >
         <View style={[styles.icon, styles.addIcon]}>
@@ -173,24 +190,24 @@ export function SavedPlacesRow({
 }
 
 const styles = StyleSheet.create({
-  row: { gap: 10, paddingVertical: 4 },
+  scroller: { flexGrow: 0, flexShrink: 0 },
+  row: { gap: 12, paddingVertical: 4, alignItems: 'stretch' },
   card: {
-    width: 116,
-    aspectRatio: 1,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 12,
+    minHeight: 156,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 18,
+    gap: 20,
     justifyContent: 'space-between',
-    ...elev.level1,
   },
+  manageCard: { backgroundColor: scheme.surfaceContainer },
   icon: {
     width: 40,
     height: 40,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
   addIcon: {
     backgroundColor: scheme.primaryContainer,
