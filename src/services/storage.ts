@@ -16,7 +16,18 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 const memCache = new Map<string, string>();
+const pending = new Map<string, Promise<void>>();
 let dirReady = false;
+
+function serialize<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  const result = (pending.get(key) ?? Promise.resolve()).then(operation);
+  const settled = result.then(() => undefined, () => undefined);
+  pending.set(key, settled);
+  void settled.then(() => {
+    if (pending.get(key) === settled) pending.delete(key);
+  });
+  return result;
+}
 
 function getKvDir(): string | null {
   const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
@@ -52,18 +63,8 @@ function keyToFile(dir: string, key: string): string {
 }
 
 export async function kvGet(key: string): Promise<string | null> {
-  if (memCache.has(key)) {
-    return memCache.get(key) ?? null;
-  }
   try {
-    const dir = await ensureDir();
-    if (!dir) return null;
-    const path = keyToFile(dir, key);
-    const info = await FileSystem.getInfoAsync(path);
-    if (!info.exists) return null;
-    const val = await FileSystem.readAsStringAsync(path);
-    memCache.set(key, val);
-    return val;
+    return await kvGetStrict(key);
   } catch (err) {
     console.warn('[Storage] getItem failed:', err);
     return null;
@@ -76,6 +77,10 @@ export async function kvGet(key: string): Promise<string | null> {
  * Brak klucza nadal zwraca null.
  */
 export async function kvGetStrict(key: string): Promise<string | null> {
+  return serialize(key, () => readValue(key));
+}
+
+async function readValue(key: string): Promise<string | null> {
   if (memCache.has(key)) {
     return memCache.get(key) ?? null;
   }
@@ -90,6 +95,10 @@ export async function kvGetStrict(key: string): Promise<string | null> {
 }
 
 export async function kvSet(key: string, value: string): Promise<void> {
+  return serialize(key, () => writeValue(key, value));
+}
+
+async function writeValue(key: string, value: string): Promise<void> {
   try {
     const dir = await ensureDir();
     if (!dir) throw new Error('kv storage directory unavailable');
@@ -106,7 +115,10 @@ export async function kvSet(key: string, value: string): Promise<void> {
 }
 
 export async function kvRemove(key: string): Promise<void> {
-  memCache.delete(key);
+  return serialize(key, () => removeValue(key));
+}
+
+async function removeValue(key: string): Promise<void> {
   try {
     const dir = await ensureDir();
     if (!dir) return;
@@ -115,6 +127,7 @@ export async function kvRemove(key: string): Promise<void> {
     if (info.exists) {
       await FileSystem.deleteAsync(path, { idempotent: true });
     }
+    memCache.delete(key);
   } catch (err) {
     console.warn('[Storage] removeItem failed:', err);
   }

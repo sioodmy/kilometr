@@ -63,6 +63,7 @@
     "check:connections": "tsx scripts/check-connections.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "check:backup": "tsx scripts/check-backup.ts",
+    "check:storage": "tsx --require ./scripts/stub-expo.cjs scripts/check-storage.ts",
     "check:places": "tsx scripts/check-places.ts",
     "check:search": "tsx --require ./scripts/stub-expo.cjs scripts/check-search.ts",
     "check:warsaw": "tsx --require ./scripts/stub-expo.cjs scripts/check-warsaw.ts",
