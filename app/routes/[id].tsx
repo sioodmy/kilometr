@@ -3,14 +3,12 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  ArrowRight,
   ChevronLeft,
   CloudOff,
-  History,
   Pin,
   RouteOff,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
@@ -20,10 +18,8 @@ import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
-import { LineBadge } from '../../src/components/LineBadge';
-import { LiveDot } from '../../src/components/LiveDot';
+import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
-import { linesFromConnections } from '../../src/services/recentRouteLines';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -37,6 +33,7 @@ import {
 export default function RouteDetailsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const goBack = () => router.canGoBack() ? router.back() : router.replace('/routes');
   const { id } = useLocalSearchParams<{ id: string }>();
   const cachedItem = getTrackedTripSync()?.connection;
   const immediateItem = cachedItem?.id === id ? cachedItem : getPlannedConnection(String(id));
@@ -131,7 +128,7 @@ export default function RouteDetailsScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
+          <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
           <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
@@ -139,7 +136,8 @@ export default function RouteDetailsScreen() {
         <View style={styles.loading}>
           <Text style={styles.loadingText}>{s.routeDetails.loadFail}</Text>
           <Pressable
-            onPress={() => router.back()}
+            onPress={goBack}
+            accessibilityRole="button"
             style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
           >
             <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
@@ -153,7 +151,7 @@ export default function RouteDetailsScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
+          <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
           <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
@@ -165,11 +163,7 @@ export default function RouteDetailsScreen() {
     );
   }
 
-  const late = item.live && item.delayMin > 0;
-  const early = item.live && item.delayMin < 0;
-  const onTime = item.live && item.delayMin === 0;
   const noLegs = item.legs.length === 0;
-  const tripLines = linesFromConnections([item]);
 
   // Treść komunikatu o źródle danych. Kolejność ma znaczenie: połączenie
   // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
@@ -181,12 +175,11 @@ export default function RouteDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* M3 small top app bar */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
+        <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
+        <Text style={styles.headerTitle} accessibilityRole="header">
           {s.routeDetails.title}
         </Text>
         <Pressable
@@ -204,99 +197,21 @@ export default function RouteDetailsScreen() {
           hitSlop={8}
         >
           <Pin
-            size={17}
+            size={21}
             color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
             fill={isTrackedThis ? scheme.onPrimaryContainer : 'transparent'}
           />
-          <Text
-            style={[styles.trackLabel, isTrackedThis && styles.trackLabelActive]}
-            numberOfLines={1}
-          >
-            {isTrackedThis ? s.routes.stopTrackTrip : s.routes.trackTrip}
-          </Text>
         </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
-        {/* Skąd pochodzą dane. Lista połączeń ma taki komunikat od dawna,
-            ekran szczegółów milczał — a pokazywał te same czasy bez opóźnień,
-            jakby pochodziły z MPK na żywo. */}
+        <ConnectionSummary item={item} offline={offline} />
         {dataNote && (
           <View style={styles.offlineBanner}>
-            <CloudOff size={15} color={scheme.onWarningContainer} strokeWidth={2.2} />
+            <CloudOff size={16} color={scheme.onSurfaceVariant} strokeWidth={2} />
             <Text style={styles.offlineBannerText}>{dataNote}</Text>
           </View>
         )}
-        {/* M3 filled summary card + tonal status banner */}
-        <View style={styles.summary}>
-          <View style={styles.timeRow}>
-            <View style={styles.times}>
-              <Text style={styles.timeBig} numberOfLines={1}>
-                {item.departAt}
-              </Text>
-              <View style={styles.timeArrowWrap}>
-                <ArrowRight size={18} color={scheme.primary} strokeWidth={2.5} />
-              </View>
-              <Text style={styles.timeBig} numberOfLines={1}>
-                {item.arriveAt}
-              </Text>
-            </View>
-            <View style={styles.durationPill}>
-              <Text style={styles.durationText} numberOfLines={1}>
-                {s.common.durMin(item.durationMin)}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.routeRow}>
-            {/* Dwie linie: nazwy przystanków bywają długie („DWORZEC GŁÓWNY
-                (Dworcowa)”) i przy jednej linii ucinały się obie naraz —
-                widać było „Twoja lokaliz...” → „DWORZEC GŁÓWNY (Dwo...”. */}
-            <Text style={styles.routeStop} numberOfLines={2}>
-              {item.fromTitle}
-            </Text>
-            <View style={styles.routeArrowWrap}>
-              <ArrowRight size={14} color={scheme.onSurfaceVariant} strokeWidth={2.2} />
-            </View>
-            <Text style={styles.routeStop} numberOfLines={2}>
-              {item.toTitle}
-            </Text>
-          </View>
-          {tripLines.length > 0 ? (
-            <View style={styles.summaryLines}>
-              {tripLines.map((line) => (
-                <LineBadge key={line} line={line} compact />
-              ))}
-            </View>
-          ) : null}
-          {/* kompaktowy badge statusu */}
-          {late ? (
-            <View style={[styles.statusBadge, { backgroundColor: scheme.errorContainer }]}>
-              <LiveDot color={scheme.error} size={7} />
-              <Text style={[styles.statusText, { color: scheme.onErrorContainer }]}>
-                +{s.common.durMin(item.delayMin)}
-              </Text>
-            </View>
-          ) : early ? (
-            <View style={[styles.statusBadge, { backgroundColor: scheme.warningContainer }]}>
-              <LiveDot color={scheme.warning} size={7} />
-              <Text style={[styles.statusText, { color: scheme.onWarningContainer }]}>
-                {s.common.durMin(item.delayMin)}
-              </Text>
-            </View>
-          ) : onTime ? (
-            <View style={[styles.statusBadge, { backgroundColor: scheme.successContainer }]}>
-              <LiveDot color={scheme.success} size={7} />
-              <Text style={[styles.statusText, { color: scheme.onSuccessContainer }]}>{s.routeDetails.onTime}</Text>
-            </View>
-          ) : (
-            <View style={[styles.statusBadge, { backgroundColor: scheme.surfaceContainerHighest }]}>
-              <History size={12} color={scheme.onSurfaceVariant} />
-              <Text style={[styles.statusText, { color: scheme.onSurfaceVariant }]}>
-                {offline ? s.routeDetails.scheduleCache : s.routeDetails.schedule}
-              </Text>
-            </View>
-          )}
-        </View>
 
         {noLegs ? (
           <View style={styles.emptyCard}>
@@ -346,89 +261,29 @@ const styles = StyleSheet.create({
   },
   retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  iconBtn: { width: 40, height: 40, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
-  // Toggle śledzenia kursu: ikonka z listy plus label. Aktywny stan
-  // wyróżnia tło, ikonka i label przechodzą na kolor kontenera.
+  iconBtn: { width: 48, height: 48, borderRadius: shape.medium, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
   trackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    minHeight: 44,
-    paddingHorizontal: 14,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    justifyContent: 'center',
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainer,
   },
   trackBtnActive: { backgroundColor: scheme.primaryContainer },
-  trackLabel: { ...type.labelLarge, fontWeight: '700', color: scheme.onSurfaceVariant },
-  trackLabelActive: { color: scheme.onPrimaryContainer },
-  body: { paddingHorizontal: 14, gap: 12, paddingBottom: 24 },
-  summary: { backgroundColor: scheme.surfaceContainer, borderRadius: shape.large, padding: 16, gap: 8, ...elev.level1 },
-  timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  times: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
-  timeBig: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: scheme.onSurface,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 0.5,
-    includeFontPadding: false,
-  },
-  timeArrowWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  durationPill: {
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    flexShrink: 0,
-  },
-  durationText: { ...type.titleSmall, fontWeight: '700', color: scheme.onSecondaryContainer },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  routeStop: {
-    ...type.bodyLarge,
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
-  },
-  routeArrowWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  summaryLines: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 2,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    borderRadius: shape.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginTop: 4,
-  },
-  statusText: { ...type.labelSmall, fontWeight: '700' },
+  body: { paddingHorizontal: 16, gap: 18, paddingBottom: 40 },
   offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: scheme.warningContainer,
-    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.medium,
     paddingHorizontal: 14,
     paddingVertical: 11,
   },
-  offlineBannerText: { ...type.labelMedium, color: scheme.onWarningContainer, flex: 1 },
+  offlineBannerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flex: 1 },
   emptyCard: {
     alignItems: 'center',
     gap: 8,

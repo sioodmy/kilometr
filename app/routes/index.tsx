@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, InteractionManager, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, InteractionManager, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Anchor,
-  ArrowRight,
   ChevronLeft,
   Clock3,
+  CloudOff,
   Rocket,
   X,
 } from 'lucide-react-native';
@@ -55,6 +55,7 @@ import { deduplicateConnections, mergeConnections } from '../../src/services/rou
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
+import { RouteEndpoints } from '../../src/components/RouteEndpoints';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import {
   RoutesThumbBar,
@@ -882,20 +883,10 @@ export default function RoutesScreen() {
     setSortMode((prev) => (prev === 'fastest' ? 'earliest' : 'fastest'));
   };
 
-  const arrowSpin = useSharedValue(0);
-  const animatedArrowStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: `${arrowSpin.value * 180}deg` }],
-    };
-  });
-
   const handleSwap = () => {
     if (fromLat === toLat && fromLon === toLon && fromTitle === toTitle) return;
     setItems([]);
     setLoading(true);
-    arrowSpin.value = withTiming(Math.round(arrowSpin.value) + 1, {
-      ...motion.state,
-    });
     // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
     // Start = stary cel (ręczny punkt), więc doprecyzowanie GPS już nie dotyczy.
@@ -944,16 +935,47 @@ export default function RoutesScreen() {
     [openConnection, nowTick],
   );
 
+  const routeHeader = (
+    <View style={styles.routeHeader}>
+      <RouteEndpoints
+        from={fromTitle}
+        to={toTitle}
+        onFrom={() => setSheetFor('from')}
+        onTo={() => setSheetFor('to')}
+        onSwap={handleSwap}
+        fromLabel={activeAnchor
+          ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
+          : s.routes.changeFromA11y(fromTitle)}
+        accessory={activeAnchor && (
+          <View style={styles.anchorSub}>
+            <Anchor size={12} color={scheme.primary} />
+            <Text style={styles.anchorSubText} numberOfLines={1}>
+              {activeAnchor.stopName}
+              <Text style={styles.anchorSubPlace}> · {activeAnchor.placeName}</Text>
+            </Text>
+            <Pressable
+              onPress={handleDismissAnchor}
+              style={({ pressed }) => [styles.anchorX, pressed && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              accessibilityLabel={s.routes.dismissAnchorA11y}
+            >
+              <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
+            </Pressable>
+          </View>
+        )}
+      />
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* 1. Górny pasek: Wstecz, tytuł i toggle sortowania.
-          Czas odjazdu, filtry i zamiana trasy żyją w dolnym menu pod kciukiem. */}
       <View style={styles.topBar}>
         {/* Deep link z widgetu światkuje główny ekran; wstecz wtedy wraca do niego zamiast nic nie robić. */}
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
           style={styles.back}
-          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={s.map.backA11y}
         >
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
@@ -998,83 +1020,10 @@ export default function RoutesScreen() {
 
       </View>
 
-      {/* 2. Nagłówek trasy w stylu One UI: bez tła, jedna linia
-          „Start → Cel". Strzałka to swap, boki otwierają wyszukiwarkę. */}
-      <View style={styles.routeHeader}>
-        <Pressable
-          onPress={() => setSheetFor('from')}
-          accessibilityRole="button"
-          accessibilityLabel={
-            activeAnchor
-              ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
-              : s.routes.changeFromA11y(fromTitle)
-          }
-          style={({ pressed }) => [styles.routeSide, pressed && { opacity: 0.6 }]}
-          hitSlop={6}
-        >
-          <View style={styles.routeSlide}>
-            <Text style={styles.routeText} numberOfLines={1}>
-              {fromTitle}
-            </Text>
-          </View>
-          {activeAnchor && (
-            <View style={styles.anchorSub}>
-              <Anchor size={12} color={scheme.primary} />
-              <Text style={styles.anchorSubText} numberOfLines={1}>
-                {activeAnchor.stopName}
-                <Text style={styles.anchorSubPlace}> · {activeAnchor.placeName}</Text>
-              </Text>
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleDismissAnchor();
-                }}
-                hitSlop={10}
-                style={({ pressed }) => [
-                  styles.anchorX,
-                  pressed && { opacity: 0.6, transform: [{ scale: 0.88 }] },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={s.routes.dismissAnchorA11y}
-              >
-                <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
-              </Pressable>
-            </View>
-          )}
-        </Pressable>
-
-        <Pressable
-          onPress={handleSwap}
-          accessibilityRole="button"
-          accessibilityLabel={s.routes.swapA11y}
-          style={({ pressed }) => [
-            styles.routeArrowBtn,
-            pressed && { opacity: 0.6, transform: [{ scale: 0.9 }] },
-          ]}
-          hitSlop={10}
-        >
-          <Animated.View style={animatedArrowStyle}>
-            <ArrowRight size={21} color={scheme.primary} strokeWidth={2.5} />
-          </Animated.View>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setSheetFor('to')}
-          accessibilityRole="button"
-          accessibilityLabel={s.routes.changeToA11y(toTitle)}
-          style={({ pressed }) => [styles.routeSideGrow, pressed && { opacity: 0.6 }]}
-          hitSlop={6}
-        >
-          <View style={styles.routeSlide}>
-            <Text style={styles.routeTextStrong} numberOfLines={1}>
-              {toTitle}
-            </Text>
-          </View>
-        </Pressable>
-      </View>
-
       {/* 3. Lista połączeń */}
       {loading && items.length === 0 ? (
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: thumbInset }}>
+        {routeHeader}
         <View style={styles.skeletonList}>
           <Text style={styles.loadingText}>{s.routes.searching}</Text>
           <View style={styles.skelCard}>
@@ -1103,7 +1052,10 @@ export default function RoutesScreen() {
             <View style={[styles.skel, { width: '50%', height: 12, marginTop: 10 }]} />
           </View>
         </View>
+        </ScrollView>
       ) : loadError ? (
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingBottom: thumbInset }}>
+        {routeHeader}
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>
             {timetableReady ? s.routes.calcFail : s.routes.noTimetable}
@@ -1147,6 +1099,7 @@ export default function RoutesScreen() {
             </Pressable>
           )}
         </View>
+        </ScrollView>
       ) : (
         <FlatList
           ref={listRef}
@@ -1185,6 +1138,8 @@ export default function RoutesScreen() {
           onContentSizeChange={handleContentSizeChange}
           renderItem={renderConnection}
           ListHeaderComponent={
+            <>
+            {routeHeader}
             <View style={styles.countRow}>
               {loading && <ActivityIndicator size="small" color={scheme.primary} accessibilityLabel={s.routes.searching} />}
               <Text style={styles.count} numberOfLines={1}>
@@ -1201,17 +1156,18 @@ export default function RoutesScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={s.routes.offlineTapA11y}
                 >
-                  <View style={styles.offlineDot} />
+                  <CloudOff size={14} color={scheme.onSurfaceVariant} />
                   <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
                 </Pressable>
               )}
               {liveStale && !offline && (
                 <View style={styles.offlineChip}>
-                  <View style={styles.offlineDot} />
+                  <CloudOff size={14} color={scheme.onSurfaceVariant} />
                   <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
                 </View>
               )}
             </View>
+            </>
           }
           // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
           // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
@@ -1337,28 +1293,23 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
   topBar: {
     flexDirection: 'row',
-    // Góry w jednej linii: Wstecz (40), tor toggla (38) i pinezka (40).
-    // Sam tytuł (~22 px) doklejamy paddingiem, żeby środki się zgrywały.
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   back: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
     alignItems: 'center',
     justifyContent: 'center',
   },
   screenTitle: {
     flex: 1,
     ...type.titleMedium,
-    fontWeight: '700',
+    fontWeight: '500',
     color: scheme.onSurface,
-    // Optyczne wycentrowanie względem toru toggla / pinezki (38–40 px).
-    paddingTop: 8,
   },
   // Toggle sortowania w stylu przełącznika iOS: tor z dwiema ikonami
   // (zegar = odjazd, rakieta = przyjazd), kciuk suwa się timingiem.
@@ -1368,7 +1319,7 @@ const styles = StyleSheet.create({
   },
   sortToggle: {
     width: 78,
-    height: 38,
+    height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     borderWidth: 1,
@@ -1421,70 +1372,23 @@ const styles = StyleSheet.create({
   },
   // Cichy X bez kółka — dopiska ma wyglądać jak tekst, nie jak chip.
   anchorX: {
-    width: 20,
-    height: 20,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  // Kontekst trasy jako miękki blok powierzchni: oddziela „skąd→dokąd”
-  // od listy wyników, bez drugiej karty-pigułki.
   routeHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    minHeight: 68,
-    marginHorizontal: 14,
     marginTop: 4,
-    marginBottom: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-  },
-  routeSide: {
-    flexShrink: 1,
-    maxWidth: '42%',
-    justifyContent: 'center',
-    paddingTop: 9,
-  },
-  routeSideGrow: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingTop: 9,
-  },
-  // Wewnętrzny wrapper rolki tekstu — musi przenosić zwężanie, żeby długie
-  // nazwy dalej ucinały się z elipsą w jednej linii.
-  routeSlide: {
-    flexShrink: 1,
-  },
-  routeText: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: '600',
-    color: scheme.onSurfaceVariant,
-  },
-  routeTextStrong: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: '700',
-    color: scheme.onSurface,
-  },
-  routeArrowBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: shape.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 8,
-    marginTop: 4,
-    flexShrink: 0,
+    marginBottom: 16,
   },
 
   countRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 12,
     paddingHorizontal: 4,
   },
   count: {
@@ -1493,8 +1397,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   list: {
-    paddingHorizontal: 14,
-    gap: 8,
+    paddingHorizontal: 16,
+    gap: 12,
   },
   footer: { paddingVertical: 18, alignItems: 'center', gap: 10 },
   footerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
@@ -1562,21 +1466,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    flexShrink: 0,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  offlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: scheme.warning,
+    minHeight: 44,
+    flexShrink: 1,
   },
   offlineText: {
-    ...type.labelSmall,
-    fontWeight: '700',
+    ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
 });
