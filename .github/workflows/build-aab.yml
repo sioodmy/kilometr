@@ -39,6 +39,12 @@ env:
   ANDROID_BUILD_TOOLS: '36.0.0'
   ANDROID_NDK: '27.1.12297006'
   ANDROID_CMAKE: '3.30.5'
+  # Podpis release: hasła i alias muszą widzieć prebuild (wtyczka z bramką
+  # sekretów) i gradle (kto czyta je dopiero w chwili builda). KEY_PASSWORD
+  # może zostać pusty, wtedy klucz użyje hasła keystore.
+  ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+  ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
 
 jobs:
   build-aab:
@@ -171,12 +177,10 @@ jobs:
         env:
           # Wersja i versionCode z kroków wyżej; app.config.js czyta APP_VERSION.
           APP_VERSION: ${{ steps.version.outputs.version }}
-          # Sekrety klucza wypełniają signingConfigs.release w wygenerowanym
-          # build.gradle (wtyczka withAndroidSigning w app.config.js).
+          # Sekrety haseł i aliasu są na poziomie joba (gradle czyta je z env
+          # w chwili builda). Tu wtyczka withAndroidSigning potrzebuje jeszcze
+          # ścieżki, a runner context działa wyłącznie w env kroku.
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/upload-key.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
-          ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Tune Gradle for CI
