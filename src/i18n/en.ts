@@ -682,7 +682,7 @@ export const en: Strings = {
     fast: 'Fast',
     noAds: 'No ads',
     noPay: 'No micropayments',
-    permTitle: 'Permissions',
+    permTitle: 'App access',
     permSub: 'Location and notifications. Both optional.',
     locTitle: 'Location',
     locBody:
@@ -695,7 +695,7 @@ export const en: Strings = {
     notifExpoGo:
       'Expo Go preview: notifications (pinned connection) work in the development build.',
     notifAllow: 'Enable notifications',
-    cityTitle: 'Which city\ndo you ride in?',
+    cityTitle: 'Which city do you ride in?',
     cityBody:
       'Timetable, map and news follow your choice. You can change the city later in settings.',
     citySuggested: (name: string) => `Your GPS says: ${name}.`,
@@ -704,7 +704,7 @@ export const en: Strings = {
     cityNoMatch: 'GPS did not land in a supported city. Pick one from the list.',
     cityPickA11y: (name: string) => `Choose city: ${name}`,
     citySuggestedA11y: (name: string) => `Suggested city from GPS: ${name}`,
-    dlTitle: (gen: string) => `Download the\n${gen} timetable`,
+    dlTitle: (gen: string) => `Download the ${gen} timetable`,
     dlBody: (feeds: string) =>
       `Ready database: ${feeds} from the Kilometr server. Download once, then offline.`,
     dlEmpty: 'No offline data.',
@@ -718,7 +718,7 @@ export const en: Strings = {
     dlFailBody: (msg: string) => `${msg}. Check your connection and try again.`,
     saveFail: 'Could not save the place',
     saveFailBody: 'Please try again.',
-    placesTitle: 'Where do you go\nmost often?',
+    placesTitle: 'Where do you go most often?',
     placesBody: 'Saved places speed up searching. You can skip this step.',
     added: 'Added',
     removeSlotA11y: (name: string) => `Remove ${name}`,
@@ -1037,7 +1037,7 @@ export const en: Strings = {
     addressLabel: 'Destination address or stop',
     changeBtn: 'Change',
     queryHint: 'Type a street, stop or venue…',
-    anchorOptional: 'Anchor stop (optional)',
+    anchorOptional: 'Preferred stop (optional)',
     anchorHint: 'Departures from this stop when you’re nearby',
     assignAnchor: '+ Assign a departure stop',
     saveChanges: 'Save changes',

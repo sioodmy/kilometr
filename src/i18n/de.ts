@@ -688,7 +688,7 @@ export const de: Strings = {
     fast: 'Schnell',
     noAds: 'Keine Werbung',
     noPay: 'Keine Mikrozahlungen',
-    permTitle: 'Berechtigungen',
+    permTitle: 'App-Zugriff',
     permSub: 'Standort und Mitteilungen. Beides optional.',
     locTitle: 'Standort',
     locBody:
@@ -701,7 +701,7 @@ export const de: Strings = {
     notifExpoGo:
       'Expo-Go-Vorschau: Mitteilungen (angeheftete Verbindung) funktionieren im Entwicklungs-Build.',
     notifAllow: 'Mitteilungen aktivieren',
-    cityTitle: 'In welcher Stadt\nbist du unterwegs?',
+    cityTitle: 'In welcher Stadt bist du unterwegs?',
     cityBody:
       'Fahrplan, Karte und Meldungen folgen deiner Wahl. Die Stadt lässt sich später in den Einstellungen ändern.',
     citySuggested: (name: string) => `Laut GPS bist du in: ${name}.`,
@@ -710,7 +710,7 @@ export const de: Strings = {
     cityNoMatch: 'GPS ist in keiner unterstützten Stadt. Wähle eine aus der Liste.',
     cityPickA11y: (name: string) => `Stadt wählen: ${name}`,
     citySuggestedA11y: (name: string) => `Vorgeschlagene Stadt laut GPS: ${name}`,
-    dlTitle: (gen: string) => `Fahrplan für\n${gen} laden`,
+    dlTitle: (gen: string) => `Fahrplan für ${gen} laden`,
     dlBody: (feeds: string) =>
       `Fertige Datenbank: ${feeds} vom Kilometr-Server. Einmal laden, dann offline.`,
     dlEmpty: 'Keine Offline-Daten.',
@@ -724,7 +724,7 @@ export const de: Strings = {
     dlFailBody: (msg: string) => `${msg}. Verbindung prüfen und erneut versuchen.`,
     saveFail: 'Ort konnte nicht gespeichert werden',
     saveFailBody: 'Versuche es erneut.',
-    placesTitle: 'Wo bist du\nam häufigsten?',
+    placesTitle: 'Wo bist du am häufigsten?',
     placesBody:
       'Gespeicherte Orte beschleunigen die Suche. Dieser Schritt kann übersprungen werden.',
     added: 'Hinzugefügt',
@@ -1047,7 +1047,7 @@ export const de: Strings = {
     addressLabel: 'Zieladresse oder -haltestelle',
     changeBtn: 'Ändern',
     queryHint: 'Straße, Haltestelle oder Ort eingeben…',
-    anchorOptional: 'Anker-Haltestelle (optional)',
+    anchorOptional: 'Bevorzugte Haltestelle (optional)',
     anchorHint: 'Abfahrten ab dieser Haltestelle in der Nähe',
     assignAnchor: '+ Abfahrtshaltestelle zuweisen',
     saveChanges: 'Änderungen speichern',

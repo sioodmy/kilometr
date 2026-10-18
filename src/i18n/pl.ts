@@ -697,7 +697,7 @@ export const pl = {
     fast: 'Szybko',
     noAds: 'Bez reklam',
     noPay: 'Bez mikropłatności',
-    permTitle: 'Uprawnienia',
+    permTitle: 'Dostęp aplikacji',
     permSub: 'Lokalizacja i powiadomienia. Oba opcjonalne.',
     locTitle: 'Lokalizacja',
     locBody:
@@ -710,7 +710,7 @@ export const pl = {
     notifExpoGo:
       'Podgląd w Expo Go: powiadomienia (przypięte połączenie) działają w buildzie deweloperskim.',
     notifAllow: 'Włącz powiadomienia',
-    cityTitle: 'W którym mieście\njeździsz?',
+    cityTitle: 'W którym mieście jeździsz?',
     cityBody:
       'Rozkład, mapa i aktualności dopasują się do wyboru. Miasto zmienisz później w ustawieniach.',
     citySuggested: (name: string) => `Według GPS jesteś w ${name}.`,
@@ -719,7 +719,7 @@ export const pl = {
     cityNoMatch: 'Nie znalazłem Cię w obsługiwanym mieście. Wybierz z listy.',
     cityPickA11y: (name: string) => `Wybierz miasto: ${name}`,
     citySuggestedA11y: (name: string) => `Proponowane miasto według GPS: ${name}`,
-    dlTitle: (gen: string) => `Pobierz rozkład\n${gen}`,
+    dlTitle: (gen: string) => `Pobierz rozkład ${gen}`,
     dlBody: (feeds: string) =>
       `Gotowa baza: ${feeds} z serwera Kilometr. Jedno pobranie, potem offline.`,
     dlEmpty: 'Brak danych offline.',
@@ -733,7 +733,7 @@ export const pl = {
     dlFailBody: (msg: string) => `${msg}. Sprawdź internet i spróbuj ponownie.`,
     saveFail: 'Nie udało się zapisać miejsca',
     saveFailBody: 'Spróbuj ponownie.',
-    placesTitle: 'Gdzie bywasz\nnajczęściej?',
+    placesTitle: 'Gdzie bywasz najczęściej?',
     placesBody: 'Zapisane miejsca przyspieszają wyszukiwanie. Ten krok można pominąć.',
     added: 'Dodane',
     removeSlotA11y: (name: string) => `Usuń ${name}`,
@@ -1055,7 +1055,7 @@ export const pl = {
     addressLabel: 'Adres lub przystanek docelowy',
     changeBtn: 'Zmień',
     queryHint: 'Wpisz ulicę, przystanek lub obiekt…',
-    anchorOptional: 'Przystanek kotwiczenia (opcjonalnie)',
+    anchorOptional: 'Preferowany przystanek (opcjonalnie)',
     anchorHint: 'Odjazdy z tego przystanku, gdy jesteś blisko',
     assignAnchor: '+ Przypisz przystanek odjazdu',
     saveChanges: 'Zapisz zmiany',
