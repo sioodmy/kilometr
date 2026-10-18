@@ -24,9 +24,6 @@ import { useStrings } from '../i18n';
 /** Filtr środka transportu. Jedyne miejsce, w którym żyje ten typ. */
 export type ModePreference = 'all' | 'tram' | 'bus';
 
-/** Sortowanie listy połączeń. */
-export type SortMode = 'fastest' | 'earliest';
-
 // ─── Swipe ikon zamiast popu ────────────────────────────────────────────────
 // Krótki (170 ms) pionowy wjazd z fade: włączenie / następny pojazd = swipe up,
 // wyłączenie / powrót = swipe down. Własny Keyframe zamiast gotowego SlideIn*,
