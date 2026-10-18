@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Activity, BellRing, Check, Clock, Minus, Navigation, Plus } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Activity, BellRing, Clock, Minus, Navigation, Plus } from 'lucide-react-native';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
   areNotificationsSupported,
@@ -14,15 +14,6 @@ import {
   useNotificationPreferences,
 } from '../services/notifications';
 
-// Ustawienia powiadomień. Świadomie wyjaśniamy DLACZEGO coś jest włączone:
-// „pasek postępu" brzmi dla użytkownika jak gadżet, a to jest realna,
-// mierzalna rzecz — odliczanie liczone przez system, które działa, gdy
-// aplikacja jest zamknięta.
-//
-// Przełącznik to naciskany pill, nie M3 Switch — w dolnym menu aplikacji
-// (i przy okazji na ekranie tras) zrezygnowano z przełączników na rzecz
-// przycisków, więc nie wprowadzamy ich z powrotem w Ustawieniach.
-
 const LEAD_MIN = [1, 3, 5, 10, 15];
 
 function leadIndex(min: number): number {
@@ -30,49 +21,33 @@ function leadIndex(min: number): number {
   return i >= 0 ? i : LEAD_MIN.indexOf(5);
 }
 
-/** Pill-toggle współdzielony z ekranem Ustawień (ten sam wzorzec, nie M3 Switch). */
 export function PrefsToggle({
   value,
   onChange,
   disabled,
   label,
   hint,
-  onText,
-  offText,
 }: {
   value: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
   label: string;
   hint?: string;
-  onText: string;
-  offText: string;
 }) {
   return (
-    <Pressable
-      onPress={() => onChange(!value)}
+    <Switch
+      value={value}
+      onValueChange={onChange}
       disabled={disabled}
       accessibilityRole="switch"
       accessibilityLabel={label}
       accessibilityHint={hint}
       accessibilityState={{ checked: value, disabled: !!disabled }}
       hitSlop={8}
-      style={({ pressed }) => [
-        styles.toggle,
-        value && styles.toggleOn,
-        disabled && styles.toggleDisabled,
-        pressed && !disabled && { opacity: 0.7 },
-      ]}
-    >
-      {value ? (
-        <Check size={14} color={scheme.onPrimaryContainer} strokeWidth={2.6} />
-      ) : (
-        <Minus size={14} color={scheme.onSurfaceVariant} strokeWidth={2.6} />
-      )}
-      <Text style={[styles.toggleText, value && styles.toggleTextOn]}>
-        {value ? onText : offText}
-      </Text>
-    </Pressable>
+      trackColor={{ false: scheme.outlineVariant, true: scheme.primary }}
+      thumbColor={value ? scheme.onPrimary : scheme.onSurfaceVariant}
+      style={styles.switch}
+    />
   );
 }
 
@@ -83,8 +58,6 @@ function ToggleRow({
   value,
   onChange,
   disabled,
-  onText,
-  offText,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -92,8 +65,6 @@ function ToggleRow({
   value: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
-  onText: string;
-  offText: string;
 }) {
   return (
     <View style={[styles.row, disabled && styles.rowDisabled]}>
@@ -108,8 +79,6 @@ function ToggleRow({
         disabled={disabled}
         label={title}
         hint={hint}
-        onText={onText}
-        offText={offText}
       />
     </View>
   );
@@ -156,8 +125,7 @@ export function NotificationPrefsCard() {
   };
 
   const guarded =
-    (makePatch: (next: boolean) => Parameters<typeof update>[0]) =>
-    async (next: boolean) => {
+    (makePatch: (next: boolean) => Parameters<typeof update>[0]) => async (next: boolean) => {
       if (!(await requirePermission(next))) return;
       await update(makePatch(next));
     };
@@ -166,10 +134,6 @@ export function NotificationPrefsCard() {
 
   return (
     <View style={styles.card}>
-      <View style={styles.cardTop}>
-        <BellRing size={18} color={scheme.primary} />
-        <Text style={styles.cardTitle}>{p.title}</Text>
-      </View>
 
       {!supported ? <Text style={styles.warn}>{p.devBuildWarn}</Text> : null}
 
@@ -181,8 +145,6 @@ export function NotificationPrefsCard() {
           value={prefs.trackingEnabled}
           onChange={guarded((v) => ({ trackingEnabled: v }))}
           disabled={!supported}
-          onText={p.on}
-          offText={p.off}
         />
 
         <View style={styles.liveGroup}>
@@ -194,8 +156,6 @@ export function NotificationPrefsCard() {
               value={prefs.liveProgressEnabled}
               onChange={guarded((v) => ({ liveProgressEnabled: v }))}
               disabled={!supported || !prefs.trackingEnabled}
-              onText={p.on}
-              offText={p.off}
             />
           ) : (
             <View style={styles.row}>
@@ -235,8 +195,6 @@ export function NotificationPrefsCard() {
         value={prefs.departureAlertsEnabled}
         onChange={guarded((v) => ({ departureAlertsEnabled: v }))}
         disabled={!supported}
-        onText={p.on}
-        offText={p.off}
       />
 
       {prefs.departureAlertsEnabled ? (
@@ -252,9 +210,7 @@ export function NotificationPrefsCard() {
           </View>
           <View style={styles.stepper}>
             <Pressable
-              onPress={() =>
-                update({ departureAlertLeadMin: LEAD_MIN[Math.max(0, leadIdx - 1)] })
-              }
+              onPress={() => update({ departureAlertLeadMin: LEAD_MIN[Math.max(0, leadIdx - 1)] })}
               disabled={leadIdx <= 0}
               style={({ pressed }) => [
                 styles.stepBtn,
@@ -265,12 +221,17 @@ export function NotificationPrefsCard() {
               accessibilityState={{ disabled: leadIdx <= 0 }}
               accessibilityLabel={p.leadLessA11y}
             >
-              <Minus size={18} color={leadIdx <= 0 ? scheme.outline : scheme.onSecondaryContainer} />
+              <Minus
+                size={18}
+                color={leadIdx <= 0 ? scheme.outline : scheme.onSecondaryContainer}
+              />
             </Pressable>
             <Text style={styles.stepValue}>{s.common.durMin(prefs.departureAlertLeadMin)}</Text>
             <Pressable
               onPress={() =>
-                update({ departureAlertLeadMin: LEAD_MIN[Math.min(LEAD_MIN.length - 1, leadIdx + 1)] })
+                update({
+                  departureAlertLeadMin: LEAD_MIN[Math.min(LEAD_MIN.length - 1, leadIdx + 1)],
+                })
               }
               disabled={leadIdx >= LEAD_MIN.length - 1}
               style={({ pressed }) => [
@@ -282,7 +243,12 @@ export function NotificationPrefsCard() {
               accessibilityState={{ disabled: leadIdx >= LEAD_MIN.length - 1 }}
               accessibilityLabel={p.leadMoreA11y}
             >
-              <Plus size={18} color={leadIdx >= LEAD_MIN.length - 1 ? scheme.outline : scheme.onSecondaryContainer} />
+              <Plus
+                size={18}
+                color={
+                  leadIdx >= LEAD_MIN.length - 1 ? scheme.outline : scheme.onSecondaryContainer
+                }
+              />
             </Pressable>
           </View>
         </View>
@@ -295,8 +261,6 @@ export function NotificationPrefsCard() {
         value={prefs.disruptionAlertsEnabled}
         onChange={guarded((v) => ({ disruptionAlertsEnabled: v }))}
         disabled={!supported}
-        onText={p.on}
-        offText={p.off}
       />
     </View>
   );
@@ -304,21 +268,10 @@ export function NotificationPrefsCard() {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 16,
-    gap: 14,
-    ...elev.level1,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  cardTitle: {
-    ...type.titleMedium,
-    fontWeight: '700',
-    color: scheme.onSurface,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 20,
+    gap: 22,
   },
   warn: {
     ...type.bodySmall,
@@ -332,7 +285,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   liveGroup: {
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.medium,
     padding: 10,
   },
@@ -380,7 +333,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowDisabled: {
-    opacity: 0.6,
+    opacity: 1,
   },
   rowIcon: {
     width: 20,
@@ -397,34 +350,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   rowHint: {
-    ...type.bodySmall,
+    ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
-    lineHeight: 17,
+    lineHeight: 21,
   },
-  toggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingHorizontal: 11,
-    minHeight: 44,
-    minWidth: 56,
-  },
-  toggleOn: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  toggleDisabled: {
-    opacity: 0.35,
-  },
-  toggleText: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-    fontWeight: '600',
-  },
-  toggleTextOn: {
-    color: scheme.onPrimaryContainer,
-  },
+  switch: { minHeight: 48, minWidth: 52 },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
