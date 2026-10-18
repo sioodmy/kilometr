@@ -410,6 +410,10 @@ export const SearchService: ISearchService = {
 // In-memory recent connections for getConnectionById
 const recentPlannedConnections = new Map<string, Connection>();
 
+export function getPlannedConnection(id: string): Connection | undefined {
+  return recentPlannedConnections.get(id);
+}
+
 export const RoutingService: IRoutingService = {
   async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
     try {

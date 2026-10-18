@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -15,6 +15,7 @@ import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
+import { getPlannedConnection } from '../../src/services/api';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
@@ -37,7 +38,10 @@ export default function RouteDetailsScreen() {
   const s = useStrings();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [item, setItem] = useState<Connection | null>(null);
+  const cachedItem = getTrackedTripSync()?.connection;
+  const immediateItem = cachedItem?.id === id ? cachedItem : getPlannedConnection(String(id));
+  const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
+  const item = loadedItem?.id === id ? loadedItem : immediateItem ?? null;
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
   // Stan feedu live zmienia się w tle, a ten ekran nie odświeża się sam z
@@ -97,43 +101,29 @@ export default function RouteDetailsScreen() {
     }
     setLoadFailed(false);
     setOffline(false);
+    if (immediateItem) {
+      setItem(immediateItem);
+      return;
+    }
     let cancelled = false;
-    const task = InteractionManager.runAfterInteractions(() => {
-      // .catch jest konieczny: getConnectionById i findCachedConnection rzucają,
-      // a wcześniejsza wersja zostawiała spinner na ekranie na zawsze.
-      const load = async () => {
-        try {
-          // Przycisk „Trasa” pod powiadomieniem ma otwierać Szczegóły kursu,
-          // który właśnie śledzimy — a ten plan po odjeździe nie wraca już
-          // z planera (śledzenie jest zablokowane) i po północy w ogóle
-          // wypada z bazy. Bez tego cofnięcie na ekran listy wyglądało jak
-          // awaria. Dane śledzonej podróży mamy w pamięci, więc najpierw
-          // sprawdzamy je, a dopiero potem idziemy po plan i dysk.
-          const trackedHit = getTrackedTripSync();
-          if (trackedHit && trackedHit.connection.id === String(id)) {
-            if (cancelled) return;
-            setItem(trackedHit.connection);
-            setOffline(false);
-            return;
-          }
-          const hit = await RoutingService.getConnectionById(String(id));
-          if (cancelled) return;
-          if (hit) {
-            setItem(hit.connection);
-            setOffline(hit.source === 'cache');
-            return;
-          }
-          setLoadFailed(true);
-        } catch (err) {
-          console.warn('[RouteDetails] load failed:', err);
-          if (!cancelled) setLoadFailed(true);
+    const load = async () => {
+      try {
+        const hit = await RoutingService.getConnectionById(String(id));
+        if (cancelled) return;
+        if (hit) {
+          setItem(hit.connection);
+          setOffline(hit.source === 'cache');
+          return;
         }
-      };
-      void load();
-    });
+        setLoadFailed(true);
+      } catch (err) {
+        console.warn('[RouteDetails] load failed:', err);
+        if (!cancelled) setLoadFailed(true);
+      }
+    };
+    void load();
     return () => {
       cancelled = true;
-      task.cancel();
     };
   }, [id]);
 

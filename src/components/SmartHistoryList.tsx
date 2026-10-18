@@ -1,12 +1,4 @@
-import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { History } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { LegMode, SmartDestination } from '../types/models';
@@ -17,36 +9,6 @@ import { useStrings, tr } from '../i18n';
 export interface SmartLineBadge {
   mode?: LegMode;
   line?: string;
-}
-
-/**
- * Mały slide-in: start spod labelu (x = +distance, opacity 0) → 0/1.
- * Montuje się dopiero gdy dane (ikonka / trasa) dotrą, więc sam mount
- * jest animacją wejścia — przyciski renderują się od razu bez ikon.
- */
-function SlideIn({
-  children,
-  style,
-  distance = 28,
-  delay = 0,
-}: {
-  children: React.ReactNode;
-  style?: any;
-  distance?: number;
-  delay?: number;
-}) {
-  const tx = useSharedValue(distance);
-  const op = useSharedValue(0);
-  useEffect(() => {
-    tx.value =
-      delay > 0 ? withDelay(delay, withSpring(0, { damping: 24, stiffness: 300 })) : withSpring(0, { damping: 24, stiffness: 300 });
-    op.value = delay > 0 ? withDelay(delay, withTiming(1, { duration: 220 })) : withTiming(1, { duration: 220 });
-  }, []);
-  const anim = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }],
-    opacity: op.value,
-  }));
-  return <Animated.View style={[style, anim]}>{children}</Animated.View>;
 }
 
 // M3 filled list cards with tonal icon + supporting text on the trailing side.
@@ -60,7 +22,7 @@ export function SmartHistoryList({
   icons,
 }: {
   items: SmartDestination[];
-  /** najszybszy odjazd do celu w minutach, kluczem id destynacji; brak wpisu = wiersz bez prawej strony (dociągnie się z animacją) */
+  /** Najszybszy odjazd do celu w minutach, kluczem id destynacji. */
   departures?: Record<string, number | undefined>;
   /** pierwsza linia tranzytowa (tramwaj/autobus) do celu; brak wpisu = sam tekst „za x min” */
   lineBadges?: Record<string, SmartLineBadge | undefined>;
@@ -69,7 +31,7 @@ export function SmartHistoryList({
   onOpenConnection?: (d: SmartDestination) => void;
   /** Czysty widok bez nagłówka „Ostatnie miejsca” (nagłówek żyje gdzie indziej). */
   hideHeader?: boolean;
-  /** Ikonki jak w wyszukiwarce, kluczem id destynacji; brak wpisu = brak ikonki (dociągnie się z animacją slide-left) */
+  /** Ikonki jak w wyszukiwarce, kluczem id destynacji. */
   icons?: Record<string, SuggestionIconMeta | undefined>;
 }) {
   const s = useStrings();
@@ -88,27 +50,22 @@ export function SmartHistoryList({
         const departInMin = departures?.[d.id];
         const departLabel = formatDepartIn(departInMin);
         const meta = icons?.[d.id];
-        const Icon = meta?.Icon;
+        const Icon = meta?.Icon ?? History;
         const badge = lineBadges?.[d.id];
-        // Klucz stabilny po id (bez indeksu): przy zamianie cache → świeży
-        // ranking React godzi wiersze w miejscu zamiast je przemontowywać —
-        // zero flickeru. Bez layout-animacji na wierszach: każdy doklejony
-        // odjazd robił relayout i sprężynował całą listę (pływanie przy scrollu).
+        // Stałe sloty zapobiegają przesuwaniu tekstu po wczytaniu ikon i odjazdów.
         return (
           <Pressable key={d.id} onPress={() => onSelect(d)} style={({ pressed }) => [styles.card, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}>
-            {Icon ? (
-              <SlideIn distance={30} style={styles.iconSlide}>
-                <View style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}>
-                  <Icon size={19} color={meta?.fg ?? scheme.onSecondaryContainer} />
-                </View>
-              </SlideIn>
-            ) : null}
+            <View style={styles.iconSlide}>
+              <View style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}>
+                <Icon size={19} color={meta?.fg ?? scheme.onSecondaryContainer} />
+              </View>
+            </View>
             <View style={styles.mid}>
               <Text style={styles.title} numberOfLines={1}>{d.title}</Text>
               <Text style={styles.sub} numberOfLines={1}>{d.address}</Text>
             </View>
-            {departLabel ? (
-              <SlideIn distance={22} style={styles.rightSlide}>
+            <View style={styles.rightSlide}>
+              {departLabel ? (
                 <Pressable
                   onPress={(e) => {
                     e.stopPropagation();
@@ -129,8 +86,8 @@ export function SmartHistoryList({
                     <Text style={styles.depart} numberOfLines={1}>{departLabel}</Text>
                   </View>
                 </Pressable>
-              </SlideIn>
-            ) : null}
+              ) : <View style={styles.rightPlaceholder} />}
+            </View>
           </Pressable>
         );
       })}
@@ -163,7 +120,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 2 },
   headerText: { ...type.titleSmall, color: scheme.onSurface },
   iconSlide: { flexShrink: 0, justifyContent: 'center' },
-  rightSlide: { flexShrink: 0, maxWidth: '40%', justifyContent: 'center' },
+  rightSlide: { flexShrink: 0, width: '32%', maxWidth: '40%', justifyContent: 'center' },
+  rightPlaceholder: { minHeight: 44 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -190,8 +148,8 @@ const styles = StyleSheet.create({
   // Prawa kolumna: badge na górze, „za x min” pod nim — oba w slotach
   // o STAŁEJ wysokości, więc ikonki stoją pod ikonkami, a teksty pod
   // tekstami w każdym wierszu (także bez linii — pusty slot trzyma rytm).
-  rightTouch: { justifyContent: 'center', alignItems: 'center' },
-  right: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, flexShrink: 0, minWidth: 64 },
+  rightTouch: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  right: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, width: '100%' },
   badgeSlot: { height: 28, alignItems: 'center', justifyContent: 'center' },
   depart: { ...type.titleSmall, lineHeight: 20, color: scheme.onSurface, flexShrink: 0, textAlign: 'center' },
 });

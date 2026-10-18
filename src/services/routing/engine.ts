@@ -3,6 +3,7 @@ import { costParamsFor, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, s
 import { AllowedTransferModes, Connection, Leg, LegStop, RawJourney, RouteStyle, TransitModePreference } from './types';
 import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
+import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z raptor.ts i store.ts)
@@ -405,7 +406,10 @@ function mapJourneysToConnections(
     });
   }
 
-  return connections;
+  for (const connection of connections) {
+    connection.id = stableConnectionId(connection);
+  }
+  return deduplicateConnections(connections);
 }
 
 export async function planConnections(options: PlanOptions): Promise<Connection[]> {
@@ -654,5 +658,8 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   if (arrivalMode) sortConnectionsByArrival(connections);
   else sortConnectionsByCost(connections, cost, userWalkSpeed);
-  return connections;
+  for (const connection of connections) {
+    connection.id = stableConnectionId(connection);
+  }
+  return deduplicateConnections(connections);
 }

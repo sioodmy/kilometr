@@ -1,7 +1,6 @@
 import React from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import Animated, {
-  Easing,
   FadeOut,
   Keyframe,
   useAnimatedStyle,
@@ -18,6 +17,7 @@ import {
   Zap,
 } from 'lucide-react-native';
 import { scheme } from '../theme/tokens';
+import { motion } from '../theme/motion';
 import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
 import { useStrings } from '../i18n';
 
@@ -31,8 +31,8 @@ export type SortMode = 'fastest' | 'earliest';
 // Krótki (170 ms) pionowy wjazd z fade: włączenie / następny pojazd = swipe up,
 // wyłączenie / powrót = swipe down. Własny Keyframe zamiast gotowego SlideIn*,
 // żeby dystans był mały (10 px, nie pół ekranu).
-const SWIPE_MS = 170;
-const SWIPE_EASING = Easing.out(Easing.cubic);
+const SWIPE_MS = motion.state.duration;
+const SWIPE_EASING = motion.state.easing;
 
 const slideUpIn = new Keyframe({
   0: { opacity: 0, transform: [{ translateY: 10 }] },
@@ -95,22 +95,15 @@ export function RoutesThumbBar({
   // a pełna etykieta idzie do accessibilityLabel.
   const timeShort = timeLabel.includes(', ') ? timeLabel.split(', ')[1] : timeLabel;
 
-  // Pop przy swapie: pełny obrót 360° + minimalny pop skali, w tym samym
-  // timingu co rolka tekstu nagłówka (FadeInUp 240 ms) — góra i dół kręcą się razem.
   const swapSpin = useSharedValue(0);
   const swapStyle = useAnimatedStyle(() => {
-    const p = swapSpin.value % 1;
     return {
-      transform: [
-        { rotate: `${p * 360}deg` },
-        { scale: 1 + 0.28 * Math.sin(Math.PI * p) },
-      ],
+      transform: [{ rotate: `${swapSpin.value * 180}deg` }],
     };
   });
   const handleSwapPress = () => {
     swapSpin.value = withTiming(Math.round(swapSpin.value) + 1, {
-      duration: 240,
-      easing: Easing.inOut(Easing.ease),
+      ...motion.state,
     });
     onSwap();
   };
