@@ -14,10 +14,10 @@ export type NotificationsModule = typeof import('expo-notifications');
 export interface TrackingNativeModule {
   /** Czy natywne Live Update jest dostępne. */
   isAvailable(): boolean;
-  /** Buduje kanały (Android 8+). */
-  ensureChannels(): Promise<void>;
   /** Czy system dopuści powiadomienie do strefy Live Updates. */
   canPromote(): Promise<boolean>;
+  /** Otwiera ustawienia powiadomień tej aplikacji. */
+  openNotificationSettings?(): Promise<boolean>;
   /**
    * Surowa paleta Material You z tapety (`rodzina_ton` → `#RRGGBBAA`).
    * Pusta na Androidzie 11 i starszych.

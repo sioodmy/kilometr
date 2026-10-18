@@ -21,6 +21,11 @@ export interface Env {
 const PDP_BASE = 'https://pdp-api.plk-sa.pl';
 const DB_KEY = 'db/kilometr-gtfs.db';
 const MANIFEST_KEY = 'manifest.json';
+/**
+ * Pakiet kafelków mapy offline (Wrocław). Buduje go workflow map-tiles.yml,
+ * a telefon pobiera raz i trzyma lokalnie.
+ */
+const MAP_PACK_KEY = 'maps/wroclaw-tiles.ktp';
 
 function json(data: unknown, status = 200, cacheSeconds = 0): Response {
   const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' };
@@ -28,11 +33,42 @@ function json(data: unknown, status = 200, cacheSeconds = 0): Response {
   return new Response(JSON.stringify(data), { status, headers });
 }
 
+/**
+ * Strumieniuje obiekt z R2 z ETag i cache. Wspólne dla pakietu mapy i innych
+ * dużych plików: telefon pobiera całość, ale ETag pozwala sprawdzić, czy nie
+ * ma już tej samej wersji.
+ */
+async function serveObject(
+  env: Env,
+  key: string,
+  contentType: string,
+  workflowName: string,
+): Promise<Response> {
+  const obj = await env.TIMETABLE_BUCKET.get(key);
+  if (!obj) {
+    return json(
+      {
+        error: 'not-built-yet',
+        hint: `Build jeszcze nie wystartował — odpal workflow ${workflowName} (workflow_dispatch).`,
+      },
+      404,
+    );
+  }
+  const headers = new Headers();
+  headers.set('Content-Type', contentType);
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Content-Length', String(obj.size));
+  if (obj.etag) headers.set('ETag', obj.etag);
+  headers.set('Cache-Control', 'public, max-age=300');
+  return new Response(obj.body, { headers });
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
-    if (req.method !== 'GET') return json({ error: 'method-not-allowed' }, 405);
+    // HEAD działa jak GET (Runtime sam ucina body) — klient sprawdza rozmiar/ETag.
+    if (req.method !== 'GET' && req.method !== 'HEAD') return json({ error: 'method-not-allowed' }, 405);
 
     if (url.pathname === '/health') {
       return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString() });
@@ -109,6 +145,10 @@ export default {
       return proxyPdp(req, env, ctx, url.pathname === '/api/kd/departures' ? 'operations' : 'schedules');
     }
 
+    if (url.pathname === '/maps/wroclaw-tiles.ktp') {
+      return serveObject(env, MAP_PACK_KEY, 'application/octet-stream', 'map-tiles.yml');
+    }
+
     return json({ error: 'not-found' }, 404);
   },
 };
@@ -127,7 +167,13 @@ async function proxyPdp(req: Request, env: Env, ctx: ExecutionContext, kind: 'op
   if (!/^[0-9, ]{1,200}$/.test(stations) || !/\d/.test(stations)) {
     return json({ error: 'bad-stations', hint: 'Podaj stations=jako ID po przecinku, np. ?stations=33506,33512.' }, 400);
   }
-  const ids = stations.replace(/\s+/g, '');
+  // Deduplikacja + sortowanie normalizuje klucz cache: ta sama lista w innej
+  // kolejności trafia w ten sam wpis, zamiast omijać cache i palić limit PDP.
+  const idList = Array.from(new Set(stations.split(',').map((s) => s.trim()).filter(Boolean)));
+  if (idList.length === 0 || idList.length > 30) {
+    return json({ error: 'bad-stations', hint: 'Podaj od 1 do 30 unikalnych ID stacji.' }, 400);
+  }
+  const ids = idList.join(',');
 
   const upstream = new URL(PDP_BASE + (kind === 'operations' ? '/api/v1/operations/shortened' : '/api/v1/schedules/shortened'));
   upstream.searchParams.set('stations', ids);

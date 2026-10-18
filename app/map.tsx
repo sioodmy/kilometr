@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 import { ChevronLeft, WifiOff } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
@@ -25,9 +24,12 @@ import {
   buildMapRoute,
   resolveGeometry,
   straightGeometry,
+  pinRouteGeometry,
 } from '../src/services/routeGeometry';
 import { RouteMap, type RouteMapHandle } from '../src/components/RouteMap';
 import { getLineColors, inferTransitMode, LineBadge } from '../src/components/LineBadge';
+import { acquireMapServer } from '../src/services/mapServerLease';
+import { useCurrentLocation } from '../src/services/currentLocation';
 import { LiveDot } from '../src/components/LiveDot';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
@@ -37,7 +39,8 @@ import { useStrings } from '../src/i18n';
 type Coord = [number, number];
 
 const VEHICLE_POLL_MS = 6000;
-const LOCATION_MIN_MOVE_M = 6;
+/** Grace przed żółtym pillem — kafle lokalne/CDN czasem padają przy starcie. */
+const OFFLINE_PILL_MS = 2500;
 
 function nowSec(): number {
   const d = new Date();
@@ -56,17 +59,54 @@ export default function RouteMapScreen() {
   const [selectedLegId, setSelectedLegId] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<MapVehicle | null>(null);
   const [liveState, setLiveState] = useState<'fresh' | 'stale' | 'unknown'>('unknown');
-  const [userLoc, setUserLoc] = useState<{ lat: number; lon: number; heading: number | null } | null>(null);
+  const { location: gpsLocation } = useCurrentLocation();
+  const userLoc = gpsLocation
+    ? { lat: gpsLocation.lat, lon: gpsLocation.lon, heading: gpsLocation.heading }
+    : null;
   const [tilesDown, setTilesDown] = useState(false);
+  const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const offlinePillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mapRef = useRef<RouteMapHandle>(null);
   const geometryRef = useRef(new Map<string, Coord[]>());
   const shownVehicleRef = useRef<string | null>(null);
 
+  const clearOfflinePillTimer = useCallback(() => {
+    if (offlinePillTimer.current) {
+      clearTimeout(offlinePillTimer.current);
+      offlinePillTimer.current = null;
+    }
+  }, []);
+
+  const markTilesOk = useCallback(() => {
+    clearOfflinePillTimer();
+    setTilesDown(false);
+    setShowOfflinePill(false);
+    setMapError(null);
+  }, [clearOfflinePillTimer]);
+
+  const markTilesDown = useCallback(
+    (errorMsg?: string | null) => {
+      setTilesDown(true);
+      if (errorMsg) setMapError(errorMsg);
+      if (offlinePillTimer.current) return;
+      offlinePillTimer.current = setTimeout(() => {
+        offlinePillTimer.current = null;
+        setShowOfflinePill(true);
+      }, OFFLINE_PILL_MS);
+    },
+    [],
+  );
+
+  useEffect(() => () => clearOfflinePillTimer(), [clearOfflinePillTimer]);
+
   // ─── Połączenie ─────────────────────────────────────────────
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoadFailed(true);
+      return;
+    }
     const connectionId = String(id);
     let cancelled = false;
     (async () => {
@@ -90,6 +130,46 @@ export default function RouteMapScreen() {
     };
   }, [id]);
 
+  // Stare połączenia bywają bez stacji (kurs spoza wycinka). Bez nich noga
+  // to dwa punkty, czyli kreska cięciem zamiast wzdłuż torów. Dociągamy
+  // sekwencję tym samym kanałem co LegTimeline.
+  useEffect(() => {
+    if (!item) return;
+    const connId = item.id;
+    const legs = item.legs;
+    if (
+      !legs.some((l) => l.mode !== 'walk' && l.tripId && (!l.intermediateStops || l.intermediateStops.length < 2))
+    ) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const enriched = await Promise.all(
+        legs.map(async (l) => {
+          if (l.mode === 'walk' || !l.tripId || (l.intermediateStops && l.intermediateStops.length >= 2)) return l;
+          try {
+            const full = await RoutingService.getTripStops(l.tripId);
+            if (!full || full.length < 2) return l;
+            const b = full.findIndex((s) => s.stopId === l.fromStopId);
+            const a = full.findIndex((s) => s.stopId === l.toStopId);
+            const slice = b >= 0 && a >= 0 && b < a ? full.slice(b, a + 1) : full;
+            return slice.length >= 2 ? { ...l, intermediateStops: slice } : l;
+          } catch {
+            return l;
+          }
+        }),
+      );
+      if (!cancelled && enriched.some((l, i) => l !== legs[i])) {
+        setItem((prev) => (prev && prev.id === connId ? { ...prev, legs: enriched } : prev));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Raz na połączenie: po wzbogaceniu id bez zmian, więc bez pętli.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
+
   const route: MapRoute | null = useMemo(() => (item ? buildMapRoute(item) : null), [item]);
 
   const selectedLeg: MapLeg | null = useMemo(
@@ -109,6 +189,30 @@ export default function RouteMapScreen() {
     mapRef.current?.setGeometry(legId, coords);
   }, []);
 
+  // ─── Zestaw mapy offline ────────────────────────────────────
+  // undefined = jeszcze sprawdzamy lokalny serwer; null = brak pakietu (CDN);
+  // string = kafle z telefonu. WebView montujemy dopiero po decyzji, inaczej
+  // mapa chwilę ładuje CDN, pada bez sieci i miga żółtym „offline".
+  const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    let release: (() => void) | null = null;
+    (async () => {
+      const lease = await acquireMapServer();
+      if (cancelled) {
+        lease.release();
+        return;
+      }
+      release = lease.release;
+      setOfflineBase(lease.base);
+      markTilesOk();
+    })();
+    return () => {
+      cancelled = true;
+      release?.();
+    };
+  }, [markTilesOk]);
+
   useEffect(() => {
     if (!route) return;
     let cancelled = false;
@@ -127,6 +231,9 @@ export default function RouteMapScreen() {
         },
         abort.signal,
       );
+      // Trasa, którą użytkownik właśnie otworzył, zostaje w cache na stałe:
+      // to ona najczęściej przyda się offline.
+      if (!cancelled) void pinRouteGeometry(route);
     })();
     return () => {
       cancelled = true;
@@ -187,7 +294,13 @@ export default function RouteMapScreen() {
         vehicleId: match.vehicle.vehicleId,
         legId: leg.id,
         line: match.vehicle.line,
-        mode: inferTransitMode(leg.mode, match.vehicle.line) === 'tram' ? 'tram' : 'bus',
+        mode: inferTransitMode(leg.mode, match.vehicle.line) === 'tram'
+          ? 'tram'
+          : leg.mode === 'train'
+            ? 'train'
+            : leg.mode === 'cable'
+              ? 'cable'
+              : 'bus',
         color: bg,
         lat: match.vehicle.lat,
         lon: match.vehicle.lon,
@@ -206,33 +319,6 @@ export default function RouteMapScreen() {
       clearInterval(interval);
     };
   }, [item, route]);
-
-  // ─── Pozycja użytkownika ────────────────────────────────────
-  useEffect(() => {
-    let sub: Location.LocationSubscription | null = null;
-    (async () => {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== Location.PermissionStatus.GRANTED) return;
-      sub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: LOCATION_MIN_MOVE_M,
-        },
-        (loc) => {
-          const heading =
-            loc.coords.heading != null && isFinite(loc.coords.heading) ? loc.coords.heading : null;
-          setUserLoc({
-            lat: loc.coords.latitude,
-            lon: loc.coords.longitude,
-            heading,
-          });
-        },
-      );
-    })();
-    return () => {
-      sub?.remove();
-    };
-  }, []);
 
   // ─── Akcje ──────────────────────────────────────────────────
   const handleSelectLeg = (legId: string) => {
@@ -284,28 +370,30 @@ export default function RouteMapScreen() {
 
   return (
     <View style={styles.root}>
-      <RouteMap
-        ref={mapRef}
-        route={route}
-        vehicle={vehicle}
-        user={userLoc}
-        selectedLegId={selectedLegId}
-        paddingTop={insets.top + 72}
-        paddingBottom={panelHeight + insets.bottom + 16}
-        onReady={handleMapReady}
-        onLegTap={handleSelectLeg}
-        onTilesStatus={(ok) => {
-          setTilesDown(!ok);
-          if (ok) setMapError(null);
-        }}
-        onError={() => {
-          setMapError(s.map.mapLoadFail);
-          setTilesDown(true);
-        }}
-      />
+      {offlineBase !== undefined ? (
+        <RouteMap
+          ref={mapRef}
+          route={route}
+          vehicle={vehicle}
+          user={userLoc}
+          selectedLegId={selectedLegId}
+          offlineBase={offlineBase}
+          paddingTop={insets.top + 72}
+          paddingBottom={panelHeight + insets.bottom + 16}
+          onReady={handleMapReady}
+          onLegTap={handleSelectLeg}
+          onTilesStatus={(ok) => {
+            if (ok) markTilesOk();
+            else markTilesDown();
+          }}
+          onError={() => markTilesDown(s.map.mapLoadFail)}
+        />
+      ) : (
+        <View style={styles.mapPlaceholder} />
+      )}
 
-      {/* Offline chip */}
-      {tilesDown && (
+      {/* Offline chip — po grace, żeby start lokalnych kafelków nie migał */}
+      {offlineBase !== undefined && tilesDown && showOfflinePill && (
         <View style={[styles.offlineChip, { top: insets.top + 72 }]} pointerEvents="none">
           <WifiOff size={13} color={scheme.onWarningContainer} />
           <Text style={styles.offlineText}>
@@ -331,7 +419,7 @@ export default function RouteMapScreen() {
               {item.fromTitle} → {item.toTitle}
             </Text>
             <Text style={styles.headerSub} numberOfLines={1}>
-              {item.departAt}–{item.arriveAt} • {item.durationMin} min
+              {item.departAt}–{item.arriveAt} • {s.common.durMin(item.durationMin)}
               {item.transfers > 0 ? s.map.transfersSuffix(item.transfers) : ''}
               {delayMin !== 0 ? s.map.delaySuffix(delayMin) : ''}
             </Text>
@@ -456,6 +544,8 @@ const styles = StyleSheet.create({
     maxWidth: 74,
   },
   livePillText: { ...type.labelSmall, fontWeight: '700', color: scheme.onSurface },
+
+  mapPlaceholder: { flex: 1, backgroundColor: scheme.surface },
 
   // ─── Offline chip ─────────────────────────────────────────
   offlineChip: {

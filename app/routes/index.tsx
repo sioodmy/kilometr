@@ -23,21 +23,24 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { scheme, shape, type } from '../../src/theme/tokens';
+import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { DEFAULT_LOCATION } from '../../src/config';
 import {
   FavoritesService,
   LocationService,
+  LOCATION_REFINE_DELTA_M,
   RoutingService,
   SearchService,
+  distanceMeters,
   findAnchorForLocation,
   recordTripSearch,
   type ActiveAnchor,
+  type LocationResult,
 } from '../../src/services';
 // Mediana czasu dojazdu jest czysta i idzie do nawyku w „Ostatnich miejscach",
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
 import { typicalDurationMin } from '../../src/services/smartRanking';
-import { getSettingsSync, loadSettings } from '../../src/services/settings';
+import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -49,7 +52,7 @@ import {
   type TrackedTrip,
 } from '../../src/services/notifications';
 import {
-  loadConnections,
+  loadCachedConnections,
   hasLocalTimetable,
   rehydrateConnections,
 } from '../../src/services/offlineCache';
@@ -98,6 +101,8 @@ export default function RoutesScreen() {
     fromTitle?: string;
     fromLat?: string;
     fromLon?: string;
+    /** '1', gdy start pochodzi z GPS; wtedy wolno go doprecyzować fixem w tle. */
+    fromGps?: string;
     toId?: string;
     toTitle: string;
     toLat: string;
@@ -113,6 +118,9 @@ export default function RoutesScreen() {
   const [fromTitle, setFromTitle] = useState(params.fromTitle || DEFAULT_LOCATION.title);
   const [fromLat, setFromLat] = useState(Number(params.fromLat || DEFAULT_LOCATION.lat));
   const [fromLon, setFromLon] = useState(Number(params.fromLon || DEFAULT_LOCATION.lon));
+  // Czy start nadal jest GPS-em (a nie ręcznie wybranym punktem). Zmiana na
+  // custom wyłącza doprecyzowanie w tle i odwrotnie.
+  const [gpsOrigin, setGpsOrigin] = useState(params.fromGps === '1');
 
   const [toTitle, setToTitle] = useState(String(params.toTitle ?? s.routes.destFallback));
   const [toLat, setToLat] = useState(Number(params.toLat ?? 0));
@@ -123,21 +131,29 @@ export default function RoutesScreen() {
   // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl
   // renderów; zależność od params.action, bo ekspo-router podmienia
   // parametry bez remountu, gdy ekran jest już otwarty.
-  const stopFromLinkRef = useRef(params.action === 'stop');
+  const handledStopRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!stopFromLinkRef.current) return;
-    stopFromLinkRef.current = false;
+    if (params.action !== 'stop') {
+      handledStopRef.current = null;
+      return;
+    }
+    if (handledStopRef.current === 'stop') return;
+    handledStopRef.current = 'stop';
     void stopTracking();
   }, [params.action]);
 
   // Przycisk „Trasa” pod powiadomieniem prowadzi prosto do szczegółów
   // śledzonego kursu. Listę połączeń użytkownik już widział — teraz chce
   // sprawdzić ten jeden kurs, więc oszczędzamy mu jedno przeskakiwanie ekranu.
-  const openFromLinkRef = useRef(params.open);
+  const handledOpenRef = useRef<string | null>(null);
   useEffect(() => {
-    const id = openFromLinkRef.current;
-    if (!id) return;
-    openFromLinkRef.current = undefined;
+    const id = params.open;
+    if (!id) {
+      handledOpenRef.current = null;
+      return;
+    }
+    if (handledOpenRef.current === String(id)) return;
+    handledOpenRef.current = String(id);
     router.push({ pathname: '/routes/[id]', params: { id: String(id) } });
   }, [params.open, router]);
 
@@ -146,6 +162,12 @@ export default function RoutesScreen() {
   const dismissedAnchorsRef = useRef<Set<string>>(new Set());
   const fetchSeq = useRef(0);
   const initialAnchorCheckedRef = useRef(false);
+  // Podmiana originu na dokładniejszy fix odpala się raz na wybór startu.
+  const refineAppliedRef = useRef(false);
+  const originCoordsRef = useRef({ lat: fromLat, lon: fromLon });
+  originCoordsRef.current = { lat: fromLat, lon: fromLon };
+  const activeAnchorRef = useRef<ActiveAnchor | null>(activeAnchor);
+  activeAnchorRef.current = activeAnchor;
 
   const handleDismissAnchor = () => {
     if (!activeAnchor) return;
@@ -168,11 +190,13 @@ export default function RoutesScreen() {
   const timetableReady = dataStatus.state === 'ready';
   // Brak sieci = brak opóźnień z MPK. Bez komunikatu użytkownik myśli,
   // że planer po prostu nie umie opóźnień.
+  // `unknown` też oznacza brak danych: przed pierwszym udanym pollem (albo przy
+  // starcie apki) nie mamy żadnego opóźnienia, więc cisza była kłamstwem.
   const [liveStale, setLiveStale] = useState(false);
   useEffect(() => {
-    const check = () => setLiveStale(liveTracker.getLiveState() === 'stale');
+    const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
     check();
-    const t = setInterval(check, 30000);
+    const t = setInterval(check, 15000);
     return () => clearInterval(t);
   }, []);
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
@@ -290,15 +314,12 @@ export default function RoutesScreen() {
   const startTrackingConnection = useCallback(
     async (conn: Connection) => {
       if (!areNotificationsSupported()) {
-        Alert.alert(
-          'Śledzenie niedostępne',
-          'Powiadomienia wymagają builda deweloperskiego — Expo Go ich nie wspiera.',
-        );
+        Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
         return;
       }
       const ok = await ensureNotificationPermission();
       if (!ok) {
-        Alert.alert('Powiadomienia wyłączone', permissionDeniedMessage());
+        Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
         return;
       }
       const track: TrackedTrip = {
@@ -318,7 +339,7 @@ export default function RoutesScreen() {
       };
       await startTracking(track);
     },
-    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor],
+    [fromTitle, fromLat, fromLon, toId, toTitle, toLat, toLon, activeAnchor, s],
   );
 
   /** Przycisk w pasku: śledzimy najbliższe połączenie z listy. */
@@ -329,11 +350,11 @@ export default function RoutesScreen() {
     }
     const next = displayed[0] ?? items[0];
     if (!next) {
-      Alert.alert('Brak połączeń', 'Poczekaj aż pojawi się kurs na tej trasie.');
+      Alert.alert(s.routes.noConnectionsTitle, s.routes.noConnectionsBody);
       return;
     }
     await startTrackingConnection(next);
-  }, [isTrackingThisRoute, displayed, items, startTrackingConnection]);
+  }, [isTrackingThisRoute, displayed, items, startTrackingConnection, s]);
 
   // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
   const listRef = useRef<FlatList<Connection>>(null);
@@ -382,9 +403,12 @@ export default function RoutesScreen() {
       modes: modeFilter,
       minTransferSec: cfg.minTransferSec,
       trainsEnabled: cfg.trainsEnabled,
+      cableEnabled: cfg.cableEnabled,
       trainMinTransferSec: cfg.trainMinTransferSec,
       maxWalkM: cfg.maxWalkM,
-      walkSpeedMps: cfg.walkSpeedMps,
+      // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).
+      walkSpeedMps: profileWalkSpeedMps(cfg.walkPace),
+      routeStyle: cfg.routeStyle,
     };
   };
 
@@ -446,6 +470,33 @@ export default function RoutesScreen() {
       }
     });
   }, []);
+
+  // Start z GPS bez kotwicy liczy się z fixu, który mógł być słaby (Balanced
+  // potrafi trafić o setki metrów i wybrać przystanek po złej stronie osiedla).
+  // Po wyszukaniu bierzemy dokładniejszy fix w tle; gdy pozycja faktycznie się
+  // przesunęła, podmieniamy origin, a lista odświeża się seamless, bez spinnera.
+  useEffect(() => {
+    if (!gpsOrigin || activeAnchor) return;
+    let cancelled = false;
+    const apply = (loc: LocationResult) => {
+      if (cancelled || refineAppliedRef.current || activeAnchorRef.current) return;
+      if (isOutsideServiceArea(loc.lat, loc.lon)) return;
+      const origin = originCoordsRef.current;
+      if (distanceMeters(loc.lat, loc.lon, origin.lat, origin.lon) < LOCATION_REFINE_DELTA_M) return;
+      refineAppliedRef.current = true;
+      setFromTitle(loc.title);
+      setFromLat(loc.lat);
+      setFromLon(loc.lon);
+    };
+    const unsubscribe = LocationService.subscribe(apply);
+    void LocationService.refineLocation().then((loc) => {
+      if (loc) apply(loc);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [gpsOrigin, activeAnchor]);
 
   // Debounced search (jak na głównym), bias wg aktualnego startu
   const searchSeq = useRef(0);
@@ -511,6 +562,8 @@ export default function RoutesScreen() {
         }
         setGpsOutside(false);
         setGpsOutsideCity(null);
+        setGpsOrigin(true);
+        refineAppliedRef.current = false;
         const currentSettings = getSettingsSync();
         dismissedAnchorsRef.current.clear();
         const anchor = findAnchorForLocation(
@@ -547,6 +600,7 @@ export default function RoutesScreen() {
     });
 
     if (sheetFor === 'from') {
+      setGpsOrigin(false);
       setActiveAnchor(null);
       setFromTitle(sug.title);
       setFromLat(sug.lat);
@@ -629,10 +683,10 @@ export default function RoutesScreen() {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
       // W trybie seamless nie czyścimy listy ani nie migoczemy spinnerem.
-      const cached = await loadConnections(queryAt(depSec, mode));
+      const cached = await loadCachedConnections(queryAt(depSec, mode));
       if (seq !== fetchSeq.current) return;
       if (cached) {
-        setItems(applyLiveList(rehydrateConnections(cached), depSec));
+        setItems(applyLiveList(rehydrateConnections(cached.list, cached.savedAt), depSec));
         setOffline(true);
         setNoMoreEarlier(true);
         setNoMoreLater(true);
@@ -672,6 +726,11 @@ export default function RoutesScreen() {
   // cache na świeże dane. Bez spinnerów i skoków scrolla.
   const offlineRef = useRef(offline);
   offlineRef.current = offline;
+  // Ref na najświeższy quietRefresh: interwał nie może domykać się nad
+  // filtrami z chwili przejścia w offline, bo po powrocie sieci podmieniłby
+  // listę wynikiem starego zapytania.
+  const quietRefreshRef = useRef(quietRefresh);
+  quietRefreshRef.current = quietRefresh;
   useEffect(() => {
     if (!offline) return;
     let cancelled = false;
@@ -679,7 +738,7 @@ export default function RoutesScreen() {
       if (cancelled || !offlineRef.current) return;
       if (await hasLocalTimetable()) {
         if (cancelled) return;
-        await quietRefresh();
+        await quietRefreshRef.current();
       }
     };
     const timer = setInterval(beat, 15000);
@@ -712,9 +771,9 @@ export default function RoutesScreen() {
       console.warn('[Routes] load more failed:', err);
       if (seq === fetchSeq.current) setLoadMoreFailed(true);
     } finally {
-      if (seq === fetchSeq.current) {
-        setLoadingMore(false);
-      }
+      // Zawsze gasimy spinner: jeśli w trakcie zapytania filtr podbił fetchSeq,
+      // wynik i tak odpadnie po seq, ale flaga nie może zostać true na zawsze.
+      setLoadingMore(false);
     }
   };
 
@@ -747,9 +806,9 @@ export default function RoutesScreen() {
     } catch {
       // po cichu — lista zostaje
     } finally {
-      if (seq === fetchSeq.current) {
-        setLoadingEarlier(false);
-      }
+      // Jak w handleLoadMore: spinner gaśnie nawet gdy zapytanie zostało
+      // unieważnione przez nowszy fetchSeq.
+      setLoadingEarlier(false);
     }
   };
 
@@ -944,6 +1003,8 @@ export default function RoutesScreen() {
     });
     // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    // Start = stary cel (ręczny punkt), więc doprecyzowanie GPS już nie dotyczy.
+    setGpsOrigin(false);
     setActiveAnchor(null);
     const tempTitle = fromTitle;
     const tempLat = fromLat;
@@ -997,11 +1058,16 @@ export default function RoutesScreen() {
               : new FadeInUp().duration(280).delay(stagger)
           }
         >
-          <ConnectionCard item={item} dimmed={past} onPress={openConnection} />
+          <ConnectionCard
+            item={item}
+            dimmed={past}
+            onPress={openConnection}
+            tick={nowTick}
+          />
         </Animated.View>
       );
     },
-    [openConnection],
+    [openConnection, nowTick],
   );
 
   return (
@@ -1061,8 +1127,8 @@ export default function RoutesScreen() {
           accessibilityState={{ selected: isTrackingThisRoute }}
           accessibilityLabel={
             isTrackingThisRoute
-              ? 'Zatrzymaj śledzenie podróży'
-              : 'Śledź najbliższe połączenie'
+              ? s.routes.stopTrackingTripA11y
+              : s.routes.trackNearestA11y
           }
           style={({ pressed }) => [
             styles.pinBtn,
@@ -1178,9 +1244,33 @@ export default function RoutesScreen() {
 
       {/* 3. Lista połączeń */}
       {loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={scheme.primary} />
+        <View style={styles.skeletonList}>
           <Text style={styles.loadingText}>{s.routes.searching}</Text>
+          <View style={styles.skelCard}>
+            <View style={styles.skelRow}>
+              <View style={[styles.skel, { width: 96, height: 22 }]} />
+              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+            </View>
+            <View style={[styles.skel, { width: '70%', height: 12, marginTop: 10 }]} />
+            <View style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]} />
+            <View style={[styles.skel, { width: '55%', height: 28, marginTop: 12, borderRadius: shape.small }]} />
+          </View>
+          <View style={styles.skelCard}>
+            <View style={styles.skelRow}>
+              <View style={[styles.skel, { width: 84, height: 22 }]} />
+              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+            </View>
+            <View style={[styles.skel, { width: '62%', height: 12, marginTop: 10 }]} />
+            <View style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]} />
+            <View style={[styles.skel, { width: '72%', height: 28, marginTop: 12, borderRadius: shape.small }]} />
+          </View>
+          <View style={[styles.skelCard, { opacity: 0.55 }]}>
+            <View style={styles.skelRow}>
+              <View style={[styles.skel, { width: 72, height: 22 }]} />
+              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+            </View>
+            <View style={[styles.skel, { width: '50%', height: 12, marginTop: 10 }]} />
+          </View>
         </View>
       ) : loadError ? (
         <View style={styles.emptyContainer}>
@@ -1467,14 +1557,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 12,
   },
-  // Malutki, delikatny podpis pod togglem — tylko info o aktywnym trybie.
   sortLabel: {
-    marginTop: 2,
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '500',
+    marginTop: 3,
+    ...type.labelSmall,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
-    opacity: 0.65,
     textAlign: 'center',
   },
   // Pinezka 1:1 ze strzałką wstecz — dwa okrągłe akcje na końcach paska.
@@ -1518,21 +1605,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  // Nagłówek trasy w stylu One UI: bez tła, jedna linia.
-  // Wysokość jak dawny box (~64), większy font, luźny oddech z boków.
-  // Wiersz startuje od góry (flex-start), a obie kolumny mają ten sam
-  // paddingTop — dzięki temu tytuły od→do stoją ZAWSZE w jednej linii,
-  // także z dopiską kotwicy (ona rośnie w dół, nie rozpycha środków).
-  // Matematyka jak stare centrowanie: tytuł od 21 px, strzałka od 16 px.
+  // Kontekst trasy jako miękki blok powierzchni: oddziela „skąd→dokąd”
+  // od listy wyników, bez drugiej karty-pigułki.
   routeHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     minHeight: 68,
-    marginHorizontal: 2,
+    marginHorizontal: 14,
     marginTop: 4,
-    marginBottom: 6,
+    marginBottom: 8,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.large,
   },
   routeSide: {
     flexShrink: 1,
@@ -1587,33 +1672,56 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 14,
-    gap: 10,
+    gap: 8,
   },
   footer: { paddingVertical: 18, alignItems: 'center', gap: 10 },
   footerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
-  loading: {
+  skeletonList: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingTop: 8,
     gap: 10,
   },
+  skelCard: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.large,
+    padding: 14,
+    ...elev.level1,
+  },
+  skelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skel: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.small,
+  },
   loadingText: {
-    ...type.titleMedium,
-    color: scheme.onSurface,
+    ...type.labelLarge,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    marginBottom: 4,
+    paddingHorizontal: 4,
   },
   emptyContainer: {
-    padding: 32,
+    paddingHorizontal: 28,
+    paddingVertical: 40,
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   emptyTitle: {
     ...type.titleMedium,
+    fontWeight: '700',
     color: scheme.onSurface,
+    textAlign: 'center',
   },
   emptySub: {
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 320,
   },
   retryBtn: {
     backgroundColor: scheme.primary,

@@ -1,10 +1,17 @@
 import { AppState } from 'react-native';
 import { kvGet, kvRemove, kvSet } from '../storage';
 import { RoutingService } from '../api';
-import { getSettingsSync } from '../settings';
+import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
 import type { Connection, RouteQuery, VehiclePosition } from '../../types/models';
-import { buildRoutesLink, mergeWidgetSnapshot, type WidgetPinned } from '../widgetSnapshot';
+import {
+  buildRoutesLink,
+  departureTs,
+  legBadge,
+  mergeWidgetSnapshot,
+  type WidgetPinned,
+} from '../widgetSnapshot';
+import { clockFromMs } from './format';
 import { nowSecOfDay } from '../vehiclePosition';
 import { getNotificationPreferencesSync, loadNotificationPreferences } from './preferences';
 import { computeTripProgress } from './tripProgress';
@@ -88,18 +95,22 @@ export function isSameQuery(a: RouteQuery, b: RouteQuery): boolean {
 
 // ─── Pojazd ────────────────────────────────────────────────────────────────
 
-/** Pojazd dopasowany do odcinka, na którym właśnie jesteśmy. */
+/**
+ * Pojazd dopasowany do odcinka, na którym właśnie jesteśmy.
+ *
+ * Bez dopasowania po `tripId` zwracamy null zamiast pierwszego pojazdu z
+ * linii. `rows[0]` to dowolny autobus tej linii, więc przy trzech pojazdach na
+ * przystanku użytkownik dostawał w powiadomieniu cudzy pojazd i opóźnienie
+ * z nieznanego kursu. Brak informacji jest tu uczciwszy niż zła.
+ */
 function vehicleForTrip(p: TripProgress): VehiclePosition | null {
   if (!p.leg || p.leg.mode === 'walk') return null;
   const tripId = p.leg.tripId;
+  if (!tripId) return null;
   const line = (p.leg.line || '').trim().toUpperCase();
   const rows = liveTracker.snapshot(line || undefined);
   if (rows.length === 0) return null;
-  if (tripId) {
-    const byTrip = rows.find((v) => v.matchedTripId === tripId);
-    if (byTrip) return byTrip;
-  }
-  return rows[0] ?? null;
+  return rows.find((v) => v.matchedTripId === tripId) ?? null;
 }
 
 // ─── Odświeżenie ───────────────────────────────────────────────────────────
@@ -107,6 +118,7 @@ function vehicleForTrip(p: TripProgress): VehiclePosition | null {
 async function planTracked(): Promise<Connection | null> {
   if (!tracked) return null;
   const s = getSettingsSync();
+  const walkSpeedMps = profileWalkSpeedMps(s.walkPace);
   const conns = await RoutingService.getConnections({
     fromTitle: tracked.fromTitle,
     fromLat: tracked.fromLat,
@@ -123,7 +135,8 @@ async function planTracked(): Promise<Connection | null> {
     trainsEnabled: s.trainsEnabled,
     trainMinTransferSec: s.trainMinTransferSec,
     maxWalkM: s.maxWalkM,
-    walkSpeedMps: s.walkSpeedMps,
+    walkSpeedMps,
+    routeStyle: s.routeStyle,
   });
   if (conns.length === 0) return null;
 
@@ -166,6 +179,9 @@ async function refresh(): Promise<void> {
           }
           return;
         }
+        // „Zakończ" mógł trafić w trakcie await planera i wyzerować `tracked`.
+        // Bez tego strażnika odświeżenie wskrzesiłoby zatrzymaną podróż.
+        if (tracked !== before) return;
         tracked = { ...before, connection: fresh };
       } catch {
         // offline — zostaje ostatni plan
@@ -184,11 +200,12 @@ async function refresh(): Promise<void> {
 
     const conn = trip.connection;
 
-    const base = computeTripProgress(conn, {});
+    const walkSpeedMps = profileWalkSpeedMps(getSettingsSync().walkPace);
+    const base = computeTripProgress(conn, { walkSpeedMps });
     const vehicle = vehicleForTrip(base);
     // Drugi przelot z pojazdem: GPS potrafi wskazać przystanek dokładniej
     // niż interpolacja po czasie, a wynik różni się w tym, ile zostało.
-    const p = vehicle ? computeTripProgress(conn, { vehicle }) : base;
+    const p = vehicle ? computeTripProgress(conn, { vehicle, walkSpeedMps }) : base;
     progress = p;
     if (!planLocked && p.phase !== 'walking' && p.phase !== 'waiting') {
       planLocked = true;
@@ -201,6 +218,8 @@ async function refresh(): Promise<void> {
     lastDelayMin = p.delayMin;
 
     await presentTrip(trip, p, prefs);
+    // Jak wyżej: stop w trakcie publikacji nie może pozwolić na dalsze alerty.
+    if (tracked !== before) return;
     await scheduleDepartureAlerts(p, trip, prefs);
 
     if (p.phase === 'arrived') {
@@ -271,7 +290,9 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   arrivedAt = 0;
   planLocked = false;
   lastDelayMin = trip.connection.delayMin;
-  progress = computeTripProgress(trip.connection, {});
+  progress = computeTripProgress(trip.connection, {
+    walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
+  });
   notify();
   rescheduleTicker();
   await refresh();
@@ -315,7 +336,9 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     const parsed = JSON.parse(raw) as TrackedTrip;
     if (!parsed?.connection) return null;
     tracked = parsed;
-    progress = computeTripProgress(parsed.connection, {});
+    progress = computeTripProgress(parsed.connection, {
+      walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
+    });
     notify();
     rescheduleTicker();
     await refresh();
@@ -347,7 +370,10 @@ async function consumeNativeStop(): Promise<boolean> {
 }
 
 /** Idempotentny ticker globalny: odświeża przy powrocie na pierwszy plan. */
+let trackedTripListenerAttached = false;
 export function startTrackedTripListener(): void {
+  if (trackedTripListenerAttached) return;
+  trackedTripListenerAttached = true;
   AppState.addEventListener('change', (state) => {
     if (state !== 'active' || !tracked) return;
     void (async () => {
@@ -372,14 +398,20 @@ async function persist(): Promise<void> {
 /** Sekcja przypięcia w snapshocie widgetów — godziny dokłada odświeżenie. */
 function pushWidgetPinned(trip: TrackedTrip | null): Promise<void> {
   if (!trip) return mergeWidgetSnapshot({ pinned: null });
+  const conn = trip.connection;
+  // Postęp ma już godziny z opóźnieniem live; bez niego liczymy z rozkładu.
+  const departTs = progress?.departAtMs || departureTs(conn);
+  const arriveTs = progress?.arriveAtMs || departTs + conn.durationMin * 60_000;
   const section: WidgetPinned = {
     fromTitle: trip.fromTitle,
     toTitle: trip.toTitle,
-    departAt: trip.connection.departAt,
-    arriveAt: trip.connection.arriveAt,
-    durationMin: trip.connection.durationMin,
-    delayMin: trip.connection.delayMin,
-    live: trip.connection.live,
+    departTs,
+    arriveTs,
+    departAt: clockFromMs(departTs) || conn.departAt,
+    arriveAt: clockFromMs(arriveTs) || conn.arriveAt,
+    delayMin: conn.delayMin,
+    live: conn.live,
+    legs: conn.legs.map(legBadge),
     deepLink: buildRoutesLink({
       fromTitle: trip.fromTitle,
       fromLat: trip.fromLat,

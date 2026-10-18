@@ -60,7 +60,7 @@ export interface TripProgress {
 
   /** Linia pojazdu, którym wsiadasz / jedziesz. */
   line: string;
-  lineMode: 'tram' | 'bus' | 'train' | 'walk';
+  lineMode: 'tram' | 'bus' | 'train' | 'cable' | 'walk';
   /** Kolor linii — akcent powiadomienia i segmentu na pasku postępu. */
   lineColor: string;
   /** Kierunek kursu (np. 'BISKUPIN'). */
@@ -111,6 +111,8 @@ export interface LivePlan {
   tripId: string;
   /** Deep link po tapnięciu w powiadomienie. */
   deepLink: string;
+  channelName: string;
+  channelDescription: string;
   /** Kolor linii — akcent paska postępu i całego powiadomienia. */
   accentColor: string;
   /** Początek podróży razem z dojściem pieszo, ms. */
@@ -146,8 +148,6 @@ export interface LivePlanPhaseCopy {
   text: string;
   /** Podpis przy liczniku systemowym. */
   subText: string;
-  /** Chip w pasku stanu (Android 16.1+). */
-  criticalText: string;
 }
 
 /** Ustawienia powiadomień (osobne od ustawień trasowania). */

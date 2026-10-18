@@ -6,8 +6,8 @@
 // stops / routes / trips / stop_times / calendar / calendar_dates / meta.
 
 import * as SQLite from 'expo-sqlite';
-import { distanceMeters } from '../gtfs/geo';
-import { fuzzyMatch } from '../gtfs/fuzzy';
+import { distanceMeters, normalizePolish } from '../gtfs/geo';
+import { expandTokenSynonyms, fuzzyMatch } from '../gtfs/fuzzy';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../gtfs/types';
 
 export const GTFS_DB_NAME = 'kilometr-gtfs.db';
@@ -120,6 +120,11 @@ async function initDb(): Promise<SQLite.SQLiteDatabase> {
 }
 
 export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
+  // W trakcie podmiany pliku (delete+move) nie wolno otwierać bazy: uchwyt
+  // trafiłby w usunięty plik. Czekamy na bramkę, potem otwieramy świeży plik.
+  if (swapGate) {
+    return swapGate.then(() => getGtfsDb());
+  }
   if (!dbPromise) {
     const p = initDb();
     dbPromise = p;
@@ -131,6 +136,25 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
     });
   }
   return dbPromise;
+}
+
+// Bramka podmiany pliku bazy. Ustawiana na czas close→delete→move, żeby żaden
+// równoległy getGtfsDb() (np. z UI) nie otworzył usuwanego pliku.
+let swapGate: Promise<void> | null = null;
+let releaseSwapGate: (() => void) | null = null;
+
+export function beginGtfsSwap(): void {
+  if (swapGate) return;
+  swapGate = new Promise<void>((resolve) => {
+    releaseSwapGate = resolve;
+  });
+}
+
+export function endGtfsSwap(): void {
+  const release = releaseSwapGate;
+  swapGate = null;
+  releaseSwapGate = null;
+  release?.();
 }
 
 /**
@@ -379,11 +403,25 @@ export interface StopSearchHit {
 export async function searchStops(query: string, limit = 8): Promise<StopSearchHit[]> {
   const q = query.trim().toLowerCase();
   if (!q) return [];
+  const tokens = normalizePolish(q).split(/[\s,./()\\-]+/).filter(Boolean);
+  if (!tokens.length) return [];
+
+  // Prefiltr SQL jest tańszy niż fuzzy na całej tabeli, ale nie może gubić
+  // skrótów: "PL. GRUNWALDZKI" nie zawiera "plac grun", więc każde słowo
+  // dopasowujemy osobno (AND) z wariantami synonimów (OR), np. plac/pl.
+  const clauses: string[] = [];
+  const params: string[] = [];
+  for (const token of tokens) {
+    const variants = expandTokenSynonyms(token).filter((v) => v.length >= 2);
+    const list = variants.length ? variants : [token];
+    clauses.push(`(${list.map(() => 'norm LIKE ?').join(' OR ')})`);
+    for (const v of list) params.push(`%${v.replace(/[%_]/g, '')}%`);
+  }
+
   const db = await getGtfsDb();
-  const like = `%${q.replace(/[%_]/g, '')}%`;
   const rows = await db.getAllAsync<{ stop_id: string; code: string; name: string; lat: number; lon: number; weight: number }>(
-    'SELECT stop_id, code, name, lat, lon, weight FROM stops WHERE norm LIKE ? LIMIT 120',
-    like,
+    `SELECT stop_id, code, name, lat, lon, weight FROM stops WHERE ${clauses.join(' AND ')} LIMIT 120`,
+    ...params,
   );
   const scored: StopSearchHit[] = [];
   const seen = new Set<string>();

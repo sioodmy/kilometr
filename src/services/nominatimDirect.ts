@@ -35,7 +35,13 @@ interface NominatimRow {
   lon: string;
   type?: string;
   class?: string;
+  name?: string;
   address?: Record<string, string>;
+}
+
+/** Numer domu stoi w display_name na pierwszym miejscu ("1, Różana, ..."). */
+function isHouseNumber(part: string): boolean {
+  return /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)?$/.test(part.trim());
 }
 
 /** Zamienia display_name na krótki tytuł + adres w stylu serwera. Bez pozycji usera. */
@@ -45,9 +51,25 @@ function toSuggestion(row: NominatimRow): Suggestion | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   // Ścisły filtr: obsługujemy tylko Wrocław (viewbox/bounded nie wystarczają).
   if (!inWroclaw(lat, lon)) return null;
+  const addr = row.address ?? {};
+  const road = addr.road || addr.pedestrian || addr.residential || addr.footway || addr.cycleway;
+  const houseNo = addr.house_number;
   const parts = row.display_name.split(',').map((p) => p.trim()).filter(Boolean);
-  const title = parts[0] || row.display_name;
-  const address = parts.slice(1, 3).join(', ') || 'Wrocław';
+  let title: string;
+  let address: string;
+  if (road && houseNo) {
+    title = `${road} ${houseNo}`;
+    address = parts.filter((p) => p !== road && p !== houseNo).slice(0, 2).join(', ') || 'Wrocław';
+  } else if (row.name) {
+    title = row.name;
+    address = parts.slice(1, 3).join(', ') || 'Wrocław';
+  } else if (parts.length >= 2 && isHouseNumber(parts[0])) {
+    title = `${parts[1]} ${parts[0]}`;
+    address = parts.slice(2, 4).join(', ') || 'Wrocław';
+  } else {
+    title = parts[0] || row.display_name;
+    address = parts.slice(1, 3).join(', ') || 'Wrocław';
+  }
   const kind = row.class === 'place' || row.type === 'bus_stop' ? 'stop' : 'address';
   return {
     id: `nominatim-${row.place_id}`,
@@ -162,6 +184,8 @@ export async function reverseNominatimDirect(
     if (!row?.display_name) return null;
     const parts = row.display_name.split(',').map((p) => p.trim()).filter(Boolean);
     const addr = row.address ?? {};
+    const road = addr.road || addr.pedestrian || addr.residential || addr.footway || addr.cycleway;
+    const houseNo = addr.house_number;
     // Miejscowość do komunikatu „Twoja lokalizacja GPS wskazuje na …":
     // pierwsze trafienie z hierarchii OSM, z pominięciem dzielnic/przedmieść.
     const city =
@@ -174,6 +198,20 @@ export async function reverseNominatimDirect(
       addr.county ||
       addr.state ||
       null;
+    if (road && houseNo) {
+      return {
+        title: `${road} ${houseNo}`,
+        address: parts.filter((p) => p !== road && p !== houseNo).slice(0, 2).join(', ') || 'Wrocław',
+        city,
+      };
+    }
+    if (parts.length >= 2 && /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)?$/.test(parts[0])) {
+      return {
+        title: `${parts[1]} ${parts[0]}`,
+        address: parts.slice(2, 4).join(', ') || 'Wrocław',
+        city,
+      };
+    }
     return {
       title: parts[0] || 'Twoja lokalizacja',
       address: parts.slice(1, 3).join(', ') || 'Wrocław',

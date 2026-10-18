@@ -30,7 +30,7 @@ fi
 
 DEVICE_ID="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
 if [ -z "$DEVICE_ID" ]; then
-  if adb devices | awk 'NR>1 && $2=="unauthorized"' | grep -q .; then
+  if adb devices | awk 'NR>1 && $2=="unauthorized" {found=1} END {exit found?0:1}'; then
     fail "Telefon wymaga autoryzacji debugowania USB. Odblokuj ekran i kliknij 'Zezwalaj zawsze z tego komputera'."
   fi
   fail "Nie wykryto podłączonego telefonu przez USB! Sprawdź: kabel, opcje programisty + debugowanie USB, autoryzację komputera na telefonie."
@@ -59,7 +59,8 @@ else
   echo "🟡 Metro nie działa — uruchamiam 'npx expo start --localhost' w tle..."
   echo "   Log: $METRO_LOG"
   mkdir -p "$ROOT/.expo"
-  (cd "$ROOT" && nohup npx expo start --localhost >"$METRO_LOG" 2>&1 &)
+  # ipv4first: bez tego Node bywa na [::1], a adb reverse + Expo Go chodzą po 127.0.0.1.
+  (cd "$ROOT" && nohup env NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" npx expo start --localhost >"$METRO_LOG" 2>&1 &)
   wait_for "$METRO_STATUS" 120 "Metro Bundler" \
     || fail "Metro nie wstało w 120 s. Sprawdź log: $METRO_LOG"
 fi
@@ -83,7 +84,7 @@ adb -s "$DEVICE_ID" reverse tcp:3000 tcp:3000
 adb -s "$DEVICE_ID" reverse --list
 
 # Expo Go musi być zainstalowane, inaczej intent ginie po cichu.
-if ! adb -s "$DEVICE_ID" shell pm list packages 2>/dev/null | grep -q "$EXPO_GO_PKG"; then
+if ! adb -s "$DEVICE_ID" shell pm list packages 2>/dev/null | awk -v pkg="$EXPO_GO_PKG" 'index($0,pkg){found=1} END{exit found?0:1}'; then
   fail "Na telefonie nie ma Expo Go ($EXPO_GO_PKG). Zainstaluj je ze Sklepu Play i spróbuj ponownie."
 fi
 

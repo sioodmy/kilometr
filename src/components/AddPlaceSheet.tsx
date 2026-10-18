@@ -2,14 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import BottomSheet, { BottomSheetFlatList, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import BottomSheet, {
+  BottomSheetFlatList,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Anchor,
@@ -109,18 +114,6 @@ const PLACE_ICON_CATEGORY_KEYS: PlaceIconCategory[] = [
 export function getPlaceIconCategories(s: Strings): { key: PlaceIconCategory; label: string }[] {
   return PLACE_ICON_CATEGORY_KEYS.map((key) => ({ key, label: s.places.iconCategories[key] }));
 }
-
-/** Zachowane dla kompatybilności (etykiety PL); UI używa getPlaceIconCategories(s). */
-export const PLACE_ICON_CATEGORIES: { key: PlaceIconCategory; label: string }[] = [
-  { key: 'all', label: 'Wszystkie' },
-  { key: 'frequent', label: 'Częste' },
-  { key: 'transit', label: 'Podróż' },
-  { key: 'food', label: 'Jedzenie' },
-  { key: 'health', label: 'Zdrowie' },
-  { key: 'culture', label: 'Kultura' },
-  { key: 'sport', label: 'Sport' },
-  { key: 'services', label: 'Usługi' },
-];
 
 export const PLACE_ICON_OPTIONS: PlaceIconItem[] = [
   // Codzienne / Częste
@@ -222,6 +215,13 @@ export function AddPlaceSheet({
   // Formularz kończy się przyciskiem „Zapisz”; bez insetu jest pod paskiem
   // nawigacji i w dolnej połowie nie reaguje na dotknięcie.
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const iconGridItemSize = (width - 32) / 4;
+  // Wysokość okna z momentu montowania (klawiatura jeszcze zamknięta). Trzymamy
+  // ją na stałe, bo Android w trybie "resize" kurczy okno przy klawiaturze, co
+  // przesuwało górną krawędź arkusza (i pigułki kategorii) przy każdym znaku.
+  // Ekran jest zablokowany w pionie, więc wartość się nie zmienia.
+  const [sheetWindowHeight] = useState(() => Dimensions.get('window').height);
   const isEditing = Boolean(initialPlace);
   const s = useStrings();
   // Katalog ikon i kategorii w języku użytkownika (etykiety ze słownika).
@@ -456,6 +456,18 @@ export function AddPlaceSheet({
   }, [iconQuery, selectedIconCategory, iconOptions]);
 
   return (
+    // Stała wysokość kontenera: izoluje arkusz od kurczenia okna przez
+    // klawiaturę, dzięki czemu górna krawędź (a więc i pigułki) się nie rusza.
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: sheetWindowHeight,
+      }}
+    >
     <BottomSheet
       ref={sheetRef}
       index={isEditing ? 0 : 1}
@@ -463,6 +475,8 @@ export function AddPlaceSheet({
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
+      android_keyboardInputMode="adjustPan"
+      keyboardBehavior="extend"
       onChange={(idx) => {
         if (idx === -1) onClose();
       }}
@@ -505,7 +519,7 @@ export function AddPlaceSheet({
             {/* Icon Search Box */}
             <View style={styles.searchBox}>
               <Search size={18} color={scheme.onSurfaceVariant} />
-              <TextInput
+              <BottomSheetTextInput
                 value={iconQuery}
                 onChangeText={setIconQuery}
                 placeholder={s.places.searchIcon}
@@ -572,7 +586,7 @@ export function AddPlaceSheet({
                     }}
                     style={({ pressed }) => [
                       styles.gridItem,
-                      isSelected && styles.gridItemSelected,
+                      { width: iconGridItemSize, height: iconGridItemSize },
                       pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
                     ]}
                   >
@@ -637,7 +651,7 @@ export function AddPlaceSheet({
 
             <View style={styles.searchBox}>
               <Search size={18} color={scheme.onSurfaceVariant} />
-              <TextInput
+              <BottomSheetTextInput
                 value={anchorQuery}
                 onChangeText={handleAnchorQueryChange}
                 placeholder={s.places.searchStop}
@@ -754,7 +768,7 @@ export function AddPlaceSheet({
 
             <View style={styles.searchBox}>
               <Search size={18} color={scheme.onSurfaceVariant} />
-              <TextInput
+              <BottomSheetTextInput
                 value={query}
                 onChangeText={handleQueryChange}
                 placeholder={s.places.queryHint}
@@ -818,7 +832,7 @@ export function AddPlaceSheet({
             {/* Place Name Input */}
             <View style={styles.inputWrap}>
               <Text style={styles.fieldLabel}>{s.places.nameLabel}</Text>
-              <TextInput
+              <BottomSheetTextInput
                 value={name}
                 onChangeText={setName}
                 placeholder={s.places.nameHint}
@@ -840,7 +854,6 @@ export function AddPlaceSheet({
                   hitSlop={8}
                   style={({ pressed }) => [styles.moreIconsLink, pressed && { opacity: 0.7 }]}
                 >
-                  <Sparkles size={13} color={scheme.primary} />
                   <Text style={styles.moreIconsLinkText}>
                     {s.places.moreIcons(iconOptions.length)}
                   </Text>
@@ -931,7 +944,7 @@ export function AddPlaceSheet({
               ) : (
                 <View style={styles.searchBox}>
                   <Search size={18} color={scheme.onSurfaceVariant} />
-                  <TextInput
+                  <BottomSheetTextInput
                     value={query}
                     onChangeText={handleQueryChange}
                     placeholder={s.places.queryHint}
@@ -981,7 +994,7 @@ export function AddPlaceSheet({
                       style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.8 }]}
                     >
                       <Pencil size={14} color={scheme.primary} />
-                      <Text style={styles.changeBtnText}>Zmień</Text>
+                      <Text style={styles.changeBtnText}>{s.places.changeBtn}</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => setAnchorStop(null)}
@@ -1072,6 +1085,7 @@ export function AddPlaceSheet({
         )}
       </View>
     </BottomSheet>
+    </View>
   );
 }
 
@@ -1460,8 +1474,7 @@ const styles = StyleSheet.create({
   },
   categoryPill: {
     paddingHorizontal: 18,
-    paddingVertical: 14,
-    minHeight: 46,
+    height: 46,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: shape.full,
@@ -1490,21 +1503,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   gridItem: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    margin: 4,
     paddingVertical: 10,
     paddingHorizontal: 4,
     borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-  },
-  gridItemSelected: {
-    backgroundColor: scheme.primaryContainer,
-    borderColor: scheme.primary,
-    borderWidth: 1.5,
   },
   gridIconWrap: {
     width: 38,

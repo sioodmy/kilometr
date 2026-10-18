@@ -8,6 +8,10 @@ export class VehicleTracker {
   private vehiclesByTripId = new Map<string, VehicleMatch>();
   private pollTimer: NodeJS.Timeout | null = null;
   private isPolling = false;
+  // Znacznik ostatniego udanego pollingu: po przerwie w łączności stare
+  // opóźnienia nie mogą dalej zasilać RAPTOR-a ani UI jako świeże.
+  private lastSuccessAt = 0;
+  private static readonly STALE_AFTER_MS = 120000;
 
   start() {
     if (this.pollTimer) return;
@@ -98,6 +102,7 @@ export class VehicleTracker {
       this.vehiclesById = newById;
       this.vehiclesByLine = newByLine;
       this.vehiclesByTripId = newByTripId;
+      this.lastSuccessAt = Date.now();
     } catch (err: any) {
       console.warn('[Realtime Tracker] Poll warning:', err?.message || err);
     } finally {
@@ -112,7 +117,12 @@ export class VehicleTracker {
     return Array.from(this.vehiclesById.values());
   }
 
+  private isStale(): boolean {
+    return this.lastSuccessAt === 0 || Date.now() - this.lastSuccessAt > VehicleTracker.STALE_AFTER_MS;
+  }
+
   getLiveStatusForTrip(tripId?: string, line?: string): { delaySec: number; vehicle: VehicleMatch } | null {
+    if (this.isStale()) return null;
     // Tylko konkretny pojazd dopasowany do tripId = prawdziwy GPS.
     // Celowo BEZ fallbacku po linii: "pierwszy pojazd linii" dawał fałszywe
     // "na czas" / opóźnienia dla kursów bez własnego GPS.
@@ -127,6 +137,7 @@ export class VehicleTracker {
   /** Opóźnienia wszystkich śledzonych kursów: tripId -> sekundy. Do RAPTOR-a. */
   getTripDelays(): Map<string, number> {
     const out = new Map<string, number>();
+    if (this.isStale()) return out;
     for (const [tripId, match] of this.vehiclesByTripId.entries()) {
       out.set(tripId, match.delaySec);
     }

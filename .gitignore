@@ -13,6 +13,7 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
@@ -31,7 +32,9 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -47,12 +50,13 @@ modules/*/android/.cxx/
 modules/*/ios/build/
 
 # generowane dane backendu (pobierane automatycznie: `npm run setup`
-# lub hooki predev/prestart w server/) — nigdy nie commitować
+# lub hooki predev/prestart w server/) - nigdy nie commitować
 server/data/
 
 # lokalne sekrety i artefakty pipeline'u rozkładów (klucz PDP API tylko
 # w sekretach: `wrangler secret put` + GitHub Actions Secrets)
-.env
 cloudflare/dist/
 cloudflare/.dev.vars
+cloudflare/.wrangler/
+.wrangler/
 cloudflare/node_modules/

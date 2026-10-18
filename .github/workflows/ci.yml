@@ -47,6 +47,9 @@ jobs:
       - name: Run logic tests (Smart rank)
         run: npm run check:smart-rank
 
+      - name: Run logic tests (Navigation target)
+        run: npm run check:navigation-target
+
       - name: Expo Doctor (Advisory)
         run: npx expo-doctor || true
 

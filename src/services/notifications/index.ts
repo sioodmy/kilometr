@@ -37,7 +37,9 @@ export {
   canShowLiveUpdates,
   ensureNotificationPermission,
   hasNotificationPermission,
+  isLiveUpdatesSupported,
   isTrackingPlatform,
+  openNotificationSettings,
   permissionDeniedMessage,
 } from './permissions';
 export {

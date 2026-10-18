@@ -95,6 +95,20 @@ export class GtfsStore {
 
   async load(): Promise<void> {
     if (this.isLoaded) return;
+    // Jedna wspólna obietnica: równoległe load() (start + pierwsze zapytania)
+    // nie mogą parsować całego GTFS kilka razy naraz i podmieniać map w trakcie.
+    if (this.loadPromise) return this.loadPromise;
+    this.loadPromise = this.doLoad();
+    try {
+      await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
+    }
+  }
+
+  private loadPromise: Promise<void> | null = null;
+
+  private async doLoad(): Promise<void> {
     const t0 = performance.now();
     console.log('[GTFS Store] Initializing store...');
 
@@ -188,14 +202,16 @@ export class GtfsStore {
     if (cached) return cached;
 
     const active = this.getActiveServices(day, dateStr);
-    const useFilter = active.size > 0;
+    // Pusty zbiór = brak kursujących serwisów tego dnia (np. wyjątek w
+    // calendar_dates). Wcześniej traktowano to jako „pokaż wszystkie kursy",
+    // więc w święto planer proponował rozkład dnia roboczego.
     const stopRoutes = new Map<string, Set<string>>();
     const routeStops = new Map<string, string[]>();
     const routeTrips = new Map<string, GtfsTrip[]>();
     const patterns = new Map<string, TripPattern>();
 
     for (const [routeId, trips] of this.allTripsByRouteId.entries()) {
-      const dayTrips = useFilter ? trips.filter((t) => active.has(t.service_id)) : trips;
+      const dayTrips = trips.filter((t) => active.has(t.service_id));
       if (!dayTrips.length) continue;
 
       // ──── Trip Pattern Extraction ────

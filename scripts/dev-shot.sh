@@ -4,7 +4,9 @@
 set -euo pipefail
 
 export PATH="$HOME/Android/Sdk/platform-tools:$PATH"
-NAME="${1:-shot}"
+# Tylko bezpieczne znaki: spacja lub `;` w nazwie rozbiłyby ścieżkę / wstrzyknęły
+# komendę w shell telefonu.
+NAME="$(printf '%s' "${1:-shot}" | tr -c 'A-Za-z0-9._-' '_')"
 WAIT="${2:-0}"
 OUT_DIR="${SHOT_DIR:-/tmp/opencode/shots}"
 mkdir -p "$OUT_DIR"

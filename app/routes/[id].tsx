@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, InteractionManager } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   CloudOff,
   History,
-  Radio,
   RouteOff,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
@@ -16,18 +15,19 @@ import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
+import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
+import { LineBadge } from '../../src/components/LineBadge';
 import { LiveDot } from '../../src/components/LiveDot';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
+import { linesFromConnections } from '../../src/services/recentRouteLines';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
   getTrackedTripSync,
-  permissionDeniedMessage,
+  loadNotificationPreferences,
   startTracking,
-  stopTracking,
   useTrackedTrip,
-  type TrackedTrip,
 } from '../../src/services/notifications';
 
 export default function RouteDetailsScreen() {
@@ -37,53 +37,55 @@ export default function RouteDetailsScreen() {
   const [item, setItem] = useState<Connection | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
+  // Stan feedu live zmienia się w tle, a ten ekran nie odświeża się sam z
+  // powodu danych. Bez tickera baner „brak danych” był zamrożony w stanie z
+  // chwili renderu i pojawiał się dopiero przy jakiejś przypadkowej
+  // przerysowie całego ekranu.
+  const [liveStale, setLiveStale] = useState(() => liveTracker.getLiveState() !== 'fresh');
+  useEffect(() => {
+    const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
+    const t = setInterval(check, 15000);
+    return () => clearInterval(t);
+  }, []);
 
   const { trip: trackedTrip } = useTrackedTrip();
 
   const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
 
-  const handleToggleTrack = async () => {
-    if (isTrackedThis) {
-      await stopTracking();
-      return;
-    }
-    await handleTrack();
-  };
-
-  /** Śledzimy właśnie ten kurs, nie całe zapytanie — patrz ekran połączeń. */
-  const handleTrack = async () => {
-    if (!item) return;
-    if (!areNotificationsSupported()) {
-      Alert.alert(
-        s.routes.pinUnsupportedTitle,
-        s.routes.pinUnsupportedBody,
-      );
-      return;
-    }
-    const ok = await ensureNotificationPermission();
-    if (!ok) {
-      Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
-      return;
-    }
-    // Współrzędne bierzemy z odcinków (Leg ma from/to lat/lon); fallback to
-    // domyślnego miejsca, bo planer i tak zakotwiczy się do najbliższego
-    // przystanku wokół tych współrzędnych.
-    const firstLeg = item.legs[0];
-    const lastLeg = item.legs[item.legs.length - 1];
-    const track: TrackedTrip = {
-      id: item.id,
-      fromTitle: item.fromTitle,
-      fromLat: firstLeg?.fromLat ?? DEFAULT_LOCATION.lat,
-      fromLon: firstLeg?.fromLon ?? DEFAULT_LOCATION.lon,
-      toId: item.toTitle,
-      toTitle: item.toTitle,
-      toLat: lastLeg?.toLat ?? DEFAULT_LOCATION.lat,
-      toLon: lastLeg?.toLon ?? DEFAULT_LOCATION.lon,
-      connection: item,
-      startedAt: Date.now(),
-    };
-    await startTracking(track);
-  };
+  // Wejście w szczegóły kursu uruchamia śledzenie samo z siebie, o ile
+  // „Śledzenie podróży” jest włączone w ustawieniach. Jedna próba na kurs,
+  // żeby powrót z tła nie odpalał śledzenia w kółko.
+  const autoTrackedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!item || isTrackedThis) return;
+    if (autoTrackedId.current === item.id) return;
+    autoTrackedId.current = item.id;
+    void (async () => {
+      if (!areNotificationsSupported()) return;
+      const prefs = await loadNotificationPreferences();
+      if (!prefs.trackingEnabled) return;
+      const ok = await ensureNotificationPermission();
+      if (!ok) return;
+      // Śledzimy właśnie ten kurs, nie całe zapytanie — patrz ekran połączeń.
+      // Współrzędne bierzemy z odcinków (Leg ma from/to lat/lon); fallback to
+      // domyślnego miejsca, bo planer i tak zakotwiczy się do najbliższego
+      // przystanku wokół tych współrzędnych.
+      const firstLeg = item.legs[0];
+      const lastLeg = item.legs[item.legs.length - 1];
+      await startTracking({
+        id: item.id,
+        fromTitle: item.fromTitle,
+        fromLat: firstLeg?.fromLat ?? DEFAULT_LOCATION.lat,
+        fromLon: firstLeg?.fromLon ?? DEFAULT_LOCATION.lon,
+        toId: item.toTitle,
+        toTitle: item.toTitle,
+        toLat: lastLeg?.toLat ?? DEFAULT_LOCATION.lat,
+        toLon: lastLeg?.toLon ?? DEFAULT_LOCATION.lon,
+        connection: item,
+        startedAt: Date.now(),
+      });
+    })();
+  }, [item, isTrackedThis]);
 
   useEffect(() => {
     // Brak id to nie „wczytujemy” — inaczej ekran zostawał ze spinnerem w nieskończoność.
@@ -175,7 +177,7 @@ export default function RouteDetailsScreen() {
   const early = item.live && item.delayMin < 0;
   const onTime = item.live && item.delayMin === 0;
   const noLegs = item.legs.length === 0;
-  const liveStale = liveTracker.getLiveState() !== 'fresh';
+  const tripLines = linesFromConnections([item]);
 
   // Treść komunikatu o źródle danych. Kolejność ma znaczenie: połączenie
   // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
@@ -195,34 +197,6 @@ export default function RouteDetailsScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {s.routeDetails.title}
         </Text>
-        <Pressable
-          onPress={() => void handleToggleTrack()}
-          accessibilityRole="button"
-          accessibilityState={{ selected: isTrackedThis }}
-          accessibilityLabel={
-            isTrackedThis ? s.routeDetails.stopTrackingA11y : s.routeDetails.trackA11y
-          }
-          style={({ pressed }) => [
-            styles.headerTrackBtn,
-            isTrackedThis && styles.headerTrackBtnActive,
-            pressed && { opacity: 0.7 },
-          ]}
-          hitSlop={8}
-        >
-          <Radio
-            size={14}
-            color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-          />
-          <Text
-            style={[
-              styles.headerTrackText,
-              isTrackedThis && styles.headerTrackTextActive,
-            ]}
-            numberOfLines={1}
-          >
-            {isTrackedThis ? s.routeDetails.tracking : s.routeDetails.trackCourse}
-          </Text>
-        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
@@ -269,19 +243,26 @@ export default function RouteDetailsScreen() {
               {item.toTitle}
             </Text>
           </View>
+          {tripLines.length > 0 ? (
+            <View style={styles.summaryLines}>
+              {tripLines.map((line) => (
+                <LineBadge key={line} line={line} compact />
+              ))}
+            </View>
+          ) : null}
           {/* kompaktowy badge statusu */}
           {late ? (
             <View style={[styles.statusBadge, { backgroundColor: scheme.errorContainer }]}>
               <LiveDot color={scheme.error} size={7} />
               <Text style={[styles.statusText, { color: scheme.onErrorContainer }]}>
-                +{item.delayMin} min
+                +{s.common.durMin(item.delayMin)}
               </Text>
             </View>
           ) : early ? (
             <View style={[styles.statusBadge, { backgroundColor: scheme.warningContainer }]}>
               <LiveDot color={scheme.warning} size={7} />
               <Text style={[styles.statusText, { color: scheme.onWarningContainer }]}>
-                {item.delayMin} min
+                {s.common.durMin(item.delayMin)}
               </Text>
             </View>
           ) : onTime ? (
@@ -317,8 +298,11 @@ export default function RouteDetailsScreen() {
           <>
             <LegTimeline legs={item.legs} />
 
-            {/* Radar wraz z wejściem w mapę trasy siedzi na dole ekranu —
-                tam, gdzie sięga kciuk, a nie na górze pod nagłówkiem. */}
+            <ConnectionLineAlerts connection={item} />
+
+            {/* Nawigacja do przystanku siedzi na dole ekranu, tam, gdzie
+                sięga kciuk. Cały widget jest klikalny i otwiera pełną
+                mapę trasy. */}
             <StopCompassCard
               connection={item}
               onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
@@ -344,28 +328,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
-  headerTrackBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    height: 36,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    flexShrink: 0,
-  },
-  headerTrackBtnActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  headerTrackText: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-    fontWeight: '600',
-  },
-  headerTrackTextActive: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
-  },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8 },
   iconBtn: { width: 40, height: 40, borderRadius: shape.full, backgroundColor: scheme.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
@@ -408,6 +370,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  summaryLines: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
   },
   statusBadge: {
     flexDirection: 'row',

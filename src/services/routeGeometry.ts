@@ -9,21 +9,52 @@
 //  3. wynik trzymamy w cache, więc drugie otwarcie mapy jest natychmiastowe
 //     i działa offline.
 //
-// Bez OSRM zostaje prosta wersja — wolniej, ale zawsze pokazuje trasę.
+// Spacer idzie tym samym kanałem co kurs, ale po profilu pieszym: bez niego
+// noga piesza dostawałaby dwa punkty i rysowała się w linii prostej przez
+// budynki. Bez routera zostaje wersja prosta, wolna, ale zawsze pokazuje trasę.
+//
+// Nogi szynowe (tramwaj, pociąg) nigdy nie idą do OSRM. Router samochodowy
+// prowadzi po jezdni, więc na torowisku wydzielonym albo w strefie bez aut
+// dokładał pętelki i objazdy. Takie nogi zostają na prostych między
+// przystankami, czyli czysto i blisko torów.
 
-import { OSRM_BASE_URL } from '../config';
+import { OSRM_BASE_URL, OSRM_FOOT_BASE_URL } from '../config';
 import { kvGet, kvSet } from './storage';
 import { getLineColors } from '../components/LineBadge';
 import { timeStringToSeconds } from '../gtfs/geo';
+import { selectEvictions } from './geometryEviction';
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
 
 const CACHE_KEY = 'kilometr.map_geometry.v1';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 60;
-/** OSRM demo jest wolne przy dużej liczbie waypointów — dzielimy nogi na porcje. */
+const PINS_KEY = 'kilometr.map_geometry.pins.v1';
+/** Ile tras trzymamy przypiętych. Powyżej tego najstarsze wypadają. */
+const PINS_MAX = 40;
+/** OSRM demo jest wolne przy dużej liczbie waypointów, dzielimy nogi na porcje. */
 const WAYPOINTS_PER_REQUEST = 20;
 const REQUEST_TIMEOUT_MS = 8000;
+
+/** Profil routera: kurs jedzie po jezdni, spacer po chodnikach. */
+type RouteProfile = 'driving' | 'foot';
+
+/**
+ * Tory nie leżą na jezdni, więc router samochodowy robi pętelki i objazdy.
+ * Kolej linowa tym bardziej: Polinka leci nad Odrą wprost, a OSRM po jezdni
+ * objechałby rzekę mostem Grunwaldzkim i narysowała 2 km zamiast 400 m.
+ */
+export function isRailLeg(leg: MapLeg): boolean {
+  return leg.mode === 'tram' || leg.mode === 'train' || leg.mode === 'cable';
+}
+
+function legProfile(leg: MapLeg): RouteProfile {
+  return leg.mode === 'walk' ? 'foot' : 'driving';
+}
+
+function profileUrl(profile: RouteProfile): string {
+  return profile === 'foot' ? OSRM_FOOT_BASE_URL : OSRM_BASE_URL;
+}
 
 export type Coord = [number, number];
 
@@ -142,6 +173,45 @@ function waypointKey(coords: Coord[]): string {
 }
 
 let cacheLoaded: Promise<Map<string, Coord[]>> | null = null;
+let pinnedKeys: Set<string> | null = null;
+
+/**
+ * Klucze przypięte: geometria tras, które użytkownik faktycznie otworzył albo
+ * wyszukał. LRU jej nie wywala, więc ostatnie trasy działają offline nawet po
+ * przewertowaniu kilkudziesięciu innych. Bez tego limit 60 wpisów wyrzucał
+ * trasę, do której ktoś wraca codziennie, na rzecz jednorazowych.
+ */
+async function readPins(): Promise<Set<string>> {
+  if (pinnedKeys) return pinnedKeys;
+  const out = new Set<string>();
+  try {
+    const raw = await kvGet(PINS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) for (const k of parsed) if (typeof k === 'string') out.add(k);
+    }
+  } catch (err) {
+    console.warn('[routeGeometry] pins read failed:', err);
+  }
+  pinnedKeys = out;
+  return out;
+}
+
+async function pinKey(key: string): Promise<void> {
+  const pins = await readPins();
+  if (pins.has(key)) return;
+  pins.add(key);
+  // Sufit na przypięte: gdyby rósł bez końca, cache przestałby się mieścić.
+  const arr = Array.from(pins);
+  if (arr.length > PINS_MAX) {
+    for (const k of arr.slice(0, arr.length - PINS_MAX)) pins.delete(k);
+  }
+  try {
+    await kvSet(PINS_KEY, JSON.stringify(Array.from(pins)));
+  } catch {
+    // best-effort
+  }
+}
 
 async function readCache(): Promise<Map<string, Coord[]>> {
   if (!cacheLoaded) {
@@ -167,12 +237,16 @@ async function readCache(): Promise<Map<string, Coord[]>> {
   return cacheLoaded;
 }
 
+/**
+ * Które klucze wypadają przy przekroczeniu limitu. Wydzielone do
+ * geometryEviction.ts, bo tam da się to przetestować bez react-native.
+ */
 async function writeCache(key: string, coords: Coord[]): Promise<void> {
   const cache = await readCache();
   cache.set(key, coords);
   if (cache.size > CACHE_MAX_ENTRIES) {
-    // Mapa w Mapie gwarantuje kolejność wstawiania, więc to proste LRU.
-    for (const k of Array.from(cache.keys()).slice(0, cache.size - CACHE_MAX_ENTRIES)) {
+    const pins = await readPins();
+    for (const k of selectEvictions(Array.from(cache.keys()), pins, CACHE_MAX_ENTRIES)) {
       cache.delete(k);
     }
   }
@@ -184,10 +258,55 @@ async function writeCache(key: string, coords: Coord[]): Promise<void> {
   await kvSet(CACHE_KEY, JSON.stringify(entries));
 }
 
-async function fetchChunk(points: Coord[], signal?: AbortSignal): Promise<Coord[] | null> {
+/**
+ * Przypina geometrię trasy, którą użytkownik ma już na ekranie, żeby nie
+ * wypadła z cache. Nie pobiera nic z sieci: zakłada, że geometria już tam
+ * jest (ekran mapy dociągnął ją wcześniej).
+ */
+export async function pinRouteGeometry(route: MapRoute): Promise<void> {
+  for (const leg of route.legs) {
+    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
+    const key = `${legProfile(leg)}:${waypointKey(legWaypoints(leg))}`;
+    await pinKey(key);
+  }
+}
+
+/**
+ * Rozgrzewa geometrię całej trasy i przypina ją, żeby została offline.
+ * Używamy tego dla tras z ostatnich wyszukiwań oraz dla otwieranej trasy.
+ * Zwraca liczbę nóg, których geometrię udało się pobrać.
+ */
+export async function warmRouteGeometry(
+  route: MapRoute,
+  signal?: AbortSignal,
+): Promise<number> {
+  let warmed = 0;
+  for (const leg of route.legs) {
+    if (signal?.aborted) break;
+    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
+    const coords = await fetchLegGeometry(leg, signal).catch(() => null);
+    if (!coords || coords.length < 2) continue;
+    const profile = legProfile(leg);
+    const key = `${profile}:${waypointKey(legWaypoints(leg))}`;
+    // fetchLegGeometry już zapisała, ale LRU mógł ją w międzyczasie wywalić;
+    // przypięcie gwarantuje, że zostanie.
+    await pinKey(key);
+    warmed++;
+    // Ta sama pauza co przy normalnym dociąganiu: publiczny serwer ma limit.
+    const wasCached = (await readCache()).has(key);
+    if (!wasCached) await new Promise((r) => setTimeout(r, 250));
+  }
+  return warmed;
+}
+
+async function fetchChunk(
+  points: Coord[],
+  profile: RouteProfile,
+  signal?: AbortSignal,
+): Promise<Coord[] | null> {
   if (points.length < 2) return null;
   const coordsParam = points.map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
-  const url = `${OSRM_BASE_URL}/route/v1/driving/${coordsParam}?overview=full&geometries=geojson`;
+  const url = `${profileUrl(profile)}/route/v1/${profile}/${coordsParam}?overview=full&geometries=geojson`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   // Anulowanie z ekranu ma przerwać także żądanie w locie, nie tylko pętlę.
@@ -214,16 +333,20 @@ async function fetchChunk(points: Coord[], signal?: AbortSignal): Promise<Coord[
 
 /**
  * Geometria jednej nogi: waypointy po przystankach, jedno zapytanie (albo kilka
- * po 20 waypointów) i sklejone w jeden ciąg. Zwraca null, gdy sieć zawodzi —
- * wtedy noga zostaje prosta, a mapa i tak pokazuje trasę.
+ * po 20 waypointów) i sklejone w jeden ciąg. Zwraca null dla nóg szynowych
+ * oraz gdy sieć zawodzi, wtedy noga zostaje prosta.
  */
 export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
+  if (isRailLeg(leg)) return null;
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
   );
   if (points.length < 2) return null;
 
-  const key = waypointKey(points);
+  const profile = legProfile(leg);
+  // Profil wchodzi do klucza: te same dwa punkty pieszo i autem to dwie
+  // różne trasy, więc jedna nie może podmienić drugiej w cache.
+  const key = `${profile}:${waypointKey(points)}`;
   const cache = await readCache();
   const hit = cache.get(key);
   if (hit) return hit;
@@ -232,7 +355,7 @@ export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promi
   for (let i = 0; i < points.length - 1; i += WAYPOINTS_PER_REQUEST - 1) {
     if (signal?.aborted) return null;
     const slice = points.slice(i, i + WAYPOINTS_PER_REQUEST);
-    const part = await fetchChunk(slice, signal);
+    const part = await fetchChunk(slice, profile, signal);
     if (!part) return null;
     // Sklej bez powtórzenia punktu granicznego.
     chunks.push(...(chunks.length > 0 ? part.slice(1) : part));
@@ -241,6 +364,36 @@ export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promi
   if (signal?.aborted) return null;
   void writeCache(key, chunks);
   return chunks;
+}
+
+/**
+ * Trasa piesza między dwoma dowolnymi punktami. Używa jej tylko widget
+ * nawigacji, gdy użytkownik zgubi trasę (przerouting nie rusza pełnej mapy).
+ * Jedno zapytanie do OSRM foot, ten sam cache i timeout co nogi. Null bez
+ * sieci albo po błędzie. Wtedy widget mówi „idź w stronę przystanku”.
+ */
+export async function fetchFootRoute(
+  from: Coord,
+  to: Coord,
+  signal?: AbortSignal,
+): Promise<Coord[] | null> {
+  // Siatka ok. 11 m (jak waypointKey): powtórzone pytania o prawie to samo
+  // miejsce trafiają w cache, a nie w publiczny serwer.
+  const r = (v: number) => Math.round(v * 1e4) / 1e4;
+  const points: Coord[] = [
+    [r(from[0]), r(from[1])],
+    [r(to[0]), r(to[1])],
+  ];
+  if (points[0][0] === points[1][0] && points[0][1] === points[1][1]) return null;
+  const key = `foot:${points[0][0]},${points[0][1]}>${points[1][0]},${points[1][1]}`;
+  const cache = await readCache();
+  const hit = cache.get(key);
+  if (hit && hit.length > 1) return hit;
+  if (signal?.aborted) return null;
+  const path = await fetchChunk(points, 'foot', signal);
+  if (!path || path.length < 2 || signal?.aborted) return null;
+  void writeCache(key, path);
+  return path;
 }
 
 /** Prosty odcinek przez przystanki — natychmiastowa wersja trasy. */
@@ -262,8 +415,7 @@ export async function resolveGeometry(
 ): Promise<void> {
   for (const leg of route.legs) {
     if (signal?.aborted) return;
-    if (leg.mode === 'walk') continue;
-    if (leg.stops.length < 2) continue;
+    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
     const coords = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
     if (coords && coords.length > 1) onLeg(leg.id, coords);

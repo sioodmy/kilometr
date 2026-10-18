@@ -77,19 +77,11 @@ jobs:
             cloudflare/data/kd-station-coords.json
           retention-days: 7
 
-      - name: Upload manifest → R2
-        if: steps.build.outputs.exit == '0'
-        run: |
-          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload manifestu do R2."
-            exit 0
-          fi
-          npx -y wrangler@3 r2 object put kilometr-timetable/manifest.json \
-            --file=cloudflare/dist/manifest.json --content-type application/json
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
+      # Kolejność ma znaczenie. Telefon czyta manifest, potem dopiero ściąga
+      # bazę. Manifest wrzucamy OSTATNI, bo to on jest sygnałem „baza jest
+      # nowa" — w drugą stronę przez ~13 s uploadu 90 MB telefon widziałby nowy
+      # manifest przy starej bazie, porównanie rozmiarów by nie przeszło i
+      # odświeżanie kończyłoby się błędem zamiast nowym rozkładem.
       - name: Upload bazy → R2
         if: steps.build.outputs.exit == '0'
         run: |
@@ -97,8 +89,21 @@ jobs:
             echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload bazy do R2."
             exit 0
           fi
-          npx -y wrangler@3 r2 object put kilometr-timetable/db/kilometr-gtfs.db \
+          npx -y wrangler@3.114.0 r2 object put kilometr-timetable/db/kilometr-gtfs.db \
             --file=cloudflare/dist/kilometr-gtfs.db --content-type application/x-sqlite3
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Upload manifestu → R2 (sygnał dla telefonów)
+        if: steps.build.outputs.exit == '0'
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload manifestu do R2."
+            exit 0
+          fi
+          npx -y wrangler@3.114.0 r2 object put kilometr-timetable/manifest.json \
+            --file=cloudflare/dist/manifest.json --content-type application/json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

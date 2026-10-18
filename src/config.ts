@@ -53,8 +53,14 @@ export const MAP_ATTRIBUTION =
   ' &middot; <a href="https://openfreemap.org/" target="_blank">OpenFreeMap</a>';
 
 // Geometria ulic (dokładny przebieg kursu). Domyślnie publiczny demo-serwer
-// OSRM — nadpisywalny własnym, np. w sieci firmowej.
+// OSRM, nadpisywalny własnym, np. w sieci firmowej.
 export const OSRM_BASE_URL = process.env.EXPO_PUBLIC_OSRM_URL ?? 'https://router.project-osrm.org';
+
+// Demo OSRM ma wgrany wyłącznie profil samochodowy: /route/v1/foot odpowiada
+// identyczną trasą co driving, tzn. spacer rysowałby się po jezdni. Piesze
+// idą osobnym routerem, który rozumie chodniki, przejścia i place.
+export const OSRM_FOOT_BASE_URL =
+  process.env.EXPO_PUBLIC_OSRM_FOOT_URL ?? 'https://routing.openstreetmap.de/routed-foot';
 
 // Neutralny placeholder zanim GPS zwróci pozycję (prawdziwe współrzędne
 // centrum Wrocławia, nie mock danych). Nadpisywany przez LocationService.

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Skrót do zapisanego miejsca: 48 dp celu dotyku, 40 dp widocznego kółka. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/kw_place"
+    android:layout_width="48dp"
+    android:layout_height="48dp">
+
+    <ImageView
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="center"
+        android:importantForAccessibility="no"
+        android:src="@drawable/kw_circle" />
+
+    <ImageView
+        android:id="@+id/kw_place_icon"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="center"
+        android:importantForAccessibility="no"
+        android:src="@drawable/kw_ic_home"
+        android:tint="@color/kw_on_primary_container" />
+</FrameLayout>

@@ -1,13 +1,25 @@
 import { DayIndex, LocalGtfsStore as GtfsStore } from './store';
-import { JourneySegment, RawJourney, TransitModePreference } from './types';
+import { JourneySegment, RawJourney, RouteStyle, TransitModePreference } from './types';
+import { classifyTransitMode, footDurations, getRaptorNet, type CompiledPattern, type RaptorNet } from './network';
+import { predictDelaySec } from './delays';
 
-const INF = 1e9;
+export { classifyTransitMode };
 
-// ────────────────────────────────────────────────────────────────────────────
-// Parametry spacerowe (spójne z store.ts)
-// ────────────────────────────────────────────────────────────────────────────
-const WALK_SPEED_MPS = 1.3;
-const WALK_DETOUR_FACTOR = 1.3;
+const INF = 0x3fffffff;
+
+const DEFAULT_WALK_SPEED_MPS = 1.34;
+/** Spójne z engine.ts: odległość w linii prostej razy objazd ulicami. */
+const WALK_DETOUR_FACTOR = 1.15;
+/** Najdłuższa piesza przesiadka między przystankami (siatka w store.ts sięga 800 m). */
+const MAX_TRANSFER_WALK_M = 800;
+/** Szacunek dojścia jest ostrożny (objazd ×1,15, min. 30 s), więc kurs minutę „za wcześnie” wciąż łapiemy. */
+const CATCH_SLACK_SEC = 60;
+/** Zapas ponad sam czas przejścia przy przesiadce z dojściem (światła, przejścia). */
+const TRANSFER_WALK_SLACK_SEC = 60;
+/** Dopracowanie przystanków może opóźnić przyjazd najwyżej o tyle. */
+const MAX_REFINE_LATER_SEC = 480;
+/** Ile najtańszych kandydatów przechodzi przez dopracowanie przystanków. */
+const REFINE_LIMIT = 48;
 
 interface BoardingStop {
   stopId: string;
@@ -21,62 +33,72 @@ interface AlightingStop {
   walkM: number;
 }
 
+/** Wagi kosztu uogólnionego (sekundy „odczuwalne”). */
+export interface CostParams {
+  /** Ile razy sekunda marszu „boli” bardziej niż sekunda jazdy. */
+  walkReluctance: number;
+  /** Kara za każdą przesiadkę. */
+  transferPenaltySec: number;
+}
+
+/** Styl trasy z ustawień. Spacer zawsze ważony mocniej niż jazda, żeby 30 s zysku nie wyrzucało z tramwaju. */
+export const ROUTE_STYLE_COSTS: Record<RouteStyle, CostParams> = {
+  fastest: { walkReluctance: 1.25, transferPenaltySec: 240 },
+  balanced: { walkReluctance: 1.8, transferPenaltySec: 600 },
+  lessWalking: { walkReluctance: 3, transferPenaltySec: 600 },
+  fewerTransfers: { walkReluctance: 1.8, transferPenaltySec: 1200 },
+};
+
+export function costParamsFor(style: RouteStyle | undefined): CostParams {
+  return ROUTE_STYLE_COSTS[style ?? 'balanced'] ?? ROUTE_STYLE_COSTS.balanced;
+}
+
 interface RaptorOptions {
   /** maksymalna liczba przesiadek (0 = tylko bezpośrednie). Default 2. */
   maxTransfers?: number;
-  /** minimalny czas na przesiadkę w sekundach. Default 90. */
+  /** minimalny odstęp między przyjazdem a kolejnym odjazdem w sekundach. Default 60. */
   minTransferSec?: number;
   /** indeks dzienny (rozkład sobotni/niedzielny różni się od powszedniego) */
   dayIndex?: DayIndex;
-  /** znane opóźnienia kursów (GTFS-RT): tripId -> sekundy. RAPTOR wsiada
-      wg czasów EFEKTYWNYCH, więc da się złapać opóźniony kurs. */
+  /** znane opóźnienia kursów (GPS): tripId -> sekundy, zmierzone teraz. */
   tripDelays?: Map<string, number>;
-  /** dozwolone pojazdy. Default 'all'. Filtr działa W silniku (nie post-filtr):
-      RAPTOR w ogóle nie skanuje wzorców niedozwolonych linii, więc pruning
-      globalBestArrival nie wycina dozwolonych alternatyw. */
-  allowedModes?: TransitModePreference;
   /**
-   * Czy pociągi KD biorą udział (tylko w trybie 'all'). Default true
-   * (w bazie bez pociągów flaga nie ma znaczenia).
+   * Teraz (sekundy od północy, zegar zapytania). Z nim opóźnienia są
+   * prognozowane per przystanek (pojazd nadrabia, patrz delays.ts); bez niego
+   * pomiar obowiązuje na całej trasie.
    */
+  nowSec?: number;
+  /** dozwolone pojazdy. Default 'all'. Filtr działa W silniku (nie post-filtr). */
+  allowedModes?: TransitModePreference;
+  /** Czy pociągi KD biorą udział (tylko w trybie 'all'). Default true. */
   trainsEnabled?: boolean;
+  /** Czy kolej linowa (Polinka) bierze udział (tylko w trybie 'all'). Default true. */
+  cableEnabled?: boolean;
   /**
    * Minimalny zapas na wsiadanie do pociągu PO przesiadce (dojście na peron
-   * itp.). Doklejany do zwykłego minTransferSec: max(z nich). Default 300.
-   * Pierwszego wsiadania (z domu) nie dotyczy — tam liczy się spacer.
+   * itp.). Pierwszego wsiadania (z domu) nie dotyczy, tam liczy się spacer.
+   * Default 300.
    */
   trainMinTransferSec?: number;
-  /**
-   * Przesunięcie czasu wszystkich odczytów GTFS (sekundy). Używane przy
-   * nocnych kursach po północy: w GTFS należą do wczorajszego dnia
-   * serwisowego z godzinami 24:xx+, więc uruchamiamy RAPTOR-a na wczorajszym
-   * indeksie z offsetem -86400 i czasy lądują w zegarze dzisiejszym
-   * (24:34 → 00:34). Domyślnie 0.
-   */
+  /** Przesunięcie czasu wszystkich odczytów GTFS (sekundy). Domyślnie 0. */
   timeOffsetSec?: number;
-  /**
-   * Zegar per wzorzec (patternId → przesunięcie w sekundach) dla ZUNIFIKOWANEGO
-   * indeksu nocnego (patrz mergeDayIndexes): tripy dziś (brak wpisu = timeOffsetSec)
-   * + tripy wczoraj (wpis -86400). RAPTOR łączy wtedy nogi z obu dni
-   * serwisowych w jednej podróży (np. 145 dziś + 255 wczoraj o 04:30).
-   */
+  /** Zegar per wzorzec dla zunifikowanego indeksu nocnego (patrz mergeDayIndexes). */
   patternTimeOffsets?: Map<string, number>;
-}
-
-/**
- * Klasyfikacja linii na tramwaj/pociąg/autobus — ta sama heurystyka co w backtrack
- * i LineBadge (Wrocław: route_type 0 albo numer 1–33 to tramwaj,
- * route_type 2 to pociąg KD, reszta to autobus).
- */
-export function classifyTransitMode(
-  routeType: number | undefined,
-  shortName: string | undefined,
-): 'tram' | 'bus' | 'train' {
-  if (routeType === 2) return 'train';
-  if (routeType === 0) return 'tram';
-  const lineNum = parseInt((shortName || '').trim(), 10);
-  if (!isNaN(lineNum) && lineNum >= 1 && lineNum <= 33) return 'tram';
-  return 'bus';
+  /**
+   * Okno odjazdów (sekundy) od departureTimeSec. Range RAPTOR liczy w nim
+   * wszystkie sensowne odjazdy naraz, zamiast osobnego przebiegu na każdy
+   * start. 0 = jeden przebieg od departureTimeSec. Zawsze dochodzi też
+   * najszybsza podróż z odjazdem po oknie.
+   */
+  windowSec?: number;
+  /** Tempo marszu na przesiadkach (m/s). Default 1.34. */
+  walkSpeedMps?: number;
+  /** Najdłuższa piesza przesiadka (m). Default 800. */
+  maxTransferWalkM?: number;
+  /** Wagi kosztu uogólnionego. Default styl 'balanced'. */
+  cost?: CostParams;
+  /** Tryb „bądź na”: podróże z przyjazdem po tej godzinie są bezużyteczne. */
+  latestArrivalSec?: number;
 }
 
 /**
@@ -84,7 +106,7 @@ export function classifyTransitMode(
  * prefiksem, np. `y_`) w JEDNEJ mapie + mapa przesunięć zegara per wzorzec.
  * Tripy 24:xx+ wczoraj lądują w zegarze dzisiejszym i łączą się z nogami
  * dzisiejszymi. Mapy kopiowane płytko (współdzielą departures/trips), zbiory
- * stopRoutes kopiowane — cache'owany indeks dzienny pozostaje nietknięty.
+ * stopRoutes kopiowane, cache'owany indeks dzienny pozostaje nietknięty.
  */
 export function mergeDayIndexes(
   primary: DayIndex,
@@ -116,17 +138,22 @@ export function mergeDayIndexes(
 }
 
 /**
- * Beznsensowna podróż: "wsiądź i wysiądź po ≤1 przystanku, resztę idź z buta"
- * albo kurs bez przystanków (błąd danych). Takie podróże odrzucamy już
- * w runRaptor przy zapisie destynacji — gdyby ustawiły globalBestArrival,
- * ucinałyby później dobre podróże, a same i tak wypadają na mapowaniu.
+ * Bezsensowna podróż: "wsiądź i wysiądź po ≤1 przystanku, resztę idź z buta"
+ * albo kurs bez przystanków (błąd danych). Odrzucamy je już przy zapisie
+ * kandydata: gdyby ustawiły najlepszy przyjazd, ucinałyby później dobre
+ * podróże.
+ *
+ * Wyjątek: kolej linowa. Polinka to z definicji dwa przystanki i ~400 m nad
+ * Odrą; bez zastrzeżenia „wsiądź i wysiądź" planer odrzucałby przejazd przez
+ * rzekę jako krótszy niż dojście do przystanku MPK.
  */
 export function isPointlessShortRide(rj: RawJourney): boolean {
   const transitSegs = rj.segments.filter((s) => s.type === 'transit');
   for (const t of transitSegs) {
+    if (t.mode === 'cable') continue;
     if (t.stopsCount <= 0) return true;
   }
-  if (transitSegs.length === 1 && transitSegs[0].stopsCount <= 1) {
+  if (transitSegs.length === 1 && transitSegs[0].stopsCount <= 1 && transitSegs[0].mode !== 'cable') {
     let totalWalkM = 0;
     for (const s of rj.segments) {
       if (s.type === 'walk') totalWalkM += s.walkMeters ?? 0;
@@ -138,593 +165,881 @@ export function isPointlessShortRide(rj: RawJourney): boolean {
   return false;
 }
 
-const TRANSFER_PENALTY_SEC = 600; // 10 min kary za każdą przesiadkę — spacer 300 m się opłaca
+/** Noga kandydata: wzorzec, kurs, pozycje wsiadania/wysiadania, dojście przed nią. */
+interface ILeg {
+  p: number;
+  j: number;
+  b: number;
+  a: number;
+  /** Przejście piesze od poprzedniej nogi (sekundy, 0 = ten sam słupek). */
+  walkIn: number;
+}
 
+interface ICand {
+  legs: ILeg[];
+  /** Przystanek wysiadania ostatniej nogi (dojście do celu). */
+  dest: number;
+}
+
+interface CandInfo {
+  c: ICand;
+  dep: number;
+  arr: number;
+  walkSec: number;
+  cost: number;
+}
+
+/** Binary search: indeks pierwszego kursu z odjazdem >= target na pozycji pos. */
+function lowerBoundTrips(dep: Int32Array, n: number, nTrips: number, pos: number, target: number): number {
+  let lo = 0;
+  let hi = nTrips;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (dep[mid * n + pos] < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Range RAPTOR (Delling i in.) na skompilowanej sieci.
+ *
+ * Odjazdy z przystanków startowych w oknie przetwarzamy od najpóźniejszego,
+ * a etykiety zostają między przebiegami: późniejszy odjazd to zawsze górne
+ * ograniczenie dla wcześniejszego. W kolejnym przebiegu znakujemy tylko
+ * przystanek, z którego ten odjazd wynika, więc praca rośnie z liczbą odjazdów,
+ * a nie z liczbą przebiegów razy cała sieć.
+ *
+ * Cel oceniamy dwiema miarami: najwcześniejszy przyjazd i przyjazd z karą za
+ * dojście (koszt uogólniony). Kandydaci przechodzą potem przez dopracowanie
+ * przystanków na tych samych kursach (refine), więc „wysiądź wcześniej i idź”
+ * przegrywa z jazdą pod sam cel, jeśli różnica w czasie jest mała.
+ */
 export function runRaptor(
   store: GtfsStore,
   origins: BoardingStop[],
   destinations: AlightingStop[],
   departureTimeSec: number,
-  opts: RaptorOptions = {}
+  opts: RaptorOptions = {},
 ): RawJourney[] {
   if (!origins.length || !destinations.length) return [];
-
-  const maxTransfers = Math.max(0, Math.min(3, Math.round(opts.maxTransfers ?? 2)));
-  const minTransferSec = Math.max(0, Math.min(600, Math.round(opts.minTransferSec ?? 60)));
-  const trainsEnabled = opts.trainsEnabled ?? true;
-  const trainMinTransferSec = Math.max(0, Math.min(1200, Math.round(opts.trainMinTransferSec ?? 300)));
-  const MAX_ROUNDS = maxTransfers + 1;
-
-  // Indeks dzienny — bez niego RAPTOR nie ma po czym jeździć
   const idx = opts.dayIndex;
   if (!idx) return [];
 
-  // Opóźnienie kursu w sekundach (0 = wg rozkładu)
-  const delayOf = (tripId: string): number => opts.tripDelays?.get(tripId) ?? 0;
+  const net = getRaptorNet(store, idx, opts.patternTimeOffsets, Math.round(opts.timeOffsetSec ?? 0));
+  const P = net.patterns;
+  const nPat = P.length;
+  const base = net.base;
+  const nStops = base.stopIds.length;
 
-  // Przesunięcie dni serwisowych (24:xx+ po północy → zegar dzisiejszy)
-  const timeOff = Math.round(opts.timeOffsetSec ?? 0);
+  const maxTransfers = Math.max(0, Math.min(3, Math.round(opts.maxTransfers ?? 2)));
+  const R = maxTransfers + 1;
+  const minT = Math.max(0, Math.min(600, Math.round(opts.minTransferSec ?? 60)));
+  const trainsEnabled = opts.trainsEnabled ?? true;
+  const cableEnabled = opts.cableEnabled ?? true;
+  const trainNeed = Math.max(minT, Math.max(0, Math.min(1200, Math.round(opts.trainMinTransferSec ?? 300))));
+  const speed = Math.max(0.5, Math.min(3, opts.walkSpeedMps ?? DEFAULT_WALK_SPEED_MPS));
+  const maxTransferWalkM = Math.max(0, Math.min(MAX_TRANSFER_WALK_M, Math.round(opts.maxTransferWalkM ?? MAX_TRANSFER_WALK_M)));
+  const cost = opts.cost ?? ROUTE_STYLE_COSTS.balanced;
+  const wr = Math.max(1, cost.walkReluctance);
+  const t0 = Math.round(departureTimeSec);
+  const W = Math.max(0, Math.round(opts.windowSec ?? 0));
+  const latestArr = opts.latestArrivalSec !== undefined ? Math.round(opts.latestArrivalSec) : INF;
+  const fpDur = footDurations(base, speed, maxTransferWalkM, WALK_DETOUR_FACTOR);
 
-  // Zapas na dojściu początkowym (patrz Round 0) — patrz wyżej.
-  const CATCH_SLACK_SEC = 60;
+  // ── Filtr pojazdów na poziomie wzorca. Pociągi KD i kolej linowa jeżdżą
+  //    tylko w trybie 'all' (szybki filtr tramwaj/autobus ich nie rusza).
+  const enabled = new Uint8Array(nPat);
+  for (let p = 0; p < nPat; p++) {
+    const kind = P[p].kind;
+    let ok = true;
+    if (kind === 'train') ok = trainsEnabled && (!opts.allowedModes || opts.allowedModes === 'all');
+    else if (kind === 'cable') ok = cableEnabled && (!opts.allowedModes || opts.allowedModes === 'all');
+    else if (opts.allowedModes && opts.allowedModes !== 'all') ok = kind === opts.allowedModes;
+    enabled[p] = ok ? 1 : 0;
+  }
 
-  // Maks. moduł opóźnienia w mapie — do okna poszukiwań przy wsiadaniu.
-  // (matcher capuje do 1800 s, ale liczymy z danych na wypadek braku capa).
-  let maxDelayAbs = 0;
-  if (opts.tripDelays) {
-    for (const d of opts.tripDelays.values()) {
-      const a = Math.abs(d);
-      if (a > maxDelayAbs) maxDelayAbs = a;
+  // ── Czasy efektywne: rozkład + prognoza opóźnienia GPS. Kopiujemy tylko
+  //    wzorce z opóźnionymi kursami; reszta czyta skompilowane tablice.
+  const depV: Int32Array[] = new Array(nPat);
+  const arrV: Int32Array[] = new Array(nPat);
+  const lateMax = new Int32Array(nPat);
+  const earlyMax = new Int32Array(nPat);
+  for (let p = 0; p < nPat; p++) {
+    depV[p] = P[p].dep;
+    arrV[p] = P[p].arr;
+  }
+  if (opts.tripDelays && opts.tripDelays.size > 0) {
+    for (const [tripId, d0raw] of opts.tripDelays) {
+      const d0 = Math.round(d0raw);
+      if (!d0) continue;
+      const loc = net.tripLoc.get(tripId);
+      if (!loc) continue;
+      const [p, j] = loc;
+      const pat = P[p];
+      if (depV[p] === pat.dep) {
+        depV[p] = pat.dep.slice();
+        arrV[p] = pat.arr.slice();
+      }
+      const n = pat.n;
+      const vehicleAt = opts.nowSec !== undefined ? opts.nowSec - d0 : undefined;
+      for (let i = 0; i < n; i++) {
+        const k = j * n + i;
+        const sd = pat.dep[k];
+        const sa = pat.arr[k];
+        const db = vehicleAt === undefined ? d0 : predictDelaySec(d0, sd - vehicleAt, 'board');
+        const da = vehicleAt === undefined ? d0 : predictDelaySec(d0, sa - vehicleAt, 'arrive');
+        depV[p][k] = sd + db;
+        arrV[p][k] = sa + da;
+        if (db > lateMax[p]) lateMax[p] = db;
+        if (-db > earlyMax[p]) earlyMax[p] = -db;
+      }
     }
   }
 
-  const destStopSet = new Map<string, AlightingStop>();
+  /** Najwcześniejszy kurs wzorca p do złapania na pozycji pos przy gotowości r. */
+  const earliestTrip = (p: number, pos: number, r: number): number => {
+    const pat = P[p];
+    const n = pat.n;
+    const dep = depV[p];
+    if (dep === pat.dep) {
+      const j = lowerBoundTrips(dep, n, pat.nTrips, pos, r);
+      return j < pat.nTrips ? j : -1;
+    }
+    // Z opóźnieniami kolejność kursów może się rozjechać: start od rozkładu
+    // cofniętego o największe opóźnienie, koniec, gdy żaden dalszy kurs nie
+    // pobije najlepszego nawet przy maksymalnym wyprzedzeniu.
+    const sched = pat.dep;
+    const early = earlyMax[p];
+    let best = -1;
+    let bestT = INF;
+    for (let j = lowerBoundTrips(sched, n, pat.nTrips, pos, r - lateMax[p]); j < pat.nTrips; j++) {
+      if (sched[j * n + pos] - early > bestT) break;
+      const t = dep[j * n + pos];
+      if (t >= r && t < bestT) {
+        bestT = t;
+        best = j;
+      }
+    }
+    return best;
+  };
+
+  // ── Dojścia i odejścia
+  const accessSec = new Int32Array(nStops).fill(-1);
+  const accessM = new Int32Array(nStops);
+  for (const o of origins) {
+    const s = base.stopIndex.get(o.stopId);
+    if (s === undefined) continue;
+    const w = Math.max(0, Math.round(o.walkSec));
+    if (accessSec[s] < 0 || w < accessSec[s]) {
+      accessSec[s] = w;
+      accessM[s] = Math.round(o.walkM);
+    }
+  }
+  const egressSec = new Int32Array(nStops).fill(-1);
+  const egressM = new Int32Array(nStops);
   for (const d of destinations) {
-    destStopSet.set(d.stopId, d);
-  }
-
-  // ── Global best arrival — pruning: jeśli najlepsze znane dotarcie do celu
-  //    to bestArrival, nie ma sensu rozwijać przystanków z arrival > bestArrival.
-  let globalBestArrival = INF;
-
-  // round -> stopId -> earliest arrival seconds
-  const tau: Map<string, number>[] = Array.from({ length: MAX_ROUNDS + 1 }, () => new Map());
-  // Global best per stop (across all rounds) — do pruningu
-  const tauBest = new Map<string, number>();
-  // round -> stopId -> previous state for backtracking
-  const parent: Map<
-    string,
-    {
-      tripId?: string;
-      boardStopId?: string;
-      fromStopId?: string;
-      type: 'transit' | 'footpath';
-      arrTime: number;
-      depTime: number;
-    }
-  >[] = Array.from({ length: MAX_ROUNDS + 1 }, () => new Map());
-
-  let markedStops = new Set<string>();
-
-  // Round 0: Initialize with origins
-  for (const orig of origins) {
-    // Szansa na złapanie kursu odjeżdżającego tuż po godzinie zapytania:
-    // szacunek dojścia jest ostrożny (detour ×1.25, min 30 s), więc odejmujemy
-    // do 60 s. Bez tego kurs dokładnie o godzinie zapytania (np. 15:00 co 30 min,
-    // użytkownik 20 m od przystanku) nigdy nie zostanie złapany, choć
-    // jakdojade go pokazuje. Nigdy nie schodzimy poniżej godziny zapytania.
-    const arrSec = departureTimeSec + Math.max(0, orig.walkSec - CATCH_SLACK_SEC);
-    const prev = tau[0].get(orig.stopId) ?? INF;
-    if (arrSec < prev) {
-      tau[0].set(orig.stopId, arrSec);
-      tauBest.set(orig.stopId, Math.min(tauBest.get(orig.stopId) ?? INF, arrSec));
-      markedStops.add(orig.stopId);
+    const s = base.stopIndex.get(d.stopId);
+    if (s === undefined) continue;
+    const w = Math.max(0, Math.round(d.walkSec));
+    if (egressSec[s] < 0 || w < egressSec[s]) {
+      egressSec[s] = w;
+      egressM[s] = Math.round(d.walkM);
     }
   }
+  const originList: number[] = [];
+  for (let s = 0; s < nStops; s++) if (accessSec[s] >= 0) originList.push(s);
+  if (!originList.length) return [];
 
-  // ── Round 0 footpath propagation ──
-  // Przystanki w zasięgu spaceru od origin-stopów też powinny być zainicjalizowane.
-  for (const stopId of [...markedStops]) {
-    const paths = store.footpaths.get(stopId);
-    if (paths) {
-      const arrAtSource = tau[0].get(stopId)!;
-      for (const fp of paths) {
-        const arrAtTarget = arrAtSource + fp.duration_sec;
-        const prevBest = tau[0].get(fp.to_stop_id) ?? INF;
-        if (arrAtTarget < prevBest) {
-          tau[0].set(fp.to_stop_id, arrAtTarget);
-          tauBest.set(fp.to_stop_id, Math.min(tauBest.get(fp.to_stop_id) ?? INF, arrAtTarget));
-          markedStops.add(fp.to_stop_id);
-        }
-      }
+  const occStart = (s: number) => (s < net.spCount ? net.spStart[s] : 0);
+  const occEnd = (s: number) => (s < net.spCount ? net.spStart[s + 1] : 0);
+
+  // ── Stan RAPTOR-a: [runda * nStops + przystanek]
+  //    tau = gotowość do wsiadania (przyjazd + zapas na przesiadkę),
+  //    arrAt = fizyczny przyjazd, pType: 1 start, 2 kurs, 3 przejście.
+  const RS = R + 1;
+  const tau = new Int32Array(RS * nStops).fill(INF);
+  const arrAt = new Int32Array(RS * nStops).fill(INF);
+  const pType = new Uint8Array(RS * nStops);
+  const pA = new Int32Array(RS * nStops);
+  const pB = new Int32Array(RS * nStops);
+  const pC = new Int32Array(RS * nStops);
+  const pD = new Int32Array(RS * nStops);
+  const bestArr = new Int32Array(RS).fill(INF);
+  const bestVal = new Int32Array(RS).fill(INF);
+
+  const marked = new Uint8Array(nStops);
+  const markList = new Int32Array(nStops);
+  let markCount = 0;
+  const mark = (s: number) => {
+    if (!marked[s]) {
+      marked[s] = 1;
+      markList[markCount++] = s;
     }
-  }
+  };
+  const improvedFlag = new Uint8Array(nStops);
+  const improvedList = new Int32Array(nStops);
+  let improvedCount = 0;
+  const queue = new Int32Array(nPat).fill(-1);
+  const queued = new Int32Array(nPat);
 
-  const completedJourneys: RawJourney[] = [];
+  const cands: ICand[] = [];
 
-  for (let k = 1; k <= MAX_ROUNDS; k++) {
-    // Copy previous round's arrival times as baseline
-    for (const [stopId, time] of tau[k - 1].entries()) {
-      const prevK = tau[k].get(stopId) ?? INF;
-      if (time < prevK) {
-        tau[k].set(stopId, time);
+  /** Etykieta (runda, przystanek) -> nogi podróży od startu. null = zepsuty łańcuch. */
+  const backtrack = (round: number, stop: number): ILeg[] | null => {
+    const legs: ILeg[] = [];
+    let k = round;
+    let s = stop;
+    let walkIn = 0;
+    for (let guard = 0; guard < 32; guard++) {
+      const id = k * nStops + s;
+      const t = pType[id];
+      if (t === 1) {
+        if (legs.length) legs[0].walkIn = 0;
+        return legs;
       }
-    }
-
-    // Accumulate patterns (not routes!) serving any marked stop
-    const patternsToScan = new Set<string>();
-    for (const stopId of markedStops) {
-      const pIds = idx.stopRoutes.get(stopId);
-      if (pIds) {
-        for (const pId of pIds) patternsToScan.add(pId);
-      }
-    }
-
-    const newMarkedStops = new Set<string>();
-
-    for (const patternId of patternsToScan) {
-      const pattern = idx.patterns.get(patternId);
-      if (!pattern) continue;
-
-      // Zegar tego wzorca (unified overnight index): tripy wczoraj -86400.
-      const po = opts.patternTimeOffsets?.get(patternId) ?? timeOff;
-
-      // Jednorazowy filtr pojazdów: wzorzec niedozwolonej linii pomijamy
-      // w całości (brak wsiadania = brak przesiadek przez ten pojazd).
-      // Pociągi KD jeżdżą tylko w trybie 'all' (szybki filtr tramwaj/autobus
-      // ich nie rusza — pociągi włącza się wyłącznie w ustawieniach).
-      const patternRoute = store.routes.get(pattern.routeId);
-      const routeKind = classifyTransitMode(patternRoute?.route_type, patternRoute?.route_short_name);
-      if (routeKind === 'train') {
-        if (!trainsEnabled) continue;
-        if (opts.allowedModes && opts.allowedModes !== 'all') continue;
-      } else if (opts.allowedModes && opts.allowedModes !== 'all' && routeKind !== opts.allowedModes) {
+      if (t === 3) {
+        walkIn = pB[id];
+        s = pA[id];
         continue;
       }
-
-      const stopSeq = pattern.stopSequence;
-      const trips = pattern.trips;
-      if (!stopSeq.length || !trips.length) continue;
-
-      let currentTripIdx: number = -1;
-      let currentTripId: string | null = null;
-      let currentBoardStopId: string | null = null;
-      let currentBoardDepTime = 0;
-      let currentTripTimes: any[] | null = null;
-
-      for (let sIdx = 0; sIdx < stopSeq.length; sIdx++) {
-        const stopId = stopSeq[sIdx];
-
-        // If we are currently onboard a trip, update arrival at this stop.
-        // Czas EFEKTYWNY: rozkład + znane opóźnienie GPS tego kursu.
-        if (currentTripId && currentTripTimes && sIdx < currentTripTimes.length) {
-          const st = currentTripTimes[sIdx];
-          if (st && st.stop_id === stopId) {
-            const arrTime = st.arrival_sec + delayOf(currentTripId) + po;
-
-            // Global pruning dotyczy tylko ZAPISU przyjazdu — wsiadanie
-            // sprawdzamy ZAWSZE (dawny `continue` pomijał też boarding:
-            // wolny kurs dojeżdża za późno, ale szybki kurs z tego samego
-            // przystanku zdążyłby przed globalBest — gubiliśmy przesiadki).
-            if (arrTime < globalBestArrival) {
-              const prevBest = tau[k].get(stopId) ?? INF;
-              const prevGlobal = tauBest.get(stopId) ?? INF;
-
-              if (arrTime < prevBest) {
-                tau[k].set(stopId, arrTime);
-                if (arrTime < prevGlobal) {
-                  tauBest.set(stopId, arrTime);
-                }
-                parent[k].set(stopId, {
-                  tripId: currentTripId,
-                  boardStopId: currentBoardStopId!,
-                  type: 'transit',
-                  arrTime,
-                  depTime: currentBoardDepTime,
-                });
-                newMarkedStops.add(stopId);
-
-                // Check if this stop is one of our target destinations.
-                // Bezsens (1 przystanek + długi spacer) nie ustawia globalBest
-                // i nie trafia na listę — patrz isPointlessShortRide.
-                if (destStopSet.has(stopId)) {
-                  const destInfo = destStopSet.get(stopId)!;
-                  const journey = backtrackJourney(
-                    store,
-                    parent,
-                    origins,
-                    k,
-                    stopId,
-                    destInfo,
-                    departureTimeSec
-                  );
-                  if (journey && !isPointlessShortRide(journey)) {
-                    completedJourneys.push(journey);
-                    const totalArr = arrTime + destInfo.walkSec;
-                    if (totalArr < globalBestArrival) {
-                      globalBestArrival = totalArr;
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // Can we board an earlier or new trip at this stop?
-        // Od 2. rundy wymagamy minimalnego czasu na przesiadkę; na pociąg
-        // doklejamy zapas na dojście na peron (ustawienie użytkownika).
-        const earliestArr = tau[k - 1].get(stopId);
-        if (earliestArr !== undefined) {
-          const needSec = k > 1 ? (routeKind === 'train' ? Math.max(minTransferSec, trainMinTransferSec) : minTransferSec) : 0;
-          const minBoardSec = earliestArr + needSec;
-
-          // ── Wsiadanie wg czasów EFEKTYWNYCH (rozkład + opóźnienie GPS).
-          // Opóźniony kurs, który planowo odjechał 2 min temu, ale ma +20 min,
-          // jest wciąż do złapania — binarne przeszukiwanie rozkładu go pominie,
-          // więc startujemy wcześniej o maxDelayAbs i skanujemy do pierwszego
-          // kursu, którego nie da się już pobić (eff rośnie co najmniej jak
-          // sched - maxDelayAbs). Bez opóźnień zachowanie identyczne jak było.
-          const depArr = pattern.departures[sIdx];
-          const idxArr = pattern.tripIndices[sIdx];
-          if (depArr && depArr.length > 0) {
-            // depArr trzyma surowe czasy GTFS, a minBoardSec jest już
-            // w zegarze zapytania → odjęcie timeOff przy porównaniach.
-            const boardTarget = minBoardSec - po;
-            const startIdx = maxDelayAbs > 0 ? lowerBound(depArr, boardTarget - maxDelayAbs) : lowerBound(depArr, boardTarget);
-            let bestEff = Infinity;
-            let bestTripIdx = -1;
-            for (let di = startIdx; di < depArr.length; di++) {
-              const schedDep = depArr[di];
-              // Dalsze kursy nie pobiją bestEff nawet przy maks. przyśpieszeniu.
-              // Bez opóźnień (maxDelayAbs = 0) kończy się na pierwszym pasującym,
-              // czyli dokładnie jak poprzednie binary-search.
-              if (schedDep + po - maxDelayAbs > bestEff) break;
-              const candTrip = trips[idxArr[di]];
-              const eff = schedDep + delayOf(candTrip.trip_id) + po;
-              if (eff >= minBoardSec && eff < bestEff) {
-                bestEff = eff;
-                bestTripIdx = idxArr[di];
-              }
-            }
-            if (bestTripIdx >= 0) {
-              const foundTrip = trips[bestTripIdx];
-              const depTime = bestEff;
-
-              // Przełączamy się na wcześniejszy KURS (niższy indeks = wcześniejszy
-              // odjazd z początku trasy = przy FIFO dominuje dalej na trasie).
-              // Porównywanie czasów wsiadania z różnych przystanków było błędne:
-              // późniejsze wsiadanie DALEJ na trasie bywa lepsze (pomija wolny
-              // odcinek, np. 21 do Prudnickiej + 16 dalej zamiast wolnej 16
-              // od początku).
-              if (!currentTripId || bestTripIdx < currentTripIdx) {
-                currentTripIdx = bestTripIdx;
-                currentTripId = foundTrip.trip_id;
-                currentBoardStopId = stopId;
-                currentBoardDepTime = depTime;
-                currentTripTimes = store.stopTimes.get(foundTrip.trip_id)!;
-              }
-            }
-          }
-        }
-      }
+      if (t !== 2 || k === 0) return null;
+      const p = pA[id];
+      if (legs.length) legs[0].walkIn = walkIn;
+      walkIn = 0;
+      legs.unshift({ p, j: pB[id], b: pC[id], a: pD[id], walkIn: 0 });
+      s = P[p].stops[pC[id]];
+      k--;
     }
-
-    // Apply footpaths / platform transfers for stops updated in this round
-    const footpathUpdated = new Set<string>();
-    for (const stopId of newMarkedStops) {
-      const paths = store.footpaths.get(stopId);
-      if (paths) {
-        const arrAtSource = tau[k].get(stopId)!;
-        // Skip if already too late
-        if (arrAtSource >= globalBestArrival) continue;
-
-        for (const fp of paths) {
-          const arrAtTarget = arrAtSource + fp.duration_sec;
-          if (arrAtTarget >= globalBestArrival) continue;
-
-          const prevBest = tau[k].get(fp.to_stop_id) ?? INF;
-          if (arrAtTarget < prevBest) {
-            tau[k].set(fp.to_stop_id, arrAtTarget);
-            const prevGlobal = tauBest.get(fp.to_stop_id) ?? INF;
-            if (arrAtTarget < prevGlobal) {
-              tauBest.set(fp.to_stop_id, arrAtTarget);
-            }
-            parent[k].set(fp.to_stop_id, {
-              fromStopId: stopId,
-              type: 'footpath',
-              arrTime: arrAtTarget,
-              depTime: arrAtSource,
-            });
-            footpathUpdated.add(fp.to_stop_id);
-
-            // Check if footpath target is destination (bezsens nie ustawia
-            // globalBest ani nie trafia na listę — patrz isPointlessShortRide).
-            if (destStopSet.has(fp.to_stop_id)) {
-              const destInfo = destStopSet.get(fp.to_stop_id)!;
-              const journey = backtrackJourney(
-                store,
-                parent,
-                origins,
-                k,
-                fp.to_stop_id,
-                destInfo,
-                departureTimeSec
-              );
-              if (journey && !isPointlessShortRide(journey)) {
-                completedJourneys.push(journey);
-                const totalArr = arrAtTarget + destInfo.walkSec;
-                if (totalArr < globalBestArrival) {
-                  globalBestArrival = totalArr;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Dodaj do marked stops te, które zaktualizowano przez footpathy
-    for (const s of footpathUpdated) newMarkedStops.add(s);
-
-    markedStops = newMarkedStops;
-    if (markedStops.size === 0) break;
-  }
-
-  // Zwracamy SUROWE podróże — deduplikacja Pareto + różnorodność dzieją się
-  // raz, na połączonym zbiorze ze wszystkich okien (w engine).
-  return completedJourneys;
-}
-
-/** Binary search: znajdź indeks pierwszego elementu >= target w posortowanej tablicy. */
-function lowerBound(arr: number[], target: number): number {
-  let lo = 0;
-  let hi = arr.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (arr[mid] < target) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo;
-}
-
-function backtrackJourney(
-  store: GtfsStore,
-  parent: Map<string, any>[],
-  origins: BoardingStop[],
-  round: number,
-  finalTransitStopId: string,
-  destInfo: AlightingStop,
-  departureTimeSec: number,
-  destTitle?: string,
-  fromTitle?: string
-): RawJourney | null {
-  const segments: JourneySegment[] = [];
-  let currStopId = finalTransitStopId;
-  let currRound = round;
-
-  while (currRound > 0 && currStopId) {
-    const p = parent[currRound].get(currStopId);
-    if (!p) {
-      currRound--;
-      continue;
-    }
-
-    if (p.type === 'footpath') {
-      const fromStop = store.stops.get(p.fromStopId);
-      const toStop = store.stops.get(currStopId);
-      const walkSec = Math.max(0, p.arrTime - p.depTime);
-      segments.unshift({
-        type: 'walk',
-        fromStopId: p.fromStopId,
-        fromStopName: fromStop?.stop_name || 'Przystanek',
-        toStopId: currStopId,
-        toStopName: toStop?.stop_name || 'Przystanek',
-        departSec: p.depTime,
-        arriveSec: p.arrTime,
-        stopsCount: 0,
-        walkMeters: Math.max(20, Math.round(walkSec * WALK_SPEED_MPS)),
-      });
-      currStopId = p.fromStopId;
-    } else if (p.type === 'transit') {
-      const trip = store.trips.get(p.tripId);
-      const route = trip ? store.routes.get(trip.route_id) : null;
-      const boardStop = store.stops.get(p.boardStopId);
-      const alightStop = store.stops.get(currStopId);
-      const times = store.stopTimes.get(p.tripId) || [];
-
-      const boardIdx = times.findIndex((t: any) => t.stop_id === p.boardStopId);
-      const alightIdx = times.findIndex((t: any) => t.stop_id === currStopId);
-      const stopsCount = Math.max(0, alightIdx - boardIdx);
-
-      const lineName = route?.route_short_name || '';
-      const mode = classifyTransitMode(route?.route_type, lineName);
-
-      segments.unshift({
-        type: 'transit',
-        tripId: p.tripId,
-        routeId: route?.route_id,
-        line: route?.route_short_name || 'MPK',
-        mode,
-        direction: trip?.trip_headsign || '',
-        fromStopId: p.boardStopId,
-        fromStopName: boardStop?.stop_name || 'Przystanek',
-        toStopId: currStopId,
-        toStopName: alightStop?.stop_name || 'Przystanek',
-        departSec: p.depTime,
-        arriveSec: p.arrTime,
-        stopsCount,
-      });
-
-      currStopId = p.boardStopId;
-      currRound--;
-    }
-  }
-
-  if (segments.length === 0) return null;
-
-  // Find origin walk
-  const originMatch = origins.find((o) => o.stopId === currStopId);
-  const firstTransitDep = segments[0]?.departSec ?? departureTimeSec;
-  const originWalkM = originMatch ? originMatch.walkM : 0;
-  const originWalkSec = originMatch ? originMatch.walkSec : 0;
-
-  if (originWalkM > 50) {
-    segments.unshift({
-      type: 'walk',
-      fromStopId: 'origin',
-      fromStopName: fromTitle || 'Twoja lokalizacja',
-      toStopId: currStopId,
-      toStopName: store.stops.get(currStopId)?.stop_name || 'Przystanek',
-      departSec: Math.max(departureTimeSec, firstTransitDep - originWalkSec),
-      arriveSec: firstTransitDep,
-      stopsCount: 0,
-      walkMeters: originWalkM,
-    });
-  }
-
-  // Add final walk to destination if needed — jeden odcinek prosto do celu,
-  // NIE stop->stop + stop->cel.
-  if (destInfo.walkM > 50) {
-    const lastArrSec = segments[segments.length - 1]?.arriveSec ?? departureTimeSec;
-    segments.push({
-      type: 'walk',
-      fromStopId: finalTransitStopId,
-      fromStopName: store.stops.get(finalTransitStopId)?.stop_name || 'Przystanek',
-      toStopId: 'destination',
-      toStopName: destTitle || 'Cel podróży',
-      departSec: lastArrSec,
-      arriveSec: lastArrSec + destInfo.walkSec,
-      stopsCount: 0,
-      walkMeters: destInfo.walkM,
-    });
-  }
-
-  const merged = mergeConsecutiveWalks(segments);
-
-  const transitSegments = merged.filter((s) => s.type === 'transit');
-  if (transitSegments.length === 0) return null;
-
-  const depSec = merged[0].departSec;
-  const arrSec = merged[merged.length - 1].arriveSec;
-
-  return {
-    departureSec: depSec,
-    arrivalSec: arrSec,
-    transfers: Math.max(0, transitSegments.length - 1),
-    segments: merged,
+    return null;
   };
-}
 
-/** Łączy pod rząd idące odcinki piesze w jeden (np. przesiadka + dojście do celu). */
-export function mergeConsecutiveWalks(segments: JourneySegment[]): JourneySegment[] {
-  const out: JourneySegment[] = [];
-  for (const seg of segments) {
-    const prev = out[out.length - 1];
-    if (prev && prev.type === 'walk' && seg.type === 'walk') {
-      prev.toStopId = seg.toStopId;
-      prev.toStopName = seg.toStopName;
-      prev.arriveSec = seg.arriveSec;
-      prev.walkMeters = (prev.walkMeters ?? 0) + (seg.walkMeters ?? 0);
-      // fromStop/departSec zostają z pierwszego odcinka
-    } else {
-      out.push({ ...seg });
+  const pointless = (legs: ILeg[], dest: number): boolean => {
+    for (const l of legs) if (l.a - l.b <= 0) return true;
+    if (legs.length !== 1) return false;
+    const l = legs[0];
+    if (l.a - l.b > 1 || P[l.p].kind === 'cable') return false;
+    const origin = P[l.p].stops[l.b];
+    const totalM = accessM[origin] + egressM[dest];
+    return totalM > 500 || egressM[dest] > 350;
+  };
+
+  /** Gotowość do wsiadania w rundzie k+1 z etykiety (k, s) dla rodzaju pojazdu. */
+  const boardReady = (km1: number, s: number, isTrain: boolean): number => {
+    const id = km1 * nStops + s;
+    const r = tau[id];
+    if (km1 === 0 || !isTrain || trainNeed <= minT) return r;
+    if (pType[id] === 3) return Math.max(r, pC[id] + Math.max(trainNeed, pB[id] + TRANSFER_WALK_SLACK_SEC));
+    return Math.max(r, arrAt[id] + trainNeed);
+  };
+
+  let boundVal = INF;
+
+  const checkTarget = (k: number, p: number, j: number, bPos: number, aPos: number, s: number, a: number) => {
+    const e = egressSec[s];
+    const arrT = a + e;
+    if (arrT > latestArr) return;
+    const valT = a + Math.round(wr * e);
+    let ba = INF;
+    let bv = INF;
+    for (let r = 1; r <= k; r++) {
+      if (bestArr[r] < ba) ba = bestArr[r];
+      if (bestVal[r] < bv) bv = bestVal[r];
     }
+    if (arrT >= ba && valT >= bv) return;
+    const prev = backtrack(k - 1, P[p].stops[bPos]);
+    if (!prev) return;
+    const legs = [...prev, { p, j, b: bPos, a: aPos, walkIn: 0 }];
+    if (legs.length > 1) {
+      // dojście do bieżącej nogi: z etykiety przystanku wsiadania
+      const id = (k - 1) * nStops + P[p].stops[bPos];
+      legs[legs.length - 1].walkIn = pType[id] === 3 ? pB[id] : 0;
+    }
+    if (pointless(legs, s)) return;
+    cands.push({ legs, dest: s });
+    if (arrT < bestArr[k]) bestArr[k] = arrT;
+    if (valT < bestVal[k]) bestVal[k] = valT;
+    if (valT < boundVal) boundVal = valT;
+  };
+
+  const scanPattern = (k: number, p: number, start: number) => {
+    const pat = P[p];
+    const n = pat.n;
+    const stops = pat.stops;
+    const dep = depV[p];
+    const arr = arrV[p];
+    const isTrain = pat.kind === 'train';
+    const kk = k * nStops;
+    const km1 = k - 1;
+    const km1Base = km1 * nStops;
+    let cur = -1;
+    let row = 0;
+    let boardPos = -1;
+    for (let i = start; i < n; i++) {
+      const s = stops[i];
+      if (cur >= 0) {
+        const a = arr[row + i];
+        if (egressSec[s] >= 0) checkTarget(k, p, cur, boardPos, i, s, a);
+        if (a < boundVal) {
+          const ready = a + minT;
+          let bestS = INF;
+          for (let r = 0; r <= k; r++) {
+            const v = tau[r * nStops + s];
+            if (v < bestS) bestS = v;
+          }
+          if (ready < bestS) {
+            const id = kk + s;
+            tau[id] = ready;
+            arrAt[id] = a;
+            pType[id] = 2;
+            pA[id] = p;
+            pB[id] = cur;
+            pC[id] = boardPos;
+            pD[id] = i;
+            if (!improvedFlag[s]) {
+              improvedFlag[s] = 1;
+              improvedList[improvedCount++] = s;
+            }
+            mark(s);
+          }
+        }
+      }
+      if (i < n - 1 && tau[km1Base + s] < INF) {
+        const r = boardReady(km1, s, isTrain);
+        if (cur < 0 || r <= dep[row + i]) {
+          const j = earliestTrip(p, i, r);
+          if (j >= 0 && (cur < 0 || dep[j * n + i] < dep[row + i])) {
+            cur = j;
+            row = j * n;
+            boardPos = i;
+          }
+        }
+      }
+    }
+  };
+
+  const relaxFootpaths = (k: number) => {
+    const kk = k * nStops;
+    for (let x = 0; x < improvedCount; x++) {
+      const s = improvedList[x];
+      improvedFlag[s] = 0;
+      // Tylko z przyjazdu kursem: bez łańcuchów przejść (s' -> s -> dalej).
+      if (s >= base.fpCount || pType[kk + s] !== 2) continue;
+      const src = arrAt[kk + s];
+      if (src >= boundVal) continue;
+      for (let e = base.fpStart[s]; e < base.fpStart[s + 1]; e++) {
+        const w = fpDur[e];
+        if (w < 0) continue;
+        const to = base.fpTo[e];
+        if (src + w >= boundVal) continue;
+        const ready = src + Math.max(minT, w + TRANSFER_WALK_SLACK_SEC);
+        let bestS = INF;
+        for (let r = 0; r <= k; r++) {
+          const v = tau[r * nStops + to];
+          if (v < bestS) bestS = v;
+        }
+        if (ready >= bestS) continue;
+        const id = kk + to;
+        tau[id] = ready;
+        arrAt[id] = src + w;
+        pType[id] = 3;
+        pA[id] = s;
+        pB[id] = w;
+        pC[id] = src;
+        mark(to);
+      }
+    }
+    improvedCount = 0;
+  };
+
+  const runIteration = (tau0: number, triggerStops: number[] | null) => {
+    for (const o of originList) {
+      const v = tau0 + accessSec[o];
+      if (v < tau[o]) {
+        tau[o] = v;
+        arrAt[o] = v;
+        pType[o] = 1;
+      }
+    }
+    markCount = 0;
+    if (triggerStops) for (const s of triggerStops) mark(s);
+    else for (const o of originList) mark(o);
+
+    for (let k = 1; k <= R; k++) {
+      let qCount = 0;
+      for (let m = 0; m < markCount; m++) {
+        const s = markList[m];
+        marked[s] = 0;
+        for (let e = occStart(s); e < occEnd(s); e++) {
+          const p = net.spPat[e];
+          if (!enabled[p]) continue;
+          const pos = net.spPos[e];
+          if (pos >= P[p].n - 1) continue;
+          if (queue[p] < 0) {
+            queue[p] = pos;
+            queued[qCount++] = p;
+          } else if (pos < queue[p]) {
+            queue[p] = pos;
+          }
+        }
+      }
+      markCount = 0;
+      if (qCount === 0) break;
+      boundVal = INF;
+      for (let r = 1; r <= k; r++) if (bestVal[r] < boundVal) boundVal = bestVal[r];
+      for (let q = 0; q < qCount; q++) {
+        const p = queued[q];
+        const start = queue[p];
+        queue[p] = -1;
+        scanPattern(k, p, start);
+      }
+      relaxFootpaths(k);
+      if (markCount === 0) break;
+    }
+    for (let m = 0; m < markCount; m++) marked[markList[m]] = 0;
+    markCount = 0;
+  };
+
+  // ── Odjazdy w oknie: każdy kurs z przystanku startowego wyznacza moment
+  //    wyjścia z domu (odjazd minus dojście).
+  const lo = t0 - CATCH_SLACK_SEC;
+  const hi = t0 + W;
+  const trigTimes: number[] = [];
+  const trigStops: number[] = [];
+  for (const o of originList) {
+    const acc = accessSec[o];
+    for (let e = occStart(o); e < occEnd(o); e++) {
+      const p = net.spPat[e];
+      if (!enabled[p]) continue;
+      const pos = net.spPos[e];
+      const pat = P[p];
+      if (pos >= pat.n - 1) continue;
+      const dep = depV[p];
+      const from = lowerBoundTrips(pat.dep, pat.n, pat.nTrips, pos, lo + acc - lateMax[p]);
+      for (let j = from; j < pat.nTrips; j++) {
+        if (pat.dep[j * pat.n + pos] - earlyMax[p] - acc >= hi) break;
+        const tau0 = dep[j * pat.n + pos] - acc;
+        if (tau0 >= lo && tau0 < hi) {
+          trigTimes.push(tau0);
+          trigStops.push(o);
+        }
+      }
+    }
+  }
+  const order = trigTimes.map((_, i) => i).sort((x, y) => trigTimes[y] - trigTimes[x]);
+
+  // Przebieg od końca okna: najszybsze podróże z odjazdem po oknie (rzadkie
+  // nocne kursy, długie dojścia), potem odjazdy w oknie od najpóźniejszego.
+  runIteration(hi, null);
+  for (let x = 0; x < order.length; ) {
+    const t = trigTimes[order[x]];
+    const group: number[] = [];
+    while (x < order.length && trigTimes[order[x]] === t) {
+      group.push(trigStops[order[x]]);
+      x++;
+    }
+    runIteration(t, group);
+  }
+
+  // ── Kandydaci -> koszt -> dopracowanie przystanków -> podróże
+  const legDep = (l: ILeg) => depV[l.p][l.j * P[l.p].n + l.b];
+  const legArr = (l: ILeg) => arrV[l.p][l.j * P[l.p].n + l.a];
+  const info = (c: ICand): CandInfo => {
+    const first = c.legs[0];
+    const last = c.legs[c.legs.length - 1];
+    const access = accessSec[P[first.p].stops[first.b]];
+    const egress = egressSec[c.dest];
+    const dep = Math.max(t0, legDep(first) - access);
+    const arr = legArr(last) + egress;
+    let walkSec = access + egress;
+    for (const l of c.legs) walkSec += l.walkIn;
+    const transfers = c.legs.length - 1;
+    const time = latestArr < INF ? latestArr - dep : arr - t0;
+    const costV = time + (wr - 1) * walkSec + transfers * cost.transferPenaltySec;
+    return { c, dep, arr, walkSec, cost: costV };
+  };
+  const chainKey = (c: ICand) => c.legs.map((l) => `${l.p}:${l.j}`).join('|');
+  const fullKey = (c: ICand) => `${c.legs.map((l) => `${l.p}:${l.j}:${l.b}:${l.a}`).join('|')}>${c.dest}`;
+
+  const byChain = new Map<string, CandInfo>();
+  for (const c of cands) {
+    const ci = info(c);
+    const key = chainKey(c);
+    const prev = byChain.get(key);
+    if (!prev || ci.cost < prev.cost) byChain.set(key, ci);
+  }
+  const shortlist = [...byChain.values()].sort((x, y) => x.cost - y.cost).slice(0, REFINE_LIMIT);
+
+  const refineCtx: RefineCtx = {
+    P, depV, arrV, net, accessSec, egressSec, fpDur,
+    minT, trainNeed, wr, t0, latestArr,
+  };
+  const out: RawJourney[] = [];
+  const seen = new Set<string>();
+  for (const ci of shortlist) {
+    const refined = refine(refineCtx, ci.c, ci.arr) ?? ci.c;
+    const key = fullKey(refined);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const rj = materialize(store, net, depV, arrV, refined, accessSec, accessM, egressSec, egressM, t0);
+    if (rj && !isPointlessShortRide(rj)) out.push(rj);
   }
   return out;
 }
 
-function journeyCost(j: RawJourney, departureTimeSec: number): number {
-  const doorToDoor = j.arrivalSec - departureTimeSec;
-  return doorToDoor + j.transfers * TRANSFER_PENALTY_SEC;
+interface RefineCtx {
+  P: CompiledPattern[];
+  depV: Int32Array[];
+  arrV: Int32Array[];
+  net: RaptorNet;
+  accessSec: Int32Array;
+  egressSec: Int32Array;
+  fpDur: Int32Array;
+  minT: number;
+  trainNeed: number;
+  wr: number;
+  t0: number;
+  latestArr: number;
 }
 
-export function filterParetoJourneys(journeys: RawJourney[], departureTimeSec = 0): RawJourney[] {
-  const result: RawJourney[] = [];
+/**
+ * Dopracowanie przystanków przy STAŁYCH kursach: programowanie dynamiczne po
+ * pozycjach wsiadania i wysiadania każdej nogi, minimalizujące koszt
+ * odczuwalny (jazda + oczekiwanie + spacer × waga). Naprawia trzy klasyczne
+ * błędy samego RAPTOR-a (który liczy wyłącznie najwcześniejszy przyjazd):
+ * - „wysiądź przystanek wcześniej i idź”, gdy ten sam tramwaj jedzie pod cel,
+ * - przesiadka z przejściem, choć pierwszy kurs dojeżdża na przystanek
+ *   drugiego,
+ * - dojście do dalszego przystanku tej samej linii zamiast najbliższego.
+ */
+function refine(ctx: RefineCtx, c: ICand, origArr: number): ICand | null {
+  const { P, depV, arrV, net, accessSec, egressSec, fpDur, minT, trainNeed, wr, t0, latestArr } = ctx;
+  const base = net.base;
+  const m = c.legs.length;
+  const B: Float64Array[] = [];
+  const Bfrom: Int32Array[] = [];
+  const Bwalk: Int32Array[] = [];
+  const C: Float64Array[] = [];
+  const Cfrom: Int32Array[] = [];
 
-  // Sortuj po koszcie uogólnionym (czas + kara za przesiadki), nie po samym przyjeździe.
-  const sorted = [...journeys].sort((a, b) => {
-    const ca = journeyCost(a, departureTimeSec);
-    const cb = journeyCost(b, departureTimeSec);
-    if (ca !== cb) return ca - cb;
-    return a.arrivalSec - b.arrivalSec;
-  });
-
-  // ── Pareto front: odrzuć zdominowane podróże ──
-  // Podróż A dominuje B jeśli A.arrival <= B.arrival ORAZ A.transfers <= B.transfers.
-  // Zostawiamy tylko niezdominowane + te z minimalnym kosztem ogólnym.
-  const paretoFront: RawJourney[] = [];
-  for (const j of sorted) {
-    const dominated = paretoFront.some(
-      (p) => p.arrivalSec <= j.arrivalSec && p.transfers <= j.transfers && p.departureSec >= j.departureSec
-    );
-    if (!dominated) {
-      paretoFront.push(j);
+  for (let li = 0; li < m; li++) {
+    const l = c.legs[li];
+    const pat = P[l.p];
+    const n = pat.n;
+    const row = l.j * n;
+    const dep = depV[l.p];
+    const b = new Float64Array(n).fill(Infinity);
+    const bf = new Int32Array(n).fill(-1);
+    const bw = new Int32Array(n);
+    if (li === 0) {
+      for (let pos = 0; pos < n - 1; pos++) {
+        const acc = accessSec[pat.stops[pos]];
+        if (acc < 0) continue;
+        const d = dep[row + pos];
+        if (d - acc < t0 - CATCH_SLACK_SEC) continue;
+        b[pos] = wr * acc - d;
+      }
+    } else {
+      const prev = c.legs[li - 1];
+      const pp = P[prev.p];
+      const prow = prev.j * pp.n;
+      const parr = arrV[prev.p];
+      const need = pat.kind === 'train' ? trainNeed : minT;
+      const positions = new Map<number, number[]>();
+      for (let pos = 0; pos < n - 1; pos++) {
+        const s = pat.stops[pos];
+        const list = positions.get(s);
+        if (list) list.push(pos);
+        else positions.set(s, [pos]);
+      }
+      const Cp = C[li - 1];
+      const tryBoard = (s: number, ready: number, val: number, from: number, walk: number) => {
+        const list = positions.get(s);
+        if (!list) return;
+        for (const pos of list) {
+          if (dep[row + pos] < ready) continue;
+          if (val < b[pos]) {
+            b[pos] = val;
+            bf[pos] = from;
+            bw[pos] = walk;
+          }
+        }
+      };
+      for (let a = 1; a < pp.n; a++) {
+        const cv = Cp[a];
+        if (cv === Infinity) continue;
+        const s = pp.stops[a];
+        const t = parr[prow + a];
+        tryBoard(s, t + need, cv, a, 0);
+        if (s < base.fpCount) {
+          for (let e = base.fpStart[s]; e < base.fpStart[s + 1]; e++) {
+            const w = fpDur[e];
+            if (w < 0) continue;
+            tryBoard(base.fpTo[e], t + Math.max(need, w + TRANSFER_WALK_SLACK_SEC), cv + (wr - 1) * w, a, w);
+          }
+        }
+      }
     }
+    const cArr = new Float64Array(n).fill(Infinity);
+    const cf = new Int32Array(n).fill(-1);
+    let run = Infinity;
+    let runPos = -1;
+    for (let pos = 0; pos < n; pos++) {
+      if (pos > 0 && run < Infinity) {
+        cArr[pos] = run;
+        cf[pos] = runPos;
+      }
+      if (b[pos] < run) {
+        run = b[pos];
+        runPos = pos;
+      }
+    }
+    B.push(b);
+    Bfrom.push(bf);
+    Bwalk.push(bw);
+    C.push(cArr);
+    Cfrom.push(cf);
   }
 
-  // Różnorodność jak w Jakdojade: ta sama kombinacja linii w różnych godzinach
-  // to OSOBNE propozycje (np. bezpośredni za 5 i za 15 min) — trzymamy max 5
-  // odjazdów na kombinację, ale rozstrzelone w czasie (min. 2 min odstępu):
-  // dwa warianty "10:06 vs 10:06+minuta spaceru" to dla użytkownika duplikat,
-  // a "10:06 vs 10:21" to już wybór.
-  const lineCombo = (j: RawJourney) =>
-    j.segments
+  const last = c.legs[m - 1];
+  const lp = P[last.p];
+  const lrow = last.j * lp.n;
+  const larr = arrV[last.p];
+  const arrCap = Math.min(latestArr, origArr + MAX_REFINE_LATER_SEC);
+  let bestTotal = Infinity;
+  let bestA = -1;
+  for (let a = 1; a < lp.n; a++) {
+    const cv = C[m - 1][a];
+    if (cv === Infinity) continue;
+    const s = lp.stops[a];
+    const e = egressSec[s];
+    if (e < 0) continue;
+    const t = larr[lrow + a];
+    if (t + e > arrCap) continue;
+    const total = cv + t + wr * e;
+    if (total < bestTotal - 1e-6) {
+      bestTotal = total;
+      bestA = a;
+    }
+  }
+  if (bestA < 0) return null;
+
+  const legs: ILeg[] = new Array(m);
+  let a = bestA;
+  for (let li = m - 1; li >= 0; li--) {
+    const l = c.legs[li];
+    const b = Cfrom[li][a];
+    if (b < 0) return null;
+    legs[li] = { p: l.p, j: l.j, b, a, walkIn: li > 0 ? Bwalk[li][b] : 0 };
+    if (li > 0) {
+      a = Bfrom[li][b];
+      if (a < 0) return null;
+    }
+  }
+  return { legs, dest: lp.stops[bestA] };
+}
+
+function footDistanceM(net: RaptorNet, from: number, to: number, walkSec: number): number {
+  const base = net.base;
+  if (from < base.fpCount) {
+    for (let e = base.fpStart[from]; e < base.fpStart[from + 1]; e++) {
+      if (base.fpTo[e] === to) return Math.max(20, base.fpDistM[e]);
+    }
+  }
+  return Math.max(20, Math.round(walkSec * DEFAULT_WALK_SPEED_MPS));
+}
+
+function materialize(
+  store: GtfsStore,
+  net: RaptorNet,
+  depV: Int32Array[],
+  arrV: Int32Array[],
+  c: ICand,
+  accessSec: Int32Array,
+  accessM: Int32Array,
+  egressSec: Int32Array,
+  egressM: Int32Array,
+  t0: number,
+): RawJourney | null {
+  if (!c.legs.length) return null;
+  const P = net.patterns;
+  const ids = net.base.stopIds;
+  const stopName = (s: number) => store.stops.get(ids[s])?.stop_name || 'Przystanek';
+  const segments: JourneySegment[] = [];
+
+  const first = c.legs[0];
+  const firstPat = P[first.p];
+  const firstStop = firstPat.stops[first.b];
+  const firstDep = depV[first.p][first.j * firstPat.n + first.b];
+  if (accessM[firstStop] > 50) {
+    segments.push({
+      type: 'walk',
+      fromStopId: 'origin',
+      fromStopName: 'Twoja lokalizacja',
+      toStopId: ids[firstStop],
+      toStopName: stopName(firstStop),
+      departSec: Math.max(t0, firstDep - accessSec[firstStop]),
+      arriveSec: firstDep,
+      stopsCount: 0,
+      walkMeters: accessM[firstStop],
+    });
+  }
+
+  let prevStop = -1;
+  let prevArr = 0;
+  for (const l of c.legs) {
+    const pat = P[l.p];
+    const row = l.j * pat.n;
+    const from = pat.stops[l.b];
+    const to = pat.stops[l.a];
+    if (prevStop >= 0 && prevStop !== from) {
+      segments.push({
+        type: 'walk',
+        fromStopId: ids[prevStop],
+        fromStopName: stopName(prevStop),
+        toStopId: ids[from],
+        toStopName: stopName(from),
+        departSec: prevArr,
+        arriveSec: prevArr + l.walkIn,
+        stopsCount: 0,
+        walkMeters: footDistanceM(net, prevStop, from, l.walkIn),
+      });
+    }
+    const tripId = pat.tripIds[l.j];
+    const trip = store.trips.get(tripId);
+    const route = store.routes.get(trip?.route_id ?? pat.routeId);
+    const line = route?.route_short_name || 'MPK';
+    segments.push({
+      type: 'transit',
+      tripId,
+      routeId: route?.route_id ?? pat.routeId,
+      line,
+      mode: classifyTransitMode(route?.route_type, line),
+      direction: trip?.trip_headsign || '',
+      fromStopId: ids[from],
+      fromStopName: stopName(from),
+      toStopId: ids[to],
+      toStopName: stopName(to),
+      departSec: depV[l.p][row + l.b],
+      arriveSec: arrV[l.p][row + l.a],
+      stopsCount: l.a - l.b,
+    });
+    prevStop = to;
+    prevArr = arrV[l.p][row + l.a];
+  }
+
+  if (egressM[c.dest] > 50) {
+    segments.push({
+      type: 'walk',
+      fromStopId: ids[c.dest],
+      fromStopName: stopName(c.dest),
+      toStopId: 'destination',
+      toStopName: 'Cel podróży',
+      departSec: prevArr,
+      arriveSec: prevArr + egressSec[c.dest],
+      stopsCount: 0,
+      walkMeters: egressM[c.dest],
+    });
+  }
+
+  return {
+    departureSec: segments[0].departSec,
+    arrivalSec: segments[segments.length - 1].arriveSec,
+    transfers: c.legs.length - 1,
+    segments,
+  };
+}
+
+/** Sekundy marszu w podróży (dojście, przesiadki, odejście). */
+export function journeyWalkSec(j: RawJourney): number {
+  let w = 0;
+  for (const s of j.segments) if (s.type === 'walk') w += Math.max(0, s.arriveSec - s.departSec);
+  return w;
+}
+
+export interface SelectOptions {
+  cost?: CostParams;
+  /** Tryb „bądź na”: koszt liczony od wyjścia do celu, nie od teraz. */
+  arriveBySec?: number;
+  limit?: number;
+}
+
+/**
+ * Koszt odczuwalny podróży: przyjazd liczony od chwili zapytania (albo czas
+ * od wyjścia do celu w trybie „bądź na”) + dodatkowa waga marszu + kara
+ * za przesiadki.
+ */
+export function journeyCost(j: RawJourney, refSec: number, opts: SelectOptions = {}): number {
+  const cost = opts.cost ?? ROUTE_STYLE_COSTS.balanced;
+  const base = opts.arriveBySec !== undefined ? opts.arriveBySec - j.departureSec : j.arrivalSec - refSec;
+  return base + (Math.max(1, cost.walkReluctance) - 1) * journeyWalkSec(j) + j.transfers * cost.transferPenaltySec;
+}
+
+/**
+ * Selekcja listy: duplikaty kursów, dominacja (później wyjść, wcześniej być,
+ * mniej przesiadek i nie więcej marszu), różnorodność linii i limit.
+ * Najszybszy przyjazd zawsze zostaje na liście.
+ */
+export function selectJourneys(journeys: RawJourney[], refSec: number, opts: SelectOptions = {}): RawJourney[] {
+  const limit = opts.limit ?? 10;
+  const scored = journeys.map((j) => ({
+    j,
+    cost: journeyCost(j, refSec, opts),
+    walk: journeyWalkSec(j),
+    chain: j.segments
+      .filter((s) => s.type === 'transit')
+      .map((s) => s.tripId)
+      .join('|'),
+    combo: j.segments
       .filter((s) => s.type === 'transit')
       .map((s) => s.line)
-      .join('+');
-  const comboKeptDeps = new Map<string, number[]>();
+      .join('+'),
+  }));
+  scored.sort((a, b) => a.cost - b.cost || a.j.arrivalSec - b.j.arrivalSec);
 
-  // Łączymy Pareto-niezdominowane + najlepsze kosztowo (do 2× ilość)
-  const candidates = [...paretoFront];
-  for (const j of sorted) {
-    if (!candidates.includes(j)) {
-      candidates.push(j);
-      if (candidates.length >= sorted.length) break;
-    }
-  }
-
-  const diverse = candidates.filter((j) => {
-    const combo = lineCombo(j);
-    const kept = comboKeptDeps.get(combo) ?? [];
-    if (kept.length >= 5) return false;
-    if (kept.some((d) => Math.abs(d - j.departureSec) < 120)) return false;
-    kept.push(j.departureSec);
-    comboKeptDeps.set(combo, kept);
+  const byChain = new Set<string>();
+  const unique = scored.filter((x) => {
+    if (byChain.has(x.chain)) return false;
+    byChain.add(x.chain);
     return true;
   });
 
-  const seenSignatures = new Set<string>();
-  for (const j of diverse) {
-    // Dokładny duplikat = te same linie w tych samych godzinach
-    // (np. ten sam kurs znaleziony z dwóch okien czasowych).
-    const sig =
-      j.segments
-        .filter((s) => s.type === 'transit')
-        .map((s) => `${s.line}@${s.departSec}-${s.arriveSec}`)
-        .join('|') + `@${Math.round(j.departureSec / 60)}`;
-    if (seenSignatures.has(sig)) continue;
-    seenSignatures.add(sig);
-    result.push(j);
+  const front = unique.filter(
+    (x) =>
+      !unique.some(
+        (y) =>
+          y !== x &&
+          y.j.departureSec >= x.j.departureSec &&
+          y.j.arrivalSec <= x.j.arrivalSec &&
+          y.j.transfers <= x.j.transfers &&
+          y.walk <= x.walk + 30 &&
+          (y.j.departureSec > x.j.departureSec ||
+            y.j.arrivalSec < x.j.arrivalSec ||
+            y.j.transfers < x.j.transfers ||
+            y.walk < x.walk - 30 ||
+            y.cost < x.cost),
+      ),
+  );
+
+  const perCombo = new Map<string, number[]>();
+  const result: RawJourney[] = [];
+  for (const x of front) {
+    const kept = perCombo.get(x.combo) ?? [];
+    if (kept.length >= 4) continue;
+    if (kept.some((d) => Math.abs(d - x.j.departureSec) < 180)) continue;
+    kept.push(x.j.departureSec);
+    perCombo.set(x.combo, kept);
+    result.push(x.j);
+    if (result.length >= limit) break;
   }
 
-  // Najtańsze najpierw — bezpośrednie z dłuższym spacerem wygrywają
-  // z wieloprzesiadkowymi z najbliższego słupka.
-  result.sort((a, b) => journeyCost(a, departureTimeSec) - journeyCost(b, departureTimeSec));
-
-  // Najwcześniejszy przyjazd zawsze na liście: sort po koszcie mógłby odciąć
-  // najszybszą podróż, gdyby było ≥10 tańszych-wolniejszych (kara za przesiadki).
-  let bestIdx = 0;
-  for (let i = 1; i < result.length; i++) {
-    if (result[i].arrivalSec < result[bestIdx].arrivalSec) bestIdx = i;
+  if (result.length > 0 && opts.arriveBySec === undefined) {
+    let fastest = front[0]?.j;
+    for (const x of front) if (fastest && x.j.arrivalSec < fastest.arrivalSec) fastest = x.j;
+    if (fastest && !result.includes(fastest)) {
+      if (result.length >= limit) result.pop();
+      result.push(fastest);
+    }
   }
-  if (bestIdx >= 10) {
-    const [best] = result.splice(bestIdx, 1);
-    result.unshift(best);
-  }
-
-  return result.slice(0, 10);
+  return result;
 }

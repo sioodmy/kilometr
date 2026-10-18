@@ -9,20 +9,27 @@
 //   to błąd kompilacji, nie pusty label w runtime.
 // - Liczby mnogie i interpolacje to funkcje w słowniku (pl: 1/2-4/5+,
 //   uk: tak samo, en/de: 1/wiele) — zero runtime'owego silnika pluralizacji.
+//
+// Stan języka siedzi w `locale.ts` bez importu Expo, żeby czysta logika
+// (serwisy, `tr()` w skryptach) nie ciągnęła `react-native` za sobą.
 
 import { useEffect, useState } from 'react';
 import { getLocales } from 'expo-localization';
 import { kvGet, kvSet } from '../services/storage';
-import { pl, type Strings } from './pl';
-import { en } from './en';
-import { de } from './de';
-import { uk } from './uk';
+import {
+  DICTS,
+  getLocaleSettingSync,
+  getLocaleSync,
+  setLocaleInternal,
+  subscribeLocale,
+  type Locale,
+  type LocaleSetting,
+  type Strings,
+} from './locale';
 
-export type Locale = 'pl' | 'en' | 'de' | 'uk';
-export type LocaleSetting = Locale | 'system';
-export type { Strings };
+export type { Locale, LocaleSetting, Strings };
+export { getLocaleSync, getLocaleSettingSync, tr } from './locale';
 
-const DICTS: Record<Locale, Strings> = { pl, en, de, uk };
 const STORE_KEY = 'kilometr.locale.v1';
 
 function deviceLocale(): Locale {
@@ -42,62 +49,30 @@ function resolve(setting: LocaleSetting): Locale {
   return setting === 'system' ? deviceLocale() : setting;
 }
 
-let currentSetting: LocaleSetting = 'system';
-let currentLocale: Locale = deviceLocale();
-const listeners = new Set<() => void>();
-
-function notify() {
-  for (const l of listeners) l();
-}
-
-/** Synchroniczny odczyt dla kodu poza React (serwisy, helpery formatujące). */
-export function getLocaleSync(): Locale {
-  return currentLocale;
-}
-
-/** Słownik pod bieżące locale do synchronicznych helperów (formatery liczb
- * mnogich, statusy). Wołać wewnątrz funkcji, nie na module — inaczej zmiana
- * języka nie odświeży tekstów. Komponenty: używaj `useStrings()`. */
-export function tr(): Strings {
-  return DICTS[currentLocale] ?? pl;
-}
-
-export function getLocaleSettingSync(): LocaleSetting {
-  return currentSetting;
-}
-
 /** Wczytaj zapisany wybór (wołać raz przy starcie, przed pierwszym renderem UI). */
 export async function initLocale(): Promise<Locale> {
+  let setting: LocaleSetting = 'system';
   try {
     const raw = await kvGet(STORE_KEY);
     if (raw === 'pl' || raw === 'en' || raw === 'de' || raw === 'uk' || raw === 'system') {
-      currentSetting = raw;
+      setting = raw;
     }
   } catch {}
-  currentLocale = resolve(currentSetting);
-  notify();
-  return currentLocale;
+  setLocaleInternal(setting, resolve(setting));
+  return getLocaleSync();
 }
 
 export async function setLocaleSetting(setting: LocaleSetting): Promise<void> {
-  currentSetting = setting;
-  currentLocale = resolve(setting);
+  setLocaleInternal(setting, resolve(setting));
   try {
     await kvSet(STORE_KEY, setting);
   } catch {}
-  notify();
 }
 
 /** Pełny słownik pod aktualne locale; prze-renderowuje przy zmianie języka. */
 export function useStrings(): Strings {
-  const [locale, setLocale] = useState(currentLocale);
-  useEffect(() => {
-    const fn = () => setLocale(currentLocale);
-    listeners.add(fn);
-    return () => {
-      listeners.delete(fn);
-    };
-  }, []);
+  const [locale, setLocale] = useState(getLocaleSync());
+  useEffect(() => subscribeLocale(() => setLocale(getLocaleSync())), []);
   return DICTS[locale];
 }
 
@@ -107,17 +82,15 @@ export function useLocaleSetting(): {
   locale: Locale;
   setSetting: (s: LocaleSetting) => void;
 } {
-  const [locale, setLocale] = useState(currentLocale);
-  const [setting, setSettingState] = useState(currentSetting);
-  useEffect(() => {
-    const fn = () => {
-      setLocale(currentLocale);
-      setSettingState(currentSetting);
-    };
-    listeners.add(fn);
-    return () => {
-      listeners.delete(fn);
-    };
-  }, []);
+  const [setting, setSettingState] = useState(getLocaleSettingSync());
+  const [locale, setLocale] = useState(getLocaleSync());
+  useEffect(
+    () =>
+      subscribeLocale(() => {
+        setSettingState(getLocaleSettingSync());
+        setLocale(getLocaleSync());
+      }),
+    [],
+  );
   return { setting, locale, setSetting: (s) => void setLocaleSetting(s) };
 }

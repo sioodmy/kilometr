@@ -12,7 +12,7 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import type * as DocumentPicker from 'expo-document-picker';
-import { kvGet, kvSet } from './storage';
+import { kvGetStrict, kvSet } from './storage';
 import { getLocaleSettingSync, setLocaleSetting, type LocaleSetting } from '../i18n';
 import { loadSettings, saveSettings, type RoutingSettings } from './settings';
 import {
@@ -50,19 +50,16 @@ const MAX_TRIP_HISTORY = 80;
 const KEEP_BACKUPS = 3;
 
 /**
- * Odczyt surowego JSON-a z klucza. Zwraca `null` dla każdego kształtu, którego
- * nie jesteśmy pewni (uszkodzony JSON, nie-tablica) — eksport wtedy ma jedną
- * sekcję pustą zamiast się wywrócić, a import i tak waliduje wejście od nowa.
+ * Odczyt surowego JSON-a z klucza. Brak klucza to legalna pusta lista, ale
+ * błąd odczytu lub uszkodzony JSON RZUCA: eksport nie może po cichu wysłać
+ * kopii bez sekcji, a import nie może nadpisać istniejących danych pustką.
  */
-async function readArray<T>(key: string): Promise<T[] | null> {
-  try {
-    const raw = await kvGet(key);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : null;
-  } catch {
-    return null;
-  }
+async function readArray<T>(key: string): Promise<T[]> {
+  const raw = await kvGetStrict(key);
+  if (!raw) return [];
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error(`${key} is not an array`);
+  return parsed as T[];
 }
 
 // ─── Eksport ────────────────────────────────────────────────────────────────
@@ -79,9 +76,9 @@ async function collectBackupData(): Promise<BackupData> {
   // miejsce, które zna aktualny wybór (również 'system', gdy klucza nie ma).
   const locale: LocaleSetting = getLocaleSettingSync();
   return {
-    places: places ?? [],
-    savedRoutes: savedRoutes ?? [],
-    tripHistory: tripHistory ?? [],
+    places,
+    savedRoutes,
+    tripHistory,
     routingSettings: routing,
     notificationPrefs: prefs,
     locale,
@@ -107,11 +104,13 @@ export async function writeBackupFile(appVersion: string | null): Promise<string
   } catch {
     // katalog może już istnieć — makeDirectory rzuca wtedy, więc ignorujemy
   }
-  await pruneOldBackups(dir);
   const path = `${dir}${backupFileName(new Date())}`;
   await FileSystem.writeAsStringAsync(path, json, {
     encoding: FileSystem.EncodingType.UTF8,
   });
+  // Sprzątanie PO zapisie: wtedy `KEEP_BACKUPS` liczy też świeży plik, więc
+  // na dysku zostaje dokładnie ta liczba, a nie o jedną więcej.
+  await pruneOldBackups(dir);
   return path;
 }
 
@@ -246,18 +245,18 @@ export async function applyBackup(data: BackupData): Promise<BackupCounts> {
     readArray<TripHistoryItem>(KEYS.tripHistory),
   ]);
 
-  const nextPlaces = data.places.length > 0 ? mergeById(places ?? [], data.places) : places ?? [];
+  const nextPlaces = data.places.length > 0 ? mergeById(places, data.places) : places;
   if (nextPlaces !== places && data.places.length > 0) {
     await kvSet(KEYS.places, JSON.stringify(nextPlaces));
   }
 
   const nextRoutes =
-    data.savedRoutes.length > 0 ? mergeById(savedRoutes ?? [], data.savedRoutes) : savedRoutes ?? [];
+    data.savedRoutes.length > 0 ? mergeById(savedRoutes, data.savedRoutes) : savedRoutes;
   if (nextRoutes !== savedRoutes && data.savedRoutes.length > 0) {
     await kvSet(KEYS.savedRoutes, JSON.stringify(nextRoutes));
   }
 
-  let nextHistory = tripHistory ?? [];
+  let nextHistory = tripHistory;
   if (data.tripHistory.length > 0) {
     nextHistory = mergeById(nextHistory, data.tripHistory).sort(byNewest).slice(0, MAX_TRIP_HISTORY);
     await kvSet(KEYS.tripHistory, JSON.stringify(nextHistory));

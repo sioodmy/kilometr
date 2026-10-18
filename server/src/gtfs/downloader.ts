@@ -34,9 +34,21 @@ export async function ensureGtfsData(): Promise<string> {
   fs.mkdirSync(config.dataDir, { recursive: true });
 
   if (fs.existsSync(zipFile)) {
-    console.log('[GTFS] Found cached zip, extracting:', zipFile);
-    extractZip(zipFile, extractedDir);
-    return extractedDir;
+    // Cache mógł zostać zapisany z odpowiedzi nie-ZIP (captive portal, strona
+    // HTML). Wtedy nie da się go rozpakować i blokowałby start na zawsze.
+    if (isZipFile(zipFile)) {
+      console.log('[GTFS] Found cached zip, extracting:', zipFile);
+      try {
+        extractZip(zipFile, extractedDir);
+        return extractedDir;
+      } catch (err) {
+        console.warn('[GTFS] Cached zip is corrupt, re-downloading:', err);
+        fs.rmSync(zipFile, { force: true });
+      }
+    } else {
+      console.warn('[GTFS] Cached zip is not a valid ZIP, re-downloading:', zipFile);
+      fs.rmSync(zipFile, { force: true });
+    }
   }
 
   console.log('[GTFS] No local data found. Resolving latest Wrocław GTFS archive from Open Data portal...');
@@ -45,6 +57,7 @@ export async function ensureGtfsData(): Promise<string> {
 
   const res = await fetch(downloadUrl, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    signal: AbortSignal.timeout(config.gtfs.timeoutMs),
   });
 
   if (!res.ok) {
@@ -53,11 +66,41 @@ export async function ensureGtfsData(): Promise<string> {
 
   const arrayBuffer = await res.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+  if (!isZipBuffer(buffer)) {
+    throw new Error(
+      `Downloaded GTFS archive is not a ZIP (${buffer.length} bytes, likely a captive portal or error page)`,
+    );
+  }
   fs.writeFileSync(zipFile, buffer);
   console.log('[GTFS] Downloaded', buffer.length, 'bytes. Extracting...');
 
   extractZip(zipFile, extractedDir);
   return extractedDir;
+}
+
+/** Sygnatura ZIP: "PK" + wariant nagłówka (lokalny / pusty / split). */
+function isZipBuffer(buffer: Buffer): boolean {
+  return (
+    buffer.length > 4 &&
+    buffer[0] === 0x50 &&
+    buffer[1] === 0x4b &&
+    (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07)
+  );
+}
+
+function isZipFile(filePath: string): boolean {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const head = Buffer.alloc(4);
+      fs.readSync(fd, head, 0, 4, 0);
+      return isZipBuffer(head);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
 }
 
 function extractZip(zipPath: string, destDir: string) {

@@ -1,4 +1,215 @@
 {
   "_note": "Cache współrzędnych stacji KD we Wrocławiu. Klucz = liczbowe ID stacji z PDP API. Uzupełniane komendą `node scripts/build-timetable.mjs --write-coords` (Nominatim, viewbox Wrocławia) + ręczna weryfikacja przed commitem. Bez wpisu stacja jest pomijana w buildzie (warning, nie błąd).",
-  "stations": {}
+  "stations": {
+    "58636": {
+      "name": "Wrocław Nowy Dwór",
+      "lat": 51.119637,
+      "lon": 16.955325,
+      "updatedAt": "2026-10-09",
+      "source": "railway/stop"
+    },
+    "58651": {
+      "name": "Wrocław Mikołajów",
+      "lat": 51.116296,
+      "lon": 16.998395,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "58719": {
+      "name": "Wrocław Osobowice",
+      "lat": 51.167092,
+      "lon": 16.996604,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "58743": {
+      "name": "Wrocław Świniary",
+      "lat": 51.198079,
+      "lon": 16.969759,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "58867": {
+      "name": "Wrocław Muchobór",
+      "lat": 51.111141,
+      "lon": 16.974767,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "58875": {
+      "name": "Wrocław Zachodni",
+      "lat": 51.089949,
+      "lon": 16.949504,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "58966": {
+      "name": "Wrocław Żerniki",
+      "lat": 51.126145,
+      "lon": 16.916407,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "58974": {
+      "name": "Wrocław Leśnica",
+      "lat": 51.141962,
+      "lon": 16.867279,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "59055": {
+      "name": "Wrocław Kuźniki",
+      "lat": 51.128041,
+      "lon": 16.952209,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "59071": {
+      "name": "Wrocław Pracze",
+      "lat": 51.17002,
+      "lon": 16.903129,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "59105": {
+      "name": "Wrocław Nadodrze",
+      "lat": 51.125658,
+      "lon": 17.032991,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "59204": {
+      "name": "Wrocław Sołtysowice",
+      "lat": 51.142548,
+      "lon": 17.083537,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "59238": {
+      "name": "Wrocław Kowale",
+      "lat": 51.134977,
+      "lon": 17.10017,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "59246": {
+      "name": "Wrocław Psie Pole",
+      "lat": 51.150452,
+      "lon": 17.118544,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "59253": {
+      "name": "Wrocław Pawłowice",
+      "lat": 51.16878,
+      "lon": 17.108378,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "59261": {
+      "name": "Wrocław Zakrzów",
+      "lat": 51.158744,
+      "lon": 17.122193,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "59279": {
+      "name": "Wrocław Swojczyce",
+      "lat": 51.115864,
+      "lon": 17.121344,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "59287": {
+      "name": "Wrocław Wojnów",
+      "lat": 51.103538,
+      "lon": 17.157689,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "60103": {
+      "name": "Wrocław Główny",
+      "lat": 51.097916,
+      "lon": 17.037951,
+      "updatedAt": "2026-10-09",
+      "source": "railway/station"
+    },
+    "60186": {
+      "name": "Wrocław Partynice",
+      "lat": 51.06112,
+      "lon": 16.997667,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "60236": {
+      "name": "Wrocław Wojszyce",
+      "lat": 51.069076,
+      "lon": 17.032168,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "178662": {
+      "name": "Wrocław Brochów",
+      "lat": 51.064279,
+      "lon": 17.084625,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "241966": {
+      "name": "Wrocław Stadion",
+      "lat": 51.13703,
+      "lon": 16.940625,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "254532": {
+      "name": "Wrocław Grabiszyn",
+      "lat": 51.09663,
+      "lon": 16.974255,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "258130": {
+      "name": "Wrocław Różanka",
+      "lat": 51.137987,
+      "lon": 17.00371,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "260659": {
+      "name": "Wrocław Popowice",
+      "lat": 51.127362,
+      "lon": 17.001416,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "263506": {
+      "name": "Wrocław Popiele",
+      "lat": 51.122455,
+      "lon": 17.114273,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "263507": {
+      "name": "Wrocław Strachocin",
+      "lat": 51.10981,
+      "lon": 17.145673,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "263508": {
+      "name": "Wrocław Wojnów Wschodni",
+      "lat": 51.098042,
+      "lon": 17.16821,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    },
+    "264901": {
+      "name": "Wrocław Szczepin",
+      "lat": 51.122948,
+      "lon": 17.014242,
+      "updatedAt": "2026-10-09",
+      "source": "railway/halt"
+    }
+  }
 }

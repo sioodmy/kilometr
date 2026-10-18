@@ -51,17 +51,14 @@ for (const group of SYNONYM_GROUPS) {
   }
 }
 
+/** Warianty tokenu razem z synonimami (np. "plac" -> ["plac", "pl"]). */
+export function expandTokenSynonyms(token: string): string[] {
+  const syns = SYNONYMS.get(token);
+  return syns ? [token, ...syns] : [token];
+}
+
 function expandTokens(tokens: string[]): string[][] {
-  const expanded: string[][] = [];
-  for (const t of tokens) {
-    const syns = SYNONYMS.get(t);
-    if (syns) {
-      expanded.push([t, ...syns]);
-    } else {
-      expanded.push([t]);
-    }
-  }
-  return expanded;
+  return tokens.map(expandTokenSynonyms);
 }
 
 interface TokenMatchResult {

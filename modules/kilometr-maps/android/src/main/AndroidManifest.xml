@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Lokalny serwer HTTP dla mapy: bez niego WebView o origin `null` nie umie
+       pobrać kafelków z telefonu. Nasłuchuje wyłącznie na 127.0.0.1. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

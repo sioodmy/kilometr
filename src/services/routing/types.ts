@@ -1,7 +1,11 @@
-export type LegMode = 'tram' | 'bus' | 'train' | 'walk';
+/** 'cable' = kolej linowa / powietrzna (Polinka przy Politechnice Wrocławskiej). */
+export type LegMode = 'tram' | 'bus' | 'train' | 'cable' | 'walk';
 
 /** Jednorazowy filtr pojazdów: 'all' = tramwaje + autobusy + pociągi KD (default). */
 export type TransitModePreference = 'all' | 'tram' | 'bus';
+
+/** Styl trasy z ustawień: wagi spaceru i przesiadek w koszcie planera. */
+export type RouteStyle = 'fastest' | 'balanced' | 'lessWalking' | 'fewerTransfers';
 
 export interface LegStop {
   stopId: string;

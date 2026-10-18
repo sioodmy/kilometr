@@ -16,6 +16,7 @@
     "expo-notifications": "~57.0.20",
     "expo-router": "~57.0.22",
     "expo-sharing": "~57.0.22",
+    "expo-splash-screen": "~57.0.9",
     "expo-sqlite": "^57.0.3",
     "expo-status-bar": "~57.0.1",
     "fflate": "^0.8.3",
@@ -44,9 +45,16 @@
     "setup": "npm --prefix server run setup",
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
+    "check:live": "tsx --require ./scripts/stub-expo.cjs scripts/check-live.ts",
+    "check:polinka": "tsx --require ./scripts/stub-expo.cjs scripts/check-polinka.ts",
+    "check:routing": "tsx --require ./scripts/stub-expo.cjs scripts/check-routing.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "check:backup": "tsx scripts/check-backup.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:nav": "tsx scripts/check-nav.ts",
+    "check:navigation-target": "tsx scripts/check-navigation-target.ts",
+    "check:minimap": "tsx scripts/check-minimap.ts",
+    "check:geometry-cache": "tsx scripts/check-geometry-cache.ts"
   },
   "private": true,
   "overrides": {
