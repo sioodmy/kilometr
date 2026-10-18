@@ -796,12 +796,14 @@ export const pl = {
   },
   map: {
     title: 'Mapa trasy',
+    stagesTitle: 'Etapy podróży',
+    showWholeRoute: 'Cała trasa',
     loadFail: 'Nie udało się wczytać połączenia',
     loadFailBody:
       'Mapa pokazuje konkretne połączenie, więc musi być dostępne w pamięci lub w cache.',
     backToDetails: 'Wróć do szczegółów',
     assembling: 'Składam połączenie…',
-    offlineTitle: 'Mapa niedostępna — brak sieci',
+    offlineTitle: 'Mapa niedostępna. Sprawdź połączenie z siecią.',
     offlineSub: 'Kafelki się nie ładują',
     backA11y: 'Wróć',
     transfersSuffix: (n: number) =>
@@ -954,6 +956,10 @@ export const pl = {
     gpsOutsideNotice: 'GPS poza obsługiwanym miastem, wybierz punkt manualnie.',
   },
   places: {
+    editAction: 'Edytuj',
+    editA11y: (name: string) => `Edytuj miejsce: ${name}`,
+    removeA11y: (name: string) => `Usuń miejsce: ${name}`,
+    clearAnchorA11y: 'Usuń przypisany przystanek',
     manageTitle: 'Zapisane miejsca',
     manageSub: 'Zarządzaj swoimi szybkimi celami podróży',
     emptyTitle: 'Brak zapisanych miejsc',

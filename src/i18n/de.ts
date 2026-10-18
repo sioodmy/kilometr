@@ -788,12 +788,14 @@ export const de: Strings = {
   },
   map: {
     title: 'Routenkarte',
+    stagesTitle: 'Reiseabschnitte',
+    showWholeRoute: 'Ganze Route',
     loadFail: 'Verbindung konnte nicht geladen werden',
     loadFailBody:
       'Die Karte zeigt eine konkrete Verbindung, sie muss daher im Speicher oder Cache verfügbar sein.',
     backToDetails: 'Zurück zu den Details',
     assembling: 'Verbindung wird zusammengesetzt…',
-    offlineTitle: 'Karte nicht verfügbar — kein Netz',
+    offlineTitle: 'Karte nicht verfügbar. Prüfe deine Netzwerkverbindung.',
     offlineSub: 'Kacheln laden nicht',
     backA11y: 'Zurück',
     transfersSuffix: (n: number) => (n === 1 ? ' • 1 Umstieg.' : ` • ${n} Umstiege.`),
@@ -945,6 +947,10 @@ export const de: Strings = {
     gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',
   },
   places: {
+    editAction: 'Bearbeiten',
+    editA11y: (name: string) => `Ort bearbeiten: ${name}`,
+    removeA11y: (name: string) => `Ort löschen: ${name}`,
+    clearAnchorA11y: 'Zugewiesene Haltestelle entfernen',
     manageTitle: 'Gespeicherte Orte',
     manageSub: 'Deine Schnellziele verwalten',
     emptyTitle: 'Keine gespeicherten Orte',

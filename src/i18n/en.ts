@@ -779,12 +779,14 @@ export const en: Strings = {
   },
   map: {
     title: 'Route map',
+    stagesTitle: 'Journey stages',
+    showWholeRoute: 'Whole route',
     loadFail: 'Could not load the connection',
     loadFailBody:
       'The map shows a specific connection, so it must be available in memory or cache.',
     backToDetails: 'Back to details',
     assembling: 'Assembling connection…',
-    offlineTitle: 'Map unavailable — no network',
+    offlineTitle: 'Map unavailable. Check your network connection.',
     offlineSub: 'Tiles are not loading',
     backA11y: 'Back',
     transfersSuffix: (n: number) => (n === 1 ? ' • 1 transfer.' : ` • ${n} transfers.`),
@@ -936,6 +938,10 @@ export const en: Strings = {
     gpsOutsideNotice: 'GPS is outside the city, pick a point manually.',
   },
   places: {
+    editAction: 'Edit',
+    editA11y: (name: string) => `Edit place: ${name}`,
+    removeA11y: (name: string) => `Remove place: ${name}`,
+    clearAnchorA11y: 'Remove assigned stop',
     manageTitle: 'Saved places',
     manageSub: 'Manage your quick trip destinations',
     emptyTitle: 'No saved places',

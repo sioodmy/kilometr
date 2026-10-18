@@ -815,11 +815,13 @@ export const uk: Strings = {
   },
   map: {
     title: 'Мапа маршруту',
+    stagesTitle: 'Етапи подорожі',
+    showWholeRoute: 'Увесь маршрут',
     loadFail: 'Не вдалося завантажити сполучення',
     loadFailBody: "Мапа показує конкретне сполучення, тож воно має бути в пам'яті або в кеші.",
     backToDetails: 'Назад до деталей',
     assembling: 'Збираю сполучення…',
-    offlineTitle: 'Мапа недоступна — немає мережі',
+    offlineTitle: 'Мапа недоступна. Перевір підключення до мережі.',
     offlineSub: 'Плитки не завантажуються',
     backA11y: 'Назад',
     transfersSuffix: (n: number) =>
@@ -971,6 +973,10 @@ export const uk: Strings = {
     gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
   },
   places: {
+    editAction: 'Редагувати',
+    editA11y: (name: string) => `Редагувати місце: ${name}`,
+    removeA11y: (name: string) => `Видалити місце: ${name}`,
+    clearAnchorA11y: 'Видалити призначену зупинку',
     manageTitle: 'Збережені місця',
     manageSub: 'Керуй своїми швидкими цілями',
     emptyTitle: 'Немає збережених місць',
