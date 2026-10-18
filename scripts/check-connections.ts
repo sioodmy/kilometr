@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { deduplicateConnections, mergeConnections, stableConnectionId } from '../src/services/routing/connectionIdentity';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import { deduplicateConnections, mergeConnections, normalizeConnectionId, stableConnectionId } from '../src/services/routing/connectionIdentity';
 import type { Connection } from '../src/types/models';
 
 const tram: Connection = {
@@ -38,4 +42,35 @@ assert.deepEqual(mergeConnections([tram], [duplicate, next, { ...next, id: 'next
 });
 assert.equal(mergeConnections([tram], [duplicate]).added, 0);
 assert.equal(stableConnectionId({ ...tram, id: 'new-index' }), stableConnectionId(tram));
+
+const requireModule = createRequire(resolve('package.json'));
+const { resolveHref } = requireModule('expo-router/build/link/href');
+const { getStateFromPath } = requireModule('expo-router/build/fork/getStateFromPath');
+let routeParams: { id: string };
+const hook = { exports: {} as { useLocalSearchParams: () => { id: string } } };
+runInNewContext(
+  readFileSync(requireModule.resolve('expo-router/build/hooks/useLocalSearchParams'), 'utf8'),
+  {
+    exports: hook.exports,
+    require: (name: string) => {
+      if (name === 'react') return { use: () => routeParams };
+      if (name === '../Route') return { LocalRouteParamsContext: {} };
+      if (name === '../link/preview/PreviewRouteContext') return { usePreviewInfo: () => ({}) };
+      throw new Error(`Unexpected router dependency: ${name}`);
+    },
+  },
+);
+for (const title of ['Dworzec Główny', 'Adres / wejście #2', 'Nazwa 100% i %20']) {
+  const id = stableConnectionId({ ...tram, fromTitle: title });
+  const href = resolveHref({ pathname: '/routes/[id]', params: { id } });
+  const state = getStateFromPath(href, {
+    screens: { routes: { path: 'routes', screens: { '[id]': ':id' } } },
+  });
+  routeParams = state.routes[0].params;
+  const received = hook.exports.useLocalSearchParams().id;
+  assert.equal(normalizeConnectionId(received), id);
+  assert.equal(normalizeConnectionId(id), id);
+}
+assert.equal(normalizeConnectionId('conn-1-36000'), 'conn-1-36000');
 console.log('PASS: duplikaty kursów, stabilne ID, przystanki, przesiadki, dni i paginacja');
+console.log('PASS: ID po przejściu przez Expo Router SDK 57, polskie znaki, procenty i zgodność starszych ID');
