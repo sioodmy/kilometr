@@ -1055,6 +1055,9 @@ export const uk: Strings = {
     savePlace: 'Зберегти місце',
   },
   timeSheet: {
+    confirmAction: 'Показати сполучення',
+    selectedDeparture: (day: string, hh: string, mm: string) => `${day}, ${hh}:${mm}`,
+    minutePreset: (mm: string) => `Установити хвилину: ${mm}`,
     titleDepart: 'Час відправлення',
     dayToday: 'Сьогодні',
     dayTomorrow: 'Завтра',

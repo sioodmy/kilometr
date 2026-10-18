@@ -1030,6 +1030,9 @@ export const de: Strings = {
     savePlace: 'Ort speichern',
   },
   timeSheet: {
+    confirmAction: 'Verbindungen anzeigen',
+    selectedDeparture: (day: string, hh: string, mm: string) => `${day}, ${hh}:${mm}`,
+    minutePreset: (mm: string) => `Minute auf ${mm} setzen`,
     titleDepart: 'Abfahrtszeit',
     dayToday: 'Heute',
     dayTomorrow: 'Morgen',
