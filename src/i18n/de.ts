@@ -318,11 +318,12 @@ export const de: Strings = {
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
-    needDownload: 'Für diese Stadt liegt noch kein Fahrplan auf dem Telefon. Lade ihn unten.',
+    needDownload:
+      'Für diese Stadt liegt noch kein Fahrplan auf dem Telefon. Lade ihn unter „Fahrplan und Karten“.',
     changeAction: 'Ändern',
     selectTitle: 'Stadt wählen',
     selectSub: 'Wählen Sie das Verkehrsgebiet für Ihre Routen.',
-    searchPlaceholder: 'Stadt oder Betreiber suchen…',
+    searchPlaceholder: 'Stadt oder Betreiber',
     noSearchResults: (q: string) => `Keine Städte für „${q}“ gefunden`,
     searchEmptyHint:
       'Überprüfen Sie die Schreibweise oder suchen Sie nach einem anderen Verkehrsgebiet.',
