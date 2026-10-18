@@ -6,8 +6,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FileDown, Play, Radar, Square, Trash2 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { FileDown, Play, Square, Trash2 } from 'lucide-react-native';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { PrefsToggle } from './NotificationPrefsCard';
 import {
@@ -43,9 +43,7 @@ export function ContributorCard() {
     () => getContributorSettingsSync().autoFollow,
   );
   const [usage, setUsage] = useState<StatsResult | null>(null);
-  const [busy, setBusy] = useState<
-    'start' | 'stop' | 'export' | 'delete' | 'toggle' | null
-  >(null);
+  const [busy, setBusy] = useState<'start' | 'stop' | 'export' | 'delete' | 'toggle' | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -173,10 +171,6 @@ export function ContributorCard() {
 
   return (
     <View style={styles.card}>
-      <View style={styles.cardTop}>
-        <Radar size={18} color={scheme.primary} />
-        <Text style={styles.cardTitle}>{b.contribTitle}</Text>
-      </View>
       <Text style={styles.hint}>{b.contribHint}</Text>
 
       <View style={styles.divider} />
@@ -190,8 +184,6 @@ export function ContributorCard() {
           disabled={busy !== null}
           label={b.contribAutoToggle}
           hint={b.contribAutoToggleA11y}
-          onText={s.notificationPrefs.on}
-          offText={s.notificationPrefs.off}
         />
       </View>
 
@@ -252,7 +244,6 @@ export function ContributorCard() {
           accessibilityLabel={b.contribDeleteA11y}
           style={({ pressed }) => [
             styles.btn,
-            styles.btnDanger,
             busy !== null && styles.btnDisabled,
             pressed && busy === null && { opacity: 0.7 },
           ]}
@@ -267,37 +258,38 @@ export function ContributorCard() {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 16,
-    gap: 10,
-    ...elev.level1,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 20,
+    gap: 18,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  cardTitle: { ...type.titleSmall, color: scheme.onSurface },
-  hint: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
-  hintMuted: { color: scheme.outline },
+  hint: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
+  hintMuted: { color: scheme.onSurfaceVariant },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: scheme.outlineVariant },
   toggleRow: { flexDirection: 'row', alignItems: 'flex-start' },
   toggleTextWrap: { flex: 1, paddingRight: 8 },
   rowTitle: { ...type.bodyMedium, color: scheme.onSurface },
   summary: { ...type.labelLarge, color: scheme.primary },
-  row: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  row: { gap: 10, marginTop: 2 },
   btn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
+    minHeight: 52,
     paddingVertical: 12,
     paddingHorizontal: 8,
   },
   btnStop: { backgroundColor: scheme.errorContainer },
   btnStopText: { color: scheme.onErrorContainer },
-  btnDanger: { flex: 0.6 },
   btnDangerText: { color: scheme.error },
   btnDisabled: { opacity: 0.55 },
-  btnText: { ...type.titleSmall, color: scheme.onSecondaryContainer },
+  btnText: {
+    ...type.titleSmall,
+    color: scheme.onSecondaryContainer,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
 });

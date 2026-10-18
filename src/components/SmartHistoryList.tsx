@@ -1,6 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { History } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode, SmartDestination } from '../types/models';
 import type { SuggestionIconMeta } from './SuggestionRow';
 import { LineBadge } from './LineBadge';
@@ -11,7 +11,6 @@ export interface SmartLineBadge {
   line?: string;
 }
 
-// M3 filled list cards with tonal icon + supporting text on the trailing side.
 export function SmartHistoryList({
   items,
   departures,
@@ -35,62 +34,88 @@ export function SmartHistoryList({
   icons?: Record<string, SuggestionIconMeta | undefined>;
 }) {
   const s = useStrings();
-  // Nagłówek bez treści to martwy szum — przy pustej historii sekcja znika.
+  const { width, fontScale } = useWindowDimensions();
+  const compact = width / fontScale < 300;
   if (items.length === 0) return null;
 
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: 12 }}>
       {!hideHeader && (
         <View style={styles.header}>
           <History size={16} color={scheme.primary} />
           <Text style={styles.headerText}>{s.home.historyTitle}</Text>
         </View>
       )}
-      {items.map((d) => {
-        const departInMin = departures?.[d.id];
-        const departLabel = formatDepartIn(departInMin);
-        const meta = icons?.[d.id];
-        const Icon = meta?.Icon ?? History;
-        const badge = lineBadges?.[d.id];
-        // Stałe sloty zapobiegają przesuwaniu tekstu po wczytaniu ikon i odjazdów.
-        return (
-          <Pressable key={d.id} onPress={() => onSelect(d)} style={({ pressed }) => [styles.card, pressed && { backgroundColor: scheme.surfaceContainerHighest }]}>
-            <View style={styles.iconSlide}>
-              <View style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}>
-                <Icon size={19} color={meta?.fg ?? scheme.onSecondaryContainer} />
-              </View>
-            </View>
-            <View style={styles.mid}>
-              <Text style={styles.title} numberOfLines={1}>{d.title}</Text>
-              <Text style={styles.sub} numberOfLines={1}>{d.address}</Text>
-            </View>
-            <View style={styles.rightSlide}>
-              {departLabel ? (
-                <Pressable
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    if (onOpenConnection) onOpenConnection(d);
-                    else onSelect(d);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.home.openConnA11y(d.title, departLabel)}
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.rightTouch, pressed && { opacity: 0.6 }]}
+      <View style={styles.list}>
+        {items.map((d, index) => {
+          const departInMin = departures?.[d.id];
+          const departLabel = formatDepartIn(departInMin);
+          const meta = icons?.[d.id];
+          const Icon = meta?.Icon ?? History;
+          const badge = lineBadges?.[d.id];
+          // Stałe sloty zapobiegają przesuwaniu tekstu po wczytaniu ikon i odjazdów.
+          return (
+            <Pressable
+              key={d.id}
+              onPress={() => onSelect(d)}
+              accessibilityRole="button"
+              accessibilityLabel={s.home.searchToA11y(d.title)}
+              style={({ pressed }) => [
+                styles.card,
+                compact && styles.cardCompact,
+                index > 0 && styles.cardDivider,
+                pressed && { backgroundColor: scheme.surfaceContainerHighest },
+              ]}
+            >
+              <View style={styles.iconSlide}>
+                <View
+                  style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}
                 >
-                  <View style={styles.right}>
-                    <View style={styles.badgeSlot}>
-                      {badge?.line ? (
-                        <LineBadge mode={badge.mode} line={badge.line} />
-                      ) : null}
+                  <Icon size={19} color={meta?.fg ?? scheme.onSecondaryContainer} />
+                </View>
+              </View>
+              <View style={styles.mid}>
+                <Text style={styles.title} numberOfLines={compact ? undefined : 2}>
+                  {d.title}
+                </Text>
+                <Text style={styles.sub} numberOfLines={compact ? undefined : 2}>
+                  {d.address}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.rightSlide,
+                  compact && styles.rightSlideCompact,
+                  compact && !departLabel && styles.hidden,
+                ]}
+              >
+                {departLabel ? (
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      if (onOpenConnection) onOpenConnection(d);
+                      else onSelect(d);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.home.openConnA11y(d.title, departLabel)}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.rightTouch, pressed && { opacity: 0.6 }]}
+                  >
+                    <View style={[styles.right, compact && styles.rightCompact]}>
+                      <View style={styles.badgeSlot}>
+                        {badge?.line ? <LineBadge mode={badge.mode} line={badge.line} /> : null}
+                      </View>
+                      <Text style={styles.depart}>{departLabel}</Text>
                     </View>
-                    <Text style={styles.depart} numberOfLines={1}>{departLabel}</Text>
-                  </View>
-                </Pressable>
-              ) : <View style={styles.rightPlaceholder} />}
-            </View>
-          </Pressable>
-        );
-      })}
+                  </Pressable>
+                ) : (
+                  <View style={styles.rightPlaceholder} />
+                )}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -117,39 +142,56 @@ export function formatDepartIn(departInMin: number | undefined): string | null {
 }
 
 const styles = StyleSheet.create({
+  list: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    paddingHorizontal: 4,
+  },
+  cardDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: scheme.outlineVariant },
+  cardCompact: { flexWrap: 'wrap' },
+  rightSlideCompact: { width: '100%', maxWidth: '100%', paddingLeft: 56 },
+  rightCompact: { flexDirection: 'row', justifyContent: 'flex-start', gap: 12 },
+  hidden: { display: 'none' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 2 },
-  headerText: { ...type.titleSmall, color: scheme.onSurface },
+  headerText: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
   iconSlide: { flexShrink: 0, justifyContent: 'center' },
   rightSlide: { flexShrink: 0, width: '32%', maxWidth: '40%', justifyContent: 'center' },
   rightPlaceholder: { minHeight: 44 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: scheme.surfaceContainer,
+    gap: 12,
     borderRadius: shape.large,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    minHeight: 72,
-    overflow: 'hidden',
-    ...elev.level1,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    minHeight: 84,
   },
   icon: {
     width: 42,
     height: 42,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mid: { flex: 1, justifyContent: 'center', gap: 2, minWidth: 0 },
-  title: { ...type.bodyLarge, color: scheme.onSurface },
-  sub: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
-  // Prawa kolumna: badge na górze, „za x min” pod nim — oba w slotach
-  // o STAŁEJ wysokości, więc ikonki stoją pod ikonkami, a teksty pod
-  // tekstami w każdym wierszu (także bez linii — pusty slot trzyma rytm).
+  mid: { flex: 1, justifyContent: 'center', gap: 4, minWidth: 0 },
+  title: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface },
+  sub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   rightTouch: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-  right: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, width: '100%' },
+  right: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    minWidth: 0,
+    width: '100%',
+  },
   badgeSlot: { height: 28, alignItems: 'center', justifyContent: 'center' },
-  depart: { ...type.titleSmall, lineHeight: 20, color: scheme.onSurface, flexShrink: 0, textAlign: 'center' },
+  depart: {
+    ...type.titleSmall,
+    lineHeight: 20,
+    color: scheme.onSurface,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
 });

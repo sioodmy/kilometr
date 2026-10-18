@@ -12,7 +12,7 @@ import {
   Stethoscope,
   TriangleAlert,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
   copyReportToClipboard,
@@ -224,11 +224,10 @@ export function DiagnosticsCard() {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 16,
-    gap: 12,
-    ...elev.level1,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 20,
+    gap: 18,
   },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   icon: {
@@ -241,7 +240,7 @@ const styles = StyleSheet.create({
   },
   headText: { flex: 1, minWidth: 0, gap: 2 },
   title: { ...type.titleSmall, color: scheme.onSurface, fontWeight: '700' },
-  hint: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 17 },
+  hint: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 7 },
   rowText: { flex: 1, minWidth: 0, gap: 1 },
   rowTitle: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '600' },
