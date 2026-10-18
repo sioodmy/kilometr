@@ -1,9 +1,10 @@
 // Dynamiczna konfiguracja Expo: wersja w metadanych APK musi zgadzać się
 // z tagiem GitHub Release. CI przekazuje tag kanału przez APP_VERSION
 // (prod: vX.Y.Z, nightly: nightly-YYYYMMDD-HHMM-<sha>, podgląd z PR-a:
-// dev-YYYYMMDD-HHMM-<sha> albo test-YYYYMMDD-HHMM-<sha>). Lokalnie bez tej
-// zmiennej zostaje wersja z app.json.
+// dev-YYYYMMDD-HHMM-<sha> albo test-YYYYMMDD-HHMM-<sha>, Play: play-<...>).
+// Lokalnie bez tej zmiennej zostaje wersja z app.json.
 const appJson = require('./app.json');
+const { withAppBuildGradle } = require('@expo/config-plugins');
 
 // Slot na numer kompilacji/hotfixu z CI (BUILD_NUMBER, np. GITHUB_RUN_ATTEMPT).
 // Dwie ostatnie cyfry versionCode prod, więc zakres 1-99; domyślnie 1.
@@ -30,11 +31,17 @@ function minutesSince2020(year, month, day, hour, minute) {
  */
 const PREVIEW_VERSION_CODE_BAND = 500000000;
 
+// Banda buildów wgrywanych do Google Play (testowanie wewnętrzne). Wyżej niż
+// podglądy (500 mln) i znacznie wyżej niż prod (max ~10 mln), więc versionCode
+// z Play nie skoliduje z wersjami instalowanymi z APK poza sklepem.
+const PLAY_VERSION_CODE_BAND = 600000000;
+
 // versionCode musi być liczbą całkowitą i rosnąć wraz z wydaniami.
 // prod: vX.Y.Z -> X*1000000 + Y*10000 + Z*100 + BUILD_NUMBER (slot kompilacji
 //       z CI; 1.0.0 -> 1000001, kolejny build tego samego wydania -> 1000002).
 // nightly: nightly-YYYYMMDD-HHMM-* -> minuty od 2020-01-01.
 // podglądy: dev-YYYYMMDD-HHMM-*, test-YYYYMMDD-HHMM-* -> banda podglądów + minuty.
+// Play: play-YYYYMMDD-HHMM-* -> banda Play + minuty.
 // Brak dopasowania (np. wersja z app.json) -> 1.
 function versionCodeFromVersion(version) {
   const semver = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(version);
@@ -45,7 +52,7 @@ function versionCodeFromVersion(version) {
     return major * 1000000 + minor * 10000 + patch * 100 + BUILD_NUMBER;
   }
 
-  const dated = /^(nightly|dev|test)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(version);
+  const dated = /^(nightly|dev|test|play)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(version);
   if (dated) {
     const minutes = minutesSince2020(
       Number(dated[2]),
@@ -54,22 +61,63 @@ function versionCodeFromVersion(version) {
       Number(dated[5]),
       Number(dated[6]),
     );
-    return dated[1] === 'nightly' ? minutes : PREVIEW_VERSION_CODE_BAND + minutes;
+    if (dated[1] === 'nightly') return minutes;
+    if (dated[1] === 'play') return PLAY_VERSION_CODE_BAND + minutes;
+    return PREVIEW_VERSION_CODE_BAND + minutes;
   }
 
   return 1;
 }
 
+// Podpis release kluczem upload z Play Console. Sekrety (ANDROID_KEYSTORE_*)
+// przekazuje CI, a ta wtyczka wpisuje je do wygenerowanego android/app/build.gradle.
+// Bez env (pipeline APK i buildy lokalne) buildType release zostaje na
+// debug.keystore, więc inne buildy zostają bez zmian.
+const withAndroidSigning = (config) =>
+  withAppBuildGradle(config, (mod) => {
+    const keystorePath = process.env.ANDROID_KEYSTORE_PATH;
+    const storePassword = process.env.ANDROID_KEYSTORE_PASSWORD;
+    const keyAlias = process.env.ANDROID_KEYSTORE_ALIAS;
+    const keyPassword = process.env.ANDROID_KEYSTORE_KEY_PASSWORD || storePassword;
+    if (!keystorePath || !storePassword || !keyAlias) return mod;
+
+    const gradle = mod.modResults.contents;
+    // Prebuild ma dokładnie dwa `signingConfig signingConfigs.debug`: pierwszy
+    // w buildTypes.debug, drugi w buildTypes.release. Podmieniamy drugi, żeby
+    // buildy debugowe dalej używały debug.keystore.
+    const sigRef = 'signingConfig signingConfigs.debug';
+    const releaseConfig = [
+      '        release {',
+      `            storeFile file(${JSON.stringify(keystorePath)})`,
+      `            storePassword ${JSON.stringify(storePassword)}`,
+      `            keyAlias ${JSON.stringify(keyAlias)}`,
+      `            keyPassword ${JSON.stringify(keyPassword)}`,
+      '        }',
+    ].join('\n');
+    const gradleWithConfig = gradle.replace(/signingConfigs\s*\{/, (m) => `${m}\n${releaseConfig}`);
+    const firstRef = gradleWithConfig.indexOf(sigRef);
+    const secondRef = firstRef < 0 ? -1 : gradleWithConfig.indexOf(sigRef, firstRef + sigRef.length);
+    if (secondRef < 0) {
+      throw new Error('Nie podpiszę builda: wygenerowany android/app/build.gradle nie ma dwóch bloków signingConfig (debug + release) z template prebuildu.');
+    }
+
+    mod.modResults.contents =
+      gradleWithConfig.slice(0, secondRef) +
+      'signingConfig signingConfigs.release' +
+      gradleWithConfig.slice(secondRef + sigRef.length);
+    return mod;
+  });
+
 module.exports = ({ config }) => {
   const expo = staticExpo(config);
   const version = process.env.APP_VERSION || expo.version || '1.0.0';
 
-  return {
+  return withAndroidSigning({
     ...expo,
     version,
     android: {
       ...(expo.android || {}),
       versionCode: versionCodeFromVersion(version),
     },
-  };
+  });
 };
