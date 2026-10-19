@@ -126,7 +126,7 @@ export function DepartureAlarmDialog({ connection, alarm, onClose }: {
   >
     <View style={[styles.overlay, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={() => { if (!busy) onClose(); }}
-        accessible={false} importantForAccessibility="no-hide-descendants" />
+        accessible={false} focusable={false} importantForAccessibility="no-hide-descendants" />
       <View style={[styles.dialog, { maxHeight: height - insets.top - insets.bottom - 32 }]}
         accessibilityViewIsModal importantForAccessibility="yes">
         <View style={styles.header}>
