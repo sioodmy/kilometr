@@ -27,8 +27,7 @@ class TripActionReceiver : BroadcastReceiver() {
       val manager = context.getSystemService(NotificationManager::class.java)
       manager.cancel(LiveUpdateFactory.NOTIFICATION_ID)
     } catch (_: Throwable) {
-      // Android 26+ nie pozwala podnieść usługi z tła — powiadomienie i tak
-      // zniknie razem z procesem, a `LocalStopSignal` dowozi decyzję do JS.
+      // JS ponowi zatrzymanie po odczytaniu flagi.
       LocalStopSignal.mark(context)
     }
   }
