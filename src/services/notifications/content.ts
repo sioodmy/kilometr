@@ -27,7 +27,7 @@ import type {
 // rzeczy w czystym node. Wywołujący (`presenter.ts`, `alerts.ts`) używają `tr()`.
 
 /** Neutralny kolor dojść i przesiadek — wspólny dla wszystkich linii. */
-export const WALK_SEGMENT_COLOR = '#8A8F98';
+const WALK_SEGMENT_COLOR = '#8A8F98';
 
 export interface TripCopy {
   title: string;
@@ -185,7 +185,7 @@ export function buildTripCopy(p: TripProgress, conn: Connection, s: Strings): Tr
  * udawały linii, a przejazdy — kolor linii. Czasy przycinamy do okna
  * podróży, bo ostatni odcinek bywa wyliczony z `durationMin`, nie z rozkładu.
  */
-export function buildSegments(
+function buildSegments(
   timeline: ReturnType<typeof computeLegTimeline>,
   startAtMs: number,
   endAtMs: number,
@@ -374,7 +374,7 @@ function join(...parts: (string | null | undefined)[]): string {
 // ─── Deep linki ────────────────────────────────────────────────────────────
 
 /** Deep link do ekranu połączeń — te same parametry co w buildRoutesLink. */
-export function buildTripLink(trip: TrackedTrip): string {
+function buildTripLink(trip: TrackedTrip): string {
   return `kilometr://routes?${queryString(tripParams(trip))}`;
 }
 

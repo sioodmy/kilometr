@@ -14,12 +14,12 @@ import { getActiveCityIdSync } from './cityStore';
 
 /** Plik bazy dla miasta. Każde miasto ma osobny plik; zmiana nazwy oznacza
  *  świeży pobyt (nowy plik startuje pusty, więc wersja wymusza re-download). */
-export function gtfsDbName(cityId?: string): string {
+function gtfsDbName(cityId?: string): string {
   return getCity(cityId ?? getActiveCityIdSync()).dbFile;
 }
 
 /** Plik bazy aktywnego miasta (do podmiany po pobraniu). */
-export function currentGtfsDbName(): string {
+function currentGtfsDbName(): string {
   return gtfsDbName();
 }
 
@@ -605,14 +605,6 @@ export async function getActiveServices(weekday: number, dateStr?: string): Prom
       )
     : [];
   return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
-}
-
-/** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */
-export async function getRouteIdsByShortName(shortName: string): Promise<string[]> {
-  const db = await getGtfsDb();
-  const key = shortName.trim().toUpperCase();
-  const rows = await db.getAllAsync<{ route_id: string; short: string }>('SELECT route_id, short FROM routes');
-  return rows.filter((r) => r.short.trim().toUpperCase() === key).map((r) => r.route_id);
 }
 
 /** Czasy kursu posortowane po stop_sequence (do list rozwijanych + RAPTOR-a). */

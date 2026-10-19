@@ -5,6 +5,11 @@
 
   <!-- Delikatna wibracja przed przystankiem, na którym trzeba wysiąść. -->
   <uses-permission android:name="android.permission.VIBRATE" />
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+  <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
   <!-- Serwis śledzący podróż. Bez foreground service powiadomienie umiera
        razem z aplikacją, a po zamknięciu ekranu proces jest throttlowany :
@@ -17,6 +22,26 @@
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
 <application>
+    <activity
+        android:name="my.siood.kilometr.tracking.DepartureAlarmActivity"
+        android:exported="false"
+        android:excludeFromRecents="true"
+        android:launchMode="singleTop"
+        android:showWhenLocked="true"
+        android:turnScreenOn="true"
+        android:theme="@android:style/Theme.Material.NoActionBar" />
+    <service
+        android:name="my.siood.kilometr.tracking.DepartureAlarmService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback" />
+    <receiver android:name="my.siood.kilometr.tracking.DepartureAlarmReceiver" android:exported="false" />
+    <receiver android:name="my.siood.kilometr.tracking.DepartureAlarmRestoreReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+      </intent-filter>
+    </receiver>
     <!-- `specialUse` to jedyny typ, który obejmuje śledzenie podróży użytkownika
          bez podszywania się pod lokalizację czy rozmowę telefoniczną. Pełna
          nazwa klasy zamiast `.LiveTripService`, bo relatywna nazwa w manifeście

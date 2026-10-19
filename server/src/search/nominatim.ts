@@ -11,7 +11,7 @@ const SLICE_MS = 100;
  * natychmiast zamiast blokować świeże zapytania za sobą (head-of-line).
  * Zwraca false gdy przestarzałe — wołający ma zwrócić pusty wynik.
  */
-export async function rateLimit(isFresh: () => boolean): Promise<boolean> {
+async function rateLimit(isFresh: () => boolean): Promise<boolean> {
   for (;;) {
     const elapsed = Date.now() - lastRequestTime;
     if (elapsed >= MIN_GAP_MS) break;
@@ -120,7 +120,7 @@ export async function searchNominatim(query: string, isFresh: () => boolean = ()
           ? `${road} ${houseNo}`
           : road || item.display_name.split(',')[0]);
       const suburb = item.address?.suburb || item.address?.neighbourhood || item.address?.quarter || 'Wrocław';
-      
+
       let typeName = 'Miejsce';
       if (kind === 'address') typeName = 'Adres';
       else if (c === 'shop') typeName = 'Sklep';

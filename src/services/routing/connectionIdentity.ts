@@ -1,6 +1,6 @@
 import type { Connection } from './types';
 
-export function connectionIdentity(connection: Connection): string {
+function connectionIdentity(connection: Connection): string {
   const first = connection.legs[0];
   const last = connection.legs[connection.legs.length - 1];
   const rides = connection.legs.filter((leg) => leg.mode !== 'walk');

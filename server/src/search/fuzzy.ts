@@ -3,7 +3,7 @@ import { normalizePolish } from '../gtfs/geo';
 /**
  * Damerau-Levenshtein distance (allows insertion, deletion, substitution, and transposition of adjacent characters).
  */
-export function damerauLevenshtein(a: string, b: string): number {
+function damerauLevenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const la = a.length;
   const lb = b.length;

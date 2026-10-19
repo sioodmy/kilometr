@@ -111,7 +111,7 @@ async function collectBackupData(): Promise<BackupData> {
  * znaleźć jeszcze za tydzień. Stare kopie sprzątamy (`KEEP_BACKUPS`), żeby
  * eksport nie zaśmiecał pamięci telefonu w nieskończoność.
  */
-export async function writeBackupFile(appVersion: string | null): Promise<string> {
+async function writeBackupFile(appVersion: string | null): Promise<string> {
   const data = await collectBackupData();
   const json = buildBackupFile(data, appVersion);
   const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
@@ -329,5 +329,4 @@ export async function applyBackup(data: BackupData): Promise<BackupCounts> {
   });
 }
 
-export { BACKUP_EXTENSION, BACKUP_MIME };
 export type { BackupCounts, BackupData, BackupParseFailure, BackupParseResult };

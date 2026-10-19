@@ -215,37 +215,19 @@ async function main() {
   assert.ok(storage.has('kilometr.trackedTrip.v2'));
   assert.ok(pinned);
   assert.ok(changes >= 2, 'odświeżenie publikuje nowy stan po dopasowaniu planu');
-  assert.equal(departureAlerts().length, 4, 'przesiadka ma alerty zaplanowane przed uśpieniem JS');
-  const firstLead = scheduled.get('kilometr.alert.lead.tracked.1')!;
-  assert.equal((firstLead.trigger as { date: Date }).date.getTime(), at(12, 8));
-  const nextLead = scheduled.get('kilometr.alert.lead.tracked.3')!;
-  assert.ok(nextLead.content.title?.includes('12:40'));
-  assert.ok(nextLead.content.title?.includes('12'));
-  mock.timers.setTime(at(12, 8) - 10_000);
-  await alerts.scheduleDepartureAlerts(progress(), trip, prefs);
-  assert.ok(
-    scheduled.has('kilometr.alert.lead.tracked.1'),
-    'odświeżenie tuż przed alarmem nie usuwa go',
-  );
-  mock.timers.setTime(at(12, 0));
+  assert.equal(departureAlerts().length, 0, 'przypięcie trasy nie ustawia automatycznych alarmów');
+  storage.set('kilometr.alertIds.v1', JSON.stringify([
+    'kilometr.alert.lead.tracked.1', 'kilometr.alert.imminent.tracked.1',
+  ]));
+  await alerts.cancelLegacyDepartureAlerts();
+  assert.ok(dismissed.includes('kilometr.alert.lead.tracked.1'));
+  assert.ok(dismissed.includes('kilometr.alert.imminent.tracked.1'));
   monitor.startTrackedTripListener();
-  await preferences.saveNotificationPreferences({ departureAlertsEnabled: false });
+  await preferences.saveNotificationPreferences({ trackingEnabled: false });
   await monitor.refreshTrackedTrip();
   assert.equal(departureAlerts().length, 0, 'zmiana ustawień od razu usuwa alerty');
-  assert.equal(
-    plans.at(-1)?.alightAlertsEnabled,
-    false,
-    'wyłączenie alertów wyłącza wibrację przed wysiadaniem',
-  );
   await preferences.saveNotificationPreferences(prefs);
   await monitor.refreshTrackedTrip();
-  await alerts.scheduleDepartureAlerts(progress(), trip, { ...prefs, imminentAlert: false });
-  assert.equal(departureAlerts().filter((id) => id.includes('.imminent.')).length, 0);
-  await alerts.scheduleDepartureAlerts(progress(), trip, {
-    ...prefs,
-    departureAlertsEnabled: false,
-  });
-  assert.equal(departureAlerts().length, 0);
   await alerts.sendDisruptionAlert(progress(), trip, prefs);
   assert.deepEqual(scheduled.get('kilometr.alert.disruption.tracked')?.trigger, {
     channelId: 'kilometr.alerts',
@@ -262,7 +244,7 @@ async function main() {
     entered.resolve();
     await release.promise;
   };
-  const scheduling = alerts.scheduleDepartureAlerts(progress(), trip, prefs);
+  const scheduling = alerts.sendDisruptionAlert(progress(), trip, prefs);
   await entered.promise;
   const cancelling = alerts.cancelScheduledAlerts();
   release.resolve();

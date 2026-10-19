@@ -22,7 +22,7 @@ export function normalizeName(s: string): string {
 }
 
 /** '14:02' → sekundy od północy. */
-export function parseHMtoSec(hm: string): number | null {
+function parseHMtoSec(hm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})/.exec(hm || '');
   if (!m) return null;
   return Number(m[1]) * 3600 + Number(m[2]) * 60;

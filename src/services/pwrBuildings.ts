@@ -10,7 +10,7 @@ const DIST_PENALTY_CAP = 40;
 const DIST_PENALTY_PER_M = 250;
 
 /** "D-21" -> "d21": myślnik, spacja i kropka nie mają znaczenia. */
-export function compactBuildingCode(value: string): string {
+function compactBuildingCode(value: string): string {
   return normalizePolish(value).replace(/[^a-z0-9]/g, '');
 }
 

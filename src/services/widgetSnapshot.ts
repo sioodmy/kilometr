@@ -11,7 +11,7 @@ import type { Connection, Leg } from '../types/models';
 // prosimy o przerysowanie, zamiast czekać na systemowe odświeżenie co 30 min.
 // Widgety NIE działają w Expo Go, wymagają dev-build APK.
 
-export const WIDGET_SNAPSHOT_FILE = 'kilometr-widget.json';
+const WIDGET_SNAPSHOT_FILE = 'kilometr-widget.json';
 
 export interface WidgetLineBadge {
   mode: 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway' | 'walk';
@@ -69,7 +69,7 @@ export interface WidgetPlace {
   deepLink: string;
 }
 
-export interface WidgetSnapshot {
+interface WidgetSnapshot {
   v: 2;
   updatedAt: number;
   origin: string;

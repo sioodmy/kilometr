@@ -31,7 +31,7 @@ function latToTileY(lat: number, z = TILE_ZOOM): number {
   return Math.max(0, Math.min(n - 1, Math.floor(y)));
 }
 
-export function tilesForWaypoints(waypoints: ReadonlyArray<FootCoord>): Array<[number, number]> {
+function tilesForWaypoints(waypoints: ReadonlyArray<FootCoord>): Array<[number, number]> {
   if (waypoints.length === 0) return [];
   let minLat = Infinity;
   let maxLat = -Infinity;
@@ -157,7 +157,7 @@ async function ensureSingleFootTile(
   return task;
 }
 
-export function canRouteFootSync(waypoints: ReadonlyArray<FootCoord>): boolean {
+function canRouteFootSync(waypoints: ReadonlyArray<FootCoord>): boolean {
   const tiles = tilesForWaypoints(waypoints);
   if (tiles.length === 0) return false;
   return tiles.every(([tx, ty]) => hasFootTileSync(tx, ty));

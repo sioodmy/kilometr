@@ -8,13 +8,13 @@ import { getActiveCityIdSync } from './cityStore';
 import { getMeta, setMeta } from './gtfsDatabase';
 
 /** Mapa OSM zmienia się wolno: raz na miesiąc wystarczy. */
-export const MAP_DOWNLOAD_MIN_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
+const MAP_DOWNLOAD_MIN_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * Rozkład MPK/KD bywa codzienny, ale pełna baza to dziesiątki MB.
  * Między pełnymi pobraniami min. 12 h, nawet gdy na serwerze jest nowsza wersja.
  */
-export const TIMETABLE_DOWNLOAD_MIN_INTERVAL_MS = 12 * 60 * 60 * 1000;
+const TIMETABLE_DOWNLOAD_MIN_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 const MAP_LAST_KEY = 'kilometr.offlineMap.lastDownloadAt';
 const TIMETABLE_LAST_META = 'gtfs_last_download';

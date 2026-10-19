@@ -53,13 +53,6 @@ export interface GtfsCalendarDate {
   exception_type: number; // 1 = added, 2 = removed
 }
 
-export interface GtfsShapePoint {
-  shape_id: string;
-  lat: number;
-  lon: number;
-  sequence: number;
-}
-
 export interface GtfsCalendarDate {
   service_id: string;
   date: string; // YYYYMMDD

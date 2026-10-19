@@ -10,7 +10,7 @@ import { getActiveCityIdSync } from './cityStore';
 /** Haversine: dystans w metrach między dwoma punktami. Środek jawny, bez
  *  domyślnego miasta: jedyny caller (`isOutsideServiceArea`) podaje środek
  *  aktywnego miasta, a ukryty default Wrocławia byłby pułapką. */
-export function serviceAreaDistanceM(
+function serviceAreaDistanceM(
   lat: number,
   lon: number,
   centerLat: number,

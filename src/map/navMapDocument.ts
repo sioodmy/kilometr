@@ -19,24 +19,34 @@ const runtime = (routeSourceId: string) => `
   var assets = window.__NAV__.assets;
   var index = 0;
   var currentRoute = { type: 'FeatureCollection', features: [] };
+  var tileContent = false;
+  var lastStatus = '';
+  function post(message) {
+    window.ReactNativeWebView.postMessage(JSON.stringify(message));
+  }
+  function status(value) {
+    if (lastStatus === value) return;
+    lastStatus = value;
+    post({ t: 'tiles', state: value });
+  }
+  function loadElement(element) {
+    return new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () { element.remove(); reject(new Error('asset timeout')); }, 8000);
+      element.onload = function () { clearTimeout(timer); resolve(); };
+      element.onerror = function () { clearTimeout(timer); element.remove(); reject(new Error('asset failed')); };
+      document.head.appendChild(element);
+    });
+  }
   function loadAssets() {
     if (index >= assets.length) return Promise.reject(new Error('map assets unavailable'));
     var base = assets[index++];
-    return new Promise(function (resolve, reject) {
-      var css = document.createElement('link');
-      css.rel = 'stylesheet';
-      css.href = base + '/maplibre-gl.css';
-      css.onload = resolve;
-      css.onerror = reject;
-      document.head.appendChild(css);
-    }).then(function () {
-      return new Promise(function (resolve, reject) {
-        var js = document.createElement('script');
-        js.src = base + '/maplibre-gl.js';
-        js.onload = resolve;
-        js.onerror = reject;
-        document.head.appendChild(js);
-      });
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = base + '/maplibre-gl.css';
+    return loadElement(css).then(function () {
+      var js = document.createElement('script');
+      js.src = base + '/maplibre-gl.js';
+      return loadElement(js);
     }).catch(loadAssets);
   }
   function routeData(msg) {
@@ -44,7 +54,7 @@ const runtime = (routeSourceId: string) => `
     if (Array.isArray(msg.path) && msg.path.length > 1) {
       features.push({
         type: 'Feature',
-        properties: { walk: 1, sel: 2, color: msg.accent || '#BFC9C5' },
+        properties: { walk: msg.riding ? 0 : 1, sel: 2, color: msg.accent || '#BFC9C5' },
         geometry: {
           type: 'LineString',
           coordinates: msg.path.map(function (p) { return [p[1], p[0]]; }),
@@ -62,6 +72,7 @@ const runtime = (routeSourceId: string) => `
   }
   function updateRoute(msg) {
     currentRoute = routeData(msg);
+    if (!map) return;
     var source = map.getSource(sourceId);
     if (source) source.setData(currentRoute);
   }
@@ -71,7 +82,18 @@ const runtime = (routeSourceId: string) => `
     return current + diff;
   }
   function updateCamera(msg, animate) {
-    if (!map || !msg.user) return;
+    if (!map) return;
+    if (!msg.user) {
+      hasInitialCamera = false;
+      var coordinates = currentRoute.features.reduce(function (all, feature) {
+        return all.concat(feature.geometry.type === 'LineString' ? feature.geometry.coordinates : [feature.geometry.coordinates]);
+      }, []);
+      if (coordinates.length > 1) {
+        var bounds = coordinates.reduce(function (b, p) { return b.extend(p); }, new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
+        map.fitBounds(bounds, { padding: 36, maxZoom: 16, duration: 0, bearing: 0 });
+      } else if (coordinates.length === 1) map.jumpTo({ center: coordinates[0], zoom: 16, bearing: 0 });
+      return;
+    }
     var nextLon = msg.user[1];
     var nextLat = msg.user[0];
     var rawBearing = typeof msg.heading === 'number' && isFinite(msg.heading) ? msg.heading : 0;
@@ -80,7 +102,7 @@ const runtime = (routeSourceId: string) => `
       map.jumpTo({
         center: [nextLon, nextLat],
         bearing: rawBearing,
-        zoom: 17,
+        zoom: msg.riding ? 15.5 : 17,
       });
       return;
     }
@@ -90,7 +112,7 @@ const runtime = (routeSourceId: string) => `
       map.jumpTo({
         center: [nextLon, nextLat],
         bearing: rawBearing,
-        zoom: 17,
+        zoom: msg.riding ? 15.5 : 17,
       });
       return;
     }
@@ -98,9 +120,9 @@ const runtime = (routeSourceId: string) => `
     map.easeTo({
       center: [nextLon, nextLat],
       bearing: targetBearing,
-      zoom: 17,
+      zoom: msg.riding ? 15.5 : 17,
       duration: 240,
-      essential: true,
+      essential: false,
     });
   }
   window.__navRoute = updateRoute;
@@ -128,17 +150,29 @@ const runtime = (routeSourceId: string) => `
       fadeDuration: 0,
       renderWorldCopies: false,
     });
-    map.on('load', function () {
-      updateRoute({ path: [], stop: null, accent: '#BFC9C5' });
-      window.ReactNativeWebView.postMessage(JSON.stringify({ t: 'ready' }));
+    map.on('style.load', function () {
+      post({ t: 'ready' });
+    });
+    map.on('dataloading', function (event) {
+      if (event.sourceId === 'openmaptiles') {
+        if (lastStatus !== 'loading') tileContent = false;
+        status('loading');
+      }
+    });
+    map.on('sourcedata', function (event) {
+      if (event.sourceId === 'openmaptiles' && event.tile && event.tile.state === 'loaded') tileContent = true;
+    });
+    map.on('render', function () {
+      if (tileContent && map.areTilesLoaded() && map.isSourceLoaded('openmaptiles')) status('ready');
     });
     map.on('error', function (event) {
       if (event && event.error) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ t: 'error' }));
+        tileContent = false;
+        status('error');
       }
     });
   }).catch(function () {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ t: 'error' }));
+    status('error');
   });
 })();
 `;
@@ -146,7 +180,10 @@ const runtime = (routeSourceId: string) => `
 export function buildNavMapDocument({ offlineBase, center }: NavMapDocumentOptions): string {
   const mapStyle = buildMapStyle(offlineBase);
   const assets = offlineBase ? [`${offlineBase}/assets`] : CDN_ASSETS;
-  const payload = JSON.stringify({ assets, style: mapStyle, center: center ?? null }).replace(/</g, '\\u003c');
+  const payload = JSON.stringify({ assets, style: mapStyle, center: center ?? null }).replace(
+    /</g,
+    '\\u003c',
+  );
   return [
     '<!doctype html>',
     '<html><head>',

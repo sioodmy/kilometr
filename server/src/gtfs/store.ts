@@ -19,7 +19,7 @@ import { fuzzyMatch } from '../search/fuzzy';
 // trasy. Grupujemy tripy po identycznej sekwencji stop_id → „pattern".
 // RAPTOR skanuje patterny zamiast route_ids — eliminuje bug odwrotnych kursów.
 // ────────────────────────────────────────────────────────────────────────────
-export interface TripPattern {
+interface TripPattern {
   patternId: string;            // np. "route_4_dir0_patA"
   routeId: string;              // oryginalny GTFS route_id
   stopSequence: string[];       // uporządkowana lista stop_id

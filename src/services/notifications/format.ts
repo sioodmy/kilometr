@@ -35,10 +35,6 @@ export function parseClock(hm: string | undefined | null): number | null {
   return Number(m[1]) * 3600 + Number(m[2]) * 60;
 }
 
-export function nowSecOfDay(d: Date = new Date()): number {
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-}
-
 const DAY_SEC = 86400;
 const DAY_MS = DAY_SEC * 1000;
 
@@ -63,11 +59,6 @@ export function toAbsoluteMs(sec: number, now: Date = new Date()): number {
 export function clamp01(v: number): number {
   if (!isFinite(v)) return 0;
   return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
-/** Zaokrąglone do 1000 — dokładność, której nie potrzeba, tylko noise w logach. */
-export function toPermille(v: number): number {
-  return Math.round(clamp01(v) * 1000);
 }
 
 /** '320 m', '1.2 km' — międzynarodowe symbole jednostek, bez odmiany. */

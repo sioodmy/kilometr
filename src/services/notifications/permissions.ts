@@ -74,8 +74,3 @@ export async function openNotificationSettings(): Promise<boolean> {
     return false;
   }
 }
-
-/** Czy na tej platformie w ogóle da się śledzić podróżę powiadomieniem. */
-export function isTrackingPlatform(): boolean {
-  return Platform.OS === 'android';
-}
