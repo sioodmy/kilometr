@@ -300,7 +300,7 @@ jobs:
       # Bramka zgód tła: aplikacja NIE MOŻE pytać o lokalizację w tle na
       # żadnym kanale - Play waliduje to po manifeście, a zgoda tła nie ma
       # tu już żadnego uzasadnienia.
-      - name: Gate: brak zgód lokalizacji w tle
+      - name: 'Gate: brak zgód lokalizacji w tle'
         env:
           CHANNEL: ${{ steps.release.outputs.channel }}
         run: |
