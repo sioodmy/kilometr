@@ -69,8 +69,9 @@ function versionCodeFromVersion(version) {
   return 1;
 }
 
-// Podpis release kluczem upload z Play Console. Sekrety (ANDROID_KEYSTORE_*)
-// przekazuje CI, a ta wtyczka wpisuje je do wygenerowanego android/app/build.gradle.
+// Podpis release kluczem upload z Play Console. CI przekazuje sekrety w env
+// (ANDROID_KEYSTORE_*), do wygenerowanego android/app/build.gradle trafia
+// wyłącznie ścieżka keystore, a hasła czyta gradle z env w chwili builda.
 // Bez env (pipeline APK i buildy lokalne) buildType release zostaje na
 // debug.keystore, więc inne buildy zostają bez zmian.
 const withAndroidSigning = (config) =>
@@ -78,7 +79,6 @@ const withAndroidSigning = (config) =>
     const keystorePath = process.env.ANDROID_KEYSTORE_PATH;
     const storePassword = process.env.ANDROID_KEYSTORE_PASSWORD;
     const keyAlias = process.env.ANDROID_KEYSTORE_ALIAS;
-    const keyPassword = process.env.ANDROID_KEYSTORE_KEY_PASSWORD || storePassword;
     if (!keystorePath || !storePassword || !keyAlias) return mod;
 
     const gradle = mod.modResults.contents;
@@ -86,12 +86,16 @@ const withAndroidSigning = (config) =>
     // w buildTypes.debug, drugi w buildTypes.release. Podmieniamy drugi, żeby
     // buildy debugowe dalej używały debug.keystore.
     const sigRef = 'signingConfig signingConfigs.debug';
+    // Do pliku wpisujemy wyłącznie ścieżkę (przychodzi z runner.temp, bez
+    // znaków specjalnych). Hasła i alias czyta gradle z env w chwili builda:
+    // wklejone literalnie hasło ze znakiem $ w groovy to interpolacja i build
+    // pada z "Could not get unknown property".
     const releaseConfig = [
       '        release {',
       `            storeFile file(${JSON.stringify(keystorePath)})`,
-      `            storePassword ${JSON.stringify(storePassword)}`,
-      `            keyAlias ${JSON.stringify(keyAlias)}`,
-      `            keyPassword ${JSON.stringify(keyPassword)}`,
+      '            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")',
+      '            keyAlias System.getenv("ANDROID_KEYSTORE_ALIAS")',
+      '            keyPassword System.getenv("ANDROID_KEYSTORE_KEY_PASSWORD") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")',
       '        }',
     ].join('\n');
     const gradleWithConfig = gradle.replace(/signingConfigs\s*\{/, (m) => `${m}\n${releaseConfig}`);
