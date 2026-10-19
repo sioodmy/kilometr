@@ -180,6 +180,7 @@ export default function RouteDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.screen} importantForAccessibility={sharing ? 'no-hide-descendants' : 'auto'} accessibilityElementsHidden={sharing}>
       <View style={styles.header}>
         <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
           <ChevronLeft size={23} color={scheme.onSurface} />
@@ -256,6 +257,7 @@ export default function RouteDetailsScreen() {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+      </View>
       {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
     </SafeAreaView>
   );
@@ -263,6 +265,7 @@ export default function RouteDetailsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
+  screen: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingText: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   retryBtn: {

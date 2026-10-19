@@ -1,5 +1,10 @@
 import { useSyncExternalStore } from 'react';
-import { getWebLocale, getWebStrings, subscribeWebLocale } from '../../src/i18n/web';
+import {
+  getWebLocale,
+  getWebStrings,
+  getWebShareStrings,
+  subscribeWebLocale,
+} from '../../src/i18n/web';
 
 export { initWebLocale, setWebLocale, type Locale } from '../../src/i18n/web';
 
@@ -10,4 +15,9 @@ export function useWebLocale() {
 export function useStrings() {
   useWebLocale();
   return getWebStrings();
+}
+
+export function useShareStrings() {
+  useWebLocale();
+  return getWebShareStrings();
 }

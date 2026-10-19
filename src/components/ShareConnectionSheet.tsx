@@ -110,7 +110,7 @@ export function ShareConnectionSheet({
         />
       )}
     >
-      <View style={styles.header} accessibilityViewIsModal>
+      <View style={styles.header}>
         <Text style={styles.title} accessibilityRole="header">
           {s.title}
         </Text>

@@ -8,15 +8,27 @@ export const pl = {
   to: 'Dokąd',
   duration: (n: number) => `${n} min`,
   transfers: (n: number) =>
-    n === 0 ? 'Bez przesiadek' : n === 1 ? '1 przesiadka' : n < 5 ? `${n} przesiadki` : `${n} przesiadek`,
+    n === 0
+      ? 'Bez przesiadek'
+      : n === 1
+        ? '1 przesiadka'
+        : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
+          ? `${n} przesiadki`
+          : `${n} przesiadek`,
   walk: 'Pieszo',
   walkDistance: (n: number) => `${n} m pieszo`,
   modes: {
-    walk: 'Pieszo', tram: 'Tramwaj', bus: 'Autobus', train: 'Pociąg',
-    cable: 'Kolej linowa', trolleybus: 'Trolejbus', subway: 'Metro',
+    walk: 'Pieszo',
+    tram: 'Tramwaj',
+    bus: 'Autobus',
+    train: 'Pociąg',
+    cable: 'Kolej linowa',
+    trolleybus: 'Trolejbus',
+    subway: 'Metro',
   },
   direction: (name: string) => `Kierunek: ${name}`,
-  cardLabel: (from: string, to: string, at: string) => `Połączenie z ${from} do ${to}, na miejscu o ${at}`,
+  cardLabel: (from: string, to: string, at: string) =>
+    `Połączenie z ${from} do ${to}, na miejscu o ${at}`,
   imageAndLink: 'Udostępnij kartę i link',
   linkOnly: 'Udostępnij link',
   sms: 'Wyślij SMS',
@@ -33,7 +45,8 @@ export const pl = {
   pageTitle: 'Udostępnione połączenie',
   itinerary: 'Przebieg podróży',
   loading: 'Wczytuję przystanki z rozkładu…',
-  stopsUnavailable: 'Szczegóły przystanków są niedostępne. Powyżej znajdziesz udostępnione godziny i przesiadki.',
+  stopsUnavailable:
+    'Szczegóły przystanków są niedostępne. Powyżej znajdziesz udostępnione godziny i przesiadki.',
   retry: 'Wczytaj przystanki ponownie',
   showStops: (n: number) => `Pokaż przystanki (${n})`,
   timetable: 'Statyczny rozkład',

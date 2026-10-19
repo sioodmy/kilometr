@@ -86,6 +86,9 @@ jobs:
       - name: Run logic tests (Backup format)
         run: npm run check:backup
 
+      - name: Run logic tests (Journey sharing)
+        run: npm run check:sharing
+
       - name: Run logic tests (Storage)
         run: npm run check:storage
 

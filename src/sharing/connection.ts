@@ -56,11 +56,22 @@ export function createSharedConnection(
   now = new Date(),
 ): SharedConnection {
   const dateParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'Europe/Warsaw',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   }).formatToParts(now);
-  const part = (kind: Intl.DateTimeFormatPartTypes) => Number(dateParts.find((p) => p.type === kind)?.value);
-  const date = new Date(Date.UTC(part('year'), part('month') - 1,
-    part('day') + Math.floor(connection.departureSec / 86400))).toISOString().slice(0, 10);
+  const part = (kind: Intl.DateTimeFormatPartTypes) =>
+    Number(dateParts.find((p) => p.type === kind)?.value);
+  const date = new Date(
+    Date.UTC(
+      part('year'),
+      part('month') - 1,
+      part('day') + Math.floor(connection.departureSec / 86400),
+    ),
+  )
+    .toISOString()
+    .slice(0, 10);
   const departure = clockMinutes(connection.departAt);
   let cursor = departure;
   const advance = (clock: string) => {
@@ -84,8 +95,14 @@ export function createSharedConnection(
     walk: leg.walkM == null ? undefined : Math.round(leg.walkM),
   }));
   const journey: SharedConnection = {
-    v: 1, city, date, from: connection.fromTitle, to: connection.toTitle,
-    departure, arrival: advance(connection.arriveAt), legs,
+    v: 1,
+    city,
+    date,
+    from: connection.fromTitle,
+    to: connection.toTitle,
+    departure,
+    arrival: advance(connection.arriveAt),
+    legs,
   };
   if (!isSharedConnection(journey)) throw new Error('Invalid journey');
   return journey;
@@ -108,23 +125,47 @@ function integer(value: unknown, max: number): value is number {
 }
 
 export function isSharedConnection(value: unknown): value is SharedConnection {
-  if (!isRecord(value) || value.v !== 1 || !CITIES.some((city) => city.id === value.city)
-    || !text(value.date) || !/^\d{4}-\d{2}-\d{2}$/.test(value.date)
-    || !Number.isFinite(Date.parse(value.date))
-    || new Date(value.date).toISOString().slice(0, 10) !== value.date
-    || !text(value.from) || !text(value.to)
-    || !integer(value.departure, 1439) || !integer(value.arrival, 4319)
-    || value.arrival < value.departure || value.arrival - value.departure > 1440
-    || !Array.isArray(value.legs) || value.legs.length < 1 || value.legs.length > 24) return false;
+  if (
+    !isRecord(value) ||
+    value.v !== 1 ||
+    !CITIES.some((city) => city.id === value.city) ||
+    !text(value.date) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value.date) ||
+    !Number.isFinite(Date.parse(value.date)) ||
+    new Date(value.date).toISOString().slice(0, 10) !== value.date ||
+    !text(value.from) ||
+    !text(value.to) ||
+    !integer(value.departure, 1439) ||
+    !integer(value.arrival, 4319) ||
+    value.arrival < value.departure ||
+    value.arrival - value.departure > 1440 ||
+    !Array.isArray(value.legs) ||
+    value.legs.length < 1 ||
+    value.legs.length > 24
+  )
+    return false;
   let cursor = value.departure;
   for (const leg of value.legs) {
-    if (!isRecord(leg) || typeof leg.mode !== 'string' || !modes.includes(leg.mode)
-      || !text(leg.from) || !text(leg.to)
-      || !optionalText(leg.line) || !optionalText(leg.direction)
-      || !optionalText(leg.trip) || !optionalText(leg.board) || !optionalText(leg.alight)
-      || !integer(leg.departure, 4319) || !integer(leg.arrival, 4319)
-      || leg.departure < cursor || leg.arrival < leg.departure || leg.arrival > value.arrival
-      || !integer(leg.stops, 1000) || (leg.walk !== undefined && !integer(leg.walk, 100000))) return false;
+    if (
+      !isRecord(leg) ||
+      typeof leg.mode !== 'string' ||
+      !modes.includes(leg.mode) ||
+      !text(leg.from) ||
+      !text(leg.to) ||
+      !optionalText(leg.line) ||
+      !optionalText(leg.direction) ||
+      !optionalText(leg.trip) ||
+      !optionalText(leg.board) ||
+      !optionalText(leg.alight) ||
+      !integer(leg.departure, 4319) ||
+      !integer(leg.arrival, 4319) ||
+      leg.departure < cursor ||
+      leg.arrival < leg.departure ||
+      leg.arrival > value.arrival ||
+      !integer(leg.stops, 1000) ||
+      (leg.walk !== undefined && !integer(leg.walk, 100000))
+    )
+      return false;
     cursor = leg.arrival;
   }
   return true;
@@ -145,9 +186,10 @@ export function encodeSharedConnection(journey: SharedConnection): string {
 }
 
 export function decodeSharedConnection(encoded: string): SharedConnection | null {
-  if (!encoded || encoded.length > maxEncodedLength || !/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
+  if (!encoded || encoded.length > maxEncodedLength || !/^[A-Za-z0-9_-]+$/.test(encoded))
+    return null;
   try {
-    const bytes = new Uint8Array(Math.floor(encoded.length * 6 / 8));
+    const bytes = new Uint8Array(Math.floor((encoded.length * 6) / 8));
     let bits = 0;
     let count = 0;
     let index = 0;
@@ -173,7 +215,9 @@ export function buildShareUrl(journey: SharedConnection, locale: string): string
 }
 
 export function shareMessage(journey: SharedConnection, s: ShareStrings): string {
-  const lines = journey.legs.filter((leg) => leg.mode !== 'walk')
-    .map((leg) => `${s.modes[leg.mode]}${leg.line ? ` ${leg.line}` : ''}`).join(', ');
+  const lines = journey.legs
+    .filter((leg) => leg.mode !== 'walk')
+    .map((leg) => `${s.modes[leg.mode]}${leg.line ? ` ${leg.line}` : ''}`)
+    .join(', ');
   return `${s.message(journey.from, journey.to, formatShareTime(journey.departure), formatShareTime(journey.arrival), lines)}\n${journey.date}`;
 }

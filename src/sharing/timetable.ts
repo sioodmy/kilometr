@@ -21,10 +21,16 @@ export function tripShard(tripId: string): string {
 }
 
 export function selectLegStops(leg: SharedLeg, stops: StaticStop[]): StaticStop[] {
-  const start = stops.findIndex((stop) => stop.id === leg.board
-    && Math.floor(stop.departure / 60) % 1440 === leg.departure % 1440);
+  const start = stops.findIndex(
+    (stop) =>
+      stop.id === leg.board && Math.floor(stop.departure / 60) % 1440 === leg.departure % 1440,
+  );
   if (start < 0) return [];
-  const end = stops.findIndex((stop, i) => i > start && stop.id === leg.alight
-    && Math.floor(stop.arrival / 60) % 1440 === leg.arrival % 1440);
+  const end = stops.findIndex(
+    (stop, i) =>
+      i > start &&
+      stop.id === leg.alight &&
+      Math.floor(stop.arrival / 60) % 1440 === leg.arrival % 1440,
+  );
   return end > start ? stops.slice(start, end + 1) : [];
 }

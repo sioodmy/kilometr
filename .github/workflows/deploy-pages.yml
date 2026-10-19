@@ -1,6 +1,8 @@
 name: Deploy Landing Page to GitHub Pages
 
 on:
+  schedule:
+    - cron: '23 6 * * *'
   workflow_dispatch:
   push:
     branches:
@@ -9,6 +11,8 @@ on:
       - 'landing/**'
       - 'src/i18n/**'
       - 'src/cities.ts'
+      - 'src/sharing/**'
+      - 'scripts/export-share-timetables.ts'
       - 'docs/**'
       - '.github/workflows/deploy-pages.yml'
 
@@ -30,10 +34,10 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: |
             package-lock.json
@@ -44,6 +48,7 @@ jobs:
           set -euo pipefail
           npm ci
           npm --prefix landing ci
+          npx tsx scripts/export-share-timetables.ts
           npm --prefix landing run build
 
       - name: Upload Pages Artifact
