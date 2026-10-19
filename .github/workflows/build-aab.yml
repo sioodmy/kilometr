@@ -238,7 +238,7 @@ jobs:
       # ACCESS_BACKGROUND_LOCATION pojawi się w przesłanym bundle - nawet
       # jeśli runtime go nie używa. Aplikacja nie zbiera nic w tle, więc
       # zgody tła NIE MA prawa być w manifeście.
-      - name: Gate: AAB bez zgód lokalizacji w tle
+      - name: 'Gate: AAB bez zgód lokalizacji w tle'
         run: |
           set -euo pipefail
           AAB="android/app/build/outputs/bundle/release/app-release.aab"
