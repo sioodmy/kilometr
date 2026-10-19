@@ -238,8 +238,14 @@ jobs:
         run: |
           set -euo pipefail
           AAB="android/app/build/outputs/bundle/release/app-release.aab"
-          unzip -p "$AAB" base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/aab-manifest.pb"
-          npm run check:android-permissions -- "$RUNNER_TEMP/aab-manifest.pb"
+          BUNDLETOOL="$RUNNER_TEMP/bundletool.jar"
+          curl -fL --retry 3 \
+            https://github.com/google/bundletool/releases/download/1.18.2/bundletool-all-1.18.2.jar \
+            -o "$BUNDLETOOL"
+          java -jar "$BUNDLETOOL" dump manifest --bundle="$AAB" --module=base \
+            --xpath='/manifest/uses-permission/@android:name | /manifest/uses-permission-sdk-23/@android:name' \
+            > "$RUNNER_TEMP/aab-permissions.txt"
+          npm run check:android-permissions -- "$RUNNER_TEMP/aab-permissions.txt" --permission-list
 
       - name: Stage AAB
         env:

@@ -21,7 +21,7 @@ const allowed = new Set([
 ]);
 
 const [file, format] = process.argv.slice(2);
-assert(file, 'Podaj plik z manifestem AAB, wynikiem aapt lub konfiguracją Expo.');
+assert(file, 'Podaj plik z listą uprawnień, wynikiem aapt lub konfiguracją Expo.');
 const contents = readFileSync(file);
 let permissions;
 if (format === '--expo-config') {
@@ -30,14 +30,19 @@ if (format === '--expo-config') {
   permissions = manifest['uses-permission']
     .filter((entry) => entry.$['tools:node'] !== 'remove')
     .map((entry) => entry.$['android:name']);
+} else if (format === '--permission-list') {
+  permissions = contents
+    .toString()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 } else {
-  // Manifest AAB zawiera pełne nazwy uprawnień jako ciągi UTF-8 w protobuf.
-  permissions =
-    contents
-      .toString()
-      .match(
-        /\b(?:[a-z][a-z0-9_]*\.)+(?:permission\.[A-Z][A-Z0-9_]*|[A-Z][A-Z0-9_]*_PERMISSION)\b/g,
-      ) ?? [];
+  assert(!format, `Nieznany format uprawnień: ${format}`);
+  // Atrybut android:permission zabezpiecza komponent, a nie nadaje uprawnienia aplikacji.
+  permissions = Array.from(
+    contents.toString().matchAll(/^\s*uses-permission(?:-sdk-\d+)?:\s+name='([^']+)'/gm),
+    (match) => match[1],
+  );
 }
 
 assert(
