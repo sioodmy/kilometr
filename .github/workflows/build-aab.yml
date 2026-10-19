@@ -89,7 +89,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle Cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Bez `packages` domyślnie: pakiet `tools` usunięto z repozytorium
       # Google, sdkmanager kończy się błędem "Failed to find package 'tools'".
