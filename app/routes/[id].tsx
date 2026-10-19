@@ -228,24 +228,6 @@ export default function RouteDetailsScreen() {
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
         <ConnectionSummary item={item} offline={offline} />
-        {!noLegs && item.legs.some((leg) => leg.mode !== 'walk') && (
-          <Pressable onPress={() => setAlarmOpen(true)} accessibilityRole="button"
-            onFocus={() => setAlarmFocused(true)} onBlur={() => setAlarmFocused(false)}
-            accessibilityLabel={currentAlarm ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}` : s.alarm.set}
-            style={({ pressed }) => [styles.alarmButton, currentAlarm && styles.alarmButtonActive,
-              pressed && { opacity: 0.75 }, alarmFocused && { borderColor: scheme.primary }]}>
-            <AlarmClock size={25} color={currentAlarm ? scheme.onPrimaryContainer : scheme.primary} />
-            <View style={styles.alarmCopy}>
-              <Text style={[styles.alarmTitle, currentAlarm && { color: scheme.onPrimaryContainer }]}>
-                {currentAlarm ? s.alarm.ringsAt(currentAlarm.time) : s.alarm.set}
-              </Text>
-              <Text style={[styles.alarmHint, currentAlarm && { color: scheme.onPrimaryContainer }]}>
-                {currentAlarm ? s.alarm.lead(currentAlarm.leadMin) : s.alarm.hint}
-              </Text>
-            </View>
-            <ChevronRight size={20} color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
-          </Pressable>
-        )}
         {dataNote && (
           <View style={styles.offlineBanner}>
             <CloudOff size={16} color={scheme.onSurfaceVariant} strokeWidth={2} />
@@ -270,6 +252,24 @@ export default function RouteDetailsScreen() {
         ) : (
           <>
             <LegTimeline legs={item.legs} />
+            {item.legs.some((leg) => leg.mode !== 'walk') && (
+              <Pressable onPress={() => setAlarmOpen(true)} accessibilityRole="button"
+                onFocus={() => setAlarmFocused(true)} onBlur={() => setAlarmFocused(false)}
+                accessibilityLabel={currentAlarm ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}` : s.alarm.set}
+                style={({ pressed }) => [styles.alarmButton, currentAlarm && styles.alarmButtonActive,
+                  pressed && { opacity: 0.75 }, alarmFocused && { borderColor: scheme.primary }]}>
+                <AlarmClock size={25} color={currentAlarm ? scheme.onPrimaryContainer : scheme.primary} />
+                <View style={styles.alarmCopy}>
+                  <Text style={[styles.alarmTitle, currentAlarm && { color: scheme.onPrimaryContainer }]}>
+                    {currentAlarm ? s.alarm.ringsAt(currentAlarm.time) : s.alarm.set}
+                  </Text>
+                  <Text style={[styles.alarmHint, currentAlarm && { color: scheme.onPrimaryContainer }]}>
+                    {currentAlarm ? s.alarm.lead(currentAlarm.leadMin) : s.alarm.hint}
+                  </Text>
+                </View>
+                <ChevronRight size={20} color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
+              </Pressable>
+            )}
 
             {/* Nawigacja do przystanku jest klikalna i otwiera pełną
                 mapę trasy. */}
