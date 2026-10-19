@@ -37,7 +37,11 @@ internal data class LiveTripPlan(
   val segments: List<LiveSegment>,
   val copy: Map<String, PhaseCopy>,
   val actions: List<TripAction>,
+  val states: List<LiveState>,
+  val alightAlertsEnabled: Boolean,
 ) {
+
+  fun stateAt(nowMs: Long): LiveState? = states.lastOrNull { it.atMs <= nowMs }
 
   /** Trwałość całej podróży w ms — baza dla postępu i długości segmentów. */
   val totalMs: Long get() = maxOf(1L, endAtMs - startAtMs)
@@ -54,6 +58,7 @@ internal data class LiveTripPlan(
    * inną podróż niż tekst pod nim.
    */
   fun phaseAt(nowMs: Long): String {
+    stateAt(nowMs)?.let { return it.phase }
     if (nowMs >= endAtMs) return PHASE_ARRIVED
 
     val boardIndex = segments.indexOfFirst { it.mode != MODE_WALK }
@@ -97,15 +102,14 @@ internal data class LiveTripPlan(
     val n = segments.size
     val out = IntArray(n)
     if (n == 0) return out
-    val total = segments.sumOf { (it.endAtMs - it.startAtMs).toDouble() }
+    val total = totalMs.toDouble()
     if (total <= 0.0) {
       out[n - 1] = PROGRESS_MAX
       return out
     }
-    var cumulative = 0.0
     var assigned = 0
     for (i in 0 until n) {
-      cumulative += (segments[i].endAtMs - segments[i].startAtMs).toDouble()
+      val cumulative = (segments[i].endAtMs - startAtMs).toDouble()
       val boundary = Math.round(cumulative / total * PROGRESS_MAX).toInt()
       out[i] = boundary - assigned
       assigned = boundary
@@ -223,6 +227,23 @@ internal data class LiveTripPlan(
         }
       }
 
+      val states = ArrayList<LiveState>()
+      val rawStates = root.optJSONArray("states")
+      if (rawStates != null) {
+        for (i in 0 until rawStates.length()) {
+          val o = rawStates.optJSONObject(i) ?: continue
+          val c = o.optJSONObject("copy") ?: continue
+          states += LiveState(
+            atMs = o.optLong("atMs"),
+            phase = o.optString("phase", PHASE_WAITING),
+            countdownAtMs = o.optLong("countdownAtMs"),
+            accentColor = parseColor(o.optString("accentColor"), FALLBACK_COLOR),
+            copy = PhaseCopy(c.optString("title"), c.optString("text"), c.optString("subText")),
+          )
+        }
+      }
+      states.sortBy { it.atMs }
+
       return LiveTripPlan(
         tripId = root.optString("tripId", ""),
         deepLink = root.optString("deepLink", ""),
@@ -238,6 +259,8 @@ internal data class LiveTripPlan(
         segments = segments,
         copy = copy,
         actions = actions,
+        states = states,
+        alightAlertsEnabled = root.optBoolean("alightAlertsEnabled", true),
       )
     }
 
@@ -268,3 +291,11 @@ internal data class PhaseCopy(
 
 /** Przycisk pod powiadomieniem. */
 internal data class TripAction(val id: String, val title: String)
+
+internal data class LiveState(
+  val atMs: Long,
+  val phase: String,
+  val countdownAtMs: Long,
+  val accentColor: Int,
+  val copy: PhaseCopy,
+)

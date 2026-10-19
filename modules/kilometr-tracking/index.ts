@@ -22,6 +22,7 @@ export interface KilometrTrackingNativeModule {
   stopTrip(): Promise<boolean>;
   /** Czy przycisk „Zakończ" pod powiadomieniem zadziałał natywnie. */
   consumeStopRequest(): Promise<boolean>;
+  hasStopRequest(): Promise<boolean>;
 }
 
 const native = requireOptionalNativeModule<KilometrTrackingNativeModule>('KilometrTracking');
@@ -54,6 +55,10 @@ export function consumeStopRequest(): Promise<boolean> {
   return native ? native.consumeStopRequest() : Promise.resolve(false);
 }
 
+export function hasStopRequest(): Promise<boolean> {
+  return native ? native.hasStopRequest() : Promise.resolve(false);
+}
+
 export default {
   isAvailable,
   ensureChannels,
@@ -62,4 +67,5 @@ export default {
   startTrip,
   stopTrip,
   consumeStopRequest,
+  hasStopRequest,
 };

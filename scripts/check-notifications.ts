@@ -75,7 +75,11 @@ const tracked = (conn: Connection): TrackedTrip => ({
 const planOf = (progress: ReturnType<typeof computeTripProgress>, conn: Connection) =>
   buildLivePlan(progress, conn, tracked(conn), pl);
 
-function dump(label: string, conn: Connection, atTime: Date): ReturnType<typeof computeTripProgress> {
+function dump(
+  label: string,
+  conn: Connection,
+  atTime: Date,
+): ReturnType<typeof computeTripProgress> {
   const p = computeTripProgress(conn, { now: atTime });
   const plan = planOf(p, conn);
   const all = buildPhaseCopy(p, conn, pl);
@@ -93,11 +97,16 @@ function dump(label: string, conn: Connection, atTime: Date): ReturnType<typeof 
 // ─── Dane testowe ─────────────────────────────────────────────────────────
 
 const STOPS = [
-  'HALDENA', 'GÓRNOŚLĄSKA', 'GALERIA DOMINIKAŃSKA', 'ŚCIEGNY', 'KAZIMIERZA',
-  'DWORZEC GŁÓWNY', 'OPACKA', 'ZACHEBNIA',
+  'HALDENA',
+  'GÓRNOŚLĄSKA',
+  'GALERIA DOMINIKAŃSKA',
+  'ŚCIEGNY',
+  'KAZIMIERZA',
+  'DWORZEC GŁÓWNY',
+  'OPACKA',
+  'ZACHEBNIA',
 ];
-const fullStops = (): LegStop[] =>
-  STOPS.map((name, i) => ({ stopId: `s${i}`, name, seq: i + 1 }));
+const fullStops = (): LegStop[] => STOPS.map((name, i) => ({ stopId: `s${i}`, name, seq: i + 1 }));
 
 const at = (h: number, m: number) => new Date(2026, 0, 15, h, m, 0);
 const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
@@ -143,7 +152,10 @@ const simple: Connection = {
   transfers: 0,
   delayMin: 0,
   live: true,
-  legs: [walk('Dom', 'HALDENA', '14:03', '14:10', 320), leg({ id: 't1', tripId: 'trip-1', intermediateStops: fullStops() })],
+  legs: [
+    walk('Dom', 'HALDENA', '14:03', '14:10', 320),
+    leg({ id: 't1', tripId: 'trip-1', intermediateStops: fullStops() }),
+  ],
 };
 
 const transfer: Connection = {
@@ -155,7 +167,17 @@ const transfer: Connection = {
   legs: [
     leg({ id: 't1', tripId: 'trip-1', toStop: 'ZACHEBNIA', intermediateStops: fullStops() }),
     walk('ZACHEBNIA', 'Rondo', '14:25', '14:28', 180),
-    leg({ id: 't2', line: '12', direction: 'LEŚNICA', fromStop: 'Rondo', toStop: 'Leśnica', departAt: '14:30', arriveAt: '14:40', stopsCount: 4, tripId: 'trip-2' }),
+    leg({
+      id: 't2',
+      line: '12',
+      direction: 'LEŚNICA',
+      fromStop: 'Rondo',
+      toStop: 'Leśnica',
+      departAt: '14:30',
+      arriveAt: '14:40',
+      stopsCount: 4,
+      tripId: 'trip-2',
+    }),
   ],
 };
 
@@ -167,7 +189,13 @@ const night: Connection = {
   durationMin: 14,
   legs: [
     walk('Dom', 'HALDENA', '23:53', '23:58', 320),
-    leg({ id: 't1', tripId: 'trip-1', departAt: '23:58', arriveAt: '00:12', intermediateStops: fullStops() }),
+    leg({
+      id: 't1',
+      tripId: 'trip-1',
+      departAt: '23:58',
+      arriveAt: '00:12',
+      intermediateStops: fullStops(),
+    }),
   ],
 };
 
@@ -179,7 +207,11 @@ describe('Północ: wybieramy wystąpienie najbliższe teraz');
 // w powiadomieniu, bo i tak liczy się na bezwzględnych znacznikach ms.
 expect('od 00:03 do 23:58 wczoraj', hhmm(toAbsoluteMs(23 * 3600 + 58 * 60, at(0, 3))), '23:58');
 expect('od 14:00 do 14:10 dziś', hhmm(toAbsoluteMs(14 * 3600 + 10 * 60, at(14, 0))), '14:10');
-expect('od 23:57 do 14:10 dziś (9h wstecz)', hhmm(toAbsoluteMs(14 * 3600 + 10 * 60, at(23, 57))), '14:10');
+expect(
+  'od 23:57 do 14:10 dziś (9h wstecz)',
+  hhmm(toAbsoluteMs(14 * 3600 + 10 * 60, at(23, 57))),
+  '14:10',
+);
 expect('sekundy z daty jutrzejszej', hhmm(toAbsoluteMs(25 * 3600, at(14, 0))), '01:00');
 
 // ─── Podróż: dojście → oczekiwanie → jazda → przyjazd ────────────────────
@@ -198,7 +230,11 @@ expect('postęp dojścia nieznany', p.approachProgress, null);
 // „czy zdążę i na który kurs”.
 expect('tytuł przy dojściu', planOf(p, simple).copy.walking.title, 'Tramwaj 4 • odjazd 14:10');
 // Przy dojściu odpowiadamy, na który przystanek i w jakim kierunku.
-expect('tekst przy dojściu', planOf(p, simple).copy.walking.text, 'przystanek HALDENA • Do BISKUPIN');
+expect(
+  'tekst przy dojściu',
+  planOf(p, simple).copy.walking.text,
+  'przystanek HALDENA • Do BISKUPIN',
+);
 // Dystans dojścia zostaje, ale w podpisie, nie w tytule.
 expect(
   'dystans i czas dojścia w podpisie',
@@ -225,14 +261,22 @@ p = dump('14:11 jadę', simple, at(14, 11));
 expect('faza', p.phase, 'riding');
 // W trakcie jazdy najważniejsze pytanie to „gdzie wysiadam” — bez tego
 // użytkownik musiał otwierać aplikację, żeby nie przegapić przystanku.
-expect('tekst w trakcie jazdy', planOf(p, simple).copy.riding.text, 'Wysiądź na: ZACHEBNIA • Do BISKUPIN');
+expect(
+  'tekst w trakcie jazdy',
+  planOf(p, simple).copy.riding.text,
+  'Wysiądź na: ZACHEBNIA • Do BISKUPIN',
+);
 expect(
   'podpis pokazuje estymowaną pozycję i przystanki',
   planOf(p, simple).copy.riding.subText,
   'Szacowany następny: GÓRNOŚLĄSKA • 7 przystanków',
 );
 // Po przyjeździe podpis wraca do treści tytułu — nie powtarzamy godziny.
-expect('bez podpisu po przyjeździe', planOf(computeTripProgress(simple, { now: at(14, 26) }), simple).copy.arrived.subText, '');
+expect(
+  'bez podpisu po przyjeździe',
+  planOf(computeTripProgress(simple, { now: at(14, 26) }), simple).copy.arrived.subText,
+  '',
+);
 // Regression: następny przystanek był przesunięty o jeden, więc tu wychodził
 // ten, z którego właśnie ruszyliśmy.
 expect('następny przystanek', p.nextStop, 'GÓRNOŚLĄSKA');
@@ -283,7 +327,10 @@ const noStops: Connection = {
   ...simple,
   arriveAt: '14:40',
   durationMin: 30,
-  legs: [simple.legs[0], leg({ id: 't9', line: '12', departAt: '14:10', arriveAt: '14:40', stopsCount: 6 })],
+  legs: [
+    simple.legs[0],
+    leg({ id: 't9', line: '12', departAt: '14:10', arriveAt: '14:40', stopsCount: 6 }),
+  ],
 };
 p = dump('14:31 bez listy', noStops, at(14, 31));
 // Regression: brak sekwencji dawał „0 przystanków, ostatni przystanek".
@@ -296,23 +343,38 @@ describe('Pojazd dopasowany do odcinka');
 const live = computeTripProgress(simple, {
   now: at(14, 15),
   vehicle: {
-    vehicleId: '4-1', line: '4', lat: 51.1, lon: 17.0, delaySec: 120,
-    currentStopName: 'GALERIA DOMINIKAŃSKA', nextStopName: 'ŚCIEGNY',
-    updatedAt: Date.now(), matchedTripId: 'trip-1',
+    vehicleId: '4-1',
+    line: '4',
+    lat: 51.1,
+    lon: 17.0,
+    delaySec: 120,
+    currentStopName: 'GALERIA DOMINIKAŃSKA',
+    nextStopName: 'ŚCIEGNY',
+    updatedAt: Date.now(),
+    matchedTripId: 'trip-1',
   },
 });
 expect('pojazd rozpoznany', live.vehicleTracked, true);
 expect('następny przystanek z GPS', live.nextStop, 'ŚCIEGNY');
 expect('opis pozycji oznacza dane na żywo', (live.vehicleLabel ?? '').includes('na żywo'), true);
 
-const delayedLive = computeTripProgress({ ...simple, delayMin: 6 }, {
-  now: at(14, 15),
-  vehicle: {
-    vehicleId: '4-1', line: '4', lat: 51.1, lon: 17.0, delaySec: 120,
-    currentStopName: 'GALERIA DOMINIKAŃSKA', nextStopName: 'ŚCIEGNY',
-    updatedAt: Date.now(), matchedTripId: 'trip-1',
+const delayedLive = computeTripProgress(
+  { ...simple, delayMin: 6 },
+  {
+    now: at(14, 15),
+    vehicle: {
+      vehicleId: '4-1',
+      line: '4',
+      lat: 51.1,
+      lon: 17.0,
+      delaySec: 120,
+      currentStopName: 'GALERIA DOMINIKAŃSKA',
+      nextStopName: 'ŚCIEGNY',
+      updatedAt: Date.now(),
+      matchedTripId: 'trip-1',
+    },
   },
-});
+);
 const delayedLiveText = buildPhaseCopy(delayedLive, { ...simple, delayMin: 6 }, pl).riding.subText;
 expect('opóźnienie nie ukrywa live pozycji', delayedLiveText.includes('na żywo'), true);
 expect('opóźnienie nie ukrywa następnego przystanku', delayedLiveText.includes('ŚCIEGNY'), true);
@@ -321,8 +383,13 @@ expect('opóźnienie zostaje w treści', delayedLiveText.includes('opóźnienie 
 const wrongVehicle = computeTripProgress(simple, {
   now: at(14, 15),
   vehicle: {
-    vehicleId: '9-9', line: '9', lat: 51.1, lon: 17.0, delaySec: 0,
-    updatedAt: Date.now(), matchedTripId: 'trip-inny',
+    vehicleId: '9-9',
+    line: '9',
+    lat: 51.1,
+    lon: 17.0,
+    delaySec: 0,
+    updatedAt: Date.now(),
+    matchedTripId: 'trip-inny',
   },
 });
 expect('pojazd innej linii nie pasuje', wrongVehicle.vehicleTracked, false);
@@ -333,11 +400,19 @@ describe('Dopasowanie planu do śledzonego kursu');
 const delayed = { ...simple, delayMin: 6, departAt: '14:16', departureSec: 14 * 3600 + 16 * 60 };
 // Opóźnienie przesuwa departureSec o 6 minut, więc samo dopasowanie po godzinie
 // by nie zadziałało — ratuje trip_id.
-expect('ten sam trip_id mimo opóźnienia', matchTrackedConnection([delayed], simple)?.departAt, '14:16');
+expect(
+  'ten sam trip_id mimo opóźnienia',
+  matchTrackedConnection([delayed], simple)?.departAt,
+  '14:16',
+);
 
 const noIds = { ...simple, legs: simple.legs.map((l) => ({ ...l, tripId: undefined })) };
 const noIdsDelayed = { ...noIds, departAt: '14:16', departureSec: 14 * 3600 + 16 * 60 };
-expect('bez trip_id, ale ten sam kurs', matchTrackedConnection([noIdsDelayed], noIds)?.departAt, '14:16');
+expect(
+  'bez trip_id, ale ten sam kurs',
+  matchTrackedConnection([noIdsDelayed], noIds)?.departAt,
+  '14:16',
+);
 
 const other = {
   ...noIds,
@@ -409,7 +484,10 @@ expect('przejęty kurs zostaje na tej samej linii', afterDeparture?.legs[1].line
 // zwraca inny egzemplarz TEJ SAMEJ linii. Przed odjazdem nie wolno na to
 // wziąć (na telefonie śledzone 11:30 skoczyło na 11:50), po odjeździe — już
 // tak, bo wtedy i tak musimy wybrać kurs, którym jedziemy.
-const noIdsTracked = { ...tracked10, legs: tracked10.legs.map((l) => ({ ...l, tripId: undefined })) };
+const noIdsTracked = {
+  ...tracked10,
+  legs: tracked10.legs.map((l) => ({ ...l, tripId: undefined })),
+};
 const noIdsLater = {
   ...laterSameLine,
   departAt: '04:50',
@@ -471,13 +549,21 @@ expect('początek podróży to start dojścia', hhmm(ridingPlan.startAtMs), '14:
 expect('koniec podróży to przyjazd', hhmm(ridingPlan.endAtMs), '14:25');
 expect('licznik odlicza w dół', ridingPlan.countdownDown, true);
 expect('licznik celuje w 14:25', hhmm(ridingPlan.countdownAtMs), '14:25');
-expect('nazwa kanału pochodzi z wybranego języka', ridingPlan.channelName, pl.notification.channelTracking);
+expect(
+  'nazwa kanału pochodzi z wybranego języka',
+  ridingPlan.channelName,
+  pl.notification.channelTracking,
+);
 expect(
   'opis kanału pochodzi z wybranego języka',
   ridingPlan.channelDescription,
   pl.notification.channelTrackingDesc,
 );
-expect('tekst chipu nie zastępuje licznika systemowego', 'criticalText' in ridingPlan.copy.riding, false);
+expect(
+  'tekst chipu nie zastępuje licznika systemowego',
+  'criticalText' in ridingPlan.copy.riding,
+  false,
+);
 expect('dwa przyciski', ridingPlan.actions.length, 2);
 expect('akcja trasy jest pierwsza', ridingPlan.actions[0].id, 'route');
 expect('zakończenie jest drugą akcją', ridingPlan.actions[1].id, 'stop');
@@ -493,13 +579,21 @@ expect('po przyjeździe licznik w górę', arrivedPlan.countdownDown, false);
 expect('licznik od godziny przyjazdu', hhmm(arrivedPlan.countdownAtMs), '14:25');
 // Po przyjeździe nie ma już czego kończyć — „Zakończ" byłoby kłamstwem.
 expect('po przyjeździe przycisk to „OK”', arrivedPlan.actions[1].title, 'OK');
-expect('serwis ma się zatrzymać po podanym czasie', arrivedPlan.stopAfterMs, 0);
+expect(
+  'serwis kończy się trzy minuty po przyjeździe',
+  arrivedPlan.stopAfterMs,
+  arrivedProgress.arriveAtMs + 3 * 60_000,
+);
 
 const walkingProgress = computeTripProgress(simple, { now: at(14, 6) });
 const walkingPlan = planOf(walkingProgress, simple);
 // Regression: plan liczony dla 14:06, a porównanie szło z Date.now() —
 // licznik wychodził „nie pokazuj".
-expect('licznik w przyszłości względem computedAt', walkingPlan.countdownAtMs > walkingProgress.computedAt, true);
+expect(
+  'licznik w przyszłości względem computedAt',
+  walkingPlan.countdownAtMs > walkingProgress.computedAt,
+  true,
+);
 expect('licznik celuje w odjazd', hhmm(walkingPlan.countdownAtMs), '14:10');
 
 const delayedProgress = computeTripProgress({ ...simple, delayMin: 6 }, { now: at(14, 11) });
@@ -524,6 +618,91 @@ describe('Godzina z znacznika ms');
 expect('godzina odjazdu', clockFromMs(at(14, 10).getTime()), '14:10');
 expect('po północy', clockFromMs(new Date(2026, 0, 16, 0, 12).getTime()), '00:12');
 expect('zero to pusty tekst, nie „00:00"', clockFromMs(0), '');
+
+describe('Live Update bez kolejnego odświeżenia JS');
+const backgroundPlan = planOf(computeTripProgress(transfer, { now: at(14, 0) }), transfer);
+const stateAt = (h: number, m: number) =>
+  backgroundPlan.states.filter((state) => state.atMs <= at(h, m).getTime()).at(-1)!;
+expect('pierwszy przejazd w tle', stateAt(14, 12).phase, 'riding');
+expect('licznik przełącza się z odjazdu na przyjazd', hhmm(stateAt(14, 12).countdownAtMs), '14:40');
+expect('przesiadka w tle', stateAt(14, 26).phase, 'transfer');
+expect('przesiadka pokazuje kolejny odjazd', hhmm(stateAt(14, 26).countdownAtMs), '14:30');
+expect('przesiadka pokazuje linię 12', stateAt(14, 26).copy.title.includes('12'), true);
+expect('drugi przejazd w tle', stateAt(14, 31).phase, 'riding');
+expect('drugi przejazd pokazuje linię 12', stateAt(14, 31).copy.title.includes('12'), true);
+expect(
+  'przystanek wysiadania drugiego przejazdu',
+  stateAt(14, 31).copy.text.includes('Leśnica'),
+  true,
+);
+expect(
+  'treść przystanków zmienia się w tle',
+  stateAt(14, 12).copy.subText !== stateAt(14, 20).copy.subText,
+  true,
+);
+expect('przyjazd w tle', stateAt(14, 40).phase, 'arrived');
+expect('wygaszenie ustalone już przed odjazdem', backgroundPlan.stopAfterMs, at(14, 43).getTime());
+expect(
+  'oczekiwanie wypełnia pasek postępu',
+  backgroundPlan.segments.reduce((sum, segment) => sum + segment.endAtMs - segment.startAtMs, 0),
+  backgroundPlan.endAtMs - backgroundPlan.startAtMs,
+);
+expect(
+  'deep link otwiera śledzone połączenie',
+  new URL(backgroundPlan.deepLink).searchParams.get('open'),
+  transfer.id,
+);
+expect(
+  'liczba przystanków po przesiadce nie obejmuje poprzedniej linii',
+  computeTripProgress(transfer, { now: at(14, 26) }).stopsLeft,
+  4,
+);
+expect(
+  'oczekiwanie na przesiadce nie jest jazdą',
+  computeTripProgress(transfer, { now: at(14, 29) }).phase,
+  'transfer',
+);
+const boardingSecond = computeTripProgress(transfer, { now: at(14, 30) });
+expect(
+  'wsiadanie do drugiego pojazdu celuje w drugi odjazd',
+  hhmm(boardingSecond.boardAtMs),
+  '14:30',
+);
+const finalWalk: Connection = {
+  ...simple,
+  arriveAt: '14:30',
+  durationMin: 20,
+  legs: [...simple.legs, walk('ZACHEBNIA', 'Cel', '14:25', '14:30', 300)],
+};
+const finalProgress = computeTripProgress(finalWalk, { now: at(14, 26) });
+expect('dojście do celu jest piesze', finalProgress.phase, 'walking');
+expect('dojście do celu nie pokazuje poprzedniej linii', finalProgress.lineMode, 'walk');
+expect('po ostatnim pojeździe zero przystanków', finalProgress.stopsLeft, 0);
+expect(
+  'dojście do celu odlicza do przyjazdu',
+  hhmm(planOf(finalProgress, finalWalk).countdownAtMs),
+  '14:30',
+);
+const waitAfterWalk: Connection = {
+  ...simple,
+  legs: [walk('Dom', 'HALDENA', '14:03', '14:07', 320), simple.legs[1]],
+};
+expect(
+  'po dojściu czekamy na przystanku',
+  computeTripProgress(waitAfterWalk, { now: at(14, 8) }).phase,
+  'waiting',
+);
+const backgroundNight = planOf(computeTripProgress(night, { now: at(23, 53) }), night);
+expect(
+  'plan przechodzi przez północ do przyjazdu',
+  backgroundNight.states.at(-1)!.phase,
+  'arrived',
+);
+expect(
+  'wygaszenie nocnej trasy ma datę po północy',
+  backgroundNight.stopAfterMs,
+  new Date(2026, 0, 16, 0, 15).getTime(),
+);
 
 // ─── Podsumowanie ─────────────────────────────────────────────────────────
 

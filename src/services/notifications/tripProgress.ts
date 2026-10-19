@@ -77,7 +77,7 @@ function findActiveLeg(
 ): ActiveLeg | null {
   let found: ActiveLeg | null = null;
   for (let i = 0; i < legs.length; i++) {
-    if (nowMs >= departMs[i]) {
+    if (nowMs >= departMs[i] && nowMs < arriveMs[i]) {
       found = { leg: legs[i], index: i, departMs: departMs[i], arriveMs: arriveMs[i] };
     }
   }
@@ -143,12 +143,24 @@ function vehicleProgress(
         hopsLeft: isLast ? 0 : Math.max(1, Math.round((1 - done) * hops)),
       };
     }
-    return { tracked: false, label: gap.label, legProgress: timeProgress, nextStop: null, hopsLeft: null };
+    return {
+      tracked: false,
+      label: gap.label,
+      legProgress: timeProgress,
+      nextStop: null,
+      hopsLeft: null,
+    };
   }
 
   const byTime = Math.max(0, Math.round((1 - timeProgress) * hops));
   if (synthetic) {
-    return { tracked: false, label: null, legProgress: timeProgress, nextStop: null, hopsLeft: byTime };
+    return {
+      tracked: false,
+      label: null,
+      legProgress: timeProgress,
+      nextStop: null,
+      hopsLeft: byTime,
+    };
   }
 
   // Brak GPS — interpolujemy po czasie i nazywamy przybliżony przystanek.
@@ -178,10 +190,7 @@ function vehicleMatchesLeg(leg: Leg, vehicle: VehiclePosition | null | undefined
  * (connection, now, vehicle) zawsze daje ten sam TripProgress, więc można
  * ją bezpiecznie wołać z tickera, z odświeżenia i z testów.
  */
-export function computeTripProgress(
-  conn: Connection,
-  input: TripProgressInput = {},
-): TripProgress {
+export function computeTripProgress(conn: Connection, input: TripProgressInput = {}): TripProgress {
   const now = input.now ?? new Date();
   const nowMs = now.getTime();
   const walkSpeed = input.walkSpeedMps ?? 1.3;
@@ -205,7 +214,17 @@ export function computeTripProgress(
   const active = findActiveLeg(legs, legDepartMs, legArriveMs, nowMs);
   const arrived = nowMs >= arriveAtMs;
 
-  const phase = resolvePhase({ arrived, nowMs, active, boardIndex, legs });
+  const nextTransitIndex = nextTransitLegIndex(legs, legDepartMs, nowMs);
+  const nextTransit = legs.findIndex((l, i) => l.mode !== 'walk' && legDepartMs[i] > nowMs);
+  const phase = resolvePhase({
+    arrived,
+    nowMs,
+    active,
+    boardIndex,
+    legs,
+    nextTransit,
+    approachEndMs: legArriveMs[boardIndex - 1] ?? 0,
+  });
 
   // ─── Postęp całej podróży ────────────────────────────────────────────────
   const totalMs = Math.max(1, arriveAtMs - departAtMs);
@@ -223,19 +242,18 @@ export function computeTripProgress(
     legProgress = clamp01((nowMs - active.departMs) / span);
   }
 
-  // ─── Wsiadanie ───────────────────────────────────────────────────────────
-  // Gdy jesteśmy w trakcie, `boardAtMs` to najbliższy jeszcze nieodjechany
-  // pojazd (przesiadka), a nie ten, którym właśnie jedziemy.
-  const nextTransitIndex = nextTransitLegIndex(legs, legDepartMs, nowMs);
+  // Licznik wsiadania odnosi się do pojazdu opisywanego w treści.
   // Odcinek pokazywany w powiadomieniu (linia, kierunek, kolor) to zawsze
   // pojazd: ten, którym jedziemy, albo ten, do którego idziemy. Odcinek
   // pieszy nie ma linii, a pokazywanie „Pieszo" zamiast „Tramwaj 4" w chwili
   // dojścia do przystanku myliłoby.
-  const lineLeg = activeTransit?.leg ?? legs[nextTransitIndex] ?? legs[boardIndex] ?? null;
+  const finalWalk = activeWalk && nextTransit < 0;
+  const lineLeg = finalWalk
+    ? activeWalk.leg
+    : (activeTransit?.leg ?? legs[nextTransitIndex] ?? legs[boardIndex] ?? null);
+  const boardingIndex = activeTransit ? activeTransit.index : nextTransitIndex;
   const boardAtMs =
-    hasTransit && nextTransitIndex < legDepartMs.length
-      ? legDepartMs[nextTransitIndex]
-      : departAtMs;
+    hasTransit && boardingIndex < legDepartMs.length ? legDepartMs[boardingIndex] : departAtMs;
 
   const vehicle = activeTransit ? (input.vehicle ?? null) : null;
   const vp = lineLeg
@@ -263,12 +281,15 @@ export function computeTripProgress(
       : null;
 
   // ─── Przystanki do celu: bieżący odcinek + wszystkie kolejne ─────────────
-  const stopsLeft = countStopsLeft(legs, activeTransit, legProgress, vp.hopsLeft, arrived);
+  const remainingLegs = activeTransit ? legs : legs.slice(Math.max(0, nextTransit));
+  const stopsLeft =
+    !activeTransit && nextTransit < 0
+      ? 0
+      : countStopsLeft(remainingLegs, activeTransit, legProgress, vp.hopsLeft, arrived);
 
-  const walkLeg = approachWalkLeg(
-    legs,
-    phase === 'transfer' ? nextTransitIndex : (active?.index ?? boardIndex),
-  );
+  const walkLeg =
+    activeWalk?.leg ??
+    approachWalkLeg(legs, phase === 'transfer' ? nextTransitIndex : (active?.index ?? boardIndex));
   const walkMeters = walkLeg?.walkM ?? null;
   const walkSec = walkMeters != null ? Math.round(walkMeters / Math.max(0.5, walkSpeed)) : null;
 
@@ -279,7 +300,7 @@ export function computeTripProgress(
   // Przystanek, na którym stoimy: idziemy do `toStop` odcinka pieszego,
   // a w pojeździe jesteśmy na `fromStop` odcinka, którym jedziemy.
   const stopName = activeWalk
-    ? (activeWalk.leg.toStop || lineLeg?.fromStop)
+    ? activeWalk.leg.toStop || lineLeg?.fromStop
     : (lineLeg?.fromStop ?? conn.toTitle);
 
   return {
@@ -335,10 +356,7 @@ export interface LegTimelineEntry {
   arriveMs: number;
 }
 
-export function computeLegTimeline(
-  conn: Connection,
-  now: Date = new Date(),
-): LegTimelineEntry[] {
+export function computeLegTimeline(conn: Connection, now: Date = new Date()): LegTimelineEntry[] {
   const legs = conn.legs;
   const boardIndex = firstTransitLegIndex(legs);
   const clock = legClock(legs, boardIndex, conn.departureSec);
@@ -366,15 +384,20 @@ function resolvePhase(args: {
   active: ActiveLeg | null;
   boardIndex: number;
   legs: Leg[];
+  nextTransit: number;
+  approachEndMs: number;
 }): TripPhase {
-  const { arrived, nowMs, active, boardIndex, legs } = args;
+  const { arrived, nowMs, active, boardIndex, legs, nextTransit, approachEndMs } = args;
   if (arrived) return 'arrived';
   if (boardIndex < 0) return 'walking';
   if (!active) {
+    if (nextTransit > boardIndex) return 'transfer';
+    if (nextTransit === boardIndex) return nowMs < approachEndMs ? 'walking' : 'waiting';
     // Żaden odcinek się nie zaczął: idziemy albo stoimy na przystanku.
     return legs[0]?.mode === 'walk' ? 'walking' : 'waiting';
   }
   if (active.leg.mode === 'walk') {
+    if (nextTransit < 0) return 'walking';
     return active.index > 0 ? 'transfer' : 'walking';
   }
   if (nowMs < active.departMs + BOARDING_GRACE_SEC * 1000) {
