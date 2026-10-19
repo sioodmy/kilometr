@@ -30,7 +30,7 @@ function tilePackUrl(cityId?: string): string {
   const city = getCity(cityId ?? getActiveCityIdSync());
   const override = process.env.EXPO_PUBLIC_TILE_PACK_URL;
   if (override && city.id === 'wroclaw') return override;
-  return `https://data.kilometr.wroclaw.pl/maps/${city.tilePack}`;
+  return `https://data.kilometr.app/maps/${city.tilePack}`;
 }
 
 const FONTS = ['Noto Sans Regular', 'Noto Sans Bold', 'Noto Sans Italic'];

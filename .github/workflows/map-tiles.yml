@@ -11,7 +11,7 @@
 # Bez sekretów Cloudflare workflow kończy się na artefakcie Actions
 # (do ręcznego wgrania) — R2 nie jest dotykane.
 #
-# Po wgraniu telefon pobiera pakiet z https://data.kilometr.wroclaw.pl/maps/{miasto}-tiles.ktp
+# Po wgraniu telefon pobiera pakiet z https://data.kilometr.app/maps/{miasto}-tiles.ktp
 # (Worker kilometr-timetable serwuje ten klucz z R2).
 
 name: Map tiles build → R2
@@ -83,7 +83,7 @@ jobs:
       - name: Verify public URL
         run: |
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
-            "https://data.kilometr.wroclaw.pl/maps/${{ inputs.city }}-tiles.ktp")
+            "https://data.kilometr.app/maps/${{ inputs.city }}-tiles.ktp")
           echo "HTTP ${CODE}"
           if [ "${CODE}" != "200" ]; then
             echo "::error::Endpoint mapy zwrocil ${CODE}. Jesli 404 not-found: zdeployuj Workera (cd cloudflare && npx wrangler deploy). Jesli not-built-yet: upload R2 sie nie udal."

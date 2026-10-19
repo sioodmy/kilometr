@@ -65,7 +65,7 @@ jobs:
           TIMETABLE_URL: ${{ vars.TIMETABLE_URL }}
         run: |
           set -euo pipefail
-          URL="${TIMETABLE_URL:-https://data.kilometr.wroclaw.pl}/manifest.json"
+          URL="${TIMETABLE_URL:-https://data.kilometr.app}/manifest.json"
           if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
             echo "::warning::Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
             exit 0
