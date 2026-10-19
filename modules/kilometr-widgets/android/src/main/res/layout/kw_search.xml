@@ -3,7 +3,7 @@
     android:id="@android:id/background"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/kw_bg_pill"
+    android:background="@drawable/kw_search_surface"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="18dp"
@@ -11,6 +11,7 @@
 
     <LinearLayout
         android:id="@+id/kw_search"
+        android:background="@drawable/kw_search_surface"
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
@@ -23,7 +24,7 @@
             android:layout_height="22dp"
             android:importantForAccessibility="no"
             android:src="@drawable/kw_ic_search"
-            android:tint="@color/kw_on_surface_variant" />
+            android:tint="@color/kw_on_primary_container" />
 
         <TextView
             android:id="@+id/kw_hint"
@@ -34,7 +35,8 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:text="@string/kw_search_hint"
-            android:textColor="@color/kw_on_surface_variant"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/kw_on_primary_container"
             android:textSize="16sp" />
     </LinearLayout>
 

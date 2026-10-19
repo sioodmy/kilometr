@@ -86,6 +86,9 @@ jobs:
       - name: Run logic tests (Backup format)
         run: npm run check:backup
 
+      - name: Run logic tests (Journey sharing)
+        run: npm run check:sharing
+
       - name: Run logic tests (Storage)
         run: npm run check:storage
 
@@ -143,6 +146,9 @@ jobs:
       - name: Run logic tests (Notifications)
         run: npm run check:notifications
 
+      - name: Run logic tests (Notification lifecycle)
+        run: npm run check:notification-runtime
+
       - name: Run logic tests (Smart rank)
         run: npm run check:smart-rank
 
@@ -174,8 +180,12 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: |
+            package-lock.json
             server/package-lock.json
             landing/package-lock.json
+
+      - name: Install shared app dependencies
+        run: npm ci
 
       - name: Build & typecheck server
         run: |

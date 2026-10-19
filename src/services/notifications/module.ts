@@ -29,6 +29,7 @@ export interface TrackingNativeModule {
   stopTrip(): Promise<boolean>;
   /** Czy „Zakończ" pod powiadomieniem zadziałał natywnie (bez otwierania apki). */
   consumeStopRequest(): Promise<boolean>;
+  hasStopRequest?(): Promise<boolean>;
 }
 
 let nmod: NotificationsModule | null | undefined;

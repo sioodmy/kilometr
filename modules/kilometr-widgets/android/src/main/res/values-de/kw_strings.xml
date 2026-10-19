@@ -2,8 +2,9 @@
 <resources>
     <string name="kw_next_label">Nächste Abfahrt</string>
     <string name="kw_next_desc">Countdown bis zur ersten Fahrt zu deinen Zielen</string>
-    <string name="kw_dest_label">Abfahrten zu deinen Zielen</string>
-    <string name="kw_dest_desc">Bis zu 4 häufige Ziele mit nächster Linie und Zeit</string>
+    <string name="kw_dest_label">Dein Kilometr</string>
+    <string name="kw_dest_desc">Abfahrten zu deinen Orten und der Fortschritt deiner verfolgten Fahrt</string>
+    <string name="kw_min">Min.</string>
     <string name="kw_trip_label">Verfolgte Fahrt</string>
     <string name="kw_trip_desc">Zeiten, Umstiege und Fortschritt der verfolgten Fahrt</string>
     <string name="kw_search_label">Verbindungssuche</string>

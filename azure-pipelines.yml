@@ -45,7 +45,7 @@ variables:
   ANDROID_BUILD_TOOLS: '36.0.0'
   ANDROID_NDK: '27.1.12297006'
   ANDROID_CMAKE: '3.30.5'
-  TIMETABLE_URL: 'https://data.kilometr.wroclaw.pl'
+  TIMETABLE_URL: 'https://data.kilometr.app'
 
 pool:
   vmImage: ubuntu-latest
@@ -262,7 +262,7 @@ jobs:
           GRADLE_USER_HOME: $(Pipeline.Workspace)/.gradle
           # Gradle regeneruje assets/app.config przy każdym buildzie i bez
           # APP_VERSION wpisuje tam wersję z app.json. Constants.expoConfig.version
-          # musi zgadzać się z tagiem, bo kanał Contributor czyta z niego wersję.
+          # musi zgadzać się z tagiem, bo runtime czyta z niego wersję.
           APP_VERSION: $(tag)
           BUILD_NUMBER: $(build_number)
 

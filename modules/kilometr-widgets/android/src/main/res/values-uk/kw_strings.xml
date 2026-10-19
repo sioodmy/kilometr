@@ -2,8 +2,9 @@
 <resources>
     <string name="kw_next_label">Найближче відправлення</string>
     <string name="kw_next_desc">Відлік до першого рейсу до ваших місць</string>
-    <string name="kw_dest_label">Відправлення до ваших місць</string>
-    <string name="kw_dest_desc">До 4 частих місць з найближчою лінією та часом</string>
+    <string name="kw_dest_label">Твій Kilometr</string>
+    <string name="kw_dest_desc">Відправлення до твоїх місць, а під час відстеження прогрес поїздки</string>
+    <string name="kw_min">хв</string>
     <string name="kw_trip_label">Відстежувана поїздка</string>
     <string name="kw_trip_desc">Час, пересадки та прогрес відстежуваної поїздки</string>
     <string name="kw_search_label">Пошук маршрутів</string>

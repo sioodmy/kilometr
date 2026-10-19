@@ -10,6 +10,7 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.view.View
 import android.widget.RemoteViews
+import androidx.core.graphics.ColorUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -64,6 +65,10 @@ internal fun status(context: Context, labels: Labels, delayMin: Int, live: Boole
     val text = labels.format("late", "n" to delayMin.toString()) ?: return null
     return Status(text, context.getColor(R.color.kw_warning))
   }
+  if (live && delayMin < 0) {
+    val text = labels.format("early", "n" to (-delayMin).toString()) ?: return null
+    return Status(text, context.getColor(R.color.kw_warning))
+  }
   if (live) {
     val text = labels.get("onTime") ?: return null
     return Status(text, context.getColor(R.color.kw_success))
@@ -84,7 +89,11 @@ internal fun withStatus(base: String, status: Status?): CharSequence {
 }
 
 internal fun parseColor(hex: String?, fallback: Int): Int = try {
-  if (hex.isNullOrBlank()) fallback else Color.parseColor(hex)
+  if (hex.isNullOrBlank()) fallback else {
+    val clean = hex.trim()
+    val withHash = if (clean.startsWith("#")) clean else "#$clean"
+    Color.parseColor(withHash)
+  }
 } catch (_: Throwable) {
   fallback
 }
@@ -158,7 +167,7 @@ internal fun placeIcon(icon: String?): Int = when (icon) {
  * setColorFilter, więc każdy kolor palety apki ma własny shape w res/.
  * Słownik musi pokrywać się z src/services/lineIdentity.ts (sprawdza check:widget-badge).
  */
-internal fun badgeBgResource(bg: String?): Int = when (bg?.trim()?.uppercase(Locale.ROOT)) {
+internal fun badgeBgResource(bg: String?): Int = when (bg?.trim()?.removePrefix("#")?.uppercase(Locale.ROOT)) {
   "00897B" -> R.drawable.kw_badge_00897b
   "1976D2" -> R.drawable.kw_badge_1976d2
   "D32F2F" -> R.drawable.kw_badge_d32f2f
@@ -207,12 +216,21 @@ internal fun lineBadge(
     return views
   }
   val bgRes = badgeBgResource(bg)
-  val fallbackFg = if (bgRes == R.drawable.kw_badge_container) {
+  val fgColor = if (bgRes == R.drawable.kw_badge_container) {
+    // Gdy tło wpada w domyślny ciemny kontener (kw_primary_container), tekst MUSI mieć
+    // kolor kontrastujący z kontenerem — nie wolno użyć fg z jasnego tła (ciemny na ciemnym).
     context.getColor(R.color.kw_on_primary_container)
   } else {
-    Color.WHITE
+    val initialFg = parseColor(fg, Color.WHITE)
+    val parsedBg = parseColor(bg, Color.TRANSPARENT)
+    if (parsedBg != Color.TRANSPARENT && ColorUtils.calculateContrast(initialFg, parsedBg) < 4.5) {
+      val whiteContrast = ColorUtils.calculateContrast(Color.WHITE, parsedBg)
+      val darkContrast = ColorUtils.calculateContrast(Color.BLACK, parsedBg)
+      if (whiteContrast >= darkContrast) Color.WHITE else Color.BLACK
+    } else {
+      initialFg
+    }
   }
-  val fgColor = parseColor(fg, fallbackFg)
   views.setInt(R.id.kw_badge_body, "setBackgroundResource", bgRes)
   views.setInt(R.id.kw_badge_icon, "setColorFilter", fgColor)
   views.setTextViewText(R.id.kw_badge_text, line)

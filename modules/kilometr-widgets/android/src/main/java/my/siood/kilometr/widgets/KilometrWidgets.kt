@@ -45,9 +45,9 @@ internal object KilometrWidgets {
       }
     }
 
-    each(NextDepartureWidget::class.java) { id, _ -> WidgetRenderers.next(app, snap, id, now) }
-    each(DestinationsWidget::class.java) { id, opts -> WidgetRenderers.destinations(app, snap, id, opts, now) }
-    each(TripWidget::class.java) { id, _ -> WidgetRenderers.trip(app, snap, id, now) }
+    each(NextDepartureWidget::class.java) { id, opts -> WidgetRenderers.next(app, snap, id, opts, now) }
+    each(DestinationsWidget::class.java) { id, opts -> WidgetRenderers.journey(app, snap, id, opts, now) }
+    each(TripWidget::class.java) { id, opts -> WidgetRenderers.journey(app, snap, id, opts, now) }
     each(SearchWidget::class.java) { id, opts -> WidgetRenderers.search(app, snap, id, opts) }
     each(SavedPlacesWidget::class.java) { id, opts -> WidgetRenderers.savedPlaces(app, snap, id, opts) }
 
@@ -64,7 +64,8 @@ internal object KilometrWidgets {
     if (snap.optJSONArray("quick").objects().any { inWindow(it.optLongOrNull("departTs")) }) return true
     val trip = snap.optJSONObject("pinned") ?: return false
     val arrive = trip.optLongOrNull("arriveTs") ?: return false
-    return arrive + 20 * 60_000L >= now && (trip.optLongOrNull("departTs") ?: arrive) <= until
+    return journeyPhase(trip.optLongOrNull("departTs"), arrive, now) != null &&
+      (trip.optLongOrNull("departTs") ?: arrive) <= until
   }
 }
 

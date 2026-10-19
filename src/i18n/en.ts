@@ -1,8 +1,12 @@
 // English dictionary. Must satisfy `Strings` (typeof pl) — a missing key
 // or a wrong function signature is a compile error, not an empty label.
 import type { Strings } from './pl';
+import { en as landing } from './landing/en';
+import { en as share } from './share/en';
 
 export const en: Strings = {
+  landing,
+  share,
   common: {
     retry: 'Try again',
     cancel: 'Cancel',
@@ -337,7 +341,6 @@ export const en: Strings = {
     offlineTitle: 'Timetable and maps',
     notificationsSummary: 'Journey tracking and alerts',
     backupSummary: 'Saved places, history and settings',
-    contributorSummary: 'Testing tools and telemetry',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
     languageSummary: (language: string) => `Language: ${language}`,
     resetRoutes: 'Reset journey preferences',
@@ -360,7 +363,6 @@ export const en: Strings = {
     sectionRoute: 'Route',
     sectionTransport: 'Transport',
     sectionData: 'Your data',
-    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Advanced',
     advancedHide: 'Hide advanced',
     notificationsSection: 'Notifications',
@@ -415,40 +417,6 @@ export const en: Strings = {
     backupFailUnreadable: 'Could not read the file.',
     backupFailNotBackup: 'This is not a Kilometr backup.',
     backupFailSchemaTooNew: 'This backup comes from a newer version of the app.',
-    contribTitle: 'Kilometr Contributor',
-    contribHint:
-      'GPS and accelerometer telemetry for app testers. The data stays on your device first and you decide when to export it. Production builds do not show this card.',
-    contribAutoToggle: 'Collect during trips',
-    contribAutoToggleA11y: 'Collect telemetry automatically while a trip is being tracked',
-    contribStartNow: 'Collect now',
-    contribStartNowA11y: 'Start collecting telemetry',
-    contribStopNow: 'Stop collecting',
-    contribStopNowA11y: 'Stop collecting telemetry',
-    contribStatusIdle: 'Not collecting right now.',
-    contribStatusNative: 'Collecting in the background (GPS and accelerometer, one sample per second).',
-    contribStatusForeground:
-      'Collecting while the app is open. Grant background location access and collection will continue after the screen turns off.',
-    contribPermissionNeeded: 'Collecting needs location permission. Nothing happens without your action.',
-    contribSessionsCount: (n: number) => `${n === 1 ? '1 session' : `${n} sessions`}`,
-    contribSize: (mb: string) => `Data: ~${mb} MB`,
-    contribExport: 'Export ZIP',
-    contribExportA11y: 'Save collected data to a ZIP file',
-    contribExportDoneTitle: 'Archive ready',
-    contribExportDoneBody: (path: string) => `File saved at ${path}`,
-    contribExportFailTitle: 'Could not save the archive',
-    contribExportFailBody: (reason: string) =>
-      `${reason}. Check free space and try again.`,
-    contribExportFailFallback: 'Try again in a moment.',
-    contribDelete: 'Delete collected data',
-    contribDeleteA11y: 'Delete all collected data from this device',
-    contribDeleteConfirmTitle: 'Delete all data?',
-    contribDeleteConfirmBody:
-      'The telemetry will be permanently deleted from this phone.',
-    contribDeleteAction: 'Delete',
-    contribNotifTitle: 'Kilometr Contributor',
-    contribNotifText: 'Collecting trip telemetry',
-    contribNotifChannelName: 'Kilometr Contributor',
-    contribNotifChannelDescription: 'Telemetry collection notification for testers',
     dataTitle: (operator: string) => `${operator} timetable`,
     dataHint: (feeds: string) =>
       `${feeds} timetables from the Kilometr server. Download once, then offline.`,
@@ -1256,6 +1224,11 @@ export const en: Strings = {
     titlePlain: (time: string) => `Connection • ${time}`,
   },
   widgets: {
+    journeyTitle: 'Your Kilometr',
+    journeyDescription: 'Departures to your places, switching to progress while you track a trip',
+    trackingTitle: 'Your trip',
+    checkRoutes: 'Find connections',
+    early: (n: string) => `-${n} min`,
     now: 'now',
     min: 'min',
     onTime: 'On time',

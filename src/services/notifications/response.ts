@@ -1,18 +1,9 @@
 import { getNotifications } from './module';
 import { isStopAction } from './categories';
 
-// Reakcja na tapnięcie powiadomienia i na przyciski akcji.
-//
-// `getLastNotificationResponseAsync` zwraca ostatnią odpowiedź w CAŁEJ
-// historii procesu, nie „ostatnią w ciągu minuty" — a proces po restarcie
-// telefonu bywa żywy godzinami. Dlatego każde powiadomienie podróży nosi
-// znacznik czasu i starsze odpowiedzi ignorujemy, zamiast otwierać ekran
-// połączeń na starcie aplikacji.
+// Odpowiedź konsumujemy raz. Wiek powiadomienia nie określa czasu tapnięcia.
 
-/** Po tym czasie odpowiedź uznajemy za nieaktualną. */
-const RESPONSE_TTL_MS = 5 * 60 * 1000;
-
-const LINK_KEYS = ['fromTitle', 'fromLat', 'fromLon', 'toId', 'toTitle', 'toLat', 'toLon'];
+const LINK_KEYS = ['fromTitle', 'fromLat', 'fromLon', 'toId', 'toTitle', 'toLat', 'toLon', 'open'];
 
 export interface TripResponse {
   /** Dane do nawigacji — null, gdy to nie powiadomienie podróży. */
@@ -26,13 +17,10 @@ export interface TripResponse {
 const EMPTY: TripResponse = { link: null, stop: false, alert: null };
 
 function parseData(data: unknown, actionIdentifier: string | undefined): TripResponse {
-  const stop = isStopAction(actionIdentifier);
-  if (!data || typeof data !== 'object') return { ...EMPTY, stop };
+  if (!data || typeof data !== 'object') return EMPTY;
   const d = data as Record<string, unknown>;
-  if (d.kind !== 'trip') return { ...EMPTY, stop };
-
-  const at = typeof d.at === 'number' ? d.at : 0;
-  if (!at || Date.now() - at > RESPONSE_TTL_MS) return { ...EMPTY, stop };
+  if (d.kind !== 'trip') return EMPTY;
+  const stop = isStopAction(actionIdentifier);
 
   const link: Record<string, string> = {};
   for (const k of LINK_KEYS) {
@@ -46,6 +34,15 @@ function parseData(data: unknown, actionIdentifier: string | undefined): TripRes
   };
 }
 
+const handledResponses = new Set<string>();
+
+function consumeResponse(res: import('expo-notifications').NotificationResponse): TripResponse {
+  const key = `${res.notification.request.identifier}:${res.notification.date}:${res.actionIdentifier}`;
+  if (handledResponses.has(key)) return EMPTY;
+  handledResponses.add(key);
+  return parseData(res.notification.request.content.data, res.actionIdentifier);
+}
+
 /** Ostatnia odpowiedź (cold start po tapsięciu powiadomienia). */
 export async function getLastTripResponse(): Promise<TripResponse> {
   const N = getNotifications();
@@ -53,7 +50,9 @@ export async function getLastTripResponse(): Promise<TripResponse> {
   try {
     const res = await N.getLastNotificationResponseAsync();
     if (!res) return EMPTY;
-    return parseData(res.notification.request.content.data, res.actionIdentifier);
+    const parsed = consumeResponse(res);
+    await N.clearLastNotificationResponseAsync();
+    return parsed;
   } catch {
     return EMPTY;
   }
@@ -65,7 +64,8 @@ export function addTripResponseListener(cb: (res: TripResponse) => void): () => 
   if (!N) return () => {};
   try {
     const sub = N.addNotificationResponseReceivedListener((res) => {
-      cb(parseData(res.notification.request.content.data, res.actionIdentifier));
+      cb(consumeResponse(res));
+      void N.clearLastNotificationResponseAsync().catch(() => {});
     });
     return () => sub.remove();
   } catch {

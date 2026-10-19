@@ -60,6 +60,8 @@ Wymagane: Node 20, Expo SDK 57. Powiadomienia i śledzenie działają w buildzie
 
 Kod płynie `feature/*` → `dev` → `main` → `nightly` → `prod`, każdy krok jako PR. APK buduje się tylko na push do `nightly` (`kilometr-nightly.apk`, prerelease) i `prod` (`kilometr-prod.apk`, tag `vX.Y.Z`). Strona ląduje na GitHub Pages z `main`. Push do `dev` odpala dodatkowo preview build na Azure Pipelines (`azure-pipelines.yml`): APK ląduje jako prerelease `dev-...`, a link trafia do komentarza w PR `dev` → `main`. Wymaga zmiennej sekretnej `GITHUB_TOKEN` w Azure DevOps; ręcznie ten sam plik obsługuje tryby `release` i `artifact-only`.
 
+W manifeście nie ma zgód lokalizacji w tle na żadnym kanale (aplikacja zbiera Lokację tylko na pierwszym planie przy śledzeniu podróży), dzięki czemu Play nie wymaga deklaracji Location permissions. Bramki `build-aab.yml` i `build-apk.yml` pilnują tego na wygenerowanych artefaktach.
+
 ## Licencja
 
 Kilometr jest wolnym oprogramowaniem na licencji GPL-3.0-or-later.

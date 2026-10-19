@@ -57,7 +57,7 @@ jobs:
     name: Build & Release APK
     runs-on: ubuntu-latest
     # URL rozkładu jest wpieczony w kodzie (src/services/gtfsConfig.ts,
-    # data.kilometr.wroclaw.pl), więc build nie potrzebuje żadnego sekretu.
+    # data.kilometr.app), więc build nie potrzebuje żadnego sekretu.
     # Nadpisanie lokalnie: EXPO_PUBLIC_TIMETABLE_URL w .env.
 
     steps:
@@ -84,7 +84,7 @@ jobs:
           TIMETABLE_URL: ${{ vars.TIMETABLE_URL }}
         run: |
           set -euo pipefail
-          URL="${TIMETABLE_URL:-https://data.kilometr.wroclaw.pl}/manifest.json"
+          URL="${TIMETABLE_URL:-https://data.kilometr.app}/manifest.json"
           if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
             echo "::warning::Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
             exit 0
@@ -250,7 +250,7 @@ jobs:
           TARGET_ARCH: ${{ steps.release.outputs.arch }}
           # Gradle regeneruje assets/app.config przy każdym buildzie i bez
           # APP_VERSION wpisuje tam wersję z app.json. Constants.expoConfig.version
-          # musi zgadzać się z tagiem, bo kanał Contributor czyta z niego wersję.
+          # musi zgadzać się z tagiem, bo runtime czyta z niego wersję.
           APP_VERSION: ${{ steps.release.outputs.version }}
           BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
         run: |
@@ -296,6 +296,28 @@ jobs:
             echo "::error::Wersja w assets/app.config ($EMBEDDED_VERSION) nie zgadza się z tagiem ($TAG); Constants.expoConfig.version byłby błędny w runtime"
             exit 1
           fi
+
+      # Bramka zgód tła: aplikacja NIE MOŻE pytać o lokalizację w tle na
+      # żadnym kanale - Play waliduje to po manifeście, a zgoda tła nie ma
+      # tu już żadnego uzasadnienia.
+      - name: Gate: brak zgód lokalizacji w tle
+        env:
+          CHANNEL: ${{ steps.release.outputs.channel }}
+        run: |
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::error::Nie znaleziono APK do bramki zgód tła"
+            exit 1
+          fi
+          AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
+          P="$("$AAPT" dump badging "$APK")"
+
+          if printf '%s\n' "$P" | grep -q "ACCESS_BACKGROUND_LOCATION\|FOREGROUND_SERVICE_LOCATION"; then
+            echo "::error::APK $CHANNEL pyta o lokalizację w tle (ACCESS_BACKGROUND_LOCATION/FOREGROUND_SERVICE_LOCATION). Aplikacja nie zbiera nic w tle."
+            exit 1
+          fi
+          echo "Gate OK: $CHANNEL bez zgod tła"
 
       - name: Verify and stage APK
         env:

@@ -68,6 +68,7 @@ class KilometrTrackingModule : Module() {
     AsyncFunction("startTrip") { json: String ->
       val context = appContextOrNull ?: return@AsyncFunction false
       val plan = LiveTripPlan.fromJson(json) ?: return@AsyncFunction false
+      if (LocalStopSignal.isPending(context)) return@AsyncFunction false
       LiveUpdateFactory.ensureChannel(context, plan.channelName, plan.channelDescription)
       val manager = NotificationManagerCompat.from(context)
       if (!manager.areNotificationsEnabled()) return@AsyncFunction false
@@ -92,11 +93,8 @@ class KilometrTrackingModule : Module() {
     AsyncFunction("stopTrip") {
       val context = appContextOrNull ?: return@AsyncFunction false
       LocalStopSignal.clear(context)
-      val intent = Intent(context, LiveTripService::class.java).apply {
-        action = LiveTripService.ACTION_STOP
-      }
       try {
-        context.startService(intent)
+        context.stopService(Intent(context, LiveTripService::class.java))
       } catch (_: Throwable) {
         // Serwis nie istnieje — wystarczy zdjąć powiadomienie.
       }
@@ -113,19 +111,8 @@ class KilometrTrackingModule : Module() {
       appContextOrNull?.let { LocalStopSignal.consume(it) } ?: false
     }
 
-    /** Startuje ContributorService z metadanymi sesji (deviceId, kurs, teksty). */
-    AsyncFunction("startContributor") { json: String ->
-      val context = appContextOrNull ?: return@AsyncFunction false
-      ContributorService.start(context, json)
+    AsyncFunction("hasStopRequest") {
+      appContextOrNull?.let { LocalStopSignal.isPending(it) } ?: false
     }
-
-    /** Zatrzymuje ContributorService i zdejmie powiadomienie. */
-    AsyncFunction("stopContributor") {
-      val context = appContextOrNull ?: return@AsyncFunction false
-      ContributorService.stop(context)
-    }
-
-    /** Czy FGS telemetrii obecnie biega. */
-    Function("isContributorRunning") { ContributorService.isRunning }
   }
 }

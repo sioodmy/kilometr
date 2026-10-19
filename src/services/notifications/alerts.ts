@@ -5,7 +5,8 @@ import { getNotifications, warnUnsupportedOnce } from './module';
 import { ALERT_CATEGORY } from './categories';
 import { ALERTS_CHANNEL_ID } from './channels';
 import { buildTripCopy, tripNotificationData } from './content';
-import { formatDistance } from './format';
+import { clockFromMs, formatDistance } from './format';
+import { computeLegTimeline, computeTripProgress } from './tripProgress';
 import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 
 // Alerty odjazdu — odpowiednik tego, co Mapy Google robią przed trasą:
@@ -18,8 +19,6 @@ const ALERT_IDS_KEY = 'kilometr.alertIds.v1';
 
 /** Ile wyprzedzenia odprawiamy przed każdym odjazdem — w sekundach. */
 const IMMINENT_LEAD_SEC = 90;
-/** Minimalnie ile musi zostać do odjazdu, żeby w ogóle zaplanować alert. */
-const MIN_SCHEDULE_AHEAD_SEC = 20;
 /** Opóźnienie musi wzrosnąć o tyle, żeby obudzić użytkownika. */
 const DELAY_ALERT_STEP_MIN = 3;
 
@@ -55,7 +54,7 @@ async function writeAlertIds(ids: string[]): Promise<void> {
   memoryAlertIds.clear();
   for (const id of ids) memoryAlertIds.add(id);
   try {
-    await kvSet(ALERT_IDS_KEY, JSON.stringify(ids.slice(-12)));
+    await kvSet(ALERT_IDS_KEY, JSON.stringify(ids));
   } catch {
     // ignorujemy — wycieki identyfikatorów kosztują tylko banner po restarcie
   }
@@ -69,6 +68,10 @@ async function writeAlertIds(ids: string[]): Promise<void> {
  * który go nie dotyczy.
  */
 export async function cancelScheduledAlerts(): Promise<void> {
+  return enqueue(cancelAll);
+}
+
+async function cancelAll(): Promise<void> {
   const N = getNotifications();
   const ids = await readAlertIds();
   if (N) {
@@ -97,6 +100,13 @@ export async function cancelScheduledAlerts(): Promise<void> {
  * cancel + schedule dwa razy co 20 s niepotrzebnie.
  */
 const scheduledAt = new Map<string, number>();
+let alertQueue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(work: () => Promise<T>): Promise<T> {
+  const next = alertQueue.then(work, work);
+  alertQueue = next.catch(() => {});
+  return next;
+}
 
 function alreadyScheduled(id: string, atMs: number): boolean {
   return scheduledAt.get(id) === atMs;
@@ -134,14 +144,11 @@ function leaveContent(p: TripProgress, trip: TrackedTrip, imminent: boolean, lea
   const s = tr();
   const n = s.notification;
   const copy = buildTripCopy(p, trip.connection, s);
-  const service = p.line || n.modeTram;
-  const title = imminent
-    ? n.leaveNow(service, p.departAt)
-    : n.leaveIn(leadMin, service, p.departAt);
+  const service = p.line || n.modeWalk;
+  const boardAt = clockFromMs(p.boardAtMs);
+  const title = imminent ? n.leaveNow(service, boardAt) : n.leaveIn(leadMin, service, boardAt);
   const walk =
-    p.walkMeters != null && p.walkMeters > 0
-      ? n.walkToStop(formatDistance(p.walkMeters))
-      : null;
+    p.walkMeters != null && p.walkMeters > 0 ? n.walkToStop(formatDistance(p.walkMeters)) : null;
   return {
     title,
     body: [p.leg ? n.stopHere(p.leg.fromStop) : null, walk, copy.subtitle]
@@ -155,6 +162,7 @@ async function schedule(
   p: TripProgress,
   trip: TrackedTrip,
   kind: AlertKind,
+  id: string,
   atMs: number,
   prefs: NotificationPreferences,
 ): Promise<void> {
@@ -163,7 +171,6 @@ async function schedule(
     warnUnsupportedOnce('Alerty odjazdu');
     return;
   }
-  const id = alertId(kind, trip.id);
   await cancelOne(id);
   const trigger = alertTrigger(atMs);
   if (!trigger) return;
@@ -209,33 +216,49 @@ export async function scheduleDepartureAlerts(
   trip: TrackedTrip,
   prefs: NotificationPreferences,
 ): Promise<void> {
-  if (!prefs.departureAlertsEnabled) {
-    await cancelScheduledAlerts();
-    return;
-  }
-
-  const nowMs = Date.now();
-  const leadSec = prefs.departureAlertLeadMin * 60;
-  const wanted: { kind: AlertKind; atMs: number }[] = [
-    { kind: 'lead', atMs: p.boardAtMs - leadSec * 1000 },
-    { kind: 'imminent', atMs: p.boardAtMs - IMMINENT_LEAD_SEC * 1000 },
-  ];
-
-  for (const { kind, atMs } of wanted) {
-    const id = alertId(kind, trip.id);
-    const soon = atMs - nowMs > MIN_SCHEDULE_AHEAD_SEC * 1000;
-    // Alert poza horyzontem, alert wyłączony albo identyczny z zaplanowanym
-    // wcześniej — nie ruszamy niczego.
-    if (!soon || (kind === 'imminent' && !prefs.imminentAlert) || alreadyScheduled(id, atMs)) {
-      if (!soon) forgetSchedule(id);
-      continue;
+  return enqueue(async () => {
+    const nowMs = Date.now();
+    const timeline = computeLegTimeline(trip.connection, new Date(p.computedAt));
+    const wanted = new Set<string>();
+    if (prefs.departureAlertsEnabled) {
+      for (const entry of timeline) {
+        if (entry.leg.mode === 'walk') continue;
+        const previous = timeline[entry.index - 1];
+        const walkMs = previous?.leg.mode === 'walk' ? previous.arriveMs - previous.departMs : 0;
+        const leaveAt = entry.departMs - walkMs;
+        const board = computeTripProgress(trip.connection, { now: new Date(entry.departMs) });
+        board.walkMeters = previous?.leg.mode === 'walk' ? (previous.leg.walkM ?? null) : null;
+        for (const kind of ['lead', 'imminent'] as const) {
+          const id = `${alertId(kind, trip.id)}.${entry.index}`;
+          const atMs =
+            leaveAt -
+            (kind === 'lead' ? prefs.departureAlertLeadMin * 60 : IMMINENT_LEAD_SEC) * 1000;
+          if ((kind === 'imminent' && !prefs.imminentAlert) || atMs <= nowMs) continue;
+          wanted.add(id);
+          if (!alreadyScheduled(id, atMs)) await schedule(board, trip, kind, id, atMs, prefs);
+        }
+      }
     }
-    await schedule(p, trip, kind, atMs, prefs);
-  }
+    for (const id of await readAlertIds()) {
+      if (
+        (id.startsWith('kilometr.alert.lead.') || id.startsWith('kilometr.alert.imminent.')) &&
+        !wanted.has(id)
+      )
+        await cancelOne(id);
+    }
+  });
 }
 
 /** Wysyła alert natychmiast (nie harmonogramowany) — np. o dużym opóźnieniu. */
 export async function sendDisruptionAlert(
+  p: TripProgress,
+  trip: TrackedTrip,
+  prefs: NotificationPreferences,
+): Promise<boolean> {
+  return enqueue(() => sendDisruptionAlertNow(p, trip, prefs));
+}
+
+async function sendDisruptionAlertNow(
   p: TripProgress,
   trip: TrackedTrip,
   prefs: NotificationPreferences,
@@ -255,7 +278,10 @@ export async function sendDisruptionAlert(
     await N.scheduleNotificationAsync({
       identifier: alertId('disruption', trip.id),
       content: {
-        title: n.delayTitle(p.line, tr().common.durMin(Math.max(1, Math.round(p.departInSec / 60)))),
+        title: n.delayTitle(
+          p.line,
+          tr().common.durMin(Math.max(1, Math.round(p.departInSec / 60))),
+        ),
         body,
         data: tripNotificationData(trip, 'disruption'),
         sound: 'default',
@@ -263,8 +289,9 @@ export async function sendDisruptionAlert(
         ...(Platform.OS === 'ios' ? { interruptionLevel: 'timeSensitive' as const } : {}),
         ...(Platform.OS === 'android' ? { priority: 'high' as const } : {}),
       },
-      trigger: null,
+      trigger: Platform.OS === 'android' ? { channelId: ALERTS_CHANNEL_ID } : null,
     });
+    await rememberAlert(alertId('disruption', trip.id));
     return true;
   } catch (err) {
     console.warn('[Powiadomienia] alert o opóźnieniu nie wyszedł:', err);
@@ -273,10 +300,11 @@ export async function sendDisruptionAlert(
 }
 
 /** Komunikat o zakończeniu podróży — zostawiamy go chwilę na ekranie blokady. */
-export async function sendArrivedNotification(
-  p: TripProgress,
-  trip: TrackedTrip,
-): Promise<void> {
+export async function sendArrivedNotification(p: TripProgress, trip: TrackedTrip): Promise<void> {
+  return enqueue(() => sendArrivedNotificationNow(p, trip));
+}
+
+async function sendArrivedNotificationNow(p: TripProgress, trip: TrackedTrip): Promise<void> {
   const N = getNotifications();
   if (!N) return;
   const s = tr();
@@ -293,15 +321,17 @@ export async function sendArrivedNotification(
         ...(Platform.OS === 'ios' ? { interruptionLevel: 'active' as const } : {}),
         ...(Platform.OS === 'android' ? { priority: 'high' as const } : {}),
       },
-      trigger: {
-        type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: 1,
-        ...(Platform.OS === 'android' ? { channelId: ALERTS_CHANNEL_ID } : {}),
-      },
+      trigger: Platform.OS === 'android' ? { channelId: ALERTS_CHANNEL_ID } : null,
     });
+    await rememberAlert(alertId('arrived', trip.id));
   } catch {
     // best-effort
   }
+}
+
+async function rememberAlert(id: string): Promise<void> {
+  const ids = await readAlertIds();
+  await writeAlertIds([...ids.filter((x) => x !== id), id]);
 }
 
 /** Czy opóźnienie wzrosło na tyle, że warto przerwać użytkownika. */

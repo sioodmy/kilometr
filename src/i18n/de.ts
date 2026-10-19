@@ -1,8 +1,12 @@
 // Deutsche Übersetzungen. Muss `Strings` (typeof pl) erfüllen — ein fehlender
 // Schlüssel oder eine falsche Funktionssignatur ist ein Compile-Fehler.
 import type { Strings } from './pl';
+import { de as landing } from './landing/de';
+import { de as share } from './share/de';
 
 export const de: Strings = {
+  landing,
+  share,
   common: {
     retry: 'Erneut versuchen',
     cancel: 'Abbrechen',
@@ -336,7 +340,6 @@ export const de: Strings = {
     offlineTitle: 'Fahrplan und Karten',
     notificationsSummary: 'Reiseverfolgung und Meldungen',
     backupSummary: 'Gespeicherte Orte, Verlauf und Einstellungen',
-    contributorSummary: 'Testwerkzeuge und Telemetrie',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
     languageSummary: (language: string) => `Sprache: ${language}`,
     resetRoutes: 'Routeneinstellungen zurücksetzen',
@@ -359,7 +362,6 @@ export const de: Strings = {
     sectionRoute: 'Route',
     sectionTransport: 'Verkehrsmittel',
     sectionData: 'Deine Daten',
-    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Erweitert',
     advancedHide: 'Erweitert ausblenden',
     notificationsSection: 'Benachrichtigungen',
@@ -417,42 +419,6 @@ export const de: Strings = {
     backupFailUnreadable: 'Datei konnte nicht gelesen werden.',
     backupFailNotBackup: 'Das ist keine Kilometr-Sicherung.',
     backupFailSchemaTooNew: 'Diese Sicherung stammt aus einer neueren App-Version.',
-    contribTitle: 'Kilometr Contributor',
-    contribHint:
-      'GPS- und Beschleunigungsmesser-Telemetrie für App-Tester:innen. Die Daten bleiben auf dem Gerät und du entscheidest, wann du sie exportierst. In Produktions-Builds ist diese Karte ausgeblendet.',
-    contribAutoToggle: 'Bei Fahrten aufzeichnen',
-    contribAutoToggleA11y: 'Telemetrie automatisch während einer verfolgten Fahrt aufzeichnen',
-    contribStartNow: 'Jetzt aufzeichnen',
-    contribStartNowA11y: 'Telemetrie-Aufzeichnung starten',
-    contribStopNow: 'Aufzeichnung beenden',
-    contribStopNowA11y: 'Telemetrie-Aufzeichnung beenden',
-    contribStatusIdle: 'Zurzeit wird nichts aufgezeichnet.',
-    contribStatusNative:
-      'Aufzeichnung im Hintergrund (GPS und Beschleunigungsmesser, eine Probe pro Sekunde).',
-    contribStatusForeground:
-      'Aufzeichnung läuft, solange die App offen ist. Mit Freigabe des Standorts im Hintergrund läuft sie auch bei ausgeschaltetem Bildschirm weiter.',
-    contribPermissionNeeded:
-      'Die Aufzeichnung braucht die Standortfreigabe. Ohne dein Zutun passiert nichts.',
-    contribSessionsCount: (n: number) => `${n === 1 ? '1 Sitzung' : `${n} Sitzungen`}`,
-    contribSize: (mb: string) => `Daten: ~${mb} MB`,
-    contribExport: 'ZIP exportieren',
-    contribExportA11y: 'Gesammelte Daten als ZIP-Datei speichern',
-    contribExportDoneTitle: 'Archiv fertig',
-    contribExportDoneBody: (path: string) => `Datei gespeichert unter ${path}`,
-    contribExportFailTitle: 'Archiv konnte nicht gespeichert werden',
-    contribExportFailBody: (reason: string) =>
-      `${reason}. Prüfe den freien Speicherplatz und versuche es erneut.`,
-    contribExportFailFallback: 'Versuche es gleich noch einmal.',
-    contribDelete: 'Gesammelte Daten löschen',
-    contribDeleteA11y: 'Alle gesammelten Daten von diesem Gerät löschen',
-    contribDeleteConfirmTitle: 'Alle Daten löschen?',
-    contribDeleteConfirmBody:
-      'Die Telemetrie wird dauerhaft von diesem Telefon gelöscht.',
-    contribDeleteAction: 'Löschen',
-    contribNotifTitle: 'Kilometr Contributor',
-    contribNotifText: 'Telemetrie der Fahrt wird aufgezeichnet',
-    contribNotifChannelName: 'Kilometr Contributor',
-    contribNotifChannelDescription: 'Telemetrie-Hinweis für Tester:innen',
     dataTitle: (operator: string) => `${operator}-Fahrplan`,
     dataHint: (feeds: string) =>
       `Fahrpläne von ${feeds} vom Kilometr-Server. Einmal laden, dann offline.`,
@@ -1270,6 +1236,11 @@ export const de: Strings = {
     titlePlain: (time: string) => `Verbindung • ${time}`,
   },
   widgets: {
+    journeyTitle: 'Dein Kilometr',
+    journeyDescription: 'Abfahrten zu deinen Orten und der Fortschritt deiner verfolgten Fahrt',
+    trackingTitle: 'Deine Fahrt',
+    checkRoutes: 'Verbindungen suchen',
+    early: (n: string) => `-${n} Min.`,
     now: 'jetzt',
     min: 'Min.',
     onTime: 'Pünktlich',

@@ -7,8 +7,9 @@
 <resources>
     <string name="kw_next_label">Najbliższy odjazd</string>
     <string name="kw_next_desc">Odliczanie do pierwszego kursu w stronę Twoich celów</string>
-    <string name="kw_dest_label">Odjazdy do celów</string>
-    <string name="kw_dest_desc">Do 4 częstych celów z najbliższą linią i czasem</string>
+    <string name="kw_dest_label">Twój Kilometr</string>
+    <string name="kw_dest_desc">Odjazdy do Twoich miejsc, a podczas śledzenia postęp podróży</string>
+    <string name="kw_min">min</string>
     <string name="kw_trip_label">Śledzona podróż</string>
     <string name="kw_trip_desc">Godziny, przesiadki i postęp włączonej podróży</string>
     <string name="kw_search_label">Wyszukiwarka połączeń</string>

@@ -1,6 +1,9 @@
 // Polski słownik — WZORZEC typów dla pozostałych języków.
 // `Strings = typeof pl`: brak klucza w en/de/uk = błąd kompilacji.
 // Zasady (patrz AGENTS.md): zero hardkodu PL w UI, liczby mnogie jako funkcje.
+import { pl as landing } from './landing/pl';
+import { pl as share } from './share/pl';
+
 function isFew(n: number): boolean {
   const last = n % 10;
   const teen = n % 100;
@@ -8,6 +11,8 @@ function isFew(n: number): boolean {
 }
 
 export const pl = {
+  landing,
+  share,
   common: {
     retry: 'Spróbuj ponownie',
     cancel: 'Anuluj',
@@ -344,7 +349,6 @@ export const pl = {
     offlineTitle: 'Rozkład i mapy',
     notificationsSummary: 'Śledzenie podróży i alerty',
     backupSummary: 'Zapisane miejsca, historia i ustawienia',
-    contributorSummary: 'Narzędzia testowe i telemetria',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
     languageSummary: (language: string) => `Język: ${language}`,
     resetRoutes: 'Przywróć ustawienia tras',
@@ -367,7 +371,6 @@ export const pl = {
     sectionRoute: 'Trasa',
     sectionTransport: 'Transport',
     sectionData: 'Twoje dane',
-    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Zaawansowane',
     advancedHide: 'Ukryj zaawansowane',
     notificationsSection: 'Powiadomienia',
@@ -426,41 +429,6 @@ export const pl = {
     backupFailUnreadable: 'Nie udało się odczytać pliku.',
     backupFailNotBackup: 'To nie jest kopia zapasowa Kilometr.',
     backupFailSchemaTooNew: 'Ta kopia jest z nowszej wersji aplikacji.',
-    contribTitle: 'Kilometr Contributor',
-    contribHint:
-      'Telemetria GPS i akcelerometru dla testerów aplikacji. Dane zostają na urządzeniu, a Ty decydujesz, kiedy je wyeksportować. W buildach produkcyjnych ta zakładka jest wyłączona.',
-    contribAutoToggle: 'Zbieraj przy przejazdach',
-    contribAutoToggleA11y: 'Zbieraj telemetrię automatycznie podczas śledzenia przejazdu',
-    contribStartNow: 'Zbieraj teraz',
-    contribStartNowA11y: 'Rozpocznij zbieranie telemetrii',
-    contribStopNow: 'Zakończ zbieranie',
-    contribStopNowA11y: 'Zakończ zbieranie telemetrii',
-    contribStatusIdle: 'Nie zbieram danych.',
-    contribStatusNative: 'Zbieram w tle (GPS i akcelerometr, jedna próbka na sekundę).',
-    contribStatusForeground:
-      'Zbieram, dopóki aplikacja jest otwarta. Zgoda na lokalizację w tle uruchomi zbieranie również po zamknięciu ekranu.',
-    contribPermissionNeeded: 'Zbieranie wymaga zgody na lokalizację. Nic nie dzieje się bez Twojej akcji.',
-    contribSessionsCount: (n: number) =>
-      `${n === 1 ? '1 sesja' : isFew(n) ? `${n} sesje` : `${n} sesji`}`,
-    contribSize: (mb: string) => `Dane: ~${mb} MB`,
-    contribExport: 'Eksportuj ZIP',
-    contribExportA11y: 'Zapisz zebrane dane do pliku ZIP',
-    contribExportDoneTitle: 'Archiwum gotowe',
-    contribExportDoneBody: (path: string) => `Plik zapisany w ${path}`,
-    contribExportFailTitle: 'Nie udało się zapisać archiwum',
-    contribExportFailBody: (reason: string) =>
-      `${reason}. Sprawdź wolne miejsce i spróbuj ponownie.`,
-    contribExportFailFallback: 'Spróbuj ponownie za chwilę.',
-    contribDelete: 'Usuń zebrane dane',
-    contribDeleteA11y: 'Usuń wszystkie zebrane dane z urządzenia',
-    contribDeleteConfirmTitle: 'Usunąć wszystkie dane?',
-    contribDeleteConfirmBody:
-      'Telemetria zostanie bezpowrotnie usunięta z tego telefonu.',
-    contribDeleteAction: 'Usuń',
-    contribNotifTitle: 'Kilometr Contributor',
-    contribNotifText: 'Zbieram telemetrię podróży',
-    contribNotifChannelName: 'Kilometr Contributor',
-    contribNotifChannelDescription: 'Powiadomienie zbierania telemetrii dla testerów',
     dataTitle: (operator: string) => `Rozkład ${operator}`,
     dataHint: (feeds: string) =>
       `Rozkłady z serwera Kilometr: ${feeds}. Jedno pobranie, potem offline.`,
@@ -1302,6 +1270,11 @@ export const pl = {
   // Widgety z ekranu głównego. Interpolacje dostają placeholder ('{n}', '{t}'),
   // bo minuty liczy widget natywnie przy każdym tyknięciu.
   widgets: {
+    journeyTitle: 'Twój Kilometr',
+    journeyDescription: 'Odjazdy do Twoich miejsc, a podczas śledzenia postęp podróży',
+    trackingTitle: 'Twoja podróż',
+    checkRoutes: 'Sprawdź połączenia',
+    early: (n: string) => `-${n} min`,
     now: 'teraz',
     min: 'min',
     onTime: 'Na czas',

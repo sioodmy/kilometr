@@ -1,0 +1,158 @@
+import { cityNames } from './cities';
+
+export const pl = {
+  meta: {
+    title: 'Kilometr. Twoje miasto. Twój rytm.',
+    description:
+      'Komunikacja miejska w miastach w całej Polsce. Planuj trasy, sprawdzaj odjazdy i korzystaj z rozkładów offline. Bezpłatnie na Androidzie.',
+  },
+  skip: 'Przejdź do treści',
+  nav: {
+    features: 'Możliwości',
+    coverage: 'Zasięg',
+    download: 'Pobierz',
+    menu: 'Menu',
+    close: 'Zamknij menu',
+    label: 'Nawigacja główna',
+  },
+  language: 'Język strony',
+  theme: { light: 'Włącz jasny motyw', dark: 'Włącz ciemny motyw' },
+  hero: {
+    eyebrow: 'Kilometr na Androida',
+    title: 'Twoje miasto.',
+    accent: 'Twój rytm.',
+    body: 'Twój codzienny planer komunikacji miejskiej. Teraz w miastach w całej Polsce. Także offline.',
+    play: 'Pobierz z Google Play',
+    secondary: 'Zobacz, jak działa',
+    caption: 'Miejsca na autentyczne zrzuty ekranu z Pixela 7a.',
+  },
+  intro: {
+    title: 'Dobre połączenie.\nNa co dzień.',
+    body: 'Do pracy, na uczelnię, na drugi koniec miasta. Kilometr układa trasę, a Ty zajmujesz się swoim dniem.',
+  },
+  features: {
+    label: 'Możliwości aplikacji',
+    plan: 'Zaplanuj',
+    saved: 'Wracaj',
+    ride: 'Jedź',
+    planTitle: 'Cel jest Twój.\nTrasa już nasza.',
+    planBody:
+      'Wpisz adres lub przystanek. Porównaj połączenia, wybierz środek transportu i dopasuj przesiadki do siebie.',
+    planDetail:
+      'Autobusy, tramwaje i dostępna w danym mieście kolej. Z dojściem na przystanek i do celu.',
+    savedTitle: 'Twoje miejsca.\nBliżej niż myślisz.',
+    savedBody:
+      'Dom, praca, ulubiona kawiarnia. Zapisz miejsca, do których wracasz, i sprawdzaj najbliższe odjazdy od razu na ekranie głównym.',
+    savedDetail:
+      'Ostatnie wyszukiwania są pod ręką. Punkt startowy możesz zmienić niezależnie od GPS.',
+    rideTitle: 'Wiesz, gdzie jesteś.\nI co dalej.',
+    rideBody:
+      'Otwórz trasę na mapie, sprawdź przystanki po drodze i śledź wybrane połączenie. Powiadomienie przypomni Ci o wyjściu.',
+    rideDetail: 'Pozycje pojazdów i opóźnienia pojawiają się tam, gdzie udostępnia je przewoźnik.',
+  },
+  offline: {
+    eyebrow: 'Zaprojektowany do drogi',
+    title: 'Zasięg znika.\nTwoja trasa zostaje.',
+    body: 'Pobierz rozkład i mapę swojego miasta. Kilometr wyznacza połączenia na telefonie, więc możesz planować podróż także bez internetu.',
+    note: 'Internet jest potrzebny do pobrania i aktualizacji danych oraz informacji na żywo.',
+    local: 'Trasy liczone na telefonie',
+    timetable: 'Rozkłady offline',
+    maps: 'Pobrana mapa pod ręką',
+    airplane: 'Tryb samolotowy',
+    ready: 'Możesz ruszać.',
+  },
+  coverage: {
+    cities: cityNames,
+    eyebrow: 'Teraz w całej Polsce',
+    title: 'Inne miasto.\nTen sam Kilometr.',
+    body: 'Na co dzień u siebie, w weekend gdzie indziej. Wybierz miasto i jedź z aplikacją, którą już znasz.',
+    count: (n: number) => `${n} miast i aglomeracji`,
+    label: 'Wybierz miasto',
+    map: 'Mapa obsługiwanych miast w Polsce',
+    selected: (name: string) => `Wybrane miasto: ${name}`,
+    timetable: 'Rozkład jazdy',
+    offline: 'Mapa offline',
+    rail: 'Kolej regionalna',
+    note: 'Dostępne środki transportu i dane na żywo różnią się między miastami. W aplikacji miasto zmienisz w Ustawieniach.',
+    metro: 'Górnośląsko-Zagłębiowska Metropolia',
+  },
+  principles: {
+    title: 'Po prostu wsiadasz.',
+    free: 'Bezpłatnie.',
+    freeBody: 'Planowanie podróży bez abonamentu i opłat za funkcje.',
+    ads: 'Bez reklam.',
+    adsBody: 'Na ekranie jest miejsce na Twoją trasę.',
+    account: 'Bez konta.',
+    accountBody: 'Otwierasz aplikację i wybierasz, dokąd jedziesz.',
+    open: 'Otwarty kod.',
+    openBody: 'Kilometr rozwijamy publicznie. Kod możesz sprawdzić na GitHubie.',
+    source: 'Zobacz kod na GitHubie',
+  },
+  donation: {
+    title: 'Pomóż rozwijać Kilometr.',
+    body: 'Kilometr jest darmowy i ma otwarty kod. Jeśli przydaje Ci się w drodze, możesz wesprzeć jego rozwój na Ko-fi.',
+    cta: 'Wesprzyj na Ko-fi',
+  },
+  download: {
+    title: 'Następny przystanek?\nTwój.',
+    body: 'Zabierz Kilometr na swoją następną trasę.',
+    android: 'Na telefony z Androidem. Bezpłatnie.',
+    apk: 'APK na GitHubie',
+    github: 'Wydanie stabilne z GitHuba',
+    alternatives: 'Instalujesz po swojemu?',
+    nightly: 'Wersje testowe',
+    obtainium: 'Dodaj do Obtainium',
+    obtainiumHelp: 'Wymaga zainstalowanego Obtainium.',
+  },
+  footer: {
+    tagline: 'Do zobaczenia w drodze.',
+    privacy: 'Prywatność',
+    report: 'Benchmark',
+    github: 'GitHub',
+    license: 'Wolne oprogramowanie. GPL-3.0.',
+    back: 'Wróć na stronę główną',
+  },
+  preview: {
+    home: 'Ekran główny aplikacji',
+    routes: 'Lista połączeń',
+    trip: 'Szczegóły podróży',
+    placeholder: 'Miejsce na zrzut ekranu',
+    device: 'Pixel 7a / 1080 × 2400',
+    placeholderLabel: (screen: string) =>
+      `${screen}. Miejsce na autentyczny zrzut ekranu z Pixela 7a.`,
+  },
+  privacy: {
+    title: 'Prywatność w Kilometrze',
+    intro:
+      'Informacje o aplikacji Kilometr na Androida i tej stronie internetowej. Stan na 19 października 2026 r.',
+    localTitle: 'Dane na urządzeniu',
+    localBody:
+      'Zapisane miejsca, historia wyszukiwania, ustawienia i pobrane rozkłady są przechowywane na Twoim telefonie. Aplikacja nie wymaga zakładania konta. Dane lokalne możesz usunąć, czyszcząc pamięć aplikacji w ustawieniach Androida.',
+    locationTitle: 'Lokalizacja i powiadomienia',
+    locationBody:
+      'Po udzieleniu zgody aplikacja używa lokalizacji do wyszukiwania pobliskich przystanków, wyznaczania początku podróży i śledzenia jej przebiegu. Włączone funkcje podróży lub nagrywania trasy mogą korzystać z lokalizacji w tle. Powiadomienia dotyczą wybranych podróży. Uprawnienia możesz wycofać w ustawieniach Androida.',
+    networkTitle: 'Zapytania do usług zewnętrznych',
+    networkBody:
+      'Pobieranie rozkładów, map, komunikatów i pozycji pojazdów wymaga połączeń z usługami dostawców danych. Wyszukiwanie adresów i tras pieszych korzysta ze źródeł OpenStreetMap. Zależnie od funkcji zapytanie może zawierać wpisany tekst, przystanek, linię lub współrzędne obszaru. Dostawca połączenia otrzymuje również adres IP zgodnie z działaniem internetu.',
+    exportTitle: 'Eksport danych',
+    exportBody:
+      'Kopie zapasowe i nagrane trasy możesz wyeksportować do pliku. Samodzielnie decydujesz, komu udostępnisz taki plik.',
+    webTitle: 'Ta strona',
+    webBody:
+      'Strona zapamiętuje wyłącznie wybrany język i motyw w pamięci przeglądarki. Nie ładuje narzędzi analitycznych ani reklam. Hosting GitHub Pages i zewnętrzne strony, które otworzysz przez linki, podlegają zasadom ich operatorów.',
+    contactTitle: 'Pytania',
+    contactBody:
+      'Pytania o prywatność i działanie aplikacji możesz zgłosić w repozytorium projektu na GitHubie.',
+    contact: 'Otwórz zgłoszenie',
+  },
+  report: {
+    title: 'Benchmark planera',
+    intro:
+      'Historyczne porównanie dla Wrocławia. Wyniki dotyczą badanego zestawu tras, a nie całej Polski ani bieżących warunków podróży.',
+    sample: '72 trasy. Dni robocze i weekend.',
+    body: 'Porównanie z jakdojade obejmuje 72 trasy w dni robocze i weekend, z oknem startów do 120 minut. Kilometr znalazł wcześniejszy przyjazd w 46 przypadkach, taki sam w 24, późniejszy w 2.',
+    methodology: 'Kod i metodologia porównania',
+  },
+};
+
+export type Strings = typeof pl;

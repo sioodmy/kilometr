@@ -11,13 +11,13 @@ workers_dev = true
 #   https://kilometr-timetable.<sub>.workers.dev
 # Działa od razu po `wrangler deploy` i zostaje jako zapas.
 
-# ── Publiczny adres: data.kilometr.wroclaw.pl ──────────────────────────────
-# Strefa kilometr.wroclaw.pl jest na tym samym koncie Cloudflare, więc
+# ── Publiczny adres: data.kilometr.app ─────────────────────────────────────
+# Strefa kilometr.app jest na tym samym koncie Cloudflare, więc
 # `custom_domain` każe wranglerowi samemu utworzyć rekord DNS i podpiąć
 # certyfikat. Dzięki temu buildy APK nie potrzebują zmiennej
 # EXPO_PUBLIC_TIMETABLE_URL (adres siedzi w src/services/gtfsConfig.ts).
 routes = [
-  { pattern = "data.kilometr.wroclaw.pl", custom_domain = true },
+  { pattern = "data.kilometr.app", custom_domain = true },
 ]
 
 [[r2_buckets]]

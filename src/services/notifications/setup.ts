@@ -12,11 +12,10 @@ export function setupNotificationHandler(): void {
   if (!N) return;
   try {
     N.setNotificationHandler({
-      handleNotification: async () => ({
-        // Kanał śledzenia ma LOW, więc dźwięk i tak nie zagra — ale gdyby
-        // użytkownik podniósł ważność kanału ręcznie, i tak nie chcemy
-        // budzić go co minutę odliczaniem.
-        shouldPlaySound: false,
+      handleNotification: async (notification) => ({
+        shouldPlaySound:
+          notification.request.content.data?.kind === 'trip' &&
+          typeof notification.request.content.data?.alert === 'string',
         shouldSetBadge: false,
         shouldShowBanner: true,
         shouldShowList: true,

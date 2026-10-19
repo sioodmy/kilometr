@@ -61,12 +61,13 @@ internal object LiveUpdateFactory {
 
   fun build(context: Context, plan: LiveTripPlan, nowMs: Long): Notification {
     val phase = plan.phaseAt(nowMs)
-    val copy = plan.copyFor(phase)
+    val state = plan.stateAt(nowMs)
+    val copy = state?.copy ?: plan.copyFor(phase)
     val delayed = plan.delayMin >= 2
 
     val builder = NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_kilometr_tram)
-      .setColor(if (delayed) DELAY_COLOR else plan.accentColor)
+      .setColor(if (delayed) DELAY_COLOR else state?.accentColor ?: plan.accentColor)
       .setColorized(false)
       .setContentTitle(copy.title)
       .setContentText(copy.text)
@@ -95,7 +96,7 @@ internal object LiveUpdateFactory {
       builder.setStyle(progressStyle(context, plan, progress, nowMs))
     } else {
       if (big.isNotBlank()) builder.setStyle(NotificationCompat.BigTextStyle().bigText(big))
-      builder.setProgress(progress, LiveTripPlan.PROGRESS_MAX, false)
+      builder.setProgress(LiveTripPlan.PROGRESS_MAX, progress, false)
     }
 
     // Pusty `shortCriticalText` pozwala chipowi pokazać aktualny licznik.
@@ -124,7 +125,7 @@ internal object LiveUpdateFactory {
     phase: String,
     nowMs: Long,
   ) {
-    val at = plan.countdownAtMs
+    val at = plan.stateAt(nowMs)?.countdownAtMs ?: plan.countdownAtMs
     if (phase == LiveTripPlan.PHASE_ARRIVED) {
       // Po przyjeździe liczymy w górę: „14:51 · 3 min". To mówi, że cel
       // osiągnięto, zamiast zostawiać zatrzymany licznik.
@@ -141,7 +142,7 @@ internal object LiveUpdateFactory {
     builder.setUsesChronometer(true)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
       // Po odjeździe licznik w dół miałby pokazywać minusy — wtedy liczymy w górę.
-      builder.setChronometerCountDown(plan.countdownDown && at > nowMs)
+      builder.setChronometerCountDown(at > nowMs)
     }
   }
 
@@ -222,7 +223,7 @@ internal object LiveUpdateFactory {
     // listę połączeń — to o dwa dotknięcia bliżej tego, czego szuka użytkownik
     // w trakcie podróży. `tripId` jest stabilny (to id z listy połączeń),
     // więc zawsze trafiamy w ten sam ekran.
-    val url = appendRoute(plan.deepLink, plan.tripId)
+    val url = appendRoute(plan.deepLink)
     return openApp(context, url, REQUEST_ACTIONS + action.id.hashCode())
   }
 
@@ -230,6 +231,7 @@ internal object LiveUpdateFactory {
     if (url.isBlank()) return null
     return try {
       val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+        setPackage(context.packageName)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         flags = flags or Intent.FLAG_ACTIVITY_SINGLE_TOP
       }
@@ -244,11 +246,10 @@ internal object LiveUpdateFactory {
     }
   }
 
-  private fun appendRoute(deepLink: String, tripId: String): String {
+  private fun appendRoute(deepLink: String): String {
     if (deepLink.isBlank()) return deepLink
     val separator = if (deepLink.contains('?')) "&" else "?"
-    val target = if (tripId.isBlank()) "" else "&open=" + Uri.encode(tripId)
-    return deepLink + separator + "action=route" + target
+    return deepLink + separator + "action=route"
   }
 
   /** Czy system w ogóle pozwoli promować powiadomienie do Live Updates. */

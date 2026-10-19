@@ -30,7 +30,9 @@
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-share": "^12.3.1",
     "react-native-svg": "15.15.4",
+    "react-native-view-shot": "5.1.0",
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
@@ -47,6 +49,7 @@
     "typescript-eslint": "^8.71.2"
   },
   "scripts": {
+    "check:sharing": "tsx scripts/check-sharing.ts",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -56,6 +59,7 @@
     "setup": "npm --prefix server run setup",
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
+    "check:notification-runtime": "tsx --require ./scripts/stub-expo.cjs scripts/check-notification-runtime.ts",
     "check:live": "tsx --require ./scripts/stub-expo.cjs scripts/check-live.ts",
     "check:live-canary": "tsx --require ./scripts/stub-expo.cjs scripts/check-live-canary.ts",
     "check:polinka": "tsx --require ./scripts/stub-expo.cjs scripts/check-polinka.ts",
@@ -94,6 +98,13 @@
     "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,
+  "expo": {
+    "autolinking": {
+      "buildFromSource": [
+        "expo-notifications"
+      ]
+    }
+  },
   "overrides": {
     "react-dom": "19.2.0"
   }

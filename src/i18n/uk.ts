@@ -1,6 +1,8 @@
 // Українські переклади. Має відповідати `Strings` (typeof pl) — відсутній
 // ключ або неправильна сигнатура функції це помилка компіляції.
 import type { Strings } from './pl';
+import { uk as landing } from './landing/uk';
+import { uk as share } from './share/uk';
 
 function isFew(n: number): boolean {
   const last = n % 10;
@@ -9,6 +11,8 @@ function isFew(n: number): boolean {
 }
 
 export const uk: Strings = {
+  landing,
+  share,
   common: {
     retry: 'Спробувати знову',
     cancel: 'Скасувати',
@@ -346,7 +350,6 @@ export const uk: Strings = {
     offlineTitle: 'Розклад і карти',
     notificationsSummary: 'Відстеження подорожі та сповіщення',
     backupSummary: 'Збережені місця, історія та налаштування',
-    contributorSummary: 'Інструменти тестування й телеметрія',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
     languageSummary: (language: string) => `Мова: ${language}`,
     resetRoutes: 'Відновити налаштування маршрутів',
@@ -369,7 +372,6 @@ export const uk: Strings = {
     sectionRoute: 'Маршрут',
     sectionTransport: 'Транспорт',
     sectionData: 'Ваші дані',
-    sectionContributor: 'Kilometr Contributor',
     advancedShow: 'Розширені',
     advancedHide: 'Сховати розширені',
     notificationsSection: 'Сповіщення',
@@ -427,41 +429,6 @@ export const uk: Strings = {
     backupFailUnreadable: 'Не вдалося прочитати файл.',
     backupFailNotBackup: 'Це не копія Kilometr.',
     backupFailSchemaTooNew: 'Ця копія з новішої версії застосунку.',
-    contribTitle: 'Kilometr Contributor',
-    contribHint:
-      'Телеметрія GPS і акселерометра для тестувальників застосунку. Дані спочатку лишаються на пристрої, а ви вирішуєте, коли їх експортувати. У продуктових збірках ця картка вимкнена.',
-    contribAutoToggle: 'Збирати під час поїздок',
-    contribAutoToggleA11y: 'Збирати телеметрію автоматично під час відстеження поїздки',
-    contribStartNow: 'Збирати зараз',
-    contribStartNowA11y: 'Почати збір телеметрії',
-    contribStopNow: 'Завершити збір',
-    contribStopNowA11y: 'Завершити збір телеметрії',
-    contribStatusIdle: 'Зараз нічого не збираю.',
-    contribStatusNative: 'Збираю у тлі (GPS і акселерометр, одна проба за секунду).',
-    contribStatusForeground:
-      'Збираю, поки застосунок відкритий. Дозвіл на локацію у тлі дозволить продовжити збір і з вимкненим екраном.',
-    contribPermissionNeeded: 'Для збору потрібен дозвіл на локацію. Без вашої дії нічого не відбувається.',
-    contribSessionsCount: (n: number) =>
-      `${n === 1 ? '1 сесія' : isFew(n) ? `${n} сесії` : `${n} сесій`}`,
-    contribSize: (mb: string) => `Дані: ~${mb} МБ`,
-    contribExport: 'Експорт ZIP',
-    contribExportA11y: 'Зберегти зібрані дані у файл ZIP',
-    contribExportDoneTitle: 'Архів готовий',
-    contribExportDoneBody: (path: string) => `Файл збережено у ${path}`,
-    contribExportFailTitle: 'Не вдалося зберегти архів',
-    contribExportFailBody: (reason: string) =>
-      `${reason}. Перевірте вільне місце та спробуйте знову.`,
-    contribExportFailFallback: 'Спробуйте ще раз за мить.',
-    contribDelete: 'Видалити зібрані дані',
-    contribDeleteA11y: 'Видалити всі зібрані дані з цього пристрою',
-    contribDeleteConfirmTitle: 'Видалити всі дані?',
-    contribDeleteConfirmBody:
-      'Телеметрію буде безповоротно видалено з цього телефона. Дані, які вже надіслали на сервер, там лишаться.',
-    contribDeleteAction: 'Видалити',
-    contribNotifTitle: 'Kilometr Contributor',
-    contribNotifText: 'Збираю телеметрію поїздки',
-    contribNotifChannelName: 'Kilometr Contributor',
-    contribNotifChannelDescription: 'Повідомлення телеметрії для тестувальників',
     dataTitle: (operator: string) => `Розклад ${operator}`,
     dataHint: (feeds: string) =>
       `Розклади ${feeds} із сервера Kilometr. Одне завантаження, далі офлайн.`,
@@ -1297,6 +1264,11 @@ export const uk: Strings = {
     titlePlain: (time: string) => `Сполучення • ${time}`,
   },
   widgets: {
+    journeyTitle: 'Твій Kilometr',
+    journeyDescription: 'Відправлення до твоїх місць, а під час відстеження прогрес поїздки',
+    trackingTitle: 'Твоя поїздка',
+    checkRoutes: 'Знайти сполучення',
+    early: (n: string) => `-${n} хв`,
     now: 'зараз',
     min: 'хв',
     onTime: 'Вчасно',
