@@ -1,0 +1,21 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'my.siood.kilometr.contributor'
+version = '1.0.0'
+
+android {
+  namespace "my.siood.kilometr.contributor"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+  // NotificationCompat i ServiceCompat (androidx.core 1.17) wymagają compileSdk 36.
+  compileSdk 36
+}
+
+dependencies {
+  // Obecny de facto przez expo-modules-core (api), ale wpisywane wprost,
+  // żeby wersja ServiceCompat/NotificationCompat była przewidywalna.
+  implementation "androidx.core:core-ktx:1.17.0"
+}

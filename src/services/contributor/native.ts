@@ -1,8 +1,13 @@
-// Most do natywnego zbierania w tle (modules/kilometr-tracking).
+// Most do natywnego zbierania w tle (modules/kilometr-contributor).
 //
 // Serwis Androida `ContributorService` pisze JSONL do pliku w prywatnym
 // katalogu aplikacji - JS nie musi żyć, żeby tło miało próbkę. Ingest
 // przenosi pliki do SQLite przy pierwszym otwarciu aplikacji po sesji.
+//
+// Moduł jest osobnym projektem autolinkingu i buildy prod/play wyłączają go
+// całe (plugins/with-contributor.js). `requireOptionalNativeModule` zwraca
+// wtedy null albo moduł bez funkcji; ścieżka natywna wprost odpada, a prod
+// nie pokazuje interfejsu (`isContributorAvailable()`) w ogóle.
 
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -26,7 +31,11 @@ let native: ContributorNativeModule | null | undefined;
 function getNative(): ContributorNativeModule | null {
   if (native !== undefined) return native;
   try {
-    native = requireOptionalNativeModule<ContributorNativeModule>('KilometrTracking');
+    const mod = requireOptionalNativeModule<ContributorNativeModule>('KilometrContributor');
+    // Build prod/play nie ma tego modułu albo jego funkcji (moduł wyłączony
+    // z autolinkingu). Zwracamy null zamiast cienia modułu, żeby ścieżka
+    // natywna wprost odpadała zamiast przechodzić przez try/catch w starcie.
+    native = mod && typeof mod.startContributor === 'function' ? mod : null;
   } catch {
     native = null;
   }
