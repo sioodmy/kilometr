@@ -52,6 +52,14 @@ import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 import { UnsupportedCityCard } from '../src/components/UnsupportedCityCard';
 
+/** Kopia mapy bez klucza; zwraca tę samą referencję, gdy nic nie znika. */
+function withoutKey<T>(prev: Record<string, T>, key: string): Record<string, T> {
+  if (!(key in prev)) return prev;
+  const next = { ...prev };
+  delete next[key];
+  return next;
+}
+
 export default function HomeScreen() {
   const s = useStrings();
   const router = useRouter();
@@ -447,13 +455,19 @@ export default function HomeScreen() {
           });
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
-          if (!first) continue;
-          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
-          const transitLeg = first.legs.find((l) => l.mode !== 'walk' && l.line);
-          if (transitLeg?.line) {
-            const badge = { mode: transitLeg.mode, line: transitLeg.line };
-            setFirstLegs((prev) => ({ ...prev, [d.id]: badge }));
+          // Sam spacer (cel w zasięgu pieszo): bez badge'a nie ma czego
+          // pokazać po prawej, więc wiersz zostaje czysty zamiast pustego slotu.
+          const transitLeg = first?.legs.find((l) => l.mode !== 'walk' && l.line);
+          if (!first || !transitLeg) {
+            setFirstConns((prev) => withoutKey(prev, d.id));
+            setFirstLegs((prev) => withoutKey(prev, d.id));
+            continue;
           }
+          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
+          setFirstLegs((prev) => ({
+            ...prev,
+            [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
+          }));
         } catch {
           // Brak trasy do tego celu — wiersz zostaje bez prawej strony.
         }
@@ -507,15 +521,17 @@ export default function HomeScreen() {
           });
           if (quickRefreshGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
-          if (!first) continue;
-          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
-          const transitLeg = first.legs.find((l) => l.mode !== 'walk' && l.line);
-          if (transitLeg?.line) {
-            setFirstLegs((prev) => ({
-              ...prev,
-              [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
-            }));
+          const transitLeg = first?.legs.find((l) => l.mode !== 'walk' && l.line);
+          if (!first || !transitLeg) {
+            setFirstConns((prev) => withoutKey(prev, d.id));
+            setFirstLegs((prev) => withoutKey(prev, d.id));
+            continue;
           }
+          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
+          setFirstLegs((prev) => ({
+            ...prev,
+            [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
+          }));
         } catch {
           // Brak trasy do celu — wiersz zostaje bez prawej strony.
         }
