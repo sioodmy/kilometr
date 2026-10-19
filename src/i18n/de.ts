@@ -2,9 +2,11 @@
 // Schlüssel oder eine falsche Funktionssignatur ist ein Compile-Fehler.
 import type { Strings } from './pl';
 import { de as landing } from './landing/de';
+import { de as share } from './share/de';
 
 export const de: Strings = {
   landing,
+  share,
   common: {
     retry: 'Erneut versuchen',
     cancel: 'Abbrechen',

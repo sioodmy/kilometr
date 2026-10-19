@@ -2,6 +2,7 @@
 // `Strings = typeof pl`: brak klucza w en/de/uk = błąd kompilacji.
 // Zasady (patrz AGENTS.md): zero hardkodu PL w UI, liczby mnogie jako funkcje.
 import { pl as landing } from './landing/pl';
+import { pl as share } from './share/pl';
 
 function isFew(n: number): boolean {
   const last = n % 10;
@@ -11,6 +12,7 @@ function isFew(n: number): boolean {
 
 export const pl = {
   landing,
+  share,
   common: {
     retry: 'Spróbuj ponownie',
     cancel: 'Anuluj',
