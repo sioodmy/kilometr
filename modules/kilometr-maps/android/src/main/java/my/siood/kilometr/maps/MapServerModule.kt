@@ -51,11 +51,6 @@ class MapServerModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("KilometrMapServer")
 
-        /** Czy jakikolwiek pakiet kafelków jest już na telefonie. */
-        AsyncFunction("hasTilePack") {
-            packFiles().any { it.exists() && it.length() > 1024 }
-        }
-
         /** Startuje serwer, zwraca bazowy URL; null gdy brak pakietu. */
         AsyncFunction("start") {
             val files = packFiles().map { it.name to it.length() }

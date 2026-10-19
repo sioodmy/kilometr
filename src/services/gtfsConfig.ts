@@ -75,12 +75,6 @@ export const ZBIORKOM = {
   timeoutMs: 10000,
 } as const;
 
-/** Slug + bbox zbiorkom.live dla aktywnego miasta. */
-export function zbiorkomCity(): { slug: string; bbox: string } {
-  const c = activeCity();
-  return { slug: c.zbiorkomSlug, bbox: c.zbiorkomBbox };
-}
-
 export const NOMINATIM = {
   baseUrl: 'https://nominatim.openstreetmap.org/search',
   reverseUrl: 'https://nominatim.openstreetmap.org/reverse',

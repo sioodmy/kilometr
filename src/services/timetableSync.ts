@@ -55,12 +55,7 @@ export interface TimetableManifest {
   stats: { stops: number; routes: number; trips: number; stopTimes: number };
 }
 
-/** Adres ma zawsze default z gtfsConfig, więc to dziś zawsze true. */
-export function timetableEnabled(): boolean {
-  return TIMETABLE.baseUrl.length > 0;
-}
-
-export function manifestUrl(cityId?: CityId | string): string {
+function manifestUrl(cityId?: CityId | string): string {
   const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
   return `${TIMETABLE.baseUrl}/${city.id}/manifest.json`;
 }
@@ -68,7 +63,7 @@ export function manifestUrl(cityId?: CityId | string): string {
 /**
  * URL bazy z manifestu. `db.path` jest pełną ścieżką R2 (`{miasto}/db/kilometr-gtfs.db.gz`).
  */
-export function dbDownloadUrl(manifest: TimetableManifest): string {
+function dbDownloadUrl(manifest: TimetableManifest): string {
   const path = manifest.db.path.startsWith('/') ? manifest.db.path : `/${manifest.db.path}`;
   return `${TIMETABLE.baseUrl}${path}`;
 }

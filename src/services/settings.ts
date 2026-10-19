@@ -68,7 +68,7 @@ export const TRANSIT_MODES: readonly TransitVehicleMode[] = [
   'cable',
 ];
 
-export const DEFAULT_ALLOWED_MODES: AllowedTransferModes = {
+const DEFAULT_ALLOWED_MODES: AllowedTransferModes = {
   tram: true,
   bus: true,
   trolleybus: true,
@@ -77,7 +77,7 @@ export const DEFAULT_ALLOWED_MODES: AllowedTransferModes = {
   cable: true,
 };
 
-export const DEFAULT_SETTINGS: RoutingSettings = {
+const DEFAULT_SETTINGS: RoutingSettings = {
   maxTransfers: 2,
   minTransferSec: 120,
   maxWalkM: 800,
@@ -106,7 +106,7 @@ function clampInt(value: unknown, def: number, min: number, max: number): number
 }
 
 const WALK_PACES: readonly WalkPaceProfile[] = ['slow', 'normal', 'fast'];
-export const ROUTE_STYLES: readonly RouteStyle[] = ['fastest', 'balanced', 'lessWalking', 'fewerTransfers'];
+const ROUTE_STYLES: readonly RouteStyle[] = ['fastest', 'balanced', 'lessWalking', 'fewerTransfers'];
 
 /** Stare tempo (m/s) na profil: migracja danych z wcześniejszych wersji. */
 function paceFromLegacyMps(mps: number): WalkPaceProfile {
@@ -261,7 +261,7 @@ export function useWalkSpeedMps(): number {
 }
 
 /** Metry przechodzone w minucie dla danego tempa (1,34 m/s to ok. 80 m/min). */
-export function walkMetersPerMinute(speedMps: number = WALK_PACE_DEFAULTS_MPS.normal): number {
+function walkMetersPerMinute(speedMps: number = WALK_PACE_DEFAULTS_MPS.normal): number {
   return Math.max(1, speedMps * 60);
 }
 
@@ -269,8 +269,6 @@ export function walkMetersPerMinute(speedMps: number = WALK_PACE_DEFAULTS_MPS.no
 export function walkMinutesFor(meters: number, speedMps?: number): number {
   return Math.max(1, Math.round(meters / walkMetersPerMinute(speedMps)));
 }
-
-
 
 export function formatTransferTime(sec: number): string {
   const min = Math.round(sec / 60);

@@ -7,7 +7,7 @@
 import { scheme } from '../theme/tokens';
 import { MAP_ATTRIBUTION } from '../config';
 import { buildMapStyle, MAP_COLORS, ROUTE_SOURCE_ID } from './mapStyle';
-import type { MapInMessage, MapOutMessage, MapRoute, MapVehicle } from './types';
+import type { MapRoute, MapVehicle } from './types';
 
 const MAPLIBRE_VERSION = '4.7.1';
 const MAPLIBRE_CDNS = [
@@ -621,5 +621,3 @@ export function buildRouteMapDocument(opts: RouteMapDocumentOptions): string {
     '</html>',
   ].join('\n');
 }
-
-export type { MapInMessage, MapOutMessage, MapRoute, MapVehicle };

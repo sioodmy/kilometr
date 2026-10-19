@@ -5,7 +5,7 @@ import { getActiveCitySync } from '../cityStore';
 import { RoutingService } from '../api';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
-import type { Connection, RouteQuery, VehiclePosition } from '../../types/models';
+import type { Connection, VehiclePosition } from '../../types/models';
 import {
   buildRoutesLink,
   departureTs,
@@ -81,23 +81,6 @@ export function getTrackedTripSync(): TrackedTrip | null {
 
 export function getTripProgressSync(): TripProgress | null {
   return progress ? { ...progress } : null;
-}
-
-/**
- * Czy dwa zapytania trasy opisują tę samą podróż. Używane przez ekran
- * połączeń do rozpoznania, czy śledzimy właśnie tę trasę (a nie inną),
- * oraz po przywróceniu stanu. Epsilon 0.0005° ≈ 55 m — mniejszy niż
- * rozrzut współrzędnych z wyszukiwarki, więc nie łapie sąsiednich przystanków.
- */
-export function isSameQuery(a: RouteQuery, b: RouteQuery): boolean {
-  return (
-    a.fromTitle === b.fromTitle &&
-    a.toTitle === b.toTitle &&
-    Math.abs(a.fromLat - b.fromLat) < 0.0005 &&
-    Math.abs(a.fromLon - b.fromLon) < 0.0005 &&
-    Math.abs(a.toLat - b.toLat) < 0.0005 &&
-    Math.abs(a.toLon - b.toLon) < 0.0005
-  );
 }
 
 // ─── Pojazd ────────────────────────────────────────────────────────────────
@@ -410,7 +393,7 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
   }
 }
 
-/** Wymuszone odświeżenie (np. po powrocie na ekran). */
+/** @public Wywoływane przez createRequire w check-notification-runtime.ts. */
 export function refreshTrackedTrip(): Promise<void> {
   return refresh();
 }

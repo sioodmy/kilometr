@@ -135,11 +135,6 @@ export async function loadCachedConnections(
   return { list: entry.data, savedAt: entry.savedAt };
 }
 
-export async function loadConnections(query: RouteQuery): Promise<Connection[] | null> {
-  const cached = await loadCachedConnections(query);
-  return cached ? cached.list : null;
-}
-
 /** Szuka połączenia po id we WSZYSTKICH cachowanych zapytaniach (dla szczegółów offline). */
 export async function findCachedConnection(id: string): Promise<Connection | null> {
   id = normalizeConnectionId(id);
@@ -231,7 +226,7 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
   return [];
 }
 
-export async function saveRecent(items: Suggestion[]): Promise<void> {
+async function saveRecent(items: Suggestion[]): Promise<void> {
   try {
     await kvSet(cityScopedKey(KEYS.recent), JSON.stringify({ savedAt: Date.now(), data: items }));
   } catch {

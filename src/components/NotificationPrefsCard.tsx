@@ -21,7 +21,7 @@ function leadIndex(min: number): number {
   return i >= 0 ? i : LEAD_MIN.indexOf(5);
 }
 
-export function PrefsToggle({
+function PrefsToggle({
   value,
   onChange,
   disabled,

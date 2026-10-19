@@ -1,4 +1,4 @@
-export type LegMode = 'tram' | 'bus' | 'walk';
+type LegMode = 'tram' | 'bus' | 'walk';
 
 /** Jednorazowy filtr pojazdów: 'all' = tramwaje + autobusy (default). */
 export type TransitModePreference = 'all' | 'tram' | 'bus';

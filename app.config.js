@@ -4,7 +4,7 @@
 // dev-YYYYMMDD-HHMM-<sha> albo test-YYYYMMDD-HHMM-<sha>, Play: play-<...>).
 // Lokalnie bez tej zmiennej zostaje wersja z app.json.
 const appJson = require('./app.json');
-const { withAppBuildGradle } = require('@expo/config-plugins');
+const { withAppBuildGradle } = require('expo/config-plugins');
 
 // Slot na numer kompilacji/hotfixu z CI (BUILD_NUMBER, np. GITHUB_RUN_ATTEMPT).
 // Dwie ostatnie cyfry versionCode prod, więc zakres 1-99; domyślnie 1.

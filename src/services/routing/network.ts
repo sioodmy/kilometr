@@ -68,7 +68,7 @@ function kindToCode(kind: TransitKind): number {
 }
 
 /** Przystanki i przejścia piesze w tablicach liczbowych (CSR), raz na załadowany sklep. */
-export interface RaptorBase {
+interface RaptorBase {
   stopIds: string[];
   stopIndex: Map<string, number>;
   /** Przystanki objęte tablicami przejść (dopisane później ich nie mają). */
@@ -84,7 +84,7 @@ export interface RaptorBase {
 }
 
 /** Wzorzec po kompilacji. Kursy FIFO: późniejszy kurs nigdy nie wyprzedza wcześniejszego. */
-export interface CompiledPattern {
+interface CompiledPattern {
   id: string;
   routeId: string;
   kind: TransitKind;
@@ -158,7 +158,7 @@ function buildBase(store: LocalGtfsStore): RaptorBase {
   };
 }
 
-export function getRaptorBase(store: LocalGtfsStore): RaptorBase {
+function getRaptorBase(store: LocalGtfsStore): RaptorBase {
   const hit = baseCache.get(store);
   if (hit && hit.stopsSize === store.stops.size && hit.footpathsSize === store.footpaths.size) return hit;
   const base = buildBase(store);
@@ -174,28 +174,6 @@ function stopIdx(base: RaptorBase, id: string): number {
     base.stopIndex.set(id, i);
   }
   return i;
-}
-
-const MIN_FOOTPATH_SEC = 45;
-
-/** Czasy przejść pieszych dla tempa użytkownika. -1 = za daleko. */
-export function footDurations(base: RaptorBase, speedMps: number, maxM: number, detour: number): Int32Array {
-  const key = `${speedMps.toFixed(3)}|${maxM}|${detour}`;
-  const hit = base.fpDurCache.get(key);
-  if (hit) return hit;
-  const out = new Int32Array(base.fpTo.length);
-  for (let e = 0; e < out.length; e++) {
-    const fixed = base.fpFixedSec[e];
-    if (fixed > 0) {
-      out[e] = fixed;
-    } else if (base.fpDistM[e] > maxM) {
-      out[e] = -1;
-    } else {
-      out[e] = Math.max(MIN_FOOTPATH_SEC, Math.round((base.fpDistM[e] * detour) / speedMps));
-    }
-  }
-  base.fpDurCache.set(key, out);
-  return out;
 }
 
 interface TripRow {

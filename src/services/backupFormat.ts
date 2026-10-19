@@ -20,8 +20,8 @@ import { isCityId, type CityId } from '../cities';
 /** Wersja schematu. Bump przy zmianie kształtu `BackupData`. */
 export const BACKUP_SCHEMA = 2;
 
-export const BACKUP_FILE_KIND = 'kilometr-backup';
-export const BACKUP_APP_ID = 'kilometr';
+const BACKUP_FILE_KIND = 'kilometr-backup';
+const BACKUP_APP_ID = 'kilometr';
 /** Rozszerzenie pliku — Android rozpoznaje po nim JSON w meniu udostępniania. */
 export const BACKUP_EXTENSION = 'json';
 /** MIME type przy udostępnianiu. */
@@ -40,12 +40,12 @@ export interface BackupData {
 }
 
 /** Jedno miasto w kopii: jego kubełek miejsc, tras albo historii. */
-export interface BackupCitySection<T> {
+interface BackupCitySection<T> {
   city: CityId;
   items: T[];
 }
 
-export interface BackupEnvelope {
+interface BackupEnvelope {
   kind: typeof BACKUP_FILE_KIND;
   app: typeof BACKUP_APP_ID;
   schema: number;
@@ -54,7 +54,7 @@ export interface BackupEnvelope {
   data: BackupData;
 }
 
-export const EMPTY_BACKUP_DATA: BackupData = {
+const EMPTY_BACKUP_DATA: BackupData = {
   places: [],
   savedRoutes: [],
   tripHistory: [],

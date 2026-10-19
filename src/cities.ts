@@ -5,12 +5,12 @@
 
 export type CityId = 'wroclaw' | 'krakow' | 'gzm' | 'warszawa' | 'poznan' | 'trojmiasto' | 'lodz' | 'szczecin' | 'kielce' | 'olsztyn' | 'bialystok' | 'opole' | 'rzeszow' | 'lublin' | 'radom';
 
-export interface CityCenter {
+interface CityCenter {
   lat: number;
   lon: number;
 }
 
-export interface CityBbox {
+interface CityBbox {
   minLat: number;
   maxLat: number;
   minLon: number;
@@ -383,7 +383,6 @@ const RZESZOW: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-
 const LUBLIN: CityDef = {
   id: 'lublin',
   name: 'Lublin',
@@ -412,7 +411,6 @@ const LUBLIN: CityDef = {
   // ZDiTM nie ma publicznego bus_position.
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
-
 
 const RADOM: CityDef = {
   id: 'radom',
@@ -445,7 +443,6 @@ const RADOM: CityDef = {
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
-
 export const CITIES: readonly CityDef[] = [WROCLAW, KRAKOW, GZM, WARSZAWA, POZNAN, TROJMIASTO, LODZ, SZCZECIN, KIELCE, OLSZTYN, BIALYSTOK, OPOLE, RZESZOW, LUBLIN, RADOM];
 
 export const DEFAULT_CITY_ID: CityId = 'wroclaw';
@@ -477,7 +474,7 @@ export function cityKey(base: string, cityId: CityId): string {
 }
 
 /** Haversine w metrach. */
-export function cityDistanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
+function cityDistanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6_371_000;
   const dLa = ((bLat - aLat) * Math.PI) / 180;
   const dLo = ((bLon - aLon) * Math.PI) / 180;

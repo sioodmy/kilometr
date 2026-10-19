@@ -7,7 +7,7 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
-import { GestureHandlerRootView, type TextInput } from 'react-native-gesture-handler';
+import type { TextInput } from 'react-native-gesture-handler';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
@@ -23,10 +23,6 @@ const PERSONAL_MAX = 3;
 /** Prefiks słowa, całe słowo albo akronim; literówki i trafienia w środku słowa zaśmiecają górę listy. */
 const PERSONAL_MIN_SCORE = 85;
 const SAME_PLACE_M = 60;
-
-export function SearchSheetHost({ children }: { children: React.ReactNode }) {
-  return <GestureHandlerRootView style={{ flex: 1 }}>{children}</GestureHandlerRootView>;
-}
 
 export function SearchSheet({
   query,

@@ -2,7 +2,7 @@ import type { SavedPlace } from '../types/models';
 
 const EARTH_RADIUS_METERS = 6371000;
 
-export function toRadians(deg: number): number {
+function toRadians(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 

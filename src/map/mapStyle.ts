@@ -324,7 +324,7 @@ const bySel = (selected: unknown, dimmed: unknown, normal: unknown) => [
  * pośrednie i niewidoczna warstwa chwytna pod palce. Wszystkie z jednego
  * źródła GeoJSON, więc zmiana geometrii to jedno setData.
  */
-export function buildRouteLayers() {
+function buildRouteLayers() {
   return [
     {
       id: 'trasa-obwodka',

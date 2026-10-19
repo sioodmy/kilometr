@@ -80,7 +80,7 @@ export function getTrackingNative(): TrackingNativeModule | null {
   }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('../../../modules/kilometr-tracking') as TrackingNativeModule;
+    const mod = require('../../../modules/kilometr-tracking').default as TrackingNativeModule;
     tracking = mod?.isAvailable?.() ? mod : null;
   } catch {
     tracking = null;

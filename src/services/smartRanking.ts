@@ -45,9 +45,9 @@ export const CLUSTER_RADIUS_M = 1600;
 /** Nie proponujemy celu, w którym użytkownik stoi. */
 export const EXCLUSION_RADIUS_M = 250;
 /** Dwa różne id tego samego budynku (wyszukiwarka vs przypięte miejsce). */
-export const SAME_PLACE_RADIUS_M = 150;
+const SAME_PLACE_RADIUS_M = 150;
 /** Promień, w którym przypięte miejsce uznajemy za „to, gdzie jestem". */
-export const CONTEXT_PLACE_RADIUS_M = 350;
+const CONTEXT_PLACE_RADIUS_M = 350;
 /** Dwa zapisy tej samej pary w tym oknie to jedno sprawdzenie, nie dwa. */
 export const REPEAT_GAP_MS = 5 * 60 * 1000;
 /** Czas dojazdu, gdy nikt go nie zmierzył (np. przypięte miejsce). */
