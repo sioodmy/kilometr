@@ -98,6 +98,13 @@
     "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,
+  "expo": {
+    "autolinking": {
+      "buildFromSource": [
+        "expo-notifications"
+      ]
+    }
+  },
   "overrides": {
     "react-dom": "19.2.0"
   }
