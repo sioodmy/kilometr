@@ -22,6 +22,7 @@
 // Wyłączenie to pole `exclude` ekstensji `expoAutolinking` z expo-modules-
 // autolinking. Wstawiamy je PRZED `expoAutolinking.useExpoModules()`, bo to
 // wywołanie od razu linkuje rozwiązane projekty i późne ustawienie byłoby martwe.
+// settings.gradle prebuildu jest w Groovy, więc literał listy to `[...]`.
 
 const { withSettingsGradle } = require('@expo/config-plugins');
 
@@ -45,8 +46,9 @@ module.exports = function withContributor(config) {
 
   return withSettingsGradle(config, (mod) => {
     const anchor = 'expoAutolinking.useExpoModules()';
-    const current = mod.modResults;
-    if (current.includes(`expoAutolinking.exclude = listOf("${MODULE_NAME}")`)) {
+    const current = mod.modResults.contents;
+    const excludeLine = `expoAutolinking.exclude = ["${MODULE_NAME}"]`;
+    if (current.includes('expoAutolinking.exclude')) {
       return mod;
     }
     if (!current.includes(anchor)) {
@@ -54,9 +56,9 @@ module.exports = function withContributor(config) {
         'Nie wyłączę Contributora: wygenerowany android/settings.gradle nie ma wywołania `expoAutolinking.useExpoModules()`. Szablon prebuildu się zmienił.',
       );
     }
-    mod.modResults = current.replace(
+    mod.modResults.contents = current.replace(
       anchor,
-      `// Contributor (telemetria) musi istnieć wyłącznie w buildach testowych,\n// więc buildy do Google wyłączają moduł z autolinkingu.\nexpoAutolinking.exclude = listOf("${MODULE_NAME}")\n${anchor}`,
+      `// Contributor (telemetria) musi istnieć wyłącznie w buildach testowych,\n// więc buildy do Google wyłączają moduł z autolinkingu.\n${excludeLine}\n${anchor}`,
     );
     return mod;
   });
