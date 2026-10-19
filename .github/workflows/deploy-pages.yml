@@ -7,6 +7,8 @@ on:
       - main
     paths:
       - 'landing/**'
+      - 'src/i18n/**'
+      - 'src/cities.ts'
       - 'docs/**'
       - '.github/workflows/deploy-pages.yml'
 
@@ -40,25 +42,6 @@ jobs:
           set -euo pipefail
           npm --prefix landing ci
           npm --prefix landing run build
-
-      # Landing (src/App.tsx) robi HEAD na ./app-release.apk i bez niego
-      # przechodzi na fallback releases/latest/download/app-release.apk.
-      # To tylko przyspiesza pierwsze wejście — brak pliku nie jest błędem.
-      - name: Fetch latest APK from release (optional)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -uo pipefail
-          if gh release download latest \
-              -p 'app-release.apk' \
-              -p 'app-release.apk.sha256' \
-              -D docs/ > /dev/null 2>&1; then
-            echo "Dodano APK z release 'latest' do artifactu Pages:"
-            ls -lh docs/app-release.apk*
-          else
-            echo "::warning::Brak release 'latest' — landing użyje fallbacku na releases/latest/download/app-release.apk"
-          fi
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
