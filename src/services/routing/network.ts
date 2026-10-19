@@ -78,7 +78,6 @@ interface RaptorBase {
   fpDistM: Int32Array;
   /** > 0: stały czas przejścia z bazy (przesiadki MPK-KD przez halę dworca). */
   fpFixedSec: Int32Array;
-  fpDurCache: Map<string, Int32Array>;
   stopsSize: number;
   footpathsSize: number;
 }
@@ -152,7 +151,6 @@ function buildBase(store: LocalGtfsStore): RaptorBase {
     fpTo,
     fpDistM,
     fpFixedSec,
-    fpDurCache: new Map(),
     stopsSize: store.stops.size,
     footpathsSize: store.footpaths.size,
   };

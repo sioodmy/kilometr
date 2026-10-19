@@ -38,10 +38,6 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
-// Logika pozycji pojazdu mieszka w serwisie, bo korzysta z niej również
-// silnik powiadomień (nie chcemy, żeby serwis importował komponent).
-;
-
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
 // pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
