@@ -25,7 +25,7 @@ export const en: Strings = {
     body: 'Your everyday public transport planner. Now in cities across Poland. Offline, too.',
     play: 'Get it on Google Play',
     secondary: 'See how it works',
-    caption: 'Spaces for authentic screenshots from a Pixel 7a.',
+    caption: 'Screenshots from a Pixel 7a.',
   },
   intro: {
     title: 'A good connection.\nEvery day.',

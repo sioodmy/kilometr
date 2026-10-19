@@ -24,7 +24,7 @@ export const pl = {
     body: 'Twój codzienny planer komunikacji miejskiej. Teraz w miastach w całej Polsce. Także offline.',
     play: 'Pobierz z Google Play',
     secondary: 'Zobacz, jak działa',
-    caption: 'Miejsca na autentyczne zrzuty ekranu z Pixela 7a.',
+    caption: 'Zrzuty ekranu z Pixela 7a.',
   },
   intro: {
     title: 'Dobre połączenie.\nNa co dzień.',

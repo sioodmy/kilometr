@@ -488,17 +488,18 @@
   .feature-visual {
     position: relative;
     display: flex;
-    justify-content: center;
-    align-items: center;
+    justify-content: flex-end;
+    align-items: flex-end;
     overflow: clip;
     isolation: isolate;
+    padding-inline: clamp(20px, 3.5vw, 40px);
     background: var(--tint);
     border-radius: 0 32px 32px 0;
   }
   .feature-visual .phone {
-    width: 260px;
+    width: 238px;
     transform: rotate(5deg);
-    margin: 35px;
+    margin: 0 0 -50px;
   }
   .feature-visual-saved .phone {
     transform: rotate(-5deg);
@@ -1071,8 +1072,8 @@
       min-height: 560px;
     }
     .feature-visual .phone {
-      width: 230px;
-      margin: 28px 20px;
+      width: 218px;
+      margin: 0 0 -46px;
     }
     .feature-text {
       padding: 32px;
@@ -1243,11 +1244,11 @@
       border-radius: 0 0 24px 24px;
     }
     .feature-visual .phone {
-      width: 226px;
-      margin: 35px;
+      width: 195px;
+      margin: 0 0 -38px;
     }
     .feature-word {
-      font-size: 6.5rem;
+      font-size: 5rem;
       top: 22px;
       left: 24px;
     }
