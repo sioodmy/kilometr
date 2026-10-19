@@ -94,7 +94,7 @@ jobs:
       # Bez `packages` domyślnie: pakiet `tools` usunięto z repozytorium
       # Google, sdkmanager kończy się błędem "Failed to find package 'tools'".
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
 
