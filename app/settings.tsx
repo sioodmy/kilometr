@@ -29,7 +29,6 @@ import {
   MapPin,
   Languages,
   Navigation,
-  Activity,
   Minus,
   Plus,
   Rabbit,
@@ -67,8 +66,6 @@ import { getTimetableDownloadGate, remainingHours } from '../src/services/downlo
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
-import { ContributorCard } from '../src/components/ContributorCard';
-import { isContributorAvailable } from '../src/services/contributor/config';
 import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
@@ -183,7 +180,7 @@ const LANG_OPTIONS: {
   { value: 'uk', label: 'langUkrainian' },
 ];
 
-type SettingsSection = 'routing' | 'offline' | 'app' | 'notifications' | 'backup' | 'contributor';
+type SettingsSection = 'routing' | 'offline' | 'app' | 'notifications' | 'backup';
 
 function SettingsLink({
   title,
@@ -228,21 +225,15 @@ export default function SettingsScreen() {
   const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
   const walkMps = useWalkSpeedMps();
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  // Kanał builda nie zmienia się w trakcie życia procesu, więc wystarczy
-  // jednorazowy odczyt: metryka oldalnej (prod ukrywa kartę).
-  const [contributorAvailable] = useState(() => isContributorAvailable());
   const sectionTitles: Record<SettingsSection, string> = {
     routing: s.settings.planningTitle,
     offline: s.settings.offlineTitle,
     app: s.settings.sectionApp,
     notifications: s.notificationPrefs.title,
     backup: s.settings.backupTitle,
-    contributor: s.settings.sectionContributor,
   };
   const activeSection =
-    section &&
-    Object.hasOwn(sectionTitles, section) &&
-    (section !== 'contributor' || contributorAvailable)
+    section && Object.hasOwn(sectionTitles, section)
       ? (section as SettingsSection)
       : null;
   const openSection = (value: SettingsSection) =>
@@ -495,17 +486,6 @@ export default function SettingsScreen() {
                 detail={s.settings.backupSummary}
                 onPress={() => openSection('backup')}
               />
-              {contributorAvailable && (
-                <>
-                  <View style={styles.menuDivider} />
-                  <SettingsLink
-                    icon={Activity}
-                    title={s.settings.sectionContributor}
-                    detail={s.settings.contributorSummary}
-                    onPress={() => openSection('contributor')}
-                  />
-                </>
-              )}
             </View>
             <Pressable
               onPress={() => void Linking.openURL('https://ko-fi.com/sioodmy').catch(() => {})}
@@ -843,8 +823,6 @@ export default function SettingsScreen() {
             </Pressable>
           </>
         )}
-
-        {activeSection === 'contributor' && contributorAvailable && <ContributorCard />}
 
         {activeSection === 'notifications' && <NotificationPrefsCard />}
         {activeSection === 'backup' && <BackupCard />}

@@ -1,6 +1,0 @@
-{
-  "name": "kilometr-contributor",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Telemetria Contributor: FGS typu location (GPS + akcelerometr). Tylko buildy nightly/dev/test."
-}
