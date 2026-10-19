@@ -26,9 +26,9 @@ jobs:
           while read -r ID; do
             curl -fsSL -u ":${AZDO_PAT}" "${BASE}/logs/${ID}?api-version=7.1" -o "/tmp/logs/${ID}" || true
           done < /tmp/ids.txt
-          echo "=== STEP NAMES ==="
-          for f in /tmp/logs/*; do echo "--- $f"; head -n 3 "$f"; done
-          echo "=== EXPO-NOTIFICATIONS MENTIONS ==="
-          grep -rn "expo-notifications\|autolinking\|Expo modules" /tmp/logs/* | tail -120 || true
-          echo "=== PREBUILD TAIL ==="
-          tail -n 120 /tmp/logs/17 || true
+          ls -la /tmp/logs
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-build-28-logs
+          path: /tmp/logs
