@@ -10,6 +10,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.functions.Queues
 
 class DepartureAlarmModule : Module() {
   private val context: Context?
@@ -58,6 +59,6 @@ class DepartureAlarmModule : Module() {
       activity.startActivity(Intent(activity, DepartureAlarmActivity::class.java)
         .putExtra("preview", json))
       true
-    }
+    }.runOnQueue(Queues.MAIN)
   }
 }

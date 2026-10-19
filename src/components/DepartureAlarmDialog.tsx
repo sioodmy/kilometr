@@ -49,7 +49,7 @@ export function DepartureAlarmDialog({ connection, alarm, onClose }: {
   const titleRef = useRef<Text>(null);
   const supported = isDepartureAlarmSupported();
   const current = alarm?.connectionId === connection.id ? alarm : null;
-  const [reference] = useState(() => new Date());
+  const [reference] = useState(() => new Date(current?.referenceAt ?? Date.now()));
   const initialTiming = departureAlarmTiming(connection, 1, reference);
   const availableMinutes = Math.floor(((initialTiming?.journeyAt ?? 0) - Date.now()) / 60_000);
   const [minutes, setMinutes] = useState(current?.leadMin ?? Math.max(1, Math.min(10, availableMinutes)));

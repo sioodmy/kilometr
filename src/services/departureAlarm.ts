@@ -20,6 +20,7 @@ export interface DepartureAlarm {
   leadMin: number;
   at: number;
   journeyAt: number;
+  referenceAt?: number;
   status: 'scheduled' | 'ringing' | 'dismissed';
   time: string;
   date: string;
@@ -67,6 +68,7 @@ function buildPlan(connection: Connection, leadMin: number, reference: Date) {
     leadMin,
     at: timing.at,
     journeyAt: timing.journeyAt,
+    referenceAt: reference.getTime(),
     time: clockFromMs(timing.at),
     date: new Intl.DateTimeFormat(getLocaleSync(), {
       weekday: 'long', day: 'numeric', month: 'long',

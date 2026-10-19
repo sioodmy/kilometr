@@ -4,12 +4,14 @@ import android.app.ActivityOptions
 import android.app.ActivityManager
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import org.json.JSONObject
 
 internal object DepartureAlarmStore {
@@ -56,6 +58,10 @@ internal object DepartureAlarmStore {
       val manager = context.getSystemService(AlarmManager::class.java)
       if (Build.VERSION.SDK_INT >= 31 && !manager.canScheduleExactAlarms()) return false
       DepartureAlarmService.ensureChannel(context, data.getJSONObject("labels"))
+      val notifications = context.getSystemService(NotificationManager::class.java)
+      if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+      if (Build.VERSION.SDK_INT >= 34 && !notifications.canUseFullScreenIntent()) return false
+      if (Build.VERSION.SDK_INT >= 26 && notifications.getNotificationChannel(DepartureAlarmService.CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
       val show = PendingIntent.getActivity(context, REQUEST + 1, routeIntent(context, data),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
       manager.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), operation(context, at))
