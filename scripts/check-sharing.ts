@@ -98,6 +98,31 @@ const stops = [
   { id: 'c', name: 'C', arrival: 87600, departure: 87600 },
 ];
 assert.equal(selectLegStops(journey.legs[0], stops).length, 3);
+const delayed = createSharedConnection(
+  {
+    ...connection,
+    departAt: '23:58',
+    arriveAt: '00:25',
+    legs: [
+      {
+        ...connection.legs[0],
+        departAt: '23:58',
+        arriveAt: '00:25',
+        live: true,
+        intermediateStops: [
+          { stopId: 'a', name: 'A', seq: 1, departSec: 86100 },
+          { stopId: 'c', name: 'C', seq: 3, arriveSec: 87600 },
+        ],
+      },
+    ],
+  },
+  'wroclaw',
+  new Date('2026-10-19T21:00:00Z'),
+);
+assert.equal(delayed.legs[0].departure, 1438);
+assert.equal(delayed.legs[0].scheduledDeparture, 1435);
+assert.equal(selectLegStops(delayed.legs[0], stops).length, 3);
+assert.equal(decodeSharedConnection(encodeSharedConnection(delayed))?.legs[0].scheduledArrival, 20);
 assert.equal(selectLegStops({ ...journey.legs[0], departure: 1200 }, stops).length, 0);
 assert.equal(selectLegStops({ ...journey.legs[0], alight: 'a' }, stops).length, 0);
 assert.match(tripShard('tram-4'), /^[a-f0-9]{2}$/);

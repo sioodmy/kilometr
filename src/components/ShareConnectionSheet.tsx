@@ -133,7 +133,7 @@ export function ShareConnectionSheet({
             collapsable={false}
             accessible
             accessibilityRole="image"
-            accessibilityLabel={s.cardLabel(journey.from, journey.to, connection.arriveAt)}
+            accessibilityLabel={shareMessage(journey, s)}
           >
             <JourneyShareCard journey={journey} />
           </View>

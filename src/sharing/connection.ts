@@ -17,6 +17,8 @@ export interface SharedLeg {
   to: string;
   departure: number;
   arrival: number;
+  scheduledDeparture?: number;
+  scheduledArrival?: number;
   trip?: string;
   board?: string;
   alight?: string;
@@ -48,6 +50,12 @@ function clockMinutes(clock: string): number {
   const match = /^(\d{1,2}):([0-5]\d)$/.exec(clock);
   if (!match || Number(match[1]) > 47) throw new Error('Invalid journey time');
   return (Number(match[1]) * 60 + Number(match[2])) % 1440;
+}
+
+function scheduleMinute(seconds: number | undefined): number | undefined {
+  return seconds == null || !Number.isFinite(seconds)
+    ? undefined
+    : ((Math.floor(seconds / 60) % 1440) + 1440) % 1440;
 }
 
 export function createSharedConnection(
@@ -88,6 +96,12 @@ export function createSharedConnection(
     to: leg.toStop,
     departure: advance(leg.departAt),
     arrival: advance(leg.arriveAt),
+    scheduledDeparture: scheduleMinute(
+      leg.intermediateStops?.find((stop) => stop.stopId === leg.fromStopId)?.departSec,
+    ),
+    scheduledArrival: scheduleMinute(
+      leg.intermediateStops?.find((stop) => stop.stopId === leg.toStopId)?.arriveSec,
+    ),
     trip: leg.tripId,
     board: leg.fromStopId,
     alight: leg.toStopId,
@@ -159,6 +173,8 @@ export function isSharedConnection(value: unknown): value is SharedConnection {
       !optionalText(leg.alight) ||
       !integer(leg.departure, 4319) ||
       !integer(leg.arrival, 4319) ||
+      (leg.scheduledDeparture !== undefined && !integer(leg.scheduledDeparture, 1439)) ||
+      (leg.scheduledArrival !== undefined && !integer(leg.scheduledArrival, 1439)) ||
       leg.departure < cursor ||
       leg.arrival < leg.departure ||
       leg.arrival > value.arrival ||

@@ -14,7 +14,7 @@ Workflow Pages eksportuje rozkłady przy deployu z `main` oraz codziennie o 06:2
 
 ## Weryfikacja z 19 października 2026
 
-- `npm run check:sharing`: format URL, polskie znaki, daty, północ, uszkodzone dane, limit rozpakowania, wszystkie słowniki i dopasowanie przystanków.
+- `npm run check:sharing`: format URL, polskie znaki, daty, północ, uszkodzone dane, limit rozpakowania, wszystkie słowniki i dopasowanie przystanków, także dla opóźnionego połączenia z zachowanymi godzinami rozkładowymi.
 - `npx tsc --noEmit`, `npm run lint`, `npm --prefix landing run build`: poprawne.
 - `npx expo export --platform android`: poprawny bundle JavaScriptu. Autolinking rozpoznaje `RNShare` i `RNViewShot`.
 - Eksport rzeczywistych rozkładów wszystkich 15 miast: poprawny. Build strony sprawdzony także pod ścieżką `/kilometr/`, z surowym gzip oraz automatycznym rozpakowaniem przez hosting.
