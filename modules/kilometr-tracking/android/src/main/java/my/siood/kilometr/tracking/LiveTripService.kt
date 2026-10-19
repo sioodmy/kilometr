@@ -32,8 +32,8 @@ class LiveTripService : Service() {
   private var plan: LiveTripPlan? = null
   private var lastSignature: String? = null
 
-  /** Godziny końca przejazdów, o których już wibrowaliśmy. */
-  private val vibratedAlights = HashSet<Long>()
+  /** Zapamiętujemy odcinek, bo opóźnienie może zmienić godzinę wysiadania. */
+  private val vibratedAlights = HashSet<String>()
 
   private val tick = object : Runnable {
     override fun run() {
@@ -44,6 +44,7 @@ class LiveTripService : Service() {
       }
       val now = System.currentTimeMillis()
       if (current.isExpired(now)) {
+        TripAlerts.cancel(this@LiveTripService)
         shutdown()
         return
       }
@@ -53,10 +54,10 @@ class LiveTripService : Service() {
       // Publikujemy tylko wtedy, gdy zmienia się coś widocznego. Pasek
       // postępu rusza się sekundowo, ale tekst nie, więc przed dojazdem
       // (gdzie postęp praktycznie stoi) budzimy się raz na kwadrans.
-      val signature = "$phase:${current.progressPermille(now)}"
+      val signature = "$phase:${current.stateAt(now)?.atMs}:${current.progressPermille(now)}"
       if (signature != lastSignature) {
         lastSignature = signature
-        publish(current, now)
+        if (!publish(current, now)) return
       }
 
       handler.postDelayed(
@@ -77,6 +78,7 @@ class LiveTripService : Service() {
     val json = intent?.getStringExtra(EXTRA_PLAN)
     if (!json.isNullOrBlank()) {
       LiveTripPlan.fromJson(json)?.let {
+        if (plan?.tripId != it.tripId) vibratedAlights.clear()
         plan = it
         // Nowy plan unieważnia podpis — inaczej pierwsza klatka po starcie
         // zostałaby wstrzymana jako „bez zmian".
@@ -86,6 +88,11 @@ class LiveTripService : Service() {
 
     val current = plan
     if (current == null) {
+      shutdown()
+      return START_NOT_STICKY
+    }
+
+    if (current.isExpired(System.currentTimeMillis()) || LocalStopSignal.isPending(this)) {
       shutdown()
       return START_NOT_STICKY
     }
@@ -112,22 +119,14 @@ class LiveTripService : Service() {
     super.onDestroy()
   }
 
-  /**
-   * Przypomnienie przed wysiadaniem: lekka wibracja na dwie minuty przed
-   * końcem każdego przejazdu pojazdem. Koniec odcinka to zawsze moment,
-   * w którym trzeba coś zrobić (wysiąść na przesiadkę albo na miejscu),
-   * a przy zapatrzonym w telefon ekranie łatwo go przegapić.
-   *
-   * Wibrujemy raz na przejazd, kluczem jest godzina końca odcinka: nowe
-   * wersje planu przychodzą co kilkadziesiąt sekund i bez tego ten sam
-   * odcinek szturchałby przy każdym odświeżeniu.
-   */
+  /** Wibracja przed wysiadaniem, najwyżej raz na odcinek. */
   private fun maybeVibrateAlight(current: LiveTripPlan, nowMs: Long) {
-    for (segment in current.segments) {
+    if (!current.alightAlertsEnabled) return
+    for ((index, segment) in current.segments.withIndex()) {
       if (segment.mode == LiveTripPlan.MODE_WALK) continue
       val at = segment.endAtMs - ALIGHT_LEAD_MS
-      if (nowMs < at || nowMs >= segment.endAtMs) continue
-      if (vibratedAlights.add(segment.endAtMs)) TripVibrator.alight(this)
+      if (nowMs < maxOf(at, segment.startAtMs) || nowMs >= segment.endAtMs) continue
+      if (vibratedAlights.add("$index:${segment.line}")) TripVibrator.alight(this)
     }
   }
 

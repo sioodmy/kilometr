@@ -65,17 +65,16 @@ export default function RootLayout() {
       }
     };
 
-    const initAppReady = initApp()
+    void initApp()
+      .then(async () => {
+        await setupNotifications();
+        await restoreTrackedTrip();
+      })
       .catch((err) => console.warn('[RootLayout] init:', err))
       .finally(() => {
         if (isMounted) setReady(true);
       });
 
-    // Odtwarzanie podróży wymaga wczytanego miasta i kanałów powiadomień.
-    void initAppReady.then(async () => {
-      await setupNotifications();
-      await restoreTrackedTrip();
-    }).catch((err) => console.warn('[RootLayout] notifications init:', err));
     startTrackedTripListener();
 
     return () => {
