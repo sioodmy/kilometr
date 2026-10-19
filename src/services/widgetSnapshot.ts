@@ -112,6 +112,10 @@ export function buildRoutesLink(args: {
 function widgetLabels(): Record<string, string> {
   const w = tr().widgets;
   return {
+    journeyTitle: w.journeyTitle,
+    trackingTitle: w.trackingTitle,
+    checkRoutes: w.checkRoutes,
+    early: w.early('{n}'),
     now: w.now,
     min: w.min,
     onTime: w.onTime,

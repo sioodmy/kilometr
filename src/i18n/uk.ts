@@ -1299,6 +1299,11 @@ export const uk: Strings = {
     titlePlain: (time: string) => `Сполучення • ${time}`,
   },
   widgets: {
+    journeyTitle: 'Твій Kilometr',
+    journeyDescription: 'Відправлення до твоїх місць, а під час відстеження прогрес поїздки',
+    trackingTitle: 'Твоя поїздка',
+    checkRoutes: 'Знайти сполучення',
+    early: (n: string) => `-${n} хв`,
     now: 'зараз',
     min: 'хв',
     onTime: 'Вчасно',

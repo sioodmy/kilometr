@@ -1272,6 +1272,11 @@ export const de: Strings = {
     titlePlain: (time: string) => `Verbindung • ${time}`,
   },
   widgets: {
+    journeyTitle: 'Dein Kilometr',
+    journeyDescription: 'Abfahrten zu deinen Orten und der Fortschritt deiner verfolgten Fahrt',
+    trackingTitle: 'Deine Fahrt',
+    checkRoutes: 'Verbindungen suchen',
+    early: (n: string) => `-${n} Min.`,
     now: 'jetzt',
     min: 'Min.',
     onTime: 'Pünktlich',

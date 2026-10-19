@@ -1258,6 +1258,11 @@ export const en: Strings = {
     titlePlain: (time: string) => `Connection • ${time}`,
   },
   widgets: {
+    journeyTitle: 'Your Kilometr',
+    journeyDescription: 'Departures to your places, switching to progress while you track a trip',
+    trackingTitle: 'Your trip',
+    checkRoutes: 'Find connections',
+    early: (n: string) => `-${n} min`,
     now: 'now',
     min: 'min',
     onTime: 'On time',
