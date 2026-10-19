@@ -61,7 +61,6 @@
           "locationWhenInUsePermission": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji."
         }
       ],
-      "./plugins/with-contributor",
       [
         "expo-localization",
         {

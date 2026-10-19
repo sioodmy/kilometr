@@ -232,24 +232,19 @@ jobs:
 
       # Google Play wymusza deklarację Location permissions, gdy tylko
       # ACCESS_BACKGROUND_LOCATION pojawi się w przesłanym bundle - nawet
-      # jeśli runtime go nie używa. AAB to build bez Contributora (plugin
-      # plugins/with-contributor.js), więc manifes NIE MA prawa zawierać
-      # zgód tła ani serwisu telemetrii.
-      - name: Gate: AAB bez Contributora
+      # jeśli runtime go nie używa. Aplikacja nie zbiera nic w tle, więc
+      # zgody tła NIE MA prawa być w manifeście.
+      - name: Gate: AAB bez zgód lokalizacji w tle
         run: |
           set -euo pipefail
           AAB="android/app/build/outputs/bundle/release/app-release.aab"
           # Manifest wewnątrz AAB to binarny protobuf, ale nazwy uprawnień są
           # w nim literalne - wystarczy wyszukanie ciągu.
           if unzip -p "$AAB" Base/manifest/AndroidManifest.xml | grep -aq "ACCESS_BACKGROUND_LOCATION\|FOREGROUND_SERVICE_LOCATION"; then
-            echo "::error::AAB do Google zawiera zgody Contributora (ACCESS_BACKGROUND_LOCATION lub FOREGROUND_SERVICE_LOCATION). Sprawdź plugins/with-contributor.js."
+            echo "::error::AAB do Google zawiera zgody lokalizacji w tle (ACCESS_BACKGROUND_LOCATION lub FOREGROUND_SERVICE_LOCATION). Aplikacja nie zbiera nic w tle."
             exit 1
           fi
-          if unzip -p "$AAB" Base/manifest/AndroidManifest.xml | grep -aq "kilometr.contributor.ContributorService"; then
-            echo "::error::AAB do Google zawiera serwis ContributorService. Użytkownicy Play nie mogą pytać o lokalizację w tle."
-            exit 1
-          fi
-          echo "Gate OK: AAB bez ACCESS_BACKGROUND_LOCATION i bez ContributorService"
+          echo "Gate OK: AAB bez ACCESS_BACKGROUND_LOCATION"
 
       - name: Stage AAB
         env:
