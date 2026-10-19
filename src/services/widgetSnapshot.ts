@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { reloadWidgets } from '../../modules/kilometr-widgets';
 import { tr } from '../i18n/locale';
-import { getLineColors, inferTransitMode } from './lineIdentity';
+import { getLineColors, inferTransitMode, normalizeLineName } from './lineIdentity';
 import { toAbsoluteMs } from './notifications/format';
 import type { Connection, Leg } from '../types/models';
 
@@ -14,7 +14,7 @@ import type { Connection, Leg } from '../types/models';
 export const WIDGET_SNAPSHOT_FILE = 'kilometr-widget.json';
 
 export interface WidgetLineBadge {
-  mode: 'tram' | 'bus' | 'train' | 'cable' | 'walk';
+  mode: 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway' | 'walk';
   line?: string;
   bg?: string;
   fg?: string;
@@ -112,6 +112,10 @@ export function buildRoutesLink(args: {
 function widgetLabels(): Record<string, string> {
   const w = tr().widgets;
   return {
+    journeyTitle: w.journeyTitle,
+    trackingTitle: w.trackingTitle,
+    checkRoutes: w.checkRoutes,
+    early: w.early('{n}'),
     now: w.now,
     min: w.min,
     onTime: w.onTime,
@@ -140,10 +144,11 @@ export function departureTs(conn: Pick<Connection, 'departureSec' | 'departInMin
 }
 
 export function legBadge(leg: Pick<Leg, 'mode' | 'line'>): WidgetLineBadge {
-  const mode = inferTransitMode(leg.mode, leg.line);
+  const line = normalizeLineName(leg.line, leg.mode, true);
+  const mode = inferTransitMode(leg.mode, line || leg.line);
   if (mode === 'walk') return { mode };
-  const { bg, fg } = getLineColors(leg.line, leg.mode);
-  return { mode, line: leg.line, bg, fg };
+  const { bg, fg } = getLineColors(line || leg.line, leg.mode);
+  return { mode, line: line || leg.line, bg, fg };
 }
 
 /** Pierwszy odcinek z pojazdem, czyli to, na co trzeba zdążyć. */

@@ -23,7 +23,7 @@ export interface MapLeg {
   line?: string;
   /** kierunek kursu (np. "BISKUPIN") */
   direction?: string;
-  /** kolor linii z palety TRANSIT_PALETTE (identyczny z LineBadge) */
+  /** kolor linii z palety TRANSIT_PALETTE, rozjaśniony pod ciemną mapę (mapLineColor) */
   color: string;
   fromStop: string;
   toStop: string;
@@ -58,7 +58,7 @@ export interface MapVehicle extends LatLon {
   vehicleId: string;
   legId: string;
   line: string;
-  mode: 'bus' | 'tram' | 'train' | 'cable';
+  mode: 'bus' | 'tram' | 'train' | 'cable' | 'trolleybus' | 'subway';
   color: string;
   /** kurs pojazdu w stopniach (0 = północ) */
   heading: number;

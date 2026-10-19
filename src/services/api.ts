@@ -1,11 +1,15 @@
 import * as Location from 'expo-location';
 import { kvGet, kvGetStrict, kvSet } from './storage';
-import { DEFAULT_LOCATION } from '../config';
+import { defaultLocationForCity } from '../config';
+import { getCity, cityKey, suggestCityForCoords } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, rehydrateConnections, saveConnections, saveLastLocation, saveRecent, saveSuggestions, findCachedConnection } from './offlineCache';
+import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
+import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
+import { normalizeConnectionId } from './routing/connectionIdentity';
 
 let cachedLocation: LocationResult | null = null;
 let cachedAt = 0;
@@ -18,8 +22,31 @@ const locationListeners = new Set<(loc: LocationResult) => void>();
 const FRESH_FIX_MS = 45_000;
 /** Minimalny odstęp między odczytami High, chroni GPS i sieć przed młynkiem. */
 const REFINE_MIN_INTERVAL_MS = 15_000;
+/** Maksymalny czas oczekiwania na pojedynczy odczyt GPS w budynku. */
+const HIGH_FIX_TIMEOUT_MS = 8_000;
 /** Ruch o tyle metrów (albo zmiana przystanku) znaczy fix istotnie lepszy. */
 export const LOCATION_REFINE_DELTA_M = 25;
+
+function getPositionWithTimeout(
+  options: Location.LocationOptions,
+  timeoutMs: number,
+): Promise<Location.LocationObject> {
+  return new Promise<Location.LocationObject>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Location request timed out'));
+    }, timeoutMs);
+    Location.getCurrentPositionAsync(options).then(
+      (pos) => {
+        clearTimeout(timer);
+        resolve(pos);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6371000;
@@ -45,12 +72,32 @@ function newId(): string {
  * tylko wtedy, gdy ten odczyt wciąż jest najnowszy, więc wolniejszy reverse-geocode
  * słabego fixu nie może nadpisać późniejszego, precyzyjnego wyniku.
  */
+function activeCityDef() {
+  try {
+    return getCity(getActiveCityIdSync());
+  } catch {
+    return getCity('wroclaw');
+  }
+}
+
 async function resolveLocation(lat: number, lon: number, accuracyM?: number | null): Promise<LocationResult> {
   const seq = ++cacheWriteSeq;
-  let result: LocationResult = { title: 'Twoja lokalizacja', address: 'Wrocław', lat, lon, accuracyM };
+  const fallback = defaultLocationForCity(activeCityDef().id);
+  let result: LocationResult = { title: fallback.title, address: fallback.address, lat, lon, accuracyM };
   let city: string | null = null;
   let foundStop = false;
   let hadReverse = false;
+
+  if (Number.isFinite(lat) && Number.isFinite(lon) && (accuracyM == null || accuracyM <= 65)) {
+    seedCurrentLocation({
+      lat,
+      lon,
+      accuracy: accuracyM ?? null,
+      speed: null,
+      heading: null,
+      timestamp: Date.now(),
+    });
+  }
 
   // Miejscowość z reverse-geocode trzymamy od razu, bo karta
   // „Nieobsługiwane miasto" pokazuje ją bez drugiego zapytania.
@@ -82,12 +129,18 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
     }
   }
 
-  if (seq === cacheWriteSeq) {
+  const existingIsMuchBetter =
+    cachedLocation != null &&
+    Date.now() - cachedAt < FRESH_FIX_MS &&
+    (cachedLocation.accuracyM ?? 999) <= 25 &&
+    (accuracyM ?? 999) > 60;
+
+  if (seq === cacheWriteSeq && !existingIsMuchBetter) {
     cachedLocation = result;
     cachedAt = Date.now();
     if (foundStop) void saveLastLocation(result);
   }
-  return result;
+  return existingIsMuchBetter && cachedLocation ? cachedLocation : result;
 }
 
 /**
@@ -96,16 +149,22 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
  * realnie się przesunęła albo zmienił się najbliższy przystanek; drobny szum
  * nie może restartować wyszukiwania tras.
  */
-async function refineLocation(): Promise<LocationResult | null> {
+async function refineLocation(force?: boolean): Promise<LocationResult | null> {
   if (refineInFlight) return refineInFlight;
+  const cachedIsCoarse = (cachedLocation?.accuracyM ?? 999) > 35;
   // Kolejne przebudzenia stanu nie mogą mielić odczytami High co chwilę.
-  if (cachedLocation && Date.now() - lastRefineAt < REFINE_MIN_INTERVAL_MS) return cachedLocation;
+  if (!force && !cachedIsCoarse && cachedLocation && Date.now() - lastRefineAt < REFINE_MIN_INTERVAL_MS) {
+    return cachedLocation;
+  }
   refineInFlight = (async () => {
     lastRefineAt = Date.now();
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') return null;
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const pos = await getPositionWithTimeout(
+        { accuracy: Location.Accuracy.High },
+        HIGH_FIX_TIMEOUT_MS,
+      );
       const prev = cachedLocation;
       const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
       const movedM = prev ? distanceM(prev.lat, prev.lon, loc.lat, loc.lon) : Infinity;
@@ -141,10 +200,17 @@ export const LocationService: ILocationService = {
       // ekran główny montuje się pod spodem, zanim _layout przekieruje
       // na onboarding, i systemowy dialog wyskakiwał przed setup screenem.
       try {
-        if (!(await hasSeenOnboarding())) return { ...DEFAULT_LOCATION };
+        if (!(await hasSeenOnboarding())) return { ...defaultLocationForCity(activeCityDef().id) };
       } catch {}
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return { ...DEFAULT_LOCATION };
+      if (status !== 'granted') return { ...defaultLocationForCity(activeCityDef().id) };
+
+      const live = getCurrentLocationSnapshot().location;
+      if (live && Date.now() - live.timestamp < 15_000 && (live.accuracy ?? 99) <= 30) {
+        const loc = await resolveLocation(live.lat, live.lon, live.accuracy);
+        if (options?.force) void refineLocation(true);
+        return loc;
+      }
 
       if (!options?.force) {
         // Świeży fix oddajemy od razu; precyzja dociąga się w tle i sama
@@ -153,23 +219,38 @@ export const LocationService: ILocationService = {
           void refineLocation();
           return cachedLocation;
         }
-        const last = await Location.getLastKnownPositionAsync({ maxAge: 120_000, requiredAccuracy: 300 });
+        const last = await Location.getLastKnownPositionAsync({ maxAge: 90_000, requiredAccuracy: 180 });
         if (last) {
           const loc = await resolveLocation(last.coords.latitude, last.coords.longitude, last.coords.accuracy);
           void refineLocation();
           return loc;
         }
+      } else {
+        try {
+          const highPos = await getPositionWithTimeout(
+            { accuracy: Location.Accuracy.High },
+            3500,
+          );
+          return await resolveLocation(
+            highPos.coords.latitude,
+            highPos.coords.longitude,
+            highPos.coords.accuracy,
+          );
+        } catch {}
       }
 
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const pos = await getPositionWithTimeout(
+        { accuracy: Location.Accuracy.Balanced },
+        5000,
+      );
       const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-      void refineLocation();
+      void refineLocation(Boolean(options?.force));
       return loc;
     } catch (err) {
       console.warn('[LocationService] Failed to acquire device location:', err);
     }
 
-    return { ...DEFAULT_LOCATION };
+    return { ...defaultLocationForCity(activeCityDef().id) };
   },
   refineLocation,
   subscribe,
@@ -202,6 +283,7 @@ export class SearchAbortedError extends Error {
 const mergedCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MERGED_TTL_MS = 120 * 1000;
 const MERGED_MAX = 60;
+const NETWORK_DELAY_MS = 280;
 
 function mergedGet(key: string): Suggestion[] | null {
   const e = mergedCache.get(key);
@@ -226,6 +308,7 @@ export const SearchService: ISearchService = {
     query: string,
     coords?: { lat: number; lon: number },
     scope: string = DEFAULT_SEARCH_SCOPE,
+    onPartial?: (results: Suggestion[]) => void,
   ): Promise<Suggestion[]> {
     const q = query.trim();
     if (!q) return [];
@@ -255,12 +338,13 @@ export const SearchService: ISearchService = {
       ensurePoiIndex();
 
       // 1. Lokalne źródła (szybkie, offline): przystanki GTFS + indeks POI
-      // + statyczna lista budynków PWr.
+      // + specyfiki miasta (Polinka i budynki PWr tylko we Wrocławiu).
       const [stopHits, poiHits] = await Promise.all([
         searchStops(q, 12).catch(() => []),
         searchPois(q, coords?.lat, coords?.lon, 8).catch(() => []),
       ]);
       if (!isCurrent()) throw new SearchAbortedError();
+      const city = activeCityDef();
       const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
         id: `stop-${h.stop_id}`,
         title: h.name.toUpperCase(),
@@ -276,9 +360,9 @@ export const SearchService: ISearchService = {
       }));
       const localSuggestions = [
         ...stopSuggestions,
-        ...searchPolinkaStops(q, coords?.lat, coords?.lon),
+        ...(city.features.cable ? searchPolinkaStops(q, coords?.lat, coords?.lon) : []),
         ...poiHits,
-        ...searchPwrBuildings(q, coords?.lat, coords?.lon, 8),
+        ...(city.features.campusPois ? searchPwrBuildings(q, coords?.lat, coords?.lon, 8) : []),
       ];
 
       // 2. Sieć (Nominatim) tylko gdy lokalnie za mało albo to adres z numerem.
@@ -288,6 +372,13 @@ export const SearchService: ISearchService = {
       const needNetwork = q.length >= 2 && (looksLikeAddress || localSuggestions.length < 5);
       let remoteHits: Suggestion[] = [];
       if (needNetwork) {
+        // Lokalne trafienia od razu na ekran, sieć dopiero gdy user przestanie pisać
+        // (Nominatim ma limit 1 req/s, a każdy znak i tak by anulował żądanie).
+        if (onPartial && localSuggestions.length > 0) {
+          onPartial(dedupeAndSort(localSuggestions, [], hasPos, normQ).slice(0, 15));
+        }
+        await new Promise((r) => setTimeout(r, NETWORK_DELAY_MS));
+        if (!isCurrent()) throw new SearchAbortedError();
         remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(() => []);
         if (!isCurrent()) throw new SearchAbortedError();
       }
@@ -320,6 +411,10 @@ export const SearchService: ISearchService = {
 // In-memory recent connections for getConnectionById
 const recentPlannedConnections = new Map<string, Connection>();
 
+export function getPlannedConnection(id: string): Connection | undefined {
+  return recentPlannedConnections.get(normalizeConnectionId(id));
+}
+
 export const RoutingService: IRoutingService = {
   async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
     try {
@@ -338,6 +433,7 @@ export const RoutingService: IRoutingService = {
         minTransferSec: query.minTransferSec,
         trainsEnabled: query.trainsEnabled,
         cableEnabled: query.cableEnabled,
+        allowedTransferModes: query.allowedTransferModes,
         trainMinTransferSec: query.trainMinTransferSec,
         maxWalkM: query.maxWalkM,
         walkSpeedMps: query.walkSpeedMps,
@@ -375,7 +471,8 @@ export const RoutingService: IRoutingService = {
   },
 
   async getConnectionById(id: string): Promise<{ connection: Connection; source: 'live' | 'cache' } | undefined> {
-    const found = recentPlannedConnections.get(id);
+    id = normalizeConnectionId(id);
+    const found = getPlannedConnection(id);
     if (found) return { connection: found, source: 'live' };
 
     const saved = await this.isRouteSaved(id);
@@ -390,7 +487,7 @@ export const RoutingService: IRoutingService = {
       // Z dysku: czasy przeliczamy na teraz i gasiemy `live`, żeby szczegóły
       // nie udawały, że mają opóźnienie z serwera. Ekran dostanie
       // `source: 'cache'` i powie o tym wprost użytkownikowi.
-      return { connection: rehydrateConnections([cached])[0], source: 'cache' };
+      return { connection: cached, source: 'cache' };
     }
 
     return undefined;
@@ -400,7 +497,7 @@ export const RoutingService: IRoutingService = {
     try {
       const all = await getSavedRoutes();
       all.push({ id: connection.id, savedAt: Date.now(), connection });
-      await kvSet('kilometr.saved_routes', JSON.stringify(all));
+      await kvSet(savedRoutesKey(), JSON.stringify(all));
     } catch (err) {
       console.warn('[RoutingService] Failed to save route:', err);
     }
@@ -410,7 +507,7 @@ export const RoutingService: IRoutingService = {
     try {
       const all = await getSavedRoutes();
       const filtered = all.filter(r => r.id !== id);
-      await kvSet('kilometr.saved_routes', JSON.stringify(filtered));
+      await kvSet(savedRoutesKey(), JSON.stringify(filtered));
     } catch (err) {
       console.warn('[RoutingService] Failed to delete saved route:', err);
     }
@@ -435,23 +532,93 @@ export const RoutingService: IRoutingService = {
 
 };
 
+// Zapisane trasy też są per-miasto (połączenie ma sens tylko w bazie miasta,
+// w którym je zaplanowano). Ten sam wzorzec kluczy co miejsca.
+const SAVED_ROUTES_BASE_KEY = 'kilometr.saved_routes';
+
+function savedRoutesKey(cityId?: string): string {
+  return cityKey(SAVED_ROUTES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
+}
+
 async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
   try {
-    const raw = await kvGet('kilometr.saved_routes');
+    const raw = await kvGet(savedRoutesKey());
     if (raw) return JSON.parse(raw);
   } catch {}
   return [];
 }
 
+// Miejsca są per-miasto: każde miasto ma własny kubełek (`cityKey`),
+// Wrocław trzyma legacy klucz bez sufiksu. Kubełek wynika z miasta
+// aktywnego w chwili zapisu, więc Kraków nigdy nie zobaczy „Domu”
+// z Wrocławia (i na odwrót).
+const PLACES_BASE_KEY = 'kilometr.places';
+
+function placesKey(cityId?: string): string {
+  return cityKey(PLACES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
+}
+
 // Odczyt listy miejsc do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
 // żeby add/update/delete nie nadpisały prawdziwych danych pustą listą.
 // Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
-async function readPlaces(): Promise<SavedPlace[]> {
-  const raw = await kvGetStrict('kilometr.places');
+async function readPlaces(key?: string): Promise<SavedPlace[]> {
+  const raw = await kvGetStrict(key ?? placesKey());
   if (!raw) return [];
   const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error('kilometr.places is not an array');
+  if (!Array.isArray(parsed)) throw new Error(`${key ?? PLACES_BASE_KEY} is not an array`);
   return parsed as SavedPlace[];
+}
+
+/**
+ * Jednorazowa migracja miejsc sprzed multi-city. Legacy kubełek trzymał
+ * wszystko razem: wpisy leżące w strefie innego miasta przenosimy do jego
+ * kubełka, reszta (w tym punkty spoza wszystkich miast) zostaje we Wrocławiu.
+ * Idempotentna: powtórne wywołanie nic nie rusza.
+ */
+let placesMigration: Promise<void> | null = null;
+
+export function ensurePlacesMigrated(): Promise<void> {
+  if (!placesMigration) placesMigration = migratePlacesToCityBuckets();
+  return placesMigration;
+}
+
+async function migratePlacesToCityBuckets(): Promise<void> {
+  let legacy: SavedPlace[];
+  try {
+    legacy = await readPlaces(cityKey(PLACES_BASE_KEY, 'wroclaw'));
+  } catch (err) {
+    console.warn('[FavoritesService] migration read failed:', err);
+    return;
+  }
+  if (legacy.length === 0) return;
+  const movers = new Map<string, SavedPlace[]>();
+  const staying = legacy.filter((p) => {
+    const hit = suggestCityForCoords(p?.lat, p?.lon);
+    if (hit && hit.id !== 'wroclaw') {
+      const list = movers.get(hit.id) ?? [];
+      list.push(p);
+      movers.set(hit.id, list);
+      return false;
+    }
+    return true;
+  });
+  if (movers.size === 0) return;
+  for (const [cityId, moved] of movers) {
+    try {
+      const key = cityKey(PLACES_BASE_KEY, getCity(cityId).id);
+      const existing = await readPlaces(key);
+      const have = new Set(existing.map((p) => p.id));
+      await kvSet(key, JSON.stringify([...existing, ...moved.filter((p) => !have.has(p.id))]));
+    } catch (err) {
+      console.warn('[FavoritesService] migration write failed:', err);
+      return;
+    }
+  }
+  try {
+    await kvSet(cityKey(PLACES_BASE_KEY, 'wroclaw'), JSON.stringify(staying));
+  } catch (err) {
+    console.warn('[FavoritesService] migration cleanup failed:', err);
+  }
 }
 
 // Serializuje read-modify-write listy miejsc: dwa równoległe addPlace nie mogą
@@ -464,8 +631,10 @@ function withPlacesLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export const FavoritesService: IFavoritesService = {
+  /** Tylko miejsca aktywnego miasta (po migracji legacy kubełka). */
   async list(): Promise<SavedPlace[]> {
     try {
+      await ensurePlacesMigrated();
       return await readPlaces();
     } catch (err) {
       console.warn('[FavoritesService] list failed:', err);
@@ -476,11 +645,12 @@ export const FavoritesService: IFavoritesService = {
   async smartFromOrigin(originId: string, coords?: { lat: number; lon: number }): Promise<SmartDestination[]> {
     try {
       const { getSmartDestinationsForLocation } = await import('./smartRanker');
+      const city = activeCityDef();
       // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS — a
       // ranking na `NaN` wypadałby z każdego promienia, czyli pokazałby
       // historię z całego miasta jako „w okolicy".
-      const lat = Number.isFinite(coords?.lat) ? coords!.lat! : DEFAULT_LOCATION.lat;
-      const lon = Number.isFinite(coords?.lon) ? coords!.lon! : DEFAULT_LOCATION.lon;
+      const lat = Number.isFinite(coords?.lat) ? coords!.lat! : city.center.lat;
+      const lon = Number.isFinite(coords?.lon) ? coords!.lon! : city.center.lon;
       return await getSmartDestinationsForLocation(lat, lon);
     } catch (err) {
       console.warn('[FavoritesService] smartFromOrigin failed:', err);
@@ -500,6 +670,7 @@ export const FavoritesService: IFavoritesService = {
     anchorStopLon?: number | null;
   }): Promise<SavedPlace> {
     return withPlacesLock(async () => {
+      await ensurePlacesMigrated();
       const places = await readPlaces();
       // `Math.random().toString(36).substring(7)` bywa puste: dla 0 → "0" (długość 1),
       // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
@@ -521,18 +692,19 @@ export const FavoritesService: IFavoritesService = {
         anchorStopLon: place.anchorStopLon || undefined,
       };
       places.push(newPlace);
-      await kvSet('kilometr.places', JSON.stringify(places));
+      await kvSet(placesKey(), JSON.stringify(places));
       return newPlace;
     });
   },
 
   async updatePlace(id: string, updates: Partial<SavedPlace>): Promise<SavedPlace | null> {
     return withPlacesLock(async () => {
+      await ensurePlacesMigrated();
       const places = await readPlaces();
       const idx = places.findIndex(p => p.id === id);
       if (idx === -1) return null;
       places[idx] = { ...places[idx], ...updates };
-      await kvSet('kilometr.places', JSON.stringify(places));
+      await kvSet(placesKey(), JSON.stringify(places));
       return places[idx];
     });
   },
@@ -541,6 +713,7 @@ export const FavoritesService: IFavoritesService = {
     return withPlacesLock(async () => {
       let places: SavedPlace[];
       try {
+        await ensurePlacesMigrated();
         places = await readPlaces();
       } catch (err) {
         // Błąd odczytu: NIE nadpisujemy listy pustką, tylko zgłaszamy porażkę.
@@ -549,7 +722,7 @@ export const FavoritesService: IFavoritesService = {
       }
       const filtered = places.filter(p => p.id !== id);
       if (filtered.length === places.length) return false;
-      await kvSet('kilometr.places', JSON.stringify(filtered));
+      await kvSet(placesKey(), JSON.stringify(filtered));
       return true;
     });
   },

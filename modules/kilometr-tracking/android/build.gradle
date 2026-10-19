@@ -1,11 +1,11 @@
 apply plugin: 'com.android.library'
 apply plugin: 'expo-module-gradle-plugin'
 
-group = 'pl.wroclaw.kilometr.tracking'
+group = 'my.siood.kilometr.tracking'
 version = '1.0.0'
 
 android {
-  namespace "pl.wroclaw.kilometr.tracking"
+  namespace "my.siood.kilometr.tracking"
   defaultConfig {
     versionCode 1
     versionName '1.0.0'
@@ -16,6 +16,10 @@ android {
 }
 
 dependencies {
+  // expo-notifications w SDK 57 jest domyślnie podawany jako gotowy AAR, więc
+  // bez `expo.autolinking.buildFromSource` w package.json nie istnieje projekt
+  // Gradle `:expo-notifications`.
+  implementation project(":expo-notifications")
   // ProgressStyle + promocja Live Updates. Wersja 1.17.0 to ta, z której
   // korzysta już expo-modules-core, więc nie dokładamy nowej kopii.
   implementation "androidx.core:core-ktx:1.17.0"

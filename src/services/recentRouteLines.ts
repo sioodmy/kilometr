@@ -1,6 +1,8 @@
 // Linie, którymi użytkownik jechał / które widział w wynikach tras.
 // Zapis przy każdym cache'u połączeń + przy odczycie z zapisanych tras.
 import { kvGet, kvSet } from './storage';
+import { cityKey, suggestCityForCoords, type CityId } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 import type { Connection, Leg, SavedRoute } from '../types/models';
 
 const KEY = 'kilometr.recent_route_lines.v1';
@@ -8,6 +10,10 @@ const TWO_WEEKS_MS = 14 * 24 * 3600 * 1000;
 const MAX_LINES = 80;
 
 type LineStamp = Record<string, number>;
+
+function stampsKey(cityId?: CityId): string {
+  return cityKey(KEY, cityId ?? getActiveCityIdSync());
+}
 
 function normalizeLine(line: string): string {
   return line.trim().toUpperCase();
@@ -26,9 +32,9 @@ export function linesFromConnections(list: Connection[]): string[] {
   return [...out];
 }
 
-async function readStamps(): Promise<LineStamp> {
+async function readStamps(cityId?: CityId): Promise<LineStamp> {
   try {
-    const raw = await kvGet(KEY);
+    const raw = await kvGet(stampsKey(cityId));
     if (!raw) return {};
     const parsed = JSON.parse(raw) as LineStamp;
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -37,13 +43,13 @@ async function readStamps(): Promise<LineStamp> {
   }
 }
 
-async function writeStamps(stamps: LineStamp): Promise<void> {
+async function writeStamps(stamps: LineStamp, cityId?: CityId): Promise<void> {
   const cutoff = Date.now() - TWO_WEEKS_MS;
   const entries = Object.entries(stamps)
     .filter(([, ts]) => typeof ts === 'number' && ts >= cutoff)
     .sort((a, b) => b[1] - a[1])
     .slice(0, MAX_LINES);
-  await kvSet(KEY, JSON.stringify(Object.fromEntries(entries)));
+  await kvSet(stampsKey(cityId), JSON.stringify(Object.fromEntries(entries)));
 }
 
 /** Dopisz linie z właśnie sprawdzonej listy połączeń. */
@@ -93,12 +99,19 @@ export async function rememberLinesFromConnectionCache(): Promise<void> {
     if (!raw) return;
     const all = JSON.parse(raw) as Record<string, { savedAt?: number; data?: Connection[] }>;
     if (!all || typeof all !== 'object') return;
+    // Cache połączeń jest globalny (kluczowany zapytaniem), a stemple linii
+    // per-miasto: wpis pamiętamy tylko w mieście, z którego było zapytanie
+    // (pierwsze dwie liczby klucza to fromLat, fromLon). Bez tego linie
+    // z Krakowa trafiałyby do filtra aktualności we Wrocławiu.
+    const activeId = getActiveCityIdSync();
     const cutoff = Date.now() - TWO_WEEKS_MS;
-    const stamps = await readStamps();
+    const stamps = await readStamps(activeId);
     let changed = false;
-    for (const entry of Object.values(all)) {
+    for (const [key, entry] of Object.entries(all)) {
       const savedAt = entry?.savedAt;
       if (typeof savedAt !== 'number' || savedAt < cutoff || !Array.isArray(entry.data)) continue;
+      const [fromLat, fromLon] = key.split('|').map(Number);
+      if (suggestCityForCoords(fromLat, fromLon)?.id !== activeId) continue;
       for (const line of linesFromConnections(entry.data)) {
         if ((stamps[line] ?? 0) < savedAt) {
           stamps[line] = savedAt;
@@ -106,7 +119,7 @@ export async function rememberLinesFromConnectionCache(): Promise<void> {
         }
       }
     }
-    if (changed) await writeStamps(stamps);
+    if (changed) await writeStamps(stamps, activeId);
   } catch {
     // best-effort
   }
@@ -118,7 +131,9 @@ export async function loadRecentRouteLines(
 ): Promise<string[]> {
   await rememberLinesFromConnectionCache();
   try {
-    const raw = await kvGet('kilometr.saved_routes');
+    // Zapisane trasy czytamy z kubełka aktywnego miasta: linie z drugiego
+    // miasta nie mają sensu w filtrze aktualności.
+    const raw = await kvGet(cityKey('kilometr.saved_routes', getActiveCityIdSync()));
     if (raw) {
       const routes = JSON.parse(raw) as SavedRoute[];
       if (Array.isArray(routes)) await rememberLinesFromSavedRoutes(routes);

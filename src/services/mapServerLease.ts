@@ -1,4 +1,6 @@
 import { startMapServer, stopMapServer } from '../../modules/kilometr-maps';
+import { getActiveCityIdSync } from './cityStore';
+import { hasOfflineMap } from './offlineMap';
 
 export interface MapServerLease {
   base: string | null;
@@ -10,7 +12,16 @@ let baseUrl: string | null = null;
 let startPromise: Promise<string | null> | null = null;
 let stopPromise: Promise<void> | null = null;
 
+/**
+ * Serwer kafli ma sens tylko dla miasta, które ma pobrany pakiet. Bez tego
+ * warunku mapa miasta bez pakietu dostałaby `base` serwera (z kaflami innego
+ * miasta), każdy kafel 404owałby i nie było fallbacku na CDN: pusta mapa
+ * przy pełnym łączu.
+ */
 export async function acquireMapServer(): Promise<MapServerLease> {
+  if (!(await hasOfflineMap(getActiveCityIdSync()))) {
+    return { base: null, release: () => undefined };
+  }
   leases += 1;
   let released = false;
   const release = () => {

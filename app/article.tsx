@@ -13,11 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, ExternalLink } from 'lucide-react-native';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
+import { useActiveCity } from '../src/services/cityStore';
 import { LineBadge } from '../src/components/LineBadge';
 import { fetchArticle, type ArticleBlock, type NewsSource } from '../src/services/mpkNews';
 
 export default function ArticleScreen() {
   const s = useStrings();
+  const { cityId } = useActiveCity();
   const router = useRouter();
   const params = useLocalSearchParams<{
     url?: string;
@@ -71,7 +73,8 @@ export default function ArticleScreen() {
     void Linking.openURL(url).catch(() => {});
   }, [url]);
 
-  const sourceLabel = source === 'mpk' ? s.news.sourceMpk : s.news.sourceCity;
+  const sourceLabel =
+    source === 'mpk' ? s.news.sourceMpk(s.city.operator(cityId)) : s.news.sourceCity(s.city.portal(cityId));
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>

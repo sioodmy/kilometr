@@ -2,8 +2,9 @@
 <resources>
     <string name="kw_next_label">Nächste Abfahrt</string>
     <string name="kw_next_desc">Countdown bis zur ersten Fahrt zu deinen Zielen</string>
-    <string name="kw_dest_label">Abfahrten zu deinen Zielen</string>
-    <string name="kw_dest_desc">Bis zu 4 häufige Ziele mit nächster Linie und Zeit</string>
+    <string name="kw_dest_label">Dein Kilometr</string>
+    <string name="kw_dest_desc">Abfahrten zu deinen Orten und der Fortschritt deiner verfolgten Fahrt</string>
+    <string name="kw_min">Min.</string>
     <string name="kw_trip_label">Verfolgte Fahrt</string>
     <string name="kw_trip_desc">Zeiten, Umstiege und Fortschritt der verfolgten Fahrt</string>
     <string name="kw_search_label">Verbindungssuche</string>
@@ -14,4 +15,14 @@
     <string name="kw_open_app">Öffne Kilometr, um Abfahrten zu laden</string>
     <string name="kw_search_hint">Wohin?</string>
     <string name="kw_sample_place">Zuhause</string>
+    <string name="kw_sample_work">Arbeit</string>
+    <string name="kw_sample_gym">Fitnessstudio</string>
+    <string name="kw_sample_school">Schule</string>
+    <string name="kw_sample_origin">Zentrum</string>
+    <string name="kw_sample_updated">Stand 14:30</string>
+    <string name="kw_sample_depart">ab 14:32</string>
+    <string name="kw_sample_time">5 Min.</string>
+    <string name="kw_sample_trip_title">Zuhause → Arbeit</string>
+    <string name="kw_sample_status">Pünktlich</string>
+    <string name="kw_sample_phase">Ankunft in 12 Min.</string>
 </resources>

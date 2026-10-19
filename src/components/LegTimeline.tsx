@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ArrowRight, BusFront, ChevronDown, Footprints, TramFront } from 'lucide-react-native';
+import { ArrowRight, BusFront, ChevronDown, Footprints, TrainFront, TramFront } from 'lucide-react-native';
 import Animated, {
   LinearTransition,
   useAnimatedStyle,
@@ -19,17 +19,21 @@ import { useCurrentLocation, type CurrentLocation } from '../services/currentLoc
 import {
   buildFallbackStops,
   findUserSegment,
-  locateVehicle,
   locateLiveStopPosition,
   normalizeName,
 } from '../services/vehiclePosition';
 import { useStrings, type Strings } from '../i18n';
+import { motion } from '../theme/motion';
+
+const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
 // Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
-// pociągi i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
+// pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
 function genericModeGen(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.routes.vehicleTramGen;
   if (mode === 'train') return t.routes.vehicleTrainGen;
+  if (mode === 'subway') return t.routes.vehicleSubwayGen;
+  if (mode === 'trolleybus') return t.routes.vehicleTrolleyGen;
   if (mode === 'cable') return t.routes.vehicleCableGen;
   return t.routes.vehicleBusGen;
 }
@@ -60,7 +64,7 @@ function cacheStops(key: string, stops: LegStop[]) {
 const LEAD_STOPS = 3;
 
 function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
-  const Icon = mode === 'tram' ? TramFront : BusFront;
+  const Icon = mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
   return <Icon size={14} color={scheme.onPrimary} strokeWidth={2.4} />;
 }
 
@@ -234,7 +238,7 @@ function LegStopsList({
     const refreshVehicle = () => {
       const now = Date.now();
       setNow(now);
-      if (!leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus')) {
+      if (!leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')) {
         setVehicle(null);
         return;
       }
@@ -345,11 +349,11 @@ function TransitLegCard({
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
   const chevron = useSharedValue(0);
-  const [hasOpened, setHasOpened] = useState(false);
+  const [hasOpened, setHasOpened] = useState(expanded);
 
   useEffect(() => {
     if (expanded) setHasOpened(true);
-    chevron.value = withTiming(expanded ? 1 : 0, { duration: 220 });
+    chevron.value = withTiming(expanded ? 1 : 0, motion.state);
   }, [chevron, expanded]);
 
   const chevronStyle = useAnimatedStyle(() => ({
@@ -357,7 +361,7 @@ function TransitLegCard({
   }));
 
   return (
-    <Animated.View layout={LinearTransition.duration(280)}>
+    <Animated.View layout={legTransition}>
       <Pressable
         onPress={onToggle}
         accessibilityRole="button"
@@ -386,10 +390,12 @@ function TransitLegCard({
           <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
           {leg.toStop} <Text style={s.hour}>{leg.arriveAt}</Text>
         </Text>
-        {hasOpened && (
+        {(expanded || hasOpened) && (
           <Animated.View
-            layout={LinearTransition.duration(280)}
+            layout={legTransition}
             style={expanded ? s.stopsWrap : s.stopsCollapsed}
+            accessibilityElementsHidden={!expanded}
+            importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
           >
             <LegStopsList leg={leg} accent={accent} userLocation={userLocation} />
           </Animated.View>
@@ -416,7 +422,7 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
 
           return (
-            <Animated.View key={leg.id} layout={LinearTransition.duration(280)} style={s.row}>
+            <Animated.View key={leg.id} layout={legTransition} style={s.row}>
               <View style={s.rail}>
                 <View style={s.walkLine} />
                 <View style={[s.node, s.walkNode]}>
@@ -449,7 +455,7 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
         }
         const { bg: accent } = getLineColors(leg.line, leg.mode);
         return (
-          <Animated.View key={leg.id} layout={LinearTransition.duration(280)} style={s.row}>
+          <Animated.View key={leg.id} layout={legTransition} style={s.row}>
             <View style={s.rail}>
               {!last && <View style={[s.spine, { backgroundColor: accent }]} />}
               <View style={[s.node, { borderColor: accent }]}>

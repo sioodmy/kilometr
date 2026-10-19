@@ -21,6 +21,11 @@ export interface RouteMapDocumentOptions {
   user?: { lat: number; lon: number; heading: number | null } | null;
   selectedLegId?: string | null;
   /**
+   * Startowa kamera mapy [lon, lat] (pierwszy kadr, zanim dane ją przesuną).
+   * Default: środek aktywnego miasta.
+   */
+  center?: [number, number] | null;
+  /**
    * Bazowy URL lokalnego serwera mapy (np. `http://127.0.0.1:45999`). Gdy
    * podany, kafle, glify i sam silnik mapy idą z telefonu, więc mapa działa
    * bez internetu. Bez niego wszystko leci z CDN-ów jak dotąd.
@@ -79,11 +84,10 @@ const css = () => [
   '.maplibregl-canvas-container{cursor:grab;}',
   '.maplibregl-ctrl-bottom-right{pointer-events:none;}',
   '.maplibregl-ctrl-bottom-right .maplibregl-ctrl{pointer-events:auto;}',
-  // ── atrybucja: mikroskopijna, w motywie aplikacji
+  // Atrybucja pozostaje czytelna nad panelem etapów.
   '.maplibregl-ctrl-attrib{margin:0 10px 6px 0 !important;padding:3px 8px !important;',
-  'border-radius:10px !important;background:rgba(17,20,20,.72) !important;',
-  'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);',
-  'box-shadow:0 1px 4px rgba(0,0,0,.35) !important;font:9px/1.4 -apple-system,sans-serif !important;',
+  'border-radius:8px !important;background:var(--k-surface-high) !important;',
+  'font:11px/1.5 -apple-system,sans-serif !important;',
   'color:var(--k-on-surface-var) !important;}',
   '.maplibregl-ctrl-attrib a{color:var(--k-on-surface-var) !important;text-decoration:none;}',
   '.maplibregl-ctrl-attrib-button{display:none !important;}',
@@ -105,8 +109,7 @@ const css = () => [
   '.k-veh{position:relative;width:0;height:0;transition:transform 1.5s linear;}',
   '.k-veh.no-anim,.k-veh.no-anim *{transition:none !important;}',
   '.k-veh-halo{position:absolute;left:0;top:0;width:30px;height:30px;margin:-15px 0 0 -15px;',
-  'border-radius:15px;background:currentColor;opacity:.2;animation:k-pulse 2.4s ease-out infinite;}',
-  '@keyframes k-pulse{0%{transform:scale(.45);opacity:.3;}70%{opacity:0;}100%{opacity:0;}}',
+  'border-radius:15px;background:currentColor;opacity:.2;}',
   '.k-veh-arrow{position:absolute;left:50%;top:50%;width:0;height:0;margin:-19px 0 0 -7px;',
   'border-left:7px solid transparent;border-right:7px solid transparent;',
   'border-bottom:12px solid currentColor;transform-origin:50% 19px;',
@@ -447,6 +450,7 @@ const runtime = [
   '    drawRoute();',
   '    setControlOffset(msg.pad);',
   '    if (selectedLeg) fitLeg(selectedLeg, msg.pad, true);',
+  '    else fitAll(msg.pad, true);',
   '    return;',
   '  }',
   '  if (msg.t === "fit") {',
@@ -502,7 +506,7 @@ const runtime = [
   '  map = new maplibregl.Map({',
   '    container: "map",',
   '    style: P.style,',
-  '    center: [17.0385, 51.1079],',
+  '    center: P.center || [0, 0],',
   '    zoom: 13,',
   '    minZoom: 9,',
   '    maxZoom: 19,',
@@ -593,6 +597,7 @@ function bootstrapPayload(opts: RouteMapDocumentOptions): string {
     vehicle: opts.vehicle ?? null,
     user: opts.user ?? null,
     selectedLegId: opts.selectedLegId ?? null,
+    center: opts.center ?? null,
   };
   return JSON.stringify(payload).replace(/</g, '\\u003c');
 }

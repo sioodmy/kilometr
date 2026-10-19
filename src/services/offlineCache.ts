@@ -1,4 +1,6 @@
 import { kvGet, kvSet } from './storage';
+import { getActiveCityIdSync } from './cityStore';
+import { normalizeConnectionId } from './routing/connectionIdentity';
 
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
@@ -28,6 +30,21 @@ const KEYS = {
   recent: 'kilometr.cache.recent.v1',
   location: 'kilometr.cache.location.v1',
 } as const;
+
+/**
+ * Klucz per-miasto dla danych, które NIE mogą wyciekać między miastami.
+ * Wrocław trzyma legacy klucz (kompat ze starymi instalacjami). Połączenia
+ * i podpowiedzi są kluczowane zapytaniem/współrzędnymi, więc zostają globalne.
+ */
+function cityScopedKey(base: string): string {
+  let id = 'wroclaw';
+  try {
+    id = getActiveCityIdSync();
+  } catch {
+    // storage jeszcze niegotowy: legacy klucz Wrocławia
+  }
+  return id === 'wroclaw' ? base : `${base}.${id}`;
+}
 
 const CONNECTIONS_TTL_MS = 6 * 3600 * 1000;
 const SUGGESTIONS_TTL_MS = 7 * 24 * 3600 * 1000;
@@ -70,6 +87,18 @@ export function connectionCacheKey(q: RouteQuery): string {
     q.maxWalkM ?? '',
     q.anchorStopId ?? '',
     q.routeStyle ?? '',
+    q.departureTimeSec ?? '',
+    q.arriveBySec ?? '',
+    q.minTransferSec ?? '',
+    q.walkSpeedMps ?? '',
+    q.trainsEnabled ?? '',
+    q.cableEnabled ?? '',
+    q.trainMinTransferSec ?? '',
+    q.anchorStopLat ?? '',
+    q.anchorStopLon ?? '',
+    ...(['walk', 'tram', 'bus', 'train', 'cable', 'trolleybus', 'subway'] as const).map(
+      (mode) => q.allowedTransferModes?.[mode] ?? '',
+    ),
   ].join('|');
 }
 
@@ -113,13 +142,14 @@ export async function loadConnections(query: RouteQuery): Promise<Connection[] |
 
 /** Szuka połączenia po id we WSZYSTKICH cachowanych zapytaniach (dla szczegółów offline). */
 export async function findCachedConnection(id: string): Promise<Connection | null> {
+  id = normalizeConnectionId(id);
   const all = await readJSON<Record<string, Stamped<Connection[]>>>(KEYS.connections);
   if (!all) return null;
   for (const key of Object.keys(all)) {
     const entry = all[key];
-    if (Date.now() - entry.savedAt > CONNECTIONS_TTL_MS) continue;
+    if (!entry || Date.now() - entry.savedAt > CONNECTIONS_TTL_MS || !Array.isArray(entry.data)) continue;
     const hit = entry.data.find((c) => c.id === id);
-    if (hit) return hit;
+    if (hit) return rehydrateConnections([hit], entry.savedAt)[0];
   }
   return null;
 }
@@ -141,7 +171,7 @@ export function rehydrateConnections(list: Connection[], savedAtMs = Date.now())
   return list.map((c) => ({
     ...c,
     departInMin:
-      c.departureSec > 0 ? Math.round((baseMs + c.departureSec * 1000 - nowMs) / 60000) : c.departInMin,
+      c.departureSec >= 0 ? Math.round((baseMs + c.departureSec * 1000 - nowMs) / 60000) : c.departInMin,
     live: false,
   }));
 }
@@ -155,8 +185,9 @@ function normQuery(q: string): string {
 export async function saveSuggestions(query: string, results: Suggestion[]): Promise<void> {
   const key = normQuery(query);
   if (!key || results.length === 0) return;
+  const storageKey = cityScopedKey(KEYS.suggestions);
   try {
-    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(KEYS.suggestions)) ?? {};
+    const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(storageKey)) ?? {};
     all[key] = { savedAt: Date.now(), data: results };
     const keys = Object.keys(all);
     if (keys.length > MAX_SUGGESTION_ENTRIES) {
@@ -165,7 +196,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
         .slice(0, keys.length - MAX_SUGGESTION_ENTRIES)
         .forEach((k) => delete all[k]);
     }
-    await kvSet(KEYS.suggestions, JSON.stringify(all));
+    await kvSet(storageKey, JSON.stringify(all));
   } catch {
     // best-effort
   }
@@ -175,7 +206,7 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
 export async function loadSuggestions(query: string): Promise<Suggestion[]> {
   const key = normQuery(query);
   if (!key) return [];
-  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(KEYS.suggestions);
+  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions));
   if (!all) return [];
   const fresh = (e: Stamped<Suggestion[]> | undefined) =>
     e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS ? e.data : null;
@@ -202,14 +233,14 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
 
 export async function saveRecent(items: Suggestion[]): Promise<void> {
   try {
-    await kvSet(KEYS.recent, JSON.stringify({ savedAt: Date.now(), data: items }));
+    await kvSet(cityScopedKey(KEYS.recent), JSON.stringify({ savedAt: Date.now(), data: items }));
   } catch {
     // best-effort
   }
 }
 
 export async function loadRecent(): Promise<Suggestion[]> {
-  const entry = await readJSON<Stamped<Suggestion[]>>(KEYS.recent);
+  const entry = await readJSON<Stamped<Suggestion[]>>(cityScopedKey(KEYS.recent));
   if (!entry || Date.now() - entry.savedAt > SUGGESTIONS_TTL_MS) return [];
   return Array.isArray(entry.data) ? entry.data : [];
 }

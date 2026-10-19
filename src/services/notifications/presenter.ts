@@ -29,7 +29,7 @@ import type { NotificationPreferences, TripProgress, TrackedTrip } from './types
  * `tripMonitor` zanim odetnie śledzenie — muszą się zgadzać, inaczej
  * powiadomienie zniknie w połowie komunikatu albo zostanie po nim.
  */
-export const ARRIVED_LINGER_MS = 3 * 60 * 1000;
+export { ARRIVED_LINGER_MS } from './content';
 
 async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void> {
   const N = getNotifications();
@@ -50,18 +50,7 @@ async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void
         sticky: true,
         ...(Platform.OS === 'android' ? { color: p.lineColor } : {}),
       },
-      // Android: kanał bierze się z triggera, a `trigger: null` wylądowałby na
-      // domyślnym (głośnym) kanale „Miscellaneous". Sekundowy interwał to
-      // najkrótszy niepowtarzalny trigger.
-      trigger:
-        Platform.OS === 'android'
-          ? ({
-              type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
-              seconds: 1,
-              repeats: false,
-              channelId: TRACKING_CHANNEL_ID,
-            } as const)
-          : null,
+      trigger: Platform.OS === 'android' ? { channelId: TRACKING_CHANNEL_ID } : null,
     });
   } catch (err) {
     console.warn('[Powiadomienia] nie udało się odświeżyć powiadomienia:', err);
@@ -101,6 +90,8 @@ export async function presentTrip(
     return;
   }
 
+  if (await native.hasStopRequest?.()) return;
+
   // `liveProgressEnabled` wyłącza pasek postępu i licznik, ale nie samo
   // powiadomienie — zostaje wtedy zwykły banner z tekstem.
   if (!prefs.liveProgressEnabled) {
@@ -117,12 +108,16 @@ export async function presentTrip(
     // Po przyjeździe serwis dostaje `stopAfterMs` i sam się wyłącza, więc
     // komunikat zostaje na ekranie blokady do końca, a nie znika z APK-iem.
     const json = buildLivePlanJson(p, trip.connection, trip, tr(), {
-      stopAfterMs: p.phase === 'arrived' ? Date.now() + ARRIVED_LINGER_MS : 0,
+      alightAlertsEnabled: prefs.departureAlertsEnabled,
     });
-    if (await native.startTrip(json)) return;
+    if (await native.startTrip(json)) {
+      await dismissFallback();
+      return;
+    }
   } catch (err) {
     console.warn('[Powiadomienia] natywne Live Update nie wystartowało:', err);
   }
+  if (await native.hasStopRequest?.()) return;
   await presentFallback(p, trip);
 }
 

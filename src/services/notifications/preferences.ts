@@ -13,20 +13,33 @@ let loaded = false;
 const listeners = new Set<(p: NotificationPreferences) => void>();
 
 function clampPrefs(p: Partial<NotificationPreferences>): NotificationPreferences {
-  const lead = Math.round(p.departureAlertLeadMin ?? DEFAULT_NOTIFICATION_PREFERENCES.departureAlertLeadMin);
+  const lead = Math.round(
+    p.departureAlertLeadMin ?? DEFAULT_NOTIFICATION_PREFERENCES.departureAlertLeadMin,
+  );
   return {
     trackingEnabled: p.trackingEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.trackingEnabled,
-    departureAlertsEnabled: p.departureAlertsEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.departureAlertsEnabled,
+    departureAlertsEnabled:
+      p.departureAlertsEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.departureAlertsEnabled,
     disruptionAlertsEnabled:
       p.disruptionAlertsEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.disruptionAlertsEnabled,
     departureAlertLeadMin: Math.max(1, Math.min(30, isFinite(lead) ? lead : 5)),
     imminentAlert: p.imminentAlert ?? DEFAULT_NOTIFICATION_PREFERENCES.imminentAlert,
-    liveProgressEnabled: p.liveProgressEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.liveProgressEnabled,
+    liveProgressEnabled:
+      p.liveProgressEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.liveProgressEnabled,
   };
 }
 
 function notify() {
   for (const l of listeners) l({ ...cached });
+}
+
+export function subscribeNotificationPreferences(
+  listener: (prefs: NotificationPreferences) => void,
+): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export async function loadNotificationPreferences(): Promise<NotificationPreferences> {

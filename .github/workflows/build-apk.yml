@@ -57,7 +57,7 @@ jobs:
     name: Build & Release APK
     runs-on: ubuntu-latest
     # URL rozkładu jest wpieczony w kodzie (src/services/gtfsConfig.ts,
-    # data.kilometr.wroclaw.pl), więc build nie potrzebuje żadnego sekretu.
+    # data.kilometr.app), więc build nie potrzebuje żadnego sekretu.
     # Nadpisanie lokalnie: EXPO_PUBLIC_TIMETABLE_URL w .env.
 
     steps:
@@ -84,7 +84,7 @@ jobs:
           TIMETABLE_URL: ${{ vars.TIMETABLE_URL }}
         run: |
           set -euo pipefail
-          URL="${TIMETABLE_URL:-https://data.kilometr.wroclaw.pl}/manifest.json"
+          URL="${TIMETABLE_URL:-https://data.kilometr.app}/manifest.json"
           if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
             echo "::warning::Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
             exit 0
@@ -154,6 +154,10 @@ jobs:
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
           PUBLISH="true"
 
+          # Numer podejścia runu (re-run tego samego workflow) trafia jako slot
+          # kompilacji do versionCode prod: v1.0.0 + podejście 2 -> 1000002.
+          BUILD_NUMBER="${GITHUB_RUN_ATTEMPT:-1}"
+
           if [ "$MODE" = "artifact-only" ]; then
             # Buduje z dowolnej gałęzi i tylko dołącza APK jako artefakt.
             # Żadnego tagu ani wydania, więc nie wolno zależeć od channela.
@@ -189,16 +193,36 @@ jobs:
           echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
-          echo "Resolved: channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE publish=$PUBLISH"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Resolved: channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE publish=$PUBLISH build=$BUILD_NUMBER"
 
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Setup Rust toolchain and Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ steps.release.outputs.arch == 'arm64-v8a' && 'aarch64-linux-android' || 'aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android' }}
+
+      - name: Cache Rust RAPTOR target
+        uses: actions/cache@v4
+        with:
+          path: modules/kilometr-raptor/rust/target
+          key: rust-raptor-${{ runner.os }}-${{ steps.release.outputs.arch }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
+          restore-keys: |
+            rust-raptor-${{ runner.os }}-${{ steps.release.outputs.arch }}-
+            rust-raptor-${{ runner.os }}-
+
+      - name: Test Rust RAPTOR engine
+        run: cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+
       - name: Expo Prebuild
         env:
           # Wersja w metadanych APK (versionName/versionCode) zależy od tagu
-          # release'u; app.config.js czyta APP_VERSION.
+          # release'u; app.config.js czyta APP_VERSION. BUILD_NUMBER zajmuje
+          # dwie ostatnie cyfry versionCode (numer podejścia runu).
           APP_VERSION: ${{ steps.release.outputs.version }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Tune Gradle for CI
@@ -224,6 +248,11 @@ jobs:
       - name: Build Android Release APK
         env:
           TARGET_ARCH: ${{ steps.release.outputs.arch }}
+          # Gradle regeneruje assets/app.config przy każdym buildzie i bez
+          # APP_VERSION wpisuje tam wersję z app.json. Constants.expoConfig.version
+          # musi zgadzać się z tagiem, bo runtime czyta z niego wersję.
+          APP_VERSION: ${{ steps.release.outputs.version }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
         run: |
           set -euo pipefail
           ARCH_FLAG=""
@@ -241,17 +270,54 @@ jobs:
       - name: Verify APK version matches release tag
         env:
           TAG: ${{ steps.release.outputs.tag }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
         run: |
           set -euo pipefail
           APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
           AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
           BADGING="$("$AAPT" dump badging "$APK")"
           APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
-          echo "APK versionName=$APK_VERSION, release tag=$TAG"
+          APK_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p")"
+          EXPECTED_CODE="$(APP_VERSION="$TAG" BUILD_NUMBER="$BUILD_NUMBER" node -e "process.stdout.write(String(require('./app.config.js')({}).android.versionCode))")"
+          echo "APK versionName=$APK_VERSION (tag=$TAG), versionCode=$APK_CODE (oczekiwany=$EXPECTED_CODE)"
           if [ "$APK_VERSION" != "$TAG" ]; then
             echo "::error::Wersja APK ($APK_VERSION) nie zgadza się z tagiem release ($TAG)"
             exit 1
           fi
+          if [ "$APK_CODE" != "$EXPECTED_CODE" ]; then
+            echo "::error::versionCode APK ($APK_CODE) nie zgadza się z oczekiwanym ($EXPECTED_CODE)"
+            exit 1
+          fi
+          # app.config jest wersją widzianą przez Constants.expoConfig w runtime
+          # i to z niej kod rozpoznaje kanał builda.
+          EMBEDDED_VERSION="$(unzip -p "$APK" assets/app.config | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).version||'')}catch{}})")"
+          echo "app.config version=$EMBEDDED_VERSION (tag=$TAG)"
+          if [ "$EMBEDDED_VERSION" != "$TAG" ]; then
+            echo "::error::Wersja w assets/app.config ($EMBEDDED_VERSION) nie zgadza się z tagiem ($TAG); Constants.expoConfig.version byłby błędny w runtime"
+            exit 1
+          fi
+
+      # Bramka zgód tła: aplikacja NIE MOŻE pytać o lokalizację w tle na
+      # żadnym kanale - Play waliduje to po manifeście, a zgoda tła nie ma
+      # tu już żadnego uzasadnienia.
+      - name: Gate: brak zgód lokalizacji w tle
+        env:
+          CHANNEL: ${{ steps.release.outputs.channel }}
+        run: |
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::error::Nie znaleziono APK do bramki zgód tła"
+            exit 1
+          fi
+          AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
+          P="$("$AAPT" dump badging "$APK")"
+
+          if printf '%s\n' "$P" | grep -q "ACCESS_BACKGROUND_LOCATION\|FOREGROUND_SERVICE_LOCATION"; then
+            echo "::error::APK $CHANNEL pyta o lokalizację w tle (ACCESS_BACKGROUND_LOCATION/FOREGROUND_SERVICE_LOCATION). Aplikacja nie zbiera nic w tle."
+            exit 1
+          fi
+          echo "Gate OK: $CHANNEL bez zgod tła"
 
       - name: Verify and stage APK
         env:
@@ -279,6 +345,60 @@ jobs:
 
           ls -lh apk-dist
 
+      # Budżet rozmiaru: ostrzega, gdy APK urośnie wyraźnie względem
+      # poprzedniego wydania tego kanału. Doradcze, nie blokuje publikacji.
+      - name: Budżet rozmiaru APK
+        env:
+          APK_NAME: ${{ steps.release.outputs.apk_name }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" = "artifact-only" ]; then exit 0; fi
+          SIZE=$(stat -c%s "apk-dist/$APK_NAME")
+          echo "APK: $((SIZE / 1048576)) MB" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CHANNEL" = "prod" ]; then
+            MODE="stable"
+            ASSET="kilometr-prod.apk"
+          else
+            MODE="nightly"
+            ASSET="kilometr-nightly.apk"
+          fi
+          LIST=$(gh release list --limit 30 --json tagName,isPrerelease 2>/dev/null || true)
+          PREV=""
+          if [ -n "$LIST" ]; then
+            PREV=$(MODE="$MODE" node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const all=JSON.parse(s);const r=process.env.MODE==='stable'?all.find(x=>!x.isPrerelease&&/^v\d+\.\d+\.\d+$/.test(x.tagName)):all.map(x=>x.tagName).find(t=>t.startsWith('nightly-'));console.log(typeof r==='string'?r:(r?r.tagName:''))}catch{console.log('')}})" <<< "$LIST")
+          fi
+          if [ -z "${PREV:-}" ]; then
+            echo "Brak poprzedniego wydania $CHANNEL, pomijam porównanie." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          VIEW=$(gh release view "$PREV" --json assets 2>/dev/null || true)
+          PREVSIZE=""
+          if [ -n "$VIEW" ]; then
+            PREVSIZE=$(ASSET="$ASSET" node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=(JSON.parse(s).assets||[]).find(x=>x.name===process.env.ASSET);console.log(a?a.size:0)}catch{console.log(0)}})" <<< "$VIEW")
+          fi
+          # Starsze wydania prod nie mają kilometr-prod.apk, tylko alias
+          # app-release.apk (ta sama zawartość, inna nazwa).
+          if { [ -z "${PREVSIZE:-}" ] || [ "$PREVSIZE" -le 0 ]; } && [ "$MODE" = "stable" ]; then
+            ASSET="app-release.apk"
+            if [ -n "$VIEW" ]; then
+              PREVSIZE=$(ASSET="$ASSET" node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=(JSON.parse(s).assets||[]).find(x=>x.name===process.env.ASSET);console.log(a?a.size:0)}catch{console.log(0)}})" <<< "$VIEW")
+            fi
+          fi
+          if [ -z "${PREVSIZE:-}" ] || [ "$PREVSIZE" -le 0 ]; then
+            echo "Wydanie $PREV nie ma assetu $ASSET, pomijam." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          DIFF=$((SIZE - PREVSIZE))
+          PCT=$((DIFF * 100 / PREVSIZE))
+          SIGN=""
+          if [ "$DIFF" -ge 0 ]; then SIGN="+"; fi
+          echo "$PREV: $((PREVSIZE / 1048576)) MB, ten build: $((SIZE / 1048576)) MB (${SIGN}${PCT}%)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PCT" -gt 10 ] && [ "$DIFF" -gt 1048576 ]; then
+            echo "::warning::APK urosło o ${PCT}% (+$((DIFF / 1048576)) MB) względem $PREV. Jeśli to nie nowe zasoby, sprawdź build."
+          fi
+
       # Notki i wydanie tylko w trybie release. artifact-only kończy na
       # artefakcie Actions i nie tworzy tagu ani wydania.
       - name: Generate Release Notes from Conventional Commits
@@ -295,7 +415,7 @@ jobs:
             --apk-name "$APK_NAME" \
             --output "apk-dist/release-notes.md" \
             --sha-file "apk-dist/${APK_NAME}.sha256"
-          echo "--- Wygenerowane Release Notes ---"
+          echo "Wygenerowane Release Notes:"
           cat apk-dist/release-notes.md
 
       - name: Upload APK Artifact
@@ -368,7 +488,7 @@ jobs:
               "${ASSETS[@]}"
           fi
 
-          echo "--- Weryfikacja release '$TAG' ---"
+          echo "Weryfikacja release '$TAG':"
           gh release view "$TAG" --json tagName,isPrerelease,assets \
             --jq '{tag: .tagName, prerelease: .isPrerelease, assets: [.assets[] | .name]}'
 

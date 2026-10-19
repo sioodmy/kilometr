@@ -74,7 +74,7 @@ interface TokenMatchResult {
 function matchTokenAgainstTargetWords(queryVariants: string[], targetWords: string[]): TokenMatchResult {
   let bestDist = 99;
   let bestIsPrefix = false;
-  let bestIsExact = false;
+  const bestIsExact = false;
 
   for (const qTok of queryVariants) {
     for (const tWord of targetWords) {

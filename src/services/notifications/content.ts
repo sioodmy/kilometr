@@ -2,8 +2,16 @@ import type { Strings } from '../../i18n/pl';
 import { getLineColors, inferTransitMode } from '../lineIdentity';
 import type { Connection } from '../../types/models';
 import { clockFromMs, formatDistance, parseClock } from './format';
-import { computeLegTimeline } from './tripProgress';
-import type { LivePlan, LivePlanPhaseCopy, LivePlanSegment, TripPhase, TripProgress, TrackedTrip } from './types';
+import { computeLegTimeline, computeTripProgress } from './tripProgress';
+import type {
+  LivePlan,
+  LivePlanPhaseCopy,
+  LivePlanSegment,
+  LivePlanState,
+  TripPhase,
+  TripProgress,
+  TrackedTrip,
+} from './types';
 
 // Tekst powiadomienia — warstwa czysta.
 //
@@ -65,18 +73,11 @@ export function buildPhaseCopy(
   const walkMeters = upcomingWalkMeters(p, conn);
   const walkText = walkMeters != null && walkMeters > 0 ? formatDistance(walkMeters) : '';
   const walkMin = p.walkSec != null ? Math.round(p.walkSec / 60) : null;
-  const walk = join(
-    walkText,
-    walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '',
-  );
+  const walk = join(walkText, walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '');
   const stops = p.stopsLeft != null && p.stopsLeft > 0 ? n.stops(p.stopsLeft) : '';
   const transfers = p.transfers > 0 ? n.transfers(p.transfers) : '';
   const delay =
-    p.delayMin >= 2
-      ? n.delayLate(p.delayMin)
-      : p.delayMin <= -2
-        ? n.delayEarly(p.delayMin)
-        : '';
+    p.delayMin >= 2 ? n.delayLate(p.delayMin) : p.delayMin <= -2 ? n.delayEarly(p.delayMin) : '';
   const position =
     p.vehicleTracked && p.vehicleLabel
       ? p.vehicleLabel
@@ -89,8 +90,9 @@ export function buildPhaseCopy(
 
   return {
     walking: {
-      title: n.departTitle(service, boardAt),
-      text: boarding,
+      title:
+        p.lineMode === 'walk' ? n.rideTitle(service, arriveAt) : n.departTitle(service, boardAt),
+      text: p.lineMode === 'walk' ? n.directionTo(p.toTitle) : boarding,
       subText: join(walk, transfers),
     },
 
@@ -104,9 +106,7 @@ export function buildPhaseCopy(
 
     transfer: {
       title: n.transferTitle(service, boardAt),
-      // Nazwa przesiadki już mówi, na którym przystanku przesiadam — nie
-      // powtarzamy jej w „przystanek X".
-      text: interchangeName(p.interchange) ?? boarding,
+      text: boarding || interchangeName(p.interchange) || '',
       subText: join(walk, stops, delay),
     },
 
@@ -191,10 +191,20 @@ export function buildSegments(
   endAtMs: number,
 ): LivePlanSegment[] {
   const out: LivePlanSegment[] = [];
+  let cursor = startAtMs;
   for (const entry of timeline) {
     const from = Math.max(startAtMs, entry.departMs);
     const to = Math.min(endAtMs, entry.arriveMs);
     if (to <= from) continue;
+    if (from > cursor) {
+      out.push({
+        mode: 'walk',
+        line: '',
+        color: WALK_SEGMENT_COLOR,
+        startAtMs: cursor,
+        endAtMs: from,
+      });
+    }
     const mode = inferTransitMode(entry.leg.mode, entry.leg.line);
     out.push({
       mode,
@@ -206,13 +216,51 @@ export function buildSegments(
       startAtMs: from,
       endAtMs: to,
     });
+    cursor = to;
   }
+  if (cursor < endAtMs)
+    out.push({ mode: 'walk', line: '', color: WALK_SEGMENT_COLOR, startAtMs: cursor, endAtMs });
   return out;
 }
 
 export interface BuildPlanOptions {
   /** Po tym czasie serwis ma przestać aktualizować powiadomienie (ms). */
   stopAfterMs?: number;
+  alightAlertsEnabled?: boolean;
+}
+
+export const ARRIVED_LINGER_MS = 3 * 60 * 1000;
+
+function countdownTarget(p: TripProgress): number {
+  return p.lineMode !== 'walk' &&
+    (p.phase === 'walking' || p.phase === 'waiting' || p.phase === 'transfer')
+    ? p.boardAtMs
+    : p.arriveAtMs;
+}
+
+function buildStates(p: TripProgress, conn: Connection, s: Strings): LivePlanState[] {
+  const timeline = computeLegTimeline(conn, new Date(p.computedAt));
+  const times = new Set([p.computedAt, p.arriveAtMs]);
+  for (const entry of timeline) {
+    times.add(entry.departMs);
+    times.add(entry.arriveMs);
+    if (entry.leg.mode !== 'walk') times.add(entry.departMs + 45_000);
+  }
+  // Bez JS serwis przełącza także szacowane przystanki, nie tylko fazę.
+  for (let at = p.computedAt + 30_000; at < p.arriveAtMs; at += 30_000) times.add(at);
+  return [...times]
+    .filter((at) => at >= p.computedAt && at <= Math.max(p.computedAt, p.arriveAtMs))
+    .sort((a, b) => a - b)
+    .map((atMs) => {
+      const state = atMs === p.computedAt ? p : computeTripProgress(conn, { now: new Date(atMs) });
+      return {
+        atMs,
+        phase: state.phase,
+        countdownAtMs: countdownTarget(state),
+        accentColor: state.lineColor,
+        copy: buildPhaseCopy(state, conn, s)[state.phase],
+      };
+    });
 }
 
 /**
@@ -238,9 +286,7 @@ export function buildLivePlan(
   // użytkownik myśli o ODJEŹDZIE, w trakcie jazdy — o PRZYJEŹDZIE.
   // `boardAtMs` w fazie „jadę" celuje w odjazd, który już był, więc licznik
   // zamarzałby na tej samej wartości przez całą trasę.
-  const waiting =
-    p.phase === 'walking' || p.phase === 'waiting' || p.phase === 'transfer';
-  const countdownAtMs = waiting ? p.boardAtMs : p.arriveAtMs;
+  const countdownAtMs = countdownTarget(p);
   // Po przekroczeniu celu licznik liczy w górę („14:51 • 3 min") zamiast
   // pokazywać ujemne minuty.
   const countdownDown = countdownAtMs > p.computedAt;
@@ -251,14 +297,17 @@ export function buildLivePlan(
     channelName: s.notification.channelTracking,
     channelDescription: s.notification.channelTrackingDesc,
     accentColor:
-      p.lineColor || getLineColors(p.line || undefined, p.lineMode === 'walk' ? 'walk' : undefined).bg,
+      p.lineColor ||
+      getLineColors(p.line || undefined, p.lineMode === 'walk' ? 'walk' : undefined).bg,
     startAtMs,
     endAtMs,
     countdownAtMs,
     countdownDown,
     delayMin: Math.round(p.delayMin),
-    stopAfterMs: options.stopAfterMs ?? 0,
+    stopAfterMs: options.stopAfterMs ?? endAtMs + ARRIVED_LINGER_MS,
     segments: buildSegments(timeline, startAtMs, endAtMs),
+    states: buildStates(p, conn, s),
+    alightAlertsEnabled: options.alightAlertsEnabled ?? true,
     copy: buildPhaseCopy(p, conn, s),
     // Po przyjeździe „Zakończ" nie ma już czego kończyć — przycisk zmienia się
     // na potwierdzenie. Plan i tak przychodzi na każdą zmianę fazy, więc etykieta
@@ -291,9 +340,13 @@ function modeLabel(mode: TripProgress['lineMode'], s: Strings): string {
       ? s.notification.modeTram
       : mode === 'train'
         ? s.notification.modeTrain
-        : mode === 'cable'
-          ? s.notification.modeCable
-          : s.notification.modeBus;
+        : mode === 'subway'
+          ? s.notification.modeSubway
+          : mode === 'cable'
+            ? s.notification.modeCable
+            : mode === 'trolleybus'
+              ? s.notification.modeTrolleybus
+              : s.notification.modeBus;
 }
 
 /**
@@ -334,6 +387,7 @@ function tripParams(trip: TrackedTrip): Record<string, string> {
     toTitle: trip.toTitle,
     toLat: String(trip.toLat),
     toLon: String(trip.toLon),
+    open: trip.connection.id,
   };
 }
 

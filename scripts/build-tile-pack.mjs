@@ -1,27 +1,141 @@
-// Pakiet kafelków Wrocławia do archiwum gotowego do serwowania z telefonu.
+// Pakiet kafelków miasta do archiwum gotowego do serwowania z telefonu.
 //
-// Format archiwum (KMTP v1):
-//   nagłówek 32 B  : magic "KMTP" | wersja u32 | liczba kafelków u32 | maxzoom u32
-//   katalog       : pozycja + rozmiar kafla (offset u64, len u32) + z/x/y (u8/u16/u16)
-//   dane          : sklejone kafle, bez zmian (serwer wysyła jako application/x-protobuf)
+// Format archiwum (KMTP v2):
+//   nagłówek 32 B  : magic "KMTP" | wersja u32 (=2) | liczba kafelków u32 | maxzoom u32
+//   katalog       : pozycja + rozmiar kafla (offset u64, len u32) + z/x/y (u8/u16/u16) + pad u8
+//   dane          : sklejone kafle, każdy skompresowany gzipem (level 9).
+//                   Natywny serwer HTTP odsyła kafel z nagłówkiem `Content-Encoding: gzip`,
+//                   dzięki czemu silnik WebView rozpakowuje go sprzętowo/w C++ w locie.
 //
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
 //
-// Uruchomienie: node scripts/build-tile-pack.mjs
+// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok|opole|rzeszow|lublin|radom] [output]
+//
+// Nowe miasto = wpis w CITY_PACKS niżej (bbox + maxzoom + nazwa pliku).
 
 import { mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
+import { gzipSync } from 'node:zlib';
 
 const TS = '20261004_113936_pt';
 const BASE = `https://tiles.openfreemap.org/planet/${TS}`;
-const OUT = process.argv[2] || 'wroclaw-tiles.ktp';
-const CACHE = 'tilecache';
 
-const BBOX = { minLon: 16.8, minLat: 51.0, maxLon: 17.28, maxLat: 51.22 };
-const MAXZOOM = 14;
+/** Bboxy pakietów: muszą pokrywać strefę obsługi miasta z zapasem. */
+const CITY_PACKS = {
+  wroclaw: {
+    out: 'wroclaw-tiles.ktp',
+    bbox: { minLon: 16.8, minLat: 51.0, maxLon: 17.28, maxLat: 51.22 },
+    maxZoom: 14,
+  },
+  krakow: {
+    out: 'krakow-tiles.ktp',
+    bbox: { minLon: 19.7, minLat: 49.96, maxLon: 20.3, maxLat: 50.16 },
+    maxZoom: 14,
+  },
+  gzm: {
+    out: 'gzm-tiles.ktp',
+    bbox: { minLon: 18.25, minLat: 49.9, maxLon: 19.85, maxLat: 50.65 },
+    // Dzięki kompresji gzip pełne z14 dla całej metropolii mieści się w ~104 MB
+    // (limit R2 to 300 MB) i odblokowuje pieszy routing offline w Raptorze.
+    maxZoom: 14,
+  },
+  warszawa: {
+    out: 'warszawa-tiles.ktp',
+    bbox: { minLon: 20.85, minLat: 52.05, maxLon: 21.28, maxLat: 52.35 },
+    // Stolica w z14 z kompresją gzip zajmuje ~39 MB z zapasem na lotnisko i SKM.
+    maxZoom: 14,
+  },
+  poznan: {
+    out: 'poznan-tiles.ktp',
+    bbox: { minLon: 16.6, minLat: 52.15, maxLon: 17.3, maxLat: 52.65 },
+    // Pełna strefa aglomeracji w z14 z gzipem to ~23 MB (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  trojmiasto: {
+    out: 'trojmiasto-tiles.ktp',
+    bbox: { minLon: 18.15, minLat: 54.1, maxLon: 18.9, maxLat: 54.66 },
+    // Pasmo Gdańsk - Sopot - Gdynia - Wejherowo w z14 z gzipem to ok. 30 MB
+    // (jak tileBbox w cities.ts; węższy wycinek niż strefa, bez wody Zatoki).
+    maxZoom: 14,
+  },
+  lodz: {
+    out: 'lodz-tiles.ktp',
+    bbox: { minLon: 19.05, minLat: 51.55, maxLon: 19.85, maxLat: 51.97 },
+    // Pełna strefa aglomeracji w z14 z gzipem to ~20 MB (pomiar próbką kafli).
+    maxZoom: 14,
+  },
+  szczecin: {
+    out: 'szczecin-tiles.ktp',
+    bbox: { minLon: 14.35, minLat: 53.3, maxLon: 14.75, maxLat: 53.6 },
+    // Mniejsza strefa niż Łódź, w z14 z gzipem to ok. 10 MB
+    // (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  kielce: {
+    out: 'kielce-tiles.ktp',
+    bbox: { minLon: 20.3, minLat: 50.65, maxLon: 20.95, maxLat: 51.02 },
+    // Strefa nieco mniejsza niż Łódź, w z14 z gzipem to ok. 15 MB
+    // (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  olsztyn: {
+    out: 'olsztyn-tiles.ktp',
+    bbox: { minLon: 20.2, minLat: 53.6, maxLon: 20.75, maxLat: 53.95 },
+    // Strefa ZDZiT z gminami ościennymi w z14 z gzipem to ok. 15 MB
+    // (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  bialystok: {
+    out: 'bialystok-tiles.ktp',
+    bbox: { minLon: 22.9, minLat: 52.9, maxLon: 23.35, maxLat: 53.26 },
+    // Strefa między Szczecinem a Łodzią, w z14 z gzipem to ok. 12 MB
+    // (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  opole: {
+    out: 'opole-tiles.ktp',
+    bbox: { minLon: 17.7, minLat: 50.55, maxLon: 18.1, maxLat: 50.8 },
+    // Mniejsza strefa niż Szczecin, w z14 z gzipem to ok. 8 MB
+    // (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  rzeszow: {
+    out: 'rzeszow-tiles.ktp',
+    bbox: { minLon: 21.78, minLat: 49.9, maxLon: 22.26, maxLat: 50.15 },
+    // Mała strefa jak Szczecin (621 kafli w z0-14), w z14 z gzipem
+    // to ok. 10 MB (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  lublin: {
+    out: 'lublin-tiles.ktp',
+    bbox: { minLon: 22.3, minLat: 51.05, maxLon: 22.8, maxLat: 51.42 },
+    // Strefa 0,19 deg2 (między Szczecinem a Łodzią), w z14 z gzipem
+    // to ok. 14 MB (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  radom: {
+    out: 'radom-tiles.ktp',
+    bbox: { minLon: 21.0, minLat: 51.28, maxLon: 21.36, maxLat: 51.5 },
+    // Najmniejsza strefa z miast, ale gęste centrum: pomiar próbką kafli
+    // z z14 (gzip -9) daje ~9,8 MB (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+};
 
-function lon2x(lon, z) { return Math.floor(((lon + 180) / 360) * 2 ** z); }
+const argv = process.argv.slice(2);
+const cityArg = argv.map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || 'wroclaw';
+const CITY = CITY_PACKS[cityArg] ? cityArg : 'wroclaw';
+const PACK = CITY_PACKS[CITY];
+const OUT = argv.find((a) => !a.startsWith('--')) || PACK.out;
+const CACHE = `tilecache-${CITY}`;
+
+const BBOX = PACK.bbox;
+const MAXZOOM = PACK.maxZoom;
+
+function lon2x(lon, z) {
+  return Math.floor(((lon + 180) / 360) * 2 ** z);
+}
 function lat2y(lat, z) {
   const r = (lat * Math.PI) / 180;
   return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z);
@@ -29,13 +143,13 @@ function lat2y(lat, z) {
 
 function tilesFor(z) {
   const out = [];
-  const x0 = lon2x(BBOX.minLon, z), x1 = lon2x(BBOX.maxLon, z);
-  const y0 = lat2y(BBOX.maxLat, z), y1 = lat2y(BBOX.minLat, z);
+  const x0 = lon2x(BBOX.minLon, z),
+    x1 = lon2x(BBOX.maxLon, z);
+  const y0 = lat2y(BBOX.maxLat, z),
+    y1 = lat2y(BBOX.minLat, z);
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push([z, x, y]);
   return out;
 }
-
-function key(z, x, y) { return `${z}/${x}/${y}`; }
 
 async function fetchTile(z, x, y, attempt = 1) {
   const url = `${BASE}/${z}/${x}/${y}.pbf`;
@@ -47,15 +161,25 @@ async function fetchTile(z, x, y, attempt = 1) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     return buf.length > 0 ? buf : null; // pusty kafel = poza zasięgiem, pomijamy
-  } catch (e) {
+  } catch {
     if (attempt >= 3) return null;
     await new Promise((r) => setTimeout(r, 800 * attempt));
     return fetchTile(z, x, y, attempt + 1);
   }
 }
 
+function compressTile(buf) {
+  // Jeśli z jakiegoś powodu bufor jest już gzipem (np. z zewnętrznego źródła)
+  if (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+    return buf;
+  }
+  return gzipSync(buf, { level: 9 });
+}
+
 (async () => {
-  try { mkdirSync(CACHE); } catch {}
+  try {
+    mkdirSync(CACHE);
+  } catch {}
   const all = [];
   for (let z = 0; z <= MAXZOOM; z++) all.push(...tilesFor(z));
   console.log(`Kafelkow do pobrania: ${all.length} (z0-${MAXZOOM})`);
@@ -73,7 +197,6 @@ async function fetchTile(z, x, y, attempt = 1) {
       const t = queue.shift();
       if (!t) return;
       const [z, x, y] = t;
-      const k = key(z, x, y);
       let buf = await fetchTile(z, x, y);
       const cpath = `${CACHE}/${z}/${x}/${y}.pbf`;
       if (buf) {
@@ -88,7 +211,7 @@ async function fetchTile(z, x, y, attempt = 1) {
         }
       }
       if (buf && buf.length > 0) {
-        entries.push({ z, x, y, data: buf });
+        entries.push({ z, x, y, data: compressTile(buf) });
       }
       done++;
       if (done % 25 === 0) {
@@ -109,30 +232,35 @@ async function fetchTile(z, x, y, attempt = 1) {
   const dirBytes = entries.length * 18;
   const header = Buffer.alloc(32);
   header.write('KMTP', 0, 'ascii');
-  header.writeUInt32LE(1, 4);
+  header.writeUInt32LE(2, 4); // KMTP v2: kafle skompresowane gzipem
   header.writeUInt32LE(entries.length, 8);
   header.writeUInt32LE(MAXZOOM, 12);
 
   const DATA_START = 32 + dirBytes;
   const dir = Buffer.alloc(dirBytes);
-  const ordered = Buffer.concat([header, dir]);
   let dataPos = DATA_START;
   let p = 0;
   for (const e of entries) {
     // Katalog ma stać szerokość 18 B na pozycję: offset u64, len u32, z u8,
     // x u16, y u16, pad u8. Bez paddingu pozycje rozjeżdżają się o bajt.
-    dir.writeBigUInt64LE(BigInt(dataPos), p); p += 8;
-    dir.writeUInt32LE(e.data.length, p); p += 4;
-    dir.writeUInt8(e.z, p); p += 1;
-    dir.writeUInt16LE(e.x, p); p += 2;
-    dir.writeUInt16LE(e.y, p); p += 2;
-    dir.writeUInt8(0, p); p += 1;
+    dir.writeBigUInt64LE(BigInt(dataPos), p);
+    p += 8;
+    dir.writeUInt32LE(e.data.length, p);
+    p += 4;
+    dir.writeUInt8(e.z, p);
+    p += 1;
+    dir.writeUInt16LE(e.x, p);
+    p += 2;
+    dir.writeUInt16LE(e.y, p);
+    p += 2;
+    dir.writeUInt8(0, p);
+    p += 1;
     dataPos += e.data.length;
   }
 
   writeFileSync(OUT, Buffer.concat([header, dir, ...entries.map((e) => e.data)]));
   const size = statSync(OUT).size;
-  console.log(`\nGotowe: ${OUT}`);
+  console.log(`\nGotowe: ${OUT} (KMTP v2)`);
   console.log(`  kafelkow: ${entries.length}`);
   console.log(`  rozmiar:  ${(size / 1048576).toFixed(1)} MB`);
   if (dataPos !== size) {

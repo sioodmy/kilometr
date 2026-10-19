@@ -280,7 +280,12 @@ export function locateLiveStopPosition(
   location: CurrentLocation | null,
   now = Date.now(),
 ): LiveStopPosition | null {
-  if (stops.length < 2 || (leg.mode !== 'tram' && leg.mode !== 'bus')) return null;
+  if (
+    stops.length < 2 ||
+    (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')
+  ) {
+    return null;
+  }
 
   const window = findUserSegment(stops, leg);
 

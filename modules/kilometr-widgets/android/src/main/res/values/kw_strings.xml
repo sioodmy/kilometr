@@ -7,8 +7,9 @@
 <resources>
     <string name="kw_next_label">Najbliższy odjazd</string>
     <string name="kw_next_desc">Odliczanie do pierwszego kursu w stronę Twoich celów</string>
-    <string name="kw_dest_label">Odjazdy do celów</string>
-    <string name="kw_dest_desc">Do 4 częstych celów z najbliższą linią i czasem</string>
+    <string name="kw_dest_label">Twój Kilometr</string>
+    <string name="kw_dest_desc">Odjazdy do Twoich miejsc, a podczas śledzenia postęp podróży</string>
+    <string name="kw_min">min</string>
     <string name="kw_trip_label">Śledzona podróż</string>
     <string name="kw_trip_desc">Godziny, przesiadki i postęp włączonej podróży</string>
     <string name="kw_search_label">Wyszukiwarka połączeń</string>
@@ -19,4 +20,14 @@
     <string name="kw_open_app">Otwórz Kilometr, żeby wczytać odjazdy</string>
     <string name="kw_search_hint">Dokąd jedziesz?</string>
     <string name="kw_sample_place">Dom</string>
+    <string name="kw_sample_work">Praca</string>
+    <string name="kw_sample_gym">Siłownia</string>
+    <string name="kw_sample_school">Szkoła</string>
+    <string name="kw_sample_origin">Centrum</string>
+    <string name="kw_sample_updated">stan z 14:30</string>
+    <string name="kw_sample_depart">odjazd 14:32</string>
+    <string name="kw_sample_time">5 min</string>
+    <string name="kw_sample_trip_title">Dom → Praca</string>
+    <string name="kw_sample_status">Na czas</string>
+    <string name="kw_sample_phase">przyjazd za 12 min</string>
 </resources>

@@ -45,7 +45,7 @@ variables:
   ANDROID_BUILD_TOOLS: '36.0.0'
   ANDROID_NDK: '27.1.12297006'
   ANDROID_CMAKE: '3.30.5'
-  TIMETABLE_URL: 'https://data.kilometr.wroclaw.pl'
+  TIMETABLE_URL: 'https://data.kilometr.app'
 
 pool:
   vmImage: ubuntu-latest
@@ -78,7 +78,7 @@ jobs:
       # osiągalny bez KD = twardy błąd.
       - bash: |
           set -euo pipefail
-          URL="${TIMETABLE_URL}/manifest.json"
+          URL="${TIMETABLE_URL}/wroclaw/manifest.json"
           if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
             echo "##vso[task.logissue type=warning]Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
             exit 0
@@ -129,6 +129,10 @@ jobs:
           MODE="${{ parameters.mode }}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
 
+          # Numer podejścia joba (retry tego samego runu) trafia jako slot
+          # kompilacji do versionCode prod: v1.0.0 + podejście 2 -> 1000002.
+          BUILD_NUMBER="${SYSTEM_JOBATTEMPT:-1}"
+
           case "$MODE" in
             preview)
               CHANNEL="dev"
@@ -166,7 +170,8 @@ jobs:
           echo "##vso[task.setvariable variable=apk_name]$APK_NAME"
           echo "##vso[task.setvariable variable=arch]$ARCH"
           echo "##vso[task.setvariable variable=prerelease]$PRERELEASE"
-          echo "Resolved: mode=$MODE channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE"
+          echo "##vso[task.setvariable variable=build_number]$BUILD_NUMBER"
+          echo "Resolved: mode=$MODE channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE build=$BUILD_NUMBER"
         displayName: Resolve mode, channel, tag, version and asset name
 
       - task: Cache@2
@@ -180,12 +185,41 @@ jobs:
         env:
           npm_config_cache: $(Pipeline.Workspace)/.npm
 
+      - task: Cache@2
+        displayName: Cache Rust target
+        inputs:
+          key: 'rust-raptor | "$(Agent.OS)" | "$(arch)" | modules/kilometr-raptor/rust/Cargo.toml | modules/kilometr-raptor/rust/src/raptor.rs | modules/kilometr-raptor/rust/src/foot_router.rs'
+          restoreKeys: |
+            rust-raptor | "$(Agent.OS)" | "$(arch)"
+            rust-raptor | "$(Agent.OS)"
+          path: modules/kilometr-raptor/rust/target
+
+      - bash: |
+          set -euo pipefail
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          fi
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "##vso[task.prependpath]$HOME/.cargo/bin"
+          rustup default stable
+          if [ "$(arch)" = "arm64-v8a" ]; then
+            rustup target add aarch64-linux-android
+          else
+            rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+          fi
+          rustc --version
+          cargo --version
+          cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+        displayName: Setup Rust Android targets and test RAPTOR engine
+
       # Wersja w metadanych APK (versionName/versionCode) zależy od tagu
-      # release'u; app.config.js czyta APP_VERSION.
+      # release'u; app.config.js czyta APP_VERSION. BUILD_NUMBER zajmuje
+      # dwie ostatnie cyfry versionCode (numer podejścia joba).
       - bash: npx expo prebuild --platform android --clean --no-install
         displayName: Expo Prebuild
         env:
           APP_VERSION: $(tag)
+          BUILD_NUMBER: $(build_number)
 
       - task: Cache@2
         displayName: Cache Gradle
@@ -226,6 +260,11 @@ jobs:
         displayName: Build Android Release APK
         env:
           GRADLE_USER_HOME: $(Pipeline.Workspace)/.gradle
+          # Gradle regeneruje assets/app.config przy każdym buildzie i bez
+          # APP_VERSION wpisuje tam wersję z app.json. Constants.expoConfig.version
+          # musi zgadzać się z tagiem, bo runtime czyta z niego wersję.
+          APP_VERSION: $(tag)
+          BUILD_NUMBER: $(build_number)
 
       - bash: |
           set -euo pipefail
@@ -233,9 +272,23 @@ jobs:
           AAPT="${ANDROID_SDK_ROOT}/build-tools/$(ANDROID_BUILD_TOOLS)/aapt"
           BADGING="$("$AAPT" dump badging "$APK")"
           APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
-          echo "APK versionName=$APK_VERSION, release tag=$(tag)"
+          APK_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p")"
+          EXPECTED_CODE="$(APP_VERSION="$(tag)" BUILD_NUMBER="$(build_number)" node -e "process.stdout.write(String(require('./app.config.js')({}).android.versionCode))")"
+          echo "APK versionName=$APK_VERSION (tag=$(tag)), versionCode=$APK_CODE (oczekiwany=$EXPECTED_CODE)"
           if [ "$APK_VERSION" != "$(tag)" ]; then
             echo "##vso[task.logissue type=error]Wersja APK ($APK_VERSION) nie zgadza się z tagiem release ($(tag))"
+            exit 1
+          fi
+          if [ "$APK_CODE" != "$EXPECTED_CODE" ]; then
+            echo "##vso[task.logissue type=error]versionCode APK ($APK_CODE) nie zgadza się z oczekiwanym ($EXPECTED_CODE)"
+            exit 1
+          fi
+          # app.config jest wersją widzianą przez Constants.expoConfig w runtime
+          # i to z niej kod rozpoznaje kanał builda.
+          EMBEDDED_VERSION="$(unzip -p "$APK" assets/app.config | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).version||'')}catch{}})")"
+          echo "app.config version=$EMBEDDED_VERSION (tag=$(tag))"
+          if [ "$EMBEDDED_VERSION" != "$(tag)" ]; then
+            echo "##vso[task.logissue type=error]Wersja w assets/app.config ($EMBEDDED_VERSION) nie zgadza się z tagiem ($(tag)); Constants.expoConfig.version byłby błędny w runtime"
             exit 1
           fi
         displayName: Verify APK version matches release tag
@@ -271,7 +324,7 @@ jobs:
             --repo "$(Build.Repository.Name)" \
             --output "$(Build.ArtifactStagingDirectory)/apk-dist/release-notes.md" \
             --sha-file "$(Build.ArtifactStagingDirectory)/apk-dist/$(apk_name).sha256"
-          echo "--- Wygenerowane Release Notes ---"
+          echo "Wygenerowane Release Notes:"
           cat "$(Build.ArtifactStagingDirectory)/apk-dist/release-notes.md"
         displayName: Generate Release Notes from Conventional Commits
         condition: and(succeeded(), eq('${{ parameters.mode }}', 'release'))

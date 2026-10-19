@@ -7,11 +7,20 @@
 // kolejnymi przystankami) oraz sprawdza oczekiwany czas w rozkładzie.
 // Eliminuje to błędy pojazdów w ruchu między przystankami i fałszywe dopasowania.
 
+import {
+  BinaryReader,
+  BinaryWriter,
+  CMD_LIVE_LOAD_SCHEDULE,
+  CMD_LIVE_MATCH_BATCH,
+  invokeRustSync,
+} from '../../modules/kilometr-raptor';
 import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
+import { getCity } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import { fetchZbBialystokRows, fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKielceRows, fetchZbKml, fetchZbKrakowRows, fetchZbLodzRails, fetchZbLodzRows, fetchZbLublinRows, fetchZbOlsztynRows, fetchZbOpoleRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbRadomRows, fetchZbRzeszowRows, fetchZbSkmtRails, fetchZbSzczecinRows, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
 /** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
@@ -32,15 +41,44 @@ const WINDOW_SEC = 1800;
 const MAX_CORRIDOR_DIST_M = 350;
 const DELAY_CAP_SEC = 1800;
 /** Ostatni udany snapshot na dysku, żeby restart apki nie startował od zera. */
-const SNAPSHOT_KEY = 'live.snapshot.v1';
-/** Snapshot v2 dokłada pociągi KD (starszy format bez `kd` dalej się wczytuje). */
+function snapshotKey(cityId?: string): string {
+  const id = cityId ?? safeCityId();
+  // Legacy klucz Wrocławia bez sufiksu (kompat ze starymi instalacjami).
+  return id === 'wroclaw' ? 'live.snapshot.v1' : `live.snapshot.${id}.v1`;
+}
+
+function safeCityId(): string {
+  try {
+    return getActiveCityIdSync();
+  } catch {
+    return 'wroclaw';
+  }
+}
+/** Snapshot v3 dokłada listę feedów kolei (starszy format z jednym `kd` dalej się wczytuje). */
 interface StoredSnapshot {
   at: number;
   rows: RawVehicleRow[];
   kd?: ZbKdVehicle[];
+  /** Prefiks pojazdów kolei (`KD:` / `KML:`); brak = legacy `KD:`. */
+  railPrefix?: string;
+  rails?: RailFeed[];
+}
+
+/** Jeden feed kolei: pojazdy plus prefiks ich identyfikatorów. */
+export interface RailFeed {
+  vehicles: ZbKdVehicle[];
+  prefix: string;
 }
 /** Ile wytrzymujemy snapshot z dysku bez odświeżenia. */
 const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000;
+
+/** Czy snapshot z dysku mieści się w oknie świeżości i ma sensowny znacznik czasu. */
+export function snapshotIsUsable(at: unknown, now: number): boolean {
+  if (typeof at !== 'number' || !Number.isFinite(at)) return false;
+  // Znacznik z przyszłości (przestawiony zegar, uszkodzony plik) odrzucamy:
+  // bez tego ujemny wiek zawsze mieściłby się w oknie świeżości.
+  return at <= now && now - at <= SNAPSHOT_MAX_AGE_MS;
+}
 
 export interface RawVehicleRow {
   name: string;
@@ -50,8 +88,20 @@ export interface RawVehicleRow {
   k: number | string;
 }
 
+/**
+ * Zdrowie pojedynczego źródła live w obrębie sesji. `lastError` to ostatni
+ * powód porażki, a `lastSuccessAt` znacznik ostatniej udanej odpowiedzi, żeby
+ * dało się odróżnić „źródło padło” od „źródło nigdy nie odpowiedziało”.
+ */
+export interface SourceHealth {
+  attempts: number;
+  failures: number;
+  lastSuccessAt: number | null;
+  lastError: string | null;
+}
+
 export interface TrackedVehicle extends VehiclePosition {
-  type: 'bus' | 'tram' | 'train';
+  type: 'bus' | 'tram' | 'train' | 'trolleybus' | 'subway';
 }
 
 interface PatternPolylineNode {
@@ -77,6 +127,7 @@ class LiveTracker {
   private inFlight = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private restored = false;
+  private health = new Map<string, SourceHealth>();
 
   /**
    * Stan danych live: 'fresh' (mamy świeże opóźnienia), 'stale' (od dawna
@@ -91,13 +142,17 @@ class LiveTracker {
     return Date.now() - this.lastOk < GIVE_UP_MS ? 'fresh' : 'stale';
   }
 
-  /** Czyści stan trackera (np. po resecie bazy lub nowym imporcie). */
+  /**
+   * Czyści stan w pamięci (zmiana miasta, nowy import). Snapshotu na dysku NIE
+   * kasujemy: klucze są per-miasto, a wpis, który tam jest, należy do miasta,
+   * z którego właśnie wyszliśmy. Nadpisze go następny udany poll.
+   */
   reset(): void {
     this.byId.clear();
     this.byLine.clear();
     this.tripDelays.clear();
     this.lastOk = 0;
-    void kvSet(SNAPSHOT_KEY, JSON.stringify({ at: 0, rows: [] } satisfies StoredSnapshot));
+    this.restored = false;
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -131,6 +186,28 @@ class LiveTracker {
     return new Map(this.tripDelays);
   }
 
+  /** Zdrowie źródeł live w tej sesji (do diagnostyki i canary). */
+  getSourceHealth(): Record<string, SourceHealth> {
+    const out: Record<string, SourceHealth> = {};
+    for (const [name, h] of this.health) out[name] = { ...h };
+    return out;
+  }
+
+  private recordSource(name: string, ok: boolean, error?: unknown): void {
+    const h =
+      this.health.get(name) ??
+      { attempts: 0, failures: 0, lastSuccessAt: null, lastError: null };
+    h.attempts += 1;
+    if (ok) {
+      h.lastSuccessAt = Date.now();
+      h.lastError = null;
+    } else {
+      h.failures += 1;
+      if (error !== undefined) h.lastError = error instanceof Error ? error.message : String(error);
+    }
+    this.health.set(name, h);
+  }
+
   /** Ostatni snapshot (np. do spinania pozycji z kartą przejazdu). */
   lookup(vehicleId: string): TrackedVehicle | undefined {
     return this.byId.get(vehicleId);
@@ -141,27 +218,46 @@ class LiveTracker {
     return Array.from(this.byId.values());
   }
 
+  /** Bezstanowe odpytanie źródła MPK (canary/diagnostyka), bez zapisu snapshotu. */
+  async probeMpkDirect(): Promise<RawVehicleRow[] | null> {
+    return this.fetchDirect();
+  }
+
   async poll(): Promise<void> {
     if (this.inFlight) return;
     this.inFlight = true;
+    const cityAtStart = safeCityId();
     try {
-      const [rows, kd] = await Promise.all([this.fetchAll(), this.fetchKdSafe()]);
+      const [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
+      // Użytkownik zmienił miasto w trakcie pobierania (do 10 s na zapytanie).
+      // Odpowiedź dotyczy poprzedniego miasta: nie wolno jej dopasowywać do
+      // nowego rozkładu ani zapisywać pod kluczem nowego miasta.
+      if (safeCityId() !== cityAtStart) {
+        this.inFlight = false;
+        return;
+      }
       let ok = false;
+      const rails = rail ?? [];
       if (rows && rows.length > 0) {
         await this.matchAll(rows);
         ok = true;
-        void this.persistSnapshot(rows, kd ?? undefined);
+        void this.persistSnapshot(rows, rails, cityAtStart);
       } else {
-        // Pusta odpowiedź to nie awaria: po północy Wrocław milknie. Ostatni
+        // Pusta odpowiedź to nie awaria: po północy miasto milknie. Ostatni
         // dobry snapshot zostaje w pamięci, a stan przejdzie na „stale” dopiero
         // po GIVE_UP_MS, więc noc nie miga komunikatem o braku danych.
       }
-      if (kd && kd.length > 0) {
-        await this.matchKdAll(kd);
-        ok = true;
-        if (!rows || rows.length === 0) void this.persistSnapshot([], kd);
+      let railOk = false;
+      for (const feed of rails) {
+        if (feed.vehicles.length === 0) continue;
+        await this.matchRailAll(feed.vehicles, feed.prefix);
+        railOk = true;
       }
-      if (ok) this.lastOk = Date.now();
+      if (railOk) {
+        ok = true;
+        if (!rows || rows.length === 0) void this.persistSnapshot([], rails, cityAtStart);
+      }
+      if (ok && safeCityId() === cityAtStart) this.lastOk = Date.now();
     } catch (err) {
       console.warn('[LiveTracker] poll failed:', err);
     } finally {
@@ -169,14 +265,67 @@ class LiveTracker {
     }
   }
 
-  /** Pociągi KD nigdy nie rzucają: brak live dla kolei to nie awaria MPK. */
-  private async fetchKdSafe(): Promise<ZbKdVehicle[] | null> {
+  /**
+   * Pociągi regionalne nigdy nie rzucają: brak live dla kolei to nie awaria
+   * miasta. Wrocław: KD, Kraków: Koleje Małopolskie (agencja KML),
+   * GZM: Koleje Śląskie, PKP Intercity i POLREGIO (agencje KS, IC, PR),
+   * Warszawa: Koleje Mazowieckie i WKD (agencje KM, WKD), Poznań: Koleje
+   * Wielkopolskie i POLREGIO (agencje KW, PR), Trójmiasto: SKM (agencja
+   * SKMT), Łódź: ŁKA (agencja LKA). SKA nie ma feedu live, więc zostaje
+   * na rozkładzie. Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin i Radom nie mają kolei wcale
+   * (features.regionalRail gaśnie i fetchRailSafe zwraca pustą listę bez zapytań).
+   */
+  private async fetchRailSafe(): Promise<RailFeed[] | null> {
+    const id = safeCityId();
     try {
-      return await fetchZbKd();
-    } catch (err) {
-      console.warn('[LiveTracker] KD fetch failed:', err);
+      if (!getCity(id).features.regionalRail) return [];
+    } catch {
       return null;
     }
+    try {
+      const feeds = await this.fetchRailByCity(id);
+      this.recordSource('rail', feeds !== null, feeds === null ? 'brak odpowiedzi' : undefined);
+      return feeds;
+    } catch (err) {
+      this.recordSource('rail', false, err);
+      console.warn('[LiveTracker] rail fetch failed:', err);
+      return null;
+    }
+  }
+
+  private async fetchRailByCity(id: string): Promise<RailFeed[] | null> {
+    if (id === 'krakow') {
+      const rows = await fetchZbKml();
+      return rows ? [{ vehicles: rows, prefix: 'KML:' }] : null;
+    }
+    if (id === 'gzm') {
+      const feeds = await fetchZbGzmRails();
+      if (feeds === null) return null;
+      const prefixes: Record<string, string> = { KS: 'KŚ:', IC: 'IC:', PR: 'PR:' };
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: prefixes[f.agency] ?? `${f.agency}:` }));
+    }
+    if (id === 'warszawa') {
+      const feeds = await fetchZbWarsawRails();
+      if (feeds === null) return null;
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+    }
+    if (id === 'poznan') {
+      const feeds = await fetchZbPoznanRails();
+      if (feeds === null) return null;
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+    }
+    if (id === 'trojmiasto') {
+      const feeds = await fetchZbSkmtRails();
+      if (feeds === null) return null;
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+    }
+    if (id === 'lodz') {
+      const feeds = await fetchZbLodzRails();
+      if (feeds === null) return null;
+      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: `${f.agency}:` }));
+    }
+    const rows = await fetchZbKd();
+    return rows ? [{ vehicles: rows, prefix: 'KD:' }] : null;
   }
 
   /** Dopasowanie pojedynczego pojazdu na żądanie (np. przy wejściu w kartę przejazdu). */
@@ -225,17 +374,30 @@ class LiveTracker {
   }
 
   /**
-   * Pozycje pojazdów wprost z MPK, z jednym ponowieniem. Gdy MPK nie odpowiada
-   * w ogóle (null, nie pusta nocna odpowiedź), fallbackiem jest zbiorkom.live:
-   * te same pojazdy MPK w tym samym formacie wierszy, więc matcher dalej
-   * działa bez zmian.
+   * Pozycje pojazdów per-miasto:
+   * - Wrocław: wprost z MPK (POST bus_position), awaryjnie zbiorkom.live,
+   * - Kraków / GZM / Warszawa / Poznań / Trójmiasto / Łódź / Szczecin / Kielce / Olsztyn / Białystok / Opole / Rzeszów / Lublin / Radom:
+   *   zbiorkom.live (ZTP, ZTM, WTP, ZTM Poznań, ZTM Gdańsk + ZKM Gdynia,
+   *   ZDiT Łódź, ZDiTM Szczecin, ZTM Kielce, ZDZiT Olsztyn, BKM, MZK, ZTM Rzeszów, ZDiTM Lublin i MZDiK Radom nie mają publicznego bus_position).
    *
-   * Świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby 100k
-   * requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK i tak
-   * odpowiada w 291 ms medianowo i nie zawodzi. Jedno ponowienie po krótkiej
-   * przerwie wystarczy na przejściowy timeout.
+   * Wrocław świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby
+   * 100k requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK
+   * i tak odpowiada w 291 ms medianowo i nie zawodzi. Jedno ponowienie po
+   * krótkiej przerwie wystarczy na przejściowy timeout.
    */
   private async fetchAll(): Promise<RawVehicleRow[] | null> {
+    let direct = false;
+    try {
+      direct = getCity(safeCityId()).features.directBusPosition;
+    } catch {
+      direct = true;
+    }
+    if (!direct) {
+      const krakow = await this.fetchZbCity();
+      if (krakow) return krakow;
+      await new Promise((r) => setTimeout(r, 1200));
+      return this.fetchZbCity();
+    }
     const first = await this.fetchDirect();
     if (first) return first;
     await new Promise((r) => setTimeout(r, 1200));
@@ -243,10 +405,40 @@ class LiveTracker {
     if (second) return second;
     try {
       const fallback = await fetchZbWroclawRows();
+      this.recordSource('zbiorkom', fallback !== null, fallback === null ? 'brak odpowiedzi' : undefined);
       if (fallback) console.warn('[LiveTracker] MPK down, fallback zbiorkom.live');
       return fallback;
     } catch (err) {
+      this.recordSource('zbiorkom', false, err);
       console.warn('[LiveTracker] zbiorkom fallback failed:', err);
+      return null;
+    }
+  }
+
+  private async fetchZbCity(): Promise<RawVehicleRow[] | null> {
+    try {
+      const id = safeCityId();
+      let rows: RawVehicleRow[] | null;
+      if (id === 'krakow') rows = await fetchZbKrakowRows();
+      else if (id === 'gzm') rows = await fetchZbGzmRows();
+      else if (id === 'warszawa') rows = await fetchZbWarsawRows();
+      else if (id === 'poznan') rows = await fetchZbPoznanRows();
+      else if (id === 'trojmiasto') rows = await fetchZbTricityRows();
+      else if (id === 'lodz') rows = await fetchZbLodzRows();
+      else if (id === 'szczecin') rows = await fetchZbSzczecinRows();
+      else if (id === 'kielce') rows = await fetchZbKielceRows();
+      else if (id === 'olsztyn') rows = await fetchZbOlsztynRows();
+      else if (id === 'bialystok') rows = await fetchZbBialystokRows();
+      else if (id === 'opole') rows = await fetchZbOpoleRows();
+      else if (id === 'rzeszow') rows = await fetchZbRzeszowRows();
+      else if (id === 'lublin') rows = await fetchZbLublinRows();
+      else if (id === 'radom') rows = await fetchZbRadomRows();
+      else rows = await fetchZbWroclawRows();
+      this.recordSource('zbiorkom', rows !== null, rows === null ? 'brak odpowiedzi' : undefined);
+      return rows;
+    } catch (err) {
+      this.recordSource('zbiorkom', false, err);
+      console.warn('[LiveTracker] zbiorkom city fetch failed:', err);
       return null;
     }
   }
@@ -267,9 +459,15 @@ class LiveTracker {
         body: body.toString(),
         signal: ctrl.signal,
       });
-      if (!res.ok) return null;
-      return this.parseRows(await res.text());
-    } catch {
+      if (!res.ok) {
+        this.recordSource('mpk', false, `HTTP ${res.status}`);
+        return null;
+      }
+      const rows = this.parseRows(await res.text());
+      this.recordSource('mpk', rows !== null, rows === null ? 'nieoczekiwany schemat' : undefined);
+      return rows;
+    } catch (err) {
+      this.recordSource('mpk', false, err);
       return null;
     } finally {
       clearTimeout(timer);
@@ -290,11 +488,24 @@ class LiveTracker {
       return null;
     }
     if (!Array.isArray(parsed)) return null;
-    return parsed as RawVehicleRow[];
+    if (parsed.length === 0) return [];
+    const rows: RawVehicleRow[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue;
+      const r = item as Record<string, unknown>;
+      if (typeof r.name !== 'string' || !r.name.trim()) continue;
+      if (typeof r.x !== 'number' || typeof r.y !== 'number') continue;
+      if (!Number.isFinite(r.x) || !Number.isFinite(r.y)) continue;
+      if (typeof r.k !== 'number' && typeof r.k !== 'string') continue;
+      rows.push(r as unknown as RawVehicleRow);
+    }
+    // Niepusta odpowiedź bez ani jednego poprawnego wiersza to zmiana schematu,
+    // nie noc. Zwracamy null, żeby uruchomił się fallback zamiast cichej pustki.
+    return rows.length > 0 ? rows : null;
   }
 
-  private persistSnapshot(rows: RawVehicleRow[], kd?: ZbKdVehicle[]): void {
-    void kvSet(SNAPSHOT_KEY, JSON.stringify({ at: Date.now(), rows, kd: kd ?? [] } satisfies StoredSnapshot));
+  private persistSnapshot(rows: RawVehicleRow[], rails?: RailFeed[], cityId?: string): void {
+    void kvSet(snapshotKey(cityId), JSON.stringify({ at: Date.now(), rows, rails: rails ?? [] } satisfies StoredSnapshot));
   }
 
   /**
@@ -306,27 +517,38 @@ class LiveTracker {
     if (this.restored) return;
     this.restored = true;
     try {
-      const raw = await kvGet(SNAPSHOT_KEY);
+      const raw = await kvGet(snapshotKey());
       if (!raw) return;
       const parsed = JSON.parse(raw) as StoredSnapshot;
-      if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd))) return;
+      if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd) && !Array.isArray(parsed.rails))) return;
+      // Stary snapshot to nie „live”: bez tego apka po dłuższej przerwie
+      // pokazywałaby nieaktualne pojazdy, dopóki nie wróci pierwszy poll.
+      if (!snapshotIsUsable(parsed.at, Date.now())) return;
       if (Array.isArray(parsed.rows) && parsed.rows.length > 0) await this.matchAll(parsed.rows);
-      if (Array.isArray(parsed.kd) && parsed.kd.length > 0) await this.matchKdAll(parsed.kd);
+      const rails: RailFeed[] = Array.isArray(parsed.rails)
+        ? parsed.rails
+        : Array.isArray(parsed.kd)
+          ? [{ vehicles: parsed.kd, prefix: parsed.railPrefix || 'KD:' }]
+          : [];
+      for (const feed of rails) {
+        if (feed.vehicles.length > 0) await this.matchRailAll(feed.vehicles, feed.prefix);
+      }
       if (this.byId.size === 0) return;
-      this.lastOk = Date.now();
+      // Wiek liczymy od chwili snapshotu, nie od teraz, żeby stare dane nie udawały świeżych.
+      this.lastOk = parsed.at;
     } catch (err) {
       console.warn('[LiveTracker] snapshot restore failed:', err);
     }
   }
 
   /**
-   * Pociągi KD z zbiorkom.live do lokalnych kursów (tripDelays dla RAPTOR-a).
+   * Pociągi regionalne z zbiorkom.live do lokalnych kursów (tripDelays dla RAPTOR-a).
    * Numer pociągu (brygada) to nasz route_short_name; matchZbKd weryfikuje
    * go jeszcze nazwami i czasami najbliższych postojów, bo identyfikatory
    * tripów obu źródeł są różne. Dopasowuje się addytywnie do wyniku matchAll
-   * (przestrzeń tripId KD:T:... nie koliduje z MPK).
+   * (przestrzeń tripId kolei nie koliduje z miejską).
    */
-  private async matchKdAll(vehicles: ZbKdVehicle[]): Promise<void> {
+  private async matchRailAll(vehicles: ZbKdVehicle[], prefix: string): Promise<void> {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
     } catch (err) {
@@ -348,7 +570,7 @@ class LiveTracker {
 
     for (const veh of vehicles) {
       if (!veh.lat || !veh.lon || !veh.trainNumber) continue;
-      const vehicleId = `KD:${veh.trainNumber}:${veh.id}`;
+      const vehicleId = `${prefix}${veh.trainNumber}:${veh.id}`;
       const match = matchZbKd(veh, dayIndex);
       const outOfRange = match != null && Math.abs(veh.delaySec) > DELAY_CAP_SEC;
       if (outOfRange) {
@@ -401,7 +623,8 @@ class LiveTracker {
     const vehicleId = `${line}-${row.k}`;
     const lat = row.x;
     const lon = row.y;
-    const type: 'bus' | 'tram' = row.type === 'tram' ? 'tram' : 'bus';
+    let type: 'bus' | 'tram' | 'trolleybus' | 'subway' | 'train' =
+      row.type === 'tram' ? 'tram' : row.type === 'trolleybus' ? 'trolleybus' : 'bus';
 
     let routeIds = gtfsStore.getRouteIdsByShortName(line);
     if (routeIds.length === 0) routeIds = [line];
@@ -471,7 +694,7 @@ class LiveTracker {
 
     // Fallback: dopasowanie do pojedynczych przystanków (np. pętla końcowa lub ostre zakręty)
     if (!bestTripId) {
-      for (const [patternId, pattern] of dayIndex.patterns.entries()) {
+      for (const pattern of dayIndex.patterns.values()) {
         if (!routeIds.includes(pattern.routeId)) continue;
         const trips = pattern.trips as any[];
         if (!trips) continue;
@@ -515,6 +738,17 @@ class LiveTracker {
       console.warn(
         `[LiveTracker] ${line} ${vehicleId}: odrzucone opóźnienie ${Math.round(bestDelay / 60)} min (> ${DELAY_CAP_SEC / 60})`,
       );
+    }
+    // Typ z feedu bywa zgadywany, więc po dopasowaniu bierzemy go z bazy:
+    // route_type 0 to tramwaj, 1 to metro, 2 to pociąg (SKA), 11 to trolejbus.
+    // Bez meczu zostaje typ z wiersza. Ta sama kolejność co w ścieżce Rusta.
+    if (bestTripId) {
+      const trip = gtfsStore.trips.get(bestTripId) as { route_id?: string } | undefined;
+      const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
+      if (routeType === 0) type = 'tram';
+      else if (routeType === 1) type = 'subway';
+      else if (routeType === 2) type = 'train';
+      else if (routeType === 11) type = 'trolleybus';
     }
 
     return {
@@ -579,6 +813,137 @@ class LiveTracker {
     return { byId, delays };
   }
 
+  private liveScheduleKey: DayIndex | null = null;
+  private liveTripIds: string[] = [];
+  private liveStopNames: string[] = [];
+
+  private ensureLiveSchedule(dayIndex: DayIndex): boolean {
+    if (this.liveScheduleKey === dayIndex && this.liveTripIds.length > 0) return true;
+    const byLine = new Map<string, any[]>();
+    for (const pattern of dayIndex.patterns.values()) {
+      const route = gtfsStore.routes.get(pattern.routeId);
+      const line = String(route?.route_short_name ?? pattern.routeId ?? '').trim().toUpperCase();
+      if (!line) continue;
+      let list = byLine.get(line);
+      if (!list) {
+        list = [];
+        byLine.set(line, list);
+      }
+      list.push(pattern);
+    }
+    const tripIds: string[] = [];
+    const stopNames: string[] = [];
+    const w = new BinaryWriter(256);
+    w.u32(byLine.size);
+    for (const [line, patterns] of byLine) {
+      w.str(line).u32(patterns.length);
+      for (const pattern of patterns) {
+        const seq: { nameIdx: number; lat: number; lon: number }[] = [];
+        for (const stopId of (pattern.stopSequence as string[]) ?? []) {
+          const stop = gtfsStore.stops.get(stopId);
+          if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
+          const nameIdx = stopNames.length;
+          stopNames.push(stop.stop_name || stopId);
+          seq.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon });
+        }
+        w.u16(seq.length);
+        for (const node of seq) w.u32(node.nameIdx).f64(node.lat).f64(node.lon);
+        const trips = (pattern.trips as { trip_id: string }[]) ?? [];
+        w.u32(trips.length);
+        for (const trip of trips) {
+          const times = gtfsStore.stopTimes.get(trip.trip_id) as
+            | { stop_id: string; departure_sec: number; arrival_sec: number }[]
+            | undefined;
+          const tripIdx = tripIds.length;
+          tripIds.push(trip.trip_id);
+          w.u32(tripIdx);
+          for (let i = 0; i < seq.length; i++) {
+            const t = times?.[i];
+            w.i32(t ? t.departure_sec | 0 : -2147483648).i32(t ? t.arrival_sec | 0 : -2147483648);
+          }
+          const fallback: { nameIdx: number; lat: number; lon: number; dep: number }[] = [];
+          if (times) {
+            for (const t of times) {
+              const stop = gtfsStore.stops.get(t.stop_id);
+              if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
+              const dep = t.departure_sec ?? t.arrival_sec;
+              if (dep == null) continue;
+              const nameIdx = stopNames.length;
+              stopNames.push(stop.stop_name || t.stop_id);
+              fallback.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, dep });
+            }
+          }
+          w.u16(fallback.length);
+          for (const fb of fallback) w.u32(fb.nameIdx).f64(fb.lat).f64(fb.lon).i32(fb.dep | 0);
+        }
+      }
+    }
+    const res = invokeRustSync(CMD_LIVE_LOAD_SCHEDULE, w.finish());
+    if (!res || res.byteLength < 4) return false;
+    this.liveScheduleKey = dayIndex;
+    this.liveTripIds = tripIds;
+    this.liveStopNames = stopNames;
+    return true;
+  }
+
+  private matchRowsRust(
+    rows: RawVehicleRow[],
+    dayIndex: DayIndex,
+    nowSec: number,
+  ): Map<string, { tracked: TrackedVehicle; score: number }> | null {
+    if (!this.ensureLiveSchedule(dayIndex)) return null;
+    const usable = rows.filter((row) => row.x && row.y && row.name);
+    if (usable.length === 0) return null;
+    const w = new BinaryWriter(16 + usable.length * 48);
+    w.i32(nowSec).u32(usable.length);
+    for (const row of usable) w.str(row.name.trim().toUpperCase()).f64(row.x).f64(row.y);
+    const res = invokeRustSync(CMD_LIVE_MATCH_BATCH, w.finish());
+    if (!res || res.byteLength < 4) return null;
+    const r = new BinaryReader(res);
+    const count = r.u32();
+    if (count !== usable.length || res.byteLength < 4 + count * 17) return null;
+    const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
+    for (let i = 0; i < count; i++) {
+      const row = usable[i];
+      const line = row.name.trim().toUpperCase();
+      const ok = r.u8Val() !== 0;
+      const tripIdx = r.u32();
+      const delay = r.i32();
+      const curIdx = r.u32();
+      const nextIdx = r.u32();
+      const tripId = ok ? this.liveTripIds[tripIdx] : undefined;
+      const delayOutOfRange = !!tripId && delay !== 0 && Math.abs(delay) > DELAY_CAP_SEC;
+      // Ścieżka Rusta nie zna route_type, więc typ bierzemy z bazy po meczu
+      // (metro M1/M2 z feedu miasta przychodzi jako „bus", a po meczu
+      // dostaje route_type 1 i kropkę metra).
+      let vtype: TrackedVehicle['type'] = row.type === 'tram' ? 'tram' : 'bus';
+      if (tripId) {
+        const trip = gtfsStore.trips.get(tripId) as { route_id?: string } | undefined;
+        const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
+        if (routeType === 0) vtype = 'tram';
+        else if (routeType === 1) vtype = 'subway';
+        else if (routeType === 2) vtype = 'train';
+        else if (routeType === 11) vtype = 'trolleybus';
+      }
+      matched.set(line + '-' + row.k, {
+        tracked: {
+          vehicleId: `${line}-${row.k}`,
+          line,
+          lat: row.x,
+          lon: row.y,
+          type: vtype,
+          delaySec: tripId && !delayOutOfRange ? delay : null,
+          matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
+          currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
+          nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
+          updatedAt: Date.now(),
+        },
+        score: tripId && !delayOutOfRange ? Math.abs(delay) : Number.POSITIVE_INFINITY,
+      });
+    }
+    return matched;
+  }
+
   private async matchAll(rows: RawVehicleRow[]): Promise<void> {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
@@ -602,23 +967,30 @@ class LiveTracker {
     }
 
     const patternPolylines = new Map<string, PatternPolylineNode[]>();
-    const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
+    const matched =
+      this.matchRowsRust(rows, dayIndex, nowSec) ??
+      new Map<string, { tracked: TrackedVehicle; score: number }>();
 
-    for (const row of rows) {
-      // MPK potrafi w odpowiedzi umieścić wiersz z zerowymi współrzędnymi
-      // (zdarza się np. dla linii 153). Taki wiersz nie ma pozycji, więc
-      // dopasowanie do kursu byłoby zmyślone.
-      if (!row.x || !row.y || !row.name) continue;
-      matched.set(row.name.trim().toUpperCase() + '-' + row.k, this.matchRow(row, dayIndex, nowSec, patternPolylines));
+    if (matched.size === 0) {
+      for (const row of rows) {
+        // MPK potrafi w odpowiedzi umieścić wiersz z zerowymi współrzędnymi
+        // (zdarza się np. dla linii 153). Taki wiersz nie ma pozycji, więc
+        // dopasowanie do kursu byłoby zmyślone.
+        if (!row.x || !row.y || !row.name) continue;
+        matched.set(row.name.trim().toUpperCase() + '-' + row.k, this.matchRow(row, dayIndex, nowSec, patternPolylines));
+      }
     }
 
     // Jeden kurs = jeden pojazd (patrz resolveConflicts), inaczej opóźnienia
     // i strzałka na mapie skakałyby między pojazdami w kolejności z API.
     const { byId, delays } = this.resolveConflicts(matched);
-    // Przebudowa dotyczy tylko MPK: pociągi KD (osobny poll) przeżywają,
-    // żeby chwilowa dziura w feedzie kolei nie gasiła jej opóźnień.
+    // Przebudowa dotyczy tylko miasta: pociągi regionalne (osobny poll)
+    // przeżywają, żeby chwilowa dziura w feedzie kolei nie gasiła opóźnień.
+    // Wpisy kolei noszą prefiks z dwukropkiem (`KD:123:veh`, `KŚ:…`, `KM:…`),
+    // miejskie to `linia-id` bez dwukropka, więc rozróżnienie nie wymaga
+    // listy agencji per-miasto.
     for (const [id, kept] of this.byId) {
-      if (!id.startsWith('KD:')) continue;
+      if (!id.includes(':')) continue;
       byId.set(id, kept);
       if (kept.matchedTripId && kept.delaySec !== null) delays.set(kept.matchedTripId, kept.delaySec);
     }

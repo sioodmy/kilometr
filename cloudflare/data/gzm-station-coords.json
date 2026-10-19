@@ -1,0 +1,184 @@
+{
+  "stations": {
+    "67843": {
+      "name": "Rudziniec Gliwicki",
+      "lat": 50.3666307,
+      "lon": 18.4042187,
+      "updatedAt": "2026-10-14"
+    },
+    "69708": {
+      "name": "Gliwice",
+      "lat": 50.300957,
+      "lon": 18.676892,
+      "updatedAt": "2026-10-14"
+    },
+    "69823": {
+      "name": "Zabrze",
+      "lat": 50.305304,
+      "lon": 18.787149,
+      "updatedAt": "2026-10-14"
+    },
+    "70102": {
+      "name": "Gliwice Łabędy",
+      "lat": 50.3403641,
+      "lon": 18.6223558,
+      "updatedAt": "2026-10-14"
+    },
+    "70136": {
+      "name": "Gliwice Kuźnica",
+      "lat": 50.3569113,
+      "lon": 18.6214702,
+      "updatedAt": "2026-10-14"
+    },
+    "70151": {
+      "name": "Rzeczyce Śląskie",
+      "lat": 50.356604,
+      "lon": 18.5677061,
+      "updatedAt": "2026-10-14"
+    },
+    "70169": {
+      "name": "Taciszów",
+      "lat": 50.3724629,
+      "lon": 18.5284318,
+      "updatedAt": "2026-10-14"
+    },
+    "70201": {
+      "name": "Pyskowice",
+      "lat": 50.3980823,
+      "lon": 18.6277201,
+      "updatedAt": "2026-10-14"
+    },
+    "71001": {
+      "name": "Tarnowskie Góry",
+      "lat": 50.446826,
+      "lon": 18.865116,
+      "updatedAt": "2026-10-14"
+    },
+    "72272": {
+      "name": "Chorzów Miasto",
+      "lat": 50.298693,
+      "lon": 18.94968,
+      "updatedAt": "2026-10-14"
+    },
+    "72306": {
+      "name": "Bytom",
+      "lat": 50.343152,
+      "lon": 18.915183,
+      "updatedAt": "2026-10-14"
+    },
+    "73106": {
+      "name": "Chorzów Batory",
+      "lat": 50.278349,
+      "lon": 18.944881,
+      "updatedAt": "2026-10-14"
+    },
+    "73312": {
+      "name": "Katowice",
+      "lat": 50.257852,
+      "lon": 19.017132,
+      "updatedAt": "2026-10-14"
+    },
+    "73403": {
+      "name": "Sosnowiec Dańdówka",
+      "lat": 50.2655094,
+      "lon": 19.1727723,
+      "updatedAt": "2026-10-14"
+    },
+    "73478": {
+      "name": "Sosnowiec Południowy",
+      "lat": 50.2697299,
+      "lon": 19.1253609,
+      "updatedAt": "2026-10-14"
+    },
+    "73502": {
+      "name": "Mysłowice",
+      "lat": 50.237464,
+      "lon": 19.141725,
+      "updatedAt": "2026-10-14"
+    },
+    "73619": {
+      "name": "Katowice Zawodzie",
+      "lat": 50.257384,
+      "lon": 19.055183,
+      "updatedAt": "2026-10-14"
+    },
+    "73650": {
+      "name": "Katowice Szopienice Południowe",
+      "lat": 50.258841,
+      "lon": 19.091688,
+      "updatedAt": "2026-10-14"
+    },
+    "73700": {
+      "name": "Tychy",
+      "lat": 50.136183,
+      "lon": 18.964157,
+      "updatedAt": "2026-10-14"
+    },
+    "74252": {
+      "name": "Sławków",
+      "lat": 50.2918851,
+      "lon": 19.3414305,
+      "updatedAt": "2026-10-14"
+    },
+    "74500": {
+      "name": "Dąbrowa Górnicza Ząbkowice",
+      "lat": 50.366869,
+      "lon": 19.264938,
+      "updatedAt": "2026-10-14"
+    },
+    "74583": {
+      "name": "Dąbrowa Górnicza",
+      "lat": 50.3301866,
+      "lon": 19.1854022,
+      "updatedAt": "2026-10-14"
+    },
+    "74633": {
+      "name": "Będzin Miasto",
+      "lat": 50.318798,
+      "lon": 19.135551,
+      "updatedAt": "2026-10-14"
+    },
+    "74658": {
+      "name": "Sosnowiec Główny",
+      "lat": 50.278784,
+      "lon": 19.126204,
+      "updatedAt": "2026-10-14"
+    },
+    "74815": {
+      "name": "Dąbrowa Górnicza Strzemieszyce",
+      "lat": 50.3108201,
+      "lon": 19.2685547,
+      "updatedAt": "2026-10-14"
+    },
+    "74880": {
+      "name": "Dąbrowa Górnicza Wschodnia",
+      "lat": 50.3033648,
+      "lon": 19.3112813,
+      "updatedAt": "2026-10-14"
+    },
+    "74971": {
+      "name": "Sosnowiec Kazimierz",
+      "lat": 50.2886411,
+      "lon": 19.2315955,
+      "updatedAt": "2026-10-14"
+    },
+    "75036": {
+      "name": "Sosnowiec Porąbka",
+      "lat": 50.2721032,
+      "lon": 19.2162482,
+      "updatedAt": "2026-10-14"
+    },
+    "265126": {
+      "name": "Pyrzowice Lotnisko",
+      "lat": 50.468319,
+      "lon": 19.076914,
+      "updatedAt": "2026-10-14"
+    },
+    "280955": {
+      "name": "Sosnowiec Jęzor Południowy",
+      "lat": 50.228651,
+      "lon": 19.165616,
+      "updatedAt": "2026-10-14"
+    }
+  }
+}

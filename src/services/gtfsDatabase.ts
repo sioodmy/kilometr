@@ -7,15 +7,26 @@
 
 import * as SQLite from 'expo-sqlite';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
-import { expandTokenSynonyms, fuzzyMatch } from '../gtfs/fuzzy';
+import { expandTokenSynonyms, fuzzyMatchBatch } from '../gtfs/fuzzy';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../gtfs/types';
+import { getCity } from '../cities';
+import { getActiveCityIdSync } from './cityStore';
 
-export const GTFS_DB_NAME = 'kilometr-gtfs.db';
+/** Plik bazy dla miasta. Każde miasto ma osobny plik; zmiana nazwy oznacza
+ *  świeży pobyt (nowy plik startuje pusty, więc wersja wymusza re-download). */
+export function gtfsDbName(cityId?: string): string {
+  return getCity(cityId ?? getActiveCityIdSync()).dbFile;
+}
 
-let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+/** Plik bazy aktywnego miasta (do podmiany po pobraniu). */
+export function currentGtfsDbName(): string {
+  return gtfsDbName();
+}
 
-async function initDb(): Promise<SQLite.SQLiteDatabase> {
-      const db = await SQLite.openDatabaseAsync(GTFS_DB_NAME);
+const dbPromises = new Map<string, Promise<SQLite.SQLiteDatabase>>();
+
+async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
+      const db = await SQLite.openDatabaseAsync(name);
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
         PRAGMA busy_timeout = 15000;
@@ -52,10 +63,9 @@ async function initDb(): Promise<SQLite.SQLiteDatabase> {
           stop_id TEXT NOT NULL,
           arr_sec INTEGER NOT NULL,
           dep_sec INTEGER NOT NULL,
-          seq INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);
-        CREATE INDEX IF NOT EXISTS idx_stoptimes_stop ON stop_times (stop_id, dep_sec);
+          seq INTEGER NOT NULL,
+          PRIMARY KEY (trip_id, seq)
+        ) WITHOUT ROWID;
         CREATE TABLE IF NOT EXISTS calendar (
           service_id TEXT PRIMARY KEY NOT NULL,
           mon INTEGER NOT NULL DEFAULT 0,
@@ -125,17 +135,20 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   if (swapGate) {
     return swapGate.then(() => getGtfsDb());
   }
-  if (!dbPromise) {
-    const p = initDb();
-    dbPromise = p;
-    // Nie trzymaj odrzuconego promise'a — następne wywołanie próbuje od nowa
-    // zamiast zwracać w kółko ten sam błąd (widoczne w logach jako wieczne
-    // "[LocalGtfsStore] Initializing..." bez "Loaded").
-    p.catch(() => {
-      if (dbPromise === p) dbPromise = null;
-    });
-  }
-  return dbPromise;
+  // Baza jest per-miasto: każde miasto ma własny plik, więc zmiana miasta
+  // nigdy nie nadpisuje danych drugiego (mieszkasz w jednym, studiujesz w drugim).
+  const name = currentGtfsDbName();
+  const existing = dbPromises.get(name);
+  if (existing) return existing;
+  const p = initDb(name);
+  dbPromises.set(name, p);
+  // Nie trzymaj odrzuconego promise'a, następne wywołanie próbuje od nowa
+  // zamiast zwracać w kółko ten sam błąd (widoczne w logach jako wieczne
+  // "[LocalGtfsStore] Initializing..." bez "Loaded").
+  p.catch(() => {
+    if (dbPromises.get(name) === p) dbPromises.delete(name);
+  });
+  return p;
 }
 
 // Bramka podmiany pliku bazy. Ustawiana na czas close→delete→move, żeby żaden
@@ -164,14 +177,15 @@ export function endGtfsSwap(): void {
  * albo blokada na Androidzie.
  */
 export async function closeGtfsDb(): Promise<void> {
-  const p = dbPromise;
-  dbPromise = null;
-  if (!p) return;
-  try {
-    const db = await p;
-    await db.closeAsync();
-  } catch {
-    // best-effort: plik i tak podmieniamy, a initDb otworzy od nowa
+  const entries = Array.from(dbPromises.entries());
+  dbPromises.clear();
+  for (const [, p] of entries) {
+    try {
+      const db = await p;
+      await db.closeAsync();
+    } catch {
+      // best-effort: plik i tak podmieniamy, a initDb otworzy od nowa
+    }
   }
 }
 
@@ -191,15 +205,19 @@ export async function prepareForBulkImport(): Promise<void> {
   await db.execAsync(`
     PRAGMA synchronous = OFF;
     DROP INDEX IF EXISTS idx_stoptimes_trip;
-    DROP INDEX IF EXISTS idx_stoptimes_stop;
   `);
 }
 
 export async function finishBulkImport(): Promise<void> {
   const db = await getGtfsDb();
+  // Klucz (trip_id, seq) nowych tabel WITHOUT ROWID pokrywa zapytania
+  // po kursach. Legacy (rowid) odtwarzamy idx_trip po re-imporcie.
+  const t = await db.getFirstAsync<{ sql: string | null }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'stop_times'",
+  );
+  const clustered = (t?.sql ?? '').toUpperCase().includes('WITHOUT ROWID');
   await db.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);
-    CREATE INDEX IF NOT EXISTS idx_stoptimes_stop ON stop_times (stop_id, dep_sec);
+    ${clustered ? '' : 'CREATE INDEX IF NOT EXISTS idx_stoptimes_trip ON stop_times (trip_id, seq);'}
     PRAGMA synchronous = NORMAL;
   `);
 }
@@ -425,13 +443,17 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
   );
   const scored: StopSearchHit[] = [];
   const seen = new Set<string>();
-  for (const r of rows) {
-    if (seen.has(r.name)) continue;
-    const m = fuzzyMatch(q, r.name);
-    if (m.matches) {
-      seen.add(r.name);
-      scored.push({ stop_id: r.stop_id, code: r.code, name: r.name, lat: r.lat, lon: r.lon, score: m.score, weight: r.weight ?? 0 });
-    }
+  const uniqueRows = rows.filter((r) => {
+    if (seen.has(r.name)) return false;
+    seen.add(r.name);
+    return true;
+  });
+  const matches = fuzzyMatchBatch(q, uniqueRows.map((r) => r.name));
+  for (let i = 0; i < uniqueRows.length; i++) {
+    const m = matches[i];
+    if (!m?.matches) continue;
+    const r = uniqueRows[i];
+    scored.push({ stop_id: r.stop_id, code: r.code, name: r.name, lat: r.lat, lon: r.lon, score: m.score, weight: r.weight ?? 0 });
   }
   scored.sort((a, b) => {
     if (Math.abs(a.score - b.score) > 12) return b.score - a.score;
@@ -442,14 +464,17 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
 
 /**
  * Waga przystanku = liczba obsłużonych odjazdów (stop_times).
- * Jednorazowo po imporcie; idx_stoptimes_stop robi to szybko natywnie.
+ * Jednorazowo po imporcie; GROUP BY jednym skanem, bez indeksu po stop_id.
  */
 export async function computeStopWeights(): Promise<number> {
   try {
     const db = await getGtfsDb();
-    await db.execAsync(
-      'UPDATE stops SET weight = (SELECT COUNT(*) FROM stop_times WHERE stop_times.stop_id = stops.stop_id)'
-    );
+    await db.execAsync(`
+      UPDATE stops SET weight = 0;
+      UPDATE stops SET weight = agg.c
+        FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg
+        WHERE agg.stop_id = stops.stop_id;
+    `);
     const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
     return row?.n ?? 0;
   } catch (err) {
@@ -525,33 +550,61 @@ export async function findPoiCandidates(query: string, limit = 60): Promise<PoiR
   const db = await getGtfsDb();
   const like = `%${q.replace(/[%_]/g, '')}%`;
   return db.getAllAsync<PoiRow>(
-    'SELECT osm_id, kind, category, name, norm_name, address, lat, lon, street, district FROM pois WHERE norm_name LIKE ? LIMIT 60',
+    'SELECT osm_id, kind, category, name, norm_name, address, lat, lon, street, district FROM pois WHERE norm_name LIKE ? LIMIT ?',
     like,
+    limit,
   );
 }
 
-/** Serwisy kursujące w dany dzień (0 = niedziela), z wyjątkami calendar_dates. */export async function getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
+/**
+ * Decyzja o zestawie aktywnych serwisów (czysta, testowalna).
+ *
+ * Brak flag w danym dniu przy niepustej tabeli calendar to feed date-scoped
+ * (eksporty dzienne GZM/WTP i ZDiT trzymają daty wyłącznie w calendar_dates):
+ * bez tego piątek aktywował wszystkie serwisy i planer pokazywał kursy
+ * weekendowe obok roboczych. Fallback „wszystko” zostaje dla zupełnie pustego
+ * kalendarza albo braku daty (stare bazy z ZIP-a; ta sama semantyka co serwer).
+ */
+export function resolveActiveServices(
+  weekdayServices: readonly string[],
+  calendarRowCount: number,
+  hasDate: boolean,
+  allTripServices: readonly string[],
+  dateExceptions: readonly { service_id: string; exc: number }[],
+): Set<string> {
+  const active = new Set(weekdayServices);
+  if (active.size === 0 && (calendarRowCount === 0 || !hasDate)) {
+    for (const id of allTripServices) active.add(id);
+  }
+  for (const r of dateExceptions) {
+    if (r.exc === 1) active.add(r.service_id);
+    else if (r.exc === 2) active.delete(r.service_id);
+  }
+  return active;
+}
+
+/** Serwisy kursujące w dany dzień (0 = niedziela), z wyjątkami calendar_dates. */
+export async function getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
   const db = await getGtfsDb();
   const day = ((weekday % 7) + 7) % 7;
   const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
   const rows = await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
-  const active = new Set(rows.map((r) => r.service_id));
-  if (active.size === 0) {
-    // Pusty kalendarz = wszystko zawsze (jak serwer).
-    const all = await db.getAllAsync<{ service_id: string }>('SELECT DISTINCT service_id FROM trips');
-    for (const r of all) active.add(r.service_id);
-  }
-  if (dateStr) {
-    const ex = await db.getAllAsync<{ service_id: string; exc: number }>(
-      'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
-      dateStr,
-    );
-    for (const r of ex) {
-      if (r.exc === 1) active.add(r.service_id);
-      else if (r.exc === 2) active.delete(r.service_id);
-    }
-  }
-  return active;
+  const weekdayServices = rows.map((r) => r.service_id);
+  const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
+  const calendarRowCount = total?.n ?? 0;
+  const needsEverything = weekdayServices.length === 0 && (calendarRowCount === 0 || !dateStr);
+  const allTripServices = needsEverything
+    ? (await db.getAllAsync<{ service_id: string }>('SELECT DISTINCT service_id FROM trips')).map(
+        (r) => r.service_id,
+      )
+    : [];
+  const dateExceptions = dateStr
+    ? await db.getAllAsync<{ service_id: string; exc: number }>(
+        'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
+        dateStr,
+      )
+    : [];
+  return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
 }
 
 /** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */

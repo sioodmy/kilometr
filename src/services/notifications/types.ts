@@ -60,7 +60,7 @@ export interface TripProgress {
 
   /** Linia pojazdu, którym wsiadasz / jedziesz. */
   line: string;
-  lineMode: 'tram' | 'bus' | 'train' | 'cable' | 'walk';
+  lineMode: 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway' | 'walk';
   /** Kolor linii — akcent powiadomienia i segmentu na pasku postępu. */
   lineColor: string;
   /** Kierunek kursu (np. 'BISKUPIN'). */
@@ -127,8 +127,18 @@ export interface LivePlan {
   /** Po tym czasie serwis sam przestanie aktualizować (0 = nie). */
   stopAfterMs: number;
   segments: LivePlanSegment[];
+  states: LivePlanState[];
+  alightAlertsEnabled: boolean;
   copy: Record<TripPhase, LivePlanPhaseCopy>;
   actions: { id: 'stop' | 'route'; title: string }[];
+}
+
+export interface LivePlanState {
+  atMs: number;
+  phase: TripPhase;
+  countdownAtMs: number;
+  accentColor: string;
+  copy: LivePlanPhaseCopy;
 }
 
 /** Odcinek na pasku postępu: dojście pieszo albo przejazd pojazdem. */

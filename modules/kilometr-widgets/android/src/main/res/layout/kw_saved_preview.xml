@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/kw_bg"
+    android:gravity="center" android:orientation="horizontal" android:padding="12dp">
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+        android:layout_margin="4dp" android:background="@drawable/kw_target" android:gravity="center" android:orientation="vertical" android:padding="6dp">
+        <ImageView android:layout_width="36dp" android:layout_height="36dp" android:padding="8dp"
+            android:background="@drawable/kw_icon_bg" android:src="@drawable/kw_ic_home" android:tint="@color/kw_on_primary_container" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
+            android:gravity="center" android:text="@string/kw_sample_place" android:textSize="14sp" android:textColor="@color/kw_on_surface" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+        android:layout_margin="4dp" android:background="@drawable/kw_target" android:gravity="center" android:orientation="vertical" android:padding="6dp">
+        <ImageView android:layout_width="36dp" android:layout_height="36dp" android:padding="8dp"
+            android:background="@drawable/kw_icon_bg" android:src="@drawable/kw_ic_work" android:tint="@color/kw_on_primary_container" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
+            android:gravity="center" android:text="@string/kw_sample_work" android:textSize="14sp" android:textColor="@color/kw_on_surface" />
+    </LinearLayout>
+</LinearLayout>

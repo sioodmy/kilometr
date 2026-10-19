@@ -1,11 +1,13 @@
-// Lokalny indeks miejsc (POI) Wrocławia na telefonie — port server/src/search/poiIndex.ts.
-// Zasilany z Overpass API, cachowany w SQLite (tabela pois). Dzięki temu
-// "lidl", "zoo", "apteka" podpowiadają się natychmiast, bez czekania na
-// Nominatim, i są sortowane po odległości od użytkownika.
+// Lokalny indeks miejsc (POI) aktywnego miasta na telefonie. Port server/src/search/poiIndex.ts.
+// Zasilany z Overpass API, cachowany w SQLite (tabela pois, per-miasto jak reszta
+// bazy). Dzięki temu "lidl", "zoo", "apteka" podpowiadają się natychmiast,
+// bez czekania na Nominatim, i są sortowane po odległości od użytkownika.
 
-import { OVERPASS } from './gtfsConfig';
+import { OVERPASS, overpassBbox } from './gtfsConfig';
+import { getActiveCityIdSync } from './cityStore';
+import type { CityId } from '../cities';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
-import { fuzzyMatch } from '../gtfs/fuzzy';
+import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { classifyPoi, buildPoiAddress } from './poiClassify';
 import type { Suggestion } from '../types/models';
 import { findPoiCandidates, getMeta, poiCount, replacePois, setMeta, type PoiRow } from './gtfsDatabase';
@@ -13,7 +15,7 @@ import { findPoiCandidates, getMeta, poiCount, replacePois, setMeta, type PoiRow
 const ADDR_VERSION = '2';
 const REFRESH_DAYS = 7;
 
-const OVERPASS_FILTERS = [
+const OVERPASS_FILTERS_BASE = [
   'node["shop"~"^(supermarket|mall|department_store)$"]',
   'way["shop"~"^(supermarket|mall|department_store)$"]',
   'node["amenity"~"^(pharmacy|hospital|clinic|university|college|school|cinema|theatre|library)$"]',
@@ -22,9 +24,18 @@ const OVERPASS_FILTERS = [
   'node["leisure"~"^(park|garden|stadium|swimming_pool|sports_centre|fitness_centre)$"]',
   'node["railway"="station"]',
   'node["amenity"="fuel"]',
-].map((f) => `${f}(${OVERPASS.bbox});`).join('\n  ');
+];
 
-const POI_QUERY = `[out:json][timeout:30];\n(\n  ${OVERPASS_FILTERS}\n);\nout center;`;
+function poiQuery(cityId: CityId): string {
+  let bbox: string = OVERPASS.bbox;
+  try {
+    bbox = overpassBbox(cityId);
+  } catch {
+    // legacy Wrocław
+  }
+  const filters = OVERPASS_FILTERS_BASE.map((f) => `${f}(${bbox});`).join('\n  ');
+  return `[out:json][timeout:30];\n(\n  ${filters}\n);\nout center;`;
+}
 
 let refreshInFlight = false;
 
@@ -37,6 +48,11 @@ function isStale(last: string | null): boolean {
 /** Pobiera POI z Overpass i podmienia tabelę. Best-effort — błąd zostawia stare. */
 export async function refreshPoiIndex(): Promise<number> {
   if (refreshInFlight) return poiCount();
+  // Zapytanie potrafi trwać 45 s, a użytkownik zmieni miasto w międzyczasie.
+  // Bbox bierzemy i sprawdzamy dla jednego miasta: inaczej odpowiedź dla
+  // Wrocławia trafiłaby do bazy Krakowa i wyszukiwarka pokazywałaby
+  // wrocławskie sklepy przez cały cykl życia indeksu.
+  const cityId = getActiveCityIdSync();
   refreshInFlight = true;
   try {
     const ctrl = new AbortController();
@@ -48,7 +64,7 @@ export async function refreshPoiIndex(): Promise<number> {
           'User-Agent': OVERPASS.userAgent,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: 'data=' + encodeURIComponent(POI_QUERY),
+        body: 'data=' + encodeURIComponent(poiQuery(cityId)),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -81,6 +97,10 @@ export async function refreshPoiIndex(): Promise<number> {
         });
       }
 
+      if (getActiveCityIdSync() !== cityId) {
+        console.warn('[Poi] miasto zmienione w trakcie odświeżania, pomijam zapis');
+        return poiCount();
+      }
       await replacePois(rows);
       await setMeta('poi_last_refresh', String(Date.now()));
       await setMeta('poi_addr_version', ADDR_VERSION);
@@ -132,10 +152,12 @@ export async function searchPois(
   const hasPos = userLat !== undefined && userLon !== undefined;
 
   const candidates = await findPoiCandidates(normQ).catch(() => [] as PoiRow[]);
+  const matches = fuzzyMatchBatch(normQ, candidates.map((row) => row.name));
   const scored: { row: PoiRow; score: number; distM?: number }[] = [];
-  for (const row of candidates) {
-    const match = fuzzyMatch(normQ, row.name);
-    if (!match.matches) continue;
+  for (let i = 0; i < candidates.length; i++) {
+    const row = candidates[i];
+    const match = matches[i];
+    if (!match?.matches) continue;
     let distM: number | undefined;
     let score = match.score;
     if (hasPos && userLat !== undefined && userLon !== undefined) {

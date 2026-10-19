@@ -17,6 +17,7 @@
         android:padding="16dp">
 
         <LinearLayout
+            android:id="@+id/kw_next_header"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
@@ -26,7 +27,10 @@
                 android:id="@+id/kw_badge_slot"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal" />
+                android:orientation="horizontal">
+
+                <include layout="@layout/kw_badge_sample" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/kw_status"
@@ -62,7 +66,7 @@
                 android:maxLines="1"
                 android:text="5"
                 android:textColor="@color/kw_primary"
-                android:textSize="40sp" />
+                android:textSize="46sp" />
 
             <TextView
                 android:id="@+id/kw_big_unit"
@@ -71,7 +75,7 @@
                 android:layout_marginStart="4dp"
                 android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
-                android:text="min"
+                android:text="@string/kw_min"
                 android:textColor="@color/kw_primary"
                 android:textSize="16sp" />
         </LinearLayout>
@@ -86,7 +90,7 @@
             android:maxLines="1"
             android:text="@string/kw_sample_place"
             android:textColor="@color/kw_on_surface"
-            android:textSize="15sp" />
+            android:textSize="18sp" />
 
         <TextView
             android:id="@+id/kw_sub"

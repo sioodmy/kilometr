@@ -7,36 +7,45 @@ OOM na słabszych urządzeniach).
 ## Architektura
 
 ```
-┌─ GitHub Actions (cron 1× dziennie, darmowy) ──────────────┐
-│  cloudflare/scripts/build-timetable.mjs (Node ≥ 22, 0 deps)│
-│   1. HEAD na Open Data Wrocław → effectiveDate MPK         │
-│   2. PDP API: /data-version → czy rozkład KD się zmienił   │
-│   3. Jeśli nic nowego → koniec (2–4 requesty, ~1 min)      │
-│   4. Pobiera ZIP MPK + schedules KD (Wrocław, przewoźnik   │
-│      KD, okno 14 dni) → buduje kilometr-gtfs.db            │
+┌─ GitHub Actions (cron 1× dziennie, macierz miast) ────────┐
+│  cloudflare/scripts/build-timetable.mjs --city=<miasto>    │
+│                    (Node ≥ 22, 0 deps)                     │
+│   Wrocław: HEAD na Open Data → effectiveDate MPK,          │
+│     PDP /data-version → czy rozkład KD się zmienił          │
+│   Kraków: HEAD na 3 feedy ZTP (A/T/M) + HEAD KMŁ           │
+│   1. Jeśli nic nowego → koniec (2–4 requesty, ~1 min)      │
+│   2. Pobiera ZIP-y feedów + kolej (Wrocław: PDP KD,        │
+│      Kraków: GTFS KMŁ) → buduje kilometr-gtfs.db           │
 │      (node:sqlite, VACUUM, wagi przystanków, meta)         │
-│   5. Upload do R2: db/kilometr-gtfs.db + manifest.json     │
+│   3. Gzip level 9 + upload do R2: {miasto}/db/.db.gz      │
 └───────────────────────────┬───────────────────────────────┘
                             ▼
 ┌─ Cloudflare (free tier) ──────────────────────────────────┐
-│  R2 bucket `kilometr-timetable` (~60–120 MB, < 10 GB)      │
-│  Worker `kilometr-timetable` (100k req/dzień — wystarczy,  │
-│  bo aplikacja pyta o 500-bajtowy manifest, a bazę pobiera  │
+│  R2 bucket `kilometr-timetable` (< 10 GB)                  │
+│  Worker `kilometr-timetable` (100k req/dzień, wystarczy:   │
+│  aplikacja pyta o ~500-bajtowy manifest, bazę pobiera      │
 │  tylko przy nowej wersji):                                │
-│   GET /manifest.json        → manifest z R2 (cache 5 min)  │
-│   GET /db/kilometr-gtfs.db  → baza z R2 (Range, cache 5min)│
-│   GET /maps/wroclaw-tiles.ktp → pakiet kafelków offline    │
+│   GET /{miasto}/manifest.json           → manifest z R2    │
+│   GET /{miasto}/db/kilometr-gtfs.db.gz  → baza z R2 (Range)│
+│   GET /maps/{miasto}-tiles.ktp          → pakiet kafelków  │
 │   GET /api/kd/departures    → PDP /operations, cache 120 s │
 │   GET /api/kd/schedule      → PDP /schedules, cache 1 h    │
-│   GET /health                                              │
+│   GET /health                → lista miast i status        │
 └───────────────────────────┬───────────────────────────────┘
                             ▼ telefon pobiera .db / .ktp →
                               lokalna podmiana pliku
 ```
 
-Pakiet mapy buduje ręczny workflow `map-tiles.yml` i wrzuca go do R2.
-Po zmianie tras Workera trzeba `npx wrangler deploy` w `cloudflare/` —
+Pakiet mapy buduje workflow `map-tiles.yml` (macierz miast albo input
+`city`) i wrzuca go do R2 jako `maps/{miasto}-tiles.ktp`.
+Po zmianie tras Workera trzeba `npx wrangler deploy` w `cloudflare/`,
 sam upload do R2 nie wystarczy.
+
+Nowe miasto wymaga trzech rzeczy: wpisu w `CITIES` w `cloudflare/src/index.ts`
+(Worker), sekcji w `build-timetable.mjs` (źródła GTFS) oraz wpisu w
+`src/cities.ts` (rejestr aplikacji: baza, bbox, nazwy w i18n). Baza, pakiet
+kafli i cache należą do pliku miasta, więc miasta nie mieszają się na
+dysku telefonu.
 
 ### Dlaczego parsowanie NIE jest w Workerze
 
@@ -51,7 +60,7 @@ w wersji, która nie wybucha na limitach.
 
 | Usługa              | Zużycie                | Limit darmowy |
 |---------------------|------------------------|---------------|
-| Actions (build)     | ~150 min               | 2000 min      |
+| Actions (build)     | ~300 min (2 miasta)    | 2000 min      |
 | PDP API (Basic)     | ~120 req (build) + 0*  | 1000/dzień    |
 | R2 storage          | < 1 GB                 | 10 GB         |
 | R2 odczyty          | tysiące                | 10M (klasa B) |
@@ -120,12 +129,12 @@ cd cloudflare
 npm install                 # tylko wrangler (devDependency)
 npx wrangler login
 npx wrangler r2 bucket create kilometr-timetable
-npx wrangler deploy         # → https://data.kilometr.wroclaw.pl (+ workers.dev jako zapas)
+npx wrangler deploy         # → https://data.kilometr.app (+ workers.dev jako zapas)
 ```
 
-Route `data.kilometr.wroclaw.pl` siedzi w `wrangler.toml` jako
+Route `data.kilometr.app` siedzi w `wrangler.toml` jako
 `custom_domain`, więc wrangler sam tworzy rekord DNS w strefie
-`kilometr.wroclaw.pl` (ta strefa musi być na tym samym koncie) i podpina
+`kilometr.app` (ta strefa musi być na tym samym koncie) i podpina
 certyfikat. Nic ręcznie w dashboardzie nie trzeba klikać.
 
 ### 3. Sekret PDP w Workerze (NIE do repo, NIE do kodu aplikacji!)
@@ -144,7 +153,7 @@ Workera, a Worker dokleja klucz po stronie serwera.
 | `PDP_API_KEY`           | klucz z https://pdp-api.plk-sa.pl (ten sam)       |
 | `CLOUDFLARE_API_TOKEN`  | Dashboard → My Profile → API Tokens → template „Workers R2” na bucket `kilometr-timetable` (min. uprawnienia: R2 write na ten bucket) |
 | `CLOUDFLARE_ACCOUNT_ID` | Dashboard → adres w URL / `wrangler whoami`       |
-| `TIMETABLE_PUBLIC_URL`  | `https://data.kilometr.wroclaw.pl` (tylko do pomijania buildów w timetable.yml; build APK nie używa tego sekretu) |
+| `TIMETABLE_PUBLIC_URL`  | `https://data.kilometr.app` (tylko do pomijania buildów w timetable.yml; build APK nie używa tego sekretu) |
 
 Bez `PDP_API_KEY` build **przerywa się błędem**, bo realne KD jest domyślnie
 wymagane (żadnej bazy MPK-only do R2). Jedyny wyjątek to jawne
@@ -155,7 +164,7 @@ z Actions).
 ### 5. Podpięcie aplikacji
 
 Adres jest wpieczony w kodzie (`src/services/gtfsConfig.ts`):
-`https://data.kilometr.wroclaw.pl`. Build APK w GitHub Actions nie
+`https://data.kilometr.app`. Build APK w GitHub Actions nie
 potrzebuje żadnej zmiennej środowiskowej ani sekretu.
 
 ```bash
@@ -163,18 +172,52 @@ potrzebuje żadnej zmiennej środowiskowej ani sekretu.
 EXPO_PUBLIC_TIMETABLE_URL=http://127.0.0.1:8787
 ```
 
-Aplikacja pobiera `${baseUrl}/manifest.json`, porównuje
-`version` z lokalną metą `timetable_version` i ściąga bazę tylko przy
-zmianie. Gdy manifest nieosiągalny, wraca do starego
-importu z ZIP-a (kod w `src/services/gtfsDownloader.ts` zostaje jako fallback).
+Aplikacja pobiera `${baseUrl}/{miasto}/manifest.json`, porównuje `version`
+z lokalną metą `timetable_version` i ściąga bazę (`.db.gz`) tylko przy
+zmianie. Gdy manifest
+nieosiągalny, wraca do starego importu z ZIP-a (kod w
+`src/services/gtfsDownloader.ts` zostaje jako fallback; ZIP-a pobiera tylko
+Wrocław, bo Kraków nie ma feedu MPK do sparsowania na telefonie).
 
 ### 6. Harmonogram
 
-`.github/workflows/timetable.yml`: cron codziennie **03:17 UTC**
-(celowo nie o pełnej godzinie — mniejsze kolejki Actions), plus
-`workflow_dispatch` do ręcznego odpalenia.
+`.github/workflows/timetable.yml`: cron codziennie **03:17 UTC** (celowo nie
+o pełnej godzinie, mniejsze kolejki Actions), macierz `[wroclaw, krakow]`
+plus `workflow_dispatch` do ręcznego odpalenia (całość albo jedno miasto
+inputem `city`). Exit code 2 = „nic się nie zmieniło”, wtedy job nie
+uploaduje i nie jest błędem.
 
-## Dane KD (Koleje Dolnośląskie) — zakres Wrocław
+## Kraków: ZTP + Koleje Małopolskie (bez PDP)
+
+- 3 statyczne feedy: `GTFS_KRK_A.zip` (autobusy), `GTFS_KRK_T.zip`
+  (tramwaje), `GTFS_KRK_M.zip` (reszta). Merge prefiksami `KRK:{A,T,M}`:
+  wspólne przystanki przez `INSERT OR REPLACE` po `stop_id`, trasy, kursy
+  i serwisy z prefiksem (id feedów nie kolidują).
+- ZTP oznacza tramwaje rozszerzonym `route_type = 900`, build sprowadza go do
+  kanonicznego `0`, żeby filtry tramwaj/autobus w aplikacji działały tak samo
+  jak dla MPK.
+- Kolej to własny publiczny GTFS Kolei Małopolskich
+  (`kml-ska-gtfs.zip`, bez klucza). Trasy grupujemy po numerze pociągu
+  (pierwszy token `trip_short_name`, np. `33142 HUBAL` → `KML:R:33142`),
+  bo tak samo pokazuje je LineBadge i tak samo szuka live. Sufiks wariantu
+  (`/N` w `30710/1`) odcinamy: zbiorkom wysyła goły numer brygady,
+  a kierunek i tak weryfikują nazwy i czasy postojów. `route_type = 2`,
+  stacje `KML:S:{id}`, nazwy title-case (feed jest caps-lockiem).
+- Feed nie ma `calendar.txt`, tylko `calendar_dates.txt` (14510 wyjątków,
+  każdy `exception_type = 1`), więc unzip musi tolerować brak pliku
+  (`unzip` krzyczy „filename not matched", ale resztę wypakowuje).
+  `getActiveServices()` w aplikacji obsługuje ten układ: kalendarz serwisu to
+  wiersz samych zer, a dni kursowania dokładają wyjątki.
+- Przesiadki KMŁ ↔ ZTP liczy ten sam kod co MPK ↔ KD (promień 600 m +
+  override dworca głównego). Stacje spoza miasta nie mają słupków w promieniu,
+  więc link powstaje tylko tam, gdzie kurs faktycznie wsiada.
+- Skip buildu po `HEAD`-fingerprincie (3 feedy ZTP + KMŁ). Zdalny manifest
+  bez realnego KMŁ wymusza przebudowę, inaczej pierwszy build z kolejami
+  nigdy by nie ruszył (odcisk ZTP zostaje zgodny).
+- Twarda bramka: 0 stacji / tras / kursów KMŁ albo 0 przesiadek = **błąd**,
+  baza nie trafia do R2.
+
+## Dane KD (Koleje Dolnośląskie), zakres Wrocław
 
 - Stacje: resolve przez `GET /dictionaries/cities?search=WROC` →
   miasto `WROCŁAW` → jego `stationIds` (dynamicznie, bez hardkodu ID).
@@ -235,7 +278,7 @@ cloudflare/
   wrangler.toml          Worker + binding R2 (bez sekretów!)
   package.json           tylko wrangler jako devDep
   src/index.ts           Worker: manifest, baza, /api/kd/*, health
-  scripts/build-timetable.mjs  build bazy (Node ≥ 22, zero deps)
+  scripts/build-timetable.mjs  build bazy per-miasto (Node ≥ 22, zero deps)
   data/kd-station-coords.json  cache współrzędnych stacji KD
   dist/                  artefakty buildu (gitignore)
 ```
@@ -243,6 +286,12 @@ cloudflare/
 ## Weryfikacja buildu
 
 Skrypt kończy się `PRAGMA integrity_check` + wypisuje statystyki
-(przystanki/trasy/kursy/czasy MPK vs KD). Pusta któraś z sekcji MPK =
-błąd i brak uploadu. Puste albo niepełne KD = **błąd i brak uploadu**
-(realne KD jest wymagane; `--allow-mpk-only` tylko do diagnostyki).
+per-miasto (Wrocław: MPK vs KD, Kraków: ZTP vs KMŁ). Pusta któraś z sekcji
+= **błąd i brak uploadu**. Wrocław dodatkowo wymaga realnego KD
+(`--allow-mpk-only` tylko do diagnostyki, nigdy w cronie), Kraków wymaga
+pełnych Kolei Małopolskich i co najmniej jednej przesiadki KMŁ ↔ ZTP.
+
+```bash
+node cloudflare/scripts/build-timetable.mjs --city=krakow
+node cloudflare/scripts/build-timetable.mjs --city=wroclaw   # wymaga PDP_API_KEY
+```

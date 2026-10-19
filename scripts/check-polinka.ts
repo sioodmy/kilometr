@@ -73,7 +73,6 @@ const MPK_STOPS: Array<{ id: string; name: string; lat: number; lon: number }> =
 ];
 
 /** Tramwaj przez most Grunwaldzki: 4 min na odcinek, kursy co 10 min. */
-const TRAM_LEG_SEC = 240;
 const TRAM_TRIP_STEP_SEC = 600;
 const TRAM_SEQ = ['mpk_a', 'mpk_b', 'mpk_c', 'mpk_d'];
 const TRAM_TRIP_TIMES = [0, 240, 540, 780];

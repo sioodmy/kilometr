@@ -11,7 +11,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { ArrowRight, RotateCcw, Search } from 'lucide-react-native';
-import { elev, scheme, shape } from '../theme/tokens';
+import { elev, scheme, shape, spacing, type } from '../theme/tokens';
 import type { TripHistoryItem } from '../services/smartRanker';
 import { useStrings } from '../i18n';
 
@@ -25,7 +25,8 @@ export const LAST_TRIP_ARM_2 = ARM_2_PX;
 export const LAST_TRIP_DISARM_2 = ARM_2_PX - 20;
 export const LAST_TRIP_MAX = ARM_2_PX + 60;
 
-export type LastTripOption = 0 | 1 | 2;
+export type { LastTripOption } from '../services/lastTripPull';
+import type { LastTripOption } from '../services/lastTripPull';
 
 const PILL_PAD = 4;
 const THUMB = 34;
@@ -161,7 +162,7 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: 'center',
-    gap: 18,
+    gap: spacing.lg,
     paddingTop: 12,
     paddingBottom: 12,
   },
@@ -177,20 +178,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fromText: {
-    fontSize: 17,
+    ...type.bodyLarge,
     fontWeight: '600',
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
   },
   toText: {
-    fontSize: 17,
+    ...type.bodyLarge,
     fontWeight: '700',
     color: scheme.onSurface,
     textAlign: 'center',
   },
   hint: {
-    fontSize: 13,
-    fontWeight: '500',
+    ...type.labelMedium,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
     paddingHorizontal: 16,

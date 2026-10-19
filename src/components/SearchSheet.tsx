@@ -1,20 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
-import BottomSheet, { BottomSheetFlatList, TouchableOpacity } from '@gorhom/bottom-sheet';
+import { useEffect, useMemo, useRef } from 'react';
+import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
+import BottomSheet, {
+  BottomSheetFlatList,
+  BottomSheetTextInput,
+  TouchableOpacity,
+} from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, MapPinOff, X } from 'lucide-react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { ArrowLeft, LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
+import { GestureHandlerRootView, type TextInput } from 'react-native-gesture-handler';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
+import { useActiveCity } from '../services/cityStore';
 import type { Suggestion } from '../types/models';
 import { SuggestionRow } from './SuggestionRow';
+import { fuzzyMatch } from '../gtfs/fuzzy';
+import { distanceMeters, normalizePolish } from '../gtfs/geo';
+
+type Row = { type: 'header'; label: string } | { type: 'item'; item: Suggestion };
+
+const QUICK_CHIPS = 3;
+const PERSONAL_MAX = 3;
+/** Prefiks słowa, całe słowo albo akronim; literówki i trafienia w środku słowa zaśmiecają górę listy. */
+const PERSONAL_MIN_SCORE = 85;
+const SAME_PLACE_M = 60;
 
 export function SearchSheetHost({ children }: { children: React.ReactNode }) {
   return <GestureHandlerRootView style={{ flex: 1 }}>{children}</GestureHandlerRootView>;
 }
 
 export function SearchSheet({
-  open = true,
   query,
   loading,
   results,
@@ -42,13 +56,16 @@ export function SearchSheet({
   originTitle?: string;
   onChangeOrigin?: () => void;
   closeOnSelect?: boolean;
-  /** Informacyjny pasek nad listą (np. „GPS poza Wrocławiem"). */
+  /** Informacyjny pasek nad listą (np. „GPS poza obsługiwanym miastem"). */
   notice?: string;
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
   const s = useStrings();
-  const placeholder = placeholderProp ?? s.search.defaultPlaceholder;
+  const { cityId } = useActiveCity();
+  // Miejscownik ("w Krakowie"), nie mianownik: wchodzi po przyimku w placeholderze.
+  const cityLoc = s.city.loc(cityId);
+  const placeholder = placeholderProp ?? s.search.defaultPlaceholder(cityLoc);
   // Pasek nawigacji nie może zasłaniać ostatnich wyników (edge-to-edge).
   const insets = useSafeAreaInsets();
 
@@ -75,19 +92,62 @@ export function SearchSheet({
     ref.current?.close();
   };
 
-  const hasResults = results.length > 0;
+  const trimmed = query.trim();
 
-  const displayData = useMemo(() => {
-    if (hasResults) return results;
-    if (query.trim().length > 0) {
-      const q = query.trim().toLowerCase();
-      const matched = recent.filter(
-        (r) => r.title.toLowerCase().includes(q) || (r.address && r.address.toLowerCase().includes(q))
+  // Zapisane miejsca i historia pasujące do zapytania idą przed wyniki z bazy:
+  // „d” od razu podsuwa „Dom”, zanim sieć cokolwiek zwróci.
+  const personal = useMemo(() => {
+    if (!trimmed) return [];
+    const seen = new Set<string>();
+    const scored: { item: Suggestion; score: number }[] = [];
+    for (const item of [...savedQuick, ...recent]) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      const score = Math.max(
+        fuzzyMatch(trimmed, item.title).score,
+        item.address ? fuzzyMatch(trimmed, item.address).score - 20 : 0,
       );
-      if (matched.length > 0) return matched;
+      if (score >= PERSONAL_MIN_SCORE) scored.push({ item, score });
     }
-    return recent;
-  }, [hasResults, results, query, recent]);
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, PERSONAL_MAX).map((x) => x.item);
+  }, [trimmed, savedQuick, recent]);
+
+  const rest = useMemo(
+    () =>
+      results.filter(
+        (r) =>
+          !personal.some(
+            (p) =>
+              normalizePolish(p.title) === normalizePolish(r.title) ||
+              distanceMeters(p.lat, p.lon, r.lat, r.lon) < SAME_PLACE_M,
+          ),
+      ),
+    [results, personal],
+  );
+
+  const rows = useMemo<Row[]>(() => {
+    if (!trimmed) {
+      return recent.length
+        ? [
+            { type: 'header', label: s.search.recentTrips },
+            ...recent.map((item) => ({ type: 'item' as const, item })),
+          ]
+        : [];
+    }
+    const out: Row[] = [];
+    if (personal.length) {
+      out.push({ type: 'header', label: s.search.yourPlaces });
+      for (const item of personal) out.push({ type: 'item', item });
+    }
+    if (rest.length) {
+      out.push({ type: 'header', label: s.search.resultsFor(trimmed, rest.length) });
+      for (const item of rest) out.push({ type: 'item', item });
+    }
+    return out;
+  }, [trimmed, recent, personal, rest, s]);
+
+  const first = trimmed ? (personal[0] ?? rest[0]) : undefined;
 
   const handleSelect = (item: Suggestion) => {
     onSelect(item);
@@ -102,6 +162,7 @@ export function SearchSheet({
       ref={ref}
       index={0}
       snapPoints={['92%']}
+      topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
@@ -123,7 +184,7 @@ export function SearchSheet({
             accessibilityRole="button"
             accessibilityLabel={s.search.originA11y(originTitle)}
           >
-            <View style={styles.originHintDot} />
+            <LocateFixed size={16} color={scheme.onSurfaceVariant} />
             <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
             <Text style={styles.originHintTitle} numberOfLines={1}>
               {originTitle}
@@ -132,52 +193,63 @@ export function SearchSheet({
           </TouchableOpacity>
         )}
 
-        {/* M3 search field z powiększonymi celami dotykowymi */}
-        <View style={styles.inputBox}>
+        <View style={styles.searchRow}>
           <TouchableOpacity
             onPress={handleClose}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.leadingBtn}
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel={s.search.closeA11y}
           >
-            <ArrowLeft size={21} color={scheme.onSurface} />
+            <ArrowLeft size={23} color={scheme.onSurface} />
           </TouchableOpacity>
-          <TextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={onQuery}
-            placeholder={placeholder}
-            placeholderTextColor={scheme.onSurfaceVariant}
-            style={styles.input}
-            returnKeyType="search"
-          />
-          {loading ? (
-            <View style={styles.trailingBtn}>
-              <ActivityIndicator size="small" color={scheme.primary} />
-            </View>
-          ) : query ? (
-            <TouchableOpacity
-              onPress={() => onQuery('')}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              style={styles.trailingBtn}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={s.search.clearA11y}
-            >
-              <X size={19} color={scheme.onSurfaceVariant} />
-            </TouchableOpacity>
-          ) : null}
+          <View style={styles.inputBox}>
+            <Search size={20} color={scheme.onSurfaceVariant} />
+            <BottomSheetTextInput
+              ref={inputRef}
+              value={query}
+              onChangeText={onQuery}
+              placeholder={placeholder}
+              accessibilityLabel={placeholder}
+              placeholderTextColor={scheme.onSurfaceVariant}
+              style={styles.input}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              blurOnSubmit={false}
+              onSubmitEditing={() => first && handleSelect(first)}
+            />
+            {loading && (
+              <ActivityIndicator size="small" color={scheme.primary} style={styles.spinner} />
+            )}
+            {query ? (
+              <TouchableOpacity
+                onPress={() => {
+                  onQuery('');
+                  inputRef.current?.focus();
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.trailingBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={s.search.clearA11y}
+              >
+                <X size={19} color={scheme.onSurfaceVariant} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
       </View>
 
       <BottomSheetFlatList
-        data={displayData}
-        keyExtractor={(i: Suggestion, idx: number) => `${i.id}-${idx}`}
+        data={rows}
+        keyExtractor={(r: Row, idx: number) =>
+          r.type === 'header' ? `h-${r.label}` : `${r.item.id}-${idx}`
+        }
         overScrollMode="never"
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         ListHeaderComponent={
           <View style={{ gap: 6 }}>
             {notice ? (
@@ -186,17 +258,9 @@ export function SearchSheet({
                 <Text style={styles.noticeText}>{notice}</Text>
               </View>
             ) : null}
-            {/* Nagłówek tylko tam, gdzie coś jest */}
-            {(hasResults || displayData.length > 0) && (
-              <Text style={styles.section}>
-                {hasResults
-                  ? s.search.resultsFor(query.trim(), results.length)
-                  : s.search.recentTrips}
-              </Text>
-            )}
-            {!hasResults && query.trim().length === 0 && (
+            {!trimmed && savedQuick.length > 0 && (
               <View style={styles.quickRow}>
-                {savedQuick.map((q) => (
+                {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
                   <TouchableOpacity
                     key={q.id}
                     onPress={() => handleSelect(q)}
@@ -215,14 +279,22 @@ export function SearchSheet({
             )}
           </View>
         }
-        renderItem={({ item }: { item: Suggestion }) => (
-          <SuggestionRow item={item} onPress={() => handleSelect(item)} />
-        )}
+        renderItem={({ item: row }: { item: Row }) =>
+          row.type === 'header' ? (
+            <Text style={styles.section}>{row.label}</Text>
+          ) : (
+            <SuggestionRow item={row.item} query={trimmed} onPress={() => handleSelect(row.item)} />
+          )
+        }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>{loading ? s.search.searching : s.search.noResults}</Text>
-            <Text style={styles.emptySub}>{s.search.noResultsHint}</Text>
-          </View>
+          trimmed ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>
+                {loading ? s.search.searching(cityLoc) : s.search.noResultsFor(trimmed)}
+              </Text>
+              {!loading && <Text style={styles.emptySub}>{s.search.noResultsHint(cityId)}</Text>}
+            </View>
+          ) : null
         }
       />
     </BottomSheet>
@@ -233,39 +305,30 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainer,
-    ...elev.level3,
+    backgroundColor: scheme.surfaceContainerLow,
   },
-  handle: { backgroundColor: scheme.outlineVariant, width: 44 },
-  head: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, gap: 10 },
+  handle: { backgroundColor: scheme.outlineVariant, width: 36 },
+  head: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 18, gap: 12 },
   originHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    alignSelf: 'flex-start',
+    borderRadius: shape.medium,
     maxWidth: '100%',
-    minHeight: 38,
-  },
-  originHintDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: scheme.primary,
+    minHeight: 48,
   },
   originHintLabel: {
-    ...type.labelSmall,
+    ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     fontWeight: '700',
   },
   originHintTitle: {
-    ...type.labelSmall,
+    ...type.bodyMedium,
     color: scheme.onSurface,
     fontWeight: '600',
-    flexShrink: 1,
+    flex: 1,
   },
   originHintChange: {
     ...type.labelSmall,
@@ -273,36 +336,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 2,
   },
-  // M3 search view field: surfaceContainerHighest, full-width, no border
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   inputBox: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingLeft: 4,
-    paddingRight: 6,
-    height: 56,
-    ...elev.level1,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.large,
+    paddingLeft: 14,
+    paddingRight: 4,
+    minHeight: 56,
+    gap: 6,
   },
   leadingBtn: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
   },
+  spinner: { marginHorizontal: 4 },
   trailingBtn: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
   },
   input: {
     flex: 1,
     ...type.bodyLarge,
     color: scheme.onSurface,
-    paddingVertical: 0,
+    paddingVertical: 14,
     paddingHorizontal: 4,
   },
   list: { paddingHorizontal: 4, paddingBottom: 40, gap: 2 },
@@ -320,13 +385,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     flexWrap: 'wrap',
   },
-  // M3 suggestion chip z ergonomicznym rozmiarem dla kciuka (minHeight: 42)
   quick: {
     backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    minHeight: 42,
+    minHeight: 48,
+    maxWidth: '100%',
     justifyContent: 'center',
   },
   quickText: {
