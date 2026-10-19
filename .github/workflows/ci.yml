@@ -164,6 +164,9 @@ jobs:
       - name: Run logic tests (Navigation target)
         run: npm run check:navigation-target
 
+      - name: Check navigation map loading and GPS camera
+        run: npm run check:nav-map
+
       - name: Run logic tests (Navigation)
         run: npm run check:nav
 
