@@ -16,11 +16,31 @@ jobs:
           AZDO_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
         run: |
           set -euo pipefail
-          URL="https://dev.azure.com/kilometr/450300a8-a3cd-4717-b55c-2ab2c702ec76/_apis/build/builds/28/logs?api-version=7.1"
-          curl -fsSL -u ":${AZDO_PAT}" "$URL" -o /tmp/logs.zip
-          unzip -o -q /tmp/logs.zip -d /tmp/logs
-          ls -la /tmp/logs | head -40
-          echo "=== ERRORS ==="
-          grep -n -i -E "error|failure|what went wrong|caused by|exception" /tmp/logs/* | tail -120 || true
-          echo "=== LOG 18 TAIL ==="
-          tail -n 300 /tmp/logs/18 || true
+          BASE="https://dev.azure.com/kilometr/450300a8-a3cd-4717-b55c-2ab2c702ec76/_apis/build/builds/28"
+          curl -fsSL -u ":${AZDO_PAT}" -H "Accept: application/json" "${BASE}/logs?api-version=7.1" -o /tmp/logs.json
+          echo "=== RESPONSE HEAD ==="
+          head -c 600 /tmp/logs.json | cat -v
+          echo
+          if head -c 2 /tmp/logs.json | grep -q '\['; then
+            echo "=== JSON LIST ==="
+            node -e '
+              const logs = require("/tmp/logs.json");
+              for (const l of logs) console.log(l.id + "\t" + l.url);
+            '
+            node -e 'const logs=require("/tmp/logs.json"); for (const l of logs) process.stdout.write(l.id+"\n")' > /tmp/ids.txt
+            mkdir -p /tmp/logs
+            while read -r ID; do
+              curl -fsSL -u ":${AZDO_PAT}" "${BASE}/logs/${ID}?api-version=7.1" -o "/tmp/logs/${ID}" || true
+            done < /tmp/ids.txt
+            echo "=== ERRORS ==="
+            grep -n -i -E "error|failure|what went wrong|caused by|exception" /tmp/logs/* | tail -160 || true
+            echo "=== LOG 18 TAIL ==="
+            tail -n 300 /tmp/logs/18 || true
+          else
+            echo "=== NOT JSON, TRY ZIP ==="
+            cp /tmp/logs.json /tmp/logs.zip
+            unzip -o -q /tmp/logs.zip -d /tmp/logs || true
+            ls -la /tmp/logs | head
+            grep -n -i -E "error|failure|what went wrong|caused by|exception" /tmp/logs/* | tail -160 || true
+            tail -n 300 /tmp/logs/18 || true
+          fi
