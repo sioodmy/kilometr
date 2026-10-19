@@ -245,7 +245,6 @@ function Landing() {
           <Phone screen="trip" className="hero-phone hero-phone-right" />
           <Phone className="hero-phone hero-phone-center" />
         </div>
-        <p className="preview-caption">{s.hero.caption}</p>
       </section>
 
       <section className="intro section-shell reveal">

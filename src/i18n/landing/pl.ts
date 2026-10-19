@@ -24,7 +24,6 @@ export const pl = {
     body: 'Twój codzienny planer komunikacji miejskiej. Teraz w miastach w całej Polsce. Także offline.',
     play: 'Pobierz z Google Play',
     secondary: 'Zobacz, jak działa',
-    caption: 'Zrzuty ekranu z Pixela 7a.',
   },
   intro: {
     title: 'Dobre połączenie.\nNa co dzień.',
@@ -90,7 +89,7 @@ export const pl = {
   },
   donation: {
     title: 'Pomóż rozwijać Kilometr.',
-    body: 'Kilometr jest darmowy i ma otwarty kod. Jeśli przydaje Ci się w drodze, możesz wesprzeć jego rozwój na Ko-fi.',
+    body: 'Kilometr jest darmowy i open source. Jeśli przydaje Ci się w drodze, możesz wesprzeć jego rozwój na Ko-fi.',
     cta: 'Wesprzyj na Ko-fi',
   },
   download: {

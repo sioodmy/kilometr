@@ -414,12 +414,6 @@
     transform: rotate(11deg) scale(0.89);
     transform-origin: bottom left;
   }
-  .preview-caption {
-    color: var(--subtle);
-    font-size: 11px;
-    line-height: 1.6;
-    padding: 18px 24px 0;
-  }
   .intro {
     padding-top: clamp(88px, 11vw, 150px);
     padding-bottom: clamp(68px, 8vw, 112px);
@@ -499,7 +493,7 @@
   .feature-visual .phone {
     width: 238px;
     transform: rotate(5deg);
-    margin: 0 0 -50px;
+    margin: 0 0 -26px;
   }
   .feature-visual-saved .phone {
     transform: rotate(-5deg);
@@ -1000,7 +994,7 @@
   .phone-screen {
     position: relative;
     width: 100%;
-    aspect-ratio: 1080 / 2400;
+    aspect-ratio: 720 / 1500;
     background: var(--surface);
     color: var(--muted);
     border-radius: 31px;
@@ -1073,7 +1067,7 @@
     }
     .feature-visual .phone {
       width: 218px;
-      margin: 0 0 -46px;
+      margin: 0 0 -22px;
     }
     .feature-text {
       padding: 32px;
@@ -1204,12 +1198,6 @@
       height: 230px;
       bottom: 15px;
     }
-    .preview-caption {
-      max-width: 380px;
-      margin: 0 auto;
-      padding-top: 10px;
-      font-size: 10px;
-    }
     .intro {
       padding-block: 80px 54px;
     }
@@ -1245,7 +1233,7 @@
     }
     .feature-visual .phone {
       width: 195px;
-      margin: 0 0 -38px;
+      margin: 0 0 -26px;
     }
     .feature-word {
       font-size: 5rem;
