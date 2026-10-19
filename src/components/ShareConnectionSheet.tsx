@@ -77,7 +77,7 @@ export function ShareConnectionSheet({
   }
 
   async function shareCard() {
-    const data = await captureRef(card, { format: 'png', result: 'base64', width: 1080 });
+    const data = await captureRef(card, { format: 'png', result: 'base64' });
     const { default: NativeShare } = await import('react-native-share');
     await NativeShare.open({
       title: s.title,

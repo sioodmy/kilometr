@@ -28,7 +28,14 @@ export function JourneyShareCard({ journey }: { journey: SharedConnection }) {
         </View>
         <Text style={styles.arrivalLabel}>{s.arrival}</Text>
         <View style={styles.arrivalRow}>
-          <Text style={styles.arrival}>{formatShareTime(journey.arrival)}</Text>
+          <Text
+            style={[styles.arrival, stacked && styles.arrivalCompact]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.5}
+          >
+            {formatShareTime(journey.arrival)}
+          </Text>
           {arrivalDay > 0 && <Text style={styles.day}>{s.dayLater(arrivalDay)}</Text>}
         </View>
         <Text style={styles.destination}>{journey.to}</Text>
@@ -87,7 +94,9 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     color: scheme.onPrimaryContainer,
     includeFontPadding: false,
+    flexShrink: 1,
   },
+  arrivalCompact: { fontSize: 44 },
   day: { ...type.titleMedium, color: scheme.onPrimaryContainer },
   destination: { ...type.titleLarge, fontWeight: '600', color: scheme.onPrimaryContainer },
   body: { padding: 22, gap: 16 },
