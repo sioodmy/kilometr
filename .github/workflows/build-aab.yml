@@ -230,6 +230,27 @@ jobs:
           fi
           echo "jarsigner: podpis ok"
 
+      # Google Play wymusza deklarację Location permissions, gdy tylko
+      # ACCESS_BACKGROUND_LOCATION pojawi się w przesłanym bundle - nawet
+      # jeśli runtime go nie używa. AAB to build bez Contributora (plugin
+      # plugins/with-contributor.js), więc manifes NIE MA prawa zawierać
+      # zgód tła ani serwisu telemetrii.
+      - name: Gate: AAB bez Contributora
+        run: |
+          set -euo pipefail
+          AAB="android/app/build/outputs/bundle/release/app-release.aab"
+          # Manifest wewnątrz AAB to binarny protobuf, ale nazwy uprawnień są
+          # w nim literalne - wystarczy wyszukanie ciągu.
+          if unzip -p "$AAB" Base/manifest/AndroidManifest.xml | grep -aq "ACCESS_BACKGROUND_LOCATION\|FOREGROUND_SERVICE_LOCATION"; then
+            echo "::error::AAB do Google zawiera zgody Contributora (ACCESS_BACKGROUND_LOCATION lub FOREGROUND_SERVICE_LOCATION). Sprawdź plugins/with-contributor.js."
+            exit 1
+          fi
+          if unzip -p "$AAB" Base/manifest/AndroidManifest.xml | grep -aq "kilometr.contributor.ContributorService"; then
+            echo "::error::AAB do Google zawiera serwis ContributorService. Użytkownicy Play nie mogą pytać o lokalizację w tle."
+            exit 1
+          fi
+          echo "Gate OK: AAB bez ACCESS_BACKGROUND_LOCATION i bez ContributorService"
+
       - name: Stage AAB
         env:
           VERSION: ${{ steps.version.outputs.version }}
