@@ -1,4 +1,5 @@
 import type { Strings } from './pl';
+import { cityNames } from './cities';
 
 export const uk: Strings = {
   meta: {
@@ -61,6 +62,7 @@ export const uk: Strings = {
     ready: 'Можна рушати.',
   },
   coverage: {
+    cities: cityNames,
     eyebrow: 'Тепер по всій Польщі',
     title: 'Інше місто.\nТой самий Kilometr.',
     body: 'У будні вдома, на вихідних деінде. Вибери місто та їдь зі знайомим застосунком.',
@@ -90,7 +92,7 @@ export const uk: Strings = {
     title: 'Наступна зупинка?\nТвоя.',
     body: 'Візьми Kilometr у наступну поїздку.',
     android: 'Для телефонів Android. Безкоштовно.',
-    apk: 'Завантажити APK',
+    apk: 'APK на GitHub',
     github: 'Стабільна версія з GitHub',
     alternatives: 'Встановлюєш по-своєму?',
     nightly: 'Тестові версії',

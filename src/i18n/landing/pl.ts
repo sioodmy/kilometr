@@ -1,3 +1,5 @@
+import { cityNames } from './cities';
+
 export const pl = {
   meta: {
     title: 'Kilometr. Twoje miasto. Twój rytm.',
@@ -60,6 +62,7 @@ export const pl = {
     ready: 'Możesz ruszać.',
   },
   coverage: {
+    cities: cityNames,
     eyebrow: 'Teraz w całej Polsce',
     title: 'Inne miasto.\nTen sam Kilometr.',
     body: 'Na co dzień u siebie, w weekend gdzie indziej. Wybierz miasto i jedź z aplikacją, którą już znasz.',
@@ -89,7 +92,7 @@ export const pl = {
     title: 'Następny przystanek?\nTwój.',
     body: 'Zabierz Kilometr na swoją następną trasę.',
     android: 'Na telefony z Androidem. Bezpłatnie.',
-    apk: 'Pobierz APK',
+    apk: 'APK na GitHubie',
     github: 'Wydanie stabilne z GitHuba',
     alternatives: 'Instalujesz po swojemu?',
     nightly: 'Wersje testowe',

@@ -1,4 +1,5 @@
 import type { Strings } from './pl';
+import { cityNames } from './cities';
 
 export const de: Strings = {
   meta: {
@@ -64,6 +65,7 @@ export const de: Strings = {
     ready: 'Du kannst los.',
   },
   coverage: {
+    cities: cityNames,
     eyebrow: 'Jetzt in ganz Polen',
     title: 'Andere Stadt.\nDerselbe Kilometr.',
     body: 'Im Alltag zu Hause, am Wochenende woanders. Wähle eine Stadt und fahre mit der App, die du schon kennst.',
@@ -93,7 +95,7 @@ export const de: Strings = {
     title: 'Nächster Halt?\nDeiner.',
     body: 'Nimm Kilometr auf deine nächste Fahrt mit.',
     android: 'Für Android-Telefone. Kostenlos.',
-    apk: 'APK herunterladen',
+    apk: 'APK auf GitHub',
     github: 'Stabile Version von GitHub',
     alternatives: 'Lieber anders installieren?',
     nightly: 'Testversionen',
