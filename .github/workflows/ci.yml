@@ -152,6 +152,9 @@ jobs:
       - name: Run logic tests (Notifications)
         run: npm run check:notifications
 
+      - name: Run logic tests (Departure alarm)
+        run: npm run check:alarm
+
       - name: Run logic tests (Notification lifecycle)
         run: npm run check:notification-runtime
 
