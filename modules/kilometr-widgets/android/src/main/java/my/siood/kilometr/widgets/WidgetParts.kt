@@ -65,6 +65,10 @@ internal fun status(context: Context, labels: Labels, delayMin: Int, live: Boole
     val text = labels.format("late", "n" to delayMin.toString()) ?: return null
     return Status(text, context.getColor(R.color.kw_warning))
   }
+  if (live && delayMin < 0) {
+    val text = labels.format("early", "n" to (-delayMin).toString()) ?: return null
+    return Status(text, context.getColor(R.color.kw_warning))
+  }
   if (live) {
     val text = labels.get("onTime") ?: return null
     return Status(text, context.getColor(R.color.kw_success))
@@ -219,10 +223,10 @@ internal fun lineBadge(
   } else {
     val initialFg = parseColor(fg, Color.WHITE)
     val parsedBg = parseColor(bg, Color.TRANSPARENT)
-    if (parsedBg != Color.TRANSPARENT && ColorUtils.calculateContrast(initialFg, parsedBg) < 3.0) {
+    if (parsedBg != Color.TRANSPARENT && ColorUtils.calculateContrast(initialFg, parsedBg) < 4.5) {
       val whiteContrast = ColorUtils.calculateContrast(Color.WHITE, parsedBg)
-      val darkContrast = ColorUtils.calculateContrast(0xFF0A1210.toInt(), parsedBg)
-      if (whiteContrast >= darkContrast) Color.WHITE else 0xFF0A1210.toInt()
+      val darkContrast = ColorUtils.calculateContrast(Color.BLACK, parsedBg)
+      if (whiteContrast >= darkContrast) Color.WHITE else Color.BLACK
     } else {
       initialFg
     }

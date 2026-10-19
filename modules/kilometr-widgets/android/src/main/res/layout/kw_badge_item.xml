@@ -28,6 +28,8 @@
             android:layout_marginStart="4dp"
             android:includeFontPadding="false"
             android:maxLines="1"
+            android:maxWidth="64dp"
+            android:ellipsize="end"
             android:textColor="#FFFFFFFF"
             android:textSize="13sp"
             android:textStyle="bold" />

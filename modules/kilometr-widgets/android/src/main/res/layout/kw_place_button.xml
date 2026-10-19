@@ -10,7 +10,7 @@
         android:layout_height="40dp"
         android:layout_gravity="center"
         android:importantForAccessibility="no"
-        android:src="@drawable/kw_circle" />
+        android:src="@drawable/kw_icon_bg" />
 
     <ImageView
         android:id="@+id/kw_place_icon"

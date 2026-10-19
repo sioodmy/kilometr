@@ -1268,6 +1268,11 @@ export const pl = {
   // Widgety z ekranu głównego. Interpolacje dostają placeholder ('{n}', '{t}'),
   // bo minuty liczy widget natywnie przy każdym tyknięciu.
   widgets: {
+    journeyTitle: 'Twój Kilometr',
+    journeyDescription: 'Odjazdy do Twoich miejsc, a podczas śledzenia postęp podróży',
+    trackingTitle: 'Twoja podróż',
+    checkRoutes: 'Sprawdź połączenia',
+    early: (n: string) => `-${n} min`,
     now: 'teraz',
     min: 'min',
     onTime: 'Na czas',
