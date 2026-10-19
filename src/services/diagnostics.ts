@@ -34,7 +34,7 @@ function cityNameOf(cityId: string): string {
 
 export type DiagLevel = 'ok' | 'warn' | 'error';
 
-export type DiagItemId = 'db' | 'counts' | 'trains' | 'calendar' | 'search';
+type DiagItemId = 'db' | 'counts' | 'trains' | 'calendar' | 'search';
 
 export interface DiagItem {
   id: DiagItemId;
@@ -279,7 +279,7 @@ function levelWord(level: DiagLevel): string {
 }
 
 /** Tekstowy raport do schowka: wersja appki, OS, miasto, rozkład, liczniki, statusy. */
-export function buildReport(r: DiagResult): string {
+function buildReport(r: DiagResult): string {
   const t = diagTr();
   const unknown = t.diagReportUnknown;
   const lines = [

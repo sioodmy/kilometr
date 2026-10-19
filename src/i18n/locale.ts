@@ -20,7 +20,7 @@ let currentSetting: LocaleSetting = 'system';
 let currentLocale: Locale = 'pl';
 const listeners = new Set<() => void>();
 
-export function notifyLocaleListeners(): void {
+function notifyLocaleListeners(): void {
   for (const l of listeners) l();
 }
 

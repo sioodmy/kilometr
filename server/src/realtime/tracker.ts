@@ -2,7 +2,7 @@ import { config } from '../config';
 import { gtfsStore } from '../gtfs/store';
 import { matchVehicleToSchedule, VehicleMatch } from './matcher';
 
-export class VehicleTracker {
+class VehicleTracker {
   private vehiclesById = new Map<string, VehicleMatch>();
   private vehiclesByLine = new Map<string, VehicleMatch[]>();
   private vehiclesByTripId = new Map<string, VehicleMatch>();

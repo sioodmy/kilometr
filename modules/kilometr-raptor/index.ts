@@ -357,7 +357,7 @@ export async function loadFootTileAsync(
   return loadFootTileSync(tx, ty, mvtBytes);
 }
 
-export function loadFootTileSync(
+function loadFootTileSync(
   tx: number,
   ty: number,
   mvtBytes: Uint8Array
@@ -445,40 +445,14 @@ export async function routeFootWaypointsAsync(
   return routeFootWaypointsSync(waypoints);
 }
 
-export function clearFootTiles(): void {
-  const nativeMod = getNativeModule();
-  if (nativeMod) {
-    try {
-      nativeMod.clearFootTilesSync();
-    } catch {
-      // Ignore native teardown errors.
-    }
-  }
-  if (cachedWasm) {
-    try {
-      cachedWasm.raptor_clear_foot_tiles();
-    } catch {
-      // Ignore WASM teardown errors.
-    }
-  }
-}
-
 export const CMD_FUZZY = 10;
 export const CMD_LOAD_STOPS = 11;
 export const CMD_STOPS_QUERY = 12;
-export const CMD_POI = 13;
 export const CMD_DEDUPE_AND_SORT = 14;
-export const CMD_SMART_RANK = 15;
-export const CMD_RAPTOR_INTEGRATION = 16;
 export const CMD_LIVE_LOAD_SCHEDULE = 20;
 export const CMD_LIVE_MATCH_BATCH = 21;
 export const CMD_MATCH_ZB_KD = 22;
-export const CMD_MATCH_VEHICLE_TO_LEG = 23;
-export const CMD_ROUTE_GEOMETRY = 24;
-export const CMD_VEHICLE_POSITION = 30;
 export const CMD_PLAN_MATCH = 31;
-export const CMD_TURN_MANEUVER = 32;
-export const CMD_TRIP_PROGRESS = 33;
 
 function invokeWasmSync(cmd: number, payload: Uint8Array): Uint8Array | null {
   const wasm = getWasmExports();
@@ -500,17 +474,6 @@ export function invokeRustSync(
   const nativeMod = getNativeModule();
   if (nativeMod && typeof nativeMod.invokeSync === "function") {
     return nativeMod.invokeSync(cmd, payload);
-  }
-  return invokeWasmSync(cmd, payload);
-}
-
-export async function invokeRustAsync(
-  cmd: number,
-  payload: Uint8Array
-): Promise<Uint8Array | null> {
-  const nativeMod = getNativeModule();
-  if (nativeMod && typeof nativeMod.invoke === "function") {
-    return nativeMod.invoke(cmd, payload);
   }
   return invokeWasmSync(cmd, payload);
 }
@@ -735,4 +698,3 @@ export class BinaryReader {
     return decodeUtf8(sub);
   }
 }
-

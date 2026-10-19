@@ -297,27 +297,17 @@ jobs:
             exit 1
           fi
 
-      # Bramka zgód tła: aplikacja NIE MOŻE pytać o lokalizację w tle na
-      # żadnym kanale - Play waliduje to po manifeście, a zgoda tła nie ma
-      # tu już żadnego uzasadnienia.
-      - name: 'Gate: brak zgód lokalizacji w tle'
-        env:
-          CHANNEL: ${{ steps.release.outputs.channel }}
+      - name: 'Gate: tylko potrzebne uprawnienia Androida'
         run: |
           set -euo pipefail
           APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1)
           if [ -z "$APK" ]; then
-            echo "::error::Nie znaleziono APK do bramki zgód tła"
+            echo "::error::Nie znaleziono APK do kontroli uprawnień"
             exit 1
           fi
           AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
-          P="$("$AAPT" dump badging "$APK")"
-
-          if printf '%s\n' "$P" | grep -q "ACCESS_BACKGROUND_LOCATION\|FOREGROUND_SERVICE_LOCATION"; then
-            echo "::error::APK $CHANNEL pyta o lokalizację w tle (ACCESS_BACKGROUND_LOCATION/FOREGROUND_SERVICE_LOCATION). Aplikacja nie zbiera nic w tle."
-            exit 1
-          fi
-          echo "Gate OK: $CHANNEL bez zgod tła"
+          "$AAPT" dump permissions "$APK" > "$RUNNER_TEMP/apk-permissions.txt"
+          npm run check:android-permissions -- "$RUNNER_TEMP/apk-permissions.txt"
 
       - name: Verify and stage APK
         env:

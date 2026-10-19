@@ -65,7 +65,7 @@ interface StoredSnapshot {
 }
 
 /** Jeden feed kolei: pojazdy plus prefiks ich identyfikatorów. */
-export interface RailFeed {
+interface RailFeed {
   vehicles: ZbKdVehicle[];
   prefix: string;
 }
@@ -93,7 +93,7 @@ export interface RawVehicleRow {
  * powód porażki, a `lastSuccessAt` znacznik ostatniej udanej odpowiedzi, żeby
  * dało się odróżnić „źródło padło” od „źródło nigdy nie odpowiedziało”.
  */
-export interface SourceHealth {
+interface SourceHealth {
   attempts: number;
   failures: number;
   lastSuccessAt: number | null;

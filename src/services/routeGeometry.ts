@@ -46,7 +46,7 @@ type RouteProfile = 'driving' | 'foot';
  * objechałby rzekę mostem Grunwaldzkim i narysowała 2 km zamiast 400 m.
  * Metro jedzie tunelem, więc OSRM nie ma po czym prowadzić.
  */
-export function isRailLeg(leg: MapLeg): boolean {
+function isRailLeg(leg: MapLeg): boolean {
   return leg.mode === 'tram' || leg.mode === 'train' || leg.mode === 'cable' || leg.mode === 'subway';
 }
 
@@ -144,7 +144,7 @@ function legToMapLeg(leg: Leg): MapLeg {
 }
 
 /** Wspólna lista punktów nogi — to ona idzie do OSRM jako waypointy. */
-export function legWaypoints(leg: MapLeg): Coord[] {
+function legWaypoints(leg: MapLeg): Coord[] {
   return leg.stops.map((s) => [s.lat, s.lon] as Coord);
 }
 
@@ -337,7 +337,7 @@ async function fetchChunk(
  * po 20 waypointów) i sklejone w jeden ciąg. Zwraca null dla nóg szynowych
  * oraz gdy sieć zawodzi, wtedy noga zostaje prosta.
  */
-export async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
+async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
   if (isRailLeg(leg)) return null;
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
@@ -440,7 +440,7 @@ export function distanceM(p1: Coord, p2: Coord): number {
 }
 
 /** Skumulowane odległości wzdłuż linii; długość = coords.length + 1. */
-export function cumulativeDistances(coords: Coord[]): number[] {
+function cumulativeDistances(coords: Coord[]): number[] {
   const out = [0];
   for (let i = 0; i < coords.length - 1; i++) {
     out.push(out[i] + distanceM(coords[i], coords[i + 1]));
@@ -536,178 +536,3 @@ export function projectRoutePoint(
     totalM: total,
   };
 }
-
-/** Najbliższy punkt na nodze + kurs w nim — do strzałki pojazdu live. */
-export function projectOnGeometry(
-  coords: Coord[],
-  lat: number,
-  lon: number,
-): { lat: number; lon: number; heading: number } | null {
-  const p = projectRoutePoint(coords, lat, lon);
-  if (!p) return null;
-  return { lat: p.lat, lon: p.lon, heading: p.heading };
-}
-
-/**
- * Zwraca ciągłą listę współrzędnych całej trasy od początku do końca.
- * Wykorzystuje geometrię ulic z OSRM (jeśli jest w pamięci), a dla brakujących nóg
- * odcinki proste między przystankami.
- */
-export function getAllRouteCoords(
-  route: MapRoute | null,
-  geometryMap?: Map<string, Coord[]>,
-): Coord[] {
-  if (!route || !route.legs || route.legs.length === 0) return [];
-  const out: Coord[] = [];
-
-  for (const leg of route.legs) {
-    const coords = geometryMap?.get(leg.id) ?? straightGeometry(leg);
-    for (let i = 0; i < coords.length; i++) {
-      const c = coords[i];
-      if (out.length > 0) {
-        const last = out[out.length - 1];
-        if (Math.abs(last[0] - c[0]) < 1e-6 && Math.abs(last[1] - c[1]) < 1e-6) {
-          continue; // Pomiń duplikujący się punkt styku etapów
-        }
-      }
-      out.push(c);
-    }
-  }
-
-  return out;
-}
-
-/**
- * Oblicza punkt na trasie dla zadanego postępu (od 0.0 - start do 1.0 - meta)
- * wraz z kursem (azymutem) w tym punkcie.
- */
-export function interpolateRoute(
-  coords: Coord[],
-  progress: number,
-): { point: Coord; heading: number; index: number } {
-  if (!coords || coords.length === 0) {
-    // Brak geometrii: zero zamiast środka jakiegokolwiek miasta. Caller
-    // (findNextStop) i tak odrzuca puste trasy wcześniej, więc to tylko
-    // ostatnia linia obrony, a nie pozycja na mapie.
-    return { point: [0, 0], heading: 0, index: 0 };
-  }
-  if (coords.length === 1) {
-    return { point: coords[0], heading: 0, index: 0 };
-  }
-
-  const p = Math.max(0, Math.min(1, progress));
-  if (p === 0) {
-    return { point: coords[0], heading: 0, index: 0 };
-  }
-  if (p === 1) {
-    return { point: coords[coords.length - 1], heading: 0, index: coords.length - 1 };
-  }
-
-  const dists: number[] = [0];
-  let totalDist = 0;
-  for (let i = 0; i < coords.length - 1; i++) {
-    const d = distanceM(coords[i], coords[i + 1]);
-    totalDist += d;
-    dists.push(totalDist);
-  }
-
-  if (totalDist <= 0) {
-    return { point: coords[0], heading: 0, index: 0 };
-  }
-
-  const targetDist = p * totalDist;
-  let segIndex = 0;
-  for (let i = 0; i < dists.length - 1; i++) {
-    if (targetDist <= dists[i + 1]) {
-      segIndex = i;
-      break;
-    }
-  }
-
-  const segStartDist = dists[segIndex];
-  const segEndDist = dists[segIndex + 1];
-  const segLen = segEndDist - segStartDist;
-  const t = segLen > 0 ? (targetDist - segStartDist) / segLen : 0;
-
-  const c1 = coords[segIndex];
-  const c2 = coords[segIndex + 1];
-  const lat = c1[0] + t * (c2[0] - c1[0]);
-  const lon = c1[1] + t * (c2[1] - c1[1]);
-
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const lat1 = toRad(c1[0]);
-  const lat2 = toRad(c2[0]);
-  const dLon = toRad(c2[1] - c1[1]);
-  const y = Math.sin(dLon) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-  const heading = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-
-  return { point: [lat, lon], heading, index: segIndex };
-}
-
-/**
- * Wyszukuje najbliższy punkt na trasie do zadanego punktu.
- */
-export function findNearestStop(
-  route: MapRoute | null,
-  point: Coord,
-): { stop: MapStop; leg: MapLeg; distanceM: number } | null {
-  if (!route || !route.legs) return null;
-  let bestStop: MapStop | null = null;
-  let bestLeg: MapLeg | null = null;
-  let bestDist = Infinity;
-
-  for (const leg of route.legs) {
-    for (const stop of leg.stops) {
-      const d = distanceM([stop.lat, stop.lon], point);
-      if (d < bestDist) {
-        bestDist = d;
-        bestStop = stop;
-        bestLeg = leg;
-      }
-    }
-  }
-
-  if (!bestStop || !bestLeg) return null;
-  return { stop: bestStop, leg: bestLeg, distanceM: bestDist };
-}
-
-/**
- * Przystanek, do którego się zbliżamy przy danym postępie trasy — czyli
- * pierwszy leżący dalej wzdłuż linii. Zwykłe „najbliższy” przy skręcie
- * potrafi wskazać przystanek za kulisami, a właśnie po to jest ten
- * kurs joystickem.
- */
-export function findNextStop(
-  route: MapRoute | null,
-  coords: Coord[],
-  progress: number,
-): { stop: MapStop; leg: MapLeg; distanceM: number } | null {
-  if (!route || coords.length < 2) return null;
-  const cum = cumulativeDistances(coords);
-  const total = cum[cum.length - 1];
-  if (total <= 0) return null;
-  const alongM = Math.max(0, Math.min(1, progress)) * total;
-  const { point } = interpolateRoute(coords, progress);
-
-  let best: { stop: MapStop; leg: MapLeg; distanceM: number } | null = null;
-  for (const leg of route.legs) {
-    for (const stop of leg.stops) {
-      if (stop.role === 'walk') continue;
-      const p = projectRoutePoint(coords, stop.lat, stop.lon);
-      if (!p) continue;
-      if (p.alongM < alongM - 15) continue; // już za nami
-      if (!best || p.alongM < best.distanceM + alongM) {
-        best = { stop, leg, distanceM: p.alongM - alongM };
-      }
-    }
-  }
-  if (best) {
-    // Odległość po prostej na wypadek, gdyby przystanek leżał obok kursu
-    // (droga zygzakowata) — wtedy pokazujemy odległość powietrzną.
-    const air = distanceM([best.stop.lat, best.stop.lon], point);
-    return { ...best, distanceM: Math.max(0, Math.min(best.distanceM, air)) };
-  }
-  return findNearestStop(route, point);
-}
-

@@ -91,7 +91,7 @@ export function mergeDayIndexes(
  * Klasyfikacja linii na tramwaj/autobus — ta sama heurystyka co w backtrack
  * (Wrocław: route_type 0 albo numer 1–33 to tramwaj).
  */
-export function classifyTransitMode(
+function classifyTransitMode(
   routeType: number | undefined,
   shortName: string | undefined,
 ): 'tram' | 'bus' {
@@ -619,7 +619,7 @@ function backtrackJourney(
 }
 
 /** Łączy pod rząd idące odcinki piesze w jeden (np. przesiadka + dojście do celu). */
-export function mergeConsecutiveWalks(segments: JourneySegment[]): JourneySegment[] {
+function mergeConsecutiveWalks(segments: JourneySegment[]): JourneySegment[] {
   const out: JourneySegment[] = [];
   for (const seg of segments) {
     const prev = out[out.length - 1];

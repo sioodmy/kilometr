@@ -149,7 +149,7 @@ function setMeta(key: string, value: string) {
   }
 }
 
-export function poiCount(): number {
+function poiCount(): number {
   try {
     const row = getDb().prepare('SELECT COUNT(*) as n FROM pois').get() as { n: number };
     return row?.n ?? 0;
@@ -166,7 +166,7 @@ function isStale(): boolean {
 }
 
 /** Pobiera POI z Overpass i podmienia tabelę. Best-effort — błąd zostawia stare dane. */
-export async function refreshPoiIndex(): Promise<number> {
+async function refreshPoiIndex(): Promise<number> {
   if (refreshInFlight) return poiCount();
   refreshInFlight = true;
   try {

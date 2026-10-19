@@ -10,7 +10,7 @@
 
 export type LatLon = { lat: number; lon: number };
 
-export type SuggestionKind = 'stop' | 'address' | 'place' | 'history';
+type SuggestionKind = 'stop' | 'address' | 'place' | 'history';
 
 export interface Suggestion extends LatLon {
   id: string;

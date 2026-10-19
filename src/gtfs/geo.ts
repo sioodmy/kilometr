@@ -3,11 +3,11 @@
 
 const EARTH_RADIUS_METERS = 6371000;
 
-export function toRadians(deg: number): number {
+function toRadians(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
-export function toDegrees(rad: number): number {
+function toDegrees(rad: number): number {
   return (rad * 180) / Math.PI;
 }
 

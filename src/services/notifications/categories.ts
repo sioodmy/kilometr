@@ -12,8 +12,8 @@ import { getNotifications } from './module';
 export const TRIP_CATEGORY = 'kilometr.trip';
 export const ALERT_CATEGORY = 'kilometr.alert';
 
-export const ACTION_STOP = 'kilometr.action.stop';
-export const ACTION_OPEN_ROUTES = 'kilometr.action.routes';
+const ACTION_STOP = 'kilometr.action.stop';
+const ACTION_OPEN_ROUTES = 'kilometr.action.routes';
 
 /** Czy użytkownik wcisnął „Zakończ śledzenie", a nie po prostu tapnął. */
 export function isStopAction(actionIdentifier: string | undefined): boolean {

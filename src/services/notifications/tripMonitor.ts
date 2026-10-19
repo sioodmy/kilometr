@@ -5,7 +5,7 @@ import { getActiveCitySync } from '../cityStore';
 import { RoutingService } from '../api';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
-import type { Connection, RouteQuery, VehiclePosition } from '../../types/models';
+import type { Connection, VehiclePosition } from '../../types/models';
 import {
   buildRoutesLink,
   departureTs,
@@ -25,7 +25,6 @@ import { resolveTrackedConnection } from './planMatch';
 import { ARRIVED_LINGER_MS, presentTrip, dismissTracking } from './presenter';
 import {
   cancelScheduledAlerts,
-  scheduleDepartureAlerts,
   sendArrivedNotification,
   sendDisruptionAlert,
   shouldAlertDelay,
@@ -81,23 +80,6 @@ export function getTrackedTripSync(): TrackedTrip | null {
 
 export function getTripProgressSync(): TripProgress | null {
   return progress ? { ...progress } : null;
-}
-
-/**
- * Czy dwa zapytania trasy opisują tę samą podróż. Używane przez ekran
- * połączeń do rozpoznania, czy śledzimy właśnie tę trasę (a nie inną),
- * oraz po przywróceniu stanu. Epsilon 0.0005° ≈ 55 m — mniejszy niż
- * rozrzut współrzędnych z wyszukiwarki, więc nie łapie sąsiednich przystanków.
- */
-export function isSameQuery(a: RouteQuery, b: RouteQuery): boolean {
-  return (
-    a.fromTitle === b.fromTitle &&
-    a.toTitle === b.toTitle &&
-    Math.abs(a.fromLat - b.fromLat) < 0.0005 &&
-    Math.abs(a.fromLon - b.fromLon) < 0.0005 &&
-    Math.abs(a.toLat - b.toLat) < 0.0005 &&
-    Math.abs(a.toLon - b.toLon) < 0.0005
-  );
 }
 
 // ─── Pojazd ────────────────────────────────────────────────────────────────
@@ -212,7 +194,7 @@ async function refresh(): Promise<void> {
 
     // Użytkownik wyłączył wszystkie powiadomienia — nie ma po co dalej
     // planować, tym bardziej że samo śledzenie kosztuje odpytania planera.
-    if (!prefs.trackingEnabled && !prefs.departureAlertsEnabled && !prefs.disruptionAlertsEnabled) {
+    if (!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) {
       await stopTracking();
       return;
     }
@@ -248,14 +230,11 @@ async function refresh(): Promise<void> {
       await stopTracking();
       return;
     }
-    await scheduleDepartureAlerts(p, trip, prefs);
-    if (run !== generation) return;
-
     if (p.phase === 'arrived') {
       // „Jesteś na miejscu" to komunikat, a nie stan — bez alertów go nie ma.
       if (arrivedAt === 0) {
         arrivedAt = p.arriveAtMs;
-        if (prefs.departureAlertsEnabled) await sendArrivedNotification(p, trip);
+        if (prefs.trackingEnabled) await sendArrivedNotification(p, trip);
       }
       // Komunikat zostaje chwilę na ekranie blokady, potem sprzątamy.
       if (Date.now() - arrivedAt >= ARRIVED_LINGER_MS) {
@@ -410,7 +389,7 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
   }
 }
 
-/** Wymuszone odświeżenie (np. po powrocie na ekran). */
+/** @public Wywoływane przez createRequire w check-notification-runtime.ts. */
 export function refreshTrackedTrip(): Promise<void> {
   return refresh();
 }

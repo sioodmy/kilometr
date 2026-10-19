@@ -9,7 +9,7 @@
 //
 // Wymaga builda deweloperskiego; w Expo Go modułu mapy i tak nie ma.
 
-const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const { withAndroidManifest, withDangerousMod } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 

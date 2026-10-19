@@ -16,7 +16,7 @@ import { gtfsStore } from '../src/gtfs/store';
 import { planConnections } from '../src/routing/engine';
 
 // @ts-expect-error - prosty klient ESM spoza src
-import * as kd from '/tmp/opencode/kd/kd.mjs';
+import * as kd from '../../.agents/skills/transit-benchmark/jakdojade-client.mjs';
 
 export interface Case {
   name: string;
