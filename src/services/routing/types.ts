@@ -1,5 +1,11 @@
 /** 'cable' = kolej linowa / powietrzna (Polinka przy Politechnice Wrocławskiej). */
-export type LegMode = 'tram' | 'bus' | 'train' | 'cable' | 'walk';
+export type LegMode = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway' | 'walk';
+
+/** Pojazd, na który da się przesiąść. Wszystko poza spacerem. */
+export type TransitVehicleMode = Exclude<LegMode, 'walk'>;
+
+/** Które pojazdy biorą udział w wynikach. Wszystko true = brak ograniczeń. */
+export type AllowedTransferModes = Record<TransitVehicleMode, boolean>;
 
 /** Jednorazowy filtr pojazdów: 'all' = tramwaje + autobusy + pociągi KD (default). */
 export type TransitModePreference = 'all' | 'tram' | 'bus';

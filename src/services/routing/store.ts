@@ -2,11 +2,30 @@ import { awaitImportSettled, importInProgress } from '../dataManager';
 import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
 import {
+  BinaryReader,
+  BinaryWriter,
+  CMD_LOAD_STOPS,
+  CMD_STOPS_QUERY,
+  invokeRustSync,
+} from '../../../modules/kilometr-raptor';
+import { clearRaptorNetCache } from './network';
+import { getCity } from '../../cities';
+import { getActiveCityIdSync } from '../cityStore';
+import {
   POLINKA_ROUTE_ID,
   polinkaRoute,
   polinkaStops,
   polinkaTripsOverlapping,
 } from '../../data/polinka';
+
+/** Kolej linowa istnieje tylko w miastach z featurem (Wrocław / Polinka). */
+function cableInCity(): boolean {
+  try {
+    return getCity(getActiveCityIdSync()).features.cable;
+  } catch {
+    return true;
+  }
+}
 
 const WALK_SPEED_MPS = 1.45;
 const WALK_DETOUR_FACTOR = 1.15;
@@ -18,6 +37,17 @@ export interface DayIndex {
   routeStops: Map<string, string[]>;
   routeTrips: Map<string, any[]>;
   patterns: Map<string, any>;
+}
+
+/** Int32 z bloba zapisanego przez builder (małe endian, 4 B na wartość). */
+function int32FromBlob(raw: Uint8Array | ArrayBuffer): Int32Array {
+  const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+  if (bytes.byteOffset % 4 === 0) {
+    return new Int32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 2);
+  }
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Int32Array(copy.buffer, 0, bytes.byteLength >> 2);
 }
 
 /** Dokłada kursy Polinki do mapy kursów wycinka (własna linia, brak konfliktu id). */
@@ -44,6 +74,13 @@ export class LocalGtfsStore {
   /** Wycinki horyzontu (szybkie): klucz dzien+kubelki godzin, max 4 w pamięci. */
   private sliceIndexes = new Map<string, DayIndex>();
   private slicePromises = new Map<string, Promise<DayIndex>>();
+  /**
+   * Zbudowany horyzont wycinka [from, to] (z marginesami kubelków). Wycinek
+   * pokrywający szersze zapytanie może je obsłużyć bez przebudowy i bez nowej
+   * kompilacji sieci RAPTOR-a, np. wycinek z rozgrzewki na "teraz" obsługuje
+   * wyszukiwanie z godzinę później, mimo innej godziny w kluczu.
+   */
+  private sliceHorizons = new WeakMap<DayIndex, { from: number; to: number }>();
   // Liczenie referencji kursów per wycinek: kurs bywa we wielu wycinkach, więc
   // `trips`/`stopTimes` zwalniamy dopiero, gdy ostatni wycinek go puści.
   private sliceTripIds = new Map<string, string[]>();
@@ -51,6 +88,11 @@ export class LocalGtfsStore {
   // Kursy z pełnego indeksu dnia trzymamy na stałe (nie są zwalniane przez
   // ewangelizację wycinków, która dotyczy wyłącznie sliceIndexes).
   private retainedTrips = new Set<string>();
+  private rustStopIds: string[] = [];
+  private rustStopCount = -1;
+  // Schemat bazy i kolejność refów stopów (patrz buildSlice).
+  private tripBlobSchema: boolean | null = null;
+  private stopRefsCache: string[] | null = null;
   isLoaded = false;
 
   /**
@@ -69,7 +111,12 @@ export class LocalGtfsStore {
     this.sliceTripIds.clear();
     this.tripRefs.clear();
     this.retainedTrips.clear();
+    this.rustStopIds = [];
+    this.rustStopCount = -1;
+    this.tripBlobSchema = null;
+    this.stopRefsCache = null;
     this.isLoaded = false;
+    clearRaptorNetCache();
   }
 
   async load() {
@@ -111,10 +158,20 @@ export class LocalGtfsStore {
     }
 
     // 3. Kolej linowa Polinka: stacje i linia zanim powstaną przesiadki
-    this.injectPolinkaStopsAndRoute();
+    // (tylko miasta z koleją linową, Kraków jej nie ma i nie dostaje atrapy)
+    if (cableInCity()) this.injectPolinkaStopsAndRoute();
 
-    // 4. Build footpaths
-    this.buildFootpaths();
+    // 4. Przesiadki piesze: blob z buildera (liczony natywnie w buildzie), a gdy
+    // go nie ma, dawny grid w JS. Miasta z koleją linową zostają na JS, bo
+    // stacje Polinki dokładamy dopiero tutaj i nie ma ich w blobie.
+    let footpathsFromBlob = false;
+    if (!cableInCity()) {
+      footpathsFromBlob = await this.loadFootpathsBlob(db).catch((err) => {
+        console.warn('[LocalGtfsStore] footpaths blob nie wyszedł, liczę w JS:', err);
+        return false;
+      });
+    }
+    if (!footpathsFromBlob) this.buildFootpaths();
 
     // 5. Przesiadki na pociągi (tabela z prebuilt; brak = baza bez KD)
     await this.loadInterchanges().catch(() => {});
@@ -157,6 +214,7 @@ export class LocalGtfsStore {
     toSec: number,
   ): { tripIds: string[]; byRouteId: Map<string, any[]> } {
     const empty = { tripIds: [] as string[], byRouteId: new Map<string, any[]>() };
+    if (!cableInCity()) return empty;
     if (day < 1 || day > 5) return empty;
 
     const bundles = polinkaTripsOverlapping(fromSec, toSec);
@@ -295,6 +353,23 @@ export class LocalGtfsStore {
     const inFlight = this.slicePromises.get(cacheKey);
     if (inFlight) return inFlight;
 
+    // Wycinek, który budował SZERSZY horyzont (np. rozgrzewka godzinę
+    // wcześniej), obsługuje to zapytanie bez przebudowy. Bez tego pierwsze
+    // wyszukiwanie po przekroczeniu kubłka płaci za nowy SQL, buildPatterns,
+    // pakowanie sieci i wczytanie jej do Rusta, choć dane już leżą w pamięci.
+    const wantFrom = qFrom * 3600 - 1800;
+    const wantTo = (qTo + 1) * 3600 + 1800;
+    const dayPrefix = `${day}|${dateStr ?? ''}|`;
+    for (const [key, idx] of this.sliceIndexes) {
+      if (!key.startsWith(dayPrefix)) continue;
+      const horizon = this.sliceHorizons.get(idx);
+      if (!horizon || horizon.from > wantFrom || horizon.to < wantTo) continue;
+      // LRU: odśwież kolejność, żeby wybrany wycinek nie wyleciał z LRU (≤4 wpisy).
+      this.sliceIndexes.delete(key);
+      this.sliceIndexes.set(key, idx);
+      return idx;
+    }
+
     const promise = this.buildSlice(day, dateStr, qFrom, qTo).finally(() => {
       this.slicePromises.delete(cacheKey);
     });
@@ -324,41 +399,44 @@ export class LocalGtfsStore {
     const serviceIds = Array.from(activeServices);
     if (serviceIds.length === 0) {
       this.rememberSlice(cacheKey, emptyIdx);
+      // Pusty wycinek (np. noc, brak serwisów) nadaje się tylko na dokładnie
+      // swój klucz — pokrycia nie rejestrujemy, żeby inny horyzont go nie
+      // uznał za wystarczający.
+      this.sliceHorizons.delete(emptyIdx);
       return emptyIdx;
     }
     const servicePlaceholders = serviceIds.map(() => '?').join(',');
 
-    // 1. Kursy nachodzące na horyzont (agregacja natywnie w SQL — lecą tylko id).
     // Polinkę dokładamy obok: ten sam warunek przecięcia horyzontu, bez SQL-a.
     const polinka = this.injectPolinkaTrips(day, bFrom, bTo);
-    const overlapping = await db.getAllAsync<{ trip_id: string }>(
-      `SELECT st.trip_id AS trip_id
-       FROM stop_times st
-       JOIN trips t ON st.trip_id = t.trip_id
-       WHERE t.service_id IN (${servicePlaceholders})
-       GROUP BY st.trip_id
-       HAVING MIN(st.dep_sec) <= ? AND MAX(st.arr_sec) >= ?`,
-      ...serviceIds,
-      bTo,
-      bFrom,
-    );
-    if (overlapping.length === 0 && polinka.tripIds.length === 0) {
-      this.rememberSlice(cacheKey, emptyIdx);
-      return emptyIdx;
-    }
-    const tripIds = overlapping.map((r) => r.trip_id);
-
-    // 2. Szczegóły kursów + czasy — porcjami (IN z tysiącami id na raz dławi mostek).
     const tripsByRouteId = new Map<string, any[]>();
-    const CHUNK = 400;
-    for (let i = 0; i < tripIds.length; i += CHUNK) {
-      const chunk = tripIds.slice(i, i + CHUNK);
-      const placeholders = chunk.map(() => '?').join(',');
-      const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
-        `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${placeholders})`,
-        ...chunk,
+    const tripIds: string[] = [];
+
+    if (await this.hasTripBlobs(db)) {
+      // Nowa ścieżka: kursy po indeksie (service_id, start_sec) i czasy
+      // w blobach. Jedno zapytanie zamiast GROUP BY po stop_times plus
+      // setki tysięcy wierszy przez mostek (GZM: ~321 tys. na 8h okno).
+      const rows = await db.getAllAsync<{
+        trip_id: string;
+        route_id: string;
+        service_id: string;
+        headsign: string;
+        direction: number;
+        shape: string;
+        seq_blob: Uint8Array | ArrayBuffer | null;
+        arr_blob: Uint8Array | ArrayBuffer | null;
+        dep_blob: Uint8Array | ArrayBuffer | null;
+      }>(
+        `SELECT trip_id, route_id, service_id, headsign, direction, shape, seq_blob, arr_blob, dep_blob
+         FROM trips
+         WHERE service_id IN (${servicePlaceholders}) AND start_sec <= ? AND end_sec >= ?`,
+        ...serviceIds,
+        bTo,
+        bFrom,
       );
-      for (const r of tripsRows) {
+      const stopRefs = rows.length > 0 ? await this.getStopRefs(db) : [];
+      const missing: string[] = [];
+      for (const r of rows) {
         const t = {
           trip_id: r.trip_id,
           route_id: r.route_id,
@@ -374,41 +452,214 @@ export class LocalGtfsStore {
           tripsByRouteId.set(r.route_id, group);
         }
         group.push(t);
+        tripIds.push(r.trip_id);
+        if (r.seq_blob && r.arr_blob && r.dep_blob) {
+          const seq = int32FromBlob(r.seq_blob);
+          const arr = int32FromBlob(r.arr_blob);
+          const dep = int32FromBlob(r.dep_blob);
+          const n = Math.min(seq.length, arr.length, dep.length);
+          const times = new Array(n);
+          for (let i = 0; i < n; i++) {
+            times[i] = {
+              trip_id: r.trip_id,
+              stop_id: stopRefs[seq[i]],
+              arrival_sec: arr[i],
+              departure_sec: dep[i],
+              stop_sequence: i,
+            };
+          }
+          this.stopTimes.set(r.trip_id, times);
+        } else {
+          // Kurs bez bloba (nieznany stop_id w buildzie): stara ścieżka.
+          missing.push(r.trip_id);
+        }
       }
+      if (missing.length > 0) {
+        await this.loadStopTimesChunked(db, missing);
+      }
+    } else {
+      // Stara ścieżka (bazy bez indeksu czasowego): agregacja natywnie w SQL,
+      // potem szczegóły kursów + czasy porcjami (IN z tysiącami id dławi mostek).
+      const overlapping = await db.getAllAsync<{ trip_id: string }>(
+        `SELECT st.trip_id AS trip_id
+         FROM stop_times st
+         JOIN trips t ON st.trip_id = t.trip_id
+         WHERE t.service_id IN (${servicePlaceholders})
+         GROUP BY st.trip_id
+         HAVING MIN(st.dep_sec) <= ? AND MAX(st.arr_sec) >= ?`,
+        ...serviceIds,
+        bTo,
+        bFrom,
+      );
+      for (const r of overlapping) tripIds.push(r.trip_id);
+
+      const CHUNK = 400;
+      for (let i = 0; i < tripIds.length; i += CHUNK) {
+        const chunk = tripIds.slice(i, i + CHUNK);
+        const placeholders = chunk.map(() => '?').join(',');
+        const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
+          `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${placeholders})`,
+          ...chunk,
+        );
+        for (const r of tripsRows) {
+          const t = {
+            trip_id: r.trip_id,
+            route_id: r.route_id,
+            service_id: r.service_id,
+            trip_headsign: r.headsign,
+            direction_id: r.direction,
+            shape_id: r.shape,
+          };
+          this.trips.set(r.trip_id, t);
+          let group = tripsByRouteId.get(r.route_id);
+          if (!group) {
+            group = [];
+            tripsByRouteId.set(r.route_id, group);
+          }
+          group.push(t);
+        }
+        await this.loadStopTimesChunked(db, chunk);
+      }
+    }
+
+    if (tripIds.length === 0 && polinka.tripIds.length === 0) {
+      this.rememberSlice(cacheKey, emptyIdx);
+      return emptyIdx;
+    }
+
+    // Kolejność kursów i linii w patternach ustala kolejność wierszy z SQL (plan
+    // zapytania bywa różny między bazami/urządzeniami), a od niej zależy numeracja
+    // p0/p1... i kolejność wzorców w sieci RAPTOR-a, więc i dobór równorzędnych
+    // połączeń w wyniku. Sortowanie daje ten sam wynik wszędzie.
+    for (const group of tripsByRouteId.values()) {
+      group.sort((a, b) => (a.trip_id < b.trip_id ? -1 : a.trip_id > b.trip_id ? 1 : 0));
+    }
+    const sortedByRoute = new Map(
+      [...tripsByRouteId.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
+    );
+
+    const idx = this.buildPatterns(mergePolinkaTrips(sortedByRoute, polinka.byRouteId));
+    this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
+    this.rememberSlice(cacheKey, idx);
+    this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
+    console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length + polinka.tripIds.length}`);
+    return idx;
+  }
+
+  /** Czy baza ma blob wzorca kursu (nowy builder); wynik cache'owany na sesję. */
+  private async hasTripBlobs(db: Awaited<ReturnType<typeof getGtfsDb>>): Promise<boolean> {
+    if (this.tripBlobSchema === null) {
+      try {
+        const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(trips)');
+        this.tripBlobSchema = cols.some((c) => c.name === 'seq_blob');
+      } catch {
+        this.tripBlobSchema = false;
+      }
+    }
+    return this.tripBlobSchema;
+  }
+
+  /** Refy stopów: pozycja stop_id po `ORDER BY stop_id` (tak numeruje builder). */
+  private async getStopRefs(db: Awaited<ReturnType<typeof getGtfsDb>>): Promise<string[]> {
+    if (!this.stopRefsCache) {
+      const rows = await db.getAllAsync<{ stop_id: string }>('SELECT stop_id FROM stops ORDER BY stop_id');
+      this.stopRefsCache = rows.map((r) => r.stop_id);
+    }
+    return this.stopRefsCache;
+  }
+
+  /**
+   * Przesiadki piesze z buildera: jeden blob zamiast siatki 17×17 liczonej
+   * wokół każdego przystanku na starcie. false = brak blobu (stara baza albo
+   * inna wersja danych) i wołający liczy po staremu.
+   */
+  private async loadFootpathsBlob(
+    db: Awaited<ReturnType<typeof getGtfsDb>>,
+  ): Promise<boolean> {
+    const row = await db.getFirstAsync<{ blob: Uint8Array | ArrayBuffer }>(
+      'SELECT blob FROM footpaths WHERE id = 1',
+    );
+    if (!row?.blob) return false;
+    const bytes = row.blob instanceof Uint8Array ? row.blob : new Uint8Array(row.blob);
+    if (bytes.byteLength < 8) return false;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let w = 0;
+    if (view.getUint32(w, true) !== 0x464f4f54) return false;
+    w += 4;
+    const stopCount = view.getUint32(w, true);
+    w += 4;
+    // Inna liczba przystanków niż w bazie = blob z innej wersji danych.
+    if (stopCount !== this.stops.size) return false;
+    const stopRefs = await this.getStopRefs(db);
+    while (w + 8 <= bytes.byteLength) {
+      const fromRef = view.getInt32(w, true);
+      w += 4;
+      const n = view.getInt32(w, true);
+      w += 4;
+      const fromId = stopRefs[fromRef];
+      if (fromId === undefined || n < 0 || w + n * 12 > bytes.byteLength) {
+        this.footpaths.clear();
+        return false;
+      }
+      const list = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const toRef = view.getInt32(w, true);
+        const distance_m = view.getInt32(w + 4, true);
+        const duration_sec = view.getInt32(w + 8, true);
+        w += 12;
+        list[i] = { from_stop_id: fromId, to_stop_id: stopRefs[toRef], distance_m, duration_sec };
+      }
+      this.footpaths.set(fromId, list);
+    }
+    console.log(`[LocalGtfsStore] Footpaths z bloba: ${this.footpaths.size} przystanków.`);
+    return true;
+  }
+
+  /** Wczytuje stop_times porcjami do mapy kursów (nadpisuje wpisy). */
+  private async loadStopTimesChunked(
+    db: Awaited<ReturnType<typeof getGtfsDb>>,
+    ids: string[],
+  ): Promise<void> {
+    const CHUNK = 400;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const placeholders = chunk.map(() => '?').join(',');
       const stRows = await db.getAllAsync<{trip_id: string, stop_id: string, arr_sec: number, dep_sec: number, seq: number}>(
         `SELECT trip_id, stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id IN (${placeholders}) ORDER BY trip_id, seq`,
         ...chunk,
       );
-      // Zastępujemy, nie dopisujemy: te same kursy trafiają do kolejnych
-      // wycinków (o innej godzinie), a dopisanie duplikowało wiersze
-      // stop_times. Wzorzec budowany z podwojonej sekwencji przystanków
-      // psuł RAPTOR-a — „wsiądź i wysiądź” na tym samym przystanku,
-      // a wszystkie podróże leciały do odrzucenia jako bezsensowne.
-      const timesByTrip = new Map<string, any[]>();
-      for (const r of stRows) {
-        let group = timesByTrip.get(r.trip_id);
-        if (!group) {
-          group = [];
-          timesByTrip.set(r.trip_id, group);
-        }
-        group.push({
-          trip_id: r.trip_id,
-          stop_id: r.stop_id,
-          arrival_sec: r.arr_sec,
-          departure_sec: r.dep_sec,
-          stop_sequence: r.seq,
-        });
-      }
-      for (const [tripId, group] of timesByTrip) {
-        this.stopTimes.set(tripId, group);
-      }
+      this.ingestStopTimeRows(stRows);
     }
+  }
 
-    const idx = this.buildPatterns(mergePolinkaTrips(tripsByRouteId, polinka.byRouteId));
-    this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
-    this.rememberSlice(cacheKey, idx);
-    console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length + polinka.tripIds.length}`);
-    return idx;
+  /**
+   * Wrzuca wiersze stop_times do mapy kursów. Zastępujemy, nie dopisujemy: te
+   * same kursy trafiają do kolejnych wycinków (o innej godzinie), a dopisanie
+   * duplikowało wiersze stop_times. Wzorzec budowany z podwojonej sekwencji
+   * przystanków psuł RAPTOR-a (wsiądź i wysiądź na tym samym przystanku),
+   * a wszystkie podróże leciały do odrzucenia jako bezsensowne.
+   */
+  private ingestStopTimeRows(
+    rows: { trip_id: string; stop_id: string; arr_sec: number; dep_sec: number; seq: number }[],
+  ): void {
+    const timesByTrip = new Map<string, any[]>();
+    for (const r of rows) {
+      let group = timesByTrip.get(r.trip_id);
+      if (!group) {
+        group = [];
+        timesByTrip.set(r.trip_id, group);
+      }
+      group.push({
+        trip_id: r.trip_id,
+        stop_id: r.stop_id,
+        arrival_sec: r.arr_sec,
+        departure_sec: r.dep_sec,
+        stop_sequence: r.seq,
+      });
+    }
+    for (const [tripId, group] of timesByTrip) {
+      this.stopTimes.set(tripId, group);
+    }
   }
 
   /** Rejestruje kursy wycinka w liczeniu referencji (patrz releaseSlice). */
@@ -614,10 +865,51 @@ export class LocalGtfsStore {
     return idx;
   }
 
+  private syncRustStops(): boolean {
+    if (this.rustStopCount === this.stops.size && this.rustStopIds.length === this.stops.size) {
+      return this.rustStopIds.length > 0 || this.stops.size === 0;
+    }
+    const ids: string[] = [];
+    const w = new BinaryWriter(32 + this.stops.size * 64);
+    w.u32(this.stops.size);
+    for (const stop of this.stops.values()) {
+      ids.push(stop.stop_id);
+      w.str(String(stop.stop_id))
+        .str(String(stop.stop_code ?? ''))
+        .str(String(stop.stop_name ?? ''))
+        .f64(Number(stop.stop_lat))
+        .f64(Number(stop.stop_lon))
+        .i32(Number(stop.weight) || 0);
+    }
+    const res = invokeRustSync(CMD_LOAD_STOPS, w.finish());
+    if (!res || res.byteLength < 4) return false;
+    this.rustStopIds = ids;
+    this.rustStopCount = ids.length;
+    return true;
+  }
+
   findNearestStops(lat: number, lon: number, maxDistanceMeters = 800, limit = 12) {
+    if (this.syncRustStops()) {
+      const w = new BinaryWriter(32);
+      w.u8Val(0).f64(lat).f64(lon).f64(maxDistanceMeters).u32(limit);
+      const res = invokeRustSync(CMD_STOPS_QUERY, w.finish());
+      if (res && res.byteLength >= 4) {
+        const r = new BinaryReader(res);
+        const count = r.u32();
+        const results: { stop: any; distanceM: number }[] = [];
+        for (let i = 0; i < count; i++) {
+          const idx = r.u32();
+          const distanceM = r.i32();
+          const stop = this.stops.get(this.rustStopIds[idx]);
+          if (stop) results.push({ stop, distanceM });
+        }
+        return results;
+      }
+    }
+
     const results: any[] = [];
     const latRange = maxDistanceMeters / 111000;
-    const lonRange = maxDistanceMeters / (111000 * Math.cos(lat * Math.PI / 180));
+    const lonRange = maxDistanceMeters / (111000 * Math.cos((lat * Math.PI) / 180));
 
     for (const stop of this.stops.values()) {
       if (Math.abs(stop.stop_lat - lat) > latRange) continue;

@@ -1,18 +1,23 @@
 apply plugin: 'com.android.library'
 apply plugin: 'expo-module-gradle-plugin'
 
-group = 'pl.wroclaw.kilometr.widgets'
+group = 'my.siood.kilometr.widgets'
 version = '1.0.0'
 
 android {
-  namespace "pl.wroclaw.kilometr.widgets"
+  namespace "my.siood.kilometr.widgets"
   defaultConfig {
     versionCode 1
     versionName '1.0.0'
   }
   compileSdk 36
+  testOptions {
+    unitTests.includeAndroidResources = true
+  }
 }
 
 dependencies {
   implementation "androidx.core:core:1.16.0"
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "org.robolectric:robolectric:4.17"
 }

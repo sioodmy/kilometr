@@ -1,0 +1,217 @@
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import javax.inject.Inject
+import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+import org.gradle.process.ExecOperations
+
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'my.siood.kilometr.raptor'
+version = '1.0.0'
+
+def rustJniOutputDir = layout.buildDirectory.dir("rustJniLibs")
+
+def reactNativeArchitectures() {
+  def value = project.findProperty("reactNativeArchitectures")
+  return value
+    ? value.toString().split(",").collect { it.trim() }.findAll { !it.isEmpty() }
+    : ["arm64-v8a"]
+}
+
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+def resolveNdkDir() {
+  try {
+    if (android.ndkDirectory != null && android.ndkDirectory.exists()) {
+      return android.ndkDirectory
+    }
+  } catch (Throwable ignored) {}
+
+  for (envVar in ["ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "NDK_HOME"]) {
+    def val = System.getenv(envVar)
+    if (val != null && file(val).exists()) {
+      return file(val)
+    }
+  }
+
+  def sdkDir = null
+  try {
+    sdkDir = android.sdkDirectory
+  } catch (Throwable ignored) {}
+  if (sdkDir == null) {
+    def sdkEnv = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+    if (sdkEnv != null) {
+      sdkDir = file(sdkEnv)
+    }
+  }
+
+  if (sdkDir != null) {
+    def requestedVersion = rootProject.ext.has("ndkVersion") ? rootProject.ext.ndkVersion : null
+    if (requestedVersion != null) {
+      def versioned = new File(sdkDir, "ndk/${requestedVersion}")
+      if (versioned.exists()) {
+        return versioned
+      }
+    }
+    def ndkRoot = new File(sdkDir, "ndk")
+    if (ndkRoot.exists() && ndkRoot.isDirectory()) {
+      def children = ndkRoot.listFiles()?.findAll { it.isDirectory() }?.sort { it.name }
+      if (children != null && !children.isEmpty()) {
+        return children.last()
+      }
+    }
+  }
+
+  throw new GradleException("Android NDK not found for building kilometr-raptor Rust library.")
+}
+
+abstract class CompileRustRaptorTask extends DefaultTask {
+  @Inject
+  abstract ExecOperations getExecOperations()
+
+  @InputDirectory
+  abstract DirectoryProperty getRustSrcDir()
+
+  @InputFile
+  abstract RegularFileProperty getCargoToml()
+
+  @Input
+  abstract ListProperty<String> getAbis()
+
+  @Input
+  abstract Property<Integer> getMinApi()
+
+  @Input
+  abstract Property<String> getNdkPath()
+
+  @OutputDirectory
+  abstract DirectoryProperty getOutputDir()
+
+  @TaskAction
+  void compile() {
+    def crateDir = cargoToml.get().asFile.parentFile
+    def jniOutDir = outputDir.get().asFile
+    def ndkDir = new File(ndkPath.get())
+    def prebuiltRoot = new File(ndkDir, "toolchains/llvm/prebuilt")
+    def hostDir = prebuiltRoot.listFiles()?.find { it.isDirectory() }
+    if (hostDir == null) {
+      throw new GradleException("No LLVM prebuilt toolchain found under ${prebuiltRoot}")
+    }
+    def binDir = new File(hostDir, "bin")
+    def api = minApi.get()
+
+    def envCargo = System.getenv("CARGO")
+    def homeCargo = new File(System.getProperty("user.home"), ".cargo/bin/cargo")
+    def cargoBin = (envCargo != null && new File(envCargo).exists())
+      ? envCargo
+      : (homeCargo.exists() ? homeCargo.absolutePath : "cargo")
+    def cargoHomeBin = new File(System.getProperty("user.home"), ".cargo/bin").absolutePath
+    def currentPath = System.getenv("PATH") ?: ""
+
+    def abiSpec = [
+      "arm64-v8a": [
+        rustTarget: "aarch64-linux-android",
+        clangPrefix: "aarch64-linux-android${api}-clang",
+        envKey: "AARCH64_LINUX_ANDROID"
+      ],
+      "armeabi-v7a": [
+        rustTarget: "armv7-linux-androideabi",
+        clangPrefix: "armv7a-linux-androideabi${api}-clang",
+        envKey: "ARMV7_LINUX_ANDROIDEABI"
+      ],
+      "x86_64": [
+        rustTarget: "x86_64-linux-android",
+        clangPrefix: "x86_64-linux-android${api}-clang",
+        envKey: "X86_64_LINUX_ANDROID"
+      ],
+      "x86": [
+        rustTarget: "i686-linux-android",
+        clangPrefix: "i686-linux-android${api}-clang",
+        envKey: "I686_LINUX_ANDROID"
+      ]
+    ]
+
+    for (abi in abis.get()) {
+      def spec = abiSpec[abi]
+      if (spec == null) {
+        throw new GradleException("Unsupported Android ABI for kilometr-raptor: ${abi}")
+      }
+      def linker = new File(binDir, spec.clangPrefix)
+      def ar = new File(binDir, "llvm-ar")
+      if (!linker.exists()) {
+        throw new GradleException("NDK Clang linker not found at ${linker.absolutePath}")
+      }
+
+      execOperations.exec { execSpec ->
+        execSpec.workingDir(crateDir)
+        execSpec.environment("PATH", "${cargoHomeBin}${File.pathSeparator}${binDir.absolutePath}${File.pathSeparator}${currentPath}")
+        execSpec.environment("CC_${spec.rustTarget.replace('-', '_')}", linker.absolutePath)
+        execSpec.environment("AR_${spec.rustTarget.replace('-', '_')}", ar.absolutePath)
+        execSpec.environment("CARGO_TARGET_${spec.envKey}_LINKER", linker.absolutePath)
+        execSpec.environment("CARGO_TARGET_${spec.envKey}_AR", ar.absolutePath)
+        execSpec.commandLine(cargoBin, "build", "--release", "--target", spec.rustTarget)
+      }
+
+      def builtSo = new File(crateDir, "target/${spec.rustTarget}/release/libkilometr_raptor.so")
+      if (!builtSo.exists()) {
+        throw new GradleException("Expected Rust shared library missing at ${builtSo.absolutePath}")
+      }
+      def destDir = new File(jniOutDir, abi)
+      destDir.mkdirs()
+      Files.copy(
+        builtSo.toPath(),
+        new File(destDir, "libkilometr_raptor.so").toPath(),
+        StandardCopyOption.REPLACE_EXISTING
+      )
+    }
+  }
+}
+
+android {
+  namespace "my.siood.kilometr.raptor"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+  compileSdk 36
+
+  if (rootProject.ext.has("ndkVersion")) {
+    ndkVersion rootProject.ext.ndkVersion
+  }
+
+  sourceSets {
+    main {
+      jniLibs.srcDirs += [rustJniOutputDir.get().asFile]
+    }
+  }
+}
+
+def compileRustTask = tasks.register("compileRustRaptor", CompileRustRaptorTask) {
+  rustSrcDir.set(layout.projectDirectory.dir("../rust/src"))
+  cargoToml.set(layout.projectDirectory.file("../rust/Cargo.toml"))
+  abis.set(reactNativeArchitectures())
+  minApi.set((safeExtGet("minSdkVersion", 24) as Number).intValue())
+  ndkPath.set(providers.provider { resolveNdkDir().absolutePath })
+  outputDir.set(rustJniOutputDir)
+}
+
+afterEvaluate {
+  tasks.matching {
+    it.name == "preBuild" || (it.name.startsWith("merge") && it.name.endsWith("JniLibFolders"))
+  }.configureEach {
+    dependsOn(compileRustTask)
+  }
+}

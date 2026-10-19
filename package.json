@@ -1,12 +1,14 @@
 {
   "name": "kilometr",
   "version": "1.0.0",
+  "license": "GPL-3.0-or-later",
   "main": "expo-router/entry",
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native-async-storage/async-storage": "2.2.0",
     "babel-preset-expo": "~57.0.0",
     "expo": "~57.0.24",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.19",
     "expo-document-picker": "~57.0.3",
     "expo-file-system": "^57.0.7",
@@ -15,6 +17,7 @@
     "expo-location": "~57.0.19",
     "expo-notifications": "~57.0.20",
     "expo-router": "~57.0.22",
+    "expo-sensors": "~57.0.3",
     "expo-sharing": "~57.0.22",
     "expo-splash-screen": "~57.0.9",
     "expo-sqlite": "^57.0.3",
@@ -27,15 +30,26 @@
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-share": "^12.3.1",
     "react-native-svg": "15.15.4",
+    "react-native-view-shot": "5.1.0",
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
     "@types/react": "~19.2.2",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
     "tsx": "^4.20.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2"
   },
   "scripts": {
+    "check:sharing": "tsx scripts/check-sharing.ts",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -45,18 +59,52 @@
     "setup": "npm --prefix server run setup",
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
+    "check:notification-runtime": "tsx --require ./scripts/stub-expo.cjs scripts/check-notification-runtime.ts",
     "check:live": "tsx --require ./scripts/stub-expo.cjs scripts/check-live.ts",
+    "check:live-canary": "tsx --require ./scripts/stub-expo.cjs scripts/check-live-canary.ts",
     "check:polinka": "tsx --require ./scripts/stub-expo.cjs scripts/check-polinka.ts",
     "check:routing": "tsx --require ./scripts/stub-expo.cjs scripts/check-routing.ts",
+    "check:connections": "tsx --require ./scripts/stub-expo.cjs scripts/check-connections.ts",
     "check:smart-rank": "tsx scripts/check-smart-rank.ts",
     "check:backup": "tsx scripts/check-backup.ts",
+    "check:storage": "tsx --require ./scripts/stub-expo.cjs scripts/check-storage.ts",
+    "check:kv-migration": "tsx --require ./scripts/stub-expo.cjs scripts/check-kv-migration.ts",
+    "check:offline-cache": "tsx --require ./scripts/stub-expo.cjs scripts/check-offline-cache.ts",
+    "check:places": "tsx scripts/check-places.ts",
+    "check:search": "tsx --require ./scripts/stub-expo.cjs scripts/check-search.ts",
+    "check:warsaw": "tsx --require ./scripts/stub-expo.cjs scripts/check-warsaw.ts",
+    "check:poznan": "tsx --require ./scripts/stub-expo.cjs scripts/check-poznan.ts",
+    "check:rzeszow": "tsx --require ./scripts/stub-expo.cjs scripts/check-rzeszow.ts",
+    "check:trojmiasto": "tsx --require ./scripts/stub-expo.cjs scripts/check-trojmiasto.ts",
+    "check:lodz": "tsx --require ./scripts/stub-expo.cjs scripts/check-lodz.ts",
+    "check:szczecin": "tsx --require ./scripts/stub-expo.cjs scripts/check-szczecin.ts",
+    "check:kielce": "tsx --require ./scripts/stub-expo.cjs scripts/check-kielce.ts",
+    "check:olsztyn": "tsx --require ./scripts/stub-expo.cjs scripts/check-olsztyn.ts",
+    "check:bialystok": "tsx --require ./scripts/stub-expo.cjs scripts/check-bialystok.ts",
+    "check:opole": "tsx --require ./scripts/stub-expo.cjs scripts/check-opole.ts",
+    "check:lublin": "tsx --require ./scripts/stub-expo.cjs scripts/check-lublin.ts",
+    "check:radom": "tsx --require ./scripts/stub-expo.cjs scripts/check-radom.ts",
+    "check:pull": "tsx scripts/check-pull.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"app/**/*.{ts,tsx}\" \"scripts/**/*.ts\" \"server/src/**/*.ts\" \"server/scripts/**/*.ts\" \"cloudflare/src/**/*.ts\" \"cloudflare/scripts/**/*.mjs\" \"landing/src/**/*.{ts,tsx}\" \".github/scripts/**/*.mjs\" \"eslint.config.mjs\"",
     "check:nav": "tsx scripts/check-nav.ts",
     "check:navigation-target": "tsx scripts/check-navigation-target.ts",
     "check:minimap": "tsx scripts/check-minimap.ts",
-    "check:geometry-cache": "tsx scripts/check-geometry-cache.ts"
+    "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
+    "check:map-colors": "tsx scripts/check-map-colors.ts",
+    "check:line-badge": "tsx scripts/check-line-badge.ts",
+    "check:widget-badge": "tsx scripts/check-widget-badge.ts",
+    "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,
+  "expo": {
+    "autolinking": {
+      "buildFromSource": [
+        "expo-notifications"
+      ]
+    }
+  },
   "overrides": {
     "react-dom": "19.2.0"
   }

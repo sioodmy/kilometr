@@ -4,6 +4,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -12,21 +13,21 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChevronLeft,
-  Clock3,
   Newspaper,
   RefreshCw,
   TriangleAlert,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../src/theme/tokens';
+import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
 import {
-  fetchMpkNews,
+  fetchCityNews,
   getCachedNews,
   loadNewsCache,
   markNewsSeen,
   type MpkNewsItem,
 } from '../src/services/mpkNews';
+import { useActiveCity } from '../src/services/cityStore';
 import {
   loadRecentRouteLines,
   newsTouchesLines,
@@ -40,9 +41,13 @@ type Row =
 
 const NewsCard = memo(function NewsCard({
   item,
+  operator,
+  portal,
   onOpen,
 }: {
   item: MpkNewsItem;
+  operator: string;
+  portal: string;
   onOpen: (item: MpkNewsItem) => void;
 }) {
   const s = useStrings();
@@ -55,23 +60,17 @@ const NewsCard = memo(function NewsCard({
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
       <View style={styles.metaRow}>
-        {item.dateLabel ? (
-          <View style={styles.metaChip}>
-            <Clock3 size={11} color={scheme.onSurfaceVariant} />
-            <Text style={styles.metaText}>{item.dateLabel}</Text>
-          </View>
-        ) : null}
-        {item.urgent ? (
-          <View style={styles.urgentChip}>
-            <TriangleAlert size={11} color={scheme.onWarningContainer} />
-            <Text style={styles.urgentText}>{s.news.chip}</Text>
-          </View>
-        ) : null}
-        <View style={styles.spacer} />
         <Text style={styles.sourceTag}>
-          {item.source === 'mpk' ? s.news.sourceMpk : s.news.sourceCity}
+          {item.source === 'mpk' ? s.news.sourceMpk(operator) : s.news.sourceCity(portal)}
         </Text>
+        {item.dateLabel ? <Text style={styles.metaText}>{item.dateLabel}</Text> : null}
       </View>
+      {item.urgent ? (
+        <View style={styles.urgentLabel}>
+          <TriangleAlert size={16} color={scheme.warning} />
+          <Text style={styles.urgentText}>{s.news.chip}</Text>
+        </View>
+      ) : null}
       <Text style={styles.cardTitle}>{item.title}</Text>
       {item.lines.length > 0 ? (
         <View style={styles.linesRow}>
@@ -105,6 +104,11 @@ function SkeletonCard() {
 export default function NewsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const { cityId } = useActiveCity();
+  const operator = s.city.operator(cityId);
+  const portal = s.city.portal(cityId);
+  const cityName = s.city.name(cityId);
+  const feedsLabel = s.city.newsSources(cityId);
   const [items, setItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [loading, setLoading] = useState(() => (getCachedNews()?.length ?? 0) === 0);
   const [refreshing, setRefreshing] = useState(false);
@@ -122,7 +126,7 @@ export default function NewsScreen() {
       if (isRefresh) setRefreshing(true);
       setError(null);
       try {
-        const news = await fetchMpkNews();
+        const news = await fetchCityNews();
         setItems(news);
         void markNewsSeen(news);
         await refreshMyLines();
@@ -201,27 +205,35 @@ export default function NewsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.back} hitSlop={10}>
+        <Pressable
+          onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
+          style={styles.back}
+          accessibilityRole="button"
+          accessibilityLabel={s.map.backA11y}
+        >
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
-        <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>{s.news.title}</Text>
-          <Text style={styles.headerSub}>
-            {loading && items.length === 0
-              ? s.news.sourceLoading
-              : items.length === 0
-                ? s.news.sourceEmpty
-                : s.news.count(visibleItems.length, urgentCount)}
-          </Text>
-        </View>
+        <Text style={styles.headerCity}>{cityName}</Text>
         <Pressable
           onPress={() => void load(true)}
           style={styles.iconBtn}
-          hitSlop={10}
+          disabled={refreshing || loading}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: refreshing || loading, busy: refreshing }}
           accessibilityLabel={s.news.refreshA11y}
         >
-          <RefreshCw size={18} color={scheme.onSurfaceVariant} />
+          {refreshing ? <ActivityIndicator size="small" color={scheme.primary} /> : <RefreshCw size={21} color={scheme.onSurface} />}
         </Pressable>
+      </View>
+      <View style={styles.headerText}>
+        <Text style={styles.headerTitle} accessibilityRole="header">{s.news.title}</Text>
+        <Text style={styles.headerSub}>
+          {loading && items.length === 0
+            ? s.news.sourceLoading(feedsLabel)
+            : items.length === 0
+              ? s.news.sourceEmpty(feedsLabel)
+              : s.news.count(visibleItems.length, urgentCount)}
+        </Text>
       </View>
 
       {items.length > 0 || myLines.length > 0 ? (
@@ -245,14 +257,13 @@ export default function NewsScreen() {
           >
             <Text style={[styles.filterText, filter === 'myLines' && styles.filterTextOn]}>
               {s.news.filterMyLines}
-              {myLines.length > 0 ? ` · ${myLines.length}` : ''}
             </Text>
           </Pressable>
         </View>
       ) : null}
 
       {loading && items.length === 0 ? (
-        <View style={styles.list}>
+        <ScrollView contentContainerStyle={styles.list}>
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -260,21 +271,22 @@ export default function NewsScreen() {
             <ActivityIndicator size="small" color={scheme.primary} />
             <Text style={styles.stateText}>{s.news.loading}</Text>
           </View>
-        </View>
+        </ScrollView>
       ) : error && items.length === 0 ? (
-        <View style={styles.center}>
+        <ScrollView contentContainerStyle={styles.center}>
           <View style={styles.stateIcon}>
             <Newspaper size={28} color={scheme.primary} />
           </View>
           <Text style={styles.stateTitle}>{s.news.noConnection}</Text>
           <Text style={styles.stateText}>{error}</Text>
           <Pressable
-            onPress={() => void load(false)}
+            onPress={() => { setLoading(true); void load(false); }}
+            accessibilityRole="button"
             style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
           >
             <Text style={styles.retryText}>{s.common.retry}</Text>
           </Pressable>
-        </View>
+        </ScrollView>
       ) : (
         <FlatList
           data={rows}
@@ -293,9 +305,9 @@ export default function NewsScreen() {
           }
           renderItem={({ item: row }) =>
             row.kind === 'head' ? (
-              <Text style={styles.section}>{row.label}</Text>
+              <Text style={styles.section} accessibilityRole="header">{row.label}</Text>
             ) : (
-              <NewsCard item={row.item} onOpen={openItem} />
+              <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
             )
           }
           ListEmptyComponent={
@@ -315,7 +327,7 @@ export default function NewsScreen() {
                   ? myLines.length === 0
                     ? s.news.filterNoHistoryBody
                     : s.news.filterEmptyBody
-                  : s.news.emptyBody}
+                  : s.news.emptyBody(cityName)}
               </Text>
             </View>
           }
@@ -331,96 +343,87 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   back: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerText: { flex: 1, minWidth: 0 },
-  headerTitle: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
-  headerSub: { ...type.labelSmall, color: scheme.onSurfaceVariant, marginTop: 1 },
+  headerCity: { flex: 1, ...type.titleSmall, color: scheme.onSurfaceVariant },
+  headerText: { paddingHorizontal: 24, paddingBottom: 24, gap: 6 },
+  headerTitle: { ...type.displaySmall, fontSize: 32, lineHeight: 40, fontWeight: '500', color: scheme.onSurface },
+  headerSub: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   filterRow: {
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 14,
-    paddingBottom: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
   },
   filterChip: {
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    minHeight: 36,
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: scheme.surfaceContainerLow,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 48,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   filterChipOn: { backgroundColor: scheme.secondaryContainer },
-  filterText: { ...type.labelLarge, color: scheme.onSurfaceVariant },
+  filterText: { ...type.labelLarge, color: scheme.onSurfaceVariant, textAlign: 'center' },
   filterTextOn: { color: scheme.onSecondaryContainer, fontWeight: '600' },
-  list: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 40, gap: 10 },
+  list: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 40, gap: 12 },
   section: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-    paddingTop: 10,
-    paddingBottom: 2,
-    paddingHorizontal: 2,
+    ...type.titleMedium,
+    fontWeight: '500',
+    color: scheme.onSurface,
+    paddingTop: 16,
+    paddingBottom: 4,
+    paddingHorizontal: 4,
   },
   card: {
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 14,
-    gap: 8,
-    ...elev.level1,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: 28,
+    padding: 20,
+    gap: 12,
+    overflow: 'hidden',
   },
   cardPressed: { opacity: 0.9 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  spacer: { flex: 1, minWidth: 8 },
-  metaChip: {
+  metaRow: { flexDirection: 'row', alignItems: 'center', columnGap: 12, rowGap: 4, flexWrap: 'wrap', justifyContent: 'space-between' },
+  metaText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
+  urgentLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    gap: 6,
   },
-  metaText: { ...type.labelSmall, color: scheme.onSurfaceVariant },
-  urgentChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: scheme.warningContainer,
-    borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  urgentText: { ...type.labelSmall, fontWeight: '700', color: scheme.onWarningContainer },
-  sourceTag: { ...type.labelSmall, color: scheme.outline },
-  cardTitle: { ...type.titleSmall, fontWeight: '600', color: scheme.onSurface, lineHeight: 20 },
-  cardDesc: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 17 },
+  urgentText: { ...type.labelMedium, fontWeight: '600', color: scheme.warning, flexShrink: 1 },
+  sourceTag: { ...type.labelMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
+  cardTitle: { ...type.titleLarge, fontSize: 20, lineHeight: 27, fontWeight: '500', color: scheme.onSurface },
+  cardDesc: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   linesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   moreLines: { ...type.labelSmall, color: scheme.onSurfaceVariant, alignSelf: 'center' },
   skel: { borderRadius: shape.small, backgroundColor: scheme.surfaceContainerHighest },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 8 },
-  emptyWrap: { alignItems: 'center', gap: 10, paddingTop: 72, paddingHorizontal: 24 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 8, flexWrap: 'wrap' },
+  emptyWrap: { alignItems: 'center', gap: 12, paddingVertical: 40, paddingHorizontal: 12 },
+  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   stateIcon: {
     width: 64,
     height: 64,
-    borderRadius: 32,
+    borderRadius: 20,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -429,17 +432,19 @@ const styles = StyleSheet.create({
   stateIconMuted: {
     width: 64,
     height: 64,
-    borderRadius: 32,
+    borderRadius: 20,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   stateTitle: { ...type.titleMedium, color: scheme.onSurface, textAlign: 'center' },
-  stateText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  stateText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
   retryBtn: {
     backgroundColor: scheme.primary,
-    borderRadius: shape.full,
+    borderRadius: 16,
+    minHeight: 48,
+    justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 24,
     marginTop: 8,

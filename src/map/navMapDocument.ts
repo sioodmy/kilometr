@@ -1,5 +1,4 @@
 import { buildMapStyle, ROUTE_SOURCE_ID } from './mapStyle';
-import type { Coord } from '../services/routeGeometry';
 
 const MAPLIBRE_VERSION = '4.7.1';
 const CDN_ASSETS = [
@@ -9,6 +8,8 @@ const CDN_ASSETS = [
 
 export interface NavMapDocumentOptions {
   offlineBase: string | null;
+  /** Startowa kamera [lon, lat]. Default: środek aktywnego miasta. */
+  center?: [number, number] | null;
 }
 
 const runtime = (routeSourceId: string) => `
@@ -53,7 +54,7 @@ const runtime = (routeSourceId: string) => `
     if (msg.stop) {
       features.push({
         type: 'Feature',
-        properties: { role: 'intermediate', walk: 0, sel: 2 },
+        properties: { role: 'intermediate', walk: 0, sel: 2, color: msg.accent || '#BFC9C5' },
         geometry: { type: 'Point', coordinates: [msg.stop[1], msg.stop[0]] },
       });
     }
@@ -64,14 +65,41 @@ const runtime = (routeSourceId: string) => `
     var source = map.getSource(sourceId);
     if (source) source.setData(currentRoute);
   }
+  var hasInitialCamera = false;
+  function shortestBearing(current, target) {
+    var diff = ((target - current + 540) % 360) - 180;
+    return current + diff;
+  }
   function updateCamera(msg, animate) {
     if (!map || !msg.user) return;
-    var bearing = typeof msg.heading === 'number' && isFinite(msg.heading) ? msg.heading : 0;
+    var nextLon = msg.user[1];
+    var nextLat = msg.user[0];
+    var rawBearing = typeof msg.heading === 'number' && isFinite(msg.heading) ? msg.heading : 0;
+    if (!hasInitialCamera || !animate) {
+      hasInitialCamera = true;
+      map.jumpTo({
+        center: [nextLon, nextLat],
+        bearing: rawBearing,
+        zoom: 17,
+      });
+      return;
+    }
+    var curCenter = map.getCenter();
+    var jumpDeg = Math.hypot(nextLon - curCenter.lng, nextLat - curCenter.lat);
+    if (jumpDeg > 0.0025) {
+      map.jumpTo({
+        center: [nextLon, nextLat],
+        bearing: rawBearing,
+        zoom: 17,
+      });
+      return;
+    }
+    var targetBearing = shortestBearing(map.getBearing(), rawBearing);
     map.easeTo({
-      center: [msg.user[1], msg.user[0]],
-      bearing: bearing,
+      center: [nextLon, nextLat],
+      bearing: targetBearing,
       zoom: 17,
-      duration: animate ? 220 : 0,
+      duration: 240,
       essential: true,
     });
   }
@@ -92,7 +120,7 @@ const runtime = (routeSourceId: string) => `
     map = new maplibregl.Map({
       container: 'map',
       style: window.__NAV__.style,
-      center: [17.0385, 51.1079],
+      center: window.__NAV__.center || [0, 0],
       zoom: 17,
       bearing: 0,
       interactive: false,
@@ -115,10 +143,10 @@ const runtime = (routeSourceId: string) => `
 })();
 `;
 
-export function buildNavMapDocument({ offlineBase }: NavMapDocumentOptions): string {
+export function buildNavMapDocument({ offlineBase, center }: NavMapDocumentOptions): string {
   const mapStyle = buildMapStyle(offlineBase);
   const assets = offlineBase ? [`${offlineBase}/assets`] : CDN_ASSETS;
-  const payload = JSON.stringify({ assets, style: mapStyle }).replace(/</g, '\\u003c');
+  const payload = JSON.stringify({ assets, style: mapStyle, center: center ?? null }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>',
     '<html><head>',

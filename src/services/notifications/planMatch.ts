@@ -1,3 +1,9 @@
+import {
+  BinaryReader,
+  BinaryWriter,
+  CMD_PLAN_MATCH,
+  invokeRustSync,
+} from '../../../modules/kilometr-raptor';
 import type { Connection } from '../../types/models';
 import { normalizeName } from '../vehiclePosition';
 
@@ -59,11 +65,29 @@ function tripSignature(c: Connection): string | null {
  * w tej samej minucie, a przeskoczenie z „Tramwaj 4" na „Tramwaj 12" w
  * środku podróży jest gorsze niż brak dopasowania.
  */
+function packPlanConn(w: BinaryWriter, c: Connection, idx: number): void {
+  const ids = tripIdsOf(c);
+  w.u32(idx).i32(c.departureSec | 0).i32(c.durationMin | 0).str(tripSignature(c) ?? '').u16(ids.length);
+  for (const id of ids) w.str(id);
+}
+
 export function matchTrackedConnection(
   conns: Connection[],
   committed: Connection,
   windowSec: number = LOOSE_WINDOW_SEC,
 ): Connection | null {
+  const packed = new BinaryWriter(64 + conns.length * 48);
+  packed.u8Val(0).i32(windowSec | 0);
+  packPlanConn(packed, committed, 0);
+  packed.u32(conns.length);
+  for (let i = 0; i < conns.length; i++) packPlanConn(packed, conns[i], i);
+  const res = invokeRustSync(CMD_PLAN_MATCH, packed.finish());
+  if (res && res.byteLength >= 5) {
+    const r = new BinaryReader(res);
+    if (r.u8Val() === 0) return null;
+    return conns[r.u32()] ?? null;
+  }
+
   const committedTrips = tripIdsOf(committed);
   if (committedTrips.length > 0) {
     const sameTrip = conns.find((c) => {
@@ -141,6 +165,21 @@ export function resolveTrackedConnection(
   graceSec: number,
 ): Connection | null {
   if (conns.length === 0) return null;
+
+  const packed = new BinaryWriter(64 + conns.length * 48);
+  packed.u8Val(1).i32(nowSec | 0).i32(graceSec | 0).u8Val(1);
+  packPlanConn(packed, committed, 0);
+  packed.u32(conns.length);
+  for (let i = 0; i < conns.length; i++) packPlanConn(packed, conns[i], i);
+  const res = invokeRustSync(CMD_PLAN_MATCH, packed.finish());
+  if (res && res.byteLength >= 5) {
+    const r = new BinaryReader(res);
+    const status = r.u8Val();
+    const idx = r.u32();
+    if (status === 1) return committed;
+    if (status === 2) return conns[idx] ?? null;
+    return null;
+  }
 
   const stillAhead = committed.departureSec > nowSec - graceSec;
 

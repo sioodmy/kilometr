@@ -11,27 +11,27 @@
 // Wywoływać RAZ w _layout przed initApp().
 
 import * as FileSystem from 'expo-file-system/legacy';
-import { kvGet, kvSet } from './storage';
+import { kvGetStrict, kvSetStrict } from './storage';
 
 const MIGRATED_FLAG = '__kv_migrated_from_sqlite';
 
-async function performMigration(): Promise<void> {
+async function performMigration(isCancelled: () => boolean): Promise<void> {
   // Czy już zmigrowano?
-  const flag = await kvGet(MIGRATED_FLAG);
-  if (flag === '1') return;
+  const flag = await kvGetStrict(MIGRATED_FLAG);
+  if (flag === '1' || isCancelled()) return;
 
   const docDir = FileSystem.documentDirectory;
   if (!docDir) {
-    await kvSet(MIGRATED_FLAG, '1');
     return;
   }
 
   const base = docDir.endsWith('/') ? docDir : `${docDir}/`;
   const dbPath = `${base}SQLite/ExpoSQLiteStorage`;
   const info = await FileSystem.getInfoAsync(dbPath);
+  if (isCancelled()) return;
   if (!info.exists) {
     // Fresh install — nie ma co migrować
-    await kvSet(MIGRATED_FLAG, '1');
+    await kvSetStrict(MIGRATED_FLAG, '1');
     return;
   }
 
@@ -48,9 +48,11 @@ async function performMigration(): Promise<void> {
     );
     for (const row of rows) {
       if (!row || typeof row.key !== 'string' || row.value == null) continue;
-      const existing = await kvGet(row.key);
+      if (isCancelled()) return;
+      const existing = await kvGetStrict(row.key);
+      if (isCancelled()) return;
       if (existing === null) {
-        await kvSet(row.key, row.value);
+        await kvSetStrict(row.key, row.value);
       }
     }
   } finally {
@@ -59,20 +61,24 @@ async function performMigration(): Promise<void> {
     } catch {}
   }
 
-  await kvSet(MIGRATED_FLAG, '1');
+  if (!isCancelled()) await kvSetStrict(MIGRATED_FLAG, '1');
 }
 
 export async function migrateFromSqliteKv(): Promise<void> {
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     // Limit czasowy 1.5s — migracja nigdy nie może zablokować startu apki
-    const timeout = new Promise<void>((_, reject) =>
-      setTimeout(() => reject(new Error('kvMigration timeout')), 1500)
-    );
-    await Promise.race([performMigration(), timeout]);
+    const timeout = new Promise<void>((_, reject) => {
+      timer = setTimeout(() => {
+        cancelled = true;
+        reject(new Error('kvMigration timeout'));
+      }, 1500);
+    });
+    await Promise.race([performMigration(() => cancelled), timeout]);
   } catch (err) {
     console.warn('[kvMigration] migration skipped or failed:', err);
-    try {
-      await kvSet(MIGRATED_FLAG, '1');
-    } catch {}
+  } finally {
+    clearTimeout(timer);
   }
 }

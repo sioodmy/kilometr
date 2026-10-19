@@ -2,12 +2,19 @@
 // obrót kompasem i to, że strzałka manewru nie wypada poza kwadrat.
 // Zero React Native — powtarzamy dokładnie matematykę z NavMiniMap.tsx.
 
-const FOOT = 'https://routing.openstreetmap.de/routed-foot';
+import { routeFootLocal } from '../src/services/footRouter';
+
+const FOOT = 'local-rust';
 const CAR = 'https://router.project-osrm.org';
 
 type Coord = [number, number];
 
 async function fetchRoute(base: string, profile: string, pts: Coord[]): Promise<Coord[]> {
+  if (profile === 'foot') {
+    const out = await routeFootLocal(pts);
+    if (!out || out.length < 2) throw new Error('Rust foot router returned null');
+    return out;
+  }
   const p = pts.map(([la, lo]) => `${lo.toFixed(6)},${la.toFixed(6)}`).join(';');
   const r = await fetch(`${base}/route/v1/${profile}/${p}?overview=full&geometries=geojson`);
   const b = (await r.json()) as { routes: { geometry: { coordinates: [number, number][] } }[] };
@@ -127,7 +134,7 @@ function check(label: string, cond: boolean, detail = '') {
   // 5. Strzałka manewru zawsze wewnątrz.
   {
     for (const target of [path[2], path[path.length - 1], user]) {
-      const { project, c } = layout(path, user, 64, size);
+      const { project } = layout(path, user, 64, size);
       const t = project(toMeters(user, target));
       const ok = t.x >= 0 && t.x <= size && t.y >= 0 && t.y <= size;
       check('cel manewru w kadrze', ok, `(${t.x.toFixed(0)}, ${t.y.toFixed(0)})`);

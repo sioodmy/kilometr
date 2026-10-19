@@ -13,12 +13,12 @@ import {
   downloadArchiveWithFallback,
   GtfsDownloadError,
   gtfsDir,
-  hasExtractedGtfs,
   readGtfsText,
   unzipGtfs,
 } from './gtfsDownloader';
 import { downloadPrebuiltDb, fetchManifest, getLocalTimetableVersion } from './timetableSync';
 import { getTimetableDownloadGate, markTimetableDownloaded } from './downloadLimits';
+import { getActiveCityIdSync } from './cityStore';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -82,6 +82,20 @@ function emit(next: DataStatus): void {
   }
 }
 
+/**
+ * Zmiana miasta zeruje status: liczby z poprzedniego rozkładu nie dotyczą nowego
+ * miasta, a Ustawienia pokazywałyby wtedy "gotowe" z cudzymi liczbami.
+ *
+ * `importInProgress` zostaje nietknięty: to blokada (muteks) importu, nie status.
+ * Zdejmowanie jej w trakcie trwającego importu pozwoliłoby drugiemu importowi
+ * wejść do tego samego pliku, a routing nowego miasta planowałby na bazie
+ * w połowie zaimportowanej. Zamiast tego import ma token miasta i sam się
+ * przerywa, gdy użytkownik zmieni miasto w trakcie (patrz `importInProgress`).
+ */
+export function resetDataStatusForCity(): void {
+  emit({ state: 'empty' });
+}
+
 /** Skąd pochodzą dane w SQLite: pełny rozkład z sieci. */
 export async function getGtfsSource(): Promise<GtfsSource | null> {
   try {
@@ -132,24 +146,30 @@ export async function refreshDataStatus(): Promise<DataStatus> {
 }
 
 /**
- * Tło po starcie: wagi przystanków (ranking podpowiedzi) i rozgrzany indeks
- * RAPTOR-a na bieżącą porę — żeby pierwsze wyszukiwanie tras nie płaciło
- * pełnego kosztu budowy indeksu.
+ * Tło po starcie: rozgrzany indeks RAPTOR-a na bieżącą porę (żeby pierwsze
+ * wyszukiwanie tras nie płaciło pełnego kosztu budowy indeksu) oraz wagi
+ * przystanków (ranking podpowiedzi). Oba równolegle: kolejka wag przed
+ * rozgrzewką opóźniała ją o własny czas, a pierwsze wyszukiwanie traciło.
  */
 async function ensureSearchReady(): Promise<void> {
-  try {
-    if (await needsStopWeights()) {
-      await computeStopWeights();
+  const weights = (async () => {
+    try {
+      if (await needsStopWeights()) {
+        await computeStopWeights();
+      }
+    } catch (err) {
+      console.warn('[DataManager] stop weights failed:', err);
     }
-  } catch (err) {
-    console.warn('[DataManager] stop weights failed:', err);
-  }
-  try {
-    const { warmupRouting } = await import('./routing/engine');
-    await warmupRouting();
-  } catch (err) {
-    console.warn('[DataManager] routing warmup failed:', err);
-  }
+  })();
+  const warmup = (async () => {
+    try {
+      const { warmupRouting } = await import('./routing/engine');
+      await warmupRouting();
+    } catch (err) {
+      console.warn('[DataManager] routing warmup failed:', err);
+    }
+  })();
+  await Promise.all([weights, warmup]);
 }
 
 export let importInProgress = false;
@@ -189,14 +209,23 @@ export type ImportOutcome = 'updated' | 'upToDate' | 'keptLocal' | 'cooldown';
 export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
   if (importInProgress) return 'upToDate';
   importInProgress = true;
+  // Miasto w chwili startu. Użytkownik może zmienić miasto w trakcie
+  // (pobieranie trwa minuty); wtedy import kończy się bez błędu i bez ruszania
+  // statusu, bo nowe miasto ma własny cykl pobierania.
+  const importCityId = getActiveCityIdSync();
+  const cityChanged = () => getActiveCityIdSync() !== importCityId;
   try {
     // Ścieżka 1 (domyślna po skonfigurowaniu serwera): prebuilt SQLite.
     // Brak parsowania na telefonie — download strumieniem + podmiana pliku.
     if (TIMETABLE.baseUrl) {
-      const synced = await tryImportPrebuilt().catch((err) => {
+      const synced = await tryImportPrebuilt(importCityId).catch((err) => {
         console.warn('[DataManager] prebuilt sync failed:', err instanceof Error ? err.message : String(err));
         return null;
       });
+      if (cityChanged()) {
+        console.log('[DataManager] miasto zmienione w trakcie importu, kończę bez błędu');
+        return 'upToDate';
+      }
       if (synced) {
         // Flaga w dół przed końcowym odświeżeniem (ten sam powód co niżej).
         importInProgress = false;
@@ -214,7 +243,17 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
     }
 
     // Ścieżka 2 (fallback): katalog → zip → unzip → SQLite, jak dawniej.
+    // Tylko Wrocław ma legacy feed Open Data; inne miasta biorą wyłącznie
+    // prebuilt z serwera (katalog Wrocławia do bazy Krakowa to katastrofa).
     // Też objęta limitem, żeby nie palić Open Data / R2 przy spamie przycisku.
+    const { getActiveCitySync } = await import('./cityStore');
+    if (getActiveCitySync().id !== 'wroclaw') {
+      const detail = 'prebuilt sync failed';
+      const Terr = dataTr();
+      console.warn('[DataManager] import failed:', detail);
+      emit({ state: 'error', message: Terr.prepareFail, hint: Terr.retryHint, detail });
+      throw new Error(detail);
+    }
     const gate = await getTimetableDownloadGate();
     const localStats = await getGtfsStats().catch(() => null);
     const hasLocal =
@@ -264,8 +303,13 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
  * 'cooldown' gdy jest nowsza wersja, ale pełne pobranie było za niedawno.
  * Rzuca przy problemach, wtedy caller decyduje o fallbacku do ZIP.
  */
-async function tryImportPrebuilt(): Promise<'updated' | 'upToDate' | 'cooldown'> {
-  const manifest = await fetchManifest();
+async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upToDate' | 'cooldown'> {
+  // Miasto pinujemy na całą operację: pobieranie trwa minuty, a użytkownik
+  // może w międzyczasie zmienić miasto. Manifest, plik tymczasowy i cel
+  // podmiany muszą dotyczyć tego samego miasta.
+  const cityId = pinnedCityId;
+  const manifest = await fetchManifest(cityId);
+  if (getActiveCityIdSync() !== cityId) return 'upToDate';
   const local = await getLocalTimetableVersion();
   if (local && local === manifest.version) {
     await setMeta('gtfs_last_check', new Date().toISOString());
@@ -280,9 +324,13 @@ async function tryImportPrebuilt(): Promise<'updated' | 'upToDate' | 'cooldown'>
   }
 
   emit({ state: 'downloading', progress: 0 });
-  await downloadPrebuiltDb(manifest, (written, total) => {
-    emit({ state: 'downloading', progress: total > 0 ? written / total : 0 });
-  });
+  await downloadPrebuiltDb(
+    manifest,
+    (written, total) => {
+      emit({ state: 'downloading', progress: total > 0 ? written / total : 0 });
+    },
+    cityId,
+  );
   const T = dataTr();
   emit({ state: 'importing', step: T.stepVerify, progress: 0.97 });
   await setMeta('gtfs_last_check', new Date().toISOString());
@@ -340,7 +388,7 @@ async function importGtfsLegacy(): Promise<void> {
       async (batch) => {
         await importStopTimesBatch(batch);
         done += batch.length;
-        // Progres orientacyjny: ~1.5M wierszy w stop_times Wrocławia.
+        // Progres orientacyjny: ~1.5M wierszy w stop_times dużego miasta.
         emit({ state: 'importing', step: T.stepTimesK(Math.round(done / 1000)), progress: Math.min(0.95, 0.5 + done / 1500000 / 2) });
       },
       { batchSize: 5000 },
@@ -371,8 +419,12 @@ export async function checkForGtfsUpdate(): Promise<boolean> {
       return false;
     }
     if (!TIMETABLE.baseUrl) return false;
-    const manifest = await fetchManifest().catch(() => null);
+    // Pin miasta: porównujemy wersję z bazą tego samego miasta, inaczej
+    // użytkownik Krakowa dostałby „jest nowa wersja” przez różnicę Wrocławia.
+    const cityId = getActiveCityIdSync();
+    const manifest = await fetchManifest(cityId).catch(() => null);
     if (!manifest) return false;
+    if (getActiveCityIdSync() !== cityId) return false;
     // Znacznik zapisujemy DOPIERO po udanym manifescie: nieudane sprawdzenie
     // (brak sieci) nie może zablokować kolejnej próby na refreshHours.
     await setMeta('gtfs_last_check', new Date().toISOString());

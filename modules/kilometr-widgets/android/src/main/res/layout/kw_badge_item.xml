@@ -1,16 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Badge linii jak LineBadge w apce: ikona pojazdu + numer na kolorze linii. -->
+<!-- Badge linii jak LineBadge w apce. Tło nakłada setBackgroundResource: RemoteViews nie wyrenderuje ImageView z kształtem. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content">
-
-    <ImageView
-        android:id="@+id/kw_badge_bg"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:importantForAccessibility="no"
-        android:scaleType="fitXY"
-        android:src="@drawable/kw_badge" />
 
     <LinearLayout
         android:id="@+id/kw_badge_body"
@@ -36,6 +28,8 @@
             android:layout_marginStart="4dp"
             android:includeFontPadding="false"
             android:maxLines="1"
+            android:maxWidth="64dp"
+            android:ellipsize="end"
             android:textColor="#FFFFFFFF"
             android:textSize="13sp"
             android:textStyle="bold" />

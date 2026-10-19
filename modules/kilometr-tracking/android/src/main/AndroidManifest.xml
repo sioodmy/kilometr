@@ -3,13 +3,16 @@
        (Android 13+): system pokazuje prompt dopiero po utworzeniu kanału. -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+  <!-- Delikatna wibracja przed przystankiem, na którym trzeba wysiąść. -->
+  <uses-permission android:name="android.permission.VIBRATE" />
+
   <!-- Serwis śledzący podróż. Bez foreground service powiadomienie umiera
-       razem z aplikacją, a po zamknięciu ekranu proces jest throttlowany —
+       razem z aplikacją, a po zamknięciu ekranu proces jest throttlowany :
        licznik i pasek postępu przestają wtedy żyć. -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-  <!-- Warunek promowania powiadomienia do strefy „Live Updates" na Androidzie 16.
+  <!-- Warunek promowania powiadomienia do strefy „Live Updates” na Androidzie 16.
        Uprawnienie jest nie-runtime'owe: brak wpisu = brak Live Updates. -->
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
@@ -19,7 +22,7 @@
          nazwa klasy zamiast `.LiveTripService`, bo relatywna nazwa w manifeście
          biblioteki rozwiązuje się według namespace'u aplikacji, a nie modułu. -->
     <service
-        android:name="pl.wroclaw.kilometr.tracking.LiveTripService"
+        android:name="my.siood.kilometr.tracking.LiveTripService"
         android:exported="false"
         android:foregroundServiceType="specialUse">
       <property
@@ -27,9 +30,9 @@
           android:value="user_initiated_trip_tracking" />
     </service>
 
-    <!-- Obsługa przycisku „Zakończ" bez otwierania aplikacji. -->
+    <!-- Obsługa przycisku „Zakończ” bez otwierania aplikacji. -->
     <receiver
-        android:name="pl.wroclaw.kilometr.tracking.TripActionReceiver"
+        android:name="my.siood.kilometr.tracking.TripActionReceiver"
         android:exported="false" />
   </application>
 </manifest>

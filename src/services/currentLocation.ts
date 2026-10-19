@@ -1,6 +1,19 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import * as Location from 'expo-location';
+import {
+  createLocationFilterState,
+  filterLocationFix,
+  type LocationFilterState,
+  type RawLocationFix,
+} from './locationFilter';
+
+export {
+  createLocationFilterState,
+  filterLocationFix,
+  type LocationFilterState,
+  type RawLocationFix,
+};
 
 export interface CurrentLocation {
   lat: number;
@@ -20,6 +33,7 @@ interface LocationSnapshot {
 
 const listeners = new Set<() => void>();
 let snapshot: LocationSnapshot = { location: null, state: 'seeking' };
+const filterState: LocationFilterState = createLocationFilterState();
 let subscriberCount = 0;
 let generation = 0;
 let startPromise: Promise<void> | null = null;
@@ -41,12 +55,46 @@ function getSnapshot() {
   return snapshot;
 }
 
+export function getCurrentLocationSnapshot(): LocationSnapshot {
+  return snapshot;
+}
+
+export function seedCurrentLocation(raw: RawLocationFix): void {
+  const filtered = filterLocationFix(filterState, raw);
+  if (!filtered) return;
+  publish({
+    state: 'ok',
+    location: filtered,
+  });
+}
+
 function removeWatch() {
   generation += 1;
   locationSub?.remove();
   locationSub = null;
   if (firstFixTimer) clearTimeout(firstFixTimer);
   firstFixTimer = null;
+}
+
+function handleLocationUpdate(loc: Location.LocationObject) {
+  if (firstFixTimer) clearTimeout(firstFixTimer);
+  firstFixTimer = null;
+  const filtered = filterLocationFix(filterState, {
+    lat: loc.coords.latitude,
+    lon: loc.coords.longitude,
+    accuracy: loc.coords.accuracy,
+    speed: loc.coords.speed,
+    heading:
+      loc.coords.heading != null && Number.isFinite(loc.coords.heading)
+        ? loc.coords.heading
+        : null,
+    timestamp: loc.timestamp,
+  });
+  if (!filtered) return;
+  publish({
+    state: 'ok',
+    location: filtered,
+  });
 }
 
 function startWatch(requestPermission: boolean): Promise<void> {
@@ -76,30 +124,27 @@ function startWatch(requestPermission: boolean): Promise<void> {
         return;
       }
 
+      if (!snapshot.location) {
+        try {
+          const cached = await Location.getLastKnownPositionAsync({
+            maxAge: 45000,
+            requiredAccuracy: 75,
+          });
+          if (cached && token === generation && subscriberCount > 0) {
+            handleLocationUpdate(cached);
+          }
+        } catch {}
+      }
+
       const nextSub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
           timeInterval: 1000,
-          distanceInterval: 6,
+          distanceInterval: 2,
         },
         (loc) => {
           if (token !== generation) return;
-          if (firstFixTimer) clearTimeout(firstFixTimer);
-          firstFixTimer = null;
-          publish({
-            state: 'ok',
-            location: {
-              lat: loc.coords.latitude,
-              lon: loc.coords.longitude,
-              accuracy: loc.coords.accuracy,
-              speed: loc.coords.speed,
-              heading:
-                loc.coords.heading != null && Number.isFinite(loc.coords.heading)
-                  ? loc.coords.heading
-                  : null,
-              timestamp: loc.timestamp,
-            },
-          });
+          handleLocationUpdate(loc);
         },
       );
 
@@ -110,11 +155,13 @@ function startWatch(requestPermission: boolean): Promise<void> {
       locationSub = nextSub;
       firstFixTimer = setTimeout(() => {
         if (token === generation && snapshot.state === 'seeking') {
-          publish({ location: snapshot.location, state: 'noFix' });
+          publish({ location: snapshot.location, state: snapshot.location ? 'ok' : 'noFix' });
         }
       }, 12000);
     } catch {
-      if (token === generation) publish({ location: snapshot.location, state: 'noFix' });
+      if (token === generation) {
+        publish({ location: snapshot.location, state: snapshot.location ? 'ok' : 'noFix' });
+      }
     }
   })();
   startPromise = pending.finally(() => {
@@ -129,12 +176,19 @@ function startWatch(requestPermission: boolean): Promise<void> {
 function acquire(): () => void {
   subscriberCount += 1;
   if (subscriberCount === 1) {
-    publish({ location: null, state: 'seeking' });
+    publish({
+      location: snapshot.location,
+      state: snapshot.location ? 'ok' : 'seeking',
+    });
     void startWatch(true);
     appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state !== 'active' || subscriberCount === 0) return;
       removeWatch();
-      publish({ location: null, state: 'seeking' });
+      // Zachowujemy ostatnią znaną pozycję przy wybudzeniu ekranu, żeby widget nie mrugał stanem ładowania.
+      publish({
+        location: snapshot.location,
+        state: snapshot.location ? 'ok' : 'seeking',
+      });
       void startWatch(false);
     });
   }

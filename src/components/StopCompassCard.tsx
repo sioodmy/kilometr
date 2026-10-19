@@ -1,9 +1,10 @@
-// Karta połączenia: w miejscu radaru pokazujemy kierunek do przystanku.
+// Karta nawigacji pieszej do przystanku / celu na ekranie szczegółów trasy.
 //
-// Dalej niż 100 m od przystanku zamiast kompasu jest kompaktowy widget
-// nawigacji: statyczna mapka obrócona kompasem po lewej, a po prawej ikona
-// i odległość następnego manewru. Dotknięcie całego widgetu otwiera pełną
-// mapę. Poniżej 100 m wraca kompas.
+// Minimapka z dociągniętą trasą pieszą zajmuje górę widgetu (70% wysokości
+// ekranu minus panel), a pod nią, bez szczeliny i bez promieni na styku,
+// leży panel instrukcji w stylu M3: ikona manewru, „Skręć w lewo · 50 m”,
+// potem następny manewr („Potem skręć w prawo · 120 m”). Cały widget
+// mieści się na ekranie. Dotknięcie widgetu otwiera pełną mapę trasy.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,39 +14,35 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
-import * as Location from 'expo-location';
 import {
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
-  BusFront,
   CornerDownLeft,
   CornerDownRight,
   CornerUpLeft,
   CornerUpRight,
-  CableCar,
-  Footprints,
   LocateFixed,
   MapPinned,
   Maximize2,
   Navigation2,
   RotateCcw,
-  Signpost,
-  TramFront,
-  TrainFront,
 } from 'lucide-react-native';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
-import { getLineColors, inferTransitMode, LineBadge } from './LineBadge';
+import { getLineColors, LineBadge, mapLineColor } from './LineBadge';
 import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
-import { useStrings, type Strings } from '../i18n';
+import { useStrings } from '../i18n';
 import { NavMiniMap } from './NavMiniMap';
-import { fetchFootRoute, projectRoutePoint, type Coord } from '../services/routeGeometry';
+import { fetchFootRoute, routeFootSync, type Coord } from '../services/routeGeometry';
 import {
+  matchOnPath,
   nextGuidance,
   nextGuidanceAfter,
+  slicePathFromProjection,
   type Guidance,
   type LegSpan,
   type ManeuverKind,
@@ -60,10 +57,18 @@ interface StopCompassCardProps {
   onOpenMap?: () => void;
 }
 
-const COMPASS_SWITCH_M = 100;
-const OFF_ROUTE_M = 45;
-const REROUTE_COOLDOWN_MS = 30000;
-const REROUTE_MIN_MOVE_M = 25;
+const OFF_ROUTE_M = 38;
+// Cały widget (mapa + panel instrukcji) ma zmieścić się na ekranie: 70%
+// wysokości okna zostawia miejsce na paski systemowe i naraz widoczny
+// nagłówek strony szczegółów.
+const NAV_WIDGET_FRACTION = 0.7;
+// Panel instrukcji M3 (~98 px treści) plus padding 8 widgetu i dystans 8
+// mapy od panelu. Stała: mapa dostaje resztę widgetu, więc wysokość mapy
+// nie skacze wraz z treścią panelu (np. przy „Wyznaczam nową trasę”).
+const MAP_WIDGET_RESERVE = 122;
+const ARRIVED_M = 20;
+const REROUTE_COOLDOWN_MS = 4000;
+const REROUTE_MIN_MOVE_M = 12;
 const REROUTE_MAX_DIST_M = 10000;
 const ON_TRANSIT_MPS = 4;
 
@@ -95,15 +100,22 @@ function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-function getDirectionLabel(relAngle: number, s: Strings): string {
-  if (relAngle <= 20 || relAngle >= 340) return s.compass.ahead;
-  if (relAngle < 70) return s.compass.slightRight;
-  if (relAngle <= 110) return s.compass.right;
-  if (relAngle < 160) return s.compass.backRight;
-  if (relAngle <= 200) return s.compass.back;
-  if (relAngle < 250) return s.compass.backLeft;
-  if (relAngle <= 290) return s.compass.left;
-  return s.compass.slightLeft;
+function parseClockTimestamp(hhmm: string | undefined, nowMs: number): number | null {
+  if (!hhmm) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const hours = Number(m[1]);
+  const minutes = Number(m[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  const d = new Date(nowMs);
+  d.setHours(hours % 24, minutes, 0, 0);
+  if (hours >= 24) {
+    d.setDate(d.getDate() + 1);
+  }
+  let ts = d.getTime();
+  if (ts - nowMs < -6 * 3600_000) ts += 24 * 3600_000;
+  if (ts - nowMs > 18 * 3600_000) ts -= 24 * 3600_000;
+  return ts;
 }
 
 /** Ikona pieszego skrętu albo dotarcia do celu. */
@@ -129,21 +141,8 @@ function maneuverIcon(kind: ManeuverKind) {
     case 'arrive':
       return MapPinned;
     default:
-      return CornerUpRight;
+      return ArrowUp;
   }
-}
-
-function legIcon(mode: string, line?: string) {
-  const m = inferTransitMode(mode as never, line);
-  if (m === 'tram') return TramFront;
-  if (m === 'bus') return BusFront;
-  if (m === 'train') return TrainFront;
-  if (m === 'cable') return CableCar;
-  return Signpost;
-}
-
-function normalizeAngle(a: number): number {
-  return ((a % 360) + 360) % 360;
 }
 
 /**
@@ -158,6 +157,11 @@ function roundNavM(m: number): number {
 
 export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
   const s = useStrings();
+  const { height: winH } = useWindowDimensions();
+  // Cały widget (mapa + panel instrukcji) mieści się na ekranie:
+  // 70% wysokości okna, mapa dostaje resztę nad panelem instrukcji.
+  const navWidgetH = Math.round(winH * NAV_WIDGET_FRACTION);
+  const navMapH = Math.max(180, navWidgetH - MAP_WIDGET_RESERVE);
   const walkMps = useWalkSpeedMps();
   const { location: userLocation, state: locState } = useCurrentLocation();
   const transitLegs = useMemo(() => {
@@ -169,9 +173,13 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     const timer = setInterval(() => setClockNow(Date.now()), 15000);
     return () => clearInterval(timer);
   }, []);
-  const firstDepartureAt = useMemo(
+  const fallbackFirstDepartureAt = useMemo(
     () => Date.now() + connection.departInMin * 60 * 1000,
-    [connection.id],
+    [connection.id, connection.departInMin],
+  );
+  const firstDepartureAt = useMemo(
+    () => parseClockTimestamp(transitLegs[0]?.departAt, clockNow) ?? fallbackFirstDepartureAt,
+    [transitLegs, clockNow, fallbackFirstDepartureAt],
   );
   const targetSelection = useMemo(
     () =>
@@ -192,17 +200,9 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     : activeLeg?.fromStop || connection.fromTitle;
   const platform = targetSelection?.end ? undefined : activeLeg?.platformCode;
 
-  const { bg: lineAccent, fg: lineFg } = getLineColors(activeLeg?.line, activeLeg?.mode);
-  const TargetIcon = legIcon(activeLeg?.mode ?? 'walk', activeLeg?.line);
+  const { bg: lineAccent } = getLineColors(activeLeg?.line, activeLeg?.mode);
 
-  const [deviceHeading, setDeviceHeading] = useState<number | null>(null);
-  // Filtrowany kurs urządzenia (stopnie). Surowy magnetometr skacze ±10°,
-  // wygładzamy low-pass na wektorze + histereza, żeby kompas nie migotał.
-  const headingVec = useRef<{ x: number; y: number } | null>(null);
-  const lastAppliedHeading = useRef(0);
   // Jednorazowe pojawienie się treści nawigacji po pierwszym fixie GPS.
-  // Powód: fix i geometria schodzą asynchronicznie, więc zamiast skoku
-  // layoutu jest krótki fade. Tylko raz, nie przy każdej zmianie pozycji.
   const navOpacity = useRef(new Animated.Value(0)).current;
   const navFaded = useRef(false);
   useEffect(() => {
@@ -220,48 +220,17 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     null,
   );
   const [rerouting, setRerouting] = useState(false);
+  const [confirmedOffRoute, setConfirmedOffRoute] = useState(false);
   const routeRequest = useRef<AbortController | null>(null);
+  const prevAlongRef = useRef<{ targetKey: string; alongM: number } | null>(null);
+  const minOffsetRef = useRef<{ path: Coord[]; minOffsetM: number } | null>(null);
+  const offRouteStreakRef = useRef(0);
   const lastRerouteAttempt = useRef<{
     targetKey: string;
     at: number;
     lat: number;
     lon: number;
   } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let headingSub: Location.LocationSubscription | null = null;
-    const alpha = 0.28;
-
-    const applyHeading = (raw: number) => {
-      const radians = raw * (Math.PI / 180);
-      const previous = headingVec.current;
-      const x = previous ? previous.x + (Math.sin(radians) - previous.x) * alpha : Math.sin(radians);
-      const y = previous ? previous.y + (Math.cos(radians) - previous.y) * alpha : Math.cos(radians);
-      headingVec.current = { x, y };
-      const degrees = normalizeAngle((Math.atan2(x, y) * 180) / Math.PI);
-      let difference = Math.abs(degrees - lastAppliedHeading.current) % 360;
-      if (difference > 180) difference = 360 - difference;
-      if (difference >= 1.5) {
-        lastAppliedHeading.current = degrees;
-        setDeviceHeading(degrees);
-      }
-    };
-
-    void Location.watchHeadingAsync((heading) => {
-      if (cancelled) return;
-      const degrees = heading.trueHeading >= 0 ? heading.trueHeading : heading.magHeading;
-      if (degrees >= 0) applyHeading(degrees);
-    }).then((sub) => {
-      if (cancelled) sub.remove();
-      else headingSub = sub;
-    }).catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-      headingSub?.remove();
-    };
-  }, []);
 
   const targetKey =
     targetLat != null && targetLon != null
@@ -299,24 +268,93 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       ? [{ leg: navigationLeg, start: 0, end: routeForTarget.length - 1 }]
       : [],
   [routeForTarget, navigationLeg]);
-  const routeProjection = useMemo(() => {
-    if (!routeForTarget || !userLocation) return null;
-    return projectRoutePoint(routeForTarget, userLocation.lat, userLocation.lon);
-  }, [routeForTarget, userLocation]);
-  const offRoute = routeProjection != null && routeProjection.offsetM > OFF_ROUTE_M;
-  const guidance: Guidance | null = useMemo(() => {
-    if (!routeForTarget || !userLocation || !navigationSpans.length || offRoute) return null;
-    return nextGuidance(routeForTarget, navigationSpans, [userLocation.lat, userLocation.lon]);
-  }, [routeForTarget, userLocation, navigationSpans, offRoute]);
-  const nextUp = useMemo(() => {
-    if (!routeForTarget || !userLocation || !guidance || !navigationSpans.length) return null;
-    return nextGuidanceAfter(routeForTarget, navigationSpans, [userLocation.lat, userLocation.lon]);
-  }, [routeForTarget, userLocation, guidance, navigationSpans]);
 
-  const activeHeading = deviceHeading ?? userLocation?.heading ?? null;
-  const { distanceM, relativeAngle } = useMemo(() => {
+  const gpsMovementHeading = useMemo<number | null>(() => {
+    if (userLocation?.heading == null || !Number.isFinite(userLocation.heading)) return null;
+    if (userLocation.speed != null && userLocation.speed < 0.8) return null;
+    return userLocation.heading;
+  }, [userLocation?.heading, userLocation?.speed]);
+
+  const offRouteThreshold = useMemo(
+    () => Math.max(OFF_ROUTE_M, Math.min(72, (userLocation?.accuracy ?? 12) * 1.4)),
+    [userLocation?.accuracy],
+  );
+
+  const routeProjection = useMemo(() => {
+    if (!routeForTarget || !userLocation || !targetKey) return null;
+    const prevAlongM =
+      prevAlongRef.current?.targetKey === targetKey ? prevAlongRef.current.alongM : null;
+    return matchOnPath(
+      routeForTarget,
+      [userLocation.lat, userLocation.lon],
+      prevAlongM,
+      userLocation.accuracy,
+      gpsMovementHeading,
+    );
+  }, [routeForTarget, userLocation, targetKey, gpsMovementHeading]);
+
+  useEffect(() => {
+    if (!routeProjection || !routeForTarget || !targetKey) return;
+    if (!minOffsetRef.current || minOffsetRef.current.path !== routeForTarget) {
+      minOffsetRef.current = { path: routeForTarget, minOffsetM: routeProjection.offsetM };
+    } else if (routeProjection.offsetM < minOffsetRef.current.minOffsetM) {
+      minOffsetRef.current.minOffsetM = routeProjection.offsetM;
+    }
+
+    // Jeśli punkt startowy leży na dziedzińcu / placu > 38 m od najbliższej
+    // zamapowanej w OSM alejki, nie uznajemy go za zejście z trasy, dopóki
+    // pieszy faktycznie nie oddali się od wyznaczonej ścieżki.
+    const effectiveThreshold = Math.max(
+      offRouteThreshold,
+      minOffsetRef.current.minOffsetM + 24,
+    );
+
+    if (routeProjection.offsetM <= effectiveThreshold) {
+      prevAlongRef.current = { targetKey, alongM: routeProjection.alongM };
+      offRouteStreakRef.current = 0;
+      setConfirmedOffRoute(false);
+    } else {
+      offRouteStreakRef.current += 1;
+      if (
+        offRouteStreakRef.current >= 2 ||
+        routeProjection.offsetM > effectiveThreshold * 1.5
+      ) {
+        setConfirmedOffRoute(true);
+      }
+    }
+  }, [userLocation?.timestamp, routeProjection, routeForTarget, targetKey, offRouteThreshold]);
+
+  const offRoute = confirmedOffRoute;
+
+  const guidance: Guidance | null = useMemo(() => {
+    if (!routeForTarget || !userLocation || !navigationSpans.length) return null;
+    if (offRoute && routeProjection && routeProjection.offsetM > offRouteThreshold * 2.2) {
+      return null;
+    }
+    return nextGuidance(
+      routeForTarget,
+      navigationSpans,
+      [userLocation.lat, userLocation.lon],
+      routeProjection,
+    );
+  }, [routeForTarget, userLocation, navigationSpans, offRoute, routeProjection, offRouteThreshold]);
+
+  const nextUp = useMemo(() => {
+    if (!routeForTarget || !userLocation || !guidance || !navigationSpans.length || offRoute) {
+      return null;
+    }
+    return nextGuidanceAfter(
+      routeForTarget,
+      navigationSpans,
+      [userLocation.lat, userLocation.lon],
+      35,
+      routeProjection,
+    );
+  }, [routeForTarget, userLocation, guidance, navigationSpans, offRoute, routeProjection]);
+
+  const { distanceM, stopBearing } = useMemo(() => {
     if (!userLocation || targetLat == null || targetLon == null) {
-      return { distanceM: null, relativeAngle: 0 };
+      return { distanceM: null, stopBearing: 0 };
     }
     const dist = calculateDistanceMeters(
       userLocation.lat,
@@ -330,12 +368,52 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       targetLat,
       targetLon,
     );
-    const rel = (bearing - (activeHeading ?? 0) + 360) % 360;
-    return { distanceM: Math.round(dist / 5) * 5, relativeAngle: rel };
-  }, [userLocation, targetLat, targetLon, activeHeading]);
+    return {
+      distanceM: Math.round(dist / 5) * 5,
+      stopBearing: bearing,
+    };
+  }, [userLocation, targetLat, targetLon]);
+
+  // Orientacja minimapki bez magnetometru: wzdłuż aktualnego odcinka trasy
+  // pieszej (dzięki czemu zakręt w lewo/prawo na mapie zawsze pokrywa się z
+  // ikoną manewru), a poza trasą według kursu ruchu GPS lub kierunku do przystanku.
+  const activeHeading = useMemo<number>(() => {
+    if (!onTransit && routeProjection && !offRoute) {
+      return routeProjection.segmentBearingDeg;
+    }
+    return gpsMovementHeading ?? stopBearing;
+  }, [onTransit, routeProjection, offRoute, gpsMovementHeading, stopBearing]);
+
+  const snapThreshold = useMemo(
+    () => Math.max(26, Math.min(45, (userLocation?.accuracy ?? 10) * 1.25)),
+    [userLocation?.accuracy],
+  );
+
+  // Przyciągamy kursor użytkownika do osi chodnika, gdy idzie wzdłuż wyznaczonej trasy.
+  const displayUserPos = useMemo<Coord | null>(() => {
+    if (!userPos) return null;
+    if (routeProjection && !offRoute && routeProjection.offsetM <= snapThreshold) {
+      return routeProjection.snappedPoint;
+    }
+    return userPos;
+  }, [userPos, routeProjection, offRoute, snapThreshold]);
+
+  // Na minimapce rysujemy odcinek trasy zaczynający się od pozycji użytkownika do przystanku.
+  const displayRoutePath = useMemo<Coord[]>(() => {
+    if (routeForTarget && routeForTarget.length >= 2) {
+      if (routeProjection && !offRoute) {
+        return slicePathFromProjection(routeForTarget, routeProjection);
+      }
+      return routeForTarget;
+    }
+    if (displayUserPos && stopPos) {
+      return [displayUserPos, stopPos];
+    }
+    return [];
+  }, [routeForTarget, routeProjection, offRoute, displayUserPos, stopPos]);
 
   const hasTarget = targetLat != null && targetLon != null;
-  const compassReady = hasTarget && distanceM != null;
+  const showNav = hasTarget && displayUserPos != null && stopPos != null;
 
   const compassHint = !hasTarget
     ? s.compass.noCoords
@@ -343,15 +421,24 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
       ? s.compass.locOff
       : s.compass.locWaiting;
 
-  const walkMin = !onTransit && distanceM != null ? walkMinutesFor(distanceM, walkMps) : null;
-  const directionLabel = compassReady ? getDirectionLabel(relativeAngle, s) : compassHint;
+  const walkDistanceM = useMemo<number | null>(() => {
+    if (distanceM == null) return null;
+    if (!onTransit && guidance && !offRoute && guidance.remainM > 0) {
+      return Math.max(distanceM, Math.round(guidance.remainM));
+    }
+    return distanceM;
+  }, [distanceM, onTransit, guidance, offRoute]);
 
-  const showNav = distanceM != null && distanceM > COMPASS_SWITCH_M;
+  const walkMin = !onTransit && walkDistanceM != null ? walkMinutesFor(walkDistanceM, walkMps) : null;
 
   useEffect(() => {
     routeRequest.current?.abort();
     routeRequest.current = null;
     lastRerouteAttempt.current = null;
+    prevAlongRef.current = null;
+    minOffsetRef.current = null;
+    offRouteStreakRef.current = 0;
+    setConfirmedOffRoute(false);
     setNavigationRoute(null);
     setRerouting(false);
   }, [targetKey]);
@@ -360,19 +447,38 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     if (!showNav || !userLocation || !stopPos || !targetKey) return;
     if (onTransit || distanceM == null || distanceM > REROUTE_MAX_DIST_M) return;
     const routeIsCurrent = navigationRoute?.targetKey === targetKey;
-    const needsRoute =
-      !routeIsCurrent || routeProjection == null || routeProjection.offsetM > OFF_ROUTE_M;
+    const needsRoute = !routeIsCurrent || routeProjection == null || offRoute;
     if (!needsRoute || routeRequest.current) return;
 
     const now = Date.now();
     const last = lastRerouteAttempt.current;
-    if (last && last.targetKey === targetKey && now - last.at < REROUTE_COOLDOWN_MS) return;
-    if (
-      last &&
-      last.targetKey === targetKey &&
-      calculateDistanceMeters(last.lat, last.lon, userLocation.lat, userLocation.lon) <
+    if (routeIsCurrent && last && last.targetKey === targetKey) {
+      if (now - last.at < REROUTE_COOLDOWN_MS) return;
+      if (
+        calculateDistanceMeters(last.lat, last.lon, userLocation.lat, userLocation.lon) <
         REROUTE_MIN_MOVE_M
-    ) {
+      ) {
+        return;
+      }
+    }
+
+    const fromCoord: Coord = [userLocation.lat, userLocation.lon];
+
+    // Jeśli kafelki są już w pamięci silnika Rust, przeliczamy trasę synchronicznie bez stanu ładowania.
+    const immediatePath = routeFootSync(fromCoord, stopPos);
+    if (immediatePath && immediatePath.length >= 2) {
+      prevAlongRef.current = { targetKey, alongM: 0 };
+      minOffsetRef.current = null;
+      offRouteStreakRef.current = 0;
+      setConfirmedOffRoute(false);
+      setNavigationRoute({ targetKey, path: immediatePath });
+      setRerouting(false);
+      lastRerouteAttempt.current = {
+        targetKey,
+        at: now,
+        lat: userLocation.lat,
+        lon: userLocation.lon,
+      };
       return;
     }
 
@@ -385,9 +491,13 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     setRerouting(true);
     const controller = new AbortController();
     routeRequest.current = controller;
-    void fetchFootRoute([userLocation.lat, userLocation.lon], stopPos, controller.signal)
+    void fetchFootRoute(fromCoord, stopPos, controller.signal)
       .then((path) => {
         if (routeRequest.current !== controller || !path || path.length < 2) return;
+        prevAlongRef.current = { targetKey, alongM: 0 };
+        minOffsetRef.current = null;
+        offRouteStreakRef.current = 0;
+        setConfirmedOffRoute(false);
         setNavigationRoute({ targetKey, path });
       })
       .catch(() => undefined)
@@ -405,23 +515,33 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     distanceM,
     navigationRoute,
     routeProjection,
+    offRoute,
     onTransit,
   ]);
   useEffect(() => () => routeRequest.current?.abort(), []);
 
+  const hasArrived =
+    !onTransit &&
+    ((guidance != null && guidance.remainM <= ARRIVED_M) ||
+      (distanceM != null && distanceM <= ARRIVED_M));
+
   const ManeuverIcon = useMemo(() => {
-    if (!guidance) return null;
-    if (guidance.maneuver.kind === 'board' || guidance.maneuver.kind === 'alight') {
+    if (hasArrived) return MapPinned;
+    if (!guidance) return ArrowUp;
+    if (
+      guidance.maneuver.kind === 'board' ||
+      guidance.maneuver.kind === 'alight' ||
+      guidance.maneuver.kind === 'arrive'
+    ) {
       return ArrowUp;
     }
-    return guidance.maneuver.kind === 'arrive'
-      ? Footprints
-      : maneuverIcon(guidance.maneuver.kind);
-  }, [guidance]);
+    return maneuverIcon(guidance.maneuver.kind);
+  }, [guidance, hasArrived]);
 
   const maneuverLabel = useMemo(() => {
-    if (!guidance) return null;
     const m = s.map.maneuver;
+    if (hasArrived) return m.arrive;
+    if (!guidance) return null;
     switch (guidance.maneuver.kind) {
       case 'depart':
         return m.depart;
@@ -443,49 +563,44 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         return m.uturn;
       case 'board':
       case 'alight':
-        return s.compass.headToStop;
       case 'arrive':
-        return m.arrive;
+        return s.compass.headToStop;
       default:
         return m.straight;
     }
-  }, [guidance, s]);
+  }, [guidance, hasArrived, s]);
 
   const distText = guidance
     ? s.compass.distanceText(roundNavM(guidance.maneuver.distanceM))
     : null;
 
-  // Widget ma zawsze czytelny nagłówek. Bez instrukcji trasy (poza trasą,
-  // brak geometrii) mówimy wprost, dokąd iść, a strzałka pokazuje kierunek.
   const headLabel = onTransit
     ? s.compass.nextStop
-    : guidance && maneuverLabel
-      ? maneuverLabel
-      : s.compass.headToStop;
+    : maneuverLabel ?? s.compass.headToStop;
   const headDist =
     guidance && distText
       ? distText
-      : distanceM != null
-        ? s.compass.distanceText(roundNavM(distanceM))
+      : walkDistanceM != null
+        ? s.compass.distanceText(roundNavM(walkDistanceM))
         : '';
   const footerText =
     walkMin != null
-      ? guidance && distanceM != null
-        ? `${s.compass.navToStop(s.compass.distanceText(roundNavM(distanceM)))} · ${s.compass.walkMins(walkMin)}`
+      ? walkDistanceM != null
+        ? `${s.compass.navToStop(s.compass.distanceText(roundNavM(walkDistanceM)))} · ${s.compass.walkMins(walkMin)}`
         : s.compass.walkMins(walkMin)
       : '';
 
   // „Potem” pokazujemy tylko wtedy, gdy następny manewr jest wyraźnie
   // dalej niż obecny. Inaczej dwie linijki mówią to samo.
   const nextUpText = useMemo(() => {
-    if (!nextUp) return null;
+    if (!nextUp || hasArrived) return null;
     const gap = nextUp.maneuver.distanceM - (guidance?.maneuver.distanceM ?? 0);
     if (gap < 40) return null;
     const label = s.map.maneuver;
     const kind = nextUp.maneuver.kind;
     const what =
-      kind === 'arrive'
-        ? label.arrive
+      kind === 'arrive' || kind === 'board' || kind === 'alight'
+        ? s.compass.headToStop
         : kind === 'straight'
           ? label.straight
           : kind === 'slightLeft'
@@ -501,8 +616,8 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
                     : kind === 'sharpRight'
                       ? label.sharpRight
                       : label.uturn;
-    return `${label.then} ${what.toLocaleLowerCase()} · ${s.compass.distanceText(Math.round(nextUp.maneuver.distanceM))}`;
-  }, [nextUp, guidance, s]);
+    return `${label.then} ${what.toLocaleLowerCase()} · ${s.compass.distanceText(roundNavM(gap))}`;
+  }, [nextUp, guidance, hasArrived, s]);
 
   const openMap = useCallback(() => {
     onOpenMap?.();
@@ -537,99 +652,87 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         ) : null}
       </View>
 
-      {/* ─── Nawigacja ─────────────────────────────────────── */}
-      {/* Slot rezerwuje wysokość docelowego widgetu od pierwszego renderu.
-          Powód: stany oczekiwanie/radar/mapa mają różne wysokości i bez tego
-          karta skakała w momencie fixu GPS. */}
-      {showNav && userPos ? (
+      {/* Slot rezerwuje wysokość docelowego widgetu od pierwszego renderu,
+          żeby karta nie skakała po otrzymaniu fixu GPS. */}
+      {showNav && displayUserPos && stopPos ? (
         // Cały widget jest jednym przyciskiem: dotknięcie otwiera pełną mapę.
         <AnimatedPressable
           onPress={openMap}
-          style={({ pressed }) => [styles.navWidget, styles.navSlot, { opacity: navOpacity }, pressed && styles.navWidgetPressed]}
+          style={({ pressed }) => [
+            styles.navWidget,
+            { height: navWidgetH, opacity: navOpacity },
+            pressed && styles.navWidgetPressed,
+          ]}
           accessibilityRole="button"
           accessibilityLabel={s.compass.navA11y(headLabel, headDist)}
         >
-          <View style={styles.navRow}>
-            <NavMiniMap
-              path={routeForTarget ?? []}
-              user={userPos}
-              stop={stopPos}
-              headingDeg={activeHeading}
-              accuracyM={userLocation?.accuracy ?? null}
-              accent={lineAccent}
-              style={styles.navMapPane}
-            />
-            <View style={styles.navCopy}>
-              <View style={styles.navDistanceRow}>
-                {guidance && ManeuverIcon ? (
-                  <ManeuverIcon size={22} strokeWidth={2.5} color={scheme.primary} />
-                ) : (
-                  <View style={{ transform: [{ rotate: `${relativeAngle}deg` }] }}>
-                    <ArrowUp size={22} strokeWidth={2.5} color={scheme.primary} />
-                  </View>
-                )}
+          {/* Mapa bez dolnych promieni styka się krawędzią z panelem M3
+              pod nią (układ jak w Google Maps). */}
+          <NavMiniMap
+            path={displayRoutePath}
+            user={displayUserPos}
+            stop={stopPos}
+            headingDeg={activeHeading}
+            accuracyM={userLocation?.accuracy ?? null}
+            accent={mapLineColor(lineAccent)}
+            style={[styles.navMapPane, { height: navMapH }]}
+          />
+          <View style={styles.navSheet}>
+            {rerouting ? (
+              <View style={styles.navCopy}>
+                <Text style={styles.navInstruction} numberOfLines={2}>
+                  {s.compass.rerouting}
+                </Text>
+                {headDist ? (
+                  <Text style={styles.navDistance} numberOfLines={1}>
+                    {headDist}
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <View style={styles.navRowMain}>
+                <View style={styles.maneuverBadge}>
+                  <ManeuverIcon size={28} strokeWidth={2.2} color={scheme.onPrimary} />
+                </View>
+                <View style={styles.navCopy}>
+                  <Text style={styles.navInstruction} numberOfLines={2}>
+                    {headLabel}
+                  </Text>
+                  {nextUpText ? (
+                    <Text style={styles.navNext} numberOfLines={2}>
+                      {nextUpText}
+                    </Text>
+                  ) : null}
+                </View>
                 <Text style={styles.navDistance} numberOfLines={1}>
                   {headDist}
                 </Text>
               </View>
-              <Text style={styles.navInstruction} numberOfLines={3}>
-                {headLabel}
+            )}
+            <View style={styles.navFooter}>
+              <Text style={styles.navFooterText} numberOfLines={1}>
+                {footerText}
               </Text>
-              {rerouting ? (
-                <Text style={styles.navNext} numberOfLines={2}>
-                  {s.compass.rerouting}
-                </Text>
-              ) : nextUpText ? (
-                <Text style={styles.navNext} numberOfLines={2}>
-                  {nextUpText}
-                </Text>
-              ) : null}
+              <Maximize2 size={16} color={scheme.onSurfaceVariant} />
             </View>
-          </View>
-          <View style={styles.navFooter}>
-            <Text style={styles.navFooterText} numberOfLines={1}>
-              {footerText}
-            </Text>
-            <Maximize2 size={16} color={scheme.onSurfaceVariant} />
           </View>
         </AnimatedPressable>
-      ) : compassReady ? (
-        /* Do 100 m pokazujemy kompas. */
-        <Animated.View style={[styles.compassRow, styles.navSlot, { opacity: navOpacity }]}>
-          <View style={styles.dialContainer}>
-            <View style={styles.dial}>
-              <View style={styles.innerRing} />
-              <View style={styles.crosshairV} />
-              <View style={styles.crosshairH} />
-              <View style={styles.pointerContainer}>
-                <View style={[styles.pointerBeam, { backgroundColor: lineAccent }]} />
-                <View style={[styles.stopTargetBadge, { backgroundColor: lineAccent }]}>
-                  <TargetIcon size={16} color={lineFg} />
-                </View>
-              </View>
-              <View style={styles.userPulse}>
-                <View style={styles.userDot} />
-              </View>
-            </View>
-          </View>
-          <View style={styles.distanceInfo}>
-            <Text style={styles.directionGuide}>{directionLabel}</Text>
-            <Text style={styles.distanceNumber}>{s.compass.distanceText(distanceM!)}</Text>
-            <Text style={styles.distanceLabel} numberOfLines={1}>
-              {s.compass.straight}
-            </Text>
-            {walkMin != null && (
-              <View style={styles.walkBadge}>
-                <Text style={styles.walkEst}>{s.compass.walkMins(walkMin)}</Text>
-              </View>
-            )}
-          </View>
-        </Animated.View>
       ) : (
-        <Animated.View style={[styles.hintRow, styles.navSlot, styles.navSlotHint, { opacity: navOpacity }]}>
+        <Pressable
+          onPress={openMap}
+          style={({ pressed }) => [
+            styles.hintRow,
+            styles.navSlot,
+            styles.navSlotHint,
+            pressed && styles.navWidgetPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={s.compass.navA11y(stopName ?? '', '')}
+        >
           <LocateFixed size={18} color={scheme.onSurfaceVariant} />
-          <Text style={styles.hintText}>{directionLabel}</Text>
-        </Animated.View>
+          <Text style={styles.hintText}>{compassHint}</Text>
+          <Maximize2 size={16} color={scheme.onSurfaceVariant} />
+        </Pressable>
       )}
 
       {locState === 'denied' && hasTarget && (
@@ -715,14 +818,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ─── Nawigacja ─────────────────────────────────────────────
   // Slot rezerwuje wysokość docelowego widgetu, żeby przejście
-  // oczekiwanie → radar/mapa nie przesuwało reszty ekranu.
+  // oczekiwanie -> mapa nie przesuwało reszty ekranu.
   navSlot: {
     minHeight: 148,
   },
-  // Wiersz oczekiwania wyśrodkowany w slocie, żeby pusty obszar nie
-  // wyglądał na ucięty layout.
   navSlotHint: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -730,51 +830,69 @@ const styles = StyleSheet.create({
   navWidget: {
     backgroundColor: scheme.surfaceContainerLowest,
     borderRadius: shape.large,
-    padding: 10,
-    gap: 8,
+    padding: 8,
   },
   navWidgetPressed: {
     opacity: 0.85,
   },
-  navRow: {
+  // Mapa ma stałą wysokość (inline: reszta widgetu 70% ekranu nad panelem)
+  // i styka się z panelem instrukcji bez promieni na styku; góra zostaje
+  // zaokrąglona (14 odpowiada defaultowi NavMiniMap).
+  navMapPane: {
+    minWidth: 0,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  navSheet: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    padding: 14,
+    gap: 10,
+    // Bez promieni u góry: box styka się z mapą; dół zachowuje zaokrąglenie.
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderBottomLeftRadius: shape.medium,
+    borderBottomRightRadius: shape.medium,
+  },
+  navRowMain: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  navMapPane: {
-    flex: 65,
-    minWidth: 0,
+  // Plakietka manewru w tonalnym kolorze akcentu, jak w komponentach M3.
+  maneuverBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   navCopy: {
-    flex: 35,
+    flex: 1,
     minWidth: 0,
-    justifyContent: 'center',
-    gap: 5,
-  },
-  navDistanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+    gap: 3,
   },
   navDistance: {
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: 22,
+    lineHeight: 26,
     fontWeight: '800',
     color: scheme.onSurface,
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
-    flexShrink: 1,
+    flexShrink: 0,
+    marginLeft: 2,
   },
   navInstruction: {
-    ...type.labelMedium,
-    fontWeight: '600',
+    ...type.titleMedium,
+    fontWeight: '700',
     color: scheme.onSurface,
-    lineHeight: 17,
+    lineHeight: 19,
     includeFontPadding: false,
   },
   navNext: {
-    fontSize: 10,
-    lineHeight: 13,
+    ...type.labelSmall,
     color: scheme.onSurfaceVariant,
   },
   navFooter: {
@@ -782,7 +900,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    paddingHorizontal: 2,
   },
   navFooterText: {
     ...type.labelMedium,
@@ -790,104 +907,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-
-  // ─── Radar (do 100 m) ─────────────────────────────────────
-  compassRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-    gap: 16,
-  },
-  dialContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dial: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderWidth: 1.5,
-    borderColor: scheme.outlineVariant,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  innerRing: {
-    position: 'absolute',
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    opacity: 0.6,
-  },
-  crosshairV: {
-    position: 'absolute',
-    width: 1,
-    height: '100%',
-    backgroundColor: scheme.outlineVariant,
-    opacity: 0.35,
-  },
-  crosshairH: {
-    position: 'absolute',
-    height: 1,
-    width: '100%',
-    backgroundColor: scheme.outlineVariant,
-    opacity: 0.35,
-  },
-  pointerContainer: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
-  pointerBeam: {
-    position: 'absolute',
-    top: 26,
-    width: 2.5,
-    height: 34,
-    borderRadius: 2,
-    opacity: 0.75,
-  },
-  stopTargetBadge: {
-    position: 'absolute',
-    top: 4,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: scheme.surface,
-    ...elev.level1,
-  },
-  userPulse: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0, 168, 132, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  userDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: scheme.primary,
-  },
-  distanceInfo: {
-    flex: 1,
-    gap: 3,
-    alignItems: 'flex-start',
-  },
   hintRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 10,
     padding: 12,
     borderRadius: shape.medium,
@@ -908,32 +930,6 @@ const styles = StyleSheet.create({
   },
   settingsBtnText: {
     ...type.labelLarge,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '600',
-  },
-  directionGuide: {
-    ...type.labelMedium,
-    color: scheme.primary,
-    fontWeight: '700',
-  },
-  distanceNumber: {
-    ...type.displaySmall,
-    fontWeight: '800',
-    color: scheme.onSurface,
-  },
-  distanceLabel: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-  },
-  walkBadge: {
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.small,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 2,
-  },
-  walkEst: {
-    ...type.labelSmall,
     color: scheme.onSecondaryContainer,
     fontWeight: '600',
   },

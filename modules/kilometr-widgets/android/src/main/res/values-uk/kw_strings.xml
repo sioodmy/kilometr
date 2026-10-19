@@ -2,8 +2,9 @@
 <resources>
     <string name="kw_next_label">Найближче відправлення</string>
     <string name="kw_next_desc">Відлік до першого рейсу до ваших місць</string>
-    <string name="kw_dest_label">Відправлення до ваших місць</string>
-    <string name="kw_dest_desc">До 4 частих місць з найближчою лінією та часом</string>
+    <string name="kw_dest_label">Твій Kilometr</string>
+    <string name="kw_dest_desc">Відправлення до твоїх місць, а під час відстеження прогрес поїздки</string>
+    <string name="kw_min">хв</string>
     <string name="kw_trip_label">Відстежувана поїздка</string>
     <string name="kw_trip_desc">Час, пересадки та прогрес відстежуваної поїздки</string>
     <string name="kw_search_label">Пошук маршрутів</string>
@@ -14,4 +15,14 @@
     <string name="kw_open_app">Відкрийте Kilometr, щоб завантажити відправлення</string>
     <string name="kw_search_hint">Куди їдемо?</string>
     <string name="kw_sample_place">Дім</string>
+    <string name="kw_sample_work">Робота</string>
+    <string name="kw_sample_gym">Спортзал</string>
+    <string name="kw_sample_school">Школа</string>
+    <string name="kw_sample_origin">Центр</string>
+    <string name="kw_sample_updated">станом на 14:30</string>
+    <string name="kw_sample_depart">відправлення 14:32</string>
+    <string name="kw_sample_time">5 хв</string>
+    <string name="kw_sample_trip_title">Дім → Робота</string>
+    <string name="kw_sample_status">Вчасно</string>
+    <string name="kw_sample_phase">прибуття за 12 хв</string>
 </resources>

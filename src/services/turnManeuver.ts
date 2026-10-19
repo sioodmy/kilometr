@@ -17,8 +17,10 @@ const TURN_THRESHOLD_DEG = 32;
 const TURN_NOISE_DEG = 14;
 /** Drobne odchylenia łączy w jeden skręt, żeby nie mówić o każdym metrze. */
 const TURN_MERGE_M = 22;
-/** Poniżej tylu metrów manewr jest tuż przed Tobą (w promieniu słucha). */
+/** Poniżej tylu metrów manewr końcowy (przystanek / cel) ma priorytet nad załamaniem chodnika. */
 const MANEUVER_NEAR_M = 25;
+/** Dopóki do wierzchołka zakrętu zostało co najmniej tyle metrów, instrukcja skrętu pozostaje aktywna. */
+const TURN_PASS_M = 4;
 
 export type ManeuverKind =
   | 'depart'
@@ -107,7 +109,7 @@ function turnFromWindow(coords: Coord[], from: number, to: number): Turn {
   const before = Math.max(0, from - LOOKBACK_PTS);
   const after = Math.min(coords.length - 1, to + LOOKBACK_PTS);
   const delta = angleDelta(coords[before], coords[from], coords[after]);
-  return { index: to, kind: classify(delta), delta };
+  return { index: from, kind: classify(delta), delta, startIdx: from };
 }
 
 /** Ile wierzchołków w obie strony oceniamy jako kierunek dojazdu. */
@@ -133,15 +135,16 @@ export function findTurns(
     if (local === 'straight') continue;
 
     const prev = turns[turns.length - 1];
-    if (prev && cum[i] - prev.index === 0) continue;
+    if (prev && cum[i] - cum[prev.index] === 0) continue;
     // Skręty oddalone o kilka metrów i w tę samą stronę to jedno miejsce.
     if (prev && cum[i] - cum[prev.index] < TURN_MERGE_M) {
-      const window = turnFromWindow(coords, prev.startIdx ?? prev.index, i);
+      const startIdx = prev.startIdx ?? prev.index;
+      const window = turnFromWindow(coords, startIdx, i);
       if (window.kind !== 'straight' && window.kind !== 'uturn') {
-        prev.index = i;
+        prev.index = startIdx;
         prev.kind = window.kind;
         prev.delta = window.delta;
-        prev.startIdx = window.index;
+        prev.startIdx = startIdx;
         continue;
       }
     }
@@ -157,14 +160,45 @@ export function findTurns(
   }));
 }
 
-/**
- * Rzutuje punkt na linię trasy. Zwraca pozycję wzdłuż trasy i informację po
- * której stronie punktu wypadł (mapa to ulica o szerokości, nie nić).
- */
-export function projectOnPath(
+export interface PathProjection {
+  index: number;
+  t: number;
+  offsetM: number;
+  alongM: number;
+  progress: number;
+  snappedPoint: Coord;
+  segmentBearingDeg: number;
+}
+
+function interpolateAtAlong(
   coords: Coord[],
-  point: Coord,
-): { index: number; t: number; offsetM: number; alongM: number; progress: number } | null {
+  cum: number[],
+  alongM: number,
+): { index: number; t: number; snappedPoint: Coord; segmentBearingDeg: number } {
+  const total = cum[cum.length - 1];
+  const clamped = Math.max(0, Math.min(total, alongM));
+  let idx = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    if (cum[i + 1] >= clamped || i === coords.length - 2) {
+      idx = i;
+      break;
+    }
+  }
+  const segLen = cum[idx + 1] - cum[idx];
+  const t = segLen > 1e-6 ? Math.max(0, Math.min(1, (clamped - cum[idx]) / segLen)) : 0;
+  const snappedPoint: Coord = [
+    coords[idx][0] + t * (coords[idx + 1][0] - coords[idx][0]),
+    coords[idx][1] + t * (coords[idx + 1][1] - coords[idx][1]),
+  ];
+  const segmentBearingDeg = ((bearing(coords[idx], coords[idx + 1]) % 360) + 360) % 360;
+  return { index: idx, t, snappedPoint, segmentBearingDeg };
+}
+
+/**
+ * Rzutuje punkt na linię trasy. Zwraca pozycję wzdłuż trasy, współrzędne
+ * przyciągnięte do osi odcinka oraz kurs bieżącego segmentu.
+ */
+export function projectOnPath(coords: Coord[], point: Coord): PathProjection | null {
   if (coords.length === 0) return null;
   if (coords.length === 1) {
     return {
@@ -173,6 +207,8 @@ export function projectOnPath(
       offsetM: distanceM(coords[0], point),
       alongM: 0,
       progress: 0,
+      snappedPoint: [coords[0][0], coords[0][1]],
+      segmentBearingDeg: 0,
     };
   }
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -207,17 +243,148 @@ export function projectOnPath(
   }
 
   const alongM = cum[bestIndex] + bestT * (cum[bestIndex + 1] - cum[bestIndex]);
+  const snappedPoint: Coord = [
+    coords[bestIndex][0] + bestT * (coords[bestIndex + 1][0] - coords[bestIndex][0]),
+    coords[bestIndex][1] + bestT * (coords[bestIndex + 1][1] - coords[bestIndex][1]),
+  ];
+  const segmentBearingDeg =
+    ((bearing(coords[bestIndex], coords[bestIndex + 1]) % 360) + 360) % 360;
   return {
     index: bestIndex,
     t: bestT,
-    offsetM: distanceM(
-      [coords[bestIndex][0] + bestT * (coords[bestIndex + 1][0] - coords[bestIndex][0]),
-       coords[bestIndex][1] + bestT * (coords[bestIndex + 1][1] - coords[bestIndex][1])],
-      point,
-    ),
+    offsetM: distanceM(snappedPoint, point),
     alongM,
     progress: total > 0 ? Math.max(0, Math.min(1, alongM / total)) : 0,
+    snappedPoint,
+    segmentBearingDeg,
   };
+}
+
+/**
+ * Dopasowuje pozycję użytkownika do trasy z pamięcią poprzedniego postępu (map-matching).
+ * Zapobiega przeskakiwaniu między sąsiednimi ulicami na skrzyżowaniach oraz
+ * cofaniu się licznika metrów przez drobny szum GPS w postoju.
+ */
+export function matchOnPath(
+  coords: Coord[],
+  point: Coord,
+  prevAlongM?: number | null,
+  accuracyM?: number | null,
+  headingDeg?: number | null,
+): PathProjection | null {
+  const rawProj = projectOnPath(coords, point);
+  if (!rawProj || coords.length < 2 || prevAlongM == null || !Number.isFinite(prevAlongM)) {
+    return rawProj;
+  }
+
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const cum: number[] = [0];
+  for (let i = 0; i < coords.length - 1; i++) {
+    cum.push(cum[i] + distanceM(coords[i], coords[i + 1]));
+  }
+  const total = cum[cum.length - 1];
+
+  let bestScore = Infinity;
+  let bestIndex = rawProj.index;
+  let bestT = rawProj.t;
+  let bestOffsetM = rawProj.offsetM;
+  let bestAlongM = rawProj.alongM;
+  let bestSnapped: Coord = rawProj.snappedPoint;
+  let bestBearing = rawProj.segmentBearingDeg;
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lat1, lon1] = coords[i];
+    const [lat2, lon2] = coords[i + 1];
+    const kx = Math.cos(toRad((lat1 + lat2) / 2));
+    const x = toRad(point[1] - lon1) * kx;
+    const y = toRad(point[0] - lat1);
+    const dx = toRad(lon2 - lon1) * kx;
+    const dy = toRad(lat2 - lat1);
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, (x * dx + y * dy) / lenSq)) : 0;
+    const snapped: Coord = [lat1 + t * (lat2 - lat1), lon1 + t * (lon2 - lon1)];
+    const offsetM = distanceM(snapped, point);
+    const segLen = cum[i + 1] - cum[i];
+    const alongM = cum[i] + t * segLen;
+    const segBearing = ((bearing(coords[i], coords[i + 1]) % 360) + 360) % 360;
+
+    const deltaAlong = alongM - prevAlongM;
+    let continuityPenalty = 0;
+    if (deltaAlong < 0) {
+      continuityPenalty = Math.abs(deltaAlong) * 0.65;
+    } else if (deltaAlong > 24) {
+      continuityPenalty = (deltaAlong - 24) * 0.38;
+    }
+
+    let headingPenalty = 0;
+    if (headingDeg != null && Number.isFinite(headingDeg) && segLen > 2) {
+      let diff = Math.abs(headingDeg - segBearing) % 360;
+      if (diff > 180) diff = 360 - diff;
+      if (diff > 75) {
+        headingPenalty = ((diff - 75) / 105) * 6;
+      }
+    }
+
+    const score = offsetM + continuityPenalty + headingPenalty;
+    if (score < bestScore) {
+      bestScore = score;
+      bestIndex = i;
+      bestT = t;
+      bestOffsetM = offsetM;
+      bestAlongM = alongM;
+      bestSnapped = snapped;
+      bestBearing = segBearing;
+    }
+  }
+
+  // Jeśli globalnie najbliższy odcinek jest znacznie bliżej niż dopasowany ciągłościowo, użytkownik faktycznie zmienił odcinek.
+  if (rawProj.offsetM + 16 < bestOffsetM || bestOffsetM > 40) {
+    return rawProj;
+  }
+
+  // Monotoniczna blokada drobnego cofania GPS (np. na światłach lub przy powolnym marszu).
+  const maxBackwardJitterM = Math.max(10, Math.min(22, (accuracyM ?? 10) * 0.9));
+  if (bestOffsetM <= 28 && bestAlongM < prevAlongM && prevAlongM - bestAlongM <= maxBackwardJitterM) {
+    const clamped = interpolateAtAlong(coords, cum, prevAlongM);
+    return {
+      index: clamped.index,
+      t: clamped.t,
+      offsetM: bestOffsetM,
+      alongM: Math.min(total, prevAlongM),
+      progress: total > 0 ? Math.max(0, Math.min(1, prevAlongM / total)) : 0,
+      snappedPoint: clamped.snappedPoint,
+      segmentBearingDeg: clamped.segmentBearingDeg,
+    };
+  }
+
+  return {
+    index: bestIndex,
+    t: bestT,
+    offsetM: bestOffsetM,
+    alongM: bestAlongM,
+    progress: total > 0 ? Math.max(0, Math.min(1, bestAlongM / total)) : 0,
+    snappedPoint: bestSnapped,
+    segmentBearingDeg: bestBearing,
+  };
+}
+
+/**
+ * Zwraca aktywny odcinek trasy przed użytkownikiem (od przyciągniętego punktu do końca).
+ */
+export function slicePathFromProjection(coords: Coord[], proj: PathProjection): Coord[] {
+  if (coords.length < 2) return coords;
+  const tail = coords.slice(proj.index + 1);
+  if (tail.length === 0) {
+    return [proj.snappedPoint, coords[coords.length - 1]];
+  }
+  const firstTail = tail[0];
+  if (
+    Math.abs(firstTail[0] - proj.snappedPoint[0]) < 1e-7 &&
+    Math.abs(firstTail[1] - proj.snappedPoint[1]) < 1e-7
+  ) {
+    return tail.length >= 2 ? tail : [proj.snappedPoint, ...tail];
+  }
+  return [proj.snappedPoint, ...tail];
 }
 
 /** Gdzie na trasie jest dana noga i w którym jej punkcie. */
@@ -225,7 +392,7 @@ export interface LegSpan {
   leg: MapLeg;
   /** indeks pierwszego wierzchołka nogi w trasie */
   start: number;
-  /** indeks ostatniego wierzchołka nogi */
+  /** indeks ostatniego wierzchołka nogi w trasie */
   end: number;
 }
 
@@ -289,12 +456,13 @@ export function nextTurnOnPath(
   coords: Coord[],
   fromIndex: number,
 ): Maneuver | null {
-  const turns = findTurns(coords).filter((t) => t.index > fromIndex + 1);
-  const turn = turns.find((t) => t.alongM - distanceAlong(coords, 0, fromIndex) >= MANEUVER_NEAR_M);
+  const progressM = distanceAlong(coords, 0, fromIndex);
+  const turns = findTurns(coords).filter((t) => t.index > fromIndex);
+  const turn = turns.find((t) => t.alongM - progressM >= TURN_PASS_M);
   if (!turn) return null;
   return {
     kind: turn.kind,
-    distanceM: Math.max(0, turn.alongM - distanceAlong(coords, 0, fromIndex)),
+    distanceM: Math.max(0, turn.alongM - progressM),
     at: coords[turn.index],
     path: coords.slice(fromIndex, turn.index + 1),
   };
@@ -346,14 +514,6 @@ function legEndAction(leg: MapLeg, spans: LegSpan[], span: LegSpan): ManeuverKin
   return 'arrive';
 }
 
-/** Na początku nogi kursowej trzeba wsiąść. */
-function legStartAction(leg: MapLeg): ManeuverKind | null {
-  if (leg.mode === 'walk') return null;
-  return leg.departAt ? 'board' : null;
-}
-
-const HEADING_PTS = 4;
-
 /**
  * Wyznacza następny manewr wzdłuż trasy od pozycji użytkownika.
  *
@@ -366,9 +526,10 @@ export function nextGuidance(
   coords: Coord[],
   spans: LegSpan[],
   userPos: Coord,
+  projOverride?: PathProjection | null,
 ): Guidance | null {
   if (coords.length < 2 || spans.length === 0) return null;
-  const proj = projectOnPath(coords, userPos);
+  const proj = projOverride ?? projectOnPath(coords, userPos);
   if (!proj) return null;
 
   const last = spans[spans.length - 1];
@@ -385,7 +546,7 @@ export function nextGuidance(
     return {
       maneuver: { kind, distanceM, at: coords[idx], path: [] },
       leg,
-      remainM: distanceM,
+      remainM: remainToEnd,
       offsetM: proj.offsetM,
       path: coords,
       toManeuver: coords.slice(at, idx + 1),
@@ -401,16 +562,8 @@ export function nextGuidance(
     return g;
   }
 
-  // Skręt liczymy tylko w obrębie bieżącej nogi. Na nodze kursowej między
-  // przystankami zakręt nie jest instrukcją dla pieszego, więc tam pomijamy
-  // skręty w ogóle i zostaje wsiadanie albo wysiadanie.
-  const turns = findTurns(coords);
-  const legTurns = leg.mode === 'walk'
-    ? turns.filter((t) => t.index > at + 1 && t.index <= span.end)
-    : [];
-
-  // Do końca bieżącej nogi zostało X metrów wzdłuż trasy.
-  const legEndDist = distanceAlong(coords, at, span.end);
+  const legEndAlongM = distanceAlong(coords, 0, span.end);
+  const legEndDist = Math.max(0, legEndAlongM - progressM);
 
   if (leg.mode !== 'walk') {
     // Stoisz przy końcu przebiegu: wysiadaj.
@@ -426,8 +579,23 @@ export function nextGuidance(
     return base('alight', span.end, legEndDist);
   }
 
-  // Noga piesza: najbliższy skręt na chodniku.
-  const turn = legTurns.find((t) => t.alongM - progressM >= MANEUVER_NEAR_M);
+  // Tuż przed przystankiem / celem podróży priorytet ma dotarcie lub wsiadanie.
+  if (legEndDist <= MANEUVER_NEAR_M) {
+    return base(legEndAction(leg, spans, span), span.end, legEndDist);
+  }
+
+  // Skręt liczymy w obrębie bieżącej nogi pieszej (z pominięciem drobnych załamań
+  // chodnika na ostatnich metrach tuż przy słupku przystankowym).
+  const turns = findTurns(coords);
+  const legTurns = turns.filter(
+    (t) =>
+      t.index > at &&
+      t.index <= span.end &&
+      legEndAlongM - t.alongM >= MANEUVER_NEAR_M,
+  );
+
+  // Noga piesza: najbliższy skręt przed użytkownikiem pozostaje aktywny aż do samego rogu.
+  const turn = legTurns.find((t) => t.alongM - progressM >= TURN_PASS_M);
   const endIsCloser = legEndDist <= (turn ? turn.alongM - progressM : Infinity);
 
   if (endIsCloser) {
@@ -436,41 +604,77 @@ export function nextGuidance(
   if (!turn) {
     return base('straight', span.end, legEndDist);
   }
-  return base(turn.kind, turn.index, turn.alongM - progressM);
+  return base(turn.kind, turn.index, Math.max(0, turn.alongM - progressM));
 }
 
 /**
- * Kolejny manewr po już wykonanym, do linijki „potem” pod instrukcją.
- * Zwraca null, gdy kolejny manewr jest tak blisko, że zabrzmi jak duplikat.
+ * Kolejny manewr po najbliższym skręcie, do linijki „potem” pod instrukcją.
+ * Zwraca null, gdy kolejny manewr jest zbyt blisko obecnego albo nie ma już
+ * żadnego skrętu przed celem.
  */
 export function nextGuidanceAfter(
   coords: Coord[],
   spans: LegSpan[],
   userPos: Coord,
   minGapM = 35,
+  projOverride?: PathProjection | null,
 ): Guidance | null {
-  const proj = projectOnPath(coords, userPos);
+  if (coords.length < 2 || spans.length === 0) return null;
+  const proj = projOverride ?? projectOnPath(coords, userPos);
   if (!proj) return null;
   const at = Math.min(proj.index, coords.length - 2);
   const span = spanAt(spans, at);
-  if (!span) return null;
+  if (!span || span.leg.mode !== 'walk') return null;
 
-  const start = Math.max(at + 1, span.start + (span.leg.mode !== 'walk' ? 1 : 0));
-  const turns = findTurns(coords).filter((t) => t.index >= start);
-  const first = turns[0];
-  if (!first) return null;
-  const dist = first.alongM - proj.alongM;
-  if (dist < minGapM) return null;
+  const legEndAlongM = distanceAlong(coords, 0, span.end);
+  if (legEndAlongM - proj.alongM <= MANEUVER_NEAR_M) return null;
 
-  return {
-    maneuver: { kind: first.kind, distanceM: dist, at: coords[first.index], path: [] },
-    leg: spanAt(spans, first.index)?.leg ?? span.leg,
-    remainM: Math.max(0, distanceAlong(coords, 0, coords.length - 1) - proj.alongM),
-    offsetM: proj.offsetM,
-    path: coords,
-    toManeuver: coords.slice(at, first.index + 1),
-    overshot: false,
-  };
+  const legTurns = findTurns(coords).filter(
+    (t) =>
+      t.index > at &&
+      t.index <= span.end &&
+      legEndAlongM - t.alongM >= MANEUVER_NEAR_M &&
+      t.alongM - proj.alongM >= TURN_PASS_M,
+  );
+  const currentTurn = legTurns[0];
+  if (!currentTurn) return null;
+
+  const totalM = distanceAlong(coords, 0, coords.length - 1);
+  const remainToEnd = Math.max(0, totalM - proj.alongM);
+
+  const nextTurn = legTurns.find((t) => t.index > currentTurn.index && t.alongM - currentTurn.alongM >= minGapM);
+  if (nextTurn) {
+    const dist = Math.max(0, nextTurn.alongM - proj.alongM);
+    return {
+      maneuver: { kind: nextTurn.kind, distanceM: dist, at: coords[nextTurn.index], path: [] },
+      leg: span.leg,
+      remainM: remainToEnd,
+      offsetM: proj.offsetM,
+      path: coords,
+      toManeuver: coords.slice(at, nextTurn.index + 1),
+      overshot: false,
+    };
+  }
+
+  if (legEndAlongM - currentTurn.alongM >= minGapM) {
+    const dist = Math.max(0, legEndAlongM - proj.alongM);
+    return {
+      maneuver: {
+        kind: legEndAction(span.leg, spans, span),
+        distanceM: dist,
+        at: coords[span.end],
+        path: [],
+      },
+      leg: span.leg,
+      remainM: remainToEnd,
+      offsetM: proj.offsetM,
+      path: coords,
+      toManeuver: coords.slice(at, span.end + 1),
+      overshot: false,
+    };
+  }
+
+  return null;
 }
 
 /** Punkt manewru w trasie (zabezpieczony przed wyjściem poza zakres). */

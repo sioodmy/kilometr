@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
-import { Bell, History, Settings2 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../src/theme/tokens';
+import { Bell, History, MapPin, Settings2 } from 'lucide-react-native';
+import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
-import { DEFAULT_LOCATION } from '../src/config';
+import { defaultLocationForCity } from '../src/config';
+import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch, type LocationResult } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
+import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
   type DataStatus,
@@ -49,9 +52,19 @@ import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 import { UnsupportedCityCard } from '../src/components/UnsupportedCityCard';
 
+/** Kopia mapy bez klucza; zwraca tę samą referencję, gdy nic nie znika. */
+function withoutKey<T>(prev: Record<string, T>, key: string): Record<string, T> {
+  if (!(key in prev)) return prev;
+  const next = { ...prev };
+  delete next[key];
+  return next;
+}
+
 export default function HomeScreen() {
   const s = useStrings();
   const router = useRouter();
+  const { cityId } = useActiveCity();
+  const cityGen = s.city.gen(cityId);
   const GPS_ITEM: Suggestion = {
     id: '__gps',
     title: s.home.gpsTitle,
@@ -67,15 +80,13 @@ export default function HomeScreen() {
   const [smartReady, setSmartReady] = useState(false);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
-  // Zapas na dole zamiast wpisanych 90 px — wysokość paska kciuka mierzy się
-  // w trakcie layoutu, a na telefonach z paskiem nawigacji jest wyższy.
-  const thumbInset = useThumbBarInset();
+  const thumbInset = useThumbBarInset('home');
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string; city?: string | null } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
   // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
   const isCustomStartRef = useRef(isCustomStart);
   isCustomStartRef.current = isCustomStart;
-  // GPS poza strefą (> 15 km od Wrocławia): tras z GPS nie liczymy,
+  // GPS poza strefą aktywnego miasta: tras z GPS nie liczymy,
   // start trzeba wybrać ręcznie. Miasto z reverse-geocode do komunikatu.
   const [gpsUnsupported, setGpsUnsupported] = useState(false);
   const [gpsCity, setGpsCity] = useState<string | null>(null);
@@ -86,12 +97,11 @@ export default function HomeScreen() {
   const [results, setResults] = useState<Suggestion[]>([]);
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
-  const [locTitle, setLocTitle] = useState(DEFAULT_LOCATION.title);
-  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lon: number }>({
-    lat: DEFAULT_LOCATION.lat,
-    lon: DEFAULT_LOCATION.lon,
+  const [locTitle, setLocTitle] = useState(() => defaultLocationForCity(getActiveCityIdSync()).title);
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lon: number }>(() => {
+    const d = defaultLocationForCity(getActiveCityIdSync());
+    return { lat: d.lat, lon: d.lon };
   });
-  const [nextDepart, setNextDepart] = useState<Record<string, number>>({});
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [firstLegs, setFirstLegs] = useState<Record<string, { mode?: LegMode; line?: string }>>({});
   // Odliczanie „za X min" musi tykać: bez tego etykieta zapisana przy fetchu
@@ -126,18 +136,20 @@ export default function HomeScreen() {
   const [newsAlert, setNewsAlert] = useState(false);
 
   // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
-  // gestem, zero klikalnych elementów. pullOption żyje w stanie (oduswitch
-  // tekstu/strzałki), wysokość reveal w shared value (płynnie, bez rerenderów).
+  // gestem, zero klikalnych elementów. pullOption żyje w stanie (odświeża
+  // tekst/strzałkę), wysokość reveal w shared value (płynnie, bez rerenderów).
   const [lastTrip, setLastTrip] = useState<TripHistoryItem | null>(null);
   const [pullOption, setPullOption] = useState<LastTripOption>(0);
   const [scrollLocked, setScrollLocked] = useState(false);
-  const pullHeight = useSharedValue(0);
+  // „Na górze” jako stan też: `enabled` gestu pochodzi z renderu, bo przy
+  // przewiniętej liście pull nie może zabierać zwykłego scrollowania.
+  const [atTop, setAtTop] = useState(true);
   const atTopRef = useRef(true);
+  const pullHeight = useSharedValue(0);
   const optionRef = useRef<LastTripOption>(0);
   const lastTripRef = useRef<TripHistoryItem | null>(null);
   lastTripRef.current = lastTrip;
-  const sheetsOpenRef = useRef(false);
-  sheetsOpenRef.current = sheetMode !== null || manageSheetOpen || addPlaceOpen;
+  const sheetsOpen = sheetMode !== null || manageSheetOpen || addPlaceOpen;
 
   // Widgety mogą otworzyć wyszukiwarkę albo zarządzanie zapisanymi miejscami.
   // Parametry czyścimy, żeby powrót na ekran nie otwierał arkusza ponownie.
@@ -170,14 +182,17 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // Badge na dzwonku: dzisiejsze pilne utrudnienie MPK (RSS wroclaw.pl).
+  // Badge na dzwonku: dzisiejsze pilne utrudnienie (feed miasta).
   // Sprawdzamy przy starcie i powrocie na foreground — bez interwału, żeby nie spamować feedu.
+  // Zmiana miasta to nowy feed: badge trzeba przeliczyć od zera, inaczej wisiałby
+  // z poprzedniego miasta do najbliższego foregroundu.
   useEffect(() => {
     let cancelled = false;
+    setNewsAlert(false);
     const checkNews = async () => {
       try {
-        const { fetchMpkNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
-        const news = await fetchMpkNews();
+        const { fetchCityNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
+        const news = await fetchCityNews();
         const alert = await shouldShowNewsAlert(news);
         if (!cancelled) setNewsAlert(alert);
       } catch {
@@ -192,7 +207,7 @@ export default function HomeScreen() {
       cancelled = true;
       sub.remove();
     };
-  }, []);
+  }, [cityId]);
 
   // Weryfikacja badge'a przy powrocie na ekran główny (np. po wyjściu z sekcji newsów)
   useFocusEffect(
@@ -219,7 +234,6 @@ export default function HomeScreen() {
   // refreshDataStatus ładuje status lokalnego GTFS — jeśli pusty, automatycznie
   // uruchamiamy pobieranie rozkładu, aby aplikacja działała bez serwera dev.
   useEffect(() => {
-    let cancelled = false;
     const check = async () => {
       const st = await refreshDataStatus().catch(() => ({ state: 'empty' } as const));
       if (st.state === 'empty') {
@@ -232,14 +246,16 @@ export default function HomeScreen() {
     });
     const timer = setInterval(check, 30000);
     return () => {
-      cancelled = true;
       sub.remove();
       clearInterval(timer);
     };
   }, []);
 
   const refreshPlaces = () => {
-    FavoritesService.list().then(setSaved);
+    const requestedCity = getActiveCityIdSync();
+    FavoritesService.list().then((places) => {
+      if (requestedCity === getActiveCityIdSync()) setSaved(places);
+    });
   };
 
   // Świeży ranking zapisujemy do cache, żeby następny start namalował
@@ -255,30 +271,35 @@ export default function HomeScreen() {
   // Origin trzymamy jako stop-id, tak jak zapisuje go GPS, a nie sam tytuł —
   // inaczej ranking po zapisie miejsca liczyłby się z innego klucza.
   const smartGen = useRef(0);
-  const originStopRef = useRef<string>(DEFAULT_LOCATION.title);
+  const originStopRef = useRef<string>(defaultLocationForCity(getActiveCityIdSync()).title);
   const requestSmart = useCallback(
     (originStop: string, coords: { lat: number; lon: number }) => {
       originStopRef.current = originStop;
       const gen = ++smartGen.current;
+      const requestedCity = getActiveCityIdSync();
       FavoritesService.smartFromOrigin(originStop, coords).then((list) => {
-        if (gen !== smartGen.current) return;
+        if (gen !== smartGen.current || requestedCity !== getActiveCityIdSync()) return;
         applySmart(list);
+      }).catch(() => {
+        if (gen === smartGen.current && requestedCity === getActiveCityIdSync()) setSmartReady(true);
       });
     },
     [applySmart],
   );
 
   useEffect(() => {
+    let cancelled = false;
+    const cacheGen = smartGen.current;
     refreshPlaces();
-    SearchService.recent().then(setRecent);
-    loadTripHistory().then((h) => {
-      if (h.length > 0) setLastTrip(h[0]);
+    SearchService.recent().then((list) => {
+      if (!cancelled) setRecent(list);
     });
-    // Instant: gołe ostatnie miejsca z cache malujemy od razu, zanim GPS
-    // w ogóle odpowie. Świeży ranking zamieni je w miejscu (stabilne klucze
-    // + layout-animacja w liście — bez flickeru).
+    loadTripHistory().then((h) => {
+      if (!cancelled && h.length > 0) setLastTrip(h[0]);
+    });
+    // Spóźniony cache nie może nadpisać rankingu wyliczonego z nowej pozycji.
     loadCachedSmartDestinations().then((cached) => {
-      if (cached.length > 0) setSmart(cached);
+      if (!cancelled && cacheGen === smartGen.current && cached.length > 0) setSmart(cached);
     });
     // Live GPS od startu (ticker w tle) — opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
@@ -287,20 +308,19 @@ export default function HomeScreen() {
     // (dokładniejszy w tle) przechodzą tędy, żeby ranking i start tras zawsze
     // używały najlepszej znanej pozycji.
     const applyGpsFix = (l: LocationResult) => {
+      if (cancelled) return;
       const outside = isOutsideServiceArea(l.lat, l.lon);
       const city = l.city ?? null;
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
       if (outside) {
-        // Poza Wrocławiem: GPS zostaje tylko jako informacja do karty,
-        // a ranking i trasy liczymy z centrum — start i tak trzeba
-        // wybrać ręcznie, więc nie podstawiamy pozycji spoza strefy.
+        // Poza strefą: GPS zostaje tylko jako informacja do karty,
+        // a ranking i trasy liczymy z centrum aktywnego miasta, bo start
+        // i tak trzeba wybrać ręcznie, więc nie podstawiamy pozycji spoza.
         setGpsUnsupported(true);
         setGpsCity(city);
         if (!isCustomStartRef.current) {
-          requestSmart(DEFAULT_LOCATION.title, {
-            lat: DEFAULT_LOCATION.lat,
-            lon: DEFAULT_LOCATION.lon,
-          });
+          const d = defaultLocationForCity(getActiveCityIdSync());
+          requestSmart(d.title, { lat: d.lat, lon: d.lon });
         }
         return;
       }
@@ -316,12 +336,45 @@ export default function HomeScreen() {
     LocationService.getCurrentLocation().then(applyGpsFix).catch(() => {
       // Brak GPS (brak zgody / emulator): lista zostaje z cache, a flaga
       // gotowości pozwala pokazać uczciwy pusty stan zamiast wiecznej dziury.
-      setSmartReady(true);
+      if (!cancelled) setSmartReady(true);
     });
     const unsubscribeGps = LocationService.subscribe(applyGpsFix);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    return () => unsubscribeGps();
-  }, []);
+    return () => {
+      cancelled = true;
+      smartGen.current++;
+      unsubscribeGps();
+    };
+    // Zmiana miasta to nowy kontekst: GPS, historia i cache ulubionych należą
+    // do poprzedniego miasta, więc efekt startuje od nowa.
+  }, [cityId]);
+
+  // Sam reset stanu per-miasto. Ekran główny zostaje zamontowany, gdy Settings
+  // jest wypchnięty na stos (native stack nie robi unmount), więc bez tego
+  // po zmianie miasta pokazywałby stare ulubione, starą pozycję startu
+  // i orzekał „Wrocław" przy aktywnym Krakowie.
+  const firstCityRun = useRef(true);
+  useEffect(() => {
+    if (firstCityRun.current) {
+      firstCityRun.current = false;
+      return;
+    }
+    isCustomStartRef.current = false;
+    setIsCustomStart(false);
+    setQuery('');
+    setResults([]);
+    setSmart([]);
+    setSaved([]);
+    setSmartReady(false);
+    setRecent([]);
+    setLastTrip(null);
+    setGpsUnsupported(false);
+    setGpsCity(null);
+    const d = defaultLocationForCity(cityId);
+    setLocTitle(d.title);
+    setCurrentCoords({ lat: d.lat, lon: d.lon });
+    setFirstConns({});
+    setFirstLegs({});
+  }, [cityId]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy
   useEffect(() => {
@@ -345,7 +398,6 @@ export default function HomeScreen() {
   // Przerwanie własnym szukaniem: podbicie routeSearchGen unieważnia pętlę.
   useEffect(() => {
     if (smart.length === 0) {
-      setNextDepart({});
       setFirstConns({});
       setFirstLegs({});
       return;
@@ -360,7 +412,6 @@ export default function HomeScreen() {
     const originKey = `${locTitle}|${currentCoords.lat},${currentCoords.lon}`;
     if (lastOriginRef.current !== originKey) {
       lastOriginRef.current = originKey;
-      setNextDepart({});
       setFirstConns({});
       setFirstLegs({});
     } else {
@@ -376,7 +427,6 @@ export default function HomeScreen() {
         }
         return changed ? next : prev;
       };
-      setNextDepart(prune);
       setFirstConns(prune);
       setFirstLegs(prune);
     }
@@ -396,6 +446,8 @@ export default function HomeScreen() {
             maxTransfers: s.maxTransfers,
             minTransferSec: s.minTransferSec,
             trainsEnabled: s.trainsEnabled,
+            cableEnabled: s.cableEnabled,
+            allowedTransferModes: s.allowedModes,
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
@@ -403,16 +455,19 @@ export default function HomeScreen() {
           });
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
-          if (!first) continue;
-          setNextDepart((prev) =>
-            prev[d.id] === first.departInMin ? prev : { ...prev, [d.id]: first.departInMin },
-          );
-          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
-          const transitLeg = first.legs.find((l) => l.mode !== 'walk' && l.line);
-          if (transitLeg?.line) {
-            const badge = { mode: transitLeg.mode, line: transitLeg.line };
-            setFirstLegs((prev) => ({ ...prev, [d.id]: badge }));
+          // Sam spacer (cel w zasięgu pieszo): bez badge'a nie ma czego
+          // pokazać po prawej, więc wiersz zostaje czysty zamiast pustego slotu.
+          const transitLeg = first?.legs.find((l) => l.mode !== 'walk' && l.line);
+          if (!first || !transitLeg) {
+            setFirstConns((prev) => withoutKey(prev, d.id));
+            setFirstLegs((prev) => withoutKey(prev, d.id));
+            continue;
           }
+          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
+          setFirstLegs((prev) => ({
+            ...prev,
+            [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
+          }));
         } catch {
           // Brak trasy do tego celu — wiersz zostaje bez prawej strony.
         }
@@ -457,6 +512,8 @@ export default function HomeScreen() {
             maxTransfers: s.maxTransfers,
             minTransferSec: s.minTransferSec,
             trainsEnabled: s.trainsEnabled,
+            cableEnabled: s.cableEnabled,
+            allowedTransferModes: s.allowedModes,
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
@@ -464,25 +521,23 @@ export default function HomeScreen() {
           });
           if (quickRefreshGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
-          if (!first) continue;
-          setNextDepart((prev) =>
-            prev[d.id] === first.departInMin ? prev : { ...prev, [d.id]: first.departInMin },
-          );
-          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
-          const transitLeg = first.legs.find((l) => l.mode !== 'walk' && l.line);
-          if (transitLeg?.line) {
-            setFirstLegs((prev) => ({
-              ...prev,
-              [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
-            }));
+          const transitLeg = first?.legs.find((l) => l.mode !== 'walk' && l.line);
+          if (!first || !transitLeg) {
+            setFirstConns((prev) => withoutKey(prev, d.id));
+            setFirstLegs((prev) => withoutKey(prev, d.id));
+            continue;
           }
+          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
+          setFirstLegs((prev) => ({
+            ...prev,
+            [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
+          }));
         } catch {
           // Brak trasy do celu — wiersz zostaje bez prawej strony.
         }
       }
     })();
     // Świeży `firstConns` łapiemy z bieżącego renderu (homeTick go wymusza).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [homeTick]);
 
   // Użytkownik zaczął szukać własnej trasy — tniemy dogrzewanie ostatnich
@@ -558,7 +613,6 @@ export default function HomeScreen() {
 
     void mergeWidgetSnapshot({ origin: locTitle, next, quick, places });
     // firstConns zmienia referencję razem z nextDepart, więc snapshot idzie po świeżych danych.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstConns, locTitle, saved, smart, smartReady]);
 
   // Ostatnie przejazdy w identycznej kolejności co na ekranie głównym (smart history)
@@ -616,7 +670,7 @@ export default function HomeScreen() {
   const blockGpsStart = () => {
     Alert.alert(
       s.home.gpsBlockedTitle,
-      gpsCity ? s.home.gpsBlockedBody(gpsCity) : s.home.gpsBlockedBodyUnknown,
+      gpsCity ? s.home.gpsBlockedBody(gpsCity, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
       [
         { text: s.common.cancel, style: 'cancel' },
         {
@@ -673,7 +727,7 @@ export default function HomeScreen() {
         // od razu wybrał punkt ręcznie; sam alert by go wyrzucał z flow.
         Alert.alert(
           s.home.gpsBlockedTitle,
-          gpsCity ? s.home.gpsBlockedBody(gpsCity) : s.home.gpsBlockedBodyUnknown,
+          gpsCity ? s.home.gpsBlockedBody(gpsCity, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
         );
         setQuery('');
         return;
@@ -719,7 +773,9 @@ export default function HomeScreen() {
     }
     setLoading(true);
     const t = setTimeout(() => {
-      SearchService.search(q, currentCoords, 'home-sheet')
+      SearchService.search(q, currentCoords, 'home-sheet', (partial) => {
+        if (seq === searchSeq.current) setResults(partial);
+      })
         .then((r) => {
           if (seq !== searchSeq.current) return;
           setResults(r);
@@ -729,13 +785,13 @@ export default function HomeScreen() {
           // Przerwane zapytanie albo błąd — nowsze zapytanie ogarnie stan.
           if (seq === searchSeq.current) setLoading(false);
         });
-    }, 220);
+    }, 90);
     return () => clearTimeout(t);
   }, [query, sheetMode, currentCoords]);
 
   const quick = useMemo<Suggestion[]>(
     () =>
-      saved.slice(0, 3).map((s) => ({
+      saved.map((s) => ({
         id: s.placeId,
         title: s.name,
         address: s.address,
@@ -761,7 +817,7 @@ export default function HomeScreen() {
 
   const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number }) => {
     // GPS spoza strefy nie może być startem: zamiast puszczać trasę
-    // z pozycji spoza Wrocławia prosimy o ręczny wybór startu.
+    // z pozycji spoza strefy prosimy o ręczny wybór startu.
     if (gpsUnsupported && !isCustomStart) {
       blockGpsStart();
       return;
@@ -819,48 +875,49 @@ export default function HomeScreen() {
   );
 
   // Pull jak na Twitterze, ale zamiast spinnera: ostatnie połączenie + toggle.
-  // Capture (rodzic pierwszy), żeby ScrollView nie zabrał gestu; bierzemy tylko
-  // zdecydowane pociągnięcia w dół z samej góry, przy zamkniętych arkuszach.
-  const pullResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_, g) =>
-        !sheetsOpenRef.current &&
-        lastTripRef.current != null &&
-        atTopRef.current &&
-        g.dy > 12 &&
-        Math.abs(g.dy) > Math.abs(g.dx) * 1.4,
-      onPanResponderGrant: () => setScrollLocked(true),
-      onPanResponderMove: (_, g) => {
-        const h = Math.max(0, Math.min(LAST_TRIP_MAX, g.dy));
-        pullHeight.value = h;
-        const cur = optionRef.current;
-        let next: LastTripOption = cur;
-        if (h >= LAST_TRIP_ARM_2) next = 2;
-        else if (cur === 2) next = h >= LAST_TRIP_DISARM_2 ? 2 : h >= LAST_TRIP_ARM_1 ? 1 : 0;
-        else next = h >= LAST_TRIP_ARM_1 ? 1 : 0;
-        if (next !== cur) {
-          optionRef.current = next;
-          setPullOption(next);
-        }
-      },
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderRelease: () => {
-        const opt = optionRef.current;
-        optionRef.current = 0;
-        setPullOption(0);
-        pullHeight.value = withTiming(0, { duration: 220 });
-        setScrollLocked(false);
-        if (opt === 1) openLastTrip(false);
-        else if (opt === 2) openLastTrip(true);
-      },
-      onPanResponderTerminate: () => {
-        optionRef.current = 0;
-        setPullOption(0);
-        pullHeight.value = withTiming(0, { duration: 220 });
-        setScrollLocked(false);
-      },
-    }),
-  ).current;
+  // Gest na RNGH zamiast PanRespondera: aktywacja dopiero przy wyraźnym
+  // pociągnięciu w dół, przy odchyleniu w bok gest pada. `enabled` z renderu,
+  // bo bez ostatniej trasy, przy otwartych arkuszach i przewiniętej liście
+  // pull nie powinien łapać ani zabierać zwykłego scrollowania.
+  const pullGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetY(12)
+        .failOffsetX([-14, 14])
+        .onStart(() => {
+          setScrollLocked(true);
+        })
+        .onUpdate((e) => {
+          const h = Math.max(0, Math.min(LAST_TRIP_MAX, e.translationY));
+          pullHeight.value = h;
+          const cur = optionRef.current;
+          const next = nextPullOption(cur, h, LAST_TRIP_ARM_1, LAST_TRIP_ARM_2, LAST_TRIP_DISARM_2);
+          if (next !== cur) {
+            optionRef.current = next;
+            setPullOption(next);
+          }
+        })
+        .onEnd(() => {
+          const opt = optionRef.current;
+          optionRef.current = 0;
+          setPullOption(0);
+          pullHeight.value = withTiming(0, { duration: 220 });
+          setScrollLocked(false);
+          if (opt === 1) openLastTrip(false);
+          else if (opt === 2) openLastTrip(true);
+        })
+        .onFinalize(() => {
+          // Po naturalnym końcu onFinalize leci zaraz po onEnd, więc porządki
+          // muszą być idempotentne.
+          optionRef.current = 0;
+          setPullOption(0);
+          pullHeight.value = withTiming(0, { duration: 220 });
+          setScrollLocked(false);
+        })
+        .enabled(atTop && lastTrip != null && !sheetsOpen),
+    [atTop, lastTrip, sheetsOpen, openLastTrip],
+  );
 
   const handleSavePlace = async (placeData: {
     id?: string;
@@ -938,238 +995,266 @@ export default function HomeScreen() {
   }), [currentCoords, locTitle, applySmart, requestSmart]);
 
   return (
-    <View style={styles.root} {...pullResponder.panHandlers}>
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <ScrollView
-          contentContainerStyle={styles.body}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-          scrollEnabled={!scrollLocked}
-          scrollEventThrottle={16}
-          onScroll={(e) => {
-            atTopRef.current = e.nativeEvent.contentOffset.y <= 1;
-          }}
-        >
-          {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
-          <View style={styles.topBar}>
-            <Text style={styles.headerTitle}>{s.home.title}</Text>
-            <View style={styles.topActions}>
+    <GestureDetector gesture={pullGesture}>
+      <View style={styles.root}>
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
+            scrollEnabled={!scrollLocked}
+            scrollEventThrottle={16}
+            onScroll={(e) => {
+              // Stan zmienia się dopiero przy przekroczeniu górki: bez tego
+              // każdy scroll event wymuszałby rerender całego ekranu.
+              const top = e.nativeEvent.contentOffset.y <= 1;
+              if (top !== atTopRef.current) {
+                atTopRef.current = top;
+                setAtTop(top);
+              }
+            }}
+          >
+            {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
+            <View style={styles.topBar}>
+              <View style={styles.cityContext}>
+                <MapPin size={16} color={scheme.primary} />
+                <Text style={styles.cityName}>{s.city.name(cityId)}</Text>
+              </View>
+              <View style={styles.topActions}>
+                <Pressable
+                  style={styles.iconBtn}
+                  hitSlop={10}
+                  onPress={() => {
+                    setNewsAlert(false);
+                    void import('../src/services/mpkNews').then(({ markNewsSeen }) => markNewsSeen());
+                    router.push('/news');
+                  }}
+                  accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
+                  accessibilityRole="button"
+                >
+                  <Bell size={20} color={scheme.onSurfaceVariant} />
+                  {newsAlert && (
+                    <View style={styles.alertBadge}>
+                      <Text style={styles.alertMark}>!</Text>
+                    </View>
+                  )}
+                </Pressable>
+                <Pressable
+                  style={styles.iconBtn}
+                  onPress={() => router.push('/settings')}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.settings.title}
+                >
+                  <Settings2 size={20} color={scheme.onSurfaceVariant} />
+                </Pressable>
+              </View>
+            </View>
+            <Text style={styles.headerTitle} accessibilityRole="header">
+              {s.home.title}
+            </Text>
+
+            {dataStatus.state === 'downloading' && (
+              <View style={styles.importCard}>
+                <ActivityIndicator size="small" color={scheme.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.importTitle}>{s.home.importingTitle(cityGen)}</Text>
+                  <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
+                </View>
+              </View>
+            )}
+
+            {dataStatus.state === 'importing' && (
+              <View style={styles.importCard}>
+                <ActivityIndicator size="small" color={scheme.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.importTitle}>{dataStatus.step}</Text>
+                  <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
+                </View>
+              </View>
+            )}
+
+            {dataStatus.state === 'error' && (
               <Pressable
-                style={styles.iconBtn}
-                hitSlop={10}
-                onPress={() => {
-                  setNewsAlert(false);
-                  void import('../src/services/mpkNews').then(({ markNewsSeen }) => markNewsSeen());
-                  router.push('/news');
-                }}
-                accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
+                style={styles.importCardError}
                 accessibilityRole="button"
+                onPress={() => void importGtfsFromNetwork()}
               >
-                <Bell size={20} color={scheme.onSurfaceVariant} />
-                {newsAlert && (
-                  <View style={styles.alertBadge}>
-                    <Text style={styles.alertMark}>!</Text>
-                  </View>
-                )}
+                <Text style={styles.importTitleError}>{s.home.importErrorTitle}</Text>
+                <Text style={styles.importSubError}>
+                  {dataStatus.message}. {dataStatus.hint ?? s.home.importErrorRetry}
+                </Text>
               </Pressable>
-              <Pressable style={styles.iconBtn} hitSlop={10} onPress={() => router.push('/settings')}>
-                <Settings2 size={20} color={scheme.onSurfaceVariant} />
-              </Pressable>
-            </View>
-          </View>
+            )}
 
-          {dataStatus.state === 'downloading' && (
-            <View style={styles.importCard}>
-              <ActivityIndicator size="small" color={scheme.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.importTitle}>{s.home.importingTitle}</Text>
-                <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
-              </View>
-            </View>
-          )}
-
-          {dataStatus.state === 'importing' && (
-            <View style={styles.importCard}>
-              <ActivityIndicator size="small" color={scheme.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.importTitle}>{dataStatus.step}</Text>
-                <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
-              </View>
-            </View>
-          )}
-
-          {dataStatus.state === 'error' && (
-            <Pressable style={styles.importCardError} onPress={() => void importGtfsFromNetwork()}>
-              <Text style={styles.importTitleError}>{s.home.importErrorTitle}</Text>
-              <Text style={styles.importSubError}>
-                {dataStatus.message}. {dataStatus.hint ?? s.home.importErrorRetry}
-              </Text>
-            </Pressable>
-          )}
-
-          {gpsUnsupported && (
-            <UnsupportedCityCard
-              city={gpsCity}
-              onPickStart={() => {
-                setReturnToDestinationAfterStart(false);
-                setQuery('');
-                setSheetMode('start');
-              }}
-            />
-          )}
-
-          {/* Listy tuż pod nagłówkiem, bez wypychania na dół. */}
-          <View style={{ height: 12 }} />
-
-          {/* Wyszukiwarka celu jest tylko w dolnym menu pod kciukiem —
-              drugi raz na górze ekranu to ta sama akcja w dwóch miejscach. */}
-          {smartOrdered.length === 0 && smartReady ? (
-            <View style={styles.emptyCard}>
-              <View style={styles.emptyIcon}>
-                <History size={20} color={scheme.primary} />
-              </View>
-              <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
-              <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
-              <Pressable
-                style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.7 }]}
-                accessibilityRole="button"
-                onPress={() => {
+            {gpsUnsupported && (
+              <UnsupportedCityCard
+                city={gpsCity}
+                activeCity={s.city.name(cityId)}
+                onPickStart={() => {
                   setReturnToDestinationAfterStart(false);
                   setQuery('');
-                  setSheetMode('destination');
+                  setSheetMode('start');
                 }}
-              >
-                <Text style={styles.emptyCtaText}>{s.home.historyEmptyAction}</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
-          )}
+              />
+            )}
 
-          <View style={{ height: 20 }} />
-          <View style={styles.sectionHeader}>
-            <Text style={styles.section}>{s.home.savedTitle}</Text>
-          </View>
-          <SavedPlacesRow
+            <View style={{ height: 24 }} />
+            {smartOrdered.length === 0 && smartReady ? (
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIcon}>
+                  <History size={20} color={scheme.primary} />
+                </View>
+                <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
+                <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.7 }]}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setReturnToDestinationAfterStart(false);
+                    setQuery('');
+                    setSheetMode('destination');
+                  }}
+                >
+                  <Text style={styles.emptyCtaText}>{s.home.historyEmptyAction}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
+            )}
+
+            <View style={{ height: 28 }} />
+            <View style={styles.sectionHeader}>
+              <Text style={styles.section} accessibilityRole="header">
+                {s.home.savedTitle}
+              </Text>
+            </View>
+            <SavedPlacesRow
+              places={saved}
+              onSelect={(p) => goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })}
+              onManage={() => setManageSheetOpen(true)}
+              onAdd={() => {
+                setEditingPlace(null);
+                setAddPlaceOpen(true);
+              }}
+              onEdit={(p) => {
+                setEditingPlace(p);
+                setAddPlaceOpen(true);
+              }}
+            />
+
+            <View style={{ height: thumbInset }} />
+          </ScrollView>
+        </SafeAreaView>
+
+        {!sheetMode && !manageSheetOpen && !addPlaceOpen && (
+          <HomeThumbBar
+            onOpenSearch={() => {
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+              setSheetMode('destination');
+            }}
+            startTitle={locTitle}
+            isCustomStart={isCustomStart}
+            onOpenStart={() => {
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+              setSheetMode('start');
+            }}
+            onResetStart={() => void resetToGps()}
+            gpsUnsupported={gpsUnsupported}
+          />
+        )}
+
+        {sheetMode && (
+          <SearchSheet
+            query={query}
+            loading={loading}
+            results={results}
+            recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
+            savedQuick={quick}
+            placeholder={sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
+            originTitle={sheetMode === 'destination' ? locTitle : undefined}
+            closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
+            notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
+            onChangeOrigin={
+              sheetMode === 'destination'
+                ? () => {
+                    setReturnToDestinationAfterStart(true);
+                    setQuery('');
+                    setSheetMode('start');
+                  }
+                : undefined
+            }
+            onQuery={setQuery}
+            onSelect={(s) => {
+              if (sheetMode === 'start') {
+                handleStartSelect(s);
+              } else {
+                setSheetMode(null);
+                setQuery('');
+                goToRoutes({ id: s.id, title: s.title, address: s.address, lat: s.lat, lon: s.lon });
+              }
+            }}
+            onClose={() => {
+              setSheetMode(null);
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+            }}
+          />
+        )}
+
+        {manageSheetOpen && (
+          <ManagePlacesSheet
             places={saved}
-            onSelect={(p) => goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })}
-            onManage={() => setManageSheetOpen(true)}
-            onEdit={(p) => {
+            onClose={() => setManageSheetOpen(false)}
+            onSelectPlace={(p) => {
+              setManageSheetOpen(false);
+              goToRoutes({ id: p.placeId, title: p.name, address: p.address, lat: p.lat, lon: p.lon });
+            }}
+            onEditPlace={(p) => {
+              setManageSheetOpen(false);
               setEditingPlace(p);
               setAddPlaceOpen(true);
             }}
+            onDeletePlace={handleDeletePlace}
+            onAddNew={() => {
+              setManageSheetOpen(false);
+              setEditingPlace(null);
+              setAddPlaceOpen(true);
+            }}
           />
+        )}
 
-          <View style={{ height: thumbInset }} />
-        </ScrollView>
-      </SafeAreaView>
-
-      {!sheetMode && !manageSheetOpen && !addPlaceOpen && (
-        <HomeThumbBar
-          onOpenSearch={() => {
-            setReturnToDestinationAfterStart(false);
-            setQuery('');
-            setSheetMode('destination');
-          }}
-          startTitle={locTitle}
-          isCustomStart={isCustomStart}
-          onOpenStart={() => {
-            setReturnToDestinationAfterStart(false);
-            setQuery('');
-            setSheetMode('start');
-          }}
-          onResetStart={() => void resetToGps()}
-          gpsUnsupported={gpsUnsupported}
-        />
-      )}
-
-      {sheetMode && (
-        <SearchSheet
-          query={query}
-          loading={loading}
-          results={results}
-          recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
-          savedQuick={quick}
-          placeholder={sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
-          originTitle={sheetMode === 'destination' ? locTitle : undefined}
-          closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
-          notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
-          onChangeOrigin={
-            sheetMode === 'destination'
-              ? () => {
-                  setReturnToDestinationAfterStart(true);
-                  setQuery('');
-                  setSheetMode('start');
-                }
-              : undefined
-          }
-          onQuery={setQuery}
-          onSelect={(s) => {
-            if (sheetMode === 'start') {
-              handleStartSelect(s);
-            } else {
-              setSheetMode(null);
-              setQuery('');
-              goToRoutes({ id: s.id, title: s.title, address: s.address, lat: s.lat, lon: s.lon });
-            }
-          }}
-          onClose={() => {
-            setSheetMode(null);
-            setReturnToDestinationAfterStart(false);
-            setQuery('');
-          }}
-        />
-      )}
-
-      {manageSheetOpen && (
-        <ManagePlacesSheet
-          places={saved}
-          onClose={() => setManageSheetOpen(false)}
-          onSelectPlace={(p) => {
-            setManageSheetOpen(false);
-            goToRoutes({ id: p.placeId, title: p.name, address: p.address, lat: p.lat, lon: p.lon });
-          }}
-          onEditPlace={(p) => {
-            setManageSheetOpen(false);
-            setEditingPlace(p);
-            setAddPlaceOpen(true);
-          }}
-          onDeletePlace={handleDeletePlace}
-          onAddNew={() => {
-            setManageSheetOpen(false);
-            setEditingPlace(null);
-            setAddPlaceOpen(true);
-          }}
-        />
-      )}
-
-      {addPlaceOpen && (
-        <AddPlaceSheet
-          initialPlace={editingPlace}
-          onClose={() => {
-            setAddPlaceOpen(false);
-            setEditingPlace(null);
-          }}
-          onSave={handleSavePlace}
-          onDelete={handleDeletePlace}
-        />
-      )}
-    </View>
+        {addPlaceOpen && (
+          <AddPlaceSheet
+            initialPlace={editingPlace}
+            onClose={() => {
+              setAddPlaceOpen(false);
+              setEditingPlace(null);
+            }}
+            onSave={handleSavePlace}
+            onDelete={handleDeletePlace}
+          />
+        )}
+      </View>
+    </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1 },
-  body: { paddingHorizontal: 16, paddingTop: 6, flexGrow: 1 },
-  topBar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44 },
+  body: { paddingHorizontal: 20, paddingTop: 4, flexGrow: 1 },
+  topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, marginBottom: 16 },
+  cityContext: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  cityName: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1187,19 +1272,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
-  // Nagłówek: pytanie o cel nad wolnym powietrzem.
-  headerTitle: { ...type.headlineSmall, fontWeight: '700', color: scheme.onSurface, flex: 1 },
+  headerTitle: { fontSize: 32, fontWeight: '500', color: scheme.onSurface, letterSpacing: -0.8 },
   sectionHeader: {
     marginBottom: 10,
   },
-  section: { ...type.titleMedium, color: scheme.onSurface },
+  section: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
   emptyCard: {
     gap: 8,
     marginTop: 12,
-    padding: 16,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    ...elev.level1,
+    padding: 22,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
   },
   emptyIcon: {
     width: 44,
@@ -1213,8 +1296,9 @@ const styles = StyleSheet.create({
   emptyBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   emptyCta: {
     marginTop: 6,
-    paddingVertical: 11,
-    borderRadius: shape.full,
+    paddingVertical: 16,
+    minHeight: 52,
+    borderRadius: shape.medium,
     backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1228,7 +1312,6 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.medium,
-    ...elev.level1,
   },
   importTitle: {
     ...type.bodyMedium,
@@ -1243,17 +1326,17 @@ const styles = StyleSheet.create({
   importCardError: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: scheme.errorContainer,
+    backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.medium,
   },
   importTitleError: {
     ...type.bodyMedium,
-    color: scheme.onErrorContainer,
+    color: scheme.error,
     fontWeight: '700',
   },
   importSubError: {
     ...type.labelSmall,
-    color: scheme.onErrorContainer,
+    color: scheme.onSurfaceVariant,
     marginTop: 2,
   },
 });

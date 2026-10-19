@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pill badge'a do podglądów widgetów: kolor z palety linii (pociąg = amber). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/kw_badge_train"
+    android:gravity="center_vertical"
+    android:minHeight="26dp"
+    android:orientation="horizontal"
+    android:paddingStart="7dp"
+    android:paddingEnd="8dp">
+
+    <ImageView
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/kw_ic_bus"
+        android:tint="#0A1210" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="142"
+        android:textColor="#0A1210"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+</LinearLayout>

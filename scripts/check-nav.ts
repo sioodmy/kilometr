@@ -5,13 +5,19 @@
 //   npm run check:nav
 
 import { findTurns, projectOnPath, distanceAlong, pathToIndex, buildRoutePath, nextGuidance } from '../src/services/turnManeuver';
+import { routeFootLocal } from '../src/services/footRouter';
 import type { Coord } from '../src/services/routeGeometry';
 import type { MapLeg } from '../src/map/types';
 
-const FOOT = 'https://routing.openstreetmap.de/routed-foot';
+const FOOT = 'local-rust';
 const CAR = 'https://router.project-osrm.org';
 
 async function fetchRoute(base: string, profile: string, pts: Coord[]): Promise<Coord[]> {
+  if (profile === 'foot') {
+    const out = await routeFootLocal(pts);
+    if (!out || out.length < 2) throw new Error('Rust foot router returned null');
+    return out;
+  }
   const p = pts.map(([la, lo]) => `${lo.toFixed(6)},${la.toFixed(6)}`).join(';');
   const res = await fetch(`${base}/route/v1/${profile}/${p}?overview=full&geometries=geojson`);
   const body = (await res.json()) as any;

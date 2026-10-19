@@ -17,7 +17,7 @@
  * - brak połączenia z kodem grada za linię, której nie ma w rozkładzie.
  */
 
-import { liveTracker } from '../src/services/liveTracker';
+import { liveTracker, snapshotIsUsable } from '../src/services/liveTracker';
 import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from '../src/services/zbiorkom';
 import { gtfsStore } from '../src/services/routing/store';
 import { locateLiveStopPosition } from '../src/services/vehiclePosition';
@@ -72,6 +72,17 @@ expect('200 s bez odpowiedzi = stale', liveTracker.getLiveState(), 'stale');
 internals.lastOk = 0;
 expect('z powrotem zero = unknown', liveTracker.getLiveState(), 'unknown');
 
+// ─── Snapshot z dysku tylko w oknie świeżości ─────────────────────────────
+
+describe('Snapshot z dysku: okno świeżości');
+const nowMs = Date.now();
+expect('świeży snapshot użyteczny', snapshotIsUsable(nowMs - 60_000, nowMs), true);
+expect('na granicy 15 min użyteczny', snapshotIsUsable(nowMs - 15 * 60 * 1000, nowMs), true);
+expect('starszy niż 15 min odrzucony', snapshotIsUsable(nowMs - 15 * 60 * 1000 - 1, nowMs), false);
+expect('brak znacznika odrzucony', snapshotIsUsable(undefined, nowMs), false);
+expect('NaN odrzucony', snapshotIsUsable(NaN, nowMs), false);
+expect('znacznik z przyszłości odrzucony', snapshotIsUsable(nowMs + 60_000, nowMs), false);
+
 // ─── getTripDelays nie oddaje żywej mapy ──────────────────────────────────
 
 describe('Opóźnienia dla RAPTOR-a');
@@ -80,6 +91,14 @@ first.set('trip-hack', 999);
 expect('zapis poza trackerem nie przecieka', liveTracker.getTripDelays().has('trip-hack'), false);
 expect('każde wywołanie to nowa kopia', liveTracker.getTripDelays() === first, false);
 expect('pusty tracker = pusta mapa', liveTracker.getTripDelays().size, 0);
+
+// ─── getSourceHealth nie oddaje żywej mapy ────────────────────────────────
+
+describe('Zdrowie źródeł live');
+const health = liveTracker.getSourceHealth();
+health.mpk = { attempts: 1, failures: 1, lastSuccessAt: null, lastError: 'x' };
+expect('zapis poza trackerem nie przecieka', 'mpk' in liveTracker.getSourceHealth(), false);
+expect('brak źródeł przed odpytaniem = pusty obiekt', Object.keys(liveTracker.getSourceHealth()).length, 0);
 
 // ─── Pusta odpowiedź to nie awaria ────────────────────────────────────────
 
@@ -91,6 +110,12 @@ expect('obiekt zamiast tablicy = null', internals.parseRows('{"error":1}'), null
 expect('poprawna tablica przechodzi', internals.parseRows('[{"name":"1","type":"tram","x":51.1,"y":17.0,"k":7}]'), [
   { name: '1', type: 'tram', x: 51.1, y: 17.0, k: 7 },
 ]);
+expect('tablica bez ani jednego poprawnego wiersza = null', internals.parseRows('[{"foo":1},{"name":"","x":0,"y":0,"k":1}]'), null);
+expect('śmieci wśród poprawnych odsiane', internals.parseRows('[{"foo":1},{"name":"9","type":"bus","x":51.1,"y":17.0,"k":3}]'), [
+  { name: '9', type: 'bus', x: 51.1, y: 17.0, k: 3 },
+]);
+expect('brak k = wiersz odsiany', internals.parseRows('[{"name":"9","x":51.1,"y":17.0}]'), null);
+expect('nie-liczba w x = wiersz odsiany', internals.parseRows('[{"name":"9","x":"a","y":17.0,"k":1}]'), null);
 
 // ─── Odpytywanie nieznanych linii nie wywraca się ─────────────────────────
 

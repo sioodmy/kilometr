@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
+  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,6 +12,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +24,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Database,
   Download,
   GraduationCap,
@@ -31,18 +35,20 @@ import {
   TramFront,
   WifiOff,
   X,
-  Zap,
 } from 'lucide-react-native';
-import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
-import { elev, scheme, shape, type } from '../src/theme/tokens';
+import Animated, { FadeInRight, FadeOutLeft, useReducedMotion } from 'react-native-reanimated';
+import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
+import { CITIES, type CityId } from '../src/cities';
+import { useActiveCity } from '../src/services/cityStore';
+import { suggestCityForGps } from '../src/services/serviceArea';
 import { setOnboardingSeen } from '../src/services/onboarding';
 import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
-import { ensureNotificationPermission, hasNotificationPermission } from '../src/services/notifications';
 import {
-  FavoritesService,
-  SearchService,
-} from '../src/services';
+  ensureNotificationPermission,
+  hasNotificationPermission,
+} from '../src/services/notifications';
+import { FavoritesService, SearchService } from '../src/services';
 import {
   getDataStatus,
   importGtfsFromNetwork,
@@ -52,13 +58,11 @@ import {
 } from '../src/services/dataManager';
 import type { SavedPlace, Suggestion } from '../src/types/models';
 
-// ─── Małe klocki ─────────────────────────────────────────────────────────────
-
-function Dots({ step }: { step: number }) {
+function StepProgress({ step }: { step: number }) {
   const s = useStrings();
   const steps = s.onboarding.steps;
   return (
-    <View style={st.dots}>
+    <View style={st.dots} accessible={false}>
       {steps.map((label, i) => (
         <View key={label} style={[st.dot, i === step && st.dotActive, i < step && st.dotDone]} />
       ))}
@@ -87,6 +91,7 @@ function PrimaryBtn({
         pressed && !disabled && { opacity: 0.88, transform: [{ scale: 0.99 }] },
       ]}
       accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
     >
       <Text style={[st.primaryText, disabled && st.primaryTextDisabled]}>{label}</Text>
       {icon}
@@ -105,8 +110,6 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
     </Pressable>
   );
 }
-
-// ─── Krok 1: uprawnienia ─────────────────────────────────────────────────────
 
 // Push w Expo Go nie istnieje od SDK 53 (sam require + getPermissionsAsync
 // rzuca błąd do LogBoxa), więc nawet nie próbujemy — ten sam guard co
@@ -175,29 +178,53 @@ function usePermissionStates() {
   return { loc, notif, busy, requestLoc, requestNotif };
 }
 
-function StatusPill({ v }: { v: 'unknown' | 'granted' | 'denied' }) {
-  const s = useStrings();
-  if (v === 'granted')
-    return (
-      <View style={[st.pill, st.pillOk]}>
-        <Check size={12} color={scheme.onSuccessContainer} />
-        <Text style={[st.pillText, { color: scheme.onSuccessContainer }]}>{s.onboarding.granted}</Text>
-      </View>
-    );
-  if (v === 'denied')
-    return (
-      <View style={[st.pill, st.pillOff]}>
-        <Text style={[st.pillText, { color: scheme.onSurfaceVariant }]}>{s.onboarding.denied}</Text>
-      </View>
-    );
-  return (
-    <View style={st.pill}>
-      <Text style={st.pillText}>{s.onboarding.toEnable}</Text>
-    </View>
-  );
-}
+function useCitySuggestion(locGranted: boolean) {
+  const { cityId, setCity } = useActiveCity();
+  const [suggested, setSuggested] = useState<CityId | null>(null);
+  // 'idle' = jeszcze nie pytaliśmy, 'locating' = czekamy na fix,
+  // 'nomatch' = GPS gdzieś, gdzie żadne miasto nie pasuje.
+  const [status, setStatus] = useState<'idle' | 'locating' | 'nomatch'>('idle');
 
-// ─── Krok 3: zapisane miejsca ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!locGranted) {
+      setSuggested(null);
+      setStatus('idle');
+      return;
+    }
+    let live = true;
+    setStatus('locating');
+    void (async () => {
+      try {
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const hit = suggestCityForGps(pos.coords.latitude, pos.coords.longitude);
+        if (!live) return;
+        if (hit) {
+          setSuggested(hit.id);
+          setStatus('idle');
+        } else {
+          setStatus('nomatch');
+        }
+      } catch {
+        // Brak fixa: wybór manualny z listy, bez zgadywania miasta.
+        if (live) setStatus('nomatch');
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [locGranted]);
+
+  const pick = useCallback(
+    (id: CityId) => {
+      void setCity(id);
+    },
+    [setCity],
+  );
+
+  return { cityId, pick, suggested, status };
+}
 
 type SlotKey = 'home' | 'work' | 'school';
 
@@ -236,7 +263,9 @@ function useOnboardingPlaces() {
     }
     setSearching(true);
     const t = setTimeout(() => {
-      SearchService.search(q)
+      SearchService.search(q, undefined, undefined, (partial) => {
+        if (seq === searchSeq.current) setResults(partial);
+      })
         .then((r) => {
           if (seq === searchSeq.current) setResults(r);
         })
@@ -246,7 +275,7 @@ function useOnboardingPlaces() {
         .finally(() => {
           if (seq === searchSeq.current) setSearching(false);
         });
-    }, 250);
+    }, 90);
     return () => clearTimeout(t);
   }, [query, activeSlot]);
 
@@ -303,25 +332,60 @@ function useOnboardingPlaces() {
     [reload],
   );
 
-  return { places, bySlot, activeSlot, setActiveSlot, query, setQuery, results, searching, saving, saveForSlot, remove };
+  return {
+    places,
+    bySlot,
+    activeSlot,
+    setActiveSlot,
+    query,
+    setQuery,
+    results,
+    searching,
+    saving,
+    saveForSlot,
+    remove,
+  };
 }
-
-// ─── Ekran ───────────────────────────────────────────────────────────────────
 
 export default function OnboardingScreen() {
   const s = useStrings();
   const router = useRouter();
+  const { fontScale } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const perms = usePermissionStates();
+  const {
+    cityId,
+    pick,
+    suggested,
+    status: citySuggestionStatus,
+  } = useCitySuggestion(perms.loc === 'granted');
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [downloading, setDownloading] = useState(false);
   const slots = useOnboardingPlaces();
   const steps = s.onboarding.steps;
+  const cityGen = s.city.gen(cityId);
+  const cityFeeds = s.city.feeds(cityId);
   const placeSlots = [
-    { key: 'home' as SlotKey, name: s.onboarding.slotHome, icon: Home, hint: s.onboarding.slotHomeHint },
-    { key: 'work' as SlotKey, name: s.onboarding.slotWork, icon: Briefcase, hint: s.onboarding.slotWorkHint },
-    { key: 'school' as SlotKey, name: s.onboarding.slotUni, icon: GraduationCap, hint: s.onboarding.slotUniHint },
+    {
+      key: 'home' as SlotKey,
+      name: s.onboarding.slotHome,
+      icon: Home,
+      hint: s.onboarding.slotHomeHint(cityId),
+    },
+    {
+      key: 'work' as SlotKey,
+      name: s.onboarding.slotWork,
+      icon: Briefcase,
+      hint: s.onboarding.slotWorkHint(cityId),
+    },
+    {
+      key: 'school' as SlotKey,
+      name: s.onboarding.slotUni,
+      icon: GraduationCap,
+      hint: s.onboarding.slotUniHint(cityId),
+    },
   ];
   const startedDownload = useRef(false);
   // Krok 3: przewijanie otwartego slotu nad klawiaturę.
@@ -342,8 +406,8 @@ export default function OnboardingScreen() {
 
   // Na kroku rozkładu od razu odśwież status.
   useEffect(() => {
-    if (step === 2) void refreshDataStatus().catch(() => {});
-  }, [step ]);
+    if (step === 3) void refreshDataStatus().catch(() => {});
+  }, [step]);
 
   const finish = useCallback(async () => {
     if (leaving) return;
@@ -354,6 +418,15 @@ export default function OnboardingScreen() {
 
   const next = useCallback(() => setStep((v) => Math.min(v + 1, steps.length - 1)), [steps.length]);
   const back = useCallback(() => setStep((v) => Math.max(v - 1, 0)), []);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (step === 0) return false;
+      back();
+      return true;
+    });
+    return () => sub.remove();
+  }, [back, step]);
 
   const startDownload = useCallback(async () => {
     if (downloading) return;
@@ -375,31 +448,33 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
-      {/* Pasek postępu */}
       <View style={st.top}>
         {step > 0 ? (
-          <Pressable onPress={back} hitSlop={10} style={st.back} accessibilityLabel={s.onboarding.backA11y}>
+          <Pressable
+            onPress={back}
+            style={st.back}
+            accessibilityRole="button"
+            accessibilityLabel={s.onboarding.backA11y}
+          >
             <ChevronLeft size={22} color={scheme.onSurface} />
           </Pressable>
         ) : (
           <View style={st.back} />
         )}
-        <View style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-          <Dots step={step} />
+        <View style={{ flex: 1, gap: 10 }}>
           <Text style={st.stepLabel}>
             {s.onboarding.stepOf(step + 1, steps.length, steps[step])}
           </Text>
+          <StepProgress step={step} />
         </View>
-        <View style={st.back} />
       </View>
 
       <Animated.View
         key={step}
-        entering={FadeInRight.duration(260)}
-        exiting={FadeOutLeft.duration(180)}
+        entering={reduceMotion ? undefined : FadeInRight.duration(220)}
+        exiting={reduceMotion ? undefined : FadeOutLeft.duration(150)}
         style={{ flex: 1 }}
       >
-        {/* ── 0 · Powitanie ─────────────────────────────────────────── */}
         {step === 0 && (
           <ScrollView
             contentContainerStyle={st.body}
@@ -407,7 +482,6 @@ export default function OnboardingScreen() {
             overScrollMode="never"
           >
             <View style={st.heroMark}>
-              <View style={st.heroGlow} />
               <TramFront size={44} color={scheme.onPrimaryContainer} />
             </View>
             <Text style={st.hero}>{s.onboarding.brand}</Text>
@@ -416,7 +490,7 @@ export default function OnboardingScreen() {
             <View style={st.featList}>
               <View style={st.feat}>
                 <View style={st.featIcon}>
-                  <Zap size={18} color={scheme.primary} />
+                  <Clock3 size={20} color={scheme.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={st.featTitle}>{s.onboarding.fast}</Text>
@@ -442,7 +516,6 @@ export default function OnboardingScreen() {
           </ScrollView>
         )}
 
-        {/* ── 1 · Dostępy ───────────────────────────────────────────── */}
         {step === 1 && (
           <ScrollView
             contentContainerStyle={st.body}
@@ -460,11 +533,8 @@ export default function OnboardingScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={st.cardTitle}>{s.onboarding.locTitle}</Text>
                 </View>
-                <StatusPill v={perms.loc} />
               </View>
-              <Text style={st.cardBody}>
-                {s.onboarding.locBody}
-              </Text>
+              <Text style={st.cardBody}>{s.onboarding.locBody}</Text>
               {perms.loc === 'granted' ? (
                 <View style={st.doneRow}>
                   <Check size={16} color={scheme.success} />
@@ -474,6 +544,8 @@ export default function OnboardingScreen() {
                 <Pressable
                   onPress={() => void perms.requestLoc()}
                   disabled={perms.busy !== null}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: perms.busy !== null, busy: perms.busy === 'loc' }}
                   style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
                 >
                   {perms.busy === 'loc' ? (
@@ -494,24 +566,24 @@ export default function OnboardingScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={st.cardTitle}>{s.onboarding.notifTitle}</Text>
                 </View>
-                <StatusPill v={perms.notif} />
               </View>
-              <Text style={st.cardBody}>
-                {s.onboarding.notifBody}
-              </Text>
+              <Text style={st.cardBody}>{s.onboarding.notifBody}</Text>
               {perms.notif === 'granted' ? (
                 <View style={st.doneRow}>
                   <Check size={16} color={scheme.success} />
                   <Text style={st.doneText}>{s.onboarding.notifOn}</Text>
                 </View>
               ) : !NOTIF_SUPPORTED ? (
-                <Text style={st.fine}>
-                  {s.onboarding.notifExpoGo}
-                </Text>
+                <Text style={st.fine}>{s.onboarding.notifExpoGo}</Text>
               ) : (
                 <Pressable
                   onPress={() => void perms.requestNotif()}
                   disabled={perms.busy !== null}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    disabled: perms.busy !== null,
+                    busy: perms.busy === 'notif',
+                  }}
                   style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
                 >
                   {perms.busy === 'notif' ? (
@@ -526,8 +598,74 @@ export default function OnboardingScreen() {
           </ScrollView>
         )}
 
-        {/* ── 2 · Rozkład ───────────────────────────────────────────── */}
         {step === 2 && (
+          <View style={st.cityStep}>
+            <FlatList
+              data={CITIES}
+              keyExtractor={(c) => c.id}
+              style={st.cityList}
+              contentContainerStyle={st.cityListContent}
+              ListHeaderComponent={
+                <View style={st.cityHead}>
+                  <Text style={st.title}>{s.onboarding.cityTitle}</Text>
+                  <Text style={st.leadSmall}>{s.onboarding.cityBody}</Text>
+
+                  {suggested ? (
+                    <Text style={st.suggestNote}>
+                      {s.onboarding.citySuggested(s.city.loc(suggested))}
+                    </Text>
+                  ) : perms.loc !== 'granted' ? (
+                    <Text style={st.suggestNote}>{s.onboarding.cityNoGps}</Text>
+                  ) : citySuggestionStatus === 'locating' ? (
+                    <Text style={st.suggestNote}>{s.onboarding.cityLocating}</Text>
+                  ) : citySuggestionStatus === 'nomatch' ? (
+                    <Text style={st.suggestNote}>{s.onboarding.cityNoMatch}</Text>
+                  ) : null}
+                </View>
+              }
+              showsVerticalScrollIndicator
+              overScrollMode="never"
+              accessibilityRole="radiogroup"
+              renderItem={({ item: c }) => {
+                const active = cityId === c.id;
+                const isSuggested = suggested === c.id;
+                return (
+                  <Pressable
+                    onPress={() => pick(c.id)}
+                    style={({ pressed }) => [
+                      st.cityChip,
+                      active && st.cityChipActive,
+                      pressed && !active && { opacity: 0.75 },
+                    ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                    // Etykieta opisuje wybór, nie podpowiedź GPS: TalkBack czyta „Proponowane
+                    // miasto według GPS" jako nazwę przycisku, a stan i tak
+                    // ogłasza przez accessibilityState.
+                    accessibilityLabel={s.onboarding.cityPickA11y(s.city.name(c.id))}
+                    accessibilityHint={
+                      isSuggested ? s.onboarding.citySuggestedA11y(s.city.name(c.id)) : undefined
+                    }
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[st.cityName, active && st.cityNameActive]}>
+                        {s.city.name(c.id)}
+                      </Text>
+                      <Text style={[st.citySub, active && st.citySubActive]}>
+                        {s.city.feeds(c.id)}
+                      </Text>
+                    </View>
+                    <View style={[st.radio, active && st.radioActive]}>
+                      {active && <Check size={16} color={scheme.onPrimary} />}
+                    </View>
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        )}
+
+        {step === 3 && (
           <ScrollView
             contentContainerStyle={st.body}
             showsVerticalScrollIndicator={false}
@@ -536,10 +674,8 @@ export default function OnboardingScreen() {
             <View style={st.heroMarkSmall}>
               <Database size={30} color={scheme.onPrimaryContainer} />
             </View>
-            <Text style={st.title}>{s.onboarding.dlTitle}</Text>
-            <Text style={st.leadSmall}>
-              {s.onboarding.dlBody}
-            </Text>
+            <Text style={st.title}>{s.onboarding.dlTitle(cityGen)}</Text>
+            <Text style={st.leadSmall}>{s.onboarding.dlBody(cityFeeds)}</Text>
 
             <View style={st.card}>
               {dataStatus.state === 'empty' && !busyGtfs && (
@@ -548,13 +684,6 @@ export default function OnboardingScreen() {
                     <WifiOff size={18} color={scheme.onSurfaceVariant} />
                     <Text style={st.statText}>{s.onboarding.dlEmpty}</Text>
                   </View>
-                  <Pressable
-                    onPress={() => void startDownload()}
-                    style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
-                  >
-                    <Download size={17} color={scheme.onPrimary} />
-                    <Text style={st.allowText}>{s.onboarding.dlAction}</Text>
-                  </Pressable>
                   <Text style={st.fine}>{s.onboarding.dlSize}</Text>
                 </>
               )}
@@ -566,11 +695,27 @@ export default function OnboardingScreen() {
                     <Text style={st.statText}>
                       {dataStatus.state === 'downloading'
                         ? s.onboarding.dlProgress(Math.round(dataStatus.progress * 100))
-                        : s.onboarding.dlStep(dataStatus.step, Math.round(dataStatus.progress * 100))}
+                        : s.onboarding.dlStep(
+                            dataStatus.step,
+                            Math.round(dataStatus.progress * 100),
+                          )}
                     </Text>
                   </View>
-                  <View style={st.bar}>
-                    <View style={[st.barFill, { width: `${Math.round(dataStatus.progress * 100)}%` }]} />
+                  <View
+                    style={st.bar}
+                    accessibilityRole="progressbar"
+                    accessibilityLabel={s.onboarding.dlProgress(
+                      Math.round(dataStatus.progress * 100),
+                    )}
+                    accessibilityValue={{
+                      min: 0,
+                      max: 100,
+                      now: Math.round(dataStatus.progress * 100),
+                    }}
+                  >
+                    <View
+                      style={[st.barFill, { width: `${Math.round(dataStatus.progress * 100)}%` }]}
+                    />
                   </View>
                   <Text style={st.fine}>{s.onboarding.dlKeepOpen}</Text>
                 </>
@@ -599,6 +744,7 @@ export default function OnboardingScreen() {
                   <Pressable
                     onPress={() => void startDownload()}
                     disabled={busyGtfs}
+                    accessibilityRole="button"
                     style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
                   >
                     <Download size={17} color={scheme.onPrimary} />
@@ -610,138 +756,146 @@ export default function OnboardingScreen() {
           </ScrollView>
         )}
 
-        {/* ── 3 · Miejsca (pomijalne) ───────────────────────────────── */}
-        {step === 3 && (
+        {step === 4 && (
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={80}
           >
-          <ScrollView
-            ref={step3Scroll}
-            contentContainerStyle={[st.body, { paddingBottom: 240 }]}
-            showsVerticalScrollIndicator={false}
-            overScrollMode="never"
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-          >
-            <Text style={st.title}>{s.onboarding.placesTitle}</Text>
-            <Text style={st.leadSmall}>
-              {s.onboarding.placesBody}
-            </Text>
+            <ScrollView
+              ref={step3Scroll}
+              contentContainerStyle={[st.body, { paddingBottom: 240 }]}
+              showsVerticalScrollIndicator={false}
+              overScrollMode="never"
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              <Text style={st.title}>{s.onboarding.placesTitle}</Text>
+              <Text style={st.leadSmall}>{s.onboarding.placesBody}</Text>
 
-            {placeSlots.map((slot) => {
-              const Icon = slot.icon;
-              const saved = slots.bySlot[slot.key];
-              const open = slots.activeSlot === slot.key;
-              return (
-                <View
-                  key={slot.key}
-                  style={st.card}
-                  onLayout={(e) => {
-                    slotY.current[slot.key] = e.nativeEvent.layout.y;
-                  }}
-                >
-                  <View style={st.slotRow}>
-                    <View style={st.cardIcon}>
-                      <Icon size={20} color={scheme.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={st.cardTitle}>{slot.name}</Text>
-                      <Text style={st.cardWhy} numberOfLines={1}>
-                        {saved ? saved.address : slot.hint}
-                      </Text>
-                    </View>
-                    {saved ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={[st.pill, st.pillOk]}>
-                          <Check size={12} color={scheme.onSuccessContainer} />
-                          <Text style={[st.pillText, { color: scheme.onSuccessContainer }]}>{s.onboarding.added}</Text>
+              {placeSlots.map((slot) => {
+                const Icon = slot.icon;
+                const saved = slots.bySlot[slot.key];
+                const open = slots.activeSlot === slot.key;
+                return (
+                  <View
+                    key={slot.key}
+                    style={st.card}
+                    onLayout={(e) => {
+                      slotY.current[slot.key] = e.nativeEvent.layout.y;
+                    }}
+                  >
+                    <View style={st.slotRow}>
+                      <View style={st.cardIcon}>
+                        <Icon size={20} color={scheme.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={st.cardTitle}>{slot.name}</Text>
+                        <Text style={st.cardWhy} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                          {saved ? saved.address : slot.hint}
+                        </Text>
+                      </View>
+                      {saved ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Check size={20} color={scheme.success} />
+                          <Pressable
+                            onPress={() => void slots.remove(saved.id)}
+                            hitSlop={8}
+                            style={st.miniX}
+                            accessibilityLabel={s.onboarding.removeSlotA11y(slot.name)}
+                            accessibilityRole="button"
+                          >
+                            <X size={15} color={scheme.onSurfaceVariant} />
+                          </Pressable>
                         </View>
+                      ) : (
                         <Pressable
-                          onPress={() => void slots.remove(saved.id)}
-                          hitSlop={8}
-                          style={st.miniX}
-                          accessibilityLabel={s.onboarding.removeSlotA11y(slot.name)}
+                          onPress={() => {
+                            slots.setActiveSlot(open ? null : slot.key);
+                            slots.setQuery('');
+                          }}
+                          style={({ pressed }) => [st.addPill, pressed && { opacity: 0.75 }]}
+                          accessibilityRole="button"
                         >
-                          <X size={15} color={scheme.onSurfaceVariant} />
+                          <Text style={st.addPillText}>
+                            {open ? s.onboarding.closeAction : s.onboarding.addAction}
+                          </Text>
                         </Pressable>
-                      </View>
-                    ) : (
-                      <Pressable
-                        onPress={() => {
-                          slots.setActiveSlot(open ? null : slot.key);
-                          slots.setQuery('');
-                        }}
-                        style={({ pressed }) => [st.addPill, pressed && { opacity: 0.75 }]}
-                      >
-                        <Text style={st.addPillText}>{open ? s.onboarding.closeAction : s.onboarding.addAction}</Text>
-                      </Pressable>
-                    )}
-                  </View>
+                      )}
+                    </View>
 
-                  {open && !saved && (
-                    <View style={{ marginTop: 12, gap: 8 }}>
-                      <View style={st.searchBox}>
-                        <Search size={17} color={scheme.onSurfaceVariant} />
-                        <TextInput
-                          value={slots.query}
-                          onChangeText={slots.setQuery}
-                          onFocus={() => scrollSlotIntoView(slot.key)}
-                          placeholder={s.onboarding.addressFor(slot.name)}
-                          placeholderTextColor={scheme.onSurfaceVariant}
-                          style={st.searchInput}
-                          autoFocus
-                          returnKeyType="search"
-                        />
-                        {slots.searching && <ActivityIndicator size="small" color={scheme.primary} />}
-                      </View>
-                      {/* Bez tego użytkownik widział pole z wpisanym tekstem
+                    {open && !saved && (
+                      <View style={{ marginTop: 12, gap: 8 }}>
+                        <View style={st.searchBox}>
+                          <Search size={17} color={scheme.onSurfaceVariant} />
+                          <TextInput
+                            value={slots.query}
+                            onChangeText={slots.setQuery}
+                            onFocus={() => scrollSlotIntoView(slot.key)}
+                            placeholder={s.onboarding.addressFor(slot.name)}
+                            accessibilityLabel={s.onboarding.addressFor(slot.name)}
+                            placeholderTextColor={scheme.onSurfaceVariant}
+                            style={st.searchInput}
+                            autoFocus
+                            returnKeyType="search"
+                          />
+                          {slots.searching && (
+                            <ActivityIndicator size="small" color={scheme.primary} />
+                          )}
+                        </View>
+                        {/* Bez tego użytkownik widział pole z wpisanym tekstem
                           i nic więcej — bez informacji, czy szukanie w ogóle
                           działa. Adresy wymagają internetu, przystanki nie. */}
-                      {slots.results.length === 0 &&
-                        !slots.searching &&
-                        slots.query.trim().length >= 2 && (
-                          <View style={st.noResults}>
-                            <Text style={st.noResultsText}>
-                              {s.onboarding.noResults(slots.query.trim())}
-                            </Text>
-                          </View>
-                        )}
-                      {slots.results.map((r) => (
-                        <Pressable
-                          key={r.id}
-                          onPress={() => void slots.saveForSlot(slot.key, r)}
-                          disabled={slots.saving}
-                          style={({ pressed }) => [st.resultRow, pressed && { opacity: 0.7 }]}
-                        >
-                          <MapPin size={16} color={scheme.primary} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={st.resultTitle} numberOfLines={1}>
-                              {suggestionDisplayTitle(r)}
-                            </Text>
-                            <Text style={st.resultSub} numberOfLines={1}>
-                              {r.address}
-                            </Text>
-                          </View>
-                          {slots.saving ? (
-                            <ActivityIndicator size="small" color={scheme.primary} />
-                          ) : (
-                            <ChevronRight size={16} color={scheme.onSurfaceVariant} />
+                        {slots.results.length === 0 &&
+                          !slots.searching &&
+                          slots.query.trim().length >= 2 && (
+                            <View style={st.noResults}>
+                              <Text style={st.noResultsText}>
+                                {s.onboarding.noResults(slots.query.trim())}
+                              </Text>
+                            </View>
                           )}
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </ScrollView>
+                        {slots.results.map((r) => (
+                          <Pressable
+                            key={r.id}
+                            onPress={() => void slots.saveForSlot(slot.key, r)}
+                            disabled={slots.saving}
+                            accessibilityRole="button"
+                            accessibilityState={{ disabled: slots.saving }}
+                            style={({ pressed }) => [st.resultRow, pressed && { opacity: 0.7 }]}
+                          >
+                            <MapPin size={16} color={scheme.primary} />
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={st.resultTitle}
+                                numberOfLines={fontScale > 1.3 ? undefined : 2}
+                              >
+                                {suggestionDisplayTitle(r)}
+                              </Text>
+                              <Text
+                                style={st.resultSub}
+                                numberOfLines={fontScale > 1.3 ? undefined : 2}
+                              >
+                                {r.address}
+                              </Text>
+                            </View>
+                            {slots.saving ? (
+                              <ActivityIndicator size="small" color={scheme.primary} />
+                            ) : (
+                              <ChevronRight size={16} color={scheme.onSurfaceVariant} />
+                            )}
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
           </KeyboardAvoidingView>
         )}
       </Animated.View>
 
-      {/* Stopka */}
       <View style={st.footer}>
         {step === 0 && (
           <PrimaryBtn
@@ -752,11 +906,22 @@ export default function OnboardingScreen() {
         )}
         {step === 1 && (
           <>
-            <PrimaryBtn label={s.onboarding.next} onPress={next} icon={<ChevronRight size={18} color={scheme.onPrimary} />} />
+            <PrimaryBtn
+              label={s.onboarding.next}
+              onPress={next}
+              icon={<ChevronRight size={18} color={scheme.onPrimary} />}
+            />
             <GhostBtn label={s.onboarding.later} onPress={next} />
           </>
         )}
         {step === 2 && (
+          <PrimaryBtn
+            label={s.onboarding.next}
+            onPress={next}
+            icon={<ChevronRight size={18} color={scheme.onPrimary} />}
+          />
+        )}
+        {step === 3 && (
           <>
             <PrimaryBtn
               label={
@@ -781,16 +946,20 @@ export default function OnboardingScreen() {
                 )
               }
             />
-            {!gtfsReady && (
-              <Text style={st.lockNote}>{s.onboarding.needTimetable}</Text>
-            )}
+            {!gtfsReady && <Text style={st.lockNote}>{s.onboarding.needTimetable}</Text>}
+            {/* Bez tego kroku apka jest nie do przejścia: rozkład miasta może nie
+                być na serwerze albo pobieranie może paść, a „Dalej" odblokowuje
+                się dopiero po gotowej bazie. Użytkownik zostawałby w ekranie
+                z „Spróbuj ponowić" w nieskończoność. */}
+            {!gtfsReady && <GhostBtn label={s.onboarding.skipTimetable} onPress={next} />}
           </>
         )}
-        {step === 3 && (
+        {step === 4 && (
           <>
             <PrimaryBtn
               label={savedCount > 0 ? s.onboarding.doneCount(savedCount) : s.onboarding.donePlain}
               onPress={() => void finish()}
+              disabled={leaving}
               icon={<Check size={18} color={scheme.onPrimary} />}
             />
             <GhostBtn label={s.onboarding.skip} onPress={() => void finish()} />
@@ -803,33 +972,35 @@ export default function OnboardingScreen() {
 
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
-  top: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, minHeight: 56 },
-  back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 16,
+  },
+  back: {
+    width: 48,
+    height: 48,
+    borderRadius: shape.large,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   dots: { flexDirection: 'row', gap: 6 },
-  dot: { width: 22, height: 5, borderRadius: 3, backgroundColor: scheme.surfaceContainerHighest },
-  dotActive: { width: 34, backgroundColor: scheme.primary },
+  dot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: scheme.surfaceContainerHighest },
+  dotActive: { backgroundColor: scheme.primary },
   dotDone: { backgroundColor: scheme.primaryContainer },
-  stepLabel: { ...type.labelSmall, color: scheme.onSurfaceVariant },
-  body: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16, gap: 12 },
+  stepLabel: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  body: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 24, gap: 20 },
   heroMark: {
-    width: 104,
-    height: 104,
-    borderRadius: 32,
+    width: 80,
+    height: 80,
+    borderRadius: shape.extraLarge,
     backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 12,
-    alignSelf: 'center',
-    overflow: 'hidden',
-    ...elev.level2,
-  },
-  heroGlow: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: scheme.primary,
-    opacity: 0.18,
+    marginTop: 16,
+    marginBottom: 12,
   },
   heroMarkSmall: {
     width: 72,
@@ -839,85 +1010,120 @@ const st = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
-    ...elev.level1,
   },
-  hero: { fontSize: 52, fontWeight: '700', color: scheme.onSurface, textAlign: 'center', letterSpacing: -1 },
-  title: { fontSize: 34, fontWeight: '700', color: scheme.onSurface, letterSpacing: -0.5, lineHeight: 40 },
-  lead: { ...type.bodyLarge, color: scheme.onSurfaceVariant, textAlign: 'center', lineHeight: 24, paddingHorizontal: 8 },
-  leadSmall: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
-  featList: { gap: 10, marginTop: 6 },
+  hero: { fontSize: 48, fontWeight: '500', color: scheme.onSurface, letterSpacing: -1 },
+  title: {
+    fontSize: 32,
+    fontWeight: '500',
+    color: scheme.onSurface,
+    letterSpacing: -0.5,
+    lineHeight: 40,
+  },
+  lead: { ...type.titleLarge, color: scheme.onSurfaceVariant },
+  leadSmall: { ...type.bodyLarge, color: scheme.onSurfaceVariant },
+  featList: {
+    gap: 20,
+    marginTop: 16,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 20,
+  },
   feat: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 14,
-    ...elev.level1,
   },
   featIcon: {
     width: 40,
     height: 40,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  featTitle: { ...type.titleSmall, color: scheme.onSurface },
+  featTitle: { ...type.bodyLarge, color: scheme.onSurface },
   card: {
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 16,
-    gap: 10,
-    ...elev.level1,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 20,
+    gap: 16,
   },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   cardIcon: {
     width: 44,
     height: 44,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitle: { ...type.titleMedium, color: scheme.onSurface },
-  cardWhy: { ...type.bodySmall, color: scheme.primary, marginTop: 1 },
-  cardBody: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
-  pill: {
+  cardTitle: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
+  cardWhy: { ...type.bodyMedium, color: scheme.onSurfaceVariant, marginTop: 4 },
+  cardBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  suggestNote: { ...type.bodyMedium, color: scheme.primary, fontWeight: '600' },
+  cityStep: { flex: 1 },
+  cityHead: { gap: 16, marginBottom: 16 },
+  cityList: { flex: 1, marginTop: 4 },
+  cityListContent: { paddingHorizontal: 24, paddingTop: 20, gap: 8, paddingBottom: 24 },
+  cityChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.full,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 12,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.large,
+    padding: 20,
+    minHeight: 80,
   },
-  pillOk: { backgroundColor: scheme.successContainer },
-  pillOff: { opacity: 0.8 },
-  pillText: { ...type.labelSmall, color: scheme.onSurfaceVariant, fontWeight: '700' },
+  cityChipActive: { backgroundColor: scheme.primaryContainer },
+  cityName: { ...type.titleMedium, color: scheme.onSurface },
+  cityNameActive: { color: scheme.onPrimaryContainer, fontWeight: '500' },
+  citySub: { ...type.bodySmall, color: scheme.onSurfaceVariant, marginTop: 1 },
+  citySubActive: { color: scheme.onPrimaryContainer },
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: scheme.outline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioActive: { backgroundColor: scheme.primary, borderColor: scheme.primary },
   allow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     backgroundColor: scheme.primary,
-    borderRadius: shape.full,
-    paddingVertical: 13,
+    borderRadius: shape.large,
+    minHeight: 52,
+    padding: 16,
     marginTop: 2,
   },
-  allowText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
+  allowText: {
+    ...type.labelLarge,
+    fontWeight: '500',
+    color: scheme.onPrimary,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   doneRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  doneText: { ...type.bodyMedium, color: scheme.success, fontWeight: '600' },
+  doneText: { ...type.bodyMedium, color: scheme.success, fontWeight: '500', flex: 1 },
   statRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   statText: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '600', flex: 1 },
-  bar: { height: 10, borderRadius: 5, backgroundColor: scheme.surfaceContainerHighest, overflow: 'hidden' },
+  bar: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: scheme.surfaceContainerHighest,
+    overflow: 'hidden',
+  },
   barFill: { height: '100%', backgroundColor: scheme.primary, borderRadius: 5 },
-  fine: { ...type.labelSmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  fine: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   successRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   successBadge: {
     width: 48,
     height: 48,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
     backgroundColor: scheme.successContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -925,15 +1131,17 @@ const st = StyleSheet.create({
   slotRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   addPill: {
     backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
+    borderRadius: shape.medium,
     paddingHorizontal: 14,
     paddingVertical: 8,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   addPillText: { ...type.labelMedium, color: scheme.onSecondaryContainer, fontWeight: '700' },
   miniX: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
@@ -944,19 +1152,18 @@ const st = StyleSheet.create({
     gap: 10,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.medium,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
-    height: 46,
+    minHeight: 56,
   },
-  searchInput: { flex: 1, ...type.bodyMedium, color: scheme.onSurface },
+  searchInput: { flex: 1, minWidth: 0, ...type.bodyLarge, color: scheme.onSurface, paddingVertical: 14 },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.medium,
-    padding: 10,
+    padding: 16,
+    minHeight: 64,
   },
   resultTitle: { ...type.titleSmall, color: scheme.onSurface },
   resultSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
@@ -966,21 +1173,44 @@ const st = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerHigh,
   },
   noResultsText: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
-  footer: { paddingHorizontal: 20, paddingBottom: 10, paddingTop: 8, gap: 6 },
+  footer: {
+    paddingHorizontal: 24,
+    paddingBottom: 12,
+    paddingTop: 16,
+    gap: 8,
+    backgroundColor: scheme.surface,
+  },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     backgroundColor: scheme.primary,
-    borderRadius: shape.full,
-    height: 54,
-    ...elev.level2,
+    borderRadius: shape.large,
+    minHeight: 56,
+    padding: 16,
   },
   primaryDisabled: { backgroundColor: scheme.surfaceContainerHighest, elevation: 0 },
-  primaryText: { ...type.labelLarge, fontSize: 16, fontWeight: '700', color: scheme.onPrimary },
+  primaryText: {
+    ...type.labelLarge,
+    fontSize: 16,
+    fontWeight: '500',
+    color: scheme.onPrimary,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   primaryTextDisabled: { color: scheme.onSurfaceVariant },
-  ghost: { alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
-  ghostText: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontWeight: '600' },
-  lockNote: { ...type.labelSmall, color: scheme.onSurfaceVariant, textAlign: 'center', paddingTop: 2 },
+  ghost: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, minHeight: 48 },
+  ghostText: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  lockNote: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    paddingTop: 2,
+  },
 });

@@ -1,5 +1,7 @@
 import { AppState } from 'react-native';
 import { kvGet, kvRemove, kvSet } from '../storage';
+import { inCityBounds } from '../../cities';
+import { getActiveCitySync } from '../cityStore';
 import { RoutingService } from '../api';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
@@ -13,7 +15,11 @@ import {
 } from '../widgetSnapshot';
 import { clockFromMs } from './format';
 import { nowSecOfDay } from '../vehiclePosition';
-import { getNotificationPreferencesSync, loadNotificationPreferences } from './preferences';
+import {
+  getNotificationPreferencesSync,
+  loadNotificationPreferences,
+  subscribeNotificationPreferences,
+} from './preferences';
 import { computeTripProgress } from './tripProgress';
 import { resolveTrackedConnection } from './planMatch';
 import { ARRIVED_LINGER_MS, presentTrip, dismissTracking } from './presenter';
@@ -53,6 +59,7 @@ let arrivedAt = 0;
 let planLocked = false;
 let ticker: ReturnType<typeof setInterval> | null = null;
 let refreshing: Promise<void> | null = null;
+let generation = 0;
 
 type Listener = (trip: TrackedTrip | null, p: TripProgress | null) => void;
 const listeners = new Set<Listener>();
@@ -133,12 +140,14 @@ async function planTracked(): Promise<Connection | null> {
     maxTransfers: s.maxTransfers,
     minTransferSec: s.minTransferSec,
     trainsEnabled: s.trainsEnabled,
+    cableEnabled: s.cableEnabled,
+    allowedTransferModes: s.allowedModes,
     trainMinTransferSec: s.trainMinTransferSec,
     maxWalkM: s.maxWalkM,
     walkSpeedMps,
     routeStyle: s.routeStyle,
   });
-  if (conns.length === 0) return null;
+  if (conns.length === 0 || !tracked) return null;
 
   // Całą politykę doboru kursu trzyma `resolveTrackedConnection` — jest czysta
   // i da się ją przetestować bez planera (patrz scripts/check-notifications.ts).
@@ -149,14 +158,25 @@ async function refresh(): Promise<void> {
   if (!tracked) return;
   if (refreshing) return refreshing;
 
-  refreshing = (async () => {
+  const work = (async () => {
+    const run = generation;
     const before = tracked;
     if (!before) return;
 
     // Użytkownik wcisnął „Zakończ" pod powiadomieniem, a aplikacja dalej
     // żyje w tle. Bez tego sprawdzenia następny tick wskrzesiłby powiadomienie
     // i serwis, które właśnie zniknęły.
-    if (await consumeNativeStop()) {
+    const stopped = await consumeNativeStop();
+    if (run !== generation) return;
+    if (stopped) {
+      await stopTracking();
+      return;
+    }
+
+    const savedProgress = computeTripProgress(before.connection, {
+      now: new Date(before.startedAt),
+    });
+    if (Date.now() >= savedProgress.arriveAtMs + ARRIVED_LINGER_MS) {
       await stopTracking();
       return;
     }
@@ -167,6 +187,7 @@ async function refresh(): Promise<void> {
     if (!planLocked) {
       try {
         const fresh = await planTracked();
+        if (run !== generation) return;
         if (!fresh) {
           // Brak połączeń (albo awaria sieci) — zostaje ostatni znany plan.
           // Oddajemy śledzenie dopiero wtedy, gdy minęło pół godziny od
@@ -177,17 +198,15 @@ async function refresh(): Promise<void> {
           if (Date.now() > deadline) {
             await stopTracking();
           }
-          return;
+        } else {
+          tracked = { ...before, connection: fresh };
         }
-        // „Zakończ" mógł trafić w trakcie await planera i wyzerować `tracked`.
-        // Bez tego strażnika odświeżenie wskrzesiłoby zatrzymaną podróż.
-        if (tracked !== before) return;
-        tracked = { ...before, connection: fresh };
       } catch {
         // offline — zostaje ostatni plan
       }
     }
 
+    if (run !== generation) return;
     const trip = tracked;
     if (!trip) return;
 
@@ -219,17 +238,27 @@ async function refresh(): Promise<void> {
 
     await presentTrip(trip, p, prefs);
     // Jak wyżej: stop w trakcie publikacji nie może pozwolić na dalsze alerty.
-    if (tracked !== before) return;
+    if (run !== generation) {
+      if (!tracked) await dismissTracking();
+      return;
+    }
+    const stoppedDuringPublish = await consumeNativeStop();
+    if (run !== generation) return;
+    if (stoppedDuringPublish) {
+      await stopTracking();
+      return;
+    }
     await scheduleDepartureAlerts(p, trip, prefs);
+    if (run !== generation) return;
 
     if (p.phase === 'arrived') {
       // „Jesteś na miejscu" to komunikat, a nie stan — bez alertów go nie ma.
       if (arrivedAt === 0) {
-        arrivedAt = Date.now();
+        arrivedAt = p.arriveAtMs;
         if (prefs.departureAlertsEnabled) await sendArrivedNotification(p, trip);
       }
       // Komunikat zostaje chwilę na ekranie blokady, potem sprzątamy.
-      if (Date.now() - arrivedAt > ARRIVED_LINGER_MS) {
+      if (Date.now() - arrivedAt >= ARRIVED_LINGER_MS) {
         await stopTracking();
         return;
       }
@@ -241,10 +270,11 @@ async function refresh(): Promise<void> {
     void pushWidgetPinned(trip);
     notify();
   })().finally(() => {
-    refreshing = null;
+    if (refreshing === work) refreshing = null;
   });
 
-  return refreshing;
+  refreshing = work;
+  return work;
 }
 
 /**
@@ -286,6 +316,11 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
     warnUnsupportedOnce('Śledzenie podróży');
   }
   await loadNotificationPreferences();
+  await stopTracking();
+  refreshing = null;
+  await consumeNativeStop();
+  generation++;
+  const run = generation;
   tracked = { ...trip, startedAt: Date.now() };
   arrivedAt = 0;
   planLocked = false;
@@ -295,6 +330,13 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   });
   notify();
   rescheduleTicker();
+  await persist();
+  if (run !== generation || !tracked || !progress) return;
+  await presentTrip(tracked, progress, getNotificationPreferencesSync());
+  if (run !== generation) {
+    if (!tracked) await dismissTracking();
+    return;
+  }
   await refresh();
   void pushWidgetPinned(tracked);
 }
@@ -303,7 +345,7 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
  * Kończy śledzenie: serwis, alerty, widgety i zapisany stan.
  */
 export async function stopTracking(): Promise<void> {
-  if (!tracked) return;
+  generation++;
   tracked = null;
   progress = null;
   arrivedAt = 0;
@@ -313,6 +355,7 @@ export async function stopTracking(): Promise<void> {
     clearInterval(ticker);
     ticker = null;
   }
+  notify();
   await cancelScheduledAlerts();
   await dismissTracking();
   await kvRemove(STORAGE_KEY);
@@ -328,6 +371,9 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
   // odpalili śledzenie, które on właśnie zakończył.
   if (await consumeNativeStop()) {
     await kvRemove(STORAGE_KEY);
+    await cancelScheduledAlerts();
+    await dismissTracking();
+    await mergeWidgetSnapshot({ pinned: null });
     return null;
   }
   try {
@@ -335,14 +381,30 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as TrackedTrip;
     if (!parsed?.connection) return null;
+    const savedProgress = computeTripProgress(parsed.connection, {
+      now: new Date(parsed.startedAt),
+    });
+    if (Date.now() >= savedProgress.arriveAtMs + ARRIVED_LINGER_MS) {
+      await stopTracking();
+      return null;
+    }
+    // Kurs z innego miasta: jego przystanki i opóźnienia istnieją tylko w tamtej
+    // bazie, więc po przełączeniu miasta nie da się go odświeżyć. Instalacje
+    // sprzed tej poprawki mogły zostawić taki pin, więc go odrzucamy.
+    if (!inCityBounds(getActiveCitySync(), parsed.fromLat, parsed.fromLon)) {
+      await kvRemove(STORAGE_KEY);
+      return null;
+    }
     tracked = parsed;
+    generation++;
+    await loadNotificationPreferences();
     progress = computeTripProgress(parsed.connection, {
       walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
     });
     notify();
     rescheduleTicker();
     await refresh();
-    return { ...tracked };
+    return tracked ? { ...tracked } : null;
   } catch {
     return null;
   }
@@ -374,6 +436,13 @@ let trackedTripListenerAttached = false;
 export function startTrackedTripListener(): void {
   if (trackedTripListenerAttached) return;
   trackedTripListenerAttached = true;
+  subscribeNotificationPreferences(() => {
+    if (!tracked) return;
+    void (async () => {
+      await refreshing;
+      await refresh();
+    })();
+  });
   AppState.addEventListener('change', (state) => {
     if (state !== 'active' || !tracked) return;
     void (async () => {

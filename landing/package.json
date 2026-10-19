@@ -2,8 +2,10 @@
   "name": "kilometr-landing",
   "version": "1.0.0",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
+    "build:timetables": "tsx ../scripts/export-share-timetables.ts",
     "dev": "vite",
     "clean": "node -e \"require('fs').rmSync('../docs/assets', { recursive: true, force: true })\"",
     "prebuild": "npm run clean",
@@ -11,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
