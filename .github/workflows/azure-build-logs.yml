@@ -21,14 +21,14 @@ jobs:
           mkdir -p /tmp/logs
           node -e '
             const body = require("/tmp/logs.json");
-            const logs = body.value || body;
-            for (const l of logs) console.log(l.id);
+            for (const l of (body.value || body)) console.log(l.id);
           ' > /tmp/ids.txt
-          echo "Logs: $(wc -l < /tmp/ids.txt)"
           while read -r ID; do
             curl -fsSL -u ":${AZDO_PAT}" "${BASE}/logs/${ID}?api-version=7.1" -o "/tmp/logs/${ID}" || true
           done < /tmp/ids.txt
-          echo "=== ERRORS ==="
-          grep -n -i -E "error|failure|what went wrong|caused by|exception" /tmp/logs/* | tail -200 || true
-          echo "=== LOG 18 TAIL ==="
-          tail -n 300 /tmp/logs/18 || true
+          echo "=== STEP NAMES ==="
+          for f in /tmp/logs/*; do echo "--- $f"; head -n 3 "$f"; done
+          echo "=== EXPO-NOTIFICATIONS MENTIONS ==="
+          grep -rn "expo-notifications\|autolinking\|Expo modules" /tmp/logs/* | tail -120 || true
+          echo "=== PREBUILD TAIL ==="
+          tail -n 120 /tmp/logs/17 || true
