@@ -129,12 +129,12 @@ cd cloudflare
 npm install                 # tylko wrangler (devDependency)
 npx wrangler login
 npx wrangler r2 bucket create kilometr-timetable
-npx wrangler deploy         # → https://data.kilometr.wroclaw.pl (+ workers.dev jako zapas)
+npx wrangler deploy         # → https://data.kilometr.app (+ workers.dev jako zapas)
 ```
 
-Route `data.kilometr.wroclaw.pl` siedzi w `wrangler.toml` jako
+Route `data.kilometr.app` siedzi w `wrangler.toml` jako
 `custom_domain`, więc wrangler sam tworzy rekord DNS w strefie
-`kilometr.wroclaw.pl` (ta strefa musi być na tym samym koncie) i podpina
+`kilometr.app` (ta strefa musi być na tym samym koncie) i podpina
 certyfikat. Nic ręcznie w dashboardzie nie trzeba klikać.
 
 ### 3. Sekret PDP w Workerze (NIE do repo, NIE do kodu aplikacji!)
@@ -153,7 +153,7 @@ Workera, a Worker dokleja klucz po stronie serwera.
 | `PDP_API_KEY`           | klucz z https://pdp-api.plk-sa.pl (ten sam)       |
 | `CLOUDFLARE_API_TOKEN`  | Dashboard → My Profile → API Tokens → template „Workers R2” na bucket `kilometr-timetable` (min. uprawnienia: R2 write na ten bucket) |
 | `CLOUDFLARE_ACCOUNT_ID` | Dashboard → adres w URL / `wrangler whoami`       |
-| `TIMETABLE_PUBLIC_URL`  | `https://data.kilometr.wroclaw.pl` (tylko do pomijania buildów w timetable.yml; build APK nie używa tego sekretu) |
+| `TIMETABLE_PUBLIC_URL`  | `https://data.kilometr.app` (tylko do pomijania buildów w timetable.yml; build APK nie używa tego sekretu) |
 
 Bez `PDP_API_KEY` build **przerywa się błędem**, bo realne KD jest domyślnie
 wymagane (żadnej bazy MPK-only do R2). Jedyny wyjątek to jawne
@@ -164,7 +164,7 @@ z Actions).
 ### 5. Podpięcie aplikacji
 
 Adres jest wpieczony w kodzie (`src/services/gtfsConfig.ts`):
-`https://data.kilometr.wroclaw.pl`. Build APK w GitHub Actions nie
+`https://data.kilometr.app`. Build APK w GitHub Actions nie
 potrzebuje żadnej zmiennej środowiskowej ani sekretu.
 
 ```bash

@@ -48,7 +48,7 @@ export const GTFS = {
  * nieosiągalny, aplikacja wraca do starego importu z ZIP-a.
  */
 export const TIMETABLE = {
-  baseUrl: (process.env.EXPO_PUBLIC_TIMETABLE_URL || 'https://data.kilometr.wroclaw.pl').replace(/\/$/, ''),
+  baseUrl: (process.env.EXPO_PUBLIC_TIMETABLE_URL || 'https://data.kilometr.app').replace(/\/$/, ''),
   dbFile: 'kilometr-gtfs-wroclaw.db',
   refreshHours: 24,
   timeoutMs: 15000,

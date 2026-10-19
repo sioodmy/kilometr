@@ -45,7 +45,7 @@ variables:
   ANDROID_BUILD_TOOLS: '36.0.0'
   ANDROID_NDK: '27.1.12297006'
   ANDROID_CMAKE: '3.30.5'
-  TIMETABLE_URL: 'https://data.kilometr.wroclaw.pl'
+  TIMETABLE_URL: 'https://data.kilometr.app'
 
 pool:
   vmImage: ubuntu-latest
