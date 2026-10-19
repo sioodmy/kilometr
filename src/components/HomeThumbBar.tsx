@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
+import { ChevronRight, LocateFixed, MapPin, MapPinOff, Search, X } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheme, shape, type } from '../theme/tokens';
-import { ThumbBar } from './ThumbBar';
 import { useStrings } from '../i18n';
 
 interface HomeThumbBarProps {
@@ -13,9 +14,6 @@ interface HomeThumbBarProps {
   gpsUnsupported?: boolean;
 }
 
-const BAR_PADDING = 8;
-const INNER_RADIUS = shape.extraLarge - BAR_PADDING - 1;
-
 export function HomeThumbBar({
   onOpenSearch,
   startTitle,
@@ -25,72 +23,106 @@ export function HomeThumbBar({
   gpsUnsupported = false,
 }: HomeThumbBarProps) {
   const s = useStrings();
-  const OriginIcon = gpsUnsupported && !isCustomStart ? MapPinOff : LocateFixed;
+  const insets = useSafeAreaInsets();
+  const [focused, setFocused] = useState<'search' | 'origin' | 'reset' | null>(null);
+  const OriginIcon = isCustomStart ? MapPin : gpsUnsupported ? MapPinOff : LocateFixed;
   return (
-    <ThumbBar contentStyle={styles.bar} measurementKey="home">
-      <Pressable
-        onPress={onOpenSearch}
-        accessibilityRole="button"
-        accessibilityLabel={s.home.searchA11y}
-        style={({ pressed }) => [styles.search, pressed && { opacity: 0.8 }]}
-      >
-        <Search size={22} color={scheme.onPrimaryContainer} />
-        <Text style={styles.searchLabel}>{s.home.searchLabel}</Text>
-      </Pressable>
-      <View style={styles.originRow}>
+    <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={styles.bar}>
         <Pressable
-          onPress={onOpenStart}
+          onPress={onOpenSearch}
+          onFocus={() => setFocused('search')}
+          onBlur={() => setFocused(null)}
           accessibilityRole="button"
-          accessibilityLabel={
-            isCustomStart ? s.home.startCustomA11y(startTitle) : s.home.startGpsA11y(startTitle)
-          }
-          style={({ pressed }) => [styles.origin, pressed && styles.pressed]}
+          accessibilityLabel={s.home.searchA11y}
+          style={({ pressed }) => [
+            styles.search,
+            focused === 'search' && styles.searchFocused,
+            pressed && styles.searchPressed,
+          ]}
         >
-          <OriginIcon
-            size={18}
-            color={gpsUnsupported && !isCustomStart ? scheme.warning : scheme.onSurfaceVariant}
-          />
-          <View style={styles.originText}>
-            <Text style={styles.originLabel}>{s.routeDetails.origin}</Text>
-            <Text style={[styles.originPlace, gpsUnsupported && !isCustomStart && styles.warning]}>
-              {gpsUnsupported && !isCustomStart ? s.home.pickStart : startTitle}
-            </Text>
-          </View>
+          <Search size={26} color={scheme.onPrimary} />
+          <Text style={styles.searchLabel}>{s.home.searchLabel}</Text>
         </Pressable>
-        {isCustomStart && (
+        <View style={styles.originRow}>
           <Pressable
-            onPress={onResetStart}
+            onPress={onOpenStart}
+            onFocus={() => setFocused('origin')}
+            onBlur={() => setFocused(null)}
             accessibilityRole="button"
-            accessibilityLabel={s.home.resetStartA11y}
-            style={({ pressed }) => [styles.reset, pressed && styles.pressed]}
+            accessibilityLabel={
+              isCustomStart ? s.home.startCustomA11y(startTitle) : s.home.startGpsA11y(startTitle)
+            }
+            style={({ pressed }) => [
+              styles.origin,
+              focused === 'origin' && styles.focused,
+              pressed && styles.pressed,
+            ]}
           >
-            <X size={18} color={scheme.onSurfaceVariant} />
+            <OriginIcon
+              size={18}
+              color={gpsUnsupported && !isCustomStart ? scheme.warning : scheme.onSurfaceVariant}
+            />
+            <View style={styles.originText}>
+              <Text style={styles.originLabel}>{s.routeDetails.origin}</Text>
+              <Text
+                style={[styles.originPlace, gpsUnsupported && !isCustomStart && styles.warning]}
+              >
+                {gpsUnsupported && !isCustomStart ? s.home.pickStart : startTitle}
+              </Text>
+            </View>
+            <ChevronRight size={18} color={scheme.onSurfaceVariant} />
           </Pressable>
-        )}
+          {isCustomStart && (
+            <Pressable
+              onPress={onResetStart}
+              onFocus={() => setFocused('reset')}
+              onBlur={() => setFocused(null)}
+              accessibilityRole="button"
+              accessibilityLabel={s.home.resetStartA11y}
+              style={({ pressed }) => [
+                styles.reset,
+                focused === 'reset' && styles.focused,
+                pressed && styles.pressed,
+              ]}
+            >
+              <X size={18} color={scheme.onSurfaceVariant} />
+            </Pressable>
+          )}
+        </View>
       </View>
-    </ThumbBar>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  dock: {
+    marginTop: 8,
+    paddingTop: 16,
+    paddingHorizontal: 20,
+    backgroundColor: scheme.surfaceContainer,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
   bar: {
-    flexDirection: 'column',
-    borderRadius: shape.extraLarge,
-    paddingHorizontal: BAR_PADDING,
-    paddingVertical: BAR_PADDING,
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
     gap: 4,
   },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    minHeight: 54,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: INNER_RADIUS,
-    backgroundColor: scheme.primaryContainer,
+    gap: 16,
+    minHeight: 64,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.primary,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
-  searchLabel: { ...type.bodyLarge, fontWeight: '500', color: scheme.onPrimaryContainer, flex: 1 },
+  searchLabel: { ...type.titleLarge, fontWeight: '600', color: scheme.onPrimary, flex: 1 },
   originRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   origin: {
     flex: 1,
@@ -98,9 +130,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     minHeight: 52,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: INNER_RADIUS,
+    borderRadius: shape.large,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
   originText: { flex: 1, gap: 2 },
   originLabel: { ...type.bodySmall, color: scheme.onSurfaceVariant },
@@ -112,6 +146,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: shape.medium,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
+  focused: { borderColor: scheme.primary },
+  searchFocused: { borderColor: scheme.onPrimary },
+  searchPressed: { borderRadius: shape.large, transform: [{ scale: 0.98 }] },
   pressed: { backgroundColor: scheme.surfaceContainerHighest },
 });
