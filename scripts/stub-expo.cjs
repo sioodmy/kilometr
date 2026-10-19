@@ -58,7 +58,7 @@ const stubs = {
   // bez tych atrap testy logują złapany błąd transformu react-native,
   // a logika „stop kursu po zmianie miasta” nie ma jak dojść do końca.
   'react-native': rnStub,
-  'expo-modules-core': {
+  expo: {
     requireOptionalNativeModule: () => null,
     requireNativeModule: () => ({}),
   },

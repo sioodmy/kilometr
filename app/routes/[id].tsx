@@ -4,6 +4,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChevronLeft,
+  ChevronRight,
+  AlarmClock,
   CloudOff,
   Pin,
   RouteOff,
@@ -23,6 +25,8 @@ import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
+import { DepartureAlarmDialog } from '../../src/components/DepartureAlarmDialog';
+import { getDepartureAlarmSync, useDepartureAlarm } from '../../src/services/departureAlarm';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -40,12 +44,17 @@ export default function RouteDetailsScreen() {
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const id = normalizeConnectionId(routeId ?? '');
   const cachedItem = getTrackedTripSync()?.connection;
-  const immediateItem = cachedItem?.id === id ? cachedItem : getPlannedConnection(String(id));
+  const alarmItem = getDepartureAlarmSync()?.connection;
+  const immediateItem = cachedItem?.id === id ? cachedItem : alarmItem?.id === id ? alarmItem : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
   const item = loadedItem?.id === id ? loadedItem : immediateItem ?? null;
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [alarmOpen, setAlarmOpen] = useState(false);
+  const [alarmFocused, setAlarmFocused] = useState(false);
+  const alarm = useDepartureAlarm();
+  const currentAlarm = alarm?.connectionId === id ? alarm : null;
   // Stan feedu live zmienia się w tle, a ten ekran nie odświeża się sam z
   // powodu danych. Bez tickera baner „brak danych” był zamrożony w stanie z
   // chwili renderu i pojawiał się dopiero przy jakiejś przypadkowej
@@ -180,7 +189,7 @@ export default function RouteDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.screen} importantForAccessibility={sharing ? 'no-hide-descendants' : 'auto'} accessibilityElementsHidden={sharing}>
+      <View style={styles.screen} importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'} accessibilityElementsHidden={sharing || alarmOpen}>
       <View style={styles.header}>
         <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
           <ChevronLeft size={23} color={scheme.onSurface} />
@@ -243,6 +252,24 @@ export default function RouteDetailsScreen() {
         ) : (
           <>
             <LegTimeline legs={item.legs} />
+            {item.legs.some((leg) => leg.mode !== 'walk') && (
+              <Pressable onPress={() => setAlarmOpen(true)} accessibilityRole="button"
+                onFocus={() => setAlarmFocused(true)} onBlur={() => setAlarmFocused(false)}
+                accessibilityLabel={currentAlarm ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}` : s.alarm.set}
+                style={({ pressed }) => [styles.alarmButton, currentAlarm && styles.alarmButtonActive,
+                  pressed && { opacity: 0.75 }, alarmFocused && { borderColor: scheme.primary }]}>
+                <AlarmClock size={25} color={currentAlarm ? scheme.onPrimaryContainer : scheme.primary} />
+                <View style={styles.alarmCopy}>
+                  <Text style={[styles.alarmTitle, currentAlarm && { color: scheme.onPrimaryContainer }]}>
+                    {currentAlarm ? s.alarm.ringsAt(currentAlarm.time) : s.alarm.set}
+                  </Text>
+                  <Text style={[styles.alarmHint, currentAlarm && { color: scheme.onPrimaryContainer }]}>
+                    {currentAlarm ? s.alarm.lead(currentAlarm.leadMin) : s.alarm.hint}
+                  </Text>
+                </View>
+                <ChevronRight size={20} color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
+              </Pressable>
+            )}
 
             {/* Nawigacja do przystanku jest klikalna i otwiera pełną
                 mapę trasy. */}
@@ -259,6 +286,7 @@ export default function RouteDetailsScreen() {
       </ScrollView>
       </View>
       {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
+      {alarmOpen && <DepartureAlarmDialog connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />}
     </SafeAreaView>
   );
 }
@@ -290,6 +318,12 @@ const styles = StyleSheet.create({
   },
   trackBtnActive: { backgroundColor: scheme.primaryContainer },
   body: { paddingHorizontal: 16, gap: 18, paddingBottom: 40 },
+  alarmButton: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18,
+    borderRadius: 24, backgroundColor: scheme.surfaceContainerHigh, borderWidth: 2, borderColor: 'transparent' },
+  alarmButtonActive: { backgroundColor: scheme.primaryContainer },
+  alarmCopy: { flex: 1, minWidth: 0, gap: 5 },
+  alarmTitle: { ...type.titleMedium, color: scheme.onSurface, fontWeight: '600' },
+  alarmHint: { ...type.bodySmall, lineHeight: 18, color: scheme.onSurfaceVariant },
   offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',

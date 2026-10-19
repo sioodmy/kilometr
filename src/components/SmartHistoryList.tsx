@@ -125,7 +125,7 @@ export function SmartHistoryList({
  * odjazdu (np. „13:20”), a wartości ujemne — ile minut temu coś odjechało.
  * Ujemne bez tej gałęzi obcinały się do zera i raportowały „za chwilę”.
  */
-export function formatDepartIn(departInMin: number | undefined): string | null {
+function formatDepartIn(departInMin: number | undefined): string | null {
   if (departInMin === undefined || !Number.isFinite(departInMin)) return null;
   const m = Math.round(departInMin);
   if (m > 180) return null;

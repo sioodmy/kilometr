@@ -41,6 +41,12 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Check Android permissions
+        run: |
+          npm run check:permission-gate
+          npx expo config --type introspect --json > "$RUNNER_TEMP/expo-config.json"
+          npm run check:android-permissions -- "$RUNNER_TEMP/expo-config.json" --expo-config
+
   logic-tests:
     name: Logic Tests
     runs-on: ubuntu-latest
@@ -146,6 +152,9 @@ jobs:
       - name: Run logic tests (Notifications)
         run: npm run check:notifications
 
+      - name: Run logic tests (Departure alarm)
+        run: npm run check:alarm
+
       - name: Run logic tests (Notification lifecycle)
         run: npm run check:notification-runtime
 
@@ -154,6 +163,9 @@ jobs:
 
       - name: Run logic tests (Navigation target)
         run: npm run check:navigation-target
+
+      - name: Check navigation map loading and GPS camera
+        run: npm run check:nav-map
 
       - name: Run logic tests (Navigation)
         run: npm run check:nav
@@ -183,6 +195,7 @@ jobs:
             package-lock.json
             server/package-lock.json
             landing/package-lock.json
+            cloudflare/package-lock.json
 
       - name: Install shared app dependencies
         run: npm ci
@@ -196,3 +209,11 @@ jobs:
         run: |
           npm --prefix landing ci
           npm --prefix landing run build
+
+      - name: Typecheck Cloudflare
+        run: |
+          npm --prefix cloudflare ci
+          npm --prefix cloudflare run typecheck
+
+      - name: Check unused code and dependencies
+        run: npm run check:dead-code

@@ -6,13 +6,13 @@
  */
 
 /** Po tylu sekundach jazdy przed pojazdem prognoza odjazdu spada o połowę. */
-export const BOARD_LATE_HALF_LIFE_SEC = 15 * 60;
+const BOARD_LATE_HALF_LIFE_SEC = 15 * 60;
 /** Po tylu sekundach jazdy przed pojazdem prognoza przyjazdu spada o połowę. */
-export const ARRIVE_LATE_HALF_LIFE_SEC = 30 * 60;
+const ARRIVE_LATE_HALF_LIFE_SEC = 30 * 60;
 /** Przewaga pojazdu przed czasem znika przy wysiadaniu w takim tempie. */
-export const ARRIVE_EARLY_HALF_LIFE_SEC = 5 * 60;
+const ARRIVE_EARLY_HALF_LIFE_SEC = 5 * 60;
 /** Ile przewagi przed czasem uznajemy przy wsiadaniu (dalej to szum GPS). */
-export const BOARD_EARLY_CAP_SEC = 120;
+const BOARD_EARLY_CAP_SEC = 120;
 
 export type DelayUse = 'board' | 'arrive';
 

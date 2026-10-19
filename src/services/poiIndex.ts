@@ -46,7 +46,7 @@ function isStale(last: string | null): boolean {
 }
 
 /** Pobiera POI z Overpass i podmienia tabelę. Best-effort — błąd zostawia stare. */
-export async function refreshPoiIndex(): Promise<number> {
+async function refreshPoiIndex(): Promise<number> {
   if (refreshInFlight) return poiCount();
   // Zapytanie potrafi trwać 45 s, a użytkownik zmieni miasto w międzyczasie.
   // Bbox bierzemy i sprawdzamy dla jednego miasta: inaczej odpowiedź dla

@@ -25,7 +25,7 @@ function dlTr() {
   return (DL_DICTS[getLocaleSync()] ?? pl).downloader;
 }
 
-export interface GtfsArchiveCandidate {
+interface GtfsArchiveCandidate {
   id: number;
   url: string;
   filename?: string;
@@ -48,7 +48,7 @@ function baseDir(): string {
   return `${base}kilometr/`;
 }
 
-export function gtfsZipUri(): string {
+function gtfsZipUri(): string {
   return `${baseDir()}${GTFS.cacheFile}`;
 }
 
@@ -56,7 +56,7 @@ export function gtfsDir(): string {
   return `${baseDir()}${GTFS.extractedDir}/`;
 }
 
-export async function ensureBaseDir(): Promise<void> {
+async function ensureBaseDir(): Promise<void> {
   const dir = baseDir();
   const info = await FileSystem.getInfoAsync(dir);
   if (!info.exists) {
@@ -65,7 +65,7 @@ export async function ensureBaseDir(): Promise<void> {
 }
 
 /** Wybiera najnowszy obowiązujący archiwum GTFS z katalogu Open Data. */
-export async function discoverBestArchiveUrl(): Promise<string> {
+async function discoverBestArchiveUrl(): Promise<string> {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
@@ -231,7 +231,7 @@ export async function downloadArchiveWithFallback(
 }
 
 /** Pobiera gtfs.zip do documentDirectory. Zwraca lokalne URI. */
-export async function downloadGtfsZip(
+async function downloadGtfsZip(
   url: string,
   onProgress?: (p: DownloadProgress) => void,
 ): Promise<string> {
@@ -259,17 +259,6 @@ export async function downloadGtfsZip(
     throw new Error(`HTTP response status code ${result.status}`);
   }
   return result.uri;
-}
-
-/** Sprawdza czy kompletny rozpakowany GTFS już istnieje na telefonie. */
-export async function hasExtractedGtfs(): Promise<boolean> {
-  try {
-    const stopsInfo = await FileSystem.getInfoAsync(`${gtfsDir()}stops.txt`);
-    const timesInfo = await FileSystem.getInfoAsync(`${gtfsDir()}stop_times.txt`);
-    return stopsInfo.exists && timesInfo.exists;
-  } catch {
-    return false;
-  }
 }
 
 const NEEDED_GTFS_FILES = new Set([

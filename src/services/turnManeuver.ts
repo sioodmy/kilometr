@@ -9,7 +9,7 @@
 // (`npm run check:nav`) i przetestować na prawdziwej geometrii.
 
 import type { Coord } from './routeGeometry';
-import type { MapLeg, MapRoute } from '../map/types';
+import type { MapLeg } from '../map/types';
 
 /** Ile stopni musi zmienić się kurs, żeby uznać zakręt za manewr. */
 const TURN_THRESHOLD_DEG = 32;
@@ -36,7 +36,7 @@ export type ManeuverKind =
   | 'alight'
   | 'arrive';
 
-export interface Maneuver {
+interface Maneuver {
   kind: ManeuverKind;
   /** odległość od użytkownika wzdłuż trasy [m] */
   distanceM: number;
@@ -44,15 +44,6 @@ export interface Maneuver {
   at: Coord;
   /** fragment trasy od użytkownika do manewru (do rysowania na minimapce) */
   path: Coord[];
-}
-
-export interface RouteProgress {
-  /** 0..1 wzdłuż całej trasy */
-  progress: number;
-  /** indeks wierzchołka, przy którym ląduje rzut */
-  index: number;
-  /** 0 = tuż przed manewrem, 1 = manewr za Tobą */
-  side: 0 | 1;
 }
 
 function distanceM(p: Coord, q: Coord): number {
@@ -73,7 +64,7 @@ function bearing(p: Coord, q: Coord): number {
 }
 
 /** Różnica kursów w zakresie [-180, 180]. Dodatnia = w prawo. */
-export function angleDelta(a: Coord, b: Coord, c: Coord): number {
+function angleDelta(a: Coord, b: Coord, c: Coord): number {
   let d = bearing(b, c) - bearing(a, b);
   while (d > 180) d -= 360;
   while (d < -180) d += 360;
@@ -448,31 +439,6 @@ export function distanceAlong(
   return total;
 }
 
-/**
- * Następny manewr na ścieżku `path`, licząc od `fromIndex` (pozycja użytkownika).
- * Liczy tylko skręty; wejście/wyjście z pojazdu dokłada caller.
- */
-export function nextTurnOnPath(
-  coords: Coord[],
-  fromIndex: number,
-): Maneuver | null {
-  const progressM = distanceAlong(coords, 0, fromIndex);
-  const turns = findTurns(coords).filter((t) => t.index > fromIndex);
-  const turn = turns.find((t) => t.alongM - progressM >= TURN_PASS_M);
-  if (!turn) return null;
-  return {
-    kind: turn.kind,
-    distanceM: Math.max(0, turn.alongM - progressM),
-    at: coords[turn.index],
-    path: coords.slice(fromIndex, turn.index + 1),
-  };
-}
-
-/** Trasa do wyświetlenia: nogi złożone w jeden ciąg wierzchołków. */
-export function guidanceRoute(route: MapRoute): { coords: Coord[]; spans: LegSpan[] } {
-  return buildRoutePath(route.legs);
-}
-
 /** Do której nogi należy dany indeks wierzchołka trasy. */
 function spanAt(spans: LegSpan[], index: number): LegSpan | null {
   for (const span of spans) {
@@ -675,10 +641,4 @@ export function nextGuidanceAfter(
   }
 
   return null;
-}
-
-/** Punkt manewru w trasie (zabezpieczony przed wyjściem poza zakres). */
-export function maneuverAnchor(coords: Coord[], index: number): Coord {
-  const i = Math.max(0, Math.min(coords.length - 1, index));
-  return [coords[i][0], coords[i][1]];
 }

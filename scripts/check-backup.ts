@@ -151,10 +151,7 @@ const FULL: BackupData = {
   routingSettings: { maxTransfers: 1, minTransferSec: 180, maxWalkM: 600, walkPace: 'normal', anchorRadiusM: 400, trainsEnabled: false, trainMinTransferSec: 420, cableEnabled: false, allowedModes: { tram: true, bus: true, trolleybus: true, subway: true, train: false, cable: false }, routeStyle: 'lessWalking' },
   notificationPrefs: {
     trackingEnabled: true,
-    departureAlertsEnabled: true,
     disruptionAlertsEnabled: false,
-    departureAlertLeadMin: 7,
-    imminentAlert: true,
     liveProgressEnabled: true,
   },
   locale: 'en',

@@ -73,7 +73,7 @@ export async function buildTripStops(tripId: string): Promise<LegStop[]> {
 }
 
 /** Wycinek (i nocny merge) na parametry wyszukiwania: jedno źródło prawdy */
-export interface SearchSlices {
+interface SearchSlices {
   /** Porą dnia (bez przesunięcia dnia serwisowego). */
   departureSec: number;
   /** Sekundy od teraz co dzień docelowego (dodawane do wyników, nie do RAPTOR-a). */
@@ -90,7 +90,7 @@ export interface SearchSlices {
  * TEN SAM kod, żeby rozgrzany indeks był dokładnie tym, na który wyszukiwanie
  * zaraz wpadnie (w tym nocny merge przed 07:00).
  */
-export async function buildSearchSlices(rawTargetSec: number, arrivalMode = false): Promise<SearchSlices> {
+async function buildSearchSlices(rawTargetSec: number, arrivalMode = false): Promise<SearchSlices> {
   const now = new Date();
   // departureTimeSec / arriveBySec mogą wskazywać jutro (DepartureTimeSheet
   // dodaje +86400). RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.

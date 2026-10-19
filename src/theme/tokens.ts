@@ -223,14 +223,6 @@ export const shape = {
   full: 999,
 } as const;
 
-export const radius = {
-  sm: shape.small,
-  md: shape.medium,
-  lg: shape.large,
-  xl: shape.extraLarge,
-  full: shape.full,
-} as const;
-
 export const spacing = { xs: 6, sm: 10, md: 14, lg: 18, xl: 24, xxl: 32 } as const;
 
 // ─── M3 elevation: tonal surfaces do the heavy lifting, shadows stay subtle ─
@@ -259,11 +251,6 @@ export const elev = {
   },
 } as const;
 
-export const shadow = {
-  card: elev.level1,
-  sheet: elev.level3,
-} as const;
-
 // ─── M3 type scale (sizes + weights; letterSpacing applied inline) ──────────
 export const type = {
   displaySmall: { fontSize: 36, fontWeight: '400' },
@@ -277,9 +264,4 @@ export const type = {
   labelLarge: { fontSize: 14, fontWeight: '500' },
   labelMedium: { fontSize: 12, fontWeight: '500' },
   labelSmall: { fontSize: 11, fontWeight: '500' },
-} as const;
-
-export const font = {
-  family: undefined as string | undefined,
-  sizes: { hero: 30, title: 22, body: 15, small: 13, tiny: 11 },
 } as const;

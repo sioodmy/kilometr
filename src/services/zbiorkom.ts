@@ -21,7 +21,7 @@ import { normalizeName } from './vehiclePosition';
 import { gtfsStore, type DayIndex } from './routing/store';
 import type { RawVehicleRow } from './liveTracker';
 
-export interface ZbUpcomingStop {
+interface ZbUpcomingStop {
   name: string;
   /** sekunda doby ze scheduledDeparture (awaryjnie scheduledArrival) */
   schedSec: number;

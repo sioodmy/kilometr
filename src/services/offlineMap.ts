@@ -19,10 +19,10 @@ import { getActiveCityIdSync } from './cityStore';
 import { getMapDownloadGate, markMapDownloaded } from './downloadLimits';
 
 /** Katalog, z którego czyta natywny serwer mapy (filesDir/maps). */
-export const MAP_DIR_NAME = 'maps';
+const MAP_DIR_NAME = 'maps';
 
 /** Pakiet kafli aktywnego miasta. Inna nazwa na miasto = brak nadpisywania. */
-export function tilePackName(cityId?: string): string {
+function tilePackName(cityId?: string): string {
   return getCity(cityId ?? getActiveCityIdSync()).tilePack;
 }
 

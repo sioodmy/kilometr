@@ -164,24 +164,15 @@ export interface LivePlanPhaseCopy {
 export interface NotificationPreferences {
   /** Ciche, trwałe powiadomienie w trayu — główna funkcja. */
   trackingEnabled: boolean;
-  /** Powiadomienia dźwiękowe „wyjdź za 5 min”. */
-  departureAlertsEnabled: boolean;
   /** Powiadomienia o opóźnieniach i zmianach kursu. */
   disruptionAlertsEnabled: boolean;
-  /** Ile minut przed odjazdem ostrzec (domyślnie 5). */
-  departureAlertLeadMin: number;
-  /** Głośne ostrzeżenie w fazie oczekiwania (ostatnie minuty). */
-  imminentAlert: boolean;
   /** Pasek postępu i licznik systemowy (natywne Live Update). */
   liveProgressEnabled: boolean;
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   trackingEnabled: true,
-  departureAlertsEnabled: true,
   disruptionAlertsEnabled: true,
-  departureAlertLeadMin: 5,
-  imminentAlert: true,
   liveProgressEnabled: true,
 };
 
@@ -201,15 +192,4 @@ export interface TrackedTrip {
   /** Połączenie, na które użytkownik się zgodził (to samo, które widzi na liście). */
   connection: Connection;
   startedAt: number;
-}
-
-/** Dane do deep linku z powiadomienia. */
-export interface TripLinkParams {
-  fromTitle: string;
-  fromLat: string;
-  fromLon: string;
-  toId: string;
-  toTitle: string;
-  toLat: string;
-  toLon: string;
 }

@@ -144,7 +144,7 @@ const ROLE_L: Record<string, [family: string, lStar: number]> = {
  * brakuje tonu (albo system ich nie wystawia), pomijamy — wtedy zostaje
  * wartość startowa motywu.
  */
-export function paletteFromSystem(raw: SystemPalette): Partial<Record<SchemeKey, string>> {
+function paletteFromSystem(raw: SystemPalette): Partial<Record<SchemeKey, string>> {
   const families: Record<string, Family> = {
     accent1: collect(raw, 'accent1'),
     accent2: collect(raw, 'accent2'),

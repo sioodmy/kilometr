@@ -8,12 +8,7 @@ import {
   type RawLocationFix,
 } from './locationFilter';
 
-export {
-  createLocationFilterState,
-  filterLocationFix,
-  type LocationFilterState,
-  type RawLocationFix,
-};
+export type { RawLocationFix };
 
 export interface CurrentLocation {
   lat: number;
@@ -24,7 +19,7 @@ export interface CurrentLocation {
   timestamp: number;
 }
 
-export type CurrentLocationState = 'seeking' | 'ok' | 'denied' | 'noFix';
+type CurrentLocationState = 'seeking' | 'ok' | 'denied' | 'noFix';
 
 interface LocationSnapshot {
   location: CurrentLocation | null;
