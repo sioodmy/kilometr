@@ -3,7 +3,7 @@ import { CITIES, type CityId } from '../cities';
 import type { ShareStrings } from '../i18n/share/pl';
 import type { Connection, LegMode } from '../types/models';
 
-export const SHARE_BASE_URL = 'https://kilometr.app/';
+const SHARE_BASE_URL = 'https://kilometr.app/';
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 const modes: readonly string[] = ['walk', 'tram', 'bus', 'train', 'cable', 'trolleybus', 'subway'];
 const maxEncodedLength = 8192;
@@ -138,7 +138,7 @@ function integer(value: unknown, max: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
 }
 
-export function isSharedConnection(value: unknown): value is SharedConnection {
+function isSharedConnection(value: unknown): value is SharedConnection {
   if (
     !isRecord(value) ||
     value.v !== 1 ||

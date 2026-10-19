@@ -47,12 +47,12 @@ export function withDistances(
 const DIST_PENALTY_CAP = 40;
 const DIST_PENALTY_PER_M = 250;
 
-export function distPenalty(s: Suggestion, hasUserPos: boolean): number {
+function distPenalty(s: Suggestion, hasUserPos: boolean): number {
   if (!hasUserPos) return 0;
   return Math.min(DIST_PENALTY_CAP, (s.distanceM ?? Infinity) / DIST_PENALTY_PER_M);
 }
 
-export function nameScore(s: Suggestion, normQ: string): number {
+function nameScore(s: Suggestion, normQ: string): number {
   if (!normQ) return 0;
   const match = fuzzyMatch(normQ, s.title);
   if (match.matches) return match.score;
@@ -68,7 +68,7 @@ export function nameScore(s: Suggestion, normQ: string): number {
 }
 
 /** Bonus za popularność przystanku (waga = liczba odjazdów). */
-export function weightBonus(s: Suggestion): number {
+function weightBonus(s: Suggestion): number {
   return Math.min(12, (s.weight ?? 0) / 100);
 }
 

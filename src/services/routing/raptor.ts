@@ -42,7 +42,7 @@ export interface CostParams {
 }
 
 /** Styl trasy z ustawień. Spacer zawsze ważony mocniej niż jazda, żeby 30 s zysku nie wyrzucało z tramwaju. */
-export const ROUTE_STYLE_COSTS: Record<RouteStyle, CostParams> = {
+const ROUTE_STYLE_COSTS: Record<RouteStyle, CostParams> = {
   fastest: { walkReluctance: 1.25, transferPenaltySec: 240 },
   balanced: { walkReluctance: 1.8, transferPenaltySec: 600 },
   lessWalking: { walkReluctance: 3, transferPenaltySec: 600 },
@@ -483,7 +483,7 @@ export function runRaptor(
 }
 
 /** Sekundy marszu w podróży (dojście, przesiadki, odejście). */
-export function journeyWalkSec(j: RawJourney): number {
+function journeyWalkSec(j: RawJourney): number {
   let w = 0;
   for (const s of j.segments) if (s.type === 'walk') w += Math.max(0, s.arriveSec - s.departSec);
   return w;
@@ -501,7 +501,7 @@ export interface SelectOptions {
  * od wyjścia do celu w trybie „bądź na”) + dodatkowa waga marszu + kara
  * za przesiadki.
  */
-export function journeyCost(j: RawJourney, refSec: number, opts: SelectOptions = {}): number {
+function journeyCost(j: RawJourney, refSec: number, opts: SelectOptions = {}): number {
   const cost = opts.cost ?? ROUTE_STYLE_COSTS.balanced;
   const base = opts.arriveBySec !== undefined ? opts.arriveBySec - j.departureSec : j.arrivalSec - refSec;
   return base + (Math.max(1, cost.walkReluctance) - 1) * journeyWalkSec(j) + j.transfers * cost.transferPenaltySec;

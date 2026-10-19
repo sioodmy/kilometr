@@ -33,10 +33,6 @@ class KilometrTrackingModule : Module() {
 
     Function("isAvailable") { true }
 
-    AsyncFunction("ensureChannels") { name: String, description: String ->
-      appContextOrNull?.let { LiveUpdateFactory.ensureChannel(it, name, description) }
-    }
-
     /** Czy system dopuści powiadomienie do strefy Live Updates. */
     AsyncFunction("canPromote") {
       appContextOrNull?.let { LiveUpdateFactory.canPromote(it) } ?: false

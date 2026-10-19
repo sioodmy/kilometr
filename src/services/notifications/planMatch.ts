@@ -117,7 +117,7 @@ export function matchTrackedConnection(
 }
 
 /** Kurs, którym właśnie jedziemy — gdy plan już go nie zawiera. */
-export function connectionInProgress(conns: Connection[], nowSec: number): Connection | null {
+function connectionInProgress(conns: Connection[], nowSec: number): Connection | null {
   const ongoing = conns.filter((c) => {
     const end = c.departureSec + c.durationMin * 60;
     return c.departureSec <= nowSec + 60 && end > nowSec;
@@ -127,7 +127,7 @@ export function connectionInProgress(conns: Connection[], nowSec: number): Conne
 }
 
 /** Najbliższy odjazd, na który jeszcze zdążymy (z krótką grzecznością). */
-export function nextDeparture(
+function nextDeparture(
   conns: Connection[],
   nowSec: number,
   graceSec: number,

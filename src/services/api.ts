@@ -272,7 +272,7 @@ const DEFAULT_SEARCH_SCOPE = 'default';
  * Wyszukiwanie przerwane nowszym zapytaniem. Odróżniamy to od „brak wyników”,
  * bo inaczej anulowany request wpisywałby pustą listę po wynikach nowszego.
  */
-export class SearchAbortedError extends Error {
+class SearchAbortedError extends Error {
   constructor() {
     super('Wyszukiwanie przerwane przez nowe zapytanie');
     this.name = 'SearchAbortedError';
@@ -452,7 +452,7 @@ export const RoutingService: IRoutingService = {
             }
           : undefined,
       });
-      
+
       for (const c of connections) {
         recentPlannedConnections.set(c.id, c);
       }
@@ -577,7 +577,7 @@ async function readPlaces(key?: string): Promise<SavedPlace[]> {
  */
 let placesMigration: Promise<void> | null = null;
 
-export function ensurePlacesMigrated(): Promise<void> {
+function ensurePlacesMigrated(): Promise<void> {
   if (!placesMigration) placesMigration = migratePlacesToCityBuckets();
   return placesMigration;
 }

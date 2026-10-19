@@ -1,0 +1,34 @@
+{
+  "$schema": "https://unpkg.com/knip/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "app/**/*.{ts,tsx}",
+        "scripts/*.{ts,cjs,mjs}",
+        "plugins/*.js",
+        ".github/scripts/*.mjs"
+      ],
+      "project": [
+        "app/**/*.{ts,tsx}",
+        "src/**/*.{ts,tsx}",
+        "modules/**/*.ts",
+        "scripts/*.{ts,cjs,mjs}",
+        "plugins/*.js",
+        ".github/scripts/*.mjs",
+        "*.{js,mjs}"
+      ],
+      "ignoreDependencies": ["expo-updates", "expo-system-ui"]
+    },
+    "server": {
+      "entry": ["scripts/*.ts"],
+      "project": ["src/**/*.ts", "scripts/*.ts"]
+    },
+    "landing": {
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "cloudflare": {
+      "entry": ["scripts/*.mjs"],
+      "project": ["src/**/*.ts", "scripts/*.mjs"]
+    }
+  }
+}

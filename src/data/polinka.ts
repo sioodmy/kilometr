@@ -15,8 +15,8 @@
 import { normalizePolish } from '../gtfs/geo';
 
 export const POLINKA_ROUTE_ID = 'pwr_polinka';
-export const POLINKA_LINE = 'Polinka';
-export const POLINKA_LONG_NAME = 'Kolej linowa Polinka';
+const POLINKA_LINE = 'Polinka';
+const POLINKA_LONG_NAME = 'Kolej linowa Polinka';
 
 export const POLINKA_WYSPIANSKIEGO_STOP_ID = 'pwr_pol_wyspianskiego';
 export const POLINKA_NA_GROBLI_STOP_ID = 'pwr_pol_na_grobli';
@@ -25,7 +25,7 @@ export const POLINKA_NA_GROBLI_STOP_ID = 'pwr_pol_na_grobli';
 export const POLINKA_RIDE_SEC = 180;
 
 /** Regulamin: „nie rzadziej niż co 5 minut". */
-export const POLINKA_HEADWAY_SEC = 300;
+const POLINKA_HEADWAY_SEC = 300;
 
 // Poniedziałek–piątek 07:00–21:00, przerwa techniczna 13:30–14:00.
 // W weekendy i dni świąteczne Polinka nie kursuje.
@@ -119,7 +119,7 @@ export function polinkaDepartureSeconds(): number[] {
   return out;
 }
 
-export interface PolinkaTrip {
+interface PolinkaTrip {
   trip_id: string;
   route_id: string;
   service_id: string;
@@ -128,7 +128,7 @@ export interface PolinkaTrip {
   shape_id: string;
 }
 
-export interface PolinkaStopTime {
+interface PolinkaStopTime {
   trip_id: string;
   stop_id: string;
   arrival_sec: number;
@@ -145,7 +145,7 @@ export interface PolinkaTripBundle {
   arriveSec: number;
 }
 
-export const POLINKA_SERVICE_ID = 'pwr_polinka_weekday';
+const POLINKA_SERVICE_ID = 'pwr_polinka_weekday';
 
 /**
  * Kursy nachodzące na horyzont [fromSec, toSec] (sekundy od północy, mogą

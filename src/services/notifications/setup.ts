@@ -7,6 +7,7 @@ import { setupNotificationChannels } from './channels';
 // pokazuje prompt dopiero po utworzeniu pierwszego kanału), więc nie czekamy
 // na moment przypięcia trasy.
 
+/** @public Wywoływane przez createRequire w check-notification-runtime.ts. */
 export function setupNotificationHandler(): void {
   const N = getNotifications();
   if (!N) return;
@@ -36,5 +37,3 @@ export async function setupNotifications(): Promise<void> {
   await setupNotificationCategories();
   await setupNotificationChannels();
 }
-
-export { setupNotificationCategories, setupNotificationChannels };

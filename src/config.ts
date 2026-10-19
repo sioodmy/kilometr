@@ -58,22 +58,6 @@ export const MAP_ATTRIBUTION =
 // OSRM, nadpisywalny własnym, np. w sieci firmowej.
 export const OSRM_BASE_URL = process.env.EXPO_PUBLIC_OSRM_URL ?? 'https://router.project-osrm.org';
 
-// Demo OSRM ma wgrany wyłącznie profil samochodowy: /route/v1/foot odpowiada
-// identyczną trasą co driving, tzn. spacer rysowałby się po jezdni. Piesze
-// idą osobnym routerem, który rozumie chodniki, przejścia i place.
-export const OSRM_FOOT_BASE_URL =
-  process.env.EXPO_PUBLIC_OSRM_FOOT_URL ?? 'https://routing.openstreetmap.de/routed-foot';
-
-// Neutralny placeholder zanim GPS zwróci pozycję (prawdziwe współrzędne
-// centrum Wrocławia, nie mock danych). Nadpisywany przez LocationService.
-// Trzyma tylko geometrię: nazwa i tytuł startu idą ze słownika, więc nie ma
-// tu polskiego tekstu, który wypłynąłby do UI innego języka.
-// Per-miasto odpowiednik: defaultLocationForCity() niżej.
-export const DEFAULT_LOCATION = {
-  lat: 51.1079,
-  lon: 17.0385,
-};
-
 export interface LocationFallback {
   title: string;
   address: string;

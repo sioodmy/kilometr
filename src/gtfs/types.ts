@@ -55,10 +55,3 @@ export interface GtfsCalendarDate {
   date: string; // YYYYMMDD
   exception_type: number; // 1 = dodany, 2 = usunięty
 }
-
-export interface Footpath {
-  from_stop_id: string;
-  to_stop_id: string;
-  distance_m: number;
-  duration_sec: number;
-}

@@ -111,11 +111,11 @@ const PLACE_ICON_CATEGORY_KEYS: PlaceIconCategory[] = [
   'services',
 ];
 
-export function getPlaceIconCategories(s: Strings): { key: PlaceIconCategory; label: string }[] {
+function getPlaceIconCategories(s: Strings): { key: PlaceIconCategory; label: string }[] {
   return PLACE_ICON_CATEGORY_KEYS.map((key) => ({ key, label: s.places.iconCategories[key] }));
 }
 
-export const PLACE_ICON_OPTIONS: PlaceIconItem[] = [
+const PLACE_ICON_OPTIONS: PlaceIconItem[] = [
   // Codzienne / Częste
   { key: 'home', label: 'Dom', icon: Home, category: 'frequent', keywords: ['dom', 'mieszkanie', 'pokój', 'chata', 'house'] },
   { key: 'work', label: 'Praca', icon: Briefcase, category: 'frequent', keywords: ['praca', 'biuro', 'firma', 'robota', 'office', 'job'] },
@@ -183,7 +183,7 @@ export const PLACE_ICON_OPTIONS: PlaceIconItem[] = [
 ];
 
 /** Wariant z etykietami w języku użytkownika (UI); keywords zostają wielojęzyczne jak wyżej. */
-export function getPlaceIconOptions(s: Strings): PlaceIconItem[] {
+function getPlaceIconOptions(s: Strings): PlaceIconItem[] {
   return PLACE_ICON_OPTIONS.map((o) => ({ ...o, label: s.places.iconName[o.key] ?? o.label }));
 }
 

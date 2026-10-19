@@ -27,6 +27,16 @@
         "android.permission.POST_PROMOTED_NOTIFICATIONS",
         "android.permission.VIBRATE"
       ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.ACTIVITY_RECOGNITION",
+        "com.google.android.gms.permission.ACTIVITY_RECOGNITION",
+        "android.permission.HIGH_SAMPLING_RATE_SENSORS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "package": "my.siood.kilometr"
     },
     "web": {
@@ -58,7 +68,10 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji."
+          "locationWhenInUsePermission": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false,
+          "isAndroidMotionActivityEnabled": false
         }
       ],
       [

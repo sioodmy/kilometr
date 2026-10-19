@@ -1,6 +1,6 @@
 // Czyste helpery klasyfikacji POI (bez natywnych importów — testowalne w node).
 
-export const CATEGORY_LABEL: Record<string, { category: string; label: string }> = {
+const CATEGORY_LABEL: Record<string, { category: string; label: string }> = {
   'shop:supermarket': { category: 'shop', label: 'Supermarket' },
   'shop:mall': { category: 'shop', label: 'Galeria handlowa' },
   'shop:department_store': { category: 'shop', label: 'Dom handlowy' },

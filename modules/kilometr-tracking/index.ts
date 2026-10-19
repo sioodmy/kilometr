@@ -1,4 +1,4 @@
-import { requireOptionalNativeModule } from 'expo-modules-core';
+import { requireOptionalNativeModule } from 'expo';
 
 // Publiczne wejście lokalnego modułu Androida. `src/services/notifications`
 // ładuje je leniwie i dopiero na Androidzie; `requireOptionalNativeModule`
@@ -10,9 +10,8 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 // `dismiss`: jest `startTrip` / `stopTrip` i pytanie, czy system dopuści
 // powiadomienie do strefy Live Updates.
 
-export interface KilometrTrackingNativeModule {
+interface KilometrTrackingNativeModule {
   isAvailable(): boolean;
-  ensureChannels(name: string, description: string): Promise<void>;
   /** Czy Android 16.1+ pozwoli wypchnąć powiadomienie do Live Updates. */
   canPromote(): Promise<boolean>;
   openNotificationSettings(): Promise<boolean>;
@@ -27,41 +26,36 @@ export interface KilometrTrackingNativeModule {
 
 const native = requireOptionalNativeModule<KilometrTrackingNativeModule>('KilometrTracking');
 
-export function isAvailable(): boolean {
+function isAvailable(): boolean {
   return native != null && native.isAvailable();
 }
 
-export function ensureChannels(name: string, description: string): Promise<void> {
-  return native ? native.ensureChannels(name, description) : Promise.resolve();
-}
-
-export function canPromote(): Promise<boolean> {
+function canPromote(): Promise<boolean> {
   return native ? native.canPromote() : Promise.resolve(false);
 }
 
-export function openNotificationSettings(): Promise<boolean> {
+function openNotificationSettings(): Promise<boolean> {
   return native ? native.openNotificationSettings() : Promise.resolve(false);
 }
 
-export function startTrip(planJson: string): Promise<boolean> {
+function startTrip(planJson: string): Promise<boolean> {
   return native ? native.startTrip(planJson) : Promise.resolve(false);
 }
 
-export function stopTrip(): Promise<boolean> {
+function stopTrip(): Promise<boolean> {
   return native ? native.stopTrip() : Promise.resolve(false);
 }
 
-export function consumeStopRequest(): Promise<boolean> {
+function consumeStopRequest(): Promise<boolean> {
   return native ? native.consumeStopRequest() : Promise.resolve(false);
 }
 
-export function hasStopRequest(): Promise<boolean> {
+function hasStopRequest(): Promise<boolean> {
   return native ? native.hasStopRequest() : Promise.resolve(false);
 }
 
 export default {
   isAvailable,
-  ensureChannels,
   canPromote,
   openNotificationSettings,
   startTrip,

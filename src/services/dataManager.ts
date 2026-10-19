@@ -7,7 +7,7 @@
 // stop_times jest ~46 MB — importujemy batched po 5000 rekordów w transakcjach.
 
 import { parseCalendarContent, parseCalendarDatesContent, parseRoutesContent, parseStopsContent, parseTripsContent, parseStopTimesBatched } from '../gtfs/csv';
-import { GTFS, TIMETABLE } from './gtfsConfig';
+import { TIMETABLE } from './gtfsConfig';
 import {
   cleanupRawGtfs,
   downloadArchiveWithFallback,
@@ -48,7 +48,7 @@ import {
   setMeta,
 } from './gtfsDatabase';
 
-export type GtfsSource = 'network';
+type GtfsSource = 'network';
 
 export type DataStatus =
   | { state: 'empty' }
@@ -97,7 +97,7 @@ export function resetDataStatusForCity(): void {
 }
 
 /** Skąd pochodzą dane w SQLite: pełny rozkład z sieci. */
-export async function getGtfsSource(): Promise<GtfsSource | null> {
+async function getGtfsSource(): Promise<GtfsSource | null> {
   try {
     const v = await getMeta('gtfs_source');
     return v === 'network' ? v : null;
@@ -405,32 +405,4 @@ async function importGtfsLegacy(): Promise<void> {
     await setMeta('gtfs_source', 'network');
     await cleanupRawGtfs();
     await resetRoutingStore();
-}
-
-/**
- * Sprawdza manifest raz dziennie — true, gdy na serwerze czeka nowsza baza.
- * Bez skonfigurowanego serwera (pusty TIMETABLE.baseUrl) zawsze false.
- * Uwaga: NIE pobiera automatycznie (~80 MB) — decyzję zostawia UI.
- */
-export async function checkForGtfsUpdate(): Promise<boolean> {
-  try {
-    const lastCheck = await getMeta('gtfs_last_check');
-    if (lastCheck && Date.now() - new Date(lastCheck).getTime() < GTFS.refreshHours * 3600 * 1000) {
-      return false;
-    }
-    if (!TIMETABLE.baseUrl) return false;
-    // Pin miasta: porównujemy wersję z bazą tego samego miasta, inaczej
-    // użytkownik Krakowa dostałby „jest nowa wersja” przez różnicę Wrocławia.
-    const cityId = getActiveCityIdSync();
-    const manifest = await fetchManifest(cityId).catch(() => null);
-    if (!manifest) return false;
-    if (getActiveCityIdSync() !== cityId) return false;
-    // Znacznik zapisujemy DOPIERO po udanym manifescie: nieudane sprawdzenie
-    // (brak sieci) nie może zablokować kolejnej próby na refreshHours.
-    await setMeta('gtfs_last_check', new Date().toISOString());
-    const local = await getLocalTimetableVersion();
-    return manifest.version !== local;
-  } catch {
-    return false;
-  }
 }

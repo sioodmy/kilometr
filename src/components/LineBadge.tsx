@@ -16,9 +16,6 @@ export {
   getLineColors,
   inferTransitMode,
   mapLineColor,
-  normalizeLineName,
-  TRANSIT_PALETTE,
-  CABLE_BADGE_BG,
 } from '../services/lineIdentity';
 
 export function LineBadge({

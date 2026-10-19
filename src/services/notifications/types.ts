@@ -202,14 +202,3 @@ export interface TrackedTrip {
   connection: Connection;
   startedAt: number;
 }
-
-/** Dane do deep linku z powiadomienia. */
-export interface TripLinkParams {
-  fromTitle: string;
-  fromLat: string;
-  fromLon: string;
-  toId: string;
-  toTitle: string;
-  toLat: string;
-  toLon: string;
-}

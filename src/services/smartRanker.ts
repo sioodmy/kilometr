@@ -53,7 +53,7 @@ async function readRawHistory(key: string): Promise<TripHistoryItem[]> {
  */
 let historyMigration: Promise<void> | null = null;
 
-export function ensureTripHistoryMigrated(): Promise<void> {
+function ensureTripHistoryMigrated(): Promise<void> {
   if (!historyMigration) historyMigration = migrateTripHistoryToCityBuckets();
   return historyMigration;
 }
@@ -100,7 +100,7 @@ async function migrateTripHistoryToCityBuckets(): Promise<void> {
   }
 }
 
-export async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
+async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
   try {
     await kvSet(STORAGE_KEYS.tripHistory(), JSON.stringify(items.slice(0, MAX_HISTORY_ITEMS)));
   } catch {}

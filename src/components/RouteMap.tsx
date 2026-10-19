@@ -24,7 +24,7 @@ import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
 import { scheme } from '../theme/tokens';
 
-export interface MapStopTap {
+interface MapStopTap {
   stopId: string;
   legId: string;
   name: string;

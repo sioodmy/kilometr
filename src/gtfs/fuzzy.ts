@@ -6,21 +6,6 @@ import {
   invokeRustSync,
 } from '../../modules/kilometr-raptor';
 
-/** Damerau-Levenshtein (wstawianie, usuwanie, zamiana, transpozycja) w Rust. */
-export function damerauLevenshtein(a: string, b: string): number {
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-
-  const w = new BinaryWriter(16 + (a.length + b.length) * 3);
-  w.u8Val(1).str(a).str(b);
-  const res = invokeRustSync(CMD_FUZZY, w.finish());
-  if (res && res.byteLength >= 4) {
-    return new BinaryReader(res).u32();
-  }
-  return Math.abs(a.length - b.length);
-}
-
 const SYNONYM_GROUPS: string[][] = [
   ['pl', 'plac'],
   ['dw', 'dworzec'],
