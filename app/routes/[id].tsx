@@ -7,6 +7,7 @@ import {
   CloudOff,
   Pin,
   RouteOff,
+  Share2,
 } from 'lucide-react-native';
 import { scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
@@ -20,6 +21,7 @@ import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
+import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
 import {
   areNotificationsSupported,
@@ -43,6 +45,7 @@ export default function RouteDetailsScreen() {
   const item = loadedItem?.id === id ? loadedItem : immediateItem ?? null;
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [sharing, setSharing] = useState(false);
   // Stan feedu live zmienia się w tle, a ten ekran nie odświeża się sam z
   // powodu danych. Bez tickera baner „brak danych” był zamrożony w stanie z
   // chwili renderu i pojawiał się dopiero przy jakiejś przypadkowej
@@ -177,6 +180,7 @@ export default function RouteDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.screen} importantForAccessibility={sharing ? 'no-hide-descendants' : 'auto'} accessibilityElementsHidden={sharing}>
       <View style={styles.header}>
         <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
           <ChevronLeft size={23} color={scheme.onSurface} />
@@ -184,6 +188,13 @@ export default function RouteDetailsScreen() {
         <Text style={styles.headerTitle} accessibilityRole="header">
           {s.routeDetails.title}
         </Text>
+        {!noLegs && (
+          <Pressable onPress={() => setSharing(true)} accessibilityRole="button"
+            accessibilityLabel={s.share.title}
+            style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}>
+            <Share2 size={21} color={scheme.onSurfaceVariant} />
+          </Pressable>
+        )}
         <Pressable
           onPress={() => void toggleTracking()}
           accessibilityRole="button"
@@ -246,12 +257,15 @@ export default function RouteDetailsScreen() {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+      </View>
+      {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
+  screen: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingText: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   retryBtn: {

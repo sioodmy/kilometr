@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -15,7 +15,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
-import { setWebLocale, useStrings, useWebLocale, type Locale } from './i18n';
+import { setWebLocale, useStrings, useShareStrings, useWebLocale, type Locale } from './i18n';
 import { Phone } from './components/Phone';
 import { Coverage } from './components/Coverage';
 import { InformationPage } from './components/InformationPage';
@@ -27,6 +27,8 @@ import {
   PLAY_URL,
   RELEASES_URL,
 } from './data';
+
+const SharedJourney = lazy(() => import('./components/SharedJourney'));
 
 function PlayLink({ className = '' }: { className?: string }) {
   const s = useStrings();
@@ -359,7 +361,9 @@ function Landing() {
 
 export default function App() {
   const s = useStrings();
+  const shareStrings = useShareStrings();
   const [hash, setHash] = useState(window.location.hash);
+  const shared = hash.startsWith('#trip');
   const page = hash === '#polityka' ? 'privacy' : hash === '#raport' ? 'report' : null;
   useEffect(() => {
     const onHash = () => setHash(window.location.hash);
@@ -367,16 +371,20 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   useEffect(() => {
-    document.title = page ? `${s[page].title} | Kilometr` : s.meta.title;
+    document.title = shared
+      ? `${shareStrings.pageTitle} | ${shareStrings.brand}`
+      : page
+        ? `${s[page].title} | Kilometr`
+        : s.meta.title;
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute('content', page ? s[page].intro : s.meta.description);
-  }, [page, s]);
+  }, [page, s, shared, shareStrings]);
   useEffect(() => {
-    if (page) window.scrollTo(0, 0);
+    if (page || shared) window.scrollTo(0, 0);
     else if (hash)
       requestAnimationFrame(() => document.getElementById(hash.slice(1))?.scrollIntoView());
-  }, [page, hash]);
+  }, [page, hash, shared]);
   useEffect(() => {
     if (
       page ||
@@ -409,7 +417,21 @@ export default function App() {
       </a>
       <div id="top" />
       <Header />
-      {page ? <InformationPage page={page} /> : <Landing />}
+      {shared ? (
+        <Suspense
+          fallback={
+            <main id="main" className="section-shell" role="status">
+              {shareStrings.loading}
+            </main>
+          }
+        >
+          <SharedJourney hash={hash} />
+        </Suspense>
+      ) : page ? (
+        <InformationPage page={page} />
+      ) : (
+        <Landing />
+      )}
       <footer className="footer section-shell">
         <div className="footer-main">
           <a className="brand" href="#top">

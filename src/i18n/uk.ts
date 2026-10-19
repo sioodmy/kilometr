@@ -2,6 +2,7 @@
 // ключ або неправильна сигнатура функції це помилка компіляції.
 import type { Strings } from './pl';
 import { uk as landing } from './landing/uk';
+import { uk as share } from './share/uk';
 
 function isFew(n: number): boolean {
   const last = n % 10;
@@ -11,6 +12,7 @@ function isFew(n: number): boolean {
 
 export const uk: Strings = {
   landing,
+  share,
   common: {
     retry: 'Спробувати знову',
     cancel: 'Скасувати',
