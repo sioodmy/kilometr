@@ -61,6 +61,7 @@
     "setup": "npm --prefix server run setup",
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
+    "check:alarm": "tsx scripts/check-departure-alarm.ts",
     "check:notification-runtime": "tsx --require ./scripts/stub-expo.cjs scripts/check-notification-runtime.ts",
     "check:live": "tsx --require ./scripts/stub-expo.cjs scripts/check-live.ts",
     "check:live-canary": "tsx --require ./scripts/stub-expo.cjs scripts/check-live-canary.ts",

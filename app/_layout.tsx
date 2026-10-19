@@ -16,6 +16,7 @@ import { loadSettings } from '../src/services/settings';
 import { hasSeenOnboarding } from '../src/services/onboarding';
 import { loadNotificationPreferences } from '../src/services/notifications/preferences';
 import { migrateFromSqliteKv } from '../src/services/kvMigration';
+import { refreshDepartureAlarm } from '../src/services/departureAlarm';
 import {
   addTripResponseListener,
   getLastTripResponse,
@@ -57,6 +58,7 @@ export default function RootLayout() {
       await loadSettings();
       await initLocale();
       await loadNotificationPreferences();
+      await refreshDepartureAlarm();
       try {
         const seen = await hasSeenOnboarding();
         if (isMounted) setNeedsOnboarding(!seen);

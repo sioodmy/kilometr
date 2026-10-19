@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { Activity, BellRing, Clock, Minus, Navigation, Plus } from 'lucide-react-native';
+import { Activity, BellRing, Navigation } from 'lucide-react-native';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
@@ -13,13 +13,6 @@ import {
   permissionDeniedMessage,
   useNotificationPreferences,
 } from '../services/notifications';
-
-const LEAD_MIN = [1, 3, 5, 10, 15];
-
-function leadIndex(min: number): number {
-  const i = LEAD_MIN.indexOf(min);
-  return i >= 0 ? i : LEAD_MIN.indexOf(5);
-}
 
 function PrefsToggle({
   value,
@@ -130,8 +123,6 @@ export function NotificationPrefsCard() {
       await update(makePatch(next));
     };
 
-  const leadIdx = leadIndex(prefs.departureAlertLeadMin);
-
   return (
     <View style={styles.card}>
 
@@ -187,72 +178,6 @@ export function NotificationPrefsCard() {
 
       <View style={styles.divider} />
       <Text style={styles.groupTitle}>{p.alertsTitle}</Text>
-
-      <ToggleRow
-        icon={<BellRing size={18} color={scheme.onSurfaceVariant} />}
-        title={p.leaveTitle}
-        hint={p.leaveHint}
-        value={prefs.departureAlertsEnabled}
-        onChange={guarded((v) => ({ departureAlertsEnabled: v }))}
-        disabled={!supported}
-      />
-
-      {prefs.departureAlertsEnabled ? (
-        <View style={styles.leadSetting}>
-          <View style={styles.row}>
-            <View style={styles.rowIcon}>
-              <Clock size={18} color={scheme.onSurfaceVariant} />
-            </View>
-            <View style={styles.rowText}>
-              <Text style={styles.rowTitle}>{p.leadTitle}</Text>
-              <Text style={styles.rowHint}>{p.leadHint}</Text>
-            </View>
-          </View>
-          <View style={styles.stepper}>
-            <Pressable
-              onPress={() => update({ departureAlertLeadMin: LEAD_MIN[Math.max(0, leadIdx - 1)] })}
-              disabled={leadIdx <= 0}
-              style={({ pressed }) => [
-                styles.stepBtn,
-                leadIdx <= 0 && styles.stepBtnDisabled,
-                pressed && leadIdx > 0 && { opacity: 0.7 },
-              ]}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: leadIdx <= 0 }}
-              accessibilityLabel={p.leadLessA11y}
-            >
-              <Minus
-                size={18}
-                color={leadIdx <= 0 ? scheme.outline : scheme.onSecondaryContainer}
-              />
-            </Pressable>
-            <Text style={styles.stepValue}>{s.common.durMin(prefs.departureAlertLeadMin)}</Text>
-            <Pressable
-              onPress={() =>
-                update({
-                  departureAlertLeadMin: LEAD_MIN[Math.min(LEAD_MIN.length - 1, leadIdx + 1)],
-                })
-              }
-              disabled={leadIdx >= LEAD_MIN.length - 1}
-              style={({ pressed }) => [
-                styles.stepBtn,
-                leadIdx >= LEAD_MIN.length - 1 && styles.stepBtnDisabled,
-                pressed && leadIdx < LEAD_MIN.length - 1 && { opacity: 0.7 },
-              ]}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: leadIdx >= LEAD_MIN.length - 1 }}
-              accessibilityLabel={p.leadMoreA11y}
-            >
-              <Plus
-                size={18}
-                color={
-                  leadIdx >= LEAD_MIN.length - 1 ? scheme.outline : scheme.onSecondaryContainer
-                }
-              />
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
 
       <ToggleRow
         icon={<BellRing size={18} color={scheme.onSurfaceVariant} />}
@@ -355,34 +280,4 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   switch: { minHeight: 48, minWidth: 52 },
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.medium,
-    padding: 6,
-    minHeight: 56,
-    gap: 6,
-  },
-  leadSetting: {
-    gap: 10,
-    marginLeft: 32,
-  },
-  stepBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: shape.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepBtnDisabled: {
-    opacity: 0.35,
-  },
-  stepValue: {
-    ...type.labelLarge,
-    color: scheme.onSecondaryContainer,
-    flex: 1,
-    textAlign: 'center',
-    fontVariant: ['tabular-nums'],
-  },
 });

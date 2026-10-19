@@ -20,12 +20,15 @@ test('kontrola manifestu Androida', (t) => {
   const internet = 'android.permission.INTERNET';
   const foreground = `${internet}\nuses-permission: name='android.permission.ACCESS_COARSE_LOCATION'\nuses-permission: name='android.permission.ACCESS_FINE_LOCATION'`;
   assert.equal(check(foreground).status, 0);
+  assert.equal(check(`${internet}\nandroid.permission.SCHEDULE_EXACT_ALARM\nandroid.permission.USE_FULL_SCREEN_INTENT\nandroid.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK`).status, 0);
   for (const permission of [
     'android.permission.ACCESS_BACKGROUND_LOCATION',
     'android.permission.ACTIVITY_RECOGNITION',
     'com.google.android.gms.permission.ACTIVITY_RECOGNITION',
     'android.permission.READ_EXTERNAL_STORAGE',
     'android.permission.CAMERA',
+    'com.sec.android.provider.badge.permission.WRITE',
+    'com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE',
   ]) {
     const result = check(Buffer.from(`\x00\x12${internet}\x00\x12${permission}\x00`));
     assert.notEqual(result.status, 0, permission);
