@@ -5,7 +5,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",
-    "babel-preset-expo": "~57.0.0",
+    "babel-preset-expo": "~58.0.17",
     "expo": "~57.0.24",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.19",
