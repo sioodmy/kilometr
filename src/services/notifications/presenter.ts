@@ -108,7 +108,7 @@ export async function presentTrip(
     // Po przyjeździe serwis dostaje `stopAfterMs` i sam się wyłącza, więc
     // komunikat zostaje na ekranie blokady do końca, a nie znika z APK-iem.
     const json = buildLivePlanJson(p, trip.connection, trip, tr(), {
-      alightAlertsEnabled: prefs.departureAlertsEnabled,
+      alightAlertsEnabled: prefs.trackingEnabled,
     });
     if (await native.startTrip(json)) {
       await dismissFallback();

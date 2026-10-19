@@ -1,6 +1,7 @@
 import { getNotifications, warnUnsupportedOnce } from './module';
 import { setupNotificationCategories } from './categories';
 import { setupNotificationChannels } from './channels';
+import { cancelLegacyDepartureAlerts } from './alerts';
 
 // Jednorazowa konfiguracja powiadomień przy starcie aplikacji. Wołana z
 // `app/_layout` — kanały MUSZĄ istnieć przed prośbą o pozwolenie (Android 13+
@@ -36,4 +37,5 @@ export async function setupNotifications(): Promise<void> {
   setupNotificationHandler();
   await setupNotificationCategories();
   await setupNotificationChannels();
+  await cancelLegacyDepartureAlerts();
 }

@@ -25,7 +25,6 @@ import { resolveTrackedConnection } from './planMatch';
 import { ARRIVED_LINGER_MS, presentTrip, dismissTracking } from './presenter';
 import {
   cancelScheduledAlerts,
-  scheduleDepartureAlerts,
   sendArrivedNotification,
   sendDisruptionAlert,
   shouldAlertDelay,
@@ -195,7 +194,7 @@ async function refresh(): Promise<void> {
 
     // Użytkownik wyłączył wszystkie powiadomienia — nie ma po co dalej
     // planować, tym bardziej że samo śledzenie kosztuje odpytania planera.
-    if (!prefs.trackingEnabled && !prefs.departureAlertsEnabled && !prefs.disruptionAlertsEnabled) {
+    if (!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) {
       await stopTracking();
       return;
     }
@@ -231,14 +230,11 @@ async function refresh(): Promise<void> {
       await stopTracking();
       return;
     }
-    await scheduleDepartureAlerts(p, trip, prefs);
-    if (run !== generation) return;
-
     if (p.phase === 'arrived') {
       // „Jesteś na miejscu" to komunikat, a nie stan — bez alertów go nie ma.
       if (arrivedAt === 0) {
         arrivedAt = p.arriveAtMs;
-        if (prefs.departureAlertsEnabled) await sendArrivedNotification(p, trip);
+        if (prefs.trackingEnabled) await sendArrivedNotification(p, trip);
       }
       // Komunikat zostaje chwilę na ekranie blokady, potem sprzątamy.
       if (Date.now() - arrivedAt >= ARRIVED_LINGER_MS) {
