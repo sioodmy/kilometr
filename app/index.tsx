@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
@@ -127,18 +128,20 @@ export default function HomeScreen() {
   const [newsAlert, setNewsAlert] = useState(false);
 
   // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
-  // gestem, zero klikalnych elementów. pullOption żyje w stanie (oduswitch
-  // tekstu/strzałki), wysokość reveal w shared value (płynnie, bez rerenderów).
+  // gestem, zero klikalnych elementów. pullOption żyje w stanie (odświeża
+  // tekst/strzałkę), wysokość reveal w shared value (płynnie, bez rerenderów).
   const [lastTrip, setLastTrip] = useState<TripHistoryItem | null>(null);
   const [pullOption, setPullOption] = useState<LastTripOption>(0);
   const [scrollLocked, setScrollLocked] = useState(false);
-  const pullHeight = useSharedValue(0);
+  // „Na górze” jako stan też: `enabled` gestu pochodzi z renderu, bo przy
+  // przewiniętej liście pull nie może zabierać zwykłego scrollowania.
+  const [atTop, setAtTop] = useState(true);
   const atTopRef = useRef(true);
+  const pullHeight = useSharedValue(0);
   const optionRef = useRef<LastTripOption>(0);
   const lastTripRef = useRef<TripHistoryItem | null>(null);
   lastTripRef.current = lastTrip;
-  const sheetsOpenRef = useRef(false);
-  sheetsOpenRef.current = sheetMode !== null || manageSheetOpen || addPlaceOpen;
+  const sheetsOpen = sheetMode !== null || manageSheetOpen || addPlaceOpen;
 
   // Widgety mogą otworzyć wyszukiwarkę albo zarządzanie zapisanymi miejscami.
   // Parametry czyścimy, żeby powrót na ekran nie otwierał arkusza ponownie.
@@ -856,45 +859,49 @@ export default function HomeScreen() {
   );
 
   // Pull jak na Twitterze, ale zamiast spinnera: ostatnie połączenie + toggle.
-  // Capture (rodzic pierwszy), żeby ScrollView nie zabrał gestu; bierzemy tylko
-  // zdecydowane pociągnięcia w dół z samej góry, przy zamkniętych arkuszach.
-  const pullResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_, g) =>
-        !sheetsOpenRef.current &&
-        lastTripRef.current != null &&
-        atTopRef.current &&
-        g.dy > 12 &&
-        Math.abs(g.dy) > Math.abs(g.dx) * 1.4,
-      onPanResponderGrant: () => setScrollLocked(true),
-      onPanResponderMove: (_, g) => {
-        const h = Math.max(0, Math.min(LAST_TRIP_MAX, g.dy));
-        pullHeight.value = h;
-        const cur = optionRef.current;
-        const next = nextPullOption(cur, h, LAST_TRIP_ARM_1, LAST_TRIP_ARM_2, LAST_TRIP_DISARM_2);
-        if (next !== cur) {
-          optionRef.current = next;
-          setPullOption(next);
-        }
-      },
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderRelease: () => {
-        const opt = optionRef.current;
-        optionRef.current = 0;
-        setPullOption(0);
-        pullHeight.value = withTiming(0, { duration: 220 });
-        setScrollLocked(false);
-        if (opt === 1) openLastTrip(false);
-        else if (opt === 2) openLastTrip(true);
-      },
-      onPanResponderTerminate: () => {
-        optionRef.current = 0;
-        setPullOption(0);
-        pullHeight.value = withTiming(0, { duration: 220 });
-        setScrollLocked(false);
-      },
-    }),
-  ).current;
+  // Gest na RNGH zamiast PanRespondera: aktywacja dopiero przy wyraźnym
+  // pociągnięciu w dół, przy odchyleniu w bok gest pada. `enabled` z renderu,
+  // bo bez ostatniej trasy, przy otwartych arkuszach i przewiniętej liście
+  // pull nie powinien łapać ani zabierać zwykłego scrollowania.
+  const pullGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetY(12)
+        .failOffsetX([-14, 14])
+        .onStart(() => {
+          setScrollLocked(true);
+        })
+        .onUpdate((e) => {
+          const h = Math.max(0, Math.min(LAST_TRIP_MAX, e.translationY));
+          pullHeight.value = h;
+          const cur = optionRef.current;
+          const next = nextPullOption(cur, h, LAST_TRIP_ARM_1, LAST_TRIP_ARM_2, LAST_TRIP_DISARM_2);
+          if (next !== cur) {
+            optionRef.current = next;
+            setPullOption(next);
+          }
+        })
+        .onEnd(() => {
+          const opt = optionRef.current;
+          optionRef.current = 0;
+          setPullOption(0);
+          pullHeight.value = withTiming(0, { duration: 220 });
+          setScrollLocked(false);
+          if (opt === 1) openLastTrip(false);
+          else if (opt === 2) openLastTrip(true);
+        })
+        .onFinalize(() => {
+          // Po naturalnym końcu onFinalize leci zaraz po onEnd, więc porządki
+          // muszą być idempotentne.
+          optionRef.current = 0;
+          setPullOption(0);
+          pullHeight.value = withTiming(0, { duration: 220 });
+          setScrollLocked(false);
+        })
+        .enabled(atTop && lastTrip != null && !sheetsOpen),
+    [atTop, lastTrip, sheetsOpen, openLastTrip],
+  );
 
   const handleSavePlace = async (placeData: {
     id?: string;
@@ -972,236 +979,244 @@ export default function HomeScreen() {
   }), [currentCoords, locTitle, applySmart, requestSmart]);
 
   return (
-    <View style={styles.root} {...pullResponder.panHandlers}>
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <ScrollView
-          contentContainerStyle={styles.body}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-          scrollEnabled={!scrollLocked}
-          scrollEventThrottle={16}
-          onScroll={(e) => {
-            atTopRef.current = e.nativeEvent.contentOffset.y <= 1;
-          }}
-        >
-          {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
-          <View style={styles.topBar}>
-            <View style={styles.cityContext}>
-              <MapPin size={16} color={scheme.primary} />
-              <Text style={styles.cityName}>{s.city.name(cityId)}</Text>
+    <GestureDetector gesture={pullGesture}>
+      <View style={styles.root}>
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
+            scrollEnabled={!scrollLocked}
+            scrollEventThrottle={16}
+            onScroll={(e) => {
+              // Stan zmienia się dopiero przy przekroczeniu górki: bez tego
+              // każdy scroll event wymuszałby rerender całego ekranu.
+              const top = e.nativeEvent.contentOffset.y <= 1;
+              if (top !== atTopRef.current) {
+                atTopRef.current = top;
+                setAtTop(top);
+              }
+            }}
+          >
+            {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
+            <View style={styles.topBar}>
+              <View style={styles.cityContext}>
+                <MapPin size={16} color={scheme.primary} />
+                <Text style={styles.cityName}>{s.city.name(cityId)}</Text>
+              </View>
+              <View style={styles.topActions}>
+                <Pressable
+                  style={styles.iconBtn}
+                  hitSlop={10}
+                  onPress={() => {
+                    setNewsAlert(false);
+                    void import('../src/services/mpkNews').then(({ markNewsSeen }) => markNewsSeen());
+                    router.push('/news');
+                  }}
+                  accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
+                  accessibilityRole="button"
+                >
+                  <Bell size={20} color={scheme.onSurfaceVariant} />
+                  {newsAlert && (
+                    <View style={styles.alertBadge}>
+                      <Text style={styles.alertMark}>!</Text>
+                    </View>
+                  )}
+                </Pressable>
+                <Pressable
+                  style={styles.iconBtn}
+                  onPress={() => router.push('/settings')}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.settings.title}
+                >
+                  <Settings2 size={20} color={scheme.onSurfaceVariant} />
+                </Pressable>
+              </View>
             </View>
-            <View style={styles.topActions}>
+            <Text style={styles.headerTitle} accessibilityRole="header">
+              {s.home.title}
+            </Text>
+
+            {dataStatus.state === 'downloading' && (
+              <View style={styles.importCard}>
+                <ActivityIndicator size="small" color={scheme.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.importTitle}>{s.home.importingTitle(cityGen)}</Text>
+                  <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
+                </View>
+              </View>
+            )}
+
+            {dataStatus.state === 'importing' && (
+              <View style={styles.importCard}>
+                <ActivityIndicator size="small" color={scheme.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.importTitle}>{dataStatus.step}</Text>
+                  <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
+                </View>
+              </View>
+            )}
+
+            {dataStatus.state === 'error' && (
               <Pressable
-                style={styles.iconBtn}
-                hitSlop={10}
-                onPress={() => {
-                  setNewsAlert(false);
-                  void import('../src/services/mpkNews').then(({ markNewsSeen }) => markNewsSeen());
-                  router.push('/news');
-                }}
-                accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
+                style={styles.importCardError}
                 accessibilityRole="button"
+                onPress={() => void importGtfsFromNetwork()}
               >
-                <Bell size={20} color={scheme.onSurfaceVariant} />
-                {newsAlert && (
-                  <View style={styles.alertBadge}>
-                    <Text style={styles.alertMark}>!</Text>
-                  </View>
-                )}
+                <Text style={styles.importTitleError}>{s.home.importErrorTitle}</Text>
+                <Text style={styles.importSubError}>
+                  {dataStatus.message}. {dataStatus.hint ?? s.home.importErrorRetry}
+                </Text>
               </Pressable>
-              <Pressable
-                style={styles.iconBtn}
-                onPress={() => router.push('/settings')}
-                accessibilityRole="button"
-                accessibilityLabel={s.settings.title}
-              >
-                <Settings2 size={20} color={scheme.onSurfaceVariant} />
-              </Pressable>
-            </View>
-          </View>
-          <Text style={styles.headerTitle} accessibilityRole="header">
-            {s.home.title}
-          </Text>
+            )}
 
-          {dataStatus.state === 'downloading' && (
-            <View style={styles.importCard}>
-              <ActivityIndicator size="small" color={scheme.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.importTitle}>{s.home.importingTitle(cityGen)}</Text>
-                <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
-              </View>
-            </View>
-          )}
-
-          {dataStatus.state === 'importing' && (
-            <View style={styles.importCard}>
-              <ActivityIndicator size="small" color={scheme.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.importTitle}>{dataStatus.step}</Text>
-                <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
-              </View>
-            </View>
-          )}
-
-          {dataStatus.state === 'error' && (
-            <Pressable
-              style={styles.importCardError}
-              accessibilityRole="button"
-              onPress={() => void importGtfsFromNetwork()}
-            >
-              <Text style={styles.importTitleError}>{s.home.importErrorTitle}</Text>
-              <Text style={styles.importSubError}>
-                {dataStatus.message}. {dataStatus.hint ?? s.home.importErrorRetry}
-              </Text>
-            </Pressable>
-          )}
-
-          {gpsUnsupported && (
-            <UnsupportedCityCard
-              city={gpsCity}
-              activeCity={s.city.name(cityId)}
-              onPickStart={() => {
-                setReturnToDestinationAfterStart(false);
-                setQuery('');
-                setSheetMode('start');
-              }}
-            />
-          )}
-
-          <View style={{ height: 24 }} />
-          {smartOrdered.length === 0 && smartReady ? (
-            <View style={styles.emptyCard}>
-              <View style={styles.emptyIcon}>
-                <History size={20} color={scheme.primary} />
-              </View>
-              <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
-              <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
-              <Pressable
-                style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.7 }]}
-                accessibilityRole="button"
-                onPress={() => {
+            {gpsUnsupported && (
+              <UnsupportedCityCard
+                city={gpsCity}
+                activeCity={s.city.name(cityId)}
+                onPickStart={() => {
                   setReturnToDestinationAfterStart(false);
                   setQuery('');
-                  setSheetMode('destination');
+                  setSheetMode('start');
                 }}
-              >
-                <Text style={styles.emptyCtaText}>{s.home.historyEmptyAction}</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
-          )}
+              />
+            )}
 
-          <View style={{ height: 28 }} />
-          <View style={styles.sectionHeader}>
-            <Text style={styles.section}>{s.home.savedTitle}</Text>
-          </View>
-          <SavedPlacesRow
+            <View style={{ height: 24 }} />
+            {smartOrdered.length === 0 && smartReady ? (
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIcon}>
+                  <History size={20} color={scheme.primary} />
+                </View>
+                <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
+                <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.7 }]}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setReturnToDestinationAfterStart(false);
+                    setQuery('');
+                    setSheetMode('destination');
+                  }}
+                >
+                  <Text style={styles.emptyCtaText}>{s.home.historyEmptyAction}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
+            )}
+
+            <View style={{ height: 28 }} />
+            <View style={styles.sectionHeader}>
+              <Text style={styles.section}>{s.home.savedTitle}</Text>
+            </View>
+            <SavedPlacesRow
+              places={saved}
+              onSelect={(p) => goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })}
+              onManage={() => setManageSheetOpen(true)}
+              onEdit={(p) => {
+                setEditingPlace(p);
+                setAddPlaceOpen(true);
+              }}
+            />
+
+            <View style={{ height: thumbInset }} />
+          </ScrollView>
+        </SafeAreaView>
+
+        {!sheetMode && !manageSheetOpen && !addPlaceOpen && (
+          <HomeThumbBar
+            onOpenSearch={() => {
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+              setSheetMode('destination');
+            }}
+            startTitle={locTitle}
+            isCustomStart={isCustomStart}
+            onOpenStart={() => {
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+              setSheetMode('start');
+            }}
+            onResetStart={() => void resetToGps()}
+            gpsUnsupported={gpsUnsupported}
+          />
+        )}
+
+        {sheetMode && (
+          <SearchSheet
+            query={query}
+            loading={loading}
+            results={results}
+            recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
+            savedQuick={quick}
+            placeholder={sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
+            originTitle={sheetMode === 'destination' ? locTitle : undefined}
+            closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
+            notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
+            onChangeOrigin={
+              sheetMode === 'destination'
+                ? () => {
+                    setReturnToDestinationAfterStart(true);
+                    setQuery('');
+                    setSheetMode('start');
+                  }
+                : undefined
+            }
+            onQuery={setQuery}
+            onSelect={(s) => {
+              if (sheetMode === 'start') {
+                handleStartSelect(s);
+              } else {
+                setSheetMode(null);
+                setQuery('');
+                goToRoutes({ id: s.id, title: s.title, address: s.address, lat: s.lat, lon: s.lon });
+              }
+            }}
+            onClose={() => {
+              setSheetMode(null);
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+            }}
+          />
+        )}
+
+        {manageSheetOpen && (
+          <ManagePlacesSheet
             places={saved}
-            onSelect={(p) => goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })}
-            onManage={() => setManageSheetOpen(true)}
-            onEdit={(p) => {
+            onClose={() => setManageSheetOpen(false)}
+            onSelectPlace={(p) => {
+              setManageSheetOpen(false);
+              goToRoutes({ id: p.placeId, title: p.name, address: p.address, lat: p.lat, lon: p.lon });
+            }}
+            onEditPlace={(p) => {
+              setManageSheetOpen(false);
               setEditingPlace(p);
               setAddPlaceOpen(true);
             }}
+            onDeletePlace={handleDeletePlace}
+            onAddNew={() => {
+              setManageSheetOpen(false);
+              setEditingPlace(null);
+              setAddPlaceOpen(true);
+            }}
           />
+        )}
 
-          <View style={{ height: thumbInset }} />
-        </ScrollView>
-      </SafeAreaView>
-
-      {!sheetMode && !manageSheetOpen && !addPlaceOpen && (
-        <HomeThumbBar
-          onOpenSearch={() => {
-            setReturnToDestinationAfterStart(false);
-            setQuery('');
-            setSheetMode('destination');
-          }}
-          startTitle={locTitle}
-          isCustomStart={isCustomStart}
-          onOpenStart={() => {
-            setReturnToDestinationAfterStart(false);
-            setQuery('');
-            setSheetMode('start');
-          }}
-          onResetStart={() => void resetToGps()}
-          gpsUnsupported={gpsUnsupported}
-        />
-      )}
-
-      {sheetMode && (
-        <SearchSheet
-          query={query}
-          loading={loading}
-          results={results}
-          recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
-          savedQuick={quick}
-          placeholder={sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
-          originTitle={sheetMode === 'destination' ? locTitle : undefined}
-          closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
-          notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
-          onChangeOrigin={
-            sheetMode === 'destination'
-              ? () => {
-                  setReturnToDestinationAfterStart(true);
-                  setQuery('');
-                  setSheetMode('start');
-                }
-              : undefined
-          }
-          onQuery={setQuery}
-          onSelect={(s) => {
-            if (sheetMode === 'start') {
-              handleStartSelect(s);
-            } else {
-              setSheetMode(null);
-              setQuery('');
-              goToRoutes({ id: s.id, title: s.title, address: s.address, lat: s.lat, lon: s.lon });
-            }
-          }}
-          onClose={() => {
-            setSheetMode(null);
-            setReturnToDestinationAfterStart(false);
-            setQuery('');
-          }}
-        />
-      )}
-
-      {manageSheetOpen && (
-        <ManagePlacesSheet
-          places={saved}
-          onClose={() => setManageSheetOpen(false)}
-          onSelectPlace={(p) => {
-            setManageSheetOpen(false);
-            goToRoutes({ id: p.placeId, title: p.name, address: p.address, lat: p.lat, lon: p.lon });
-          }}
-          onEditPlace={(p) => {
-            setManageSheetOpen(false);
-            setEditingPlace(p);
-            setAddPlaceOpen(true);
-          }}
-          onDeletePlace={handleDeletePlace}
-          onAddNew={() => {
-            setManageSheetOpen(false);
-            setEditingPlace(null);
-            setAddPlaceOpen(true);
-          }}
-        />
-      )}
-
-      {addPlaceOpen && (
-        <AddPlaceSheet
-          initialPlace={editingPlace}
-          onClose={() => {
-            setAddPlaceOpen(false);
-            setEditingPlace(null);
-          }}
-          onSave={handleSavePlace}
-          onDelete={handleDeletePlace}
-        />
-      )}
-    </View>
+        {addPlaceOpen && (
+          <AddPlaceSheet
+            initialPlace={editingPlace}
+            onClose={() => {
+              setAddPlaceOpen(false);
+              setEditingPlace(null);
+            }}
+            onSave={handleSavePlace}
+            onDelete={handleDeletePlace}
+          />
+        )}
+      </View>
+    </GestureDetector>
   );
 }
 
