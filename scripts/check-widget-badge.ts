@@ -110,6 +110,20 @@ const semantic: Record<string, string> = {
   check('kw_badge_container tło = @color/kw_primary_container', containerOk);
 }
 
+// 5. Odporność na format hex: badgeBgResource musi usuwać prefiks # przed dopasowaniem.
+{
+  const stripsHash = src.includes('removePrefix("#")');
+  check('badgeBgResource usuwa prefiks # przed dopasowaniem', stripsHash);
+}
+
+// 6. Bezpieczeństwo kontrastu: fallback container nie dziedziczy fg z jasnego tła.
+{
+  const containerContrastSafe =
+    src.includes('context.getColor(R.color.kw_on_primary_container)') &&
+    src.includes('ColorUtils.calculateContrast');
+  check('lineBadge chroni kontrast (kw_on_primary_container + ColorUtils)', containerContrastSafe);
+}
+
 console.log('────────────────────────────────────────────────────────────');
 console.log(`Wynik: ${failures === 0 ? 'WSZYSTKO OK' : `${failures} BŁĘDÓW`}`);
 
