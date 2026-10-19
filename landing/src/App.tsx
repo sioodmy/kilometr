@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
+  Coffee,
   Github,
   Menu,
   Moon,
@@ -18,7 +19,14 @@ import { setWebLocale, useStrings, useWebLocale, type Locale } from './i18n';
 import { Phone } from './components/Phone';
 import { Coverage } from './components/Coverage';
 import { InformationPage } from './components/InformationPage';
-import { STABLE_RELEASE_URL, GITHUB_URL, OBTAINIUM_URL, PLAY_URL, RELEASES_URL } from './data';
+import {
+  STABLE_RELEASE_URL,
+  GITHUB_URL,
+  KOFI_URL,
+  OBTAINIUM_URL,
+  PLAY_URL,
+  RELEASES_URL,
+} from './data';
 
 function PlayLink({ className = '' }: { className?: string }) {
   const s = useStrings();
@@ -294,6 +302,22 @@ function Landing() {
           <Github size={17} aria-hidden="true" />
           {s.principles.source}
           <ArrowUpRight size={16} aria-hidden="true" />
+        </a>
+      </section>
+
+      <section
+        id="wsparcie"
+        className="donation section-shell reveal"
+        aria-labelledby="donation-title"
+      >
+        <div className="donation-copy">
+          <Coffee className="donation-icon" strokeWidth={1.5} aria-hidden="true" />
+          <h2 id="donation-title">{s.donation.title}</h2>
+          <p className="section-body">{s.donation.body}</p>
+        </div>
+        <a className="button button-support" href={KOFI_URL}>
+          {s.donation.cta}
+          <ArrowUpRight size={17} aria-hidden="true" />
         </a>
       </section>
 
