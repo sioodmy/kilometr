@@ -93,6 +93,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"app/**/*.{ts,tsx}\" \"scripts/**/*.ts\" \"server/src/**/*.ts\" \"server/scripts/**/*.ts\" \"cloudflare/src/**/*.ts\" \"cloudflare/scripts/**/*.mjs\" \"landing/src/**/*.{ts,tsx}\" \".github/scripts/**/*.mjs\" \"eslint.config.mjs\"",
     "check:nav": "tsx scripts/check-nav.ts",
     "check:navigation-target": "tsx scripts/check-navigation-target.ts",
+    "check:nav-map": "tsx --require ./scripts/stub-expo.cjs scripts/check-nav-map.ts",
     "check:minimap": "tsx scripts/check-minimap.ts",
     "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
     "check:map-colors": "tsx scripts/check-map-colors.ts",
