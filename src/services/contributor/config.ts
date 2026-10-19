@@ -23,6 +23,9 @@ export const DEFAULT_CONTRIBUTOR_SETTINGS: ContributorSettings = { autoFollow: f
 function channelFromVersion(version: string): ContributorChannel {
   if (version.startsWith('nightly-')) return 'nightly';
   if (version.startsWith('dev-') || version.startsWith('test-')) return 'dev';
+  // AAB do Google Play (play-*) nie linkuje Contributora (plugins/
+  // with-contributor.js), więc karta w Ustawieniach nie może go pokazywać.
+  if (version.startsWith('play-')) return 'prod';
   if (/^v?\d+\.\d+\.\d+$/.test(version)) return 'prod';
   return 'local';
 }

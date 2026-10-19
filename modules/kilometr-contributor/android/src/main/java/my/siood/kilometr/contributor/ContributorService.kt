@@ -1,4 +1,4 @@
-package my.siood.kilometr.tracking
+package my.siood.kilometr.contributor
 
 import android.Manifest
 import android.app.Notification
@@ -393,8 +393,8 @@ class ContributorService : Service(), SensorEventListener, LocationListener {
   )
 
   companion object {
-    const val ACTION_START = "my.siood.kilometr.tracking.CONTRIBUTOR_START"
-    const val ACTION_STOP = "my.siood.kilometr.tracking.CONTRIBUTOR_STOP"
+    const val ACTION_START = "my.siood.kilometr.contributor.CONTRIBUTOR_START"
+    const val ACTION_STOP = "my.siood.kilometr.contributor.CONTRIBUTOR_STOP"
     const val EXTRA_META = "meta"
 
     private const val NOTIFICATION_ID = 9091

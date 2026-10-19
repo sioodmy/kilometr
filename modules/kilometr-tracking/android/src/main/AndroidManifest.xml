@@ -12,11 +12,6 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-  <!-- Contributor: FGS typu location zbiera GPS dla testerów. Zgoda na tło
-       (ACCESS_BACKGROUND_LOCATION) jest w app.json. Wpisy FGS tylko
-       odblokowują typ serwisu, zgody runtime są osobną sprawą. -->
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-
   <!-- Warunek promowania powiadomienia do strefy „Live Updates” na Androidzie 16.
        Uprawnienie jest nie-runtime'owe: brak wpisu = brak Live Updates. -->
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
@@ -35,15 +30,11 @@
           android:value="user_initiated_trip_tracking" />
     </service>
 
+    <!-- Telemetria Contributor przeniesiona do modules/kilometr-contributor:
+         buildy prod/play wyłączają moduł z autolinkingu (plugins/with-contributor.js). -->
     <!-- Obsługa przycisku „Zakończ” bez otwierania aplikacji. -->
     <receiver
         android:name="my.siood.kilometr.tracking.TripActionReceiver"
         android:exported="false" />
-
-    <!-- Telemetria Contributor: 1 Hz GPS + akcelerometr do pliku JSONL. -->
-    <service
-        android:name="my.siood.kilometr.tracking.ContributorService"
-        android:exported="false"
-        android:foregroundServiceType="location" />
   </application>
 </manifest>
