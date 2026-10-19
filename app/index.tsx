@@ -1125,12 +1125,18 @@ export default function HomeScreen() {
 
             <View style={{ height: 28 }} />
             <View style={styles.sectionHeader}>
-              <Text style={styles.section}>{s.home.savedTitle}</Text>
+              <Text style={styles.section} accessibilityRole="header">
+                {s.home.savedTitle}
+              </Text>
             </View>
             <SavedPlacesRow
               places={saved}
               onSelect={(p) => goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })}
               onManage={() => setManageSheetOpen(true)}
+              onAdd={() => {
+                setEditingPlace(null);
+                setAddPlaceOpen(true);
+              }}
               onEdit={(p) => {
                 setEditingPlace(p);
                 setAddPlaceOpen(true);
