@@ -1,27 +1,46 @@
 <!doctype html>
 <html lang="pl">
   <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-HZ2W801924"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'G-HZ2W801924');
-    </script>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Kilometr: wrocławskie połączenia MPK liczone na telefonie. Offline, bez reklam i śledzenia. Tym razem dojedziesz."
-    />
-    <title>Kilometr</title>
-    <script type="module" crossorigin src="./assets/index-DbQSwZvv.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CfbRQGiV.css">
+    <meta name="theme-color" content="#fafbf9" />
+    <meta name="description" content="Komunikacja miejska w miastach w całej Polsce. Planuj trasy, sprawdzaj odjazdy i korzystaj z rozkładów offline. Bezpłatnie na Androidzie." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./icon.png" />
+    <link rel="canonical" href="https://sioodmy.github.io/kilometr/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="pl_PL" />
+    <meta property="og:site_name" content="Kilometr" />
+    <meta property="og:title" content="Kilometr. Twoje miasto. Twój rytm." />
+    <meta property="og:description" content="Komunikacja miejska w miastach w całej Polsce. Planuj trasy, sprawdzaj odjazdy i korzystaj z rozkładów offline. Bezpłatnie na Androidzie." />
+    <meta property="og:url" content="https://sioodmy.github.io/kilometr/" />
+    <meta property="og:image" content="https://sioodmy.github.io/kilometr/social-preview.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>Kilometr. Twoje miasto. Twój rytm.</title>
+    <script>
+      try {
+        const preference = localStorage.getItem('kilometr.website.theme');
+        document.documentElement.dataset.theme =
+          preference === 'dark' ||
+          (preference !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark'
+            : 'light';
+      } catch {
+        document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light';
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-QeTp8z87.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-vM1t4fdY.css">
   </head>
   <body>
     <div id="root"></div>
+    <noscript
+      ><p>Komunikacja miejska w miastach w całej Polsce. Planuj trasy, sprawdzaj odjazdy i korzystaj z rozkładów offline. Bezpłatnie na Androidzie.</p>
+      <a href="https://play.google.com/store/apps/details?id=my.siood.kilometr"
+        >Pobierz z Google Play</a
+      ></noscript
+    >
   </body>
 </html>

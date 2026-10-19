@@ -1,6 +1,7 @@
 // Українські переклади. Має відповідати `Strings` (typeof pl) — відсутній
 // ключ або неправильна сигнатура функції це помилка компіляції.
 import type { Strings } from './pl';
+import { uk as landing } from './landing/uk';
 
 function isFew(n: number): boolean {
   const last = n % 10;
@@ -9,6 +10,7 @@ function isFew(n: number): boolean {
 }
 
 export const uk: Strings = {
+  landing,
   common: {
     retry: 'Спробувати знову',
     cancel: 'Скасувати',

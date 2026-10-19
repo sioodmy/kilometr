@@ -1,8 +1,10 @@
 // English dictionary. Must satisfy `Strings` (typeof pl) — a missing key
 // or a wrong function signature is a compile error, not an empty label.
 import type { Strings } from './pl';
+import { en as landing } from './landing/en';
 
 export const en: Strings = {
+  landing,
   common: {
     retry: 'Try again',
     cancel: 'Cancel',

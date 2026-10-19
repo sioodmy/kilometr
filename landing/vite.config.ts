@@ -1,14 +1,24 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { pl } from '../src/i18n/landing/pl';
 
-// Build prosto do docs/ (GitHub Pages bierze docs jako artifact).
-// emptyOutDir: false — w docs/ leżą też screenshots/ i generowany
-// w CI app-release.apk, których nie wolno kasować.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'landing-metadata',
+      transformIndexHtml: (html) =>
+        html
+          .replaceAll('%PAGE_TITLE%', pl.meta.title)
+          .replaceAll('%PAGE_DESCRIPTION%', pl.meta.description)
+          .replaceAll('%PLAY_LABEL%', pl.hero.play)
+          .replaceAll('%NO_SCRIPT%', pl.meta.description),
+    },
+  ],
   base: './',
   build: {
     outDir: '../docs',
+    // docs/screenshots zawiera archiwalne zrzuty z review.
     emptyOutDir: false,
     assetsInlineLimit: 0,
   },
