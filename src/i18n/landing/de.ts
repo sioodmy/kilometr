@@ -25,7 +25,6 @@ export const de: Strings = {
     body: 'Dein täglicher Begleiter im Nahverkehr. Jetzt in Städten in ganz Polen. Auch offline.',
     play: 'Bei Google Play herunterladen',
     secondary: 'So funktioniert’s',
-    caption: 'Platz für echte Screenshots von einem Pixel 7a.',
   },
   intro: {
     title: 'Eine gute Verbindung.\nJeden Tag.',
