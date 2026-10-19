@@ -30,8 +30,6 @@
           android:value="user_initiated_trip_tracking" />
     </service>
 
-    <!-- Telemetria Contributor przeniesiona do modules/kilometr-contributor:
-         buildy prod/play wyłączają moduł z autolinkingu (plugins/with-contributor.js). -->
     <!-- Obsługa przycisku „Zakończ” bez otwierania aplikacji. -->
     <receiver
         android:name="my.siood.kilometr.tracking.TripActionReceiver"

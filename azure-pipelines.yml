@@ -262,7 +262,7 @@ jobs:
           GRADLE_USER_HOME: $(Pipeline.Workspace)/.gradle
           # Gradle regeneruje assets/app.config przy każdym buildzie i bez
           # APP_VERSION wpisuje tam wersję z app.json. Constants.expoConfig.version
-          # musi zgadzać się z tagiem, bo kanał Contributor czyta z niego wersję.
+          # musi zgadzać się z tagiem, bo runtime czyta z niego wersję.
           APP_VERSION: $(tag)
           BUILD_NUMBER: $(build_number)
 
