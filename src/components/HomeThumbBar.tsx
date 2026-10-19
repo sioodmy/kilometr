@@ -41,7 +41,7 @@ export function HomeThumbBar({
             pressed && styles.searchPressed,
           ]}
         >
-          <Search size={26} color={scheme.onPrimary} />
+          <Search size={20} color={scheme.onSurfaceVariant} />
           <Text style={styles.searchLabel}>{s.home.searchLabel}</Text>
         </Pressable>
         <View style={styles.originRow}>
@@ -63,15 +63,10 @@ export function HomeThumbBar({
               size={18}
               color={gpsUnsupported && !isCustomStart ? scheme.warning : scheme.onSurfaceVariant}
             />
-            <View style={styles.originText}>
-              <Text style={styles.originLabel}>{s.routeDetails.origin}</Text>
-              <Text
-                style={[styles.originPlace, gpsUnsupported && !isCustomStart && styles.warning]}
-              >
-                {gpsUnsupported && !isCustomStart ? s.home.pickStart : startTitle}
-              </Text>
-            </View>
-            <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+            <Text style={[styles.originPlace, gpsUnsupported && !isCustomStart && styles.warning]}>
+              {gpsUnsupported && !isCustomStart ? s.home.pickStart : s.home.startFrom(startTitle)}
+            </Text>
+            <ChevronRight size={16} color={scheme.onSurfaceVariant} />
           </Pressable>
           {isCustomStart && (
             <Pressable
@@ -98,11 +93,11 @@ export function HomeThumbBar({
 const styles = StyleSheet.create({
   dock: {
     marginTop: 8,
-    paddingTop: 16,
+    paddingTop: 12,
     paddingHorizontal: 20,
-    backgroundColor: scheme.surfaceContainer,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderTopLeftRadius: shape.extraLarge,
+    borderTopRightRadius: shape.extraLarge,
   },
   bar: {
     width: '100%',
@@ -113,32 +108,30 @@ const styles = StyleSheet.create({
   search: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    minHeight: 64,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: shape.extraLarge,
-    backgroundColor: scheme.primary,
+    gap: 12,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
+    backgroundColor: scheme.surfaceContainerHigh,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  searchLabel: { ...type.titleLarge, fontWeight: '600', color: scheme.onPrimary, flex: 1 },
+  searchLabel: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface, flex: 1 },
   originRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   origin: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    minHeight: 52,
+    gap: 8,
+    minHeight: 48,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: shape.large,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  originText: { flex: 1, gap: 2 },
-  originLabel: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  originPlace: { ...type.bodyMedium, color: scheme.onSurface },
+  originPlace: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flex: 1 },
   warning: { color: scheme.warning },
   reset: {
     width: 48,
@@ -150,7 +143,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   focused: { borderColor: scheme.primary },
-  searchFocused: { borderColor: scheme.onPrimary },
-  searchPressed: { borderRadius: shape.large, transform: [{ scale: 0.98 }] },
+  searchFocused: { borderColor: scheme.primary },
+  searchPressed: { backgroundColor: scheme.surfaceContainerHighest, borderRadius: shape.large },
   pressed: { backgroundColor: scheme.surfaceContainerHighest },
 });
