@@ -4,6 +4,7 @@ import {
   BackHandler,
   findNodeHandle,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,7 @@ import {
   type PressableProps,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -34,6 +36,14 @@ import { LineBadge } from './LineBadge';
 const POP_DISTANCE = 72;
 const peekSpring = { damping: 26, stiffness: 420, mass: 0.8, reduceMotion: ReduceMotion.System };
 
+function subtleHaptic() {
+  if (Platform.OS === 'android') {
+    void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Segment_Frequent_Tick).catch(() => {});
+  } else if (Platform.OS === 'ios') {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {});
+  }
+}
+
 export interface ConnectionPeekHandlers {
   show: (item: Connection, sticky?: boolean) => void;
   ready: (ready: boolean) => void;
@@ -52,6 +62,7 @@ export function ConnectionPeekTarget({
   const active = useRef(false);
   const ready = useRef(false);
   const peeked = useRef(false);
+  const popHapticSent = useRef(false);
   const gesture = useMemo(
     () =>
       Gesture.Pan()
@@ -64,13 +75,19 @@ export function ConnectionPeekTarget({
           active.current = true;
           peeked.current = true;
           ready.current = false;
+          popHapticSent.current = false;
           handlers?.show(item);
+          subtleHaptic();
         })
         .onUpdate(({ translationY }) => {
           const next = translationY <= -POP_DISTANCE;
           if (ready.current !== next) {
             ready.current = next;
             handlers?.ready(next);
+            if (next && !popHapticSent.current) {
+              popHapticSent.current = true;
+              subtleHaptic();
+            }
           }
         })
         .onEnd(({ translationY }) => {
