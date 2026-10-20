@@ -58,10 +58,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       # AAB trafia do testerów z Google Play, więc gra tymi samymi regułami
@@ -117,6 +117,9 @@ jobs:
 
       - name: Install Node dependencies
         run: npm ci
+
+      - name: Test Android permission gate
+        run: npm run check:permission-gate
 
       # Wersja z minutą dnia: każdy build jest na Play unikalny, bo versionCode
       # (banda Play z app.config.js: 600 mln + minuty od 2020-01-01) rośnie
@@ -238,8 +241,9 @@ jobs:
         run: |
           set -euo pipefail
           AAB="android/app/build/outputs/bundle/release/app-release.aab"
-          unzip -p "$AAB" base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/aab-manifest.pb"
-          npm run check:android-permissions -- "$RUNNER_TEMP/aab-manifest.pb"
+          curl -fL --retry 3 https://github.com/google/bundletool/releases/download/1.18.2/bundletool-all-1.18.2.jar -o "$RUNNER_TEMP/bundletool.jar"
+          java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle="$AAB" --module=base > "$RUNNER_TEMP/aab-manifest.xml"
+          npm run check:android-permissions -- "$RUNNER_TEMP/aab-manifest.xml" --xml
 
       - name: Stage AAB
         env:
