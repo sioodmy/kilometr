@@ -909,6 +909,8 @@
   .information-page {
     max-width: 780px;
     padding-block: 70px 110px;
+    overflow-wrap: anywhere;
+    hyphens: auto;
   }
   .information-page h1 {
     font-size: clamp(2.8rem, 6vw, 4.5rem);
