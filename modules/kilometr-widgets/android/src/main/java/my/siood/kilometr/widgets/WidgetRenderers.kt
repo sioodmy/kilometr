@@ -2,6 +2,7 @@ package my.siood.kilometr.widgets
 
 import android.appwidget.AppWidgetManager
 import android.content.Context
+import android.graphics.Paint
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.View
@@ -13,91 +14,86 @@ private const val KIND_DEST = 1
 private const val KIND_TRIP = 2
 private const val KIND_SEARCH = 3
 private const val KIND_SAVED = 4
-
 private const val SEARCH_LINK = "kilometr://?search=1"
 private const val PLACES_LINK = "kilometr://?places=1"
 
-private const val MAX_TRIP_LEGS = 5
+private fun heightDp(options: Bundle?, fallback: Int): Int =
+  options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)?.takeIf { it > 0 } ?: fallback
 
-private fun heightDp(options: Bundle?, fallback: Int): Int {
-  val min = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) ?: 0
-  return if (min > 0) min else fallback
+private fun widthDp(options: Bundle?, fallback: Int): Int =
+  options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)?.takeIf { it > 0 } ?: fallback
+
+private fun RemoteViews.show(id: Int, visible: Boolean) = setViewVisibility(id, if (visible) View.VISIBLE else View.GONE)
+
+private fun updated(labels: Labels, snap: JSONObject?): String {
+  val time = snap?.optLong("updatedAt", 0L) ?: 0L
+  return if (time > 0) labels.format("updated", "t" to clock(time)) ?: clock(time) else ""
 }
-
-private fun widthDp(options: Bundle?, fallback: Int): Int {
-  val min = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) ?: 0
-  return if (min > 0) min else fallback
-}
-
-private fun openAppText(context: Context, labels: Labels, key: String, snap: JSONObject?): String =
-  (if (snap == null) null else labels.get(key)) ?: context.getString(R.string.kw_open_app)
 
 internal object WidgetRenderers {
-
-  fun journey(context: Context, snap: JSONObject?, widgetId: Int, options: Bundle?, now: Long): RemoteViews {
-    val pinned = snap?.optJSONObject("pinned")
-    return if (journeyPhase(pinned?.optLongOrNull("departTs"), pinned?.optLongOrNull("arriveTs"), now) != null) {
-      trip(context, snap, widgetId, options, now)
-    } else {
-      destinations(context, snap, widgetId, options, now)
-    }
-  }
-
   fun next(context: Context, snap: JSONObject?, widgetId: Int, options: Bundle?, now: Long): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.kw_next)
     val labels = Labels(snap?.optJSONObject("labels"))
-    val compact = heightDp(options, 160) < 140 || context.resources.configuration.fontScale > 1.5f
-    views.setViewVisibility(R.id.kw_next_header, if (compact) View.GONE else View.VISIBLE)
-    views.setViewVisibility(R.id.kw_sub, if (compact) View.GONE else View.VISIBLE)
-    views.setTextViewTextSize(R.id.kw_big, TypedValue.COMPLEX_UNIT_SP, if (compact) 28f else 46f)
+    val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
+    val height = heightDp(options, 180)
+    val width = widthDp(options, 180)
+    val compact = height < 170 * scale
+    if (compact) {
+      val padding = (12 * context.resources.displayMetrics.density).toInt()
+      views.setViewPadding(R.id.kw_content, padding, padding, padding, padding)
+      views.setViewPadding(R.id.kw_empty, padding, padding, padding, padding)
+    }
     val item = snap?.optJSONArray("next").objects()
-      .firstOrNull { it.optLong("departTs") >= now - DEPARTED_GRACE_MS }
+      .filter { it.optLong("departTs") >= now - DEPARTED_GRACE_MS }
+      .minByOrNull { it.optLong("departTs") }
 
+    views.show(R.id.kw_content, item != null)
+    views.show(R.id.kw_empty, item == null)
     if (item == null) {
-      views.setViewVisibility(R.id.kw_content, View.GONE)
-      views.setViewVisibility(R.id.kw_empty, View.VISIBLE)
-      views.setTextViewText(R.id.kw_empty_text, openAppText(context, labels, "nextEmpty", snap))
+      val message = labels.get(if (compact) "search" else if (snap == null) "openApp" else "nextEmpty")
+        ?: context.getString(if (compact) R.string.kw_search_hint else R.string.kw_open_app)
+      views.setTextViewText(R.id.kw_empty_text, message)
+      views.show(R.id.kw_empty_icon, height >= 150 * scale)
+      views.setTextViewTextSize(R.id.kw_empty_text, TypedValue.COMPLEX_UNIT_SP, if (compact) 12f else 14f)
       views.setOnClickPendingIntent(android.R.id.background, openLink(context, FALLBACK_LINK, requestCode(widgetId, KIND_NEXT)))
       return views
     }
 
-    views.setViewVisibility(R.id.kw_content, View.VISIBLE)
-    views.setViewVisibility(R.id.kw_empty, View.GONE)
+    views.setTextViewText(R.id.kw_next_label, labels.get("nextTitle") ?: context.getString(R.string.kw_next_label))
+    views.show(R.id.kw_next_header, height >= 130 * scale)
     views.removeAllViews(R.id.kw_badge_slot)
-    views.addView(
-      R.id.kw_badge_slot,
-      lineBadge(context, item.optString("mode"), item.optString("line"), item.optString("lineBg"), item.optString("lineFg")),
-    )
+    views.show(R.id.kw_badge_slot, width >= 170 * scale && !compact)
+    views.addView(R.id.kw_badge_slot,
+      lineBadge(context, item.optString("mode"), item.optString("line"), item.optString("lineBg"), item.optString("lineFg")))
 
     val ts = item.optLong("departTs")
-    val departAt = item.optString("departAt")
     val minutes = minutesUntil(ts, now)
-    when {
-      minutes <= 0 -> {
-        views.setTextViewText(R.id.kw_big, labels.get("now") ?: departAt)
-        views.setViewVisibility(R.id.kw_big_unit, View.GONE)
-      }
-      minutes >= 60 -> {
-        views.setTextViewText(R.id.kw_big, departAt.ifEmpty { clock(ts) })
-        views.setViewVisibility(R.id.kw_big_unit, View.GONE)
-      }
-      else -> {
-        views.setTextViewText(R.id.kw_big, minutes.toString())
-        views.setTextViewText(R.id.kw_big_unit, labels.get("min") ?: "min")
-        views.setViewVisibility(R.id.kw_big_unit, View.VISIBLE)
-      }
+    val numeric = minutes in 1..59
+    val value = when {
+      minutes <= 0 -> labels.get("now") ?: item.optString("departAt")
+      minutes >= 60 -> item.optString("departAt").ifEmpty { clock(ts) }
+      else -> minutes.toString()
     }
+    views.setTextViewText(R.id.kw_big, value)
+    views.show(R.id.kw_big_unit, numeric)
+    views.setTextViewText(R.id.kw_big_unit, labels.get("min") ?: context.getString(R.string.kw_min))
+    val paint = Paint().apply { textSize = 64f * scale }
+    val availableWidth = (width - 32 - if (numeric) 42 * scale else 0f).coerceAtLeast(32f)
+    val widthLimit = 64f * availableWidth / paint.measureText(value).coerceAtLeast(1f)
+    val heightLimit = ((height - 36 - 20 * scale - (if (compact) 20 else 56) * scale) / scale).coerceAtLeast(22f)
+    views.setTextViewTextSize(R.id.kw_big, TypedValue.COMPLEX_UNIT_SP,
+      minOf(if (numeric) 72f else 38f, widthLimit, heightLimit))
+    views.setTextViewTextSize(R.id.kw_big_unit, TypedValue.COMPLEX_UNIT_SP, if (compact) 14f else 18f)
+    views.setTextViewTextSize(R.id.kw_title, TypedValue.COMPLEX_UNIT_SP, if (compact) 14f else 16f)
+    views.setInt(R.id.kw_title, "setMaxLines", if (compact) 1 else 2)
     views.setTextViewText(R.id.kw_title, item.optString("dest"))
-    views.setTextViewText(R.id.kw_sub, labels.format("departAt", "t" to departAt) ?: departAt)
-
-    val st = status(context, labels, item.optInt("delayMin", 0), item.optBoolean("live", false))
-    views.setTextViewText(R.id.kw_status, st?.text ?: "")
-    st?.let { views.setTextColor(R.id.kw_status, it.color) }
-
-    views.setOnClickPendingIntent(
-      android.R.id.background,
-      openLink(context, item.optString("deepLink"), requestCode(widgetId, KIND_NEXT)),
-    )
+    views.show(R.id.kw_sub, !compact)
+    views.setTextViewText(R.id.kw_sub, updated(labels, snap))
+    views.setContentDescription(android.R.id.background,
+      listOf(labels.get("nextTitle"), countdown(labels, ts, item.optString("departAt"), now),
+        item.optString("line"), item.optString("dest"), updated(labels, snap)).filterNotNull().filter { it.isNotBlank() }.joinToString(", "))
+    views.setOnClickPendingIntent(android.R.id.background,
+      openLink(context, item.optString("deepLink"), requestCode(widgetId, KIND_NEXT)))
     return views
   }
 
@@ -105,196 +101,176 @@ internal object WidgetRenderers {
     val views = RemoteViews(context.packageName, R.layout.kw_dest)
     val labels = Labels(snap?.optJSONObject("labels"))
     val items = snap?.optJSONArray("quick").objects().toMutableList()
-    val links = items.map { it.optString("deepLink") }.toSet()
-    snap?.optJSONArray("places").objects().filter { it.optString("deepLink") !in links }.forEach { place ->
-      items.add(JSONObject().put("title", place.optString("name")).put("icon", place.optString("icon"))
-        .put("deepLink", place.optString("deepLink")))
+    val links = items.map { it.optString("deepLink") }.toMutableSet()
+    snap?.optJSONArray("places").objects().forEach { place ->
+      if (links.add(place.optString("deepLink"))) {
+        items.add(JSONObject().put("title", place.optString("name")).put("icon", place.optString("icon"))
+          .put("deepLink", place.optString("deepLink")))
+      }
     }
-
-    views.setTextViewText(R.id.kw_header, snap?.optString("origin", "")?.takeIf { it.isNotBlank() }
-      ?: labels.get("journeyTitle") ?: context.getString(R.string.kw_dest_label))
-    views.setContentDescription(R.id.kw_search_action, labels.get("search") ?: context.getString(R.string.kw_search_hint))
-    views.setOnClickPendingIntent(R.id.kw_search_action, openLink(context, SEARCH_LINK, requestCode(widgetId, KIND_DEST, 15)))
-    val updatedAt = snap?.optLong("updatedAt", 0L) ?: 0L
-    views.setTextViewText(
-      R.id.kw_updated,
-      if (updatedAt > 0) labels.format("updated", "t" to clock(updatedAt)) ?: clock(updatedAt) else "",
-    )
+    val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
+    val height = heightDp(options, 260)
+    val compact = height < 200 * scale
+    val footer = !compact && updated(labels, snap).isNotEmpty()
+    val contentHeight = height - 24 - (if (compact) 0 else 56) - (if (footer) (18 * scale).toInt() else 0)
+    val fit = (contentHeight / (72 * scale)).toInt().coerceIn(1, 4)
+    val rowHeight = contentHeight / minOf(fit, items.size.coerceAtLeast(1))
+    views.show(R.id.kw_dest_header, !compact)
+    views.show(R.id.kw_updated, footer)
+    views.show(R.id.kw_origin, scale <= 1.1f)
+    views.setTextViewText(R.id.kw_header, labels.get("journeyTitle") ?: context.getString(R.string.kw_dest_label))
+    val origin = snap?.optString("origin", "").orEmpty()
+    views.setTextViewText(R.id.kw_origin, if (origin.isNotBlank()) labels.format("fromOrigin", "name" to origin) ?: origin else "")
+    views.setTextViewText(R.id.kw_updated, updated(labels, snap))
+    views.setContentDescription(R.id.kw_refresh_action, labels.get("refresh") ?: context.getString(R.string.kw_refresh))
+    views.setOnClickPendingIntent(R.id.kw_refresh_action, openLink(context, FALLBACK_LINK, requestCode(widgetId, KIND_DEST, 15)))
     views.setOnClickPendingIntent(android.R.id.background, openLink(context, FALLBACK_LINK, requestCode(widgetId, KIND_DEST)))
     views.removeAllViews(R.id.kw_rows)
-
-    if (items.isEmpty()) {
-      views.setViewVisibility(R.id.kw_rows, View.GONE)
-      views.setViewVisibility(R.id.kw_empty, View.VISIBLE)
-      views.setTextViewText(R.id.kw_empty, openAppText(context, labels, "destEmpty", snap))
-      return views
-    }
-    views.setViewVisibility(R.id.kw_rows, View.VISIBLE)
-    views.setViewVisibility(R.id.kw_empty, View.GONE)
-
-    val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
-    val compact = heightDp(options, 200) < 140 * scale
-    views.setViewVisibility(R.id.kw_dest_header, if (compact) View.GONE else View.VISIBLE)
-    val rowHeight = (80 * scale).toInt()
-    val fit = ((heightDp(options, 200) - if (compact) 24 else 72) / rowHeight).coerceIn(1, 4)
+    views.show(R.id.kw_rows, items.isNotEmpty())
+    views.show(R.id.kw_empty, items.isEmpty())
+    views.setTextViewText(R.id.kw_empty, labels.get(if (snap == null) "openApp" else "destEmpty") ?: context.getString(R.string.kw_open_app))
     items.take(fit).forEachIndexed { index, item ->
-      views.addView(R.id.kw_rows, destinationRow(context, labels, item, widgetId, index + 1, now, index == 0))
+      views.addView(R.id.kw_rows, destinationRow(context, labels, item, widgetId, index, now, rowHeight, scale))
     }
     return views
   }
 
-  private fun destinationRow(
-    context: Context,
-    labels: Labels,
-    item: JSONObject,
-    widgetId: Int,
-    slot: Int,
-    now: Long,
-    featured: Boolean,
-  ): RemoteViews {
+  private fun destinationRow(context: Context, labels: Labels, item: JSONObject, widgetId: Int, index: Int,
+    now: Long, rowHeight: Int, scale: Float): RemoteViews {
     val row = RemoteViews(context.packageName, R.layout.kw_dest_row)
-    row.setInt(R.id.kw_row, "setBackgroundResource", if (featured) R.drawable.kw_target_featured else R.drawable.kw_target)
+    val featured = index == 0
     val textColor = context.getColor(if (featured) R.color.kw_on_primary_container else R.color.kw_on_surface)
+    row.setInt(R.id.kw_row, "setBackgroundResource", if (featured) R.drawable.kw_target_featured else R.drawable.kw_target)
     row.setTextColor(R.id.kw_row_title, textColor)
     row.setTextColor(R.id.kw_row_time, textColor)
     row.setTextColor(R.id.kw_row_sub, textColor)
+    row.setInt(R.id.kw_row_icon, "setColorFilter", textColor)
     row.setImageViewResource(R.id.kw_row_icon, placeIcon(item.optString("icon")))
     row.setTextViewText(R.id.kw_row_title, item.optString("title"))
+    row.setInt(R.id.kw_row_title, "setMaxLines", if (rowHeight >= 112 * scale) 2 else 1)
+    row.setTextViewTextSize(R.id.kw_row_time, TypedValue.COMPLEX_UNIT_SP, if (scale > 1.3f) 16f else 24f)
+    row.show(R.id.kw_row_detail, rowHeight >= 76 * scale)
     row.removeAllViews(R.id.kw_row_badge)
-
     val ts = item.optLongOrNull("departTs")
-    if (ts != null && ts >= now - DEPARTED_GRACE_MS) {
-      val departAt = item.optString("departAt")
-      val st = status(context, labels, item.optInt("delayMin", 0), item.optBoolean("live", false))
-      row.setTextViewText(R.id.kw_row_sub, withStatus(labels.format("departAt", "t" to departAt) ?: departAt, st))
-      row.setTextViewText(R.id.kw_row_time, countdown(labels, ts, departAt, now))
-      val line = item.optString("line")
-      if (line.isNotEmpty()) {
-        row.addView(
-          R.id.kw_row_badge,
-          lineBadge(context, item.optString("mode"), line, item.optString("lineBg"), item.optString("lineFg")),
-        )
+    val upcoming = ts != null && ts >= now - DEPARTED_GRACE_MS
+    row.show(R.id.kw_row_time, upcoming)
+    row.show(R.id.kw_row_icon, !upcoming)
+    val detail: String
+    if (upcoming) {
+      val departAt = item.optString("departAt").ifEmpty { clock(ts!!) }
+      detail = labels.format("departAt", "t" to departAt) ?: departAt
+      row.setTextViewText(R.id.kw_row_time, countdown(labels, ts!!, departAt, now))
+      if (item.optString("line").isNotEmpty()) {
+        row.addView(R.id.kw_row_badge,
+          lineBadge(context, item.optString("mode"), item.optString("line"), item.optString("lineBg"), item.optString("lineFg")))
       }
     } else {
-      // Kurs już odjechał, a nowszego nie znamy: tap otworzy trasę i ją przeliczy.
-      row.setTextViewText(R.id.kw_row_sub, labels.get(if (ts != null) "stale" else "checkRoutes") ?: "")
-      row.setTextViewText(R.id.kw_row_time, "")
+      detail = labels.get(if (ts == null) "checkRoutes" else "stale") ?: context.getString(R.string.kw_open_app)
     }
-    row.setOnClickPendingIntent(R.id.kw_row, openLink(context, item.optString("deepLink"), requestCode(widgetId, KIND_DEST, slot)))
+    row.setTextViewText(R.id.kw_row_sub, detail)
+    row.setContentDescription(R.id.kw_row, listOf(item.optString("title"), item.optString("line"), detail).filter { it.isNotBlank() }.joinToString(", "))
+    row.setOnClickPendingIntent(R.id.kw_row, openLink(context, item.optString("deepLink"), requestCode(widgetId, KIND_DEST, index + 1)))
     return row
   }
 
-  private fun trip(context: Context, snap: JSONObject?, widgetId: Int, options: Bundle?, now: Long): RemoteViews {
+  fun trip(context: Context, snap: JSONObject?, widgetId: Int, options: Bundle?, now: Long): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.kw_trip)
     val labels = Labels(snap?.optJSONObject("labels"))
     val trip = snap?.optJSONObject("pinned")
     val departTs = trip?.optLongOrNull("departTs")
     val arriveTs = trip?.optLongOrNull("arriveTs")
-
     val phaseAt = journeyPhase(departTs, arriveTs, now)
+    val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
+    val height = heightDp(options, 200)
+    val compact = height < 220 * scale
+    val compressed = height < 150 * scale
+    if (compressed) {
+      val padding = (12 * context.resources.displayMetrics.density).toInt()
+      views.setViewPadding(R.id.kw_content, padding, padding, padding, padding)
+    }
     if (trip == null || departTs == null || arriveTs == null || phaseAt == null) {
-      views.setViewVisibility(R.id.kw_content, View.GONE)
-      views.setViewVisibility(R.id.kw_empty, View.VISIBLE)
-      views.setTextViewText(R.id.kw_empty_title, labels.get("tripEmptyTitle") ?: context.getString(R.string.kw_trip_label))
-      views.setTextViewText(R.id.kw_empty_body, openAppText(context, labels, "tripEmptyBody", snap))
+      views.show(R.id.kw_content, false)
+      views.show(R.id.kw_empty, true)
+      views.show(R.id.kw_empty_body, !compressed)
+      views.setTextViewText(R.id.kw_empty_title, labels.get("tripEmptyTitle") ?: context.getString(R.string.kw_trip_empty_title))
+      views.setTextViewText(R.id.kw_empty_body, labels.get("tripEmptyBody") ?: context.getString(R.string.kw_trip_empty_body))
       views.setOnClickPendingIntent(android.R.id.background, openLink(context, FALLBACK_LINK, requestCode(widgetId, KIND_TRIP)))
       return views
     }
-
-    views.setViewVisibility(R.id.kw_content, View.VISIBLE)
-    views.setViewVisibility(R.id.kw_empty, View.GONE)
-    views.setTextViewText(R.id.kw_title, trip.optString("toTitle"))
-    views.setTextViewText(R.id.kw_trip_kind, labels.get("trackingTitle") ?: context.getString(R.string.kw_trip_label))
-    views.setTextViewText(R.id.kw_sub, trip.optString("fromTitle"))
-    views.setContentDescription(R.id.kw_search_action, labels.get("search") ?: context.getString(R.string.kw_search_hint))
-    views.setOnClickPendingIntent(R.id.kw_search_action, openLink(context, SEARCH_LINK, requestCode(widgetId, KIND_TRIP, 15)))
-    val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
-    val height = heightDp(options, 200)
-    val compact = height < 180 * scale
-    val compressed = height < 120 * scale
-    views.setViewVisibility(R.id.kw_trip_header, if (compact) View.GONE else View.VISIBLE)
-    views.setViewVisibility(R.id.kw_sub, if (height >= 260 * scale) View.VISIBLE else View.GONE)
-    views.setViewVisibility(R.id.kw_trip_times, if (compact) View.GONE else View.VISIBLE)
-    views.setViewVisibility(R.id.kw_legs, if (compact) View.GONE else View.VISIBLE)
-    views.setViewVisibility(R.id.kw_status, if (compact) View.GONE else View.VISIBLE)
-    views.setViewVisibility(R.id.kw_progress, if (compressed) View.GONE else View.VISIBLE)
+    views.show(R.id.kw_content, true)
+    views.show(R.id.kw_empty, false)
+    views.show(R.id.kw_trip_header, !compact)
+    views.show(R.id.kw_sub, height >= 300 * scale)
+    views.show(R.id.kw_trip_times, !compressed)
+    views.show(R.id.kw_legs, !compact)
+    views.show(R.id.kw_status, !compact)
+    views.show(R.id.kw_progress, !compressed)
+    views.setInt(R.id.kw_title, "setMaxLines", if (compact) 1 else 2)
+    views.setInt(R.id.kw_phase, "setMaxLines", if (compressed) 1 else 2)
     views.setTextViewTextSize(R.id.kw_title, TypedValue.COMPLEX_UNIT_SP, if (compressed) 14f else 22f)
-    views.setTextViewTextSize(R.id.kw_phase, TypedValue.COMPLEX_UNIT_SP, if (compressed) 16f else if (compact) 18f else 24f)
+    views.setTextViewTextSize(R.id.kw_phase, TypedValue.COMPLEX_UNIT_SP, if (compressed) 18f else if (compact) 24f else 30f)
+    views.setTextViewText(R.id.kw_title, trip.optString("toTitle"))
+    views.setTextViewText(R.id.kw_sub, trip.optString("fromTitle"))
+    views.setTextViewText(R.id.kw_trip_kind, labels.get("trackingTitle") ?: context.getString(R.string.kw_trip_label))
     views.setTextViewText(R.id.kw_depart, trip.optString("departAt").ifEmpty { clock(departTs) })
     views.setTextViewText(R.id.kw_arrive, trip.optString("arriveAt").ifEmpty { clock(arriveTs) })
-
-    val st = status(context, labels, trip.optInt("delayMin", 0), trip.optBoolean("live", false))
-    views.setTextViewText(R.id.kw_status, st?.text ?: "")
-    st?.let { views.setTextColor(R.id.kw_status, it.color) }
-
+    views.setTextViewText(R.id.kw_status, updated(labels, snap))
+    views.setContentDescription(R.id.kw_search_action, labels.get("search") ?: context.getString(R.string.kw_search_hint))
+    views.setOnClickPendingIntent(R.id.kw_search_action, openLink(context, SEARCH_LINK, requestCode(widgetId, KIND_TRIP, 15)))
     val phase: String
     val progress: Int
-    when {
-      phaseAt == JourneyPhase.BEFORE -> {
+    when (phaseAt) {
+      JourneyPhase.BEFORE -> {
         val m = minutesUntil(departTs, now)
         phase = when {
           m <= 0 -> labels.get("departNow") ?: ""
-          m >= 60 -> labels.format("departAt", "t" to clock(departTs)) ?: ""
+          m >= 60 -> labels.format("departAt", "t" to clock(departTs)) ?: clock(departTs)
           else -> labels.format("departIn", "n" to m.toString()) ?: ""
         }
         progress = 0
       }
-      phaseAt == JourneyPhase.RIDING -> {
-        val m = minutesUntil(arriveTs, now).coerceAtLeast(1)
-        phase = labels.format("arriveIn", "n" to m.toString()) ?: ""
-        val span = (arriveTs - departTs).coerceAtLeast(1L)
-        progress = (((now - departTs).coerceAtLeast(0L) * 1000L) / span).toInt().coerceIn(0, 1000)
+      JourneyPhase.RIDING -> {
+        phase = labels.format("arriveIn", "n" to minutesUntil(arriveTs, now).coerceAtLeast(1).toString()) ?: ""
+        progress = (((now - departTs) * 1000L) / (arriveTs - departTs)).toInt().coerceIn(0, 1000)
       }
-      else -> {
+      JourneyPhase.ARRIVED -> {
         phase = labels.get("arrived") ?: ""
         progress = 1000
       }
     }
-    views.setTextViewText(R.id.kw_phase, if (compressed && phaseAt != JourneyPhase.ARRIVED) {
-      val target = if (phaseAt == JourneyPhase.BEFORE) departTs else arriveTs
-      countdown(labels, target, clock(target), now)
-    } else phase)
+    views.setTextViewText(R.id.kw_phase, phase)
     views.setContentDescription(android.R.id.background,
       (listOf(trip.optString("fromTitle"), trip.optString("toTitle"), phase) +
         trip.optJSONArray("legs").objects().map { it.optString("line") }).filter { it.isNotBlank() }.joinToString(", "))
     views.setProgressBar(R.id.kw_progress, 1000, progress, false)
-
     views.removeAllViews(R.id.kw_legs)
-    val legLimit = ((widthDp(options, 280) - 32) / (116 * scale)).toInt().coerceIn(1, MAX_TRIP_LEGS)
+    val legLimit = ((widthDp(options, 320) - 32) / (100 * scale)).toInt().coerceIn(1, 5)
     trip.optJSONArray("legs").objects().take(legLimit).forEachIndexed { index, leg ->
       if (index > 0) views.addView(R.id.kw_legs, RemoteViews(context.packageName, R.layout.kw_leg_sep))
-      views.addView(
-        R.id.kw_legs,
-        lineBadge(context, leg.optString("mode"), leg.optString("line"), leg.optString("bg"), leg.optString("fg")),
-      )
+      views.addView(R.id.kw_legs, lineBadge(context, leg.optString("mode"), leg.optString("line"), leg.optString("bg"), leg.optString("fg")))
     }
-
-    views.setOnClickPendingIntent(
-      android.R.id.background,
-      openLink(context, trip.optString("deepLink"), requestCode(widgetId, KIND_TRIP)),
-    )
+    views.setOnClickPendingIntent(android.R.id.background, openLink(context, trip.optString("deepLink"), requestCode(widgetId, KIND_TRIP)))
     return views
   }
 
   fun search(context: Context, snap: JSONObject?, widgetId: Int, options: Bundle?): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.kw_search)
     val labels = Labels(snap?.optJSONObject("labels"))
-    views.setContentDescription(R.id.kw_search, labels.get("search") ?: context.getString(R.string.kw_search_hint))
-    labels.get("search")?.let { views.setTextViewText(R.id.kw_hint, it) }
+    val hint = labels.get("search") ?: context.getString(R.string.kw_search_hint)
+    views.setTextViewText(R.id.kw_hint, hint)
+    views.setContentDescription(R.id.kw_search, hint)
     views.setOnClickPendingIntent(R.id.kw_search, openLink(context, SEARCH_LINK, requestCode(widgetId, KIND_SEARCH)))
-
     views.removeAllViews(R.id.kw_places)
-    // Na wąskim widgecie zostawiamy miejsce na podpowiedź w pasku.
-    val width = widthDp(options, 280) / context.resources.configuration.fontScale.coerceAtLeast(1f)
-    val slots = if (width >= 330) 2 else if (width >= 240) 1 else 0
+    val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
+    val width = widthDp(options, 320)
+    val paint = Paint().apply { textSize = 17f * scale }
+    val searchWidth = paint.measureText(hint) + 76
+    val slots = ((width - searchWidth) / 52).toInt().coerceIn(0, 2)
     snap?.optJSONArray("places").objects().take(slots).forEachIndexed { index, place ->
       val button = RemoteViews(context.packageName, R.layout.kw_place_button)
       button.setImageViewResource(R.id.kw_place_icon, placeIcon(place.optString("icon")))
       button.setContentDescription(R.id.kw_place, place.optString("name"))
-      button.setOnClickPendingIntent(
-        R.id.kw_place,
-        openLink(context, place.optString("deepLink"), requestCode(widgetId, KIND_SEARCH, index + 1)),
-      )
+      button.setOnClickPendingIntent(R.id.kw_place, openLink(context, place.optString("deepLink"), requestCode(widgetId, KIND_SEARCH, index + 1)))
       views.addView(R.id.kw_places, button)
     }
     return views
@@ -305,59 +281,45 @@ internal object WidgetRenderers {
     val labels = Labels(snap?.optJSONObject("labels"))
     val places = snap?.optJSONArray("places").objects()
     val rowIds = intArrayOf(R.id.kw_saved_row_0, R.id.kw_saved_row_1, R.id.kw_saved_row_2)
-
-    views.setOnClickPendingIntent(
-      android.R.id.background,
-      openLink(context, PLACES_LINK, requestCode(widgetId, KIND_SAVED)),
-    )
-    rowIds.forEach {
-      views.removeAllViews(it)
-      views.setViewVisibility(it, View.GONE)
-    }
-
-    if (places.isEmpty()) {
-      views.setViewVisibility(R.id.kw_saved_content, View.GONE)
-      views.setViewVisibility(R.id.kw_saved_empty, View.VISIBLE)
-      views.setTextViewText(
-        R.id.kw_saved_empty_text,
-        labels.get("placesEmpty") ?: context.getString(R.string.kw_saved_empty),
-      )
-      return views
-    }
-
-    views.setViewVisibility(R.id.kw_saved_content, View.VISIBLE)
-    views.setViewVisibility(R.id.kw_saved_empty, View.GONE)
-
+    views.setOnClickPendingIntent(android.R.id.background, openLink(context, PLACES_LINK, requestCode(widgetId, KIND_SAVED)))
+    rowIds.forEach { views.removeAllViews(it); views.show(it, false) }
+    views.show(R.id.kw_saved_content, places.isNotEmpty())
+    views.show(R.id.kw_saved_empty, places.isEmpty())
     val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
-    val columns = (widthDp(options, 160) / (80 * scale)).toInt().coerceIn(1, 4)
-    val maxRows = ((heightDp(options, 160) - 16) / (56 + 24 * scale)).toInt().coerceIn(1, 3)
+    val width = widthDp(options, 180)
+    val height = heightDp(options, 180)
+    views.show(R.id.kw_empty_icon, height >= 160 * scale)
+    views.setTextViewText(R.id.kw_saved_empty_text, labels.get("addPlace") ?: context.getString(R.string.kw_add_place))
+    if (places.isEmpty()) return views
+    val columns = ((width - 16) / (144 * scale)).toInt().coerceIn(1, 3)
+    val maxRows = ((height - 16) / (32 + 38 * scale)).toInt().coerceIn(1, 3)
     val visible = places.take(columns * maxRows)
-    val rows = ((visible.size + columns - 1) / columns).coerceAtLeast(1)
-
+    val rows = (visible.size + columns - 1) / columns
     for (rowIndex in 0 until rows) {
       val rowId = rowIds[rowIndex]
-      views.setViewVisibility(rowId, View.VISIBLE)
+      views.show(rowId, true)
       for (column in 0 until columns) {
         val index = rowIndex * columns + column
+        if (index >= visible.size) break
+        val place = visible[index]
         val tile = RemoteViews(context.packageName, R.layout.kw_saved_place)
-        if (index >= visible.size) {
-          // Niewidoczny wypełniacz zachowuje szerokość kolumn ostatniego rzędu.
-          tile.setViewVisibility(R.id.kw_saved_place, View.INVISIBLE)
-        } else {
-          val place = visible[index]
-          val name = place.optString("name")
-          tile.setImageViewResource(R.id.kw_saved_place_icon, placeIcon(place.optString("icon")))
-          tile.setTextViewText(R.id.kw_saved_place_name, name)
-          tile.setContentDescription(R.id.kw_saved_place, name)
-          tile.setOnClickPendingIntent(
-            R.id.kw_saved_place,
-            openLink(
-              context,
-              place.optString("deepLink"),
-              requestCode(widgetId, KIND_SAVED, index + 1),
-            ),
-          )
+        val bg = when (index % 3) { 0 -> R.drawable.kw_target_featured; 1 -> R.drawable.kw_place_secondary; else -> R.drawable.kw_place_tertiary }
+        val fg = context.getColor(when (index % 3) { 0 -> R.color.kw_on_primary_container; 1 -> R.color.kw_on_secondary_container; else -> R.color.kw_on_tertiary_container })
+        tile.setInt(R.id.kw_saved_place, "setBackgroundResource", bg)
+        tile.setInt(R.id.kw_saved_place_icon, "setColorFilter", fg)
+        tile.setTextColor(R.id.kw_saved_place_name, fg)
+        val showIcon = width / columns >= 144 * scale
+        tile.show(R.id.kw_saved_place_icon, showIcon)
+        val density = context.resources.displayMetrics.density
+        tile.setViewPadding(R.id.kw_saved_place_name, if (showIcon) (10 * density).toInt() else 0, 0, 0, 0)
+        if (!showIcon) {
+          val padding = (8 * density).toInt()
+          tile.setViewPadding(R.id.kw_saved_place, padding, padding, padding, padding)
         }
+        tile.setImageViewResource(R.id.kw_saved_place_icon, placeIcon(place.optString("icon")))
+        tile.setTextViewText(R.id.kw_saved_place_name, place.optString("name"))
+        tile.setContentDescription(R.id.kw_saved_place, place.optString("name"))
+        tile.setOnClickPendingIntent(R.id.kw_saved_place, openLink(context, place.optString("deepLink"), requestCode(widgetId, KIND_SAVED, index + 1)))
         views.addView(rowId, tile)
       }
     }
