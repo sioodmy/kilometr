@@ -150,14 +150,14 @@ internal class TransferProtection(
     val physicalSlack = ((departureMs - arrivalMs) / 1000).toInt() - transferWalk
     val opts = net.root.getJSONObject("options")
     val buffer = max(60, if (target.optString("mode") == "train") opts.getInt("trainMinTransferSec") else opts.getInt("minTransferSec"))
-    val assessment = decision.assess(physicalSlack, buffer, now)
+    val passedAlight = estimate.position > ride.alight + 0.3
+    val assessment = decision.assess(if (passedAlight) -120 else physicalSlack, buffer, now)
     state.put("activeLegIndex", ride.legIndex).put("delaySec", estimate.delaySec)
       .put("slackSec", physicalSlack - buffer).put("nextLine", target.optString("line"))
       .put("currentLine", current.optString("line")).put("transferStop", current.optString("toStop"))
       .put("departureAtMs", departureMs).put("arrivalAtMs", arrivalMs)
       .put("departureSource", if (nextDelay != null) "live" else "schedule")
-    val passedAlight = estimate.position > ride.alight + 0.3
-    if ((assessment == "missed" || passedAlight) && now - lastRoute >= 60_000) {
+    if (assessment == "missed" && now - lastRoute >= 60_000) {
       lastRoute = now
       publish("rerouting", now)
       val cached = prepared?.takeIf { candidate ->

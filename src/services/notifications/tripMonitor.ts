@@ -236,10 +236,11 @@ async function refresh(): Promise<void> {
       await stopTracking();
       return;
     }
-    if (p.phase === 'arrived' && (!trip.protectionEnabled || trip.transfer?.status === 'complete')) {
-      // „Jesteś na miejscu" to komunikat, a nie stan — bez alertów go nie ma.
+    const arrivalAt = Math.max(p.arriveAtMs, trip.transfer?.arrivalAtMs ?? p.arriveAtMs);
+    if (p.phase === 'arrived' && Date.now() >= arrivalAt && (!trip.protectionEnabled || trip.transfer?.status === 'complete')) {
+      // Komunikat o dotarciu pojawia się dopiero po uwzględnieniu opóźnienia z telefonu.
       if (arrivedAt === 0) {
-        arrivedAt = p.arriveAtMs;
+        arrivedAt = arrivalAt;
         if (prefs.trackingEnabled && Platform.OS !== 'ios') await sendArrivedNotification(p, trip);
       }
       // Komunikat zostaje chwilę na ekranie blokady, potem sprzątamy.

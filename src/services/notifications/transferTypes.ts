@@ -1,6 +1,6 @@
 import type { Connection } from '../../types/models';
 
-export type TransferStatus =
+type TransferStatus =
   | 'preparing'
   | 'waiting'
   | 'safe'

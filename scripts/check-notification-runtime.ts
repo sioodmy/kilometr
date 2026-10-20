@@ -360,6 +360,10 @@ async function main() {
   transferState = JSON.stringify({ tripId: 'another-trip', status: 'changed', updatedAt: Date.now(), revision: 2, connection });
   await monitor.refreshTrackedTrip();
   assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, '13:10', 'obcy plan nie nadpisuje aktywnej podróży');
+  mock.timers.setTime(at(13, 16));
+  transferState = JSON.stringify({ tripId: trip.id, status: 'complete', updatedAt: Date.now(), revision: 1, arrivalAtMs: at(13, 20) });
+  await monitor.refreshTrackedTrip();
+  assert.ok(monitor.getTrackedTripSync(), 'opóźnienie ostatniego tramwaju chroni przed przedwczesnym zakończeniem');
   pendingStop = true;
   await monitor.refreshTrackedTrip();
   assert.equal(monitor.getTrackedTripSync(), null, 'natywne Zakończ zatrzymuje także ochronę');
