@@ -196,7 +196,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
   const [focused, setFocused] = useState(false);
-  const verticalTimes = (width - 60) / fontScale < 190;
+  const verticalTimes = (width - 60) / fontScale < 140;
   const Direction = verticalTimes ? ArrowDown : ArrowRight;
   const walkMps = useWalkSpeedMps();
   const now = useMemo(() => nowSec(), [tick]);
@@ -292,15 +292,24 @@ export const ConnectionCard = memo(function ConnectionCard({
       style={({ pressed }) => [styles.card, focused && styles.focused, pressed && styles.pressed]}
     >
       <View style={styles.schedule}>
-        <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
-          <Text style={styles.hours}>{item.departAt}</Text>
-          <Direction size={16} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
-          <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
-        </View>
+        <Text style={[styles.departure, { color: departureColor }]}>
+          {walkOnly ? s.connection.walkRoute : departureText}
+        </Text>
         <View style={styles.duration}>
           <Clock3 size={14} color={scheme.onSecondaryContainer} />
           <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
         </View>
+      </View>
+
+      <View style={[styles.journeyMeta, fontScale > 1.3 && styles.journeyMetaStacked]}>
+        <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
+          <Text style={styles.hours}>{item.departAt}</Text>
+          <Direction size={14} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
+          <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
+        </View>
+        <Text style={styles.metaText} numberOfLines={fontScale > 1.3 ? undefined : 1}>
+          {transferText}
+        </Text>
       </View>
 
       {walkOnly ? (
@@ -312,14 +321,6 @@ export const ConnectionCard = memo(function ConnectionCard({
         <JourneyStrip data={stripData} />
       ) : null}
 
-      <View style={[styles.footer, fontScale > 1.3 && styles.footerStacked]}>
-        <Text style={[styles.departure, { color: departureColor }]}>
-          {walkOnly ? s.connection.walkRoute : departureText}
-        </Text>
-        <Text style={styles.metaText} numberOfLines={fontScale > 1.3 ? undefined : 1}>
-          {transferText}
-        </Text>
-      </View>
       {item.live && item.delayMin !== 0 && (
         <Text style={[styles.delay, { color: item.delayMin > 0 ? scheme.error : scheme.warning }]}>
           {item.delayMin > 0
@@ -384,7 +385,14 @@ const styles = StyleSheet.create({
     columnGap: 10,
     rowGap: 4,
   },
-  departure: { ...type.labelMedium, fontWeight: '600', maxWidth: '100%' },
+  departure: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+    maxWidth: '100%',
+  },
   metaText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1, minWidth: 0 },
   duration: {
     flexDirection: 'row',
@@ -410,12 +418,12 @@ const styles = StyleSheet.create({
   },
   timeRangeStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
   hours: {
-    fontSize: 26,
-    lineHeight: 32,
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: '600',
     letterSpacing: -0.7,
     fontVariant: ['tabular-nums'],
-    color: scheme.onSurface,
+    color: scheme.onSurfaceVariant,
     includeFontPadding: false,
   },
   arrival: { fontWeight: '400', color: scheme.onSurfaceVariant },
@@ -453,13 +461,13 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     flexShrink: 1,
   },
-  footer: {
+  journeyMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
-  footerStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
+  journeyMetaStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
   delay: { ...type.bodySmall, fontWeight: '500', flexShrink: 1 },
   focused: { borderColor: scheme.primary },
   pressed: {
