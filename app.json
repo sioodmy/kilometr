@@ -54,12 +54,12 @@
         "me.everything.badger.permission.BADGE_COUNT_WRITE",
         "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE"
       ],
-      "package": "app.kilometr"
+      "package": "app.kilometr.predictiveback"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "kilometr",
+    "scheme": "kilometr-predictiveback",
     "locales": {
       "pl": "./src/i18n/native/pl.json",
       "en": "./src/i18n/native/en.json",
