@@ -101,6 +101,9 @@ jobs:
       - name: Run logic tests (Journey sharing)
         run: npm run check:sharing
 
+      - name: Check predictive back platform isolation
+        run: npm run check:predictive-back
+
       - name: Run logic tests (Storage)
         run: npm run check:storage
 
