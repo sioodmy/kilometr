@@ -1,11 +1,11 @@
 apply plugin: 'com.android.library'
 apply plugin: 'expo-module-gradle-plugin'
 
-group = 'my.siood.kilometr.maps'
+group = 'app.kilometr.maps'
 version = '1.0.0'
 
 android {
-  namespace "my.siood.kilometr.maps"
+  namespace "app.kilometr.maps"
   defaultConfig {
     versionCode 1
     versionName '1.0.0'

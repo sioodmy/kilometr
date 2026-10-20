@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["my.siood.kilometr.maps.MapServerModule"]
+    "modules": ["app.kilometr.maps.MapServerModule"]
   }
 }

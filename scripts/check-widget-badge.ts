@@ -22,7 +22,7 @@ function check(label: string, cond: boolean, detail = '') {
 const norm = (h: string) => h.trim().replace(/^#/, '').toUpperCase();
 
 const KOTLIN =
-  'modules/kilometr-widgets/android/src/main/java/my/siood/kilometr/widgets/WidgetParts.kt';
+  'modules/kilometr-widgets/android/src/main/java/app/kilometr/widgets/WidgetParts.kt';
 const DRAWABLE_DIR = 'modules/kilometr-widgets/android/src/main/res/drawable';
 
 console.log('=== Spójność badge\'a linii: paleta TS vs mapa widgetu Androida ===');

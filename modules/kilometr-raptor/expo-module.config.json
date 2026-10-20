@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["my.siood.kilometr.raptor.KilometrRaptorModule"]
+    "modules": ["app.kilometr.raptor.KilometrRaptorModule"]
   }
 }
