@@ -4,6 +4,7 @@ import { ArrowDown, ArrowRight, Clock3, Footprints, MapPin } from 'lucide-react-
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
+import { DirectionsWalk } from './DirectionsWalk';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { tr, useStrings } from '../i18n';
@@ -75,7 +76,8 @@ function buildJourneyStripData(legs: Leg[], walkMps: number): JourneyStripData {
   if (firstTransitIdx > 0) {
     const initialWalks = legs.slice(0, firstTransitIdx);
     const walkM = initialWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-    initialWalkMin = walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(initialWalks[0], walkMps);
+    initialWalkMin =
+      walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(initialWalks[0], walkMps);
   }
 
   let finalWalkMin = 0;
@@ -83,7 +85,8 @@ function buildJourneyStripData(legs: Leg[], walkMps: number): JourneyStripData {
   if (lastTransitIdx < legs.length - 1) {
     const finalWalks = legs.slice(lastTransitIdx + 1);
     const walkM = finalWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-    finalWalkMin = walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(finalWalks[0], walkMps);
+    finalWalkMin =
+      walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(finalWalks[0], walkMps);
   }
 
   const items: TransitLegItem[] = [];
@@ -128,42 +131,57 @@ function interchangeStops(raw?: string): string[] {
 
 function JourneyStrip({ data }: { data: JourneyStripData }) {
   const s = useStrings();
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   if (data.transitLegs.length === 0) return null;
 
-  return (
-    <View style={styles.strip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {data.initialWalkMin > 0 ? (
-        <View style={styles.stripEdgeWalk}>
-          <Footprints size={15} color={scheme.onSurfaceVariant} />
-          <Text style={styles.walkPillText}>{s.common.durMin(data.initialWalkMin)}</Text>
-        </View>
-      ) : null}
+  // Wysokość dużego LineBadge: wiersz tekstu 24 + pionowy padding 16.
+  const nodeHeight = Math.max(40, 24 * fontScale + 16);
+  const steps: ({ key: string; leg: Leg } | { key: string; walkMin: number })[] = [];
+  if (data.initialWalkMin > 0) {
+    steps.push({ key: 'initial-walk', walkMin: data.initialWalkMin });
+  }
+  for (const item of data.transitLegs) {
+    steps.push({ key: item.key, leg: item.leg });
+    if (item.transferWalkMinAfter > 0) {
+      steps.push({ key: `${item.key}-walk`, walkMin: item.transferWalkMinAfter });
+    }
+  }
+  if (data.finalWalkMin > 0) {
+    steps.push({ key: 'final-walk', walkMin: data.finalWalkMin });
+  }
 
-      {data.transitLegs.map((item, i) => {
+  return (
+    <View
+      style={styles.strip}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      {steps.map((step, i) => {
+        const leg = 'leg' in step ? step.leg : undefined;
         return (
-          <View key={item.key} style={styles.stripCell}>
-            {i > 0 && <ArrowRight size={14} color={scheme.onSurfaceVariant} />}
-            <View style={styles.stripBadge}>
-              <LineBadge mode={item.leg.mode} line={item.leg.line} maxWidth={width - 112} />
-              <Text style={styles.stripDepart}>{item.leg.departAt}</Text>
-            </View>
-            {item.transferWalkMinAfter > 0 && (
-              <View style={styles.stripEdgeWalk}>
-                <Footprints size={14} color={scheme.onSurfaceVariant} />
-                <Text style={styles.walkPillText}>{s.common.durMin(item.transferWalkMinAfter)}</Text>
+          <View key={step.key} style={styles.stripCell}>
+            {i > 0 && (
+              <View style={[styles.stripConnector, { height: nodeHeight }]}>
+                <ArrowRight size={16} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
               </View>
             )}
+            <View style={styles.stripStep}>
+              <View style={[styles.stripNode, { minHeight: nodeHeight }]}>
+                {leg ? (
+                  <LineBadge mode={leg.mode} line={leg.line} size="large" maxWidth={width - 104} />
+                ) : (
+                  <View style={[styles.walkNode, { minHeight: nodeHeight }]}>
+                    <DirectionsWalk size={22} color={scheme.onSurfaceVariant} />
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.stripCaption, leg && styles.stripDepart]}>
+                {'leg' in step ? step.leg.departAt : s.common.durMin(step.walkMin)}
+              </Text>
+            </View>
           </View>
         );
       })}
-
-      {data.finalWalkMin > 0 ? (
-        <View style={styles.stripEdgeWalk}>
-          <Footprints size={15} color={scheme.onSurfaceVariant} />
-          <Text style={styles.walkPillText}>{s.common.durMin(data.finalWalkMin)}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -184,8 +202,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
   const [focused, setFocused] = useState(false);
-  const stacked = width / fontScale < 390;
-  const verticalTimes = width / fontScale < 260;
+  const verticalTimes = (width - 68) / fontScale < 240;
   const Direction = verticalTimes ? ArrowDown : ArrowRight;
   const walkMps = useWalkSpeedMps();
   const now = useMemo(() => nowSec(), [tick]);
@@ -194,16 +211,14 @@ export const ConnectionCard = memo(function ConnectionCard({
   const stripData = useMemo(() => buildJourneyStripData(item.legs, walkMps), [item.legs, walkMps]);
   const transfers = useMemo(() => interchangeStops(item.interchange), [item.interchange]);
 
-  const minsAgo =
-    item.departureSec > 0 ? Math.round((now - item.departureSec) / 60) : -1;
+  const minsAgo = item.departureSec > 0 ? Math.round((now - item.departureSec) / 60) : -1;
   const historical = minsAgo >= 1;
 
   const effectiveMin =
     item.departureSec > 0 ? Math.round((item.departureSec - now) / 60) : item.departInMin;
 
   const walkM = walkOnly ? item.legs[0]?.walkM : undefined;
-  const walkMin =
-    item.durationMin || (walkM != null ? walkMinutesFor(walkM, walkMps) : 1);
+  const walkMin = item.durationMin || (walkM != null ? walkMinutesFor(walkM, walkMps) : 1);
 
   const departureText = historical
     ? minsAgo <= 1
@@ -222,7 +237,10 @@ export const ConnectionCard = memo(function ConnectionCard({
       ? scheme.error
       : scheme.primary;
 
-  const linesSummary = boarding.map((b) => b.line).filter(Boolean).join(', ');
+  const linesSummary = boarding
+    .map((b) => b.line)
+    .filter(Boolean)
+    .join(', ');
   const accessibilityDesc = tr().connection.cardA11y(
     departureText,
     item.durationMin,
@@ -273,36 +291,29 @@ export const ConnectionCard = memo(function ConnectionCard({
       accessibilityLabel={accessibilityDesc}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      style={({ pressed }) => [
-        styles.card,
-        focused && styles.focused,
-        pressed && styles.pressed,
-      ]}
+      style={({ pressed }) => [styles.card, focused && styles.focused, pressed && styles.pressed]}
     >
       <View style={styles.top}>
         <Text style={[styles.departure, { color: departureColor }]}>
           {walkOnly ? s.connection.walkRoute : departureText}
         </Text>
-        <Text style={styles.metaText}>
-          {walkOnly ? s.connection.walkLeg : transfersLabel(item.transfers)}
-        </Text>
+        <View style={styles.duration}>
+          <Clock3 size={16} color={scheme.onSecondaryContainer} />
+          <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
+        </View>
       </View>
 
-      <View style={[styles.schedule, stacked && styles.scheduleStacked]}>
-        <View style={[styles.hoursRow, verticalTimes && styles.hoursStacked]}>
-          <View style={styles.endpoint}>
-            <Text style={styles.timeLabel}>{s.routeDetails.departure}</Text>
+      <View style={[styles.hoursRow, verticalTimes && styles.hoursStacked]}>
+        <View style={[styles.endpoint, verticalTimes && styles.endpointStacked]}>
+          <Text style={styles.timeLabel}>{s.routeDetails.departure}</Text>
+          <View style={[styles.timeRow, verticalTimes && styles.timeRowStacked]}>
             <Text style={styles.hours}>{item.departAt}</Text>
-          </View>
-          <Direction size={18} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
-          <View style={styles.endpoint}>
-            <Text style={styles.timeLabel}>{s.routeDetails.arrival}</Text>
-            <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
+            <Direction size={20} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
           </View>
         </View>
-        <View style={styles.duration}>
-          <Clock3 size={18} color={scheme.onSecondaryContainer} />
-          <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
+        <View style={[styles.endpoint, verticalTimes && styles.endpointStacked]}>
+          <Text style={styles.timeLabel}>{s.routeDetails.arrival}</Text>
+          <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
         </View>
       </View>
 
@@ -315,23 +326,26 @@ export const ConnectionCard = memo(function ConnectionCard({
         <JourneyStrip data={stripData} />
       ) : null}
 
-      {transfers.length > 0 ? (
-        <View style={styles.transferRow}>
-          {transfers.map((stop) => (
-            <View key={stop} style={styles.transferChip}>
-              <MapPin size={14} color={scheme.onSurfaceVariant} />
-              <Text style={styles.transferChipText}>
-                {stop}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-      {item.live && item.delayMin !== 0 && (
-        <Text style={[styles.delay, { color: item.delayMin > 0 ? scheme.error : scheme.warning }]}>
-          {item.delayMin > 0 ? s.routeDetails.late(item.delayMin) : s.routeDetails.early(-item.delayMin)}
+      <View style={styles.footer}>
+        <Text style={styles.metaText}>
+          {walkOnly ? s.connection.walkLeg : transfersLabel(item.transfers)}
         </Text>
-      )}
+        {transfers.length > 0 && (
+          <View style={styles.transferRow}>
+            <MapPin size={14} color={scheme.onSurfaceVariant} />
+            <Text style={styles.transferText}>{transfers.join(' · ')}</Text>
+          </View>
+        )}
+        {item.live && item.delayMin !== 0 && (
+          <Text
+            style={[styles.delay, { color: item.delayMin > 0 ? scheme.error : scheme.warning }]}
+          >
+            {item.delayMin > 0
+              ? s.routeDetails.late(item.delayMin)
+              : s.routeDetails.early(-item.delayMin)}
+          </Text>
+        )}
+      </View>
     </Pressable>
   );
 });
@@ -389,82 +403,82 @@ const styles = StyleSheet.create({
     columnGap: 12,
     rowGap: 4,
   },
-  departure: { ...type.labelLarge, fontWeight: '600', flexShrink: 1 },
+  departure: { ...type.titleMedium, fontWeight: '600', flexShrink: 1 },
   metaText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  schedule: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  scheduleStacked: { flexDirection: 'column', alignItems: 'flex-start' },
   duration: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    padding: 10,
-    borderRadius: shape.large,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: shape.medium,
     backgroundColor: scheme.secondaryContainer,
     maxWidth: '100%',
   },
   durationText: {
-    ...type.titleMedium,
+    ...type.labelLarge,
     fontWeight: '600',
     color: scheme.onSecondaryContainer,
     flexShrink: 1,
   },
   hoursRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
-    flexShrink: 1,
   },
   hoursStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 8 },
-  endpoint: { gap: 4, flexShrink: 1 },
+  endpoint: { gap: 4, flexGrow: 1, flexBasis: 0, minWidth: 0 },
+  endpointStacked: { flexGrow: 0, flexBasis: 'auto' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  timeRowStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 8 },
   timeLabel: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   hours: {
-    fontSize: 30,
+    fontSize: 34,
+    lineHeight: 40,
     fontWeight: '600',
     letterSpacing: -0.7,
     fontVariant: ['tabular-nums'],
     color: scheme.onSurface,
+    includeFontPadding: false,
   },
   arrival: { fontWeight: '500' },
   strip: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexWrap: 'wrap',
-    gap: 10,
-    padding: 12,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
+    columnGap: 8,
+    rowGap: 14,
+    paddingVertical: 4,
     width: '100%',
   },
   stripCell: {
     flexDirection: 'row',
     gap: 8,
-    flexWrap: 'wrap',
     flexShrink: 1,
     maxWidth: '100%',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
   },
-  stripBadge: {
+  stripConnector: { justifyContent: 'center', alignItems: 'center', width: 16 },
+  stripStep: {
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     flexShrink: 1,
     maxWidth: '100%',
   },
-  stripDepart: {
+  stripNode: { alignItems: 'center', justifyContent: 'center', maxWidth: '100%' },
+  stripCaption: {
     ...type.bodySmall,
-    fontWeight: '500',
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
+    textAlign: 'center',
   },
-  stripEdgeWalk: {
-    flexDirection: 'row',
+  stripDepart: { color: scheme.onSurface, fontWeight: '600' },
+  walkNode: {
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    width: 40,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
   walkOnlyWrap: {
     flexDirection: 'row',
@@ -474,35 +488,35 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.large,
   },
-  walkPillText: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
-  },
   walkLabel: {
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
     flexShrink: 1,
   },
-  transferRow: {
+  footer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+    paddingTop: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
+    columnGap: 12,
+    rowGap: 8,
   },
-  transferChip: {
+  transferRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     maxWidth: '100%',
+    flexShrink: 1,
   },
-  transferChipText: {
+  transferText: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     fontWeight: '500',
     flexShrink: 1,
   },
-  delay: { ...type.bodySmall, fontWeight: '500' },
+  delay: { ...type.bodySmall, fontWeight: '500', flexShrink: 1 },
   focused: { borderColor: scheme.primary },
   pressed: {
     backgroundColor: scheme.surfaceContainerHigh,
