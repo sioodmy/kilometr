@@ -74,7 +74,7 @@ let tracking: TrackingNativeModule | null | undefined;
  */
 export function getTrackingNative(): TrackingNativeModule | null {
   if (tracking !== undefined) return tracking;
-  if (Platform.OS !== 'android') {
+  if (Platform.OS !== 'android' && Platform.OS !== 'ios') {
     tracking = null;
     return tracking;
   }

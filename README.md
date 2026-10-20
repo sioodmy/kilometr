@@ -54,11 +54,49 @@ npx expo start
 npm --prefix server run setup   # baza rozkładu do pobrania przez aplikację
 ```
 
-Wymagane: Node 20, Expo SDK 57. Powiadomienia i śledzenie działają w buildzie deweloperskim, Expo Go ich nie wspiera.
+Wymagane: Node 22.13 lub nowszy, Expo SDK 57. Powiadomienia i śledzenie działają w buildzie deweloperskim, Expo Go ich nie wspiera.
+
+## iOS: IPA do sideloadowania
+
+Wymagany iOS 16.4 lub nowszy. GitHub Actions kompiluje aplikację na macOS z Xcode. IPA jest **niepodpisane**: podpisujesz je swoim kontem Apple, poza GitHubem. Repozytorium nie potrzebuje certyfikatu, profilu provisioning ani hasła do Apple.
+
+### Pobranie
+
+- IPA powstaje tylko na gałęzi `prod`: push do `prod` buduje ją po APK i AAB i dołącza do tego samego [GitHub Release](https://github.com/sioodmy/kilometr/releases). Nie powstaje osobny tag iOS. Błąd kompilacji iOS pozostawia dostępne APK; IPA pojawia się dopiero po udanym buildzie.
+- Build testowy: otwórz [Build IPA](https://github.com/sioodmy/kilometr/actions/workflows/build-ipa.yml), wybierz `Run workflow` na gałęzi `prod`. Po udanym buildzie pobierz artefakt `kilometr-ios-unsigned`, rozpakuj ZIP i znajdź `kilometr-unsigned.ipa`.
+- `dev` testuje wyłącznie APK z Azure Pipelines; GitHub nie buduje tam iOS.
+- Obok IPA znajduje się plik SHA-256. Po rozpakowaniu możesz sprawdzić go poleceniem `shasum -a 256 -c kilometr-unsigned.ipa.sha256`.
+
+### Podpisanie i instalacja
+
+Przykład z [Sideloadly](https://sideloadly.io/) na macOS lub Windows:
+
+1. Zainstaluj Sideloadly według instrukcji producenta. Na Windows przygotuj również wymagane przez niego komponenty Apple.
+2. Podłącz iPhone kablem, odblokuj go i zatwierdź zaufanie do komputera.
+3. Wybierz urządzenie w Sideloadly, przeciągnij `kilometr-unsigned.ipa` do okna i podaj własne konto Apple.
+4. Zachowaj rozszerzenie `KilometrLiveActivity`. Usunięcie rozszerzeń wyłącza ekran blokady i Dynamic Island. Aplikacja oraz rozszerzenie muszą zostać podpisane razem.
+5. Uruchom instalację. Jeśli iOS tego wymaga, zaufaj profilowi w **Ustawienia → Ogólne → VPN i zarządzanie urządzeniem** oraz włącz **Tryb dewelopera** w **Prywatność i ochrona**. Postępuj według komunikatów telefonu.
+6. Otwórz Kilometr, pobierz dane miasta i zezwól na powiadomienia przy pierwszym przypięciu trasy lub ustawieniu przypomnienia.
+
+Bezpłatny podpis Apple zwykle wygasa po 7 dniach. Odnawiaj go w narzędziu do sideloadowania; Sideloadly obsługuje automatyczne odnawianie. Przy aktualizacji używaj tego samego konta i identyfikatora aplikacji, aby zachować dane. Możesz użyć innego narzędzia podpisującego IPA, jeśli obsługuje również dołączone rozszerzenie.
+
+### Co działa inaczej na iOS
+
+Silnik tras Rust i mapy offline działają natywnie. Live Activity pokazuje podróż na ekranie blokady, a na obsługiwanych iPhone'ach także w Dynamic Island. Dotknięcie otwiera trasę. Nie wymaga App Groups ani powiadomień push.
+
+iOS usypia aplikację w tle. Licznik rysuje system, ale nowe dane o pojazdach i opóźnieniach docierają podczas działania aplikacji. Po upływie ważności danych aktywność prosi o otwarcie Kilometr. Nie obiecujemy ciągłego śledzenia GPS po zamknięciu aplikacji. Alert przed wysiadaniem i komunikat o przyjeździe są planowane według ostatniego znanego rozkładu; zmiana trasy lub zakończenie śledzenia aktualizuje albo usuwa oczekujące alerty.
+
+Budzik przed wyjściem jest lokalnym przypomnieniem z dźwiękiem. Tryb cichy, Skupienie i ustawienia powiadomień mogą go wyciszyć. Nie zastępuje budzika systemowego i nie otwiera pełnego ekranu. Widgety pulpitu Androida nie są częścią tego IPA.
+
+### Sprawdzenie na urządzeniu
+
+Po własnym podpisaniu sprawdź pobranie rozkładu, wyszukanie trasy bez internetu, mapę offline, lokalizację, import/eksport kopii i udostępnianie. Przypnij trasę, zablokuj ekran, otwórz ją z Live Activity, usuń aktywność i sprawdź, czy nie wraca. Ustaw oraz anuluj przypomnienie przed wyjściem. Sprawdź odmowę powiadomień i wszystkie cztery języki.
+
+CI sprawdza kompilację, silnik Rust, logikę powiadomień i zawartość IPA. Podpisanie oraz zachowanie na fizycznym iPhonie wymagają testu użytkownika przed promocją do `prod`.
 
 ## Wydania
 
-Kod płynie `feature/*` → `dev` → `main` → `nightly` → `prod`, każdy krok jako PR. APK buduje się tylko na push do `nightly` (`kilometr-nightly.apk`, prerelease) i `prod` (`kilometr-prod.apk`, tag `vX.Y.Z`). Strona ląduje na GitHub Pages z `main`. Push do `dev` odpala dodatkowo preview build na Azure Pipelines (`azure-pipelines.yml`): APK ląduje jako prerelease `dev-...`, a link trafia do komentarza w PR `dev` → `main`. Wymaga zmiennej sekretnej `GITHUB_TOKEN` w Azure DevOps; ręcznie ten sam plik obsługuje tryby `release` i `artifact-only`.
+Kod płynie `feature/*` → `dev` → `main` → `nightly` → `prod`, każdy krok jako PR. Push do `nightly` buduje APK (`kilometr-nightly.apk`, prerelease). Push do `prod` buduje APK (`kilometr-prod.apk`), AAB dla Google Play (`kilometr-prod.aab`) i niepodpisane IPA, wszystko pod tagiem `vX.Y.Z`. Strona ląduje na GitHub Pages z `main`. Dev testuje tylko Azure Pipelines (`azure-pipelines.yml`): preview build APK jako prerelease `dev-...`, a link trafia do komentarza w PR `dev` → `main`. Wymaga zmiennej sekretnej `GITHUB_TOKEN` w Azure DevOps; ręcznie ten sam plik obsługuje tryby `release` i `artifact-only`.
 
 W manifeście nie ma zgód lokalizacji w tle na żadnym kanale (aplikacja zbiera Lokację tylko na pierwszym planie przy śledzeniu podróży), dzięki czemu Play nie wymaga deklaracji Location permissions. Bramki `build-aab.yml` i `build-apk.yml` pilnują tego na wygenerowanych artefaktach.
 

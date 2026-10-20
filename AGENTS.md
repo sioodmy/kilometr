@@ -14,11 +14,12 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - `nightly` - buildy używalne jako daily driver, mogą być niestabilne; nie są prod ready.
 - `prod` - przetestowane manualnie na realnym urządzeniu, gotowe dla end userów; czeka na feedback testerów.
 - Wszystkie cztery (`dev`, `main`, `nightly`, `prod`) są chronione (ruleset): zakaz direct pushy, tylko PR.
-- APK buduje się WYŁĄCZNIE na push do `nightly` i `prod` (`.github/workflows/build-apk.yml`). Push do `dev`/`main` nie triggeruje builda.
+- Buildy na GitHubie startują WYŁĄCZNIE na push do `nightly` i `prod` (`.github/workflows/build-apk.yml`). Push do `dev`/`main` nie triggeruje builda; `dev` testuje tylko APK z Azure Pipelines.
 - Każdy build `nightly`/`prod` od razu tworzy nowy GitHub Release z notkami z conventional commitów (bez ręcznego szukania artefaktów).
-  - `prod`: tag `vX.Y.Z` (auto-semver z commitów), nie-prerelease, asset `kilometr-prod.apk`.
-  - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease, asset `kilometr-nightly.apk`.
+  - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease; buduje tylko APK (`kilometr-nightly.apk`).
+  - `prod`: tag `vX.Y.Z` (auto-semver z commitów), nie-prerelease; buduje APK (`kilometr-prod.apk`), AAB do Google Play (`kilometr-prod.aab`) oraz niepodpisane IPA do sideloadowania, wszystko w jednym release.
   - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
+- iOS buduje się wyłącznie z gałęzi `prod` (`.github/workflows/build-ipa.yml`). Nie ma buildów iOS na `dev`/`main`/`nightly`.
 - Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
 - Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie. Jeśli dev jest do przodu ze zmianami w stosunku do main, a PR nie istnieje, to utwórz PR z tą todo listą
 - W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature. Każdy element jest konkretny i zawiera odnośnik do PR, który go wprowadza, np. `- [ ] Widget odjazdów ulubionej linii (#142)`.

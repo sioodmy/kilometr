@@ -1,5 +1,8 @@
 {
-  "platforms": ["android"],
+  "platforms": ["android", "apple"],
+  "apple": {
+    "modules": ["MapServerModule"]
+  },
   "android": {
     "modules": ["app.kilometr.maps.MapServerModule"]
   }

@@ -1,4 +1,4 @@
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { kvGet, kvRemove, kvSet } from '../storage';
 import { inCityBounds } from '../../cities';
 import { getActiveCitySync } from '../cityStore';
@@ -234,7 +234,7 @@ async function refresh(): Promise<void> {
       // „Jesteś na miejscu" to komunikat, a nie stan — bez alertów go nie ma.
       if (arrivedAt === 0) {
         arrivedAt = p.arriveAtMs;
-        if (prefs.trackingEnabled) await sendArrivedNotification(p, trip);
+        if (prefs.trackingEnabled && Platform.OS !== 'ios') await sendArrivedNotification(p, trip);
       }
       // Komunikat zostaje chwilę na ekranie blokady, potem sprzątamy.
       if (Date.now() - arrivedAt >= ARRIVED_LINGER_MS) {

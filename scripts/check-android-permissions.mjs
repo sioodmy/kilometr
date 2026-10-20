@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import configPlugins from 'expo/config-plugins.js';
 
 const allowed = new Set([
   'android.permission.INTERNET',
@@ -23,22 +24,25 @@ const allowed = new Set([
 
 const [file, format] = process.argv.slice(2);
 assert(file, 'Podaj plik z manifestem AAB, wynikiem aapt lub konfiguracją Expo.');
-const contents = readFileSync(file);
+assert([undefined, '--expo-config', '--xml'].includes(format), `Nieznany format: ${format}`);
 let permissions;
 if (format === '--expo-config') {
-  const config = JSON.parse(contents.toString());
+  const config = JSON.parse(readFileSync(file, 'utf8'));
   const manifest = config._internal.modResults.android.manifest.manifest;
-  permissions = manifest['uses-permission']
+  permissions = ['uses-permission', 'uses-permission-sdk-23']
+    .flatMap((key) => manifest[key] ?? [])
+    .filter((entry) => entry.$['tools:node'] !== 'remove')
+    .map((entry) => entry.$['android:name']);
+} else if (format === '--xml') {
+  const { manifest } = await configPlugins.AndroidConfig.Manifest.readAndroidManifestAsync(file);
+  permissions = ['uses-permission', 'uses-permission-sdk-23']
+    .flatMap((key) => manifest[key] ?? [])
     .filter((entry) => entry.$['tools:node'] !== 'remove')
     .map((entry) => entry.$['android:name']);
 } else {
-  // Manifest AAB zawiera pełne nazwy uprawnień jako ciągi UTF-8 w protobuf.
-  permissions =
-    contents
-      .toString()
-      .match(
-        /\b(?:[a-z][a-z0-9_]*\.)+(?:permission\.[A-Z][A-Z0-9_]*|[A-Z][A-Z0-9_]*_PERMISSION)\b/g,
-      ) ?? [];
+  permissions = [
+    ...readFileSync(file, 'utf8').matchAll(/^uses-permission(?:-sdk-23)?: name='([^']+)'/gm),
+  ].map((match) => match[1]);
 }
 
 assert(

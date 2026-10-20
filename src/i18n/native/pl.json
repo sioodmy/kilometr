@@ -1,0 +1,5 @@
+{
+  "ios": {
+    "NSLocationWhenInUseUsageDescription": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji."
+  }
+}

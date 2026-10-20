@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, AppState, findNodeHandle, Modal, Pressable,
+  AccessibilityInfo, ActivityIndicator, AppState, findNodeHandle, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, useWindowDimensions, View, type StyleProp, type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -168,7 +168,7 @@ export function DepartureAlarmDialog({ connection, alarm, onClose }: {
           </View>}
           <View style={styles.sound}>
             <Volume2 size={17} color={scheme.onSurfaceVariant} />
-            <Text style={styles.note}>{a.soundHint}</Text>
+            <Text style={styles.note}>{Platform.OS === 'ios' ? s.ios.alarmHint : a.soundHint}</Text>
           </View>
           {supported && <Action label={a.preview} onPress={() => void preview()} disabled={busy} style={styles.preview}>
             <Eye size={18} color={scheme.primary} />

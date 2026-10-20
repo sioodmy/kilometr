@@ -1,5 +1,8 @@
 {
-  "platforms": ["android"],
+  "platforms": ["android", "apple"],
+  "apple": {
+    "modules": ["KilometrRaptorModule"]
+  },
   "android": {
     "modules": ["app.kilometr.raptor.KilometrRaptorModule"]
   }

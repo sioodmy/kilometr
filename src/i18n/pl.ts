@@ -567,6 +567,10 @@ export const pl = {
     langSystem: 'Systemowy',
   },
   onboarding: {
+    stepCount: (n: number, total: number) => `${n} / ${total}`,
+    intro: 'Wybierz miasto i pobierz rozkład. Połączenia wyszukasz też bez internetu.',
+    openSettings: 'Otwórz ustawienia',
+    permissionDenied: 'Możesz kontynuować bez tej zgody i zmienić ją później w ustawieniach telefonu.',
     steps: ['Witaj', 'Uprawnienia', 'Miasto', 'Rozkład', 'Miejsca'] as string[],
     granted: 'Włączone',
     denied: 'Wyłączone',
@@ -662,18 +666,18 @@ export const pl = {
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
     brand: 'Kilometr',
     tagline: 'Tym razem dojedziesz.',
-    fast: 'Szybko',
+    fast: 'Planowanie offline',
     noAds: 'Bez reklam',
     noPay: 'Bez mikropłatności',
     permTitle: 'Dostęp aplikacji',
     permSub: 'Lokalizacja i powiadomienia. Oba opcjonalne.',
     locTitle: 'Lokalizacja',
     locBody:
-      'Służy do ustawienia punktu startowego i sortowania przystanków według odległości. Przetwarzana lokalnie na urządzeniu.',
+      'Pokazuje pobliskie przystanki i postęp aktywnej podróży. Przy ustalaniu adresu współrzędne trafiają do OpenStreetMap Nominatim. Podczas aktywnej podróży GPS może działać przy zgaszonym ekranie.',
     locOn: 'Lokalizacja włączona.',
     locAllow: 'Zezwól na lokalizację',
     notifTitle: 'Powiadomienia',
-    notifBody: 'Służą do wyświetlania przypiętego połączenia i alertów o utrudnieniach.',
+    notifBody: 'Pokazują przypiętą podróż i przypominają o wybranym odjeździe lub wysiadaniu.',
     notifOn: 'Powiadomienia włączone.',
     notifExpoGo:
       'Podgląd w Expo Go: powiadomienia (przypięte połączenie) działają w buildzie deweloperskim.',
@@ -710,7 +714,7 @@ export const pl = {
     addressFor: (name: string) => `Adres dla: ${name}…`,
     noResults: (q: string) =>
       `Brak wyników dla „${q}”. Przystanki szukamy offline, adresy wymagają internetu.`,
-    start: 'Zaczynamy',
+    start: 'Skonfiguruj Kilometr',
     next: 'Dalej',
     later: 'Później',
     footerRetry: 'Spróbuj ponownie',
@@ -1061,6 +1065,11 @@ export const pl = {
     timeA11y: (label: string) => `Czas odjazdu: ${label}. Dotknij, aby zmienić.`,
   },
   connection: {
+    previewTitle: 'Podgląd połączenia',
+    previewHint: 'Przytrzymaj, aby podejrzeć połączenie.',
+    previewSwipe: 'Przesuń w górę, aby otworzyć szczegóły',
+    previewRelease: 'Puść, aby otworzyć szczegóły',
+    previewOpen: 'Otwórz szczegóły',
     transfers: (n: number) =>
       n <= 0
         ? 'bezpośrednio'
@@ -1243,6 +1252,14 @@ export const pl = {
     newDeparture: (at: string) => `nowy odjazd ${at}`,
     delayTitle: (line: string, eta: string) => `Opóźnienie • ${line} • ${eta}`,
   },
+  ios: {
+    locationPermission: 'Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.',
+    liveTitle: 'Aktywność na żywo',
+    liveHint: 'Czas podróży na ekranie blokady i Dynamic Island. Dane odświeżają się, gdy aplikacja jest aktywna.',
+    liveDisabled: 'Włącz Aktywności na żywo w ustawieniach systemowych aplikacji Kilometr.',
+    stale: 'Według rozkładu. Otwórz Kilometr, aby odświeżyć.',
+    alarmHint: 'Przypomnienie z dźwiękiem powiadomienia. Tryb cichy i Skupienie mogą je wyciszyć. Nie uruchamia pełnoekranowego budzika.',
+  },
   alarm: {
     title: 'Budzik na podróż',
     set: 'Ustaw budzik',
@@ -1266,7 +1283,7 @@ export const pl = {
     showRoute: 'Pokaż połączenie',
     channel: 'Budzik na podróż',
     channelDescription: 'Pełnoekranowe alarmy ustawione dla wybranego połączenia.',
-    unavailable: 'Budzik jest dostępny w aplikacji Kilometr na Androida po aktualizacji.',
+    unavailable: 'Zainstaluj aktualną aplikację Kilometr, aby ustawić przypomnienie.',
     tooLate: 'Ta godzina już minęła. Wybierz mniej minut przed wyjściem.',
     past: 'Podróż już się rozpoczęła.',
     error: 'Nie udało się ustawić budzika. Spróbuj ponownie.',
