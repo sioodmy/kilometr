@@ -31,6 +31,7 @@ import {
   Navigation,
   Minus,
   Plus,
+  ShieldCheck,
   Rabbit,
   RotateCcw,
   TrainFront,
@@ -485,6 +486,13 @@ export default function SettingsScreen() {
                 title={s.settings.backupTitle}
                 detail={s.settings.backupSummary}
                 onPress={() => openSection('backup')}
+              />
+              <View style={styles.menuDivider} />
+              <SettingsLink
+                icon={ShieldCheck}
+                title={s.landing.privacy.linkLabel}
+                detail={s.landing.privacy.locationTitle}
+                onPress={() => router.push('/privacy')}
               />
             </View>
             <Pressable
