@@ -2,27 +2,36 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
+private struct TripCountdown: View {
+  let context: ActivityViewContext<TripAttributes>
+
+  var body: some View {
+    let target = context.isStale ? context.state.endAt : context.state.countdownAt
+    Text(timerInterval: Date(timeIntervalSince1970: min(context.state.startAt, target - 1))...Date(timeIntervalSince1970: target),
+         countsDown: true)
+      .monospacedDigit().multilineTextAlignment(.trailing)
+  }
+}
+
 private struct TripSummary: View {
   let context: ActivityViewContext<TripAttributes>
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(context.state.title).font(.headline).lineLimit(2)
-      Text(context.state.subtitle).font(.subheadline).lineLimit(2)
+      Text(context.isStale ? context.state.staleTitle : context.state.title).font(.headline).lineLimit(2)
       if context.isStale {
         Text(context.state.staleLabel).font(.caption)
       } else {
-        HStack {
-          Text(context.state.line).font(.headline)
-          Spacer()
-          Text(timerInterval: Date(timeIntervalSince1970: min(context.state.startAt, context.state.countdownAt - 1))...Date(timeIntervalSince1970: context.state.countdownAt),
-               countsDown: true)
-            .monospacedDigit().multilineTextAlignment(.trailing)
-        }
-        ProgressView(timerInterval: Date(timeIntervalSince1970: context.state.startAt)...Date(timeIntervalSince1970: context.state.endAt),
-                     countsDown: false).tint(Color(red: 0.36, green: 0.86, blue: 0.75))
-          .labelsHidden()
+        Text(context.state.subtitle).font(.subheadline).lineLimit(2)
       }
+      HStack {
+        Text(context.isStale ? context.state.brand : context.state.line).font(.headline)
+        Spacer()
+        TripCountdown(context: context)
+      }
+      ProgressView(timerInterval: Date(timeIntervalSince1970: context.state.startAt)...Date(timeIntervalSince1970: context.state.endAt),
+                   countsDown: false).tint(Color(red: 0.36, green: 0.86, blue: 0.75))
+        .labelsHidden()
     }
     .foregroundStyle(.white)
   }
@@ -43,18 +52,13 @@ struct KilometrLiveActivity: Widget {
           TripSummary(context: context)
         }
       } compactLeading: {
-        Text(context.state.line).font(.caption).lineLimit(1)
+        Text(context.isStale ? String(context.state.brand.prefix(1)) : context.state.line).font(.caption).lineLimit(1)
+          .accessibilityLabel(context.isStale ? context.state.staleTitle : context.state.title)
       } compactTrailing: {
-        if context.isStale {
-          Image(systemName: "arrow.clockwise")
-            .accessibilityLabel(context.state.staleLabel)
-        } else {
-          Text(timerInterval: Date(timeIntervalSince1970: min(context.state.startAt, context.state.countdownAt - 1))...Date(timeIntervalSince1970: context.state.countdownAt),
-               countsDown: true)
-            .monospacedDigit().frame(maxWidth: 56)
-        }
+        TripCountdown(context: context).frame(maxWidth: 56)
       } minimal: {
-        Text(context.state.line).font(.caption2).lineLimit(1)
+        Text(context.isStale ? String(context.state.brand.prefix(1)) : context.state.line).font(.caption2).lineLimit(1)
+          .accessibilityLabel(context.isStale ? context.state.staleTitle : context.state.title)
       }
       .widgetURL(URL(string: context.attributes.deepLink))
       .keylineTint(Color(red: 0.36, green: 0.86, blue: 0.75))

@@ -7,6 +7,7 @@ import type { Connection } from '../types/models';
 import { clockFromMs } from './notifications/format';
 import { departureAlarmTiming } from './departureAlarmPlan';
 import { iosDepartureAlarm } from './iosDepartureAlarm';
+import { areNotificationsSupported } from './notifications/module';
 
 export interface AlarmPermissions {
   notifications: boolean;
@@ -42,7 +43,8 @@ const native: AlarmNative | null = Platform.OS === 'android'
 let cached: DepartureAlarm | null = null;
 const listeners = new Set<() => void>();
 
-export const isDepartureAlarmSupported = () => native != null;
+export const isDepartureAlarmSupported = () =>
+  native != null && (Platform.OS !== 'ios' || areNotificationsSupported());
 export const getDepartureAlarmSync = () => cached;
 
 export async function refreshDepartureAlarm(): Promise<void> {

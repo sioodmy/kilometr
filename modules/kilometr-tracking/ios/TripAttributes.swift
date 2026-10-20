@@ -5,10 +5,12 @@ struct TripAttributes: ActivityAttributes {
     let title: String
     let subtitle: String
     let line: String
+    let brand: String
     let startAt: Double
     let endAt: Double
     let countdownAt: Double
     let staleLabel: String
+    let staleTitle: String
   }
 
   let tripId: String
@@ -21,15 +23,17 @@ struct TripActivityPlan: Decodable {
   let title: String
   let subtitle: String
   let line: String
+  let brand: String
   let startAt: Double
   let endAt: Double
   let countdownAt: Double
   let staleAt: Double
   let staleLabel: String
+  let staleTitle: String
   let arrived: Bool
 
   var state: TripAttributes.ContentState {
-    .init(title: title, subtitle: subtitle, line: line, startAt: startAt,
-          endAt: endAt, countdownAt: countdownAt, staleLabel: staleLabel)
+    .init(title: title, subtitle: subtitle, line: line, brand: brand, startAt: startAt,
+          endAt: endAt, countdownAt: countdownAt, staleLabel: staleLabel, staleTitle: staleTitle)
   }
 }
