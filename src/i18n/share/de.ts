@@ -35,8 +35,13 @@ export const de: ShareStrings = {
   close: 'Schließen',
   message: (from, to, departure, arrival, lines) =>
     `Ich fahre von ${from} nach ${to}${lines ? ` (${lines})` : ''}. Abfahrt ${departure}, Ankunft um ${arrival}.`,
-  snapshot:
-    'Reiseplan zum Zeitpunkt des Teilens. Standort und Verspätungen werden nicht aktualisiert.',
+  snapshot: 'Reiseplan zum Zeitpunkt des Teilens. Verspätungen werden nicht aktualisiert.',
+  estimatedPosition: 'Geschätzte Position laut Fahrplan',
+  positionNote: 'Das Symbol bewegt sich nach Fahrplan, ohne GPS-Daten oder aktuelle Verspätungen.',
+  vehicleAt: (mode, stop) => `${mode}: ${stop}. Geschätzte Position laut Fahrplan.`,
+  vehicleBetween: (mode, from, to) =>
+    `${mode}: zwischen ${from} und ${to}. Geschätzte Position laut Fahrplan.`,
+  hideStops: 'Haltestellen ausblenden',
   privacy: 'Der Link enthält deine Route und Zeiten. Jeder, dem du ihn sendest, kann ihn öffnen.',
   pageTitle: 'Geteilte Verbindung',
   itinerary: 'Reiseverlauf',
