@@ -4,6 +4,10 @@ name: Build & Release APK
 # `main` i `dev` nie budują APK, promocja kodu robi się PR-ami, a build
 # startuje dopiero na wyraźnym kanale wydawniczym.
 #
+# Kanały:
+# - nightly: tylko APK + GitHub Release (prerelease).
+# - prod: APK + AAB (Google Play) + niepodpisane IPA + GitHub Release.
+#
 # Ręczne uruchomienie (workflow_dispatch) ma dwa tryby:
 #
 # - `release` (domyślny): jak push. Kanał wynika z gałęzi (nightly/prod),
@@ -58,6 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      channel: ${{ steps.release.outputs.channel }}
       publish: ${{ steps.release.outputs.publish }}
     # URL rozkładu jest wpieczony w kodzie (src/services/gtfsConfig.ts,
     # data.kilometr.app), więc build nie potrzebuje żadnego sekretu.
@@ -490,10 +495,21 @@ jobs:
           echo "### APK opublikowane ($CHANNEL)" >> "$GITHUB_STEP_SUMMARY"
           echo "[${APK_NAME}]($URL)" >> "$GITHUB_STEP_SUMMARY"
 
+  # IPA tylko na prod. Nightly kończy się na APK.
   build-ios:
     needs: build-apk
-    if: needs.build-apk.outputs.publish == 'true'
+    if: needs.build-apk.outputs.publish == 'true' && needs.build-apk.outputs.channel == 'prod'
     uses: ./.github/workflows/build-ipa.yml
+    with:
+      release_tag: ${{ needs.build-apk.outputs.tag }}
+    permissions:
+      contents: write
+
+  # AAB dla Google Play tylko na prod, dołączony do tego samego wydania co APK.
+  build-aab:
+    needs: build-apk
+    if: needs.build-apk.outputs.publish == 'true' && needs.build-apk.outputs.channel == 'prod'
+    uses: ./.github/workflows/build-aab.yml
     with:
       release_tag: ${{ needs.build-apk.outputs.tag }}
     permissions:

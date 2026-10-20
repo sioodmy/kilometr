@@ -1,10 +1,14 @@
 name: Build Play AAB
 
-# AAB (Android App Bundle) do ręcznego wgrania w Google Play Console:
+# AAB (Android App Bundle) do Google Play Console:
 # Testing -> Internal testing -> New release -> Upload app-release.aab.
 # Bundle jest podpisywany kluczem upload z sekretów repo, więc Play go
-# przyjmie od razu. Z założenia ręczny (workflow_dispatch) i zamyka się
-# w artefakcie Actions: żadnego release'u ani tagu na GitHubie.
+# przyjmie od razu.
+#
+# Prod buduje AAB automatycznie i dołącza go do wydania GitHub razem z APK
+# i IPA (build-apk.yml -> workflow_call z release_tag).
+# Ręczny workflow_dispatch z dowolnej gałęzi kończy się na artefakcie Actions:
+# bez release'u i tagu, do wgrania w Play Console.
 #
 # Sekrety (Settings -> Secrets and variables -> Actions -> Repository secrets):
 #   ANDROID_KEYSTORE_BASE64       - klucz upload zakodowany base64
@@ -23,6 +27,12 @@ on:
         options:
           - 'arm64-v8a'
           - 'all'
+  workflow_call:
+    inputs:
+      release_tag:
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -121,19 +131,26 @@ jobs:
       - name: Test Android permission gate
         run: npm run check:permission-gate
 
-      # Wersja z minutą dnia: każdy build jest na Play unikalny, bo versionCode
-      # (banda Play z app.config.js: 600 mln + minuty od 2020-01-01) rośnie
-      # z każdą minutą. Ponowny run w tej samej minucie da ten sam versionCode
-      # i Play odrzuci duplikat; wystarczy wrzucić jeszcze raz po minucie.
+      # Prod używa tagu wydania (vX.Y.Z), więc AAB ma tę samą wersję co APK
+      # i IPA w jednym release. Ręczny build dostaje wersję z minutą dnia:
+      # każdy build jest na Play unikalny, bo versionCode (banda Play
+      # z app.config.js: 600 mln + minuty od 2020-01-01) rośnie z każdą minutą.
       - name: Resolve version and versionCode
         id: version
         env:
           INPUT_ARCH: ${{ inputs.arch }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           ARCH="${INPUT_ARCH:-arm64-v8a}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
-          VERSION="play-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+          if [ -n "${RELEASE_TAG:-}" ]; then
+            # Prod: versionName musi zgadzać się z tagiem wydania (vX.Y.Z),
+            # do którego dołączamy AAB.
+            VERSION="$RELEASE_TAG"
+          else
+            VERSION="play-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
+          fi
           VERSION_CODE="$(APP_VERSION="$VERSION" node -e "process.stdout.write(String(require('./app.config.js')({}).android.versionCode))")"
           echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -279,3 +296,38 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Pobierz \`app-release.aab\` z dołu tej strony (Artifacts: \`kilometr-play-aab\`)" >> "$GITHUB_STEP_SUMMARY"
           echo "i wgraj w: Play Console -> Testing -> Internal testing -> Create new release." >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Attach AAB to release
+    needs: build-aab
+    if: inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kilometr-play-aab
+          path: aab-dist
+      - name: Attach to prod release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF_NAME:$RELEASE_TAG" in
+            prod:v*) ;;
+            *) echo "::error::AAB można opublikować wyłącznie w wydaniu prod."; exit 1 ;;
+          esac
+          cd aab-dist
+          mv app-release.aab kilometr-prod.aab
+          rm -f app-release.aab.sha256
+          sha256sum kilometr-prod.aab > kilometr-prod.aab.sha256
+
+          gh release view "$RELEASE_TAG"
+          gh release upload "$RELEASE_TAG" \
+            kilometr-prod.aab \
+            kilometr-prod.aab.sha256 \
+            --clobber
+          gh release view "$RELEASE_TAG" --json assets --jq '[.assets[].name]'
