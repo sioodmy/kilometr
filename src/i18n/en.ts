@@ -20,12 +20,7 @@ export const en: Strings = {
     unavailableBody: 'Waiting for an accurate position on your route. Your current plan is still shown.',
     routingError: 'Could not prepare transfer protection. Please try again.',
     rerouting: 'Finding a new transfer',
-    schedule: 'Scheduled departure',
-    live: 'Departure from current data',
     next: (line: string, stop: string) => `${line} · ${stop}`,
-    permissionTitle: 'Location during your journey',
-    permissionBody: 'Transfer protection needs precise location. Enable it in the app settings.',
-    settings: 'Open settings',
     channel: 'Transfer changes',
   },
   common: {

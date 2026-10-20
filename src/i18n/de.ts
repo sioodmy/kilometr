@@ -20,12 +20,7 @@ export const de: Strings = {
     unavailableBody: 'Wir warten auf eine genaue Position entlang der Route. Der aktuelle Plan bleibt sichtbar.',
     routingError: 'Die Umstiegsbegleitung konnte nicht vorbereitet werden. Versuche es erneut.',
     rerouting: 'Ein neuer Umstieg wird gesucht',
-    schedule: 'Abfahrt laut Fahrplan',
-    live: 'Abfahrt aus aktuellen Daten',
     next: (line: string, stop: string) => `${line} · ${stop}`,
-    permissionTitle: 'Standort während der Fahrt',
-    permissionBody: 'Die Umstiegsbegleitung benötigt den genauen Standort. Aktiviere ihn in den App-Einstellungen.',
-    settings: 'Einstellungen öffnen',
     channel: 'Geänderte Umstiege',
   },
   common: {
