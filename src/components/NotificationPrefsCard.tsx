@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Activity, BellRing, Navigation } from 'lucide-react-native';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
@@ -80,6 +80,9 @@ function ToggleRow({
 export function NotificationPrefsCard() {
   const s = useStrings();
   const p = s.notificationPrefs;
+  const liveTitle = Platform.OS === 'ios' ? s.ios.liveTitle : p.liveTitle;
+  const liveHint = Platform.OS === 'ios' ? s.ios.liveHint : p.liveHint;
+  const livePromoteHint = Platform.OS === 'ios' ? s.ios.liveDisabled : p.livePromoteHint;
   const { prefs, update } = useNotificationPreferences();
   const supported = areNotificationsSupported();
   const nativeTrackingSupported = isNativeTrackingSupported();
@@ -103,7 +106,7 @@ export function NotificationPrefsCard() {
 
   const openSystemNotificationSettings = async () => {
     const opened = await openNotificationSettings();
-    if (!opened) Alert.alert(p.title, p.livePromoteHint);
+    if (!opened) Alert.alert(p.title, livePromoteHint);
   };
 
   const requirePermission = async (next: boolean): Promise<boolean> => {
@@ -142,8 +145,8 @@ export function NotificationPrefsCard() {
           {nativeTrackingSupported ? (
             <ToggleRow
               icon={<Activity size={18} color={scheme.onSurfaceVariant} />}
-              title={p.liveTitle}
-              hint={p.liveHint}
+              title={liveTitle}
+              hint={liveHint}
               value={prefs.liveProgressEnabled}
               onChange={guarded((v) => ({ liveProgressEnabled: v }))}
               disabled={!supported || !prefs.trackingEnabled}
@@ -154,7 +157,7 @@ export function NotificationPrefsCard() {
                 <Activity size={18} color={scheme.onSurfaceVariant} />
               </View>
               <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{p.liveTitle}</Text>
+                <Text style={styles.rowTitle}>{liveTitle}</Text>
                 <Text style={styles.rowHint}>{p.liveHintBasic}</Text>
               </View>
             </View>
@@ -163,7 +166,7 @@ export function NotificationPrefsCard() {
 
         {liveUpdatesSupported && promotable === false ? (
           <View style={styles.liveWarning}>
-            <Text style={styles.liveWarningText}>{p.livePromoteHint}</Text>
+            <Text style={styles.liveWarningText}>{livePromoteHint}</Text>
             <Pressable
               onPress={openSystemNotificationSettings}
               style={({ pressed }) => [styles.settingsAction, pressed && { opacity: 0.75 }]}

@@ -6,7 +6,7 @@ description = "Range RAPTOR transit routing engine for Kilometr"
 
 [lib]
 name = "kilometr_raptor"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [profile.release]
 opt-level = 3

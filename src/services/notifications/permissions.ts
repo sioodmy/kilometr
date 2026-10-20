@@ -62,7 +62,7 @@ export async function canShowLiveUpdates(): Promise<boolean> {
 
 /** Systemowe Live Updates są dostępne od API 36. */
 export function isLiveUpdatesSupported(): boolean {
-  return Platform.OS === 'android' && Number(Platform.Version) >= 36 && getTrackingNative() != null;
+  return (Platform.OS === 'ios' || Platform.OS === 'android' && Number(Platform.Version) >= 36) && getTrackingNative() != null;
 }
 
 export async function openNotificationSettings(): Promise<boolean> {

@@ -5,6 +5,8 @@ import { getNotifications } from './module';
 import { ALERT_CATEGORY } from './categories';
 import { ALERTS_CHANNEL_ID } from './channels';
 import { buildTripCopy, tripNotificationData } from './content';
+import { computeLegTimeline } from './tripProgress';
+import { clockFromMs } from './format';
 import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 
 const ALERT_IDS_KEY = 'kilometr.alertIds.v1';
@@ -33,6 +35,51 @@ export function cancelScheduledAlerts(): Promise<void> {
       await N?.dismissNotificationAsync(id).catch(() => {});
     }
     await kvRemove(ALERT_IDS_KEY);
+  });
+}
+
+export function scheduleIOSTripAlerts(
+  p: TripProgress,
+  trip: TrackedTrip,
+): Promise<void> {
+  if (Platform.OS !== 'ios') return Promise.resolve();
+  return enqueue(async () => {
+    const N = getNotifications();
+    if (!N) return;
+    const s = tr();
+    const now = Date.now();
+    const alerts = computeLegTimeline(trip.connection, new Date(p.computedAt))
+      .filter(({ leg }) => leg.mode !== 'walk')
+      .map(({ leg, arriveMs }, index) => ({
+        id: `kilometr.alert.ios.${trip.id}.alight.${index}`,
+        at: arriveMs - 60_000,
+        title: s.notification.alightAt(leg.toStop),
+        body: `${leg.line ?? ''} • ${clockFromMs(arriveMs)}`,
+        kind: 'alight',
+      }));
+    const arrived = buildTripCopy({ ...p, phase: 'arrived' }, trip.connection, s);
+    alerts.push({
+      id: `kilometr.alert.ios.${trip.id}.arrived`,
+      at: p.arriveAtMs, title: arrived.title, body: arrived.subtitle, kind: 'arrived',
+    });
+    const future = alerts.filter((alert) => alert.at > now).slice(0, 60);
+    const ids = await readAlertIds();
+    const wanted = new Set(future.map((alert) => alert.id));
+    for (const id of ids.filter((id) => id.startsWith('kilometr.alert.ios.') && !wanted.has(id))) {
+      await N.cancelScheduledNotificationAsync(id);
+    }
+    for (const alert of future) {
+      await N.scheduleNotificationAsync({
+        identifier: alert.id,
+        content: {
+          title: alert.title, body: alert.body, sound: 'default',
+          categoryIdentifier: ALERT_CATEGORY,
+          data: tripNotificationData(trip, alert.kind),
+        },
+        trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: new Date(alert.at) },
+      });
+      await rememberAlert(alert.id);
+    }
   });
 }
 

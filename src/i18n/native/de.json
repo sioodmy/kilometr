@@ -1,0 +1,5 @@
+{
+  "ios": {
+    "NSLocationWhenInUseUsageDescription": "Erlaube den Standortzugriff, um Verbindungen ab deinem Standort zu finden."
+  }
+}

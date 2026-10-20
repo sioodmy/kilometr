@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -264,7 +264,7 @@ export default function RouteDetailsScreen() {
                     {currentAlarm ? s.alarm.ringsAt(currentAlarm.time) : s.alarm.set}
                   </Text>
                   <Text style={[styles.alarmHint, currentAlarm && { color: scheme.onPrimaryContainer }]}>
-                    {currentAlarm ? s.alarm.lead(currentAlarm.leadMin) : s.alarm.hint}
+                    {currentAlarm ? s.alarm.lead(currentAlarm.leadMin) : Platform.OS === 'ios' ? s.ios.alarmHint : s.alarm.hint}
                   </Text>
                 </View>
                 <ChevronRight size={20} color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />

@@ -4,6 +4,8 @@ pub mod live;
 pub mod raptor;
 pub mod search;
 pub mod trip_engine;
+#[cfg(any(target_os = "ios", test))]
+mod ios_bridge;
 
 use std::cell::RefCell;
 

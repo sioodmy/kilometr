@@ -8,13 +8,15 @@ import { LineBadge } from './LineBadge';
 export function ConnectionSummary({
   item,
   offline = false,
+  availableWidth,
 }: {
   item: Connection;
   offline?: boolean;
+  availableWidth?: number;
 }) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
-  const stacked = width / fontScale < 330;
+  const stacked = (availableWidth ?? width) / fontScale < 330;
   const boarding = item.legs.filter((leg) => leg.mode !== 'walk');
   const live = item.live && !offline;
   const statusColor =

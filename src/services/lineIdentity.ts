@@ -34,11 +34,7 @@ export const TRANSIT_PALETTE = [
  * Normalizuje oznaczenie linii (zwłaszcza kolejowej), usuwając zbędną redundancję
  * i przydomki pociągów, aby badge mieścił się czysto w układzie.
  */
-export function normalizeLineName(
-  line?: string,
-  _mode?: LegMode,
-  compact?: boolean,
-): string {
+export function normalizeLineName(line?: string, _mode?: LegMode, compact?: boolean): string {
   if (!line) return '';
   let clean = line.trim();
 
@@ -66,7 +62,8 @@ export function normalizeLineName(
 
   // Pociągi z oznaczeniem linii handlowej po prefiksie przewoźnika:
   // np. "KD D10" -> "D10", "KM R1" -> "R1", "KŚ S1" -> "S1", "KD D1" -> "D1"
-  const lineCodeMatch = /^(?:KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|PR)[\s:_-]+([A-Z]{1,2}\d{1,3}[A-Z]?)$/i.exec(clean);
+  const lineCodeMatch =
+    /^(?:KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|PR)[\s:_-]+([A-Z]{1,2}\d{1,3}[A-Z]?)$/i.exec(clean);
   if (lineCodeMatch) {
     return lineCodeMatch[1].toUpperCase();
   }
@@ -76,7 +73,9 @@ export function normalizeLineName(
   // skracamy do samego przewoźnika ("KD", "KM"), bo konkretny 5-cyfrowy numer relacji
   // i tak widać w szczegółach połączenia.
   if (compact) {
-    const carrierNumMatch = /^(KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|PR|WKD|SKM)[\s:_-]+(?:\d{4,6})$/i.exec(clean);
+    const carrierNumMatch = /^(KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|PR|WKD|SKM)[\s:_-]+(?:\d{4,6})$/i.exec(
+      clean,
+    );
     if (carrierNumMatch) {
       return carrierNumMatch[1].toUpperCase();
     }
@@ -123,7 +122,9 @@ export function inferTransitMode(
     if (/^M[12]$/i.test(clean)) return 'subway';
     if (/^S\d{1,2}$/i.test(clean)) return 'train';
   }
-  if (/^(?:KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|WKD|SKM|PR|POLREGIO|IC|TLK|EIP|EIC)(?:[\s:_-]|$)/i.test(clean)) {
+  if (
+    /^(?:KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|WKD|SKM|PR|POLREGIO|IC|TLK|EIP|EIC)(?:[\s:_-]|$)/i.test(clean)
+  ) {
     return 'train';
   }
   if (/^D\d{1,2}$/i.test(clean) && (cityId === 'wroclaw' || !cityId)) {
@@ -267,12 +268,10 @@ export function mapLineColor(bg: string): string {
 
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
 function contrastFg(bg: string): string {
-  const hex = bg.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  return lum > 145 ? '#0A1210' : '#FFFFFF';
+  const lum = relativeLuminance(bg) ?? 0;
+  const whiteContrast = 1.05 / (lum + 0.05);
+  const blackContrast = (lum + 0.05) / 0.05;
+  return whiteContrast >= blackContrast ? '#FFFFFF' : '#000000';
 }
 
 /** Oblicza stabilny, zharmonizowany kolor linii z gwarantowanym kontrastem tekstu. */
@@ -283,23 +282,42 @@ export function getLineColors(
 ): { bg: string; fg: string; isTram: boolean; isTrain: boolean; isCable: boolean } {
   const resolved = inferTransitMode(mode, line, cityId);
   if (resolved === 'train') {
-    return { bg: TRAIN_BADGE_BG, fg: contrastFg(TRAIN_BADGE_BG), isTram: false, isTrain: true, isCable: false };
+    return {
+      bg: TRAIN_BADGE_BG,
+      fg: contrastFg(TRAIN_BADGE_BG),
+      isTram: false,
+      isTrain: true,
+      isCable: false,
+    };
   }
   if (resolved === 'subway') {
     const bg = SUBWAY_BADGE_BG[(line || '').trim().toUpperCase()] ?? SUBWAY_BADGE_FALLBACK_BG;
     return { bg, fg: contrastFg(bg), isTram: false, isTrain: false, isCable: false };
   }
   if (resolved === 'cable') {
-    return { bg: CABLE_BADGE_BG, fg: contrastFg(CABLE_BADGE_BG), isTram: false, isTrain: false, isCable: true };
+    return {
+      bg: CABLE_BADGE_BG,
+      fg: contrastFg(CABLE_BADGE_BG),
+      isTram: false,
+      isTrain: false,
+      isCable: true,
+    };
   }
   if (resolved === 'trolleybus') {
-    return { bg: TROLLEY_BADGE_BG, fg: contrastFg(TROLLEY_BADGE_BG), isTram: false, isTrain: false, isCable: false };
+    return {
+      bg: TROLLEY_BADGE_BG,
+      fg: contrastFg(TROLLEY_BADGE_BG),
+      isTram: false,
+      isTrain: false,
+      isCable: false,
+    };
   }
   const isTram = resolved === 'tram';
   const clean = (line || '').trim().toUpperCase();
 
   if (!clean) {
-    return { bg: isTram ? '#00897B' : '#1976D2', fg: '#FFFFFF', isTram, isTrain: false, isCable: false };
+    const bg = isTram ? '#00897B' : '#1976D2';
+    return { bg, fg: contrastFg(bg), isTram, isTrain: false, isCable: false };
   }
 
   let hash = 0;
