@@ -148,6 +148,8 @@ export interface LivePlanSegment {
   color: string;
   startAtMs: number;
   endAtMs: number;
+  alightLat?: number;
+  alightLon?: number;
 }
 
 /** Treść powiadomienia dla jednej fazy podróży. */

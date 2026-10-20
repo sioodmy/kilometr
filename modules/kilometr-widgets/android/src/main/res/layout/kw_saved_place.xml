@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/kw_saved_place" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-    android:layout_margin="4dp" android:minHeight="48dp" android:background="@drawable/kw_target"
-    android:gravity="center" android:orientation="vertical" android:padding="6dp">
-    <ImageView android:id="@+id/kw_saved_place_icon" android:layout_width="36dp" android:layout_height="36dp" android:padding="8dp"
-        android:background="@drawable/kw_icon_bg" android:src="@drawable/kw_ic_home" android:importantForAccessibility="no" android:tint="@color/kw_on_primary_container" />
-    <TextView android:id="@+id/kw_saved_place_name" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_marginTop="6dp" android:fontFamily="sans-serif-medium" android:gravity="center" android:includeFontPadding="false"
-        android:maxLines="1" android:ellipsize="end" android:textColor="@color/kw_on_surface" android:textSize="14sp" />
+    android:layout_margin="4dp" android:minHeight="48dp" android:background="@drawable/kw_target_featured"
+    android:gravity="center_vertical" android:orientation="horizontal" android:padding="12dp" android:focusable="true">
+    <ImageView android:id="@+id/kw_saved_place_icon" android:layout_width="28dp" android:layout_height="28dp"
+        android:src="@drawable/kw_ic_home" android:importantForAccessibility="no" android:tint="@color/kw_on_primary_container" />
+    <TextView android:id="@+id/kw_saved_place_name" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="1" android:paddingStart="10dp" android:fontFamily="sans-serif-medium" android:includeFontPadding="false"
+        android:maxLines="2" android:ellipsize="end" android:textColor="@color/kw_on_primary_container" android:textSize="16sp" />
 </LinearLayout>

@@ -99,6 +99,8 @@
     "check:map-colors": "tsx scripts/check-map-colors.ts",
     "check:line-badge": "tsx scripts/check-line-badge.ts",
     "check:widget-badge": "tsx scripts/check-widget-badge.ts",
+    "sync:widget-strings": "tsx scripts/sync-widget-strings.ts",
+    "check:widget-strings": "tsx scripts/sync-widget-strings.ts --check",
     "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,

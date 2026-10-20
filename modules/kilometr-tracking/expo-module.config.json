@@ -2,8 +2,8 @@
   "platforms": ["android"],
   "android": {
     "modules": [
-      "my.siood.kilometr.tracking.KilometrTrackingModule",
-      "my.siood.kilometr.tracking.DepartureAlarmModule"
+      "app.kilometr.tracking.KilometrTrackingModule",
+      "app.kilometr.tracking.DepartureAlarmModule"
     ]
   }
 }

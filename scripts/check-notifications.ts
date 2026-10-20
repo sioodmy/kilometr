@@ -543,6 +543,21 @@ expect('faza zgłoszona dla wszystkich pięciu', Object.keys(ridingPlan.copy).le
 expect('segment dojścia + przejazd', ridingPlan.segments.length, 2);
 expect('dojście pieszo', ridingPlan.segments[0].mode, 'walk');
 expect('przejazd tramwajem', ridingPlan.segments[1].mode, 'tram');
+const geoConnection: Connection = {
+  ...simple,
+  legs: simple.legs.map((entry) => ({ ...entry, toLat: 51.123, toLon: 17.045 })),
+};
+const geoPlan = planOf(riding, geoConnection);
+expect('przejazd dostaje szerokość przystanku wysiadania', geoPlan.segments[1].alightLat, 51.123);
+expect('przejazd dostaje długość przystanku wysiadania', geoPlan.segments[1].alightLon, 17.045);
+expect('dojście nie dostaje celu wibracji', geoPlan.segments[0].alightLat, undefined);
+expect('brak współrzędnych nie tworzy celu wibracji', ridingPlan.segments[1].alightLat, undefined);
+const restoredGeoPlan = JSON.parse(JSON.stringify(geoPlan));
+expect(
+  'współrzędne przystanku przechodzą przez JSON',
+  restoredGeoPlan.segments[1].alightLat,
+  51.123,
+);
 // Postęp liczy się na OKRES CAŁEJ podróży (z dojściem), inaczej pasek skacze
 // na starcie i na końcu ląduje nie tam, gdzie jest użytkownik.
 expect('początek podróży to start dojścia', hhmm(ridingPlan.startAtMs), '14:03');

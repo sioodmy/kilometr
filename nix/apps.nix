@@ -92,7 +92,7 @@
           else
             adb reverse --remove-all || true
             echo "Zainstalowano release (offline standalone)."
-            adb shell monkey -p my.siood.kilometr -c android.intent.category.LAUNCHER 1 || true
+            adb shell monkey -p app.kilometr -c android.intent.category.LAUNCHER 1 || true
           fi
         fi
       '';
