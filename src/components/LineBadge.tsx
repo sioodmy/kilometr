@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   compactWalk: { minWidth: 24, paddingHorizontal: 4, minHeight: 26 },
   walkActive: { backgroundColor: scheme.secondaryContainer },
   compact: { paddingHorizontal: 5, minWidth: 28, minHeight: 26, gap: 3 },
-  text: { ...type.labelLarge, fontWeight: '700' },
+  text: { ...type.labelLarge, fontWeight: '700', flexShrink: 1 },
   large: {
     minWidth: 64,
     minHeight: 40,
