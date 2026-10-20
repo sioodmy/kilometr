@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kw_surface">#1B2621</color>
+    <color name="kw_surface_low">#15201B</color>
+    <color name="kw_surface_high">#303D35</color>
+    <color name="kw_on_surface">#E2EAE4</color>
+    <color name="kw_on_surface_variant">#BDCBBF</color>
+    <color name="kw_primary">#88D6B8</color>
+    <color name="kw_on_primary">#00382A</color>
+    <color name="kw_primary_container">#00513E</color>
+    <color name="kw_on_primary_container">#A4F2D4</color>
+    <color name="kw_secondary_container">#3A5145</color>
+    <color name="kw_on_secondary_container">#D5E8DD</color>
+    <color name="kw_tertiary_container">#62432B</color>
+    <color name="kw_on_tertiary_container">#FCDCC1</color>
+    <color name="kw_success">#96D5A2</color>
+    <color name="kw_warning">#F6C16D</color>
+</resources>

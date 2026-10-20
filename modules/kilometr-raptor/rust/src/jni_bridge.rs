@@ -74,7 +74,7 @@ unsafe fn write_jbyte_array(env: JniEnv, data: &[u8]) -> JByteArray {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeHasNetwork(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeHasNetwork(
     _env: JniEnv,
     _class: JClass,
     net_id: JInt,
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeLoadNetwork(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeLoadNetwork(
     env: JniEnv,
     _class: JClass,
     net_id: JInt,
@@ -98,7 +98,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeDropNetwork(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeDropNetwork(
     _env: JniEnv,
     _class: JClass,
     net_id: JInt,
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeClearNetworks(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeClearNetworks(
     _env: JniEnv,
     _class: JClass,
 ) {
@@ -115,7 +115,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeRunQuery(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeRunQuery(
     env: JniEnv,
     _class: JClass,
     packed_query: JByteArray,
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeHasFootTile(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeHasFootTile(
     _env: JniEnv,
     _class: JClass,
     tx: JInt,
@@ -141,7 +141,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeLoadFootTile(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeLoadFootTile(
     env: JniEnv,
     _class: JClass,
     tx: JInt,
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeClearFootTiles(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeClearFootTiles(
     _env: JniEnv,
     _class: JClass,
 ) {
@@ -164,7 +164,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeRouteFoot(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeRouteFoot(
     env: JniEnv,
     _class: JClass,
     packed_req: JByteArray,
@@ -179,7 +179,7 @@ pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nati
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn Java_my_siood_kilometr_raptor_KilometrRaptorBridge_nativeInvoke(
+pub unsafe extern "C" fn Java_app_kilometr_raptor_KilometrRaptorBridge_nativeInvoke(
     env: JniEnv,
     _class: JClass,
     cmd: JInt,

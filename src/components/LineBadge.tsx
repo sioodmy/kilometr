@@ -3,20 +3,12 @@ import { BusFront, CableCar, TrainFront, TramFront } from 'lucide-react-native';
 import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode } from '../types/models';
-import {
-  getLineColors,
-  inferTransitMode,
-  normalizeLineName,
-} from '../services/lineIdentity';
+import { getLineColors, inferTransitMode, normalizeLineName } from '../services/lineIdentity';
 import { getActiveCityIdSync } from '../services/cityStore';
 
 // Kolor i typ linii żyją w serwisie - korzysta z nich również silnik
 // powiadomień, a serwis nie może importować komponentu.
-export {
-  getLineColors,
-  inferTransitMode,
-  mapLineColor,
-} from '../services/lineIdentity';
+export { getLineColors, inferTransitMode, mapLineColor } from '../services/lineIdentity';
 
 export function LineBadge({
   mode,
@@ -24,12 +16,14 @@ export function LineBadge({
   compact,
   active,
   maxWidth,
+  size = 'medium',
 }: {
   mode?: LegMode;
   line?: string;
   compact?: boolean;
   active?: boolean;
   maxWidth?: number;
+  size?: 'medium' | 'large';
 }) {
   // Miasto tylko dla heurystyki numerów, gdy brak trybu (np. badge newsów).
   const cityId = getActiveCityIdSync();
@@ -69,20 +63,23 @@ export function LineBadge({
   const charCount = (normalizedLine || '').length;
   const isSmallText = compact && charCount >= 4;
   const isTinyText = compact && charCount >= 6;
+  const large = size === 'large' && !compact;
 
   return (
     <View
       style={[
         styles.badge,
+        large && styles.large,
         compact && styles.compact,
         maxWidth != null && { maxWidth },
         { backgroundColor: bg },
       ]}
     >
-      <Icon size={compact ? 11 : 13} color={fg} />
+      <Icon size={compact ? 11 : large ? 18 : 13} color={fg} />
       <Text
         style={[
           styles.text,
+          large && styles.largeText,
           compact && styles.compactText,
           isSmallText && styles.smallText,
           isTinyText && styles.tinyText,
@@ -114,6 +111,22 @@ const styles = StyleSheet.create({
   walkActive: { backgroundColor: scheme.secondaryContainer },
   compact: { paddingHorizontal: 5, minWidth: 28, minHeight: 26, gap: 3 },
   text: { ...type.labelLarge, fontWeight: '700' },
+  large: {
+    minWidth: 64,
+    minHeight: 40,
+    maxWidth: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: shape.medium,
+    gap: 6,
+  },
+  largeText: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+    flexShrink: 1,
+  },
   compactText: { fontSize: 12, lineHeight: 14, fontWeight: '700' },
   smallText: { fontSize: 11, lineHeight: 13, letterSpacing: -0.3 },
   tinyText: { fontSize: 10, lineHeight: 12, letterSpacing: -0.5 },

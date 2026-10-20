@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/kw_bg"
+    android:orientation="vertical" android:padding="16dp" android:gravity="center_vertical">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/kw_sample_work"
+        android:textColor="@color/kw_on_surface" android:textSize="22sp" android:fontFamily="sans-serif-medium" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
+        android:text="@string/kw_sample_phase" android:textColor="@color/kw_primary" android:textSize="24sp" android:fontFamily="sans-serif-medium" />
+    <ProgressBar style="@android:style/Widget.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="8dp"
+        android:layout_marginTop="12dp" android:progress="40" android:progressDrawable="@drawable/kw_progress" />
+</LinearLayout>

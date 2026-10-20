@@ -13,11 +13,12 @@ const allowed = new Set([
   'android.permission.POST_PROMOTED_NOTIFICATIONS',
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
+  'android.permission.FOREGROUND_SERVICE_LOCATION',
   'android.permission.VIBRATE',
   'android.permission.WAKE_LOCK',
   'android.permission.RECEIVE_BOOT_COMPLETED',
   'com.google.android.c2dm.permission.RECEIVE',
-  'my.siood.kilometr.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+  'app.kilometr.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
 ]);
 
 const [file, format] = process.argv.slice(2);
