@@ -1130,7 +1130,7 @@ export const pl = {
     fromPrefix: 'z ',
     toPrefix: 'do ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} przystanki • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
+      `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
   },
   compass: {
     journeyTitle: 'Nawigacja w podróży',

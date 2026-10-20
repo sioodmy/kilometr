@@ -1109,7 +1109,7 @@ export const de: Strings = {
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} Haltestellen • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
   },
   compass: {
     journeyTitle: 'Navigation unterwegs',
