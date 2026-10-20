@@ -16,6 +16,7 @@
        licznik i pasek postępu przestają wtedy żyć. -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
   <!-- Warunek promowania powiadomienia do strefy „Live Updates” na Androidzie 16.
        Uprawnienie jest nie-runtime'owe: brak wpisu = brak Live Updates. -->
@@ -42,14 +43,12 @@
         <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
       </intent-filter>
     </receiver>
-    <!-- `specialUse` to jedyny typ, który obejmuje śledzenie podróży użytkownika
-         bez podszywania się pod lokalizację czy rozmowę telefoniczną. Pełna
-         nazwa klasy zamiast `.LiveTripService`, bo relatywna nazwa w manifeście
-         biblioteki rozwiązuje się według namespace'u aplikacji, a nie modułu. -->
+    <!-- Typ location pozwala wyzwolić wibrację GPS także po wygaszeniu ekranu.
+         Bez zgody na lokalizację powiadomienie korzysta z specialUse. -->
     <service
         android:name="my.siood.kilometr.tracking.LiveTripService"
         android:exported="false"
-        android:foregroundServiceType="specialUse">
+        android:foregroundServiceType="specialUse|location">
       <property
           android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
           android:value="user_initiated_trip_tracking" />

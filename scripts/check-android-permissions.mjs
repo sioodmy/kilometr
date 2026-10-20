@@ -13,6 +13,7 @@ const allowed = new Set([
   'android.permission.POST_PROMOTED_NOTIFICATIONS',
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
+  'android.permission.FOREGROUND_SERVICE_LOCATION',
   'android.permission.VIBRATE',
   'android.permission.WAKE_LOCK',
   'android.permission.RECEIVE_BOOT_COMPLETED',
