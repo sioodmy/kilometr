@@ -112,6 +112,11 @@ export function buildRoutesLink(args: {
 function widgetLabels(): Record<string, string> {
   const w = tr().widgets;
   return {
+    nextTitle: w.nextTitle,
+    openApp: w.openApp,
+    addPlace: w.addPlace,
+    refresh: w.refresh,
+    fromOrigin: w.fromOrigin('{name}'),
     journeyTitle: w.journeyTitle,
     trackingTitle: w.trackingTitle,
     checkRoutes: w.checkRoutes,
