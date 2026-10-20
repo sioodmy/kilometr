@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "bundleIdentifier": "my.siood.kilometr",
+      "bundleIdentifier": "app.kilometr",
       "supportsTablet": true
     },
     "android": {
@@ -54,7 +54,7 @@
         "me.everything.badger.permission.BADGE_COUNT_WRITE",
         "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE"
       ],
-      "package": "my.siood.kilometr"
+      "package": "app.kilometr"
     },
     "web": {
       "favicon": "./assets/favicon.png"

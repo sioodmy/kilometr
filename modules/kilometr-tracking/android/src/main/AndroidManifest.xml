@@ -24,7 +24,7 @@
 
 <application>
     <activity
-        android:name="my.siood.kilometr.tracking.DepartureAlarmActivity"
+        android:name="app.kilometr.tracking.DepartureAlarmActivity"
         android:exported="false"
         android:excludeFromRecents="true"
         android:launchMode="singleTop"
@@ -32,11 +32,11 @@
         android:turnScreenOn="true"
         android:theme="@android:style/Theme.Material.NoActionBar" />
     <service
-        android:name="my.siood.kilometr.tracking.DepartureAlarmService"
+        android:name="app.kilometr.tracking.DepartureAlarmService"
         android:exported="false"
         android:foregroundServiceType="mediaPlayback" />
-    <receiver android:name="my.siood.kilometr.tracking.DepartureAlarmReceiver" android:exported="false" />
-    <receiver android:name="my.siood.kilometr.tracking.DepartureAlarmRestoreReceiver" android:exported="false">
+    <receiver android:name="app.kilometr.tracking.DepartureAlarmReceiver" android:exported="false" />
+    <receiver android:name="app.kilometr.tracking.DepartureAlarmRestoreReceiver" android:exported="false">
       <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED" />
         <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
@@ -46,7 +46,7 @@
     <!-- Typ location pozwala wyzwolić wibrację GPS także po wygaszeniu ekranu.
          Bez zgody na lokalizację powiadomienie korzysta z specialUse. -->
     <service
-        android:name="my.siood.kilometr.tracking.LiveTripService"
+        android:name="app.kilometr.tracking.LiveTripService"
         android:exported="false"
         android:foregroundServiceType="specialUse|location">
       <property
@@ -56,7 +56,7 @@
 
     <!-- Obsługa przycisku „Zakończ” bez otwierania aplikacji. -->
     <receiver
-        android:name="my.siood.kilometr.tracking.TripActionReceiver"
+        android:name="app.kilometr.tracking.TripActionReceiver"
         android:exported="false" />
   </application>
 </manifest>
