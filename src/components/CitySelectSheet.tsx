@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePredictiveBackBlocker } from './usePredictiveBackBlocker';
 import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -175,6 +176,7 @@ export function CitySelectSheet({
   switchingCity,
   switchingCityId,
 }: CitySelectSheetProps) {
+  usePredictiveBackBlocker();
   const sheetRef = useRef<BottomSheet>(null);
   const [query, setQuery] = useState('');
   const s = useStrings();

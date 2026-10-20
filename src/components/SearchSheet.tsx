@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { usePredictiveBackBlocker } from './usePredictiveBackBlocker';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
 import BottomSheet, {
   BottomSheetFlatList,
@@ -55,6 +56,7 @@ export function SearchSheet({
   /** Informacyjny pasek nad listą (np. „GPS poza obsługiwanym miastem"). */
   notice?: string;
 }) {
+  usePredictiveBackBlocker();
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
   const s = useStrings();

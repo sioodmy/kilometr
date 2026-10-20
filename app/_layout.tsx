@@ -2,7 +2,7 @@ import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { LogBox, Platform } from 'react-native';
 import { useEffect, useState } from 'react';
-import { Stack, router, usePathname } from 'expo-router';
+import { Stack, router, usePathname, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
@@ -17,6 +17,7 @@ import { hasSeenOnboarding } from '../src/services/onboarding';
 import { loadNotificationPreferences } from '../src/services/notifications/preferences';
 import { migrateFromSqliteKv } from '../src/services/kvMigration';
 import { refreshDepartureAlarm } from '../src/services/departureAlarm';
+import { setPredictiveBackEnabled } from '../modules/kilometr-predictive-back';
 import {
   addTripResponseListener,
   getLastTripResponse,
@@ -44,6 +45,19 @@ export default function RootLayout() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
+  const navigationState = useRootNavigationState();
+
+  useEffect(() => {
+    setPredictiveBackEnabled(
+      ready &&
+        !!navigationState?.key &&
+        pathname !== '/onboarding' &&
+        !reduceMotion &&
+        router.canGoBack(),
+    );
+  }, [ready, navigationState, pathname, reduceMotion]);
+
+  useEffect(() => () => setPredictiveBackEnabled(false), []);
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu
   useEffect(() => {
@@ -103,9 +117,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!ready || needsOnboarding) return;
-    void getLastTripResponse().then(navigateFromNotification).catch((err) => {
-      console.warn('[RootLayout] notification response:', err);
-    });
+    void getLastTripResponse()
+      .then(navigateFromNotification)
+      .catch((err) => {
+        console.warn('[RootLayout] notification response:', err);
+      });
     return addTripResponseListener(navigateFromNotification);
   }, [ready, needsOnboarding]);
 
@@ -121,7 +137,11 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: scheme.surface },
             // Jednolite, szybkie przejścia między ekranami (iOS + Android).
             // animationMatchesGesture synchronizuje animację z gestem wstecz.
-            animation: reduceMotion ? 'none' : Platform.OS === 'android' ? 'fade_from_bottom' : 'slide_from_right',
+            animation: reduceMotion
+              ? 'none'
+              : Platform.OS === 'android'
+                ? 'fade_from_bottom'
+                : 'slide_from_right',
             animationDuration: 300,
             animationMatchesGesture: true,
             gestureEnabled: true,
@@ -149,7 +169,11 @@ export default function RootLayout() {
             name="article"
             options={{
               presentation: 'card',
-              animation: reduceMotion ? 'none' : Platform.OS === 'android' ? 'fade_from_bottom' : 'slide_from_right',
+              animation: reduceMotion
+                ? 'none'
+                : Platform.OS === 'android'
+                  ? 'fade_from_bottom'
+                  : 'slide_from_right',
               animationDuration: 300,
             }}
           />

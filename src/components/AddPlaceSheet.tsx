@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePredictiveBackBlocker } from './usePredictiveBackBlocker';
 import {
   ActivityIndicator,
   BackHandler,
@@ -284,6 +285,7 @@ export function AddPlaceSheet({
   const [searchingAnchor, setSearchingAnchor] = useState(false);
 
   // Android back / gest wstecz
+  usePredictiveBackBlocker();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {

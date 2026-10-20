@@ -1,0 +1,15 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'app.kilometr.predictiveback'
+version = '1.0.0'
+
+android {
+  namespace 'app.kilometr.predictiveback'
+  compileSdk 36
+}
+
+dependencies {
+  implementation project(':react-native-screens')
+  implementation 'androidx.activity:activity:1.9.3'
+}

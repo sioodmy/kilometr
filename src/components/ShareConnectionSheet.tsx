@@ -21,6 +21,7 @@ import { getActiveCityIdSync } from '../services/cityStore';
 import { buildShareUrl, createSharedConnection, shareMessage } from '../sharing/connection';
 import type { Connection } from '../types/models';
 import { JourneyShareCard } from './JourneyShareCard';
+import { usePredictiveBackBlocker } from './usePredictiveBackBlocker';
 
 export function ShareConnectionSheet({
   connection,
@@ -29,6 +30,7 @@ export function ShareConnectionSheet({
   connection: Connection;
   onClose: () => void;
 }) {
+  usePredictiveBackBlocker();
   const { share: s } = useStrings();
   const insets = useSafeAreaInsets();
   const sheet = useRef<BottomSheet>(null);

@@ -7,6 +7,7 @@ import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { SavedPlace } from '../types/models';
 import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
+import { usePredictiveBackBlocker } from './usePredictiveBackBlocker';
 
 export function ManagePlacesSheet({
   places,
@@ -24,6 +25,7 @@ export function ManagePlacesSheet({
   onAddNew: () => void;
   onSelectPlace?: (place: SavedPlace) => void;
 }) {
+  usePredictiveBackBlocker();
   const sheetRef = useRef<BottomSheet>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const s = useStrings();

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePredictiveBackBlocker } from './usePredictiveBackBlocker';
 import {
   BackHandler,
   type NativeScrollEvent,
@@ -150,6 +151,7 @@ function WheelPicker({
 }
 
 export function DepartureTimeSheet({ initialTimeSec, onClose, onSelect }: DepartureTimeSheetProps) {
+  usePredictiveBackBlocker();
   const s = useStrings();
   const insets = useSafeAreaInsets();
   const { height, width, fontScale } = useWindowDimensions();
