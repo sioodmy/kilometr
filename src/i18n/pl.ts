@@ -26,12 +26,7 @@ export const pl = {
     unavailableBody: 'Czekamy na dokładną pozycję na trasie. Obecny plan pozostaje widoczny.',
     routingError: 'Nie udało się przygotować ochrony. Spróbuj ponownie.',
     rerouting: 'Wyznaczamy nową przesiadkę',
-    schedule: 'Odjazd według rozkładu',
-    live: 'Odjazd z aktualnych danych',
     next: (line: string, stop: string) => `${line} · ${stop}`,
-    permissionTitle: 'Lokalizacja podczas podróży',
-    permissionBody: 'Ochrona przesiadek potrzebuje dokładnej lokalizacji. Włącz ją w ustawieniach aplikacji.',
-    settings: 'Otwórz ustawienia',
     channel: 'Zmiany przesiadek',
   },
   common: {

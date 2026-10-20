@@ -82,37 +82,37 @@ export default function RouteDetailsScreen() {
     }
     setTrackingBusy(true);
     try {
-    if (!areNotificationsSupported()) {
-      Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
-      return;
-    }
-    const ok = await ensureNotificationPermission();
-    if (!ok) {
-      Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
-      return;
-    }
-    let protectionEnabled = item.transfers > 0 && isTransferProtectionSupported();
-    if (protectionEnabled) {
-      let permission = await Location.getForegroundPermissionsAsync();
-      if (!permission.granted) permission = await Location.requestForegroundPermissionsAsync();
-      protectionEnabled = permission.granted && permission.android?.accuracy !== 'coarse';
-    }
-    const firstLeg = item.legs[0];
-    const lastLeg = item.legs[item.legs.length - 1];
-    const fallback = defaultLocationForCity(getActiveCityIdSync());
-    await startTracking({
-      id: item.id,
-      fromTitle: item.fromTitle,
-      fromLat: firstLeg?.fromLat ?? fallback.lat,
-      fromLon: firstLeg?.fromLon ?? fallback.lon,
-      toId: item.toTitle,
-      toTitle: item.toTitle,
-      toLat: lastLeg?.toLat ?? fallback.lat,
-      toLon: lastLeg?.toLon ?? fallback.lon,
-      connection: item,
-      startedAt: Date.now(),
-      protectionEnabled,
-    });
+      if (!areNotificationsSupported()) {
+        Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
+        return;
+      }
+      const ok = await ensureNotificationPermission();
+      if (!ok) {
+        Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
+        return;
+      }
+      let protectionEnabled = item.transfers > 0 && isTransferProtectionSupported();
+      if (protectionEnabled) {
+        let permission = await Location.getForegroundPermissionsAsync();
+        if (!permission.granted) permission = await Location.requestForegroundPermissionsAsync();
+        protectionEnabled = permission.granted && permission.android?.accuracy !== 'coarse';
+      }
+      const firstLeg = item.legs[0];
+      const lastLeg = item.legs[item.legs.length - 1];
+      const fallback = defaultLocationForCity(getActiveCityIdSync());
+      await startTracking({
+        id: item.id,
+        fromTitle: item.fromTitle,
+        fromLat: firstLeg?.fromLat ?? fallback.lat,
+        fromLon: firstLeg?.fromLon ?? fallback.lon,
+        toId: item.toTitle,
+        toTitle: item.toTitle,
+        toLat: lastLeg?.toLat ?? fallback.lat,
+        toLon: lastLeg?.toLon ?? fallback.lon,
+        connection: item,
+        startedAt: Date.now(),
+        protectionEnabled,
+      });
     } catch {
       Alert.alert(s.transferGuard.title, s.transferGuard.routingError);
     } finally { setTrackingBusy(false); }
