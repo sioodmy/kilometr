@@ -27,7 +27,6 @@ import {
   Music,
   Package,
   PawPrint,
-  Pencil,
   Pill,
   Pizza,
   Plane,
@@ -116,21 +115,18 @@ export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, any> = {
 export function SavedPlacesRow({
   places,
   onSelect,
-  onManage,
   onAdd,
   onEdit,
 }: {
   places: SavedPlace[];
   onSelect: (p: SavedPlace) => void;
-  /** Ostatnia karta otwiera menu edycji (tam też dodawanie). */
-  onManage: () => void;
   onAdd: () => void;
   onEdit?: (p: SavedPlace) => void;
 }) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const cardWidth = Math.min(width - 64, 168 * Math.max(1, fontScale));
+  const cardWidth = Math.min(width - 64, 160 * Math.max(1, fontScale));
   const textLines = fontScale > 1.3 ? undefined : 2;
 
   if (places.length === 0) {
@@ -146,8 +142,8 @@ export function SavedPlacesRow({
           pressed && styles.pressed,
         ]}
       >
-        <View style={[styles.icon, styles.featuredIcon]}>
-          <Plus size={28} color={scheme.onPrimary} />
+        <View style={styles.icon}>
+          <Plus size={24} color={scheme.onSecondaryContainer} />
         </View>
         <View style={styles.emptyText}>
           <Text style={styles.emptyTitle}>{s.places.addNew}</Text>
@@ -168,9 +164,8 @@ export function SavedPlacesRow({
       decelerationRate="fast"
       snapToAlignment="start"
     >
-      {places.map((p, index) => {
+      {places.map((p) => {
         const Icon = SAVED_PLACE_ICONS[p.icon] ?? Star;
-        const featured = index === 0;
         return (
           <Pressable
             key={p.id}
@@ -191,51 +186,24 @@ export function SavedPlacesRow({
             style={({ pressed }) => [
               styles.card,
               { width: cardWidth },
-              featured && styles.featuredCard,
               focusedId === p.id && styles.focused,
               pressed && styles.pressed,
             ]}
           >
-            <View style={[styles.icon, featured && styles.featuredIcon]}>
-              <Icon
-                size={28}
-                strokeWidth={1.8}
-                color={featured ? scheme.onPrimary : scheme.onSecondaryContainer}
-              />
+            <View style={styles.icon}>
+              <Icon size={24} color={scheme.onSecondaryContainer} />
             </View>
             <View style={styles.textContainer}>
-              <Text style={[styles.name, featured && styles.featuredText]} numberOfLines={textLines}>
+              <Text style={styles.name} numberOfLines={textLines}>
                 {p.name}
               </Text>
-              <Text style={[styles.addr, featured && styles.featuredText]} numberOfLines={textLines}>
+              <Text style={styles.addr} numberOfLines={textLines}>
                 {p.address.split(',')[0]}
               </Text>
             </View>
           </Pressable>
         );
       })}
-      <Pressable
-        onPress={onManage}
-        accessibilityRole="button"
-        accessibilityLabel={s.home.editSavedA11y}
-        onFocus={() => setFocusedId('manage')}
-        onBlur={() => setFocusedId(null)}
-        style={({ pressed }) => [
-          styles.card,
-          styles.manageCard,
-          { width: Math.min(cardWidth, 128 * Math.max(1, fontScale)) },
-          focusedId === 'manage' && styles.focused,
-          pressed && styles.pressed,
-        ]}
-      >
-        <View style={styles.manageIcon}>
-          <Pencil size={26} color={scheme.onSurfaceVariant} />
-        </View>
-        <View style={styles.textContainer}>
-          <Text style={styles.manageName}>{s.home.editCard}</Text>
-          <Text style={styles.addr}>{s.home.editCardSub}</Text>
-        </View>
-      </Pressable>
     </ScrollView>
   );
 }
@@ -244,21 +212,18 @@ const styles = StyleSheet.create({
   scroller: { flexGrow: 0, flexShrink: 0, marginHorizontal: -20 },
   row: { gap: 8, paddingHorizontal: 20, paddingVertical: 4, alignItems: 'stretch' },
   card: {
-    minHeight: 184,
+    minHeight: 156,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.extraLarge,
     borderWidth: 2,
     borderColor: 'transparent',
     padding: 16,
-    gap: 24,
+    gap: 20,
     justifyContent: 'space-between',
   },
-  featuredCard: { backgroundColor: scheme.primaryContainer },
-  featuredText: { color: scheme.onPrimaryContainer },
-  manageCard: { backgroundColor: scheme.surfaceContainerLow },
   icon: {
-    width: 52,
-    height: 52,
+    width: 48,
+    height: 48,
     borderRadius: shape.extraLarge,
     borderTopRightRadius: shape.medium,
     borderBottomLeftRadius: shape.medium,
@@ -266,19 +231,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  featuredIcon: {
-    backgroundColor: scheme.primary,
-  },
-  manageIcon: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   textContainer: { gap: 6 },
   name: { ...type.titleLarge, fontWeight: '600', letterSpacing: -0.4, color: scheme.onSurface },
   addr: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  manageName: { ...type.titleSmall, color: scheme.onSurface },
   emptyCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -287,11 +242,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
     borderRadius: shape.extraLarge,
-    backgroundColor: scheme.primaryContainer,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   emptyText: { flex: 1, gap: 6 },
-  emptyTitle: { ...type.titleMedium, color: scheme.onPrimaryContainer },
-  emptyBody: { ...type.bodySmall, color: scheme.onPrimaryContainer },
+  emptyTitle: { ...type.titleMedium, color: scheme.onSurface },
+  emptyBody: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   focused: { borderColor: scheme.primary },
   pressed: { transform: [{ scale: 0.97 }], borderRadius: shape.large },
 });
