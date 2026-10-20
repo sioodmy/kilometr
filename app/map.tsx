@@ -57,7 +57,8 @@ export default function RouteMapScreen() {
 
   const [loadedItem, setItem] = useState<Connection | null>(null);
   const { trip: trackedTrip } = useTrackedTrip();
-  const item = trackedTrip?.connection.id === String(id) ? trackedTrip.connection : loadedItem;
+  const trackedConnection = trackedTrip?.connection.id === String(id) ? trackedTrip.connection : null;
+  const item = trackedConnection ?? (loadedItem?.id === String(id) ? loadedItem : null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [panelHeight, setPanelHeight] = useState(120);
   const [headerHeight, setHeaderHeight] = useState(96);
@@ -104,6 +105,11 @@ export default function RouteMapScreen() {
 
   // ─── Połączenie ─────────────────────────────────────────────
   useEffect(() => {
+    if (trackedConnection) {
+      setItem(trackedConnection);
+      setLoadFailed(false);
+      return;
+    }
     if (!id) {
       setLoadFailed(true);
       return;
@@ -129,7 +135,7 @@ export default function RouteMapScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, trackedConnection]);
 
   // Stare połączenia bywają bez stacji (kurs spoza wycinka). Bez nich noga
   // to dwa punkty, czyli kreska cięciem zamiast wzdłuż torów. Dociągamy
@@ -335,7 +341,7 @@ export default function RouteMapScreen() {
   };
 
   // ─── Render ─────────────────────────────────────────────────
-  if (loadFailed) {
+  if (loadFailed && !item) {
     return (
       <View style={styles.safe}>
         <View style={[styles.headerSafe, { paddingTop: insets.top + 6 }]}>
