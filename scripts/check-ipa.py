@@ -1,5 +1,6 @@
 import plistlib
 import re
+import struct
 import sys
 import zipfile
 
@@ -13,6 +14,8 @@ def verify(path):
         widget = plistlib.loads(archive.read(extension + "Info.plist"))
         assert info["CFBundleIdentifier"] == "app.kilometr", "Unexpected bundle ID"
         assert widget["CFBundleIdentifier"] == "app.kilometr.liveactivity"
+        assert info["DTPlatformName"] == "iphoneos", "IPA must target a physical device"
+        assert widget["DTPlatformName"] == "iphoneos"
         assert info.get("NSSupportsLiveActivities") is True
         assert info.get("NSLocationWhenInUseUsageDescription")
         assert not info.get("UIBackgroundModes"), "No background tracking is requested"
@@ -20,8 +23,10 @@ def verify(path):
         for key in ["CFBundleShortVersionString", "CFBundleVersion"]:
             assert re.fullmatch(r"\d+(\.\d+){0,2}", info[key]), key
             assert info[key] == widget[key], "App and extension versions differ"
-        assert app + info["CFBundleExecutable"] in names
-        assert extension + widget["CFBundleExecutable"] in names
+        for directory, metadata in [(app, info), (extension, widget)]:
+            binary = archive.read(directory + metadata["CFBundleExecutable"])
+            magic, cpu = struct.unpack("<II", binary[:8])
+            assert magic == 0xFEEDFACF and cpu == 0x0100000C, "Expected a 64-bit arm64 Mach-O"
         assert any(name.startswith(app) and name.endswith("main.jsbundle") for name in names), "Missing JS bundle"
         assert not any(name.endswith("embedded.mobileprovision") for name in names)
         for locale in ["pl", "en", "de", "uk"]:
