@@ -38,6 +38,9 @@ jobs:
       - name: Run TypeScript typecheck
         run: npm run typecheck
 
+      - name: Check widget translations
+        run: npm run check:widget-strings
+
       - name: Run ESLint
         run: npm run lint
 

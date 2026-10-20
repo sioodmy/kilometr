@@ -13,6 +13,11 @@ android {
   compileSdk 36
   testOptions {
     unitTests.includeAndroidResources = true
+    unitTests.all {
+      if (project.hasProperty('widgetScreenshots')) {
+        systemProperty 'kilometr.widget.screenshots', project.property('widgetScreenshots')
+      }
+    }
   }
 }
 
