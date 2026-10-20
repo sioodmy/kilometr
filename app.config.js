@@ -125,6 +125,7 @@ module.exports = ({ config }) => {
     },
     android: {
       ...(expo.android || {}),
+      package: 'app.kilometr.transfertest',
       versionCode: versionCodeFromVersion(version),
     },
   });
