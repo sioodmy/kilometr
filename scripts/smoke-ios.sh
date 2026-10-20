@@ -20,5 +20,5 @@ xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$OUTPUT/Build/Products/Release-iphonesimulator/Kilometr.app"
 xcrun simctl launch "$DEVICE" app.kilometr
 sleep 15
-xcrun simctl spawn "$DEVICE" launchctl list | rg 'UIKitApplication:app\.kilometr'
 xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/ios-launch.png"
+xcrun simctl spawn "$DEVICE" launchctl list | grep -F 'UIKitApplication:app.kilometr'
