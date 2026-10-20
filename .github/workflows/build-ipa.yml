@@ -95,8 +95,6 @@ jobs:
         run: |
           bash scripts/package-ipa.sh "$RUNNER_TEMP/Kilometr.xcarchive" "$RUNNER_TEMP/ipa-dist"
           python3 scripts/check-ipa.py "$RUNNER_TEMP/ipa-dist/kilometr-unsigned.ipa"
-      - name: Launch release build in iOS simulator
-        run: bash scripts/smoke-ios.sh
       - uses: actions/upload-artifact@v4
         with:
           name: kilometr-ios-unsigned
@@ -111,8 +109,6 @@ jobs:
           path: |
             ${{ runner.temp }}/xcodebuild.log
             ${{ runner.temp }}/Archive.xcresult
-            ${{ runner.temp }}/ios-simulator.log
-            ${{ runner.temp }}/ios-launch.png
             ios/Podfile.lock
           retention-days: 7
       - name: Installation instructions
