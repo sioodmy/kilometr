@@ -1065,6 +1065,11 @@ export const pl = {
     timeA11y: (label: string) => `Czas odjazdu: ${label}. Dotknij, aby zmienić.`,
   },
   connection: {
+    previewTitle: 'Podgląd połączenia',
+    previewHint: 'Przytrzymaj, aby podejrzeć połączenie.',
+    previewSwipe: 'Przesuń w górę, aby otworzyć szczegóły',
+    previewRelease: 'Puść, aby otworzyć szczegóły',
+    previewOpen: 'Otwórz szczegóły',
     transfers: (n: number) =>
       n <= 0
         ? 'bezpośrednio'

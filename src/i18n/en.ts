@@ -1043,6 +1043,11 @@ export const en: Strings = {
     timeA11y: (label: string) => `Departure time: ${label}. Tap to change.`,
   },
   connection: {
+    previewTitle: 'Journey preview',
+    previewHint: 'Touch and hold to preview this journey.',
+    previewSwipe: 'Slide up to open journey details',
+    previewRelease: 'Release to open journey details',
+    previewOpen: 'Open journey details',
     transfers: (n: number) => (n <= 0 ? 'direct' : n === 1 ? '1 transfer' : `${n} transfers`),
     connections: (n: number) => (n === 1 ? '1 connection' : `${n} connections`),
     walkAll: 'all on foot',

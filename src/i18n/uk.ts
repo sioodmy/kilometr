@@ -1077,6 +1077,11 @@ export const uk: Strings = {
     timeA11y: (label: string) => `Час відправлення: ${label}. Натисни, щоб змінити.`,
   },
   connection: {
+    previewTitle: 'Перегляд маршруту',
+    previewHint: 'Натисніть і утримуйте, щоб переглянути маршрут.',
+    previewSwipe: 'Посуньте вгору, щоб відкрити деталі',
+    previewRelease: 'Відпустіть, щоб відкрити деталі',
+    previewOpen: 'Відкрити деталі маршруту',
     transfers: (n: number) =>
       n <= 0 ? 'прямо' : n === 1 ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     connections: (n: number) =>
