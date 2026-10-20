@@ -41,6 +41,9 @@ jobs:
       - name: Check widget translations
         run: npm run check:widget-strings
 
+      - name: Check iOS translations
+        run: npm run check:ios-strings
+
       - name: Run ESLint
         run: npm run lint
 

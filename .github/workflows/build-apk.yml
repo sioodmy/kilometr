@@ -56,6 +56,9 @@ jobs:
   build-apk:
     name: Build & Release APK
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      publish: ${{ steps.release.outputs.publish }}
     # URL rozkładu jest wpieczony w kodzie (src/services/gtfsConfig.ts,
     # data.kilometr.app), więc build nie potrzebuje żadnego sekretu.
     # Nadpisanie lokalnie: EXPO_PUBLIC_TIMETABLE_URL w .env.
@@ -486,3 +489,12 @@ jobs:
           echo "APK do pobrania: $URL"
           echo "### APK opublikowane ($CHANNEL)" >> "$GITHUB_STEP_SUMMARY"
           echo "[${APK_NAME}]($URL)" >> "$GITHUB_STEP_SUMMARY"
+
+  build-ios:
+    needs: build-apk
+    if: needs.build-apk.outputs.publish == 'true'
+    uses: ./.github/workflows/build-ipa.yml
+    with:
+      release_tag: ${{ needs.build-apk.outputs.tag }}
+    permissions:
+      contents: write
