@@ -62,9 +62,9 @@ Wymagany iOS 16.4 lub nowszy. GitHub Actions kompiluje aplikację na macOS z Xco
 
 ### Pobranie
 
-- Build testowy: otwórz [Build IPA](https://github.com/sioodmy/kilometr/actions/workflows/build-ipa.yml), wybierz `Run workflow` i gałąź. Po udanym buildzie pobierz artefakt `kilometr-ios-unsigned`, rozpakuj ZIP i znajdź `kilometr-unsigned.ipa`.
-- PR zmieniający aplikację i kierowany do `dev` buduje ten sam artefakt.
-- Wydania `nightly` i `prod`: po publikacji APK workflow buduje IPA i dołącza je do tego samego [GitHub Release](https://github.com/sioodmy/kilometr/releases). Nie powstaje osobny tag iOS. Błąd kompilacji iOS pozostawia dostępne APK; IPA pojawia się dopiero po udanym buildzie.
+- IPA powstaje tylko na gałęzi `prod`: push do `prod` buduje ją po APK i AAB i dołącza do tego samego [GitHub Release](https://github.com/sioodmy/kilometr/releases). Nie powstaje osobny tag iOS. Błąd kompilacji iOS pozostawia dostępne APK; IPA pojawia się dopiero po udanym buildzie.
+- Build testowy: otwórz [Build IPA](https://github.com/sioodmy/kilometr/actions/workflows/build-ipa.yml), wybierz `Run workflow` na gałęzi `prod`. Po udanym buildzie pobierz artefakt `kilometr-ios-unsigned`, rozpakuj ZIP i znajdź `kilometr-unsigned.ipa`.
+- `dev` testuje wyłącznie APK z Azure Pipelines; GitHub nie buduje tam iOS.
 - Obok IPA znajduje się plik SHA-256. Po rozpakowaniu możesz sprawdzić go poleceniem `shasum -a 256 -c kilometr-unsigned.ipa.sha256`.
 
 ### Podpisanie i instalacja
@@ -96,7 +96,7 @@ CI sprawdza kompilację, silnik Rust, logikę powiadomień i zawartość IPA. Po
 
 ## Wydania
 
-Kod płynie `feature/*` → `dev` → `main` → `nightly` → `prod`, każdy krok jako PR. APK buduje się tylko na push do `nightly` (`kilometr-nightly.apk`, prerelease) i `prod` (`kilometr-prod.apk`, tag `vX.Y.Z`). Strona ląduje na GitHub Pages z `main`. Push do `dev` odpala dodatkowo preview build na Azure Pipelines (`azure-pipelines.yml`): APK ląduje jako prerelease `dev-...`, a link trafia do komentarza w PR `dev` → `main`. Wymaga zmiennej sekretnej `GITHUB_TOKEN` w Azure DevOps; ręcznie ten sam plik obsługuje tryby `release` i `artifact-only`.
+Kod płynie `feature/*` → `dev` → `main` → `nightly` → `prod`, każdy krok jako PR. Push do `nightly` buduje APK (`kilometr-nightly.apk`, prerelease). Push do `prod` buduje APK (`kilometr-prod.apk`), AAB dla Google Play (`kilometr-prod.aab`) i niepodpisane IPA, wszystko pod tagiem `vX.Y.Z`. Strona ląduje na GitHub Pages z `main`. Dev testuje tylko Azure Pipelines (`azure-pipelines.yml`): preview build APK jako prerelease `dev-...`, a link trafia do komentarza w PR `dev` → `main`. Wymaga zmiennej sekretnej `GITHUB_TOKEN` w Azure DevOps; ręcznie ten sam plik obsługuje tryby `release` i `artifact-only`.
 
 W manifeście nie ma zgód lokalizacji w tle na żadnym kanale (aplikacja zbiera Lokację tylko na pierwszym planie przy śledzeniu podróży), dzięki czemu Play nie wymaga deklaracji Location permissions. Bramki `build-aab.yml` i `build-apk.yml` pilnują tego na wygenerowanych artefaktach.
 
