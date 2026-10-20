@@ -54,7 +54,45 @@ npx expo start
 npm --prefix server run setup   # baza rozkładu do pobrania przez aplikację
 ```
 
-Wymagane: Node 20, Expo SDK 57. Powiadomienia i śledzenie działają w buildzie deweloperskim, Expo Go ich nie wspiera.
+Wymagane: Node 22.13 lub nowszy, Expo SDK 57. Powiadomienia i śledzenie działają w buildzie deweloperskim, Expo Go ich nie wspiera.
+
+## iOS: IPA do sideloadowania
+
+Wymagany iOS 16.4 lub nowszy. GitHub Actions kompiluje aplikację na macOS z Xcode. IPA jest **niepodpisane**: podpisujesz je swoim kontem Apple, poza GitHubem. Repozytorium nie potrzebuje certyfikatu, profilu provisioning ani hasła do Apple.
+
+### Pobranie
+
+- Build testowy: otwórz [Build IPA](https://github.com/sioodmy/kilometr/actions/workflows/build-ipa.yml), wybierz `Run workflow` i gałąź. Po udanym buildzie pobierz artefakt `kilometr-ios-unsigned`, rozpakuj ZIP i znajdź `kilometr-unsigned.ipa`.
+- PR zmieniający aplikację i kierowany do `dev` buduje ten sam artefakt.
+- Wydania `nightly` i `prod`: po publikacji APK workflow buduje IPA i dołącza je do tego samego [GitHub Release](https://github.com/sioodmy/kilometr/releases). Nie powstaje osobny tag iOS. Błąd kompilacji iOS pozostawia dostępne APK; IPA pojawia się dopiero po udanym buildzie.
+- Obok IPA znajduje się plik SHA-256. Po rozpakowaniu możesz sprawdzić go poleceniem `shasum -a 256 -c kilometr-unsigned.ipa.sha256`.
+
+### Podpisanie i instalacja
+
+Przykład z [Sideloadly](https://sideloadly.io/) na macOS lub Windows:
+
+1. Zainstaluj Sideloadly według instrukcji producenta. Na Windows przygotuj również wymagane przez niego komponenty Apple.
+2. Podłącz iPhone kablem, odblokuj go i zatwierdź zaufanie do komputera.
+3. Wybierz urządzenie w Sideloadly, przeciągnij `kilometr-unsigned.ipa` do okna i podaj własne konto Apple.
+4. Zachowaj rozszerzenie `KilometrLiveActivity`. Usunięcie rozszerzeń wyłącza ekran blokady i Dynamic Island. Aplikacja oraz rozszerzenie muszą zostać podpisane razem.
+5. Uruchom instalację. Jeśli iOS tego wymaga, zaufaj profilowi w **Ustawienia → Ogólne → VPN i zarządzanie urządzeniem** oraz włącz **Tryb dewelopera** w **Prywatność i ochrona**. Postępuj według komunikatów telefonu.
+6. Otwórz Kilometr, pobierz dane miasta i zezwól na powiadomienia przy pierwszym przypięciu trasy lub ustawieniu przypomnienia.
+
+Bezpłatny podpis Apple zwykle wygasa po 7 dniach. Odnawiaj go w narzędziu do sideloadowania; Sideloadly obsługuje automatyczne odnawianie. Przy aktualizacji używaj tego samego konta i identyfikatora aplikacji, aby zachować dane. Możesz użyć innego narzędzia podpisującego IPA, jeśli obsługuje również dołączone rozszerzenie.
+
+### Co działa inaczej na iOS
+
+Silnik tras Rust i mapy offline działają natywnie. Live Activity pokazuje podróż na ekranie blokady, a na obsługiwanych iPhone'ach także w Dynamic Island. Dotknięcie otwiera trasę. Nie wymaga App Groups ani powiadomień push.
+
+iOS usypia aplikację w tle. Licznik rysuje system, ale nowe dane o pojazdach i opóźnieniach docierają podczas działania aplikacji. Po upływie ważności danych aktywność prosi o otwarcie Kilometr. Nie obiecujemy ciągłego śledzenia GPS po zamknięciu aplikacji. Alert przed wysiadaniem i komunikat o przyjeździe są planowane według ostatniego znanego rozkładu; zmiana trasy lub zakończenie śledzenia aktualizuje albo usuwa oczekujące alerty.
+
+Budzik przed wyjściem jest lokalnym przypomnieniem z dźwiękiem. Tryb cichy, Skupienie i ustawienia powiadomień mogą go wyciszyć. Nie zastępuje budzika systemowego i nie otwiera pełnego ekranu. Widgety pulpitu Androida nie są częścią tego IPA.
+
+### Sprawdzenie na urządzeniu
+
+Po własnym podpisaniu sprawdź pobranie rozkładu, wyszukanie trasy bez internetu, mapę offline, lokalizację, import/eksport kopii i udostępnianie. Przypnij trasę, zablokuj ekran, otwórz ją z Live Activity, usuń aktywność i sprawdź, czy nie wraca. Ustaw oraz anuluj przypomnienie przed wyjściem. Sprawdź odmowę powiadomień i wszystkie cztery języki.
+
+CI sprawdza kompilację, silnik Rust, logikę powiadomień i zawartość IPA. Podpisanie oraz zachowanie na fizycznym iPhonie wymagają testu użytkownika przed promocją do `prod`.
 
 ## Wydania
 

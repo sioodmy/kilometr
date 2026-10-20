@@ -1,0 +1,147 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_tag:
+        type: string
+        required: false
+        default: ''
+  pull_request:
+    branches: [dev]
+    paths:
+      - 'app/**'
+      - 'src/**'
+      - 'modules/**'
+      - 'plugins/**'
+      - 'assets/**'
+      - 'package*.json'
+      - 'app.config.js'
+      - 'app.json'
+      - 'scripts/*ios*'
+      - 'scripts/*ipa*'
+      - '.github/workflows/build-ipa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: iOS archive
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      CI: '1'
+      IOS_BUILD_NUMBER: '${{ github.run_number }}.${{ github.run_attempt }}.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+          xcodebuild -version
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - name: Test Rust
+        run: cargo test --locked --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+      - name: Build Rust for iOS
+        run: bash scripts/build-rust-ios.sh
+      - name: Test native offline files
+        run: |
+          xcrun swiftc -parse-as-library modules/kilometr-maps/ios/TilePack.swift scripts/check-ios-offline.swift -o "$RUNNER_TEMP/check-ios-offline"
+          "$RUNNER_TEMP/check-ios-offline"
+      - name: Check app and translations
+        run: |
+          npm run typecheck
+          npm run check:ios-strings
+          npm run check:ios
+      - name: Generate Xcode project
+        env:
+          APP_VERSION: ${{ inputs.release_tag }}
+        run: npx expo prebuild --platform ios --clean --no-install
+      - name: Verify iOS configuration
+        run: python3 scripts/check-ios-prebuild.py
+      - name: Install pods
+        working-directory: ios
+        run: pod install
+      - name: Archive without signing
+        env:
+          APP_VERSION: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace ios/Kilometr.xcworkspace -scheme Kilometr \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Kilometr.xcarchive" \
+            -resultBundlePath "$RUNNER_TEMP/Archive.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            archive > "$RUNNER_TEMP/xcodebuild.log" 2>&1 || {
+              tail -n 180 "$RUNNER_TEMP/xcodebuild.log"
+              exit 1
+            }
+      - name: Package and verify IPA
+        run: |
+          bash scripts/package-ipa.sh "$RUNNER_TEMP/Kilometr.xcarchive" "$RUNNER_TEMP/ipa-dist"
+          python3 scripts/check-ipa.py "$RUNNER_TEMP/ipa-dist/kilometr-unsigned.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kilometr-ios-unsigned
+          path: ${{ runner.temp }}/ipa-dist/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: |
+            ${{ runner.temp }}/xcodebuild.log
+            ${{ runner.temp }}/Archive.xcresult
+            ios/Podfile.lock
+          retention-days: 7
+      - name: Installation instructions
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          IPA: pobierz artefakt `kilometr-ios-unsigned` i rozpakuj ZIP.
+          Plik `kilometr-unsigned.ipa` wymaga podpisania na własne konto Apple.
+          Zachowaj rozszerzenie `KilometrLiveActivity`, aby działała Dynamic Island.
+          Instrukcja: [README](https://github.com/sioodmy/kilometr#ios-ipa-do-sideloadowania).
+          EOF
+
+  publish:
+    name: Attach IPA to release
+    needs: build
+    if: inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kilometr-ios-unsigned
+          path: ipa-dist
+      - name: Attach to existing channel release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF_NAME:$RELEASE_TAG" in
+            nightly:nightly-*|prod:v*) ;;
+            *) echo "::error::IPA można opublikować wyłącznie w wydaniu nightly/prod."; exit 1 ;;
+          esac
+          gh release view "$RELEASE_TAG"
+          gh release upload "$RELEASE_TAG" ipa-dist/kilometr-unsigned.ipa ipa-dist/kilometr-unsigned.ipa.sha256 --clobber

@@ -60,7 +60,14 @@
       "favicon": "./assets/favicon.png"
     },
     "scheme": "kilometr",
+    "locales": {
+      "pl": "./src/i18n/native/pl.json",
+      "en": "./src/i18n/native/en.json",
+      "de": "./src/i18n/native/de.json",
+      "uk": "./src/i18n/native/uk.json"
+    },
     "plugins": [
+      "./plugins/with-ios",
       "expo-router",
       "expo-status-bar",
       [
@@ -86,6 +93,9 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.",
+          "locationAlwaysPermission": false,
+          "locationAlwaysAndWhenInUsePermission": false,
+          "motionUsagePermission": false,
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false,
           "isAndroidMotionActivityEnabled": false
