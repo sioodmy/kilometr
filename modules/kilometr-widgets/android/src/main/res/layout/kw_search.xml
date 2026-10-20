@@ -1,49 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@android:id/background"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/kw_search_surface"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:paddingStart="18dp"
-    android:paddingEnd="6dp">
-
-    <LinearLayout
-        android:id="@+id/kw_search"
-        android:background="@drawable/kw_search_surface"
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:gravity="center_vertical"
-        android:minHeight="48dp"
-        android:orientation="horizontal">
-
-        <ImageView
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:importantForAccessibility="no"
-            android:src="@drawable/kw_ic_search"
-            android:tint="@color/kw_on_primary_container" />
-
-        <TextView
-            android:id="@+id/kw_hint"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="@string/kw_search_hint"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="@color/kw_on_primary_container"
-            android:textSize="16sp" />
+    android:id="@android:id/background" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/kw_bg" android:gravity="center_vertical" android:orientation="horizontal" android:padding="4dp">
+    <LinearLayout android:id="@+id/kw_search" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+        android:background="@drawable/kw_search_surface" android:gravity="center_vertical" android:orientation="horizontal"
+        android:paddingStart="16dp" android:paddingEnd="12dp" android:minHeight="48dp" android:focusable="true">
+        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:importantForAccessibility="no"
+            android:src="@drawable/kw_ic_search" android:tint="@color/kw_on_primary_container" />
+        <TextView android:id="@+id/kw_hint" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="12dp" android:maxLines="1" android:ellipsize="end" android:fontFamily="sans-serif-medium"
+            android:text="@string/kw_search_hint" android:textColor="@color/kw_on_primary_container" android:textSize="17sp" />
     </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/kw_places"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:gravity="center_vertical"
-        android:orientation="horizontal" />
+    <LinearLayout android:id="@+id/kw_places" android:layout_width="wrap_content" android:layout_height="match_parent"
+        android:gravity="center_vertical" android:orientation="horizontal" />
 </LinearLayout>

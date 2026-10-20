@@ -9,6 +9,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Build
+import android.util.SizeF
 import android.widget.RemoteViews
 import org.json.JSONObject
 
@@ -38,7 +40,7 @@ internal object KilometrWidgets {
       ) countdownShown = true
       for (id in ids) {
         try {
-          manager.updateAppWidget(id, render(id, manager.getAppWidgetOptions(id)))
+          manager.updateAppWidget(id, sizedViews(manager.getAppWidgetOptions(id)) { options -> render(id, options) })
         } catch (_: Throwable) {
           // Jeden zepsuty widget nie może zatrzymać pozostałych.
         }
@@ -46,8 +48,8 @@ internal object KilometrWidgets {
     }
 
     each(NextDepartureWidget::class.java) { id, opts -> WidgetRenderers.next(app, snap, id, opts, now) }
-    each(DestinationsWidget::class.java) { id, opts -> WidgetRenderers.journey(app, snap, id, opts, now) }
-    each(TripWidget::class.java) { id, opts -> WidgetRenderers.journey(app, snap, id, opts, now) }
+    each(DestinationsWidget::class.java) { id, opts -> WidgetRenderers.destinations(app, snap, id, opts, now) }
+    each(TripWidget::class.java) { id, opts -> WidgetRenderers.trip(app, snap, id, opts, now) }
     each(SearchWidget::class.java) { id, opts -> WidgetRenderers.search(app, snap, id, opts) }
     each(SavedPlacesWidget::class.java) { id, opts -> WidgetRenderers.savedPlaces(app, snap, id, opts) }
 
@@ -67,6 +69,25 @@ internal object KilometrWidgets {
     return journeyPhase(trip.optLongOrNull("departTs"), arrive, now) != null &&
       (trip.optLongOrNull("departTs") ?: arrive) <= until
   }
+}
+
+internal fun sizedViews(options: Bundle, render: (Bundle) -> RemoteViews): RemoteViews {
+  fun at(width: Int, height: Int): RemoteViews = render(Bundle(options).apply {
+    putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, width)
+    putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, height)
+  })
+  if (Build.VERSION.SDK_INT >= 31) {
+    @Suppress("DEPRECATION")
+    val sizes = options.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES)
+      ?.filter { it.width > 0 && it.height > 0 }?.distinct()?.take(16)
+    if (!sizes.isNullOrEmpty()) return RemoteViews(sizes.associateWith { at(it.width.toInt(), it.height.toInt()) })
+  }
+  // Minima pochodzą z różnych orientacji, więc nie opisują jednego prostokąta.
+  val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
+  val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
+  val maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, minWidth)
+  val maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, minHeight)
+  return RemoteViews(at(maxWidth, minHeight), at(minWidth, maxHeight))
 }
 
 /**

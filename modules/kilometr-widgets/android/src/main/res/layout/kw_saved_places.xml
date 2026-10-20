@@ -2,14 +2,14 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@android:id/background" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/kw_bg">
     <LinearLayout android:id="@+id/kw_saved_content" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:orientation="vertical" android:padding="8dp">
+        android:orientation="vertical" android:padding="8dp" android:visibility="gone">
         <LinearLayout android:id="@+id/kw_saved_row_0" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" />
         <LinearLayout android:id="@+id/kw_saved_row_1" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:visibility="gone" />
         <LinearLayout android:id="@+id/kw_saved_row_2" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:visibility="gone" />
     </LinearLayout>
     <LinearLayout android:id="@+id/kw_saved_empty" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:orientation="vertical" android:gravity="center" android:padding="16dp" android:visibility="gone">
-        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:padding="8dp"
+        android:orientation="vertical" android:gravity="center" android:padding="16dp">
+        <ImageView android:id="@+id/kw_empty_icon" android:layout_width="40dp" android:layout_height="40dp" android:padding="8dp"
             android:background="@drawable/kw_icon_bg" android:src="@drawable/kw_ic_plus" android:importantForAccessibility="no" android:tint="@color/kw_on_primary_container" />
         <TextView android:id="@+id/kw_saved_empty_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
             android:gravity="center" android:text="@string/kw_saved_empty" android:textColor="@color/kw_on_surface" android:textSize="13sp" />

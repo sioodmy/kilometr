@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/kw_next_surface"
+    android:orientation="vertical" android:padding="16dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/kw_next_label"
+        android:fontFamily="sans-serif-medium" android:textColor="@color/kw_on_primary" android:textSize="13sp" />
+    <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical"
+        android:text="@string/kw_sample_time" android:textColor="@color/kw_on_primary" android:fontFamily="sans-serif-medium" android:textSize="38sp" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/kw_sample_place"
+        android:fontFamily="sans-serif-medium" android:textColor="@color/kw_on_primary" android:textSize="16sp" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+        android:text="@string/kw_sample_updated" android:textColor="@color/kw_on_primary" android:textSize="12sp" />
+</LinearLayout>
