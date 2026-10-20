@@ -119,6 +119,10 @@ module.exports = ({ config }) => {
   return withAndroidSigning({
     ...expo,
     version,
+    ios: {
+      ...(expo.ios || {}),
+      buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
+    },
     android: {
       ...(expo.android || {}),
       versionCode: versionCodeFromVersion(version),

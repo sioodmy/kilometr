@@ -1216,6 +1216,14 @@ export const de: Strings = {
     newDeparture: (at: string) => `neue Abfahrt ${at}`,
     delayTitle: (line: string, eta: string) => `Verspätung • ${line} • ${eta}`,
   },
+  ios: {
+    locationPermission: 'Erlaube den Standortzugriff, um Verbindungen ab deinem Standort zu finden.',
+    liveTitle: 'Live-Aktivität',
+    liveHint: 'Fahrzeit auf dem Sperrbildschirm und in der Dynamic Island. Daten werden aktualisiert, solange die App aktiv ist.',
+    liveDisabled: 'Aktiviere Live-Aktivitäten in den Systemeinstellungen für Kilometr.',
+    stale: 'Öffne Kilometr, um die Fahrt zu aktualisieren',
+    alarmHint: 'Eine Erinnerung mit Benachrichtigungston. Stummmodus und Fokus können sie stummschalten. Es öffnet sich kein Vollbildwecker.',
+  },
   alarm: {
     title: 'Fahrtwecker',
     set: 'Wecker stellen',

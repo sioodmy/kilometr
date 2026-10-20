@@ -101,6 +101,8 @@
     "check:widget-badge": "tsx scripts/check-widget-badge.ts",
     "sync:widget-strings": "tsx scripts/sync-widget-strings.ts",
     "check:widget-strings": "tsx scripts/sync-widget-strings.ts --check",
+    "sync:ios-strings": "tsx scripts/sync-ios-strings.ts",
+    "check:ios-strings": "tsx scripts/sync-ios-strings.ts --check",
     "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,

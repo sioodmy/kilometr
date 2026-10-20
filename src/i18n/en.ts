@@ -1205,6 +1205,14 @@ export const en: Strings = {
     newDeparture: (at: string) => `new departure ${at}`,
     delayTitle: (line: string, eta: string) => `Delayed • ${line} • ${eta}`,
   },
+  ios: {
+    locationPermission: 'Allow location access to find journeys from your position.',
+    liveTitle: 'Live Activity',
+    liveHint: 'Journey time on the Lock Screen and Dynamic Island. Data updates while the app is active.',
+    liveDisabled: 'Enable Live Activities in the system settings for Kilometr.',
+    stale: 'Open Kilometr to update your journey',
+    alarmHint: 'A reminder with a notification sound. Silent mode and Focus may silence it. It does not open a full-screen alarm.',
+  },
   alarm: {
     title: 'Trip alarm',
     set: 'Set an alarm',

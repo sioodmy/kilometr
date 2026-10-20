@@ -1247,6 +1247,14 @@ export const pl = {
     newDeparture: (at: string) => `nowy odjazd ${at}`,
     delayTitle: (line: string, eta: string) => `Opóźnienie • ${line} • ${eta}`,
   },
+  ios: {
+    locationPermission: 'Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.',
+    liveTitle: 'Aktywność na żywo',
+    liveHint: 'Czas podróży na ekranie blokady i Dynamic Island. Dane odświeżają się, gdy aplikacja jest aktywna.',
+    liveDisabled: 'Włącz Aktywności na żywo w ustawieniach systemowych aplikacji Kilometr.',
+    stale: 'Otwórz Kilometr, aby odświeżyć trasę',
+    alarmHint: 'Przypomnienie z dźwiękiem powiadomienia. Tryb cichy i Skupienie mogą je wyciszyć. Nie uruchamia pełnoekranowego budzika.',
+  },
   alarm: {
     title: 'Budzik na podróż',
     set: 'Ustaw budzik',
