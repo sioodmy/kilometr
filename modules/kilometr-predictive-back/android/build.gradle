@@ -15,5 +15,7 @@ android {
 
 dependencies {
   implementation project(':react-native-screens')
+  implementation 'com.facebook.react:react-android'
   implementation 'androidx.activity:activity:1.9.3'
+  implementation 'androidx.fragment:fragment-ktx:1.8.9'
 }
