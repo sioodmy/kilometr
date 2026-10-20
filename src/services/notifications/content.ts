@@ -215,6 +215,9 @@ function buildSegments(
           : getLineColors(entry.leg.line || undefined, entry.leg.mode).bg,
       startAtMs: from,
       endAtMs: to,
+      ...(mode !== 'walk' && entry.leg.toLat != null && entry.leg.toLon != null
+        ? { alightLat: entry.leg.toLat, alightLon: entry.leg.toLon }
+        : {}),
     });
     cursor = to;
   }

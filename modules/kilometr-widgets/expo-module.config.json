@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["my.siood.kilometr.widgets.KilometrWidgetsModule"]
+    "modules": ["app.kilometr.widgets.KilometrWidgetsModule"]
   }
 }

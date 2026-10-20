@@ -34,7 +34,13 @@ export const en: ShareStrings = {
   close: 'Close',
   message: (from, to, departure, arrival, lines) =>
     `I’m travelling from ${from} to ${to}${lines ? ` (${lines})` : ''}. Leaving at ${departure}, arriving at ${arrival}.`,
-  snapshot: 'Journey plan at the time of sharing. Location and delays do not update.',
+  snapshot: 'Journey plan at the time of sharing. Delays do not update.',
+  estimatedPosition: 'Position estimated from the timetable',
+  positionNote: 'The icon moves according to scheduled times, without GPS data or current delays.',
+  vehicleAt: (mode, stop) => `${mode}: ${stop}. Position estimated from the timetable.`,
+  vehicleBetween: (mode, from, to) =>
+    `${mode}: between ${from} and ${to}. Position estimated from the timetable.`,
+  hideStops: 'Hide stops',
   privacy: 'The link contains your route and times. Anyone you send it to can open it.',
   pageTitle: 'Shared journey',
   itinerary: 'Journey details',

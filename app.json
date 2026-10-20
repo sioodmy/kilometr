@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "bundleIdentifier": "my.siood.kilometr",
+      "bundleIdentifier": "app.kilometr",
       "supportsTablet": true
     },
     "android": {
@@ -24,12 +24,12 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_PROMOTED_NOTIFICATIONS",
         "android.permission.VIBRATE"
       ],
       "blockedPermissions": [
         "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.ACTIVITY_RECOGNITION",
         "com.google.android.gms.permission.ACTIVITY_RECOGNITION",
         "android.permission.HIGH_SAMPLING_RATE_SENSORS",
@@ -54,7 +54,7 @@
         "me.everything.badger.permission.BADGE_COUNT_WRITE",
         "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE"
       ],
-      "package": "my.siood.kilometr"
+      "package": "app.kilometr"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -2,5 +2,5 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true"><shape><solid android:color="@color/kw_surface_high" /><corners android:radius="16dp" /></shape></item>
     <item android:state_focused="true"><shape><solid android:color="@color/kw_surface_high" /><corners android:radius="20dp" /><stroke android:width="2dp" android:color="@color/kw_primary" /></shape></item>
-    <item><shape><solid android:color="@color/kw_surface_low" /><corners android:radius="20dp" /></shape></item>
+    <item><shape><solid android:color="@color/kw_surface_high" /><corners android:radius="20dp" /></shape></item>
 </selector>

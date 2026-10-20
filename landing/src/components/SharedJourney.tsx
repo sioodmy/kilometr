@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
-  ArrowDown,
   ArrowRight,
   BusFront,
   CableCar,
   Check,
+  ChevronDown,
+  Clock3,
   Copy,
   Footprints,
   Link,
@@ -21,9 +22,21 @@ import {
   type SharedLeg,
 } from '../../../src/sharing/connection';
 import type { StaticStop } from '../../../src/sharing/timetable';
+import {
+  scheduledVehiclePosition,
+  sharedJourneySeconds,
+  sharedLegStops,
+} from '../../../src/sharing/progress';
+import { getLineColors } from '../../../src/services/lineIdentity';
 import { useShareStrings, useWebLocale } from '../i18n';
 import { loadSharedStops } from '../sharedTimetable';
 import './sharedJourney.css';
+
+function lineStyle(leg: SharedLeg, city: string): CSSProperties {
+  if (leg.mode === 'walk') return {};
+  const { bg, fg } = getLineColors(leg.line, leg.mode, city);
+  return { '--leg-accent': bg, '--leg-on-accent': fg } as CSSProperties;
+}
 
 function Vehicle({ mode }: { mode: SharedLeg['mode'] }) {
   const Icon =
@@ -39,6 +52,55 @@ function Vehicle({ mode }: { mode: SharedLeg['mode'] }) {
   return <Icon size={20} aria-hidden="true" />;
 }
 
+function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]; now: number }) {
+  const s = useShareStrings();
+  const position = leg.mode === 'walk' ? null : scheduledVehiclePosition(stops, now);
+  const current = position ? stops[position.index] : null;
+  const label =
+    position && current
+      ? position.fraction === 0
+        ? s.vehicleAt(s.modes[leg.mode], current.name)
+        : s.vehicleBetween(s.modes[leg.mode], current.name, stops[position.index + 1].name)
+      : '';
+
+  return (
+    <>
+      {position && <p className="journey-position-label">{s.estimatedPosition}</p>}
+      <ol className="journey-stop-list" aria-label={s.timetable}>
+        {stops.map((stop, index) => {
+          const seconds = index === stops.length - 1 ? stop.arrival : stop.departure;
+          const endpoint = index === 0 || index === stops.length - 1;
+          return (
+            <li
+              key={`${stop.id}-${index}`}
+              className={`journey-stop${endpoint ? ' journey-stop-endpoint' : ''}${now > seconds ? ' journey-stop-passed' : ''}`}
+            >
+              <span className="journey-stop-rail" aria-hidden="true">
+                <span className="journey-stop-dot" />
+              </span>
+              <span className="journey-stop-name">{stop.name}</span>
+              <time>
+                {formatShareTime(((Math.floor(seconds / 60) % 1440) + 1440) % 1440)}
+                {seconds >= 86400 && <small>{s.dayLater(Math.floor(seconds / 86400))}</small>}
+              </time>
+              {position?.index === index && (
+                <span
+                  className="journey-vehicle"
+                  style={{ top: `calc(0.75rem + ${position.fraction * 100}%)` }}
+                  role="img"
+                  aria-label={label}
+                >
+                  <Vehicle mode={leg.mode} />
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </>
+  );
+}
+
 export default function SharedJourney({ hash }: { hash: string }) {
   const s = useShareStrings();
   const locale = useWebLocale();
@@ -52,6 +114,19 @@ export default function SharedJourney({ hash }: { hash: string }) {
   const [retry, setRetry] = useState(0);
   const [copied, setCopied] = useState(false);
   const [shareError, setShareError] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!journey) return;
+    const update = () => setNow(new Date());
+    update();
+    const timer = setInterval(update, 1000);
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, [journey]);
 
   useEffect(() => {
     document.title = `${s.pageTitle} | ${s.brand}`;
@@ -108,6 +183,7 @@ export default function SharedJourney({ hash }: { hash: string }) {
     timeZone: 'UTC',
   }).format(new Date(`${journey.date}T12:00:00Z`));
   const arrivalDay = Math.floor(journey.arrival / 1440);
+  const elapsed = sharedJourneySeconds(journey.date, now);
   const url = window.location.href;
   const message = shareMessage(journey, s);
   const smsUrl = `sms:${/iPhone|iPad|iPod/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(`${message}\n${url}`)}`;
@@ -144,26 +220,28 @@ export default function SharedJourney({ hash }: { hash: string }) {
           aria-label={s.cardLabel(journey.from, journey.to, formatShareTime(journey.arrival))}
         >
           <div className="journey-ticket">
-            <div className="journey-arrival">
-              <p>{s.arrival}</p>
-              <div className="journey-time">
-                {formatShareTime(journey.arrival)}
-                {arrivalDay > 0 && <span>{s.dayLater(arrivalDay)}</span>}
+            <div className="journey-endpoints">
+              <div>
+                <p>{s.departure}</p>
+                <div className="journey-time">{formatShareTime(journey.departure)}</div>
+                <h2>{journey.from}</h2>
               </div>
-              <h2>{journey.to}</h2>
+              <ArrowRight className="journey-route-arrow" size={24} aria-hidden="true" />
+              <div>
+                <p>{s.arrival}</p>
+                <div className="journey-time">
+                  {formatShareTime(journey.arrival)}
+                  {arrivalDay > 0 && <span>{s.dayLater(arrivalDay)}</span>}
+                </div>
+                <h2>{journey.to}</h2>
+              </div>
             </div>
             <div className="journey-ticket-body">
-              <div className="journey-origin">
-                <div>
-                  <p>
-                    {s.departure} · {formatShareTime(journey.departure)}
-                  </p>
-                  <h3>{journey.from}</h3>
-                </div>
-                <ArrowRight size={24} aria-hidden="true" />
-              </div>
               <div className="journey-facts">
-                <strong>{s.duration(journey.arrival - journey.departure)}</strong>
+                <strong>
+                  <Clock3 size={20} aria-hidden="true" />
+                  {s.duration(journey.arrival - journey.departure)}
+                </strong>
                 <span>
                   {journey.legs.every((leg) => leg.mode === 'walk')
                     ? s.walk
@@ -175,6 +253,8 @@ export default function SharedJourney({ hash }: { hash: string }) {
                   <span
                     key={i}
                     className="journey-service"
+                    data-mode={leg.mode}
+                    style={lineStyle(leg, journey.city)}
                     aria-label={`${s.modes[leg.mode]} ${leg.line || ''}`}
                   >
                     <Vehicle mode={leg.mode} />
@@ -184,7 +264,10 @@ export default function SharedJourney({ hash }: { hash: string }) {
               </div>
             </div>
           </div>
-          <p className="journey-note">{s.snapshot}</p>
+          <p className="journey-note">
+            {s.snapshot}
+            {journey.legs.some((leg) => leg.mode !== 'walk') && <> {s.positionNote}</>}
+          </p>
           <div className="journey-actions">
             <button type="button" className="journey-button" onClick={() => void share()}>
               <Share2 size={20} aria-hidden="true" />
@@ -220,57 +303,51 @@ export default function SharedJourney({ hash }: { hash: string }) {
               <li
                 key={i}
                 className={`journey-leg${leg.mode === 'walk' ? ' journey-leg-walk' : ''}`}
+                data-mode={leg.mode}
+                style={lineStyle(leg, journey.city)}
               >
                 <div className="journey-leg-heading">
                   <span className="journey-leg-icon">
                     <Vehicle mode={leg.mode} />
+                    {leg.line && <strong>{leg.line}</strong>}
                   </span>
                   <div>
-                    <h3>
-                      {s.modes[leg.mode]}
-                      {leg.line ? ` ${leg.line}` : ''}
-                    </h3>
-                    {leg.direction && <p>{s.direction(leg.direction)}</p>}
+                    <h3>{leg.direction || s.modes[leg.mode]}</h3>
+                    {leg.mode !== 'walk' && <p>{s.modes[leg.mode]}</p>}
                     {leg.mode === 'walk' && leg.walk != null && <p>{s.walkDistance(leg.walk)}</p>}
                   </div>
+                  <span className="journey-leg-duration">
+                    {s.duration(leg.arrival - leg.departure)}
+                  </span>
                 </div>
-                <div className="journey-leg-endpoint">
-                  <time>{formatShareTime(leg.departure)}</time>
-                  <span>{leg.from}</span>
-                </div>
-                <div className="journey-leg-path">
-                  <ArrowDown size={16} aria-hidden="true" />
-                  <span>{s.duration(leg.arrival - leg.departure)}</span>
-                </div>
-                <div className="journey-leg-endpoint">
-                  <time>
-                    {formatShareTime(leg.arrival)}
-                    {leg.arrival >= 1440 && (
-                      <small>{s.dayLater(Math.floor(leg.arrival / 1440))}</small>
-                    )}
-                  </time>
-                  <span>{leg.to}</span>
-                </div>
-                {stops[i]?.length > 0 && (
-                  <details className="journey-stops">
-                    <summary>{s.showStops(stops[i].length)}</summary>
-                    <p>{s.timetable}</p>
-                    <ol>
-                      {stops[i].map((stop, index) => (
-                        <li key={index}>
-                          <time>
-                            {formatShareTime(
-                              Math.floor(
-                                (index === stops[i].length - 1 ? stop.arrival : stop.departure) /
-                                  60,
-                              ),
-                            )}
-                          </time>
-                          <span>{stop.name}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </details>
+                {stops[i]?.length > 2 ? (
+                  <>
+                    <div className="journey-leg-summary">
+                      <p>
+                        <span>{s.from}</span> <strong>{leg.from}</strong>{' '}
+                        <time>{formatShareTime(leg.departure)}</time>
+                      </p>
+                      <p>
+                        <span>{s.to}</span> <strong>{leg.to}</strong>{' '}
+                        <time>
+                          {formatShareTime(leg.arrival)}
+                          {leg.arrival >= 1440 && (
+                            <> {s.dayLater(Math.floor(leg.arrival / 1440))}</>
+                          )}
+                        </time>
+                      </p>
+                    </div>
+                    <details className="journey-stops" open>
+                      <summary>
+                        <span className="journey-show-stops">{s.showStops(stops[i].length)}</span>
+                        <span className="journey-hide-stops">{s.hideStops}</span>
+                        <ChevronDown size={18} aria-hidden="true" />
+                      </summary>
+                      <StopTimeline leg={leg} stops={sharedLegStops(leg, stops[i])} now={elapsed} />
+                    </details>
+                  </>
+                ) : (
+                  <StopTimeline leg={leg} stops={sharedLegStops(leg, stops[i])} now={elapsed} />
                 )}
               </li>
             ))}
