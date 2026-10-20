@@ -5,6 +5,7 @@ import { scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
 import { DirectionsWalk } from './DirectionsWalk';
+import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionPeek';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { tr, useStrings } from '../i18n';
@@ -185,6 +186,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   onPress,
   dimmed = false,
   tick = 0,
+  peek,
 }: {
   item: Connection;
   onPress: (item: Connection) => void;
@@ -192,6 +194,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   dimmed?: boolean;
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;
+  peek?: ConnectionPeekHandlers;
 }) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
@@ -252,83 +255,111 @@ export const ConnectionCard = memo(function ConnectionCard({
   // były pierwszym, na co spada wzrok.
   if (dimmed) {
     return (
-      <Pressable
-        onPress={() => onPress(item)}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityDesc}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={({ pressed }) => [
-          styles.pastCard,
-          focused && styles.focused,
-          pressed && { backgroundColor: scheme.surfaceContainerHigh },
-        ]}
-      >
-        <Text style={styles.pastDepart} numberOfLines={fontScale > 1.3 ? undefined : 1}>
-          {departureText}
-        </Text>
-        <Text style={styles.pastHours} numberOfLines={fontScale > 1.3 ? undefined : 1}>
-          {item.departAt} → {item.arriveAt}
-        </Text>
-        <View style={styles.pastDur}>
-          <Text style={styles.pastDurText}>{tr().common.durMin(item.durationMin)}</Text>
-        </View>
-        {boarding[0]?.line ? (
-          <View>
-            <LineBadge mode={boarding[0].mode} line={boarding[0].line} compact />
+      <ConnectionPeekTarget item={item} handlers={peek}>
+        <Pressable
+          onPress={() => onPress(item)}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityDesc}
+          accessibilityHint={peek ? s.connection.previewHint : undefined}
+          accessibilityActions={
+            peek
+              ? [{ name: 'activate' }, { name: 'longpress', label: s.connection.previewTitle }]
+              : undefined
+          }
+          onAccessibilityTap={() => onPress(item)}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
+            if (event.nativeEvent.actionName === 'activate') onPress(item);
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={({ pressed }) => [
+            styles.pastCard,
+            focused && styles.focused,
+            pressed && { backgroundColor: scheme.surfaceContainerHigh },
+          ]}
+        >
+          <Text style={styles.pastDepart} numberOfLines={fontScale > 1.3 ? undefined : 1}>
+            {departureText}
+          </Text>
+          <Text style={styles.pastHours} numberOfLines={fontScale > 1.3 ? undefined : 1}>
+            {item.departAt} → {item.arriveAt}
+          </Text>
+          <View style={styles.pastDur}>
+            <Text style={styles.pastDurText}>{tr().common.durMin(item.durationMin)}</Text>
           </View>
-        ) : null}
-      </Pressable>
+          {boarding[0]?.line ? (
+            <View>
+              <LineBadge mode={boarding[0].mode} line={boarding[0].line} compact />
+            </View>
+          ) : null}
+        </Pressable>
+      </ConnectionPeekTarget>
     );
   }
 
   return (
-    <Pressable
-      onPress={() => onPress(item)}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityDesc}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      style={({ pressed }) => [styles.card, focused && styles.focused, pressed && styles.pressed]}
-    >
-      <View style={styles.schedule}>
-        <Text style={[styles.departure, { color: departureColor }]}>
-          {walkOnly ? s.connection.walkRoute : departureText}
-        </Text>
-        <View style={styles.duration}>
-          <Clock3 size={14} color={scheme.onSecondaryContainer} />
-          <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
+    <ConnectionPeekTarget item={item} handlers={peek}>
+      <Pressable
+        onPress={() => onPress(item)}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityDesc}
+        accessibilityHint={peek ? s.connection.previewHint : undefined}
+        accessibilityActions={
+          peek
+            ? [{ name: 'activate' }, { name: 'longpress', label: s.connection.previewTitle }]
+            : undefined
+        }
+        onAccessibilityTap={() => onPress(item)}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
+          if (event.nativeEvent.actionName === 'activate') onPress(item);
+        }}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={({ pressed }) => [styles.card, focused && styles.focused, pressed && styles.pressed]}
+      >
+        <View style={styles.schedule}>
+          <Text style={[styles.departure, { color: departureColor }]}>
+            {walkOnly ? s.connection.walkRoute : departureText}
+          </Text>
+          <View style={styles.duration}>
+            <Clock3 size={14} color={scheme.onSecondaryContainer} />
+            <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
+          </View>
         </View>
-      </View>
 
-      <View style={[styles.journeyMeta, fontScale > 1.3 && styles.journeyMetaStacked]}>
-        <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
-          <Text style={styles.hours}>{item.departAt}</Text>
-          <Direction size={14} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
-          <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
+        <View style={[styles.journeyMeta, fontScale > 1.3 && styles.journeyMetaStacked]}>
+          <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
+            <Text style={styles.hours}>{item.departAt}</Text>
+            <Direction size={14} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
+            <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
+          </View>
+          <Text style={styles.metaText} numberOfLines={fontScale > 1.3 ? undefined : 1}>
+            {transferText}
+          </Text>
         </View>
-        <Text style={styles.metaText} numberOfLines={fontScale > 1.3 ? undefined : 1}>
-          {transferText}
-        </Text>
-      </View>
 
-      {walkOnly ? (
-        <View style={styles.walkOnlyWrap}>
-          <Footprints size={18} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
-          <Text style={styles.walkLabel}>{s.connection.walkAll}</Text>
-        </View>
-      ) : stripData.transitLegs.length > 0 ? (
-        <JourneyStrip data={stripData} />
-      ) : null}
+        {walkOnly ? (
+          <View style={styles.walkOnlyWrap}>
+            <Footprints size={18} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
+            <Text style={styles.walkLabel}>{s.connection.walkAll}</Text>
+          </View>
+        ) : stripData.transitLegs.length > 0 ? (
+          <JourneyStrip data={stripData} />
+        ) : null}
 
-      {item.live && item.delayMin !== 0 && (
-        <Text style={[styles.delay, { color: item.delayMin > 0 ? scheme.error : scheme.warning }]}>
-          {item.delayMin > 0
-            ? s.routeDetails.late(item.delayMin)
-            : s.routeDetails.early(-item.delayMin)}
-        </Text>
-      )}
-    </Pressable>
+        {item.live && item.delayMin !== 0 && (
+          <Text
+            style={[styles.delay, { color: item.delayMin > 0 ? scheme.error : scheme.warning }]}
+          >
+            {item.delayMin > 0
+              ? s.routeDetails.late(item.delayMin)
+              : s.routeDetails.early(-item.delayMin)}
+          </Text>
+        )}
+      </Pressable>
+    </ConnectionPeekTarget>
   );
 });
 

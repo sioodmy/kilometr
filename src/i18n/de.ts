@@ -1051,6 +1051,11 @@ export const de: Strings = {
     timeA11y: (label: string) => `Abfahrtszeit: ${label}. Tippen zum Ändern.`,
   },
   connection: {
+    previewTitle: 'Verbindungsvorschau',
+    previewHint: 'Gedrückt halten, um die Verbindung anzusehen.',
+    previewSwipe: 'Nach oben schieben, um Details zu öffnen',
+    previewRelease: 'Loslassen, um Details zu öffnen',
+    previewOpen: 'Verbindungsdetails öffnen',
     transfers: (n: number) => (n <= 0 ? 'direkt' : n === 1 ? '1 Umstieg' : `${n} Umstiege`),
     connections: (n: number) => (n === 1 ? '1 Verbindung' : `${n} Verbindungen`),
     walkAll: 'alles zu Fuß',
