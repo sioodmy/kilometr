@@ -20,7 +20,13 @@ test('kontrola manifestu Androida', (t) => {
   const internet = 'android.permission.INTERNET';
   const foreground = `${internet}\nuses-permission: name='android.permission.ACCESS_COARSE_LOCATION'\nuses-permission: name='android.permission.ACCESS_FINE_LOCATION'`;
   assert.equal(check(foreground).status, 0);
-  assert.equal(check(`${internet}\nandroid.permission.SCHEDULE_EXACT_ALARM\nandroid.permission.USE_FULL_SCREEN_INTENT\nandroid.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK`).status, 0);
+  assert.equal(check(`${foreground}\nandroid.permission.FOREGROUND_SERVICE_LOCATION`).status, 0);
+  assert.equal(
+    check(
+      `${internet}\nandroid.permission.SCHEDULE_EXACT_ALARM\nandroid.permission.USE_FULL_SCREEN_INTENT\nandroid.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
+    ).status,
+    0,
+  );
   for (const permission of [
     'android.permission.ACCESS_BACKGROUND_LOCATION',
     'android.permission.ACTIVITY_RECOGNITION',

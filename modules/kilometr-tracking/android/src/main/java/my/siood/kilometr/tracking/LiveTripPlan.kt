@@ -43,6 +43,15 @@ internal data class LiveTripPlan(
 
   fun stateAt(nowMs: Long): LiveState? = states.lastOrNull { it.atMs <= nowMs }
 
+  fun alightSegmentAt(nowMs: Long): IndexedValue<LiveSegment>? {
+    val active = segments.withIndex().lastOrNull {
+      it.value.mode != MODE_WALK && nowMs >= it.value.startAtMs
+    } ?: return null
+    if (nowMs < active.value.startAtMs + BOARDING_GRACE_MS) return null
+    // Opóźniony pojazd może dojechać już po rozkładowym końcu odcinka.
+    return active
+  }
+
   /** Trwałość całej podróży w ms — baza dla postępu i długości segmentów. */
   val totalMs: Long get() = maxOf(1L, endAtMs - startAtMs)
 
@@ -197,6 +206,8 @@ internal data class LiveTripPlan(
             color = parseColor(o.optString("color", ""), WALK_COLOR),
             startAtMs = start,
             endAtMs = end,
+            alightLat = o.optDouble("alightLat").takeIf { it.isFinite() && it in -90.0..90.0 },
+            alightLon = o.optDouble("alightLon").takeIf { it.isFinite() && it in -180.0..180.0 },
           )
         }
       }
@@ -281,6 +292,8 @@ internal data class LiveSegment(
   val color: Int,
   val startAtMs: Long,
   val endAtMs: Long,
+  val alightLat: Double? = null,
+  val alightLon: Double? = null,
 )
 
 internal data class PhaseCopy(

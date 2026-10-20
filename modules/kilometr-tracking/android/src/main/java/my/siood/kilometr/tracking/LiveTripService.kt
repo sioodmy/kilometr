@@ -1,30 +1,25 @@
 package my.siood.kilometr.tracking
 
+import android.Manifest
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 
-/**
- * Serwis, który naprawdę śledzi podróż.
- *
- * Powiadomienie aktualizowane z JS umiera razem z aplikacją: po odejściu od
- * ekranu proces jest throttlowany, a po ubiciu — w ogóle. Stąd ten serwis.
- * Trzyma plan podróży, sam przelicza fazę i postęp (czyste działania na
- * zeglem) i sam przestaje, kiedy podróż się skończy. JS odpowiada tylko za
- * dostarczenie treści i za dane z planera.
- *
- * Render korzysta z `Notification.ProgressStyle` (Android 16), a typ usługi
- * to `specialUse` — śledzenie podróży użytkownika nie mieści się w żadnej
- * z typów „lokalizacja / telefon / kamera", a dokumentacja Androida wprost
- * wskazuje śledzenie przejazdu jako przykład `specialUse`.
- */
+/** Powiadomienie i alert GPS działają bez aktywnego JS, także przy wygaszonym ekranie. */
 class LiveTripService : Service() {
 
   private val handler = Handler(Looper.getMainLooper())
@@ -32,8 +27,20 @@ class LiveTripService : Service() {
   private var plan: LiveTripPlan? = null
   private var lastSignature: String? = null
 
-  /** Zapamiętujemy odcinek, bo opóźnienie może zmienić godzinę wysiadania. */
-  private val vibratedAlights = HashSet<String>()
+  private val alightProximity = AlightProximity()
+  private val locationManager by lazy { getSystemService(LocationManager::class.java) }
+  private var locationForeground = false
+  private var locationSubscribed = false
+  private val locationListener = object : LocationListener {
+    override fun onLocationChanged(location: Location) {
+      val current = plan ?: return
+      maybeVibrateAlight(current, location)
+    }
+    override fun onProviderEnabled(provider: String) {}
+    override fun onProviderDisabled(provider: String) {}
+    @Deprecated("Required on Android before API 30")
+    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+  }
 
   private val tick = object : Runnable {
     override fun run() {
@@ -50,15 +57,13 @@ class LiveTripService : Service() {
       }
 
       val phase = current.phaseAt(now)
-      maybeVibrateAlight(current, now)
-      // Publikujemy tylko wtedy, gdy zmienia się coś widocznego. Pasek
-      // postępu rusza się sekundowo, ale tekst nie, więc przed dojazdem
-      // (gdzie postęp praktycznie stoi) budzimy się raz na kwadrans.
+      // Renderujemy tylko po zmianie fazy, treści albo postępu.
       val signature = "$phase:${current.stateAt(now)?.atMs}:${current.progressPermille(now)}"
       if (signature != lastSignature) {
         lastSignature = signature
         if (!publish(current, now)) return
       }
+      updateLocationSubscription()
 
       handler.postDelayed(
         this,
@@ -78,7 +83,7 @@ class LiveTripService : Service() {
     val json = intent?.getStringExtra(EXTRA_PLAN)
     if (!json.isNullOrBlank()) {
       LiveTripPlan.fromJson(json)?.let {
-        if (plan?.tripId != it.tripId) vibratedAlights.clear()
+        if (plan?.tripId != it.tripId) alightProximity.clear()
         plan = it
         // Nowy plan unieważnia podpis — inaczej pierwsza klatka po starcie
         // zostałaby wstrzymana jako „bez zmian".
@@ -100,10 +105,11 @@ class LiveTripService : Service() {
     isRunning = true
     // startForeground musi zadziałać w ciągu 5 s od startForegroundService,
     // więc renderujemy natychmiast, a dopiero potem wchodzi pętla.
-    if (!publish(current, System.currentTimeMillis())) {
+    if (!publish(current, System.currentTimeMillis(), tryLocation = true)) {
       // Bez działającego FGS nie ma po co żyć: publish() już zatrzymał usługę.
       return START_NOT_STICKY
     }
+    updateLocationSubscription()
 
     handler.removeCallbacks(tick)
     handler.postDelayed(tick, TICK_IDLE_MS)
@@ -114,38 +120,98 @@ class LiveTripService : Service() {
 
   override fun onDestroy() {
     handler.removeCallbacks(tick)
+    stopLocationUpdates()
     plan = null
     isRunning = false
     super.onDestroy()
   }
 
-  /** Wibracja przed wysiadaniem, najwyżej raz na odcinek. */
-  private fun maybeVibrateAlight(current: LiveTripPlan, nowMs: Long) {
-    if (!current.alightAlertsEnabled) return
-    for ((index, segment) in current.segments.withIndex()) {
-      if (segment.mode == LiveTripPlan.MODE_WALK) continue
-      val at = segment.endAtMs - ALIGHT_LEAD_MS
-      if (nowMs < maxOf(at, segment.startAtMs) || nowMs >= segment.endAtMs) continue
-      if (vibratedAlights.add("$index:${segment.line}")) TripVibrator.alight(this)
+  private fun maybeVibrateAlight(current: LiveTripPlan, location: Location) {
+    val nowMs = System.currentTimeMillis()
+    if (!current.alightAlertsEnabled || current.isExpired(nowMs) || !location.hasAccuracy()) return
+    val active = current.alightSegmentAt(nowMs) ?: return
+    val segment = active.value
+    val lat = segment.alightLat ?: return
+    val lon = segment.alightLon ?: return
+    val distance = FloatArray(1)
+    Location.distanceBetween(location.latitude, location.longitude, lat, lon, distance)
+    val ageMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000L
+    if (alightProximity.shouldAlert(
+        "${active.index}:${segment.line}", distance[0], location.accuracy, ageMs,
+      )) {
+      TripVibrator.alight(this)
+      stopLocationUpdates()
+    }
+  }
+
+  private fun hasPreciseLocation(): Boolean =
+    ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+      PackageManager.PERMISSION_GRANTED
+
+  private fun updateLocationSubscription() {
+    val active = plan?.alightSegmentAt(System.currentTimeMillis())
+    if (
+      !locationForeground || !hasPreciseLocation() || active == null ||
+      active.value.alightLat == null || active.value.alightLon == null ||
+      alightProximity.hasAlerted("${active.index}:${active.value.line}")
+    ) {
+      stopLocationUpdates()
+      return
+    }
+    if (locationSubscribed) return
+    for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+      try {
+        if (provider !in locationManager.allProviders) continue
+        locationManager.requestLocationUpdates(
+          provider, 1_000L, 0f, locationListener, Looper.getMainLooper(),
+        )
+        locationSubscribed = true
+      } catch (_: SecurityException) {
+        stopLocationUpdates()
+        return
+      } catch (_: IllegalArgumentException) {
+        // Dostawca lokalizacji może zniknąć między sprawdzeniem a subskrypcją.
+      }
+    }
+  }
+
+  private fun stopLocationUpdates() {
+    if (locationSubscribed) {
+      locationManager.removeUpdates(locationListener)
+      locationSubscribed = false
     }
   }
 
   /** Render i publikacja. Zawsze przez startForeground, żeby FGS żyło dalej.
    *  Zwraca false, gdy startForeground się nie powiódł (usługa została wtedy
    *  zatrzymana, bo bez FGS system ubija proces po 5 s). */
-  private fun publish(current: LiveTripPlan, nowMs: Long): Boolean {
+  private fun publish(current: LiveTripPlan, nowMs: Long, tryLocation: Boolean = false): Boolean {
     val notification = LiveUpdateFactory.build(this, current, nowMs)
+    val wantsLocation = current.alightAlertsEnabled && hasPreciseLocation() &&
+      current.segments.any {
+        it.mode != LiveTripPlan.MODE_WALK && it.alightLat != null && it.alightLon != null
+      }
+    var useLocation = wantsLocation && (locationForeground || tryLocation)
+    val baseType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+    } else 0
+    fun promote() {
+      val type = if (useLocation && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        baseType or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+      } else baseType
+      ServiceCompat.startForeground(this, LiveUpdateFactory.NOTIFICATION_ID, notification, type)
+    }
     try {
-      ServiceCompat.startForeground(
-        this,
-        LiveUpdateFactory.NOTIFICATION_ID,
-        notification,
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-          ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        } else {
-          0
-        },
-      )
+      try {
+        promote()
+      } catch (error: SecurityException) {
+        if (!useLocation) throw error
+        // Odtworzenie z tła może nie mieć dostępu do zgody „podczas używania”.
+        useLocation = false
+        promote()
+      }
+      locationForeground = useLocation
+      if (!useLocation) stopLocationUpdates()
       return true
     } catch (_: Throwable) {
       // Android 12+ blokuje start FGS z tła. Pokazujemy zwykłe powiadomienie,
@@ -163,6 +229,8 @@ class LiveTripService : Service() {
 
   private fun shutdown() {
     handler.removeCallbacks(tick)
+    stopLocationUpdates()
+    locationForeground = false
     try {
       ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
     } catch (_: Throwable) {
@@ -170,7 +238,7 @@ class LiveTripService : Service() {
     }
     plan = null
     lastSignature = null
-    vibratedAlights.clear()
+    alightProximity.clear()
     isRunning = false
     stopSelf()
   }
@@ -179,9 +247,6 @@ class LiveTripService : Service() {
     const val ACTION_START = "my.siood.kilometr.tracking.START"
     const val ACTION_STOP = "my.siood.kilometr.tracking.STOP"
     const val EXTRA_PLAN = "plan"
-
-    /** Ile przed końcem przejazdu wibrujemy: czas, żeby odłożyć telefon i dojść do drzwi. */
-    private const val ALIGHT_LEAD_MS = 2 * 60_000L
 
     /** 1 Hz w trasie — pasek postępu ma płynąć tak jak w nawigacji. */
     private const val TICK_RIDING_MS = 1_000L
