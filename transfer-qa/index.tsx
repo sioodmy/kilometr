@@ -5,8 +5,8 @@ import { registerRootComponent, requireNativeModule } from 'expo';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
-import { NavigationContainer, useNavigation, type NavigationProp } from 'expo-router/react-navigation';
-import { createNativeStackNavigator } from 'expo-router/native-stack';
+import { useNavigation, type NavigationProp } from 'expo-router/react-navigation';
+import { ExpoRoot, Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Pin } from 'lucide-react-native';
@@ -31,7 +31,6 @@ const native = requireNativeModule<{
   configureTransferProtection(id: string, path: string): Promise<boolean>;
   getTransferProtectionState(): Promise<string | null>;
 }>('KilometrTracking');
-const Stack = createNativeStackNavigator();
 const clock = (sec: number) => `${String(Math.floor(sec / 3600) % 24).padStart(2, '0')}:${String(Math.floor(sec / 60) % 60).padStart(2, '0')}`;
 let current: Connection;
 
@@ -142,8 +141,12 @@ function MapScreen(){return <SafeAreaView style={{flex:1,backgroundColor:scheme.
   path={current.legs.flatMap(leg=>(leg.intermediateStops??[]).map(stop=>[stop.lat!,stop.lon!] as [number,number]))}
   user={null} stop={[current.legs[0].toLat!,current.legs[0].toLon!]} headingDeg={null} accuracyM={null}
   accent={scheme.primary} style={{flex:1}}/></SafeAreaView>}
-function App(){return <GestureHandlerRootView style={{flex:1}}><SafeAreaProvider><NavigationContainer>
-  <Stack.Navigator><Stack.Screen name="trip" component={Trip} options={{headerShown:false}}/>
-    <Stack.Screen name="map" component={MapScreen}/></Stack.Navigator>
-</NavigationContainer></SafeAreaProvider></GestureHandlerRootView>}
+function Layout(){const s=useStrings();return <Stack screenOptions={{headerShown:false,headerStyle:{backgroundColor:scheme.surface},headerTintColor:scheme.onSurface}}>
+  <Stack.Screen name="map" options={{headerShown:true,title:s.map.title}}/>
+</Stack>}
+const routes: Record<string,{default:React.ComponentType}>={
+  './_layout.tsx':{default:Layout},'./index.tsx':{default:Trip},'./map.tsx':{default:MapScreen},
+};
+const routeContext=Object.assign((key:string)=>routes[key],{keys:()=>Object.keys(routes),resolve:(key:string)=>key,id:'transfer-qa'});
+function App(){return <GestureHandlerRootView style={{flex:1}}><SafeAreaProvider><ExpoRoot context={routeContext}/></SafeAreaProvider></GestureHandlerRootView>}
 registerRootComponent(App);
