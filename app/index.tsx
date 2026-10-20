@@ -37,7 +37,6 @@ import type { Connection, LegMode, SavedPlace, SmartDestination, Suggestion } fr
 import { SavedPlacesRow, SAVED_PLACE_ICONS } from '../src/components/SavedPlacesRow';
 import { getSuggestionIconMeta, type SuggestionIconMeta } from '../src/components/SuggestionRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
-import { useThumbBarInset } from '../src/components/ThumbBar';
 import {
   LAST_TRIP_ARM_1,
   LAST_TRIP_ARM_2,
@@ -80,7 +79,7 @@ export default function HomeScreen() {
   const [smartReady, setSmartReady] = useState(false);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
-  const thumbInset = useThumbBarInset('home');
+  const [savedEditFocused, setSavedEditFocused] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lon: number; title: string; city?: string | null } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
   // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
@@ -1099,51 +1098,56 @@ export default function HomeScreen() {
               />
             )}
 
+            <View style={styles.savedSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.section} accessibilityRole="header">
+                  {s.home.savedTitle}
+                </Text>
+                {saved.length > 0 && (
+                  <Pressable
+                    onPress={() => setManageSheetOpen(true)}
+                    onFocus={() => setSavedEditFocused(true)}
+                    onBlur={() => setSavedEditFocused(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.home.editSavedA11y}
+                    style={({ pressed }) => [
+                      styles.editSaved,
+                      savedEditFocused && styles.editSavedFocused,
+                      pressed && styles.editSavedPressed,
+                    ]}
+                  >
+                    <Text style={styles.editSavedLabel}>{s.home.editCard}</Text>
+                  </Pressable>
+                )}
+              </View>
+              <SavedPlacesRow
+                places={saved}
+                onSelect={(p) => goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })}
+                onAdd={() => {
+                  setEditingPlace(null);
+                  setAddPlaceOpen(true);
+                }}
+                onEdit={(p) => {
+                  setEditingPlace(p);
+                  setAddPlaceOpen(true);
+                }}
+              />
+            </View>
+
             <View style={{ height: 24 }} />
             {smartOrdered.length === 0 && smartReady ? (
               <View style={styles.emptyCard}>
                 <View style={styles.emptyIcon}>
-                  <History size={20} color={scheme.primary} />
+                  <History size={20} color={scheme.onSecondaryContainer} />
                 </View>
-                <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
-                <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
-                <Pressable
-                  style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.7 }]}
-                  accessibilityRole="button"
-                  onPress={() => {
-                    setReturnToDestinationAfterStart(false);
-                    setQuery('');
-                    setSheetMode('destination');
-                  }}
-                >
-                  <Text style={styles.emptyCtaText}>{s.home.historyEmptyAction}</Text>
-                </Pressable>
+                <View style={styles.emptyText}>
+                  <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
+                  <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
+                </View>
               </View>
             ) : (
               <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
             )}
-
-            <View style={{ height: 28 }} />
-            <View style={styles.sectionHeader}>
-              <Text style={styles.section} accessibilityRole="header">
-                {s.home.savedTitle}
-              </Text>
-            </View>
-            <SavedPlacesRow
-              places={saved}
-              onSelect={(p) => goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })}
-              onManage={() => setManageSheetOpen(true)}
-              onAdd={() => {
-                setEditingPlace(null);
-                setAddPlaceOpen(true);
-              }}
-              onEdit={(p) => {
-                setEditingPlace(p);
-                setAddPlaceOpen(true);
-              }}
-            />
-
-            <View style={{ height: thumbInset }} />
           </ScrollView>
         </SafeAreaView>
 
@@ -1245,7 +1249,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1 },
-  body: { paddingHorizontal: 20, paddingTop: 4, flexGrow: 1 },
+  body: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, flexGrow: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, marginBottom: 16 },
   cityContext: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
   cityName: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
@@ -1273,17 +1277,37 @@ const styles = StyleSheet.create({
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
   headerTitle: { fontSize: 32, fontWeight: '500', color: scheme.onSurface, letterSpacing: -0.8 },
+  savedSection: { marginTop: 20 },
   sectionHeader: {
-    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    minHeight: 48,
+    marginBottom: 4,
   },
-  section: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
+  section: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface, flex: 1 },
+  editSaved: {
+    minWidth: 64,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderRadius: shape.medium,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  editSavedFocused: { borderColor: scheme.primary },
+  editSavedPressed: { backgroundColor: scheme.surfaceContainerHigh },
+  editSavedLabel: { ...type.labelLarge, color: scheme.primary },
   emptyCard: {
-    gap: 8,
-    marginTop: 12,
-    padding: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    padding: 20,
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.extraLarge,
   },
+  emptyText: { flex: 1, gap: 6 },
   emptyIcon: {
     width: 44,
     height: 44,
@@ -1294,16 +1318,6 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { ...type.titleMedium, color: scheme.onSurface },
   emptyBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
-  emptyCta: {
-    marginTop: 6,
-    paddingVertical: 16,
-    minHeight: 52,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyCtaText: { ...type.labelLarge, color: scheme.onPrimary, fontWeight: '700' },
   importCard: {
     flexDirection: 'row',
     alignItems: 'center',
