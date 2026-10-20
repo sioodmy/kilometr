@@ -16,7 +16,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
@@ -439,14 +439,16 @@ export default function OnboardingScreen() {
   const next = useCallback(() => setStep((v) => Math.min(v + 1, steps.length - 1)), [steps.length]);
   const back = useCallback(() => setStep((v) => Math.max(v - 1, 0)), []);
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (step === 0) return false;
-      back();
-      return true;
-    });
-    return () => sub.remove();
-  }, [back, step]);
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (step === 0) return false;
+        back();
+        return true;
+      });
+      return () => sub.remove();
+    }, [back, step]),
+  );
 
   const startDownload = useCallback(async () => {
     if (downloading) return;
