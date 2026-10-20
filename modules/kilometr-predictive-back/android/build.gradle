@@ -6,6 +6,10 @@ version = '1.0.0'
 
 android {
   namespace 'app.kilometr.predictiveback'
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
   compileSdk 36
 }
 
