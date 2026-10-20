@@ -54,7 +54,7 @@
         "me.everything.badger.permission.BADGE_COUNT_WRITE",
         "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE"
       ],
-      "package": "app.kilometr.predictiveback"
+      "package": "app.kilometr.backtest"
     },
     "web": {
       "favicon": "./assets/favicon.png"

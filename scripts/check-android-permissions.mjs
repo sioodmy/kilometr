@@ -20,7 +20,7 @@ const allowed = new Set([
   'android.permission.RECEIVE_BOOT_COMPLETED',
   'com.google.android.c2dm.permission.RECEIVE',
   'app.kilometr.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
-  'app.kilometr.predictiveback.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+  'app.kilometr.backtest.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
 ]);
 
 const [file, format] = process.argv.slice(2);
