@@ -39,7 +39,7 @@ class LiveTripService : Service() {
     override fun onLocationChanged(location: Location) {
       val current = plan ?: return
       val now = System.currentTimeMillis()
-      if (now - lastProtectionFixAt >= 5000) {
+      if (location.hasAccuracy() && location.accuracy <= 45f && now - lastProtectionFixAt >= 5000) {
         lastProtectionFixAt = now
         protection?.observe(location)
       }
