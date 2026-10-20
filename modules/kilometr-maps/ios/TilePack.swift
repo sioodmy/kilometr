@@ -58,7 +58,9 @@ public enum OfflineFiles {
       defer { try? output.close() }
       var buffer = [UInt8](repeating: 0, count: 65_536)
       while true {
-        let count = gzread(input, &buffer, UInt32(buffer.count))
+        let count = buffer.withUnsafeMutableBytes { bytes in
+          gzread(input, bytes.baseAddress, UInt32(bytes.count))
+        }
         if count < 0 { return false }
         if count == 0 { break }
         try output.write(contentsOf: Data(buffer.prefix(Int(count))))

@@ -103,6 +103,7 @@
     "check:widget-strings": "tsx scripts/sync-widget-strings.ts --check",
     "sync:ios-strings": "tsx scripts/sync-ios-strings.ts",
     "check:ios-strings": "tsx scripts/sync-ios-strings.ts --check",
+    "check:ios": "tsx --require ./scripts/stub-expo.cjs scripts/check-ios-runtime.ts",
     "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,

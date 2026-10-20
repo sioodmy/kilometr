@@ -34,10 +34,10 @@ jobs:
   build:
     name: iOS archive
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       CI: '1'
-      IOS_BUILD_NUMBER: '1.${{ github.run_number }}.${{ github.run_attempt }}'
+      IOS_BUILD_NUMBER: '${{ github.run_number }}.${{ github.run_attempt }}.0'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,14 +58,21 @@ jobs:
         run: cargo test --locked --manifest-path modules/kilometr-raptor/rust/Cargo.toml
       - name: Build Rust for iOS
         run: bash scripts/build-rust-ios.sh
+      - name: Test native offline files
+        run: |
+          xcrun swiftc -parse-as-library modules/kilometr-maps/ios/TilePack.swift scripts/check-ios-offline.swift -o "$RUNNER_TEMP/check-ios-offline"
+          "$RUNNER_TEMP/check-ios-offline"
       - name: Check app and translations
         run: |
           npm run typecheck
           npm run check:ios-strings
+          npm run check:ios
       - name: Generate Xcode project
         env:
           APP_VERSION: ${{ inputs.release_tag }}
         run: npx expo prebuild --platform ios --clean --no-install
+      - name: Verify iOS configuration
+        run: python3 scripts/check-ios-prebuild.py
       - name: Install pods
         working-directory: ios
         run: pod install
@@ -88,6 +95,8 @@ jobs:
         run: |
           bash scripts/package-ipa.sh "$RUNNER_TEMP/Kilometr.xcarchive" "$RUNNER_TEMP/ipa-dist"
           python3 scripts/check-ipa.py "$RUNNER_TEMP/ipa-dist/kilometr-unsigned.ipa"
+      - name: Launch release build in iOS simulator
+        run: bash scripts/smoke-ios.sh
       - uses: actions/upload-artifact@v4
         with:
           name: kilometr-ios-unsigned
@@ -102,6 +111,8 @@ jobs:
           path: |
             ${{ runner.temp }}/xcodebuild.log
             ${{ runner.temp }}/Archive.xcresult
+            ${{ runner.temp }}/ios-simulator.log
+            ${{ runner.temp }}/ios-launch.png
             ios/Podfile.lock
           retention-days: 7
       - name: Installation instructions

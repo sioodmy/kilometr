@@ -164,6 +164,9 @@ jobs:
       - name: Run logic tests (Notification lifecycle)
         run: npm run check:notification-runtime
 
+      - name: Run iOS notification tests
+        run: npm run check:ios
+
       - name: Run logic tests (Smart rank)
         run: npm run check:smart-rank
 

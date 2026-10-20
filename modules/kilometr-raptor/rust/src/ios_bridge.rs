@@ -91,4 +91,27 @@ mod tests {
         })).collect();
         for worker in workers { worker.join().unwrap(); }
     }
+
+    #[test]
+    fn catalog_survives_a_change_of_calling_thread() {
+        let mut load = 1u32.to_le_bytes().to_vec();
+        for text in ["stop-ios", "001", "Testowy"] {
+            load.extend_from_slice(&(text.len() as u16).to_le_bytes());
+            load.extend_from_slice(text.as_bytes());
+        }
+        load.extend_from_slice(&51.1f64.to_le_bytes());
+        load.extend_from_slice(&17.0f64.to_le_bytes());
+        load.extend_from_slice(&1i32.to_le_bytes());
+        assert_eq!(std::thread::spawn(move || call(9, 11, 0, load)).join().unwrap(), 1u32.to_le_bytes());
+        let result = std::thread::spawn(|| {
+            let mut query = vec![0];
+            for value in [51.1f64, 17.0, 200.0] {
+                query.extend_from_slice(&value.to_le_bytes());
+            }
+            query.extend_from_slice(&5u32.to_le_bytes());
+            call(9, 12, 0, query)
+        }).join().unwrap();
+        assert_eq!(&result[..4], &1u32.to_le_bytes());
+        assert_eq!(&result[4..8], &0u32.to_le_bytes());
+    }
 }
