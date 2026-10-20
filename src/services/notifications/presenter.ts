@@ -116,6 +116,7 @@ export async function presentTrip(
     // komunikat zostaje na ekranie blokady do końca, a nie znika z APK-iem.
     const json = Platform.OS === 'ios' ? buildIOSLiveActivity(p, trip, tr()) : buildLivePlanJson(p, trip.connection, trip, tr(), {
       alightAlertsEnabled: prefs.trackingEnabled,
+      transferAlertsEnabled: prefs.disruptionAlertsEnabled,
     });
     if (await native.startTrip(json)) {
       await dismissFallback();

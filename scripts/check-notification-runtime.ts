@@ -24,6 +24,8 @@ let handler: NotificationHandler | undefined;
 let route: () => Promise<Connection[]>;
 let pauseSchedule: (() => Promise<void>) | undefined;
 let pinned: unknown = null;
+let transferState: string | null = null;
+let remembered: Connection | null = null;
 
 const notifications = {
   SchedulableTriggerInputTypes: { DATE: 'date' },
@@ -66,6 +68,8 @@ const native = {
     return value;
   },
   hasStopRequest: async () => pendingStop,
+  getTransferProtectionState: async () => transferState,
+  configureTransferProtection: async () => true,
 };
 const stubs: Record<string, unknown> = {
   './module': {
@@ -85,7 +89,7 @@ const stubs: Record<string, unknown> = {
     },
   },
   '../settings': { getSettingsSync: () => ({}), profileWalkSpeedMps: () => 1.3 },
-  '../api': { RoutingService: { getConnections: () => route() } },
+  '../api': { RoutingService: { getConnections: () => route() }, rememberPlannedConnection: (value: Connection) => { remembered = value; } },
   '../liveTracker': { liveTracker: { snapshot: () => [] } },
   '../../cities': { inCityBounds: () => true },
   '../cityStore': { getActiveCitySync: () => ({}) },
@@ -339,6 +343,27 @@ async function main() {
     false,
     'zakończona podróż nie wraca po restarcie',
   );
+
+  mock.timers.setTime(at(12, 25));
+  route = async () => { throw new Error('The boarded trip must stay locked'); };
+  storage.set('kilometr.trackedTrip.v2', JSON.stringify({ ...trip, protectionEnabled: true, startedAt: Date.now() }));
+  await monitor.restoreTrackedTrip();
+  const changed = { ...connection, arriveAt: '13:10', durationMin: 50,
+    legs: connection.legs.map((leg, i) => i === connection.legs.length - 1 ? { ...leg, line: '12', arriveAt: '13:10' } : leg) };
+  mock.timers.setTime(at(12, 56));
+  transferState = JSON.stringify({ tripId: trip.id, status: 'changed', updatedAt: Date.now(), revision: 1, connection: changed });
+  await monitor.refreshTrackedTrip();
+  assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, '13:10', 'przyjęcie planu wyznaczonego bez JS');
+  assert.equal(remembered?.arriveAt, '13:10', 'mapa dostaje ten sam zmieniony plan');
+  assert.equal(monitor.getTrackedTripSync()?.transfer?.status, 'changed');
+  assert.ok(monitor.getTrackedTripSync(), 'stara godzina przyjazdu nie kończy opóźnionej podróży');
+  transferState = JSON.stringify({ tripId: 'another-trip', status: 'changed', updatedAt: Date.now(), revision: 2, connection });
+  await monitor.refreshTrackedTrip();
+  assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, '13:10', 'obcy plan nie nadpisuje aktywnej podróży');
+  pendingStop = true;
+  await monitor.refreshTrackedTrip();
+  assert.equal(monitor.getTrackedTripSync(), null, 'natywne Zakończ zatrzymuje także ochronę');
+  transferState = null;
   unsubscribe();
   console.log(
     'PASS: cykl śledzenia, przesiadki w tle, dojście, anulowanie, wyścigi, fallback, akcje i dźwięk',

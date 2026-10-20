@@ -41,6 +41,7 @@ internal data class LiveTripPlan(
   val alightAlertsEnabled: Boolean,
   val transferProtectionEnabled: Boolean = false,
   val protectedLegIndex: Int? = null,
+  val transferAlertsEnabled: Boolean = true,
 ) {
 
   fun stateAt(nowMs: Long): LiveState? = states.lastOrNull { it.atMs <= nowMs }
@@ -281,6 +282,7 @@ internal data class LiveTripPlan(
         states = states,
         alightAlertsEnabled = root.optBoolean("alightAlertsEnabled", true),
         transferProtectionEnabled = root.optBoolean("transferProtectionEnabled", false),
+        transferAlertsEnabled = root.optBoolean("transferAlertsEnabled", true),
       )
     }
 

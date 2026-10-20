@@ -284,7 +284,7 @@ class LiveTripService : Service() {
         if (active?.tripId == id && protection?.path == path && !LocalStopSignal.isPending(this)) {
           protectionState = state
           publish(active, System.currentTimeMillis())
-          if (alert) TransferPresentation.alert(this, active, state)
+          if (alert && active.transferAlertsEnabled) TransferPresentation.alert(this, active, state)
         }
       }
     }

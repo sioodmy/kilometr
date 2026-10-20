@@ -49,6 +49,8 @@ internal class TransferProtection(
         changedAt = saved?.optLong("changedAt") ?: 0L
         lastRiskAlert = saved?.optString("alertKey") ?: ""
         rides = network!!.rides(connection!!)
+        val legs = connection!!.getJSONArray("legs")
+        require(rides.size == (0 until legs.length()).count { legs.getJSONObject(it).optString("mode") != "walk" })
         val active = saved?.optInt("activeLegIndex", -1) ?: -1
         rideIndex = rides.indexOfFirst { it.legIndex == active }.coerceAtLeast(0)
         publish("waiting", System.currentTimeMillis())
@@ -111,6 +113,7 @@ internal class TransferProtection(
         decision = TransferDecision()
         lastEstimate = boarded
         lastFix = fix
+        state.put("arrivalAtMs", next.stops[next.alight].arriveMs + boarded.delaySec * 1000L)
         changedAt = 0
         publish("waiting", now)
         return
@@ -123,6 +126,8 @@ internal class TransferProtection(
     }
     lastEstimate = estimate
     lastFix = fix
+    state.put("arrivalAtMs", ride.stops[ride.alight].arriveMs + estimate.delaySec * 1000L)
+      .put("delaySec", estimate.delaySec)
     net.delays[ride.tripId] = estimate.delaySec to now
     if (next == null) {
       publish("complete", now)
@@ -242,7 +247,7 @@ internal class TransferProtection(
       temporary.writeText(state.toString())
       if (!closed) temporary.renameTo(statusFile) else temporary.delete()
     } catch (_: Exception) { }
-    if (!closed) onState(JSONObject(state.toString()), alert && network?.root?.optBoolean("alertsEnabled", true) != false)
+    if (!closed) onState(JSONObject(state.toString()), alert)
   }
 
   fun close() {

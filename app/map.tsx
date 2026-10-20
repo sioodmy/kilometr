@@ -34,6 +34,7 @@ import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
 import { useStrings } from '../src/i18n';
+import { useTrackedTrip } from '../src/services/notifications';
 
 type Coord = [number, number];
 
@@ -54,7 +55,9 @@ export default function RouteMapScreen() {
   const compact = width / fontScale < 330;
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const [item, setItem] = useState<Connection | null>(null);
+  const [loadedItem, setItem] = useState<Connection | null>(null);
+  const { trip: trackedTrip } = useTrackedTrip();
+  const item = trackedTrip?.connection.id === String(id) ? trackedTrip.connection : loadedItem;
   const [loadFailed, setLoadFailed] = useState(false);
   const [panelHeight, setPanelHeight] = useState(120);
   const [headerHeight, setHeaderHeight] = useState(96);

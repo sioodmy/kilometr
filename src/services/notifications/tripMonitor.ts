@@ -2,7 +2,7 @@ import { AppState, Platform } from 'react-native';
 import { kvGet, kvRemove, kvSet } from '../storage';
 import { inCityBounds } from '../../cities';
 import { getActiveCitySync } from '../cityStore';
-import { RoutingService } from '../api';
+import { RoutingService, rememberPlannedConnection } from '../api';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
 import type { Connection, VehiclePosition } from '../../types/models';
@@ -200,7 +200,7 @@ async function refresh(): Promise<void> {
 
     // Użytkownik wyłączył wszystkie powiadomienia — nie ma po co dalej
     // planować, tym bardziej że samo śledzenie kosztuje odpytania planera.
-    if (!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) {
+    if ((!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) || trip.protectionEnabled && !prefs.trackingEnabled) {
       await stopTracking();
       return;
     }
@@ -362,7 +362,7 @@ async function syncTransferProtection(): Promise<void> {
   if (!trip?.protectionEnabled) return;
   try {
     const raw = await getTrackingNative()?.getTransferProtectionState?.();
-    if (!raw || tracked?.id !== trip.id) return;
+    if (!raw || tracked?.id !== trip.id || tracked.startedAt !== trip.startedAt) return;
     const state = JSON.parse(raw) as TransferProtectionState;
     if (state.tripId !== trip.id || !Number.isFinite(state.updatedAt) || !Number.isFinite(state.revision)) return;
     if (Date.now() - trip.startedAt > 8 * 60 * 60_000 || state.reason === 'expired') {
@@ -373,6 +373,7 @@ async function syncTransferProtection(): Promise<void> {
       Array.isArray(state.connection.legs) ? state.connection : trip.connection;
     const { connection: _connection, ...transfer } = state;
     tracked = { ...tracked, connection, transfer, transferRevision: state.revision };
+    if (connection !== trip.connection) rememberPlannedConnection(connection);
     planLocked = true;
   } catch (error) {
     console.warn('[TransferProtection] state:', error);

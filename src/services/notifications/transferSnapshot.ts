@@ -2,13 +2,12 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { getActiveCitySync } from '../cityStore';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
-import { buildSearchSlices, buildTripStops } from '../routing/engine';
+import { buildSearchSlices } from '../routing/engine';
 import { getRaptorNet, packRaptorNet } from '../routing/network';
 import { costParamsFor, mergeDayIndexes } from '../routing/raptor';
 import { gtfsStore } from '../routing/store';
 import { computeLegTimeline } from './tripProgress';
 import { getTransferNativeCopy } from './transferCopy';
-import { getNotificationPreferencesSync } from './preferences';
 import type { TrackedTrip } from './types';
 
 export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string> {
@@ -60,30 +59,6 @@ export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string
           ];
     });
   if (!destinations.length) throw new Error('No destination stops');
-  const legs = await Promise.all(
-    timeline.map(async (entry, legIndex) => {
-      if (entry.leg.mode === 'walk' || !entry.leg.tripId) return null;
-      const stops = await buildTripStops(entry.leg.tripId);
-      const board = stops.findIndex((stop) => stop.stopId === entry.leg.fromStopId);
-      if (board < 0 || stops.length < 2) return null;
-      const anchor = stops[board].departSec;
-      if (anchor === undefined) return null;
-      const scheduledBaseMs =
-        baseMs + Math.round((entry.departMs - baseMs - anchor * 1000) / 86_400_000) * 86_400_000;
-      return {
-        legIndex,
-        tripId: entry.leg.tripId,
-        board,
-        alight: stops.findIndex((stop, i) => i > board && stop.stopId === entry.leg.toStopId),
-        stops: stops.map((stop) => ({
-          ...stop,
-          arriveMs: scheduledBaseMs + (stop.arriveSec ?? stop.departSec ?? anchor) * 1000,
-          departMs: scheduledBaseMs + (stop.departSec ?? stop.arriveSec ?? anchor) * 1000,
-          stopIndex: net.base.stopIndex.get(stop.stopId),
-        })),
-      };
-    }),
-  );
   const city = getActiveCitySync();
   const dir = new Directory(Paths.document, 'transfer-protection', `${trip.startedAt}`);
   dir.create({ intermediates: true, idempotent: true });
@@ -99,7 +74,6 @@ export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string
       networkPath: network.uri,
       connection: trip.connection,
       timeline: timeline.map(({ departMs, arriveMs }) => ({ departMs, arriveMs })),
-      legs: legs.filter((leg) => leg !== null),
       destinations,
       stops: net.base.stopIds.map((id) => {
         const stop = gtfsStore.stops.get(id);
@@ -134,7 +108,6 @@ export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string
         .filter((v) => v.matchedTripId && v.delaySec != null)
         .map((v) => ({ tripId: v.matchedTripId, delaySec: v.delaySec, at: v.updatedAt })),
       copy: getTransferNativeCopy(),
-      alertsEnabled: getNotificationPreferencesSync().disruptionAlertsEnabled,
     }),
   );
   return file.uri;
