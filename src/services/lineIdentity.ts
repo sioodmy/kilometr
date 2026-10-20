@@ -36,7 +36,7 @@ export const TRANSIT_PALETTE = [
  */
 export function normalizeLineName(
   line?: string,
-  mode?: LegMode,
+  _mode?: LegMode,
   compact?: boolean,
 ): string {
   if (!line) return '';

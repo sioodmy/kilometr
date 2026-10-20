@@ -10,6 +10,11 @@ import {
   transferCount,
 } from '../src/sharing/connection';
 import { selectLegStops, tripShard } from '../src/sharing/timetable';
+import {
+  scheduledVehiclePosition,
+  sharedJourneySeconds,
+  sharedLegStops,
+} from '../src/sharing/progress';
 import { pl } from '../src/i18n/share/pl';
 import { en } from '../src/i18n/share/en';
 import { de } from '../src/i18n/share/de';
@@ -126,6 +131,54 @@ assert.equal(decodeSharedConnection(encodeSharedConnection(delayed))?.legs[0].sc
 assert.equal(selectLegStops({ ...journey.legs[0], departure: 1200 }, stops).length, 0);
 assert.equal(selectLegStops({ ...journey.legs[0], alight: 'a' }, stops).length, 0);
 assert.match(tripShard('tram-4'), /^[a-f0-9]{2}$/);
-console.log(
-  'Udostępnianie: format URL, daty, północ, walidacja, słowniki i dopasowanie przystanków OK.',
+const midnightStops = sharedLegStops(journey.legs[0], stops);
+assert.equal(sharedJourneySeconds('2026-10-19', new Date('2026-10-19T22:05:30Z')), 86730);
+assert.equal(sharedJourneySeconds('2026-10-19', new Date('2026-10-18T21:55:00Z')), -300);
+assert.equal(sharedJourneySeconds('2026-01-19', new Date('2026-01-19T23:05:00Z')), 86700);
+assert.equal(scheduledVehiclePosition(midnightStops, 86099), null);
+assert.deepEqual(scheduledVehiclePosition(midnightStops, 86250), { index: 0, fraction: 0.5 });
+assert.deepEqual(scheduledVehiclePosition(midnightStops, 86400), { index: 1, fraction: 0 });
+assert.deepEqual(scheduledVehiclePosition(midnightStops, 87000), { index: 1, fraction: 0.5 });
+assert.deepEqual(scheduledVehiclePosition(midnightStops, 87600), { index: 2, fraction: 0 });
+assert.equal(scheduledVehiclePosition(midnightStops, 87601), null);
+assert.equal(
+  scheduledVehiclePosition(
+    midnightStops,
+    sharedJourneySeconds('2026-10-18', new Date('2026-10-19T21:57:00Z')),
+  ),
+  null,
 );
+const dwellStops = midnightStops.map((stop, index) =>
+  index === 1 ? { ...stop, departure: stop.arrival + 60 } : stop,
+);
+assert.deepEqual(scheduledVehiclePosition(dwellStops, 86430), { index: 1, fraction: 0 });
+assert.deepEqual(scheduledVehiclePosition(dwellStops, 87030), { index: 1, fraction: 0.5 });
+assert.deepEqual(sharedLegStops(delayed.legs[0], stops), midnightStops);
+assert.deepEqual(
+  sharedLegStops(delayed.legs[0]).map((stop) => stop.departure),
+  [86100, 87600],
+);
+assert.deepEqual(
+  sharedLegStops({ ...journey.legs[0], departure: 5, arrival: 20 }, [
+    { id: 'a', name: 'A', arrival: 86700, departure: 86700 },
+    { id: 'b', name: 'B', arrival: 87600, departure: 87600 },
+  ]).map((stop) => stop.departure),
+  [300, 1200],
+);
+assert.deepEqual(
+  sharedLegStops(journey.legs[0]).map((stop) => stop.departure),
+  [86100, 87600],
+);
+assert.equal(scheduledVehiclePosition([], 0), null);
+assert.deepEqual(
+  scheduledVehiclePosition(
+    [
+      { id: 'a', name: 'A', arrival: 0, departure: 0 },
+      { id: 'b', name: 'B', arrival: 0, departure: 0 },
+      { id: 'c', name: 'C', arrival: 60, departure: 60 },
+    ],
+    30,
+  ),
+  { index: 1, fraction: 0.5 },
+);
+console.log('Udostępnianie: URL, daty, północ, słowniki, przystanki i pozycja według rozkładu OK.');

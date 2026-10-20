@@ -40,7 +40,13 @@ export const pl = {
   close: 'Zamknij',
   message: (from: string, to: string, departure: string, arrival: string, lines: string) =>
     `Jadę z ${from} do ${to}${lines ? ` (${lines})` : ''}. Wyjazd ${departure}, na miejscu o ${arrival}.`,
-  snapshot: 'Plan podróży z chwili udostępnienia. Pozycja i opóźnienia nie aktualizują się.',
+  snapshot: 'Plan podróży z chwili udostępnienia. Opóźnienia nie aktualizują się.',
+  estimatedPosition: 'Pozycja szacowana z rozkładu',
+  positionNote: 'Ikonka przesuwa się według godzin rozkładu, bez danych GPS i bieżących opóźnień.',
+  vehicleAt: (mode: string, stop: string) => `${mode}: ${stop}. Pozycja szacowana z rozkładu.`,
+  vehicleBetween: (mode: string, from: string, to: string) =>
+    `${mode}: między ${from} a ${to}. Pozycja szacowana z rozkładu.`,
+  hideStops: 'Zwiń przystanki',
   privacy: 'Link zawiera trasę i godziny. Otworzy go każdy, komu go wyślesz.',
   pageTitle: 'Udostępnione połączenie',
   itinerary: 'Przebieg podróży',
