@@ -1,7 +1,4 @@
-import {
-  normalizeLineName,
-  inferTransitMode,
-} from '../src/services/lineIdentity';
+import { getLineColors, normalizeLineName, inferTransitMode } from '../src/services/lineIdentity';
 
 let failures = 0;
 function check(label: string, cond: boolean, detail = '') {
@@ -22,7 +19,10 @@ console.log('=== Test normalizacji i rozpoznawania linii ===');
   check('TLK 38100 GWAREK -> TLK 38100', normalizeLineName('TLK 38100 GWAREK') === 'TLK 38100');
   check('11572/3 -> 11572', normalizeLineName('11572/3') === '11572');
   check('KD 69123 (compact) -> KD', normalizeLineName('KD 69123', 'train', true) === 'KD');
-  check('POLREGIO 66201 (compact) -> PR', normalizeLineName('POLREGIO 66201', 'train', true) === 'PR');
+  check(
+    'POLREGIO 66201 (compact) -> PR',
+    normalizeLineName('POLREGIO 66201', 'train', true) === 'PR',
+  );
   check('Zwykły tramwaj 33 bez zmian', normalizeLineName('33') === '33');
   check('Zwykły autobus 115 bez zmian', normalizeLineName('115') === '115');
 }
@@ -35,6 +35,39 @@ console.log('=== Test normalizacji i rozpoznawania linii ===');
   check('IC 1620 to pociąg', inferTransitMode(undefined, 'IC 1620') === 'train');
   check('33 to tramwaj', inferTransitMode(undefined, '33') === 'tram');
   check('115 to autobus', inferTransitMode(undefined, '115') === 'bus');
+}
+
+{
+  const luminance = (hex: string) => {
+    const channels = hex.match(/[a-f\d]{2}/gi)!.map((channel) => {
+      const value = parseInt(channel, 16) / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  };
+  const cases: Parameters<typeof getLineColors>[] = [
+    [undefined, 'tram'],
+    [undefined, 'bus'],
+    ['IC 1620', 'train'],
+    ['M1', 'subway'],
+    ['M2', 'subway'],
+    ['M3', 'subway'],
+    ['Polinka', 'cable'],
+    ['150', 'trolleybus'],
+  ];
+  for (const mode of ['tram', 'bus'] as const) {
+    for (let line = 1; line <= 500; line++) cases.push([String(line), mode]);
+  }
+  const lowContrast = cases.filter((args) => {
+    const { fg, bg } = getLineColors(...args);
+    const values = [luminance(fg), luminance(bg)].sort((a, b) => a - b);
+    return (values[1] + 0.05) / (values[0] + 0.05) < 4.5;
+  });
+  check(
+    'Małe oznaczenia linii mają kontrast AA (4,5:1)',
+    lowContrast.length === 0,
+    JSON.stringify(lowContrast),
+  );
 }
 
 console.log('────────────────────────────────────────────────────────────');
