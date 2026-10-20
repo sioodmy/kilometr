@@ -1,4 +1,5 @@
 import type { Connection, Leg } from '../../types/models';
+import type { TransferProtectionState } from './transferTypes';
 
 // Model domenowy powiadomień. Wszystko, co leci do natywnego świata
 // (Notification i serwis Androida), jest tutaj sprowadzane do jednego
@@ -129,6 +130,8 @@ export interface LivePlan {
   segments: LivePlanSegment[];
   states: LivePlanState[];
   alightAlertsEnabled: boolean;
+  transferProtectionEnabled?: boolean;
+  transferAlertsEnabled?: boolean;
   copy: Record<TripPhase, LivePlanPhaseCopy>;
   actions: { id: 'stop' | 'route'; title: string }[];
 }
@@ -194,4 +197,8 @@ export interface TrackedTrip {
   /** Połączenie, na które użytkownik się zgodził (to samo, które widzi na liście). */
   connection: Connection;
   startedAt: number;
+  protectionEnabled?: boolean;
+  transferContextPath?: string;
+  transferRevision?: number;
+  transfer?: TransferProtectionState;
 }

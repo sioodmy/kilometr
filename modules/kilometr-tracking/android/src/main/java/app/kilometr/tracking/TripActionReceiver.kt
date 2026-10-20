@@ -21,6 +21,8 @@ class TripActionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != ACTION_STOP) return
     LocalStopSignal.mark(context)
+    TransferProtection.clear(context)
+    TransferPresentation.cancel(context)
     TripAlerts.cancel(context)
     try {
       context.stopService(Intent(context, LiveTripService::class.java))

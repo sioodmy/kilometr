@@ -34,6 +34,7 @@ import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
 import { useStrings } from '../src/i18n';
+import { useTrackedTrip } from '../src/services/notifications';
 
 type Coord = [number, number];
 
@@ -54,7 +55,10 @@ export default function RouteMapScreen() {
   const compact = width / fontScale < 330;
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const [item, setItem] = useState<Connection | null>(null);
+  const [loadedItem, setItem] = useState<Connection | null>(null);
+  const { trip: trackedTrip } = useTrackedTrip();
+  const trackedConnection = trackedTrip?.connection.id === String(id) ? trackedTrip.connection : null;
+  const item = trackedConnection ?? (loadedItem?.id === String(id) ? loadedItem : null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [panelHeight, setPanelHeight] = useState(120);
   const [headerHeight, setHeaderHeight] = useState(96);
@@ -101,6 +105,11 @@ export default function RouteMapScreen() {
 
   // ─── Połączenie ─────────────────────────────────────────────
   useEffect(() => {
+    if (trackedConnection) {
+      setItem(trackedConnection);
+      setLoadFailed(false);
+      return;
+    }
     if (!id) {
       setLoadFailed(true);
       return;
@@ -126,7 +135,7 @@ export default function RouteMapScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, trackedConnection]);
 
   // Stare połączenia bywają bez stacji (kurs spoza wycinka). Bez nich noga
   // to dwa punkty, czyli kreska cięciem zamiast wzdłuż torów. Dociągamy
@@ -332,7 +341,7 @@ export default function RouteMapScreen() {
   };
 
   // ─── Render ─────────────────────────────────────────────────
-  if (loadFailed) {
+  if (loadFailed && !item) {
     return (
       <View style={styles.safe}>
         <View style={[styles.headerSafe, { paddingTop: insets.top + 6 }]}>

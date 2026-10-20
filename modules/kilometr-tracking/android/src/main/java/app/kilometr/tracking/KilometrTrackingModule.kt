@@ -33,6 +33,19 @@ class KilometrTrackingModule : Module() {
 
     Function("isAvailable") { true }
 
+    AsyncFunction("configureTransferProtection") { tripId: String, path: String ->
+      val context = appContextOrNull ?: return@AsyncFunction false
+      if (LiveTripService.activeTripId != tripId) return@AsyncFunction false
+      val file = java.io.File(path.removePrefix("file://"))
+      if (!file.canonicalPath.startsWith(context.filesDir.canonicalPath + "/") || !file.isFile) return@AsyncFunction false
+      TransferProtection.configure(context, tripId, path)
+      true
+    }
+
+    AsyncFunction("getTransferProtectionState") {
+      appContextOrNull?.let { TransferProtection.readState(it) }
+    }
+
     /** Czy system dopuści powiadomienie do strefy Live Updates. */
     AsyncFunction("canPromote") {
       appContextOrNull?.let { LiveUpdateFactory.canPromote(it) } ?: false
@@ -89,6 +102,8 @@ class KilometrTrackingModule : Module() {
     AsyncFunction("stopTrip") {
       val context = appContextOrNull ?: return@AsyncFunction false
       LocalStopSignal.clear(context)
+      TransferProtection.clear(context)
+      TransferPresentation.cancel(context)
       try {
         context.stopService(Intent(context, LiveTripService::class.java))
       } catch (_: Throwable) {

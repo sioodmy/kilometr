@@ -22,6 +22,8 @@ interface KilometrTrackingNativeModule {
   /** Czy przycisk „Zakończ" pod powiadomieniem zadziałał natywnie. */
   consumeStopRequest(): Promise<boolean>;
   hasStopRequest(): Promise<boolean>;
+  configureTransferProtection?(tripId: string, path: string): Promise<boolean>;
+  getTransferProtectionState?(): Promise<string | null>;
 }
 
 const native = requireOptionalNativeModule<KilometrTrackingNativeModule>('KilometrTracking');
@@ -62,4 +64,7 @@ export default {
   stopTrip,
   consumeStopRequest,
   hasStopRequest,
+  supportsTransferProtection: () => typeof native?.configureTransferProtection === 'function',
+  configureTransferProtection: (tripId: string, path: string) => native?.configureTransferProtection?.(tripId, path) ?? Promise.resolve(false),
+  getTransferProtectionState: () => native?.getTransferProtectionState?.() ?? Promise.resolve(null),
 };

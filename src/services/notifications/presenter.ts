@@ -101,7 +101,7 @@ export async function presentTrip(
 
   // `liveProgressEnabled` wyłącza pasek postępu i licznik, ale nie samo
   // powiadomienie — zostaje wtedy zwykły banner z tekstem.
-  if (!prefs.liveProgressEnabled) {
+  if (!prefs.liveProgressEnabled && !trip.protectionEnabled) {
     try {
       await native.stopTrip();
     } catch {
@@ -116,6 +116,7 @@ export async function presentTrip(
     // komunikat zostaje na ekranie blokady do końca, a nie znika z APK-iem.
     const json = Platform.OS === 'ios' ? buildIOSLiveActivity(p, trip, tr()) : buildLivePlanJson(p, trip.connection, trip, tr(), {
       alightAlertsEnabled: prefs.trackingEnabled,
+      transferAlertsEnabled: prefs.disruptionAlertsEnabled,
     });
     if (await native.startTrip(json)) {
       await dismissFallback();

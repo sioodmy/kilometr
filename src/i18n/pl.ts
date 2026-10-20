@@ -13,6 +13,22 @@ function isFew(n: number): boolean {
 export const pl = {
   landing,
   share,
+  transferGuard: {
+    title: 'Ochrona przesiadek',
+    waiting: 'Ochrona włączona. Czekamy na potwierdzenie jazdy z GPS.',
+    buffer: (line: string, n: number) => `Przesiadka na ${line} · ${n} min zapasu`,
+    riskTitle: (line: string) => `Przesiadka na ${line} jest zagrożona`,
+    riskBody: 'Szukamy innej przesiadki.',
+    stayOn: (line: string) => `Zostań w ${line}`,
+    changedBody: (line: string, stop: string) => `Przesiądź się na ${line} na przystanku ${stop}.`,
+    noAlternative: 'Nie znaleźliśmy wykonalnej alternatywy. Obecna przesiadka może się nie udać. Sprawdzimy ponownie.',
+    unavailable: 'Nie możemy ocenić przesiadki',
+    unavailableBody: 'Czekamy na dokładną pozycję na trasie. Obecny plan pozostaje widoczny.',
+    routingError: 'Nie udało się przygotować ochrony. Spróbuj ponownie.',
+    rerouting: 'Wyznaczamy nową przesiadkę',
+    next: (line: string, stop: string) => `${line} · ${stop}`,
+    channel: 'Zmiany przesiadek',
+  },
   common: {
     retry: 'Spróbuj ponownie',
     cancel: 'Anuluj',
@@ -1114,7 +1130,7 @@ export const pl = {
     fromPrefix: 'z ',
     toPrefix: 'do ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} przystanki • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
+      `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
   },
   compass: {
     journeyTitle: 'Nawigacja w podróży',

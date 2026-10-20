@@ -7,6 +7,22 @@ import { en as share } from './share/en';
 export const en: Strings = {
   landing,
   share,
+  transferGuard: {
+    title: 'Transfer protection',
+    waiting: 'Protection is on. Waiting for GPS to confirm your ride.',
+    buffer: (line: string, n: number) => `Transfer to ${line} · ${n} min to spare`,
+    riskTitle: (line: string) => `You may miss your transfer to ${line}`,
+    riskBody: 'Looking for another transfer.',
+    stayOn: (line: string) => `Stay on ${line}`,
+    changedBody: (line: string, stop: string) => `Transfer to ${line} at ${stop}.`,
+    noAlternative: 'No feasible alternative found. You may miss the current transfer. We will check again.',
+    unavailable: 'Cannot assess your transfer',
+    unavailableBody: 'Waiting for an accurate position on your route. Your current plan is still shown.',
+    routingError: 'Could not prepare transfer protection. Please try again.',
+    rerouting: 'Finding a new transfer',
+    next: (line: string, stop: string) => `${line} · ${stop}`,
+    channel: 'Transfer changes',
+  },
   common: {
     retry: 'Try again',
     cancel: 'Cancel',
@@ -1084,7 +1100,7 @@ export const en: Strings = {
     fromPrefix: 'from ',
     toPrefix: 'to ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} stops • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
+      `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
   },
   compass: {
     journeyTitle: 'Journey navigation',

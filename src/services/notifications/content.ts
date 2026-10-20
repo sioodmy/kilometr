@@ -230,6 +230,7 @@ export interface BuildPlanOptions {
   /** Po tym czasie serwis ma przestać aktualizować powiadomienie (ms). */
   stopAfterMs?: number;
   alightAlertsEnabled?: boolean;
+  transferAlertsEnabled?: boolean;
 }
 
 export const ARRIVED_LINGER_MS = 3 * 60 * 1000;
@@ -311,6 +312,8 @@ export function buildLivePlan(
     segments: buildSegments(timeline, startAtMs, endAtMs),
     states: buildStates(p, conn, s),
     alightAlertsEnabled: options.alightAlertsEnabled ?? true,
+    transferProtectionEnabled: trip.protectionEnabled ?? false,
+    transferAlertsEnabled: options.transferAlertsEnabled ?? true,
     copy: buildPhaseCopy(p, conn, s),
     // Po przyjeździe „Zakończ" nie ma już czego kończyć — przycisk zmienia się
     // na potwierdzenie. Plan i tak przychodzi na każdą zmianę fazy, więc etykieta

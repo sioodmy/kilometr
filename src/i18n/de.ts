@@ -7,6 +7,22 @@ import { de as share } from './share/de';
 export const de: Strings = {
   landing,
   share,
+  transferGuard: {
+    title: 'Umstiegsbegleitung',
+    waiting: 'Die Überwachung ist aktiv. Wir warten auf die GPS-Bestätigung deiner Fahrt.',
+    buffer: (line: string, n: number) => `Umstieg auf ${line} · ${n} Min. Reserve`,
+    riskTitle: (line: string) => `Der Umstieg auf ${line} ist gefährdet`,
+    riskBody: 'Wir suchen einen anderen Umstieg.',
+    stayOn: (line: string) => `Bleib in ${line}`,
+    changedBody: (line: string, stop: string) => `Steige an der Haltestelle ${stop} in ${line} um.`,
+    noAlternative: 'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
+    unavailable: 'Umstieg kann nicht bewertet werden',
+    unavailableBody: 'Wir warten auf eine genaue Position entlang der Route. Der aktuelle Plan bleibt sichtbar.',
+    routingError: 'Die Umstiegsbegleitung konnte nicht vorbereitet werden. Versuche es erneut.',
+    rerouting: 'Ein neuer Umstieg wird gesucht',
+    next: (line: string, stop: string) => `${line} · ${stop}`,
+    channel: 'Geänderte Umstiege',
+  },
   common: {
     retry: 'Erneut versuchen',
     cancel: 'Abbrechen',
@@ -1093,7 +1109,7 @@ export const de: Strings = {
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} Haltestellen • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
   },
   compass: {
     journeyTitle: 'Navigation unterwegs',

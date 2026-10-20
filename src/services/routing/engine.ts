@@ -90,7 +90,7 @@ interface SearchSlices {
  * TEN SAM kod, żeby rozgrzany indeks był dokładnie tym, na który wyszukiwanie
  * zaraz wpadnie (w tym nocny merge przed 07:00).
  */
-async function buildSearchSlices(rawTargetSec: number, arrivalMode = false): Promise<SearchSlices> {
+export async function buildSearchSlices(rawTargetSec: number, arrivalMode = false): Promise<SearchSlices> {
   const now = new Date();
   // departureTimeSec / arriveBySec mogą wskazywać jutro (DepartureTimeSheet
   // dodaje +86400). RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.

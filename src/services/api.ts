@@ -415,6 +415,10 @@ export function getPlannedConnection(id: string): Connection | undefined {
   return recentPlannedConnections.get(normalizeConnectionId(id));
 }
 
+export function rememberPlannedConnection(connection: Connection): void {
+  recentPlannedConnections.set(connection.id, connection);
+}
+
 export const RoutingService: IRoutingService = {
   async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
     try {

@@ -13,6 +13,22 @@ function isFew(n: number): boolean {
 export const uk: Strings = {
   landing,
   share,
+  transferGuard: {
+    title: 'Контроль пересадок',
+    waiting: 'Контроль увімкнено. Очікуємо підтвердження поїздки за GPS.',
+    buffer: (line: string, n: number) => `Пересадка на ${line} · ${n} хв запасу`,
+    riskTitle: (line: string) => `Ви можете не встигнути на ${line}`,
+    riskBody: 'Шукаємо іншу пересадку.',
+    stayOn: (line: string) => `Залишайтеся в ${line}`,
+    changedBody: (line: string, stop: string) => `Пересядьте на ${line} на зупинці ${stop}.`,
+    noAlternative: 'Доступної альтернативи не знайдено. Поточна пересадка може не вдатися. Перевіримо ще раз.',
+    unavailable: 'Не можемо оцінити пересадку',
+    unavailableBody: 'Очікуємо точне місцеположення на маршруті. Поточний план залишається видимим.',
+    routingError: 'Не вдалося підготувати контроль пересадок. Спробуйте ще раз.',
+    rerouting: 'Шукаємо нову пересадку',
+    next: (line: string, stop: string) => `${line} · ${stop}`,
+    channel: 'Зміни пересадок',
+  },
   common: {
     retry: 'Спробувати знову',
     cancel: 'Скасувати',
