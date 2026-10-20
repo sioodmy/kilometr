@@ -123,26 +123,36 @@ export const de: Strings = {
       `${screen}. Platz für einen echten Screenshot von einem Pixel 7a.`,
   },
   privacy: {
-    title: 'Datenschutz in Kilometr',
-    intro: 'Informationen zur Android-App Kilometr und dieser Website. Stand: 19. Oktober 2026.',
+    title: 'Datenschutzerklärung für Kilometr',
+    linkLabel: 'Datenschutzerklärung',
+    linkError:
+      'GitHub konnte nicht geöffnet werden. Prüfe deine Verbindung und versuche es erneut.',
+    intro:
+      'Gilt für die Android-App Kilometr (app.kilometr) und die Projektwebsite. Aktualisiert: 20. Oktober 2026. Kilometr ist ein Open-Source-Projekt von sioodmy auf GitHub. Die App benötigt kein Konto und enthält weder Werbung noch Analysewerkzeuge.',
     localTitle: 'Daten auf deinem Gerät',
     localBody:
-      'Gespeicherte Orte, Suchverlauf, Einstellungen und heruntergeladene Fahrpläne liegen auf deinem Telefon. Die App benötigt kein Konto. Lokale Daten entfernst du über den App-Speicher in den Android-Einstellungen.',
+      'Gespeicherte Orte mit Namen und Koordinaten, Suchverlauf, Einstellungen, Sicherungen und heruntergeladene Fahrpläne liegen im App-Speicher auf deinem Telefon. Verbindungen mit heruntergeladenen Fahrplänen werden auf dem Gerät berechnet. Kilometr synchronisiert diese Daten nicht mit einem Serverkonto.',
     locationTitle: 'Standort und Benachrichtigungen',
     locationBody:
-      'Mit deiner Erlaubnis nutzt die App den Standort für nahe Haltestellen, den Startpunkt und den Reiseverlauf. Aktivierte Reise- oder Aufzeichnungsfunktionen können den Standort im Hintergrund nutzen. Benachrichtigungen betreffen ausgewählte Fahrten. Berechtigungen kannst du in den Android-Einstellungen widerrufen.',
+      'Der Standortzugriff ist optional. Er dient der Suche nach nahen Haltestellen, dem Startpunkt und der Überwachung einer aktiven Fahrt. Eine von dir gestartete Fahrt kann GPS bei ausgeschaltetem Bildschirm mit sichtbarer Dienstbenachrichtigung weiter nutzen. Die App fordert keinen dauerhaften Standortzugriff im Hintergrund an. Mitteilungen zeigen angeheftete Fahrten, Abfahrtsalarme und Ausstiegserinnerungen. Du kannst die Fahrt beenden oder Berechtigungen in den Android-Einstellungen widerrufen. Ohne Erlaubnis wählst du den Startpunkt manuell.',
     networkTitle: 'Anfragen an externe Dienste',
     networkBody:
-      'Fahrpläne, Karten, Meldungen und Fahrzeugpositionen werden von Datenanbietern geladen. Adresssuche und Fußwege nutzen OpenStreetMap-Quellen. Je nach Funktion können Anfragen Suchtext, Haltestelle, Linie oder Gebietskoordinaten enthalten. Anbieter erhalten technisch bedingt auch deine IP-Adresse.',
+      'Fahrpläne kommen von der Kilometr-Infrastruktur, Meldungen und Fahrzeugpositionen von Verkehrsunternehmen und Datenanbietern. OpenStreetMap Nominatim erhält den Suchtext einer Adresse und das Stadtgebiet sowie Koordinaten zur Umwandlung einer GPS-Position in eine Adresse. OpenFreeMap erhält Kartenkachelanfragen für das betrachtete Gebiet. Der öffentliche OSRM-Server erhält Koordinaten von Routenpunkten, wenn die App die Routengeometrie lädt. Anbieter erhalten auch deine IP-Adresse und Anfrageparameter und können nach ihren eigenen Regeln Protokolle speichern. Diese Verbindungen dienen den von dir genutzten Funktionen.',
     exportTitle: 'Datenexport',
     exportBody:
-      'Du kannst Sicherungen und aufgezeichnete Routen als Datei exportieren. Du entscheidest, mit wem du diese Datei teilst.',
+      'Eine exportierte Sicherung enthält gespeicherte Orte, Verlauf und Einstellungen. Eine geteilte Fahrt kann Namen und Koordinaten von Start und Ziel, Haltestellen und Reisezeiten enthalten. Der Link speichert diese Angaben hinter dem Zeichen #, das die Website im Browser ausliest. Empfänger einer Datei, eines Bildes oder Links können den Inhalt lesen und weitergeben. Du startest die Freigabe selbst.',
+    retentionTitle: 'Speicherung und Löschung',
+    retentionBody:
+      'Lokale Daten bleiben auf deinem Gerät, bis du sie löschst oder die App zwischengespeicherte Daten ersetzt. Orte und Verlauf kannst du in der App löschen. Alle lokalen Daten entfernst du über Android-Einstellungen → Apps → Kilometr → Speicher → Daten löschen. Exportierte Dateien und Kopien bei Empfängern müssen separat gelöscht werden. Externe Betreiber bestimmen ihre eigenen Aufbewahrungsfristen für Protokolle.',
+    securityTitle: 'Datenübertragung',
+    securityBody:
+      'Die öffentlichen Standarddienste für Fahrpläne, Karten, Adressen und Routengeometrie verwenden HTTPS. Lokale Daten liegen im privaten, von Android geschützten App-Speicher. Exportierte Dateien und Fahrtlinks haben keinen Passwortschutz. Teile sie nicht, wenn sie eine Adresse enthalten, die du privat halten möchtest.',
     webTitle: 'Diese Website',
     webBody:
       'Die Website speichert nur Sprache und Design im Browserspeicher. Sie lädt keine Analyse- oder Werbetools. Für das Hosting durch GitHub Pages und verlinkte externe Seiten gelten die Regeln der jeweiligen Betreiber.',
-    contactTitle: 'Fragen',
+    contactTitle: 'Datenschutzkontakt',
     contactBody:
-      'Fragen zum Datenschutz und zur App kannst du im GitHub-Repository des Projekts stellen.',
+      'Kilometr wird von sioodmy (github.com/sioodmy) betreut. Datenschutzfragen und Anfragen zu Daten kannst du über Issues unter github.com/sioodmy/kilometr stellen. Issues sind öffentlich; veröffentliche dort keine Wohnadresse oder andere sensible Daten. Änderungen der Datenverarbeitung werden in dieser Erklärung mit aktualisiertem Datum beschrieben.',
     contact: 'Issue erstellen',
   },
   report: {
