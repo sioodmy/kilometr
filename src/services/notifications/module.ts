@@ -30,6 +30,9 @@ export interface TrackingNativeModule {
   /** Czy „Zakończ" pod powiadomieniem zadziałał natywnie (bez otwierania apki). */
   consumeStopRequest(): Promise<boolean>;
   hasStopRequest?(): Promise<boolean>;
+  supportsTransferProtection?(): boolean;
+  configureTransferProtection?(tripId: string, path: string): Promise<boolean>;
+  getTransferProtectionState?(): Promise<string | null>;
 }
 
 let nmod: NotificationsModule | null | undefined;
@@ -91,6 +94,10 @@ export function getTrackingNative(): TrackingNativeModule | null {
 /** Czy na tej platformie mamy natywne Live Update. */
 export function isNativeTrackingSupported(): boolean {
   return getTrackingNative() != null;
+}
+
+export function isTransferProtectionSupported(): boolean {
+  return Platform.OS === 'android' && getTrackingNative()?.supportsTransferProtection?.() === true;
 }
 
 /** Identyfikator powiadomienia śledzącej — wspólny dla update i dismiss. */

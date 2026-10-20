@@ -18,6 +18,7 @@ import android.os.SystemClock
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import org.json.JSONObject
 
 /** Powiadomienie i alert GPS działają bez aktywnego JS, także przy wygaszonym ekranie. */
 class LiveTripService : Service() {
@@ -26,6 +27,9 @@ class LiveTripService : Service() {
 
   private var plan: LiveTripPlan? = null
   private var lastSignature: String? = null
+  private var protection: TransferProtection? = null
+  private var protectionState: JSONObject? = null
+  private var lastProtectionFixAt = 0L
 
   private val alightProximity = AlightProximity()
   private val locationManager by lazy { getSystemService(LocationManager::class.java) }
@@ -34,7 +38,12 @@ class LiveTripService : Service() {
   private val locationListener = object : LocationListener {
     override fun onLocationChanged(location: Location) {
       val current = plan ?: return
-      maybeVibrateAlight(current, location)
+      val now = System.currentTimeMillis()
+      if (now - lastProtectionFixAt >= 5000) {
+        lastProtectionFixAt = now
+        protection?.observe(location)
+      }
+      maybeVibrateAlight(TransferPresentation.decorate(current, protectionState, now), location)
     }
     override fun onProviderEnabled(provider: String) {}
     override fun onProviderDisabled(provider: String) {}
@@ -44,12 +53,13 @@ class LiveTripService : Service() {
 
   private val tick = object : Runnable {
     override fun run() {
-      val current = plan
+      val current = plan?.let { TransferPresentation.decorate(it, protectionState, System.currentTimeMillis()) }
       if (current == null) {
         shutdown()
         return
       }
       val now = System.currentTimeMillis()
+      protection?.tick(now)
       if (current.isExpired(now)) {
         TripAlerts.cancel(this@LiveTripService)
         shutdown()
@@ -97,12 +107,14 @@ class LiveTripService : Service() {
       return START_NOT_STICKY
     }
 
-    if (current.isExpired(System.currentTimeMillis()) || LocalStopSignal.isPending(this)) {
+    if ((!current.transferProtectionEnabled && current.isExpired(System.currentTimeMillis())) || LocalStopSignal.isPending(this)) {
       shutdown()
       return START_NOT_STICKY
     }
 
     isRunning = true
+    activeTripId = current.tripId
+    attachProtection(current)
     // startForeground musi zadziałać w ciągu 5 s od startForegroundService,
     // więc renderujemy natychmiast, a dopiero potem wchodzi pętla.
     if (!publish(current, System.currentTimeMillis(), tryLocation = true)) {
@@ -119,6 +131,9 @@ class LiveTripService : Service() {
   }
 
   override fun onDestroy() {
+    activeTripId = null
+    protection?.close()
+    protection = null
     handler.removeCallbacks(tick)
     stopLocationUpdates()
     plan = null
@@ -140,7 +155,7 @@ class LiveTripService : Service() {
         "${active.index}:${segment.line}", distance[0], location.accuracy, ageMs,
       )) {
       TripVibrator.alight(this)
-      stopLocationUpdates()
+      if (protection == null) stopLocationUpdates()
     }
   }
 
@@ -150,6 +165,10 @@ class LiveTripService : Service() {
 
   private fun updateLocationSubscription() {
     val active = plan?.alightSegmentAt(System.currentTimeMillis())
+    if (protection != null && locationForeground && hasPreciseLocation()) {
+      subscribeLocation()
+      return
+    }
     if (
       !locationForeground || !hasPreciseLocation() || active == null ||
       active.value.alightLat == null || active.value.alightLon == null ||
@@ -158,6 +177,10 @@ class LiveTripService : Service() {
       stopLocationUpdates()
       return
     }
+    subscribeLocation()
+  }
+
+  private fun subscribeLocation() {
     if (locationSubscribed) return
     for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
       try {
@@ -186,8 +209,9 @@ class LiveTripService : Service() {
    *  Zwraca false, gdy startForeground się nie powiódł (usługa została wtedy
    *  zatrzymana, bo bez FGS system ubija proces po 5 s). */
   private fun publish(current: LiveTripPlan, nowMs: Long, tryLocation: Boolean = false): Boolean {
-    val notification = LiveUpdateFactory.build(this, current, nowMs)
-    val wantsLocation = current.alightAlertsEnabled && hasPreciseLocation() &&
+    val displayed = TransferPresentation.decorate(current, protectionState, nowMs)
+    val notification = LiveUpdateFactory.build(this, displayed, nowMs)
+    val wantsLocation = (current.alightAlertsEnabled || current.transferProtectionEnabled) && hasPreciseLocation() &&
       current.segments.any {
         it.mode != LiveTripPlan.MODE_WALK && it.alightLat != null && it.alightLon != null
       }
@@ -228,6 +252,9 @@ class LiveTripService : Service() {
   }
 
   private fun shutdown() {
+    protection?.close()
+    protection = null
+    protectionState = null
     handler.removeCallbacks(tick)
     stopLocationUpdates()
     locationForeground = false
@@ -243,7 +270,29 @@ class LiveTripService : Service() {
     stopSelf()
   }
 
+  private fun attachProtection(current: LiveTripPlan) {
+    val path = if (current.transferProtectionEnabled) TransferProtection.pathFor(this, current.tripId) else null
+    if (path == protection?.path && current.tripId == protection?.tripId) return
+    protection?.close()
+    protection = null
+    protectionState = null
+    if (path == null) return
+    val id = current.tripId
+    protection = TransferProtection(this, id, path) { state, alert ->
+      handler.post {
+        val active = plan
+        if (active?.tripId == id && protection?.path == path && !LocalStopSignal.isPending(this)) {
+          protectionState = state
+          publish(active, System.currentTimeMillis())
+          if (alert) TransferPresentation.alert(this, active, state)
+        }
+      }
+    }
+  }
+
   companion object {
+    @Volatile var activeTripId: String? = null
+      private set
     const val ACTION_START = "app.kilometr.tracking.START"
     const val ACTION_STOP = "app.kilometr.tracking.STOP"
     const val EXTRA_PLAN = "plan"

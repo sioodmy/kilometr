@@ -39,11 +39,18 @@ internal data class LiveTripPlan(
   val actions: List<TripAction>,
   val states: List<LiveState>,
   val alightAlertsEnabled: Boolean,
+  val transferProtectionEnabled: Boolean = false,
+  val protectedLegIndex: Int? = null,
 ) {
 
   fun stateAt(nowMs: Long): LiveState? = states.lastOrNull { it.atMs <= nowMs }
 
   fun alightSegmentAt(nowMs: Long): IndexedValue<LiveSegment>? {
+    protectedLegIndex?.let { index ->
+      segments.getOrNull(index)?.takeIf { it.mode != MODE_WALK }?.let {
+        return IndexedValue(index, it)
+      }
+    }
     val active = segments.withIndex().lastOrNull {
       it.value.mode != MODE_WALK && nowMs >= it.value.startAtMs
     } ?: return null
@@ -145,7 +152,8 @@ internal data class LiveTripPlan(
 
   /** Ikona „pojazdu" na pasku postępu — pokazuje, czym właśnie jedziemy. */
   fun trackerIconFor(nowMs: Long): Int {
-    val active = segments.lastOrNull { nowMs >= it.startAtMs } ?: segments.firstOrNull()
+    val active = protectedLegIndex?.let { segments.getOrNull(it) }
+      ?: segments.lastOrNull { nowMs >= it.startAtMs } ?: segments.firstOrNull()
     return when (active?.mode) {
       MODE_WALK -> R.drawable.ic_kilometr_walk
       MODE_BUS, MODE_TROLLEYBUS -> R.drawable.ic_kilometr_bus
@@ -272,6 +280,7 @@ internal data class LiveTripPlan(
         actions = actions,
         states = states,
         alightAlertsEnabled = root.optBoolean("alightAlertsEnabled", true),
+        transferProtectionEnabled = root.optBoolean("transferProtectionEnabled", false),
       )
     }
 

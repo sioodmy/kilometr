@@ -101,7 +101,7 @@ export async function presentTrip(
 
   // `liveProgressEnabled` wyłącza pasek postępu i licznik, ale nie samo
   // powiadomienie — zostaje wtedy zwykły banner z tekstem.
-  if (!prefs.liveProgressEnabled) {
+  if (!prefs.liveProgressEnabled && !trip.protectionEnabled) {
     try {
       await native.stopTrip();
     } catch {

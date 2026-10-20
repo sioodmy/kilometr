@@ -311,6 +311,7 @@ export function buildLivePlan(
     segments: buildSegments(timeline, startAtMs, endAtMs),
     states: buildStates(p, conn, s),
     alightAlertsEnabled: options.alightAlertsEnabled ?? true,
+    transferProtectionEnabled: trip.protectionEnabled ?? false,
     copy: buildPhaseCopy(p, conn, s),
     // Po przyjeździe „Zakończ" nie ma już czego kończyć — przycisk zmienia się
     // na potwierdzenie. Plan i tak przychodzi na każdą zmianę fazy, więc etykieta
