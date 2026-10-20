@@ -6,6 +6,8 @@ import { scheme } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import { clockFromMs } from './notifications/format';
 import { departureAlarmTiming } from './departureAlarmPlan';
+import { iosDepartureAlarm } from './iosDepartureAlarm';
+import { areNotificationsSupported } from './notifications/module';
 
 export interface AlarmPermissions {
   notifications: boolean;
@@ -35,12 +37,14 @@ interface AlarmNative {
   preview(json: string): Promise<boolean>;
 }
 
-const native = Platform.OS === 'android'
-  ? requireOptionalNativeModule<AlarmNative>('KilometrAlarm') : null;
+const native: AlarmNative | null = Platform.OS === 'android'
+  ? requireOptionalNativeModule<AlarmNative>('KilometrAlarm')
+  : Platform.OS === 'ios' ? iosDepartureAlarm : null;
 let cached: DepartureAlarm | null = null;
 const listeners = new Set<() => void>();
 
-export const isDepartureAlarmSupported = () => native != null;
+export const isDepartureAlarmSupported = () =>
+  native != null && (Platform.OS !== 'ios' || areNotificationsSupported());
 export const getDepartureAlarmSync = () => cached;
 
 export async function refreshDepartureAlarm(): Promise<void> {

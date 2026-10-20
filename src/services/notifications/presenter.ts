@@ -9,6 +9,8 @@ import { TRACKING_CHANNEL_ID } from './channels';
 import { TRIP_CATEGORY } from './categories';
 import { tr } from '../../i18n';
 import { buildLivePlanJson, buildTripCopy, tripNotificationData } from './content';
+import { buildIOSLiveActivity } from './iosLiveActivity';
+import { cancelScheduledAlerts, scheduleIOSTripAlerts } from './alerts';
 import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 
 // Wywieszenie stanu podróży na powiadomieniu.
@@ -36,6 +38,7 @@ async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void
   if (!N) return;
   const copy = buildTripCopy(p, trip.connection, tr());
   try {
+    if (Platform.OS === 'ios') await N.dismissNotificationAsync(TRACKING_NOTIFICATION_ID);
     // Android nadpisuje pozycję sam, więc zostawiamy Update — nie chcemy okna
     // bez powiadomienia między wywołaniami.
     await N.scheduleNotificationAsync({
@@ -79,11 +82,15 @@ export async function presentTrip(
   prefs: NotificationPreferences,
 ): Promise<void> {
   if (!prefs.trackingEnabled) {
+    if (Platform.OS === 'ios') await cancelScheduledAlerts();
     await dismissTracking();
     return;
   }
+  await scheduleIOSTripAlerts(p, trip).catch((error) => {
+    console.warn('[Notifications] iOS schedule:', error);
+  });
 
-  const native = Platform.OS === 'android' ? getTrackingNative() : null;
+  const native = getTrackingNative();
   if (!native) {
     if (Platform.OS === 'android') warnUnsupportedOnce('Live Update');
     await presentFallback(p, trip);
@@ -107,7 +114,7 @@ export async function presentTrip(
   try {
     // Po przyjeździe serwis dostaje `stopAfterMs` i sam się wyłącza, więc
     // komunikat zostaje na ekranie blokady do końca, a nie znika z APK-iem.
-    const json = buildLivePlanJson(p, trip.connection, trip, tr(), {
+    const json = Platform.OS === 'ios' ? buildIOSLiveActivity(p, trip, tr()) : buildLivePlanJson(p, trip.connection, trip, tr(), {
       alightAlertsEnabled: prefs.trackingEnabled,
     });
     if (await native.startTrip(json)) {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, InteractionManager, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Anchor,
@@ -53,6 +53,7 @@ import { deduplicateConnections, mergeConnections } from '../../src/services/rou
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
+import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
 import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
 import {
@@ -172,6 +173,15 @@ export default function RoutesScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [preview, setPreview] = useState<{ item: Connection; sticky: boolean } | null>(null);
+  const [previewReady, setPreviewReady] = useState(false);
+  const previewId = useRef<string | null>(null);
+  const closePreview = useCallback(() => {
+    previewId.current = null;
+    setPreview(null);
+    setPreviewReady(false);
+  }, []);
+  useFocusEffect(useCallback(() => closePreview, [closePreview]));
   // Rozkład trzymany na telefonie: bez niego RAPTOR nie ma czym liczyć, więc
   // pusty wynik to nie „brak serwera", tylko brak danych offline.
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
@@ -885,10 +895,25 @@ export default function RoutesScreen() {
 
   const openConnection = useCallback(
     (item: Connection) => {
+      closePreview();
       router.push({ pathname: '/routes/[id]', params: { id: item.id } });
     },
-    [router],
+    [closePreview, router],
   );
+
+  const peek = useMemo<ConnectionPeekHandlers>(() => ({
+    show: (item, sticky = false) => {
+      previewId.current = item.id;
+      setPreviewReady(false);
+      setPreview({ item, sticky });
+    },
+    ready: setPreviewReady,
+    release: (item, open) => {
+      if (previewId.current !== item.id) return;
+      if (open) openConnection(item);
+      else closePreview();
+    },
+  }), [closePreview, openConnection]);
 
   const renderConnection = useCallback(
     ({ item }: { item: Connection }) => {
@@ -898,11 +923,12 @@ export default function RoutesScreen() {
           item={item}
           dimmed={past}
           onPress={openConnection}
+          peek={peek}
           tick={nowTick}
         />
       );
     },
-    [openConnection, nowTick],
+    [openConnection, nowTick, peek],
   );
 
   const routeHeader = (
@@ -1220,6 +1246,14 @@ export default function RoutesScreen() {
           onCycleMode={handleCycleMode}
         />
       )}
+      {preview && <ConnectionPeek
+        item={preview.item}
+        sticky={preview.sticky}
+        ready={previewReady}
+        offline={offline || liveStale}
+        onClose={closePreview}
+        onOpen={() => openConnection(preview.item)}
+      />}
     </SafeAreaView>
   );
 }

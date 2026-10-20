@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   BackHandler,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -24,7 +26,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   Database,
   Download,
   GraduationCap,
@@ -36,7 +37,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react-native';
-import Animated, { FadeInRight, FadeOutLeft, useReducedMotion } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { CITIES, type CityId } from '../src/cities';
@@ -62,7 +63,13 @@ function StepProgress({ step }: { step: number }) {
   const s = useStrings();
   const steps = s.onboarding.steps;
   return (
-    <View style={st.dots} accessible={false}>
+    <View
+      style={st.dots}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={s.onboarding.stepOf(step + 1, steps.length, steps[step])}
+      accessibilityValue={{ min: 1, max: steps.length, now: step + 1 }}
+    >
       {steps.map((label, i) => (
         <View key={label} style={[st.dot, i === step && st.dotActive, i < step && st.dotDone]} />
       ))}
@@ -111,20 +118,19 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-// Push w Expo Go nie istnieje od SDK 53 (sam require + getPermissionsAsync
-// rzuca błąd do LogBoxa), więc nawet nie próbujemy — ten sam guard co
-// w notifications.getNotifications(). Powiadomienia działają w dev buildzie.
 const NOTIF_SUPPORTED = Constants.appOwnership !== 'expo';
 
 function usePermissionStates() {
   const [loc, setLoc] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [notif, setNotif] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [busy, setBusy] = useState<'loc' | 'notif' | null>(null);
+  const [locCanAskAgain, setLocCanAskAgain] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
       const l = await Location.getForegroundPermissionsAsync();
       setLoc(l.granted ? 'granted' : l.status === 'denied' ? 'denied' : 'unknown');
+      setLocCanAskAgain(l.canAskAgain);
     } catch {
       setLoc('unknown');
     }
@@ -133,10 +139,8 @@ function usePermissionStates() {
         setNotif('unknown');
         return;
       }
-      // Przez serwis powiadomień, który ma własny guard na Expo Go i rozumie
-      // też iOS `provisional`. Dzięki temu onboarding nie duplikuje logiki
-      // uprawnień, którą ma już reszta aplikacji.
-      setNotif((await hasNotificationPermission()) ? 'granted' : 'unknown');
+      const granted = await hasNotificationPermission();
+      setNotif((previous) => (granted ? 'granted' : previous === 'denied' ? 'denied' : 'unknown'));
     } catch {
       setNotif('unknown');
     }
@@ -144,43 +148,52 @@ function usePermissionStates() {
 
   useEffect(() => {
     void refresh();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refresh();
+    });
+    return () => subscription.remove();
   }, [refresh]);
 
   const requestLoc = useCallback(async () => {
     setBusy('loc');
     try {
+      if (!locCanAskAgain) {
+        await Linking.openSettings();
+        return;
+      }
       const r = await Location.requestForegroundPermissionsAsync();
       setLoc(r.granted ? 'granted' : 'denied');
-      if (r.granted) {
-        try {
-          await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        } catch {}
-      }
+      setLocCanAskAgain(r.canAskAgain);
     } catch {
       setLoc('denied');
     } finally {
       setBusy(null);
     }
-  }, []);
+  }, [locCanAskAgain]);
 
   const requestNotif = useCallback(async () => {
     if (!NOTIF_SUPPORTED) return;
     setBusy('notif');
     try {
+      if (notif === 'denied') {
+        await Linking.openSettings();
+        return;
+      }
       setNotif((await ensureNotificationPermission()) ? 'granted' : 'denied');
     } catch {
       setNotif('denied');
     } finally {
       setBusy(null);
     }
-  }, []);
+  }, [notif]);
 
-  return { loc, notif, busy, requestLoc, requestNotif };
+  return { loc, notif, busy, locCanAskAgain, requestLoc, requestNotif };
 }
 
 function useCitySuggestion(locGranted: boolean) {
   const { cityId, setCity } = useActiveCity();
   const [suggested, setSuggested] = useState<CityId | null>(null);
+  const [switching, setSwitching] = useState(false);
   // 'idle' = jeszcze nie pytaliśmy, 'locating' = czekamy na fix,
   // 'nomatch' = GPS gdzieś, gdzie żadne miasto nie pasuje.
   const [status, setStatus] = useState<'idle' | 'locating' | 'nomatch'>('idle');
@@ -217,13 +230,19 @@ function useCitySuggestion(locGranted: boolean) {
   }, [locGranted]);
 
   const pick = useCallback(
-    (id: CityId) => {
-      void setCity(id);
+    async (id: CityId) => {
+      if (switching || id === cityId) return;
+      setSwitching(true);
+      try {
+        await setCity(id);
+      } finally {
+        setSwitching(false);
+      }
     },
-    [setCity],
+    [cityId, setCity, switching],
   );
 
-  return { cityId, pick, suggested, status };
+  return { cityId, pick, suggested, status, switching };
 }
 
 type SlotKey = 'home' | 'work' | 'school';
@@ -350,7 +369,8 @@ function useOnboardingPlaces() {
 export default function OnboardingScreen() {
   const s = useStrings();
   const router = useRouter();
-  const { fontScale } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
+  const compact = width / fontScale < 360;
   const reduceMotion = useReducedMotion();
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
@@ -360,6 +380,7 @@ export default function OnboardingScreen() {
     pick,
     suggested,
     status: citySuggestionStatus,
+    switching: switchingCity,
   } = useCitySuggestion(perms.loc === 'granted');
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [downloading, setDownloading] = useState(false);
@@ -387,7 +408,6 @@ export default function OnboardingScreen() {
       hint: s.onboarding.slotUniHint(cityId),
     },
   ];
-  const startedDownload = useRef(false);
   // Krok 3: przewijanie otwartego slotu nad klawiaturę.
   const step3Scroll = useRef<ScrollView>(null);
   const slotY = useRef<Record<string, number>>({});
@@ -430,7 +450,6 @@ export default function OnboardingScreen() {
 
   const startDownload = useCallback(async () => {
     if (downloading) return;
-    startedDownload.current = true;
     setDownloading(true);
     try {
       await importGtfsFromNetwork();
@@ -449,30 +468,31 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
       <View style={st.top}>
-        {step > 0 ? (
-          <Pressable
-            onPress={back}
-            style={st.back}
-            accessibilityRole="button"
-            accessibilityLabel={s.onboarding.backA11y}
-          >
-            <ChevronLeft size={22} color={scheme.onSurface} />
-          </Pressable>
-        ) : (
-          <View style={st.back} />
-        )}
-        <View style={{ flex: 1, gap: 10 }}>
-          <Text style={st.stepLabel}>
-            {s.onboarding.stepOf(step + 1, steps.length, steps[step])}
+        <View style={st.topRow}>
+          <View style={st.topHeading}>
+            {step > 0 && (
+              <Pressable
+                onPress={back}
+                style={({ pressed }) => [st.back, pressed && st.backPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={s.onboarding.backA11y}
+              >
+                <ChevronLeft size={24} color={scheme.onSurface} />
+              </Pressable>
+            )}
+            <Text style={st.stepLabel}>{steps[step]}</Text>
+          </View>
+          <Text style={st.stepCount} accessible={false}>
+            {s.onboarding.stepCount(step + 1, steps.length)}
           </Text>
-          <StepProgress step={step} />
         </View>
+        <StepProgress step={step} />
       </View>
 
       <Animated.View
         key={step}
-        entering={reduceMotion ? undefined : FadeInRight.duration(220)}
-        exiting={reduceMotion ? undefined : FadeOutLeft.duration(150)}
+        entering={reduceMotion ? undefined : FadeIn.duration(200)}
+        exiting={reduceMotion ? undefined : FadeOut.duration(120)}
         style={{ flex: 1 }}
       >
         {step === 0 && (
@@ -481,16 +501,19 @@ export default function OnboardingScreen() {
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
           >
-            <View style={st.heroMark}>
-              <TramFront size={44} color={scheme.onPrimaryContainer} />
+            <View style={st.welcomeHero}>
+              <View style={st.heroMark}>
+                <TramFront size={48} color={scheme.onPrimaryContainer} strokeWidth={1.8} />
+              </View>
+              <Text style={[st.hero, compact && st.heroCompact]}>{s.onboarding.brand}</Text>
+              <Text style={st.lead}>{s.onboarding.tagline}</Text>
             </View>
-            <Text style={st.hero}>{s.onboarding.brand}</Text>
-            <Text style={st.lead}>{s.onboarding.tagline}</Text>
+            <Text style={st.leadSmall}>{s.onboarding.intro}</Text>
 
             <View style={st.featList}>
               <View style={st.feat}>
                 <View style={st.featIcon}>
-                  <Clock3 size={20} color={scheme.primary} />
+                  <WifiOff size={20} color={scheme.onSurfaceVariant} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={st.featTitle}>{s.onboarding.fast}</Text>
@@ -498,7 +521,7 @@ export default function OnboardingScreen() {
               </View>
               <View style={st.feat}>
                 <View style={st.featIcon}>
-                  <X size={18} color={scheme.primary} />
+                  <Check size={20} color={scheme.onSurfaceVariant} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={st.featTitle}>{s.onboarding.noAds}</Text>
@@ -506,7 +529,7 @@ export default function OnboardingScreen() {
               </View>
               <View style={st.feat}>
                 <View style={st.featIcon}>
-                  <Check size={18} color={scheme.primary} />
+                  <Check size={20} color={scheme.onSurfaceVariant} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={st.featTitle}>{s.onboarding.noPay}</Text>
@@ -535,6 +558,9 @@ export default function OnboardingScreen() {
                 </View>
               </View>
               <Text style={st.cardBody}>{s.onboarding.locBody}</Text>
+              {perms.loc === 'denied' && (
+                <Text style={st.fine}>{s.onboarding.permissionDenied}</Text>
+              )}
               {perms.loc === 'granted' ? (
                 <View style={st.doneRow}>
                   <Check size={16} color={scheme.success} />
@@ -553,7 +579,9 @@ export default function OnboardingScreen() {
                   ) : (
                     <LocateFixed size={17} color={scheme.onPrimary} />
                   )}
-                  <Text style={st.allowText}>{s.onboarding.locAllow}</Text>
+                  <Text style={st.allowText}>
+                    {perms.locCanAskAgain ? s.onboarding.locAllow : s.onboarding.openSettings}
+                  </Text>
                 </Pressable>
               )}
             </View>
@@ -568,6 +596,9 @@ export default function OnboardingScreen() {
                 </View>
               </View>
               <Text style={st.cardBody}>{s.onboarding.notifBody}</Text>
+              {perms.notif === 'denied' && (
+                <Text style={st.fine}>{s.onboarding.permissionDenied}</Text>
+              )}
               {perms.notif === 'granted' ? (
                 <View style={st.doneRow}>
                   <Check size={16} color={scheme.success} />
@@ -591,10 +622,19 @@ export default function OnboardingScreen() {
                   ) : (
                     <Bell size={17} color={scheme.onPrimary} />
                   )}
-                  <Text style={st.allowText}>{s.onboarding.notifAllow}</Text>
+                  <Text style={st.allowText}>
+                    {perms.notif === 'denied' ? s.onboarding.openSettings : s.onboarding.notifAllow}
+                  </Text>
                 </Pressable>
               )}
             </View>
+            <Pressable
+              onPress={() => router.push('/privacy')}
+              accessibilityRole="link"
+              style={({ pressed }) => [st.privacyLink, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={st.privacyText}>{s.landing.privacy.linkLabel}</Text>
+            </Pressable>
           </ScrollView>
         )}
 
@@ -631,14 +671,15 @@ export default function OnboardingScreen() {
                 const isSuggested = suggested === c.id;
                 return (
                   <Pressable
-                    onPress={() => pick(c.id)}
+                    onPress={() => void pick(c.id)}
+                    disabled={switchingCity}
                     style={({ pressed }) => [
                       st.cityChip,
                       active && st.cityChipActive,
                       pressed && !active && { opacity: 0.75 },
                     ]}
                     accessibilityRole="radio"
-                    accessibilityState={{ checked: active }}
+                    accessibilityState={{ checked: active, disabled: switchingCity }}
                     // Etykieta opisuje wybór, nie podpowiedź GPS: TalkBack czyta „Proponowane
                     // miasto według GPS" jako nazwę przycisku, a stan i tak
                     // ogłasza przez accessibilityState.
@@ -785,7 +826,7 @@ export default function OnboardingScreen() {
                       slotY.current[slot.key] = e.nativeEvent.layout.y;
                     }}
                   >
-                    <View style={st.slotRow}>
+                    <View style={[st.slotRow, compact && st.slotRowCompact]}>
                       <View style={st.cardIcon}>
                         <Icon size={20} color={scheme.primary} />
                       </View>
@@ -843,9 +884,6 @@ export default function OnboardingScreen() {
                             <ActivityIndicator size="small" color={scheme.primary} />
                           )}
                         </View>
-                        {/* Bez tego użytkownik widział pole z wpisanym tekstem
-                          i nic więcej — bez informacji, czy szukanie w ogóle
-                          działa. Adresy wymagają internetu, przystanki nie. */}
                         {slots.results.length === 0 &&
                           !slots.searching &&
                           slots.query.trim().length >= 2 && (
@@ -898,27 +936,36 @@ export default function OnboardingScreen() {
 
       <View style={st.footer}>
         {step === 0 && (
-          <PrimaryBtn
-            label={s.onboarding.start}
-            onPress={next}
-            icon={<ChevronRight size={18} color={scheme.onPrimary} />}
-          />
-        )}
-        {step === 1 && (
           <>
-            <PrimaryBtn
-              label={s.onboarding.next}
-              onPress={next}
-              icon={<ChevronRight size={18} color={scheme.onPrimary} />}
-            />
-            <GhostBtn label={s.onboarding.later} onPress={next} />
+            <PrimaryBtn label={s.onboarding.start} onPress={next} />
+            <Pressable
+              onPress={() => router.push('/privacy')}
+              accessibilityRole="link"
+              style={({ pressed }) => [st.privacyLink, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={st.privacyText}>{s.landing.privacy.linkLabel}</Text>
+            </Pressable>
           </>
         )}
-        {step === 2 && (
+        {step === 1 && (
           <PrimaryBtn
             label={s.onboarding.next}
             onPress={next}
             icon={<ChevronRight size={18} color={scheme.onPrimary} />}
+          />
+        )}
+        {step === 2 && (
+          <PrimaryBtn
+            label={switchingCity ? s.city.switching : s.onboarding.next}
+            onPress={next}
+            disabled={switchingCity}
+            icon={
+              switchingCity ? (
+                <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
+              ) : (
+                <ChevronRight size={18} color={scheme.onPrimary} />
+              )
+            }
           />
         )}
         {step === 3 && (
@@ -973,34 +1020,39 @@ export default function OnboardingScreen() {
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
   top: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 16,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 16,
+    gap: 12,
   },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 48 },
+  topHeading: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 },
   back: {
     width: 48,
     height: 48,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dots: { flexDirection: 'row', gap: 6 },
-  dot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: scheme.surfaceContainerHighest },
-  dotActive: { backgroundColor: scheme.primary },
-  dotDone: { backgroundColor: scheme.primaryContainer },
-  stepLabel: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  body: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 24, gap: 20 },
+  backPressed: { backgroundColor: scheme.surfaceContainerHighest },
+  dots: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { flex: 1, height: 8, borderRadius: shape.full, backgroundColor: scheme.outline },
+  dotActive: { flex: 2, backgroundColor: scheme.primary, height: 12 },
+  dotDone: { backgroundColor: scheme.secondary },
+  stepLabel: { ...type.titleMedium, color: scheme.onSurface, flexShrink: 1 },
+  stepCount: { ...type.labelLarge, color: scheme.onSurfaceVariant, fontVariant: ['tabular-nums'] },
+  body: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24, gap: 24, flexGrow: 1 },
+  welcomeHero: { gap: 16, paddingTop: 12 },
   heroMark: {
-    width: 80,
-    height: 80,
-    borderRadius: shape.extraLarge,
+    width: 96,
+    height: 96,
+    borderRadius: 36,
+    borderBottomRightRadius: 12,
     backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   heroMarkSmall: {
     width: 72,
@@ -1011,22 +1063,20 @@ const st = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 8,
   },
-  hero: { fontSize: 48, fontWeight: '500', color: scheme.onSurface, letterSpacing: -1 },
+  hero: { fontSize: 56, fontWeight: '700', color: scheme.onSurface, letterSpacing: -2 },
+  heroCompact: { fontSize: 44, letterSpacing: -1 },
   title: {
     fontSize: 32,
-    fontWeight: '500',
+    fontWeight: '600',
     color: scheme.onSurface,
     letterSpacing: -0.5,
     lineHeight: 40,
   },
-  lead: { ...type.titleLarge, color: scheme.onSurfaceVariant },
-  leadSmall: { ...type.bodyLarge, color: scheme.onSurfaceVariant },
+  lead: { fontSize: 28, lineHeight: 36, fontWeight: '500', color: scheme.onSurface },
+  leadSmall: { ...type.bodyLarge, lineHeight: 24, color: scheme.onSurfaceVariant },
   featList: {
-    gap: 20,
-    marginTop: 16,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.extraLarge,
-    padding: 20,
+    gap: 12,
+    marginTop: 4,
   },
   feat: {
     flexDirection: 'row',
@@ -1034,17 +1084,16 @@ const st = StyleSheet.create({
     gap: 12,
   },
   featIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.secondaryContainer,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   featTitle: { ...type.bodyLarge, color: scheme.onSurface },
   card: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.extraLarge,
+    borderRadius: 28,
+    borderTopRightRadius: 12,
     padding: 20,
     gap: 16,
   },
@@ -1052,29 +1101,29 @@ const st = StyleSheet.create({
   cardIcon: {
     width: 44,
     height: 44,
-    borderRadius: shape.medium,
+    borderRadius: shape.large,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitle: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
+  cardTitle: { ...type.titleLarge, fontWeight: '500', color: scheme.onSurface },
   cardWhy: { ...type.bodyMedium, color: scheme.onSurfaceVariant, marginTop: 4 },
   cardBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   suggestNote: { ...type.bodyMedium, color: scheme.primary, fontWeight: '600' },
   cityStep: { flex: 1 },
   cityHead: { gap: 16, marginBottom: 16 },
   cityList: { flex: 1, marginTop: 4 },
-  cityListContent: { paddingHorizontal: 24, paddingTop: 20, gap: 8, paddingBottom: 24 },
+  cityListContent: { paddingHorizontal: 24, paddingTop: 12, gap: 4, paddingBottom: 24 },
   cityChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
+    borderRadius: shape.small,
     padding: 20,
     minHeight: 80,
   },
-  cityChipActive: { backgroundColor: scheme.primaryContainer },
+  cityChipActive: { backgroundColor: scheme.primaryContainer, borderRadius: shape.extraLarge },
   cityName: { ...type.titleMedium, color: scheme.onSurface },
   cityNameActive: { color: scheme.onPrimaryContainer, fontWeight: '500' },
   citySub: { ...type.bodySmall, color: scheme.onSurfaceVariant, marginTop: 1 },
@@ -1095,7 +1144,7 @@ const st = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: scheme.primary,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
     minHeight: 52,
     padding: 16,
     marginTop: 2,
@@ -1129,6 +1178,7 @@ const st = StyleSheet.create({
     justifyContent: 'center',
   },
   slotRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  slotRowCompact: { flexDirection: 'column', alignItems: 'stretch' },
   addPill: {
     backgroundColor: scheme.secondaryContainer,
     borderRadius: shape.medium,
@@ -1155,7 +1205,13 @@ const st = StyleSheet.create({
     paddingHorizontal: 12,
     minHeight: 56,
   },
-  searchInput: { flex: 1, minWidth: 0, ...type.bodyLarge, color: scheme.onSurface, paddingVertical: 14 },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    ...type.bodyLarge,
+    color: scheme.onSurface,
+    paddingVertical: 14,
+  },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1176,7 +1232,7 @@ const st = StyleSheet.create({
   footer: {
     paddingHorizontal: 24,
     paddingBottom: 12,
-    paddingTop: 16,
+    paddingTop: 12,
     gap: 8,
     backgroundColor: scheme.surface,
   },
@@ -1186,20 +1242,32 @@ const st = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     backgroundColor: scheme.primary,
-    borderRadius: shape.large,
-    minHeight: 56,
-    padding: 16,
+    borderRadius: shape.full,
+    minHeight: 64,
+    padding: 20,
   },
   primaryDisabled: { backgroundColor: scheme.surfaceContainerHighest, elevation: 0 },
   primaryText: {
     ...type.labelLarge,
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 18,
+    fontWeight: '600',
     color: scheme.onPrimary,
     flexShrink: 1,
     textAlign: 'center',
   },
   primaryTextDisabled: { color: scheme.onSurfaceVariant },
+  privacyLink: {
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  privacyText: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    textDecorationLine: 'underline',
+    textAlign: 'center',
+  },
   ghost: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, minHeight: 48 },
   ghostText: {
     ...type.labelLarge,
