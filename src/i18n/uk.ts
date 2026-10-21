@@ -10,6 +10,11 @@ function isFew(n: number): boolean {
   return last >= 2 && last <= 4 && (teen < 12 || teen > 14);
 }
 
+/** Українська множина: 1, 21, 31... (крім 11) беруть форму однини. */
+function isOne(n: number): boolean {
+  return n % 10 === 1 && n % 100 !== 11;
+}
+
 function prepInCity(cityLoc: string): string {
   // В українській мові прийменник «в» переходить в «у» перед словами на «в» чи «ф».
   const startsWithV = /^[вф]/i.test(cityLoc);
@@ -52,7 +57,7 @@ export const uk: Strings = {
     departIn: (n: number) => `за ${n} хв`,
     departNow: 'ось-ось',
     departAgo: (n: number) =>
-      n === 1 ? `${n} хвилину тому` : isFew(n) ? `${n} хвилини тому` : `${n} хвилин тому`,
+      isOne(n) ? `${n} хвилину тому` : isFew(n) ? `${n} хвилини тому` : `${n} хвилин тому`,
     departJustAgo: 'щойно',
     lessThan10m: '< 10 м',
     kmh: (v: string) => `${v} км/год`,
@@ -444,9 +449,9 @@ export const uk: Strings = {
     backupImportA11y: 'Імпортувати дані з файлу',
     backupEmpty: 'Поки що немає чого зберігати.',
     backupCurrent: (places: number, routes: number, trips: number) =>
-      `${places} ${places === 1 ? 'місце' : isFew(places) ? `${places} місця` : `${places} місць`} • ` +
-      `${routes} ${routes === 1 ? 'збережена траса' : isFew(routes) ? `${routes} збережені траси` : `${routes} збережених трас`} • ` +
-      `${trips} ${trips === 1 ? 'поїздка' : isFew(trips) ? `${trips} поїздки` : `${trips} поїздок`}`,
+      `${places} ${isOne(places) ? 'місце' : isFew(places) ? `${places} місця` : `${places} місць`} • ` +
+      `${routes} ${isOne(routes) ? 'збережена траса' : isFew(routes) ? `${routes} збережені траси` : `${routes} збережених трас`} • ` +
+      `${trips} ${isOne(trips) ? 'поїздка' : isFew(trips) ? `${trips} поїздки` : `${trips} поїздок`}`,
     backupExportDoneTitle: 'Готово',
     backupExportDoneBody: (path: string) => `Файл збережено в ${path}`,
     backupExportFailTitle: 'Не вдалося зберегти файл',
@@ -512,7 +517,7 @@ export const uk: Strings = {
     diagCountsNoRoutes: 'Немає маршрутів у базі',
     diagTrains: 'Регіональні поїзди',
     diagTrainsLine: (n: number) =>
-      n === 1
+      isOne(n)
         ? '1 залізничний маршрут'
         : isFew(n)
           ? `${n} залізничні маршрути`
@@ -606,7 +611,7 @@ export const uk: Strings = {
     anchorHintShort: 'Автоприв’язка старту біля збереженого місця.',
     foot: 'Налаштування зберігаються автоматично і стосуються наступних пошуків.',
     walkTime: (n: number) =>
-      n === 1 ? '1 хвилина пішки' : isFew(n) ? `${n} хвилини пішки` : `${n} хвилин пішки`,
+      isOne(n) ? '1 хвилина пішки' : isFew(n) ? `${n} хвилини пішки` : `${n} хвилин пішки`,
     langTitle: 'Мова',
     langSystem: 'Системна',
   },
@@ -776,10 +781,10 @@ export const uk: Strings = {
     sourceLoading: (feeds: string) => feeds,
     sourceEmpty: (combined: string) => combined,
     count: (n: number, urgent: number) => {
-      const items = n === 1 ? `${n} новина` : isFew(n) ? `${n} новини` : `${n} новин`;
+      const items = isOne(n) ? `${n} новина` : isFew(n) ? `${n} новини` : `${n} новин`;
       if (urgent <= 0) return items;
       const u =
-        urgent === 1
+        isOne(urgent)
           ? `${urgent} термінова`
           : isFew(urgent)
             ? `${urgent} термінові`
@@ -821,12 +826,12 @@ export const uk: Strings = {
   newsSvc: {
     justNow: 'щойно',
     minsAgo: (m: number) =>
-      m === 1 ? `${m} хвилину тому` : isFew(m) ? `${m} хвилини тому` : `${m} хвилин тому`,
+      isOne(m) ? `${m} хвилину тому` : isFew(m) ? `${m} хвилини тому` : `${m} хвилин тому`,
     hoursAgo: (h: number) =>
-      h === 1 ? `${h} годину тому` : isFew(h) ? `${h} години тому` : `${h} годин тому`,
+      isOne(h) ? `${h} годину тому` : isFew(h) ? `${h} години тому` : `${h} годин тому`,
     yesterday: 'вчора',
     daysAgo: (d: number) =>
-      d === 1 ? `${d} день тому` : isFew(d) ? `${d} дні тому` : `${d} днів тому`,
+      isOne(d) ? `${d} день тому` : isFew(d) ? `${d} дні тому` : `${d} днів тому`,
     untitled: '(без назви)',
   },
   map: {
@@ -841,13 +846,13 @@ export const uk: Strings = {
     offlineSub: 'Плитки не завантажуються',
     backA11y: 'Назад',
     transfersSuffix: (n: number) =>
-      n === 1 ? ' • 1 пересадка.' : isFew(n) ? ` • ${n} пересадки.` : ` • ${n} пересадок.`,
+      isOne(n) ? ' • 1 пересадка.' : isFew(n) ? ` • ${n} пересадки.` : ` • ${n} пересадок.`,
     delaySuffix: (d: number) => ` • ${d > 0 ? '+' : ''}${d} хв`,
     walkPrefix: 'Пішки ',
     walkStageA11y: (dist: string) => `Піший етап ${dist}`,
     lineStageA11y: (line: string, dir: string) => `Лінія ${line} напрямок ${dir}`,
     lineLabel: (line: string) => `Лінія ${line}`,
-    legStops: (n: number) => (n === 1 ? '1 зуп.' : isFew(n) ? `${n} зуп.` : `${n} зуп.`),
+    legStops: (n: number) => (isOne(n) ? '1 зуп.' : isFew(n) ? `${n} зуп.` : `${n} зуп.`),
     board: 'Сідай',
     alight: 'Виходь',
     mapLoadFail: 'Не вдалося завантажити мапу',
@@ -968,7 +973,7 @@ export const uk: Strings = {
     lineAlertsAll: 'Усі новини',
     lineAlertsEmpty: 'Немає повідомлень про лінії цього маршруту.',
     lineAlertsCount: (n: number) =>
-      n === 1 ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
+      isOne(n) ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
   },
   search: {
     defaultPlaceholder: (city: string) => `Шукай ${prepInCity(city)}…`,
@@ -1128,9 +1133,9 @@ export const uk: Strings = {
     previewRelease: 'Відпустіть, щоб відкрити деталі',
     previewOpen: 'Відкрити деталі маршруту',
     transfers: (n: number) =>
-      n <= 0 ? 'прямо' : n === 1 ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
+      n <= 0 ? 'прямо' : isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     connections: (n: number) =>
-      n === 1 ? '1 сполучення' : isFew(n) ? `${n} сполучення` : `${n} сполучень`,
+      isOne(n) ? '1 сполучення' : isFew(n) ? `${n} сполучення` : `${n} сполучень`,
     walkAll: 'цілком пішки',
     walkLeg: 'пішки',
     cardA11y: (
@@ -1165,7 +1170,7 @@ export const uk: Strings = {
     fromPrefix: 'з ',
     toPrefix: 'до ',
     stopsSummary: (n: number, mins: number, open: boolean) => {
-      const stops = n === 1 ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
+      const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
       return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
     },
   },
@@ -1289,9 +1294,9 @@ export const uk: Strings = {
     arriveAt: (at: string) => `прибуття о ${at}`,
     delayLate: (min: number) => `затримка +${Math.round(min)} хв`,
     delayEarly: (min: number) => `на ${Math.abs(Math.round(min))} хв раніше`,
-    stops: (n: number) => (n === 1 ? '1 зупинка' : isFew(n) ? `${n} зупинки` : `${n} зупинок`),
+    stops: (n: number) => (isOne(n) ? '1 зупинка' : isFew(n) ? `${n} зупинки` : `${n} зупинок`),
     transfers: (n: number) =>
-      n === 1 ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
+      isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     newDeparture: (at: string) => `новий рейс о ${at}`,
     delayTitle: (line: string, eta: string) => `Затримка • ${line} • ${eta}`,
   },
@@ -1313,8 +1318,8 @@ export const uk: Strings = {
     hint: 'Звук, вібрація та повний екран перед виходом.',
     question: 'Скільки часу потрібно перед виходом?',
     before: 'перед виходом',
-    minutes: (n: number) => n === 1 ? 'хвилина' : isFew(n) ? 'хвилини' : 'хвилин',
-    lead: (n: number) => `За ${n} ${n === 1 ? 'хвилину' : isFew(n) ? 'хвилини' : 'хвилин'} до виходу`,
+    minutes: (n: number) => isOne(n) ? 'хвилина' : isFew(n) ? 'хвилини' : 'хвилин',
+    lead: (n: number) => `За ${n} ${isOne(n) ? 'хвилину' : isFew(n) ? 'хвилини' : 'хвилин'} до виходу`,
     less: 'На хвилину пізніше',
     more: 'На хвилину раніше',
     ringsAt: (time: string) => `Задзвонить о ${time}`,
