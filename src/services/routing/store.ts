@@ -94,6 +94,9 @@ export class LocalGtfsStore {
   private tripBlobSchema: boolean | null = null;
   private stopRefsCache: string[] | null = null;
   isLoaded = false;
+  /** Podbijane przy resecie: wycinki budowane wcześniej nie trafiają do cache. */
+  private generation = 0;
+  get currentGeneration(): number { return this.generation; }
 
   /**
    * Czyści pamięć podręczną po imporcie (seed / sieć): bez tego store
@@ -116,6 +119,7 @@ export class LocalGtfsStore {
     this.tripBlobSchema = null;
     this.stopRefsCache = null;
     this.isLoaded = false;
+    this.generation++;
     clearRaptorNetCache();
   }
 
@@ -384,6 +388,7 @@ export class LocalGtfsStore {
     qTo: number,
   ): Promise<DayIndex> {
     const cacheKey = `${day}|${dateStr ?? ''}|${qFrom}|${qTo}`;
+    const genAtStart = this.generation;
     // Wycinek budujemy z marginesem całego kubła - zapytania z tej samej
     // godziny (i ticker co minutę) trafiają w ten sam klucz.
     const bFrom = qFrom * 3600 - 1800;
@@ -395,10 +400,12 @@ export class LocalGtfsStore {
     };
     if (importInProgress) return emptyIdx;
     const activeServices = await getActiveServices(day, dateStr);
+    if (this.generation !== genAtStart) return emptyIdx;
     const db = await getGtfsDb();
+    if (this.generation !== genAtStart) return emptyIdx;
     const serviceIds = Array.from(activeServices);
     if (serviceIds.length === 0) {
-      this.rememberSlice(cacheKey, emptyIdx);
+      this.rememberSlice(cacheKey, emptyIdx, genAtStart);
       // Pusty wycinek (np. noc, brak serwisów) nadaje się tylko na dokładnie
       // swój klucz - pokrycia nie rejestrujemy, żeby inny horyzont go nie
       // uznał za wystarczający.
@@ -413,6 +420,7 @@ export class LocalGtfsStore {
     const tripIds: string[] = [];
 
     if (await this.hasTripBlobs(db)) {
+      if (this.generation !== genAtStart) return emptyIdx;
       // Nowa ścieżka: kursy po indeksie (service_id, start_sec) i czasy
       // w blobach. Jedno zapytanie zamiast GROUP BY po stop_times plus
       // setki tysięcy wierszy przez mostek (GZM: ~321 tys. na 8h okno).
@@ -434,7 +442,9 @@ export class LocalGtfsStore {
         bTo,
         bFrom,
       );
+      if (this.generation !== genAtStart) return emptyIdx;
       const stopRefs = rows.length > 0 ? await this.getStopRefs(db) : [];
+      if (this.generation !== genAtStart) return emptyIdx;
       const missing: string[] = [];
       for (const r of rows) {
         const t = {
@@ -476,6 +486,7 @@ export class LocalGtfsStore {
       }
       if (missing.length > 0) {
         await this.loadStopTimesChunked(db, missing);
+        if (this.generation !== genAtStart) return emptyIdx;
       }
     } else {
       // Stara ścieżka (bazy bez indeksu czasowego): agregacja natywnie w SQL,
@@ -491,6 +502,7 @@ export class LocalGtfsStore {
         bTo,
         bFrom,
       );
+      if (this.generation !== genAtStart) return emptyIdx;
       for (const r of overlapping) tripIds.push(r.trip_id);
 
       const CHUNK = 400;
@@ -501,6 +513,7 @@ export class LocalGtfsStore {
           `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${placeholders})`,
           ...chunk,
         );
+        if (this.generation !== genAtStart) return emptyIdx;
         for (const r of tripsRows) {
           const t = {
             trip_id: r.trip_id,
@@ -519,13 +532,16 @@ export class LocalGtfsStore {
           group.push(t);
         }
         await this.loadStopTimesChunked(db, chunk);
+        if (this.generation !== genAtStart) return emptyIdx;
       }
     }
 
     if (tripIds.length === 0 && polinka.tripIds.length === 0) {
-      this.rememberSlice(cacheKey, emptyIdx);
+      this.rememberSlice(cacheKey, emptyIdx, genAtStart);
       return emptyIdx;
     }
+
+    if (this.generation !== genAtStart) return emptyIdx;
 
     // Kolejność kursów i linii w patternach ustala kolejność wierszy z SQL (plan
     // zapytania bywa różny między bazami/urządzeniami), a od niej zależy numeracja
@@ -540,8 +556,8 @@ export class LocalGtfsStore {
 
     const idx = this.buildPatterns(mergePolinkaTrips(sortedByRoute, polinka.byRouteId));
     this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
-    this.rememberSlice(cacheKey, idx);
-    this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
+    this.rememberSlice(cacheKey, idx, genAtStart);
+    if (genAtStart === this.generation) this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
     console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length + polinka.tripIds.length}`);
     return idx;
   }
@@ -694,7 +710,10 @@ export class LocalGtfsStore {
     }
   }
 
-  private rememberSlice(key: string, idx: DayIndex): void {
+  private rememberSlice(key: string, idx: DayIndex, gen: number): void {
+    // Reset/import w trakcie budowania: stary wycinek do pamięci nowego miasta
+    // nie skacze (po resecie zapytania budują świeży).
+    if (gen !== this.generation) return;
     this.sliceIndexes.set(key, idx);
     if (this.sliceIndexes.size > 4) {
       const oldest = this.sliceIndexes.keys().next().value;
