@@ -1,9 +1,9 @@
 import * as Location from 'expo-location';
-import { kvGet, kvGetStrict, kvSet } from './storage';
+import { kvGetStrict, kvSet } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
+import { Connection, LegStop, RouteQuery, SavedPlace, SavedRoute, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
 import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
@@ -422,6 +422,15 @@ export function rememberPlannedConnection(connection: Connection): void {
   recentPlannedConnections.set(connection.id, connection);
 }
 
+// Serializuje read-modify-write zapisanych tras: dwa równoległe zapisy nie mogą
+// zgubić jednego wpisu (każdy czyta-i-zapisuje całą listę).
+let routesLock: Promise<unknown> = Promise.resolve();
+function withRoutesLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = routesLock.then(fn, fn);
+  routesLock = run.catch(() => {});
+  return run;
+}
+
 export const RoutingService: IRoutingService = {
   async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
     try {
@@ -482,16 +491,13 @@ export const RoutingService: IRoutingService = {
     const found = getPlannedConnection(id);
     if (found) return { connection: found, source: 'live' };
 
-    const saved = await this.isRouteSaved(id);
-    if (saved) {
-      const allSaved = await getSavedRoutes();
-      const hit = allSaved.find(r => r.id === id)?.connection;
-      if (hit) return { connection: hit, source: 'live' };
-    }
+    const allSaved = await getSavedRoutes();
+    const hit = allSaved.find(r => r.id === id)?.connection;
+    if (hit) return { connection: hit, source: 'live' };
 
     const cached = await findCachedConnection(id);
     if (cached) {
-      // Z dysku: czasy przeliczamy na teraz i gasiemy `live`, żeby szczegóły
+      // Z dysku: czasy przeliczamy na teraz i gasimy `live`, żeby szczegóły
       // nie udawały, że mają opóźnienie z serwera. Ekran dostanie
       // `source: 'cache'` i powie o tym wprost użytkownikowi.
       return { connection: cached, source: 'cache' };
@@ -501,23 +507,33 @@ export const RoutingService: IRoutingService = {
   },
 
   async saveRoute(connection: Connection): Promise<void> {
-    try {
-      const all = await getSavedRoutes();
-      all.push({ id: connection.id, savedAt: Date.now(), connection });
-      await kvSet(savedRoutesKey(), JSON.stringify(all));
-    } catch (err) {
-      console.warn('[RoutingService] Failed to save route:', err);
-    }
+    return withRoutesLock(async () => {
+      try {
+        const all = await readSavedRoutes();
+        const existingIdx = all.findIndex((r) => r.id === connection.id);
+        const entry: SavedRoute = { id: connection.id, savedAt: Date.now(), connection };
+        if (existingIdx >= 0) {
+          all[existingIdx] = entry;
+        } else {
+          all.push(entry);
+        }
+        await kvSet(savedRoutesKey(), JSON.stringify(all));
+      } catch (err) {
+        console.warn('[RoutingService] Failed to save route:', err);
+      }
+    });
   },
 
   async deleteSavedRoute(id: string): Promise<void> {
-    try {
-      const all = await getSavedRoutes();
-      const filtered = all.filter(r => r.id !== id);
-      await kvSet(savedRoutesKey(), JSON.stringify(filtered));
-    } catch (err) {
-      console.warn('[RoutingService] Failed to delete saved route:', err);
-    }
+    return withRoutesLock(async () => {
+      try {
+        const all = await readSavedRoutes();
+        const filtered = all.filter(r => r.id !== id);
+        await kvSet(savedRoutesKey(), JSON.stringify(filtered));
+      } catch (err) {
+        console.warn('[RoutingService] Failed to delete saved route:', err);
+      }
+    });
   },
 
   async isRouteSaved(id: string): Promise<boolean> {
@@ -543,16 +559,36 @@ export const RoutingService: IRoutingService = {
 // w którym je zaplanowano). Ten sam wzorzec kluczy co miejsca.
 const SAVED_ROUTES_BASE_KEY = 'kilometr.saved_routes';
 
-function savedRoutesKey(cityId?: string): string {
+export function savedRoutesKey(cityId?: string): string {
   return cityKey(SAVED_ROUTES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
 }
 
-async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
+// Odczyt listy zapisanych tras do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
+// żeby save/delete nie nadpisały prawdziwych danych pustą listą.
+// Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
+export async function readSavedRoutes(key?: string): Promise<SavedRoute[]> {
+  const raw = await kvGetStrict(key ?? savedRoutesKey());
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error(`${key ?? SAVED_ROUTES_BASE_KEY} is not an array`);
+  return parsed.filter(
+    (r): r is SavedRoute =>
+      Boolean(r) &&
+      typeof r.id === 'string' &&
+      typeof r.savedAt === 'number' &&
+      Boolean(r.connection) &&
+      typeof r.connection.id === 'string' &&
+      Array.isArray(r.connection.legs),
+  );
+}
+
+export async function getSavedRoutes(key?: string): Promise<SavedRoute[]> {
   try {
-    const raw = await kvGet(savedRoutesKey());
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return [];
+    return await readSavedRoutes(key);
+  } catch (err) {
+    console.warn('[RoutingService] Failed to read saved routes:', err);
+    return [];
+  }
 }
 
 // Miejsca są per-miasto: każde miasto ma własny kubełek (`cityKey`),
@@ -565,8 +601,6 @@ function placesKey(cityId?: string): string {
   return cityKey(PLACES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
 }
 
-// Odczyt listy miejsc do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
-// żeby add/update/delete nie nadpisały prawdziwych danych pustą listą.
 // Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
 async function readPlaces(key?: string): Promise<SavedPlace[]> {
   const raw = await kvGetStrict(key ?? placesKey());
