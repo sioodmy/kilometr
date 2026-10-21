@@ -111,14 +111,18 @@ export function navigationTarget(
     const vehicle = inLiveWindow ? navigationVehicle(leg, input.vehicles ?? [], now) : null;
     const boarding = rideStops(leg)[0];
     const scheduled = boarding?.departSec ?? boarding?.arriveSec;
+    // Bez listy przystanków z GTFS (zapisana trasa, kurs spoza wycinka)
+    // boarding.departSec to już leg.departAt z wliczonym opóźnieniem, więc
+    // planned zawsze wychodzi 0 i pojazd dokładałby opóźnienie drugi raz.
+    const hasScheduledStops = (leg.intermediateStops?.length ?? 0) >= 2;
     const planned =
-      scheduled != null
+      hasScheduledStops && scheduled != null
         ? (((parseClock(leg.departAt) ?? 0) - scheduled + 129600) % DAY_SEC) - 43200
-        : leg.live && entry === rides[0]
+        : hasScheduledStops && leg.live && entry === rides[0]
           ? connection.delayMin * 60
           : 0;
     const delay =
-      vehicle?.delaySec != null && Math.abs(vehicle.delaySec) <= 1800
+      hasScheduledStops && vehicle?.delaySec != null && Math.abs(vehicle.delaySec) <= 1800
         ? (vehicle.delaySec - planned) * 1000
         : 0;
     const departMs = entry.departMs + delay;
