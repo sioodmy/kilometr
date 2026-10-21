@@ -108,6 +108,11 @@ export function JourneyDemo() {
     const update = () => {
       frame = 0;
       const bounds = row.getBoundingClientRect();
+      const scene = root.getBoundingClientRect();
+      const routeProgress = media.matches
+        ? 1
+        : Math.max(0, Math.min(1, (window.innerHeight * 0.8 - scene.top) / scene.height));
+      root.parentElement?.style.setProperty('--journey-progress', String(routeProgress));
       const start = Math.max(100, (window.innerHeight - bounds.height) / 2);
       const progress = Math.max(
         0,

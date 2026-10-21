@@ -48,6 +48,16 @@ export const pl = {
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
   },
+  promise: {
+    ads: 'Bez reklam.',
+    free: 'Za darmo.',
+    forever: 'Na zawsze.',
+  },
+  closing: {
+    title: 'Zasługujesz na więcej niż jakdojade',
+    body: 'Planuj podróże i sprawdzaj odjazdy, także offline. Pobierz Kilometr, a jeśli Ci się przyda, wesprzyj jego rozwój.',
+    support: 'Wesprzyj rozwój',
+  },
   features: {
     label: 'Możliwości aplikacji',
     plan: 'Zaplanuj',

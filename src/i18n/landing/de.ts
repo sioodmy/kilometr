@@ -42,6 +42,16 @@ export const de: Strings = {
     expandA11y: (line, dir, expanded) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
   },
+  promise: {
+    ads: 'Keine Werbung.',
+    free: 'Kostenlos.',
+    forever: 'Für immer.',
+  },
+  closing: {
+    title: 'Du verdienst mehr als jakdojade',
+    body: 'Plane Fahrten und prüfe Abfahrten, auch offline. Lade Kilometr herunter und unterstütze die Entwicklung, wenn dir die App hilft.',
+    support: 'Entwicklung fördern',
+  },
   features: {
     label: 'App-Funktionen',
     plan: 'Planen',

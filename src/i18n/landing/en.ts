@@ -42,6 +42,16 @@ export const en: Strings = {
     expandA11y: (line, dir, expanded) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
   },
+  promise: {
+    ads: 'No ads.',
+    free: 'Free.',
+    forever: 'Forever.',
+  },
+  closing: {
+    title: 'You deserve more than jakdojade',
+    body: 'Plan journeys and check departures, even offline. Download Kilometr and, if it helps you, support its development.',
+    support: 'Support development',
+  },
   features: {
     label: 'App features',
     plan: 'Plan',
