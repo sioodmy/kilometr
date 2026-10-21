@@ -41,10 +41,10 @@ Kilometr planuje trasy po Wrocławiu na telefonie, z pełnego rozkładu MPK i Ko
 Harness w `server/scripts/compare-jakdojade.ts`, 72 trasy (wt/sob/niedz, okno startów +120 min):
 
 | Kilometr | Remisy | Jakdojade |
-| --- | --- | --- |
-| 46 | 24 | 2 |
+| -------- | ------ | --------- |
+| 46       | 24     | 2         |
 
-Średnia wygrana: 6,9 min. Największa: 36 min (Kozanów → Rynek, sob 03:40). Pełny raport jest na stronie projektu (`#raport`).
+Średnia wygrana: 6,9 min. Największa: 36 min (Kozanów → Rynek, sob 03:40).
 
 ## Start dla dewelopera
 

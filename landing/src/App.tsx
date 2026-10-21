@@ -74,7 +74,7 @@ export default function App() {
   const shareStrings = useShareStrings();
   const [hash, setHash] = useState(window.location.hash);
   const shared = hash.startsWith('#trip');
-  const page = hash === '#polityka' ? 'privacy' : hash === '#raport' ? 'report' : null;
+  const page = hash === '#polityka' ? 'privacy' : null;
   useEffect(() => {
     const onHash = () => setHash(window.location.hash);
     window.addEventListener('hashchange', onHash);
@@ -137,7 +137,7 @@ export default function App() {
           <SharedJourney hash={hash} />
         </Suspense>
       ) : page ? (
-        <InformationPage page={page} />
+        <InformationPage />
       ) : (
         <Landing />
       )}
@@ -150,7 +150,6 @@ export default function App() {
           <p>{s.footer.tagline}</p>
           <nav aria-label={s.nav.label}>
             <a href="#polityka">{s.footer.privacy}</a>
-            <a href="#raport">{s.footer.report}</a>
             <a href={GITHUB_URL}>
               {s.footer.github}
               <ArrowUpRight size={13} aria-hidden="true" />

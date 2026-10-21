@@ -5,7 +5,7 @@ import { previewHome } from './home';
 
 export const de: Strings = {
   meta: {
-    title: 'Kilometr. Deine Stadt. Dein Tempo.',
+    title: 'Kilometr',
     description:
       'Nahverkehr in Städten in ganz Polen. Verbindungen planen, Abfahrten prüfen und Fahrpläne offline nutzen. Kostenlos für Android.',
   },
@@ -145,7 +145,6 @@ export const de: Strings = {
   footer: {
     tagline: 'Bis unterwegs.',
     privacy: 'Datenschutz',
-    report: 'Benchmark',
     github: 'GitHub',
     license: 'Freie Software. GPL-3.0.',
     back: 'Zurück zur Startseite',
@@ -191,13 +190,5 @@ export const de: Strings = {
     contactBody:
       'Kilometr wird von sioodmy (github.com/sioodmy) betreut. Datenschutzfragen und Anfragen zu Daten kannst du über Issues unter github.com/sioodmy/kilometr stellen. Issues sind öffentlich; veröffentliche dort keine Wohnadresse oder andere sensible Daten. Änderungen der Datenverarbeitung werden in dieser Erklärung mit aktualisiertem Datum beschrieben.',
     contact: 'Issue erstellen',
-  },
-  report: {
-    title: 'Benchmark der Routenplanung',
-    intro:
-      'Historischer Vergleich für Wrocław. Die Ergebnisse gelten für die getesteten Routen, nicht für ganz Polen oder aktuelle Reisebedingungen.',
-    sample: '72 Routen. Werktage und Wochenende.',
-    body: 'Der Vergleich mit jakdojade umfasst 72 Routen an Werktagen und am Wochenende, mit einem Abfahrtsfenster von bis zu 120 Minuten. Kilometr fand in 46 Fällen eine frühere, in 24 die gleiche und in 2 eine spätere Ankunft.',
-    methodology: 'Code und Methodik des Vergleichs',
   },
 };

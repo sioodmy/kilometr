@@ -4,7 +4,7 @@ import { previewHome } from './home';
 
 export const pl = {
   meta: {
-    title: 'Kilometr. Twoje miasto. Twój rytm.',
+    title: 'Kilometr',
     description:
       'Komunikacja miejska w miastach w całej Polsce. Planuj trasy, sprawdzaj odjazdy i korzystaj z rozkładów offline. Bezpłatnie na Androidzie.',
   },
@@ -150,7 +150,6 @@ export const pl = {
   footer: {
     tagline: 'Do zobaczenia w drodze.',
     privacy: 'Prywatność',
-    report: 'Benchmark',
     github: 'GitHub',
     license: 'Wolne oprogramowanie. GPL-3.0.',
     back: 'Wróć na stronę główną',
@@ -195,14 +194,6 @@ export const pl = {
     contactBody:
       'Za projekt Kilometr odpowiada sioodmy (github.com/sioodmy). Pytania o prywatność i prośby dotyczące danych możesz zgłaszać przez Issues w repozytorium github.com/sioodmy/kilometr. Zgłoszenia są publiczne, dlatego nie umieszczaj w nich adresu domowego ani innych wrażliwych danych. Zmiany sposobu przetwarzania danych będą opisane w tej polityce z nową datą aktualizacji.',
     contact: 'Otwórz zgłoszenie',
-  },
-  report: {
-    title: 'Benchmark planera',
-    intro:
-      'Historyczne porównanie dla Wrocławia. Wyniki dotyczą badanego zestawu tras, a nie całej Polski ani bieżących warunków podróży.',
-    sample: '72 trasy. Dni robocze i weekend.',
-    body: 'Porównanie z jakdojade obejmuje 72 trasy w dni robocze i weekend, z oknem startów do 120 minut. Kilometr znalazł wcześniejszy przyjazd w 46 przypadkach, taki sam w 24, późniejszy w 2.',
-    methodology: 'Kod i metodologia porównania',
   },
 };
 

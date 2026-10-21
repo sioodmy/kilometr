@@ -5,7 +5,7 @@ import { previewHome } from './home';
 
 export const en: Strings = {
   meta: {
-    title: 'Kilometr. Your city. Your pace.',
+    title: 'Kilometr',
     description:
       'Public transport in cities across Poland. Plan journeys, check departures and use offline timetables. Free on Android.',
   },
@@ -144,7 +144,6 @@ export const en: Strings = {
   footer: {
     tagline: 'See you on the way.',
     privacy: 'Privacy',
-    report: 'Benchmark',
     github: 'GitHub',
     license: 'Free software. GPL-3.0.',
     back: 'Back to the home page',
@@ -188,13 +187,5 @@ export const en: Strings = {
     contactBody:
       'Kilometr is maintained by sioodmy (github.com/sioodmy). Send privacy questions and data requests through Issues at github.com/sioodmy/kilometr. Issues are public, so do not include your home address or other sensitive data. Changes to data handling will be described in this policy with an updated date.',
     contact: 'Open an issue',
-  },
-  report: {
-    title: 'Journey planner benchmark',
-    intro:
-      'A historical comparison for Wrocław. Results apply to the tested routes, not all of Poland or current travel conditions.',
-    sample: '72 routes. Weekdays and weekends.',
-    body: 'The comparison with jakdojade covers 72 weekday and weekend routes, with a departure window of up to 120 minutes. Kilometr found an earlier arrival in 46 cases, an equal arrival in 24 and a later arrival in 2.',
-    methodology: 'Comparison code and methodology',
   },
 };
