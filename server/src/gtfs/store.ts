@@ -69,6 +69,12 @@ export class GtfsStore {
   // RAPTOR acceleration structures (per weekday/date - sobota/niedziela mają
   // własny rozkład; indeks budowany leniwie i cachowany)
   private dayIndexes = new Map<string, DayIndex>();
+  /**
+   * Ile pełnych indeksów dni trzymamy. Każdy wpis to cały dzień kursów, a
+   * klucz zawiera datę: bez limitu długo żyjący serwer rósł o jeden dzień
+   * przy każdym kolejnym dniu kalendarzowym.
+   */
+  private static readonly DAY_INDEX_CACHE_LIMIT = 8;
   private servicesByWeekday = new Map<number, Set<string>>();
   private calendarDates: GtfsCalendarDate[] = [];
   private calendarLoaded = false;
@@ -199,7 +205,12 @@ export class GtfsStore {
     const day = ((weekday % 7) + 7) % 7;
     const cacheKey = dateStr ? `${day}-${dateStr}` : `${day}`;
     const cached = this.dayIndexes.get(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      // LRU: świeżo użyty dzień nie wypada przy budowie kolejnego.
+      this.dayIndexes.delete(cacheKey);
+      this.dayIndexes.set(cacheKey, cached);
+      return cached;
+    }
 
     const active = this.getActiveServices(day, dateStr);
     // Pusty zbiór = brak kursujących serwisów tego dnia (np. wyjątek w
@@ -279,6 +290,10 @@ export class GtfsStore {
     }
 
     const idx: DayIndex = { stopRoutes, routeStops, routeTrips, patterns };
+    if (this.dayIndexes.size >= GtfsStore.DAY_INDEX_CACHE_LIMIT && !this.dayIndexes.has(cacheKey)) {
+      const oldest = this.dayIndexes.keys().next().value;
+      if (oldest) this.dayIndexes.delete(oldest);
+    }
     this.dayIndexes.set(cacheKey, idx);
     return idx;
   }
