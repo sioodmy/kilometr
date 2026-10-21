@@ -271,7 +271,7 @@
     position: relative;
     isolation: isolate;
     overflow: clip;
-    padding: 150px 0 48px;
+    padding: 200px 0 48px;
     text-align: center;
   }
   .hero-map {
@@ -279,7 +279,12 @@
     z-index: -2;
     inset: 0;
     pointer-events: none;
-    mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 80%, transparent);
+    mask-image: radial-gradient(
+      ellipse 82% 74% at 50% 44%,
+      #000 32%,
+      rgb(0 0 0 / 70%) 62%,
+      transparent 100%
+    );
   }
   .hero-map svg {
     width: max(100%, 900px);
@@ -358,36 +363,36 @@
   .hero-city-wroclaw {
     --depth: 0.8;
     left: 24%;
-    top: 40px;
+    top: 70px;
   }
   .hero-city-krakow {
     --depth: -0.65;
     --angle: 9deg;
     right: 23%;
-    top: 32px;
+    top: 62px;
   }
   .hero-city-warszawa {
     --depth: 1.15;
     left: max(24px, calc(50% - 580px));
-    top: 225px;
+    top: 255px;
   }
   .hero-city-poznan {
     --depth: -1;
     --angle: 11deg;
     right: max(24px, calc(50% - 580px));
-    top: 200px;
+    top: 230px;
   }
   .hero-city-gzm {
     --depth: 0.6;
     --angle: 7deg;
     left: max(24px, calc(50% - 500px));
-    top: 430px;
+    top: 460px;
   }
   .hero-city-lodz {
     --depth: -0.85;
     --angle: -6deg;
     right: max(24px, calc(50% - 500px));
-    top: 440px;
+    top: 470px;
   }
   .hero-copy {
     width: min(100% - 48px, 760px);
@@ -1200,7 +1205,7 @@
       width: 44px;
     }
     .hero {
-      padding: 172px 0 32px;
+      padding: 210px 0 32px;
     }
     .hero-copy {
       max-width: 640px;
@@ -1240,7 +1245,7 @@
     .hero-city-wroclaw,
     .hero-city-krakow,
     .hero-city-warszawa {
-      top: 92px;
+      top: 116px;
     }
     .hero-city-wroclaw,
     .hero-city-poznan {
