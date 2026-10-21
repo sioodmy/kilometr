@@ -113,15 +113,35 @@ async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
  * pary zwiększa `uses`, a wybór celu z innego miejsca tworzy osobny wpis
  * (szczegóły w `mergeTripSearch`). `measuredMinutes` to prawdziwy czas dojazdu
  * z planera - bez niego zostajemy przy `FALLBACK_TRIP_MIN`.
+ *
+ * Odpisy idą przez kolejkę: dwa równoległe read-modify-write (szybkie dwa
+ * kliknięcia celu) kończyły się nadpisaniem pierwszego wpisu starym stanem.
  */
-export async function recordTripSearch(
+let saveQueue: Promise<void> = Promise.resolve();
+
+export function recordTripSearch(
   originLat: number,
   originLon: number,
   originTitle: string,
   dest: TripDestinationInput,
   measuredMinutes?: number,
 ): Promise<void> {
-  if (!dest.title || typeof dest.lat !== 'number' || typeof dest.lon !== 'number') return;
+  if (!dest.title || typeof dest.lat !== 'number' || typeof dest.lon !== 'number') return Promise.resolve();
+  saveQueue = saveQueue
+    .then(() => recordTripSearchNow(originLat, originLon, originTitle, dest, measuredMinutes))
+    .catch((err) => {
+      console.warn('[SmartRanker] recordTripSearch failed:', err);
+    });
+  return saveQueue;
+}
+
+async function recordTripSearchNow(
+  originLat: number,
+  originLon: number,
+  originTitle: string,
+  dest: TripDestinationInput,
+  measuredMinutes?: number,
+): Promise<void> {
   // `NaN` i `0` są fałszywe, więc `||` łapie też śmieci z deep linka.
   const cityFallback = defaultLocationForCity(getActiveCitySync().id);
   const history = await loadTripHistory();
