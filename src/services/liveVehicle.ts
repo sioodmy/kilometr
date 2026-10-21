@@ -4,7 +4,7 @@
 // kursu w rozkładzie. To za mało, żeby pokazać użytkownikowi „tu jest Twój
 // tramwaj”: kilka pojazdów tej samej linii pasuje do tego samego kursu, a
 // kurs bywa dopisany do innego pojazdu niż ten, który naprawdę po nim jedzie.
-// Efekt był losowy — strzałka skakała po mapie.
+// Efekt był losowy - strzałka skakała po mapie.
 //
 // Tutaj zawężamy wybór do jednej nogi: pojazd musi
 //  1. jechać tą samą linią,
@@ -12,7 +12,7 @@
 //  3. być zgodny z rozkładem nogi w danym miejscu (opóźnienie w sensownym
 //     oknie, inaczej to nie ten pojazd).
 // Wygrany jest oceniany scoringiem, a przy remisie zostaje ten sam, którego
-// pokazywaliśmy już wcześniej — dzięki temu strzałka nie migocze między
+// pokazywaliśmy już wcześniej - dzięki temu strzałka nie migocze między
 // dwoma autobusami stojącymi na tym samym przystanku.
 
 import {
@@ -27,7 +27,7 @@ import type { MapLeg } from '../map/types';
 
 /** Pojazd dalej niż tyle od linii naszej nogi to nie ten kurs. */
 const MAX_CORRIDOR_M = 220;
-/** Za dużo opóźnienia też wyklucza — to ktoś z innego kursu. */
+/** Za dużo opóźnienia też wyklucza - to ktoś z innego kursu. */
 const MAX_DELAY_SEC = 1500;
 const MIN_DELAY_SEC = -240;
 /** Bonus za trafienie w dokładny tripId z rozkładu. */
@@ -109,7 +109,7 @@ export function isLegRunning(leg: MapLeg, nowSec: number): boolean {
 }
 
 export interface MatchOptions {
-  /** vehicleId, którego pokazywaliśmy ostatnio — wolimy je, jeśli wciąż pasuje. */
+  /** vehicleId, którego pokazywaliśmy ostatnio - wolimy je, jeśli wciąż pasuje. */
   preferVehicleId?: string | null;
   /** Czy dopuszczamy pojazd spoza rozkładu (gdy nie ma tripId w nodze). */
   nowSec: number;
@@ -137,7 +137,7 @@ export function matchVehicleToLeg(
     if (!p || p.offsetM > MAX_CORRIDOR_M) return null;
 
     // Punkt tuż przed startem albo tuż po końcu nóg: to raczej sąsiedni
-    // kurs, a nie ten, na który czekamy — odcinamy skrajności.
+    // kurs, a nie ten, na który czekamy - odcinamy skrajności.
     if (p.progress < -0.02 || p.progress > 1.02) return null;
 
     const expected = expectedTimeAt(schedule, p.alongM, p);
@@ -166,7 +166,7 @@ export function matchVehicleToLeg(
   scored.sort((a, b) => a.score - b.score);
 
   // Ten sam pojazd co ostatnio zostaje, dopóki nowy kandydat nie jest
-  // wyraźnie lepszy — inaczej strzałka skacze między dwoma pojazdami
+  // wyraźnie lepszy - inaczej strzałka skacze między dwoma pojazdami
   // stojącymi na tym samym przystanku.
   const previous = options.preferVehicleId
     ? scored.find((m) => m.vehicle.vehicleId === options.preferVehicleId)

@@ -8,7 +8,7 @@
       cmdLineToolsVersion = "latest";
       platformToolsVersion = "latest";
       # 36: aktualny toolchain; 35: wymagany przez template Expo SDK 57
-      # (compileSdk 35 + build-tools 35.0.0) — bez tego Gradle próbuje
+      # (compileSdk 35 + build-tools 35.0.0) - bez tego Gradle próbuje
       # dociągać komponenty do read-only nix store i build pada.
       platformVersions = ["35" "36"];
       buildToolsVersions = ["35.0.0" "36.0.0"];
@@ -20,7 +20,7 @@
     }).androidsdk;
 
   # Sysroot x86_64 dla qemu-user (host ARM nie ma /lib64):
-  # PRAWDZIWE pliki (nie symlinki — qemu podwójnie prefixuje absolutne
+  # PRAWDZIWE pliki (nie symlinki - qemu podwójnie prefixuje absolutne
   # symlinki i loader ich wtedy nie widzi).
   sysroot = let
     cross = pkgs.pkgsCross.gnu64;
@@ -35,9 +35,9 @@
       cp -L ${cross.gcc.cc.lib}/lib/libstdc++.so.6 $out/lib64/libstdc++.so.6.0
       mv $out/lib64/libstdc++.so.6.0 $out/lib64/libstdc++.so.6
       # qemu-user szuka bibliotek gościa w /lib i /usr/lib (z prefixem
-      # QEMU_LD_PREFIX), a NIE w /lib64 — bez tych dowiązań clang z NDK
+      # QEMU_LD_PREFIX), a NIE w /lib64 - bez tych dowiązań clang z NDK
       # pada z "libz.so.1: cannot open shared object file".
-      # Dowiązania względne (nie absolutne — te qemu podwójnie prefixuje).
+      # Dowiązania względne (nie absolutne - te qemu podwójnie prefixuje).
       mkdir -p $out/lib $out/usr/lib
       for f in $out/lib64/*; do
         b=$(basename "$f")

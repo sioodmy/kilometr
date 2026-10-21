@@ -6,7 +6,7 @@ import { isStopAction } from './categories';
 const LINK_KEYS = ['fromTitle', 'fromLat', 'fromLon', 'toId', 'toTitle', 'toLat', 'toLon', 'open'];
 
 export interface TripResponse {
-  /** Dane do nawigacji — null, gdy to nie powiadomienie podróży. */
+  /** Dane do nawigacji - null, gdy to nie powiadomienie podróży. */
   link: Record<string, string> | null;
   /** Użytkownik wcisnął „Zakończ śledzenie”. */
   stop: boolean;

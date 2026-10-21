@@ -123,7 +123,7 @@ export default function RouteDetailsScreen() {
   }, [id, trackedTrip?.connection]);
 
   useEffect(() => {
-    // Brak id to nie „wczytujemy” — inaczej ekran zostawał ze spinnerem w nieskończoność.
+    // Brak id to nie „wczytujemy” - inaczej ekran zostawał ze spinnerem w nieskończoność.
     if (!id) {
       setLoadFailed(true);
       return;

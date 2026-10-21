@@ -1,4 +1,4 @@
-// Deutsche Übersetzungen. Muss `Strings` (typeof pl) erfüllen — ein fehlender
+// Deutsche Übersetzungen. Muss `Strings` (typeof pl) erfüllen - ein fehlender
 // Schlüssel oder eine falsche Funktionssignatur ist ein Compile-Fehler.
 import type { Strings } from './pl';
 import { de as landing } from './landing/de';
@@ -65,7 +65,7 @@ export const de: Strings = {
     editCardSub: 'gespeicherte Orte',
     historyTitle: 'Letzte Orte',
     historyEmptyTitle: 'Keine letzten Orte',
-    historyEmptyBody: 'Suche eine Verbindung — sie erscheint hier als Schnellziel.',
+    historyEmptyBody: 'Suche eine Verbindung, sie erscheint hier als Schnellziel.',
     historyEmptyAction: 'Verbindung suchen',
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
     gpsTitle: 'Mein Standort (GPS)',
@@ -422,7 +422,7 @@ export const de: Strings = {
         : `Die Karte kannst du in ${days} Tagen erneut laden. Einmal geladen reicht lange.`,
     backupTitle: 'Deine Daten',
     backupHint:
-      'Gespeicherte Orte, letzte Fahrten und Einstellungen in einer Datei. Exportiere vor dem Handywechsel — oder einfach zur Sicherheit.',
+      'Gespeicherte Orte, letzte Fahrten und Einstellungen in einer Datei. Exportiere vor dem Handywechsel, oder einfach zur Sicherheit.',
     backupExcludeHint: 'Fahrplan, Cache und Daten zur Kursverfolgung bleiben auf dem Gerät.',
     backupExport: 'In Datei exportieren',
     backupImport: 'Aus Datei importieren',
@@ -439,7 +439,7 @@ export const de: Strings = {
     backupExportFailFallback: 'Bitte gleich noch einmal versuchen.',
     backupImportConfirmTitle: 'Diese Daten importieren?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nGespeicherte Orte und Fahrten werden mit deinen vorhandenen zusammengeführt — nichts geht verloren. Einstellungen werden überschrieben.`,
+      `${summary}\n\nGespeicherte Orte und Fahrten werden mit deinen vorhandenen zusammengeführt, nichts geht verloren. Einstellungen werden überschrieben.`,
     backupImportAction: 'Importieren',
     backupImportCancel: 'Abbrechen',
     backupImportDoneTitle: 'Daten importiert',
@@ -776,7 +776,7 @@ export const de: Strings = {
       'Keine Meldungen zu Linien aus Verbindungen, die du in den letzten zwei Wochen geprüft hast.',
     filterNoHistoryTitle: 'Noch keine Linien',
     filterNoHistoryBody:
-      'Suche eine Verbindung in der App — danach siehst du hier Meldungen zu diesen Linien.',
+      'Suche eine Verbindung in der App, danach siehst du hier Meldungen zu diesen Linien.',
   },
   newsSvc: {
     justNow: 'gerade eben',

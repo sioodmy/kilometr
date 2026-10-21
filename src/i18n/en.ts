@@ -1,4 +1,4 @@
-// English dictionary. Must satisfy `Strings` (typeof pl) — a missing key
+// English dictionary. Must satisfy `Strings` (typeof pl) - a missing key
 // or a wrong function signature is a compile error, not an empty label.
 import type { Strings } from './pl';
 import { en as landing } from './landing/en';
@@ -437,7 +437,7 @@ export const en: Strings = {
     backupExportFailFallback: 'Please try again in a moment.',
     backupImportConfirmTitle: 'Import this data?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nSaved places and trips are merged with what you already have — nothing is lost. Settings are overwritten.`,
+      `${summary}\n\nSaved places and trips are merged with what you already have. Nothing is lost. Settings are overwritten.`,
     backupImportAction: 'Import',
     backupImportCancel: 'Cancel',
     backupImportDoneTitle: 'Data imported',

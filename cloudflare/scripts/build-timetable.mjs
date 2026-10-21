@@ -9,7 +9,7 @@
  * {miasto}/db/kilometr-gtfs.db.gz).
  *
  * Wrocław:
- *   Open Data Wrocław — katalog GTFS + ZIP (MPK: tramwaje + autobusy)
+ *   Open Data Wrocław - katalog GTFS + ZIP (MPK: tramwaje + autobusy)
  *   + PDP API (PLK): KD, stacje Wrocławia, okno 14 dni (wymaga PDP_API_KEY)
  * Kraków:
  *   ZTP Kraków: 3 statyczne ZIP-y GTFS (A: autobusy, T: tramwaje, M: reszta),
@@ -102,8 +102,8 @@
  *   sygnaturze czasów jak Warszawa). Kolei nie ma wcale. Bez PDP i bez klucza.
  *
  * Wyjścia (cloudflare/dist/{miasto}/):
- *   kilometr-gtfs.db     — baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
- *   kilometr-gtfs.db.gz  — ta sama baza spakowana gzip (level 9) do R2
+ *   kilometr-gtfs.db     - baza w schemacie aplikacji (patrz SCHEMA_SQL niżej)
+ *   kilometr-gtfs.db.gz  - ta sama baza spakowana gzip (level 9) do R2
  *   manifest.json: miasto, wersja, statystyki, sha256 bazy (.gz i surowej)
  *
  * Wymagania: Node.js ≥ 22.5 (node:sqlite), program `unzip` w PATH
@@ -584,7 +584,7 @@ async function headVersion(url, headers = {}) {
   }
 }
 
-/* ─── Schemat bazy — MUSI odpowiadać src/services/gtfsDatabase.ts ───────
+/* ─── Schemat bazy - MUSI odpowiadać src/services/gtfsDatabase.ts ───────
  * (CREATE TABLE IF NOT EXISTS w aplikacji, więc prebuilt musi tworzyć
  * te same kolumny; kolumna weight liczona w buildzie). */
 
@@ -646,7 +646,7 @@ CREATE TABLE calendar_dates (
 );
 CREATE INDEX idx_caldate_date ON calendar_dates (date);
 /* Przesiadki MPK<->KD liczone w buildzie (stacja kolejowa to nie słupek:
-   dojście na peron, schody, hala — patrz INTERCHANGE_* niżej). Aplikacja
+   dojście na peron, schody, hala - patrz INTERCHANGE_* niżej). Aplikacja
    dokleja je do footpaths przy starcie (loadInterchanges). */
 CREATE TABLE interchanges (
   from_stop_id TEXT NOT NULL,
@@ -2108,13 +2108,13 @@ async function main() {
   const work = join(tmpdir(), `kilometr-gtfs-${Date.now()}`);
   mkdirSync(work, { recursive: true });
 
-  // 1. Zdalny manifest (skip, gdy nic się nie zmieniło — oszczędzamy limity).
+  // 1. Zdalny manifest (skip, gdy nic się nie zmieniło - oszczędzamy limity).
   let remote = null;
   if (PUBLIC_URL && !FORCE) {
     try {
       remote = await fetchJson(`${PUBLIC_URL}/${CITY}/manifest.json`, {}, 15000);
       log('remote manifest version:', remote.version);
-    } catch { log('brak zdalnego manifestu (pierwszy build?) — buduję pełny.'); }
+    } catch { log('brak zdalnego manifestu (pierwszy build?) - buduję pełny.'); }
   }
 
   // 2. Źródła GTFS per-miasto (tanie zapytania).
@@ -2863,7 +2863,7 @@ async function main() {
       log(`KD: stations=${seenStops.size} routes=${seenRoutes.size} trips=${counts.kdTrips} stopTimes=${counts.kdStopTimes}`);
     } catch (e) {
       try { db.exec('ROLLBACK'); } catch {}
-      warn('sekcja KD nieudana:', String(e), '— build MPK-only.');
+      warn('sekcja KD nieudana:', String(e), '- build MPK-only.');
       kdInfo = { kind: 'pdp-api', skippedReason: `error: ${String(e).slice(0, 200)}` };
     }
   }
@@ -3454,7 +3454,7 @@ async function main() {
   // perony bywają schowane (Dworzec Główny: przystanek ~300 m od peronów
   // + hala i schody), więc linki liczymy hojnie. Aplikacja dokleja je do
   // footpaths i ZASTĘPUJE nimi gridowe linki między tymi samymi parami
-  // (grid liczy sam dystans w linii prostej — bez zapasu na peron).
+  // (grid liczy sam dystans w linii prostej - bez zapasu na peron).
   let interchangeCount = 0;
   if (railGeo.size > 0 && cityStops.length > 0) {
     const links = new Map(); // "a|b" (posortowane) -> { a, b, walkSec }
@@ -3481,12 +3481,12 @@ async function main() {
         const dist = haversineM(g.lat, g.lon, m.lat, m.lon);
         if (dist <= INTERCHANGE_RADIUS_M) {
           // Dworzec Główny: słupki są blisko w linii prostej (~150 m), ale
-          // pieszo to hala + przejście podziemne na perony — twardy zapas.
+          // pieszo to hala + przejście podziemne na perony - twardy zapas.
           const floor = isHub && hubStop(m) ? GLOWNY_OVERRIDE_SEC : INTERCHANGE_MIN_SEC;
           link(kStopId, m.id, Math.max(floor, computed(dist)));
         } else if (isHub && dist <= GLOWNY_OVERRIDE_RADIUS_M && hubStop(m)) {
           // Dalsze słupki węzła (Dworcowa/Stawowa/MDK, Aleje Jerozolimskie)
-          // — gwarantowany link z zapasem, nawet spoza standardowego promienia.
+          // - gwarantowany link z zapasem, nawet spoza standardowego promienia.
           link(kStopId, m.id, Math.max(GLOWNY_OVERRIDE_SEC, computed(dist)));
         }
       }
@@ -4038,7 +4038,7 @@ async function main() {
     log(`  footpaths: ${totalEdges} krawędzi, ${(buf.length / 1048576).toFixed(2)} MB`);
   }
   // Statystyki planisty (sqlite_stat1): świeży plik nie ma historii zapytań,
-  // więc PRAGMA optimize nic by nie dał — jawny ANALYZE robi to deterministycznie.
+  // więc PRAGMA optimize nic by nie dał - jawny ANALYZE robi to deterministycznie.
   // Na telefonie tego nie powtarzamy (import i tak jest ciężki, a indeksy wystarczą).
   log('analyze…');
   db.exec('ANALYZE');

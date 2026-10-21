@@ -66,7 +66,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return news.filter((item) => newsTouchesLines(item, lineSet));
   }, [news, lineSet]);
 
-  // Bez zmian — zero UI. Spinner/placeholder też nie, żeby nie migał pustą kartą.
+  // Bez zmian - zero UI. Spinner/placeholder też nie, żeby nie migał pustą kartą.
   if (!ready || matched.length === 0) return null;
 
   const openItem = (item: MpkNewsItem) => {

@@ -3,7 +3,7 @@
  *
  * Uruchomienie: `npm run check:backup`
  *
- * Format pliku jest jedyną rzeczą, którą da się testować bez telefonu —
+ * Format pliku jest jedyną rzeczą, którą da się testować bez telefonu-
  * dlatego `backupFormat.ts` nie importuje `expo-*`. Reszta (zapis pliku,
  * picker, scalanie z KV) to I/O, którego nie da się zasymulować sensownie.
  *
@@ -37,7 +37,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n== ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -56,7 +56,7 @@ function expectTrue(label: string, got: boolean): void {
 
 // ─── Dane testowe ──────────────────────────────────────────────────────────
 
-/** Odcinek w minimalnej, poprawnej postaci — bazowy budulek dla testów tras. */
+/** Odcinek w minimalnej, poprawnej postaci - bazowy budulek dla testów tras. */
 const FULL_LEG: Leg = {
   id: 'l1',
   mode: 'tram',
@@ -164,7 +164,7 @@ function parse(data: unknown) {
 /**
  * Pełna kopia w formacie aplikacji. `data` celowo przyjmuje `unknown`:
  * testy podają tu kształty, których `BackupData` nie opisuje (uszkodzone
- * wpisy, brakujące pola) — to jest właśnie to, co walidacja ma złapać.
+ * wpisy, brakujące pola) - to jest właśnie to, co walidacja ma złapać.
  */
 function envelope(data: unknown, schema = BACKUP_SCHEMA) {
   return {
@@ -343,7 +343,7 @@ describe('Odporność: NaN i nieskończoność odpadają');
   const r = parse(
     envelope({
       ...FULL,
-      // JSON nie ma NaN/Infinity — tu symulujemy to, co dałby `JSON.parse`
+      // JSON nie ma NaN/Infinity - tu symulujemy to, co dałby `JSON.parse`
       // na pliku, w którym ktoś podmienił liczby na stringi.
       places: [{ city: 'wroclaw', items: [{ ...place('x', 'Złe'), lat: '51.1', lon: 2 }] }],
     }),
@@ -446,7 +446,7 @@ describe('Nazwa pliku');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

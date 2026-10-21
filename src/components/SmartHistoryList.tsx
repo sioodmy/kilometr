@@ -26,7 +26,7 @@ export function SmartHistoryList({
   /** pierwsza linia tranzytowa (tramwaj/autobus) do celu; brak wpisu = sam tekst „za x min” */
   lineBadges?: Record<string, SmartLineBadge | undefined>;
   onSelect: (d: SmartDestination) => void;
-  /** Tap w prawą część (badge + „za x min”) — od razu do ekranu tego połączenia. */
+  /** Tap w prawą część (badge + „za x min”) - od razu do ekranu tego połączenia. */
   onOpenConnection?: (d: SmartDestination) => void;
   /** Czysty widok bez nagłówka „Ostatnie miejsca” (nagłówek żyje gdzie indziej). */
   hideHeader?: boolean;
@@ -122,7 +122,7 @@ export function SmartHistoryList({
 
 /**
  * „za X min” do najszybszego połączenia; powyżej 59 min pokazuje pełną godzinę
- * odjazdu (np. „13:20”), a wartości ujemne — ile minut temu coś odjechało.
+ * odjazdu (np. „13:20”), a wartości ujemne - ile minut temu coś odjechało.
  * Ujemne bez tej gałęzi obcinały się do zera i raportowały „za chwilę”.
  */
 function formatDepartIn(departInMin: number | undefined): string | null {

@@ -35,7 +35,7 @@ export function matchVehicleToSchedule(
   }
 
   // Find candidate route for this line.
-  // routeTrips jest kluczowane po GTFS route_id — szukamy po route_short_name,
+  // routeTrips jest kluczowane po GTFS route_id - szukamy po route_short_name,
   // bo MPK zwraca oznaczenie linii ("4", "K"), nie route_id.
   const candidateRouteIds = store.getRouteIdsByShortName(line);
   // Fallback: gdyby jakieś route_id było równe oznaczeniu linii

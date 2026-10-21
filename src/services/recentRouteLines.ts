@@ -164,7 +164,7 @@ export function newsTouchesLines(item: { lines: string[]; title: string; descrip
   const hay = `${item.title} ${item.description}`;
   for (const line of lines) {
     const escaped = line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Linie MPK to cyfry / litery (N, D, A) — bez unicode property (Hermes).
+    // Linie MPK to cyfry / litery (N, D, A) - bez unicode property (Hermes).
     const re = new RegExp(`(?:^|[^0-9A-Za-z])${escaped}(?![0-9A-Za-z])`, 'i');
     if (re.test(hay)) return true;
   }

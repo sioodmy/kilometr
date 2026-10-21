@@ -41,7 +41,7 @@ export async function loadNotificationPreferences(): Promise<NotificationPrefere
     const raw = await kvGet(STORAGE_KEY);
     if (raw) cached = clampPrefs(JSON.parse(raw) as Partial<NotificationPreferences>);
   } catch {
-    // storage niedostępny — zostają domyślne
+    // storage niedostępny - zostają domyślne
   }
   loaded = true;
   notify();

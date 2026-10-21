@@ -4,7 +4,7 @@ import { setupNotificationChannels } from './channels';
 import { cancelLegacyDepartureAlerts } from './alerts';
 
 // Jednorazowa konfiguracja powiadomień przy starcie aplikacji. Wołana z
-// `app/_layout` — kanały MUSZĄ istnieć przed prośbą o pozwolenie (Android 13+
+// `app/_layout` - kanały MUSZĄ istnieć przed prośbą o pozwolenie (Android 13+
 // pokazuje prompt dopiero po utworzeniu pierwszego kanału), więc nie czekamy
 // na moment przypięcia trasy.
 
@@ -24,7 +24,7 @@ export function setupNotificationHandler(): void {
       }),
     });
   } catch {
-    // ignoruj — brak handlera oznacza tylko brak banerów w foregroundzie
+    // ignoruj - brak handlera oznacza tylko brak banerów w foregroundzie
   }
 }
 

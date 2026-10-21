@@ -112,7 +112,7 @@ async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
  * Liczy się nawyk, a nie historia wyszukiwania: powtórna kontrola tej samej
  * pary zwiększa `uses`, a wybór celu z innego miejsca tworzy osobny wpis
  * (szczegóły w `mergeTripSearch`). `measuredMinutes` to prawdziwy czas dojazdu
- * z planera — bez niego zostajemy przy `FALLBACK_TRIP_MIN`.
+ * z planera - bez niego zostajemy przy `FALLBACK_TRIP_MIN`.
  */
 export async function recordTripSearch(
   originLat: number,
@@ -143,7 +143,7 @@ export async function getSmartDestinationsForLocation(
   userLon: number,
   limit = 5,
 ): Promise<SmartDestination[]> {
-  // Dystans kotwiczenia z ustawień: miejsce bliżej niż to nie jest celem —
+  // Dystans kotwiczenia z ustawień: miejsce bliżej niż to nie jest celem-
   // skipujemy je i pokazujemy następne w rankingu.
   let exclusionRadiusM = EXCLUSION_RADIUS_FALLBACK_M;
   try {
@@ -181,7 +181,7 @@ export async function getSmartDestinationsForLocation(
 
 // ─── Natychmiastowy start: cache ostatniej listy ────────────────────────────
 // GPS potrafi myśleć parę sekund, więc na starcie malujemy gołe ostatnie
-// miejsca z cache (bez ikon i odjazdów — te dociągają się jak zwykle),
+// miejsca z cache (bez ikon i odjazdów - te dociągają się jak zwykle),
 // a gdy GPS + świeży ranking dotrą, lista zamienia się w miejscu.
 const smartCacheKey = (): string => cityKey('kilometr.smart_cache.v1', getActiveCityIdSync());
 const SMART_CACHE_MAX = 5;

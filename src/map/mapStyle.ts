@@ -2,7 +2,7 @@
 //
 // Kafelki rastrowe odpadły: CARTO i Stadia wymagają klucza, a jasny OSM kłóci
 // się z ciemnym interfejsem. Dlatego rysujemy wektorowe kafelki OSM
-// (OpenFreeMap — bez klucza i bez limitu) i nadpisujemy każdą warstwę
+// (OpenFreeMap - bez klucza i bez limitu) i nadpisujemy każdą warstwę
 // kolorami z `src/theme/tokens`. Dane to nadal OpenStreetMap (ODbL).
 //
 // Schemat źródła to OpenMapTiles (`planet`), więc filtry `class`/`subclass`
@@ -391,7 +391,7 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
 
 /**
  * Pełny styl mapy: podkład OSM + warstwy trasy. Trasa siedzi w tym samym
- * stylu, więc WebView nie musi nic doklejać po wczytaniu — wystarczy
+ * stylu, więc WebView nie musi nic doklejać po wczytaniu - wystarczy
  * `setData` na źródłe GeoJSON.
  *
  * `base` (opcjonalnie) przestawia kafle i glify na lokalny serwer mapy:

@@ -1,4 +1,4 @@
-// Pure TS typy GTFS — współdzielone między telefonem a skryptami.
+// Pure TS typy GTFS - współdzielone między telefonem a skryptami.
 // Bez żadnych importów node:, żeby działały w Expo (Hermes).
 
 export interface GtfsStop {

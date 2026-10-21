@@ -67,7 +67,7 @@ export async function buildTripStops(tripId: string): Promise<LegStop[]> {
       );
     }
   } catch {
-    // ignoruj — fallback niżej
+    // ignoruj - fallback niżej
   }
   return [];
 }
@@ -85,7 +85,7 @@ interface SearchSlices {
 }
 
 /**
- * Buduje wycinek planera dla odjazdu (lub przyjazdu) o rawTargetSec — pełny
+ * Buduje wycinek planera dla odjazdu (lub przyjazdu) o rawTargetSec - pełny
  * czas RAW (pora dnia + offset dni). planConnections i rozgrzewka idą przez
  * TEN SAM kod, żeby rozgrzany indeks był dokładnie tym, na który wyszukiwanie
  * zaraz wpadnie (w tym nocny merge przed 07:00).
@@ -101,7 +101,7 @@ export async function buildSearchSlices(rawTargetSec: number, arrivalMode = fals
   const weekday = targetDate.getDay();
   const dateStr = toDateStr(targetDate);
   // Wycinek horyzontu zamiast pełnej doby: okna RAPTOR-a sięgają +3600 s,
-  // a przesiadkowe nogi jeszcze dalej — bierzemy zapas do +3 h.
+  // a przesiadkowe nogi jeszcze dalej - bierzemy zapas do +3 h.
   // W trybie przyjazdu szukamy od ~2 h przed celem do samego celu.
   const searchStartSec = arrivalMode ? Math.max(0, departureSec - 7200) : departureSec;
   const dayIndex = arrivalMode
@@ -183,7 +183,7 @@ export interface PlanOptions {
   toId?: string;
   departureTimeSec?: number;
   /**
-   * „Bądź na X” — zamiast „wyjdź o X”. Silnik szuka odjazdów w oknie
+   * „Bądź na X” - zamiast „wyjdź o X”. Silnik szuka odjazdów w oknie
    * ~2 h przed celem i zwraca te z przybyciem <= arriveBySec
    * (posortowane od najpóźniejszego przybycia = najmniej czekania).
    */
@@ -213,7 +213,7 @@ export interface PlanOptions {
   routeStyle?: RouteStyle;
   /**
    * Preferowany przystanek startowy (kotwica). fromLat/fromLon to PRAWDZIWA
-   * pozycja (GPS) — silnik liczy realny spacer do kotwicy i daje jej tylko
+   * pozycja (GPS) - silnik liczy realny spacer do kotwicy i daje jej tylko
    * mały bonus rozstrzygający remisy, zamiast zerować koszt dojścia.
    */
   anchorStopId?: string;
@@ -283,7 +283,7 @@ function sortConnectionsByArrival(connections: Connection[]): Connection[] {
 
 /**
  * Mapowanie RawJourney → Connection (legi, flagi live, czasy finalne).
- * Bez opcji "na piechotę" — tę dokłada wywołujący na samym końcu.
+ * Bez opcji "na piechotę" - tę dokłada wywołujący na samym końcu.
  * Używane i dla emisji progresywnych (po każdym oknie), i dla wyniku finalnego.
  */
 function mapJourneysToConnections(
@@ -322,7 +322,7 @@ function mapJourneysToConnections(
         }
       }
 
-      // Czasy już finalne (efektywne) — prosto z segmentów.
+      // Czasy już finalne (efektywne) - prosto z segmentów.
       const adjDepartSec = seg.departSec;
       const adjArriveSec = seg.arriveSec;
       // Ostatnia noga piesza do celu dziedziczy nazwę celu podróży.
@@ -373,7 +373,7 @@ function mapJourneysToConnections(
     const transitLegs = legs.filter((l) => l.mode !== 'walk');
     if (transitLegs.length === 0) continue;
 
-    // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) — dokładamy
+    // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) - dokładamy
     // tylko offset dnia (zapytanie o jutro): RAPTOR liczył porą dnia.
     const adjDepartureSec = rj.departureSec + ctx.dayOffsetSec;
     const adjArrivalSec = rj.arrivalSec + ctx.dayOffsetSec;
@@ -446,7 +446,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Celowo szeroko (wszystko do maxWalkM): dalszy przystanek z bezpośrednim
   // odjazdem wygrywa z najbliższym słupkiem wymagającym 3 przesiadek, a waga
   // spaceru w koszcie pilnuje, żeby nie kazać chodzić bez potrzeby.
-  // fromLat/fromLon to PRAWDZIWA pozycja (GPS/home) — NIE współrzędne kotwicy.
+  // fromLat/fromLon to PRAWDZIWA pozycja (GPS/home) - NIE współrzędne kotwicy.
   const originNearby = gtfsStore.findNearestStops(options.fromLat, options.fromLon, maxWalkM, MAX_ACCESS_STOPS);
   const origins = originNearby.map((n) => {
     const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
@@ -560,7 +560,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Brak górnego limitu wsiadania w RAPTOR-ze: „pierwszy kurs po przybyciu"
   // bywa wiele godzin później (np. zapytanie 07:20 → wsiadanie 23:29, bo to
   // pierwszy kurs danego wzorca na tym przystanku). Wszystko ponad +2 h od
-  // startu wyszukiwania to nie propozycja dla użytkownika — odrzucamy od razu,
+  // startu wyszukiwania to nie propozycja dla użytkownika - odrzucamy od razu,
   // żeby takie kursy nie psuły listy wariantów (też częściowej w onProgress).
   const MAX_BOARD_AHEAD_SEC = 7200;
 
@@ -587,7 +587,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
         rawJourneys.push(j);
       }
     }
-    // Progres: po każdym oknie wydaj to, co mamy — UI dokłada wiersze
+    // Progres: po każdym oknie wydaj to, co mamy - UI dokłada wiersze
     // "po kolei" zamiast czekać na całość. await ustępuje wątek JS,
     // żeby FlatList zdążyła się przemalować między oknami.
     if (options.onProgress && rawJourneys.length > 0) {
@@ -610,7 +610,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // 4. Map into Connection model
   const connections = arrivedByTarget(mapJourneysToConnections(filtered, options, mapCtx));
 
-  // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) — jeśli prosto
+  // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) - jeśli prosto
   // jest w zasięgu spaceru z ustawień, dokładamy ją do listy.
   const directM = Math.round(
     distanceMeters(options.fromLat, options.fromLon, options.toLat, options.toLon)

@@ -4,7 +4,7 @@
 //
 // Kolejność importu (od najmniejszego):
 // stops → routes → calendar → calendar_dates → trips → stop_times.
-// stop_times jest ~46 MB — importujemy batched po 5000 rekordów w transakcjach.
+// stop_times jest ~46 MB - importujemy batched po 5000 rekordów w transakcjach.
 
 import { parseCalendarContent, parseCalendarDatesContent, parseRoutesContent, parseStopsContent, parseTripsContent, parseStopTimesBatched } from '../gtfs/csv';
 import { TIMETABLE } from './gtfsConfig';
@@ -106,7 +106,7 @@ async function getGtfsSource(): Promise<GtfsSource | null> {
   }
 }
 
-/** Po imporcie pamięć RAPTOR-a jest nieaktualna — czyścimy, warmup dociągnie. */
+/** Po imporcie pamięć RAPTOR-a jest nieaktualna - czyścimy, warmup dociągnie. */
 async function resetRoutingStore(): Promise<void> {
   try {
     const { gtfsStore } = await import('./routing/store');
@@ -120,7 +120,7 @@ async function resetRoutingStore(): Promise<void> {
 
 /** Szybki start: pełny rozkład w SQLite uznajemy za gotowy. */
 export async function refreshDataStatus(): Promise<DataStatus> {
-  // Trwający import sam emituje postęp — nie nadpisuj go fałszywym statusem.
+  // Trwający import sam emituje postęp - nie nadpisuj go fałszywym statusem.
   // Bez tego każde odświeżenie w połowie importu (przystanki już są, kursów
   // jeszcze nie) pokazywałoby "gotowe", a UI wracałoby potem do pobierania.
   if (importInProgress) return status;
@@ -133,7 +133,7 @@ export async function refreshDataStatus(): Promise<DataStatus> {
       void ensureSearchReady();
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
-      // To nie jest działający rozkład — czyścimy, żeby UI wymusił pobieranie.
+      // To nie jest działający rozkład - czyścimy, żeby UI wymusił pobieranie.
       if (stats.stops > 0 || stats.trips > 0 || stats.stopTimes > 0) {
         await clearGtfsTables().catch(() => {});
       }
@@ -216,7 +216,7 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
   const cityChanged = () => getActiveCityIdSync() !== importCityId;
   try {
     // Ścieżka 1 (domyślna po skonfigurowaniu serwera): prebuilt SQLite.
-    // Brak parsowania na telefonie — download strumieniem + podmiana pliku.
+    // Brak parsowania na telefonie - download strumieniem + podmiana pliku.
     if (TIMETABLE.baseUrl) {
       const synced = await tryImportPrebuilt(importCityId).catch((err) => {
         console.warn('[DataManager] prebuilt sync failed:', err instanceof Error ? err.message : String(err));
@@ -265,7 +265,7 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
     }
     await importGtfsLegacy();
     await markTimetableDownloaded();
-    // Flaga w dół przed końcowym odświeżeniem — inaczej refresh uzna, że
+    // Flaga w dół przed końcowym odświeżeniem - inaczej refresh uzna, że
     // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
     importInProgress = false;
     await refreshDataStatus();
@@ -273,7 +273,7 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
-    // do UI — pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
+    // do UI - pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
     const Terr = dataTr();
     const message =
       err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
@@ -376,7 +376,7 @@ async function importGtfsLegacy(): Promise<void> {
     emit({ state: 'importing', step: T.stepTrips, progress: 0.35 });
     const tripsTxt = await readGtfsText('trips.txt');
     if (!tripsTxt) throw new Error(T.errTrips);
-    // Tripsy całego miasta na raz to ~2.2 MB tekstu — wchodzi bez chunkowania.
+    // Tripsy całego miasta na raz to ~2.2 MB tekstu - wchodzi bez chunkowania.
     await importTrips(parseTripsContent(tripsTxt));
 
     emit({ state: 'importing', step: T.stepTimes, progress: 0.5 });

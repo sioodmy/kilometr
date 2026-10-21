@@ -9,7 +9,7 @@ import type {
 
 export interface ISearchService {
   /**
-   * `scope` rozdziela anulowanie między niezależnymi polami wyszukiwania —
+   * `scope` rozdziela anulowanie między niezależnymi polami wyszukiwania-
    * bez niego zapytanie w jednym polu zabijałooby zapytanie w drugim.
    */
   search(
@@ -28,7 +28,7 @@ export interface IRoutingService {
   /**
    * Pojedyncze połączenie wraz z informacją, SKĄD je wzięliśmy.
    * `source: 'cache'` oznacza, że nie ma go w pamięci procesu i pochodzi
-   * z zapisu na dysku — wtedy czasy są sprzed zapisu, a `live` jest zerowane.
+   * z zapisu na dysku - wtedy czasy są sprzed zapisu, a `live` jest zerowane.
    * Bez tej informacji ekran szczegółów pokazywał dane z cache tak, jakby były
    * świeżo policzone, a użytkownik nie miał szansy tego odróżnić.
    */

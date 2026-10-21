@@ -1,4 +1,4 @@
-// Polski słownik — WZORZEC typów dla pozostałych języków.
+// Polski słownik - WZORZEC typów dla pozostałych języków.
 // `Strings = typeof pl`: brak klucza w en/de/uk = błąd kompilacji.
 // Zasady (patrz AGENTS.md): zero hardkodu PL w UI, liczby mnogie jako funkcje.
 import { pl as landing } from './landing/pl';
@@ -449,7 +449,7 @@ export const pl = {
     backupExportFailFallback: 'Spróbuj ponownie za chwilę.',
     backupImportConfirmTitle: 'Wczytać te dane?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nZapisane miejsca i przejazdy zostaną scalone z obecnymi — nic nie zniknie. Ustawienia zostaną nadpisane.`,
+      `${summary}\n\nZapisane miejsca i przejazdy zostaną scalone z obecnymi, nic nie zniknie. Ustawienia zostaną nadpisane.`,
     backupImportAction: 'Wczytaj',
     backupImportCancel: 'Anuluj',
     backupImportDoneTitle: 'Dane wczytane',
@@ -1232,14 +1232,14 @@ export const pl = {
     noFile: 'Pobieranie GTFS nie zwróciło pliku',
   },
   notification: {
-    // Kanały powiadomień — nazwy widoczne w ustawieniach systemu.
+    // Kanały powiadomień - nazwy widoczne w ustawieniach systemu.
     channelTracking: 'Śledzenie podróży',
     channelTrackingDesc: 'Ciche powiadomienie z postępem i licznikiem do odjazdu lub przyjazdu.',
     channelAlerts: 'Utrudnienia w podróży',
     channelAlertsDesc: 'Opóźnienia, zmiany kursu i zakończenie podróży.',
     permDenied:
       'Powiadomienia są wyłączone. Włącz je w ustawieniach systemu dla kilometr, żeby śledzić odjazd i postęp podróży.',
-    // Przyciski pod powiadomieniem. „Zakończ” jest krótkie celowo — Android
+    // Przyciski pod powiadomieniem. „Zakończ” jest krótkie celowo - Android
     // pokazuje najwyżej trzy przyciski i skraca dłuższe tytuły.
     actionStop: 'Zakończ',
     actionRoute: 'Trasa',
@@ -1252,7 +1252,7 @@ export const pl = {
     modeSubway: 'Metro',
     modeCable: 'Kolej linowa',
     modeTrolleybus: 'Trolejbus',
-    // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii —
+    // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii-
     // zegar systemowy tyka w nagłówku i sam z siebie nie wie, do czego liczy.
     // Względne „za 4 min” w treści zestarzałoby się przy pierwszym
     // odświeżeniu, więc go tu nie ma w ogóle.

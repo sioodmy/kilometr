@@ -3,7 +3,7 @@
  *
  * Uruchomienie: `npm run check:places`
  *
- * Samo KV i locki to I/O, którego nie da się zasymulować sensownie — tu
+ * Samo KV i locki to I/O, którego nie da się zasymulować sensownie - tu
  * chronimy czystą logikę, od której zależy, czy miejsce trafi do dobrego
  * kubełka: `cityKey` (Wrocław trzyma legacy klucz) i `suggestCityForCoords`
  * (decyduje o przenosinach z legacy kubełka przy migracji).
@@ -17,7 +17,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n== ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -366,7 +366,7 @@ describe('Wpis Lublina');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

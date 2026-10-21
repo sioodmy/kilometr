@@ -1,5 +1,5 @@
 {
-  description = "kilometr — headless dev-build APK (Expo, Android, Nix)";
+  description = "kilometr - headless dev-build APK (Expo, Android, Nix)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

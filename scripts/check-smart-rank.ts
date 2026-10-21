@@ -3,7 +3,7 @@
  *
  * Uruchomienie: `npm run check:smart-rank`
  *
- * To nie jest framework testowy, tylko jeden plik z asercjami — tak samo jak
+ * To nie jest framework testowy, tylko jeden plik z asercjami - tak samo jak
  * `check:notifications`. Powód jest konkretny: „Ostatnie miejsca" to NIE jest
  * historia wyszukiwania, tylko ranking nawyków, a przez długi czas ranking
  * wyglądał poprawnie, a był chronologiczny. `recordTripSearch` kasował każdy
@@ -13,7 +13,7 @@
  *
  * Na realnym przebiegu: pięć wyjazdów do domu z Polbudu w ciągu miesiąca
  * przegrywało z jednym sprawdzeniem „Galeria" z rana, bo ten świeży wpis
- * dostawał 7,5 pkt, a dom — 6,9. Teraz nawyk waży 10 pkt za sprawdzenie.
+ * dostawał 7,5 pkt, a dom - 6,9. Teraz nawyk waży 10 pkt za sprawdzenie.
  *
  * Każdy przypadek poniżej to regression guard na jeden z tych błędów.
  * Uruchamia się przez `tsx`, więc nie potrzebuje konfiguracji testowej.
@@ -43,7 +43,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n== ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -157,7 +157,7 @@ describe('mergeTripSearch: to samo miejsce z innymi współrzędnymi');
 {
   // Geokoder potrafi przesunąć punkt o 200 m między wersjami danych, a
   // użytkownik może też wybrać tę samą nazwę z innego miejsca. Sam promień
-  // 150 m wtedy nie wystarczy — liczy się jeszcze id i tytuł.
+  // 150 m wtedy nie wystarczy - liczy się jeszcze id i tytuł.
   const history = [historyFrom(PWR, home, 3, NOW - 2 * DAY, 22)];
   const driftedById = dest('swojczycka', 'Dom (Swojczycka 41)', { lat: HOME.lat + 0.002, lon: HOME.lon });
   const mergedById = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', driftedById, 22, NOW);
@@ -168,7 +168,7 @@ describe('mergeTripSearch: to samo miejsce z innymi współrzędnymi');
   const sameTitle = dest('inny-id', 'Galeria', { lat: MALL.lat + 0.002, lon: MALL.lon });
   expect('ta sama nazwa wystarczy', mergeTripSearch(mallHistory, PWR.lat, PWR.lon, 'Polibuda', sameTitle, 12, NOW).length, 1);
 
-  // A różne id, różna nazwa i 200 m — to już inne miejsce.
+  // A różne id, różna nazwa i 200 m - to już inne miejsce.
   const other = dest('osobny', 'Sklep', { lat: HOME.lat + 0.002, lon: HOME.lon });
   expect('inny cel zostaje osobno', mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', other, 22, NOW).length, 2);
 }
@@ -176,7 +176,7 @@ describe('mergeTripSearch: to samo miejsce z innymi współrzędnymi');
 describe('Ranking: wykluczenie miejsca kontekstowego');
 {
   // Stoimy przy przypiętym „Praca", a w historii jest wpis o tym samym id, ale
-  // ze współrzędnymi 2 km dalej. Promień 250 m go nie wyłapie — wyłapuje go
+  // ze współrzędnymi 2 km dalej. Promień 250 m go nie wyłapie - wyłapuje go
   // dopasowanie do miejsca kontekstowego.
   const work: SavedPlace = {
     id: 'pin-work',
@@ -198,7 +198,7 @@ describe('Ranking: dwa przypięte miejsca blisko siebie zostają dwoma');
   // Świadoma decyzja #45: dwa pin-y 100 m od siebie to dwie różne sprawy.
   const a: SavedPlace = { id: 'pin-a', name: 'Siłownia', icon: 'gym', placeId: 'gym-a', address: 'Legnicka 58', lat: GYM.lat, lon: GYM.lon };
   const b: SavedPlace = { id: 'pin-b', name: 'Basen', icon: 'swimming', placeId: 'gym-b', address: 'Legnicka 60', lat: GYM.lat + 0.0006, lon: GYM.lon + 0.0006 };
-  // Przy identycznym wyniku (oba bez historii) kolejność rozstrzyga tytuł —
+  // Przy identycznym wyniku (oba bez historii) kolejność rozstrzyga tytuł-
   // deterministycznie, żeby wiersze nie skakały między renderami.
   expectList('dwa pin-y = dwa wiersze', titles(rankSmartDestinations([], [a, b], PWR.lat, PWR.lon, NOW)), ['Basen', 'Siłownia']);
 }
@@ -206,7 +206,7 @@ describe('Ranking: dwa przypięte miejsca blisko siebie zostają dwoma');
 describe('mergeTripSearch: cel dwa metry od celu');
 {
   // Ten sam budynek pod dwoma id (wyszukiwarka vs przypięte miejsce) to ten
-  // sam nawyk — inaczej limit wyrzuci prawdziwą destynację (#45).
+  // sam nawyk - inaczej limit wyrzuci prawdziwą destynację (#45).
   const near = dest('osm:node/1', 'Dom (Swojczycka 41)', { lat: HOME.lat + 0.00005, lon: HOME.lon });
   const history = mergeTripSearch([], PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW - 3 * DAY);
   const merged = mergeTripSearch(history, PWR.lat, PWR.lon, 'Polibuda', near, 22, NOW - 2 * HOUR);
@@ -218,7 +218,7 @@ describe('mergeTripSearch: śmieci z deep linka');
 {
   // `Number('abc')` = NaN, a NaN przechodził dawny `typeof === 'number'`.
   // Wpis z NaN nigdy nie przechodził żadnego promienia w rankingu, więc
-  // znikal bez śladu — lepiej nie zapisać go wcale.
+  // znikal bez śladu - lepiej nie zapisać go wcale.
   const history = mergeTripSearch([], PWR.lat, PWR.lon, 'Polibuda', home, 22, NOW);
   expect(
     'NaN współrzędne celu nie trafia do historii',
@@ -328,7 +328,7 @@ describe('Ranking: świeżość rozstrzyga tylko przy równej liczbie sprawdzeń
 {
   // Wszystkie przypadki trzymają się w oknie 30 dni, żeby wynik zależał od
   // punktacji, a nie od tego, że stary wpis wypadł z filtra. Wcześniejsza
-  // wersja tego testu używała 40 dni — przechodziła nawet przy zepsutym gaszeniu.
+  // wersja tego testu używała 40 dni - przechodziła nawet przy zepsutym gaszeniu.
   const first = (homeUses: number, homeAgeDays: number, mallUses: number, mallAgeHours: number) =>
     rankSmartDestinations(
       [
@@ -369,7 +369,7 @@ describe('Ranking: te same cele z różnych startów to jeden cel');
   ];
   const ranked = rankSmartDestinations(history, [], PWR.lat, PWR.lon, NOW);
   expectList('brak duplikatu celu', titles(ranked), ['Siłownia', 'Rynek']);
-  // Regression: `max` gubiło wiedzę — z okolicy to jeden nawyk (promień 1,6 km),
+  // Regression: `max` gubiło wiedzę - z okolicy to jeden nawyk (promień 1,6 km),
   // więc 4 + 3 sprawdzenia to siedem, a nie cztery.
   expect('sprawdzenia z klastra sumują się', ranked[0].frequency, 7);
 }
@@ -378,7 +378,7 @@ describe('Ranking: dwa różne cele blisko siebie zostają dwoma wierszami');
 {
   // Świadome ograniczenie, nie przypadek: ranking rozpoznaje cele po kluczu
   // (`id` albo tytuł), a nie po współrzędnych. Dwa różne miejsca 140 m od
-  // siebie to dwie różne sprawy — tak #45 świadomie nie scala dwóch przypiętych
+  // siebie to dwie różne sprawy - tak #45 świadomie nie scala dwóch przypiętych
   // miejsc. Ciche złączenie dwóch wierszy gubiłoby cel, o którym nikt nie prosił.
   const neighbour = dest('plac-wilka', 'Plac Włókien', { lat: GYM.lat + 0.001, lon: GYM.lon + 0.0005 });
   const ranked = rankSmartDestinations(
@@ -457,7 +457,7 @@ describe('Ranking: przypięte miejsce i wykluczenia');
   );
 
   // Ten sam budynek z historii i z przypięcia = jeden wiersz (#45). Tu klucze są
-  // RÓŻNE — historia trzyma id z wyszukiwarki, przypięcie ma własny token — więc
+  // RÓŻNE - historia trzyma id z wyszukiwarki, przypięcie ma własny token - więc
   // scalanie musi zadziałać po współrzędnych, a nie po kluczu.
   const searchId = dest('osm:node/99887766', 'Magnolia Park', { lat: GYM.lat, lon: GYM.lon });
   const withPin = [...history, historyFrom(PWR, searchId, 3, NOW - HOUR, 18)];
@@ -486,7 +486,7 @@ describe('Ranking: limity i promienie');
   expect('limit domyślny to 4', rankSmartDestinations(many, [], PWR.lat, PWR.lon, NOW).length, 4);
   expect('limit jest przekazywany', rankSmartDestinations(many, [], PWR.lat, PWR.lon, NOW, 2).length, 2);
 
-  // Wpis sprzed miesiąca, ale start 5 km od użytkownika — wypada, bo w okolicy
+  // Wpis sprzed miesiąca, ale start 5 km od użytkownika - wypada, bo w okolicy
   // jest coś innego.
   const near = [historyFrom(PWR, market, 1, NOW - HOUR, 10)];
   const far = [historyFrom({ lat: 51.15, lon: 17.2 }, home, 9, NOW - HOUR, 22)];
@@ -525,7 +525,7 @@ describe('Punktacja: monotoniczność');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

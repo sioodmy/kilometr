@@ -180,7 +180,7 @@ export const FavoritesService = {
   deletePlace(id: string): boolean {
     const db = getDb();
     // Najpierw dokładnie po id (unikalne). Dopiero gdy takiego nie ma,
-    // próbujemy po place_id i tylko wtedy, gdy wskazuje jeden wiersz —
+    // próbujemy po place_id i tylko wtedy, gdy wskazuje jeden wiersz-
     // inaczej usunęlibyśmy kilka miejsc naraz.
     const byId = db.prepare('SELECT id FROM saved_places WHERE id = ?').get(id) as { id: string } | undefined;
     if (byId) {
