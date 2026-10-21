@@ -5,7 +5,7 @@ import { getLocaleSync, tr } from '../i18n';
 import { scheme } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import { clockFromMs } from './notifications/format';
-import { departureAlarmTiming } from './departureAlarmPlan';
+import { departureAlarmTiming, isDepartureAlarmActive } from './departureAlarmPlan';
 import { iosDepartureAlarm } from './iosDepartureAlarm';
 import { areNotificationsSupported } from './notifications/module';
 
@@ -45,7 +45,7 @@ const listeners = new Set<() => void>();
 
 export const isDepartureAlarmSupported = () =>
   native != null && (Platform.OS !== 'ios' || areNotificationsSupported());
-export const getDepartureAlarmSync = () => cached;
+export const getDepartureAlarmSync = () => (isDepartureAlarmActive(cached) ? cached : null);
 
 export async function refreshDepartureAlarm(): Promise<void> {
   try {
@@ -124,6 +124,7 @@ export function useDepartureAlarm() {
     const timer = setInterval(() => { if (AppState.currentState === 'active') void refreshDepartureAlarm(); }, 5000);
     return () => { listeners.delete(update); sub.remove(); clearInterval(timer); };
   }, []);
-  return cached && (cached.status === 'ringing' || cached.status === 'scheduled' && cached.at > Date.now())
-    ? cached : null;
+  // Okno dzwonka po stronie JS: status "ringing" starszy niż okno serwisu
+  // (proces zabity, reboot) nie udaje żywego dzwonka, karta zostaje zamknięta.
+  return isDepartureAlarmActive(cached) ? cached : null;
 }

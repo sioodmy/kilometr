@@ -26,7 +26,7 @@ class MapServerModule : Module() {
     private var server: NanoHTTPD? = null
     private var packs: List<TilePack> = emptyList()
 
-    /** filesDir/maps — ten sam katalog, do którego pisze JS przy pobieraniu. */
+    /** filesDir/maps - ten sam katalog, do którego pisze JS przy pobieraniu. */
     private val mapsDir: File?
         get() = appContext.reactContext?.applicationContext?.let { File(it.filesDir, "maps") }
 

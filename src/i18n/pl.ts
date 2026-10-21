@@ -1,4 +1,4 @@
-// Polski słownik — WZORZEC typów dla pozostałych języków.
+// Polski słownik - WZORZEC typów dla pozostałych języków.
 // `Strings = typeof pl`: brak klucza w en/de/uk = błąd kompilacji.
 // Zasady (patrz AGENTS.md): zero hardkodu PL w UI, liczby mnogie jako funkcje.
 import { pl as landing } from './landing/pl';
@@ -10,9 +10,33 @@ function isFew(n: number): boolean {
   return last >= 2 && last <= 4 && (teen < 12 || teen > 14);
 }
 
+function prepInCity(cityLoc: string): string {
+  // W języku polskim przyimek „w” wymienia się na „we” przed wyrazami
+  // zaczynającymi się od spółgłoski „w” lub „f” po której następuje inna spółgłoska (np. Wrocław, Wrzeszcz, Włocławek).
+  const lower = cityLoc.toLowerCase();
+  const startsWithWConsonant = /^w[bcćdfghjklłmnńprstvwzżź]/i.test(lower) || /^f[bcćdfghjklłmnńprstvwzżź]/i.test(lower);
+  return startsWithWConsonant ? `we ${cityLoc}` : `w ${cityLoc}`;
+}
+
 export const pl = {
   landing,
   share,
+  transferGuard: {
+    title: 'Ochrona przesiadek',
+    waiting: 'Ochrona włączona. Czekamy na potwierdzenie jazdy z GPS.',
+    buffer: (line: string, n: number) => `Przesiadka na ${line} · ${n} min zapasu`,
+    riskTitle: (line: string) => `Przesiadka na ${line} jest zagrożona`,
+    riskBody: 'Szukamy innej przesiadki.',
+    stayOn: (line: string) => `Zostań w ${line}`,
+    changedBody: (line: string, stop: string) => `Przesiądź się na ${line} na przystanku ${stop}.`,
+    noAlternative: 'Nie znaleźliśmy wykonalnej alternatywy. Obecna przesiadka może się nie udać. Sprawdzimy ponownie.',
+    unavailable: 'Nie możemy ocenić przesiadki',
+    unavailableBody: 'Czekamy na dokładną pozycję na trasie. Obecny plan pozostaje widoczny.',
+    routingError: 'Nie udało się przygotować ochrony. Spróbuj ponownie.',
+    rerouting: 'Wyznaczamy nową przesiadkę',
+    next: (line: string, stop: string) => `${line} · ${stop}`,
+    channel: 'Zmiany przesiadek',
+  },
   common: {
     retry: 'Spróbuj ponownie',
     cancel: 'Anuluj',
@@ -73,7 +97,7 @@ export const pl = {
     unsupportedBody: (city: string, supported: string) =>
       `Twoja lokalizacja GPS wskazuje na ${city}. Aktualnie obsługujemy tylko: ${supported}.`,
     unsupportedBodyOther: (city: string, active: string) =>
-      `Jesteś w ${city}, a aplikacja jest ustawiona na ${active}. Zmień miasto w Ustawieniach.`,
+      `Jesteś ${prepInCity(city)}, a aplikacja jest ustawiona na ${active}. Zmień miasto w Ustawieniach.`,
     unsupportedBodyUnknown: (supported: string) =>
       `Twoja lokalizacja GPS jest poza obsługiwanym obszarem. Aktualnie obsługujemy tylko: ${supported}.`,
     unsupportedHint: 'Wybierz punkt startowy manualnie, aby wyszukać połączenie.',
@@ -344,13 +368,27 @@ export const pl = {
     closeSheetA11y: 'Zamknij wybór miasta',
     cityActiveBadge: 'Aktywne',
   },
+  personalization: {
+    colors: 'Kolory aplikacji',
+    system: 'Z tapety',
+    systemDescription: 'Domyślne kolory Material You',
+    wallpaperUnavailable: 'Kolory tapety niedostępne. Paleta domyślna.',
+    teal: 'Morski',
+    blue: 'Niebieski',
+    green: 'Zielony',
+    violet: 'Fioletowy',
+    rose: 'Różowy',
+    orange: 'Pomarańczowy',
+    saving: 'Zapisuję kolor…',
+    saveError: 'Nie udało się zapisać koloru. Spróbuj wybrać go ponownie.',
+  },
   settings: {
     planningTitle: 'Planowanie podróży',
     offlineTitle: 'Rozkład i mapy',
     notificationsSummary: 'Śledzenie podróży i alerty',
     backupSummary: 'Zapisane miejsca, historia i ustawienia',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
-    languageSummary: (language: string) => `Język: ${language}`,
+    appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Przywróć ustawienia tras',
     resetRoutesBody: 'Przywróci domyślne ustawienia planowania podróży.',
     decrease: (label: string) => `Zmniejsz: ${label}`,
@@ -419,7 +457,7 @@ export const pl = {
     backupExportFailFallback: 'Spróbuj ponownie za chwilę.',
     backupImportConfirmTitle: 'Wczytać te dane?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nZapisane miejsca i przejazdy zostaną scalone z obecnymi — nic nie zniknie. Ustawienia zostaną nadpisane.`,
+      `${summary}\n\nZapisane miejsca i przejazdy zostaną scalone z obecnymi, nic nie zniknie. Ustawienia zostaną nadpisane.`,
     backupImportAction: 'Wczytaj',
     backupImportCancel: 'Anuluj',
     backupImportDoneTitle: 'Dane wczytane',
@@ -685,7 +723,7 @@ export const pl = {
     cityTitle: 'W którym mieście jeździsz?',
     cityBody:
       'Rozkład, mapa i aktualności dopasują się do wyboru. Miasto zmienisz później w ustawieniach.',
-    citySuggested: (name: string) => `Według GPS jesteś w ${name}.`,
+    citySuggested: (name: string) => `Według GPS jesteś ${prepInCity(name)}.`,
     cityNoGps: 'Bez dostępu do GPS wybierz miasto z listy.',
     cityLocating: 'Szukam pozycji GPS…',
     cityNoMatch: 'Nie znalazłem Cię w obsługiwanym mieście. Wybierz z listy.',
@@ -741,8 +779,17 @@ export const pl = {
     loading: 'Pobieranie komunikatów…',
     noConnection: 'Brak połączenia',
     emptyTitle: 'Brak komunikatów',
-    emptyBody: (name: string) =>
-      `${name} nie opublikował teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.`,
+    emptyBody: (name: string) => {
+      const verb =
+        name === 'Warszawa' || name === 'Łódź'
+          ? 'opublikowała'
+          : name === 'Trójmiasto'
+            ? 'opublikowało'
+            : name === 'Kielce'
+              ? 'opublikowały'
+              : 'opublikował';
+      return `${name} nie ${verb} teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.`;
+    },
     sectionChanges: 'Zmiany na liniach',
     sectionCity: 'Wiadomości',
     sourceMpk: (operator: string) => operator,
@@ -913,7 +960,7 @@ export const pl = {
       n === 1 ? '1 komunikat' : isFew(n) ? `${n} komunikaty` : `${n} komunikatów`,
   },
   search: {
-    defaultPlaceholder: (city: string) => `Szukaj w ${city}…`,
+    defaultPlaceholder: (city: string) => `Szukaj ${prepInCity(city)}…`,
     originA11y: (t: string) => `Punkt startowy: ${t}. Dotknij, aby zmienić.`,
     fromPrefix: 'Z:',
     change: 'Zmień',
@@ -922,7 +969,7 @@ export const pl = {
     resultsFor: (q: string, n: number) => `Wyniki dla „${q}” (${n})`,
     recentTrips: 'Ostatnie przejazdy',
     savedA11y: (t: string) => `Zapisane miejsce: ${t}`,
-    searching: (city: string) => `Szukam w ${city}…`,
+    searching: (city: string) => `Szukam ${prepInCity(city)}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
       `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
@@ -1114,7 +1161,7 @@ export const pl = {
     fromPrefix: 'z ',
     toPrefix: 'do ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} przystanki • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
+      `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
   },
   compass: {
     journeyTitle: 'Nawigacja w podróży',
@@ -1202,14 +1249,14 @@ export const pl = {
     noFile: 'Pobieranie GTFS nie zwróciło pliku',
   },
   notification: {
-    // Kanały powiadomień — nazwy widoczne w ustawieniach systemu.
+    // Kanały powiadomień - nazwy widoczne w ustawieniach systemu.
     channelTracking: 'Śledzenie podróży',
     channelTrackingDesc: 'Ciche powiadomienie z postępem i licznikiem do odjazdu lub przyjazdu.',
     channelAlerts: 'Utrudnienia w podróży',
     channelAlertsDesc: 'Opóźnienia, zmiany kursu i zakończenie podróży.',
     permDenied:
       'Powiadomienia są wyłączone. Włącz je w ustawieniach systemu dla kilometr, żeby śledzić odjazd i postęp podróży.',
-    // Przyciski pod powiadomieniem. „Zakończ” jest krótkie celowo — Android
+    // Przyciski pod powiadomieniem. „Zakończ” jest krótkie celowo - Android
     // pokazuje najwyżej trzy przyciski i skraca dłuższe tytuły.
     actionStop: 'Zakończ',
     actionRoute: 'Trasa',
@@ -1222,7 +1269,7 @@ export const pl = {
     modeSubway: 'Metro',
     modeCable: 'Kolej linowa',
     modeTrolleybus: 'Trolejbus',
-    // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii —
+    // Tytuł niesie linię, kierunek i BEZWZGLĘDNĄ godzinę w jednej linii-
     // zegar systemowy tyka w nagłówku i sam z siebie nie wie, do czego liczy.
     // Względne „za 4 min” w treści zestarzałoby się przy pierwszym
     // odświeżeniu, więc go tu nie ma w ogóle.
@@ -1253,6 +1300,9 @@ export const pl = {
     delayTitle: (line: string, eta: string) => `Opóźnienie • ${line} • ${eta}`,
   },
   ios: {
+    startupTitle: 'Błąd aplikacji',
+    startupHint: 'Kilometr nie może kontynuować. Udostępnij raport, aby pomóc znaleźć przyczynę błędu.',
+    startupShare: 'Udostępnij',
     locationPermission: 'Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.',
     liveTitle: 'Aktywność na żywo',
     liveHint: 'Czas podróży na ekranie blokady i Dynamic Island. Dane odświeżają się, gdy aplikacja jest aktywna.',

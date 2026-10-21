@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:bialystok`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (pozycje z komunikacja.bialystok.pl/pl/informacje/wiadomosci/
  * komunikaty z 2026-10-15, struktura podstrony komunikatu z tego samego
  * dnia, linie z GTFS BKM).
@@ -27,7 +27,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n== ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -210,7 +210,7 @@ describe('Treść komunikatu BKM (component-content-wysiwyg)');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

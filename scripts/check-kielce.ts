@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:kielce`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach z realnych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (karty z ztm.kielce.pl/aktualnosci.html z 2026-10-14, struktura
  * podstrony /aktualnosci/2766-czasowa-zmiana-trasy-autobusow-linii-19-i-53
  * z 2026-10-06, linie i typy z GTFS ZTM).
@@ -28,7 +28,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n== ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -102,7 +102,7 @@ ${image ? `<figure class="left item-image"><img src="${image}" width="500" heigh
   expect('data z time[datetime] (dzień)', d0?.getDate(), 14);
   expect('data z time[datetime] (miesiąc)', d0?.getMonth(), 9);
   expect('data z time[datetime] (rok)', d0?.getFullYear(), 2026);
-  // „objazdowa” łapie URGENT_RE (objazd) — zgodnie z realnym zachowaniem.
+  // „objazdowa” łapie URGENT_RE (objazd) - zgodnie z realnym zachowaniem.
   expect('koniec objazdu jest oznaczony jako pilny', items[0].urgent, true);
   expect('link jako absolutny URL', items[0].link, `${ZTM_KIELCE_URL}/aktualnosci/2775-informacja-200.html`);
   expect(
@@ -221,7 +221,7 @@ describe('Numery linii ZTM: daty, godziny, numery przystanków');
 describe('Tryb linii: Kielce to same autobusy');
 {
   // Regresja: ogólna reguła „1–33 to tramwaj” działa po route_type i po
-  // aktywnym mieście, a Kielce mają autobusy 1–54 — bez wykluczenia
+  // aktywnym mieście, a Kielce mają autobusy 1–54 - bez wykluczenia
   // w numericFallbackApplies linia 19 dostawała badge tramwaju.
   await setActiveCityId('kielce');
   expect('klasyfikacja route_type 3 (linia 19)', classifyTransitMode(3, '19'), 'bus');
@@ -280,7 +280,7 @@ describe('Treść komunikatu ZTM (div.com-content-article__body)');
   expect('zmiana linii 53 jest', blocks.some((b) => b.text.includes('przez Sandomierską')), true);
   expect('bez tytułu z h1', blocks.some((b) => b.text.startsWith('Czasowa zmiana trasy')), false);
   // Panel rozkładu dubluje numery linii jako gołe pozycje listy i niesie
-  // schematy objazdów — nie może trafić do treści.
+  // schematy objazdów - nie może trafić do treści.
   expect('bez linii z panelu rozkładu', blocks.some((b) => b.text === '19' || b.text === '53'), false);
   expect('bez schematów objazdów', blocks.some((b) => b.text.includes('MORCINKA')), false);
   expect('bez sidebaru', blocks.some((b) => b.text === 'Rozklad jazdy'), false);
@@ -302,7 +302,7 @@ describe('Treść komunikatu ZTM (div.com-content-article__body)');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
   process.exit(0);
 }
 console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

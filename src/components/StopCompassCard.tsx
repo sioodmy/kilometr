@@ -37,11 +37,13 @@ import {
 import type { MapLeg } from '../map/types';
 import { useJourneyNavigation } from '../services/useJourneyNavigation';
 import { clockFromMs } from '../services/notifications/format';
+import type { TransferProtectionState } from '../services/notifications/transferTypes';
 
 interface StopCompassCardProps {
   connection: Connection;
   /** Otwiera pełną mapę trasy. Cały widget nawigacji jest w tym celu klikalny. */
   onOpenMap?: () => void;
+  transfer?: TransferProtectionState;
 }
 
 const OFF_ROUTE_M = 38;
@@ -117,7 +119,7 @@ function roundNavM(m: number): number {
   return Math.round(m / 50) * 50;
 }
 
-export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
+export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompassCardProps) {
   const s = useStrings();
   const { height: winH } = useWindowDimensions();
   // Cały widget (mapa + panel instrukcji) mieści się na ekranie:
@@ -131,7 +133,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     now,
     location,
     locationState: locState,
-  } = useJourneyNavigation(connection);
+  } = useJourneyNavigation(connection, transfer);
   const userLocation =
     location && locState === 'ok' && now - location.timestamp <= 15_000 ? location : null;
   const [focused, setFocused] = useState(false);
@@ -500,7 +502,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
 
   const distText = guidance ? s.compass.distanceText(roundNavM(guidance.maneuver.distanceM)) : null;
 
-  const headLabel = onTransit
+  const baseHeadLabel = onTransit
     ? ride?.nextStop
       ? s.compass.nextStopAt(ride.nextStop)
       : s.compass.rideTo(activeLeg?.toStop ?? '')
@@ -519,7 +521,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         : walkDistanceM != null
           ? s.compass.distanceText(roundNavM(walkDistanceM))
           : '';
-  const footerText = onTransit
+  const baseFooterText = onTransit
     ? ride?.position
       ? `${s.compass.vehicleGps} · ${s.compass.alightAt(activeLeg?.toStop ?? '')}${ride.stopsLeft != null ? ` · ${s.compass.stopsRemaining(ride.stopsLeft)}` : ''}`
       : s.compass.vehicleGpsMissing
@@ -530,6 +532,20 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           ? `${(finalWalk ? s.compass.navToDestination : s.compass.navToStop)(s.compass.distanceText(roundNavM(walkDistanceM)))} · ${s.compass.walkMins(walkMin)}`
           : s.compass.walkMins(walkMin)
         : '';
+
+  const transferWarning = transfer?.status === 'risk' || transfer?.status === 'noAlternative';
+  const transferChanged = transfer?.status === 'changed';
+  const headLabel = transferChanged && onTransit
+    ? s.transferGuard.stayOn(activeLeg?.line ?? '')
+    : baseHeadLabel;
+  const transferText = transfer?.status === 'safe' && transfer.slackSec != null
+    ? s.transferGuard.buffer(transfer.nextLine ?? '', Math.max(0, Math.floor(transfer.slackSec / 60)))
+    : transferWarning
+      ? `${s.transferGuard.riskTitle(transfer?.nextLine ?? '')}. ${transfer?.status === 'noAlternative' ? s.transferGuard.noAlternative : s.transferGuard.riskBody}`
+      : transferChanged
+        ? s.transferGuard.changedBody(transfer?.nextLine ?? '', transfer?.transferStop ?? '')
+        : transfer?.status === 'rerouting' ? s.transferGuard.rerouting : null;
+  const footerText = transferText ?? baseFooterText;
 
   // „Potem” pokazujemy tylko wtedy, gdy następny manewr jest wyraźnie
   // dalej niż obecny. Inaczej dwie linijki mówią to samo.
@@ -615,7 +631,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
             style={[styles.navMapPane, { height: navMapH }]}
           />
           <Pressable
-            style={[styles.navSheet, focused && styles.focused]}
+            style={[styles.navSheet, transferWarning && styles.transferWarning, transferChanged && styles.transferChanged, focused && styles.focused]}
             onPress={openMap}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
@@ -661,7 +677,8 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
               </View>
             )}
             <View style={styles.navFooter}>
-              <Text style={styles.navFooterText}>{footerText}</Text>
+              <Text accessibilityLiveRegion={transferWarning || transferChanged ? 'polite' : 'none'}
+                style={[styles.navFooterText, transferWarning && { color: scheme.onWarningContainer }, transferChanged && { color: scheme.onPrimaryContainer }]}>{footerText}</Text>
               <Maximize2 size={16} color={scheme.onSurfaceVariant} />
             </View>
           </Pressable>
@@ -682,7 +699,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           accessibilityLabel={s.compass.navA11y(stopName ?? '', '')}
         >
           <LocateFixed size={18} color={scheme.onSurfaceVariant} />
-          <Text style={styles.hintText}>{compassHint}</Text>
+          <Text accessibilityLiveRegion={transferWarning || transferChanged ? 'polite' : 'none'} style={styles.hintText}>{transferText ?? compassHint}</Text>
           <Maximize2 size={16} color={scheme.onSurfaceVariant} />
         </Pressable>
       )}
@@ -816,6 +833,8 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: shape.medium,
     borderBottomRightRadius: shape.medium,
   },
+  transferWarning: { backgroundColor: scheme.warningContainer },
+  transferChanged: { backgroundColor: scheme.primaryContainer },
   navRowMain: {
     flexDirection: 'row',
     alignItems: 'center',

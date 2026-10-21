@@ -1,13 +1,14 @@
 // Pobieranie GTFS bezpośrednio na telefon (Open Data Wrocław).
 // Używa legacy FileSystem (documentDirectory + downloadAsync), bo ten sam
-// mechanizm obsługuje już widgetSnapshot — nowy File API przejdzie w etapie 2.
+// mechanizm obsługuje już widgetSnapshot - nowy File API przejdzie w etapie 2.
 //
 // Strategia pamięciowa (ważne przy stop_times.txt ~46 MB):
 // - zip (~12 MB) ląduje jako plik, nie w RAM,
-// - rozpakowanie przez fflate na Uint8Array + zapis plików po kolei,
+// - nazwy plików odczytujemy z katalogu centralnego, potem rozpakowujemy
+//   PO JEDNYM pliku i od razu zapisujemy na dysk,
 // - małe pliki (stops/routes/trips/calendar) parsujemy w całości,
 // - stop_times importujemy batched do SQLite (patrz gtfsDatabase).
-// Nie trzymamy całego rozkładu w Mapach jak serwer — telefon pyta SQLite.
+// Nie trzymamy całego rozkładu w Mapach jak serwer - telefon pyta SQLite.
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { strFromU8, unzipSync } from 'fflate';
@@ -99,7 +100,7 @@ async function discoverBestArchiveUrl(): Promise<string> {
               clearTimeout(headTimer);
             }
           } catch {
-            // pojedynczy kandydat może odpaść — lecimy dalej
+            // pojedynczy kandydat może odpaść - lecimy dalej
           }
         }
         const inForce = candidates
@@ -217,7 +218,7 @@ export async function downloadArchiveWithFallback(
     }
   }
 
-  // Bez internetu nie ma sensu próbować kolejnych źródeł — mówimy wprost.
+  // Bez internetu nie ma sensu próbować kolejnych źródeł - mówimy wprost.
   const T = dlTr();
   if (failures.length > 0 && failures.every((f) => f.code === 'no-net')) {
     throw new GtfsDownloadError(
@@ -252,7 +253,7 @@ async function downloadGtfsZip(
   );
   const result = await task.downloadAsync();
   if (!result?.uri) throw new Error(dlTr().noFile);
-  // downloadAsync rozwiązuje się także dla 4xx/5xx — bez tego strony błędu
+  // downloadAsync rozwiązuje się także dla 4xx/5xx - bez tego strony błędu
   // (404/503, captive portal) trafiały do gtfs.zip jako „sukces".
   if (result.status < 200 || result.status >= 300) {
     await FileSystem.deleteAsync(dest, { idempotent: true });
@@ -271,6 +272,47 @@ const NEEDED_GTFS_FILES = new Set([
 ]);
 
 /**
+ * Nazwy plików z katalogu centralnego ZIP-a (bez dekompresji).
+ * Są potrzebne PRZED rozpakowywaniem: inaczej fflate rozpakuje wszystko
+ * naraz i stop_times (~46 MB) ląduje w RAM razem z resztą - OOM na
+ * słabszych telefonach.
+ */
+export function zipEntryNames(binary: Uint8Array): string[] {
+  // Katalog centralny lokalizujemy przez EOCD (PK\5\6). Skan od końca,
+  // bo EOCD może mieć za sobą komentarz zipa (do 64 KB).
+  let eocd = -1;
+  const eocdMin = Math.max(0, binary.length - 22 - 65557);
+  for (let i = binary.length - 22; i >= eocdMin; i--) {
+    if (binary[i] === 0x50 && binary[i + 1] === 0x4b && binary[i + 2] === 0x05 && binary[i + 3] === 0x06) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return [];
+  const cdSize = ((binary[eocd + 12]) | (binary[eocd + 13] << 8) | (binary[eocd + 14] << 16) | (binary[eocd + 15] << 24)) >>> 0;
+  const cdsStart = ((binary[eocd + 16]) | (binary[eocd + 17] << 8) | (binary[eocd + 18] << 16) | (binary[eocd + 19] << 24)) >>> 0;
+  if (cdSize === 0xffffffff || cdsStart === 0xffffffff) {
+    throw new Error('Archiwa ZIP64 nie są obsługiwane');
+  }
+  const names: string[] = [];
+  let pos = cdsStart;
+  const cdEnd = cdsStart + cdSize;
+  const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
+  while (pos + 46 <= cdEnd && pos + 46 <= binary.length) {
+    if (!(binary[pos] === 0x50 && binary[pos + 1] === 0x4b && binary[pos + 2] === 0x01 && binary[pos + 3] === 0x02)) break;
+    const nameLen = binary[pos + 28] | (binary[pos + 29] << 8);
+    const extraLen = binary[pos + 30] | (binary[pos + 31] << 8);
+    const commentLen = binary[pos + 32] | (binary[pos + 33] << 8);
+    if (pos + 46 + nameLen > binary.length) break;
+    const nameBytes = binary.subarray(pos + 46, pos + 46 + nameLen);
+    const name = decoder ? decoder.decode(nameBytes) : String.fromCharCode(...nameBytes);
+    names.push(name);
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return names;
+}
+
+/**
  * Rozpakowuje gtfs.zip (fflate, w JS) do plików documentDirectory.
  * Pliki GTFS Wrocławia po rozpakowaniu: stops/routes/trips/calendar/
  * calendar_dates/stop_times. Zwraca listę wypakowanych nazw.
@@ -281,35 +323,38 @@ export async function unzipGtfs(zipUri: string): Promise<string[]> {
   if (!dirInfo.exists) {
     await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
   }
-  // Szybka konwersja base64 na Uint8Array w jednej pętli indeksowanej (bez 12M alokacji closure)
-  const base64 = await FileSystem.readAsStringAsync(zipUri, {
+  // base64 z legacy FileSystem-a żyje raz: po konwersji na binary zwalniamy
+  // obie kopie tekstowe, żeby nie wisiały obok rozpakowywania.
+  let base64 = await FileSystem.readAsStringAsync(zipUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  const binStr = atob(base64);
+  let binStr = atob(base64);
+  base64 = '';
   const len = binStr.length;
   const binary = new Uint8Array(len);
   for (let i = 0; i < len; i++) {
     binary[i] = binStr.charCodeAt(i);
   }
+  binStr = '';
 
-  // Filtr w unzipSync zapobiega dekompresji niepotrzebnych shapes.txt (~15 MB) i innych do RAM
-  const entries = unzipSync(binary, {
-    filter(file) {
-      const short = file.name.split('/').pop() || file.name;
-      return NEEDED_GTFS_FILES.has(short);
-    },
-  });
+  const zipNames = zipEntryNames(binary);
+  if (zipNames.length === 0) throw new Error('Nieprawidłowe archiwum GTFS (brak katalogu ZIP)');
 
-  const names: string[] = [];
-  for (const [name, data] of Object.entries(entries)) {
-    if (name.endsWith('/')) continue;
-    const short = name.split('/').pop() || name;
+  // Rozpakowujemy i zapisujemy po jednym pliku: fflate z filtrem dekompresuje
+  // tylko pasujące wpisy, więc stop_times nie leży w RAM razem z resztą.
+  const unpacked: string[] = [];
+  for (const full of zipNames) {
+    if (full.endsWith('/')) continue;
+    const short = full.split('/').pop() || full;
     if (!NEEDED_GTFS_FILES.has(short)) continue;
+    const one = unzipSync(binary, { filter: (file) => file.name === full });
+    const data = one[full];
+    if (!data) continue;
     const text = strFromU8(data);
     await FileSystem.writeAsStringAsync(`${dir}${short}`, text);
-    names.push(short);
+    unpacked.push(short);
   }
-  return names;
+  return unpacked;
 }
 
 /** Czyta mały plik GTFS (stops/routes/trips/calendar) jako tekst. */

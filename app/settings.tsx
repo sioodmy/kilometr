@@ -27,7 +27,7 @@ import {
   ExternalLink,
   Footprints,
   MapPin,
-  Languages,
+  SlidersHorizontal,
   Navigation,
   Minus,
   Plus,
@@ -69,6 +69,8 @@ import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
 import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
+import { PersonalizationCard } from '../src/components/PersonalizationCard';
+import { useThemeSetting } from '../src/theme/personalization';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
 
 function dataStatusLabel(status: DataStatus): string {
@@ -220,6 +222,7 @@ export default function SettingsScreen() {
   const compact = width / fontScale < 330;
   const { settings, update, reset } = useRoutingSettings();
   const s = useStrings();
+  const themeSetting = useThemeSetting();
   const { cityId, setCity } = useActiveCity();
   const operatorShort = s.city.operatorShort(cityId);
   const feeds = s.city.feeds(cityId);
@@ -462,13 +465,14 @@ export default function SettingsScreen() {
               />
               <View style={styles.menuDivider} />
               <SettingsLink
-                icon={Languages}
+                icon={SlidersHorizontal}
                 title={s.settings.sectionApp}
-                detail={s.settings.languageSummary(
+                detail={s.settings.appSummary(
                   s.settings[
                     LANG_OPTIONS.find((option) => option.value === langSetting)?.label ??
                       'langSystem'
                   ],
+                  s.personalization[themeSetting],
                 )}
                 onPress={() => openSection('app')}
               />
@@ -570,6 +574,7 @@ export default function SettingsScreen() {
 
         {activeSection === 'app' && (
           <>
+            <PersonalizationCard />
             <View style={styles.card}>
               <Text style={styles.cardTitle}>{s.settings.langTitle}</Text>
               <View style={styles.languageList}>

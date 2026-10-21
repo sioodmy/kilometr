@@ -5,6 +5,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",
+    "@material/material-color-utilities": "^0.4.0",
     "babel-preset-expo": "~57.0.0",
     "expo": "~57.0.24",
     "expo-clipboard": "~57.0.2",
@@ -75,6 +76,7 @@
     "check:kv-migration": "tsx --require ./scripts/stub-expo.cjs scripts/check-kv-migration.ts",
     "check:offline-cache": "tsx --require ./scripts/stub-expo.cjs scripts/check-offline-cache.ts",
     "check:places": "tsx scripts/check-places.ts",
+    "check:polish-inflections": "tsx scripts/check-polish-inflections.ts",
     "check:search": "tsx --require ./scripts/stub-expo.cjs scripts/check-search.ts",
     "check:warsaw": "tsx --require ./scripts/stub-expo.cjs scripts/check-warsaw.ts",
     "check:poznan": "tsx --require ./scripts/stub-expo.cjs scripts/check-poznan.ts",
@@ -98,6 +100,7 @@
     "check:minimap": "tsx scripts/check-minimap.ts",
     "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
     "check:map-colors": "tsx scripts/check-map-colors.ts",
+    "check:personalization": "tsx --require ./scripts/stub-expo.cjs scripts/check-personalization.ts",
     "check:line-badge": "tsx scripts/check-line-badge.ts",
     "check:widget-badge": "tsx scripts/check-widget-badge.ts",
     "sync:widget-strings": "tsx scripts/sync-widget-strings.ts",

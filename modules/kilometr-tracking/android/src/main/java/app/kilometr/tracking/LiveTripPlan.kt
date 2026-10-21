@@ -12,7 +12,7 @@ import org.json.JSONObject
  * zawsze jest przetłumaczony i odmieniony po polsku, angielsku, niemiecku
  * i ukraińsku po stronie JS.
  *
- * Licznik odliczający w ogóle nie przychodzi z JS — rysuje go system przez
+ * Licznik odliczający w ogóle nie przychodzi z JS - rysuje go system przez
  * `setUsesChronometer`, więc tyka nawet wtedy, gdy proces leży.
  */
 internal data class LiveTripPlan(
@@ -30,7 +30,7 @@ internal data class LiveTripPlan(
   val countdownAtMs: Long,
   /** true → licznik w dół do `countdownAtMs`, false → liczy od niego w górę. */
   val countdownDown: Boolean,
-  /** Opóźnienie kursu w minutach — steruje kolorem ostrzeżenia i chipem. */
+  /** Opóźnienie kursu w minutach - steruje kolorem ostrzeżenia i chipem. */
   val delayMin: Int,
   /** Po tym czasie serwis sam się zatrzymuje (0 = nie). */
   val stopAfterMs: Long,
@@ -39,11 +39,19 @@ internal data class LiveTripPlan(
   val actions: List<TripAction>,
   val states: List<LiveState>,
   val alightAlertsEnabled: Boolean,
+  val transferProtectionEnabled: Boolean = false,
+  val protectedLegIndex: Int? = null,
+  val transferAlertsEnabled: Boolean = true,
 ) {
 
   fun stateAt(nowMs: Long): LiveState? = states.lastOrNull { it.atMs <= nowMs }
 
   fun alightSegmentAt(nowMs: Long): IndexedValue<LiveSegment>? {
+    protectedLegIndex?.let { index ->
+      segments.getOrNull(index)?.takeIf { it.mode != MODE_WALK }?.let {
+        return IndexedValue(index, it)
+      }
+    }
     val active = segments.withIndex().lastOrNull {
       it.value.mode != MODE_WALK && nowMs >= it.value.startAtMs
     } ?: return null
@@ -52,7 +60,7 @@ internal data class LiveTripPlan(
     return active
   }
 
-  /** Trwałość całej podróży w ms — baza dla postępu i długości segmentów. */
+  /** Trwałość całej podróży w ms - baza dla postępu i długości segmentów. */
   val totalMs: Long get() = maxOf(1L, endAtMs - startAtMs)
 
   /** Postęp 0..1000, liczony wyłącznie z zegara. */
@@ -63,7 +71,7 @@ internal data class LiveTripPlan(
 
   /**
    * Faza podróży wyłącznie z czasu i listy odcinków. Musi być zgodna z
-   * `resolvePhase` w `tripProgress.ts` — inaczej pasek postępu pokazywałby
+   * `resolvePhase` w `tripProgress.ts` - inaczej pasek postępu pokazywałby
    * inną podróż niż tekst pod nim.
    */
   fun phaseAt(nowMs: Long): String {
@@ -73,7 +81,7 @@ internal data class LiveTripPlan(
     val boardIndex = segments.indexOfFirst { it.mode != MODE_WALK }
     if (boardIndex < 0) return PHASE_WALKING
 
-    // Ostatni odcinek, który się już zaczął — nie pierwszy.
+    // Ostatni odcinek, który się już zaczął - nie pierwszy.
     var activeIndex = -1
     for (i in segments.indices) {
       if (nowMs >= segments[i].startAtMs) activeIndex = i
@@ -101,7 +109,7 @@ internal data class LiveTripPlan(
    * Długości segmentów w skali 0..1000.
    *
    * `Notification.ProgressStyle` bierze `progressMax` z SUMY długości
-   * segmentów, a nie z ustawienia — więc suma musi domykać się dokładnie do
+   * segmentów, a nie z ustawienia - więc suma musi domykać się dokładnie do
    * 1000. Inaczej pasek przesuwa się i ikona pojazdu stoi w złym miejscu.
    * Liczymy po granicach skumulowanych, nie po niezależnych udziałach, bo
    * przy 5 odcinkach błędy zaokrągleń kumulowałyby się o kilkanaście
@@ -143,9 +151,10 @@ internal data class LiveTripPlan(
     return out
   }
 
-  /** Ikona „pojazdu" na pasku postępu — pokazuje, czym właśnie jedziemy. */
+  /** Ikona „pojazdu" na pasku postępu - pokazuje, czym właśnie jedziemy. */
   fun trackerIconFor(nowMs: Long): Int {
-    val active = segments.lastOrNull { nowMs >= it.startAtMs } ?: segments.firstOrNull()
+    val active = protectedLegIndex?.let { segments.getOrNull(it) }
+      ?: segments.lastOrNull { nowMs >= it.startAtMs } ?: segments.firstOrNull()
     return when (active?.mode) {
       MODE_WALK -> R.drawable.ic_kilometr_walk
       MODE_BUS, MODE_TROLLEYBUS -> R.drawable.ic_kilometr_bus
@@ -168,17 +177,17 @@ internal data class LiveTripPlan(
     const val PHASE_TRANSFER = "transfer"
     const val PHASE_ARRIVED = "arrived"
 
-    /** Okno, w którym „wsiadanie" to jeszcze nie „w trasie" — jak w `tripProgress.ts`. */
+    /** Okno, w którym „wsiadanie" to jeszcze nie „w trasie" - jak w `tripProgress.ts`. */
     private const val BOARDING_GRACE_MS = 45_000L
 
-    /** Skala paska postępu — ProgressStyle liczy progressMax z sumy segmentów. */
+    /** Skala paska postępu - ProgressStyle liczy progressMax z sumy segmentów. */
     const val PROGRESS_MAX = 1000
 
     const val FALLBACK_COLOR = "#5CDBBE"
 
     private val EMPTY_COPY = PhaseCopy("", "", "")
 
-    /** Kolor dojścia/przesiadki pieszo — neutralny, żeby nie udawał linii. */
+    /** Kolor dojścia/przesiadki pieszo - neutralny, żeby nie udawał linii. */
     const val WALK_COLOR = "#8A8F98"
 
     fun fromJson(json: String): LiveTripPlan? = try {
@@ -272,6 +281,8 @@ internal data class LiveTripPlan(
         actions = actions,
         states = states,
         alightAlertsEnabled = root.optBoolean("alightAlertsEnabled", true),
+        transferProtectionEnabled = root.optBoolean("transferProtectionEnabled", false),
+        transferAlertsEnabled = root.optBoolean("transferAlertsEnabled", true),
       )
     }
 

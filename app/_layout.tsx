@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { LogBox, Platform } from 'react-native';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Stack, router, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -9,7 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
-import { initDynamicColors } from '../src/theme/dynamic';
+import { initTheme, useThemeSetting } from '../src/theme/personalization';
 import { initLocale } from '../src/i18n';
 import { loadActiveCity } from '../src/services/cityStore';
 import { loadSettings } from '../src/services/settings';
@@ -44,15 +44,15 @@ export default function RootLayout() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
+  const themeSetting = useThemeSetting();
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu
   useEffect(() => {
     let isMounted = true;
 
     const initApp = async () => {
-      // Paleta musi być gotowa przed pierwszym renderem ekranów.
-      await initDynamicColors();
       await migrateFromSqliteKv();
+      await initTheme();
       // Miasto przed bazą: getGtfsDb() otwiera plik per-miasto po sync id.
       await loadActiveCity();
       await loadSettings();
@@ -116,6 +116,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <Stack
+          screenLayout={({ children }) => <Fragment key={themeSetting}>{children}</Fragment>}
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: scheme.surface },
@@ -132,7 +133,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
           <Stack.Screen name="routes" options={{ headerShown: false }} />
-          {/* Mapa ma własny gest przesuwania — natywny swipe-back zjadałby
+          {/* Mapa ma własny gest przesuwania - natywny swipe-back zjadałby
               przeciąganie widoku i mapa skakałaby przy powrocie. */}
           <Stack.Screen name="map" options={{ gestureEnabled: false }} />
           <Stack.Screen

@@ -41,7 +41,7 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
 // pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
-// najstarszy wpis — bez dodatkowej kolejki.
+// najstarszy wpis - bez dodatkowej kolejki.
 const STOPS_CACHE_MAX = 80;
 const stopsCache = new Map<string, LegStop[]>();
 const stopsPromise = new Map<string, Promise<LegStop[]>>();
@@ -85,7 +85,7 @@ const StopRow = memo(function StopRow({
   segmentStart: number;
   vehicleMode: Leg['mode'];
   inSegment: boolean;
-  /** Przystanek startowy albo końcowy odcinka — wyróżniony wagą. */
+  /** Przystanek startowy albo końcowy odcinka - wyróżniony wagą. */
   emphasis: boolean;
   accent: string;
   connectorAccent: boolean;
@@ -195,7 +195,7 @@ function LegStopsList({
       // Odrzucenie NIE jest zapamiętywane. Wcześniej `.catch(() => [])` trafiał
       // do `stopsPromise` razem z sukcesem, więc jedna chwilowa awaria (zamknięta
       // baza, odjęty slot importu) zostawiała ten kurs z dwoma przystankami
-      // do końca życia procesu — użytkownik dostawał „trasa niepełna” bez
+      // do końca życia procesu - użytkownik dostawał „trasa niepełna” bez
       // możliwości naprawienia.
       promise = RoutingService.getTripStops(leg.tripId)
         .then((stops) => {
@@ -212,7 +212,7 @@ function LegStopsList({
       (fetched) => {
         if (!mounted.current) return;
         // Do cache trafiają TYLKO przystanki z bazy. Wersja z `buildFallbackStops`
-        // to dwa przystanki z etykiety — zapisana w cache na stałe psuła
+        // to dwa przystanki z etykiety - zapisana w cache na stałe psuła
         // wyświetlanie przy następnym otwarciu tego samego odcinka.
         if (fetched.length >= 2) cacheStops(cacheKey, fetched);
         setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
@@ -492,7 +492,7 @@ const s = StyleSheet.create({
   innerDot: { width: 8, height: 8, borderRadius: 99 },
   body: { flex: 1, paddingVertical: 8, gap: 2 },
   cardWrap: { flex: 1, marginBottom: 10 },
-  // M3 filled card: tonal surface, bez obramowań — kolor linii niosą
+  // M3 filled card: tonal surface, bez obramowań - kolor linii niosą
   // badge linii oraz kropki/linia na railu po lewej, więc pasek jest zbędny
   card: {
     flex: 1,
@@ -511,7 +511,7 @@ const s = StyleSheet.create({
   walkText: { ...type.titleSmall, color: scheme.onSurface },
   walkSubRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 1 },
   walkSub: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  // Rozwinięta lista kropek — wysokość animowana layout-animation przez rodzica,
+  // Rozwinięta lista kropek - wysokość animowana layout-animation przez rodzica,
   // tutaj zwykły kontener bez własnych animacji wejścia/wyjścia
   stopsWrap: { marginTop: 8, gap: 0 },
   stopsCollapsed: { height: 0, opacity: 0, overflow: 'hidden', marginTop: 0 },

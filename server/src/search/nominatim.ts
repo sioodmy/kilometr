@@ -9,7 +9,7 @@ const SLICE_MS = 100;
  * Czeka na slot rate-limitu, ale co SLICE_MS sprawdza czy zapytanie nie jest
  * już przestarzałe (użytkownik pisze dalej). Przestarzałe odpuszcza kolejkę
  * natychmiast zamiast blokować świeże zapytania za sobą (head-of-line).
- * Zwraca false gdy przestarzałe — wołający ma zwrócić pusty wynik.
+ * Zwraca false gdy przestarzałe - wołający ma zwrócić pusty wynik.
  */
 async function rateLimit(isFresh: () => boolean): Promise<boolean> {
   for (;;) {
@@ -27,7 +27,7 @@ export async function searchNominatim(query: string, isFresh: () => boolean = ()
   const q = query.trim();
   if (!q || q.length < 2) return [];
 
-  // Przestarzałe zapytanie nie dostaje slotu — nie blokuje kolejki
+  // Przestarzałe zapytanie nie dostaje slotu - nie blokuje kolejki
   if (!(await rateLimit(isFresh))) return [];
 
   const url = new URL(config.nominatim.baseUrl);

@@ -5,7 +5,7 @@ import { normalizeConnectionId } from './routing/connectionIdentity';
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
 /**
- * Czy telefon ma lokalny rozkład — czyli czy w ogóle da się zaplanować
+ * Czy telefon ma lokalny rozkład - czyli czy w ogóle da się zaplanować
  * trasę. Planer jeździ po SQLite, nie po serwerze, więc nazwa „pingBackend”
  * wprowadzała w błąd (a komunikat „Offline” na ekranie głównym był
  * mylący: brak rozkładu to nie brak internetu).
@@ -22,7 +22,7 @@ export async function hasLocalTimetable(): Promise<boolean> {
 
 // Offline-first cache (kv-store): trasy, podpowiedzi, recent.
 // Gdy backend nie odpowiada, ekrany serwują ostatnie prawdziwe dane
-// zamiast pustki — a po powrocie sieci cicho podmieniają na świeże.
+// zamiast pustki - a po powrocie sieci cicho podmieniają na świeże.
 
 const KEYS = {
   connections: 'kilometr.cache.connections.v1',
@@ -36,12 +36,15 @@ const KEYS = {
  * Wrocław trzyma legacy klucz (kompat ze starymi instalacjami). Połączenia
  * i podpowiedzi są kluczowane zapytaniem/współrzędnymi, więc zostają globalne.
  */
-function cityScopedKey(base: string): string {
-  let id = 'wroclaw';
-  try {
-    id = getActiveCityIdSync();
-  } catch {
-    // storage jeszcze niegotowy: legacy klucz Wrocławia
+function cityScopedKey(base: string, cityId?: string): string {
+  let id = cityId;
+  if (!id) {
+    id = 'wroclaw';
+    try {
+      id = getActiveCityIdSync();
+    } catch {
+      // storage jeszcze niegotowy: legacy klucz Wrocławia
+    }
   }
   return id === 'wroclaw' ? base : `${base}.${id}`;
 }
@@ -151,7 +154,7 @@ export async function findCachedConnection(id: string): Promise<Connection | nul
 
 /**
  * Odświeża czasy względne na bazie absolutnego departureSec.
- * Live wyłączamy — offline nie ma realtime, pokazujemy wg rozkładu.
+ * Live wyłączamy - offline nie ma realtime, pokazujemy wg rozkładu.
  *
  * Ujemnych wartości NIE obcinamy do zera: połączenie sprzed 20 minut ma pokazać
  * „20 min temu”, a nie „za chwilę”. Docięcie zamieniało nieodejazd w najbliższy
@@ -177,10 +180,14 @@ function normQuery(q: string): string {
   return q.trim().toLowerCase().slice(0, 60);
 }
 
-export async function saveSuggestions(query: string, results: Suggestion[]): Promise<void> {
+/**
+ * @param cityId miasto z chwili startu zapytania: przy przełączeniu miasta
+ * w trakcie sieci wynik starego miasta nie może wpaść do kubełka nowego.
+ */
+export async function saveSuggestions(query: string, results: Suggestion[], cityId?: string): Promise<void> {
   const key = normQuery(query);
   if (!key || results.length === 0) return;
-  const storageKey = cityScopedKey(KEYS.suggestions);
+  const storageKey = cityScopedKey(KEYS.suggestions, cityId);
   try {
     const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(storageKey)) ?? {};
     all[key] = { savedAt: Date.now(), data: results };
@@ -197,14 +204,17 @@ export async function saveSuggestions(query: string, results: Suggestion[]): Pro
   }
 }
 
-/** Offline: dokładny query, a jak brak — najdłuższy zapamiętany prefiks. */
+/** Offline: dokładny query, a jak brak - najdłuższy zapamiętany prefiks. */
 export async function loadSuggestions(query: string): Promise<Suggestion[]> {
   const key = normQuery(query);
   if (!key) return [];
   const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions));
   if (!all) return [];
+  // Cache żyje między wersjami apki (TTL 7 dni), więc wpis może mieć stary
+  // kształt: brak tytułu/adresu dawał TypeError w każdej podpowiedzi.
+  const usable = (s: Suggestion) => typeof s?.title === 'string' && typeof s?.address === 'string';
   const fresh = (e: Stamped<Suggestion[]> | undefined) =>
-    e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS ? e.data : null;
+    e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS && Array.isArray(e.data) ? e.data.filter(usable) : null;
   const exact = fresh(all[key]);
   if (exact) return exact;
   // Prefiks: "lid" → wyniki dla "lidl" przefiltrowane po tytule
@@ -216,9 +226,7 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
     if (data) {
       const low = key;
       const filtered = data.filter(
-        (s) =>
-          s.title.toLowerCase().includes(low) ||
-          s.address.toLowerCase().includes(low),
+        (s) => s.title.toLowerCase().includes(low) || s.address.toLowerCase().includes(low),
       );
       if (filtered.length > 0) return filtered;
     }

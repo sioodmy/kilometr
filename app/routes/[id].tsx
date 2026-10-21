@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -35,6 +36,7 @@ import {
   startTracking,
   stopTracking,
   useTrackedTrip,
+  isTransferProtectionSupported,
 } from '../../src/services/notifications';
 
 export default function RouteDetailsScreen() {
@@ -43,11 +45,13 @@ export default function RouteDetailsScreen() {
   const goBack = () => router.canGoBack() ? router.back() : router.replace('/routes');
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const id = normalizeConnectionId(routeId ?? '');
+  const { trip: trackedTrip } = useTrackedTrip();
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
   const immediateItem = cachedItem?.id === id ? cachedItem : alarmItem?.id === id ? alarmItem : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
-  const item = loadedItem?.id === id ? loadedItem : immediateItem ?? null;
+  const item = trackedTrip?.connection.id === id ? trackedTrip.connection : loadedItem?.id === id ? loadedItem : immediateItem ?? null;
+  const [trackingBusy, setTrackingBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -66,46 +70,60 @@ export default function RouteDetailsScreen() {
     return () => clearInterval(t);
   }, []);
 
-  const { trip: trackedTrip } = useTrackedTrip();
-
   const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
 
   // Śledzenie odpala się tylko przyciskiem w nagłówku. Jedno śledzenie
   // na raz: start nowego kursu podmienia poprzedni w tripMonitor.
   const toggleTracking = async () => {
-    if (!item) return;
+    if (!item || trackingBusy) return;
     if (isTrackedThis) {
       await stopTracking();
       return;
     }
-    if (!areNotificationsSupported()) {
-      Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
-      return;
-    }
-    const ok = await ensureNotificationPermission();
-    if (!ok) {
-      Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
-      return;
-    }
-    const firstLeg = item.legs[0];
-    const lastLeg = item.legs[item.legs.length - 1];
-    const fallback = defaultLocationForCity(getActiveCityIdSync());
-    await startTracking({
-      id: item.id,
-      fromTitle: item.fromTitle,
-      fromLat: firstLeg?.fromLat ?? fallback.lat,
-      fromLon: firstLeg?.fromLon ?? fallback.lon,
-      toId: item.toTitle,
-      toTitle: item.toTitle,
-      toLat: lastLeg?.toLat ?? fallback.lat,
-      toLon: lastLeg?.toLon ?? fallback.lon,
-      connection: item,
-      startedAt: Date.now(),
-    });
+    setTrackingBusy(true);
+    try {
+      if (!areNotificationsSupported()) {
+        Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
+        return;
+      }
+      const ok = await ensureNotificationPermission();
+      if (!ok) {
+        Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
+        return;
+      }
+      let protectionEnabled = item.transfers > 0 && isTransferProtectionSupported();
+      if (protectionEnabled) {
+        let permission = await Location.getForegroundPermissionsAsync();
+        if (!permission.granted) permission = await Location.requestForegroundPermissionsAsync();
+        protectionEnabled = permission.granted && permission.android?.accuracy !== 'coarse';
+      }
+      const firstLeg = item.legs[0];
+      const lastLeg = item.legs[item.legs.length - 1];
+      const fallback = defaultLocationForCity(getActiveCityIdSync());
+      await startTracking({
+        id: item.id,
+        fromTitle: item.fromTitle,
+        fromLat: firstLeg?.fromLat ?? fallback.lat,
+        fromLon: firstLeg?.fromLon ?? fallback.lon,
+        toId: item.toTitle,
+        toTitle: item.toTitle,
+        toLat: lastLeg?.toLat ?? fallback.lat,
+        toLon: lastLeg?.toLon ?? fallback.lon,
+        connection: item,
+        startedAt: Date.now(),
+        protectionEnabled,
+      });
+    } catch {
+      Alert.alert(s.transferGuard.title, s.transferGuard.routingError);
+    } finally { setTrackingBusy(false); }
   };
 
   useEffect(() => {
-    // Brak id to nie „wczytujemy” — inaczej ekran zostawał ze spinnerem w nieskończoność.
+    if (trackedTrip?.connection.id === id) setItem(trackedTrip.connection);
+  }, [id, trackedTrip?.connection]);
+
+  useEffect(() => {
+    // Brak id to nie „wczytujemy” - inaczej ekran zostawał ze spinnerem w nieskończoność.
     if (!id) {
       setLoadFailed(true);
       return;
@@ -206,6 +224,7 @@ export default function RouteDetailsScreen() {
         )}
         <Pressable
           onPress={() => void toggleTracking()}
+          disabled={trackingBusy}
           accessibilityRole="button"
           accessibilityState={{ selected: isTrackedThis }}
           accessibilityLabel={
@@ -275,6 +294,7 @@ export default function RouteDetailsScreen() {
                 mapę trasy. */}
             <StopCompassCard
               connection={item}
+              transfer={isTrackedThis ? trackedTrip.transfer : undefined}
               onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
             />
 

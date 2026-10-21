@@ -1,25 +1,53 @@
-// Material 3 (Material You) Dark scheme — seed: Wrocław MPK teal (#006A60).
+// Material 3 (Material You) Dark scheme, seed: Wrocław MPK teal (#006A60).
 // Hand-built M3 Dark tonal palette with deep surfaces and vibrant tonal containers.
 //
 // Paleta jest zmienna, bo na Androidzie 12+ podmieniamy ją na kolory z tapety
 // (patrz `dynamic.ts`). Role, których nie da się przeliczyć z tapety (błędy,
-// ostrzeżenia, kolory linii), zostają statyczne — kolor linii to informacja,
+// ostrzeżenia, kolory linii), zostają statyczne, kolor linii to informacja,
 // a nie dekoracja.
 import { StyleSheet } from 'react-native';
 
 export type SchemeKey =
-  | 'primary' | 'onPrimary' | 'primaryContainer' | 'onPrimaryContainer'
-  | 'secondary' | 'onSecondary' | 'secondaryContainer' | 'onSecondaryContainer'
-  | 'tertiary' | 'onTertiary' | 'tertiaryContainer' | 'onTertiaryContainer'
-  | 'error' | 'onError' | 'errorContainer' | 'onErrorContainer'
-  | 'surface' | 'onSurface' | 'onSurfaceVariant'
-  | 'surfaceDim' | 'surfaceBright'
-  | 'surfaceContainerLowest' | 'surfaceContainerLow' | 'surfaceContainer'
-  | 'surfaceContainerHigh' | 'surfaceContainerHighest'
-  | 'outline' | 'outlineVariant'
-  | 'inverseSurface' | 'inverseOnSurface' | 'inversePrimary' | 'scrim'
-  | 'success' | 'onSuccess' | 'successContainer' | 'onSuccessContainer'
-  | 'warning' | 'onWarning' | 'warningContainer' | 'onWarningContainer';
+  | 'primary'
+  | 'onPrimary'
+  | 'primaryContainer'
+  | 'onPrimaryContainer'
+  | 'secondary'
+  | 'onSecondary'
+  | 'secondaryContainer'
+  | 'onSecondaryContainer'
+  | 'tertiary'
+  | 'onTertiary'
+  | 'tertiaryContainer'
+  | 'onTertiaryContainer'
+  | 'error'
+  | 'onError'
+  | 'errorContainer'
+  | 'onErrorContainer'
+  | 'surface'
+  | 'onSurface'
+  | 'onSurfaceVariant'
+  | 'surfaceDim'
+  | 'surfaceBright'
+  | 'surfaceContainerLowest'
+  | 'surfaceContainerLow'
+  | 'surfaceContainer'
+  | 'surfaceContainerHigh'
+  | 'surfaceContainerHighest'
+  | 'outline'
+  | 'outlineVariant'
+  | 'inverseSurface'
+  | 'inverseOnSurface'
+  | 'inversePrimary'
+  | 'scrim'
+  | 'success'
+  | 'onSuccess'
+  | 'successContainer'
+  | 'onSuccessContainer'
+  | 'warning'
+  | 'onWarning'
+  | 'warningContainer'
+  | 'onWarningContainer';
 
 export const scheme: Record<SchemeKey, string> = {
   // Primary (vibrant teal in dark mode for high accessibility and contrast)
@@ -80,80 +108,96 @@ export const scheme: Record<SchemeKey, string> = {
   onWarningContainer: '#FFDDB5',
 };
 
-// ─── Skąd braliśmy kolory ────────────────────────────────────────────────────
-//
-// `StyleSheet.create` w dev zamraża obiekty, które mu podamy, więc nie możemy
-// dołożyć do nich kolorów po fakcie. Dlatego przy rejestrowaniu arkusza
-// zostawiamy sobie OryGINAŁ, a React Native'owi oddajemy jego kopię. Dzięki
-// temu `applyScheme` przemalowuje style powstałe na starcie modułu, a zachowanie
-// dev i release jest identyczne.
+export const defaultScheme: Readonly<Record<SchemeKey, string>> = { ...scheme };
+
+// Kopia zachowuje kolory źródłowe także po wielokrotnej zmianie palety.
 type StyleSheetLike = Record<string, Record<string, unknown> | undefined>;
-const createdSheets: StyleSheetLike[] = [];
+const createdSheets: {
+  sheet: StyleSheetLike;
+  source: StyleSheetLike;
+  palette: Record<SchemeKey, string>;
+}[] = [];
 let hookInstalled = false;
 
 function installStyleSheetHook(): void {
   if (hookInstalled) return;
   hookInstalled = true;
-  const original = StyleSheet.create.bind(StyleSheet) as (
-    obj: StyleSheetLike,
-  ) => StyleSheetLike;
-  (StyleSheet as unknown as { create: (obj: StyleSheetLike) => StyleSheetLike }).create = (
-    obj,
-  ) => {
+  const original = StyleSheet.create.bind(StyleSheet) as (obj: StyleSheetLike) => StyleSheetLike;
+  (StyleSheet as unknown as { create: (obj: StyleSheetLike) => StyleSheetLike }).create = (obj) => {
     const copy: StyleSheetLike = {};
     for (const key in obj) copy[key] = { ...obj[key] };
     try {
       original(copy);
     } catch {
-      // Arkusz spoza naszego motywu — zostawiamy go w spokoju.
+      // Arkusz spoza naszego motywu zostawiamy w spokoju.
     }
-    createdSheets.push(obj);
+    const source: StyleSheetLike = {};
+    for (const key in obj) source[key] = { ...obj[key] };
+    createdSheets.push({ sheet: obj, source, palette: { ...scheme } });
     return obj;
   };
 }
 installStyleSheetHook();
 
-/** Wartości startowe — na nich opieramy podmianę hexów w stylach. */
-const seedScheme: Record<string, string> = { ...scheme };
-
 /** Przemalowuje wcześniej utworzone arkusze stylów na nową paletę. */
 function repaintStyles(next: Record<SchemeKey, string>): void {
-  const from = new Map<string, string>();
-  for (const key of Object.keys(seedScheme) as SchemeKey[]) {
-    const before = seedScheme[key];
-    const after = next[key];
-    if (before !== after) from.set(before.toLowerCase(), after);
-  }
-  if (from.size === 0) return;
-  const swap = (value: unknown): unknown => {
-    if (typeof value === 'string') return from.get(value.toLowerCase()) ?? value;
-    if (Array.isArray(value)) return value.map(swap);
-    if (value && typeof value === 'object') {
-      const out: Record<string, unknown> = {};
-      for (const key in value as Record<string, unknown>) out[key] = swap((value as Record<string, unknown>)[key]);
-      return out;
+  for (const { sheet, source, palette } of createdSheets) {
+    const from = new Map<string, string>();
+    for (const key of Object.keys(palette) as SchemeKey[]) {
+      const before = palette[key];
+      const after = next[key];
+      if (!from.has(before.toLowerCase())) from.set(before.toLowerCase(), after);
     }
-    return value;
-  };
-  for (const sheet of createdSheets) {
-    for (const key in sheet) {
-      const style = sheet[key];
+    const swap = (value: unknown): unknown => {
+      if (typeof value === 'string') {
+        const exact = from.get(value.toLowerCase());
+        if (exact) return exact;
+        if (/^#[0-9a-f]{8}$/i.test(value)) {
+          const base = from.get(value.slice(0, 7).toLowerCase());
+          if (base) return base + value.slice(7);
+        }
+        return value;
+      }
+      if (Array.isArray(value)) return value.map(swap);
+      if (value && typeof value === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const key in value as Record<string, unknown>)
+          out[key] = swap((value as Record<string, unknown>)[key]);
+        return out;
+      }
+      return value;
+    };
+    for (const key in source) {
+      const style = source[key];
       if (!style || typeof style !== 'object') continue;
-      const swapped = swap(style) as Record<string, unknown>;
-      for (const prop in swapped) delete (style as Record<string, unknown>)[prop];
-      Object.assign(style as Record<string, unknown>, swapped);
+      sheet[key] = swap(style) as Record<string, unknown>;
     }
   }
 }
 
 // ─── Back-compat aliases ─────────────────────────────────────────────────────
 type ColorKey =
-  | 'bg' | 'card' | 'ink' | 'muted' | 'faint' | 'line'
-  | 'primary' | 'primaryDark' | 'primarySoft'
-  | 'accent' | 'accentSoft'
-  | 'success' | 'successSoft' | 'danger' | 'dangerSoft'
-  | 'warning' | 'warningSoft'
-  | 'lineTram' | 'lineBus' | 'lineNight' | 'walk';
+  | 'bg'
+  | 'card'
+  | 'ink'
+  | 'muted'
+  | 'faint'
+  | 'line'
+  | 'primary'
+  | 'primaryDark'
+  | 'primarySoft'
+  | 'accent'
+  | 'accentSoft'
+  | 'success'
+  | 'successSoft'
+  | 'danger'
+  | 'dangerSoft'
+  | 'warning'
+  | 'warningSoft'
+  | 'lineTram'
+  | 'lineBus'
+  | 'lineNight'
+  | 'walk';
 
 export const colors: Record<ColorKey, string> = {
   bg: scheme.surface,
@@ -180,13 +224,7 @@ export const colors: Record<ColorKey, string> = {
   walk: scheme.onSurfaceVariant,
 };
 
-/**
- * Podmienia paletę na kolory z tapety (Material You).
- *
- * Robimy to PRZED pierwszym renderem (`initDynamicColors` w `_layout`), więc
- * nie ma potrzeby przerysowywać drzewa — wystarczy zaktualizować obiekty
- * motywu i arkusze stylów powstałe przy imporcie modułów.
- */
+/** Podmienia role i arkusze stylów; odświeżeniem ekranów zajmuje się layout. */
 export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
   for (const key of Object.keys(next) as SchemeKey[]) {
     const value = next[key];

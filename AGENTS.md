@@ -1,74 +1,113 @@
-# Expo HAS CHANGED
+Te reguły są domyślne (good defaults), nie święte prawo. User może je nadpisać w wątku.
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
+## User
 
-## Buildy
+- Rozmowy po polsku, krótko i wprost; tak samo zwracaj się do niego.
+- Autystyczny, ADHD, krótki zakres uwagi: odpowiedzi maksymalnie krótkie, listy zamiast akapitów, najpierw wynik, potem szczegóły. Zero ozdobników, zero "great question".
+- Nie jest native speakerem angielskiego: po angielsku krótkie zdania, bez idiomów.
+- Nie traktuj jak nowicjusza, nie tłumacz podstaw, chyba że o to poprosi.
+- Nie ma Claude Pro ani Codex, nie sugeruj ich narzędzi. Harness: OpenCode.
+- Chce setup w duchu Theo (t3.gg / T3 Code): małe zmiany, krótkie reguły, dobre praktyki, shipowanie działającego kodu. Trzymaj się tego.
 
-- Nie builduj apk lokalnie o ile nie dostaniesz na to pozwolenia
+## Ten plik
 
-## Model branchy i promocja kodu (OBOWIĄZKOWE)
+- To plik dla Ciebie (agenta), nie README. README opisuje projekt ludziom; tu są zasady zmieniania kodu.
+- "user" = sioodmy (człowiek za ekranem), "Ty" = agent czytający ten plik, "my" = user + Ty.
+- kilometr = aplikacja Expo/React Native: rozkłady jazdy, mapa offline, powiadomienia o odjazdach. GTFS i baza na urządzeniu, offline-first, Android.
+- Czego nie łamiesz: nie zmyślasz danych, offline działa, wydajność i bateria, mały rozmiar, czytelne UI. Zmiana, która to psuje, nie wychodzi z wątku.
 
-- Przepływ: `feature/*` lub `fix/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok to PR, nigdy direct push.
-- `dev` - integracja/experimental: nowe feature branche bazujesz na `dev` i PR-ujesz do `dev`. Automatycznie twórz PR nowych features do tego brancha
-- `main` - scalony, jeszcze nie sprawdzony na urządzeniu kod.
-- `nightly` - buildy używalne jako daily driver, mogą być niestabilne; nie są prod ready.
-- `prod` - przetestowane manualnie na realnym urządzeniu, gotowe dla end userów; czeka na feedback testerów.
-- Wszystkie cztery (`dev`, `main`, `nightly`, `prod`) są chronione (ruleset): zakaz direct pushy, tylko PR.
-- Buildy na GitHubie startują WYŁĄCZNIE na push do `nightly` i `prod` (`.github/workflows/build-apk.yml`). Push do `dev`/`main` nie triggeruje builda; `dev` testuje tylko APK z Azure Pipelines.
-- Każdy build `nightly`/`prod` od razu tworzy nowy GitHub Release z notkami z conventional commitów (bez ręcznego szukania artefaktów).
-  - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease; buduje tylko APK (`kilometr-nightly.apk`).
-  - `prod`: tag `vX.Y.Z` (auto-semver z commitów), nie-prerelease; buduje APK (`kilometr-prod.apk`), AAB do Google Play (`kilometr-prod.aab`) oraz niepodpisane IPA do sideloadowania, wszystko w jednym release.
-  - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
-- iOS buduje się wyłącznie z gałęzi `prod` (`.github/workflows/build-ipa.yml`). Nie ma buildów iOS na `dev`/`main`/`nightly`.
-- Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
-- Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie. Jeśli dev jest do przodu ze zmianami w stosunku do main, a PR nie istnieje, to utwórz PR z tą todo listą
-- W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature. Każdy element jest konkretny i zawiera odnośnik do PR, który go wprowadza, np. `- [ ] Widget odjazdów ulubionej linii (#142)`.
-- Zmergowanie feature brancha do `dev` dopisuje nowy element `- [ ]` do tej listy TYLKO jeśli feature wymaga manualnych testów (UI, funkcjonalność, landing, aplikacja). Drobnostek bez funkcjonalności (np. aktualizacja README, docs, komentarze) nie dopisuj.
-- Jeden element to jedna testowalna rzecz. Nie rozdrabniaj listy na drobne, nieistotne szczegóły; łącz powiązane poprawki w jeden konkretny wpis.
-- PR `dev` -> `main` służy do manualnych testów tylko przez człowieka
-- NIGDY nie merguj automatycznie żadnego PR do `nightly` ani `prod`. Merge do `nightly`/`prod` wykonuje wyłącznie człowiek, ręcznie.
+## Praca w wątku
 
-## CRITICAL: NIE OVERTHINKUJ
+- Nie rozpisuj się: krótkie komunikaty, po prostu rób. Nie wypisuj planów ani opisów działań.
+- Pytanie od usera = read-only. Nie edytuj, dopóki tak napisał.
+- Jak robota może pójść dalej bez usera, jedź do końca. Zatrzymuj się tylko gdy: (a) user poprosił "stop przed X", (b) przed akcją destrukcyjną, (c) druga próba naprawy też pada.
+- Błąd pokaż od razu, w jednej linii, nie ukrywaj go w opisie. Blocker: jedno zdanie, czego dokładnie potrzebujesz.
+- Podsumowanie: co zrobione / co nie / co dalej. Maksymalnie kilka linii.
 
-- Nie rozpisuj się, po prostu rób
-- Nie wypisuj planów, kroków postępowania, ani nie opisuj swoich działań
-- Używaj prostych rozwiązań, który doprowadzają do celu. Nie rozmyślaj o edge caseach jeżeli cie o to nie proszę
-- Jeżeli dostałeś proste zadanie to nie pytaj o szczegóły, po prostu rób.
+## Codowanie
+
+- Minimalizm: measure twice, cut once, YAGNI. Nie zachowuj złożoności dlatego, że już istnieje. Nie dodawaj machinerii, bo wygląda imponująco.
+- Zanim zaczniesz, sprawdź, czy istnieje "stupid simple solution" i rób tak, jeśli działa.
+- Nie rozszerzaj zakresu. Pre-existing bugi: nie naprawiaj w tej samej robocie, wpisz follow-up w podsumowaniu.
+- Działania destrukcyjne (usuwanie danych, force push, kill procesów, migracje) tylko na wyraźną prośbę. Killuj tylko procesy, które sam uruchomiłeś.
+
+## Weryfikacja
+
+- Celowana najpierw: `npx tsc --noEmit`, lint na zmienionych plikach, skupione testy. Full build tylko na pozwolenie (patrz Build).
+- Testy: celowe, nie slop. Regression test na małą poprawkę to overkill.
+- Duży diff: najpierw przeczytaj własne podsumowanie i sprawdź, czy nic nie uciekło.
+
+## TypeScript i komentarze
+
+- `any` to wróg; casting one-linery to zły TS.
+- Komentarze: krótkie, po polsku; opisują "jak tego się używa" nad funkcją/klasą; aktualizuj przy zmianie. Zero komentarzy wiersz po wierszu.
+- Wszystko user-facing przez `src/i18n` (patrz Tłumaczenia).
+
+## Pull requesty
+
+- Przed zrobieniem PR: sprawdź, czy PR z tego brancha już istnieje; diff sprawdź lokalnie przeciw origin.
+- Tytuł: krótki, po polsku, wyjaśnia DLACZEGO (bad: `fix: refactor map`, good: `fix(mapy): mapa nie znika przy powrocie`).
+- Opis: pierwsze zdanie = problem, dopiero potem rozwiązanie. Żadnego leadu w stylu "usunięto plik X, dodano plik Y".
+- Jedna linia na dole opisu: model + "wykonane przez agenta OpenCode".
+
+## Em dash ban (OBOWIĄZKOWE)
+
+- NIGDY PRZENIGDY nie używaj em dash (U+2014) w czegokolwiek, co zobaczy człowiek: UI, landing, docs, README, PR, commit message, komentarze w kodzie, odpowiedzi do usera. Zamiast tego: kropka, przecinek, dwukropek, nawias, pełne zdania.
+- Spacjonowany myślnik ("x - y") i podwójny łącznik ("x -- y") jako łącznik zdania też pomijaj; pisz pełne zdania.
+- Przed oddaniem: sprawdź swój tekst pod kątem `—`. Zero trafień albo wróć i napraw.
 
 ## Tłumaczenia (i18n) - OBOWIĄZKOWE
 
-- Każdy tekst widoczny dla użytkownika (UI, alerty, powiadomienia, accessibility labels) MUSI pochodzić ze słownika `src/i18n`. Zero hardcodu PL w komponentach/ekranach/serwisach.
-- Wspierane języki: polski, angielski, niemiecki, ukraiński (`pl` / `en` / `de` / `uk`). `pl.ts` jest WZORCEM typów (`Strings = typeof pl`): brak klucza w en/de/uk to błąd kompilacji, nie pusty label.
-- Komponenty: `const s = useStrings()` z `src/i18n` (re-render przy zmianie języka za darmo). Synchroniczne helpery/serwisy: `tr()` (wewnątrz funkcji!) albo `getLocaleSync()` + statyczny import słowników. Nigdy `require()` i nigdy cache'owanie słownika na module.
-- Liczby mnogie i interpolacje to FUNKCJE w słowniku (pl/uk: 1 / 2–4 / 5+, en/de: 1 / reszta). Nie pisz własnych reguł mnogości w komponentach.
-- Język: `expo-localization` (locale systemowe Androida) + nadpisanie per-app w Ustawieniach → Język (Systemowy/PL/EN/DE/UK), persist w kv-store (`initLocale()` w `_layout`).
-- Dodając string: dopisz klucz do `pl.ts`, przetłumacz w `en/de/uk.ts`, użyj w UI. `npx tsc --noEmit` wyłapie braki.
+- Każdy tekst usera (UI, alerty, powiadomienia, a11y labels) MUSI pochodzić ze słownika `src/i18n`. Zero hardcode PL/EN w komponentach/ekranach/serwisach.
+- Języki: pl / en / de / uk. `pl.ts` jest wzorcem typów (`Strings = typeof pl`); brak klucza w en/de/uk = błąd kompilacji.
+- Komponenty: `useStrings()` z `src/i18n`. Serwisy synchroniczne: `tr()` albo `getLocaleSync()` + statyczne importy słowników. Bez `require()`, bez cache słownika na module.
+- Interpolacje i liczby mnogie to FUNKCJE w słowniku (pl/uk: 1 / 2-4 / 5+; en/de: 1 / reszta). Nie pisz własnych reguł mnożenia w komponentach.
+- Dodanie stringa: klucz do `pl.ts` → tłumaczenia w `en/de/uk.ts` → użycie w UI. `npx tsc --noEmit` wyłapie braki.
 
-## Anti-Slop - OBOWIĄZKOWE (UI / teksty / docs / git messages)
+## Anti-Slop (UI / teksty / docs) - OBOWIĄZKOWE
 
-- NIGDY PRZENIGDY NIE UŻYWAJ EM DASHES
-- NIE UŻYWAJ LIVE BADGES TYPU MIGAJĄCA KROPECZKA I PILL CHYBA ŻE CIE O TO POPROSZE
-- Lokalne skille (werbowane 1:1 z upstream): `.agents/skills/antislop/` (core, v3.2.20) + `antislop-ui`, `antislop-copywriting`, `antislop-human`, `antislop-layoutmobile`, `antislop-code`. Upstream MIT: `https://github.com/miqdadbadjuber/Anti-Slop`. Update = przekopiuj foldery `skills/*` z release i podbij wersję tutaj.
-- KIEDY: ZAWSZE, gdy dotykasz CZEGOKOLWIEK co widzi użytkownik/inni ludzie - bez wyjątków i bez pytania o tryb:
-  - UI aplikacji (`app/`, `src/components/`, style, animacje, stany puste/błędy/loading),
-  - landing (`landing/`),
-  - docs (`docs/`, `*.md`, komentarze w kodzie widoczne w review),
-  - teksty user-facing: `src/i18n/*`, alerty, powiadomienia, accessibility labels,
-  - git messages, opisy PR, review comments.
-- CO (tryb ZAWSZE `during`, nie pytaj `during/after`): przed edytą przeczytaj przez Read tool core `.agents/skills/antislop/SKILL.md` + skill(e) z mapowania poniżej, stosuj zasady W TRAKCIE pisania, przed oddaniem przejdź Delivery Gate z core (raport PASS/FAIL w 4 blokach).
-- Mapowanie (ładuj core + każdy pasujący):
-  - UI / visual (kolor, layout, komponenty, dekoracje, motion): `antislop-ui`,
-  - copy / tekst (nagłówki, CTA, tone, landing, PR/opis, docs): `antislop-copywriting`,
-  - dostępność (kontrast, klawiatura, focus, stany): `antislop-human`,
-  - mobile / responsive (breakpointy, grid, overflow, tap targety): `antislop-layoutmobile`,
-  - komentarze w kodzie: `antislop-code` (czyści tylko komentarze, nigdy kodu).
-- Relacja z resztą AGENTS.md: anti-slop to FILTR, nie style guide (R-37). Kierunek wizualny/kopia pochodzi z briefu użytkownika; bez kierunku UI oznacz jako draft. Teksty PL/EN/DE/UK dalej MUSZĄ iść przez `src/i18n` (pl.ts = wzorzec, `useStrings()` / `tr()` w serwisach) - copywriting-skill nie omija i18n. Nie wymyślaj faktów/liczb/testimoniali (R-17/R-18/R-36/R-38).
+- Zanim edytujesz cokolwiek widocznego dla ludzi: przeczytaj core `.agents/skills/antislop/SKILL.md` + pasujące skille z mapy poniżej. Stosuj zasady W TRAKCIE pisania, na koniec raport PASS/FAIL z Delivery Gate w 4 blokach.
+- Mapowanie:
+  - UI / visual (kolor, layout, komponenty, motion): `antislop-ui`
+  - copy / tekst (nagłówki, CTA, landing, PR, docs, i18n): `antislop-copywriting`
+  - dostępność (kontrast, klawiatura, focus): `antislop-human`
+  - mobile / responsive (breakpointy, grid, tap targety): `antislop-layoutmobile`
+  - komentarze w kodzie: `antislop-code`
+- Anti-slop to filtr, nie style guide. Kierunek wizualny podaje brief usera; bez kierunku oznacz jako "draft". Nie wymyślaj faktów, liczb ani testimoniali.
+- Live badges (migająca kropka, pill) tylko na wyraźną prośbę.
 
-## Commity na bieżąco
+## Skille: zasady (metoda Theo)
 
-- Commituj zmiany na bieżąco, w małych logicznych porcjach, zamiast odkładać wszystko na koniec sesji.
-- Przed commitem sprawdź `git status --short`, `git diff` oraz `git log --oneline -10`, stage'uj tylko zamierzone pliki, nigdy nie commituj sekretów.
-- używaj conventional commits po polsku
-- NIGDY PRZENIGDY NIE COMMITUJ NA BRANCHACH dev, main, nightly i prod bezpośrednio.
-- Nie amenduj nieudanych commitów po hookach, napraw problem i zrób nowy commit.
-- Nie pushuj, nie twórz PR-ów i nie zmieniaj remote'ów, chyba że użytkownik wyraźnie o to poprosi.
+- Description w SKILL.md = trigger ("Use when user asks X, Y, Z"), nie opis zawartości. Description jest zawsze w kontekście; treść ładuje się dopiero przy użyciu.
+- Powtarzalny błąd agenta dwa razy → najpierw napraw architekturą/linterem/CI, potem jedna linia w tym pliku, dopiero potem skill.
+- Skille `.agents/skills/*` są werbowane 1:1 z upstream Anti-Slop (core v3.2.20, MIT: https://github.com/miqdadbadjuber/Anti-Slop); lokalnie wycięte em dashes, description działa jak trigger. Update = przekopiuj `skills/*` z release, podbij wersję.
+- Inne skille: `react-modernization`, `react-native-architecture`, `transit-benchmark`, `typescript-pro`, `ui-ux-designer`, `ui-visual-validator`.
+
+## Branchy (OBOWIĄZKOWE)
+
+- Flow: `feature/*` lub `fix/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok PR-em, nigdy direct push. Branch `t3/*` z T3 Code też działa jako feature branch.
+- Feature branch bazuje na `dev`; PR do `dev` otwierasz od razu.
+- Wszystkie cztery (dev, main, nightly, prod) chronione: push tylko przez PR.
+- Buildy GitHub startują WYŁĄCZNIE na push do `nightly` i `prod` (`.github/workflows/build-apk.yml`). Push do dev/main ich nie uruchamia; dev testuje się przez APK z Azure Pipelines.
+- `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, prerelease, APK `kilometr-nightly.apk`.
+- `prod`: tag `vX.Y.Z` (auto-semver z commitów), normalny release: APK `kilometr-prod.apk`, AAB na Google Play, niepodpisane IPA do sideloadu. Release notes z conventional commitów.
+- iOS build wyłącznie z `prod` (`.github/workflows/build-ipa.yml`).
+- Landing: GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`), celuje w `releases/latest`.
+- Trzymaj otwarty PR `dev` -> `main` z todo listą (`- [ ]`) feature'ów: jeden element = jedna testowalna rzecz, tylko co wymaga manualnych testów, link do feature PR w elemencie. Nie zamykaj go i nie merguj automatycznie.
+- NIGDY nie merguj automatycznie do `nightly`/`prod`; merge robi człowiek ręcznie.
+
+## Buildy
+
+- Nie buduj APK lokalnie bez pozwolenia usera.
+
+## Commity
+
+- Commituj na bieżąco, małymi logicznymi kawałkami, conventional commits po polsku.
+- Przed commitem: `git status --short`, `git diff`, `git log --oneline -10`; stage'uj tylko zamierzone pliki; nigdy sekrety.
+- NIGDY nie commituj wprost na dev/main/nightly/prod. Nie amenduj po nieudanych hookach: napraw i zrób nowy commit.
+- Nie pushuj, nie twórz PR i nie zmieniaj remote bez wyraźnej prośby usera.
+
+## Utrzymywanie tego pliku
+
+- Ten plik żyje: nadpisuj regułę, gdy nie działa albo świat się zmienił.
+- Twój powtarzalny błąd: po drugim razie dopisz jedną linię do właściwej sekcji, zamiast tłumaczyć się na nowo w każdym wątku.

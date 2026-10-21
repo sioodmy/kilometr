@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#fafbf9" />
+    <meta name="theme-color" content="#101713" />
     <meta name="description" content="%PAGE_DESCRIPTION%" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./icon.png" />
@@ -17,20 +17,6 @@
     <meta property="og:image" content="https://sioodmy.github.io/kilometr/social-preview.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <title>%PAGE_TITLE%</title>
-    <script>
-      try {
-        const preference = localStorage.getItem('kilometr.website.theme');
-        document.documentElement.dataset.theme =
-          preference === 'dark' ||
-          (preference !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
-            ? 'dark'
-            : 'light';
-      } catch {
-        document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light';
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>

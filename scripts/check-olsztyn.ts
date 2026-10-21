@@ -6,7 +6,7 @@
  * Uruchomienie: `npm run check:olsztyn`
  *
  * Samego pobrania feedu tu nie ma (sieć w teście jednostkowym to niestabilny
- * fundament) — chronimy czystą logikę na zamrożonych próbkach wzorowanych
+ * fundament) - chronimy czystą logikę na zamrożonych próbkach wzorowanych
  * na realnych źródłach (itemy z zdzit.olsztyn.eu/feed z 2026-10-15,
  * struktura podstrony artykułu z tego samego dnia, linie i typy z GTFS
  * ZDZiT). Warstwę live pokrywa sekcja z zaślepionym fetch na końcu.
@@ -28,7 +28,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n== ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -309,7 +309,7 @@ async function main(): Promise<void> {
 
   console.log(`\n${'='.repeat(52)}`);
   if (failures.length === 0) {
-    console.log(`WSZYSTKO OK — ${passed} asercji`);
+    console.log(`WSZYSTKO OK - ${passed} asercji`);
     process.exit(0);
   }
   console.log(`${failures.length} NIEUDANYCH z ${passed + failures.length}:`);

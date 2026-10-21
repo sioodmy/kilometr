@@ -12,7 +12,7 @@ import expo.modules.notifications.service.delegates.ExpoSchedulingDelegate
  * Świadomie nie robimy deep linku do aplikacji: użytkownik kończy śledzenie
  * jednym dotknięciem i oczekuje, że powiadomienie zniknie, a nie że
  * wskoczy mu ekran połączeń. Akcję obsługujemy natywnie, a JS dowiaduje się
- * o niej przy najbliższym aktywnym ticku albo przy starcie aplikacji — do
+ * o niej przy najbliższym aktywnym ticku albo przy starcie aplikacji - do
  * tego czasu powiadomienia już nie ma, więc nie ma też okna, w którym
  * śledzenie udawałoby, że trwa.
  */
@@ -21,6 +21,8 @@ class TripActionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != ACTION_STOP) return
     LocalStopSignal.mark(context)
+    TransferProtection.clear(context)
+    TransferPresentation.cancel(context)
     TripAlerts.cancel(context)
     try {
       context.stopService(Intent(context, LiveTripService::class.java))
@@ -60,7 +62,7 @@ internal object TripAlerts {
  * Jednokierunkowy kanał „natywny zakończył śledzenie → JS jeszcze nie wie".
  *
  * Zapis w SharedPreferences, bo intencja do odbiorcy nie wraca do procesu
- * aplikacji. Zakładka z flagą, którą JS zjada raz — inaczej zatrzymanie
+ * aplikacji. Zakładka z flagą, którą JS zjada raz - inaczej zatrzymanie
  * powtórzyłoby się po każdym restarcie procesu.
  */
 internal object LocalStopSignal {

@@ -1,4 +1,4 @@
-// Deutsche Übersetzungen. Muss `Strings` (typeof pl) erfüllen — ein fehlender
+// Deutsche Übersetzungen. Muss `Strings` (typeof pl) erfüllen - ein fehlender
 // Schlüssel oder eine falsche Funktionssignatur ist ein Compile-Fehler.
 import type { Strings } from './pl';
 import { de as landing } from './landing/de';
@@ -7,6 +7,22 @@ import { de as share } from './share/de';
 export const de: Strings = {
   landing,
   share,
+  transferGuard: {
+    title: 'Umstiegsbegleitung',
+    waiting: 'Die Überwachung ist aktiv. Wir warten auf die GPS-Bestätigung deiner Fahrt.',
+    buffer: (line: string, n: number) => `Umstieg auf ${line} · ${n} Min. Reserve`,
+    riskTitle: (line: string) => `Der Umstieg auf ${line} ist gefährdet`,
+    riskBody: 'Wir suchen einen anderen Umstieg.',
+    stayOn: (line: string) => `Bleib in ${line}`,
+    changedBody: (line: string, stop: string) => `Steige an der Haltestelle ${stop} in ${line} um.`,
+    noAlternative: 'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
+    unavailable: 'Umstieg kann nicht bewertet werden',
+    unavailableBody: 'Wir warten auf eine genaue Position entlang der Route. Der aktuelle Plan bleibt sichtbar.',
+    routingError: 'Die Umstiegsbegleitung konnte nicht vorbereitet werden. Versuche es erneut.',
+    rerouting: 'Ein neuer Umstieg wird gesucht',
+    next: (line: string, stop: string) => `${line} · ${stop}`,
+    channel: 'Geänderte Umstiege',
+  },
   common: {
     retry: 'Erneut versuchen',
     cancel: 'Abbrechen',
@@ -49,7 +65,7 @@ export const de: Strings = {
     editCardSub: 'gespeicherte Orte',
     historyTitle: 'Letzte Orte',
     historyEmptyTitle: 'Keine letzten Orte',
-    historyEmptyBody: 'Suche eine Verbindung — sie erscheint hier als Schnellziel.',
+    historyEmptyBody: 'Suche eine Verbindung, sie erscheint hier als Schnellziel.',
     historyEmptyAction: 'Verbindung suchen',
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
     gpsTitle: 'Mein Standort (GPS)',
@@ -335,13 +351,27 @@ export const de: Strings = {
     closeSheetA11y: 'Stadtauswahl schließen',
     cityActiveBadge: 'Aktiv',
   },
+  personalization: {
+    colors: 'App-Farben',
+    system: 'Vom Hintergrundbild',
+    systemDescription: 'Standardfarben von Material You',
+    wallpaperUnavailable: 'Hintergrundfarben nicht verfügbar. Standardpalette aktiv.',
+    teal: 'Türkis',
+    blue: 'Blau',
+    green: 'Grün',
+    violet: 'Violett',
+    rose: 'Rosa',
+    orange: 'Orange',
+    saving: 'Farbe wird gespeichert…',
+    saveError: 'Die Farbe konnte nicht gespeichert werden. Wähle sie erneut aus.',
+  },
   settings: {
     planningTitle: 'Reiseplanung',
     offlineTitle: 'Fahrplan und Karten',
     notificationsSummary: 'Reiseverfolgung und Meldungen',
     backupSummary: 'Gespeicherte Orte, Verlauf und Einstellungen',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
-    languageSummary: (language: string) => `Sprache: ${language}`,
+    appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Routeneinstellungen zurücksetzen',
     resetRoutesBody: 'Stellt die Standardeinstellungen für die Reiseplanung wieder her.',
     decrease: (label: string) => `Verringern: ${label}`,
@@ -392,7 +422,7 @@ export const de: Strings = {
         : `Die Karte kannst du in ${days} Tagen erneut laden. Einmal geladen reicht lange.`,
     backupTitle: 'Deine Daten',
     backupHint:
-      'Gespeicherte Orte, letzte Fahrten und Einstellungen in einer Datei. Exportiere vor dem Handywechsel — oder einfach zur Sicherheit.',
+      'Gespeicherte Orte, letzte Fahrten und Einstellungen in einer Datei. Exportiere vor dem Handywechsel, oder einfach zur Sicherheit.',
     backupExcludeHint: 'Fahrplan, Cache und Daten zur Kursverfolgung bleiben auf dem Gerät.',
     backupExport: 'In Datei exportieren',
     backupImport: 'Aus Datei importieren',
@@ -409,7 +439,7 @@ export const de: Strings = {
     backupExportFailFallback: 'Bitte gleich noch einmal versuchen.',
     backupImportConfirmTitle: 'Diese Daten importieren?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nGespeicherte Orte und Fahrten werden mit deinen vorhandenen zusammengeführt — nichts geht verloren. Einstellungen werden überschrieben.`,
+      `${summary}\n\nGespeicherte Orte und Fahrten werden mit deinen vorhandenen zusammengeführt, nichts geht verloren. Einstellungen werden überschrieben.`,
     backupImportAction: 'Importieren',
     backupImportCancel: 'Abbrechen',
     backupImportDoneTitle: 'Daten importiert',
@@ -746,7 +776,7 @@ export const de: Strings = {
       'Keine Meldungen zu Linien aus Verbindungen, die du in den letzten zwei Wochen geprüft hast.',
     filterNoHistoryTitle: 'Noch keine Linien',
     filterNoHistoryBody:
-      'Suche eine Verbindung in der App — danach siehst du hier Meldungen zu diesen Linien.',
+      'Suche eine Verbindung in der App, danach siehst du hier Meldungen zu diesen Linien.',
   },
   newsSvc: {
     justNow: 'gerade eben',
@@ -1093,7 +1123,7 @@ export const de: Strings = {
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} Haltestellen • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
   },
   compass: {
     journeyTitle: 'Navigation unterwegs',
@@ -1222,6 +1252,9 @@ export const de: Strings = {
     delayTitle: (line: string, eta: string) => `Verspätung • ${line} • ${eta}`,
   },
   ios: {
+    startupTitle: 'App-Fehler',
+    startupHint: 'Kilometr kann nicht fortfahren. Teile den Bericht, um bei der Fehlersuche zu helfen.',
+    startupShare: 'Teilen',
     locationPermission: 'Erlaube den Standortzugriff, um Verbindungen ab deinem Standort zu finden.',
     liveTitle: 'Live-Aktivität',
     liveHint: 'Fahrzeit auf dem Sperrbildschirm und in der Dynamic Island. Daten werden aktualisiert, solange die App aktiv ist.',

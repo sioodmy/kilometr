@@ -1,6 +1,6 @@
 ---
 name: antislop
-description: "Anti Slop: Rules for AI Coding Agents. The core filter. Load always to stop generic AI slop."
+description: "Core anti-slop filter. Load before writing or editing anything a human will see (UI, copy, docs, PR text) to stop generic AI slop."
 allowed-tools: Read Write Edit Glob Grep
 ---
 # antislop
@@ -154,23 +154,23 @@ A design is **done** only when all three are true:
 
 "Not slop" is the floor, not the goal. A design passes when it meets five preference-agnostic criteria. Use these as questions, not recipes.
 
-### C-1 — Intentionality
+### C-1 - Intentionality
 
 Every visual and copy decision has a reason you can articulate. If the only reason is "it's the AI default", that is a red flag: revisit the decision.
 
-### C-2 — Functional Completeness
+### C-2 - Functional Completeness
 
 Every interactive element works, or it does not exist. A button that cannot do anything is a defect, not decoration.
 
-### C-3 — Content-Driven Composition
+### C-3 - Content-Driven Composition
 
 Every section exists because the product's content needs it, not because every AI landing page has one. Remove sections that only fill a template.
 
-### C-4 — Resilience
+### C-4 - Resilience
 
 The UI holds up in every state (empty, loading, error), every theme you ship, every breakpoint, and keyboard-only use.
 
-### C-5 — Evidence Over Claims
+### C-5 - Evidence Over Claims
 
 Anything presented as fact (testimonials, statistics, security claims) is real and verifiable, or it is not shown at all.
 
@@ -221,7 +221,7 @@ These are the most common patterns found in AI-generated designs. Use this table
 
 | Pattern | Telltale Signs |
 |---------|---------------|
-| **Em Dash (—)** | "Fast, secure — and built for developers." |
+| **Em Dash (U+2014)** | "Fast, secure [em dash] and built for developers." |
 | **Generic CTAs** | Get Started, Learn More, Try Now, Explore, Discover |
 | **AI Marketing Buzzwords** | AI Powered, Revolutionary, Next Generation, Seamless, Cutting Edge |
 | **Fake Statistics** | 10K+ Users, 99.9% Uptime, 500M Requests, 120+ Countries |
@@ -278,15 +278,15 @@ All 38 rules still apply. They are grouped into three tiers so the mechanism is 
 
 These rules protect honesty, function, and accessibility. Breaking any of them is a FAIL regardless of purpose.
 
-#### R-02 — Copywriting
+#### R-02 - Copywriting
 
-- **FORBIDDEN**: em dash character (`—`) in any text
+- **FORBIDDEN**: em dash character (U+2014) in any text
 - Use comma (`,`), period (`.`), colon (`:`), or parentheses `()` instead
 - Text must feel natural and human
 - **Scope**: the ban governs text the agent writes. A user's own writing sample is a direction, not agent copy, so a sample that uses em dashes goes through R-37's conflict protocol: name the character, name the rule, ask. Never keep or cut them silently.
-- **Carve-out**: documentation of this rule is exempt: the numbered section headings in this file (`R-XX — Title` rules and `C-1` to `C-5` principles), the em dash example in Part 1, the rule's own definition, any Delivery Gate item that quotes it, and the `Em Dashes` section in the copywriting skill (`skills/antislop-copywriting/SKILL.md`). These are documentation structure, not UI text.
+- **Carve-out**: documentation of this rule is exempt: the numbered section headings in this file (`R-XX - Title` rules and `C-1` to `C-5` principles), the em dash example in Part 1, the rule's own definition, any Delivery Gate item that quotes it, and the `Em Dashes` section in the copywriting skill (`skills/antislop-copywriting/SKILL.md`). These are documentation structure, not UI text.
 
-#### R-03 — Mobile Responsiveness
+#### R-03 - Mobile Responsiveness
 
 - **REQUIRED**: mobile layout must be perfect, not an afterthought
 - No horizontal overflow
@@ -297,19 +297,19 @@ These rules protect honesty, function, and accessibility. Breaking any of them i
 - Spacing stays consistent across all breakpoints
 - **Responsiveness is part of the design, not an add-on.**
 
-#### R-17 — Data & Numbers
+#### R-17 - Data & Numbers
 
 - **FORBIDDEN**: numbers and statistics without a real source
 - If real data is not available, display no numbers at all
 - Empty is better than deceptive
 
-#### R-18 — Testimonials
+#### R-18 - Testimonials
 
 - **FORBIDDEN**: AI avatars, random names, random job titles, fictional reviews
 - If you have no real testimonials, do not create a testimonials section
 - Use social proof that can be verified
 
-#### R-23 — Clarification & Visual Assets
+#### R-23 - Clarification & Visual Assets
 
 - **REQUIRED**: before creating any asset without explicit instructions, ask or use a clear placeholder
 - If there is an opportunity to ask, confirm the following first:
@@ -325,14 +325,14 @@ These rules protect honesty, function, and accessibility. Breaking any of them i
 - **Never generate assets as if they are the final version without confirmation**
 - If explicit instructions already exist, generate directly without asking again
 
-#### R-24 — Navigation
+#### R-24 - Navigation
 
 - **FORBIDDEN**: placing links in the navbar for pages or sections that do not exist in the design
 - Every navigation item must have a real, accessible destination
 - If a feature has not been built yet, do not include it in the navbar, or clearly label it as coming soon
 - The navbar must reflect the structure of content that actually exists
 
-#### R-25 — Color Contrast
+#### R-25 - Color Contrast
 
 - **REQUIRED**: all text must meet the minimum WCAG AA contrast standard
   - Normal text: minimum contrast ratio of 4.5:1
@@ -341,7 +341,7 @@ These rules protect honesty, function, and accessibility. Breaking any of them i
 - **FORBIDDEN**: white text on a gradient that is light in some areas
 - Always test contrast across the entire area the text passes over, not just at a single point
 
-#### R-26 — Interactive Elements
+#### R-26 - Interactive Elements
 
 Every interactive element must have a real behavior, or be removed:
 
@@ -356,7 +356,7 @@ Every interactive element must have a real behavior, or be removed:
 
 If an element genuinely cannot have a destination yet, remove it instead of shipping a dead control. A placeholder is acceptable only with a clear `// TODO` comment in code AND a visible label to the user (e.g. "Coming soon"). See "Functional Patterns" below.
 
-#### R-27 — UI States
+#### R-27 - UI States
 
 - **REQUIRED**: every UI that displays data must have at least three states:
   - **Empty state**: the view when there is no data yet
@@ -365,14 +365,14 @@ If an element genuinely cannot have a destination yet, remove it instead of ship
 - A UI designed only for the ideal condition is not ready for real use
 - These states are not bonuses; they are part of a complete design
 
-#### R-28 — FAQ
+#### R-28 - FAQ
 
 - **FORBIDDEN**: FAQ containing template questions that are not specific to the product
 - Every question in the FAQ must address a real concern of that product's users
 - If you do not know what questions are actually asked, do not create an FAQ section
 - A generic FAQ does more damage to trust than having no FAQ at all
 
-#### R-32 — Keyboard Accessibility
+#### R-32 - Keyboard Accessibility
 
 - **REQUIRED**: all interactive elements must be reachable and operable by keyboard
   - `Tab` and `Shift+Tab` navigation must work logically following visual order
@@ -382,19 +382,19 @@ If an element genuinely cannot have a destination yet, remove it instead of ship
 - **FORBIDDEN**: removing the focus outline with `outline: none` or `outline: 0` without replacing it with a better custom focus indicator
 - A UI that can only be used with a mouse is an unfinished UI
 
-#### R-33 — No File/CSS Patching via Scripts
+#### R-33 - No File/CSS Patching via Scripts
 
 - **FORBIDDEN**: implementing or altering UI features by running an external script that rewrites source files or CSS with string replacement
 - Build features directly in the source code where they belong
 - A feature added by a patch script (e.g. a Python script editing `.css` files) is broken by design and must be rewritten in source
 
-#### R-34 — Every Theme You Ship Must Work
+#### R-34 - Every Theme You Ship Must Work
 
 - If you ship a theme toggle, BOTH modes must be fully functional
 - Contrast, colors, and every component must be verified in each mode
 - **FORBIDDEN**: shipping a mode where base styles, fonts, or layout break
 
-#### R-35 — Verify Before You Deliver
+#### R-35 - Verify Before You Deliver
 
 - Run or build the app before declaring the task done; a design that has never been run is not finished
 - Check the console for errors after running
@@ -404,13 +404,13 @@ If an element genuinely cannot have a destination yet, remove it instead of ship
 - Exercise every theme and the mobile breakpoints while clicking through
 - Report the click-through as evidence with the deliverable, element by element (e.g. "Signup -> opens /signup with no console errors", "empty form -> shows validation", "mobile menu -> opens and closes"). A PASS claimed without that recorded list is not a PASS
 
-#### R-36 — No Fabricated Claims
+#### R-36 - No Fabricated Claims
 
 - **FORBIDDEN**: inventing security, compliance, or performance claims ("SOC 2 compliant", "ISO 27001", "300% faster") without real evidence
 - **FORBIDDEN**: fake testimonials, fake statistics, fake names (see R-17, R-18)
 - If there is no real data, show no claim
 
-#### R-37 — Design Direction Required
+#### R-37 - Design Direction Required
 
 - Before building a UI, load the style direction: `DESIGN.md` or explicit brand guidance from the user
 - If no direction exists, ask the user, or state clearly that the design was built **without direction** and is a **draft**, not a deliverable
@@ -422,7 +422,7 @@ If an element genuinely cannot have a destination yet, remove it instead of ship
 - Record the answer in one line: if the owner keeps it, proceed and note the override; if they drop it, apply the rule
 - A design built without direction is a draft, not a shippable result
 
-#### R-38 — Real Content or Honest Placeholder
+#### R-38 - Real Content or Honest Placeholder
 
 - Every claim, feature, testimonial, statistic, nav item, or visual element must come from real information OR be an explicitly labeled placeholder
 - **FORBIDDEN**: fabricating content that looks realistic (fake testimonials, invented features, fake statistics, ghost links, fictional team or people)
@@ -433,71 +433,71 @@ If an element genuinely cannot have a destination yet, remove it instead of ship
 
 Each technique below is allowed. It FAILS only when it appears as a default without a stated purpose, or when the reason for it is not written down. Every rule has the same shape: FORBIDDEN as default without purpose; ALLOWED when it serves hierarchy/identity and the reason is written; dose caps for the excessive cases.
 
-#### R-01 — Color & Gradients
+#### R-01 - Color & Gradients
 
 - **FORBIDDEN as default without purpose**: blue-to-purple, blue-to-cyan, purple-to-pink gradients as primary colors, harsh or rainbow gradients, purple-and-black schemes, neon or pastel palettes, radial orbs, colored glow backgrounds, neon blue buttons
 - **ALLOWED** when the color/gradient is part of an established brand identity OR serves a stated hierarchy goal, with the reason written down
 - A gradient that separates one level of hierarchy from another is craft; the same gradient covering the whole page is slop. The technique is not the problem, the purpose is
 
-#### R-04 — Icons
+#### R-04 - Icons
 
 - **FORBIDDEN as default without purpose**: Sparkle, Star, Magic, Lightning, Diamond, Orb, Robot as feature icons
 - **FORBIDDEN as default without purpose**: an icon set chosen for its recognizable library look (Lucide-style thin rounded strokes) instead of relevance to the content
 - Icons must be **genuinely relevant** to the content they represent, and the relevance written down when the icon is a generic glyph
 - If no appropriate icon exists, it is better to use none
 
-#### R-06 — Typography
+#### R-06 - Typography
 
 - **FORBIDDEN as default without purpose**: large monospace fonts used purely for "terminal" aesthetics, uppercase labels with extreme letter-spacing (`HOW IT WORKS`, `FEATURES`)
 - Choose typeface based on brand character, not because it is the AI model's default pick (Inter, Geist, Space Grotesk for sans; Geist Mono, JetBrains Mono, Fira Code for mono), and write the reason
 - Typography must **improve readability** and reflect the product's character
 
-#### R-07 — Background
+#### R-07 - Background
 
 - **FORBIDDEN as default without purpose**: grid squares, blueprint lines, graph paper, dot patterns as a background
 - Use texture or pattern only if it genuinely supports the product's specific visual identity, with the reason written down
 
-#### R-08 — Button Arrows
+#### R-08 - Button Arrows
 
 - Arrows (`→`, `↗`) are not the default identity for every button
 - If used, ensure the size is proportional and serves a clear visual purpose, and write that purpose down
 - Not every CTA needs an arrow
 
-#### R-09 — Badges
+#### R-09 - Badges
 
 - **FORBIDDEN as default without purpose**: capsule badges containing "AI Powered", "Beta", "New", "Secure", "Fast" without context
 - Badges may only be used if **functionally needed** (a real status or real label), with the need written down
 - Avoid combining: capsule + thin border + glow + small dot + uppercase all at once
 
-#### R-10 — Glassmorphism
+#### R-10 - Glassmorphism
 
 - Glassmorphism is an **accent** only, not the character of the entire UI
 - **Dose cap**: blur/backdrop-filter on at most 1-2 elements; **FORBIDDEN** on navbar, cards, modals, and sidebar simultaneously
 
-#### R-12 — Shadow
+#### R-12 - Shadow
 
 - Shadow must support **visual hierarchy**, not make every element float
 - Use shadow selectively as an elevation marker, not as a default for every component, and write the elevation reason down
 
-#### R-13 — Glow
+#### R-13 - Glow
 
 - Glow may only be used as a **focus accent** on a maximum of 1-2 important elements
 - **Dose cap**: **FORBIDDEN** on card + button + badge + icon + background + border simultaneously
 
-#### R-14 — Feature Cards
+#### R-14 - Feature Cards
 
 - **FORBIDDEN as default without purpose**: all cards having identical size, icon, padding, and layout
 - Create visual variation that reflects content hierarchy, and write the hierarchy reason down
 - Not every feature needs to be presented as a card
 
-#### R-19 — Animations
+#### R-19 - Animations
 
 - Animations must have a **clear UX purpose**, and the purpose written down
 - **FORBIDDEN as default without purpose**: every element using Fade Up + Floating + Scale + Bounce simultaneously
 - Motion must match the declared MOTION dial (Part 3): a claimed "cinematic" page must actually move; a claimed "static" page must not
 - Use animation to guide attention, not just to fill the page
 
-#### R-22 — Illustrations
+#### R-22 - Illustrations
 
 - **FORBIDDEN as default without purpose**: Undraw, Storyset, or generic 3D blob character illustrations
 - Illustrations must have a direct connection to the product or content, with the connection written down
@@ -507,7 +507,7 @@ Each technique below is allowed. It FAILS only when it appears as a default with
 
 These are consistency requirements. They stay as-is, with two adjustments: R-05 now references the RHYTHM dial, and R-31 is upgraded to the keystone rule.
 
-#### R-05 — Layout & Page Structure
+#### R-05 - Layout & Page Structure
 
 - **FORBIDDEN**: AI template layouts (Hero + 3 cards, Hero + 6 features, Hero + fake stats, etc.)
 - **FORBIDDEN**: "How It Works" always in 3 steps with round icons and numbers
@@ -521,32 +521,32 @@ These are consistency requirements. They stay as-is, with two adjustments: R-05 
 - Section order must follow the product's narrative flow, not the AI default order (see Craftsmanship Standard C-3)
 - Section composition must match the declared RHYTHM dial (Part 3): if RHYTHM is 3 (varied), sections must visibly vary; if RHYTHM is 1 (uniform), uniformity is a deliberate choice, not an accident
 
-#### R-11 — Border Radius
+#### R-11 - Border Radius
 
 - Use border radius that is **consistent with the defined design system**
 - **FORBIDDEN**: making every element pill-shaped (pill buttons, pill cards, pill inputs, pill badges)
 - Radius variation is a visual hierarchy tool; use it deliberately
 
-#### R-15 — CTA (Call to Action)
+#### R-15 - CTA (Call to Action)
 
 - **FORBIDDEN**: "Get Started", "Learn More", "Try Now", "Explore", "Discover" as default CTAs
 - CTAs must be **specific to the product context and the intended action**
 - Better examples: "Start Your Free Trial", "Watch Live Demo", "Create Free Account"
 
-#### R-16 — Copywriting & Buzzwords
+#### R-16 - Copywriting & Buzzwords
 
 - **FORBIDDEN**: "AI Powered", "Next Generation", "Revolutionary", "Seamless", "Cutting Edge", "Intelligent", "Ultimate", "Powerful", "Effortless"
 - Use **specific language** that explains real benefits
 - Show evidence, not claims
 
-#### R-20 — Visual Identity
+#### R-20 - Visual Identity
 
 - The design must have a strong identity: a specific palette, a typeface chosen for a reason, a unique composition
 - Every section must have a clear hierarchy
 - Layout is built around the actual product content needs
 - Identity comes from deliberate, explained choices, not from adding decoration (see Craftsmanship Standard C-1)
 
-#### R-21 — Dark Mode
+#### R-21 - Dark Mode
 
 - Choose a theme based on brand identity, product type, and target users
 - Developer tools, terminals, and creative tools have strong, legitimate reasons for a dark default. Use that reason, not "dark looks tech"
@@ -554,14 +554,14 @@ These are consistency requirements. They stay as-is, with two adjustments: R-05 
 - **FORBIDDEN**: using this rule (or any rule) as an excuse to skip or defer requested work. If the product should support dark mode, implement it now
 - A theme toggle you ship must work correctly in BOTH modes. A dark mode that breaks the light mode is a defect (see R-34)
 
-#### R-29 — Color Palette
+#### R-29 - Color Palette
 
 - **REQUIRED**: limit the active palette to a maximum of 2-3 core colors + 1 accent color
 - **FORBIDDEN**: using 5+ different colors on one page without a clear design system
 - Neutral colors (white, black, grey) do not count as part of the core palette
 - Palette consistency is the foundation of a strong visual identity
 
-#### R-30 — Do Not Clone Popular Products
+#### R-30 - Do Not Clone Popular Products
 
 - **FORBIDDEN**: building a visual that overall mimics another product without being asked
   - "Make it look like Linear" (unless the user explicitly asks for it)
@@ -571,7 +571,7 @@ These are consistency requirements. They stay as-is, with two adjustments: R-05 
 - Visual references may be used as inspiration, not as a template to copy
 - The product must have its own visual identity, not the identity of another product
 
-#### R-31 — Every Decision Must Have a Reason (Write It Down)
+#### R-31 - Every Decision Must Have a Reason (Write It Down)
 
 Before finishing the design, write a **one-line reason** for every major decision:
 - Why this color?
@@ -655,7 +655,7 @@ The gate has four blocks: Hard Gate (absolute), Purpose-Gate (technique + writte
 
 Before declaring the design done, answer every question below. All answers must be **no**:
 
-- [ ] Is there an em dash (`—`) anywhere in the text, outside the R-02 carve-out and any voice sample the owner approved under R-37? *(R-02)*
+- [ ] Is there an em dash (U+2014) anywhere in the text, outside the R-02 carve-out and any voice sample the owner approved under R-37? *(R-02)*
 - [ ] Is there any horizontal overflow, text escaping its container, or broken layout on mobile? *(R-03)*
 - [ ] Are there any statistics without a real source (10K+ Users, 99.9% Uptime, etc.)? *(R-17)*
 - [ ] Are there any fictional testimonials (AI avatars, random names or job titles)? *(R-18)*

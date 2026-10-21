@@ -1,6 +1,6 @@
 ---
 name: antislop-layoutmobile
-description: "Mobile layout skill for antislop. Use for layouts that reflow across screen sizes, phone to desktop: grids, overflow, tap targets. Load with the core."
+description: "Use when a layout must reflow across screen sizes, phone to desktop: breakpoints, grids, overflow, tap targets. Load with the core."
 allowed-tools: Read Write Edit Glob Grep
 ---
 # antislop-layoutmobile

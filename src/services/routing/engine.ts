@@ -67,7 +67,7 @@ export async function buildTripStops(tripId: string): Promise<LegStop[]> {
       );
     }
   } catch {
-    // ignoruj — fallback niżej
+    // ignoruj - fallback niżej
   }
   return [];
 }
@@ -85,23 +85,24 @@ interface SearchSlices {
 }
 
 /**
- * Buduje wycinek planera dla odjazdu (lub przyjazdu) o rawTargetSec — pełny
+ * Buduje wycinek planera dla odjazdu (lub przyjazdu) o rawTargetSec - pełny
  * czas RAW (pora dnia + offset dni). planConnections i rozgrzewka idą przez
  * TEN SAM kod, żeby rozgrzany indeks był dokładnie tym, na który wyszukiwanie
  * zaraz wpadnie (w tym nocny merge przed 07:00).
  */
-async function buildSearchSlices(rawTargetSec: number, arrivalMode = false): Promise<SearchSlices> {
+export async function buildSearchSlices(rawTargetSec: number, arrivalMode = false): Promise<SearchSlices> {
   const now = new Date();
   // departureTimeSec / arriveBySec mogą wskazywać jutro (DepartureTimeSheet
   // dodaje +86400). RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.
   const dayOffsetSec = Math.floor(rawTargetSec / 86400) * 86400;
-  const departureSec = rawTargetSec % 86400;
+  let departureSec = rawTargetSec % 86400;
+  if (departureSec < 0) departureSec += 86400;
   const targetDate = new Date(now);
   targetDate.setDate(targetDate.getDate() + Math.round(dayOffsetSec / 86400));
   const weekday = targetDate.getDay();
   const dateStr = toDateStr(targetDate);
   // Wycinek horyzontu zamiast pełnej doby: okna RAPTOR-a sięgają +3600 s,
-  // a przesiadkowe nogi jeszcze dalej — bierzemy zapas do +3 h.
+  // a przesiadkowe nogi jeszcze dalej - bierzemy zapas do +3 h.
   // W trybie przyjazdu szukamy od ~2 h przed celem do samego celu.
   const searchStartSec = arrivalMode ? Math.max(0, departureSec - 7200) : departureSec;
   const dayIndex = arrivalMode
@@ -147,7 +148,13 @@ export async function warmupRouting(): Promise<void> {
 }
 
 /** Przystanki kursu TYLKO od boardStop do alightStop (to co użytkownik widzi). */
-function buildLegStops(tripId: string, boardStopId: string, alightStopId: string): LegStop[] {
+export function buildLegStops(
+  tripId: string,
+  boardStopId: string,
+  alightStopId: string,
+  departSec?: number,
+  arriveSec?: number,
+): LegStop[] {
   // Legi pochodzą z aktywnego wycinka, więc kurs jest w pamięci (sync, bez IO).
   const times = gtfsStore.stopTimes.get(tripId);
   if (!times || times.length === 0) return [];
@@ -164,8 +171,32 @@ function buildLegStops(tripId: string, boardStopId: string, alightStopId: string
     };
   });
 
-  const boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
-  const alightIdx = allStops.findIndex((s) => s.stopId === alightStopId);
+  let boardIdx = -1;
+  if (departSec !== undefined) {
+    boardIdx = allStops.findIndex(
+      (s) => s.stopId === boardStopId && s.departSec !== undefined && Math.abs(s.departSec - departSec) <= 120,
+    );
+  }
+  if (boardIdx < 0) {
+    boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
+  }
+
+  let alightIdx = -1;
+  if (arriveSec !== undefined && boardIdx >= 0) {
+    alightIdx = allStops.findIndex(
+      (s, idx) =>
+        idx > boardIdx &&
+        s.stopId === alightStopId &&
+        s.arriveSec !== undefined &&
+        Math.abs(s.arriveSec - arriveSec) <= 120,
+    );
+  }
+  if (alightIdx < 0 && boardIdx >= 0) {
+    alightIdx = allStops.findIndex((s, idx) => idx > boardIdx && s.stopId === alightStopId);
+  }
+  if (alightIdx < 0) {
+    alightIdx = allStops.findIndex((s) => s.stopId === alightStopId);
+  }
 
   if (boardIdx < 0 || alightIdx < 0 || boardIdx >= alightIdx) return allStops;
 
@@ -183,7 +214,7 @@ export interface PlanOptions {
   toId?: string;
   departureTimeSec?: number;
   /**
-   * „Bądź na X” — zamiast „wyjdź o X”. Silnik szuka odjazdów w oknie
+   * „Bądź na X” - zamiast „wyjdź o X”. Silnik szuka odjazdów w oknie
    * ~2 h przed celem i zwraca te z przybyciem <= arriveBySec
    * (posortowane od najpóźniejszego przybycia = najmniej czekania).
    */
@@ -213,7 +244,7 @@ export interface PlanOptions {
   routeStyle?: RouteStyle;
   /**
    * Preferowany przystanek startowy (kotwica). fromLat/fromLon to PRAWDZIWA
-   * pozycja (GPS) — silnik liczy realny spacer do kotwicy i daje jej tylko
+   * pozycja (GPS) - silnik liczy realny spacer do kotwicy i daje jej tylko
    * mały bonus rozstrzygający remisy, zamiast zerować koszt dojścia.
    */
   anchorStopId?: string;
@@ -283,7 +314,7 @@ function sortConnectionsByArrival(connections: Connection[]): Connection[] {
 
 /**
  * Mapowanie RawJourney → Connection (legi, flagi live, czasy finalne).
- * Bez opcji "na piechotę" — tę dokłada wywołujący na samym końcu.
+ * Bez opcji "na piechotę" - tę dokłada wywołujący na samym końcu.
  * Używane i dla emisji progresywnych (po każdym oknie), i dla wyniku finalnego.
  */
 function mapJourneysToConnections(
@@ -322,7 +353,7 @@ function mapJourneysToConnections(
         }
       }
 
-      // Czasy już finalne (efektywne) — prosto z segmentów.
+      // Czasy już finalne (efektywne) - prosto z segmentów.
       const adjDepartSec = seg.departSec;
       const adjArriveSec = seg.arriveSec;
       // Ostatnia noga piesza do celu dziedziczy nazwę celu podróży.
@@ -342,7 +373,7 @@ function mapJourneysToConnections(
       // Intermediate stops: TYLKO board→alight, nie cały kurs
       const intermediateStops =
         seg.type === 'transit' && seg.tripId && seg.fromStopId && seg.toStopId
-          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId)
+          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId, seg.departSec, seg.arriveSec)
           : undefined;
 
       legs.push({
@@ -373,7 +404,7 @@ function mapJourneysToConnections(
     const transitLegs = legs.filter((l) => l.mode !== 'walk');
     if (transitLegs.length === 0) continue;
 
-    // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) — dokładamy
+    // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) - dokładamy
     // tylko offset dnia (zapytanie o jutro): RAPTOR liczył porą dnia.
     const adjDepartureSec = rj.departureSec + ctx.dayOffsetSec;
     const adjArrivalSec = rj.arrivalSec + ctx.dayOffsetSec;
@@ -412,6 +443,65 @@ function mapJourneysToConnections(
   return deduplicateConnections(connections);
 }
 
+/**
+ * Wyznacza kandydatów przystanków początkowych (origins) wokół pozycji startu.
+ * Celowo szeroko (wszystko do maxWalkM): dalszy przystanek z bezpośrednim
+ * odjazdem wygrywa z najbliższym słupkiem wymagającym 3 przesiadek.
+ * Kotwica jako ułatwienie może wyjść minimalnie poza limit (do +20%),
+ * ale odległa kotwica (np. 1+ km) nie może wypierać bliższych przystanków.
+ */
+export function resolveCandidateOrigins(
+  fromLat: number,
+  fromLon: number,
+  maxWalkM: number,
+  userWalkSpeed: number,
+  anchor?: { stopId?: string; lat?: number; lon?: number },
+): Array<{ stopId: string; walkM: number; walkSec: number }> {
+  const originNearby = gtfsStore.findNearestStops(fromLat, fromLon, maxWalkM, MAX_ACCESS_STOPS);
+  const origins = originNearby.map((n) => {
+    const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
+    return {
+      stopId: n.stop.stop_id,
+      walkM: n.distanceM,
+      walkSec: Math.max(30, Math.round(effectiveDist / userWalkSpeed)),
+    };
+  });
+
+  if (
+    (anchor?.stopId || (anchor?.lat !== undefined && anchor?.lon !== undefined)) &&
+    Number.isFinite(fromLat) && Number.isFinite(fromLon)
+  ) {
+    let anchorStop: { stop_id: string; stop_lat: number; stop_lon: number } | undefined;
+    if (anchor?.stopId) {
+      const byId = gtfsStore.stops.get(anchor.stopId);
+      if (byId) anchorStop = { stop_id: byId.stop_id, stop_lat: byId.stop_lat, stop_lon: byId.stop_lon };
+    }
+    if (!anchorStop && anchor?.lat !== undefined && anchor?.lon !== undefined) {
+      const near = gtfsStore.findNearestStops(anchor.lat, anchor.lon, 400, 1);
+      if (near.length > 0) {
+        anchorStop = { stop_id: near[0].stop.stop_id, stop_lat: near[0].stop.stop_lat, stop_lon: near[0].stop.stop_lon };
+      }
+    }
+    if (anchorStop) {
+      const trueDistM = Math.round(
+        distanceMeters(fromLat, fromLon, anchorStop.stop_lat, anchorStop.stop_lon)
+      );
+      if (trueDistM <= maxWalkM * 1.2) {
+        const trueWalkSec = Math.max(30, Math.round((trueDistM * WALK_DETOUR_FACTOR) / userWalkSpeed));
+        const bonusWalkSec = Math.max(30, trueWalkSec - 30);
+        const existing = origins.find((o) => o.stopId === anchorStop!.stop_id);
+        if (existing) {
+          existing.walkSec = Math.min(existing.walkSec, bonusWalkSec);
+        } else {
+          origins.push({ stopId: anchorStop.stop_id, walkM: trueDistM, walkSec: bonusWalkSec });
+        }
+      }
+    }
+  }
+
+  return origins;
+}
+
 export async function planConnections(options: PlanOptions): Promise<Connection[]> {
   await gtfsStore.load();
 
@@ -422,7 +512,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // uruchamiana tym samym kodem, co samo wyszukiwanie.
   const arrivalMode = options.arriveBySec !== undefined && Number.isFinite(options.arriveBySec);
   const rawTarget = Math.max(
-    0,
+    -86400 * 2,
     Math.round(arrivalMode ? (options.arriveBySec as number) : (options.departureTimeSec ?? currentSec)),
   );
   const slices = await buildSearchSlices(rawTarget, arrivalMode);
@@ -443,55 +533,17 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const cost = costParamsFor(options.routeStyle);
 
   // 1. Resolve candidate boarding stops near origin.
-  // Celowo szeroko (wszystko do maxWalkM): dalszy przystanek z bezpośrednim
-  // odjazdem wygrywa z najbliższym słupkiem wymagającym 3 przesiadek, a waga
-  // spaceru w koszcie pilnuje, żeby nie kazać chodzić bez potrzeby.
-  // fromLat/fromLon to PRAWDZIWA pozycja (GPS/home) — NIE współrzędne kotwicy.
-  const originNearby = gtfsStore.findNearestStops(options.fromLat, options.fromLon, maxWalkM, MAX_ACCESS_STOPS);
-  const origins = originNearby.map((n) => {
-    const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
-    return {
-      stopId: n.stop.stop_id,
-      walkM: n.distanceM,
-      walkSec: Math.max(30, Math.round(effectiveDist / userWalkSpeed)),
-    };
-  });
-
-  // Kotwica jako UŁATWIENIE, nie żelazna zasada: upewniamy się, że preferowany
-  // przystanek jest w kandydatach (nawet tuż za limitem), z PRAWDZIWYM dystansem
-  // liczonym od fromLat/fromLon. Mały bonus -30 s rozstrzyga remisy przy
-  // chybotaniu GPS, ale nie zeruje kosztu dojścia (stary błąd: origin
-  // przepisywany na współrzędne przystanku dawał walkSec ~30 s i premiował
-  // absurdalne "wsiądź na 1 przystanek, resztę idź z buta").
-  if (
-    (options.anchorStopId || (options.anchorStopLat !== undefined && options.anchorStopLon !== undefined)) &&
-    Number.isFinite(options.fromLat) && Number.isFinite(options.fromLon)
-  ) {
-    let anchorStop: { stop_id: string; stop_lat: number; stop_lon: number } | undefined;
-    if (options.anchorStopId) {
-      const byId = gtfsStore.stops.get(options.anchorStopId);
-      if (byId) anchorStop = { stop_id: byId.stop_id, stop_lat: byId.stop_lat, stop_lon: byId.stop_lon };
-    }
-    if (!anchorStop && options.anchorStopLat !== undefined && options.anchorStopLon !== undefined) {
-      const near = gtfsStore.findNearestStops(options.anchorStopLat, options.anchorStopLon, 400, 1);
-      if (near.length > 0) {
-        anchorStop = { stop_id: near[0].stop.stop_id, stop_lat: near[0].stop.stop_lat, stop_lon: near[0].stop.stop_lon };
-      }
-    }
-    if (anchorStop) {
-      const trueDistM = Math.round(
-        distanceMeters(options.fromLat, options.fromLon, anchorStop.stop_lat, anchorStop.stop_lon)
-      );
-      const trueWalkSec = Math.max(30, Math.round((trueDistM * WALK_DETOUR_FACTOR) / userWalkSpeed));
-      const bonusWalkSec = Math.max(30, trueWalkSec - 30);
-      const existing = origins.find((o) => o.stopId === anchorStop!.stop_id);
-      if (existing) {
-        existing.walkSec = Math.min(existing.walkSec, bonusWalkSec);
-      } else {
-        origins.push({ stopId: anchorStop.stop_id, walkM: trueDistM, walkSec: bonusWalkSec });
-      }
-    }
-  }
+  const origins = resolveCandidateOrigins(
+    options.fromLat,
+    options.fromLon,
+    maxWalkM,
+    userWalkSpeed,
+    {
+      stopId: options.anchorStopId,
+      lat: options.anchorStopLat,
+      lon: options.anchorStopLon,
+    },
+  );
 
   // 2. Resolve candidate alighting stops near destination
   const destNearby = gtfsStore.findNearestStops(options.toLat, options.toLon, maxWalkM, MAX_ACCESS_STOPS);
@@ -560,7 +612,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Brak górnego limitu wsiadania w RAPTOR-ze: „pierwszy kurs po przybyciu"
   // bywa wiele godzin później (np. zapytanie 07:20 → wsiadanie 23:29, bo to
   // pierwszy kurs danego wzorca na tym przystanku). Wszystko ponad +2 h od
-  // startu wyszukiwania to nie propozycja dla użytkownika — odrzucamy od razu,
+  // startu wyszukiwania to nie propozycja dla użytkownika - odrzucamy od razu,
   // żeby takie kursy nie psuły listy wariantów (też częściowej w onProgress).
   const MAX_BOARD_AHEAD_SEC = 7200;
 
@@ -587,7 +639,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
         rawJourneys.push(j);
       }
     }
-    // Progres: po każdym oknie wydaj to, co mamy — UI dokłada wiersze
+    // Progres: po każdym oknie wydaj to, co mamy - UI dokłada wiersze
     // "po kolei" zamiast czekać na całość. await ustępuje wątek JS,
     // żeby FlatList zdążyła się przemalować między oknami.
     if (options.onProgress && rawJourneys.length > 0) {
@@ -610,7 +662,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // 4. Map into Connection model
   const connections = arrivedByTarget(mapJourneysToConnections(filtered, options, mapCtx));
 
-  // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) — jeśli prosto
+  // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) - jeśli prosto
   // jest w zasięgu spaceru z ustawień, dokładamy ją do listy.
   const directM = Math.round(
     distanceMeters(options.fromLat, options.fromLon, options.toLat, options.toLon)

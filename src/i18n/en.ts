@@ -1,4 +1,4 @@
-// English dictionary. Must satisfy `Strings` (typeof pl) — a missing key
+// English dictionary. Must satisfy `Strings` (typeof pl) - a missing key
 // or a wrong function signature is a compile error, not an empty label.
 import type { Strings } from './pl';
 import { en as landing } from './landing/en';
@@ -7,6 +7,22 @@ import { en as share } from './share/en';
 export const en: Strings = {
   landing,
   share,
+  transferGuard: {
+    title: 'Transfer protection',
+    waiting: 'Protection is on. Waiting for GPS to confirm your ride.',
+    buffer: (line: string, n: number) => `Transfer to ${line} · ${n} min to spare`,
+    riskTitle: (line: string) => `You may miss your transfer to ${line}`,
+    riskBody: 'Looking for another transfer.',
+    stayOn: (line: string) => `Stay on ${line}`,
+    changedBody: (line: string, stop: string) => `Transfer to ${line} at ${stop}.`,
+    noAlternative: 'No feasible alternative found. You may miss the current transfer. We will check again.',
+    unavailable: 'Cannot assess your transfer',
+    unavailableBody: 'Waiting for an accurate position on your route. Your current plan is still shown.',
+    routingError: 'Could not prepare transfer protection. Please try again.',
+    rerouting: 'Finding a new transfer',
+    next: (line: string, stop: string) => `${line} · ${stop}`,
+    channel: 'Transfer changes',
+  },
   common: {
     retry: 'Try again',
     cancel: 'Cancel',
@@ -336,13 +352,27 @@ export const en: Strings = {
     closeSheetA11y: 'Close city selection',
     cityActiveBadge: 'Active',
   },
+  personalization: {
+    colors: 'App colors',
+    system: 'From wallpaper',
+    systemDescription: 'Default Material You colors',
+    wallpaperUnavailable: 'Wallpaper colors unavailable. Using the default palette.',
+    teal: 'Teal',
+    blue: 'Blue',
+    green: 'Green',
+    violet: 'Purple',
+    rose: 'Pink',
+    orange: 'Orange',
+    saving: 'Saving color…',
+    saveError: 'Could not save the color. Try selecting it again.',
+  },
   settings: {
     planningTitle: 'Journey planning',
     offlineTitle: 'Timetable and maps',
     notificationsSummary: 'Journey tracking and alerts',
     backupSummary: 'Saved places, history and settings',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
-    languageSummary: (language: string) => `Language: ${language}`,
+    appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Reset journey preferences',
     resetRoutesBody: 'This restores the default journey planning settings.',
     decrease: (label: string) => `Decrease: ${label}`,
@@ -407,7 +437,7 @@ export const en: Strings = {
     backupExportFailFallback: 'Please try again in a moment.',
     backupImportConfirmTitle: 'Import this data?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nSaved places and trips are merged with what you already have — nothing is lost. Settings are overwritten.`,
+      `${summary}\n\nSaved places and trips are merged with what you already have. Nothing is lost. Settings are overwritten.`,
     backupImportAction: 'Import',
     backupImportCancel: 'Cancel',
     backupImportDoneTitle: 'Data imported',
@@ -1084,7 +1114,7 @@ export const en: Strings = {
     fromPrefix: 'from ',
     toPrefix: 'to ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} stops • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
+      `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
   },
   compass: {
     journeyTitle: 'Journey navigation',
@@ -1211,6 +1241,9 @@ export const en: Strings = {
     delayTitle: (line: string, eta: string) => `Delayed • ${line} • ${eta}`,
   },
   ios: {
+    startupTitle: 'App error',
+    startupHint: 'Kilometr cannot continue. Share the report to help find the cause of the error.',
+    startupShare: 'Share',
     locationPermission: 'Allow location access to find journeys from your position.',
     liveTitle: 'Live Activity',
     liveHint: 'Journey time on the Lock Screen and Dynamic Island. Data updates while the app is active.',

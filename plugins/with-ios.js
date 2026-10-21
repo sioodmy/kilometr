@@ -1,4 +1,4 @@
-const { withInfoPlist, withEntitlementsPlist, withXcodeProject } = require('expo/config-plugins');
+const { CodeGenerator, IOSConfig, withAppDelegate, withInfoPlist, withEntitlementsPlist, withXcodeProject } = require('expo/config-plugins');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -9,12 +9,28 @@ module.exports = function withIOS(config) {
     ? config.version
     : require('../app.json').expo.version;
   const build = config.ios?.buildNumber || '1';
+  config = withAppDelegate(config, (mod) => {
+    if (mod.modResults.language !== 'swift') throw new Error('Kilometr requires a Swift AppDelegate');
+    mod.modResults.contents = CodeGenerator.mergeContents({
+      src: mod.modResults.contents,
+      newSrc: '    KilometrStartupDiagnostics.install()',
+      tag: 'kilometr-startup-diagnostics',
+      anchor: /let delegate = ReactNativeDelegate\(\)/,
+      offset: 0,
+      comment: '//',
+    }).contents;
+    return mod;
+  });
   config = withInfoPlist(config, (mod) => {
     mod.modResults.CFBundleShortVersionString = version;
     mod.modResults.CFBundleVersion = build;
     mod.modResults.NSSupportsLiveActivities = true;
     mod.modResults.NSLocationWhenInUseUsageDescription =
       require('../src/i18n/native/en.json').ios.NSLocationWhenInUseUsageDescription;
+    const nativeStrings = require('../src/i18n/native/en.json').ios;
+    for (const key of ['KilometrStartupTitle', 'KilometrStartupHint', 'KilometrStartupShare']) {
+      mod.modResults[key] = nativeStrings[key];
+    }
     mod.modResults.NSAppTransportSecurity = {
       ...mod.modResults.NSAppTransportSecurity,
       NSAllowsLocalNetworking: true,
@@ -32,6 +48,10 @@ module.exports = function withIOS(config) {
     const folder = path.join(root, TARGET);
     fs.mkdirSync(folder, { recursive: true });
     const source = path.join(mod.modRequest.projectRoot, 'modules/kilometr-tracking/ios');
+    const appName = IOSConfig.XcodeUtils.getProjectName(mod.modRequest.projectRoot);
+    const diagnostics = path.join(appName, 'KilometrStartupDiagnostics.swift');
+    fs.copyFileSync(path.join(__dirname, 'ios/KilometrStartupDiagnostics.swift'), path.join(root, diagnostics));
+    IOSConfig.XcodeUtils.addBuildSourceFileToGroup({ filepath: diagnostics, groupName: appName, project });
     fs.copyFileSync(path.join(source, 'TripAttributes.swift'), path.join(folder, 'TripAttributes.swift'));
     fs.copyFileSync(path.join(source, 'extension/TripLiveActivity.swift'), path.join(folder, 'TripLiveActivity.swift'));
     fs.writeFileSync(path.join(folder, `${TARGET}-Info.plist`), `<?xml version="1.0" encoding="UTF-8"?>

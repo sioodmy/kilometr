@@ -9,7 +9,7 @@ import { uk } from '../i18n/uk';
 
 const SETTINGS_DICTS: Record<string, Strings> = { pl, en, de, uk };
 
-/** Słownik pod bieżące locale — do synchronicznych helperów formatujących. */
+/** Słownik pod bieżące locale - do synchronicznych helperów formatujących. */
 function tr(): Strings {
   return SETTINGS_DICTS[getLocaleSync()] ?? pl;
 }
@@ -188,7 +188,7 @@ export async function loadSettings(): Promise<RoutingSettings> {
       cached = clampSettings(parsed);
     }
   } catch {
-    // storage niedostępny — zostają defaulty
+    // storage niedostępny - zostają defaulty
   }
   loaded = true;
   notify();

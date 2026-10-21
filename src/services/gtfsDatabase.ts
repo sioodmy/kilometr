@@ -1,5 +1,5 @@
 // Lokalny magazyn GTFS w expo-sqlite (v57 API: openDatabaseAsync).
-// Telefon nie trzyma rozkładu w Mapach jak serwer — pyta SQLite z indeksami,
+// Telefon nie trzyma rozkładu w Mapach jak serwer - pyta SQLite z indeksami,
 // więc stop_times (~mln wierszy) nie musi wchodzić w całości do RAM.
 //
 // Schemat celowo minimalny (tylko to, czego potrzebuje routing/search):
@@ -172,7 +172,7 @@ export function endGtfsSwap(): void {
 
 /**
  * Zamyka uchwyt bazy (przed podmianą pliku .db na nowy z serwera).
- * Po replace plik trzeba otworzyć od nowa — zrobi to getGtfsDb().
+ * Po replace plik trzeba otworzyć od nowa - zrobi to getGtfsDb().
  * Bez zamknięcia nadpisany plik = `database disk image is malformed`
  * albo blokada na Androidzie.
  */
@@ -371,7 +371,7 @@ export interface NearestStopRow {
   distanceM: number;
 }
 
-/** Najbliższe przystanki — bounding box w SQL, dokładny Haversine w JS. */
+/** Najbliższe przystanki - bounding box w SQL, dokładny Haversine w JS. */
 export async function findNearestStops(
   lat: number,
   lon: number,
@@ -408,7 +408,7 @@ export interface StopSearchHit {
   lat: number;
   lon: number;
   score: number;
-  /** liczba obsłużonych odjazdów — przystanki z większą wagą wyżej */
+  /** liczba obsłużonych odjazdów - przystanki z większą wagą wyżej */
   weight: number;
 }
 
@@ -542,7 +542,7 @@ export async function poiCount(): Promise<number> {
 
 /**
  * Kandydaci POI po tanim LIKE (ranking robi JS: fuzzy + kara za dystans).
- * Samo zawężenie — szybko nawet na tysiącach wierszy.
+ * Samo zawężenie - szybko nawet na tysiącach wierszy.
  */
 export async function findPoiCandidates(query: string, limit = 60): Promise<PoiRow[]> {
   const q = query.trim().toLowerCase();

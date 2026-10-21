@@ -1,5 +1,8 @@
 {
   "ios": {
-    "NSLocationWhenInUseUsageDescription": "Дозвольте доступ до геолокації, щоб шукати маршрути від вашого місця."
+    "NSLocationWhenInUseUsageDescription": "Дозвольте доступ до геолокації, щоб шукати маршрути від вашого місця.",
+    "KilometrStartupTitle": "Помилка застосунку",
+    "KilometrStartupHint": "Kilometr не може продовжити роботу. Поділіться звітом, щоб допомогти знайти причину помилки.",
+    "KilometrStartupShare": "Поділитися"
   }
 }

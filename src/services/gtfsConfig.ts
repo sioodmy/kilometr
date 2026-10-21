@@ -18,7 +18,7 @@ function activeCity() {
 //   na dobę, a pojedynczy użytkownik generowałby 4 tys. samym pollingiem.
 // - Adresy/POI: Nominatim + Overpass (HTTPS, z nagłówkiem User-Agent)
 //
-// Limity: GTFS-RT nie istnieje dla wrocławskiego MPK — opóźnienia liczymy
+// Limity: GTFS-RT nie istnieje dla wrocławskiego MPK - opóźnienia liczymy
 // sami, dopasowując GPS z bus_position do rozkładu (matcher w liveTracker).
 // Pociągi KD i awaryjny fallback MPK idą przez zbiorkom.live (ZBIORKOM niżej).
 //

@@ -7,13 +7,13 @@ import { fuzzyMatch } from './fuzzy';
 import { Suggestion } from './types';
 import { config } from '../config';
 
-// Pamięciowy cache najczęstszych zapytań (przed SQLite — podpowiedzi "śmigają").
+// Pamięciowy cache najczęstszych zapytań (przed SQLite - podpowiedzi "śmigają").
 const memCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MEM_CACHE_TTL_MS = 10 * 60 * 1000;
 const MEM_CACHE_MAX = 300;
 
 // Generacja zapytań: gdy użytkownik pisze, starsze zapytania still waiting
-// na rate-limit Nominatim są przestarzałe — zwracają od razu same przystanki
+// na rate-limit Nominatim są przestarzałe - zwracają od razu same przystanki
 // GTFS zamiast blokować kolejkę i opóźniać aktualne zapytanie.
 let searchGen = 0;
 
@@ -53,7 +53,7 @@ export async function searchSuggestions(
 
   const db = getDb();
 
-  // 1. Lokalne źródła (synchroniczne, in-memory — zawsze natychmiast):
+  // 1. Lokalne źródła (synchroniczne, in-memory - zawsze natychmiast):
   // przystanki GTFS + indeks miejsc (POI) Wrocławia. Liczone ZAWSZE świeżo,
   // także przy trafieniu w cache Nominatim.
   ensurePoiIndex(); // leniwy trigger odświeżania Overpass w tle, nie blokuje
@@ -77,7 +77,7 @@ export async function searchSuggestions(
   const localSuggestions = [...stopSuggestions, ...poiSuggestions];
 
   // 2. Nominatim: najpierw cache (pamięć, potem SQLite), potem sieć.
-  // Przestarzałe zapytanie nie dostaje slotu rate-limitu i zwraca [] —
+  // Przestarzałe zapytanie nie dostaje slotu rate-limitu i zwraca []-
   // frontend i tak je anulował, a pusta odpowiedź nie nadpisze nic gorszego.
   // Sieć omijamy też gdy lokalny indeks już daje dobre wyniki, a query nie
   // wygląda na adres (adresy z numerami są domeną Nominatim).
@@ -104,7 +104,7 @@ export async function searchSuggestions(
     const needNetwork = looksLikeAddress || localSuggestions.length < 5;
     if (needNetwork && isFresh()) {
       nominatimSuggestions = await searchNominatim(q, isFresh);
-      if (!isFresh()) return []; // w międzyczasie przyszło nowsze — nic nie zwracaj
+      if (!isFresh()) return []; // w międzyczasie przyszło nowsze - nic nie zwracaj
       if ((nominatimSuggestions?.length ?? 0) > 0) {
         const expiresAt = now + config.nominatim.cacheTtlMs;
         try {
