@@ -263,7 +263,11 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
       await refreshDataStatus();
       return 'cooldown';
     }
-    await importGtfsLegacy();
+    const imported = await importGtfsLegacy(importCityId);
+    if (!imported) {
+      console.log('[DataManager] miasto zmienione w trakcie importu ZIP, przerywam');
+      return 'upToDate';
+    }
     await markTimetableDownloaded();
     // Flaga w dół przed końcowym odświeżeniem - inaczej refresh uzna, że
     // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
@@ -344,7 +348,14 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
  * Fallback, gdy serwer nieskonfigurowany albo sync padł przy pustej bazie.
  * (To ona potrafiła powodować OOM przy unzip na słabszych telefonach.)
  */
-async function importGtfsLegacy(): Promise<void> {
+/**
+ * Stara ścieżka ZIP. Pisze do bazy AKTYWNEGO miasta, więc każdy krok sprawdza
+ * `cityChanged`: zmiana miasta w trakcie (onboarding, przełącznik) inaczej
+ * wpisałaby wrocławski rozkład do bazy Krakowa. Zwraca false, gdy import
+ * przerwano z powodu zmiany miasta.
+ */
+async function importGtfsLegacy(importCityId: string): Promise<boolean> {
+  const cityChanged = () => getActiveCityIdSync() !== importCityId;
   emit({ state: 'downloading', progress: 0 });
   const { uri: zipUri } = await downloadArchiveWithFallback((p) => {
     const progress = p.totalBytes > 0 ? p.bytesWritten / p.totalBytes : 0;
@@ -354,6 +365,7 @@ async function importGtfsLegacy(): Promise<void> {
   const T = dataTr();
   emit({ state: 'importing', step: T.stepUnpack, progress: 0 });
     await unzipGtfs(zipUri);
+    if (cityChanged()) return false;
 
     await clearGtfsTables();
     await prepareForBulkImport();
@@ -383,9 +395,14 @@ async function importGtfsLegacy(): Promise<void> {
     const stopTimesTxt = await readGtfsText('stop_times.txt');
     if (!stopTimesTxt) throw new Error(T.errTimes);
     let done = 0;
+    let stopped = false;
     await parseStopTimesBatched(
       stopTimesTxt,
       async (batch) => {
+        if (cityChanged()) {
+          stopped = true;
+          return;
+        }
         await importStopTimesBatch(batch);
         done += batch.length;
         // Progres orientacyjny: ~1.5M wierszy w stop_times dużego miasta.
@@ -393,6 +410,7 @@ async function importGtfsLegacy(): Promise<void> {
       },
       { batchSize: 5000 },
     );
+    if (stopped || cityChanged()) return false;
 
     emit({ state: 'importing', step: T.stepIndex, progress: 0.97 });
     await finishBulkImport();
@@ -405,4 +423,5 @@ async function importGtfsLegacy(): Promise<void> {
     await setMeta('gtfs_source', 'network');
     await cleanupRawGtfs();
     await resetRoutingStore();
+    return true;
 }
