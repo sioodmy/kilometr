@@ -125,7 +125,7 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
   if (!foundStop && !hadReverse) {
     const last = await loadLastLocation();
     if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
-      result = { title: last.title, address: last.address, lat, lon, stopId: last.stopId, accuracyM };
+      result = { title: last.title, address: last.address, lat, lon, stopId: last.stopId, city: last.city ?? city, accuracyM };
     }
   }
 

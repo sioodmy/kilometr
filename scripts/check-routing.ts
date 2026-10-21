@@ -10,7 +10,7 @@
  */
 
 import { LocalGtfsStore, gtfsStore } from '../src/services/routing/store';
-import { resolveCandidateOrigins } from '../src/services/routing/engine';
+import { resolveCandidateOrigins, buildLegStops, buildSearchSlices } from '../src/services/routing/engine';
 import { runRaptor, costParamsFor } from '../src/services/routing/raptor';
 import { predictDelaySec } from '../src/services/routing/delays';
 import type { RawJourney, RouteStyle } from '../src/services/routing/types';
@@ -285,10 +285,66 @@ head("Range RAPTOR: wszystkie odjazdy w oknie");
   check('najwcześniejszy odjazd na starcie okna', deps[0] <= hms(8, 0), fmt(deps[0] ?? 0));
 }
 
-console.log(`\n${'─'.repeat(60)}`);
-if (failures.length) {
-  console.log(`FAIL: ${failures.length} z ${passed + failures.length}`);
-  for (const f of failures) console.log(`  ${f}`);
-  process.exit(1);
+
+
+async function runAsyncTests() {
+  head("buildSearchSlices: ujemny rawTargetSec (poprzednia doba)");
+  const negativeSec = -900; // 23:45 wczoraj
+  const slices = await buildSearchSlices(negativeSec);
+  check("departureSec to dodatnia pora dnia (85500)", slices.departureSec === 85500, `${slices.departureSec}`);
+  check("dayOffsetSec to -86400 (wczoraj)", slices.dayOffsetSec === -86400, `${slices.dayOffsetSec}`);
+  check("searchStartSec nie jest ujemne", slices.searchStartSec === 85500, `${slices.searchStartSec}`);
+
+  head("buildLegStops: linie okólne i pętle z powtarzającymi się przystankami");
+  const tripLoop = "TRIP_LOOP";
+  gtfsStore.stops.set("P0", { stop_id: "P0", stop_name: "Pętla", stop_lat: 51.0, stop_lon: 17.0 });
+  gtfsStore.stops.set("S1", { stop_id: "S1", stop_name: "Ulica A", stop_lat: 51.01, stop_lon: 17.01 });
+  gtfsStore.stops.set("S2", { stop_id: "S2", stop_name: "Ulica B", stop_lat: 51.02, stop_lon: 17.02 });
+  gtfsStore.stopTimes.set(tripLoop, [
+    { stop_id: "P0", stop_sequence: 1, arrival_sec: 36000, departure_sec: 36000 },
+    { stop_id: "S1", stop_sequence: 2, arrival_sec: 36300, departure_sec: 36300 },
+    { stop_id: "S2", stop_sequence: 3, arrival_sec: 36600, departure_sec: 36600 },
+    { stop_id: "P0", stop_sequence: 4, arrival_sec: 36900, departure_sec: 36900 },
+  ]);
+
+  // Przypadek 1: wsiadanie w trakcie trasy (S2), wysiadanie na pętli końcowej (P0)
+  // Wcześniej: P0 znajdowało się na indeksie 0, więc boardIdx(2) >= alightIdx(0) i funkcja zwracała wszystkie 4 przystanki!
+  const stopsS2toP0 = buildLegStops(tripLoop, "S2", "P0", 36600, 36900);
+  check("wsiadanie na S2, wysiadanie na pętli P0: tylko [S2, P0]", stopsS2toP0.map((s) => s.stopId).join(",") === "S2,P0", stopsS2toP0.map((s) => s.stopId).join(","));
+
+  // Przypadek 2: przejazd całej pętli od P0 do P0
+  const stopsFullLoop = buildLegStops(tripLoop, "P0", "P0", 36000, 36900);
+  check("pełna pętla P0 do P0: 4 przystanki", stopsFullLoop.map((s) => s.stopId).join(",") === "P0,S1,S2,P0", stopsFullLoop.map((s) => s.stopId).join(","));
+
+  // Przypadek 3: trasa z powtórzonym przystankkiem pośrednim A -> B -> C -> B -> D
+  const tripDoubleB = "TRIP_DOUBLE_B";
+  gtfsStore.stops.set("SD", { stop_id: "SD", stop_name: "Ulica D", stop_lat: 51.03, stop_lon: 17.03 });
+  gtfsStore.stopTimes.set(tripDoubleB, [
+    { stop_id: "P0", stop_sequence: 1, arrival_sec: 40000, departure_sec: 40000 },
+    { stop_id: "S1", stop_sequence: 2, arrival_sec: 40300, departure_sec: 40300 },
+    { stop_id: "S2", stop_sequence: 3, arrival_sec: 40600, departure_sec: 40600 },
+    { stop_id: "S1", stop_sequence: 4, arrival_sec: 40900, departure_sec: 40900 },
+    { stop_id: "SD", stop_sequence: 5, arrival_sec: 41200, departure_sec: 41200 },
+  ]);
+
+  // Pasażer wsiada na DRUGIM S1 (odjazd 40900) i jedzie do SD (41200)
+  const stopsSecondS1 = buildLegStops(tripDoubleB, "S1", "SD", 40900, 41200);
+  check("wsiadanie na drugim S1 dopasowane czasem do [S1, SD]", stopsSecondS1.map((s) => s.stopId).join(",") === "S1,SD", stopsSecondS1.map((s) => s.stopId).join(","));
+
+  gtfsStore.stops.delete("P0");
+  gtfsStore.stops.delete("S1");
+  gtfsStore.stops.delete("S2");
+  gtfsStore.stops.delete("SD");
+  gtfsStore.stopTimes.delete(tripLoop);
+  gtfsStore.stopTimes.delete(tripDoubleB);
+
+  console.log(`\n${"─".repeat(60)}`);
+  if (failures.length) {
+    console.log(`FAIL: ${failures.length} z ${passed + failures.length}`);
+    for (const f of failures) console.log(`  ${f}`);
+    process.exit(1);
+  }
+  console.log(`PASS: ${passed} asercji`);
 }
-console.log(`PASS: ${passed} asercji`);
+
+void runAsyncTests();

@@ -10,7 +10,7 @@ import type {
 export interface ISearchService {
   /**
    * `scope` rozdziela anulowanie między niezależnymi polami wyszukiwania-
-   * bez niego zapytanie w jednym polu zabijałooby zapytanie w drugim.
+   * bez niego zapytanie w jednym polu zabijałoby zapytanie w drugim.
    */
   search(
     query: string,
@@ -51,22 +51,11 @@ export interface LocationResult {
   accuracyM?: number | null;
 }
 
-export interface LocationResult {
-  title: string;
-  address: string;
-  lat: number;
-  lon: number;
-  stopId?: string;
-  city?: string | null;
-  /** Promień niepewności fixu w metrach z systemu (null na webe). */
-  accuracyM?: number | null;
-}
-
 export interface ILocationService {
   /**
-   * Pozycja „na teraz": świeży cache, ostatni znany fix albo szybki odczyt
+   * Pozycja „na teraz”: świeży cache, ostatni znany fix albo szybki odczyt
    * Balanced. Nigdy nie czeka na precyzyjny fix, ten dociąga `refineLocation`
-   * już po oddaniu wyniku. `force` pomija cache (ręczne „użyj GPS").
+   * już po oddaniu wyniku. `force` pomija cache (ręczne „użyj GPS”).
    */
   getCurrentLocation(options?: { force?: boolean }): Promise<LocationResult>;
   /** Dokładniejszy odczyt (Accuracy.High) w tle; null, gdy się nie udało. */

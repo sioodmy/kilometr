@@ -56,7 +56,14 @@ const stubs = {
   'expo-file-system/legacy': fsStub,
   'expo-localization': { getLocales: () => [{ languageCode: 'pl' }] },
   'expo-constants': { default: { executionEnvironment: 'standalone', expoConfig: {} } },
-  'expo-sqlite': { openDatabaseAsync: async () => ({}) },
+  'expo-sqlite': {
+    openDatabaseAsync: async () => ({
+      execAsync: async () => undefined,
+      getAllAsync: async () => [],
+      getFirstAsync: async () => null,
+      runAsync: async () => ({ lastInsertRowId: 1, changes: 1 }),
+    }),
+  },
   'expo-sqlite/kv-store': {},
   // api.ts ciągnie expo-location na starcie, a to ładuje cały pakiet `expo`
   // (Expo.fx, expo-asset) i wymaga globali react-native. W testach logiki
