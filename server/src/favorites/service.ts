@@ -199,17 +199,30 @@ export const FavoritesService = {
   listSavedRoutes(): SavedRoute[] {
     const db = getDb();
     const rows = db.prepare('SELECT * FROM saved_routes ORDER BY created_at DESC').all() as any[];
-    return rows.map((r) => ({
-      id: r.id,
-      fromTitle: r.from_title,
-      toTitle: r.to_title,
-      fromLat: r.from_lat,
-      fromLon: r.from_lon,
-      toLat: r.to_lat,
-      toLon: r.to_lon,
-      connection: JSON.parse(r.connection_json),
-      createdAt: r.created_at,
-    }));
+    const routes: SavedRoute[] = [];
+    for (const r of rows) {
+      // Jeden uszkodzony wiersz (starsza wersja apki, ręczny import) nie może
+      // wywalić listy zapisanych tras: pomijamy go zamiast rzucać z map().
+      let connection: any;
+      try {
+        connection = JSON.parse(r.connection_json);
+      } catch (err) {
+        console.warn('[Favorites] saved_routes: pomijam uszkodzony wpis', r.id, err);
+        continue;
+      }
+      routes.push({
+        id: r.id,
+        fromTitle: r.from_title,
+        toTitle: r.to_title,
+        fromLat: r.from_lat,
+        fromLon: r.from_lon,
+        toLat: r.to_lat,
+        toLon: r.to_lon,
+        connection,
+        createdAt: r.created_at,
+      });
+    }
+    return routes;
   },
 
   saveRoute(connection: any): SavedRoute {
