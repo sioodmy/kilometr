@@ -231,7 +231,9 @@ async function proxyPdp(req: Request, env: Env, ctx: ExecutionContext, kind: 'op
       signal: AbortSignal.timeout(20000),
     });
   } catch (err) {
-    return json({ error: 'pdp-unreachable', detail: String(err) }, 502);
+    // Powód zostaje w logach Workera (wrangler tail), do klienta idzie sam kod.
+    console.error('[pdp] fetch failed:', err);
+    return json({ error: 'pdp-unreachable' }, 502);
   }
   if (!res.ok) {
     return json({ error: 'pdp-error', status: res.status }, res.status === 429 ? 429 : 502);

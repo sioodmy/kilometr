@@ -8,8 +8,12 @@ import { vehicleTracker } from '../realtime/tracker';
 import { reverseGeocodeLocation } from '../location/service';
 import { FavoritesService } from '../favorites/service';
 import { gtfsStore } from '../gtfs/store';
+import { apiLimiter } from './rateLimit';
 
 export const apiRouter = Router();
+
+// Każda trasa API przechodzi przez limit ruchu (patrz rateLimit.ts).
+apiRouter.use(apiLimiter);
 
 // In-memory cache for recent planned journeys so /api/routes/:id is instant
 const recentPlannedConnections = new Map<string, any>();
