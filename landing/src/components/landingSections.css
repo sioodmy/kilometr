@@ -1,0 +1,170 @@
+@layer layout {
+  .landing-story {
+    position: relative;
+    isolation: isolate;
+  }
+  .transit-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: clip;
+    pointer-events: none;
+    mask-image: linear-gradient(transparent, #000 7%, #000 87%, transparent);
+  }
+  .transit-backdrop svg {
+    position: absolute;
+    left: 50%;
+    width: max(100%, 900px);
+    height: 100%;
+    transform: translateX(-50%);
+  }
+  .transit-network,
+  .transit-stations {
+    stroke: var(--accent);
+    stroke-width: 1;
+    opacity: 0.16;
+  }
+  .transit-stations {
+    fill: var(--bg);
+  }
+  .transit-trains {
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-dasharray: 9 991;
+    opacity: 0.4;
+  }
+  .transit-journey-progress,
+  .transit-journey-cursor {
+    stroke: var(--accent);
+    stroke-linecap: round;
+    stroke-width: 2;
+    stroke-dasharray: 1;
+    stroke-dashoffset: calc(1 - var(--journey-progress, 0));
+    opacity: 0.45;
+  }
+  .transit-journey-cursor {
+    stroke-width: 6;
+    stroke-dasharray: 0.001 2;
+    stroke-dashoffset: calc(-1 * var(--journey-progress, 0));
+    opacity: 0.7;
+  }
+  .promise {
+    padding-block: clamp(64px, 9vw, 120px) clamp(88px, 11vw, 160px);
+  }
+  .promise h2 {
+    font-size: clamp(2.25rem, 9.5vw, 8.25rem);
+    font-weight: 650;
+    line-height: 1.13;
+    letter-spacing: -0.065em;
+  }
+  .promise-line {
+    display: block;
+    width: fit-content;
+    overflow: clip;
+    padding-block: 0.08em;
+    margin-block: -0.08em;
+  }
+  .promise-line > span {
+    position: relative;
+    display: block;
+    opacity: var(--line-reveal, 1);
+    transform: translateY(var(--line-shift, 0%));
+  }
+  .promise-forever > span {
+    color: var(--accent);
+  }
+  .promise-forever > span::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0.06em;
+    bottom: 0.04em;
+    height: max(2px, 0.025em);
+    background: currentColor;
+    transform: scaleX(var(--line-reveal, 1));
+    transform-origin: left;
+  }
+  .closing {
+    border: 1px solid var(--line);
+    border-radius: 32px;
+    background: var(--surface);
+    padding: clamp(56px, 8vw, 112px) clamp(20px, 5vw, 80px);
+    text-align: center;
+  }
+  .closing h2 {
+    max-width: 20ch;
+    margin-inline: auto;
+    font-size: clamp(2.25rem, 5.5vw, 5rem);
+  }
+  .closing .section-body {
+    max-width: 48ch;
+    margin: 26px auto 0;
+  }
+  .closing-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    width: min(100%, 480px);
+    margin: 34px auto 0;
+  }
+  .closing-actions .button {
+    min-width: 0;
+    min-height: 60px;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: 12px;
+  }
+  .closing-actions :is(svg, .play-symbol) {
+    flex-shrink: 0;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .transit-train {
+      animation: route-travel 28s linear infinite;
+      animation-play-state: paused;
+    }
+    .transit-train:nth-child(even) {
+      animation-duration: 34s;
+      animation-delay: -11s;
+    }
+    .transit-train:nth-child(3n) {
+      animation-duration: 38s;
+      animation-delay: -25s;
+    }
+    .transit-backdrop[data-motion='running'] .transit-train {
+      animation-play-state: running;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .promise-line > span {
+      opacity: 1;
+      transform: none;
+    }
+    .promise-forever > span::after {
+      transform: none;
+    }
+  }
+}
+
+@layer responsive {
+  @media (max-width: 767px) {
+    .transit-backdrop svg {
+      width: 100%;
+    }
+    .closing {
+      border-radius: 24px;
+    }
+  }
+  @media (max-width: 420px) {
+    .closing-actions {
+      gap: 10px;
+    }
+    .closing-actions .button {
+      flex-direction: column;
+      min-height: 92px;
+      padding: 14px 10px;
+      gap: 8px;
+      font-size: 0.8125rem;
+    }
+  }
+}
