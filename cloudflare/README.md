@@ -13,7 +13,7 @@ OOM na słabszych urządzeniach).
 │   Wrocław: HEAD na Open Data → effectiveDate MPK,          │
 │     PDP /data-version → czy rozkład KD się zmienił          │
 │   Kraków: HEAD na 3 feedy ZTP (A/T/M) + HEAD KMŁ           │
-│   1. Jeśli nic nowego → koniec (2–4 requesty, ~1 min)      │
+│   1. Jeśli nic nowego → koniec (2-4 requesty, ~1 min)      │
 │   2. Pobiera ZIP-y feedów + kolej (Wrocław: PDP KD,        │
 │      Kraków: GTFS KMŁ) → buduje kilometr-gtfs.db           │
 │      (node:sqlite, VACUUM, wagi przystanków, meta)         │
@@ -88,7 +88,7 @@ to z cache'em w R2 odczytywanym raz na dobę, nie z proxy na każdy poll.
 ## Strażnik 0 zł (jak spać spokojnie)
 
 **GitHub Actions (prywatne repo: 2000 min/mies. gratis):**
-- Nasze zużycie: rozkłady ~2–5 min/dobę (zwykle ~1 min - skip przy braku
+- Nasze zużycie: rozkłady ~2-5 min/dobę (zwykle ~1 min - skip przy braku
   zmian), APK ~20 min tylko przy pushu z kodem aplikacji, CI ~3 min.
   Razem grubo poniżej limitu.
 - Twarda gwarancja: dopóki nie podepniesz karty i nie podniesiesz limitu
