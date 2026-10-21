@@ -29,12 +29,42 @@ export function buildTripStops(tripId: string): LegStop[] {
 }
 
 /** Przystanki kursu TYLKO od boardStop do alightStop (to co użytkownik widzi). */
-function buildLegStops(tripId: string, boardStopId: string, alightStopId: string): LegStop[] {
+export function buildLegStops(
+  tripId: string,
+  boardStopId: string,
+  alightStopId: string,
+  departSec?: number,
+  arriveSec?: number,
+): LegStop[] {
   const allStops = buildTripStops(tripId);
   if (allStops.length === 0) return [];
 
-  const boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
-  const alightIdx = allStops.findIndex((s) => s.stopId === alightStopId);
+  let boardIdx = -1;
+  if (departSec !== undefined) {
+    boardIdx = allStops.findIndex(
+      (s) => s.stopId === boardStopId && s.departSec !== undefined && Math.abs(s.departSec - departSec) <= 120,
+    );
+  }
+  if (boardIdx < 0) {
+    boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
+  }
+
+  let alightIdx = -1;
+  if (arriveSec !== undefined && boardIdx >= 0) {
+    alightIdx = allStops.findIndex(
+      (s, idx) =>
+        idx > boardIdx &&
+        s.stopId === alightStopId &&
+        s.arriveSec !== undefined &&
+        Math.abs(s.arriveSec - arriveSec) <= 120,
+    );
+  }
+  if (alightIdx < 0 && boardIdx >= 0) {
+    alightIdx = allStops.findIndex((s, idx) => idx > boardIdx && s.stopId === alightStopId);
+  }
+  if (alightIdx < 0) {
+    alightIdx = allStops.findIndex((s) => s.stopId === alightStopId);
+  }
 
   if (boardIdx < 0 || alightIdx < 0 || boardIdx >= alightIdx) return allStops;
 
@@ -87,9 +117,10 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   // departureTimeSec może wskazywać jutro (DepartureTimeSheet dodaje +86400).
   // RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.
-  const rawDep = Math.max(0, Math.round(options.departureTimeSec ?? currentSec));
+  const rawDep = Math.max(-86400 * 2, Math.round(options.departureTimeSec ?? currentSec));
   const dayOffsetSec = Math.floor(rawDep / 86400) * 86400;
-  const departureSec = rawDep % 86400;
+  let departureSec = rawDep % 86400;
+  if (departureSec < 0) departureSec += 86400;
   const dayOffsetDays = Math.round(dayOffsetSec / 86400);
   // Baza "dziś" w Warszawie jako UTC-midnight, żeby przesunięcie o dni i
   // wyliczenie dnia tygodnia nie zależały od lokalnego TZ procesu.
@@ -297,7 +328,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       // Intermediate stops: TYLKO board→alight, nie cały kurs
       const intermediateStops =
         seg.type === 'transit' && seg.tripId && seg.fromStopId && seg.toStopId
-          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId)
+          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId, seg.departSec, seg.arriveSec)
           : undefined;
 
       legs.push({

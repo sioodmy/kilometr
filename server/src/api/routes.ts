@@ -147,8 +147,8 @@ apiRouter.get('/routes', async (req, res) => {
     res.status(400).json({ error: 'Coordinates must be valid numbers' });
     return;
   }
-  if (departureTimeSec !== undefined && (!Number.isFinite(departureTimeSec) || departureTimeSec < 0)) {
-    res.status(400).json({ error: 'departureTimeSec must be a non-negative number' });
+  if (departureTimeSec !== undefined && (!Number.isFinite(departureTimeSec) || departureTimeSec < -86400 * 2 || departureTimeSec > 86400 * 7)) {
+    res.status(400).json({ error: 'departureTimeSec must be a valid number within range' });
     return;
   }
 

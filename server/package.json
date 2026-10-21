@@ -11,7 +11,8 @@
     "build": "tsc",
     "setup": "tsx scripts/setup-data.ts",
     "predev": "npm run setup --silent",
-    "prestart": "npm run setup --silent"
+    "prestart": "npm run setup --silent",
+    "test": "tsx scripts/check-server-routing.ts"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
