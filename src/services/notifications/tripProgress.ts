@@ -57,8 +57,15 @@ function legClock(legs: Leg[], boardIndex: number, departureSec: number): LegClo
   return { departSec, arriveSec };
 }
 
-function toMsAll(secList: number[], now: Date): number[] {
-  return secList.map((s) => toAbsoluteMs(s, now));
+/**
+ * Sekundy od północy → znaczniki ms. Lista jest zakotwiczona na
+ * `anchorSec` (departureSec połączenia): po północy czasy przystanków
+ * potrafią przekroczyć 86400 i osobne "najbliższe wystąpienie" dla
+ * każdego z nich rozjeżdżało podróż o dobę.
+ */
+function toMsAll(secList: number[], now: Date, anchorSec: number): number[] {
+  const anchorMs = toAbsoluteMs(anchorSec, now);
+  return secList.map((s) => anchorMs + Math.round(s - anchorSec) * 1000);
 }
 
 interface ActiveLeg {
@@ -199,8 +206,8 @@ export function computeTripProgress(conn: Connection, input: TripProgressInput =
   const hasTransit = boardIndex >= 0;
 
   const clock = legClock(legs, boardIndex, conn.departureSec);
-  const legDepartMs = toMsAll(clock.departSec, now);
-  const legArriveMs = toMsAll(clock.arriveSec, now);
+  const legDepartMs = toMsAll(clock.departSec, now, conn.departureSec);
+  const legArriveMs = toMsAll(clock.arriveSec, now, conn.departureSec);
 
   const departAtMs = toAbsoluteMs(conn.departureSec, now);
   // Godzina przyjazdu bierzemy z ostatniego odcinka (ma poprawkę na północ);
@@ -360,8 +367,8 @@ export function computeLegTimeline(conn: Connection, now: Date = new Date()): Le
   const legs = conn.legs;
   const boardIndex = firstTransitLegIndex(legs);
   const clock = legClock(legs, boardIndex, conn.departureSec);
-  const departMs = toMsAll(clock.departSec, now);
-  const arriveMs = toMsAll(clock.arriveSec, now);
+  const departMs = toMsAll(clock.departSec, now, conn.departureSec);
+  const arriveMs = toMsAll(clock.arriveSec, now, conn.departureSec);
   return legs.map((leg, index) => ({
     leg,
     index,

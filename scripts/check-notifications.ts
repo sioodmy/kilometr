@@ -213,6 +213,13 @@ expect(
   '14:10',
 );
 expect('sekundy z daty jutrzejszej', hhmm(toAbsoluteMs(25 * 3600, at(14, 0))), '01:00');
+// Regression: jutrzejszy kursor (>= 86400) nie może wracać o dobę przez
+// heurystykę "najbliższe wystąpienie"; tripMonitor widział wtedy "już dotarłeś".
+expect(
+  'jutrzejszy kursor zostaje na jutrze',
+  new Date(toAbsoluteMs(25 * 3600, at(14, 0))).getDate(),
+  16,
+);
 
 // ─── Podróż: dojście → oczekiwanie → jazda → przyjazd ────────────────────
 
