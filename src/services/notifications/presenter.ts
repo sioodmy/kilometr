@@ -33,10 +33,22 @@ import type { NotificationPreferences, TripProgress, TrackedTrip } from './types
  */
 export { ARRIVED_LINGER_MS } from './content';
 
+/**
+ * Ostatni tekst bannera awaryjnego na iOS. Bez tego każdy tick (20-60 s)
+ * robił dismiss + nowe powiadomienie i ten sam banner spadał na ekran
+ * blokady w kółko.
+ */
+let lastFallbackText = '';
+
 async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void> {
   const N = getNotifications();
   if (!N) return;
   const copy = buildTripCopy(p, trip.connection, tr());
+  const fallbackText = `${copy.title}\n${copy.subtitle ?? ''}\n${copy.body}`;
+  if (Platform.OS === 'ios') {
+    if (fallbackText === lastFallbackText) return;
+    lastFallbackText = fallbackText;
+  }
   try {
     if (Platform.OS === 'ios') await N.dismissNotificationAsync(TRACKING_NOTIFICATION_ID);
     // Android nadpisuje pozycję sam, więc zostawiamy Update - nie chcemy okna
@@ -63,6 +75,7 @@ async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void
 async function dismissFallback(): Promise<void> {
   const N = getNotifications();
   if (!N) return;
+  lastFallbackText = '';
   try {
     await N.dismissNotificationAsync(TRACKING_NOTIFICATION_ID);
   } catch {
