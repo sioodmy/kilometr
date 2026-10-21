@@ -15,6 +15,7 @@ import {
   invokeRustSync,
 } from '../../modules/kilometr-raptor';
 import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
+import { AppState, type AppStateStatus } from 'react-native';
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
@@ -128,6 +129,11 @@ class LiveTracker {
   private timer: ReturnType<typeof setInterval> | null = null;
   private restored = false;
   private health = new Map<string, SourceHealth>();
+  /** Czy ticker ma aktywnie chodzić (false po stop(), true po start()). */
+  private wantPoll = false;
+  /** Kto sam tego wymaga, bo działa w tle (śledzenie podróży). Pin > 0 = poll i na tle. */
+  private pinned = 0;
+  private appStateSub: { remove(): void } | null = null;
 
   /**
    * Stan danych live: 'fresh' (mamy świeże opóźnienia), 'stale' (od dawna
@@ -157,11 +163,60 @@ class LiveTracker {
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
   start(): void {
+    this.wantPoll = true;
+    this.ensureAppStateListener();
+    if (this.pinned === 0 && AppState.currentState !== 'active') return;
+    this.armTimer();
+  }
+
+  /** Zatrzymuje ticker: apka ma iść bez polla, dopóki czegoś nie potrzebuje. */
+  stop(): void {
+    this.wantPoll = false;
+    this.disarmTimer();
+  }
+
+  /** Śledzenie podróży potrzebuje polla nawet w tle: pin zamiast twardego start(). */
+  pin(value: boolean): void {
+    this.pinned += value ? 1 : -1;
+    if (this.pinned < 0) this.pinned = 0;
+    this.ensureAppStateListener();
+    if (this.pinned > 0) {
+      this.armTimer();
+      void this.poll();
+    } else if (AppState.currentState !== 'active' || !this.wantPoll) {
+      this.disarmTimer();
+    }
+  }
+
+  /**
+   * Tylko jeden listener na żywotność modułu: w tle ticker ginie (bateria), na
+   * ekranie wraca, jeśli ktoś go właśnie chce. Pinned (śledzenie podróży)
+   * omija pauzę, bo powiadomienia o odjazdach potrzebują świeżych pozycji.
+   */
+  private ensureAppStateListener(): void {
+    if (this.appStateSub) return;
+    this.appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
+        if (this.wantPoll || this.pinned > 0) this.armTimer();
+      } else if (this.pinned === 0) {
+        this.disarmTimer();
+      }
+    });
+  }
+
+  private armTimer(): void {
     if (this.timer) return;
     void this.poll();
     this.timer = setInterval(() => {
       void this.poll();
     }, POLL_MS);
+  }
+
+  private disarmTimer(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
   }
 
   /**

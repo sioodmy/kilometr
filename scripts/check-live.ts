@@ -18,6 +18,7 @@
  */
 
 import { liveTracker, snapshotIsUsable } from '../src/services/liveTracker';
+import { AppState } from 'react-native';
 import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from '../src/services/zbiorkom';
 import { gtfsStore } from '../src/services/routing/store';
 import { locateLiveStopPosition } from '../src/services/vehiclePosition';
@@ -54,6 +55,55 @@ const internals = liveTracker as unknown as {
 
 describe('Stan live zanim cokolwiek przyszło');
 expect('start = unknown', liveTracker.getLiveState(), 'unknown');
+
+// ─── Cykl życia tickera w tle i w foregroundzie ─────────────────────────────
+
+describe('Cykl życia tickera w tle i w foregroundzie');
+const liveInternals = liveTracker as unknown as {
+  timer: unknown;
+  wantPoll: boolean;
+  pinned: number;
+};
+const appState = AppState as unknown as {
+  currentState: string;
+  emit?: (s: string) => void;
+};
+
+liveTracker.stop();
+expect('początkowo wantPoll = false', liveInternals.wantPoll, false);
+expect('początkowo timer = null', liveInternals.timer === null, true);
+
+liveTracker.start();
+expect('po start() wantPoll = true', liveInternals.wantPoll, true);
+expect('po start() w foreground timer aktywny', liveInternals.timer !== null, true);
+
+if (typeof appState.emit === 'function') {
+  appState.emit('background');
+  expect('w tle bez pinu timer jest pauzowany', liveInternals.timer === null, true);
+  expect('w tle wantPoll pozostaje true', liveInternals.wantPoll, true);
+
+  appState.emit('active');
+  expect('po powrocie do foreground timer wraca', liveInternals.timer !== null, true);
+
+  appState.emit('background');
+  expect('ponownie w tle timer pauzowany', liveInternals.timer === null, true);
+
+  liveTracker.pin(true);
+  expect('pin w tle uruchamia timer', liveInternals.timer !== null, true);
+  expect('pinned = 1', liveInternals.pinned, 1);
+
+  liveTracker.pin(false);
+  expect('odpięcie pinu w tle zatrzymuje timer', liveInternals.timer === null, true);
+  expect('pinned = 0', liveInternals.pinned, 0);
+
+  appState.emit('active');
+  expect('powrót do foreground po pinach wznawia timer', liveInternals.timer !== null, true);
+}
+
+liveTracker.stop();
+expect('po stop() timer = null', liveInternals.timer === null, true);
+expect('po stop() wantPoll = false', liveInternals.wantPoll, false);
+
 
 // ─── Okno świeżości nie gryzie się z pollingiem ───────────────────────────
 
