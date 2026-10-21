@@ -1,6 +1,6 @@
 ---
 name: antislop-copywriting
-description: "Copy and text skill for antislop. Use when writing or editing prose: headlines, tone, CTAs, and anti-AI-writing patterns. Load with the core."
+description: "Use when writing or editing any prose people will read: headlines, CTAs, tone, landing text, docs, PR descriptions, i18n strings. Load with the core."
 allowed-tools: Read Write Edit Glob Grep
 ---
 # antislop-copywriting

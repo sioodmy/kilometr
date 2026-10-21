@@ -1,6 +1,6 @@
 ---
 name: transit-benchmark
-description: Benchmark the RAPTOR routing engine against jakdojade.pl and mobilempk (rozkladzik.pl) journey planners. Use when comparing route quality, building OD test batches, debugging arrival gaps, or extending the comparison harness.
+description: "Use when benchmarking the RAPTOR routing engine against jakdojade.pl or mobilempk: route-quality comparison, OD test batches, debugging arrival gaps, harness changes."
 ---
 
 # Transit Benchmark (RAPTOR vs jakdojade vs mobilempk)
