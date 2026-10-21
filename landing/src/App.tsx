@@ -1,22 +1,20 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   ArrowDownToLine,
-  ArrowRight,
   ArrowUpRight,
   Check,
   ChevronDown,
   Coffee,
   Github,
-  Menu,
   Moon,
   Plane,
   Sun,
   TramFront,
   WifiOff,
-  X,
 } from 'lucide-react';
 import { setWebLocale, useStrings, useShareStrings, useWebLocale, type Locale } from './i18n';
 import { Phone } from './components/Phone';
+import { Hero } from './components/Hero';
 import { Coverage } from './components/Coverage';
 import { InformationPage } from './components/InformationPage';
 import {
@@ -40,24 +38,10 @@ function PlayLink({ className = '' }: { className?: string }) {
   );
 }
 
-function Header() {
+function DisplaySettings() {
   const s = useStrings();
   const locale = useWebLocale();
-  const [open, setOpen] = useState(false);
-  const menuButton = useRef<HTMLButtonElement>(null);
   const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-        menuButton.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
-  }, [open]);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -85,76 +69,26 @@ function Header() {
   }
 
   return (
-    <header className="header">
-      <div className="header-inner">
-        <a href="#top" className="brand" onClick={() => setOpen(false)}>
-          <img src="./icon.png" alt="" width="30" height="30" />
-          <span>Kilometr</span>
-        </a>
-        <nav className="desktop-nav" aria-label={s.nav.label}>
-          <a href="#mozliwosci">{s.nav.features}</a>
-          <a href="#zasieg">{s.nav.coverage}</a>
-          <a href={GITHUB_URL}>
-            {s.footer.github}
-            <ArrowUpRight size={12} aria-hidden="true" />
-          </a>
-        </nav>
-        <div className="header-actions">
-          <label className="language-select">
-            <span className="sr-only">{s.language}</span>
-            <select value={locale} onChange={(event) => setWebLocale(event.target.value as Locale)}>
-              <option value="pl">PL</option>
-              <option value="en">EN</option>
-              <option value="de">DE</option>
-              <option value="uk">UK</option>
-            </select>
-            <ChevronDown size={12} aria-hidden="true" />
-          </label>
-          <button
-            className="icon-button theme-button"
-            type="button"
-            onClick={toggleTheme}
-            aria-label={dark ? s.theme.light : s.theme.dark}
-          >
-            {dark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <a className="header-download" href="#pobierz">
-            {s.nav.download}
-            <ArrowDownToLine size={14} aria-hidden="true" />
-          </a>
-          <button
-            className="menu-toggle"
-            type="button"
-            aria-label={open ? s.nav.close : s.nav.menu}
-            aria-expanded={open}
-            aria-controls="mobile-nav"
-            onClick={() => setOpen(!open)}
-            ref={menuButton}
-          >
-            {open ? <X size={19} /> : <Menu size={19} />}
-            <span>{s.nav.menu}</span>
-          </button>
-        </div>
-      </div>
-      <nav id="mobile-nav" className="mobile-nav" hidden={!open} aria-label={s.nav.label}>
-        <a href="#mozliwosci" onClick={() => setOpen(false)}>
-          {s.nav.features}
-          <ArrowRight size={18} />
-        </a>
-        <a href="#zasieg" onClick={() => setOpen(false)}>
-          {s.nav.coverage}
-          <ArrowRight size={18} />
-        </a>
-        <a href="#pobierz" onClick={() => setOpen(false)}>
-          {s.nav.download}
-          <ArrowDownToLine size={18} />
-        </a>
-        <a href={GITHUB_URL}>
-          {s.footer.github}
-          <ArrowUpRight size={18} />
-        </a>
-      </nav>
-    </header>
+    <div className="display-settings">
+      <label className="language-select">
+        <span className="sr-only">{s.language}</span>
+        <select value={locale} onChange={(event) => setWebLocale(event.target.value as Locale)}>
+          <option value="pl">PL</option>
+          <option value="en">EN</option>
+          <option value="de">DE</option>
+          <option value="uk">UK</option>
+        </select>
+        <ChevronDown size={12} aria-hidden="true" />
+      </label>
+      <button
+        className="icon-button theme-button"
+        type="button"
+        onClick={toggleTheme}
+        aria-label={dark ? s.theme.light : s.theme.dark}
+      >
+        {dark ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+    </div>
   );
 }
 
@@ -223,29 +157,7 @@ function Landing() {
   const s = useStrings();
   return (
     <main id="main" tabIndex={-1}>
-      <section className="hero" aria-labelledby="hero-title">
-        <div className="hero-copy">
-          <p className="eyebrow">{s.hero.eyebrow}</p>
-          <h1 id="hero-title">
-            {s.hero.title}
-            <span>{s.hero.accent}</span>
-          </h1>
-          <p className="hero-body">{s.hero.body}</p>
-          <div className="hero-actions">
-            <PlayLink />
-            <a className="text-link" href="#mozliwosci">
-              {s.hero.secondary}
-              <ArrowRight size={17} aria-hidden="true" />
-            </a>
-          </div>
-        </div>
-        <div className="product-stage">
-          <div className="stage-orbit" aria-hidden="true" />
-          <Phone screen="routes" className="hero-phone hero-phone-left" />
-          <Phone screen="trip" className="hero-phone hero-phone-right" />
-          <Phone className="hero-phone hero-phone-center" />
-        </div>
-      </section>
+      <Hero />
 
       <section className="intro section-shell reveal">
         <TramFront className="intro-icon" strokeWidth={1.5} aria-hidden="true" />
@@ -415,7 +327,6 @@ export default function App() {
         {s.skip}
       </a>
       <div id="top" />
-      <Header />
       {shared ? (
         <Suspense
           fallback={
@@ -449,6 +360,7 @@ export default function App() {
         </div>
         <div className="footer-bottom">
           <span>© {new Date().getFullYear()} Kilometr</span>
+          <DisplaySettings />
           <a href={`${GITHUB_URL}/blob/main/LICENSE`}>{s.footer.license}</a>
         </div>
       </footer>

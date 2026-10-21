@@ -20,9 +20,10 @@ export const en: Strings = {
   theme: { light: 'Use light theme', dark: 'Use dark theme' },
   hero: {
     eyebrow: 'Kilometr for Android',
-    title: 'Your city.',
-    accent: 'Your pace.',
-    body: 'Your everyday public transport planner. Now in cities across Poland. Offline, too.',
+    title: 'Your',
+    accent: 'open-source',
+    titleEnd: 'journey planner',
+    body: 'Plan your route, check departures and head into town. Public transport across Poland, even offline. No ads or account needed.',
     play: 'Get it on Google Play',
     secondary: 'See how it works',
   },

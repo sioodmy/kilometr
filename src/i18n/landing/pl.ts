@@ -19,9 +19,10 @@ export const pl = {
   theme: { light: 'Włącz jasny motyw', dark: 'Włącz ciemny motyw' },
   hero: {
     eyebrow: 'Kilometr na Androida',
-    title: 'Twoje miasto.',
-    accent: 'Twój rytm.',
-    body: 'Twój codzienny planer komunikacji miejskiej. Teraz w miastach w całej Polsce. Także offline.',
+    title: 'Twój',
+    accent: 'open-source',
+    titleEnd: 'planer podróży',
+    body: 'Zaplanuj trasę, sprawdź odjazdy i ruszaj w miasto. Komunikacja miejska w całej Polsce, także offline. Bez reklam i bez konta.',
     play: 'Pobierz z Google Play',
     secondary: 'Zobacz, jak działa',
   },

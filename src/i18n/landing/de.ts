@@ -20,9 +20,10 @@ export const de: Strings = {
   theme: { light: 'Helles Design aktivieren', dark: 'Dunkles Design aktivieren' },
   hero: {
     eyebrow: 'Kilometr für Android',
-    title: 'Deine Stadt.',
-    accent: 'Dein Tempo.',
-    body: 'Dein täglicher Begleiter im Nahverkehr. Jetzt in Städten in ganz Polen. Auch offline.',
+    title: 'Dein',
+    accent: 'quelloffener',
+    titleEnd: 'Reiseplaner',
+    body: 'Plane deine Route, prüfe Abfahrten und fahr los. Nahverkehr in ganz Polen, auch offline. Ohne Werbung und ohne Konto.',
     play: 'Bei Google Play herunterladen',
     secondary: 'So funktioniert’s',
   },
