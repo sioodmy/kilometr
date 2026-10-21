@@ -209,7 +209,12 @@ async function writeMerged(partial: Partial<WidgetData>): Promise<void> {
       updatedAt: departuresChanged ? Date.now() : current.updatedAt,
       labels: widgetLabels(),
     };
-    await FileSystem.writeAsStringAsync(path, JSON.stringify(next));
+    // Zapis atomowy jak w storage.writeValue: natywny widget czyta ten plik
+    // co minutę równolegle, a ubity proces w połowie zapisu zostawiał ucięty
+    // JSON i widgety pokazywały "Otwórz aplikację" do następnego merge.
+    const tmp = `${path}.tmp`;
+    await FileSystem.writeAsStringAsync(tmp, JSON.stringify(next));
+    await FileSystem.moveAsync({ from: tmp, to: path });
     await reloadWidgets();
   } catch (err) {
     console.warn('[WidgetSnapshot] merge failed:', err);
