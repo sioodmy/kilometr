@@ -498,23 +498,29 @@ export const RoutingService: IRoutingService = {
   },
 
   async saveRoute(connection: Connection): Promise<void> {
-    try {
-      const all = await getSavedRoutes();
-      all.push({ id: connection.id, savedAt: Date.now(), connection });
-      await kvSet(savedRoutesKey(), JSON.stringify(all));
-    } catch (err) {
-      console.warn('[RoutingService] Failed to save route:', err);
-    }
+    const key = savedRoutesKey();
+    await withRoutesLock(async () => {
+      try {
+        const all = await readSavedRoutesStrict(key);
+        all.push({ id: connection.id, savedAt: Date.now(), connection });
+        await kvSet(key, JSON.stringify(all));
+      } catch (err) {
+        console.warn('[RoutingService] Failed to save route:', err);
+      }
+    });
   },
 
   async deleteSavedRoute(id: string): Promise<void> {
-    try {
-      const all = await getSavedRoutes();
-      const filtered = all.filter(r => r.id !== id);
-      await kvSet(savedRoutesKey(), JSON.stringify(filtered));
-    } catch (err) {
-      console.warn('[RoutingService] Failed to delete saved route:', err);
-    }
+    const key = savedRoutesKey();
+    await withRoutesLock(async () => {
+      try {
+        const all = await readSavedRoutesStrict(key);
+        const filtered = all.filter(r => r.id !== id);
+        await kvSet(key, JSON.stringify(filtered));
+      } catch (err) {
+        console.warn('[RoutingService] Failed to delete saved route:', err);
+      }
+    });
   },
 
   async isRouteSaved(id: string): Promise<boolean> {
@@ -547,9 +553,31 @@ function savedRoutesKey(cityId?: string): string {
 async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
   try {
     const raw = await kvGet(savedRoutesKey());
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Ścisły odczyt do modyfikacji: uszkodzony JSON rzuca zamiast udawać pustą
+ * listę, żeby zapis nie nadpisał danych usera "jedną nową trasą".
+ */
+async function readSavedRoutesStrict(key: string): Promise<{id: string, savedAt: number, connection: Connection}[]> {
+  const raw = await kvGetStrict(key);
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('saved routes is not an array');
+  return parsed;
+}
+
+let routesLock: Promise<unknown> = Promise.resolve();
+function withRoutesLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = routesLock.then(fn, fn);
+  routesLock = run.catch(() => {});
+  return run;
 }
 
 // Miejsca są per-miasto: każde miasto ma własny kubełek (`cityKey`),
