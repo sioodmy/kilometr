@@ -297,6 +297,8 @@
   .hero-city {
     --depth: 1;
     --angle: -8deg;
+    --enter-delay: 380ms;
+    --enter-x: calc(var(--depth) * -64px);
     position: absolute;
     width: 104px;
     transform: translate3d(
@@ -305,6 +307,21 @@
       0
     );
     transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .hero-city:nth-child(2) {
+    --enter-delay: 460ms;
+  }
+  .hero-city:nth-child(3) {
+    --enter-delay: 540ms;
+  }
+  .hero-city:nth-child(4) {
+    --enter-delay: 580ms;
+  }
+  .hero-city:nth-child(5) {
+    --enter-delay: 620ms;
+  }
+  .hero-city:nth-child(6) {
+    --enter-delay: 700ms;
   }
   .hero-city-float {
     transform: rotate(var(--angle));
@@ -946,11 +963,26 @@
     color: var(--accent);
   }
   @media (prefers-reduced-motion: no-preference) {
-    .hero-copy {
-      animation: appear 0.8s both;
+    .hero h1 > span,
+    .hero-body,
+    .hero-actions,
+    .product-stage {
+      animation: hero-rise 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
     }
-    .hero-phone {
-      animation: appear 1s 0.15s both;
+    .hero h1 > span:last-child {
+      animation-delay: 90ms;
+    }
+    .hero-body {
+      animation-delay: 300ms;
+    }
+    .hero-actions {
+      animation-delay: 400ms;
+    }
+    .product-stage {
+      animation-delay: 520ms;
+    }
+    .hero-city-mark {
+      animation: hero-city-enter 1s cubic-bezier(0.2, 0.7, 0.2, 1) var(--enter-delay) both;
     }
     .hero-train {
       animation: route-travel 28s linear infinite;
@@ -965,13 +997,10 @@
     }
     .hero-city-float {
       animation: city-drift 9s ease-in-out infinite alternate;
+      animation-delay: calc(var(--enter-delay) + 1s);
     }
     .hero-city:nth-child(even) .hero-city-float {
       animation-duration: 11s;
-      animation-delay: -5s;
-    }
-    .hero-city:nth-child(3n) .hero-city-float {
-      animation-delay: -3s;
     }
     .hero-train,
     .hero-city-float {
@@ -994,6 +1023,26 @@
     }
     .feature-panel:not([hidden]) .feature-text {
       animation: appear 0.4s both;
+    }
+  }
+  @keyframes hero-rise {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes hero-city-enter {
+    from {
+      opacity: 0;
+      transform: translate(var(--enter-x), -48px) rotate(24deg) scale(0.6);
+    }
+    to {
+      opacity: 1;
+      transform: translate(0, 0) rotate(0deg) scale(1);
     }
   }
   @keyframes appear {

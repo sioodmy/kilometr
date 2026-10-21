@@ -121,7 +121,7 @@ export function JourneyDemo() {
       );
       const revealed = media.matches || progress >= 0.9;
       root.style.setProperty('--ride-opacity', revealed ? '1' : '0');
-      root.style.setProperty('--ride-shift', revealed ? '0px' : '48px');
+      root.style.setProperty('--ride-shift', revealed ? '0px' : '-56px');
       detail.style.visibility = revealed ? 'visible' : 'hidden';
       setRideVisible(detailInView && revealed && !document.hidden);
     };

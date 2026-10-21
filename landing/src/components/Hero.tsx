@@ -142,7 +142,10 @@ export function Hero() {
       </div>
       <div className="hero-copy">
         <h1 id="hero-title">
-          {s.hero.title} <em>{s.hero.accent}</em> <span>{s.hero.titleEnd}</span>
+          <span>
+            {s.hero.title} <em>{s.hero.accent}</em>
+          </span>
+          <span>{s.hero.titleEnd}</span>
         </h1>
         <p className="hero-body">{s.hero.body}</p>
         <div className="hero-actions">
