@@ -996,7 +996,7 @@
       animation-delay: -25s;
     }
     .hero-city-float {
-      animation: city-drift 9s ease-in-out infinite alternate;
+      animation: city-drift 9s ease-in-out infinite;
       animation-delay: calc(var(--enter-delay) + 1s);
     }
     .hero-city:nth-child(even) .hero-city-float {
@@ -1062,10 +1062,14 @@
     }
   }
   @keyframes city-drift {
-    from {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) rotate(var(--angle));
+    }
+    25% {
       transform: translate3d(0, -7px, 0) rotate(calc(var(--angle) - 2.5deg));
     }
-    to {
+    75% {
       transform: translate3d(0, 7px, 0) rotate(calc(var(--angle) + 2.5deg));
     }
   }
