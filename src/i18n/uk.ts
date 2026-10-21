@@ -10,6 +10,12 @@ function isFew(n: number): boolean {
   return last >= 2 && last <= 4 && (teen < 12 || teen > 14);
 }
 
+function prepInCity(cityLoc: string): string {
+  // В українській мові прийменник «в» переходить в «у» перед словами на «в» чи «ф».
+  const startsWithV = /^[вф]/i.test(cityLoc);
+  return startsWithV ? `у ${cityLoc}` : `в ${cityLoc}`;
+}
+
 export const uk: Strings = {
   landing,
   share,
@@ -90,7 +96,7 @@ export const uk: Strings = {
     unsupportedBody: (city: string, supported: string) =>
       `Твоя GPS-локація вказує на ${city}. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedBodyOther: (city: string, active: string) =>
-      `Ти в ${city}, а застосунок налаштовано на ${active}. Зміни місто в налаштуваннях.`,
+      `Ти ${prepInCity(city)}, а застосунок налаштовано на ${active}. Зміни місто в налаштуваннях.`,
     unsupportedBodyUnknown: (supported: string) =>
       `Твоя GPS-локація поза зоною обслуговування. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedHint: 'Вибери початок вручну, щоб знайти сполучення.',
@@ -722,7 +728,7 @@ export const uk: Strings = {
     cityTitle: 'У якому місті їздиш?',
     cityBody:
       'Розклад, мапа й новини підлаштуються під вибір. Місто можна змінити пізніше в налаштуваннях.',
-    citySuggested: (name: string) => `За GPS ти в: ${name}.`,
+    citySuggested: (name: string) => `За GPS ти ${prepInCity(name)}.`,
     cityNoGps: 'Без доступу до GPS вибери місто зі списку.',
     cityLocating: 'Шукаю твою позицію GPS…',
     cityNoMatch: 'GPS не вказує на підтримуване місто. Вибери зі списку.',
@@ -784,8 +790,17 @@ export const uk: Strings = {
     loading: 'Завантаження повідомлень…',
     noConnection: 'Немає з’єднання',
     emptyTitle: 'Немає повідомлень',
-    emptyBody: (name: string) =>
-      `${name} зараз не опублікував жодних ускладнень. Потягни вниз, щоб перевірити знову.`,
+    emptyBody: (name: string) => {
+      const verb =
+        name === 'Варшава' || name === 'Лодзь'
+          ? 'опублікувала'
+          : name === 'Труймясто'
+            ? 'опублікувало'
+            : name === 'Кельце'
+              ? 'опублікували'
+              : 'опублікував';
+      return `${name} зараз не ${verb} жодних ускладнень. Потягни вниз, щоб перевірити знову.`;
+    },
     sectionChanges: 'Зміни на лініях',
     sectionCity: 'Новини',
     sourceMpk: (operator: string) => operator,
@@ -956,7 +971,7 @@ export const uk: Strings = {
       n === 1 ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
   },
   search: {
-    defaultPlaceholder: (city: string) => `Шукай у ${city}…`,
+    defaultPlaceholder: (city: string) => `Шукай ${prepInCity(city)}…`,
     originA11y: (t: string) => `Початок: ${t}. Натисни, щоб змінити.`,
     fromPrefix: 'З:',
     change: 'Змінити',
@@ -965,7 +980,7 @@ export const uk: Strings = {
     resultsFor: (q: string, n: number) => `Результати для „${q}” (${n})`,
     recentTrips: 'Останні поїздки',
     savedA11y: (t: string) => `Збережене місце: ${t}`,
-    searching: (city: string) => `Шукаю у ${city}…`,
+    searching: (city: string) => `Шукаю ${prepInCity(city)}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
       `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,

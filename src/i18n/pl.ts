@@ -10,6 +10,14 @@ function isFew(n: number): boolean {
   return last >= 2 && last <= 4 && (teen < 12 || teen > 14);
 }
 
+function prepInCity(cityLoc: string): string {
+  // W języku polskim przyimek „w” wymienia się na „we” przed wyrazami
+  // zaczynającymi się od spółgłoski „w” lub „f” po której następuje inna spółgłoska (np. Wrocław, Wrzeszcz, Włocławek).
+  const lower = cityLoc.toLowerCase();
+  const startsWithWConsonant = /^w[bcćdfghjklłmnńprstvwzżź]/i.test(lower) || /^f[bcćdfghjklłmnńprstvwzżź]/i.test(lower);
+  return startsWithWConsonant ? `we ${cityLoc}` : `w ${cityLoc}`;
+}
+
 export const pl = {
   landing,
   share,
@@ -89,7 +97,7 @@ export const pl = {
     unsupportedBody: (city: string, supported: string) =>
       `Twoja lokalizacja GPS wskazuje na ${city}. Aktualnie obsługujemy tylko: ${supported}.`,
     unsupportedBodyOther: (city: string, active: string) =>
-      `Jesteś w ${city}, a aplikacja jest ustawiona na ${active}. Zmień miasto w Ustawieniach.`,
+      `Jesteś ${prepInCity(city)}, a aplikacja jest ustawiona na ${active}. Zmień miasto w Ustawieniach.`,
     unsupportedBodyUnknown: (supported: string) =>
       `Twoja lokalizacja GPS jest poza obsługiwanym obszarem. Aktualnie obsługujemy tylko: ${supported}.`,
     unsupportedHint: 'Wybierz punkt startowy manualnie, aby wyszukać połączenie.',
@@ -715,7 +723,7 @@ export const pl = {
     cityTitle: 'W którym mieście jeździsz?',
     cityBody:
       'Rozkład, mapa i aktualności dopasują się do wyboru. Miasto zmienisz później w ustawieniach.',
-    citySuggested: (name: string) => `Według GPS jesteś w ${name}.`,
+    citySuggested: (name: string) => `Według GPS jesteś ${prepInCity(name)}.`,
     cityNoGps: 'Bez dostępu do GPS wybierz miasto z listy.',
     cityLocating: 'Szukam pozycji GPS…',
     cityNoMatch: 'Nie znalazłem Cię w obsługiwanym mieście. Wybierz z listy.',
@@ -771,8 +779,17 @@ export const pl = {
     loading: 'Pobieranie komunikatów…',
     noConnection: 'Brak połączenia',
     emptyTitle: 'Brak komunikatów',
-    emptyBody: (name: string) =>
-      `${name} nie opublikował teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.`,
+    emptyBody: (name: string) => {
+      const verb =
+        name === 'Warszawa' || name === 'Łódź'
+          ? 'opublikowała'
+          : name === 'Trójmiasto'
+            ? 'opublikowało'
+            : name === 'Kielce'
+              ? 'opublikowały'
+              : 'opublikował';
+      return `${name} nie ${verb} teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.`;
+    },
     sectionChanges: 'Zmiany na liniach',
     sectionCity: 'Wiadomości',
     sourceMpk: (operator: string) => operator,
@@ -943,7 +960,7 @@ export const pl = {
       n === 1 ? '1 komunikat' : isFew(n) ? `${n} komunikaty` : `${n} komunikatów`,
   },
   search: {
-    defaultPlaceholder: (city: string) => `Szukaj w ${city}…`,
+    defaultPlaceholder: (city: string) => `Szukaj ${prepInCity(city)}…`,
     originA11y: (t: string) => `Punkt startowy: ${t}. Dotknij, aby zmienić.`,
     fromPrefix: 'Z:',
     change: 'Zmień',
@@ -952,7 +969,7 @@ export const pl = {
     resultsFor: (q: string, n: number) => `Wyniki dla „${q}” (${n})`,
     recentTrips: 'Ostatnie przejazdy',
     savedA11y: (t: string) => `Zapisane miejsce: ${t}`,
-    searching: (city: string) => `Szukam w ${city}…`,
+    searching: (city: string) => `Szukam ${prepInCity(city)}…`,
     noResults: 'Brak wyników',
     noResultsHint: (id: string) =>
       `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
