@@ -320,7 +320,10 @@ export const SearchService: ISearchService = {
     const isCurrent = () => searchAborts.get(scope) === ctrl;
 
     const hasPos = coords !== undefined;
-    const cacheKey = `v2:${q.toLowerCase()}|${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : '-'}`;
+    // Miasto w kluczu: po przełączeniu Wrocław → Kraków ten sam tekst przez
+    // 2 minuty wracał z cache starego miasta.
+    const searchCityId = getActiveCityIdSync();
+    const cacheKey = `v2:${searchCityId}:${q.toLowerCase()}|${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : '-'}`;
     const cachedMerged = mergedGet(cacheKey);
     if (cachedMerged) return cachedMerged;
 
@@ -388,7 +391,7 @@ export const SearchService: ISearchService = {
       const merged = dedupeAndSort(localSuggestions, remoteHits, hasPos, normQ).slice(0, 15);
       if (merged.length > 0) {
         mergedSet(cacheKey, merged);
-        if (isCurrent()) void saveSuggestions(q, merged);
+        if (isCurrent()) void saveSuggestions(q, merged, searchCityId);
         return merged;
       }
     } catch {

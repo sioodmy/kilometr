@@ -36,12 +36,15 @@ const KEYS = {
  * Wrocław trzyma legacy klucz (kompat ze starymi instalacjami). Połączenia
  * i podpowiedzi są kluczowane zapytaniem/współrzędnymi, więc zostają globalne.
  */
-function cityScopedKey(base: string): string {
-  let id = 'wroclaw';
-  try {
-    id = getActiveCityIdSync();
-  } catch {
-    // storage jeszcze niegotowy: legacy klucz Wrocławia
+function cityScopedKey(base: string, cityId?: string): string {
+  let id = cityId;
+  if (!id) {
+    id = 'wroclaw';
+    try {
+      id = getActiveCityIdSync();
+    } catch {
+      // storage jeszcze niegotowy: legacy klucz Wrocławia
+    }
   }
   return id === 'wroclaw' ? base : `${base}.${id}`;
 }
@@ -177,10 +180,14 @@ function normQuery(q: string): string {
   return q.trim().toLowerCase().slice(0, 60);
 }
 
-export async function saveSuggestions(query: string, results: Suggestion[]): Promise<void> {
+/**
+ * @param cityId miasto z chwili startu zapytania: przy przełączeniu miasta
+ * w trakcie sieci wynik starego miasta nie może wpaść do kubełka nowego.
+ */
+export async function saveSuggestions(query: string, results: Suggestion[], cityId?: string): Promise<void> {
   const key = normQuery(query);
   if (!key || results.length === 0) return;
-  const storageKey = cityScopedKey(KEYS.suggestions);
+  const storageKey = cityScopedKey(KEYS.suggestions, cityId);
   try {
     const all = (await readJSON<Record<string, Stamped<Suggestion[]>>>(storageKey)) ?? {};
     all[key] = { savedAt: Date.now(), data: results };
