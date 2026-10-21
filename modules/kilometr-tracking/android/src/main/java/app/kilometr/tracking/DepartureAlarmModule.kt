@@ -19,7 +19,7 @@ class DepartureAlarmModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("KilometrAlarm")
 
-    AsyncFunction("getAlarm") { context?.let { DepartureAlarmStore.read(it)?.toString() } }
+    AsyncFunction("getAlarm") { context?.let { DepartureAlarmStore.readNormalized(it)?.toString() } }
 
     AsyncFunction("getPermissions") {
       val ctx = context ?: return@AsyncFunction emptyMap<String, Boolean>()

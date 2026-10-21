@@ -17,11 +17,29 @@ import org.json.JSONObject
 internal object DepartureAlarmStore {
   const val CLOSE = "app.kilometr.ALARM_CLOSED"
   private const val REQUEST = 4201
+  /** Okno dzwonka: serwis przerywa po 120 s, z zapasem na opóźnienia startu. */
+  private const val RINGING_WINDOW_MS = 180_000L
   private fun prefs(context: Context) = context.getSharedPreferences("departure_alarm", Context.MODE_PRIVATE)
 
   fun read(context: Context): JSONObject? = try {
     prefs(context).getString("alarm", null)?.let { JSONObject(it) }
   } catch (_: Exception) { null }
+
+  /**
+   * Dzwonek może zostać sam bez serwisu (proces zabity w trakcie, reboot
+   * tuż po fire): "ringing" utyka w karcie apki jako "dzwoni teraz".
+   * JS i restorer po reboocie czytają przez readNormalized: po oknie
+   * dzwonka status zamienia się na dismissed. Serwis i receiver używają
+   * zwykłego read, bo pilnują własnych timeoutów.
+   */
+  @Synchronized
+  fun readNormalized(context: Context): JSONObject? {
+    val data = read(context) ?: return null
+    if (data.optString("status") != "ringing") return data
+    if (System.currentTimeMillis() - data.optLong("at") <= RINGING_WINDOW_MS) return data
+    write(context, data.put("status", "dismissed"))
+    return data
+  }
 
   private fun write(context: Context, data: JSONObject) {
     prefs(context).edit().putString("alarm", data.toString()).commit()
@@ -117,7 +135,7 @@ class DepartureAlarmRestoreReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action !in listOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED,
         AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED)) return
-    val data = DepartureAlarmStore.read(context) ?: return
+    val data = DepartureAlarmStore.readNormalized(context) ?: return
     if (data.optString("status") == "scheduled" && data.optLong("at") > System.currentTimeMillis()) {
       DepartureAlarmStore.schedule(context, data.toString())
     }

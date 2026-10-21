@@ -124,6 +124,10 @@ export function useDepartureAlarm() {
     const timer = setInterval(() => { if (AppState.currentState === 'active') void refreshDepartureAlarm(); }, 5000);
     return () => { listeners.delete(update); sub.remove(); clearInterval(timer); };
   }, []);
-  return cached && (cached.status === 'ringing' || cached.status === 'scheduled' && cached.at > Date.now())
+  // Okno dzwonka po stronie JS: status "ringing" starszy niż okno serwisu
+  // (proces zabity, reboot) nie udaje żywego dzwonka, karta zostaje zamknięta.
+  const RING_WINDOW_MS = 180_000;
+  return cached && ((cached.status === 'ringing' && cached.at + RING_WINDOW_MS > Date.now()) ||
+    (cached.status === 'scheduled' && cached.at > Date.now()))
     ? cached : null;
 }
