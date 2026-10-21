@@ -19,7 +19,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, oznaczony jako prerelease; buduje tylko APK (`kilometr-nightly.apk`).
   - `prod`: tag `vX.Y.Z` (auto-semver z commitów), nie-prerelease; buduje APK (`kilometr-prod.apk`), AAB do Google Play (`kilometr-prod.aab`) oraz niepodpisane IPA do sideloadowania, wszystko w jednym release.
   - Landing filtruje kanały po fladze prerelease / prefiksie tagu i może dać dwie opcje pobierania.
-- iOS buduje się wyłącznie z gałęzi `prod` (`.github/workflows/build-ipa.yml`). Nie ma buildów iOS na `dev`/`main`/`nightly`.
+- iOS: ręczny `workflow_dispatch` z dowolnej gałęzi buduje tylko artefakt (bez release). Publikacja IPA i buildy release idą wyłącznie z `prod` (`.github/workflows/build-ipa.yml`). Nie ma automatycznych buildów iOS na `dev`/`main`/`nightly`.
 - Landing deployuje się na GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`); landing celuje w `releases/latest` (prod).
 - Zawsze utrzymuj otwarty PR z `dev` do `main`. Nie zamykaj go i nie merguj automatycznie. Jeśli dev jest do przodu ze zmianami w stosunku do main, a PR nie istnieje, to utwórz PR z tą todo listą
 - W treści tego PR trzymaj klikalną todo listę (`- [ ]`) z featurami z feature branchy, jeden element na feature. Każdy element jest konkretny i zawiera odnośnik do PR, który go wprowadza, np. `- [ ] Widget odjazdów ulubionej linii (#142)`.

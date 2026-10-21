@@ -1,7 +1,7 @@
 name: Build IPA
 
-# iOS buduje się wyłącznie z gałęzi prod: ręcznie (workflow_dispatch na prod)
-# albo z build-apk.yml na push do prod. Dev testuje tylko APK z Azure.
+# iOS z gałęzi prod tworzy release (workflow_dispatch albo build-apk.yml na push do prod).
+# Ręczny workflow_dispatch z innej gałęzi buduje tylko artefakt; publikacja wymaga prod.
 on:
   workflow_dispatch:
   workflow_call:
@@ -27,12 +27,19 @@ jobs:
       CI: '1'
       IOS_BUILD_NUMBER: '${{ github.run_number }}.${{ github.run_attempt }}.0'
     steps:
-      - name: Verify prod channel
+      - name: Verify release channel
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if [ "$GITHUB_REF_NAME" != "prod" ]; then
-            echo "::error::iOS buduje się tylko z gałęzi prod (jest: $GITHUB_REF_NAME)."
-            exit 1
+          if [ "$GITHUB_REF_NAME" = "prod" ]; then
+            exit 0
           fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -z "$RELEASE_TAG" ]; then
+            echo "Build artefaktu z gałęzi $GITHUB_REF_NAME, bez publikacji w release."
+            exit 0
+          fi
+          echo "::error::Publikacja IPA wymaga gałęzi prod (jest: $GITHUB_REF_NAME)."
+          exit 1
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
