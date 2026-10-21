@@ -325,7 +325,14 @@ async function main() {
   const duplicate = makeResponse(at(11, 1));
   respond!(duplicate);
   respond!(duplicate);
-  assert.equal(received, 1);
+  assert.equal(received, 1, "duplikat jest ignorowany");
+
+  for (let i = 0; i < 32; i++) {
+    const other = makeResponse(at(11, 2) + i * 1000);
+    respond!(other);
+  }
+  respond!(duplicate);
+  assert.equal(received, 34, "po 32 wpisach najstarszy klucz wylecial z bufora FIFO");
   remove();
 
   setup.setupNotificationHandler();

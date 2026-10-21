@@ -34,12 +34,31 @@ function parseData(data: unknown, actionIdentifier: string | undefined): TripRes
   };
 }
 
+/**
+ * Ostatnie 32 odpowiedzi. Każde tapnięcie w powiadomienie zostawia klucz na
+ * zawsze: bez limitu rośnie przez całą sesję (mały, ale nieustannie).
+ */
+const HANDLED_LIMIT = 32;
+
 const handledResponses = new Set<string>();
+
+function rememberHandledResponse(
+  key: string,
+  pool = handledResponses,
+  limit = HANDLED_LIMIT,
+): boolean {
+  if (pool.has(key)) return false;
+  pool.add(key);
+  if (pool.size > limit) {
+    const oldest = pool.values().next().value;
+    if (oldest !== undefined) pool.delete(oldest);
+  }
+  return true;
+}
 
 function consumeResponse(res: import('expo-notifications').NotificationResponse): TripResponse {
   const key = `${res.notification.request.identifier}:${res.notification.date}:${res.actionIdentifier}`;
-  if (handledResponses.has(key)) return EMPTY;
-  handledResponses.add(key);
+  if (!rememberHandledResponse(key)) return EMPTY;
   return parseData(res.notification.request.content.data, res.actionIdentifier);
 }
 
