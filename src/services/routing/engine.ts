@@ -482,13 +482,19 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       const trueDistM = Math.round(
         distanceMeters(options.fromLat, options.fromLon, anchorStop.stop_lat, anchorStop.stop_lon)
       );
-      const trueWalkSec = Math.max(30, Math.round((trueDistM * WALK_DETOUR_FACTOR) / userWalkSpeed));
-      const bonusWalkSec = Math.max(30, trueWalkSec - 30);
-      const existing = origins.find((o) => o.stopId === anchorStop!.stop_id);
-      if (existing) {
-        existing.walkSec = Math.min(existing.walkSec, bonusWalkSec);
-      } else {
-        origins.push({ stopId: anchorStop.stop_id, walkM: trueDistM, walkSec: bonusWalkSec });
+      // Kotwica może wyjść minimalnie poza maxWalkM, ale nie bez limitu: przy
+      // potulnym maxWalkM i odległej kotwicy 1+ km planer wybierał daleki
+      // przystanek zamiast bliższego (kandydaci z findNearestStops mają
+      // dokładnie maxWalkM). 20% zapasu na chybotanie GPS i nietypowe ulice.
+      if (trueDistM <= maxWalkM * 1.2) {
+        const trueWalkSec = Math.max(30, Math.round((trueDistM * WALK_DETOUR_FACTOR) / userWalkSpeed));
+        const bonusWalkSec = Math.max(30, trueWalkSec - 30);
+        const existing = origins.find((o) => o.stopId === anchorStop!.stop_id);
+        if (existing) {
+          existing.walkSec = Math.min(existing.walkSec, bonusWalkSec);
+        } else {
+          origins.push({ stopId: anchorStop.stop_id, walkM: trueDistM, walkSec: bonusWalkSec });
+        }
       }
     }
   }
