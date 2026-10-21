@@ -9,7 +9,8 @@
  * doklejane na stałe do całej trasy.
  */
 
-import { LocalGtfsStore } from '../src/services/routing/store';
+import { LocalGtfsStore, gtfsStore } from '../src/services/routing/store';
+import { resolveCandidateOrigins } from '../src/services/routing/engine';
 import { runRaptor, costParamsFor } from '../src/services/routing/raptor';
 import { predictDelaySec } from '../src/services/routing/delays';
 import type { RawJourney, RouteStyle } from '../src/services/routing/types';
@@ -213,6 +214,33 @@ head('Opóźnienie w RAPTOR-ze');
 }
 
 // ─── Okno odjazdów ─────────────────────────────────────────────────────────
+
+
+head('Kotwica przystanku w planowaniu: limit dystansu spaceru');
+{
+  const lat0 = 51.0;
+  const lon = 17.0;
+  // Przystanek bliski (200 m)
+  gtfsStore.stops.set('STOP_NEAR', { stop_id: 'STOP_NEAR', stop_lat: lat0 + STEP_LAT * 0.5, stop_lon: lon });
+  // Przystanek w granicy +20% (np. ~540 m <= 600 m przy maxWalkM=500m)
+  gtfsStore.stops.set('STOP_BORDER', { stop_id: 'STOP_BORDER', stop_lat: lat0 + STEP_LAT * 1.35, stop_lon: lon });
+  // Przystanek daleko poza limitem (np. ~2000 m > 600 m)
+  gtfsStore.stops.set('STOP_FAR', { stop_id: 'STOP_FAR', stop_lat: lat0 + STEP_LAT * 5.0, stop_lon: lon });
+
+  // 1. Kotwica w granicach 120% limitu (STOP_BORDER z maxWalkM=500m)
+  const originsWithBorder = resolveCandidateOrigins(lat0, lon, 500, 1.34, { stopId: 'STOP_BORDER' });
+  const hasBorder = originsWithBorder.some((o) => o.stopId === 'STOP_BORDER');
+  check('kotwica w granicach 120% limitu spaceru trafia do kandydatów', hasBorder);
+
+  // 2. Kotwica daleko poza limitem 120% (STOP_FAR z maxWalkM=500m)
+  const originsWithFar = resolveCandidateOrigins(lat0, lon, 500, 1.34, { stopId: 'STOP_FAR' });
+  const hasFar = originsWithFar.some((o) => o.stopId === 'STOP_FAR');
+  check('kotwica > 120% limitu spaceru NIE trafia do kandydatów', !hasFar);
+
+  gtfsStore.stops.delete('STOP_NEAR');
+  gtfsStore.stops.delete('STOP_BORDER');
+  gtfsStore.stops.delete('STOP_FAR');
+}
 
 head('Range RAPTOR: wszystkie odjazdy w oknie');
 {
