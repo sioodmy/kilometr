@@ -271,7 +271,7 @@
     position: relative;
     isolation: isolate;
     overflow: clip;
-    padding: 60px 0 48px;
+    padding: 150px 0 48px;
     text-align: center;
   }
   .hero-map {
@@ -393,10 +393,20 @@
     width: min(100% - 48px, 760px);
     margin-inline: auto;
   }
-  .hero-brand {
-    margin-bottom: 70px;
-    font-size: 1.25rem;
-    gap: 9px;
+  .hero .hero-brand {
+    position: absolute;
+    top: clamp(16px, 2.5vw, 32px);
+    left: max(20px, calc(50% - 700px));
+    z-index: 1;
+    margin: 0;
+    font-size: clamp(1.4rem, 1.8vw, 1.5rem);
+    gap: 11px;
+  }
+  .hero .hero-brand img {
+    width: clamp(32px, 2.6vw, 38px);
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 11px;
   }
   .hero h1 {
     font-size: clamp(3.5rem, 6.5vw, 5.75rem);
@@ -405,7 +415,7 @@
     line-height: 1.07;
   }
   .hero h1 em {
-    color: var(--accent);
+    color: inherit;
     font-style: normal;
   }
   .hero h1 span {
@@ -1042,10 +1052,10 @@
   }
   @keyframes city-drift {
     from {
-      transform: translateY(-4px) rotate(calc(var(--angle) - 2deg));
+      transform: translate3d(0, -7px, 0) rotate(calc(var(--angle) - 2.5deg));
     }
     to {
-      transform: translateY(4px) rotate(calc(var(--angle) + 2deg));
+      transform: translate3d(0, 7px, 0) rotate(calc(var(--angle) + 2.5deg));
     }
   }
 }
@@ -1190,10 +1200,7 @@
       width: 44px;
     }
     .hero {
-      padding: 28px 0 32px;
-    }
-    .hero-brand {
-      margin-bottom: 116px;
+      padding: 172px 0 32px;
     }
     .hero-copy {
       max-width: 640px;

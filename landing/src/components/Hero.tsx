@@ -97,6 +97,10 @@ export function Hero() {
 
   return (
     <section className="hero" aria-labelledby="hero-title" ref={hero}>
+      <div className="hero-brand brand">
+        <img src="./icon.png" alt="" width="30" height="30" />
+        <span>Kilometr</span>
+      </div>
       <div className="hero-map" aria-hidden="true">
         <svg viewBox="0 0 1400 1100" preserveAspectRatio="xMidYMin slice" fill="none">
           <defs>
@@ -137,10 +141,6 @@ export function Hero() {
         ))}
       </div>
       <div className="hero-copy">
-        <div className="hero-brand brand">
-          <img src="./icon.png" alt="" width="30" height="30" />
-          <span>Kilometr</span>
-        </div>
         <h1 id="hero-title">
           {s.hero.title} <em>{s.hero.accent}</em> <span>{s.hero.titleEnd}</span>
         </h1>
@@ -157,7 +157,7 @@ export function Hero() {
         </div>
       </div>
       <div className="product-stage">
-        <Phone screen="routes" className="hero-phone" />
+        <Phone screen="home" className="hero-phone" />
       </div>
     </section>
   );
