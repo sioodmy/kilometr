@@ -177,6 +177,12 @@ function acquire(): () => void {
     });
     void startWatch(true);
     appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'background' || state === 'inactive') {
+        // W tle nikt nie czyta pozycji, a watch z Accuracy.High chodzi dalej
+        // i pali baterię. Na powrocie startWatch go odtworzy.
+        removeWatch();
+        return;
+      }
       if (state !== 'active' || subscriberCount === 0) return;
       removeWatch();
       // Zachowujemy ostatnią znaną pozycję przy wybudzeniu ekranu, żeby widget nie mrugał stanem ładowania.
