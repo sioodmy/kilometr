@@ -1,5 +1,6 @@
 import { cityNames } from './cities';
 import { previewRoute } from './journey';
+import { previewHome } from './home';
 
 export const pl = {
   meta: {
@@ -25,6 +26,20 @@ export const pl = {
     body: 'Zaplanuj trasę, sprawdź odjazdy i ruszaj w miasto. Komunikacja miejska w całej Polsce, także offline. Bez reklam i bez konta.',
     play: 'Pobierz z Google Play',
     secondary: 'Zobacz, jak działa',
+  },
+  homePreview: {
+    places: previewHome,
+    title: 'Gdzie jedziemy?',
+    savedTitle: 'Zapisane miejsca',
+    edit: 'Edytuj',
+    historyTitle: 'Ostatnie miejsca',
+    home: 'Dom',
+    school: 'Uczelnia',
+    gym: 'Siłownia',
+    stop: 'Przystanek',
+    searchLabel: 'Dokąd jedziesz?',
+    startFrom: (title: string) => `z: ${title}`,
+    departIn: (n: number) => `za ${n} min`,
   },
   journeyDemo: {
     choose: 'Wybierasz',

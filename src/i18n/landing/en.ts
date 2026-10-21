@@ -1,6 +1,7 @@
 import type { Strings } from './pl';
 import { cityNames } from './cities';
 import { previewRoute } from './journey';
+import { previewHome } from './home';
 
 export const en: Strings = {
   meta: {
@@ -26,6 +27,20 @@ export const en: Strings = {
     body: 'Plan your route, check departures and head into town. Public transport across Poland, even offline. No ads or account needed.',
     play: 'Get it on Google Play',
     secondary: 'See how it works',
+  },
+  homePreview: {
+    places: previewHome,
+    title: 'Where to?',
+    savedTitle: 'Saved places',
+    edit: 'Edit',
+    historyTitle: 'Recent places',
+    home: 'Home',
+    school: 'University',
+    gym: 'Gym',
+    stop: 'Stop',
+    searchLabel: 'Where are you going?',
+    startFrom: (title: string) => `from: ${title}`,
+    departIn: (n: number) => `in ${n} min`,
   },
   journeyDemo: {
     choose: 'You choose',

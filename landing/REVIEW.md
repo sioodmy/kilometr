@@ -60,9 +60,9 @@
 - Adresy pobierania i Ko-fi: `landing/src/data.ts`.
 - Teksty: `src/i18n/landing/`, dołączone również do typowanego słownika aplikacji. Nazwy miast zachowują polską pisownię we wszystkich wersjach językowych.
 - Zasięg i środki transportu: `src/cities.ts`. Nazwy w słowniku mają kontrolę kompletności typu `CityId`.
-- Zrzuty ekranu: skopiuj `home.png`, `routes.png` i `trip.png` do `landing/public/screenshots/`, a w `landing/src/screenshots.ts` zamień odpowiednie `null` na `./screenshots/home.png`, `./screenshots/routes.png` i `./screenshots/trip.png`. Dopóki ich nie ma, strona nie wysyła zapytań o brakujące obrazy.
-- Rozmiar pełnego zrzutu Pixela 7a to 1080 × 2400 px, potwierdzony w [specyfikacji Google](https://support.google.com/pixelphone/answer/7158570?hl=en). Ramka rezerwuje proporcje 9:20; obrazy nie są rozciągane ani przycinane. Zrzuty powinny obejmować cały ekran, razem z paskami systemowymi.
-- `social-preview.png` jest renderem aktualnej prezentacji. Po dodaniu autentycznych screenów należy odświeżyć również tę grafikę.
+- Podgląd telefonu renderuje `landing/src/components/Phone.tsx`. Układ w `phone.css` odwzorowuje ekran główny i komponenty RN; `phoneIcons.ts` zawiera ścieżki ikon, które różnią się między zainstalowanymi wersjami Lucide.
+- Dane podglądu są w `src/i18n/landing/home.ts`, a teksty w czterech słownikach landingu. Używaj publicznych miejsc, bez prywatnych adresów. Kolory linii pochodzą ze wspólnego `getLineColors`.
+- `social-preview.png` jest osobną grafiką do udostępniania strony. Po zmianie prezentacji trzeba odświeżyć ją osobno.
 - Granica Polski: [Natural Earth 1:10m, v5.1.2](https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_10m_admin_0_countries.geojson), domena publiczna. Geometria i źródło są zapisane w `landing/src/data/poland.json`; projekcja i wspólne skalowanie w `landing/src/mapProjection.ts`.
 - Strona nie ładuje dotychczasowego Google Analytics. Przechowuje tylko ustawienia języka i motywu, zgodnie z opisem pod `#polityka`.
 - Workflow nadal wdraża GitHub Pages wyłącznie z `main`. Zmiany współdzielonych słowników lub rejestru miast również wyzwalają przebudowę. Link APK prowadzi do stabilnego wydania GitHuba, niezależnie od nazwy załącznika.

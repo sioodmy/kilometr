@@ -1,0 +1,289 @@
+@layer product {
+  /* Układ i wymiary z app/index, SavedPlacesRow, SmartHistoryList i HomeThumbBar w RN. */
+  .native-home {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    width: 393px;
+    height: 818.75px;
+    transform: scale(var(--phone-scale, 1));
+    transform-origin: top left;
+    background: #111414;
+    color: #e0e3e1;
+    font-family: 'Demo Roboto', Roboto, Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: normal;
+    letter-spacing: normal;
+    text-align: left;
+    pointer-events: none;
+    user-select: none;
+  }
+  .native-home svg {
+    flex-shrink: 0;
+  }
+  .native-home-content {
+    flex: 1;
+    min-height: 0;
+    padding-top: 24px;
+    overflow: hidden;
+  }
+  .native-home-body {
+    padding: 4px 20px 24px;
+  }
+  .native-home-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    margin-bottom: 16px;
+  }
+  .native-home-city {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: #bfc9c5;
+  }
+  .native-home-city svg,
+  .native-home-history-header svg {
+    color: #5cdbbe;
+  }
+  .native-home-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .native-home-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #171d1c;
+    color: #bfc9c5;
+  }
+  .native-home-title {
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: -0.8px;
+  }
+  .native-home-saved {
+    margin-top: 20px;
+  }
+  .native-home-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 48px;
+    margin-bottom: 4px;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .native-home-edit {
+    display: flex;
+    align-items: center;
+    min-width: 64px;
+    min-height: 48px;
+    padding-inline: 12px;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    color: #5cdbbe;
+    font-size: 14px;
+  }
+  .native-home-places {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-inline: -20px;
+    padding: 4px 20px;
+    overflow: hidden;
+  }
+  .native-home-place {
+    display: flex;
+    flex: 0 0 160px;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 20px;
+    min-height: 156px;
+    padding: 16px;
+    border: 2px solid transparent;
+    border-radius: 28px;
+    background: #252b2a;
+  }
+  .native-home-place-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 28px 12px 28px 12px;
+    background: #334b46;
+    color: #cde8e1;
+  }
+  .native-home-place-text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .native-home-place-name {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.4px;
+  }
+  .native-home-place-address,
+  .native-home-history-address {
+    color: #bfc9c5;
+    font-size: 12px;
+  }
+  .native-home-history {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .native-home-history-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-block: 4px 2px;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .native-home-history-list {
+    padding-inline: 4px;
+    border-radius: 28px;
+    background: #171d1c;
+  }
+  .native-home-history-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 84px;
+    padding: 16px 12px;
+    border-radius: 16px;
+  }
+  .native-home-history-row + .native-home-history-row {
+    border-top: 0.5px solid #3f4946;
+  }
+  .native-home-history-icon {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: #334b46;
+    color: #cde8e1;
+  }
+  .native-home-history-icon-saved {
+    background: #005047;
+    color: #7df8de;
+  }
+  .native-home-history-icon-history {
+    background: #303635;
+    color: #bfc9c5;
+  }
+  .native-home-history-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .native-home-history-name {
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .native-home-place-name,
+  .native-home-place-address,
+  .native-home-history-name,
+  .native-home-history-address {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .native-home-departure-slot {
+    flex-shrink: 0;
+    width: 32%;
+    max-width: 40%;
+    min-height: 44px;
+  }
+  .native-home-departure {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 44px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    text-align: center;
+  }
+  .native-home-badge-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+  }
+  .native-home-line-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 38px;
+    min-height: 28px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: normal;
+  }
+  .native-home-dock {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 12px 20px 24px;
+    border-radius: 28px 28px 0 0;
+    background: #171d1c;
+  }
+  .native-home-search {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 12px 16px;
+    border: 2px solid transparent;
+    border-radius: 20px;
+    background: #252b2a;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .native-home-search svg,
+  .native-home-origin {
+    color: #bfc9c5;
+  }
+  .native-home-origin {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 8px 12px;
+    border: 2px solid transparent;
+    border-radius: 16px;
+  }
+  .native-home-origin span {
+    flex: 1;
+  }
+}

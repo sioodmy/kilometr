@@ -1,6 +1,7 @@
 import type { Strings } from './pl';
 import { cityNames } from './cities';
 import { previewRoute } from './journey';
+import { previewHome } from './home';
 
 export const uk: Strings = {
   meta: {
@@ -26,6 +27,20 @@ export const uk: Strings = {
     body: 'Плануй маршрут, перевіряй відправлення та вирушай у місто. Громадський транспорт по всій Польщі, навіть офлайн. Без реклами та облікового запису.',
     play: 'Завантажити з Google Play',
     secondary: 'Як це працює',
+  },
+  homePreview: {
+    places: previewHome,
+    title: 'Куди їдемо?',
+    savedTitle: 'Збережені місця',
+    edit: 'Редагувати',
+    historyTitle: 'Останні місця',
+    home: 'Дім',
+    school: 'Університет',
+    gym: 'Спортзал',
+    stop: 'Зупинка',
+    searchLabel: 'Куди їдеш?',
+    startFrom: (title: string) => `з: ${title}`,
+    departIn: (n: number) => `за ${n} хв`,
   },
   journeyDemo: {
     choose: 'Обираєш',

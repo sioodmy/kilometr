@@ -1,6 +1,7 @@
 import type { Strings } from './pl';
 import { cityNames } from './cities';
 import { previewRoute } from './journey';
+import { previewHome } from './home';
 
 export const de: Strings = {
   meta: {
@@ -26,6 +27,20 @@ export const de: Strings = {
     body: 'Plane deine Route, prüfe Abfahrten und fahr los. Nahverkehr in ganz Polen, auch offline. Ohne Werbung und ohne Konto.',
     play: 'Bei Google Play herunterladen',
     secondary: 'So funktioniert’s',
+  },
+  homePreview: {
+    places: previewHome,
+    title: 'Wohin geht’s?',
+    savedTitle: 'Gespeicherte Orte',
+    edit: 'Bearbeiten',
+    historyTitle: 'Letzte Orte',
+    home: 'Zuhause',
+    school: 'Uni',
+    gym: 'Fitnessstudio',
+    stop: 'Haltestelle',
+    searchLabel: 'Wohin fährst du?',
+    startFrom: (title: string) => `ab: ${title}`,
+    departIn: (n: number) => `in ${n} Min.`,
   },
   journeyDemo: {
     choose: 'Du wählst',

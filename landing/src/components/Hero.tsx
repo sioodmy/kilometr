@@ -107,7 +107,7 @@ export function Hero() {
         </div>
       </div>
       <div className="product-stage">
-        <Phone screen="home" className="hero-phone" />
+        <Phone className="hero-phone" />
       </div>
     </section>
   );
