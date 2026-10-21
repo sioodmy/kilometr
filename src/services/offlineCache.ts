@@ -203,8 +203,11 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
   if (!key) return [];
   const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions));
   if (!all) return [];
+  // Cache żyje między wersjami apki (TTL 7 dni), więc wpis może mieć stary
+  // kształt: brak tytułu/adresu dawał TypeError w każdej podpowiedzi.
+  const usable = (s: Suggestion) => typeof s?.title === 'string' && typeof s?.address === 'string';
   const fresh = (e: Stamped<Suggestion[]> | undefined) =>
-    e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS ? e.data : null;
+    e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS && Array.isArray(e.data) ? e.data.filter(usable) : null;
   const exact = fresh(all[key]);
   if (exact) return exact;
   // Prefiks: "lid" → wyniki dla "lidl" przefiltrowane po tytule
@@ -216,9 +219,7 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
     if (data) {
       const low = key;
       const filtered = data.filter(
-        (s) =>
-          s.title.toLowerCase().includes(low) ||
-          s.address.toLowerCase().includes(low),
+        (s) => s.title.toLowerCase().includes(low) || s.address.toLowerCase().includes(low),
       );
       if (filtered.length > 0) return filtered;
     }
