@@ -21,7 +21,7 @@ let setting: ThemeSetting = 'system';
 let wallpaperScheme: Readonly<Record<SchemeKey, string>> = defaultScheme;
 let wallpaperAvailable = false;
 
-export function presetScheme(seed: string): Record<SchemeKey, string> {
+function presetScheme(seed: string): Record<SchemeKey, string> {
   const material = new SchemeTonalSpot(Hct.fromInt(argbFromHex(seed)), true, 0);
   const result = { ...defaultScheme };
   for (const key of Object.keys(result) as SchemeKey[]) {
@@ -37,7 +37,7 @@ export const THEME_PRESETS = Object.fromEntries(
   Object.entries(THEME_SEEDS).map(([key, seed]) => [key, presetScheme(seed)]),
 ) as Record<keyof typeof THEME_SEEDS, Record<SchemeKey, string>>;
 
-export function isThemeSetting(value: unknown): value is ThemeSetting {
+function isThemeSetting(value: unknown): value is ThemeSetting {
   return typeof value === 'string' && (value === 'system' || Object.hasOwn(THEME_SEEDS, value));
 }
 

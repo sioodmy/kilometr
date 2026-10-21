@@ -29,6 +29,7 @@ import {
   MapPin,
   Languages,
   Navigation,
+  Palette,
   Minus,
   Plus,
   ShieldCheck,
@@ -69,6 +70,8 @@ import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
 import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
+import { PersonalizationCard } from '../src/components/PersonalizationCard';
+import { useThemeSetting } from '../src/theme/personalization';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
 
 function dataStatusLabel(status: DataStatus): string {
@@ -181,7 +184,7 @@ const LANG_OPTIONS: {
   { value: 'uk', label: 'langUkrainian' },
 ];
 
-type SettingsSection = 'routing' | 'offline' | 'app' | 'notifications' | 'backup';
+type SettingsSection = 'routing' | 'offline' | 'app' | 'personalization' | 'notifications' | 'backup';
 
 function SettingsLink({
   title,
@@ -220,6 +223,7 @@ export default function SettingsScreen() {
   const compact = width / fontScale < 330;
   const { settings, update, reset } = useRoutingSettings();
   const s = useStrings();
+  const themeSetting = useThemeSetting();
   const { cityId, setCity } = useActiveCity();
   const operatorShort = s.city.operatorShort(cityId);
   const feeds = s.city.feeds(cityId);
@@ -230,6 +234,7 @@ export default function SettingsScreen() {
     routing: s.settings.planningTitle,
     offline: s.settings.offlineTitle,
     app: s.settings.sectionApp,
+    personalization: s.personalization.title,
     notifications: s.notificationPrefs.title,
     backup: s.settings.backupTitle,
   };
@@ -462,6 +467,13 @@ export default function SettingsScreen() {
               />
               <View style={styles.menuDivider} />
               <SettingsLink
+                icon={Palette}
+                title={s.personalization.title}
+                detail={s.personalization.summary(s.personalization[themeSetting])}
+                onPress={() => openSection('personalization')}
+              />
+              <View style={styles.menuDivider} />
+              <SettingsLink
                 icon={Languages}
                 title={s.settings.sectionApp}
                 detail={s.settings.languageSummary(
@@ -567,6 +579,8 @@ export default function SettingsScreen() {
             <DiagnosticsCard />
           </>
         )}
+
+        {activeSection === 'personalization' && <PersonalizationCard />}
 
         {activeSection === 'app' && (
           <>
