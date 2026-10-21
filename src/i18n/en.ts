@@ -353,9 +353,7 @@ export const en: Strings = {
     cityActiveBadge: 'Active',
   },
   personalization: {
-    title: 'Personalization',
     colors: 'App colors',
-    summary: (color: string) => `Colors: ${color}`,
     system: 'From wallpaper',
     systemDescription: 'Default Material You colors',
     wallpaperUnavailable: 'Wallpaper colors unavailable. Using the default palette.',
@@ -374,7 +372,7 @@ export const en: Strings = {
     notificationsSummary: 'Journey tracking and alerts',
     backupSummary: 'Saved places, history and settings',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
-    languageSummary: (language: string) => `Language: ${language}`,
+    appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Reset journey preferences',
     resetRoutesBody: 'This restores the default journey planning settings.',
     decrease: (label: string) => `Decrease: ${label}`,

@@ -188,6 +188,9 @@ jobs:
       - name: Run logic tests (Map colors)
         run: npm run check:map-colors
 
+      - name: Run logic tests (Personalization)
+        run: npm run check:personalization
+
   verify-subprojects:
     name: Lint & Typecheck Subprojects
     runs-on: ubuntu-latest

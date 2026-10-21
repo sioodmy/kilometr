@@ -361,9 +361,7 @@ export const pl = {
     cityActiveBadge: 'Aktywne',
   },
   personalization: {
-    title: 'Personalizacja',
     colors: 'Kolory aplikacji',
-    summary: (color: string) => `Kolory: ${color}`,
     system: 'Z tapety',
     systemDescription: 'Domyślne kolory Material You',
     wallpaperUnavailable: 'Kolory tapety niedostępne. Paleta domyślna.',
@@ -382,7 +380,7 @@ export const pl = {
     notificationsSummary: 'Śledzenie podróży i alerty',
     backupSummary: 'Zapisane miejsca, historia i ustawienia',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
-    languageSummary: (language: string) => `Język: ${language}`,
+    appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Przywróć ustawienia tras',
     resetRoutesBody: 'Przywróci domyślne ustawienia planowania podróży.',
     decrease: (label: string) => `Zmniejsz: ${label}`,

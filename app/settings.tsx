@@ -27,9 +27,8 @@ import {
   ExternalLink,
   Footprints,
   MapPin,
-  Languages,
+  SlidersHorizontal,
   Navigation,
-  Palette,
   Minus,
   Plus,
   ShieldCheck,
@@ -184,7 +183,7 @@ const LANG_OPTIONS: {
   { value: 'uk', label: 'langUkrainian' },
 ];
 
-type SettingsSection = 'routing' | 'offline' | 'app' | 'personalization' | 'notifications' | 'backup';
+type SettingsSection = 'routing' | 'offline' | 'app' | 'notifications' | 'backup';
 
 function SettingsLink({
   title,
@@ -234,7 +233,6 @@ export default function SettingsScreen() {
     routing: s.settings.planningTitle,
     offline: s.settings.offlineTitle,
     app: s.settings.sectionApp,
-    personalization: s.personalization.title,
     notifications: s.notificationPrefs.title,
     backup: s.settings.backupTitle,
   };
@@ -467,20 +465,14 @@ export default function SettingsScreen() {
               />
               <View style={styles.menuDivider} />
               <SettingsLink
-                icon={Palette}
-                title={s.personalization.title}
-                detail={s.personalization.summary(s.personalization[themeSetting])}
-                onPress={() => openSection('personalization')}
-              />
-              <View style={styles.menuDivider} />
-              <SettingsLink
-                icon={Languages}
+                icon={SlidersHorizontal}
                 title={s.settings.sectionApp}
-                detail={s.settings.languageSummary(
+                detail={s.settings.appSummary(
                   s.settings[
                     LANG_OPTIONS.find((option) => option.value === langSetting)?.label ??
                       'langSystem'
                   ],
+                  s.personalization[themeSetting],
                 )}
                 onPress={() => openSection('app')}
               />
@@ -580,10 +572,9 @@ export default function SettingsScreen() {
           </>
         )}
 
-        {activeSection === 'personalization' && <PersonalizationCard />}
-
         {activeSection === 'app' && (
           <>
+            <PersonalizationCard />
             <View style={styles.card}>
               <Text style={styles.cardTitle}>{s.settings.langTitle}</Text>
               <View style={styles.languageList}>

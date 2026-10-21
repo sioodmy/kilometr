@@ -362,9 +362,7 @@ export const uk: Strings = {
     cityActiveBadge: 'Активне',
   },
   personalization: {
-    title: 'Персоналізація',
     colors: 'Кольори застосунку',
-    summary: (color: string) => `Кольори: ${color}`,
     system: 'Зі шпалер',
     systemDescription: 'Стандартні кольори Material You',
     wallpaperUnavailable: 'Кольори шпалер недоступні. Стандартна палітра.',
@@ -383,7 +381,7 @@ export const uk: Strings = {
     notificationsSummary: 'Відстеження подорожі та сповіщення',
     backupSummary: 'Збережені місця, історія та налаштування',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
-    languageSummary: (language: string) => `Мова: ${language}`,
+    appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Відновити налаштування маршрутів',
     resetRoutesBody: 'Відновить стандартні налаштування планування подорожі.',
     decrease: (label: string) => `Зменшити: ${label}`,

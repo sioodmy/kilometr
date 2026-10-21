@@ -352,9 +352,7 @@ export const de: Strings = {
     cityActiveBadge: 'Aktiv',
   },
   personalization: {
-    title: 'Personalisierung',
     colors: 'App-Farben',
-    summary: (color: string) => `Farben: ${color}`,
     system: 'Vom Hintergrundbild',
     systemDescription: 'Standardfarben von Material You',
     wallpaperUnavailable: 'Hintergrundfarben nicht verfügbar. Standardpalette aktiv.',
@@ -373,7 +371,7 @@ export const de: Strings = {
     notificationsSummary: 'Reiseverfolgung und Meldungen',
     backupSummary: 'Gespeicherte Orte, Verlauf und Einstellungen',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
-    languageSummary: (language: string) => `Sprache: ${language}`,
+    appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Routeneinstellungen zurücksetzen',
     resetRoutesBody: 'Stellt die Standardeinstellungen für die Reiseplanung wieder her.',
     decrease: (label: string) => `Verringern: ${label}`,
