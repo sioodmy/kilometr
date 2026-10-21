@@ -2,32 +2,72 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MapPinOff, Navigation } from 'lucide-react-native';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
-import { CITIES } from '../cities';
+import { CITIES, suggestCityForCoords, type CityId } from '../cities';
+
+function resolveSupportedCityId(name?: string | null): CityId | undefined {
+  if (!name) return undefined;
+  const n = name.trim().toLocaleLowerCase();
+  const direct = CITIES.find((c) => c.name.toLocaleLowerCase() === n || c.id === n);
+  if (direct) return direct.id;
+  if (
+    [
+      'katowice',
+      'gliwice',
+      'sosnowiec',
+      'zabrze',
+      'bytom',
+      'ruda śląska',
+      'tychy',
+      'dąbrowa górnicza',
+      'chorzów',
+      'jaworzno',
+      'mysłowice',
+      'siemianowice śląskie',
+      'tarnowskie góry',
+      'piekary śląskie',
+      'będzin',
+      'świętochłowice',
+      'mikołów',
+      'czeladź',
+    ].includes(n)
+  ) {
+    return 'gzm';
+  }
+  if (['gdańsk', 'gdynia', 'sopot'].includes(n)) {
+    return 'trojmiasto';
+  }
+  return undefined;
+}
 
 export function UnsupportedCityCard({
   city,
   activeCity,
   onPickStart,
+  coords,
 }: {
   /** Miejscowość z reverse-geocode; null = nie udało się ustalić. */
   city: string | null;
   /** Nazwa aktywnego miasta (tego, dla którego mamy rozkład). */
   activeCity: string;
   onPickStart: () => void;
+  /** Współrzędne GPS (opcjonalne, do precyzyjnego dopasowania strefy). */
+  coords?: { lat: number; lon: number } | null;
 }) {
   const s = useStrings();
   const supported = s.city.supportedList;
   // Karta pokazuje się też wtedy, gdy użytkownik stoi w mieście, które
   // obsługujemy, ale w apce ma ustawione inne. Bez tego wariantu tekst
   // głosiłby „obsługujemy tylko: Wrocław, Kraków” osobie stojącej w Krakowie.
-  const insideSupported = city
-    ? CITIES.some((c) => c.name.toLocaleLowerCase() === city.trim().toLocaleLowerCase())
-    : false;
-  const body = !city
+  const matchedCityId =
+    (coords && suggestCityForCoords(coords.lat, coords.lon)?.id) ??
+    resolveSupportedCityId(city);
+  const insideSupported = matchedCityId != null;
+
+  const body = !city && !insideSupported
     ? s.home.unsupportedBodyUnknown(supported)
     : insideSupported
-      ? s.home.unsupportedBodyOther(city, activeCity)
-      : s.home.unsupportedBody(city, supported);
+      ? s.home.unsupportedBodyOther(s.city.loc(matchedCityId), activeCity)
+      : s.home.unsupportedBody(city!, supported);
   // Miasto obsługiwane, ale w apce ustawione inne: tytuł „Nieobsługiwane miasto”
   // kłóciłby się z treścią, która mówi „jesteś w obsługiwanym mieście”.
   const title = insideSupported ? s.home.unsupportedTitleOther : s.home.unsupportedTitle;
@@ -79,20 +119,18 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   cta: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
-    paddingVertical: 13,
-    minHeight: 52,
-    borderRadius: shape.medium,
     backgroundColor: scheme.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: shape.full,
   },
   ctaText: {
     ...type.labelLarge,
     color: scheme.onPrimary,
-    fontWeight: '500',
-    flexShrink: 1,
-    textAlign: 'center',
+    fontWeight: '600',
   },
 });

@@ -1089,6 +1089,7 @@ export default function HomeScreen() {
             {gpsUnsupported && (
               <UnsupportedCityCard
                 city={gpsCity}
+                coords={gpsLocation}
                 activeCity={s.city.name(cityId)}
                 onPickStart={() => {
                   setReturnToDestinationAfterStart(false);
