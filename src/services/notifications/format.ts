@@ -42,14 +42,18 @@ const DAY_MS = DAY_SEC * 1000;
  * Sekundy od północy (mogą przekroczyć 86400 przy kursorze na jutrzejszy
  * rozkład - patrz engine.ts, dayOffsetSec) → bezwzględny znacznik ms.
  *
- * Wybieramy wystąpienie najbliższe `now`, a nie to z dzisiejszego dnia.
- * Bez tego podróż o 23:58 oglądana o 00:03 dostałaby „dziś 23:58", czyli
- * ETA 24 godziny zamiast „3 minuty temu".
+ * Pełne doby w `sec` wynikają z kursoru daty (jutro = +86400, wczoraj =
+ * -86400), więc liczymy je wprost z midnight. Dla wartości z jednej doby
+ * wybieramy wystąpienie najbliższe `now`: podróż o 23:58 oglądana o 00:03
+ * ma być "3 minuty temu", a nie ETA za 24 godziny.
  */
 export function toAbsoluteMs(sec: number, now: Date = new Date()): number {
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
   const base = midnight.getTime() + Math.round(sec) * 1000;
+  // Bez tego jutrzejszy kurs (sec >= 86400) po południu wracał jako dzisiejszy:
+  // diff > 12h cofał go o dobę i tripMonitor widział "już dotarłeś".
+  if (Math.abs(sec) >= DAY_SEC) return base;
   const diff = base - now.getTime();
   if (diff < -DAY_MS / 2) return base + DAY_MS;
   if (diff > DAY_MS / 2) return base - DAY_MS;
