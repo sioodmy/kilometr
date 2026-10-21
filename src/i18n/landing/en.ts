@@ -17,7 +17,6 @@ export const en: Strings = {
     label: 'Main navigation',
   },
   language: 'Website language',
-  theme: { light: 'Use light theme', dark: 'Use dark theme' },
   hero: {
     eyebrow: 'Kilometr for Android',
     title: 'Your',
@@ -147,7 +146,7 @@ export const en: Strings = {
       'The default public timetable, map, address and route geometry services use HTTPS. Local data is kept in private app storage protected by Android. Exported files and journey links are not password protected. Avoid sharing them if they contain an address you wish to keep private.',
     webTitle: 'This website',
     webBody:
-      'This website only saves your language and theme preferences in browser storage. It loads no analytics or advertising tools. GitHub Pages hosting and external sites you open via links are subject to their operators’ policies.',
+      'This website only saves your language preference in browser storage. It loads no analytics or advertising tools. GitHub Pages hosting and external sites you open via links are subject to their operators’ policies.',
     contactTitle: 'Privacy contact',
     contactBody:
       'Kilometr is maintained by sioodmy (github.com/sioodmy). Send privacy questions and data requests through Issues at github.com/sioodmy/kilometr. Issues are public, so do not include your home address or other sensitive data. Changes to data handling will be described in this policy with an updated date.',

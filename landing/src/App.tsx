@@ -6,9 +6,7 @@ import {
   ChevronDown,
   Coffee,
   Github,
-  Moon,
   Plane,
-  Sun,
   TramFront,
   WifiOff,
 } from 'lucide-react';
@@ -41,32 +39,6 @@ function PlayLink({ className = '' }: { className?: string }) {
 function DisplaySettings() {
   const s = useStrings();
   const locale = useWebLocale();
-  const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
-
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const update = () => {
-      let saved: string | null = null;
-      try {
-        saved = localStorage.getItem('kilometr.website.theme');
-      } catch {}
-      if (!saved) {
-        document.documentElement.dataset.theme = media.matches ? 'dark' : 'light';
-        setDark(media.matches);
-      }
-    };
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-
-  function toggleTheme() {
-    const next = !dark;
-    document.documentElement.dataset.theme = next ? 'dark' : 'light';
-    try {
-      localStorage.setItem('kilometr.website.theme', next ? 'dark' : 'light');
-    } catch {}
-    setDark(next);
-  }
 
   return (
     <div className="display-settings">
@@ -80,14 +52,6 @@ function DisplaySettings() {
         </select>
         <ChevronDown size={12} aria-hidden="true" />
       </label>
-      <button
-        className="icon-button theme-button"
-        type="button"
-        onClick={toggleTheme}
-        aria-label={dark ? s.theme.light : s.theme.dark}
-      >
-        {dark ? <Sun size={18} /> : <Moon size={18} />}
-      </button>
     </div>
   );
 }

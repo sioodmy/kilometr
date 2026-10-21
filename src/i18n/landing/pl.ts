@@ -16,7 +16,6 @@ export const pl = {
     label: 'Nawigacja główna',
   },
   language: 'Język strony',
-  theme: { light: 'Włącz jasny motyw', dark: 'Włącz ciemny motyw' },
   hero: {
     eyebrow: 'Kilometr na Androida',
     title: 'Twój',
@@ -147,7 +146,7 @@ export const pl = {
       'Domyślne publiczne usługi rozkładów, map, adresów i geometrii tras używają HTTPS. Dane lokalne są przechowywane w prywatnej pamięci aplikacji chronionej przez Androida. Wyeksportowane pliki i linki do podróży nie są zabezpieczone hasłem. Nie udostępniaj ich, jeśli zawierają adres, którego nie chcesz ujawniać.',
     webTitle: 'Ta strona',
     webBody:
-      'Strona zapamiętuje wyłącznie wybrany język i motyw w pamięci przeglądarki. Nie ładuje narzędzi analitycznych ani reklam. Hosting GitHub Pages i zewnętrzne strony, które otworzysz przez linki, podlegają zasadom ich operatorów.',
+      'Strona zapamiętuje wyłącznie wybrany język w pamięci przeglądarki. Nie ładuje narzędzi analitycznych ani reklam. Hosting GitHub Pages i zewnętrzne strony, które otworzysz przez linki, podlegają zasadom ich operatorów.',
     contactTitle: 'Kontakt w sprawie prywatności',
     contactBody:
       'Za projekt Kilometr odpowiada sioodmy (github.com/sioodmy). Pytania o prywatność i prośby dotyczące danych możesz zgłaszać przez Issues w repozytorium github.com/sioodmy/kilometr. Zgłoszenia są publiczne, dlatego nie umieszczaj w nich adresu domowego ani innych wrażliwych danych. Zmiany sposobu przetwarzania danych będą opisane w tej polityce z nową datą aktualizacji.',

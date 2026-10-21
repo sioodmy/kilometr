@@ -17,7 +17,6 @@ export const de: Strings = {
     label: 'Hauptnavigation',
   },
   language: 'Sprache der Website',
-  theme: { light: 'Helles Design aktivieren', dark: 'Dunkles Design aktivieren' },
   hero: {
     eyebrow: 'Kilometr für Android',
     title: 'Dein',
@@ -150,7 +149,7 @@ export const de: Strings = {
       'Die öffentlichen Standarddienste für Fahrpläne, Karten, Adressen und Routengeometrie verwenden HTTPS. Lokale Daten liegen im privaten, von Android geschützten App-Speicher. Exportierte Dateien und Fahrtlinks haben keinen Passwortschutz. Teile sie nicht, wenn sie eine Adresse enthalten, die du privat halten möchtest.',
     webTitle: 'Diese Website',
     webBody:
-      'Die Website speichert nur Sprache und Design im Browserspeicher. Sie lädt keine Analyse- oder Werbetools. Für das Hosting durch GitHub Pages und verlinkte externe Seiten gelten die Regeln der jeweiligen Betreiber.',
+      'Die Website speichert nur die Sprache im Browserspeicher. Sie lädt keine Analyse- oder Werbetools. Für das Hosting durch GitHub Pages und verlinkte externe Seiten gelten die Regeln der jeweiligen Betreiber.',
     contactTitle: 'Datenschutzkontakt',
     contactBody:
       'Kilometr wird von sioodmy (github.com/sioodmy) betreut. Datenschutzfragen und Anfragen zu Daten kannst du über Issues unter github.com/sioodmy/kilometr stellen. Issues sind öffentlich; veröffentliche dort keine Wohnadresse oder andere sensible Daten. Änderungen der Datenverarbeitung werden in dieser Erklärung mit aktualisiertem Datum beschrieben.',
