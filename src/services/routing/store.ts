@@ -96,6 +96,7 @@ export class LocalGtfsStore {
   isLoaded = false;
   /** Podbijane przy resecie: wycinki budowane wcześniej nie trafiają do cache. */
   private generation = 0;
+  get currentGeneration(): number { return this.generation; }
 
   /**
    * Czyści pamięć podręczną po imporcie (seed / sieć): bez tego store
@@ -399,7 +400,9 @@ export class LocalGtfsStore {
     };
     if (importInProgress) return emptyIdx;
     const activeServices = await getActiveServices(day, dateStr);
+    if (this.generation !== genAtStart) return emptyIdx;
     const db = await getGtfsDb();
+    if (this.generation !== genAtStart) return emptyIdx;
     const serviceIds = Array.from(activeServices);
     if (serviceIds.length === 0) {
       this.rememberSlice(cacheKey, emptyIdx, genAtStart);
@@ -417,6 +420,7 @@ export class LocalGtfsStore {
     const tripIds: string[] = [];
 
     if (await this.hasTripBlobs(db)) {
+      if (this.generation !== genAtStart) return emptyIdx;
       // Nowa ścieżka: kursy po indeksie (service_id, start_sec) i czasy
       // w blobach. Jedno zapytanie zamiast GROUP BY po stop_times plus
       // setki tysięcy wierszy przez mostek (GZM: ~321 tys. na 8h okno).
@@ -438,7 +442,9 @@ export class LocalGtfsStore {
         bTo,
         bFrom,
       );
+      if (this.generation !== genAtStart) return emptyIdx;
       const stopRefs = rows.length > 0 ? await this.getStopRefs(db) : [];
+      if (this.generation !== genAtStart) return emptyIdx;
       const missing: string[] = [];
       for (const r of rows) {
         const t = {
@@ -480,6 +486,7 @@ export class LocalGtfsStore {
       }
       if (missing.length > 0) {
         await this.loadStopTimesChunked(db, missing);
+        if (this.generation !== genAtStart) return emptyIdx;
       }
     } else {
       // Stara ścieżka (bazy bez indeksu czasowego): agregacja natywnie w SQL,
@@ -495,6 +502,7 @@ export class LocalGtfsStore {
         bTo,
         bFrom,
       );
+      if (this.generation !== genAtStart) return emptyIdx;
       for (const r of overlapping) tripIds.push(r.trip_id);
 
       const CHUNK = 400;
@@ -505,6 +513,7 @@ export class LocalGtfsStore {
           `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${placeholders})`,
           ...chunk,
         );
+        if (this.generation !== genAtStart) return emptyIdx;
         for (const r of tripsRows) {
           const t = {
             trip_id: r.trip_id,
@@ -523,6 +532,7 @@ export class LocalGtfsStore {
           group.push(t);
         }
         await this.loadStopTimesChunked(db, chunk);
+        if (this.generation !== genAtStart) return emptyIdx;
       }
     }
 
@@ -530,6 +540,8 @@ export class LocalGtfsStore {
       this.rememberSlice(cacheKey, emptyIdx, genAtStart);
       return emptyIdx;
     }
+
+    if (this.generation !== genAtStart) return emptyIdx;
 
     // Kolejność kursów i linii w patternach ustala kolejność wierszy z SQL (plan
     // zapytania bywa różny między bazami/urządzeniami), a od niej zależy numeracja

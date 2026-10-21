@@ -242,7 +242,25 @@ head('Kotwica przystanku w planowaniu: limit dystansu spaceru');
   gtfsStore.stops.delete('STOP_FAR');
 }
 
-head('Range RAPTOR: wszystkie odjazdy w oknie');
+head("Generacja pamięci podręcznej wycinków");
+{
+  const testStore = new LocalGtfsStore() as unknown as {
+    currentGeneration: number;
+    reset: () => void;
+    rememberSlice: (key: string, idx: unknown, gen: number) => void;
+    sliceIndexes: Map<string, unknown>;
+  };
+  const g0 = testStore.currentGeneration;
+  testStore.reset();
+  check("reset() podbija generację", testStore.currentGeneration === g0 + 1, `${testStore.currentGeneration} !== ${g0 + 1}`);
+  const dummyIdx = { stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map() };
+  testStore.rememberSlice("old-gen-key", dummyIdx, g0);
+  check("stara generacja nie wchodzi do sliceIndexes", !testStore.sliceIndexes.has("old-gen-key"));
+  testStore.rememberSlice("cur-gen-key", dummyIdx, testStore.currentGeneration);
+  check("bieżąca generacja wchodzi do sliceIndexes", testStore.sliceIndexes.has("cur-gen-key"));
+}
+
+head("Range RAPTOR: wszystkie odjazdy w oknie");
 {
   const lat0 = 51.0;
   const lon = 17.3;
