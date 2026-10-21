@@ -1281,6 +1281,9 @@ export const uk: Strings = {
     delayTitle: (line: string, eta: string) => `Затримка • ${line} • ${eta}`,
   },
   ios: {
+    startupTitle: 'Помилка застосунку',
+    startupHint: 'Kilometr не може продовжити роботу. Поділіться звітом, щоб допомогти знайти причину помилки.',
+    startupShare: 'Поділитися',
     locationPermission: 'Дозвольте доступ до геолокації, щоб шукати маршрути від вашого місця.',
     liveTitle: 'Жива активність',
     liveHint: 'Час поїздки на екрані блокування та в Dynamic Island. Дані оновлюються, коли застосунок активний.',

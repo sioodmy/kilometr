@@ -1252,6 +1252,9 @@ export const de: Strings = {
     delayTitle: (line: string, eta: string) => `Verspätung • ${line} • ${eta}`,
   },
   ios: {
+    startupTitle: 'App-Fehler',
+    startupHint: 'Kilometr kann nicht fortfahren. Teile den Bericht, um bei der Fehlersuche zu helfen.',
+    startupShare: 'Teilen',
     locationPermission: 'Erlaube den Standortzugriff, um Verbindungen ab deinem Standort zu finden.',
     liveTitle: 'Live-Aktivität',
     liveHint: 'Fahrzeit auf dem Sperrbildschirm und in der Dynamic Island. Daten werden aktualisiert, solange die App aktiv ist.',
