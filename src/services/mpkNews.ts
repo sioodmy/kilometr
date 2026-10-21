@@ -289,7 +289,12 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-function formatNewsDate(ts: number | null): string {
+/**
+ * Etykieta daty komunikatu: względna ("przed chwilą", "2 godz. temu"),
+ * wiek liczony od teraz. UI ma liczyć ją przy renderze: zapamiętana w
+ * modelu utyka ("przed chwilą" zostaje na zawsze w cache).
+ */
+export function formatNewsDate(ts: number | null): string {
   if (!ts) return '';
   const t = NEWS_SVC_DICTS[getLocaleSync()].newsSvc;
   const d = new Date(ts);
