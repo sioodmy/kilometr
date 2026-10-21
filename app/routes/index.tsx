@@ -203,7 +203,6 @@ export default function RoutesScreen() {
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
   // (departInMin liczone przy pobraniu). Przerysowujemy wiersze, nie listę.
   const [nowTick, setNowTick] = useState(0);
-  const historyBoundary = useRef(nowSeconds() - 60);
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 30000);
     return () => clearInterval(t);
@@ -917,7 +916,10 @@ export default function RoutesScreen() {
 
   const renderConnection = useCallback(
     ({ item }: { item: Connection }) => {
-      const past = item.departureSec > 0 && item.departureSec < historyBoundary.current;
+      // Granica "przeszłość" liczona przy każdym rysunku: ref zaczepiony przy
+      // zamontowaniu ekranu zmroził nam style dłużej niż minute, bo nowy
+      // "tick" dziecka odświeżał napis, a karta zostawała jasna.
+      const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
       return (
         <ConnectionCard
           item={item}
