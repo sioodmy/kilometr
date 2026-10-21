@@ -4,6 +4,7 @@ import { setWebLocale, useStrings, useShareStrings, useWebLocale, type Locale } 
 import { Hero } from './components/Hero';
 import { JourneyDemo } from './components/JourneyDemo';
 import { TransitBackdrop } from './components/TransitBackdrop';
+import { PromiseSection } from './components/Promise';
 import { InformationPage } from './components/InformationPage';
 import { GITHUB_URL, KOFI_URL, PLAY_URL } from './data';
 
@@ -48,15 +49,7 @@ function Landing() {
         <Hero />
         <JourneyDemo />
       </div>
-      <section className="promise section-shell" aria-labelledby="promise-title">
-        <h2 id="promise-title">
-          {(['ads', 'free', 'forever'] as const).map((line) => (
-            <span className={`promise-line promise-${line} reveal`} key={line}>
-              <span>{s.promise[line]}</span>
-            </span>
-          ))}
-        </h2>
-      </section>
+      <PromiseSection />
       <section
         id="pobierz"
         className="closing section-shell reveal"

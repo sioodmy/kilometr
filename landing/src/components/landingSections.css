@@ -68,16 +68,11 @@
   .promise-line > span {
     position: relative;
     display: block;
-    transition:
-      transform 800ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 500ms ease;
-  }
-  .promise-free > span {
-    transition-delay: 140ms;
+    opacity: var(--line-reveal, 1);
+    transform: translateY(var(--line-shift, 0%));
   }
   .promise-forever > span {
     color: var(--accent);
-    transition-delay: 280ms;
   }
   .promise-forever > span::after {
     content: '';
@@ -87,31 +82,14 @@
     bottom: 0.04em;
     height: max(2px, 0.025em);
     background: currentColor;
-    transform: scaleX(1);
+    transform: scaleX(var(--line-reveal, 1));
     transform-origin: left;
-    transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1) 620ms;
-  }
-  .promise-line.will-reveal {
-    opacity: 1;
-    transform: none;
-  }
-  .promise-line.will-reveal > span {
-    opacity: 0;
-    transform: translateY(115%);
-  }
-  .promise-forever.will-reveal > span::after {
-    transform: scaleX(0);
-  }
-  .promise-line.is-visible > span {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  .promise-forever.is-visible > span::after {
-    transform: scaleX(1);
   }
   .closing {
-    border-top: 1px solid var(--line);
-    padding-block: clamp(64px, 8vw, 112px) clamp(80px, 10vw, 144px);
+    border: 1px solid var(--line);
+    border-radius: 32px;
+    background: var(--surface);
+    padding: clamp(56px, 8vw, 112px) clamp(20px, 5vw, 80px);
     text-align: center;
   }
   .closing h2 {
@@ -158,23 +136,33 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .promise-line.will-reveal > span {
+    .promise-line > span {
       opacity: 1;
       transform: none;
     }
-    .promise-forever.will-reveal > span::after {
+    .promise-forever > span::after {
       transform: none;
     }
   }
 }
 
 @layer responsive {
+  @media (max-width: 767px) {
+    .transit-backdrop svg {
+      width: 100%;
+    }
+    .closing {
+      border-radius: 24px;
+    }
+  }
   @media (max-width: 420px) {
     .closing-actions {
       gap: 10px;
     }
     .closing-actions .button {
-      padding: 12px;
+      flex-direction: column;
+      min-height: 92px;
+      padding: 14px 10px;
       gap: 8px;
       font-size: 0.8125rem;
     }
