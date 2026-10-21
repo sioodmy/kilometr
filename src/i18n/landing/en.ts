@@ -1,5 +1,4 @@
 import type { Strings } from './pl';
-import { cityNames } from './cities';
 import { previewRoute } from './journey';
 import { previewHome } from './home';
 
@@ -11,11 +10,6 @@ export const en: Strings = {
   },
   skip: 'Skip to content',
   nav: {
-    features: 'Features',
-    coverage: 'Coverage',
-    download: 'Download',
-    menu: 'Menu',
-    close: 'Close menu',
     label: 'Main navigation',
   },
   language: 'Website language',
@@ -29,6 +23,7 @@ export const en: Strings = {
     secondary: 'See how it works',
   },
   homePreview: {
+    screenLabel: 'App home screen',
     places: previewHome,
     title: 'Where to?',
     savedTitle: 'Saved places',
@@ -67,94 +62,12 @@ export const en: Strings = {
     body: 'Plan journeys and check departures, even offline. Download Kilometr and, if it helps you, support its development.',
     support: 'Support development',
   },
-  features: {
-    label: 'App features',
-    plan: 'Plan',
-    saved: 'Return',
-    ride: 'Ride',
-    planTitle: 'You pick the place.\nWe find the route.',
-    planBody:
-      'Enter an address or stop. Compare journeys, choose your transport and set your transfer preferences.',
-    planDetail:
-      'Buses, trams and rail where available. Including the walk to your stop and destination.',
-    savedTitle: 'Your places.\nCloser than you think.',
-    savedBody:
-      'Home, work, your favourite café. Save the places you return to and check the next departures on the home screen.',
-    savedDetail:
-      'Recent searches stay close at hand. Set your starting point independently of GPS.',
-    rideTitle: 'Know where you are.\nAnd what comes next.',
-    rideBody:
-      'See your route on the map, check the stops along the way and follow your journey. A notification reminds you when to leave.',
-    rideDetail: 'Vehicle positions and delays appear where the operator provides them.',
-  },
-  offline: {
-    eyebrow: 'Made for the journey',
-    title: 'Signal gone.\nRoute still here.',
-    body: 'Download your city’s timetable and map. Kilometr calculates journeys on your phone, so you can plan without an internet connection.',
-    note: 'Internet is needed to download and update data, and for live information.',
-    local: 'Routes calculated on your phone',
-    timetable: 'Offline timetables',
-    maps: 'Your downloaded map',
-    airplane: 'Airplane mode',
-    ready: 'Ready when you are.',
-  },
-  coverage: {
-    cities: cityNames,
-    eyebrow: 'Now across Poland',
-    title: 'Another city.\nThe same Kilometr.',
-    body: 'At home during the week, somewhere else at the weekend. Pick a city and travel with the app you already know.',
-    count: (n) => `${n} cities and metropolitan areas`,
-    label: 'Choose a city',
-    map: 'Map of supported cities in Poland',
-    selected: (name) => `Selected city: ${name}`,
-    timetable: 'Timetables',
-    offline: 'Offline map',
-    rail: 'Regional rail',
-    note: 'Transport options and live data vary by city. Change your city in the app’s Settings.',
-    metro: 'Upper Silesian and Zagłębie Metropolis',
-  },
-  principles: {
-    title: 'Just hop on.',
-    free: 'Free.',
-    freeBody: 'Plan journeys without a subscription or paid features.',
-    ads: 'No ads.',
-    adsBody: 'Your screen has room for your route.',
-    account: 'No account.',
-    accountBody: 'Open the app and choose where you’re going.',
-    open: 'Open source.',
-    openBody: 'Kilometr is developed in public. Read the code on GitHub.',
-    source: 'View the code on GitHub',
-  },
-  donation: {
-    title: 'Help develop Kilometr.',
-    body: 'Kilometr is free and open source. If it helps you get around, you can support its development on Ko-fi.',
-    cta: 'Support on Ko-fi',
-  },
-  download: {
-    title: 'Next stop?\nYours.',
-    body: 'Take Kilometr on your next journey.',
-    android: 'For Android phones. Free.',
-    apk: 'APK on GitHub',
-    github: 'Stable release from GitHub',
-    alternatives: 'Prefer another way to install?',
-    nightly: 'Test releases',
-    obtainium: 'Add to Obtainium',
-    obtainiumHelp: 'Requires Obtainium to be installed.',
-  },
   footer: {
     tagline: 'See you on the way.',
     privacy: 'Privacy',
     github: 'GitHub',
     license: 'Free software. GPL-3.0.',
     back: 'Back to the home page',
-  },
-  preview: {
-    home: 'App home screen',
-    routes: 'Journey results',
-    trip: 'Journey details',
-    placeholder: 'Screenshot placeholder',
-    device: 'Pixel 7a / 1080 × 2400',
-    placeholderLabel: (screen) => `${screen}. Space for an authentic screenshot from a Pixel 7a.`,
   },
   privacy: {
     title: 'Kilometr privacy policy',

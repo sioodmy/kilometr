@@ -10,6 +10,7 @@ import {
   TramFront,
 } from 'lucide-react';
 import { getLineColors } from '../../../src/services/lineIdentity';
+import { cityNames } from '../../../src/i18n/landing/cities';
 import { useStrings } from '../i18n';
 import { Clock3, Dumbbell, Home, Search, Settings2 } from './phoneIcons';
 import './phone.css';
@@ -31,8 +32,7 @@ function LineBadge({ line }: { line: string }) {
 }
 
 export function Phone({ className = '' }: { className?: string }) {
-  const strings = useStrings();
-  const s = strings.homePreview;
+  const s = useStrings().homePreview;
   const screen = useRef<HTMLDivElement>(null);
   const places = [
     { Icon: Home, name: s.home, address: s.places.homeAddress },
@@ -83,14 +83,14 @@ export function Phone({ className = '' }: { className?: string }) {
 
   return (
     <div className={`phone ${className}`}>
-      <div className="phone-screen" ref={screen} role="img" aria-label={strings.preview.home}>
+      <div className="phone-screen" ref={screen} role="img" aria-label={s.screenLabel}>
         <div className="native-home" aria-hidden="true">
           <div className="native-home-content">
             <div className="native-home-body">
               <div className="native-home-topbar">
                 <div className="native-home-city">
                   <MapPin size={16} />
-                  <span>{strings.coverage.cities.wroclaw}</span>
+                  <span>{cityNames.wroclaw}</span>
                 </div>
                 <div className="native-home-actions">
                   <div className="native-home-action">

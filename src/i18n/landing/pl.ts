@@ -1,4 +1,3 @@
-import { cityNames } from './cities';
 import { previewRoute } from './journey';
 import { previewHome } from './home';
 
@@ -10,11 +9,6 @@ export const pl = {
   },
   skip: 'Przejdź do treści',
   nav: {
-    features: 'Możliwości',
-    coverage: 'Zasięg',
-    download: 'Pobierz',
-    menu: 'Menu',
-    close: 'Zamknij menu',
     label: 'Nawigacja główna',
   },
   language: 'Język strony',
@@ -28,6 +22,7 @@ export const pl = {
     secondary: 'Zobacz, jak działa',
   },
   homePreview: {
+    screenLabel: 'Ekran główny aplikacji',
     places: previewHome,
     title: 'Gdzie jedziemy?',
     savedTitle: 'Zapisane miejsca',
@@ -73,95 +68,12 @@ export const pl = {
     body: 'Planuj podróże i sprawdzaj odjazdy, także offline. Pobierz Kilometr, a jeśli Ci się przyda, wesprzyj jego rozwój.',
     support: 'Wesprzyj rozwój',
   },
-  features: {
-    label: 'Możliwości aplikacji',
-    plan: 'Zaplanuj',
-    saved: 'Wracaj',
-    ride: 'Jedź',
-    planTitle: 'Cel jest Twój.\nTrasa już nasza.',
-    planBody:
-      'Wpisz adres lub przystanek. Porównaj połączenia, wybierz środek transportu i dopasuj przesiadki do siebie.',
-    planDetail:
-      'Autobusy, tramwaje i dostępna w danym mieście kolej. Z dojściem na przystanek i do celu.',
-    savedTitle: 'Twoje miejsca.\nBliżej niż myślisz.',
-    savedBody:
-      'Dom, praca, ulubiona kawiarnia. Zapisz miejsca, do których wracasz, i sprawdzaj najbliższe odjazdy od razu na ekranie głównym.',
-    savedDetail:
-      'Ostatnie wyszukiwania są pod ręką. Punkt startowy możesz zmienić niezależnie od GPS.',
-    rideTitle: 'Wiesz, gdzie jesteś.\nI co dalej.',
-    rideBody:
-      'Otwórz trasę na mapie, sprawdź przystanki po drodze i śledź wybrane połączenie. Powiadomienie przypomni Ci o wyjściu.',
-    rideDetail: 'Pozycje pojazdów i opóźnienia pojawiają się tam, gdzie udostępnia je przewoźnik.',
-  },
-  offline: {
-    eyebrow: 'Zaprojektowany do drogi',
-    title: 'Zasięg znika.\nTwoja trasa zostaje.',
-    body: 'Pobierz rozkład i mapę swojego miasta. Kilometr wyznacza połączenia na telefonie, więc możesz planować podróż także bez internetu.',
-    note: 'Internet jest potrzebny do pobrania i aktualizacji danych oraz informacji na żywo.',
-    local: 'Trasy liczone na telefonie',
-    timetable: 'Rozkłady offline',
-    maps: 'Pobrana mapa pod ręką',
-    airplane: 'Tryb samolotowy',
-    ready: 'Możesz ruszać.',
-  },
-  coverage: {
-    cities: cityNames,
-    eyebrow: 'Teraz w całej Polsce',
-    title: 'Inne miasto.\nTen sam Kilometr.',
-    body: 'Na co dzień u siebie, w weekend gdzie indziej. Wybierz miasto i jedź z aplikacją, którą już znasz.',
-    count: (n: number) => `${n} miast i aglomeracji`,
-    label: 'Wybierz miasto',
-    map: 'Mapa obsługiwanych miast w Polsce',
-    selected: (name: string) => `Wybrane miasto: ${name}`,
-    timetable: 'Rozkład jazdy',
-    offline: 'Mapa offline',
-    rail: 'Kolej regionalna',
-    note: 'Dostępne środki transportu i dane na żywo różnią się między miastami. W aplikacji miasto zmienisz w Ustawieniach.',
-    metro: 'Górnośląsko-Zagłębiowska Metropolia',
-  },
-  principles: {
-    title: 'Po prostu wsiadasz.',
-    free: 'Bezpłatnie.',
-    freeBody: 'Planowanie podróży bez abonamentu i opłat za funkcje.',
-    ads: 'Bez reklam.',
-    adsBody: 'Na ekranie jest miejsce na Twoją trasę.',
-    account: 'Bez konta.',
-    accountBody: 'Otwierasz aplikację i wybierasz, dokąd jedziesz.',
-    open: 'Otwarty kod.',
-    openBody: 'Kilometr rozwijamy publicznie. Kod możesz sprawdzić na GitHubie.',
-    source: 'Zobacz kod na GitHubie',
-  },
-  donation: {
-    title: 'Pomóż rozwijać Kilometr.',
-    body: 'Kilometr jest darmowy i open source. Jeśli przydaje Ci się w drodze, możesz wesprzeć jego rozwój na Ko-fi.',
-    cta: 'Wesprzyj na Ko-fi',
-  },
-  download: {
-    title: 'Następny przystanek?\nTwój.',
-    body: 'Zabierz Kilometr na swoją następną trasę.',
-    android: 'Na telefony z Androidem. Bezpłatnie.',
-    apk: 'APK na GitHubie',
-    github: 'Wydanie stabilne z GitHuba',
-    alternatives: 'Instalujesz po swojemu?',
-    nightly: 'Wersje testowe',
-    obtainium: 'Dodaj do Obtainium',
-    obtainiumHelp: 'Wymaga zainstalowanego Obtainium.',
-  },
   footer: {
     tagline: 'Do zobaczenia w drodze.',
     privacy: 'Prywatność',
     github: 'GitHub',
     license: 'Wolne oprogramowanie. GPL-3.0.',
     back: 'Wróć na stronę główną',
-  },
-  preview: {
-    home: 'Ekran główny aplikacji',
-    routes: 'Lista połączeń',
-    trip: 'Szczegóły podróży',
-    placeholder: 'Miejsce na zrzut ekranu',
-    device: 'Pixel 7a / 1080 × 2400',
-    placeholderLabel: (screen: string) =>
-      `${screen}. Miejsce na autentyczny zrzut ekranu z Pixela 7a.`,
   },
   privacy: {
     title: 'Polityka prywatności Kilometr',

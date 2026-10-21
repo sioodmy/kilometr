@@ -10,7 +10,6 @@
 - R-25, R-32, R-34: axe bez naruszeń WCAG A/AA przy 390 i 1440 px w obu motywach. Kontrast przycisku wynosi 5,46:1 w jasnym motywie i 9,34:1 w ciemnym. Najsłabsza sprawdzona para tekstu wynosi 4,58:1. Widoczny focus, skrót do treści, obsługa klawiatury i cele dotykowe od 44 px.
 - R-27, R-28, R-33: treść statyczna, bez pobierania danych z API i stanów oczekiwania na serwer. Brak FAQ. Zablokowany localStorage nie blokuje strony ani zmiany języka i motywu. Jest wariant bez JavaScriptu z linkiem do sklepu. Kod edytowany bez skryptów przepisujących pliki źródłowe.
 - R-37: kierunek pochodzi bezpośrednio z briefu użytkownika.
-- Mapa używa pełnego konturu Natural Earth 1:10m (1332 punkty) i projekcji Mercatora. Kontur i wszystkie miasta są przeliczane tą samą funkcją z jedną skalą obu osi.
 
 | Element                                        | Sprawdzone zachowanie                                                                                                                                                       |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -18,7 +17,6 @@
 | Możliwości, zasięg, pobieranie                 | Przejście do istniejących sekcji, również z menu mobilnego                                                                                                                  |
 | Google Play, oba przyciski                     | Nawigacja pod adres pakietu `app.kilometr`, potwierdzony przez użytkownika. Karta sklepu zwraca jeszcze 404 przed premierą                                                  |
 | Zaplanuj, Wracaj, Jedź                         | Zmiana treści i podglądu; działają strzałki, Home, End i kolejność fokusu                                                                                                   |
-| Wszystkie 15 miast                             | Zmiana zaznaczenia na mapie i informacji o mieście                                                                                                                          |
 | Wybór języka                                   | Zmiana całej treści, tytułu, opisu i `html.lang`; wybór zostaje po odświeżeniu                                                                                              |
 | Motyw                                          | Jasny i ciemny wygląd; wybór zostaje po odświeżeniu; domyślnie preferencja systemu                                                                                          |
 | Menu mobilne                                   | Otwieranie, zamykanie, zamknięcie po nawigacji i Escape; po Escape focus wraca do przycisku. Menu nie zostaje widoczne na desktopie                                         |
@@ -59,10 +57,8 @@
 - Build: `npm --prefix landing run build` zapisuje stronę do `docs/`; archiwalne `docs/screenshots/` pozostają na miejscu.
 - Adresy pobierania i Ko-fi: `landing/src/data.ts`.
 - Teksty: `src/i18n/landing/`, dołączone również do typowanego słownika aplikacji. Nazwy miast zachowują polską pisownię we wszystkich wersjach językowych.
-- Zasięg i środki transportu: `src/cities.ts`. Nazwy w słowniku mają kontrolę kompletności typu `CityId`.
 - Podgląd telefonu renderuje `landing/src/components/Phone.tsx`. Układ w `phone.css` odwzorowuje ekran główny i komponenty RN; `phoneIcons.ts` zawiera ścieżki ikon, które różnią się między zainstalowanymi wersjami Lucide.
 - Dane podglądu są w `src/i18n/landing/home.ts`, a teksty w czterech słownikach landingu. Używaj publicznych miejsc, bez prywatnych adresów. Kolory linii pochodzą ze wspólnego `getLineColors`.
 - `social-preview.png` jest osobną grafiką do udostępniania strony. Po zmianie prezentacji trzeba odświeżyć ją osobno.
-- Granica Polski: [Natural Earth 1:10m, v5.1.2](https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_10m_admin_0_countries.geojson), domena publiczna. Geometria i źródło są zapisane w `landing/src/data/poland.json`; projekcja i wspólne skalowanie w `landing/src/mapProjection.ts`.
 - Strona nie ładuje dotychczasowego Google Analytics. Przechowuje tylko ustawienia języka i motywu, zgodnie z opisem pod `#polityka`.
 - Workflow nadal wdraża GitHub Pages wyłącznie z `main`. Zmiany współdzielonych słowników lub rejestru miast również wyzwalają przebudowę. Link APK prowadzi do stabilnego wydania GitHuba, niezależnie od nazwy załącznika.
