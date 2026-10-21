@@ -95,7 +95,8 @@ export async function buildSearchSlices(rawTargetSec: number, arrivalMode = fals
   // departureTimeSec / arriveBySec mogą wskazywać jutro (DepartureTimeSheet
   // dodaje +86400). RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.
   const dayOffsetSec = Math.floor(rawTargetSec / 86400) * 86400;
-  const departureSec = rawTargetSec % 86400;
+  let departureSec = rawTargetSec % 86400;
+  if (departureSec < 0) departureSec += 86400;
   const targetDate = new Date(now);
   targetDate.setDate(targetDate.getDate() + Math.round(dayOffsetSec / 86400));
   const weekday = targetDate.getDay();
@@ -147,7 +148,13 @@ export async function warmupRouting(): Promise<void> {
 }
 
 /** Przystanki kursu TYLKO od boardStop do alightStop (to co użytkownik widzi). */
-function buildLegStops(tripId: string, boardStopId: string, alightStopId: string): LegStop[] {
+export function buildLegStops(
+  tripId: string,
+  boardStopId: string,
+  alightStopId: string,
+  departSec?: number,
+  arriveSec?: number,
+): LegStop[] {
   // Legi pochodzą z aktywnego wycinka, więc kurs jest w pamięci (sync, bez IO).
   const times = gtfsStore.stopTimes.get(tripId);
   if (!times || times.length === 0) return [];
@@ -164,8 +171,32 @@ function buildLegStops(tripId: string, boardStopId: string, alightStopId: string
     };
   });
 
-  const boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
-  const alightIdx = allStops.findIndex((s) => s.stopId === alightStopId);
+  let boardIdx = -1;
+  if (departSec !== undefined) {
+    boardIdx = allStops.findIndex(
+      (s) => s.stopId === boardStopId && s.departSec !== undefined && Math.abs(s.departSec - departSec) <= 120,
+    );
+  }
+  if (boardIdx < 0) {
+    boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
+  }
+
+  let alightIdx = -1;
+  if (arriveSec !== undefined && boardIdx >= 0) {
+    alightIdx = allStops.findIndex(
+      (s, idx) =>
+        idx > boardIdx &&
+        s.stopId === alightStopId &&
+        s.arriveSec !== undefined &&
+        Math.abs(s.arriveSec - arriveSec) <= 120,
+    );
+  }
+  if (alightIdx < 0 && boardIdx >= 0) {
+    alightIdx = allStops.findIndex((s, idx) => idx > boardIdx && s.stopId === alightStopId);
+  }
+  if (alightIdx < 0) {
+    alightIdx = allStops.findIndex((s) => s.stopId === alightStopId);
+  }
 
   if (boardIdx < 0 || alightIdx < 0 || boardIdx >= alightIdx) return allStops;
 
@@ -342,7 +373,7 @@ function mapJourneysToConnections(
       // Intermediate stops: TYLKO board→alight, nie cały kurs
       const intermediateStops =
         seg.type === 'transit' && seg.tripId && seg.fromStopId && seg.toStopId
-          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId)
+          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId, seg.departSec, seg.arriveSec)
           : undefined;
 
       legs.push({
@@ -481,7 +512,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // uruchamiana tym samym kodem, co samo wyszukiwanie.
   const arrivalMode = options.arriveBySec !== undefined && Number.isFinite(options.arriveBySec);
   const rawTarget = Math.max(
-    0,
+    -86400 * 2,
     Math.round(arrivalMode ? (options.arriveBySec as number) : (options.departureTimeSec ?? currentSec)),
   );
   const slices = await buildSearchSlices(rawTarget, arrivalMode);
