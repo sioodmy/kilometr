@@ -382,23 +382,11 @@
     right: max(24px, calc(50% - 580px));
     top: 200px;
   }
-  .hero-city-poznan .hero-city-mark {
-    background: #1d1d1b;
-    border-color: #383834;
-    box-shadow:
-      0 9px 20px -12px var(--shadow),
-      inset 0 1px 0 #ffffff1a;
-  }
   .hero-city-gzm {
     --depth: 0.6;
     --angle: 7deg;
     left: max(24px, calc(50% - 500px));
     top: 430px;
-  }
-  .hero-city-gzm img {
-    width: auto;
-    max-height: 45px;
-    place-self: center;
   }
   .hero-city-lodz {
     --depth: -0.85;

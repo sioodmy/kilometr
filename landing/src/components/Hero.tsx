@@ -130,12 +130,7 @@ export function Hero() {
           <div className={`hero-city hero-city-${city}`} key={city}>
             <div className="hero-city-float">
               <div className="hero-city-mark">
-                <img
-                  src={`./cities/${city}.${city === 'wroclaw' || city === 'krakow' || city === 'poznan' ? 'svg' : 'png'}`}
-                  alt=""
-                  width="100"
-                  height="60"
-                />
+                <img src={`./cities/${city}.webp`} alt="" width="100" height="60" />
               </div>
               <span>{s.coverage.cities[city]}</span>
             </div>
