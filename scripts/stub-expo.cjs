@@ -34,11 +34,19 @@ const locationStub = {
   watchPositionAsync: async () => ({ remove: () => undefined }),
 };
 
+const appStateListeners = new Set();
 const rnStub = {
   Platform: { OS: 'android', select: (o) => (o.android !== undefined ? o.android : o.default) },
   AppState: {
     currentState: 'active',
-    addEventListener: () => ({ remove: () => undefined }),
+    addEventListener: (_type, handler) => {
+      appStateListeners.add(handler);
+      return { remove: () => appStateListeners.delete(handler) };
+    },
+    emit(state) {
+      this.currentState = state;
+      for (const listener of appStateListeners) listener(state);
+    },
   },
   StyleSheet: { create: (o) => o },
 };

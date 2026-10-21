@@ -159,7 +159,6 @@ class LiveTracker {
     this.tripDelays.clear();
     this.lastOk = 0;
     this.restored = false;
-    if (this.pinned === 0) this.stop();
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -173,36 +172,34 @@ class LiveTracker {
   /** Zatrzymuje ticker: apka ma iść bez polla, dopóki czegoś nie potrzebuje. */
   stop(): void {
     this.wantPoll = false;
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    this.disarmTimer();
   }
 
   /** Śledzenie podróży potrzebuje polla nawet w tle: pin zamiast twardego start(). */
   pin(value: boolean): void {
     this.pinned += value ? 1 : -1;
     if (this.pinned < 0) this.pinned = 0;
+    this.ensureAppStateListener();
     if (this.pinned > 0) {
-      this.start();
+      this.armTimer();
       void this.poll();
-    } else if (AppState.currentState !== 'active') {
-      this.stop();
+    } else if (AppState.currentState !== 'active' || !this.wantPoll) {
+      this.disarmTimer();
     }
   }
 
   /**
    * Tylko jeden listener na żywotność modułu: w tle ticker ginie (bateria), na
    * ekranie wraca, jeśli ktoś go właśnie chce. Pinned (śledzenie podróży)
-   * morzuje pauzę, bo powiadomienia o odjazdach potrzebują świeżych pozycji.
+   * omija pauzę, bo powiadomienia o odjazdach potrzebują świeżych pozycji.
    */
   private ensureAppStateListener(): void {
     if (this.appStateSub) return;
     this.appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
-        if (this.wantPoll) this.armTimer();
+        if (this.wantPoll || this.pinned > 0) this.armTimer();
       } else if (this.pinned === 0) {
-        this.stop();
+        this.disarmTimer();
       }
     });
   }
@@ -213,6 +210,13 @@ class LiveTracker {
     this.timer = setInterval(() => {
       void this.poll();
     }, POLL_MS);
+  }
+
+  private disarmTimer(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
   }
 
   /**

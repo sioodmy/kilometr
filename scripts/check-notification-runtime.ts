@@ -90,7 +90,7 @@ const stubs: Record<string, unknown> = {
   },
   '../settings': { getSettingsSync: () => ({}), profileWalkSpeedMps: () => 1.3 },
   '../api': { RoutingService: { getConnections: () => route() }, rememberPlannedConnection: (value: Connection) => { remembered = value; } },
-  '../liveTracker': { liveTracker: { snapshot: () => [] } },
+  '../liveTracker': { liveTracker: { snapshot: () => [], pin: () => {}, start: () => {}, stop: () => {} } },
   '../../cities': { inCityBounds: () => true },
   '../cityStore': { getActiveCitySync: () => ({}) },
   '../widgetSnapshot': {
