@@ -1241,6 +1241,9 @@ export const en: Strings = {
     delayTitle: (line: string, eta: string) => `Delayed • ${line} • ${eta}`,
   },
   ios: {
+    startupTitle: 'App error',
+    startupHint: 'Kilometr cannot continue. Share the report to help find the cause of the error.',
+    startupShare: 'Share',
     locationPermission: 'Allow location access to find journeys from your position.',
     liveTitle: 'Live Activity',
     liveHint: 'Journey time on the Lock Screen and Dynamic Island. Data updates while the app is active.',

@@ -73,6 +73,7 @@ jobs:
       - name: Archive without signing
         env:
           APP_VERSION: ${{ inputs.release_tag }}
+          SOURCEMAP_FILE: ${{ runner.temp }}/main.jsbundle.map
         run: |
           set -euo pipefail
           xcodebuild \
@@ -103,6 +104,8 @@ jobs:
           path: |
             ${{ runner.temp }}/xcodebuild.log
             ${{ runner.temp }}/Archive.xcresult
+            ${{ runner.temp }}/main.jsbundle.map
+            ${{ runner.temp }}/Kilometr.xcarchive/dSYMs
             ios/Podfile.lock
           retention-days: 7
       - name: Installation instructions

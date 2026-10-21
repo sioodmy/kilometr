@@ -1,5 +1,8 @@
 {
   "ios": {
-    "NSLocationWhenInUseUsageDescription": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji."
+    "NSLocationWhenInUseUsageDescription": "Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.",
+    "KilometrStartupTitle": "Błąd aplikacji",
+    "KilometrStartupHint": "Kilometr nie może kontynuować. Udostępnij raport, aby pomóc znaleźć przyczynę błędu.",
+    "KilometrStartupShare": "Udostępnij"
   }
 }
