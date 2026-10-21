@@ -318,6 +318,9 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   notify();
   rescheduleTicker();
   await persist();
+  // Live Tracker musi odpytywać także w tle, bo powiadomienia o przesunięciach
+  // (Live Update) potrzebują świeżych pozycji pojazdów.
+  liveTracker.pin(true);
   if (run !== generation || !tracked || !progress) return;
   await presentTrip(tracked, progress, getNotificationPreferencesSync());
   if (run !== generation) {
@@ -396,6 +399,7 @@ export async function stopTracking(): Promise<void> {
     clearInterval(ticker);
     ticker = null;
   }
+  liveTracker.pin(false);
   notify();
   await cancelScheduledAlerts();
   await dismissTracking();
