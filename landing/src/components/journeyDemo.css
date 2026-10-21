@@ -1,0 +1,360 @@
+@font-face {
+  font-family: 'Demo Roboto';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/roboto-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Demo Roboto';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/roboto-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02FF, U+0304, U+0308, U+0329, U+1E00-1EFF;
+}
+@font-face {
+  font-family: 'Demo Roboto';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/roboto-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@layer product {
+  .journey-demo {
+    --native-primary: #5cdbbe;
+    --native-on-primary: #003831;
+    --native-surface: #111414;
+    --native-card: #1b2120;
+    --native-text: #e0e3e1;
+    --native-muted: #bfc9c5;
+    --native-outline: #899390;
+    --choice-travel: 0px;
+    --ride-opacity: 1;
+    --ride-shift: 0px;
+    overflow: clip;
+    scroll-margin-top: clamp(64px, 10svh, 96px);
+    padding-block: clamp(72px, 9vw, 132px) clamp(88px, 10vw, 140px);
+  }
+  .journey-demo h2 {
+    text-align: center;
+  }
+  .demo-options {
+    display: grid;
+    gap: 12px;
+    width: min(100%, 392px);
+    margin: 44px auto 0;
+  }
+  .demo-choice {
+    min-width: 0;
+  }
+  .demo-choice:first-child .demo-native-connection {
+    transform: translate3d(calc(-1 * var(--choice-travel)), 0, 0);
+  }
+  .demo-choice:last-child .demo-native-connection {
+    transform: translate3d(var(--choice-travel), 0, 0);
+  }
+  .demo-native-connection,
+  .demo-native-leg {
+    font-family: 'Demo Roboto', Roboto, Arial, sans-serif;
+    color: var(--native-text);
+    background: var(--native-card);
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: normal;
+    text-align: left;
+  }
+  /* Wymiary i role kolorów z ConnectionCard, LineBadge i theme/tokens w RN. */
+  .demo-native-connection {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 2px solid transparent;
+    border-radius: 28px;
+  }
+  .demo-schedule {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 10px;
+  }
+  .demo-departure {
+    max-width: 100%;
+    color: var(--native-primary);
+    font-size: 22px;
+    line-height: 28px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .demo-duration {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 8px;
+    border-radius: 12px;
+    color: #cde8e1;
+    background: #334b46;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .demo-journey-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--native-muted);
+  }
+  .demo-time-range {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    font-size: 18px;
+    line-height: 22px;
+    font-weight: 600;
+    letter-spacing: -0.7px;
+    font-variant-numeric: tabular-nums;
+  }
+  .demo-time-range time:last-child {
+    font-weight: 400;
+  }
+  .demo-transfer-text {
+    min-width: 0;
+    font-size: 12px;
+  }
+  .demo-strip,
+  .demo-strip-cell,
+  .demo-walk,
+  .demo-line-badge {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .demo-strip {
+    gap: 5px;
+    color: var(--native-muted);
+    padding-right: 2px;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .demo-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .demo-strip-cell {
+    gap: 5px;
+  }
+  .demo-walk {
+    min-height: 28px;
+    gap: 3px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .demo-line-badge {
+    justify-content: center;
+    min-width: 38px;
+    min-height: 28px;
+    gap: 5px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .demo-ride {
+    padding-top: clamp(88px, 12vw, 170px);
+    opacity: var(--ride-opacity);
+    transform: translate3d(0, var(--ride-shift), 0);
+    transition:
+      opacity 480ms ease,
+      transform 650ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .demo-ride:focus-within {
+    opacity: 1;
+    transform: none;
+  }
+  /* Wymiary TransitLegCard i StopRow z LegTimeline w RN. */
+  .demo-native-leg {
+    width: min(100%, 392px);
+    margin: 44px auto 0;
+    padding: 14px;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+  }
+  .demo-leg-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+  }
+  .demo-leg-toggle:active {
+    opacity: 0.96;
+  }
+  .demo-leg-toggle:focus-visible {
+    outline-color: var(--native-primary);
+    outline-offset: 6px;
+    border-radius: 4px;
+  }
+  .demo-leg-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .demo-direction {
+    flex: 1;
+    min-width: 0;
+    font-weight: 500;
+  }
+  .demo-leg-chevron {
+    flex-shrink: 0;
+    color: var(--native-muted);
+    transition: transform 260ms ease;
+  }
+  .demo-leg-toggle[aria-expanded='true'] .demo-leg-chevron {
+    transform: rotate(180deg);
+  }
+  .demo-stop-big {
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .demo-stop-prefix,
+  .demo-stop-big time {
+    color: var(--native-muted);
+    font-weight: 400;
+  }
+  .demo-stops-summary {
+    color: var(--native-muted);
+    font-size: 12px;
+  }
+  .demo-stops-disclosure {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-rows 300ms ease,
+      opacity 220ms ease,
+      margin-top 300ms ease;
+  }
+  .demo-stops-disclosure[data-expanded='true'] {
+    grid-template-rows: 1fr;
+    margin-top: 16px;
+    opacity: 1;
+  }
+  .demo-stops-inner {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .demo-stops-track {
+    position: relative;
+  }
+  .demo-stop-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .demo-stop-row {
+    display: flex;
+    gap: 10px;
+    min-height: 30px;
+  }
+  .demo-stop-rail {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 22px;
+    flex-shrink: 0;
+    color: var(--leg-accent);
+  }
+  .demo-stop-dot {
+    width: 13px;
+    height: 13px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+    margin-top: 4px;
+    background: currentColor;
+    z-index: 1;
+  }
+  .demo-stop-row:not(:last-child) .demo-stop-rail::after {
+    content: '';
+    flex: 1;
+    min-height: 12px;
+    width: 3px;
+    border-radius: 99px;
+    margin-top: -1px;
+    background: currentColor;
+  }
+  .demo-stop-name {
+    display: flex;
+    align-items: center;
+    padding-bottom: 6px;
+    font-size: 14px;
+  }
+  .demo-stop-strong {
+    font-weight: 700;
+  }
+  .demo-stop-row[data-passed='true'] {
+    color: var(--native-outline);
+  }
+  .demo-stop-row[data-passed='true'] .demo-stop-dot {
+    color: var(--native-outline);
+  }
+  .demo-stop-row[data-connector-passed='true'] .demo-stop-rail::after {
+    background: var(--native-outline);
+  }
+  .demo-vehicle {
+    position: absolute;
+    top: 17px;
+    left: -1px;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--native-surface);
+    border-radius: 12px;
+    background: var(--native-primary);
+    color: var(--native-on-primary);
+    transition: transform 1600ms cubic-bezier(0.45, 0, 0.2, 1);
+  }
+  .demo-caption {
+    margin-top: 22px;
+    color: var(--muted);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    text-align: center;
+  }
+  @media (min-width: 64rem) {
+    .demo-options {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 24px;
+      width: 100%;
+      margin-top: 64px;
+    }
+    .demo-native-leg {
+      margin-top: 56px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .demo-choice .demo-native-connection,
+    .demo-ride {
+      transform: none !important;
+    }
+    .demo-ride {
+      opacity: 1;
+      visibility: visible !important;
+    }
+  }
+}

@@ -1,4 +1,5 @@
 @layer reset, base, layout, product, responsive;
+@import './components/journeyDemo.css';
 
 @layer reset {
   *,
@@ -433,20 +434,6 @@
   }
   .hero-phone {
     width: clamp(240px, 22vw, 286px);
-  }
-  .intro {
-    padding-top: clamp(88px, 11vw, 150px);
-    padding-bottom: clamp(68px, 8vw, 112px);
-    text-align: center;
-  }
-  .intro-icon {
-    width: 42px;
-    height: 42px;
-    color: var(--accent);
-    margin: 0 auto 26px;
-  }
-  .intro .section-body {
-    margin: 26px auto 0;
   }
   .features {
     padding-bottom: clamp(72px, 10vw, 140px);
@@ -1234,12 +1221,6 @@
     .hero-city-lodz {
       top: auto;
       bottom: 564px;
-    }
-    .intro {
-      padding-block: 80px 54px;
-    }
-    .intro .section-body {
-      max-width: 34ch;
     }
     .feature-tabs {
       gap: 25px;

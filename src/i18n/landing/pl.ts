@@ -1,4 +1,5 @@
 import { cityNames } from './cities';
+import { previewRoute } from './journey';
 
 export const pl = {
   meta: {
@@ -25,9 +26,27 @@ export const pl = {
     play: 'Pobierz z Google Play',
     secondary: 'Zobacz, jak działa',
   },
-  intro: {
-    title: 'Dobre połączenie.\nNa co dzień.',
-    body: 'Do pracy, na uczelnię, na drugi koniec miasta. Kilometr układa trasę, a Ty zajmujesz się swoim dniem.',
+  journeyDemo: {
+    choose: 'Wybierasz',
+    ride: '...i jedziesz',
+    mock: 'Przykładowa podróż. Godziny według zegara urządzenia.',
+    route: previewRoute,
+    departIn: (n: number) => `za ${n} min`,
+    duration: (n: number) => `${n} min`,
+    transfers: (n: number) =>
+      n <= 0
+        ? 'bezpośrednio'
+        : n === 1
+          ? '1 przesiadka'
+          : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
+            ? `${n} przesiadki`
+            : `${n} przesiadek`,
+    fromPrefix: 'z ',
+    toPrefix: 'do ',
+    stopsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'przystanek' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
+    expandA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
   },
   features: {
     label: 'Możliwości aplikacji',

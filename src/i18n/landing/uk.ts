@@ -1,5 +1,6 @@
 import type { Strings } from './pl';
 import { cityNames } from './cities';
+import { previewRoute } from './journey';
 
 export const uk: Strings = {
   meta: {
@@ -26,9 +27,27 @@ export const uk: Strings = {
     play: 'Завантажити з Google Play',
     secondary: 'Як це працює',
   },
-  intro: {
-    title: 'Зручне сполучення.\nЩодня.',
-    body: 'На роботу, на навчання, на інший кінець міста. Kilometr прокладає маршрут, а ти займаєшся своїми справами.',
+  journeyDemo: {
+    choose: 'Обираєш',
+    ride: '...і їдеш',
+    mock: 'Приклад подорожі. Час за годинником твого пристрою.',
+    route: previewRoute,
+    departIn: (n) => `за ${n} хв`,
+    duration: (n) => `${n} хв`,
+    transfers: (n) =>
+      n <= 0
+        ? 'прямо'
+        : n % 10 === 1 && n % 100 !== 11
+          ? '1 пересадка'
+          : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
+            ? `${n} пересадки`
+            : `${n} пересадок`,
+    fromPrefix: 'з ',
+    toPrefix: 'до ',
+    stopsSummary: (n, mins, open) =>
+      `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'зупинка' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'зупинки' : 'зупинок'} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`,
+    expandA11y: (line, dir, expanded) =>
+      `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
   },
   features: {
     label: 'Можливості застосунку',

@@ -1,5 +1,6 @@
 import type { Strings } from './pl';
 import { cityNames } from './cities';
+import { previewRoute } from './journey';
 
 export const de: Strings = {
   meta: {
@@ -26,9 +27,20 @@ export const de: Strings = {
     play: 'Bei Google Play herunterladen',
     secondary: 'So funktioniert’s',
   },
-  intro: {
-    title: 'Eine gute Verbindung.\nJeden Tag.',
-    body: 'Zur Arbeit, zur Uni, ans andere Ende der Stadt. Kilometr plant die Route und du kümmerst dich um deinen Tag.',
+  journeyDemo: {
+    choose: 'Du wählst',
+    ride: '...und fährst los',
+    mock: 'Beispielfahrt. Die Zeiten folgen deiner Geräteuhr.',
+    route: previewRoute,
+    departIn: (n) => `in ${n} Min.`,
+    duration: (n) => `${n} Min.`,
+    transfers: (n) => (n === 0 ? 'direkt' : n === 1 ? '1 Umstieg' : `${n} Umstiege`),
+    fromPrefix: 'ab ',
+    toPrefix: 'bis ',
+    stopsSummary: (n, mins, open) =>
+      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+    expandA11y: (line, dir, expanded) =>
+      `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
   },
   features: {
     label: 'App-Funktionen',

@@ -7,12 +7,12 @@ import {
   Coffee,
   Github,
   Plane,
-  TramFront,
   WifiOff,
 } from 'lucide-react';
 import { setWebLocale, useStrings, useShareStrings, useWebLocale, type Locale } from './i18n';
 import { Phone } from './components/Phone';
 import { Hero } from './components/Hero';
+import { JourneyDemo } from './components/JourneyDemo';
 import { Coverage } from './components/Coverage';
 import { InformationPage } from './components/InformationPage';
 import {
@@ -72,7 +72,7 @@ function Features() {
     document.getElementById(`tab-${tabs[next]}`)?.focus();
   }
   return (
-    <section id="mozliwosci" className="features section-shell">
+    <section className="features section-shell">
       <div className="feature-tabs reveal" role="tablist" aria-label={s.label}>
         {tabs.map((tab, index) => (
           <button
@@ -123,11 +123,7 @@ function Landing() {
     <main id="main" tabIndex={-1}>
       <Hero />
 
-      <section className="intro section-shell reveal">
-        <TramFront className="intro-icon" strokeWidth={1.5} aria-hidden="true" />
-        <h2>{s.intro.title}</h2>
-        <p className="section-body">{s.intro.body}</p>
-      </section>
+      <JourneyDemo />
       <Features />
 
       <section className="offline section-shell">
