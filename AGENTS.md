@@ -1,10 +1,8 @@
-# kilometr: przewodnik dla agentów
-
 Te reguły są domyślne (good defaults), nie święte prawo. User może je nadpisać w wątku.
 
 ## User
 
-- 20 lat, Polska. Rozmowy po polsku, krótko i wprost; tak samo zwracaj się do niego.
+- Rozmowy po polsku, krótko i wprost; tak samo zwracaj się do niego.
 - Autystyczny, ADHD, krótki zakres uwagi: odpowiedzi maksymalnie krótkie, listy zamiast akapitów, najpierw wynik, potem szczegóły. Zero ozdobników, zero "great question".
 - Nie jest native speakerem angielskiego: po angielsku krótkie zdania, bez idiomów.
 - Nie traktuj jak nowicjusza, nie tłumacz podstaw, chyba że o to poprosi.
