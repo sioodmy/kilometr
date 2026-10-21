@@ -277,7 +277,7 @@ const NEEDED_GTFS_FILES = new Set([
  * naraz i stop_times (~46 MB) ląduje w RAM razem z resztą - OOM na
  * słabszych telefonach.
  */
-function zipEntryNames(binary: Uint8Array): string[] {
+export function zipEntryNames(binary: Uint8Array): string[] {
   // Katalog centralny lokalizujemy przez EOCD (PK\5\6). Skan od końca,
   // bo EOCD może mieć za sobą komentarz zipa (do 64 KB).
   let eocd = -1;
@@ -289,18 +289,23 @@ function zipEntryNames(binary: Uint8Array): string[] {
     }
   }
   if (eocd < 0) return [];
-  const cdSize = binary[eocd + 12] | (binary[eocd + 13] << 8) | (binary[eocd + 14] << 16) | (binary[eocd + 15] << 24);
-  const cdsStart = binary[eocd + 16] | (binary[eocd + 17] << 8) | (binary[eocd + 18] << 16) | (binary[eocd + 19] << 24);
+  const cdSize = ((binary[eocd + 12]) | (binary[eocd + 13] << 8) | (binary[eocd + 14] << 16) | (binary[eocd + 15] << 24)) >>> 0;
+  const cdsStart = ((binary[eocd + 16]) | (binary[eocd + 17] << 8) | (binary[eocd + 18] << 16) | (binary[eocd + 19] << 24)) >>> 0;
+  if (cdSize === 0xffffffff || cdsStart === 0xffffffff) {
+    throw new Error('Archiwa ZIP64 nie są obsługiwane');
+  }
   const names: string[] = [];
   let pos = cdsStart;
   const cdEnd = cdsStart + cdSize;
+  const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
   while (pos + 46 <= cdEnd && pos + 46 <= binary.length) {
     if (!(binary[pos] === 0x50 && binary[pos + 1] === 0x4b && binary[pos + 2] === 0x01 && binary[pos + 3] === 0x02)) break;
     const nameLen = binary[pos + 28] | (binary[pos + 29] << 8);
     const extraLen = binary[pos + 30] | (binary[pos + 31] << 8);
     const commentLen = binary[pos + 32] | (binary[pos + 33] << 8);
-    let name = '';
-    for (let k = 0; k < nameLen; k++) name += String.fromCharCode(binary[pos + 46 + k]);
+    if (pos + 46 + nameLen > binary.length) break;
+    const nameBytes = binary.subarray(pos + 46, pos + 46 + nameLen);
+    const name = decoder ? decoder.decode(nameBytes) : String.fromCharCode(...nameBytes);
     names.push(name);
     pos += 46 + nameLen + extraLen + commentLen;
   }

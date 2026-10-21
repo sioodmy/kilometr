@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { zipSync } from 'fflate';
+import { zipEntryNames } from '../src/services/gtfsDownloader';
 import { kvGet, kvGetStrict, kvRemove, kvSet } from '../src/services/storage';
 
 const fs = createRequire(import.meta.url)('expo-file-system/legacy');
@@ -71,7 +73,26 @@ async function main() {
   const writeThenRead = kvSet('read-after-write', 'saved');
   assert.equal(await kvGet('read-after-write'), 'saved');
   await writeThenRead;
-  console.log('PASS: concurrent writes, removal, stale reads, retry, read after write');
+
+  // Testy parsowania katalogu centralnego ZIP (zipEntryNames)
+  const syntheticZip = zipSync({
+    'stops.txt': new TextEncoder().encode('stop_id,stop_name\n1,Przystanek\n'),
+    'routes.txt': new TextEncoder().encode('route_id,route_short_name\n1,1\n'),
+    'folder/subfile_łódź.txt': new TextEncoder().encode('content'),
+  });
+  const names = zipEntryNames(syntheticZip);
+  assert.deepEqual(names, ['stops.txt', 'routes.txt', 'folder/subfile_łódź.txt']);
+
+  // Pusty bufor / uszkodzony nagłówek
+  assert.deepEqual(zipEntryNames(new Uint8Array(10)), []);
+
+  // ZIP64 - symulacja wskaźnika 0xFFFFFFFF
+  const zip64EOCD = new Uint8Array(22);
+  zip64EOCD[0] = 0x50; zip64EOCD[1] = 0x4b; zip64EOCD[2] = 0x05; zip64EOCD[3] = 0x06;
+  zip64EOCD[12] = 0xff; zip64EOCD[13] = 0xff; zip64EOCD[14] = 0xff; zip64EOCD[15] = 0xff;
+  assert.throws(() => zipEntryNames(zip64EOCD), /ZIP64/);
+
+  console.log('PASS: concurrent writes, removal, stale reads, retry, read after write, zip entry names');
 }
 
 void main().catch((error) => {
