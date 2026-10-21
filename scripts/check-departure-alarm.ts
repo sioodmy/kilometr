@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import type { Connection } from '../src/types/models';
-import { departureAlarmTiming } from '../src/services/departureAlarmPlan';
+import {
+  departureAlarmTiming,
+  isDepartureAlarmActive,
+  RING_WINDOW_MS,
+} from '../src/services/departureAlarmPlan';
 
 const day = new Date(2026, 9, 19, 12, 0);
 const at = (h: number, m: number, offset = 0) => new Date(2026, 9, 19 + offset, h, m).getTime();
@@ -35,4 +39,15 @@ assert.equal(departureAlarmTiming(tomorrow, 10, new Date(at(23, 30)))?.at, at(23
 assert.equal(departureAlarmTiming(tomorrow, 1, new Date(at(23, 30)))?.at, at(0, 4, 1));
 const evening = { ...connection, departureSec: 23 * 3600 + 25 * 60 };
 assert.equal(departureAlarmTiming(evening, 10, new Date(at(7, 0)))?.at, at(23, 15), 'godzina ponad 12 h do przodu nie cofa alarmu na wczoraj');
-console.log('PASS: budzik, dojście, odjazd, północ, jutrzejszy rozkład i walidacja wyprzedzenia');
+
+// Okno ważności dzwonka i ochrona przed utknięciem ringing
+const testNow = at(12, 0);
+assert.equal(isDepartureAlarmActive({ status: 'ringing', at: testNow - 60_000 }, testNow), true, 'ringing w oknie 180s jest aktywny');
+assert.equal(isDepartureAlarmActive({ status: 'ringing', at: testNow - RING_WINDOW_MS + 1000 }, testNow), true, 'ringing tuż przed końcem okna jest aktywny');
+assert.equal(isDepartureAlarmActive({ status: 'ringing', at: testNow - RING_WINDOW_MS - 1000 }, testNow), false, 'przeterminowany ringing jest nieaktywny');
+assert.equal(isDepartureAlarmActive({ status: 'scheduled', at: testNow + 10_000 }, testNow), true, 'przyszły scheduled jest aktywny');
+assert.equal(isDepartureAlarmActive({ status: 'scheduled', at: testNow - 1 }, testNow), false, 'przeszły scheduled jest nieaktywny');
+assert.equal(isDepartureAlarmActive({ status: 'dismissed', at: testNow + 10_000 }, testNow), false, 'dismissed jest nieaktywny');
+assert.equal(isDepartureAlarmActive(null, testNow), false, 'brak alarmu jest nieaktywny');
+
+console.log('PASS: budzik, dojście, odjazd, północ, jutrzejszy rozkład, walidacja wyprzedzenia i okno dzwonka');
