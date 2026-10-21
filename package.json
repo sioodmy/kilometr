@@ -5,6 +5,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",
+    "@material/material-color-utilities": "^0.4.0",
     "babel-preset-expo": "~57.0.0",
     "expo": "~57.0.24",
     "expo-clipboard": "~57.0.2",
@@ -98,6 +99,7 @@
     "check:minimap": "tsx scripts/check-minimap.ts",
     "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
     "check:map-colors": "tsx scripts/check-map-colors.ts",
+    "check:personalization": "tsx --require ./scripts/stub-expo.cjs scripts/check-personalization.ts",
     "check:line-badge": "tsx scripts/check-line-badge.ts",
     "check:widget-badge": "tsx scripts/check-widget-badge.ts",
     "sync:widget-strings": "tsx scripts/sync-widget-strings.ts",
