@@ -1283,6 +1283,9 @@ export const pl = {
     delayTitle: (line: string, eta: string) => `Opóźnienie • ${line} • ${eta}`,
   },
   ios: {
+    startupTitle: 'Błąd aplikacji',
+    startupHint: 'Kilometr nie może kontynuować. Udostępnij raport, aby pomóc znaleźć przyczynę błędu.',
+    startupShare: 'Udostępnij',
     locationPermission: 'Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.',
     liveTitle: 'Aktywność na żywo',
     liveHint: 'Czas podróży na ekranie blokady i Dynamic Island. Dane odświeżają się, gdy aplikacja jest aktywna.',

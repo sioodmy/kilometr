@@ -1,5 +1,8 @@
 {
   "ios": {
-    "NSLocationWhenInUseUsageDescription": "Allow location access to find journeys from your position."
+    "NSLocationWhenInUseUsageDescription": "Allow location access to find journeys from your position.",
+    "KilometrStartupTitle": "App error",
+    "KilometrStartupHint": "Kilometr cannot continue. Share the report to help find the cause of the error.",
+    "KilometrStartupShare": "Share"
   }
 }
