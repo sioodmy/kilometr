@@ -60,25 +60,40 @@ apiRouter.get('/destinations/smart', (req, res) => {
     res.status(400).json({ error: 'Valid lat, lon and limit query parameters required' });
     return;
   }
+  // limit=-1 szedł do slice(0, -1) i zwracał prawie całą bazę; API jest publiczne.
+  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
 
-  const destinations = FavoritesService.getSmartDestinations(lat, lon, limit);
+  const destinations = FavoritesService.getSmartDestinations(lat, lon, safeLimit);
   res.json(destinations);
 });
 
 // Record a trip search into history
 apiRouter.post('/history/trip', (req, res) => {
-  const { originLat, originLon, originTitle, dest, durationMin } = req.body;
+  const { originLat, originLon, originTitle, dest, durationMin } = req.body ?? {};
   const lat = Number(originLat);
   const lon = Number(originLon);
-  if (!dest || !dest.id || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+  if (!dest || typeof dest !== 'object' || dest.id == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
     res.status(400).json({ error: 'Missing required trip fields (dest.id, originLat, originLon)' });
+    return;
+  }
+  // better-sqlite3 wywala TypeError na obiekcie zamiast stringa; typy
+  // sprowadzamy do kontraktu zamiast liczyć na "zdrowego klienta".
+  const safeDest = {
+    ...dest,
+    id: String(dest.id),
+    title: typeof dest.title === 'string' ? dest.title : String(dest.title ?? ''),
+    lat: Number(dest.lat),
+    lon: Number(dest.lon),
+  };
+  if (!Number.isFinite(safeDest.lat) || !Number.isFinite(safeDest.lon)) {
+    res.status(400).json({ error: 'dest.lat and dest.lon must be numbers' });
     return;
   }
   FavoritesService.recordTrip(
     lat,
     lon,
-    originTitle || 'Twoja lokalizacja',
-    dest,
+    typeof originTitle === 'string' ? originTitle : 'Twoja lokalizacja',
+    safeDest,
     Number.isFinite(Number(durationMin)) ? Number(durationMin) : 15
   );
   res.json({ success: true });
@@ -99,7 +114,8 @@ apiRouter.get('/search', async (req, res) => {
     const results = await searchSuggestions(q, lat, lon);
     res.json(results);
   } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Search error' });
+    console.error('[API /search error]', err);
+    res.status(500).json({ error: 'Search error' });
   }
 });
 
@@ -181,7 +197,7 @@ apiRouter.get('/routes', async (req, res) => {
     res.json(connections);
   } catch (err: any) {
     console.error('[API /routes error]', err);
-    res.status(500).json({ error: err?.message || 'Routing calculation error' });
+    res.status(500).json({ error: 'Routing calculation error' });
   }
 });
 
@@ -246,7 +262,8 @@ apiRouter.get('/trips/:tripId/stops', async (req, res) => {
     }
     res.json({ tripId: req.params.tripId, stops });
   } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Trip stops error' });
+    console.error('[API /trips/:tripId/stops error]', err);
+    res.status(500).json({ error: 'Trip stops error' });
   }
 });
 
@@ -265,7 +282,7 @@ apiRouter.get('/location/reverse', async (req, res) => {
     res.json(info);
   } catch (err: any) {
     console.error('[API /location/reverse error]', err);
-    res.status(500).json({ error: err?.message || 'Reverse geocode error' });
+    res.status(500).json({ error: 'Reverse geocode error' });
   }
 });
 
@@ -276,14 +293,18 @@ apiRouter.get('/stops/nearest', async (req, res) => {
   const limit = req.query.limit ? Number(req.query.limit) : 5;
   const maxDistance = req.query.maxDistance ? Number(req.query.maxDistance) : 1000;
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(limit) || !Number.isFinite(maxDistance)) {
     res.status(400).json({ error: 'Valid lat and lon query parameters required' });
     return;
   }
+  // Bez klampów limit=10^9 zwracał całą bazę przystanków, a Infinity liczyło
+  // dystans do wszystkiego: publiczne API nie może robić tego na żądanie.
+  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
+  const safeMaxDistance = Math.max(1, Math.min(5000, Math.round(maxDistance)));
 
   try {
     await gtfsStore.load();
-    const nearest = gtfsStore.findNearestStops(lat, lon, maxDistance, limit);
+    const nearest = gtfsStore.findNearestStops(lat, lon, safeMaxDistance, safeLimit);
     res.json(
       nearest.map((n) => ({
         id: n.stop.stop_id,
@@ -296,7 +317,7 @@ apiRouter.get('/stops/nearest', async (req, res) => {
     );
   } catch (err: any) {
     console.error('[API /stops/nearest error]', err);
-    res.status(500).json({ error: err?.message || 'Nearest stops error' });
+    res.status(500).json({ error: 'Nearest stops error' });
   }
 });
 
@@ -338,7 +359,7 @@ apiRouter.put('/places/:id', (req, res) => {
     res.json(updated);
   } catch (err: any) {
     console.error('[API PUT /places/:id error]', err);
-    res.status(500).json({ error: err?.message || 'Failed to update place' });
+    res.status(500).json({ error: 'Failed to update place' });
   }
 });
 
