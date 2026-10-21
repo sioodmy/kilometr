@@ -64,7 +64,7 @@ import { useThumbBarInset } from '../../src/components/ThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 import { useStrings } from '../../src/i18n';
 
-/** Sekundy od północy — jeden zegar dla całego ekranu. */
+/** Sekundy od północy - jeden zegar dla całego ekranu. */
 function nowSeconds(): number {
   const d = new Date();
   return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
@@ -135,7 +135,7 @@ export default function RoutesScreen() {
   }, [params.action]);
 
   // Przycisk „Trasa” pod powiadomieniem prowadzi prosto do szczegółów
-  // śledzonego kursu. Listę połączeń użytkownik już widział — teraz chce
+  // śledzonego kursu. Listę połączeń użytkownik już widział - teraz chce
   // sprawdzić ten jeden kurs, więc oszczędzamy mu jedno przeskakiwanie ekranu.
   const handledOpenRef = useRef<string | null>(null);
   useEffect(() => {
@@ -165,7 +165,7 @@ export default function RoutesScreen() {
     if (!activeAnchor) return;
     dismissedAnchorsRef.current.add(activeAnchor.placeId);
     // Pozycja już jest prawdziwym GPS (kotwica to tylko preferencja
-    // w zapytaniu) — dismiss czyści samą preferencję i odświeża listę.
+    // w zapytaniu) - dismiss czyści samą preferencję i odświeża listę.
     setActiveAnchor(null);
   };
 
@@ -217,7 +217,7 @@ export default function RoutesScreen() {
   // lista po cichu przestawała się dociągać. Bez tego użytkownik scrollował
   // do końca i nie dostawał żadnej odpowiedzi.
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
-  // Filtry mieszkają w dolnym menu (RoutesThumbBar) — na górze ekranu nie ma
+  // Filtry mieszkają w dolnym menu (RoutesThumbBar) - na górze ekranu nie ma
   // ich wcale, żeby nic nie powtarzać się w dwóch miejscach. To wciąż
   // filtry jednorazowe, NIE ustawienia systemowe (maxTransfers w /settings
   // zostaje nietknięte): toggle wymusza maxTransfers=0, a typ pojazdu
@@ -246,7 +246,7 @@ export default function RoutesScreen() {
 
   // Dock przesuwa się nad listą bez zmiany wysokości jej viewportu.
   const dockProgress = useSharedValue(1);
-  // Zapas pod listą liczony z zmierzonej wysokości docka — wpisane wcześniej
+  // Zapas pod listą liczony z zmierzonej wysokości docka - wpisane wcześniej
   // 96 px nie wystarczało i ostatnia karta chowała się pod paskiem.
   const thumbInset = useThumbBarInset();
 
@@ -278,7 +278,7 @@ export default function RoutesScreen() {
     };
   }, []);
 
-  // Stan wyboru godziny odjazdu — nad queryAt, bo zapytanie mapuje czas na
+  // Stan wyboru godziny odjazdu - nad queryAt, bo zapytanie mapuje czas na
   // parametr silnika (departureTimeSec).
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
   const [departureTimeSec, setDepartureTimeSec] = useState<number | undefined>(undefined);
@@ -294,7 +294,7 @@ export default function RoutesScreen() {
       toTitle,
       toLat,
       toLon,
-      // Kotwica to preferencja startowa — pozycja zostaje prawdziwym GPS,
+      // Kotwica to preferencja startowa - pozycja zostaje prawdziwym GPS,
       // silnik liczy realny spacer do kotwicy (ułatwienie, nie sztywna zasada).
       anchorStopId: activeAnchor?.stopId,
       anchorStopLat: activeAnchor?.lat,
@@ -315,7 +315,7 @@ export default function RoutesScreen() {
     };
   };
 
-  // Wyszukiwarka startu / celu — ta sama co na ekranie głównym
+  // Wyszukiwarka startu / celu - ta sama co na ekranie głównym
   const [sheetFor, setSheetFor] = useState<'from' | 'to' | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Suggestion[]>([]);
@@ -518,7 +518,7 @@ export default function RoutesScreen() {
   };
 
   const applyLiveList = (c: Connection[], depSec: number | undefined) => {
-    // Default: tylko aktualne i przyszłe — bez historycznych.
+    // Default: tylko aktualne i przyszłe - bez historycznych.
     // Przeszłe dociąga użytkownik gestem (scroll w górę + przytrzymanie).
     // Przy jawnie wybranej godzinie (np. z przeszłości) pokazuj wszystko jak jest.
     let list = deduplicateConnections(c).sort((a, b) => a.departureSec - b.departureSec);
@@ -596,7 +596,7 @@ export default function RoutesScreen() {
   };
 
   /**
-   * Cichy refresh BEZ spinnera i BEZ czyszczenia listy — podmiana jest
+   * Cichy refresh BEZ spinnera i BEZ czyszczenia listy - podmiana jest
    * niewidoczna, gdy dane te same (stabilne klucze FlatList = brak flickeru).
    * Używany przy powrocie sieci i zmianie czasu w trybie offline.
    */
@@ -669,7 +669,7 @@ export default function RoutesScreen() {
     }
   };
 
-  // Starsze (historyczne, już odjechane) — dokładane Z GÓRY
+  // Starsze (historyczne, już odjechane) - dokładane Z GÓRY
   const handleLoadEarlier = async () => {
     if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreEarlier || offline) return;
     const firstDeparture = items[0].departureSec;
@@ -688,7 +688,7 @@ export default function RoutesScreen() {
           setNoMoreEarlier(true);
           return list;
         }
-        // Bazę do korekty scrolla bierzemy dopiero TU — czyli jeszcze przed
+        // Bazę do korekty scrolla bierzemy dopiero TU - czyli jeszcze przed
         // renderem, w którym dojdą nowe wiersze. Pomiar na starcie
         // zapytania bywał nieaktualny (np. rozciągał się nagłówek), przez co
         // lista skakała dwa razy zamiast raz.
@@ -696,7 +696,7 @@ export default function RoutesScreen() {
         return list;
       });
     } catch {
-      // po cichu — lista zostaje
+      // po cichu - lista zostaje
     } finally {
       // Jak w handleLoadMore: spinner gaśnie nawet gdy zapytanie zostało
       // unieważnione przez nowszy fetchSeq.
@@ -716,7 +716,7 @@ export default function RoutesScreen() {
   const lastDockToggleAt = useRef(0);
 
   // Próg jest wysoki, bo dock reaguje dopiero na ustabilizowanym
-  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) — 80 px
+  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) - 80 px
   // to jedno świadome przejście, a nie drgnięcie palcem.
   const HIDE_THRESHOLD = 80;
   const SHOW_THRESHOLD = 40;
@@ -728,9 +728,9 @@ export default function RoutesScreen() {
   const SCROLL_SETTLE_MS = 120;
 
   // Jedno miejsce do zmiany stanu docka. Przeskok stanu jest możliwy tylko
-  // raz na DOCK_COOLDOWN_MS — szarpnięcia się nie zbiją w serię, a gest
+  // raz na DOCK_COOLDOWN_MS - szarpnięcia się nie zbiją w serię, a gest
   // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
-  // niej (pendingDockState). `force` omija pauzę — przy powrocie na samą
+  // niej (pendingDockState). `force` omija pauzę - przy powrocie na samą
   // górę listy dock musi być od razu.
   const applyDockState = (visible: boolean) => {
     if (isDockVisible.current === visible) return;
@@ -761,7 +761,7 @@ export default function RoutesScreen() {
   };
 
   // Decyzja o docku zapada, gdy lista przestała się ruszać. W trakcie
-  // przeciągania dock tylko liczy deltę — animacja leci na wątku UI
+  // przeciągania dock tylko liczy deltę - animacja leci na wątku UI
   // (Reanimated), więc nie blokuje gestu ani nie przelicza layoutu listy.
   const evaluateDockOnSettle = () => {
     if (accumulatedDelta.current >= HIDE_THRESHOLD) {
@@ -795,7 +795,7 @@ export default function RoutesScreen() {
 
   // Handler scrolla pilnuje pozycji (korekta po dociągnięciu starszych
   // odjazdów z góry) i kierunku do chowania docka. Historyczne odjazdy
-  // dociąga JUŻ TYLKO gest pull-to-load znad listy (RefreshControl niżej) —
+  // dociąga JUŻ TYLKO gest pull-to-load znad listy (RefreshControl niżej)-
   // automatyczne dokładanie po samym dotknięciu góry było za łatwe.
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
@@ -803,7 +803,7 @@ export default function RoutesScreen() {
     lastScrollY.current = y;
     scrollY.current = y;
 
-    // 1. Na samej górze listy (y <= 12) — dock wraca od razu, bez
+    // 1. Na samej górze listy (y <= 12) - dock wraca od razu, bez
     //    czekania na puszczenie palca: tam scroll i tak się kończy.
     if (y <= 12) {
       accumulatedDelta.current = 0;
@@ -850,7 +850,7 @@ export default function RoutesScreen() {
     // połączenia zostawały niewidoczne mimo gotowego rozkładu.
   }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady, departureTimeSec]);
 
-  // Pull znad listy NIE odświeża — dociąga historyczne (już odjechane)
+  // Pull znad listy NIE odświeża - dociąga historyczne (już odjechane)
   // połączenia. To JEDYNY sposób na ich wczytanie; odświeżanie listy robią
   // filtry, czas i powrót na ekran (fetchRoutes w efektach).
   const handlePullEarlier = () => {
@@ -867,7 +867,7 @@ export default function RoutesScreen() {
     if (fromLat === toLat && fromLon === toLon && fromTitle === toTitle) return;
     setItems([]);
     setLoading(true);
-    // Wyniki po swapie to zupełnie nowa lista — wracamy na górę.
+    // Wyniki po swapie to zupełnie nowa lista - wracamy na górę.
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
     // Start = stary cel (ręczny punkt), więc doprecyzowanie GPS już nie dotyczy.
     setGpsOrigin(false);
@@ -1132,9 +1132,9 @@ export default function RoutesScreen() {
           }
           // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
           // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
-          // widać, to spinner, a po błędzie — nic, czyli lista po cichu
+          // widać, to spinner, a po błędzie - nic, czyli lista po cichu
           // przestawała się dociągać.
-          // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć —
+          // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć-
           // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
           ListFooterComponent={
             loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
@@ -1211,7 +1211,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 5. Wyszukiwarka startu / celu — ta sama co na ekranie głównym */}
+      {/* 5. Wyszukiwarka startu / celu - ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
           placeholder={sheetFor === 'from' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
@@ -1230,7 +1230,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 6. Dolne menu — filtry i akcje pod kciukiem (swap, bezpośr.,
+      {/* 6. Dolne menu - filtry i akcje pod kciukiem (swap, bezpośr.,
           pojazd, czas), ze springowym chowaniem się przy przewijaniu listy.
           Sortowanie wróciło do toggla w górnym pasku. */}
       {!sheetFor && !timeSheetOpen && (
@@ -1283,7 +1283,7 @@ const styles = StyleSheet.create({
   // Karta aktywnej podróży nad listą połączeń
   activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
   // Dopiska kotwicy pod tytułem startu: ta sama typografia co nagłówek,
-  // tylko mniejsza i w kolorze primary — zero pigułek, zero tła.
+  // tylko mniejsza i w kolorze primary - zero pigułek, zero tła.
   anchorSub: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1301,7 +1301,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: scheme.onSurfaceVariant,
   },
-  // Cichy X bez kółka — dopiska ma wyglądać jak tekst, nie jak chip.
+  // Cichy X bez kółka - dopiska ma wyglądać jak tekst, nie jak chip.
   anchorX: {
     width: 44,
     height: 44,

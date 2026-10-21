@@ -63,7 +63,7 @@ export interface PlanOptions {
   walkSpeedMps?: number;
   /**
    * Preferowany przystanek startowy (kotwica). fromLat/fromLon to PRAWDZIWA
-   * pozycja (GPS) — silnik liczy realny spacer do kotwicy i daje jej tylko
+   * pozycja (GPS) - silnik liczy realny spacer do kotwicy i daje jej tylko
    * mały bonus rozstrzygający remisy, zamiast zerować koszt dojścia.
    */
   anchorStopId?: string;
@@ -75,7 +75,7 @@ export interface PlanOptions {
  * Odrzuca podróże, w których tramwaj/bus jest tylko ozdobnikiem:
  * jazda 0–1 przystanek, a potem długi spacer z buta. Taki wariant wygląda
  * absurdalnie ("wsiądź i od razu wysiądź") i przegrywa z samym spacerem
- * albo z dłuższą jazdą — więc w ogóle go nie proponujemy.
+ * albo z dłuższą jazdą - więc w ogóle go nie proponujemy.
  */
 
 export async function planConnections(options: PlanOptions): Promise<Connection[]> {
@@ -109,7 +109,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // 1. Resolve candidate boarding stops near origin.
   // Celowo szerzej (do maxWalkM, do 12 słupków): dalszy przystanek z bezpośrednim
   // odjazdem wygrywa z najbliższym słupkiem wymagającym 3 przesiadek.
-  // fromLat/fromLon to PRAWDZIWA pozycja (GPS/home) — NIE współrzędne kotwicy.
+  // fromLat/fromLon to PRAWDZIWA pozycja (GPS/home) - NIE współrzędne kotwicy.
   const originNearby = gtfsStore.findNearestStops(options.fromLat, options.fromLon, maxWalkM, 12);
   const origins = originNearby.map((n) => {
     const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
@@ -178,7 +178,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Więcej okien czasowych niż poprzednio → RAPTOR widzi kursy do ~60 min w przód
   // (jak Jakdojade). Gęstsze okna blisko „teraz", rzadsze dalej.
   // tripDelays: RAPTOR wsiada wg czasów efektywnych (rozkład + GPS), więc
-  // opóźniony kurs da się jeszcze złapać — czasy w segmentach są już finalne.
+  // opóźniony kurs da się jeszcze złapać - czasy w segmentach są już finalne.
   const tripDelays = vehicleTracker.getTripDelays();
   const rawJourneys: RawJourney[] = [];
   const timeWindows = [0, 300, 600, 900, 1200, 1800, 2700, 3600];
@@ -218,7 +218,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Brak górnego limitu wsiadania w RAPTOR-ze: „pierwszy kurs po przybyciu"
   // bywa wiele godzin później (np. zapytanie 07:20 → wsiadanie 23:29, bo to
   // pierwszy kurs danego wzorca na tym przystanku). Wszystko ponad +2 h od
-  // zapytania to nie propozycja dla użytkownika — wyrzucamy przed Pareto,
+  // zapytania to nie propozycja dla użytkownika - wyrzucamy przed Pareto,
   // żeby takie kursy nie psuły listy wariantów.
   const MAX_BOARD_AHEAD_SEC = 7200;
   const journeysInHorizon = rawJourneys.filter(
@@ -277,7 +277,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
         }
       }
 
-      // Czasy już finalne (efektywne) — prosto z segmentów.
+      // Czasy już finalne (efektywne) - prosto z segmentów.
       const adjDepartSec = seg.departSec;
       const adjArriveSec = seg.arriveSec;
       // Ostatnia noga piesza do celu dziedziczy nazwę celu podróży.
@@ -328,7 +328,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     const transitLegs = legs.filter((l) => l.mode !== 'walk');
     if (transitLegs.length === 0) continue;
 
-    // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) — dokładamy
+    // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) - dokładamy
     // tylko offset dnia (zapytanie o jutro): RAPTOR liczył porą dnia.
     const adjDepartureSec = rj.departureSec + dayOffsetSec;
     const adjArrivalSec = rj.arrivalSec + dayOffsetSec;
@@ -361,7 +361,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     });
   }
 
-  // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) — jeśli prosto
+  // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) - jeśli prosto
   // jest w zasięgu spaceru z ustawień, dokładamy ją do listy.
   const directM = Math.round(
     distanceMeters(options.fromLat, options.fromLon, options.toLat, options.toLon)

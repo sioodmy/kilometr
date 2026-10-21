@@ -124,7 +124,7 @@ export class LocalGtfsStore {
     // Import w toku = sklep musi zostać pusty do jego końca (reset() czyści
     // je na końcu importu). Bez czekania load() wracał „wstecz" z pustymi
     // przystankami, a planer oddawał zero połączeń zamiast „rozkład się
-    // importuje" — ekran pokazywał wtedy „nie znaleziono połączeń".
+    // importuje" - ekran pokazywał wtedy „nie znaleziono połączeń".
     if (importInProgress) {
       await awaitImportSettled();
       if (this.isLoaded) return;
@@ -287,7 +287,7 @@ export class LocalGtfsStore {
   /**
    * Przesiadki MPK<->KD z tabeli `interchanges` (liczone w buildzie, bo
    * stacja kolejowa to nie słupek: perony, hala, schody). Doklejamy je do
-   * footpaths i ZASTĘPUJEMY nimi gridowe linki między tymi samymi parami —
+   * footpaths i ZASTĘPUJEMY nimi gridowe linki między tymi samymi parami-
    * grid liczy sam dystans w linii prostej, bez zapasu na peron.
    * Stare bazy (legacy ZIP, bez tabeli i bez pociągów) przechodzą cicho.
    */
@@ -318,7 +318,7 @@ export class LocalGtfsStore {
     if (applied > 0) console.log(`[LocalGtfsStore] Interchanges MPK<->KD: ${applied}.`);
   }
 
-  /** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */
+  /** route_ids dla oznaczenia linii ("4", "K") - case-insensitive. */
   getRouteIdsByShortName(shortName: string): string[] {
     const key = shortName.trim().toUpperCase();
     const out: string[] = [];
@@ -330,7 +330,7 @@ export class LocalGtfsStore {
 
   /**
    * Wycinkowy indeks na horyzont [fromSec, toSec] (sekundy, mogą >86400).
-   * Ładuje tylko kursy nachodzące na horyzont — ~6× mniej wierszy przez mostek
+   * Ładuje tylko kursy nachodzące na horyzont - ~6× mniej wierszy przez mostek
    * JS niż pełny indeks dobowy. Cache kubelkowany po godzinach (max 4).
    */
   async getDayIndexSlice(
@@ -384,7 +384,7 @@ export class LocalGtfsStore {
     qTo: number,
   ): Promise<DayIndex> {
     const cacheKey = `${day}|${dateStr ?? ''}|${qFrom}|${qTo}`;
-    // Wycinek budujemy z marginesem całego kubła — zapytania z tej samej
+    // Wycinek budujemy z marginesem całego kubła - zapytania z tej samej
     // godziny (i ticker co minutę) trafiają w ten sam klucz.
     const bFrom = qFrom * 3600 - 1800;
     const bTo = (qTo + 1) * 3600 + 1800;
@@ -400,7 +400,7 @@ export class LocalGtfsStore {
     if (serviceIds.length === 0) {
       this.rememberSlice(cacheKey, emptyIdx);
       // Pusty wycinek (np. noc, brak serwisów) nadaje się tylko na dokładnie
-      // swój klucz — pokrycia nie rejestrujemy, żeby inny horyzont go nie
+      // swój klucz - pokrycia nie rejestrujemy, żeby inny horyzont go nie
       // uznał za wystarczający.
       this.sliceHorizons.delete(emptyIdx);
       return emptyIdx;
@@ -818,7 +818,7 @@ export class LocalGtfsStore {
         shape_id: r.shape
       };
       this.trips.set(r.trip_id, t);
-      // Pełny indeks dnia trzyma kursy na stałe — ewangelizacja wycinków nie
+      // Pełny indeks dnia trzyma kursy na stałe - ewangelizacja wycinków nie
       // może ich usunąć.
       this.retainedTrips.add(r.trip_id);
       activeTripsById.set(r.trip_id, t);

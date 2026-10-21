@@ -1,4 +1,4 @@
-// Czysty ranking „Ostatnich miejsc" — bez magazynu i bez natywnych modułów,
+// Czysty ranking „Ostatnich miejsc" - bez magazynu i bez natywnych modułów,
 // żeby tę samą logikę dało się policzyć w `npm run check:smart-rank`
 // (tak jak logikę powiadomień w `check:notifications`).
 //
@@ -25,7 +25,7 @@ export interface TripHistoryItem {
   duration_min: number;
   timestamp: number;
   /**
-   * Ile razy sprawdzano tę parę. Wpisów zapisanych przed tą wersją nie ma —
+   * Ile razy sprawdzano tę parę. Wpisów zapisanych przed tą wersją nie ma-
    * `tripUses` traktuje brak jako jedno sprawdzenie.
    */
   uses?: number;
@@ -99,7 +99,7 @@ function matchingTrips(
   for (const trip of history) {
     if (!isSameDestination(trip, dest)) continue;
     // Wpis ze śmieciami współrzędnymi (NaN) wypadałby z rankingu, bo `NaN`
-    // nie mieści się w żadnym promieniu — a tutaj `NaN > CLUSTER_RADIUS_M`
+    // nie mieści się w żadnym promieniu - a tutaj `NaN > CLUSTER_RADIUS_M`
     // to fałsz, więc bez tego pilnowałby go jako głównego nawyku.
     if (!finite(trip.origin_lat) || !finite(trip.origin_lon)) continue;
     if (distanceMeters(originLat, originLon, trip.origin_lat, trip.origin_lon) > CLUSTER_RADIUS_M) continue;
@@ -133,7 +133,7 @@ export function findTripPair(
 }
 
 /**
- * Typowy czas dojazdu po tej trasie — mediana z pierwszego okna kursów.
+ * Typowy czas dojazdu po tej trasie - mediana z pierwszego okna kursów.
  * Średnia ciągnęłaby do jednego długiego kursu, a „najszybszy z listy" kłamałby
  * przy zmianie sortowania. Parzysta liczba kursów to średnia z dwóch środkowych,
  * bo dla dwóch kursów „mediana" to po prostu ten dłuższy.
@@ -214,7 +214,7 @@ export function mergeTripSearch(
 
   const item: TripHistoryItem = {
     // Losowy sufiks zawsze niepusty (`slice` potrafi oddać „i”, a w skrajnym
-    // razie pusty string — dokładnie ten sam problem co w `newId()`).
+    // razie pusty string - dokładnie ten sam problem co w `newId()`).
     id: `trip-${now}-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`,
     origin_title: originTitle || fallbackCityName,
     origin_lat: originLat,
@@ -239,7 +239,7 @@ interface CandidateStats {
   lon: number;
   /** Nawyk: ile razy sprawdzano ten cel z tej okolicy. */
   uses: number;
-  /** Suma `uses * duration_min` — średnia ważona wychodzi z niej przy renderze. */
+  /** Suma `uses * duration_min` - średnia ważona wychodzi z niej przy renderze. */
   durationSum: number;
   lastTimestamp: number;
   isSavedPlace: boolean;
@@ -254,7 +254,7 @@ export function scoreCandidate(uses: number, lastTimestamp: number, isSavedPlace
 
 /**
  * „Ostatnie miejsca" dla bieżącej pozycji: nawyki z okolicy + przypięte
- * miejsca, posortowane częstotliwością (a nie chronologicznie — #2).
+ * miejsca, posortowane częstotliwością (a nie chronologicznie - #2).
  *
  * Świeżość wchodzi do wyniku jako zgaszony bonus, więc codzienna
  * jednorazowa podpowiedź nie wypycha celu, po który użytkownik chodzi
@@ -272,7 +272,7 @@ export function rankSmartDestinations(
   const oneMonthAgo = now - 30 * DAY_MS;
 
   // 1. Czy stoiemy w pobliżu przypiętego miejsca? To zmienia start, a zatem
-  //    i to, które nawyki są „nasze" — nie chcemy proponować powrotu do domu,
+  //    i to, które nawyki są „nasze" - nie chcemy proponować powrotu do domu,
   //    kiedy użytkownik właśnie w domu jest.
   const currentContextPlace =
     savedPlaces.find(
@@ -315,7 +315,7 @@ export function rankSmartDestinations(
     // Świadomie po kluczu, a nie po współrzędnych: dwa różne cele 100 m od
     // siebie to dwie różne sprawy (tak #45 świadomie NIE scala dwóch
     // przypiętych miejsc). Współrzędne decydują o tym, czy dwa zapisy tego
-    // samego celu to jeden nawyk — ale w `mergeTripSearch`, przy zapisie,
+    // samego celu to jeden nawyk - ale w `mergeTripSearch`, przy zapisie,
     // a nie tutaj, gdzie decyduje o tym, co widać na liście.
     const cand = candidateMap.get(key);
     if (!cand) {
@@ -344,7 +344,7 @@ export function rankSmartDestinations(
 
   // 4. Przypięte miejsca wchodzą do tego samego rankingu (bonusy, nie osobna
   //    lista), a ten sam budynek z innego źródła jest scalany z istniejącym
-  //    wpisem — inaczej „Szybkie cele" pokazują dwa identyczne wiersze, każdy
+  //    wpisem - inaczej „Szybkie cele" pokazują dwa identyczne wiersze, każdy
   //    z osobnym planowaniem trasy, a limit wyrzuca prawdziwą destynację.
   for (const place of savedPlaces) {
     if (currentContextPlace && place.id === currentContextPlace.id) continue;
@@ -384,7 +384,7 @@ export function rankSmartDestinations(
     }
     cand.isSavedPlace = true;
     if (mergedByDistance) {
-      // Nazwa i współrzędne przypiętego miejsca są kanoniczne — użytkownik
+      // Nazwa i współrzędne przypiętego miejsca są kanoniczne - użytkownik
       // sam je wpisał i tak wyglądają w „Zapisane miejsca".
       cand.title = place.name;
       cand.address = place.address;
@@ -413,7 +413,7 @@ export function rankSmartDestinations(
     title: cand.title,
     address: cand.address,
     frequency: Math.max(1, cand.uses),
-    // Przypięte miejsce bez historii nie ma pomiaru — dostaje wartość domyślną.
+    // Przypięte miejsce bez historii nie ma pomiaru - dostaje wartość domyślną.
     avgDurationMin: cand.uses > 0 ? Math.max(1, Math.round(cand.durationSum / cand.uses)) : FALLBACK_TRIP_MIN,
     lat: cand.lat,
     lon: cand.lon,

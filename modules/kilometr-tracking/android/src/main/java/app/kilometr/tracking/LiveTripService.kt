@@ -95,7 +95,7 @@ class LiveTripService : Service() {
       LiveTripPlan.fromJson(json)?.let {
         if (plan?.tripId != it.tripId) alightProximity.clear()
         plan = it
-        // Nowy plan unieważnia podpis — inaczej pierwsza klatka po starcie
+        // Nowy plan unieważnia podpis - inaczej pierwsza klatka po starcie
         // zostałaby wstrzymana jako „bez zmian".
         lastSignature = null
       }
@@ -244,7 +244,7 @@ class LiveTripService : Service() {
       try {
         NotificationManagerCompat.from(this).notify(LiveUpdateFactory.NOTIFICATION_ID, notification)
       } catch (_: Throwable) {
-        // brak POST_NOTIFICATIONS — JS dostało wtedy false przy starcie
+        // brak POST_NOTIFICATIONS - JS dostało wtedy false przy starcie
       }
       shutdown()
       return false
@@ -297,7 +297,7 @@ class LiveTripService : Service() {
     const val ACTION_STOP = "app.kilometr.tracking.STOP"
     const val EXTRA_PLAN = "plan"
 
-    /** 1 Hz w trasie — pasek postępu ma płynąć tak jak w nawigacji. */
+    /** 1 Hz w trasie - pasek postępu ma płynąć tak jak w nawigacji. */
     private const val TICK_RIDING_MS = 1_000L
 
     /** Poza trasą licznik odlicza system, więc JS-owy render nie jest potrzebny. */

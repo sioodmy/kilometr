@@ -5,7 +5,7 @@
 // po jednym pliku na klucz w documentDirectory/.kv/.
 //
 // Migracja czyta starą bazę raz i kopiuje klucze do nowego backendu.
-// Jeśli stara baza nie istnieje (fresh install) lub expo-sqlite znów padnie —
+// Jeśli stara baza nie istnieje (fresh install) lub expo-sqlite znów padnie-
 // po prostu pomijamy. Flagę migracji trzymamy w samym nowym KV.
 //
 // Wywoływać RAZ w _layout przed initApp().
@@ -30,7 +30,7 @@ async function performMigration(isCancelled: () => boolean): Promise<void> {
   const info = await FileSystem.getInfoAsync(dbPath);
   if (isCancelled()) return;
   if (!info.exists) {
-    // Fresh install — nie ma co migrować
+    // Fresh install - nie ma co migrować
     await kvSetStrict(MIGRATED_FLAG, '1');
     return;
   }
@@ -68,7 +68,7 @@ export async function migrateFromSqliteKv(): Promise<void> {
   let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    // Limit czasowy 1.5s — migracja nigdy nie może zablokować startu apki
+    // Limit czasowy 1.5s - migracja nigdy nie może zablokować startu apki
     const timeout = new Promise<void>((_, reject) => {
       timer = setTimeout(() => {
         cancelled = true;

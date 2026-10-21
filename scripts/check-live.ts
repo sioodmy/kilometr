@@ -31,7 +31,7 @@ let section = '';
 
 function describe(name: string): void {
   section = name;
-  console.log(`\n— ${name}`);
+  console.log(`\n== ${name}`);
 }
 
 function expect<T>(label: string, got: T, want: T): void {
@@ -472,7 +472,7 @@ gtfsStore.stopTimes.delete('KD:T:1:2:20261010');
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length === 0) {
-  console.log(`WSZYSTKO OK — ${passed} asercji`);
+  console.log(`WSZYSTKO OK - ${passed} asercji`);
 } else {
   console.log(`NIEPOWODZENIA (${failures.length} z ${passed + failures.length}):`);
   for (const f of failures) console.log(`  - ${f}`);

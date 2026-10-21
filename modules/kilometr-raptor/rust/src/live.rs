@@ -303,7 +303,7 @@ impl LiveScheduleIndex {
         best
     }
 
-    /// Dopasowuje wsadowo wszystkie pojazdy i rozwiązuje konflikty (`resolveConflicts` —
+    /// Dopasowuje wsadowo wszystkie pojazdy i rozwiązuje konflikty (`resolveConflicts`-
     /// jeden pojazd na kurs z najniższym wynikiem `score`).
     pub fn match_batch(&self, rows: &[(String, f64, f64)], now_sec: i32) -> Vec<VehicleMatchResult> {
         let mut raw_matches: Vec<Option<(u32, i32, u32, u32, f64)>> =
@@ -975,7 +975,7 @@ mod tests {
             }],
         );
 
-        // Dwa pojazdy na tej samej linii 4 blisko tego samego kursu — wygrywa dokładniejszy!
+        // Dwa pojazdy na tej samej linii 4 blisko tego samego kursu - wygrywa dokładniejszy!
         let rows = vec![
             ("4".to_string(), 51.1025, 17.000), // idealnie w połowie seg 0 (expected = 36090)
             ("4".to_string(), 51.1025, 17.002), // ~140m z boku (gorszy score)

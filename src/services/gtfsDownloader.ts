@@ -1,13 +1,13 @@
 // Pobieranie GTFS bezpośrednio na telefon (Open Data Wrocław).
 // Używa legacy FileSystem (documentDirectory + downloadAsync), bo ten sam
-// mechanizm obsługuje już widgetSnapshot — nowy File API przejdzie w etapie 2.
+// mechanizm obsługuje już widgetSnapshot - nowy File API przejdzie w etapie 2.
 //
 // Strategia pamięciowa (ważne przy stop_times.txt ~46 MB):
 // - zip (~12 MB) ląduje jako plik, nie w RAM,
 // - rozpakowanie przez fflate na Uint8Array + zapis plików po kolei,
 // - małe pliki (stops/routes/trips/calendar) parsujemy w całości,
 // - stop_times importujemy batched do SQLite (patrz gtfsDatabase).
-// Nie trzymamy całego rozkładu w Mapach jak serwer — telefon pyta SQLite.
+// Nie trzymamy całego rozkładu w Mapach jak serwer - telefon pyta SQLite.
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { strFromU8, unzipSync } from 'fflate';
@@ -99,7 +99,7 @@ async function discoverBestArchiveUrl(): Promise<string> {
               clearTimeout(headTimer);
             }
           } catch {
-            // pojedynczy kandydat może odpaść — lecimy dalej
+            // pojedynczy kandydat może odpaść - lecimy dalej
           }
         }
         const inForce = candidates
@@ -217,7 +217,7 @@ export async function downloadArchiveWithFallback(
     }
   }
 
-  // Bez internetu nie ma sensu próbować kolejnych źródeł — mówimy wprost.
+  // Bez internetu nie ma sensu próbować kolejnych źródeł - mówimy wprost.
   const T = dlTr();
   if (failures.length > 0 && failures.every((f) => f.code === 'no-net')) {
     throw new GtfsDownloadError(
@@ -252,7 +252,7 @@ async function downloadGtfsZip(
   );
   const result = await task.downloadAsync();
   if (!result?.uri) throw new Error(dlTr().noFile);
-  // downloadAsync rozwiązuje się także dla 4xx/5xx — bez tego strony błędu
+  // downloadAsync rozwiązuje się także dla 4xx/5xx - bez tego strony błędu
   // (404/503, captive portal) trafiały do gtfs.zip jako „sukces".
   if (result.status < 200 || result.status >= 300) {
     await FileSystem.deleteAsync(dest, { idempotent: true });

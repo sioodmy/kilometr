@@ -16,7 +16,7 @@ import type { TripHistoryItem } from '../services/smartRanker';
 import { useStrings } from '../i18n';
 
 // Progi pulla (px): lupka od 70, a szybki powrót (reverse) dopiero od ~36%
-// wysokości ekranu — celowo głęboko, żeby nie dało się go zahaczyć
+// wysokości ekranu - celowo głęboko, żeby nie dało się go zahaczyć
 // przypadkowym pociągnięciem. MAX zostawia zapas nad progiem.
 const SCREEN_H = Dimensions.get('window').height;
 const ARM_2_PX = Math.round(SCREEN_H * 0.36);
@@ -37,7 +37,7 @@ const PILL_TRAVEL = THUMB + SLOT_GAP;
  * Szybki skrót do ostatniego połączenia, odsłaniany pociągnięciem ekranu
  * w dół (pull-to-refresh bez spinnera): wiersz od→do ze strzałką i pod nim
  * pionowy toggle jak wczorajszy (lupka = szukaj, rotate = powrót).
- * Zero klikalnych elementów — wszystko obsługuje gest rodzica.
+ * Zero klikalnych elementów - wszystko obsługuje gest rodzica.
  */
 export function LastTripPull({
   trip,

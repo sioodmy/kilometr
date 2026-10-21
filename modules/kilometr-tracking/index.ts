@@ -5,7 +5,7 @@ import { requireOptionalNativeModule } from 'expo';
 // zwraca null zamiast rzucać, więc build bez modułu (albo Expo Go) cicho
 // schodzi na awaryjny wariant z expo-notifications.
 //
-// Moduł nie rysuje powiadomienia — przekazuje plan podróży do `LiveTripService`,
+// Moduł nie rysuje powiadomienia - przekazuje plan podróży do `LiveTripService`,
 // która sama pilnuje fazy i postępu. Dlatego nie ma tu ani `present`, ani
 // `dismiss`: jest `startTrip` / `stopTrip` i pytanie, czy system dopuści
 // powiadomienie do strefy Live Updates.

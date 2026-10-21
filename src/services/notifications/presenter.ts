@@ -19,16 +19,16 @@ import type { NotificationPreferences, TripProgress, TrackedTrip } from './types
 // segmentami podróży + serwis w pierwszym planie), a JS wysyła plan i nie
 // dotyka go, dopóki planer nie zobaczy czegoś nowego. Licznik i pasek postępu
 // tykają po stronie serwisu, więc powiadomienie żyje tak samo jak
-// w nawigacji — także przy wyłączonym ekranie.
+// w nawigacji - także przy wyłączonym ekranie.
 //
 // `expo-notifications` zostaje wyłącznie jako wariant awaryjny: Expo Go,
 // brak zgody na powiadomienia albo sytuacja, w której serwisu nie udało się
-// podnieść. Wtedy pokazujemy zwykłe powiadomienie z tekstem — lepsze niż
+// podnieść. Wtedy pokazujemy zwykłe powiadomienie z tekstem - lepsze niż
 // cisza.
 
 /**
  * Ile zostawiamy „jesteś na miejscu" na ekranie blokady. Ten sam czas mierzy
- * `tripMonitor` zanim odetnie śledzenie — muszą się zgadzać, inaczej
+ * `tripMonitor` zanim odetnie śledzenie - muszą się zgadzać, inaczej
  * powiadomienie zniknie w połowie komunikatu albo zostanie po nim.
  */
 export { ARRIVED_LINGER_MS } from './content';
@@ -39,7 +39,7 @@ async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void
   const copy = buildTripCopy(p, trip.connection, tr());
   try {
     if (Platform.OS === 'ios') await N.dismissNotificationAsync(TRACKING_NOTIFICATION_ID);
-    // Android nadpisuje pozycję sam, więc zostawiamy Update — nie chcemy okna
+    // Android nadpisuje pozycję sam, więc zostawiamy Update - nie chcemy okna
     // bez powiadomienia między wywołaniami.
     await N.scheduleNotificationAsync({
       identifier: TRACKING_NOTIFICATION_ID,
@@ -100,7 +100,7 @@ export async function presentTrip(
   if (await native.hasStopRequest?.()) return;
 
   // `liveProgressEnabled` wyłącza pasek postępu i licznik, ale nie samo
-  // powiadomienie — zostaje wtedy zwykły banner z tekstem.
+  // powiadomienie - zostaje wtedy zwykły banner z tekstem.
   if (!prefs.liveProgressEnabled && !trip.protectionEnabled) {
     try {
       await native.stopTrip();

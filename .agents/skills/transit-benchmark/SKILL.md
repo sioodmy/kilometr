@@ -17,7 +17,7 @@ Compare our RAPTOR engine's connections against two reference planners on identi
 ## Do not use this skill when
 
 - Changing routing logic itself (engine fixes live in `server/src/routing/` + `src/services/routing/`)
-- The task needs rail/regional carriers (our GTFS is MPK buses/trams only — Koleje Dolnośląskie trains are out of scope)
+- The task needs rail/regional carriers (our GTFS is MPK buses/trams only - Koleje Dolnośląskie trains are out of scope)
 
 ## Instructions
 
@@ -33,21 +33,21 @@ JSON file, one object per case:
 ```
 
 - `fromQuery`/`toQuery` resolve via jakdojade location search (see §2). Prefer GTFS-style uppercase stop-group names (`KOZANÓW`, `Żerniki`, `DWORZEC GŁÓWNY`).
-- `dateTime` is ISO with `+02:00`. **Day offsets are date-anchored**: the harness computes `dayOffset` from *today's* date, never hardcode `+N*86400` in throwaway scripts — after midnight the same script silently queries the wrong weekday.
+- `dateTime` is ISO with `+02:00`. **Day offsets are date-anchored**: the harness computes `dayOffset` from *today's* date, never hardcode `+N*86400` in throwaway scripts - after midnight the same script silently queries the wrong weekday.
 - `maxTransfers` defaults to 3 in the harness (engine clamps 0..3).
 
 ### 2. jakdojade (API, reverse-engineered)
 
 Client: `.agents/skills/transit-benchmark/jakdojade-client.mjs` (pure Node, no deps).
 
-- Credentials: env `JD_CREDS` = path to JSON `{login, hash, device}`. **Never commit secrets** — keep the file outside the repo, never `git add` it.
+- Credentials: env `JD_CREDS` = path to JSON `{login, hash, device}`. **Never commit secrets** - keep the file outside the repo, never `git add` it.
 - Flow per case:
   1. `searchLocation(query)` → `resolveLoc(locs, query)`: STOP_GROUP with `name === query.toUpperCase()`, else first STOP_GROUP, else `locations[0]`. Log non-exact matches.
-  2. `queryRoutes(startLoc, destLoc, dateTimeIso)` — POST `api/jd/v3/routes`, engine DEFAULT, preference OPTIMAL, `REALTIME_ENABLED`, 7 routes.
-  3. Parse `routeParts`: transit legs (`routeVehicle.routeStops[].lineStop.{stopPoint.stopName, lineStopDynamicId}` — line via regex `/lineName:"([^"]+)"/`), walk legs (`durationSeconds`, `routePartDistanceMeters`). Times are ISO (`startDeparture.dateTime` / `targetArrival.dateTime`) — compare at minute resolution (`HH:MM`), keep exact seconds for analysis.
-- **Feed BOTH engines the identical jd STOP_GROUP coordinates** (`coordinate.y_lat` / `x_lon`) — otherwise stop-database geometry differences (often 100–800 m) pollute the comparison.
+  2. `queryRoutes(startLoc, destLoc, dateTimeIso)` - POST `api/jd/v3/routes`, engine DEFAULT, preference OPTIMAL, `REALTIME_ENABLED`, 7 routes.
+  3. Parse `routeParts`: transit legs (`routeVehicle.routeStops[].lineStop.{stopPoint.stopName, lineStopDynamicId}` - line via regex `/lineName:"([^"]+)"/`), walk legs (`durationSeconds`, `routePartDistanceMeters`). Times are ISO (`startDeparture.dateTime` / `targetArrival.dateTime`) - compare at minute resolution (`HH:MM`), keep exact seconds for analysis.
+- **Feed BOTH engines the identical jd STOP_GROUP coordinates** (`coordinate.y_lat` / `x_lon`) - otherwise stop-database geometry differences (often 100–800 m) pollute the comparison.
 - jakdojade uses **realtime + OPTIMAL preference**: results vary between runs (±1–6 min, occasionally different routes). Re-run suspicious cases; retry on `ECONNRESET`/fetch failures (do not use long `sleep` retries in automation).
-- Limitation: jd results may include trains (e.g. KD Mrozów → Wrocław Główny) — unwinnable with MPK-only GTFS; mark as out-of-scope, not as engine loss.
+- Limitation: jd results may include trains (e.g. KD Mrozów → Wrocław Główny) - unwinnable with MPK-only GTFS; mark as out-of-scope, not as engine loss.
 
 ### 3. Our engine (harness input)
 
@@ -72,20 +72,20 @@ The planner is jQuery + server API `find.txt`. Fastest path is parametrized URLs
 - URL: `https://www.rozkladzik.pl/wroclaw/index.html?from=<enc(label)>|b|<busStopId>&to=<enc(label)>|b|<busStopId>&time=<minutes>`
   - `time` = minutes since midnight **+ 1440 × weekday**, weekday Mon=0 … Sun=6 (`settingsDay` values). Only the *current* schedule week is queryable.
   - `|` may stay literal; diacritics/space must be `encodeURIComponent`-ed.
-- `busStopId`: page autocomplete is client-side — call `$('#searchFrom').autocomplete('search','QUERY')` in `t3-code_preview_evaluate`, wait ~500–700 ms (return a Promise; never pass unknown tool params), read `ul.ui-autocomplete li` data (`ui-autocomplete-item` or `item.autocomplete`), prefer exact label match **with** `busStopId`. No ascii-folding: query with diacritics (`SĘPOLNO`, `ŻERNIKI`). Stops and POIs/addresses mix in results — require `busStopId`; some destinations have no stop (e.g. Sky Tower mall) and must be dropped or substituted (document it).
+- `busStopId`: page autocomplete is client-side - call `$('#searchFrom').autocomplete('search','QUERY')` in `t3-code_preview_evaluate`, wait ~500–700 ms (return a Promise; never pass unknown tool params), read `ul.ui-autocomplete li` data (`ui-autocomplete-item` or `item.autocomplete`), prefer exact label match **with** `busStopId`. No ascii-folding: query with diacritics (`SĘPOLNO`, `ŻERNIKI`). Stops and POIs/addresses mix in results - require `busStopId`; some destinations have no stop (e.g. Sky Tower mall) and must be dropped or substituted (document it).
 - Readiness: `t3-code_preview_wait_for` on selector `#routes_summary .route_row`, then parse: `.ride_time_se` → `"H:MM - H:MM"` (no leading zeros; may cross midnight), `.line_name` spans in order (changes = lines − 1). 9 routes per page is enough for the window metric.
-- mobilempk specifics: transfer cap ≈ 300 m / min 1 min (stricter than ours), profile `opt`, MPK-only (no trains — use it to confirm rail-scope losses), same live schedule as jd (both differ 1–6 min from a stale local GTFS feed — check `feed_info.txt` dates when chasing minute gaps).
-- `t3-code_preview_snapshot` is unreliable — use `t3-code_preview_evaluate` for reads; keep each evaluate short (< ~8 s).
+- mobilempk specifics: transfer cap ≈ 300 m / min 1 min (stricter than ours), profile `opt`, MPK-only (no trains - use it to confirm rail-scope losses), same live schedule as jd (both differ 1–6 min from a stale local GTFS feed - check `feed_info.txt` dates when chasing minute gaps).
+- `t3-code_preview_snapshot` is unreliable - use `t3-code_preview_evaluate` for reads; keep each evaluate short (< ~8 s).
 
 ### 6. Known pitfalls (learned the hard way)
 
 1. Day offsets must be date-anchored (midnight rollover silently shifts hardcoded `+N` queries to the wrong weekday).
 2. Same coordinates to both engines, always; GTFS vs jd stop geometry differs by design.
-3. jd results drift between runs (realtime) — verify big deltas twice.
+3. jd results drift between runs (realtime) - verify big deltas twice.
 4. Overnight trips live in the previous service day as `24:xx+`; there are no `00:xx` times in this feed.
 5. Tight jd transfers (2–3 min) often need realtime; static engine needs walk + slack to fit.
-6. jd "0 m" transfers routinely span 0.8–1.6 km in both databases' own coordinates (hub grouping) — usually unmatchable, occasionally indicates a missing interchange edge.
-7. Minute-resolution displays hide ±1 min rounding across walk/duration/arrival fields — use exact seconds when diagnosing.
+6. jd "0 m" transfers routinely span 0.8–1.6 km in both databases' own coordinates (hub grouping) - usually unmatchable, occasionally indicates a missing interchange edge.
+7. Minute-resolution displays hide ±1 min rounding across walk/duration/arrival fields - use exact seconds when diagnosing.
 
 ### 7. Report format
 
@@ -95,4 +95,4 @@ Three-way table sorted by our delta vs jd (best → worst): `Δ jd | Δ mmpk | O
 
 - `npx tsc --noEmit` in repo root and in `server/` after any engine/harness change.
 - Never commit `creds.json`, tokens, or `server/data/extracted_gtfs/` (gitignored feed); stage only intended files, follow repo commit style. No commits/pushes without an explicit request.
-- No user-visible strings are involved (engine + scripts only) — i18n rules do not apply.
+- No user-visible strings are involved (engine + scripts only) - i18n rules do not apply.

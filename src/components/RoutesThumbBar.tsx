@@ -57,7 +57,7 @@ export interface RoutesThumbBarProps {
 }
 
 /**
- * Dolne menu ekranu połączeń — filtry i akcje pod kciukiem.
+ * Dolne menu ekranu połączeń - filtry i akcje pod kciukiem.
  * Wszystko, czym sterujemy jedną ręką w tramwaju, mieszka na dole:
  * odwrócenie trasy, filtr bezpośrednich, typ pojazdu i czas odjazdu.
  * Sortowanie wróciło do górnego paska (toggle iOS), a odświeżanie
@@ -107,7 +107,7 @@ export function RoutesThumbBar({
 
   return (
     // Dock przyjmuje gotowy styl animowany (chowanie się przy scrollu),
-    // więc rzutujemy go na zwykły styl — ThumbBar opakowuje go w Animated.View.
+    // więc rzutujemy go na zwykły styl - ThumbBar opakowuje go w Animated.View.
     <ThumbBar style={animatedStyle as StyleProp<ViewStyle>}>
       <ThumbBarItem
         onPress={handleSwapPress}

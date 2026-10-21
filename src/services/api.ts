@@ -59,7 +59,7 @@ function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): numb
 }
 
 /**
- * Identyfikator nowego zapisu. Nie `Math.random().toString(36).substring(7)` —
+ * Identyfikator nowego zapisu. Nie `Math.random().toString(36).substring(7)`-
  * `substring(7)` potrafi zwrócić `''`, gdy zapis jest krótszy niż 7 znaków.
  * Wycinamy z końca, więc długość wyniku jest zawsze stała.
  */
@@ -263,7 +263,7 @@ export const LocationService: ILocationService = {
  * miejsca startowego otwiera wyszukiwarkę po zapisaniu). Przy jednym
  * wspólnym `AbortController` nowsze zapytanie z drugiego pola zabijało
  * pierwsze, a przegrany dostawał `SearchAbortedError` zamieniany przez
- * wywołującego w „brak wyników” — czyli wynik znikiał bez powodu.
+ * wywołującego w „brak wyników” - czyli wynik znikiał bez powodu.
  */
 const searchAborts = new Map<string, AbortController>();
 const DEFAULT_SEARCH_SCOPE = 'default';
@@ -279,7 +279,7 @@ class SearchAbortedError extends Error {
   }
 }
 
-// Cache scalonych podpowiedzi (query + zaokrąglona pozycja) — powtórki migają.
+// Cache scalonych podpowiedzi (query + zaokrąglona pozycja) - powtórki migają.
 const mergedCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MERGED_TTL_MS = 120 * 1000;
 const MERGED_MAX = 60;
@@ -366,7 +366,7 @@ export const SearchService: ISearchService = {
       ];
 
       // 2. Sieć (Nominatim) tylko gdy lokalnie za mało albo to adres z numerem.
-      // Adresy z numerami są domeną Nominatim — lokalny indeks ich nie ma.
+      // Adresy z numerami są domeną Nominatim - lokalny indeks ich nie ma.
       const normQ = normalizePolish(q);
       const looksLikeAddress = /\d/.test(normQ);
       const needNetwork = q.length >= 2 && (looksLikeAddress || localSuggestions.length < 5);
@@ -384,7 +384,7 @@ export const SearchService: ISearchService = {
       }
 
       // 3. Merge: przystanki absolutnie pierwsze (w kolejności trafienie+waga),
-      // reszta wg nazwy z karą za dystans — bliższe wyżej.
+      // reszta wg nazwy z karą za dystans - bliższe wyżej.
       const merged = dedupeAndSort(localSuggestions, remoteHits, hasPos, normQ).slice(0, 15);
       if (merged.length > 0) {
         mergedSet(cacheKey, merged);
@@ -392,7 +392,7 @@ export const SearchService: ISearchService = {
         return merged;
       }
     } catch {
-      // offline / błąd — fallback niżej
+      // offline / błąd - fallback niżej
     }
 
     if (!isCurrent()) throw new SearchAbortedError();
@@ -650,7 +650,7 @@ export const FavoritesService: IFavoritesService = {
     try {
       const { getSmartDestinationsForLocation } = await import('./smartRanker');
       const city = activeCityDef();
-      // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS — a
+      // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS - a
       // ranking na `NaN` wypadałby z każdego promienia, czyli pokazałby
       // historię z całego miasta jako „w okolicy".
       const lat = Number.isFinite(coords?.lat) ? coords!.lat! : city.center.lat;
@@ -680,7 +680,7 @@ export const FavoritesService: IFavoritesService = {
       // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
       // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
       // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
-      // obcinamy dopiero na jego końcu — długość jest wtedy stała.
+      // obcinamy dopiero na jego końcu - długość jest wtedy stała.
       const id = newId();
       const newPlace: SavedPlace = {
         id,

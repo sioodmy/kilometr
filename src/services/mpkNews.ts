@@ -248,11 +248,11 @@ function extractImage(html: string): string | null {
   return decodeEntities(m[1]).replace(/&amp;/g, '&').trim() || null;
 }
 
-// Pilne = utrudnienia / wypadki / wykolejenia — to user chce sprawdzać najszybciej.
+// Pilne = utrudnienia / wypadki / wykolejenia - to user chce sprawdzać najszybciej.
 const URGENT_RE =
   /(wykolej|wypadek|kolizj|zderzenie|utrudnien|objazd|awari|przerwa w ruchu|wstrzyman|zablokowan|korek|zamknię)/i;
 
-/** RSS miasta miesza loty i PR z komunikacją — zostawiamy tylko treść dla pasażera. */
+/** RSS miasta miesza loty i PR z komunikacją - zostawiamy tylko treść dla pasażera. */
 const TRANSIT_RE =
   /(mpk|tramwaj|autobus|linia\b|przystank|bilet|komunikacj|utrudnien|objazd|torowisk|kasownik|rozkład|przejazd|kursowan|zajezdn|pantograf|wykolej|agglomeracyj|międzymiast|aglo)/i;
 

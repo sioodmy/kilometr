@@ -34,7 +34,7 @@ export interface RouteMapDocumentOptions {
 }
 
 /**
- * Motyw WebView czytamy przy każdym otwarciu mapy, nie raz przy imporcie —
+ * Motyw WebView czytamy przy każdym otwarciu mapy, nie raz przy imporcie-
  * paleta aplikacji na Androidzie 12+ pochodzi z tapety i podmienia się po
  * zaimportowaniu modułu (`src/theme/dynamic.ts`).
  */
@@ -131,7 +131,7 @@ const css = () => [
   'box-shadow:0 0 0 1.5px rgba(255,255,255,.7),0 2px 8px rgba(0,0,0,.5);}',
 ].join('\n');
 
-// Runtime MapLibre + komunikacja — uproszczone: bez kursora, bez follow,
+// Runtime MapLibre + komunikacja - uproszczone: bez kursora, bez follow,
 // bez joysticka. Czysta mapa z trasą do przeglądania.
 const runtime = [
   '(function () {',
@@ -560,7 +560,7 @@ const runtime = [
   '    post({ t: "ready" });',
   '  });',
   '  setTimeout(function () {',
-  '    if (!styleReady) postError("Mapa nie wczytała się — brak sieci lub brak WebGL");',
+  '    if (!styleReady) postError("Mapa nie wczytała się - brak sieci lub brak WebGL");',
   '  }, 20000);',
   '}',
   '',

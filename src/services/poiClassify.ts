@@ -1,4 +1,4 @@
-// Czyste helpery klasyfikacji POI (bez natywnych importów — testowalne w node).
+// Czyste helpery klasyfikacji POI (bez natywnych importów - testowalne w node).
 
 const CATEGORY_LABEL: Record<string, { category: string; label: string }> = {
   'shop:supermarket': { category: 'shop', label: 'Supermarket' },
@@ -43,7 +43,7 @@ export function classifyPoi(tags: Record<string, string>): { category: string; l
   return null;
 }
 
-/** Linia adresu: "Label • Osiedle, Ulica Nr" (bez miasta — tylko Wrocław). */
+/** Linia adresu: "Label • Osiedle, Ulica Nr" (bez miasta - tylko Wrocław). */
 export function buildPoiAddress(
   label: string,
   tags: Record<string, string>,

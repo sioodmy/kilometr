@@ -143,7 +143,7 @@ function legToMapLeg(leg: Leg): MapLeg {
   };
 }
 
-/** Wspólna lista punktów nogi — to ona idzie do OSRM jako waypointy. */
+/** Wspólna lista punktów nogi - to ona idzie do OSRM jako waypointy. */
 function legWaypoints(leg: MapLeg): Coord[] {
   return leg.stops.map((s) => [s.lat, s.lon] as Coord);
 }
@@ -166,7 +166,7 @@ export function buildMapRoute(connection: Connection): MapRoute {
 // ─── Geometria z OSRM ────────────────────────────────────────
 
 function waypointKey(coords: Coord[]): string {
-  // 5 m ≈ 4–5 miejsc po przecinku — tyle wystarczy, żeby klucz był stabilny.
+  // 5 m ≈ 4–5 miejsc po przecinku - tyle wystarczy, żeby klucz był stabilny.
   return coords.map(([lat, lon]) => `${lat.toFixed(4)},${lon.toFixed(4)}`).join(';');
 }
 
@@ -466,7 +466,7 @@ export interface Projection {
 
 /**
  * Rzut punktu na linię trasy wraz z postępem (0..1) i dystansem od niej.
- * To jedyne miejsce, w którym liczymy „gdzie wzdłuż trasy coś jest” —
+ * To jedyne miejsce, w którym liczymy „gdzie wzdłuż trasy coś jest”-
  * strzałka pojazdu, kursor joysticka i dopasowanie live korzystają z tego
  * samego rachunku, więc nic się nie rozjeżdża.
  */

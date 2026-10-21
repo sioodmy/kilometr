@@ -108,7 +108,7 @@ interface ThumbBarItemProps {
   accessibilityState?: { selected?: boolean; disabled?: boolean; busy?: boolean };
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
-  /** Chwilowo niedostępny (np. trwa operacja) — przygaszony, nieklikalny. */
+  /** Chwilowo niedostępny (np. trwa operacja) - przygaszony, nieklikalny. */
   disabled?: boolean;
 }
 

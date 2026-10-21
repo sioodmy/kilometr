@@ -28,7 +28,7 @@ apiRouter.get('/health', (req, res) => {
 /**
  * Archiwum GTFS, które backend już ma na dysku. Telefon sięga tu dopiero
  * wtedy, gdy Open Data Wrocław jest nieosiągalne (captive portal, sieć
- * blokująca host, brak DNS) — dzięki temu pierwszy import ma drugi
+ * blokująca host, brak DNS) - dzięki temu pierwszy import ma drugi
  * szansę zamiast kończyć się komunikatem o błędzie.
  */
 apiRouter.get('/gtfs/archive', (req, res) => {
@@ -185,7 +185,7 @@ apiRouter.get('/routes', async (req, res) => {
   }
 });
 
-// Saved routes CRUD (MUSZĄ być przed /routes/:id — inaczej "saved" wpada w :id)
+// Saved routes CRUD (MUSZĄ być przed /routes/:id - inaczej "saved" wpada w :id)
 apiRouter.get('/routes/saved', (req, res) => {
   res.json(FavoritesService.listSavedRoutes());
 });

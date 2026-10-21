@@ -342,7 +342,7 @@ export function AddPlaceSheet({
           setSuggestions(res);
         })
         .catch(() => {
-          // Zapytanie przerwane nowszym albo błąd — stan ogarnia kolejne.
+          // Zapytanie przerwane nowszym albo błąd - stan ogarnia kolejne.
           if (seq === locSearchSeq.current) setSuggestions([]);
         })
         .finally(() => {

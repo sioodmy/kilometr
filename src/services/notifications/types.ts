@@ -3,13 +3,13 @@ import type { TransferProtectionState } from './transferTypes';
 
 // Model domenowy powiadomień. Wszystko, co leci do natywnego świata
 // (Notification i serwis Androida), jest tutaj sprowadzane do jednego
-// strukturalnego opisu — dzięki temu plan powiadomienia, tekst alertu
+// strukturalnego opisu - dzięki temu plan powiadomienia, tekst alertu
 // odjazdu i pasek postępu zawsze opowiadają o tym samym kursie, a
 // formatowanie czasu jest w jednym miejscu.
 
-/** Faza podróży — steruje tym, co jest najważniejsze w danym momencie. */
+/** Faza podróży - steruje tym, co jest najważniejsze w danym momencie. */
 export type TripPhase =
-  /** Dojście do przystanku — zanim wsiadłeś. */
+  /** Dojście do przystanku - zanim wsiadłeś. */
   | 'walking'
   /** Stoisz na przystanku, pojazd jeszcze nie odjechał. */
   | 'waiting'
@@ -26,7 +26,7 @@ export interface TripProgress {
   /**
    * Czas (ms), dla którego policzono ten stan. Wszystko poniżej liczone
    * względem `Date.now()` dałoby wynik zależny od zegara systemowego i psuło
-   * powtarzalność — a po drodze okazało się, że `showCountdown` dla stanu
+   * powtarzalność - a po drodze okazało się, że `showCountdown` dla stanu
    * policzonego w przeszłości wychodził „nie pokazuj licznika".
    */
   computedAt: number;
@@ -35,7 +35,7 @@ export interface TripProgress {
   /** Postęp wewnątrz bieżącego odcinka 0..1. */
   legProgress: number;
   /**
-   * Postęp dojścia do przystanku 0..1 — null gdy nie idziemy pieszo. W fazie
+   * Postęp dojścia do przystanku 0..1 - null gdy nie idziemy pieszo. W fazie
    * „idę" to jedyna liczba, która ma sens: podróż jeszcze się nie zaczęła,
    * więc `progress` byłby zerem przez całe oczekiwanie.
    */
@@ -43,10 +43,10 @@ export interface TripProgress {
 
   /** Odjazd pierwszego pojazdu: ile sekund (może być ujemne = po odjeździe). */
   departInSec: number;
-  /** 'HH:MM' odjazdu i przyjazdu — do tekstu, nie do animacji. */
+  /** 'HH:MM' odjazdu i przyjazdu - do tekstu, nie do animacji. */
   departAt: string;
   arriveAt: string;
-  /** Bezwzględne znaczniki w ms — zegar systemowy liczy z nich odliczanie. */
+  /** Bezwzględne znaczniki w ms - zegar systemowy liczy z nich odliczanie. */
   departAtMs: number;
   arriveAtMs: number;
 
@@ -62,7 +62,7 @@ export interface TripProgress {
   /** Linia pojazdu, którym wsiadasz / jedziesz. */
   line: string;
   lineMode: 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway' | 'walk';
-  /** Kolor linii — akcent powiadomienia i segmentu na pasku postępu. */
+  /** Kolor linii - akcent powiadomienia i segmentu na pasku postępu. */
   lineColor: string;
   /** Kierunek kursu (np. 'BISKUPIN'). */
   direction: string;
@@ -91,7 +91,7 @@ export interface TripProgress {
   /** Dojście do przystanku: metry i ile sekund zajmie. */
   walkMeters: number | null;
   walkSec: number | null;
-  /** Odjazd, na który trzeba wyjść (po dojściu) — przy przesiadce kolejny. */
+  /** Odjazd, na który trzeba wyjść (po dojściu) - przy przesiadce kolejny. */
   boardAtMs: number;
   /** Ile sekund do tego odjazdu. Ujemne = po odjeździe. */
   boardInSec: number;
@@ -114,7 +114,7 @@ export interface LivePlan {
   deepLink: string;
   channelName: string;
   channelDescription: string;
-  /** Kolor linii — akcent paska postępu i całego powiadomienia. */
+  /** Kolor linii - akcent paska postępu i całego powiadomienia. */
   accentColor: string;
   /** Początek podróży razem z dojściem pieszo, ms. */
   startAtMs: number;
@@ -157,7 +157,7 @@ export interface LivePlanSegment {
 
 /** Treść powiadomienia dla jednej fazy podróży. */
 export interface LivePlanPhaseCopy {
-  /** Tytuł — warunek konieczny, żeby Android dopuścił Live Update. */
+  /** Tytuł - warunek konieczny, żeby Android dopuścił Live Update. */
   title: string;
   /** Linia pod tytułem. */
   text: string;
@@ -167,7 +167,7 @@ export interface LivePlanPhaseCopy {
 
 /** Ustawienia powiadomień (osobne od ustawień trasowania). */
 export interface NotificationPreferences {
-  /** Ciche, trwałe powiadomienie w trayu — główna funkcja. */
+  /** Ciche, trwałe powiadomienie w trayu - główna funkcja. */
   trackingEnabled: boolean;
   /** Powiadomienia o opóźnieniach i zmianach kursu. */
   disruptionAlertsEnabled: boolean;

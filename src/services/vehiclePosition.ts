@@ -6,7 +6,7 @@ import { bearingDegrees, projectPointToPolyline } from '../gtfs/geo';
 import type { CurrentLocation } from './currentLocation';
 
 // Czysta logika „gdzie jest pojazd". Wydzielona z komponentu LegTimeline,
-// bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień —
+// bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień-
 // serwis nie powinien importować komponentu (i nie da się go wtedy
 // przetestować bez react-native).
 
@@ -69,7 +69,7 @@ export function findUserSegment(stops: LegStop[], leg: Leg): { start: number; en
   }
   if (end < 0) {
     const n = normalizeName(leg.toStop);
-    // ostatni match — nazwy przystanków potrafią się powtarzać na linii
+    // ostatni match - nazwy przystanków potrafią się powtarzać na linii
     for (let i = stops.length - 1; i >= 0; i--) {
       if (normalizeName(stops[i].name) === n) {
         end = i;

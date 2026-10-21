@@ -165,7 +165,7 @@ class LiveTracker {
   }
 
   /**
-   * Szybka ścieżka przed planowaniem: gdy snapshot świeży — nic nie robi,
+   * Szybka ścieżka przed planowaniem: gdy snapshot świeży - nic nie robi,
    * w przeciwnym razie odpala poll W TLE i wraca od razu (planowanie nigdy
    * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤20 s).
    */
@@ -729,7 +729,7 @@ class LiveTracker {
 
     // Poza DELAY_CAP_SEC opóźnienie nie znaczy „pojazd 40 minut spóźniony”
     // tylko „dopasowanie do kursu jest podejrzane”. Wcześniej taki wynik
-    // zerowano, a pojazd zostawał `live: true` — użytkownik dostawał zielony
+    // zerowano, a pojazd zostawał `live: true` - użytkownik dostawał zielony
     // „Na czas” przy tramwaju, który wyraźnie nie jest na czas. Teraz zamiast
     // kłamstwa jest brak informacji: delaySec = null, a UI pada z powrotem na
     // „Rozkład”, bo `live` jest wyprowadzane z `delaySec`.
@@ -774,7 +774,7 @@ class LiveTracker {
   /**
    * Rozwiązanie konfliktów po jednym pollu. Bez tego kilka pojazdów tej samej
    * linii dostawało ten sam `matchedTripId`, a `tripDelays` zapisywał
-   * opóźnienie ostatniego z nich — kolejność z odpowiedzi MPK, czyli losowa.
+   * opóźnienie ostatniego z nich - kolejność z odpowiedzi MPK, czyli losowa.
    * Stąd „ Tramwaj pokazuje się w losowym miejscu” i skoki opóźnienia.
    *
    * Zasada: kurs ma dokładnie jeden pojazd (najlepiej dopasowany), a pojazd
@@ -802,11 +802,11 @@ class LiveTracker {
         byId.set(vehicleId, entry.tracked);
         if (tripId && entry.tracked.delaySec !== null) delays.set(tripId, entry.tracked.delaySec);
       } else {
-        // Ten pojazd przegrał spór o kurs (albo w ogóle się nie dopasował) —
+        // Ten pojazd przegrał spór o kurs (albo w ogóle się nie dopasował)-
         // zostaje w snapshocie, ale bez kursu, żeby nie wmieszać go w cudzą
         // podróż. Dla RAPTOR-a brak opóźnienia jest bezpieczniejszy niż zły.
         // `null`, nie `0`: zero oznaczałoby „na czas”, a tu po prostu nie
-        // wiemy — i UI pokazałoby zielony badge dla pojazdu bez pomiaru.
+        // wiemy - i UI pokazałoby zielony badge dla pojazdu bez pomiaru.
         byId.set(vehicleId, { ...entry.tracked, matchedTripId: undefined, delaySec: null });
       }
     }
