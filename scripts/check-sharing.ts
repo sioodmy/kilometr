@@ -9,7 +9,7 @@ import {
   shareMessage,
   transferCount,
 } from '../src/sharing/connection';
-import { selectLegStops, tripShard } from '../src/sharing/timetable';
+import { selectLegStops, tripShard, type TimetableShard } from '../src/sharing/timetable';
 import {
   scheduledVehiclePosition,
   sharedJourneySeconds,
@@ -131,6 +131,8 @@ assert.equal(decodeSharedConnection(encodeSharedConnection(delayed))?.legs[0].sc
 assert.equal(selectLegStops({ ...journey.legs[0], departure: 1200 }, stops).length, 0);
 assert.equal(selectLegStops({ ...journey.legs[0], alight: 'a' }, stops).length, 0);
 assert.match(tripShard('tram-4'), /^[a-f0-9]{2}$/);
+const shardContract: TimetableShard = { v: 1, trips: { 'tram-4': stops } };
+assert.equal(shardContract.v, 1);
 const midnightStops = sharedLegStops(journey.legs[0], stops);
 assert.equal(sharedJourneySeconds('2026-10-19', new Date('2026-10-19T22:05:30Z')), 86730);
 assert.equal(sharedJourneySeconds('2026-10-19', new Date('2026-10-18T21:55:00Z')), -300);
