@@ -132,7 +132,6 @@ export function Hero() {
               <div className="hero-city-mark">
                 <img src={`./cities/${city}.webp`} alt="" width="100" height="60" />
               </div>
-              <span>{s.coverage.cities[city]}</span>
             </div>
           </div>
         ))}

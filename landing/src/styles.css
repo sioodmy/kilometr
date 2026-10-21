@@ -339,12 +339,14 @@
     grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     place-items: center;
     padding: 15px;
-    background: #fff;
-    border: 1px solid #e3e8e2;
+    background: color-mix(in srgb, var(--surface-raised) 55%, transparent);
+    border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
     border-radius: 23px;
     box-shadow:
-      0 9px 20px -12px var(--shadow),
-      inset 0 2px 0 #fff;
+      0 12px 28px -18px var(--shadow),
+      inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
   }
   .hero-city-mark img {
     min-width: 0;
@@ -352,13 +354,6 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
-  }
-  .hero-city span {
-    display: block;
-    margin-top: 10px;
-    color: var(--muted);
-    font-size: 0.6875rem;
-    font-weight: 500;
   }
   .hero-city-wroclaw {
     --depth: 0.8;
@@ -1234,10 +1229,6 @@
       height: 58px;
       border-radius: 15px;
       padding: 9px;
-    }
-    .hero-city span {
-      font-size: 0.625rem;
-      margin-top: 7px;
     }
     .hero-city-wroclaw,
     .hero-city-krakow,
