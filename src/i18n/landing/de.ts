@@ -19,11 +19,80 @@ export const de: Strings = {
     accent: 'quelloffener',
     titleEnd: 'Reiseplaner',
     body: 'Plane deine Route, prüfe Abfahrten und fahr los. Nahverkehr in ganz Polen, auch offline. Ohne Werbung und ohne Konto.',
-    play: 'Bei Google Play herunterladen',
-    secondary: 'So funktioniert’s',
+  },
+  install: {
+    android: 'Android',
+    ios: 'iOS',
+    platform: 'Betriebssystem des Telefons wählen',
+    newTab: '(öffnet einen neuen Tab)',
+  },
+  android: {
+    title: 'An der Play-Store-Beta teilnehmen',
+    intro:
+      'Kilometr befindet sich in der Testphase. Um die Android-App herunterzuladen, tritt zuerst der Testgruppe bei und melde dich dann bei Google Play für die Beta an.',
+    noteTitle: 'Ein Google-Konto für beide Schritte',
+    noteBody:
+      'Tritt der Gruppe und der Beta mit demselben Google-Konto bei. Verwende es auch im Play Store auf deinem Telefon.',
+    group: {
+      title: 'Der Testgruppe beitreten',
+      body: 'Öffne die Kilometr-Gruppe in Google Groups. Melde dich an und wähle „Gruppe beitreten“. Das Öffnen der Seite allein reicht nicht aus.',
+      action: 'Der Google-Gruppe beitreten',
+    },
+    testing: {
+      title: 'Für die Beta anmelden und App herunterladen',
+      body: 'Öffne nach dem Gruppenbeitritt die Testseite. Bestätige deine Teilnahme und folge dann dem Link zu Google Play, um Kilometr zu installieren.',
+      action: 'An der Google-Play-Beta teilnehmen',
+    },
+    helpTitle: 'Kein Zugriff auf den Test?',
+    helpBody:
+      'Prüfe, ob die Gruppe, die Testseite und der Play Store dasselbe Google-Konto verwenden. Wenn du der Gruppe gerade beigetreten bist, warte kurz und lade die Testseite neu. Dies ist eine Testversion, in der Fehler auftreten können.',
+    alternative: {
+      title: 'Du boykottierst Google? Lade direkt von der Quelle herunter',
+      body: 'Obtainium lädt Kilometr und Updates direkt von unserem GitHub herunter. Der Button öffnet die Konfiguration in Obtainium oder hilft dir bei der Installation.',
+      obtainium: 'Zu Obtainium hinzufügen',
+      fdroid: 'F-Droid',
+      soon: 'Demnächst',
+      json: 'Obtainium-Konfiguration herunterladen (JSON)',
+    },
+  },
+  ios: {
+    title: 'Auf iOS installieren',
+    intro:
+      'Du kannst Kilometr auf iOS aus einer IPA-Datei außerhalb des App Store installieren. Das heißt Sideloading. Die folgende Anleitung verwendet Sideloadly.',
+    noteTitle: 'Telefon und Computer vorbereiten',
+    noteBody:
+      'Du brauchst ein iPhone mit iOS 16.4 oder neuer, einen Mac oder Windows-PC, ein USB-Kabel und ein Apple-Konto. Ein kostenloses Konto genügt.',
+    download: {
+      title: 'App-Datei herunterladen',
+      body: 'Speichere kilometr-unsigned.ipa aus der neuesten Veröffentlichung auf deinem Computer. Die Datei ist nicht signiert. Du signierst sie bei der Installation mit deinem Apple-Konto.',
+      action: 'IPA herunterladen',
+    },
+    tool: {
+      title: 'Sideloadly auf dem Computer installieren',
+      body: 'Lade die Version für dein System von der offiziellen Website herunter. Installiere unter Windows auch die dort verlinkten Apple-Versionen von iTunes und iCloud.',
+      action: 'Sideloadly herunterladen',
+    },
+    sign: {
+      title: 'iPhone verbinden und Kilometr installieren',
+      body: 'Entsperre dein Telefon, verbinde es per Kabel und vertraue dem Computer. Wähle dein iPhone in Sideloadly, ziehe die IPA-Datei ins Fenster und gib dein Apple-Konto an. Behalte die Erweiterung KilometrLiveActivity für Live-Aktivitäten und Dynamic Island. Klicke auf Start und folge den Anweisungen.',
+    },
+    open: {
+      title: 'Der App auf dem Telefon vertrauen',
+      body: 'Falls iOS dich dazu auffordert, öffne Einstellungen → Allgemein → VPN und Geräteverwaltung und vertraue dem Profil deines Apple-Kontos. Aktiviere bei Bedarf den Entwicklermodus unter Einstellungen → Datenschutz & Sicherheit. Öffne dann Kilometr und lade den Fahrplan deiner Stadt herunter.',
+    },
+    helpTitle: 'Signatur rechtzeitig erneuern',
+    helpBody:
+      'Mit einem kostenlosen Apple-Konto läuft die Signatur nach 7 Tagen ab. Erneuere sie über Sideloadly, bevor sich die App nicht mehr öffnen lässt. Das Tool unterstützt die automatische Erneuerung, wenn sich Computer und Telefon verbinden können. Verwende bei Updates dasselbe Apple-Konto und dieselbe App-ID, um deine Daten zu behalten.',
+    appStore: {
+      title: 'Warum gibt es Kilometr nicht im App Store?',
+      body: 'Apple verlangt 99 USD pro Jahr für ein Entwicklerkonto, auch für eine kostenlose App. Diese Regeln sind ein Skandal für kleine Open-Source-Projekte: Sie bevorzugen Konzerne gegenüber unabhängigen Entwicklern. Dafür haben wir kein Budget. Deshalb bieten wir vorerst eine IPA-Datei zur eigenen Installation an.',
+      supportBody:
+        'Möchtest du uns helfen, diese Gebühr zu decken? Du kannst das Projekt unterstützen. Jede Spende hilft uns, Kilometr weiterzuentwickeln und die Veröffentlichung zu finanzieren.',
+    },
   },
   homePreview: {
-    screenLabel: 'Startseite der App',
+    screenLabel: 'Kilometr-Startseite auf einem iPhone',
+    statusTime: '21:36',
     places: previewHome,
     title: 'Wohin geht’s?',
     savedTitle: 'Gespeicherte Orte',
