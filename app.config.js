@@ -21,24 +21,17 @@ function minutesSince2020(year, month, day, hour, minute) {
   return (daysSinceEpoch - 18262) * 1440 + hour * 60 + minute;
 }
 
-/**
- * Banda podglądów z PR-ów (dev-/test-). Jest wyższa niż nightly (minuty od
- * 2020, dziś ok. 3,5 mln) i niż prod (X*1000000 + Y*10000 + Z*100 + numer
- * kompilacji), więc APK podglądu instaluje się nad wydaniem. Bez tego podglądy
- * miały versionCode 1, a Android blokuje instalację niższego numeru nad
- * zainstalowaną aplikacją i kończy to komunikatem „app not installed”. Po
- * instalacji podglądu powrót na nightly/prod wymaga odinstalowania.
- */
+// Podglądy mają wyższy kod niż nightly; prod może je zaktualizować.
 const PREVIEW_VERSION_CODE_BAND = 500000000;
 
-// Banda buildów wgrywanych do Google Play (testowanie wewnętrzne). Wyżej niż
-// podglądy (500 mln) i znacznie wyżej niż prod (max ~10 mln), więc versionCode
-// z Play nie skoliduje z wersjami instalowanymi z APK poza sklepem.
+// Ręczne buildy Play zachowują dotychczasową numerację.
 const PLAY_VERSION_CODE_BAND = 600000000;
 
+// Prod musi aktualizować także wcześniejsze buildy Play z kodem ponad 600 mln.
+const PROD_VERSION_CODE_BAND = 700000000;
+
 // versionCode musi być liczbą całkowitą i rosnąć wraz z wydaniami.
-// prod: vX.Y.Z -> X*1000000 + Y*10000 + Z*100 + BUILD_NUMBER (slot kompilacji
-//       z CI; 1.0.0 -> 1000001, kolejny build tego samego wydania -> 1000002).
+// prod: vX.Y.Z -> 700 mln + X*1000000 + Y*10000 + Z*100 + BUILD_NUMBER.
 // nightly: nightly-YYYYMMDD-HHMM-* -> minuty od 2020-01-01.
 // podglądy: dev-YYYYMMDD-HHMM-*, test-YYYYMMDD-HHMM-* -> banda podglądów + minuty.
 // Play: play-YYYYMMDD-HHMM-* -> banda Play + minuty.
@@ -49,7 +42,7 @@ function versionCodeFromVersion(version) {
     const major = Number(semver[1]);
     const minor = Number(semver[2]);
     const patch = Number(semver[3]);
-    return major * 1000000 + minor * 10000 + patch * 100 + BUILD_NUMBER;
+    return PROD_VERSION_CODE_BAND + major * 1000000 + minor * 10000 + patch * 100 + BUILD_NUMBER;
   }
 
   const dated = /^(nightly|dev|test|play)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(version);
