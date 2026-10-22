@@ -13,6 +13,7 @@ export { useNotificationPreferences } from './preferences';
 export { addTripResponseListener, getLastTripResponse, type TripResponse } from './response';
 export {
   getTrackedTripSync,
+  acceptTransferAlternative,
   restoreTrackedTrip,
   startTracking,
   startTrackedTripListener,

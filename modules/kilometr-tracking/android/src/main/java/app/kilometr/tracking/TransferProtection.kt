@@ -32,7 +32,6 @@ internal class TransferProtection(
   private var prepared: TransferCandidate? = null
   private var preparedDelay = 0
   private var revision = 0
-  private var changedAt = 0L
   private var lastRiskAlert = ""
   private var state = JSONObject()
   private val statusFile = File(File(path.removePrefix("file://")).parentFile, "state.json")
@@ -46,12 +45,11 @@ internal class TransferProtection(
         val saved = if (statusFile.exists()) JSONObject(statusFile.readText()) else null
         connection = saved?.optJSONObject("connection") ?: root.getJSONObject("connection")
         revision = saved?.optInt("revision") ?: 0
-        changedAt = saved?.optLong("changedAt") ?: 0L
         lastRiskAlert = saved?.optString("alertKey") ?: ""
         rides = network!!.rides(connection!!)
         val legs = connection!!.getJSONArray("legs")
         require(rides.size == (0 until legs.length()).count { legs.getJSONObject(it).optString("mode") != "walk" })
-        val active = saved?.optInt("activeLegIndex", -1) ?: -1
+        val active = saved?.optInt("activeLegIndex", -1) ?: root.optInt("activeLegIndex", -1)
         rideIndex = rides.indexOfFirst { it.legIndex == active }.coerceAtLeast(0)
         publish("waiting", System.currentTimeMillis())
       } catch (_: Exception) {
@@ -77,6 +75,7 @@ internal class TransferProtection(
       return@submit
     }
     if (lastEstimate == null || nowMs - (lastFix?.atMs ?: 0) > 30_000) {
+      state.remove("alternative")
       val first = net.root.getJSONArray("timeline").getJSONObject(0).getLong("departMs")
       publish(if (nowMs < first) "waiting" else "unavailable", nowMs, "location")
     }
@@ -114,7 +113,6 @@ internal class TransferProtection(
         lastEstimate = boarded
         lastFix = fix
         state.put("arrivalAtMs", next.stops[next.alight].arriveMs + boarded.delaySec * 1000L)
-        changedAt = 0
         publish("waiting", now)
         return
       }
@@ -126,10 +124,13 @@ internal class TransferProtection(
     }
     lastEstimate = estimate
     lastFix = fix
+    val oldAlternative = state.optJSONObject("alternative")
+    if (oldAlternative != null && now >= oldAlternative.optLong("validUntil")) state.remove("alternative")
     state.put("arrivalAtMs", ride.stops[ride.alight].arriveMs + estimate.delaySec * 1000L)
       .put("delaySec", estimate.delaySec)
     net.delays[ride.tripId] = estimate.delaySec to now
     if (next == null) {
+      state.remove("alternative")
       publish("complete", now)
       return
     }
@@ -152,6 +153,7 @@ internal class TransferProtection(
     val buffer = max(60, if (target.optString("mode") == "train") opts.getInt("trainMinTransferSec") else opts.getInt("minTransferSec"))
     val passedAlight = estimate.position > ride.alight + 0.3
     val assessment = decision.assess(if (passedAlight) -120 else physicalSlack, buffer, now)
+    if (assessment == "safe") state.remove("alternative")
     state.put("activeLegIndex", ride.legIndex).put("delaySec", estimate.delaySec)
       .put("slackSec", physicalSlack - buffer).put("nextLine", target.optString("line"))
       .put("currentLine", current.optString("line")).put("transferStop", current.optString("toStop"))
@@ -168,19 +170,22 @@ internal class TransferProtection(
       prepared = null
       if (closed) return
       if (candidate != null) {
-        connection = candidate.connection
-        revision++
-        changedAt = now
-        rides = net.rides(connection!!)
-        rideIndex = rides.indexOfFirst { it.legIndex == ride.legIndex }.coerceAtLeast(0)
-        decision = TransferDecision()
-        state.put("transferStop", ride.stops[candidate.alight].name)
-        val newNext = rides.getOrNull(rideIndex + 1)
-        state.put("nextLine", newNext?.let { connection!!.getJSONArray("legs").getJSONObject(it.legIndex).optString("line") } ?: "")
-          .put("arrivalAtMs", ride.stops[candidate.alight].arriveMs + estimate.delaySec * 1000L)
-        if (newNext != null) state.put("departureAtMs", newNext.stops[newNext.board].departMs +
-          (net.freshDelay(newNext.tripId, now) ?: 0) * 1000L)
-        publish("changed", now, alert = true)
+        val candidateRides = net.rides(candidate.connection)
+        val newNext = candidateRides.firstOrNull { it.legIndex > ride.legIndex }
+        val decisionAt = ride.stops[min(ride.alight, candidate.alight)].arriveMs + estimate.delaySec * 1000L - 60_000
+        if (newNext != null && decisionAt > now) {
+          val legs = candidate.connection.getJSONArray("legs")
+          val nextLeg = legs.getJSONObject(newNext.legIndex)
+          state.put("alternative", JSONObject()
+            .put("id", "$revision:${ride.legIndex}:${newNext.tripId}:${candidate.alight}")
+            .put("connection", candidate.connection).put("activeLegIndex", ride.legIndex)
+            .put("nextLine", nextLeg.optString("line"))
+            .put("transferStop", ride.stops[candidate.alight].name)
+            .put("departureAtMs", newNext.stops[newNext.board].departMs + (net.freshDelay(newNext.tripId, now) ?: 0) * 1000L)
+            .put("arrivalAtMs", candidate.arrivalAtMs).put("validUntil", decisionAt)
+            .put("kind", if (candidate.alight == ride.alight) "sameStop" else "stayOn"))
+          publish("alternative", now, alert = lastRiskAlert != "$revision:${ride.legIndex}:alternative")
+        } else publish("noAlternative", now)
       } else publish("noAlternative", now, alert = lastRiskAlert != "$revision:${ride.legIndex}:none")
     } else {
       if (assessment == "risk" && now - lastPreparation >= 60_000) {
@@ -188,7 +193,7 @@ internal class TransferProtection(
         preparedDelay = estimate.delaySec
         prepared = net.alternatives(connection!!, ride, estimate, now)
       }
-      val status = if (assessment == "missed") "noAlternative" else if (now - changedAt < 120_000) "changed" else assessment
+      val status = if (state.has("alternative")) "alternative" else if (assessment == "missed") "noAlternative" else assessment
       val key = "$revision:${ride.legIndex}:risk"
       publish(status, now, alert = status == "risk" && lastRiskAlert != key)
     }
@@ -213,10 +218,11 @@ internal class TransferProtection(
     if (closed) return
     val index = rides.getOrNull(rideIndex)?.legIndex ?: 0
     state.put("tripId", tripId).put("status", status).put("updatedAt", now)
-      .put("revision", revision).put("activeLegIndex", index).put("changedAt", changedAt)
+      .put("revision", revision).put("activeLegIndex", index)
       .put("connection", connection)
+      .put("scope", "background")
     if (reason == null) state.remove("reason") else state.put("reason", reason)
-    if (alert) lastRiskAlert = "$revision:$index:${if (status == "noAlternative") "none" else "risk"}"
+    if (alert) lastRiskAlert = "$revision:$index:${if (status == "noAlternative") "none" else if (status == "alternative") "alternative" else "risk"}"
     state.put("alertKey", lastRiskAlert)
     val copy = network?.root?.optJSONObject("copy")
     state.put("baseMs", network?.baseMs ?: 0)
@@ -224,6 +230,7 @@ internal class TransferProtection(
       .put("channelName", copy?.optString("channelName") ?: "")
     val titleKey = when (status) {
       "changed" -> "changedTitle"
+      "alternative" -> "alternativeTitle"
       "risk", "noAlternative", "rerouting" -> "riskTitle"
       "unavailable" -> "unavailable"
       else -> "title"
@@ -235,6 +242,7 @@ internal class TransferProtection(
     state.put("notificationTitle", text(titleKey))
       .put("notificationText", text(when (status) {
         "changed" -> "changedBody"
+        "alternative" -> "alternativeBody"
         "noAlternative" -> "noAlternative"
         "unavailable" -> "unavailableBody"
         "waiting" -> "waiting"

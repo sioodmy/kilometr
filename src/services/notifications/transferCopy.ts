@@ -10,6 +10,8 @@ export function getTransferNativeCopy(): Record<string, string> {
     riskBody: s.riskBody,
     changedTitle: s.stayOn('{line}'),
     changedBody: s.changedBody('{nextLine}', '{stop}'),
+    alternativeTitle: s.alternativeTitle,
+    alternativeBody: s.alternativeBody,
     noAlternative: s.noAlternative,
     unavailable: s.unavailable,
     unavailableBody: s.unavailableBody,

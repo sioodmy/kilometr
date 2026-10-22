@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import Module, { createRequire } from 'node:module';
+import Module, { createRequire, registerHooks } from 'node:module';
 import { mock } from 'node:test';
 import type {
   NotificationRequestInput,
@@ -25,7 +25,13 @@ let route: () => Promise<Connection[]>;
 let pauseSchedule: (() => Promise<void>) | undefined;
 let pinned: unknown = null;
 let transferState: string | null = null;
-let remembered: Connection | null = null;
+const remembered: Connection[] = [];
+const snapshotHooks = registerHooks({ resolve(specifier, context, next) {
+  if (context.parentURL?.includes('/notifications/tripMonitor.') && specifier.includes('transferSnapshot')) {
+    return { url: 'data:text/javascript,export async function prepareTransferSnapshot(){return "/tmp/transfer-test/context.json"} export function removeTransferSnapshot(){}', shortCircuit: true };
+  }
+  return next(specifier, context);
+} });
 
 const notifications = {
   SchedulableTriggerInputTypes: { DATE: 'date' },
@@ -61,7 +67,7 @@ const native = {
     plans.push(JSON.parse(json));
     return nativeOk;
   },
-  stopTrip: async () => true,
+  stopTrip: async () => { transferState = null; return true; },
   consumeStopRequest: async () => {
     const value = pendingStop;
     pendingStop = false;
@@ -76,6 +82,7 @@ const stubs: Record<string, unknown> = {
     getNotifications: () => notifications,
     getTrackingNative: () => native,
     areNotificationsSupported: () => true,
+    usesNativeTransferProtection: () => true,
     warnUnsupportedOnce: () => {},
     TRACKING_NOTIFICATION_ID: 'kilometr.tracking.v2',
   },
@@ -89,7 +96,7 @@ const stubs: Record<string, unknown> = {
     },
   },
   '../settings': { getSettingsSync: () => ({}), profileWalkSpeedMps: () => 1.3 },
-  '../api': { RoutingService: { getConnections: () => route() }, rememberPlannedConnection: (value: Connection) => { remembered = value; } },
+  '../api': { RoutingService: { getConnections: () => route() }, rememberPlannedConnection: (value: Connection) => { remembered.push(value); } },
   '../liveTracker': { liveTracker: { snapshot: () => [], pin: () => {}, start: () => {}, stop: () => {} } },
   '../../cities': { inCityBounds: () => true },
   '../cityStore': { getActiveCitySync: () => ({}) },
@@ -360,13 +367,25 @@ async function main() {
   mock.timers.setTime(at(12, 56));
   transferState = JSON.stringify({ tripId: trip.id, status: 'changed', updatedAt: Date.now(), revision: 1, connection: changed });
   await monitor.refreshTrackedTrip();
-  assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, '13:10', 'przyjęcie planu wyznaczonego bez JS');
-  assert.equal(remembered?.arriveAt, '13:10', 'mapa dostaje ten sam zmieniony plan');
+  assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, connection.arriveAt, 'natywny stan nie zmienia planu bez decyzji pasażera');
+  assert.equal(remembered.length, 0, 'mapa nadal pokazuje plan pasażera');
   assert.equal(monitor.getTrackedTripSync()?.transfer?.status, 'changed');
   assert.ok(monitor.getTrackedTripSync(), 'stara godzina przyjazdu nie kończy opóźnionej podróży');
   transferState = JSON.stringify({ tripId: 'another-trip', status: 'changed', updatedAt: Date.now(), revision: 2, connection });
   await monitor.refreshTrackedTrip();
-  assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, '13:10', 'obcy plan nie nadpisuje aktywnej podróży');
+  assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, connection.arriveAt, 'obcy plan nie nadpisuje aktywnej podróży');
+  const alternative = { id: 'proposal-12', connection: changed, activeLegIndex: 1,
+    nextLine: '12', transferStop: 'C', departureAtMs: at(13, 0), arrivalAtMs: at(13, 10),
+    validUntil: Date.now() - 1, kind: 'sameStop' };
+  transferState = JSON.stringify({ tripId: trip.id, status: 'alternative', updatedAt: Date.now(), revision: 0, alternative });
+  assert.equal(await monitor.acceptTransferAlternative(alternative.id), false, 'odrzucona nieaktualna propozycja');
+  alternative.validUntil = at(13, 0);
+  transferState = JSON.stringify({ tripId: trip.id, status: 'alternative', updatedAt: Date.now(), revision: 0, alternative });
+  assert.equal(await monitor.acceptTransferAlternative('another-proposal'), false, 'potwierdzenie dotyczy wyświetlonej propozycji');
+  assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, connection.arriveAt);
+  assert.equal(await monitor.acceptTransferAlternative(alternative.id), true);
+  assert.equal(monitor.getTrackedTripSync()?.connection.arriveAt, '13:10', 'dopiero potwierdzenie zmienia plan');
+  assert.equal(remembered.at(-1)?.arriveAt, '13:10', 'mapa dostaje zaakceptowany plan');
   mock.timers.setTime(at(13, 16));
   transferState = JSON.stringify({ tripId: trip.id, status: 'complete', updatedAt: Date.now(), revision: 1, arrivalAtMs: at(13, 20) });
   await monitor.refreshTrackedTrip();
@@ -375,6 +394,21 @@ async function main() {
   await monitor.refreshTrackedTrip();
   assert.equal(monitor.getTrackedTripSync(), null, 'natywne Zakończ zatrzymuje także ochronę');
   transferState = null;
+  mock.timers.setTime(at(12, 25));
+  await monitor.startTracking({ ...trip, protectionEnabled: true, connection: {
+    ...connection, transfers: 0, legs: [connection.legs[1]],
+  } });
+  assert.equal(monitor.getTrackedTripSync()?.protectionEnabled, false, 'ochrona nie startuje dla jednego pojazdu');
+  assert.equal(plans.at(-1)?.transferProtectionEnabled, false, 'serwis Androida też nie uruchamia ochrony');
+  await monitor.stopTracking();
+  let replans = 0;
+  route = async () => { replans++; return [connection]; };
+  await monitor.startTracking({ ...trip, protectionEnabled: true,
+    connection: { ...connection, transfers: 0, legs: [connection.legs[1]] },
+    transfer: { tripId: trip.id, status: 'changed', updatedAt: Date.now(), revision: 0 },
+  });
+  assert.equal(replans, 0, 'potwierdzona trasa bezpośrednia pozostaje zablokowana po wyłączeniu ochrony');
+  await monitor.stopTracking();
   unsubscribe();
   console.log(
     'PASS: cykl śledzenia, przesiadki w tle, dojście, anulowanie, wyścigi, fallback, akcje i dźwięk',
@@ -390,4 +424,5 @@ void main()
     await monitor.stopTracking();
     mock.timers.reset();
     loader._load = originalLoad;
+    snapshotHooks.deregister();
   });
