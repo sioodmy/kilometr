@@ -4,7 +4,17 @@ Sześć raportów z 20 października 2026 dotyczy wersji 1.0.0, build 97.1.0.
 Każdy pokazuje `SIGABRT` po `RCTExceptionsManager.reportFatal` i `RCTFatal`.
 Raporty nie zawierają komunikatu wyjątku JavaScript. Wpisy z Konsoli przekazane
 21 października dotyczą preferencji i stanu procesu, bez treści błędu.
-Przyczyna awarii pozostaje niepotwierdzona.
+
+Raport z urządzenia z builda 7.1.0 wskazał przyczynę: `initLocale()` wykonywało
+`import('react-native')`. Metro tworzy przy tym obiekt z wszystkimi eksportami
+pakietu i odczytuje także getter `PushNotificationIOS`. Ten próbuje utworzyć
+`NativeEventEmitter` z nieobecnym modułem natywnym, co kończy start wyjątkiem
+`new NativeEventEmitter() requires a non-null argument`.
+
+Import jest teraz statyczny i pobiera wyłącznie `AppState`. Nie wymaga dołączania
+starego modułu powiadomień. `scripts/check-ios-locale.ts`, uruchamiany w `check:ios`,
+sprawdza start bez `PushNotificationIOS`, pojedynczą subskrypcję `AppState`,
+zmianę języka systemowego po powrocie do aplikacji i zachowanie języka wybranego ręcznie.
 
 `plugins/with-ios.js` instaluje natywny handler przed uruchomieniem React Native.
 W Release fatalny wyjątek JS otwiera natywny ekran z pełnym komunikatem, stosem
@@ -25,10 +35,10 @@ oraz generowanie projektu i `scripts/check-ios-prebuild.py`. Kontrola projektu
 sprawdza podpięcie źródła do Xcode, instalację handlera przed startem React Native
 i komplet tłumaczeń w czterech językach.
 
-Nie wykonano kompilacji Xcode ani testu na iPhonie. Wymagają sprawdzenia:
-wyświetlenie raportu po fatalnym błędzie JS w Release, przewijanie i zaznaczanie
-tekstu oraz otwieranie arkusza udostępniania na iPhonie i iPadzie.
-Ta zmiana udostępnia brakujący komunikat; nie potwierdza naprawy przyczyny awarii.
+Build diagnostyczny z commita `e80a6ec` przeszedł kompilację Xcode w runie
+`39573153151`. Raport przesłany przez użytkownika potwierdza działanie natywnego
+przechwytywania błędu na iPhonie. Poprawka importu wymaga sprawdzenia w kolejnym IPA.
+Przewijanie i arkusz udostępniania na iPadzie pozostają niezweryfikowane.
 
 ## Anti-slop, przegląd kodu
 
