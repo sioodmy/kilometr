@@ -24,19 +24,25 @@ function minutesSince2020(year, month, day, hour, minute) {
 // Podglądy mają wyższy kod niż nightly; prod może je zaktualizować.
 const PREVIEW_VERSION_CODE_BAND = 500000000;
 
-// Ręczne buildy Play zachowują dotychczasową numerację.
-const PLAY_VERSION_CODE_BAND = 600000000;
-
-// Prod musi aktualizować także wcześniejsze buildy Play z kodem ponad 600 mln.
+// Numeracja APK pozostaje zgodna z już wydanym v1.5.2.
 const PROD_VERSION_CODE_BAND = 700000000;
 
 // versionCode musi być liczbą całkowitą i rosnąć wraz z wydaniami.
 // prod: vX.Y.Z -> 700 mln + X*1000000 + Y*10000 + Z*100 + BUILD_NUMBER.
 // nightly: nightly-YYYYMMDD-HHMM-* -> minuty od 2020-01-01.
 // podglądy: dev-YYYYMMDD-HHMM-*, test-YYYYMMDD-HHMM-* -> banda podglądów + minuty.
-// Play: play-YYYYMMDD-HHMM-* -> banda Play + minuty.
+// AAB: ANDROID_VERSION_CODE ze wspólnego licznika workflow Play.
 // Brak dopasowania (np. wersja z app.json) -> 1.
 function versionCodeFromVersion(version) {
+  if (process.env.ANDROID_VERSION_CODE !== undefined) {
+    const value = process.env.ANDROID_VERSION_CODE;
+    const code = Number(value);
+    if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(code) || code > 2100000000) {
+      throw new Error('ANDROID_VERSION_CODE musi być liczbą całkowitą od 1 do 2100000000.');
+    }
+    return code;
+  }
+
   const semver = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (semver) {
     const major = Number(semver[1]);
@@ -55,7 +61,9 @@ function versionCodeFromVersion(version) {
       Number(dated[6]),
     );
     if (dated[1] === 'nightly') return minutes;
-    if (dated[1] === 'play') return PLAY_VERSION_CODE_BAND + minutes;
+    if (dated[1] === 'play') {
+      throw new Error('Build Play wymaga ANDROID_VERSION_CODE ze wspólnego licznika AAB.');
+    }
     return PREVIEW_VERSION_CODE_BAND + minutes;
   }
 
