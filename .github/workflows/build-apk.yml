@@ -512,5 +512,8 @@ jobs:
     uses: ./.github/workflows/build-aab.yml
     with:
       release_tag: ${{ needs.build-apk.outputs.tag }}
+    # Reusable workflow nie dziedziczy sekretów repo sam z siebie; bez tego
+    # AAB nie widzi ANDROID_KEYSTORE_* i pada na etapie dekodowania klucza.
+    secrets: inherit
     permissions:
       contents: write
