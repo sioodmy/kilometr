@@ -162,8 +162,7 @@ jobs:
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
           PUBLISH="true"
 
-          # Numer podejścia runu (re-run tego samego workflow) trafia jako slot
-          # kompilacji do versionCode prod: v1.0.0 + podejście 2 -> 1000002.
+          # Numer podejścia zajmuje dwie ostatnie cyfry versionCode prod.
           BUILD_NUMBER="${GITHUB_RUN_ATTEMPT:-1}"
 
           if [ "$MODE" = "artifact-only" ]; then
