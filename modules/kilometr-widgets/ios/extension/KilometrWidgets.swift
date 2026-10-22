@@ -254,7 +254,24 @@ private struct KilometrWidget: Widget {
   let kind: KilometrWidgetKind
   let title: LocalizedStringKey
   let description: LocalizedStringKey
-  var families: [WidgetFamily] = [.systemSmall, .systemMedium]
+  let families: [WidgetFamily]
+
+  // Widget wymaga init(); właściwe instancje tworzy WidgetBundle z jawnym initem.
+  init() {
+    self.init(kind: .directions, title: "", description: "")
+  }
+
+  init(
+    kind: KilometrWidgetKind,
+    title: LocalizedStringKey,
+    description: LocalizedStringKey,
+    families: [WidgetFamily] = [.systemSmall, .systemMedium]
+  ) {
+    self.kind = kind
+    self.title = title
+    self.description = description
+    self.families = families
+  }
 
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "Kilometr.\(kind.rawValue)", provider: KilometrProvider()) { entry in
