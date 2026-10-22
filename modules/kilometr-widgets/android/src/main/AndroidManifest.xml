@@ -3,18 +3,6 @@
        według namespace'u aplikacji, a nie modułu. -->
   <application>
     <receiver
-        android:name="app.kilometr.widgets.NextDepartureWidget"
-        android:exported="false"
-        android:label="@string/kw_next_label">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-      </intent-filter>
-      <meta-data
-          android:name="android.appwidget.provider"
-          android:resource="@xml/kw_next_info" />
-    </receiver>
-
-    <receiver
         android:name="app.kilometr.widgets.DestinationsWidget"
         android:exported="false"
         android:label="@string/kw_dest_label">

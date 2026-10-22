@@ -21,7 +21,7 @@ private enum TripActivity {
     if UserDefaults.standard.string(forKey: savedTrip) == plan.tripId && wasDismissed() { return false }
     generation += 1
     let run = generation
-    let content = ActivityContent(state: plan.state, staleDate: Date(timeIntervalSince1970: plan.staleAt))
+    let content = ActivityContent(state: plan.state, staleDate: plan.arrived ? nil : Date(timeIntervalSince1970: plan.staleAt))
     let active = Activity<TripAttributes>.activities
     for activity in active where activity.attributes.tripId != plan.tripId {
       await activity.end(nil, dismissalPolicy: .immediate)

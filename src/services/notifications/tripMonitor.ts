@@ -29,9 +29,11 @@ import {
   sendDisruptionAlert,
   shouldAlertDelay,
 } from './alerts';
-import { areNotificationsSupported, getTrackingNative, warnUnsupportedOnce } from './module';
+import { areNotificationsSupported, getTrackingNative, usesNativeTransferProtection, warnUnsupportedOnce } from './module';
 import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 import type { TransferProtectionState } from './transferTypes';
+import { hasTransfer } from './transferTypes';
+import type { ForegroundTransferProtection } from './transferForeground';
 
 // Orkiestrator śledzenia podróży. Trzyma jedną aktywną podróż, cyklicznie
 // przelicza plan (żeby łapać opóźnienia i zmiany kursu), z tego wycieka
@@ -60,6 +62,7 @@ let planLocked = false;
 let ticker: ReturnType<typeof setInterval> | null = null;
 let refreshing: Promise<void> | null = null;
 let generation = 0;
+let foregroundProtection: ForegroundTransferProtection | null = null;
 
 type Listener = (trip: TrackedTrip | null, p: TripProgress | null) => void;
 const listeners = new Set<Listener>();
@@ -308,9 +311,10 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   await consumeNativeStop();
   generation++;
   const run = generation;
-  tracked = { ...trip, startedAt: Date.now() };
+  const protectionEnabled = trip.protectionEnabled === true && hasTransfer(trip.connection);
+  tracked = { ...trip, protectionEnabled, startedAt: Date.now() };
   arrivedAt = 0;
-  planLocked = trip.protectionEnabled === true;
+  planLocked = protectionEnabled || trip.transfer?.status === 'changed';
   lastDelayMin = trip.connection.delayMin;
   progress = computeTripProgress(trip.connection, {
     walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
@@ -329,13 +333,18 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   }
   await refresh();
   void pushWidgetPinned(tracked);
-  if (trip.protectionEnabled) void configureTransferProtection(run);
+  if (protectionEnabled) void configureTransferProtection(run);
 }
 
 async function configureTransferProtection(run: number): Promise<void> {
   const trip = tracked;
   if (!trip?.protectionEnabled) return;
-  tracked = { ...trip, transfer: { tripId: trip.id, status: 'preparing', updatedAt: Date.now(), revision: 0 } };
+  if (!usesNativeTransferProtection()) {
+    await syncTransferProtection();
+    notify();
+    return;
+  }
+  tracked = { ...trip, transfer: { tripId: trip.id, status: 'preparing', updatedAt: Date.now(), revision: 0, scope: 'background' } };
   notify();
   let path: string | undefined;
   try {
@@ -364,7 +373,20 @@ async function configureTransferProtection(run: number): Promise<void> {
 async function syncTransferProtection(): Promise<void> {
   const trip = tracked;
   if (!trip?.protectionEnabled) return;
+  const run = generation;
   try {
+    if (Date.now() - trip.startedAt > 8 * 60 * 60_000) { await stopTracking(); return; }
+    if (!usesNativeTransferProtection()) {
+      if (AppState.currentState !== 'active') return;
+      if (!foregroundProtection) {
+        const { ForegroundTransferProtection } = await import('./transferForeground');
+        if (run !== generation) return;
+        foregroundProtection = new ForegroundTransferProtection(trip);
+      }
+      const transfer = await foregroundProtection.refresh();
+      if (run === generation && tracked) tracked = { ...tracked, transfer };
+      return;
+    }
     const raw = await getTrackingNative()?.getTransferProtectionState?.();
     if (!raw || tracked?.id !== trip.id || tracked.startedAt !== trip.startedAt) return;
     const state = JSON.parse(raw) as TransferProtectionState;
@@ -373,15 +395,34 @@ async function syncTransferProtection(): Promise<void> {
       await stopTracking();
       return;
     }
-    const connection = state.revision > (trip.transferRevision ?? 0) && state.connection?.id === trip.connection.id &&
-      Array.isArray(state.connection.legs) ? state.connection : trip.connection;
     const { connection: _connection, ...transfer } = state;
-    tracked = { ...tracked, connection, transfer, transferRevision: state.revision };
-    if (connection !== trip.connection) rememberPlannedConnection(connection);
+    tracked = { ...tracked, transfer, transferRevision: state.revision };
     planLocked = true;
   } catch (error) {
     console.warn('[TransferProtection] state:', error);
+    if (run === generation && tracked) tracked = { ...tracked, transfer: {
+      tripId: trip.id, status: 'unavailable', updatedAt: Date.now(), revision: trip.transferRevision ?? 0,
+      reason: 'routing', scope: usesNativeTransferProtection() ? 'background' : 'foreground',
+    } };
   }
+}
+
+/** Podmienia plan wyłącznie po potwierdzeniu aktualnej propozycji. */
+export async function acceptTransferAlternative(alternativeId: string): Promise<boolean> {
+  await refresh();
+  const trip = tracked;
+  const alternative = trip?.transfer?.alternative;
+  if (!trip || !alternative || alternative.id !== alternativeId || alternative.validUntil <= Date.now() ||
+    Date.now() - (trip.transfer?.updatedAt ?? 0) > 30_000) return false;
+  const connection = alternative.connection;
+  rememberPlannedConnection(connection);
+  await startTracking({ ...trip, connection, fromTitle: connection.fromTitle,
+    fromLat: connection.legs[0]?.fromLat ?? trip.fromLat,
+    fromLon: connection.legs[0]?.fromLon ?? trip.fromLon, transferContextPath: undefined,
+    transfer: { tripId: trip.id, status: 'changed', updatedAt: Date.now(), revision: 0,
+      activeLegIndex: alternative.activeLegIndex, nextLine: alternative.nextLine,
+      transferStop: alternative.transferStop }, transferRevision: 0 });
+  return tracked?.connection === connection;
 }
 
 /**
@@ -390,6 +431,7 @@ async function syncTransferProtection(): Promise<void> {
 export async function stopTracking(): Promise<void> {
   const contextPath = tracked?.transferContextPath;
   generation++;
+  foregroundProtection = null;
   tracked = null;
   progress = null;
   arrivedAt = 0;
@@ -444,8 +486,8 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
       await kvRemove(STORAGE_KEY);
       return null;
     }
-    tracked = parsed;
-    planLocked = parsed.protectionEnabled === true;
+    tracked = { ...parsed, protectionEnabled: parsed.protectionEnabled === true && hasTransfer(parsed.connection) };
+    planLocked = tracked.protectionEnabled === true || tracked.transfer?.status === 'changed';
     generation++;
     await loadNotificationPreferences();
     progress = computeTripProgress(parsed.connection, {
@@ -539,6 +581,7 @@ function pushWidgetPinned(trip: TrackedTrip | null): Promise<void> {
       toTitle: trip.toTitle,
       toLat: trip.toLat,
       toLon: trip.toLon,
+      open: conn.id,
     }),
   };
   return mergeWidgetSnapshot({ pinned: section });

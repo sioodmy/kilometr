@@ -533,19 +533,8 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
           : s.compass.walkMins(walkMin)
         : '';
 
-  const transferWarning = transfer?.status === 'risk' || transfer?.status === 'noAlternative';
-  const transferChanged = transfer?.status === 'changed';
-  const headLabel = transferChanged && onTransit
-    ? s.transferGuard.stayOn(activeLeg?.line ?? '')
-    : baseHeadLabel;
-  const transferText = transfer?.status === 'safe' && transfer.slackSec != null
-    ? s.transferGuard.buffer(transfer.nextLine ?? '', Math.max(0, Math.floor(transfer.slackSec / 60)))
-    : transferWarning
-      ? `${s.transferGuard.riskTitle(transfer?.nextLine ?? '')}. ${transfer?.status === 'noAlternative' ? s.transferGuard.noAlternative : s.transferGuard.riskBody}`
-      : transferChanged
-        ? s.transferGuard.changedBody(transfer?.nextLine ?? '', transfer?.transferStop ?? '')
-        : transfer?.status === 'rerouting' ? s.transferGuard.rerouting : null;
-  const footerText = transferText ?? baseFooterText;
+  const headLabel = baseHeadLabel;
+  const footerText = baseFooterText;
 
   // „Potem” pokazujemy tylko wtedy, gdy następny manewr jest wyraźnie
   // dalej niż obecny. Inaczej dwie linijki mówią to samo.
@@ -631,7 +620,7 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
             style={[styles.navMapPane, { height: navMapH }]}
           />
           <Pressable
-            style={[styles.navSheet, transferWarning && styles.transferWarning, transferChanged && styles.transferChanged, focused && styles.focused]}
+            style={[styles.navSheet, focused && styles.focused]}
             onPress={openMap}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
@@ -677,8 +666,7 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
               </View>
             )}
             <View style={styles.navFooter}>
-              <Text accessibilityLiveRegion={transferWarning || transferChanged ? 'polite' : 'none'}
-                style={[styles.navFooterText, transferWarning && { color: scheme.onWarningContainer }, transferChanged && { color: scheme.onPrimaryContainer }]}>{footerText}</Text>
+              <Text style={styles.navFooterText}>{footerText}</Text>
               <Maximize2 size={16} color={scheme.onSurfaceVariant} />
             </View>
           </Pressable>
@@ -699,7 +687,7 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
           accessibilityLabel={s.compass.navA11y(stopName ?? '', '')}
         >
           <LocateFixed size={18} color={scheme.onSurfaceVariant} />
-          <Text accessibilityLiveRegion={transferWarning || transferChanged ? 'polite' : 'none'} style={styles.hintText}>{transferText ?? compassHint}</Text>
+          <Text style={styles.hintText}>{compassHint}</Text>
           <Maximize2 size={16} color={scheme.onSurfaceVariant} />
         </Pressable>
       )}
@@ -833,8 +821,6 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: shape.medium,
     borderBottomRightRadius: shape.medium,
   },
-  transferWarning: { backgroundColor: scheme.warningContainer },
-  transferChanged: { backgroundColor: scheme.primaryContainer },
   navRowMain: {
     flexDirection: 'row',
     alignItems: 'center',

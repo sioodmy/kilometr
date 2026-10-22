@@ -47,7 +47,6 @@ internal object KilometrWidgets {
       }
     }
 
-    each(NextDepartureWidget::class.java) { id, opts -> WidgetRenderers.next(app, snap, id, opts, now) }
     each(DestinationsWidget::class.java) { id, opts -> WidgetRenderers.destinations(app, snap, id, opts, now) }
     each(TripWidget::class.java) { id, opts -> WidgetRenderers.trip(app, snap, id, opts, now) }
     each(SearchWidget::class.java) { id, opts -> WidgetRenderers.search(app, snap, id, opts) }
@@ -62,7 +61,6 @@ internal object KilometrWidgets {
     val from = now - 60_000L
     val until = now + TICK_HORIZON_MS
     fun inWindow(ts: Long?) = ts != null && ts in from..until
-    if (snap.optJSONArray("next").objects().any { inWindow(it.optLongOrNull("departTs")) }) return true
     if (snap.optJSONArray("quick").objects().any { inWindow(it.optLongOrNull("departTs")) }) return true
     val trip = snap.optJSONObject("pinned") ?: return false
     val arrive = trip.optLongOrNull("arriveTs") ?: return false
@@ -140,7 +138,6 @@ abstract class KilometrWidgetProvider : AppWidgetProvider() {
   }
 }
 
-class NextDepartureWidget : KilometrWidgetProvider()
 class DestinationsWidget : KilometrWidgetProvider()
 class TripWidget : KilometrWidgetProvider()
 class SearchWidget : KilometrWidgetProvider()

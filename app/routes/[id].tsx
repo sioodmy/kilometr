@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +26,9 @@ import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
+import { TransferProtectionCard } from '../../src/components/TransferProtectionCard';
+import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
+import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmDialog } from '../../src/components/DepartureAlarmDialog';
 import { getDepartureAlarmSync, useDepartureAlarm } from '../../src/services/departureAlarm';
 import {
@@ -42,6 +45,7 @@ import {
 export default function RouteDetailsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const openTransferProtection = useTransferProtection();
   const goBack = () => router.canGoBack() ? router.back() : router.replace('/routes');
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const id = normalizeConnectionId(routeId ?? '');
@@ -71,31 +75,38 @@ export default function RouteDetailsScreen() {
   }, []);
 
   const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
+  const hasTransfers = item != null && hasTransfer(item);
 
-  // Śledzenie odpala się tylko przyciskiem w nagłówku. Jedno śledzenie
-  // na raz: start nowego kursu podmienia poprzedni w tripMonitor.
-  const toggleTracking = async () => {
+  // Nagłówek przełącza śledzenie, karta włącza ochronę. Monitor trzyma jedną podróż.
+  const toggleTracking = async (enableProtection = false) => {
     if (!item || trackingBusy) return;
-    if (isTrackedThis) {
+    if (isTrackedThis && !enableProtection) {
       await stopTracking();
       return;
     }
     setTrackingBusy(true);
     try {
-      if (!areNotificationsSupported()) {
+      if (!areNotificationsSupported() && !hasTransfers) {
         Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
         return;
       }
-      const ok = await ensureNotificationPermission();
+      const ok = !areNotificationsSupported() || await ensureNotificationPermission();
       if (!ok) {
         Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
         return;
       }
-      let protectionEnabled = item.transfers > 0 && isTransferProtectionSupported();
+      let protectionEnabled = hasTransfers && isTransferProtectionSupported();
       if (protectionEnabled) {
         let permission = await Location.getForegroundPermissionsAsync();
         if (!permission.granted) permission = await Location.requestForegroundPermissionsAsync();
-        protectionEnabled = permission.granted && permission.android?.accuracy !== 'coarse';
+        protectionEnabled = permission.granted && permission.android?.accuracy !== 'coarse' && permission.ios?.accuracy !== 'reduced';
+        if (!protectionEnabled) {
+          Alert.alert(s.transferGuard.title, s.transferGuard.locationRequired, [
+            { text: s.common.cancel, style: 'cancel' },
+            { text: s.compass.openSettingsA11y, onPress: () => void Linking.openSettings() },
+          ]);
+          return;
+        }
       }
       const firstLeg = item.legs[0];
       const lastLeg = item.legs[item.legs.length - 1];
@@ -271,6 +282,11 @@ export default function RouteDetailsScreen() {
         ) : (
           <>
             <LegTimeline legs={item.legs} />
+            {hasTransfers && (
+              <TransferProtectionCard state={isTrackedThis ? trackedTrip.transfer : undefined}
+                active={isTrackedThis && trackedTrip.protectionEnabled === true} busy={trackingBusy}
+                onPress={() => { if (isTrackedThis && trackedTrip.protectionEnabled) openTransferProtection(); else void toggleTracking(true); }} />
+            )}
             {item.legs.some((leg) => leg.mode !== 'walk') && (
               <Pressable onPress={() => setAlarmOpen(true)} accessibilityRole="button"
                 onFocus={() => setAlarmFocused(true)} onBlur={() => setAlarmFocused(false)}
