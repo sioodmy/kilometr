@@ -22,7 +22,7 @@ on:
       arch:
         description: 'Architektura procesora (arm64-v8a to 99% nowoczesnych telefonów)'
         required: true
-        default: 'arm64-v8a'
+        default: 'all'
         type: choice
         options:
           - 'arm64-v8a'
@@ -49,6 +49,7 @@ env:
   ANDROID_BUILD_TOOLS: '36.0.0'
   ANDROID_NDK: '27.1.12297006'
   ANDROID_CMAKE: '3.30.5'
+  BUILD_NUMBER: ${{ github.run_attempt }}
   # Podpis release: hasła i alias muszą widzieć prebuild (wtyczka z bramką
   # sekretów) i gradle (kto czyta je dopiero w chwili builda). KEY_PASSWORD
   # może zostać pusty, wtedy klucz użyje hasła keystore.
@@ -142,7 +143,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          ARCH="${INPUT_ARCH:-arm64-v8a}"
+          ARCH="${INPUT_ARCH:-all}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
           if [ -n "${RELEASE_TAG:-}" ]; then
             # Prod: versionName musi zgadzać się z tagiem wydania (vX.Y.Z),
@@ -219,6 +220,7 @@ jobs:
       - name: Build Android App Bundle
         env:
           TARGET_ARCH: ${{ steps.version.outputs.arch }}
+          APP_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           ARCH_FLAG=""
@@ -255,12 +257,35 @@ jobs:
           echo "jarsigner: podpis ok"
 
       - name: 'Gate: AAB tylko z potrzebnymi uprawnieniami Androida'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          TARGET_ARCH: ${{ steps.version.outputs.arch }}
         run: |
           set -euo pipefail
           AAB="android/app/build/outputs/bundle/release/app-release.aab"
           curl -fL --retry 3 https://github.com/google/bundletool/releases/download/1.18.2/bundletool-all-1.18.2.jar -o "$RUNNER_TEMP/bundletool.jar"
           java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle="$AAB" --module=base > "$RUNNER_TEMP/aab-manifest.xml"
           npm run check:android-permissions -- "$RUNNER_TEMP/aab-manifest.xml" --xml
+          python3 - <<'PY'
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          import zipfile
+
+          android = '{http://schemas.android.com/apk/res/android}'
+          manifest = ET.parse(os.environ['RUNNER_TEMP'] + '/aab-manifest.xml').getroot()
+          assert manifest.get('package') == 'app.kilometr', 'Nieprawidłowy package AAB'
+          assert manifest.get(android + 'versionName') == os.environ['VERSION'], 'Nieprawidłowy versionName AAB'
+          assert manifest.get(android + 'versionCode') == os.environ['VERSION_CODE'], 'Nieprawidłowy versionCode AAB'
+          with zipfile.ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as bundle:
+              embedded = json.loads(bundle.read('base/assets/app.config'))
+              assert embedded['version'] == os.environ['VERSION'], 'Nieprawidłowa wersja w assets/app.config'
+              abis = {path.split('/')[2] for path in bundle.namelist() if path.startswith('base/lib/') and path.endswith('/libkilometr_raptor.so')}
+          expected = {'arm64-v8a'} if os.environ['TARGET_ARCH'] == 'arm64-v8a' else {'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'}
+          assert abis == expected, f'Niepełne architektury silnika RAPTOR: {abis}, oczekiwano {expected}'
+          print(f'AAB OK: versionName={os.environ["VERSION"]}, versionCode={os.environ["VERSION_CODE"]}, arch={sorted(abis)}')
+          PY
 
       - name: Stage AAB
         env:
