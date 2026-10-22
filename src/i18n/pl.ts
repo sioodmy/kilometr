@@ -1300,6 +1300,14 @@ export const pl = {
     delayTitle: (line: string, eta: string) => `Opóźnienie • ${line} • ${eta}`,
   },
   ios: {
+    departure: 'Odjazd',
+    arrival: 'Przyjazd',
+    alighting: 'Wysiadanie',
+    walking: 'Dojście',
+    waiting: 'Oczekiwanie',
+    riding: 'W drodze',
+    transfer: 'Przesiadka',
+    nextStop: 'Następny przystanek',
     startupTitle: 'Błąd aplikacji',
     startupHint: 'Kilometr nie może kontynuować. Udostępnij raport, aby pomóc znaleźć przyczynę błędu.',
     startupShare: 'Udostępnij',
@@ -1379,7 +1387,6 @@ export const pl = {
   // Widgety z ekranu głównego. Interpolacje dostają placeholder ('{n}', '{t}'),
   // bo minuty liczy widget natywnie przy każdym tyknięciu.
   widgets: {
-    nextTitle: 'Czas wyjść',
     journeyTitle: 'Twoje kierunki',
     journeyDescription: 'Czas wyjścia i linie do zapisanych i ostatnio szukanych miejsc',
     trackingTitle: 'Twoja podróż',
@@ -1388,7 +1395,6 @@ export const pl = {
     refresh: 'Odśwież w aplikacji',
     fromOrigin: (name: string) => `Z: ${name}`,
     picker: {
-      nextDescription: 'Ile czasu zostało do wyjścia, pierwsza linia i cel podróży',
       tripDescription: 'Odliczanie do wyjścia lub przyjazdu, postęp i przesiadki',
       searchTitle: 'Dokąd jedziemy?',
       searchDescription: 'Wyszukaj trasę lub wybierz skrót do zapisanego miejsca',
@@ -1410,7 +1416,6 @@ export const pl = {
     arrived: 'Na miejscu',
     updated: (t: string) => `stan z ${t}`,
     stale: 'Sprawdź kolejne połączenie',
-    nextEmpty: 'Sprawdź kolejne połączenie',
     destEmpty: 'Wyszukaj trasę, a zobaczysz ją tutaj.',
     tripEmptyTitle: 'Nie śledzisz podróży',
     tripEmptyBody: 'Wybierz połączenie i włącz śledzenie.',

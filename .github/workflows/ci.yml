@@ -167,6 +167,9 @@ jobs:
       - name: Run iOS notification tests
         run: npm run check:ios
 
+      - name: Run widget snapshot tests
+        run: npm run check:ios-widgets
+
       - name: Run logic tests (Smart rank)
         run: npm run check:smart-rank
 

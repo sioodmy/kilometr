@@ -539,6 +539,7 @@ function pushWidgetPinned(trip: TrackedTrip | null): Promise<void> {
       toTitle: trip.toTitle,
       toLat: trip.toLat,
       toLon: trip.toLon,
+      open: conn.id,
     }),
   };
   return mergeWidgetSnapshot({ pinned: section });

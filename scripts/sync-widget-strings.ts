@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pl } from '../src/i18n/pl';
 import { en } from '../src/i18n/en';
 import { de } from '../src/i18n/de';
@@ -16,8 +16,6 @@ const escapeXml = (value: string) =>
 for (const [locale, strings] of Object.entries({ pl, en, de, uk })) {
   const w = strings.widgets;
   const values: Record<string, string> = {
-    kw_next_label: w.nextTitle,
-    kw_next_desc: w.picker.nextDescription,
     kw_dest_label: w.journeyTitle,
     kw_dest_desc: w.journeyDescription,
     kw_min: w.min,
@@ -60,6 +58,47 @@ for (const [locale, strings] of Object.entries({ pl, en, de, uk })) {
       throw new Error(`${path}: run npm run sync:widget-strings`);
   } else {
     writeFileSync(path, xml);
+  }
+  const ios: Record<string, string> = {
+    journeyTitle: w.journeyTitle,
+    journeyDescription: w.journeyDescription,
+    trackingTitle: w.trackingTitle,
+    tripDescription: w.picker.tripDescription,
+    searchTitle: w.picker.searchTitle,
+    searchDescription: w.picker.searchDescription,
+    placesTitle: w.picker.placesTitle,
+    placesDescription: w.picker.placesDescription,
+    openApp: w.openApp,
+    addPlace: w.addPlace,
+    search: w.search,
+    destEmpty: w.destEmpty,
+    tripEmptyTitle: w.tripEmptyTitle,
+    tripEmptyBody: w.tripEmptyBody,
+    placesEmpty: w.placesEmpty,
+    fromOrigin: w.fromOrigin('{name}'),
+    updated: w.updated('{t}'),
+    stale: w.stale,
+    timetable: w.timetable,
+    departAt: w.departAt('{t}'),
+    departIn: w.departIn('{n}'),
+    departNow: w.departNow,
+    arriveIn: w.arriveIn('{n}'),
+    arrived: w.arrived,
+    departure: strings.ios.departure,
+    arrival: strings.ios.arrival,
+  };
+  const iosDir = `modules/kilometr-widgets/ios/extension/${locale}.lproj`;
+  const iosPath = `${iosDir}/Localizable.strings`;
+  const contents =
+    Object.entries(ios)
+      .map(([key, value]) => `${JSON.stringify(key)} = ${JSON.stringify(value)};`)
+      .join('\n') + '\n';
+  if (check) {
+    if (readFileSync(iosPath, 'utf8') !== contents)
+      throw new Error(`${iosPath}: run npm run sync:widget-strings`);
+  } else {
+    mkdirSync(iosDir, { recursive: true });
+    writeFileSync(iosPath, contents);
   }
 }
 console.log(check ? 'Widget translations match src/i18n.' : 'Widget translations updated.');

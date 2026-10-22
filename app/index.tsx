@@ -29,7 +29,6 @@ import {
   departureTs,
   firstRideBadge,
   mergeWidgetSnapshot,
-  type WidgetNext,
   type WidgetPlace,
   type WidgetQuickItem,
 } from '../src/services/widgetSnapshot';
@@ -584,25 +583,6 @@ export default function HomeScreen() {
       };
     });
 
-    const next: WidgetNext[] = smart
-      .filter((d) => firstConns[d.id])
-      .map((d) => ({ d, conn: firstConns[d.id], badge: firstRideBadge(firstConns[d.id]) }))
-      .filter((x): x is typeof x & { badge: NonNullable<typeof x.badge> } => x.badge != null)
-      .map(({ d, conn, badge }) => ({
-        line: badge.line ?? '',
-        mode: badge.mode,
-        lineBg: badge.bg ?? '',
-        lineFg: badge.fg ?? '',
-        dest: savedById.get(d.id)?.name || d.title,
-        departTs: departureTs(conn),
-        departAt: conn.departAt,
-        delayMin: conn.delayMin,
-        live: conn.live,
-        deepLink: linkTo(d),
-      }))
-      .sort((a, b) => a.departTs - b.departTs)
-      .slice(0, 6);
-
     const places: WidgetPlace[] = saved.slice(0, 12).map((p) => ({
       id: p.id,
       name: p.name,
@@ -610,9 +590,9 @@ export default function HomeScreen() {
       deepLink: linkTo({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon }),
     }));
 
-    void mergeWidgetSnapshot({ origin: locTitle, next, quick, places });
+    void mergeWidgetSnapshot({ origin: locTitle, quick, places });
     // firstConns zmienia referencję razem z nextDepart, więc snapshot idzie po świeżych danych.
-  }, [firstConns, locTitle, saved, smart, smartReady]);
+  }, [firstConns, locTitle, s, saved, smart, smartReady]);
 
   // Ostatnie przejazdy w identycznej kolejności co na ekranie głównym (smart history)
   const recentFromSmart: Suggestion[] = useMemo(() => {

@@ -63,11 +63,17 @@ jobs:
         run: |
           xcrun swiftc -parse-as-library modules/kilometr-maps/ios/TilePack.swift scripts/check-ios-offline.swift -o "$RUNNER_TEMP/check-ios-offline"
           "$RUNNER_TEMP/check-ios-offline"
+      - name: Test widget snapshot and timeline
+        run: |
+          xcrun swiftc -parse-as-library modules/kilometr-widgets/ios/extension/WidgetSnapshot.swift scripts/check-ios-widgets.swift -o "$RUNNER_TEMP/check-ios-widgets"
+          "$RUNNER_TEMP/check-ios-widgets"
       - name: Check app and translations
         run: |
           npm run typecheck
           npm run check:ios-strings
           npm run check:ios
+          npm run check:ios-widgets
+          npm run check:widget-strings
       - name: Generate Xcode project
         env:
           APP_VERSION: ${{ inputs.release_tag }}
