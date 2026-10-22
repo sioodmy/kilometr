@@ -136,6 +136,11 @@ async function main() {
     assert.equal(plan.mode, 'tram');
     assert.ok(plan.staleAt <= at(12, 2) / 1000);
     assert.equal(new URL(plan.deepLink).searchParams.get('open'), connection.id);
+    const warning = JSON.parse(buildIOSLiveActivity(p, { ...trip, transfer: {
+      tripId: trip.id, status: 'alternative', updatedAt: p.computedAt, revision: 0, nextLine: '10',
+    } }, strings));
+    assert.equal(warning.title, strings.transferGuard.riskTitle('10'));
+    assert.equal(warning.subtitle, strings.transferGuard.alternativeBody);
   }
   const riding = computeTripProgress(connection, { now: new Date(at(12, 30)) });
   const beforeBoarding = computeTripProgress(connection, { now: new Date(at(12, 19)) });

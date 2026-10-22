@@ -32,6 +32,7 @@ class KilometrTrackingModule : Module() {
     Name("KilometrTracking")
 
     Function("isAvailable") { true }
+    Function("supportsTransferDecisions") { true }
 
     AsyncFunction("configureTransferProtection") { tripId: String, path: String ->
       val context = appContextOrNull ?: return@AsyncFunction false

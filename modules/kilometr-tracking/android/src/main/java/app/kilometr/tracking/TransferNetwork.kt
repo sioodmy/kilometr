@@ -13,7 +13,7 @@ internal data class TransferRide(
   val stops: List<TransferStop>,
 )
 
-internal data class TransferCandidate(val connection: JSONObject, val cost: Double, val alight: Int)
+internal data class TransferCandidate(val connection: JSONObject, val cost: Double, val alight: Int, val arrivalAtMs: Long)
 
 internal class TransferNetwork(val root: JSONObject) {
   private val bytes = File(root.getString("networkPath").removePrefix("file://")).readBytes()
@@ -201,7 +201,9 @@ internal class TransferNetwork(val root: JSONObject) {
       for (d in activeDelays) for (value in d) query.putInt(value)
       val result = KilometrRaptorBridge.nativeRunQuery(query.array()) ?: continue
       for (candidate in decode(result, connection, ride, alight, estimate, arrival, nowMs)) {
-        if (best == null || candidate.cost < best.cost) best = candidate
+        val penalty = if (candidate.alight == ride.alight) 0 else 180
+        val bestPenalty = if (best?.alight == ride.alight) 0 else 180
+        if (best == null || candidate.cost + penalty < best.cost + bestPenalty) best = candidate
       }
     }
     return best
@@ -302,7 +304,7 @@ internal class TransferNetwork(val root: JSONObject) {
       val cost = options.getJSONObject("cost")
       out += TransferCandidate(changed,
         endSec + totalWalk * 1.15 / options.getDouble("walkSpeedMps") * (cost.getDouble("walkReluctance") - 1) +
-          n * cost.getInt("transferPenaltySec"), alight)
+          n * cost.getInt("transferPenaltySec"), alight, baseMs + endSec * 1000L)
     }
     return out
   }

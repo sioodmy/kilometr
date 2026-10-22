@@ -7,6 +7,9 @@ import { getLineColors } from '../lineIdentity';
 export function buildIOSLiveActivity(p: TripProgress, trip: TrackedTrip, s: Strings): string {
   const plan = buildLivePlan(p, trip.connection, trip, s);
   const copy = buildTripCopy(p, trip.connection, s);
+  const transfer = trip.transfer;
+  const warning = transfer && p.computedAt - transfer.updatedAt <= 30_000 &&
+    ['risk', 'rerouting', 'alternative', 'noAlternative'].includes(transfer.status);
   const nextPhase = plan.states.find(
     (state) => state.atMs > p.computedAt && state.phase !== p.phase,
   );
@@ -36,8 +39,8 @@ export function buildIOSLiveActivity(p: TripProgress, trip: TrackedTrip, s: Stri
   return JSON.stringify({
     tripId: trip.id,
     deepLink: plan.deepLink,
-    title: copy.title.slice(0, 160),
-    subtitle: copy.subtitle.slice(0, 180),
+    title: (warning ? transfer.nextLine ? s.transferGuard.riskTitle(transfer.nextLine) : s.transferGuard.attention : copy.title).slice(0, 160),
+    subtitle: (warning ? transfer.status === 'alternative' ? s.transferGuard.alternativeBody : s.transferGuard.riskBody : copy.subtitle).slice(0, 180),
     line: (p.line || s.notification.modeWalk).slice(0, 12),
     brand: s.onboarding.brand,
     locale: getLocaleSync(),
