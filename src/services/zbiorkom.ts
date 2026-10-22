@@ -29,7 +29,7 @@ interface ZbUpcomingStop {
 
 export interface ZbKdVehicle {
   id: string;
-  /** numer pociągu (brygada) — u nas to route_short_name kursu KD */
+  /** numer pociągu (brygada) - u nas to route_short_name kursu KD */
   trainNumber: string;
   /** oznaczenie linii z API (D1, D30...), tylko informacyjnie */
   line: string;

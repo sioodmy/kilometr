@@ -56,7 +56,7 @@ interface RaptorOptions {
  * prefiksem, np. `y_`) w JEDNEJ mapie + mapa przesunięć zegara per wzorzec.
  * Tripy 24:xx+ wczoraj lądują w zegarze dzisiejszym i łączą się z nogami
  * dzisiejszymi. Mapy kopiowane płytko (współdzielą departures/trips), zbiory
- * stopRoutes kopiowane — cache'owany indeks dzienny pozostaje nietknięty.
+ * stopRoutes kopiowane - cache'owany indeks dzienny pozostaje nietknięty.
  */
 export function mergeDayIndexes(
   primary: DayIndex,
@@ -88,7 +88,7 @@ export function mergeDayIndexes(
 }
 
 /**
- * Klasyfikacja linii na tramwaj/autobus — ta sama heurystyka co w backtrack
+ * Klasyfikacja linii na tramwaj/autobus - ta sama heurystyka co w backtrack
  * (Wrocław: route_type 0 albo numer 1–33 to tramwaj).
  */
 function classifyTransitMode(
@@ -104,7 +104,7 @@ function classifyTransitMode(
 /**
  * Beznsensowna podróż: "wsiądź i wysiądź po ≤1 przystanku, resztę idź z buta"
  * albo kurs bez przystanków (błąd danych). Takie podróże odrzucamy już
- * w runRaptor przy zapisie destynacji — gdyby ustawiły globalBestArrival,
+ * w runRaptor przy zapisie destynacji - gdyby ustawiły globalBestArrival,
  * ucinałyby później dobre podróże, a same i tak wypadają na mapowaniu.
  */
 export function isPointlessShortRide(rj: RawJourney): boolean {
@@ -124,7 +124,7 @@ export function isPointlessShortRide(rj: RawJourney): boolean {
   return false;
 }
 
-const TRANSFER_PENALTY_SEC = 600; // 10 min kary za każdą przesiadkę — spacer 300 m się opłaca
+const TRANSFER_PENALTY_SEC = 600; // 10 min kary za każdą przesiadkę - spacer 300 m się opłaca
 
 export function runRaptor(
   store: GtfsStore,
@@ -139,7 +139,7 @@ export function runRaptor(
   const minTransferSec = Math.max(0, Math.min(600, Math.round(opts.minTransferSec ?? 60)));
   const MAX_ROUNDS = maxTransfers + 1;
 
-  // Indeks dzienny — bez niego RAPTOR nie ma po czym jeździć
+  // Indeks dzienny - bez niego RAPTOR nie ma po czym jeździć
   const idx = opts.dayIndex;
   if (!idx) return [];
 
@@ -149,10 +149,10 @@ export function runRaptor(
   // Przesunięcie dni serwisowych (24:xx+ po północy → zegar dzisiejszy)
   const timeOff = Math.round(opts.timeOffsetSec ?? 0);
 
-  // Zapas na dojściu początkowym (patrz Round 0) — patrz wyżej.
+  // Zapas na dojściu początkowym (patrz Round 0) - patrz wyżej.
   const CATCH_SLACK_SEC = 60;
 
-  // Maks. moduł opóźnienia w mapie — do okna poszukiwań przy wsiadaniu.
+  // Maks. moduł opóźnienia w mapie - do okna poszukiwań przy wsiadaniu.
   // (matcher capuje do 1800 s, ale liczymy z danych na wypadek braku capa).
   let maxDelayAbs = 0;
   if (opts.tripDelays) {
@@ -167,13 +167,13 @@ export function runRaptor(
     destStopSet.set(d.stopId, d);
   }
 
-  // ── Global best arrival — pruning: jeśli najlepsze znane dotarcie do celu
+  // ── Global best arrival - pruning: jeśli najlepsze znane dotarcie do celu
   //    to bestArrival, nie ma sensu rozwijać przystanków z arrival > bestArrival.
   let globalBestArrival = INF;
 
   // round -> stopId -> earliest arrival seconds
   const tau: Map<string, number>[] = Array.from({ length: MAX_ROUNDS + 1 }, () => new Map());
-  // Global best per stop (across all rounds) — do pruningu
+  // Global best per stop (across all rounds) - do pruningu
   const tauBest = new Map<string, number>();
   // round -> stopId -> previous state for backtracking
   const parent: Map<
@@ -282,10 +282,10 @@ export function runRaptor(
           if (st && st.stop_id === stopId) {
             const arrTime = st.arrival_sec + delayOf(currentTripId) + po;
 
-            // Global pruning dotyczy tylko ZAPISU przyjazdu — wsiadanie
+            // Global pruning dotyczy tylko ZAPISU przyjazdu - wsiadanie
             // sprawdzamy ZAWSZE (dawny `continue` pomijał też boarding:
             // wolny kurs dojeżdża za późno, ale szybki kurs z tego samego
-            // przystanku zdążyłby przed globalBest — gubiliśmy przesiadki).
+            // przystanku zdążyłby przed globalBest - gubiliśmy przesiadki).
             if (arrTime < globalBestArrival) {
               const prevBest = tau[k].get(stopId) ?? INF;
               const prevGlobal = tauBest.get(stopId) ?? INF;
@@ -306,7 +306,7 @@ export function runRaptor(
 
               // Check if this stop is one of our target destinations.
               // Bezsens (1 przystanek + długi spacer) nie ustawia globalBest
-              // i nie trafia na listę — patrz isPointlessShortRide.
+              // i nie trafia na listę - patrz isPointlessShortRide.
               if (destStopSet.has(stopId)) {
                 const destInfo = destStopSet.get(stopId)!;
                 const journey = backtrackJourney(
@@ -339,7 +339,7 @@ export function runRaptor(
 
           // ── Wsiadanie wg czasów EFEKTYWNYCH (rozkład + opóźnienie GPS).
           // Opóźniony kurs, który planowo odjechał 2 min temu, ale ma +20 min,
-          // jest wciąż do złapania — binarne przeszukiwanie rozkładu go pominie,
+          // jest wciąż do złapania - binarne przeszukiwanie rozkładu go pominie,
           // więc startujemy wcześniej o maxDelayAbs i skanujemy do pierwszego
           // kursu, którego nie da się już pobić (eff rośnie co najmniej jak
           // sched - maxDelayAbs). Bez opóźnień zachowanie identyczne jak było.
@@ -417,7 +417,7 @@ export function runRaptor(
             footpathUpdated.add(fp.to_stop_id);
 
             // Check if footpath target is destination (bezsens nie ustawia
-            // globalBest ani nie trafia na listę — patrz isPointlessShortRide).
+            // globalBest ani nie trafia na listę - patrz isPointlessShortRide).
             if (destStopSet.has(fp.to_stop_id)) {
               const destInfo = destStopSet.get(fp.to_stop_id)!;
               const journey = backtrackJourney(
@@ -449,7 +449,7 @@ export function runRaptor(
     if (markedStops.size === 0) break;
   }
 
-  // Zwracamy SUROWE podróże — deduplikacja Pareto + różnorodność dzieją się
+  // Zwracamy SUROWE podróże - deduplikacja Pareto + różnorodność dzieją się
   // raz, na połączonym zbiorze ze wszystkich okien (w engine).
   return completedJourneys;
 }
@@ -547,7 +547,7 @@ function backtrackJourney(
   if (segments.length === 0) return null;
 
   // Find origin walk. Autobus/tram mógł zostać złapany na przystanku X, do
-  // którego doszliśmy footpathem z origin-stopu O — wtedy backtracking kończy
+  // którego doszliśmy footpathem z origin-stopu O - wtedy backtracking kończy
   // się na X, bo round 0 nie zapisuje rodzica. Bez tego brakowało odcinka
   // pieszego do pierwszego przystanku i czasy/metry były zaniżone.
   let originMatch = origins.find((o) => o.stopId === currStopId);
@@ -585,7 +585,7 @@ function backtrackJourney(
     });
   }
 
-  // Add final walk to destination if needed — jeden odcinek prosto do celu,
+  // Add final walk to destination if needed - jeden odcinek prosto do celu,
   // NIE stop->stop + stop->cel.
   if (destInfo.walkM > 50) {
     const lastArrSec = segments[segments.length - 1]?.arriveSec ?? departureTimeSec;
@@ -666,7 +666,7 @@ export function filterParetoJourneys(journeys: RawJourney[], departureTimeSec = 
   }
 
   // Różnorodność jak w Jakdojade: ta sama kombinacja linii w różnych godzinach
-  // to OSOBNE propozycje (np. bezpośredni za 5 i za 15 min) — trzymamy max 5
+  // to OSOBNE propozycje (np. bezpośredni za 5 i za 15 min) - trzymamy max 5
   // odjazdów na kombinację, ale rozstrzelone w czasie (min. 2 min odstępu):
   // dwa warianty "10:06 vs 10:06+minuta spaceru" to dla użytkownika duplikat,
   // a "10:06 vs 10:21" to już wybór.
@@ -710,7 +710,7 @@ export function filterParetoJourneys(journeys: RawJourney[], departureTimeSec = 
     result.push(j);
   }
 
-  // Najtańsze najpierw — bezpośrednie z dłuższym spacerem wygrywają
+  // Najtańsze najpierw - bezpośrednie z dłuższym spacerem wygrywają
   // z wieloprzesiadkowymi z najbliższego słupka.
   result.sort((a, b) => journeyCost(a, departureTimeSec) - journeyCost(b, departureTimeSec));
 

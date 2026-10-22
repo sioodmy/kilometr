@@ -11,7 +11,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 /**
  * Most między JS a natywnym Live Update.
  *
- * JS nie rysuje powiadomienia — dostarcza plan podróży (odcinki, teksty dla
+ * JS nie rysuje powiadomienia - dostarcza plan podróży (odcinki, teksty dla
  * każdej fazy, akcje) i od tego momentu pilnuje go `LiveTripService`. Dzięki
  * temu powiadomienie przeżywa zamknięcie aplikacji, a licznik i pasek postępu
  * tykają bez udziału procesu JS.
@@ -22,7 +22,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 class KilometrTrackingModule : Module() {
 
   /**
-   * `AppContext` nie wystawia `context` — jedynym bezpiecznym źródłem jest
+   * `AppContext` nie wystawia `context` - jedynym bezpiecznym źródłem jest
    * `reactContext`. Bierzemy `applicationContext`, żeby nie trzymać Activity.
    */
   private val appContextOrNull: Context?
@@ -32,6 +32,20 @@ class KilometrTrackingModule : Module() {
     Name("KilometrTracking")
 
     Function("isAvailable") { true }
+    Function("supportsTransferDecisions") { true }
+
+    AsyncFunction("configureTransferProtection") { tripId: String, path: String ->
+      val context = appContextOrNull ?: return@AsyncFunction false
+      if (LiveTripService.activeTripId != tripId) return@AsyncFunction false
+      val file = java.io.File(path.removePrefix("file://"))
+      if (!file.canonicalPath.startsWith(context.filesDir.canonicalPath + "/") || !file.isFile) return@AsyncFunction false
+      TransferProtection.configure(context, tripId, path)
+      true
+    }
+
+    AsyncFunction("getTransferProtectionState") {
+      appContextOrNull?.let { TransferProtection.readState(it) }
+    }
 
     /** Czy system dopuści powiadomienie do strefy Live Updates. */
     AsyncFunction("canPromote") {
@@ -54,7 +68,7 @@ class KilometrTrackingModule : Module() {
 
     /**
      * Surowa paleta Material You z tapety (`rodzina_ton` → `#RRGGBBAA`).
-     * Pusta na Androidzie 11 i starszych — wtedy zostaje własna paleta.
+     * Pusta na Androidzie 11 i starszych - wtedy zostaje własna paleta.
      */
     AsyncFunction("getSystemPalette") {
       appContextOrNull?.let { DynamicColors.read(it) } ?: emptyMap<String, String>()
@@ -73,7 +87,7 @@ class KilometrTrackingModule : Module() {
       try {
         if (LiveTripService.isRunning) {
           // Usługa już stoi w pierwszym planie, więc zwykły startService
-          // wystarczy — i jest jedynym legalnym wariantem z tła (Android 12+
+          // wystarczy - i jest jedynym legalnym wariantem z tła (Android 12+
           // rzuca wyjątkiem na startForegroundService spoza pierwszego planu).
           context.startService(intent)
         } else {
@@ -89,10 +103,12 @@ class KilometrTrackingModule : Module() {
     AsyncFunction("stopTrip") {
       val context = appContextOrNull ?: return@AsyncFunction false
       LocalStopSignal.clear(context)
+      TransferProtection.clear(context)
+      TransferPresentation.cancel(context)
       try {
         context.stopService(Intent(context, LiveTripService::class.java))
       } catch (_: Throwable) {
-        // Serwis nie istnieje — wystarczy zdjąć powiadomienie.
+        // Serwis nie istnieje - wystarczy zdjąć powiadomienie.
       }
       try {
         NotificationManagerCompat.from(context).cancel(LiveUpdateFactory.NOTIFICATION_ID)

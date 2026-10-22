@@ -10,7 +10,7 @@
  * i drukuje tabelę z różnicami (czas, przesiadki, linie).
  *
  * UWAGA: klient jakdojade podpisuje requesty HMAC-SHA512 kluczem z konta
- * testowego (login/hasło w /tmp/opencode/kd/creds.json) — sekrety NIE trafiają do repo.
+ * testowego (login/hasło w /tmp/opencode/kd/creds.json) - sekrety NIE trafiają do repo.
  */
 import { gtfsStore } from '../src/gtfs/store';
 import { planConnections } from '../src/routing/engine';
@@ -37,7 +37,7 @@ async function resolve(query: string): Promise<Resolved> {
   const stopGroup = locs.find((l: any) => l.locationType === 'STOP_GROUP');
   const chosen = exact || stopGroup || locs[0];
   if (chosen !== exact && !exact) {
-    console.warn(`  [resolve] "${query}" -> "${chosen.name}" (${chosen.subName || chosen.locationType}) — sprawdź czy to ten przystanek`);
+    console.warn(`  [resolve] "${query}" -> "${chosen.name}" (${chosen.subName || chosen.locationType}) - sprawdź czy to ten przystanek`);
   }
   return { loc: chosen, label: `${chosen.name}` };
 }
@@ -133,7 +133,7 @@ export async function runCompare(cases: Case[]) {
     const refT = t(c.dateTime.slice(11, 16));
     // Wspólne okno startu dla obu silników: [zapytanie, +120 min]. Nasz silnik
     // potrafi zwrócić kurs wsiadany wiele godzin później (brak górnego limitu
-    // wsiadania), a jd limituje listę — bez okna metryka "najlepszy przyjazd"
+    // wsiadania), a jd limituje listę - bez okna metryka "najlepszy przyjazd"
     // porównywałaby kabły z innego świata.
     const WINDOW_MIN = 120;
     const inWindow = (dep: string) => { const r = rel(t(dep), refT); return r >= -5 && r <= WINDOW_MIN; };

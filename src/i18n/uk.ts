@@ -1,4 +1,4 @@
-// Українські переклади. Має відповідати `Strings` (typeof pl) — відсутній
+// Українські переклади. Має відповідати `Strings` (typeof pl) - відсутній
 // ключ або неправильна сигнатура функції це помилка компіляції.
 import type { Strings } from './pl';
 import { uk as landing } from './landing/uk';
@@ -10,9 +10,69 @@ function isFew(n: number): boolean {
   return last >= 2 && last <= 4 && (teen < 12 || teen > 14);
 }
 
+/** Українська множина: 1, 21, 31... (крім 11) беруть форму однини. */
+function isOne(n: number): boolean {
+  return n % 10 === 1 && n % 100 !== 11;
+}
+
+function prepInCity(cityLoc: string): string {
+  // В українській мові прийменник «в» переходить в «у» перед словами на «в» чи «ф».
+  const startsWithV = /^[вф]/i.test(cityLoc);
+  return startsWithV ? `у ${cityLoc}` : `в ${cityLoc}`;
+}
+
 export const uk: Strings = {
   landing,
   share,
+  transferGuard: {
+    title: 'Контроль пересадок',
+    waiting: 'Контроль увімкнено. Очікуємо підтвердження поїздки за GPS.',
+    buffer: (line: string, n: number) => `Пересадка на ${line} · ${n} хв запасу`,
+    riskTitle: (line: string) => `Ви можете не встигнути на ${line}`,
+    riskBody: 'Шукаємо іншу пересадку.',
+    stayOn: (line: string) => `Залишайтеся в ${line}`,
+    changedBody: (line: string, stop: string) => `Пересядьте на ${line} на зупинці ${stop}.`,
+    noAlternative: 'Доступної альтернативи не знайдено. Поточна пересадка може не вдатися. Перевіримо ще раз.',
+    unavailable: 'Не можемо оцінити пересадку',
+    unavailableBody: 'Очікуємо точне місцеположення на маршруті. Поточний план залишається видимим.',
+    routingError: 'Не вдалося підготувати контроль пересадок. Спробуйте ще раз.',
+    rerouting: 'Шукаємо нову пересадку',
+    next: (line: string, stop: string) => `${line} · ${stop}`,
+    channel: 'Зміни пересадок',
+    start: 'Їхати з контролем пересадок',
+    startBody: 'Попередимо, якщо ви можете не встигнути. Ви вирішуєте, чи змінювати маршрут.',
+    locationRequired: 'Для контролю пересадок потрібне ваше точне місцеположення під час поїздки.',
+    active: 'Контроль увімкнено',
+    preparing: 'Готуємо контроль пересадок…',
+    safe: 'У вас є час на пересадку',
+    attention: 'Перевірте пересадку',
+    alternativeTitle: 'Можна поїхати іншим маршрутом',
+    alternativeBody: 'Перегляньте інший маршрут і вирішіть, чи обрати його.',
+    originalPlan: 'Поточний план',
+    suggestedPlan: 'Інший маршрут',
+    unchanged: 'Маршрут зміниться лише після вашого підтвердження.',
+    sameStop: 'Пересадка на тій самій зупинці',
+    stayUntil: (line: string, stop: string) => `Їдьте лінією ${line} до: ${stop}`,
+    fromHere: 'Вирушити з поточного місця',
+    departure: 'Відправлення',
+    arrival: 'У пункті призначення',
+    delay: (n: number) => `Затримка +${n} хв`,
+    shortBy: (n: number) => `На пересадку бракує ${n} хв`,
+    spare: (n: number) => `${n} хв запасу`,
+    schedule: 'За розкладом',
+    live: 'Дані наживо',
+    choose: 'Обрати цей маршрут',
+    keepPlan: 'Залишити свій план',
+    showOptions: 'Перевірити пересадку',
+    later: 'Згорнути',
+    expired: 'Ця пропозиція вже неактуальна. Перевіряємо інші маршрути.',
+    acceptError: 'Не вдалося змінити маршрут. Ваш поточний план залишається активним.',
+    stop: 'Завершити поїздку',
+    foreground: 'Контроль працює, коли застосунок відкрито.',
+    background: 'Контроль працює також із заблокованим екраном.',
+    complete: 'На цьому маршруті більше немає пересадок.',
+    demo: 'Тестовий сценарій',
+  },
   common: {
     retry: 'Спробувати знову',
     cancel: 'Скасувати',
@@ -30,7 +90,7 @@ export const uk: Strings = {
     departIn: (n: number) => `за ${n} хв`,
     departNow: 'ось-ось',
     departAgo: (n: number) =>
-      n === 1 ? `${n} хвилину тому` : isFew(n) ? `${n} хвилини тому` : `${n} хвилин тому`,
+      isOne(n) ? `${n} хвилину тому` : isFew(n) ? `${n} хвилини тому` : `${n} хвилин тому`,
     departJustAgo: 'щойно',
     lessThan10m: '< 10 м',
     kmh: (v: string) => `${v} км/год`,
@@ -56,7 +116,7 @@ export const uk: Strings = {
     editCardSub: 'збережені місця',
     historyTitle: 'Останні місця',
     historyEmptyTitle: 'Немає останніх місць',
-    historyEmptyBody: 'Знайди сполучення — і воно з’явиться тут як швидка ціль.',
+    historyEmptyBody: 'Знайди сполучення, і воно з’явиться тут як швидка ціль.',
     historyEmptyAction: 'Шукати сполучення',
     openConnA11y: (title: string, label: string) => `Відкрити сполучення до ${title}, ${label}`,
     gpsTitle: 'Моя локація (GPS)',
@@ -74,7 +134,7 @@ export const uk: Strings = {
     unsupportedBody: (city: string, supported: string) =>
       `Твоя GPS-локація вказує на ${city}. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedBodyOther: (city: string, active: string) =>
-      `Ти в ${city}, а застосунок налаштовано на ${active}. Зміни місто в налаштуваннях.`,
+      `Ти ${prepInCity(city)}, а застосунок налаштовано на ${active}. Зміни місто в налаштуваннях.`,
     unsupportedBodyUnknown: (supported: string) =>
       `Твоя GPS-локація поза зоною обслуговування. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedHint: 'Вибери початок вручну, щоб знайти сполучення.',
@@ -345,13 +405,27 @@ export const uk: Strings = {
     closeSheetA11y: 'Закрити вибір міста',
     cityActiveBadge: 'Активне',
   },
+  personalization: {
+    colors: 'Кольори застосунку',
+    system: 'Зі шпалер',
+    systemDescription: 'Стандартні кольори Material You',
+    wallpaperUnavailable: 'Кольори шпалер недоступні. Стандартна палітра.',
+    teal: 'Бірюзовий',
+    blue: 'Синій',
+    green: 'Зелений',
+    violet: 'Фіолетовий',
+    rose: 'Рожевий',
+    orange: 'Помаранчевий',
+    saving: 'Зберігаємо колір…',
+    saveError: 'Не вдалося зберегти колір. Спробуйте вибрати його ще раз.',
+  },
   settings: {
     planningTitle: 'Планування подорожі',
     offlineTitle: 'Розклад і карти',
     notificationsSummary: 'Відстеження подорожі та сповіщення',
     backupSummary: 'Збережені місця, історія та налаштування',
     planningSummary: (style: string, pace: string) => `${style} · ${pace}`,
-    languageSummary: (language: string) => `Мова: ${language}`,
+    appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Відновити налаштування маршрутів',
     resetRoutesBody: 'Відновить стандартні налаштування планування подорожі.',
     decrease: (label: string) => `Зменшити: ${label}`,
@@ -400,7 +474,7 @@ export const uk: Strings = {
         : `Повторне завантаження мапи буде доступне через ${days} дні. Одного разу вистачає надовго.`,
     backupTitle: 'Ваші дані',
     backupHint:
-      'Збережені місця, останні поїздки та налаштування в одному файлі. Експортуйте перед зміною телефона — або просто для надійності.',
+      'Збережені місця, останні поїздки та налаштування в одному файлі. Експортуйте перед зміною телефона, або просто для надійності.',
     backupExcludeHint: 'Розклад, кеш і дані відстеження курсу залишаються на пристрої.',
     backupExport: 'Експорт у файл',
     backupImport: 'Імпорт із файлу',
@@ -408,9 +482,9 @@ export const uk: Strings = {
     backupImportA11y: 'Імпортувати дані з файлу',
     backupEmpty: 'Поки що немає чого зберігати.',
     backupCurrent: (places: number, routes: number, trips: number) =>
-      `${places} ${places === 1 ? 'місце' : isFew(places) ? `${places} місця` : `${places} місць`} • ` +
-      `${routes} ${routes === 1 ? 'збережена траса' : isFew(routes) ? `${routes} збережені траси` : `${routes} збережених трас`} • ` +
-      `${trips} ${trips === 1 ? 'поїздка' : isFew(trips) ? `${trips} поїздки` : `${trips} поїздок`}`,
+      `${places} ${isOne(places) ? 'місце' : isFew(places) ? `${places} місця` : `${places} місць`} • ` +
+      `${routes} ${isOne(routes) ? 'збережена траса' : isFew(routes) ? `${routes} збережені траси` : `${routes} збережених трас`} • ` +
+      `${trips} ${isOne(trips) ? 'поїздка' : isFew(trips) ? `${trips} поїздки` : `${trips} поїздок`}`,
     backupExportDoneTitle: 'Готово',
     backupExportDoneBody: (path: string) => `Файл збережено в ${path}`,
     backupExportFailTitle: 'Не вдалося зберегти файл',
@@ -419,7 +493,7 @@ export const uk: Strings = {
     backupExportFailFallback: 'Спробуйте ще раз за хвилину.',
     backupImportConfirmTitle: 'Імпортувати ці дані?',
     backupImportConfirmBody: (summary: string) =>
-      `${summary}\n\nЗбережені місця та поїздки буде об’єднано з наявними — нічого не зникне. Налаштування буде перезаписано.`,
+      `${summary}\n\nЗбережені місця та поїздки буде об’єднано з наявними, нічого не зникне. Налаштування буде перезаписано.`,
     backupImportAction: 'Імпортувати',
     backupImportCancel: 'Скасувати',
     backupImportDoneTitle: 'Дані імпортовано',
@@ -476,7 +550,7 @@ export const uk: Strings = {
     diagCountsNoRoutes: 'Немає маршрутів у базі',
     diagTrains: 'Регіональні поїзди',
     diagTrainsLine: (n: number) =>
-      n === 1
+      isOne(n)
         ? '1 залізничний маршрут'
         : isFew(n)
           ? `${n} залізничні маршрути`
@@ -570,7 +644,7 @@ export const uk: Strings = {
     anchorHintShort: 'Автоприв’язка старту біля збереженого місця.',
     foot: 'Налаштування зберігаються автоматично і стосуються наступних пошуків.',
     walkTime: (n: number) =>
-      n === 1 ? '1 хвилина пішки' : isFew(n) ? `${n} хвилини пішки` : `${n} хвилин пішки`,
+      isOne(n) ? '1 хвилина пішки' : isFew(n) ? `${n} хвилини пішки` : `${n} хвилин пішки`,
     langTitle: 'Мова',
     langSystem: 'Системна',
   },
@@ -692,7 +766,7 @@ export const uk: Strings = {
     cityTitle: 'У якому місті їздиш?',
     cityBody:
       'Розклад, мапа й новини підлаштуються під вибір. Місто можна змінити пізніше в налаштуваннях.',
-    citySuggested: (name: string) => `За GPS ти в: ${name}.`,
+    citySuggested: (name: string) => `За GPS ти ${prepInCity(name)}.`,
     cityNoGps: 'Без доступу до GPS вибери місто зі списку.',
     cityLocating: 'Шукаю твою позицію GPS…',
     cityNoMatch: 'GPS не вказує на підтримуване місто. Вибери зі списку.',
@@ -740,10 +814,10 @@ export const uk: Strings = {
     sourceLoading: (feeds: string) => feeds,
     sourceEmpty: (combined: string) => combined,
     count: (n: number, urgent: number) => {
-      const items = n === 1 ? `${n} новина` : isFew(n) ? `${n} новини` : `${n} новин`;
+      const items = isOne(n) ? `${n} новина` : isFew(n) ? `${n} новини` : `${n} новин`;
       if (urgent <= 0) return items;
       const u =
-        urgent === 1
+        isOne(urgent)
           ? `${urgent} термінова`
           : isFew(urgent)
             ? `${urgent} термінові`
@@ -754,8 +828,17 @@ export const uk: Strings = {
     loading: 'Завантаження повідомлень…',
     noConnection: 'Немає з’єднання',
     emptyTitle: 'Немає повідомлень',
-    emptyBody: (name: string) =>
-      `${name} зараз не опублікував жодних ускладнень. Потягни вниз, щоб перевірити знову.`,
+    emptyBody: (name: string) => {
+      const verb =
+        name === 'Варшава' || name === 'Лодзь'
+          ? 'опублікувала'
+          : name === 'Труймясто'
+            ? 'опублікувало'
+            : name === 'Кельце'
+              ? 'опублікували'
+              : 'опублікував';
+      return `${name} зараз не ${verb} жодних ускладнень. Потягни вниз, щоб перевірити знову.`;
+    },
     sectionChanges: 'Зміни на лініях',
     sectionCity: 'Новини',
     sourceMpk: (operator: string) => operator,
@@ -771,17 +854,17 @@ export const uk: Strings = {
     filterEmptyBody: 'Немає повідомлень про лінії з маршрутів, які ти перевіряв останні два тижні.',
     filterNoHistoryTitle: 'Ще немає ліній',
     filterNoHistoryBody:
-      'Знайди сполучення в застосунку — тоді тут з’являться повідомлення про ці лінії.',
+      'Знайди сполучення в застосунку, тоді тут з’являться повідомлення про ці лінії.',
   },
   newsSvc: {
     justNow: 'щойно',
     minsAgo: (m: number) =>
-      m === 1 ? `${m} хвилину тому` : isFew(m) ? `${m} хвилини тому` : `${m} хвилин тому`,
+      isOne(m) ? `${m} хвилину тому` : isFew(m) ? `${m} хвилини тому` : `${m} хвилин тому`,
     hoursAgo: (h: number) =>
-      h === 1 ? `${h} годину тому` : isFew(h) ? `${h} години тому` : `${h} годин тому`,
+      isOne(h) ? `${h} годину тому` : isFew(h) ? `${h} години тому` : `${h} годин тому`,
     yesterday: 'вчора',
     daysAgo: (d: number) =>
-      d === 1 ? `${d} день тому` : isFew(d) ? `${d} дні тому` : `${d} днів тому`,
+      isOne(d) ? `${d} день тому` : isFew(d) ? `${d} дні тому` : `${d} днів тому`,
     untitled: '(без назви)',
   },
   map: {
@@ -796,13 +879,13 @@ export const uk: Strings = {
     offlineSub: 'Плитки не завантажуються',
     backA11y: 'Назад',
     transfersSuffix: (n: number) =>
-      n === 1 ? ' • 1 пересадка.' : isFew(n) ? ` • ${n} пересадки.` : ` • ${n} пересадок.`,
+      isOne(n) ? ' • 1 пересадка.' : isFew(n) ? ` • ${n} пересадки.` : ` • ${n} пересадок.`,
     delaySuffix: (d: number) => ` • ${d > 0 ? '+' : ''}${d} хв`,
     walkPrefix: 'Пішки ',
     walkStageA11y: (dist: string) => `Піший етап ${dist}`,
     lineStageA11y: (line: string, dir: string) => `Лінія ${line} напрямок ${dir}`,
     lineLabel: (line: string) => `Лінія ${line}`,
-    legStops: (n: number) => (n === 1 ? '1 зуп.' : isFew(n) ? `${n} зуп.` : `${n} зуп.`),
+    legStops: (n: number) => (isOne(n) ? '1 зуп.' : isFew(n) ? `${n} зуп.` : `${n} зуп.`),
     board: 'Сідай',
     alight: 'Виходь',
     mapLoadFail: 'Не вдалося завантажити мапу',
@@ -923,10 +1006,10 @@ export const uk: Strings = {
     lineAlertsAll: 'Усі новини',
     lineAlertsEmpty: 'Немає повідомлень про лінії цього маршруту.',
     lineAlertsCount: (n: number) =>
-      n === 1 ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
+      isOne(n) ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
   },
   search: {
-    defaultPlaceholder: (city: string) => `Шукай у ${city}…`,
+    defaultPlaceholder: (city: string) => `Шукай ${prepInCity(city)}…`,
     originA11y: (t: string) => `Початок: ${t}. Натисни, щоб змінити.`,
     fromPrefix: 'З:',
     change: 'Змінити',
@@ -935,7 +1018,7 @@ export const uk: Strings = {
     resultsFor: (q: string, n: number) => `Результати для „${q}” (${n})`,
     recentTrips: 'Останні поїздки',
     savedA11y: (t: string) => `Збережене місце: ${t}`,
-    searching: (city: string) => `Шукаю у ${city}…`,
+    searching: (city: string) => `Шукаю ${prepInCity(city)}…`,
     noResults: 'Немає результатів',
     noResultsHint: (id: string) =>
       `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
@@ -1083,9 +1166,9 @@ export const uk: Strings = {
     previewRelease: 'Відпустіть, щоб відкрити деталі',
     previewOpen: 'Відкрити деталі маршруту',
     transfers: (n: number) =>
-      n <= 0 ? 'прямо' : n === 1 ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
+      n <= 0 ? 'прямо' : isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     connections: (n: number) =>
-      n === 1 ? '1 сполучення' : isFew(n) ? `${n} сполучення` : `${n} сполучень`,
+      isOne(n) ? '1 сполучення' : isFew(n) ? `${n} сполучення` : `${n} сполучень`,
     walkAll: 'цілком пішки',
     walkLeg: 'пішки',
     cardA11y: (
@@ -1111,6 +1194,8 @@ export const uk: Strings = {
     estBetween: (from: string, to: string) => `Транспорт (орієнт.): ${from} → ${to}`,
   },
   leg: {
+    fareBoundary: 'Межа тарифних зон',
+    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
@@ -1120,7 +1205,7 @@ export const uk: Strings = {
     fromPrefix: 'з ',
     toPrefix: 'до ',
     stopsSummary: (n: number, mins: number, open: boolean) => {
-      const stops = n === 1 ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
+      const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
       return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
     },
   },
@@ -1244,13 +1329,24 @@ export const uk: Strings = {
     arriveAt: (at: string) => `прибуття о ${at}`,
     delayLate: (min: number) => `затримка +${Math.round(min)} хв`,
     delayEarly: (min: number) => `на ${Math.abs(Math.round(min))} хв раніше`,
-    stops: (n: number) => (n === 1 ? '1 зупинка' : isFew(n) ? `${n} зупинки` : `${n} зупинок`),
+    stops: (n: number) => (isOne(n) ? '1 зупинка' : isFew(n) ? `${n} зупинки` : `${n} зупинок`),
     transfers: (n: number) =>
-      n === 1 ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
+      isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     newDeparture: (at: string) => `новий рейс о ${at}`,
     delayTitle: (line: string, eta: string) => `Затримка • ${line} • ${eta}`,
   },
   ios: {
+    departure: 'Відправлення',
+    arrival: 'Прибуття',
+    alighting: 'Вихід',
+    walking: 'Пішки',
+    waiting: 'Очікування',
+    riding: 'У дорозі',
+    transfer: 'Пересадка',
+    nextStop: 'Наступна зупинка',
+    startupTitle: 'Помилка застосунку',
+    startupHint: 'Kilometr не може продовжити роботу. Поділіться звітом, щоб допомогти знайти причину помилки.',
+    startupShare: 'Поділитися',
     locationPermission: 'Дозвольте доступ до геолокації, щоб шукати маршрути від вашого місця.',
     liveTitle: 'Жива активність',
     liveHint: 'Час поїздки на екрані блокування та в Dynamic Island. Дані оновлюються, коли застосунок активний.',
@@ -1265,8 +1361,8 @@ export const uk: Strings = {
     hint: 'Звук, вібрація та повний екран перед виходом.',
     question: 'Скільки часу потрібно перед виходом?',
     before: 'перед виходом',
-    minutes: (n: number) => n === 1 ? 'хвилина' : isFew(n) ? 'хвилини' : 'хвилин',
-    lead: (n: number) => `За ${n} ${n === 1 ? 'хвилину' : isFew(n) ? 'хвилини' : 'хвилин'} до виходу`,
+    minutes: (n: number) => isOne(n) ? 'хвилина' : isFew(n) ? 'хвилини' : 'хвилин',
+    lead: (n: number) => `За ${n} ${isOne(n) ? 'хвилину' : isFew(n) ? 'хвилини' : 'хвилин'} до виходу`,
     less: 'На хвилину пізніше',
     more: 'На хвилину раніше',
     ringsAt: (time: string) => `Задзвонить о ${time}`,
@@ -1325,7 +1421,6 @@ export const uk: Strings = {
     titlePlain: (time: string) => `Сполучення • ${time}`,
   },
   widgets: {
-    nextTitle: 'Час виходити',
     journeyTitle: 'Твої напрямки',
     journeyDescription: 'Час виходу й маршрути до збережених і нещодавно знайдених місць',
     trackingTitle: 'Твоя поїздка',
@@ -1334,7 +1429,6 @@ export const uk: Strings = {
     refresh: 'Оновити в застосунку',
     fromOrigin: (name: string) => `З: ${name}`,
     picker: {
-      nextDescription: 'Час до виходу, перший маршрут і місце призначення',
       tripDescription: 'Час до виходу або прибуття, прогрес і пересадки',
       searchTitle: 'Куди їдемо?',
       searchDescription: 'Знайти маршрут або вибрати збережене місце',
@@ -1356,7 +1450,6 @@ export const uk: Strings = {
     arrived: 'На місці',
     updated: (t: string) => `станом на ${t}`,
     stale: 'Знайти наступне сполучення',
-    nextEmpty: 'Знайти наступне сполучення',
     destEmpty: 'Знайдіть маршрут, щоб побачити його тут.',
     tripEmptyTitle: 'Поїздка не відстежується',
     tripEmptyBody: 'Виберіть сполучення й увімкніть відстеження.',

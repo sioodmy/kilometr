@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -25,6 +26,9 @@ import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { StopCompassCard } from '../../src/components/StopCompassCard';
+import { TransferProtectionCard } from '../../src/components/TransferProtectionCard';
+import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
+import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmDialog } from '../../src/components/DepartureAlarmDialog';
 import { getDepartureAlarmSync, useDepartureAlarm } from '../../src/services/departureAlarm';
 import {
@@ -35,19 +39,23 @@ import {
   startTracking,
   stopTracking,
   useTrackedTrip,
+  isTransferProtectionSupported,
 } from '../../src/services/notifications';
 
 export default function RouteDetailsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const openTransferProtection = useTransferProtection();
   const goBack = () => router.canGoBack() ? router.back() : router.replace('/routes');
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const id = normalizeConnectionId(routeId ?? '');
+  const { trip: trackedTrip } = useTrackedTrip();
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
   const immediateItem = cachedItem?.id === id ? cachedItem : alarmItem?.id === id ? alarmItem : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
-  const item = loadedItem?.id === id ? loadedItem : immediateItem ?? null;
+  const item = trackedTrip?.connection.id === id ? trackedTrip.connection : loadedItem?.id === id ? loadedItem : immediateItem ?? null;
+  const [trackingBusy, setTrackingBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -66,46 +74,67 @@ export default function RouteDetailsScreen() {
     return () => clearInterval(t);
   }, []);
 
-  const { trip: trackedTrip } = useTrackedTrip();
-
   const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
+  const hasTransfers = item != null && hasTransfer(item);
 
-  // Śledzenie odpala się tylko przyciskiem w nagłówku. Jedno śledzenie
-  // na raz: start nowego kursu podmienia poprzedni w tripMonitor.
-  const toggleTracking = async () => {
-    if (!item) return;
-    if (isTrackedThis) {
+  // Nagłówek przełącza śledzenie, karta włącza ochronę. Monitor trzyma jedną podróż.
+  const toggleTracking = async (enableProtection = false) => {
+    if (!item || trackingBusy) return;
+    if (isTrackedThis && !enableProtection) {
       await stopTracking();
       return;
     }
-    if (!areNotificationsSupported()) {
-      Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
-      return;
-    }
-    const ok = await ensureNotificationPermission();
-    if (!ok) {
-      Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
-      return;
-    }
-    const firstLeg = item.legs[0];
-    const lastLeg = item.legs[item.legs.length - 1];
-    const fallback = defaultLocationForCity(getActiveCityIdSync());
-    await startTracking({
-      id: item.id,
-      fromTitle: item.fromTitle,
-      fromLat: firstLeg?.fromLat ?? fallback.lat,
-      fromLon: firstLeg?.fromLon ?? fallback.lon,
-      toId: item.toTitle,
-      toTitle: item.toTitle,
-      toLat: lastLeg?.toLat ?? fallback.lat,
-      toLon: lastLeg?.toLon ?? fallback.lon,
-      connection: item,
-      startedAt: Date.now(),
-    });
+    setTrackingBusy(true);
+    try {
+      if (!areNotificationsSupported() && !hasTransfers) {
+        Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
+        return;
+      }
+      const ok = !areNotificationsSupported() || await ensureNotificationPermission();
+      if (!ok) {
+        Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
+        return;
+      }
+      let protectionEnabled = hasTransfers && isTransferProtectionSupported();
+      if (protectionEnabled) {
+        let permission = await Location.getForegroundPermissionsAsync();
+        if (!permission.granted) permission = await Location.requestForegroundPermissionsAsync();
+        protectionEnabled = permission.granted && permission.android?.accuracy !== 'coarse' && permission.ios?.accuracy !== 'reduced';
+        if (!protectionEnabled) {
+          Alert.alert(s.transferGuard.title, s.transferGuard.locationRequired, [
+            { text: s.common.cancel, style: 'cancel' },
+            { text: s.compass.openSettingsA11y, onPress: () => void Linking.openSettings() },
+          ]);
+          return;
+        }
+      }
+      const firstLeg = item.legs[0];
+      const lastLeg = item.legs[item.legs.length - 1];
+      const fallback = defaultLocationForCity(getActiveCityIdSync());
+      await startTracking({
+        id: item.id,
+        fromTitle: item.fromTitle,
+        fromLat: firstLeg?.fromLat ?? fallback.lat,
+        fromLon: firstLeg?.fromLon ?? fallback.lon,
+        toId: item.toTitle,
+        toTitle: item.toTitle,
+        toLat: lastLeg?.toLat ?? fallback.lat,
+        toLon: lastLeg?.toLon ?? fallback.lon,
+        connection: item,
+        startedAt: Date.now(),
+        protectionEnabled,
+      });
+    } catch {
+      Alert.alert(s.transferGuard.title, s.transferGuard.routingError);
+    } finally { setTrackingBusy(false); }
   };
 
   useEffect(() => {
-    // Brak id to nie „wczytujemy” — inaczej ekran zostawał ze spinnerem w nieskończoność.
+    if (trackedTrip?.connection.id === id) setItem(trackedTrip.connection);
+  }, [id, trackedTrip?.connection]);
+
+  useEffect(() => {
+    // Brak id to nie „wczytujemy” - inaczej ekran zostawał ze spinnerem w nieskończoność.
     if (!id) {
       setLoadFailed(true);
       return;
@@ -206,6 +235,7 @@ export default function RouteDetailsScreen() {
         )}
         <Pressable
           onPress={() => void toggleTracking()}
+          disabled={trackingBusy}
           accessibilityRole="button"
           accessibilityState={{ selected: isTrackedThis }}
           accessibilityLabel={
@@ -252,6 +282,11 @@ export default function RouteDetailsScreen() {
         ) : (
           <>
             <LegTimeline legs={item.legs} />
+            {hasTransfers && (
+              <TransferProtectionCard state={isTrackedThis ? trackedTrip.transfer : undefined}
+                active={isTrackedThis && trackedTrip.protectionEnabled === true} busy={trackingBusy}
+                onPress={() => { if (isTrackedThis && trackedTrip.protectionEnabled) openTransferProtection(); else void toggleTracking(true); }} />
+            )}
             {item.legs.some((leg) => leg.mode !== 'walk') && (
               <Pressable onPress={() => setAlarmOpen(true)} accessibilityRole="button"
                 onFocus={() => setAlarmFocused(true)} onBlur={() => setAlarmFocused(false)}
@@ -275,6 +310,7 @@ export default function RouteDetailsScreen() {
                 mapę trasy. */}
             <StopCompassCard
               connection={item}
+              transfer={isTrackedThis ? trackedTrip.transfer : undefined}
               onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
             />
 

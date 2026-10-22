@@ -153,7 +153,7 @@ export async function searchNominatimDirect(
 ): Promise<Suggestion[]> {
   const q = query.trim();
   if (!q || q.length < 2) return [];
-  // Cache BEZ pozycji (dystanse dokładamy przy zwrocie — trafienia niezależne od GPS).
+  // Cache BEZ pozycji (dystanse dokładamy przy zwrocie - trafienia niezależne od GPS).
   // Klucz zawiera miasto (po id, nie po nazwie wyświetlanej): te same zapytania w
   // Krakowie i Wrocławiu to inne wyniki, a zmiana nazwy w rejestrze nie może
   // wyczyścić całego cache.

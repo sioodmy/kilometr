@@ -2,7 +2,7 @@
 # Sterowanie telefonem w trakcie testu PR: tap / swipe / tekst + zrzut ekranu.
 #
 # Współrzędne podajemy w skonie zrzutów 922x2048 (tak, jak widać podgląd),
-# a skrypt przelicza je na rzeczywiste 1080x2400 telefonu — inaczej trafia
+# a skrypt przelicza je na rzeczywiste 1080x2400 telefonu - inaczej trafia
 # się kilkaset pikseli obok.
 #
 # Użycie:
@@ -29,7 +29,7 @@ sy() { awk -v v="$1" -v a="$SHOT_H" -v b="$DEV_H" 'BEGIN{printf "%d", v*b/a}'; }
 safe_name() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'; }
 
 # Tekst dla `input text`: escapujemy cudzysłowy i spacje pod shell telefonu,
-# a całość pakujemy w pojedyncze cudzysłowy — `;`, `$`, `(` itd. są wtedy literałami.
+# a całość pakujemy w pojedyncze cudzysłowy - `;`, `$`, `(` itd. są wtedy literałami.
 shell_text() { printf '%s' "$1" | sed "s/'/'\\\\''/g; s/ /%s/g"; }
 
 shot() {

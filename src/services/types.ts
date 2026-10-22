@@ -9,8 +9,8 @@ import type {
 
 export interface ISearchService {
   /**
-   * `scope` rozdziela anulowanie między niezależnymi polami wyszukiwania —
-   * bez niego zapytanie w jednym polu zabijałooby zapytanie w drugim.
+   * `scope` rozdziela anulowanie między niezależnymi polami wyszukiwania-
+   * bez niego zapytanie w jednym polu zabijałoby zapytanie w drugim.
    */
   search(
     query: string,
@@ -28,7 +28,7 @@ export interface IRoutingService {
   /**
    * Pojedyncze połączenie wraz z informacją, SKĄD je wzięliśmy.
    * `source: 'cache'` oznacza, że nie ma go w pamięci procesu i pochodzi
-   * z zapisu na dysku — wtedy czasy są sprzed zapisu, a `live` jest zerowane.
+   * z zapisu na dysku - wtedy czasy są sprzed zapisu, a `live` jest zerowane.
    * Bez tej informacji ekran szczegółów pokazywał dane z cache tak, jakby były
    * świeżo policzone, a użytkownik nie miał szansy tego odróżnić.
    */
@@ -51,22 +51,11 @@ export interface LocationResult {
   accuracyM?: number | null;
 }
 
-export interface LocationResult {
-  title: string;
-  address: string;
-  lat: number;
-  lon: number;
-  stopId?: string;
-  city?: string | null;
-  /** Promień niepewności fixu w metrach z systemu (null na webe). */
-  accuracyM?: number | null;
-}
-
 export interface ILocationService {
   /**
-   * Pozycja „na teraz": świeży cache, ostatni znany fix albo szybki odczyt
+   * Pozycja „na teraz”: świeży cache, ostatni znany fix albo szybki odczyt
    * Balanced. Nigdy nie czeka na precyzyjny fix, ten dociąga `refineLocation`
-   * już po oddaniu wyniku. `force` pomija cache (ręczne „użyj GPS").
+   * już po oddaniu wyniku. `force` pomija cache (ręczne „użyj GPS”).
    */
   getCurrentLocation(options?: { force?: boolean }): Promise<LocationResult>;
   /** Dokładniejszy odczyt (Accuracy.High) w tle; null, gdy się nie udało. */

@@ -30,6 +30,10 @@ export interface TrackingNativeModule {
   /** Czy „Zakończ" pod powiadomieniem zadziałał natywnie (bez otwierania apki). */
   consumeStopRequest(): Promise<boolean>;
   hasStopRequest?(): Promise<boolean>;
+  supportsTransferProtection?(): boolean;
+  supportsTransferDecisions?(): boolean;
+  configureTransferProtection?(tripId: string, path: string): Promise<boolean>;
+  getTransferProtectionState?(): Promise<string | null>;
 }
 
 let nmod: NotificationsModule | null | undefined;
@@ -55,12 +59,12 @@ export function areNotificationsSupported(): boolean {
   return getNotifications() != null;
 }
 
-/** Ostrzeżenie w konsoli zamiast cichych nulli — pomocne przy testowaniu. */
+/** Ostrzeżenie w konsoli zamiast cichych nulli - pomocne przy testowaniu. */
 export function warnUnsupportedOnce(what: string): void {
   if (warnedUnsupported) return;
   warnedUnsupported = true;
   console.warn(
-    `[Powiadomienia] ${what} niedostępne — potrzebny build deweloperski (Expo Go nie wspiera powiadomień).`,
+    `[Powiadomienia] ${what} niedostępne - potrzebny build deweloperski (Expo Go nie wspiera powiadomień).`,
   );
 }
 
@@ -93,5 +97,13 @@ export function isNativeTrackingSupported(): boolean {
   return getTrackingNative() != null;
 }
 
-/** Identyfikator powiadomienia śledzącej — wspólny dla update i dismiss. */
+export function isTransferProtectionSupported(): boolean {
+  return Platform.OS === 'android' || Platform.OS === 'ios';
+}
+
+export function usesNativeTransferProtection(): boolean {
+  return Platform.OS === 'android' && getTrackingNative()?.supportsTransferDecisions?.() === true;
+}
+
+/** Identyfikator powiadomienia śledzącej - wspólny dla update i dismiss. */
 export const TRACKING_NOTIFICATION_ID = 'kilometr.tracking.v2';

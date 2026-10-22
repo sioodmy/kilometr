@@ -53,7 +53,7 @@ async function writeStamps(stamps: LineStamp, cityId?: CityId): Promise<void> {
 }
 
 /** Dopisz linie z właśnie sprawdzonej listy połączeń. */
-export async function rememberRouteLines(
+async function rememberRouteLines(
   lines: string[],
   seenAt: number = Date.now(),
 ): Promise<void> {
@@ -75,7 +75,7 @@ export async function rememberLinesFromConnections(
 }
 
 /** Uzupełnij pamięć z zapisanych tras (w oknie 2 tygodni). */
-export async function rememberLinesFromSavedRoutes(routes: SavedRoute[]): Promise<void> {
+async function rememberLinesFromSavedRoutes(routes: SavedRoute[]): Promise<void> {
   const cutoff = Date.now() - TWO_WEEKS_MS;
   const stamps = await readStamps();
   let changed = false;
@@ -164,7 +164,7 @@ export function newsTouchesLines(item: { lines: string[]; title: string; descrip
   const hay = `${item.title} ${item.description}`;
   for (const line of lines) {
     const escaped = line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Linie MPK to cyfry / litery (N, D, A) — bez unicode property (Hermes).
+    // Linie MPK to cyfry / litery (N, D, A) - bez unicode property (Hermes).
     const re = new RegExp(`(?:^|[^0-9A-Za-z])${escaped}(?![0-9A-Za-z])`, 'i');
     if (re.test(hay)) return true;
   }

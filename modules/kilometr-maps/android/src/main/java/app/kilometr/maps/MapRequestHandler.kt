@@ -12,7 +12,7 @@ import java.io.File
  * WebView z `source={{ html }}` ma origin `null` / `about:blank`, więc
  * fetch kafelków z 127.0.0.1 to cross-origin. Bez CORS MapLibre dostaje
  * puste odpowiedzi i mapa zostaje czarna (sam kolor landu). Odpowiedzi
- * dostają `Access-Control-Allow-Origin: *` — lokalny serwer i tak nasłuchuje
+ * dostają `Access-Control-Allow-Origin: *` - lokalny serwer i tak nasłuchuje
  * tylko na pętli zwrotnej.
  */
 class MapRequestHandler(

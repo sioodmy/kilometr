@@ -6,7 +6,7 @@ import { bearingDegrees, projectPointToPolyline } from '../gtfs/geo';
 import type { CurrentLocation } from './currentLocation';
 
 // Czysta logika „gdzie jest pojazd". Wydzielona z komponentu LegTimeline,
-// bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień —
+// bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień-
 // serwis nie powinien importować komponentu (i nie da się go wtedy
 // przetestować bez react-native).
 
@@ -69,7 +69,7 @@ export function findUserSegment(stops: LegStop[], leg: Leg): { start: number; en
   }
   if (end < 0) {
     const n = normalizeName(leg.toStop);
-    // ostatni match — nazwy przystanków potrafią się powtarzać na linii
+    // ostatni match - nazwy przystanków potrafią się powtarzać na linii
     for (let i = stops.length - 1; i >= 0; i--) {
       if (normalizeName(stops[i].name) === n) {
         end = i;
@@ -348,16 +348,19 @@ export function locateVehicle(
   if (vehicle) {
     const cur = vehicle.currentStopName ? normalizeName(vehicle.currentStopName) : '';
     const nxt = vehicle.nextStopName ? normalizeName(vehicle.nextStopName) : '';
-    const curIdx = cur
-      ? stops.findIndex(
-          (s) => normalizeName(s.name).includes(cur) || cur.includes(normalizeName(s.name)),
-        )
-      : -1;
-    const nxtIdx = nxt
-      ? stops.findIndex(
-          (s) => normalizeName(s.name).includes(nxt) || nxt.includes(normalizeName(s.name)),
-        )
-      : -1;
+    // Najpierw dokładna nazwa, dopiero potem prefiks: "Dworzec" jest
+    // prefiksem "Dworzec Główny" i findIndex bez preferencji trafiał
+    // w przystanek, który pojazd minął kilka minut temu.
+    const matchIndex = (name: string): number => {
+      if (!name) return -1;
+      const exact = stops.findIndex((s) => normalizeName(s.name) === name);
+      if (exact >= 0) return exact;
+      return stops.findIndex(
+        (s) => normalizeName(s.name).includes(name) || name.includes(normalizeName(s.name)),
+      );
+    };
+    const curIdx = matchIndex(cur);
+    const nxtIdx = matchIndex(nxt);
     if (curIdx >= 0 && nxtIdx === curIdx + 1) {
       return {
         gap: curIdx,

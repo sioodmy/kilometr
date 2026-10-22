@@ -18,11 +18,11 @@ import androidx.core.graphics.drawable.IconCompat
  * Na Androidzie 16 (`Notification.ProgressStyle`) pokazujemy podróż jako pasek
  * z segmentami: dojścia pieszo w kolorze neutralnym, przejazdy w kolorze
  * linii, granice przesiadek jako punkty, a nad paskiem ikona tego, czym
- * jedziemy. Do tego „promocja do Live Updates" — powiadomienie wchodzi w
+ * jedziemy. Do tego „promocja do Live Updates" - powiadomienie wchodzi w
  * strefę Live Updates na ekranie blokady i dostaje chip w pasku stanu.
  *
  * Android nie ma RemoteViews dla takiego powiadomienia (i to jest warunek
- * Live Updates), więc wygląd jest w całości szablonem systemu — my
+ * Live Updates), więc wygląd jest w całości szablonem systemu - my
  * odpowiadamy tylko za treść, segmenty i ikony. Na starszych wersjach
  * `ProgressStyle` cicho nic nie robi, a `setProgress` daje zwykły pasek.
  */
@@ -31,7 +31,7 @@ internal object LiveUpdateFactory {
   const val CHANNEL_ID = "kilometr.tracking"
   const val NOTIFICATION_ID = 0x4B4C // 'KL'
 
-  /** Android 16 — `ProgressStyle` i Live Updates. */
+  /** Android 16 - `ProgressStyle` i Live Updates. */
   private const val ANDROID_16 = 36
 
   /** Akcent powiadomienia, gdy kurs się spóźnia. */
@@ -78,7 +78,7 @@ internal object LiveUpdateFactory {
       .setOngoing(true)
       .setOnlyAlertOnce(true)
       .setShowWhen(false)
-      // Aktualizuj co sekundę — bez tego system mógłby odłożyć refresh.
+      // Aktualizuj co sekundę - bez tego system mógłby odłożyć refresh.
       .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
       .setSilent(true)
       .setContentIntent(openApp(context, plan.deepLink, REQUEST_CONTENT))
@@ -88,7 +88,7 @@ internal object LiveUpdateFactory {
     applyChronometer(builder, plan, phase, nowMs)
 
     // Android 16 rysuje pasek z segmentami i sam definiuje wygląd całego
-    // powiadomienia. Na starszych zostaje klasyczny pasek postępu — i tam
+    // powiadomienia. Na starszych zostaje klasyczny pasek postępu - i tam
     // potrzebujemy BigText, bo bez niego rozwinięcie powiadomienia dawałoby
     // pustkę (system pokazałby tylko dwie linijki, które i tak są widoczne).
     val progress = plan.progressPermille(nowMs)
@@ -116,7 +116,7 @@ internal object LiveUpdateFactory {
   }
 
   /**
-   * Licznik systemowy. Nie animujemy go z serwisu — `setWhen` + chronometr
+   * Licznik systemowy. Nie animujemy go z serwisu - `setWhen` + chronometr
    * wystarczą, a tyka w trakcie, gdy proces jest wyciszony.
    */
   private fun applyChronometer(
@@ -141,7 +141,7 @@ internal object LiveUpdateFactory {
     builder.setWhen(at)
     builder.setUsesChronometer(true)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-      // Po odjeździe licznik w dół miałby pokazywać minusy — wtedy liczymy w górę.
+      // Po odjeździe licznik w dół miałby pokazywać minusy - wtedy liczymy w górę.
       builder.setChronometerCountDown(at > nowMs)
     }
   }
@@ -151,7 +151,7 @@ internal object LiveUpdateFactory {
    * w kolorze linii, granice przesiadek jako punkty, a na pasku ikona tego,
    * czym jedziemy.
    *
-   * Lewego końca paska celowo nie opisujemy — flaga odjazdu tylko zabierała
+   * Lewego końca paska celowo nie opisujemy - flaga odjazdu tylko zabierała
    * miejsce i myliła się z paskiem postępu, bo wyglądała jak kolejny punkt
    * trasy. Z prawej zostaje flaga z metra: mówi „jeszcze tu są przystanki”.
    */
@@ -197,7 +197,7 @@ internal object LiveUpdateFactory {
   }
 
   /**
-   * „Zakończ" obsługuje natywnie, bez budzenia JS — inaczej po ubiciu
+   * „Zakończ" obsługuje natywnie, bez budzenia JS - inaczej po ubiciu
    * procesu przycisk nic by nie zrobił. Pozostałe akcje to deep link do
    * aplikacji, bo decyzję o tym, gdzie trafić, podejmuje router.
    */
@@ -208,7 +208,7 @@ internal object LiveUpdateFactory {
   ): PendingIntent? {
     if (action.id == ACTION_STOP) {
       val intent = Intent(context, TripActionReceiver::class.java).apply {
-        // `this.action` — bez `this.` resolver sięgnąłby do parametru
+        // `this.action` - bez `this.` resolver sięgnąłby do parametru
         // `action: TripAction`, który jest val.
         this.action = TripActionReceiver.ACTION_STOP
       }
@@ -220,7 +220,7 @@ internal object LiveUpdateFactory {
       )
     }
     // Przycisk trasy prowadzi prosto do szczegółów śledzonego kursu, a nie na
-    // listę połączeń — to o dwa dotknięcia bliżej tego, czego szuka użytkownik
+    // listę połączeń - to o dwa dotknięcia bliżej tego, czego szuka użytkownik
     // w trakcie podróży. `tripId` jest stabilny (to id z listy połączeń),
     // więc zawsze trafiamy w ten sam ekran.
     val url = appendRoute(plan.deepLink)

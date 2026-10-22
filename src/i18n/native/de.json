@@ -1,5 +1,8 @@
 {
   "ios": {
-    "NSLocationWhenInUseUsageDescription": "Erlaube den Standortzugriff, um Verbindungen ab deinem Standort zu finden."
+    "NSLocationWhenInUseUsageDescription": "Erlaube den Standortzugriff, um Verbindungen ab deinem Standort zu finden.",
+    "KilometrStartupTitle": "App-Fehler",
+    "KilometrStartupHint": "Kilometr kann nicht fortfahren. Teile den Bericht, um bei der Fehlersuche zu helfen.",
+    "KilometrStartupShare": "Teilen"
   }
 }

@@ -11,6 +11,7 @@ import {
 import { clearRaptorNetCache } from './network';
 import { getCity } from '../../cities';
 import { getActiveCityIdSync } from '../cityStore';
+import { isFareBoundary } from '../../gtfs/fareBoundary';
 import {
   POLINKA_ROUTE_ID,
   polinkaRoute,
@@ -39,15 +40,17 @@ export interface DayIndex {
   patterns: Map<string, any>;
 }
 
-/** Int32 z bloba zapisanego przez builder (małe endian, 4 B na wartość). */
-function int32FromBlob(raw: Uint8Array | ArrayBuffer): Int32Array {
-  const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-  if (bytes.byteOffset % 4 === 0) {
-    return new Int32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 2);
+/** Odczytuje Int32 little-endian z SQLite hex(), bez natywnych buforów JNI. */
+function int32FromHex(hex: string): Int32Array {
+  const values = new Int32Array(hex.length / 8);
+  for (let i = 0; i < values.length; i++) {
+    const offset = i * 8;
+    values[i] = Number.parseInt(hex.slice(offset, offset + 2), 16)
+      | (Number.parseInt(hex.slice(offset + 2, offset + 4), 16) << 8)
+      | (Number.parseInt(hex.slice(offset + 4, offset + 6), 16) << 16)
+      | (Number.parseInt(hex.slice(offset + 6, offset + 8), 16) << 24);
   }
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return new Int32Array(copy.buffer, 0, bytes.byteLength >> 2);
+  return values;
 }
 
 /** Dokłada kursy Polinki do mapy kursów wycinka (własna linia, brak konfliktu id). */
@@ -94,6 +97,9 @@ export class LocalGtfsStore {
   private tripBlobSchema: boolean | null = null;
   private stopRefsCache: string[] | null = null;
   isLoaded = false;
+  /** Podbijane przy resecie: wycinki budowane wcześniej nie trafiają do cache. */
+  private generation = 0;
+  get currentGeneration(): number { return this.generation; }
 
   /**
    * Czyści pamięć podręczną po imporcie (seed / sieć): bez tego store
@@ -116,6 +122,7 @@ export class LocalGtfsStore {
     this.tripBlobSchema = null;
     this.stopRefsCache = null;
     this.isLoaded = false;
+    this.generation++;
     clearRaptorNetCache();
   }
 
@@ -124,7 +131,7 @@ export class LocalGtfsStore {
     // Import w toku = sklep musi zostać pusty do jego końca (reset() czyści
     // je na końcu importu). Bez czekania load() wracał „wstecz" z pustymi
     // przystankami, a planer oddawał zero połączeń zamiast „rozkład się
-    // importuje" — ekran pokazywał wtedy „nie znaleziono połączeń".
+    // importuje" - ekran pokazywał wtedy „nie znaleziono połączeń".
     if (importInProgress) {
       await awaitImportSettled();
       if (this.isLoaded) return;
@@ -236,7 +243,7 @@ export class LocalGtfsStore {
     const GRID_DEG_LON = 0.0015;
 
     const grid = new Map<string, any[]>();
-    const stopArray = Array.from(this.stops.values());
+    const stopArray = Array.from(this.stops.values()).filter((stop) => !isFareBoundary(stop.stop_name ?? ''));
 
     for (const s of stopArray) {
       const gx = Math.floor(s.stop_lon / GRID_DEG_LON);
@@ -287,7 +294,7 @@ export class LocalGtfsStore {
   /**
    * Przesiadki MPK<->KD z tabeli `interchanges` (liczone w buildzie, bo
    * stacja kolejowa to nie słupek: perony, hala, schody). Doklejamy je do
-   * footpaths i ZASTĘPUJEMY nimi gridowe linki między tymi samymi parami —
+   * footpaths i ZASTĘPUJEMY nimi gridowe linki między tymi samymi parami-
    * grid liczy sam dystans w linii prostej, bez zapasu na peron.
    * Stare bazy (legacy ZIP, bez tabeli i bez pociągów) przechodzą cicho.
    */
@@ -318,7 +325,7 @@ export class LocalGtfsStore {
     if (applied > 0) console.log(`[LocalGtfsStore] Interchanges MPK<->KD: ${applied}.`);
   }
 
-  /** route_ids dla oznaczenia linii ("4", "K") — case-insensitive. */
+  /** route_ids dla oznaczenia linii ("4", "K") - case-insensitive. */
   getRouteIdsByShortName(shortName: string): string[] {
     const key = shortName.trim().toUpperCase();
     const out: string[] = [];
@@ -330,7 +337,7 @@ export class LocalGtfsStore {
 
   /**
    * Wycinkowy indeks na horyzont [fromSec, toSec] (sekundy, mogą >86400).
-   * Ładuje tylko kursy nachodzące na horyzont — ~6× mniej wierszy przez mostek
+   * Ładuje tylko kursy nachodzące na horyzont - ~6× mniej wierszy przez mostek
    * JS niż pełny indeks dobowy. Cache kubelkowany po godzinach (max 4).
    */
   async getDayIndexSlice(
@@ -384,7 +391,8 @@ export class LocalGtfsStore {
     qTo: number,
   ): Promise<DayIndex> {
     const cacheKey = `${day}|${dateStr ?? ''}|${qFrom}|${qTo}`;
-    // Wycinek budujemy z marginesem całego kubła — zapytania z tej samej
+    const genAtStart = this.generation;
+    // Wycinek budujemy z marginesem całego kubła - zapytania z tej samej
     // godziny (i ticker co minutę) trafiają w ten sam klucz.
     const bFrom = qFrom * 3600 - 1800;
     const bTo = (qTo + 1) * 3600 + 1800;
@@ -395,12 +403,14 @@ export class LocalGtfsStore {
     };
     if (importInProgress) return emptyIdx;
     const activeServices = await getActiveServices(day, dateStr);
+    if (this.generation !== genAtStart) return emptyIdx;
     const db = await getGtfsDb();
+    if (this.generation !== genAtStart) return emptyIdx;
     const serviceIds = Array.from(activeServices);
     if (serviceIds.length === 0) {
-      this.rememberSlice(cacheKey, emptyIdx);
+      this.rememberSlice(cacheKey, emptyIdx, genAtStart);
       // Pusty wycinek (np. noc, brak serwisów) nadaje się tylko na dokładnie
-      // swój klucz — pokrycia nie rejestrujemy, żeby inny horyzont go nie
+      // swój klucz - pokrycia nie rejestrujemy, żeby inny horyzont go nie
       // uznał za wystarczający.
       this.sliceHorizons.delete(emptyIdx);
       return emptyIdx;
@@ -413,9 +423,8 @@ export class LocalGtfsStore {
     const tripIds: string[] = [];
 
     if (await this.hasTripBlobs(db)) {
-      // Nowa ścieżka: kursy po indeksie (service_id, start_sec) i czasy
-      // w blobach. Jedno zapytanie zamiast GROUP BY po stop_times plus
-      // setki tysięcy wierszy przez mostek (GZM: ~321 tys. na 8h okno).
+      if (this.generation !== genAtStart) return emptyIdx;
+      // hex() omija limit referencji JNI: trzy BLOB-y na kurs przepełniały go przy dużych rozkładach.
       const rows = await db.getAllAsync<{
         trip_id: string;
         route_id: string;
@@ -423,18 +432,23 @@ export class LocalGtfsStore {
         headsign: string;
         direction: number;
         shape: string;
-        seq_blob: Uint8Array | ArrayBuffer | null;
-        arr_blob: Uint8Array | ArrayBuffer | null;
-        dep_blob: Uint8Array | ArrayBuffer | null;
+        seq_blob: string | null;
+        arr_blob: string | null;
+        dep_blob: string | null;
       }>(
-        `SELECT trip_id, route_id, service_id, headsign, direction, shape, seq_blob, arr_blob, dep_blob
+        `SELECT trip_id, route_id, service_id, headsign, direction, shape,
+                CASE WHEN seq_blob IS NOT NULL THEN hex(seq_blob) END AS seq_blob,
+                CASE WHEN arr_blob IS NOT NULL THEN hex(arr_blob) END AS arr_blob,
+                CASE WHEN dep_blob IS NOT NULL THEN hex(dep_blob) END AS dep_blob
          FROM trips
          WHERE service_id IN (${servicePlaceholders}) AND start_sec <= ? AND end_sec >= ?`,
         ...serviceIds,
         bTo,
         bFrom,
       );
+      if (this.generation !== genAtStart) return emptyIdx;
       const stopRefs = rows.length > 0 ? await this.getStopRefs(db) : [];
+      if (this.generation !== genAtStart) return emptyIdx;
       const missing: string[] = [];
       for (const r of rows) {
         const t = {
@@ -453,10 +467,10 @@ export class LocalGtfsStore {
         }
         group.push(t);
         tripIds.push(r.trip_id);
-        if (r.seq_blob && r.arr_blob && r.dep_blob) {
-          const seq = int32FromBlob(r.seq_blob);
-          const arr = int32FromBlob(r.arr_blob);
-          const dep = int32FromBlob(r.dep_blob);
+        if (r.seq_blob !== null && r.arr_blob !== null && r.dep_blob !== null) {
+          const seq = int32FromHex(r.seq_blob);
+          const arr = int32FromHex(r.arr_blob);
+          const dep = int32FromHex(r.dep_blob);
           const n = Math.min(seq.length, arr.length, dep.length);
           const times = new Array(n);
           for (let i = 0; i < n; i++) {
@@ -476,6 +490,7 @@ export class LocalGtfsStore {
       }
       if (missing.length > 0) {
         await this.loadStopTimesChunked(db, missing);
+        if (this.generation !== genAtStart) return emptyIdx;
       }
     } else {
       // Stara ścieżka (bazy bez indeksu czasowego): agregacja natywnie w SQL,
@@ -491,6 +506,7 @@ export class LocalGtfsStore {
         bTo,
         bFrom,
       );
+      if (this.generation !== genAtStart) return emptyIdx;
       for (const r of overlapping) tripIds.push(r.trip_id);
 
       const CHUNK = 400;
@@ -501,6 +517,7 @@ export class LocalGtfsStore {
           `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE trip_id IN (${placeholders})`,
           ...chunk,
         );
+        if (this.generation !== genAtStart) return emptyIdx;
         for (const r of tripsRows) {
           const t = {
             trip_id: r.trip_id,
@@ -519,13 +536,16 @@ export class LocalGtfsStore {
           group.push(t);
         }
         await this.loadStopTimesChunked(db, chunk);
+        if (this.generation !== genAtStart) return emptyIdx;
       }
     }
 
     if (tripIds.length === 0 && polinka.tripIds.length === 0) {
-      this.rememberSlice(cacheKey, emptyIdx);
+      this.rememberSlice(cacheKey, emptyIdx, genAtStart);
       return emptyIdx;
     }
+
+    if (this.generation !== genAtStart) return emptyIdx;
 
     // Kolejność kursów i linii w patternach ustala kolejność wierszy z SQL (plan
     // zapytania bywa różny między bazami/urządzeniami), a od niej zależy numeracja
@@ -540,8 +560,8 @@ export class LocalGtfsStore {
 
     const idx = this.buildPatterns(mergePolinkaTrips(sortedByRoute, polinka.byRouteId));
     this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
-    this.rememberSlice(cacheKey, idx);
-    this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
+    this.rememberSlice(cacheKey, idx, genAtStart);
+    if (genAtStart === this.generation) this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
     console.log(`[LocalGtfsStore] Slice ${cacheKey} in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${tripIds.length + polinka.tripIds.length}`);
     return idx;
   }
@@ -609,7 +629,9 @@ export class LocalGtfsStore {
         w += 12;
         list[i] = { from_stop_id: fromId, to_stop_id: stopRefs[toRef], distance_m, duration_sec };
       }
-      this.footpaths.set(fromId, list);
+      if (!isFareBoundary(this.stops.get(fromId)?.stop_name ?? '')) {
+        this.footpaths.set(fromId, list.filter((path) => !isFareBoundary(this.stops.get(path.to_stop_id)?.stop_name ?? '')));
+      }
     }
     console.log(`[LocalGtfsStore] Footpaths z bloba: ${this.footpaths.size} przystanków.`);
     return true;
@@ -694,7 +716,10 @@ export class LocalGtfsStore {
     }
   }
 
-  private rememberSlice(key: string, idx: DayIndex): void {
+  private rememberSlice(key: string, idx: DayIndex, gen: number): void {
+    // Reset/import w trakcie budowania: stary wycinek do pamięci nowego miasta
+    // nie skacze (po resecie zapytania budują świeży).
+    if (gen !== this.generation) return;
     this.sliceIndexes.set(key, idx);
     if (this.sliceIndexes.size > 4) {
       const oldest = this.sliceIndexes.keys().next().value;
@@ -775,104 +800,15 @@ export class LocalGtfsStore {
     return { stopRoutes, routeStops, routeTrips, patterns };
   }
 
-  async getDayIndex(weekday: number, dateStr?: string): Promise<DayIndex> {
-    const day = ((weekday % 7) + 7) % 7;
-    const cacheKey = dateStr ? `${day}-${dateStr}` : `${day}`;
-    if (this.dayIndexes.has(cacheKey)) return this.dayIndexes.get(cacheKey)!;
-
-    console.log(`[LocalGtfsStore] Building DayIndex for ${cacheKey}...`);
-    const activeServices = await getActiveServices(weekday, dateStr);
-    
-    const emptyIdx: DayIndex = {
-      stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map()
-    };
-    if (importInProgress) return emptyIdx;
-    const db = await getGtfsDb();
-
-    const serviceIds = Array.from(activeServices);
-    if (serviceIds.length === 0) {
-       console.warn('[LocalGtfsStore] No active services found for the day.');
-       this.dayIndexes.set(cacheKey, emptyIdx);
-       return emptyIdx;
-    }
-    const servicePlaceholders = serviceIds.map(() => '?').join(',');
-
-    const t0 = performance.now();
-
-    // Fetch active trips
-    const tripsRows = await db.getAllAsync<{trip_id: string, route_id: string, service_id: string, headsign: string, direction: number, shape: string}>(
-      `SELECT trip_id, route_id, service_id, headsign, direction, shape FROM trips WHERE service_id IN (${servicePlaceholders})`,
-      ...serviceIds,
-    );
-
-    const activeTripsById = new Map<string, any>();
-    const tripsByRouteId = new Map<string, any[]>();
-
-    for (const r of tripsRows) {
-      const t = {
-        trip_id: r.trip_id,
-        route_id: r.route_id,
-        service_id: r.service_id,
-        trip_headsign: r.headsign,
-        direction_id: r.direction,
-        shape_id: r.shape
-      };
-      this.trips.set(r.trip_id, t);
-      // Pełny indeks dnia trzyma kursy na stałe — ewangelizacja wycinków nie
-      // może ich usunąć.
-      this.retainedTrips.add(r.trip_id);
-      activeTripsById.set(r.trip_id, t);
-      let group = tripsByRouteId.get(r.route_id);
-      if (!group) {
-        group = [];
-        tripsByRouteId.set(r.route_id, group);
-      }
-      group.push(t);
-    }
-
-    // Fetch active stop times
-    const stRows = await db.getAllAsync<{trip_id: string, stop_id: string, arr_sec: number, dep_sec: number, seq: number}>(
-      `SELECT st.trip_id, st.stop_id, st.arr_sec, st.dep_sec, st.seq 
-       FROM stop_times st
-       JOIN trips t ON st.trip_id = t.trip_id
-       WHERE t.service_id IN (${servicePlaceholders})
-       ORDER BY st.trip_id, st.seq`,
-      ...serviceIds,
-    );
-
-    for (const r of stRows) {
-      let group = this.stopTimes.get(r.trip_id);
-      if (!group) {
-        group = [];
-        this.stopTimes.set(r.trip_id, group);
-      }
-      group.push({
-        trip_id: r.trip_id,
-        stop_id: r.stop_id,
-        arrival_sec: r.arr_sec,
-        departure_sec: r.dep_sec,
-        stop_sequence: r.seq
-      });
-    }
-
-    const polinka = this.injectPolinkaTrips(day, 0, 86400);
-    // Jak kursy z bazy: pełny indeks dnia trzyma je na stałe, bo backtrack
-    // szuka ich stop_times po wsiadaniu, a wycinek mógłby je zwolnić.
-    for (const id of polinka.tripIds) this.retainedTrips.add(id);
-    const idx = this.buildPatterns(mergePolinkaTrips(tripsByRouteId, polinka.byRouteId));
-    this.dayIndexes.set(cacheKey, idx);
-    console.log(`[LocalGtfsStore] DayIndex built in ${(performance.now() - t0).toFixed(0)} ms. Trips: ${activeTripsById.size + polinka.tripIds.length}`);
-    return idx;
-  }
-
   private syncRustStops(): boolean {
-    if (this.rustStopCount === this.stops.size && this.rustStopIds.length === this.stops.size) {
+    if (this.rustStopCount === this.stops.size) {
       return this.rustStopIds.length > 0 || this.stops.size === 0;
     }
     const ids: string[] = [];
     const w = new BinaryWriter(32 + this.stops.size * 64);
-    w.u32(this.stops.size);
-    for (const stop of this.stops.values()) {
+    const stops = Array.from(this.stops.values()).filter((stop) => !isFareBoundary(stop.stop_name ?? ''));
+    w.u32(stops.length);
+    for (const stop of stops) {
       ids.push(stop.stop_id);
       w.str(String(stop.stop_id))
         .str(String(stop.stop_code ?? ''))
@@ -884,7 +820,7 @@ export class LocalGtfsStore {
     const res = invokeRustSync(CMD_LOAD_STOPS, w.finish());
     if (!res || res.byteLength < 4) return false;
     this.rustStopIds = ids;
-    this.rustStopCount = ids.length;
+    this.rustStopCount = this.stops.size;
     return true;
   }
 
@@ -912,6 +848,7 @@ export class LocalGtfsStore {
     const lonRange = maxDistanceMeters / (111000 * Math.cos((lat * Math.PI) / 180));
 
     for (const stop of this.stops.values()) {
+      if (isFareBoundary(stop.stop_name ?? '')) continue;
       if (Math.abs(stop.stop_lat - lat) > latRange) continue;
       if (Math.abs(stop.stop_lon - lon) > lonRange) continue;
 

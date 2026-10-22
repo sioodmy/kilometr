@@ -14,10 +14,10 @@ import { distanceMeters, normalizePolish } from './geo';
 import { fuzzyMatch } from '../search/fuzzy';
 
 // ────────────────────────────────────────────────────────────────────────────
-// Trip Pattern — unikalna sekwencja przystanków.
+// Trip Pattern - unikalna sekwencja przystanków.
 // Jeden GTFS route_id (np. tramwaj 4) ma tripy w OBU kierunkach i z wariantami
 // trasy. Grupujemy tripy po identycznej sekwencji stop_id → „pattern".
-// RAPTOR skanuje patterny zamiast route_ids — eliminuje bug odwrotnych kursów.
+// RAPTOR skanuje patterny zamiast route_ids - eliminuje bug odwrotnych kursów.
 // ────────────────────────────────────────────────────────────────────────────
 interface TripPattern {
   patternId: string;            // np. "route_4_dir0_patA"
@@ -53,9 +53,9 @@ const WEEKDAY_FIELDS: (keyof Pick<GtfsCalendar, 'monday' | 'tuesday' | 'wednesda
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry pieszych (footpaths i access/egress)
 // ────────────────────────────────────────────────────────────────────────────
-const WALK_SPEED_MPS = 1.45;          // 1.45 m/s (~5.2 km/h) — jak Jakdojade, żwawy marsz
-const WALK_DETOUR_FACTOR = 1.15;     // ulice nie biegną po prostej — mnożnik ~15%
-const MAX_TRANSFER_METERS = 800;     // footpath do 800 m — węzły przesiadkowe (jakdojade grupuje perony w promieniu ~1 km i liczy czas, nie dystans)
+const WALK_SPEED_MPS = 1.45;          // 1.45 m/s (~5.2 km/h) - jak Jakdojade, żwawy marsz
+const WALK_DETOUR_FACTOR = 1.15;     // ulice nie biegną po prostej - mnożnik ~15%
+const MAX_TRANSFER_METERS = 800;     // footpath do 800 m - węzły przesiadkowe (jakdojade grupuje perony w promieniu ~1 km i liczy czas, nie dystans)
 const MIN_FOOTPATH_SEC = 45;         // minimum 45s na przesiadkę pieszo
 
 export class GtfsStore {
@@ -66,9 +66,15 @@ export class GtfsStore {
   shapes = new Map<string, { lat: number; lon: number }[]>();
   footpaths = new Map<string, Footpath[]>();
 
-  // RAPTOR acceleration structures (per weekday/date — sobota/niedziela mają
+  // RAPTOR acceleration structures (per weekday/date - sobota/niedziela mają
   // własny rozkład; indeks budowany leniwie i cachowany)
   private dayIndexes = new Map<string, DayIndex>();
+  /**
+   * Ile pełnych indeksów dni trzymamy. Każdy wpis to cały dzień kursów, a
+   * klucz zawiera datę: bez limitu długo żyjący serwer rósł o jeden dzień
+   * przy każdym kolejnym dniu kalendarzowym.
+   */
+  private static readonly DAY_INDEX_CACHE_LIMIT = 8;
   private servicesByWeekday = new Map<number, Set<string>>();
   private calendarDates: GtfsCalendarDate[] = [];
   private calendarLoaded = false;
@@ -124,7 +130,7 @@ export class GtfsStore {
     this.servicesByWeekday.clear();
     for (let d = 0; d < 7; d++) this.servicesByWeekday.set(d, new Set());
     if (calendar.size === 0) {
-      // brak kalendarza — wszystkie serwisy aktywne codziennie (ustawiane niżej)
+      // brak kalendarza - wszystkie serwisy aktywne codziennie (ustawiane niżej)
     } else {
       for (const [id, c] of calendar.entries()) {
         WEEKDAY_FIELDS.forEach((field, day) => {
@@ -134,7 +140,7 @@ export class GtfsStore {
     }
     this.calendarLoaded = true;
 
-    // 2. Parse trips — WSZYSTKIE (filtrowanie po dniu przy budowie indeksu)
+    // 2. Parse trips - WSZYSTKIE (filtrowanie po dniu przy budowie indeksu)
     const { tripsById, tripsByRouteId } = parseTrips(
       path.join(extractedDir, 'trips.txt'),
       undefined
@@ -142,7 +148,7 @@ export class GtfsStore {
     this.trips = tripsById;
     this.allTripsByRouteId = tripsByRouteId;
 
-    // Jeśli kalendarz był pusty — wszystkie serwisy codziennie
+    // Jeśli kalendarz był pusty - wszystkie serwisy codziennie
     if (calendar.size === 0) {
       const allServices = new Set<string>();
       for (const t of this.trips.values()) allServices.add(t.service_id);
@@ -193,13 +199,18 @@ export class GtfsStore {
     return base;
   }
 
-  /** Indeks RAPTOR dla dnia tygodnia — budowany raz, potem z cache.
+  /** Indeks RAPTOR dla dnia tygodnia - budowany raz, potem z cache.
    *  dateStr (YYYYMMDD) uwzględnia calendar_dates.txt. */
   getDayIndex(weekday: number, dateStr?: string): DayIndex {
     const day = ((weekday % 7) + 7) % 7;
     const cacheKey = dateStr ? `${day}-${dateStr}` : `${day}`;
     const cached = this.dayIndexes.get(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      // LRU: świeżo użyty dzień nie wypada przy budowie kolejnego.
+      this.dayIndexes.delete(cacheKey);
+      this.dayIndexes.set(cacheKey, cached);
+      return cached;
+    }
 
     const active = this.getActiveServices(day, dateStr);
     // Pusty zbiór = brak kursujących serwisów tego dnia (np. wyjątek w
@@ -279,12 +290,16 @@ export class GtfsStore {
     }
 
     const idx: DayIndex = { stopRoutes, routeStops, routeTrips, patterns };
+    if (this.dayIndexes.size >= GtfsStore.DAY_INDEX_CACHE_LIMIT && !this.dayIndexes.has(cacheKey)) {
+      const oldest = this.dayIndexes.keys().next().value;
+      if (oldest) this.dayIndexes.delete(oldest);
+    }
     this.dayIndexes.set(cacheKey, idx);
     return idx;
   }
 
   private buildAllRouteTrips(tripsByRouteId: Map<string, GtfsTrip[]>) {
-    // Wszystkie tripy per linia (dla matchera live — on i tak filtruje oknem czasu)
+    // Wszystkie tripy per linia (dla matchera live - on i tak filtruje oknem czasu)
     for (const [routeId, trips] of tripsByRouteId.entries()) {
       if (!trips.length) continue;
       const validTrips = trips.filter((t) => this.stopTimes.has(t.trip_id));
@@ -298,7 +313,7 @@ export class GtfsStore {
   }
 
   private buildFootpaths() {
-    // Spatial grid — dzielimy przystanki na kratki ~100m × ~100m
+    // Spatial grid - dzielimy przystanki na kratki ~100m × ~100m
     // O(N) budowa + O(1) lookup zamiast O(N²) brute-force.
     const GRID_DEG_LAT = 0.001; // ~111m
     const GRID_DEG_LON = 0.0015; // ~104m przy 51°N

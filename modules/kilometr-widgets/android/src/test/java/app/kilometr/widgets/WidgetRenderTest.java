@@ -40,14 +40,14 @@ public class WidgetRenderTest {
 
   private JSONObject snapshot() throws Exception {
     JSONObject labels = new JSONObject()
-      .put("nextTitle", "Czas wyjść").put("journeyTitle", "Twoje kierunki")
+      .put("journeyTitle", "Twoje kierunki")
       .put("trackingTitle", "Twoja podróż").put("fromOrigin", "Z: {name}")
       .put("departIn", "Wyjdź za {n} min").put("departAt", "wyjście {t}")
       .put("departNow", "Czas wyjść").put("arriveIn", "przyjazd za {n} min")
       .put("arrived", "Na miejscu").put("now", "teraz").put("min", "min")
       .put("updated", "stan z {t}").put("checkRoutes", "Sprawdź połączenia")
       .put("search", "Dokąd jedziesz?").put("stale", "Sprawdź kolejne połączenie")
-      .put("nextEmpty", "Sprawdź kolejne połączenie").put("addPlace", "Dodaj miejsce");
+      .put("addPlace", "Dodaj miejsce");
     JSONObject item = new JSONObject().put("title", "Dom").put("dest", "Dom").put("icon", "home")
       .put("line", "17").put("mode", "tram").put("lineBg", "#00695C").put("lineFg", "#FFFFFF")
       .put("departTs", now + 300_000).put("departAt", "14:35").put("deepLink", "kilometr://routes?toTitle=Dom");
@@ -58,7 +58,7 @@ public class WidgetRenderTest {
       .put(new JSONObject().put("name", "Dom").put("icon", "home").put("deepLink", "kilometr://routes?toTitle=Dom"))
       .put(new JSONObject().put("name", "Politechnika").put("icon", "school").put("deepLink", "kilometr://routes?toTitle=Politechnika"));
     return new JSONObject().put("labels", labels).put("updatedAt", now).put("origin", "Inżynierska")
-      .put("next", new JSONArray().put(item).put(second)).put("quick", new JSONArray().put(item).put(second))
+      .put("quick", new JSONArray().put(item).put(second))
       .put("places", places).put("pinned", new JSONObject().put("fromTitle", "Inżynierska").put("toTitle", "Politechnika")
         .put("departTs", now - 600_000).put("arriveTs", now + 720_000).put("departAt", "14:20").put("arriveAt", "14:42")
         .put("deepLink", "kilometr://routes?toTitle=Politechnika")
@@ -100,18 +100,6 @@ public class WidgetRenderTest {
     }
   }
 
-  @Test public void nextSelectsEarliestUpcomingAndDoesNotKeepExpiredCountdown() throws Exception {
-    JSONObject snap = snapshot();
-    JSONArray items = snap.getJSONArray("next");
-    snap.put("next", new JSONArray().put(items.getJSONObject(1)).put(items.getJSONObject(0)));
-    View next = apply(context, WidgetRenderers.INSTANCE.next(context, snap, 1, size(180, 180), now), 180, 180);
-    assertEquals("5", text(next, R.id.kw_big));
-    assertEquals("Dom", text(next, R.id.kw_title));
-    View expired = apply(context, WidgetRenderers.INSTANCE.next(context, snap, 1, size(180, 180), now + 900_000), 180, 180);
-    assertEquals(View.GONE, expired.findViewById(R.id.kw_content).getVisibility());
-    assertEquals(View.VISIBLE, expired.findViewById(R.id.kw_empty).getVisibility());
-  }
-
   @Test public void actualLauncherSizesDriveLayouts() {
     Bundle options = size(160, 110);
     options.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 320);
@@ -121,7 +109,7 @@ public class WidgetRenderTest {
     List<String> rendered = new ArrayList<>();
     KilometrWidgetsKt.sizedViews(options, exact -> {
       rendered.add(exact.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) + "x" + exact.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT));
-      return new RemoteViews(context.getPackageName(), R.layout.kw_next);
+      return new RemoteViews(context.getPackageName(), R.layout.kw_saved);
     });
     assertEquals(Arrays.asList("160x320", "320x110"), rendered);
   }
@@ -133,7 +121,7 @@ public class WidgetRenderTest {
     List<String> rendered = new ArrayList<>();
     KilometrWidgetsKt.sizedViews(options, exact -> {
       rendered.add(exact.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) + "x" + exact.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT));
-      return new RemoteViews(context.getPackageName(), R.layout.kw_next);
+      return new RemoteViews(context.getPackageName(), R.layout.kw_saved);
     });
     assertEquals(Arrays.asList("320x110", "160x320"), rendered);
   }
@@ -169,7 +157,6 @@ public class WidgetRenderTest {
       for (int[] dim : new int[][] {{110,110}, {160,160}, {180,240}, {220,110}, {280,200}, {320,320}}) {
         for (JSONObject snap : new JSONObject[] {null, snapshot()}) {
           List<RemoteViews> widgets = new ArrayList<>();
-          widgets.add(WidgetRenderers.INSTANCE.next(scaled, snap, 1, size(dim[0], dim[1]), now));
           widgets.add(WidgetRenderers.INSTANCE.savedPlaces(scaled, snap, 1, size(dim[0], dim[1])));
           if (dim[0] >= 220) {
             widgets.add(WidgetRenderers.INSTANCE.destinations(scaled, snap, 1, size(dim[0], dim[1]), now));
@@ -239,9 +226,6 @@ public class WidgetRenderTest {
     assertEquals("1", nextIntent().getData().getQueryParameter("search"));
     assertTrue(search.findViewById(R.id.kw_place).performClick());
     assertEquals("Dom", nextIntent().getData().getQueryParameter("toTitle"));
-    View next = apply(context, WidgetRenderers.INSTANCE.next(context, snap, 4, size(180, 180), now), 180, 180);
-    assertTrue(next.performClick());
-    assertEquals("Dom", nextIntent().getData().getQueryParameter("toTitle"));
     View trip = apply(context, WidgetRenderers.INSTANCE.trip(context, snap, 5, size(320, 240), now), 320, 240);
     assertTrue(trip.performClick());
     assertEquals("Politechnika", nextIntent().getData().getQueryParameter("toTitle"));
@@ -260,13 +244,12 @@ public class WidgetRenderTest {
       Context themed = context.createConfigurationContext(config);
       JSONObject snap = snapshot();
       RemoteViews[] widgets = {
-        WidgetRenderers.INSTANCE.next(themed, snap, 1, size(180, 180), now),
         WidgetRenderers.INSTANCE.savedPlaces(themed, snap, 2, size(180, 180)),
         WidgetRenderers.INSTANCE.destinations(themed, snap, 3, size(372, 272), now),
         WidgetRenderers.INSTANCE.trip(themed, snap, 4, size(372, 180), now),
         WidgetRenderers.INSTANCE.search(themed, snap, 5, size(372, 64))
       };
-      int[][] sizes = {{180,180},{180,180},{372,272},{372,180},{372,64}};
+      int[][] sizes = {{180,180},{372,272},{372,180},{372,64}};
       for (int i = 0; i < widgets.length; i++) {
         View view = apply(themed, widgets[i], sizes[i][0], sizes[i][1]);
         Bitmap bitmap = Bitmap.createBitmap(sizes[i][0] * 3, sizes[i][1] * 3, Bitmap.Config.ARGB_8888);

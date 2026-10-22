@@ -1,5 +1,5 @@
 // Lokalny magazyn GTFS w expo-sqlite (v57 API: openDatabaseAsync).
-// Telefon nie trzyma rozkładu w Mapach jak serwer — pyta SQLite z indeksami,
+// Telefon nie trzyma rozkładu w Mapach jak serwer - pyta SQLite z indeksami,
 // więc stop_times (~mln wierszy) nie musi wchodzić w całości do RAM.
 //
 // Schemat celowo minimalny (tylko to, czego potrzebuje routing/search):
@@ -11,6 +11,7 @@ import { expandTokenSynonyms, fuzzyMatchBatch } from '../gtfs/fuzzy';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../gtfs/types';
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
+import { isFareBoundary } from '../gtfs/fareBoundary';
 
 /** Plik bazy dla miasta. Każde miasto ma osobny plik; zmiana nazwy oznacza
  *  świeży pobyt (nowy plik startuje pusty, więc wersja wymusza re-download). */
@@ -172,7 +173,7 @@ export function endGtfsSwap(): void {
 
 /**
  * Zamyka uchwyt bazy (przed podmianą pliku .db na nowy z serwera).
- * Po replace plik trzeba otworzyć od nowa — zrobi to getGtfsDb().
+ * Po replace plik trzeba otworzyć od nowa - zrobi to getGtfsDb().
  * Bez zamknięcia nadpisany plik = `database disk image is malformed`
  * albo blokada na Androidzie.
  */
@@ -371,7 +372,7 @@ export interface NearestStopRow {
   distanceM: number;
 }
 
-/** Najbliższe przystanki — bounding box w SQL, dokładny Haversine w JS. */
+/** Najbliższe przystanki - bounding box w SQL, dokładny Haversine w JS. */
 export async function findNearestStops(
   lat: number,
   lon: number,
@@ -395,6 +396,7 @@ export async function findNearestStops(
     lon + lonRange,
   );
   return rows
+    .filter((r) => !isFareBoundary(r.name))
     .map((r) => ({ ...r, distanceM: Math.round(distanceMeters(lat, lon, r.lat, r.lon)) }))
     .filter((r) => r.distanceM <= maxDistanceM)
     .sort((a, b) => a.distanceM - b.distanceM)
@@ -408,7 +410,7 @@ export interface StopSearchHit {
   lat: number;
   lon: number;
   score: number;
-  /** liczba obsłużonych odjazdów — przystanki z większą wagą wyżej */
+  /** liczba obsłużonych odjazdów - przystanki z większą wagą wyżej */
   weight: number;
 }
 
@@ -444,6 +446,7 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
   const scored: StopSearchHit[] = [];
   const seen = new Set<string>();
   const uniqueRows = rows.filter((r) => {
+    if (isFareBoundary(r.name)) return false;
     if (seen.has(r.name)) return false;
     seen.add(r.name);
     return true;
@@ -542,7 +545,7 @@ export async function poiCount(): Promise<number> {
 
 /**
  * Kandydaci POI po tanim LIKE (ranking robi JS: fuzzy + kara za dystans).
- * Samo zawężenie — szybko nawet na tysiącach wierszy.
+ * Samo zawężenie - szybko nawet na tysiącach wierszy.
  */
 export async function findPoiCandidates(query: string, limit = 60): Promise<PoiRow[]> {
   const q = query.trim().toLowerCase();

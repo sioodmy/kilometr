@@ -2,17 +2,6 @@
   width: min(100% - 2rem, 1040px);
   margin: 0 auto;
   padding: 2rem 0 4rem;
-  --journey-primary: #006a60;
-  --journey-on-primary: #fff;
-  --journey-container: #9ef2df;
-  --journey-on-container: #00382f;
-  --journey-card: #edf2ef;
-  --journey-text: #19221f;
-  --journey-muted: #52635d;
-  --journey-rail: #65766f;
-  color: var(--journey-text);
-}
-:root[data-theme='dark'] .shared-journey {
   --journey-primary: #5cdbbe;
   --journey-on-primary: #003831;
   --journey-container: #005047;
@@ -21,6 +10,7 @@
   --journey-text: #e0e3e1;
   --journey-muted: #bfc9c5;
   --journey-rail: #899390;
+  color: var(--journey-text);
 }
 .journey-heading {
   margin-bottom: 1.5rem;

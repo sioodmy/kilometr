@@ -1,4 +1,4 @@
-// View-model mapy — to, co WebView dostaje do narysowania. Świadomie oddzielone
+// View-model mapy - to, co WebView dostaje do narysowania. Świadomie oddzielone
 // od domenowego `Connection`: mapa potrzebuje kolorów, ról przystanków i flag
 // „geometria jeszcze się dociąga”, a nie całej reszty planera.
 

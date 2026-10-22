@@ -1,6 +1,6 @@
 // Synchronizacja gotowej bazy z serwera Kilometr (Cloudflare R2 + Worker).
 // Telefon pobiera prebuilt SQLite (~80 MB, strumień na dysk) zamiast
-// parsować ZIP-a GTFS w pamięci — po stronie RAM-u nie dzieje się nic
+// parsować ZIP-a GTFS w pamięci - po stronie RAM-u nie dzieje się nic
 // cięższego niż zwykły download (koniec z OOM przy unzip + base64).
 //
 // Kolejność jest bezpieczna dla działającej aplikacji:
@@ -68,7 +68,7 @@ function dbDownloadUrl(manifest: TimetableManifest): string {
   return `${TIMETABLE.baseUrl}${path}`;
 }
 
-/** Manifest to ~500 B — tanie pytanie, które chroni limity (brak pobrań bez zmian). */
+/** Manifest to ~500 B - tanie pytanie, które chroni limity (brak pobrań bez zmian). */
 export async function fetchManifest(cityId?: CityId | string): Promise<TimetableManifest> {
   const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
   try {
@@ -191,7 +191,7 @@ export async function downloadPrebuiltDb(
     }
   }
 
-  // Download strumieniem na dysk (wznawialny) — RAM-u prawie nie rusza.
+  // Download strumieniem na dysk (wznawialny) - RAM-u prawie nie rusza.
   const task = FileSystem.createDownloadResumable(
     dbDownloadUrl(manifest),
     destDownload,
@@ -203,7 +203,7 @@ export async function downloadPrebuiltDb(
   });
   if (!result?.uri) throw new GtfsDownloadError(T.noFile, 'download bez uri', T.hintTouch);
 
-  // Rozmiar pobranego pliku musi się zgadzać co do bajta — inaczej nie ma podmiany.
+  // Rozmiar pobranego pliku musi się zgadzać co do bajta - inaczej nie ma podmiany.
   const info = await FileSystem.getInfoAsync(destDownload);
   const size = info.exists && 'size' in info ? (info.size as number) : -1;
   if (size !== manifest.db.sizeBytes) {
@@ -285,7 +285,7 @@ export async function downloadPrebuiltDb(
     endGtfsSwap();
   }
 
-  // Reopen (initDb robi CREATE IF NOT EXISTS — na gotowej bazie to no-op)
+  // Reopen (initDb robi CREATE IF NOT EXISTS - na gotowej bazie to no-op)
   // i zapisz mety wersji, żeby manifest nie ściągał w kółko tego samego.
   await getGtfsDb();
   await setMeta('timetable_version', manifest.version);
@@ -299,6 +299,6 @@ export async function downloadPrebuiltDb(
       kml: manifest.sources.kml?.version ?? null,
     }));
   } catch {
-    // meta opisowa — nie blokuje gotowości
+    // meta opisowa - nie blokuje gotowości
   }
 }

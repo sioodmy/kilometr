@@ -21,7 +21,7 @@ interface PoiRow {
   district: string | null;
 }
 
-// Wersja formatu adresu — bump wymusza pełny refresh (stare wiersze miały
+// Wersja formatu adresu - bump wymusza pełny refresh (stare wiersze miały
 // samo "• Wrocław" i brak kolumn street/district).
 const ADDR_VERSION = '2';
 
@@ -40,11 +40,11 @@ function ensureAddrColumns() {
       db.exec('ALTER TABLE pois ADD COLUMN district TEXT');
     }
   } catch {
-    // tabela jeszcze nie istnieje — utworzy ją CREATE TABLE
+    // tabela jeszcze nie istnieje - utworzy ją CREATE TABLE
   }
 }
 
-/** Buduje linię adresu: "Label • Osiedle, Ulica Nr" (bez miasta — tylko Wrocław). */
+/** Buduje linię adresu: "Label • Osiedle, Ulica Nr" (bez miasta - tylko Wrocław). */
 function buildAddress(
   label: string,
   tags: Record<string, string>
@@ -165,7 +165,7 @@ function isStale(): boolean {
   return days >= config.overpass.refreshDays;
 }
 
-/** Pobiera POI z Overpass i podmienia tabelę. Best-effort — błąd zostawia stare dane. */
+/** Pobiera POI z Overpass i podmienia tabelę. Best-effort - błąd zostawia stare dane. */
 async function refreshPoiIndex(): Promise<number> {
   if (refreshInFlight) return poiCount();
   refreshInFlight = true;
@@ -253,7 +253,7 @@ export function ensurePoiIndex() {
       refreshPoiIndex().catch(() => {});
     }
   } catch {
-    // indeks opcjonalny — search działa bez niego
+    // indeks opcjonalny - search działa bez niego
   }
 }
 
@@ -269,7 +269,7 @@ function loadAll(): PoiRow[] {
 
 /**
  * Szukanie po lokalnym indeksie. Scoring: dopasowanie nazwy (prefix > wyraz >
- * zawiera) minus kara za dystans — najbliższe wygrywają jak w Jakdojade.
+ * zawiera) minus kara za dystans - najbliższe wygrywają jak w Jakdojade.
  */
 export function searchPois(
   query: string,

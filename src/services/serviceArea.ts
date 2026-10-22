@@ -1,7 +1,7 @@
 // Strefa obsługi: aktywne miasto (+ otulina radiusM od centrum).
 //
 // Poza nią pokazujemy kartę „Nieobsługiwane miasto" i blokujemy start
-// z GPS — użytkownik musi wybrać punkt startowy ręcznie, bo planer
+// z GPS - użytkownik musi wybrać punkt startowy ręcznie, bo planer
 // liczy trasy wyłącznie po rozkładzie aktywnego miasta.
 
 import { getCity, suggestCityForCoords as suggest } from '../cities';

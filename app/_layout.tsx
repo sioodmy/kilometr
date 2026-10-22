@@ -1,15 +1,16 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { LogBox, Platform } from 'react-native';
-import { useEffect, useState } from 'react';
-import { Stack, router, usePathname } from 'expo-router';
+import { Fragment, useEffect, useState } from 'react';
+import { DarkTheme, ThemeProvider, Stack, router, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
-import { initDynamicColors } from '../src/theme/dynamic';
+import { TransferProtectionProvider } from '../src/components/TransferProtectionProvider';
+import { initTheme, useThemeSetting } from '../src/theme/personalization';
 import { initLocale } from '../src/i18n';
 import { loadActiveCity } from '../src/services/cityStore';
 import { loadSettings } from '../src/services/settings';
@@ -44,15 +45,27 @@ export default function RootLayout() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
+  const themeSetting = useThemeSetting();
+  const navigationTheme = {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      primary: scheme.primary,
+      background: scheme.surface,
+      card: scheme.surface,
+      text: scheme.onSurface,
+      border: scheme.outlineVariant,
+      notification: scheme.error,
+    },
+  };
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu
   useEffect(() => {
     let isMounted = true;
 
     const initApp = async () => {
-      // Paleta musi być gotowa przed pierwszym renderem ekranów.
-      await initDynamicColors();
       await migrateFromSqliteKv();
+      await initTheme();
       // Miasto przed bazą: getGtfsDb() otwiera plik per-miasto po sync id.
       await loadActiveCity();
       await loadSettings();
@@ -103,9 +116,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!ready || needsOnboarding) return;
-    void getLastTripResponse().then(navigateFromNotification).catch((err) => {
-      console.warn('[RootLayout] notification response:', err);
-    });
+    void getLastTripResponse()
+      .then(navigateFromNotification)
+      .catch((err) => {
+        console.warn('[RootLayout] notification response:', err);
+      });
     return addTripResponseListener(navigateFromNotification);
   }, [ready, needsOnboarding]);
 
@@ -115,55 +130,68 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: scheme.surface }}>
       <SafeAreaProvider>
         <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: scheme.surface },
-            // Jednolite, szybkie przejścia między ekranami (iOS + Android).
-            // animationMatchesGesture synchronizuje animację z gestem wstecz.
-            animation: reduceMotion ? 'none' : Platform.OS === 'android' ? 'fade_from_bottom' : 'slide_from_right',
-            animationDuration: 300,
-            animationMatchesGesture: true,
-            gestureEnabled: true,
-            gestureDirection: 'horizontal',
-            fullScreenGestureEnabled: true,
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-          <Stack.Screen name="routes" options={{ headerShown: false }} />
-          {/* Mapa ma własny gest przesuwania — natywny swipe-back zjadałby
-              przeciąganie widoku i mapa skakałaby przy powrocie. */}
-          <Stack.Screen name="map" options={{ gestureEnabled: false }} />
-          <Stack.Screen
-            name="news"
-            options={{
-              presentation: 'modal',
-              animation: reduceMotion ? 'none' : 'slide_from_bottom',
-              animationDuration: 300,
-              animationMatchesGesture: true,
-              gestureDirection: 'vertical',
-            }}
-          />
-          <Stack.Screen
-            name="article"
-            options={{
-              presentation: 'card',
-              animation: reduceMotion ? 'none' : Platform.OS === 'android' ? 'fade_from_bottom' : 'slide_from_right',
-              animationDuration: 300,
-            }}
-          />
-          <Stack.Screen
-            name="settings"
-            options={{
-              presentation: 'modal',
-              animation: reduceMotion ? 'none' : 'slide_from_bottom',
-              animationDuration: 300,
-              animationMatchesGesture: true,
-              gestureDirection: 'vertical',
-            }}
-          />
-        </Stack>
+        <ThemeProvider value={navigationTheme}>
+          <TransferProtectionProvider key={themeSetting}>
+            <Stack
+              screenLayout={({ children }) => <Fragment key={themeSetting}>{children}</Fragment>}
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: scheme.surface },
+                // Jednolite, szybkie przejścia między ekranami (iOS + Android).
+                // animationMatchesGesture synchronizuje animację z gestem wstecz.
+                animation: reduceMotion
+                  ? 'none'
+                  : Platform.OS === 'android'
+                    ? 'fade_from_bottom'
+                    : 'slide_from_right',
+                animationDuration: 300,
+                animationMatchesGesture: true,
+                gestureEnabled: true,
+                gestureDirection: 'horizontal',
+                fullScreenGestureEnabled: true,
+              }}
+            >
+              <Stack.Screen name="index" />
+              <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+              <Stack.Screen name="routes" options={{ headerShown: false }} />
+              {/* Mapa ma własny gest przesuwania - natywny swipe-back zjadałby
+                przeciąganie widoku i mapa skakałaby przy powrocie. */}
+              <Stack.Screen name="map" options={{ gestureEnabled: false }} />
+              <Stack.Screen
+                name="news"
+                options={{
+                  presentation: 'modal',
+                  animation: reduceMotion ? 'none' : 'slide_from_bottom',
+                  animationDuration: 300,
+                  animationMatchesGesture: true,
+                  gestureDirection: 'vertical',
+                }}
+              />
+              <Stack.Screen
+                name="article"
+                options={{
+                  presentation: 'card',
+                  animation: reduceMotion
+                    ? 'none'
+                    : Platform.OS === 'android'
+                      ? 'fade_from_bottom'
+                      : 'slide_from_right',
+                  animationDuration: 300,
+                }}
+              />
+              <Stack.Screen
+                name="settings"
+                options={{
+                  presentation: 'modal',
+                  animation: reduceMotion ? 'none' : 'slide_from_bottom',
+                  animationDuration: 300,
+                  animationMatchesGesture: true,
+                  gestureDirection: 'vertical',
+                }}
+              />
+            </Stack>
+          </TransferProtectionProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

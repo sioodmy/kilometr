@@ -1,6 +1,6 @@
 ---
 name: antislop-copywriting
-description: "Copy and text skill for antislop. Use when writing or editing prose: headlines, tone, CTAs, and anti-AI-writing patterns. Load with the core."
+description: "Use when writing or editing any prose people will read: headlines, CTAs, tone, landing text, docs, PR descriptions, i18n strings. Load with the core."
 allowed-tools: Read Write Edit Glob Grep
 ---
 # antislop-copywriting
@@ -231,15 +231,15 @@ allowed-tools: Read Write Edit Glob Grep
 
 ### Em Dashes
 
-- **The pattern:** the em dash character (`—`) used as an aside or connector: *"institutions — not the people — continue"*.
+- **The pattern:** the em dash character (U+2014) used as an aside or connector: *"institutions [em dash] not the people [em dash] continue"*.
 - **Why it reads as AI:** it is one of the most reliable AI tells, and the core bans it outright.
-- **Rule:** R-02 forbids the em dash in any text. Replace each one, in rough order of preference: a period (start a new sentence), a comma (a tight aside), a colon (introduce an explanation), parentheses (a true aside), or restructure the sentence. Also catch spaced em dashes (` — `) and double hyphens (` -- `) used the same way.
+- **Rule:** R-02 forbids the em dash in any text. Replace each one, in rough order of preference: a period (start a new sentence), a comma (a tight aside), a colon (introduce an explanation), parentheses (a true aside), or restructure the sentence. Also catch spaced em dashes (` - `) and double hyphens (` -- `) used the same way.
 - **Before:**
-  > The policy — announced without warning — affects thousands of workers.
+  > The policy - announced without warning - affects thousands of workers.
 - **After:**
   > The policy, announced without warning, affects thousands of workers.
 - **Before:**
-  > You don't say "Netherlands, Europe" as an address — yet this mislabeling continues.
+  > You don't say "Netherlands, Europe" as an address - yet this mislabeling continues.
 - **After:**
   > You don't say "Netherlands, Europe" as an address, yet this mislabeling continues.
 - **False positive:** many editors and journalists use em dashes deliberately. On its own an em dash is not proof of AI. It counts when it sits in a cluster with other tells (R-02 still bans it in output, but do not rewrite the user's deliberate style without saying so).
