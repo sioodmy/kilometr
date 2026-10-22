@@ -73,10 +73,11 @@ function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
 }
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
-// Rail ma KRESKĘ CIĄGŁĄ: kropka + łącznik flex:1 rozciągany na wysokość wiersza.
-// Dzięki temu linia jest rzeczywiście połączona przez wszystkie kropki.
+// Rail rysuje linię przez całą wysokość wiersza i zachodzi 1 px na sąsiednie
+// wiersze, więc między kropkami i na granicy stref nie ma żadnych szwów.
 const StopRow = memo(function StopRow({
   stop,
+  isFirst,
   isLast,
   index,
   vehicleMode,
@@ -89,6 +90,7 @@ const StopRow = memo(function StopRow({
   segmentStart,
 }: {
   stop: LegStop;
+  isFirst: boolean;
   isLast: boolean;
   index: number;
   segmentStart: number;
@@ -107,9 +109,33 @@ const StopRow = memo(function StopRow({
   // tak samo jak te, które pojazd już minął.
   const passed = (vehicleGap != null && index <= vehicleGap) || index < segmentStart;
   const markerHere = vehicleGap === index && !isLast;
+  // Linia biegnie przez cały wiersz i zachodzi 1 px na sąsiednie wiersze.
+  // Osobny łącznik pod kropką zostawiał cienką szwę między wierszami.
+  const lineCenter = boundary ? 20 : 10.5;
+  const showLine = !(isFirst && isLast);
+  const lineTop = isFirst ? lineCenter : -1;
+  const lineStyle = isLast
+    ? { top: lineTop, height: lineCenter + 1 - lineTop }
+    : { top: lineTop, bottom: -1 };
   return (
     <View style={s.stopRow}>
       <View style={s.stopRail}>
+        {showLine && (
+          <View
+            style={[
+              s.stopRailLine,
+              lineStyle,
+              {
+                backgroundColor:
+                  vehicleGap != null && index < vehicleGap
+                    ? scheme.outline
+                    : connectorAccent
+                      ? accent
+                      : scheme.outlineVariant,
+              },
+            ]}
+          />
+        )}
         <View
           style={[
             boundary ? s.boundaryMark : s.dot,
@@ -129,21 +155,6 @@ const StopRow = memo(function StopRow({
           >
             <VehicleGlyph mode={vehicleMode} />
           </View>
-        )}
-        {!isLast && (
-          <View
-            style={[
-              boundary ? s.boundaryConnector : s.connector,
-              {
-                backgroundColor:
-                  vehicleGap != null && index < vehicleGap
-                    ? scheme.outline
-                    : connectorAccent
-                      ? accent
-                      : scheme.outlineVariant,
-              },
-            ]}
-          />
         )}
       </View>
       {boundary ? (
@@ -335,6 +346,7 @@ function LegStopsList({
           <StopRow
             key={`${stop.stopId}-${stop.seq}`}
             stop={stop}
+            isFirst={i === first && !vehicleAbove}
             isLast={i === segment.end}
             index={i}
             segmentStart={segment.start}
@@ -551,8 +563,8 @@ const s = StyleSheet.create({
   stopsCollapsed: { height: 0, opacity: 0, overflow: 'hidden', marginTop: 0 },
   stopRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
   stopRail: { width: 22, alignItems: 'center', position: 'relative' },
+  stopRailLine: { position: 'absolute', left: 9.5, width: 3 },
   boundaryMark: { width: 19, height: 2, marginTop: 19, zIndex: 1 },
-  boundaryConnector: { position: 'absolute', top: 0, bottom: 0, width: 3 },
   boundaryBody: {
     flex: 1,
     flexDirection: 'row',
