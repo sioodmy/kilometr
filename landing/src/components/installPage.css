@@ -1,0 +1,117 @@
+@layer base {
+  .platform-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .platform-links .button {
+    min-width: 130px;
+    border-radius: 12px;
+  }
+  .platform-links svg {
+    flex-shrink: 0;
+  }
+  .button-secondary {
+    color: var(--text);
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--subtle);
+  }
+  .button-secondary:hover {
+    background: var(--surface-raised);
+  }
+}
+
+@layer layout {
+  .install-page {
+    max-width: 800px;
+    padding-block: clamp(24px, 5vw, 64px) clamp(64px, 8vw, 110px);
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+  .install-platforms {
+    margin-block: 32px;
+  }
+  .install-page h1 {
+    max-width: 16ch;
+    font-size: clamp(2.6rem, 6vw, 4.5rem);
+    line-height: 1.07;
+    letter-spacing: -0.055em;
+    font-weight: 650;
+  }
+  .install-page p {
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .install-intro {
+    margin-top: 20px;
+    max-width: 57ch;
+    font-size: clamp(1.0625rem, 2vw, 1.1875rem);
+  }
+  .install-note {
+    margin-top: 32px;
+    padding: clamp(20px, 3vw, 28px);
+    border-radius: 16px;
+    background: var(--surface-raised);
+  }
+  .install-page h2 {
+    font-size: clamp(1.125rem, 2.5vw, 1.375rem);
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+  .install-note p,
+  .install-help p {
+    margin-top: 8px;
+  }
+  .install-steps {
+    padding: 0;
+    margin: 16px 0 0;
+    list-style: none;
+  }
+  .install-steps li {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 16px;
+    padding-block: 28px;
+    border-bottom: 1px solid var(--line);
+  }
+  .install-step-number {
+    font-size: 1.5rem;
+    line-height: 1.2;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .install-steps p {
+    margin-top: 10px;
+  }
+  .install-steps .button {
+    margin-top: 20px;
+    border-radius: 12px;
+    text-align: center;
+  }
+  .install-steps .button svg {
+    flex-shrink: 0;
+  }
+  .install-help {
+    margin-top: 32px;
+  }
+}
+
+@layer responsive {
+  @media (min-width: 600px) {
+    .install-steps li {
+      grid-template-columns: 48px minmax(0, 1fr);
+      gap: 24px;
+      padding-block: 32px;
+    }
+    .install-step-number {
+      font-size: 2rem;
+    }
+  }
+  @media (forced-colors: active) {
+    .platform-links .button,
+    .install-steps .button {
+      border: 1px solid ButtonText;
+    }
+  }
+}

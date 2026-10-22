@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { ArrowRight } from 'lucide-react';
 import type { CityId } from '../../../src/cities';
 import { useStrings } from '../i18n';
-import { PLAY_URL } from '../data';
+import { PlatformLinks } from './PlatformLinks';
 import { Phone } from './Phone';
 
 const cities = [
@@ -96,10 +96,7 @@ export function Hero() {
         </h1>
         <p className="hero-body">{s.hero.body}</p>
         <div className="hero-actions">
-          <a className="button button-primary" href={PLAY_URL}>
-            <span className="play-symbol" aria-hidden="true" />
-            {s.hero.play}
-          </a>
+          <PlatformLinks />
           <a className="text-link" href="#mozliwosci">
             {s.hero.secondary}
             <ArrowRight size={16} aria-hidden="true" />

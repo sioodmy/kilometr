@@ -11,8 +11,10 @@ export default defineConfig({
         html
           .replaceAll('%PAGE_TITLE%', pl.meta.title)
           .replaceAll('%PAGE_DESCRIPTION%', pl.meta.description)
-          .replaceAll('%PLAY_LABEL%', pl.hero.play)
-          .replaceAll('%NO_SCRIPT%', pl.meta.description),
+          .replaceAll('%BETA_LABEL%', pl.beta.testing.action)
+          .replaceAll('%GROUP_LABEL%', pl.beta.group.action)
+          .replaceAll('%BETA_INTRO%', pl.beta.intro)
+          .replaceAll('%BETA_ACCOUNT%', pl.beta.noteBody),
     },
   ],
   base: './',

@@ -6,19 +6,11 @@ import { JourneyDemo } from './components/JourneyDemo';
 import { TransitBackdrop } from './components/TransitBackdrop';
 import { PromiseSection } from './components/Promise';
 import { InformationPage } from './components/InformationPage';
-import { GITHUB_URL, KOFI_URL, PLAY_URL } from './data';
+import { InstallPage } from './components/InstallPage';
+import { PlatformLinks } from './components/PlatformLinks';
+import { GITHUB_URL, KOFI_URL } from './data';
 
 const SharedJourney = lazy(() => import('./components/SharedJourney'));
-
-function PlayLink({ className = '' }: { className?: string }) {
-  const s = useStrings();
-  return (
-    <a className={`button button-primary ${className}`} href={PLAY_URL}>
-      <span className="play-symbol" aria-hidden="true" />
-      <span>{s.hero.play}</span>
-    </a>
-  );
-}
 
 function DisplaySettings() {
   const s = useStrings();
@@ -58,8 +50,8 @@ function Landing() {
         <h2 id="closing-title">{s.closing.title}</h2>
         <p className="section-body">{s.closing.body}</p>
         <div className="closing-actions">
-          <PlayLink />
-          <a className="button button-support" href={KOFI_URL}>
+          <PlatformLinks />
+          <a className="text-link closing-support" href={KOFI_URL}>
             <Coffee size={18} aria-hidden="true" />
             <span>{s.closing.support}</span>
           </a>
@@ -74,7 +66,8 @@ export default function App() {
   const shareStrings = useShareStrings();
   const [hash, setHash] = useState(window.location.hash);
   const shared = hash.startsWith('#trip');
-  const page = hash === '#polityka' ? 'privacy' : null;
+  const page =
+    hash === '#polityka' ? 'privacy' : hash === '#beta' ? 'beta' : hash === '#ios' ? 'ios' : null;
   useEffect(() => {
     const onHash = () => setHash(window.location.hash);
     window.addEventListener('hashchange', onHash);
@@ -91,8 +84,10 @@ export default function App() {
       ?.setAttribute('content', page ? s[page].intro : s.meta.description);
   }, [page, s, shared, shareStrings]);
   useEffect(() => {
-    if (page || shared) window.scrollTo(0, 0);
-    else if (hash)
+    if (page || shared || !hash || hash === '#top') {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      if (page || shared) document.getElementById('main')?.focus({ preventScroll: true });
+    } else if (hash)
       requestAnimationFrame(() => document.getElementById(hash.slice(1))?.scrollIntoView());
   }, [page, hash, shared]);
   useEffect(() => {
@@ -122,7 +117,16 @@ export default function App() {
 
   return (
     <>
-      <a className="skip-link" href="#main">
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(event) => {
+          event.preventDefault();
+          const main = document.getElementById('main');
+          main?.focus({ preventScroll: true });
+          main?.scrollIntoView();
+        }}
+      >
         {s.skip}
       </a>
       <div id="top" />
@@ -136,8 +140,10 @@ export default function App() {
         >
           <SharedJourney hash={hash} />
         </Suspense>
-      ) : page ? (
+      ) : page === 'privacy' ? (
         <InformationPage />
+      ) : page ? (
+        <InstallPage page={page} />
       ) : (
         <Landing />
       )}

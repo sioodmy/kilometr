@@ -1,6 +1,7 @@
 @layer reset, base, layout, product, responsive;
 @import './components/journeyDemo.css';
 @import './components/landingSections.css';
+@import './components/installPage.css';
 
 @layer reset {
   *,
@@ -176,13 +177,6 @@
   }
   .button:active {
     transform: scale(0.98);
-  }
-  .play-symbol {
-    width: 15px;
-    height: 18px;
-    flex-shrink: 0;
-    background: currentColor;
-    clip-path: polygon(0 0, 100% 50%, 0 100%);
   }
   .text-link {
     display: inline-flex;
@@ -1403,9 +1397,6 @@
     .city-list button[aria-pressed='true'],
     .feature-tabs button[aria-selected='true'] {
       outline: 2px solid Highlight;
-    }
-    .play-symbol {
-      background: LinkText;
     }
   }
 }
