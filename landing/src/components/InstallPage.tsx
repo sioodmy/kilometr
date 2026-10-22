@@ -7,7 +7,6 @@ import {
   SIDELOADLY_URL,
   OBTAINIUM_URL,
   KOFI_URL,
-  APPLE_PROGRAM_URL,
 } from '../data';
 import { PlatformLinks } from './PlatformLinks';
 
@@ -96,10 +95,6 @@ export function InstallPage({ page }: { page: 'android' | 'ios' }) {
           <div className="install-options">
             <a className="button button-primary" href={KOFI_URL}>
               {s.closing.support}
-            </a>
-            <a className="text-link" href={APPLE_PROGRAM_URL}>
-              {s.ios.appStore.feeLink}
-              <ArrowUpRight size={17} aria-hidden="true" />
             </a>
           </div>
         </section>

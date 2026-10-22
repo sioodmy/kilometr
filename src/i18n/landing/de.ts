@@ -48,7 +48,7 @@ export const de: Strings = {
       'Prüfe, ob die Gruppe, die Testseite und der Play Store dasselbe Google-Konto verwenden. Wenn du der Gruppe gerade beigetreten bist, warte kurz und lade die Testseite neu. Dies ist eine Testversion, in der Fehler auftreten können.',
     alternative: {
       title: 'Du boykottierst Google? Lade direkt von der Quelle herunter',
-      body: 'Obtainium lädt Kilometr und Updates direkt von unserem GitHub herunter. Ohne Google-Konto und ohne Beta-Anmeldung. Der Button öffnet die Konfiguration in Obtainium oder hilft dir bei der Installation.',
+      body: 'Obtainium lädt Kilometr und Updates direkt von unserem GitHub herunter. Der Button öffnet die Konfiguration in Obtainium oder hilft dir bei der Installation.',
       obtainium: 'Zu Obtainium hinzufügen',
       fdroid: 'F-Droid',
       soon: 'Demnächst',
@@ -85,14 +85,14 @@ export const de: Strings = {
       'Mit einem kostenlosen Apple-Konto läuft die Signatur nach 7 Tagen ab. Erneuere sie über Sideloadly, bevor sich die App nicht mehr öffnen lässt. Das Tool unterstützt die automatische Erneuerung, wenn sich Computer und Telefon verbinden können. Verwende bei Updates dasselbe Apple-Konto und dieselbe App-ID, um deine Daten zu behalten.',
     appStore: {
       title: 'Warum gibt es Kilometr nicht im App Store?',
-      body: 'Apple verlangt 99 USD pro Jahr für ein Entwicklerkonto, auch für eine kostenlose App. Das sind verdammt schlechte Bedingungen für kleine Open-Source-Projekte. Dafür haben wir kein Budget. Deshalb bieten wir vorerst eine IPA-Datei zur eigenen Installation an.',
+      body: 'Apple verlangt 99 USD pro Jahr für ein Entwicklerkonto, auch für eine kostenlose App. Diese Regeln sind ein Skandal für kleine Open-Source-Projekte: Sie bevorzugen Konzerne gegenüber unabhängigen Entwicklern. Dafür haben wir kein Budget. Deshalb bieten wir vorerst eine IPA-Datei zur eigenen Installation an.',
       supportBody:
         'Möchtest du uns helfen, diese Gebühr zu decken? Du kannst das Projekt unterstützen. Jede Spende hilft uns, Kilometr weiterzuentwickeln und die Veröffentlichung zu finanzieren.',
-      feeLink: 'Gebühr bei Apple nachlesen',
     },
   },
   homePreview: {
-    screenLabel: 'Startseite der App',
+    screenLabel: 'Kilometr-Startseite auf einem iPhone',
+    statusTime: '21:36',
     places: previewHome,
     title: 'Wohin geht’s?',
     savedTitle: 'Gespeicherte Orte',

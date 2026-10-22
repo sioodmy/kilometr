@@ -47,7 +47,7 @@ export const pl = {
       'Sprawdź, czy grupa, strona testów i Sklep Play używają tego samego konta Google. Jeśli dopiero dołączasz do grupy, odczekaj chwilę i odśwież stronę testów. To wersja testowa, więc możesz trafić na błędy.',
     alternative: {
       title: 'Bojkotujesz Google? Pobierz prosto ze źródła',
-      body: 'Obtainium pobiera Kilometr i jego aktualizacje bezpośrednio z naszego GitHuba. Bez konta Google i bez zapisywania się do bety. Przycisk otworzy konfigurację w Obtainium lub pomoże Ci je zainstalować.',
+      body: 'Obtainium pobiera Kilometr i jego aktualizacje bezpośrednio z naszego GitHuba. Przycisk otworzy konfigurację w Obtainium lub pomoże Ci je zainstalować.',
       obtainium: 'Dodaj do Obtainium',
       fdroid: 'F-Droid',
       soon: 'Wkrótce',
@@ -84,14 +84,14 @@ export const pl = {
       'Przy bezpłatnym koncie Apple podpis wygasa po 7 dniach. Odnawiaj go przez Sideloadly, zanim aplikacja przestanie się otwierać. Narzędzie obsługuje automatyczne odnawianie, gdy komputer i telefon mogą się połączyć. Przy aktualizacjach używaj tego samego konta Apple i identyfikatora aplikacji, aby zachować dane.',
     appStore: {
       title: 'Dlaczego Kilometr nie ma w App Store?',
-      body: 'Apple żąda 99 USD rocznie za konto deweloperskie, nawet jeśli aplikacja jest darmowa. To cholernie słabe zasady dla małych projektów open source. Nie mamy na to budżetu, więc na razie udostępniamy plik IPA do samodzielnej instalacji.',
+      body: 'Apple żąda 99 USD rocznie za konto deweloperskie, nawet jeśli aplikacja jest darmowa. To skandaliczne zasady dla małych projektów open source, które faworyzują korporacje ponad niezależnych twórców. Nie mamy na to budżetu, więc na razie udostępniamy plik IPA do samodzielnej instalacji.',
       supportBody:
         'Chcesz pomóc nam pokryć tę opłatę? Możesz wesprzeć projekt. Każda wpłata pomaga nam rozwijać Kilometr i finansować jego publikację.',
-      feeLink: 'Sprawdź opłatę u Apple',
     },
   },
   homePreview: {
-    screenLabel: 'Ekran główny aplikacji',
+    screenLabel: 'Ekran główny Kilometr na iPhonie',
+    statusTime: '21:36',
     places: previewHome,
     title: 'Gdzie jedziemy?',
     savedTitle: 'Zapisane miejsca',
