@@ -19,7 +19,6 @@ export const de: Strings = {
     accent: 'quelloffener',
     titleEnd: 'Reiseplaner',
     body: 'Plane deine Route, prüfe Abfahrten und fahr los. Nahverkehr in ganz Polen, auch offline. Ohne Werbung und ohne Konto.',
-    secondary: 'So funktioniert’s',
   },
   install: {
     android: 'Android',
@@ -27,8 +26,8 @@ export const de: Strings = {
     platform: 'Betriebssystem des Telefons wählen',
     newTab: '(öffnet einen neuen Tab)',
   },
-  beta: {
-    title: 'An der Beta teilnehmen',
+  android: {
+    title: 'An der Play-Store-Beta teilnehmen',
     intro:
       'Kilometr befindet sich in der Testphase. Um die Android-App herunterzuladen, tritt zuerst der Testgruppe bei und melde dich dann bei Google Play für die Beta an.',
     noteTitle: 'Ein Google-Konto für beide Schritte',
@@ -47,6 +46,14 @@ export const de: Strings = {
     helpTitle: 'Kein Zugriff auf den Test?',
     helpBody:
       'Prüfe, ob die Gruppe, die Testseite und der Play Store dasselbe Google-Konto verwenden. Wenn du der Gruppe gerade beigetreten bist, warte kurz und lade die Testseite neu. Dies ist eine Testversion, in der Fehler auftreten können.',
+    alternative: {
+      title: 'Du boykottierst Google? Lade direkt von der Quelle herunter',
+      body: 'Obtainium lädt Kilometr und Updates direkt von unserem GitHub herunter. Ohne Google-Konto und ohne Beta-Anmeldung. Der Button öffnet die Konfiguration in Obtainium oder hilft dir bei der Installation.',
+      obtainium: 'Zu Obtainium hinzufügen',
+      fdroid: 'F-Droid',
+      soon: 'Demnächst',
+      json: 'Obtainium-Konfiguration herunterladen (JSON)',
+    },
   },
   ios: {
     title: 'Auf iOS installieren',
@@ -76,6 +83,13 @@ export const de: Strings = {
     helpTitle: 'Signatur rechtzeitig erneuern',
     helpBody:
       'Mit einem kostenlosen Apple-Konto läuft die Signatur nach 7 Tagen ab. Erneuere sie über Sideloadly, bevor sich die App nicht mehr öffnen lässt. Das Tool unterstützt die automatische Erneuerung, wenn sich Computer und Telefon verbinden können. Verwende bei Updates dasselbe Apple-Konto und dieselbe App-ID, um deine Daten zu behalten.',
+    appStore: {
+      title: 'Warum gibt es Kilometr nicht im App Store?',
+      body: 'Apple verlangt 99 USD pro Jahr für ein Entwicklerkonto, auch für eine kostenlose App. Das sind verdammt schlechte Bedingungen für kleine Open-Source-Projekte. Dafür haben wir kein Budget. Deshalb bieten wir vorerst eine IPA-Datei zur eigenen Installation an.',
+      supportBody:
+        'Möchtest du uns helfen, diese Gebühr zu decken? Du kannst das Projekt unterstützen. Jede Spende hilft uns, Kilometr weiterzuentwickeln und die Veröffentlichung zu finanzieren.',
+      feeLink: 'Gebühr bei Apple nachlesen',
+    },
   },
   homePreview: {
     screenLabel: 'Startseite der App',

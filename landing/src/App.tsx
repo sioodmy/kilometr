@@ -67,7 +67,13 @@ export default function App() {
   const [hash, setHash] = useState(window.location.hash);
   const shared = hash.startsWith('#trip');
   const page =
-    hash === '#polityka' ? 'privacy' : hash === '#beta' ? 'beta' : hash === '#ios' ? 'ios' : null;
+    hash === '#polityka'
+      ? 'privacy'
+      : hash === '#android' || hash === '#beta'
+        ? 'android'
+        : hash === '#ios'
+          ? 'ios'
+          : null;
   useEffect(() => {
     const onHash = () => setHash(window.location.hash);
     window.addEventListener('hashchange', onHash);

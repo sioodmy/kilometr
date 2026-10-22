@@ -18,7 +18,6 @@ export const pl = {
     accent: 'open-source',
     titleEnd: 'planer podróży',
     body: 'Zaplanuj trasę, sprawdź odjazdy i ruszaj w miasto. Komunikacja miejska w całej Polsce, także offline. Bez reklam i bez konta.',
-    secondary: 'Zobacz, jak działa',
   },
   install: {
     android: 'Android',
@@ -26,8 +25,8 @@ export const pl = {
     platform: 'Wybierz system telefonu',
     newTab: '(otwiera się w nowej karcie)',
   },
-  beta: {
-    title: 'Dołącz do bety',
+  android: {
+    title: 'Dołącz do bety Play Store',
     intro:
       'Kilometr jest w fazie testów. Aby pobrać aplikację na Androida, najpierw dołącz do grupy testerów, a potem zapisz się do bety w Google Play.',
     noteTitle: 'Jedno konto Google w obu krokach',
@@ -46,6 +45,14 @@ export const pl = {
     helpTitle: 'Nie widzisz dostępu do testów?',
     helpBody:
       'Sprawdź, czy grupa, strona testów i Sklep Play używają tego samego konta Google. Jeśli dopiero dołączasz do grupy, odczekaj chwilę i odśwież stronę testów. To wersja testowa, więc możesz trafić na błędy.',
+    alternative: {
+      title: 'Bojkotujesz Google? Pobierz prosto ze źródła',
+      body: 'Obtainium pobiera Kilometr i jego aktualizacje bezpośrednio z naszego GitHuba. Bez konta Google i bez zapisywania się do bety. Przycisk otworzy konfigurację w Obtainium lub pomoże Ci je zainstalować.',
+      obtainium: 'Dodaj do Obtainium',
+      fdroid: 'F-Droid',
+      soon: 'Wkrótce',
+      json: 'Pobierz konfigurację Obtainium (JSON)',
+    },
   },
   ios: {
     title: 'Zainstaluj na iOS',
@@ -75,6 +82,13 @@ export const pl = {
     helpTitle: 'Pamiętaj o odnawianiu podpisu',
     helpBody:
       'Przy bezpłatnym koncie Apple podpis wygasa po 7 dniach. Odnawiaj go przez Sideloadly, zanim aplikacja przestanie się otwierać. Narzędzie obsługuje automatyczne odnawianie, gdy komputer i telefon mogą się połączyć. Przy aktualizacjach używaj tego samego konta Apple i identyfikatora aplikacji, aby zachować dane.',
+    appStore: {
+      title: 'Dlaczego Kilometr nie ma w App Store?',
+      body: 'Apple żąda 99 USD rocznie za konto deweloperskie, nawet jeśli aplikacja jest darmowa. To cholernie słabe zasady dla małych projektów open source. Nie mamy na to budżetu, więc na razie udostępniamy plik IPA do samodzielnej instalacji.',
+      supportBody:
+        'Chcesz pomóc nam pokryć tę opłatę? Możesz wesprzeć projekt. Każda wpłata pomaga nam rozwijać Kilometr i finansować jego publikację.',
+      feeLink: 'Sprawdź opłatę u Apple',
+    },
   },
   homePreview: {
     screenLabel: 'Ekran główny aplikacji',

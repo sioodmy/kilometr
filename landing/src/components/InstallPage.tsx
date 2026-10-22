@@ -1,16 +1,24 @@
 import { ArrowLeft, ArrowUpRight } from 'lucide-react';
 import { useStrings } from '../i18n';
-import { GOOGLE_GROUP_URL, BETA_URL, IPA_URL, SIDELOADLY_URL } from '../data';
+import {
+  GOOGLE_GROUP_URL,
+  BETA_URL,
+  IPA_URL,
+  SIDELOADLY_URL,
+  OBTAINIUM_URL,
+  KOFI_URL,
+  APPLE_PROGRAM_URL,
+} from '../data';
 import { PlatformLinks } from './PlatformLinks';
 
-export function InstallPage({ page }: { page: 'beta' | 'ios' }) {
+export function InstallPage({ page }: { page: 'android' | 'ios' }) {
   const s = useStrings();
   const content = s[page];
   const steps =
-    page === 'beta'
+    page === 'android'
       ? [
-          { ...s.beta.group, href: GOOGLE_GROUP_URL },
-          { ...s.beta.testing, href: BETA_URL },
+          { ...s.android.group, href: GOOGLE_GROUP_URL },
+          { ...s.android.testing, href: BETA_URL },
         ]
       : [
           { ...s.ios.download, href: IPA_URL },
@@ -63,6 +71,39 @@ export function InstallPage({ page }: { page: 'beta' | 'ios' }) {
         <h2 id="install-help-title">{content.helpTitle}</h2>
         <p>{content.helpBody}</p>
       </section>
+      {page === 'android' ? (
+        <section className="install-alternative" aria-labelledby="alternative-title">
+          <h2 id="alternative-title">{s.android.alternative.title}</h2>
+          <p>{s.android.alternative.body}</p>
+          <div className="install-options">
+            <a className="button button-primary" href={OBTAINIUM_URL}>
+              {s.android.alternative.obtainium}
+            </a>
+            <button className="button button-secondary" type="button" disabled>
+              {s.android.alternative.fdroid}
+              <span className="coming-soon">{s.android.alternative.soon}</span>
+            </button>
+          </div>
+          <a className="text-link" href="./obtainium.json" download>
+            {s.android.alternative.json}
+          </a>
+        </section>
+      ) : (
+        <section className="install-alternative" aria-labelledby="alternative-title">
+          <h2 id="alternative-title">{s.ios.appStore.title}</h2>
+          <p>{s.ios.appStore.body}</p>
+          <p>{s.ios.appStore.supportBody}</p>
+          <div className="install-options">
+            <a className="button button-primary" href={KOFI_URL}>
+              {s.closing.support}
+            </a>
+            <a className="text-link" href={APPLE_PROGRAM_URL}>
+              {s.ios.appStore.feeLink}
+              <ArrowUpRight size={17} aria-hidden="true" />
+            </a>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { ArrowRight } from 'lucide-react';
 import type { CityId } from '../../../src/cities';
 import { useStrings } from '../i18n';
 import { PlatformLinks } from './PlatformLinks';
@@ -97,10 +96,6 @@ export function Hero() {
         <p className="hero-body">{s.hero.body}</p>
         <div className="hero-actions">
           <PlatformLinks />
-          <a className="text-link" href="#mozliwosci">
-            {s.hero.secondary}
-            <ArrowRight size={16} aria-hidden="true" />
-          </a>
         </div>
       </div>
       <div className="product-stage">

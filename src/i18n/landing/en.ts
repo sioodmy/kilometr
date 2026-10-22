@@ -19,7 +19,6 @@ export const en: Strings = {
     accent: 'open-source',
     titleEnd: 'journey planner',
     body: 'Plan your route, check departures and head into town. Public transport across Poland, even offline. No ads or account needed.',
-    secondary: 'See how it works',
   },
   install: {
     android: 'Android',
@@ -27,8 +26,8 @@ export const en: Strings = {
     platform: 'Choose your phone system',
     newTab: '(opens in a new tab)',
   },
-  beta: {
-    title: 'Join the beta',
+  android: {
+    title: 'Join the Play Store beta',
     intro:
       'Kilometr is in testing. To download the Android app, first join the tester group, then join the beta on Google Play.',
     noteTitle: 'Use one Google account for both steps',
@@ -47,6 +46,14 @@ export const en: Strings = {
     helpTitle: 'Cannot access the test?',
     helpBody:
       'Check that the group, testing page and Play Store all use the same Google account. If you just joined the group, wait a little and refresh the testing page. This is a test version, so you may encounter bugs.',
+    alternative: {
+      title: 'Boycotting Google? Download straight from the source',
+      body: 'Obtainium downloads Kilometr and its updates directly from our GitHub. No Google account or beta signup needed. The button opens the configuration in Obtainium or helps you install it.',
+      obtainium: 'Add to Obtainium',
+      fdroid: 'F-Droid',
+      soon: 'Coming soon',
+      json: 'Download Obtainium configuration (JSON)',
+    },
   },
   ios: {
     title: 'Install on iOS',
@@ -76,6 +83,13 @@ export const en: Strings = {
     helpTitle: 'Remember to renew the signature',
     helpBody:
       'With a free Apple account, the signature expires after 7 days. Renew it with Sideloadly before the app stops opening. The tool supports automatic renewal when your computer and phone can connect. Use the same Apple account and app identifier for updates to keep your data.',
+    appStore: {
+      title: 'Why is Kilometr not on the App Store?',
+      body: 'Apple charges 99 USD a year for a developer account, even for a free app. That is a damn poor deal for small open-source projects. We cannot afford it, so for now we offer an IPA file you can install yourself.',
+      supportBody:
+        'Want to help us cover this fee? You can support the project. Every donation helps us develop Kilometr and fund its publication.',
+      feeLink: 'Check Apple’s fee',
+    },
   },
   homePreview: {
     screenLabel: 'App home screen',

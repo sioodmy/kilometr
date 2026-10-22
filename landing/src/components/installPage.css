@@ -95,6 +95,51 @@
   .install-help {
     margin-top: 32px;
   }
+  .install-alternative {
+    margin-top: 48px;
+    padding: clamp(20px, 4vw, 32px);
+    background: var(--surface);
+    border-radius: 16px;
+  }
+  .install-alternative h2 {
+    max-width: 30ch;
+    font-size: clamp(1.5rem, 3vw, 2rem);
+  }
+  .install-alternative p {
+    margin-top: 16px;
+  }
+  .install-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 20px;
+    margin-top: 24px;
+  }
+  .install-options .button {
+    border: 0;
+    border-radius: 12px;
+    text-align: center;
+  }
+  .install-options .button:disabled {
+    cursor: default;
+    color: var(--muted);
+    background: transparent;
+    transform: none;
+  }
+  .coming-soon {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--surface-raised);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .install-alternative > .text-link {
+    margin-top: 12px;
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
 }
 
 @layer responsive {
