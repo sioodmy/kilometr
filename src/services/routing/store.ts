@@ -11,6 +11,7 @@ import {
 import { clearRaptorNetCache } from './network';
 import { getCity } from '../../cities';
 import { getActiveCityIdSync } from '../cityStore';
+import { isFareBoundary } from '../../gtfs/fareBoundary';
 import {
   POLINKA_ROUTE_ID,
   polinkaRoute,
@@ -39,15 +40,17 @@ export interface DayIndex {
   patterns: Map<string, any>;
 }
 
-/** Int32 z bloba zapisanego przez builder (małe endian, 4 B na wartość). */
-function int32FromBlob(raw: Uint8Array | ArrayBuffer): Int32Array {
-  const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-  if (bytes.byteOffset % 4 === 0) {
-    return new Int32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 2);
+/** Odczytuje Int32 little-endian z SQLite hex(), bez natywnych buforów JNI. */
+function int32FromHex(hex: string): Int32Array {
+  const values = new Int32Array(hex.length / 8);
+  for (let i = 0; i < values.length; i++) {
+    const offset = i * 8;
+    values[i] = Number.parseInt(hex.slice(offset, offset + 2), 16)
+      | (Number.parseInt(hex.slice(offset + 2, offset + 4), 16) << 8)
+      | (Number.parseInt(hex.slice(offset + 4, offset + 6), 16) << 16)
+      | (Number.parseInt(hex.slice(offset + 6, offset + 8), 16) << 24);
   }
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return new Int32Array(copy.buffer, 0, bytes.byteLength >> 2);
+  return values;
 }
 
 /** Dokłada kursy Polinki do mapy kursów wycinka (własna linia, brak konfliktu id). */
@@ -240,7 +243,7 @@ export class LocalGtfsStore {
     const GRID_DEG_LON = 0.0015;
 
     const grid = new Map<string, any[]>();
-    const stopArray = Array.from(this.stops.values());
+    const stopArray = Array.from(this.stops.values()).filter((stop) => !isFareBoundary(stop.stop_name ?? ''));
 
     for (const s of stopArray) {
       const gx = Math.floor(s.stop_lon / GRID_DEG_LON);
@@ -421,9 +424,7 @@ export class LocalGtfsStore {
 
     if (await this.hasTripBlobs(db)) {
       if (this.generation !== genAtStart) return emptyIdx;
-      // Nowa ścieżka: kursy po indeksie (service_id, start_sec) i czasy
-      // w blobach. Jedno zapytanie zamiast GROUP BY po stop_times plus
-      // setki tysięcy wierszy przez mostek (GZM: ~321 tys. na 8h okno).
+      // hex() omija limit referencji JNI: trzy BLOB-y na kurs przepełniały go przy dużych rozkładach.
       const rows = await db.getAllAsync<{
         trip_id: string;
         route_id: string;
@@ -431,11 +432,14 @@ export class LocalGtfsStore {
         headsign: string;
         direction: number;
         shape: string;
-        seq_blob: Uint8Array | ArrayBuffer | null;
-        arr_blob: Uint8Array | ArrayBuffer | null;
-        dep_blob: Uint8Array | ArrayBuffer | null;
+        seq_blob: string | null;
+        arr_blob: string | null;
+        dep_blob: string | null;
       }>(
-        `SELECT trip_id, route_id, service_id, headsign, direction, shape, seq_blob, arr_blob, dep_blob
+        `SELECT trip_id, route_id, service_id, headsign, direction, shape,
+                CASE WHEN seq_blob IS NOT NULL THEN hex(seq_blob) END AS seq_blob,
+                CASE WHEN arr_blob IS NOT NULL THEN hex(arr_blob) END AS arr_blob,
+                CASE WHEN dep_blob IS NOT NULL THEN hex(dep_blob) END AS dep_blob
          FROM trips
          WHERE service_id IN (${servicePlaceholders}) AND start_sec <= ? AND end_sec >= ?`,
         ...serviceIds,
@@ -463,10 +467,10 @@ export class LocalGtfsStore {
         }
         group.push(t);
         tripIds.push(r.trip_id);
-        if (r.seq_blob && r.arr_blob && r.dep_blob) {
-          const seq = int32FromBlob(r.seq_blob);
-          const arr = int32FromBlob(r.arr_blob);
-          const dep = int32FromBlob(r.dep_blob);
+        if (r.seq_blob !== null && r.arr_blob !== null && r.dep_blob !== null) {
+          const seq = int32FromHex(r.seq_blob);
+          const arr = int32FromHex(r.arr_blob);
+          const dep = int32FromHex(r.dep_blob);
           const n = Math.min(seq.length, arr.length, dep.length);
           const times = new Array(n);
           for (let i = 0; i < n; i++) {
@@ -625,7 +629,9 @@ export class LocalGtfsStore {
         w += 12;
         list[i] = { from_stop_id: fromId, to_stop_id: stopRefs[toRef], distance_m, duration_sec };
       }
-      this.footpaths.set(fromId, list);
+      if (!isFareBoundary(this.stops.get(fromId)?.stop_name ?? '')) {
+        this.footpaths.set(fromId, list.filter((path) => !isFareBoundary(this.stops.get(path.to_stop_id)?.stop_name ?? '')));
+      }
     }
     console.log(`[LocalGtfsStore] Footpaths z bloba: ${this.footpaths.size} przystanków.`);
     return true;
@@ -795,13 +801,14 @@ export class LocalGtfsStore {
   }
 
   private syncRustStops(): boolean {
-    if (this.rustStopCount === this.stops.size && this.rustStopIds.length === this.stops.size) {
+    if (this.rustStopCount === this.stops.size) {
       return this.rustStopIds.length > 0 || this.stops.size === 0;
     }
     const ids: string[] = [];
     const w = new BinaryWriter(32 + this.stops.size * 64);
-    w.u32(this.stops.size);
-    for (const stop of this.stops.values()) {
+    const stops = Array.from(this.stops.values()).filter((stop) => !isFareBoundary(stop.stop_name ?? ''));
+    w.u32(stops.length);
+    for (const stop of stops) {
       ids.push(stop.stop_id);
       w.str(String(stop.stop_id))
         .str(String(stop.stop_code ?? ''))
@@ -813,7 +820,7 @@ export class LocalGtfsStore {
     const res = invokeRustSync(CMD_LOAD_STOPS, w.finish());
     if (!res || res.byteLength < 4) return false;
     this.rustStopIds = ids;
-    this.rustStopCount = ids.length;
+    this.rustStopCount = this.stops.size;
     return true;
   }
 
@@ -841,6 +848,7 @@ export class LocalGtfsStore {
     const lonRange = maxDistanceMeters / (111000 * Math.cos((lat * Math.PI) / 180));
 
     for (const stop of this.stops.values()) {
+      if (isFareBoundary(stop.stop_name ?? '')) continue;
       if (Math.abs(stop.stop_lat - lat) > latRange) continue;
       if (Math.abs(stop.stop_lon - lon) > lonRange) continue;
 

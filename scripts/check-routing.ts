@@ -60,7 +60,8 @@ interface Line {
 }
 
 function makeNet(stops: Array<[id: string, lat: number, lon: number]>, lines: Line[]) {
-  const store = new LocalGtfsStore() as unknown as TestStore;
+  const nativeStore = new LocalGtfsStore();
+  const store = nativeStore as unknown as TestStore;
   for (const [id, lat, lon] of stops) {
     store.stops.set(id, { stop_id: id, stop_code: '', stop_name: id, stop_lat: lat, stop_lon: lon, normalized_name: id });
   }
@@ -80,7 +81,7 @@ function makeNet(stops: Array<[id: string, lat: number, lon: number]>, lines: Li
     }
     byRoute.set(line.id, trips);
   }
-  return { store, index: store.buildPatterns(byRoute) };
+  return { store, nativeStore, index: store.buildPatterns(byRoute) };
 }
 
 function near(store: TestStore, lat: number, lon: number) {
@@ -286,6 +287,39 @@ head("Range RAPTOR: wszystkie odjazdy w oknie");
 }
 
 
+
+head('Granice stref GZM nie są przystankami');
+{
+  const boundary = 'granica DĄBR - SOSN (K-D)';
+  const { store, nativeStore, index } = makeNet(
+    [['A', 51, 17], [boundary, 51.02, 17], ['B', 51.04, 17], ['C', 51.021, 17]],
+    [{ id: '903N', type: 3, trips: [{ id: 'zone-trip', times: [['A', hms(8, 0)], [boundary, hms(8, 4)], ['B', hms(8, 8)]] }] }],
+  );
+  const nearby = near(store, 51.02, 17);
+  check('granica nie jest miejscem wsiadania', nearby.every((stop) => stop.stopId !== boundary));
+  check('sąsiedni przystanek pozostaje dostępny', nearby.some((stop) => stop.stopId === 'C'));
+  check('granica nie ma dojść pieszych', !nativeStore.footpaths.has(boundary));
+  check('dane granicy pozostają w kursie dla osi trasy', store.stopTimes.get('zone-trip')?.length === 3);
+  const journey = best(runRaptor(nativeStore,
+    [{ stopId: 'A', walkM: 0, walkSec: 0 }],
+    [{ stopId: 'B', walkM: 0, walkSec: 0 }], hms(7, 59),
+    { maxTransfers: 0, minTransferSec: 120, dayIndex: index },
+  ));
+  check('przejazd przez granicę liczy jeden przystanek', journey != null && transit(journey)[0]?.stopsCount === 1, describe(journey));
+  const transfer = makeNet(
+    [['A', 51, 17], [boundary, 51.02, 17], ['B', 51.04, 17]],
+    [
+      { id: '903N', type: 3, trips: [{ id: 'before-zone', times: [['A', hms(8, 0)], [boundary, hms(8, 4)]] }] },
+      { id: '904N', type: 3, trips: [{ id: 'after-zone', times: [[boundary, hms(8, 7)], ['B', hms(8, 11)]] }] },
+    ],
+  );
+  const invalid = runRaptor(transfer.nativeStore,
+    [{ stopId: 'A', walkM: 0, walkSec: 0 }],
+    [{ stopId: 'B', walkM: 0, walkSec: 0 }], hms(7, 59),
+    { maxTransfers: 1, minTransferSec: 120, dayIndex: transfer.index },
+  );
+  check('dwie linie nie pozwalają przesiadać się na granicy', invalid.length === 0);
+}
 
 async function runAsyncTests() {
   head("buildSearchSlices: ujemny rawTargetSec (poprzednia doba)");

@@ -4,6 +4,7 @@ import type { Coord } from './routeGeometry';
 import { bearingDegrees, distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { parseClock } from './notifications/format';
 import { buildFallbackStops, findUserSegment } from './vehiclePosition';
+import { isFareBoundary } from '../gtfs/fareBoundary';
 
 const DAY_SEC = 86400;
 const MAX_LIVE_AGE_MS = 120_000;
@@ -73,7 +74,7 @@ function freshLocation(location: CurrentLocation | null | undefined, now: number
 function rideStops(leg: Leg) {
   const stops = buildFallbackStops(leg);
   const segment = findUserSegment(stops, leg);
-  return stops.slice(segment.start, segment.end + 1);
+  return stops.slice(segment.start, segment.end + 1).filter((stop) => !isFareBoundary(stop.name));
 }
 
 function rideProjection(leg: Leg, lat: number, lon: number) {

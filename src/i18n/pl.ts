@@ -1185,6 +1185,8 @@ export const pl = {
     estBetween: (from: string, to: string) => `Pojazd (szac.): ${from} → ${to}`,
   },
   leg: {
+    fareBoundary: 'Granica stref biletowych',
+    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
     noData: 'Brak danych o trasie',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
