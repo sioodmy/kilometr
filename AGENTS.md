@@ -99,6 +99,7 @@ Te reguły są domyślne (good defaults), nie święte prawo. User może je nadp
 ## Buildy
 
 - Nie buduj APK lokalnie bez pozwolenia usera.
+- Wszystkie AAB korzystają ze wspólnego licznika workflow Play; nie twórz osobnych pasm versionCode dla testów i produkcji.
 
 ## Commity
 

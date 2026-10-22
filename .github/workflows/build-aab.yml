@@ -2,11 +2,10 @@ name: Build Play AAB
 
 # AAB (Android App Bundle) do Google Play Console:
 # Testing -> Internal testing -> New release -> Upload app-release.aab.
-# Bundle jest podpisywany kluczem upload z sekretów repo, więc Play go
-# przyjmie od razu.
+# Bundle jest podpisywany kluczem upload z sekretów repo.
 #
 # Prod buduje AAB automatycznie i dołącza go do wydania GitHub razem z APK
-# i IPA (build-apk.yml -> workflow_call z release_tag).
+# i IPA (build-apk.yml -> workflow_dispatch z release_tag).
 # Ręczny workflow_dispatch z dowolnej gałęzi kończy się na artefakcie Actions:
 # bez release'u i tagu, do wgrania w Play Console.
 #
@@ -27,9 +26,8 @@ on:
         options:
           - 'arm64-v8a'
           - 'all'
-  workflow_call:
-    inputs:
       release_tag:
+        description: 'Tag wydania prod; puste pole zapisuje wyłącznie artefakt Actions'
         type: string
         required: false
         default: ''
@@ -38,7 +36,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: "build-aab-${{ github.ref_name }}"
+  group: build-play-aab
   cancel-in-progress: false
 
 env:
@@ -50,6 +48,9 @@ env:
   ANDROID_NDK: '27.1.12297006'
   ANDROID_CMAKE: '3.30.5'
   BUILD_NUMBER: ${{ github.run_attempt }}
+  # Pierwszy run po v1.5.2: 56. Każdy kolejny rezerwuje 100 kodów na ponowienia.
+  PLAY_RUN_NUMBER_BASE: '56'
+  PLAY_VERSION_CODE_BASE: '701050201'
   # Podpis release: hasła i alias muszą widzieć prebuild (wtyczka z bramką
   # sekretów) i gradle (kto czyta je dopiero w chwili builda). KEY_PASSWORD
   # może zostać pusty, wtedy klucz użyje hasła keystore.
@@ -68,6 +69,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -132,10 +134,10 @@ jobs:
       - name: Test Android permission gate
         run: npm run check:permission-gate
 
-      # Prod używa tagu wydania (vX.Y.Z), więc AAB ma tę samą wersję co APK
-      # i IPA w jednym release. Ręczny build dostaje wersję z minutą dnia:
-      # każdy build jest na Play unikalny, bo versionCode (banda Play
-      # z app.config.js: 600 mln + minuty od 2020-01-01) rośnie z każdą minutą.
+      - name: Test Android version codes
+        run: node --test scripts/check-android-version-code.test.mjs
+
+      # Wszystkie AAB korzystają z licznika tego workflow, niezależnie od kanału.
       - name: Resolve version and versionCode
         id: version
         env:
@@ -143,9 +145,20 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
+          if [ "$GITHUB_RUN_NUMBER" -lt "$PLAY_RUN_NUMBER_BASE" ] || [ "$GITHUB_RUN_ATTEMPT" -gt 99 ]; then
+            echo "::error::Nieprawidłowy licznik AAB. Uruchom nowy workflow zamiast starego podejścia."
+            exit 1
+          fi
+          ANDROID_VERSION_CODE=$((PLAY_VERSION_CODE_BASE + (GITHUB_RUN_NUMBER - PLAY_RUN_NUMBER_BASE) * 100 + GITHUB_RUN_ATTEMPT))
+          export ANDROID_VERSION_CODE
+          echo "ANDROID_VERSION_CODE=$ANDROID_VERSION_CODE" >> "$GITHUB_ENV"
           ARCH="${INPUT_ARCH:-all}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
           if [ -n "${RELEASE_TAG:-}" ]; then
+            if [ "$GITHUB_REF_NAME" != prod ] || ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Publikacja AAB wymaga gałęzi prod i tagu vX.Y.Z."
+              exit 1
+            fi
             # Prod: versionName musi zgadzać się z tagiem wydania (vX.Y.Z),
             # do którego dołączamy AAB.
             VERSION="$RELEASE_TAG"

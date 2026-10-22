@@ -38,6 +38,9 @@ jobs:
       - name: Run TypeScript typecheck
         run: npm run typecheck
 
+      - name: Check Android version codes
+        run: node --test scripts/check-android-version-code.test.mjs
+
       - name: Check widget translations
         run: npm run check:widget-strings
 
