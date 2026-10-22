@@ -11,6 +11,7 @@ export default defineConfig({
         html
           .replaceAll('%PAGE_TITLE%', pl.meta.title)
           .replaceAll('%PAGE_DESCRIPTION%', pl.meta.description)
+          .replaceAll('%PAGE_IMAGE_ALT%', pl.meta.imageAlt)
           .replaceAll('%BETA_LABEL%', pl.android.testing.action)
           .replaceAll('%GROUP_LABEL%', pl.android.group.action)
           .replaceAll('%BETA_INTRO%', pl.android.intro)
