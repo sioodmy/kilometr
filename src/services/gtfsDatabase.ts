@@ -11,6 +11,7 @@ import { expandTokenSynonyms, fuzzyMatchBatch } from '../gtfs/fuzzy';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../gtfs/types';
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
+import { isFareBoundary } from '../gtfs/fareBoundary';
 
 /** Plik bazy dla miasta. Każde miasto ma osobny plik; zmiana nazwy oznacza
  *  świeży pobyt (nowy plik startuje pusty, więc wersja wymusza re-download). */
@@ -395,6 +396,7 @@ export async function findNearestStops(
     lon + lonRange,
   );
   return rows
+    .filter((r) => !isFareBoundary(r.name))
     .map((r) => ({ ...r, distanceM: Math.round(distanceMeters(lat, lon, r.lat, r.lon)) }))
     .filter((r) => r.distanceM <= maxDistanceM)
     .sort((a, b) => a.distanceM - b.distanceM)
@@ -444,6 +446,7 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
   const scored: StopSearchHit[] = [];
   const seen = new Set<string>();
   const uniqueRows = rows.filter((r) => {
+    if (isFareBoundary(r.name)) return false;
     if (seen.has(r.name)) return false;
     seen.add(r.name);
     return true;

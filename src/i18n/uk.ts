@@ -1194,6 +1194,8 @@ export const uk: Strings = {
     estBetween: (from: string, to: string) => `Транспорт (орієнт.): ${from} → ${to}`,
   },
   leg: {
+    fareBoundary: 'Межа тарифних зон',
+    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,

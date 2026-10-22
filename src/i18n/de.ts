@@ -1146,6 +1146,8 @@ export const de: Strings = {
     estBetween: (from: string, to: string) => `Fahrzeug (geschätzt): ${from} → ${to}`,
   },
   leg: {
+    fareBoundary: 'Tarifzonengrenze',
+    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,

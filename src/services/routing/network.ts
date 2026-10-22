@@ -1,6 +1,7 @@
 import { clearRaptorNetworks } from '../../../modules/kilometr-raptor';
 import type { DayIndex, LocalGtfsStore } from './store';
 import { getActiveCityIdSync } from '../cityStore';
+import { isFareBoundary } from '../../gtfs/fareBoundary';
 
 export type TransitKind = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway';
 
@@ -197,22 +198,23 @@ function compile(
   const patterns: CompiledPattern[] = [];
   for (const [pid, pat] of idx.patterns) {
     const seq: string[] = pat.stopSequence;
-    const n = seq.length;
+    const positions = seq.flatMap((id, i) => isFareBoundary(store.stops.get(id)?.stop_name ?? '') ? [] : [i]);
+    const n = positions.length;
     if (n < 2 || !pat.trips?.length) continue;
     const offset = offsets?.get(pid) ?? defaultOffset;
     const route = store.routes.get(pat.routeId);
     const kind = classifyTransitMode(route?.route_type, route?.route_short_name);
     const stops = new Int32Array(n);
-    for (let i = 0; i < n; i++) stops[i] = stopIdx(base, seq[i]);
+    for (let i = 0; i < n; i++) stops[i] = stopIdx(base, seq[positions[i]]);
 
     const rows: TripRow[] = [];
     for (const trip of pat.trips) {
       const times = store.stopTimes.get(trip.trip_id);
-      if (!times || times.length < n) continue;
+      if (!times || times.length < seq.length) continue;
       const dep: number[] = new Array(n);
       const arr: number[] = new Array(n);
       for (let i = 0; i < n; i++) {
-        const t = times[i];
+        const t = times[positions[i]];
         const a = (t.arrival_sec ?? t.departure_sec) + offset;
         const d = (t.departure_sec ?? t.arrival_sec) + offset;
         arr[i] = a;
