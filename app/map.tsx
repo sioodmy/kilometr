@@ -35,6 +35,7 @@ import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
 import { useStrings } from '../src/i18n';
 import { useTrackedTrip } from '../src/services/notifications';
+import { normalizeConnectionId } from '../src/services/routing/connectionIdentity';
 
 type Coord = [number, number];
 
@@ -53,7 +54,8 @@ export default function RouteMapScreen() {
   const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 330;
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: routeId } = useLocalSearchParams<{ id: string }>();
+  const id = normalizeConnectionId(routeId ?? '');
 
   const [loadedItem, setItem] = useState<Connection | null>(null);
   const { trip: trackedTrip } = useTrackedTrip();
