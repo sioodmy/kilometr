@@ -17,6 +17,7 @@ def verify(path):
         assert info["DTPlatformName"] == "iphoneos", "IPA must target a physical device"
         assert widget["DTPlatformName"] == "iphoneos"
         assert info.get("NSSupportsLiveActivities") is True
+        assert info["KilometrWidgetAppGroup"] == widget["KilometrWidgetAppGroup"] == "group.app.kilometr.widgets"
         assert info.get("NSLocationWhenInUseUsageDescription")
         assert not info.get("UIBackgroundModes"), "No background tracking is requested"
         assert widget["NSExtension"]["NSExtensionPointIdentifier"] == "com.apple.widgetkit-extension"
@@ -31,7 +32,8 @@ def verify(path):
         assert not any(name.endswith("embedded.mobileprovision") for name in names)
         for locale in ["pl", "en", "de", "uk"]:
             assert app + locale + ".lproj/InfoPlist.strings" in names, locale
-    print("IPA structure, versions, translations and Live Activity: OK")
+            assert extension + locale + ".lproj/Localizable.strings" in names, locale
+    print("IPA structure, versions, translations, widgets and Live Activity: OK")
 
 
 if __name__ == "__main__":

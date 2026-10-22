@@ -1301,6 +1301,14 @@ export const uk: Strings = {
     delayTitle: (line: string, eta: string) => `Затримка • ${line} • ${eta}`,
   },
   ios: {
+    departure: 'Відправлення',
+    arrival: 'Прибуття',
+    alighting: 'Вихід',
+    walking: 'Пішки',
+    waiting: 'Очікування',
+    riding: 'У дорозі',
+    transfer: 'Пересадка',
+    nextStop: 'Наступна зупинка',
     startupTitle: 'Помилка застосунку',
     startupHint: 'Kilometr не може продовжити роботу. Поділіться звітом, щоб допомогти знайти причину помилки.',
     startupShare: 'Поділитися',
@@ -1378,7 +1386,6 @@ export const uk: Strings = {
     titlePlain: (time: string) => `Сполучення • ${time}`,
   },
   widgets: {
-    nextTitle: 'Час виходити',
     journeyTitle: 'Твої напрямки',
     journeyDescription: 'Час виходу й маршрути до збережених і нещодавно знайдених місць',
     trackingTitle: 'Твоя поїздка',
@@ -1387,7 +1394,6 @@ export const uk: Strings = {
     refresh: 'Оновити в застосунку',
     fromOrigin: (name: string) => `З: ${name}`,
     picker: {
-      nextDescription: 'Час до виходу, перший маршрут і місце призначення',
       tripDescription: 'Час до виходу або прибуття, прогрес і пересадки',
       searchTitle: 'Куди їдемо?',
       searchDescription: 'Знайти маршрут або вибрати збережене місце',
@@ -1409,7 +1415,6 @@ export const uk: Strings = {
     arrived: 'На місці',
     updated: (t: string) => `станом на ${t}`,
     stale: 'Знайти наступне сполучення',
-    nextEmpty: 'Знайти наступне сполучення',
     destEmpty: 'Знайдіть маршрут, щоб побачити його тут.',
     tripEmptyTitle: 'Поїздка не відстежується',
     tripEmptyBody: 'Виберіть сполучення й увімкніть відстеження.',

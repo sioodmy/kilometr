@@ -1252,6 +1252,14 @@ export const de: Strings = {
     delayTitle: (line: string, eta: string) => `Verspätung • ${line} • ${eta}`,
   },
   ios: {
+    departure: 'Abfahrt',
+    arrival: 'Ankunft',
+    alighting: 'Aussteigen',
+    walking: 'Fußweg',
+    waiting: 'Warten',
+    riding: 'Unterwegs',
+    transfer: 'Umstieg',
+    nextStop: 'Nächste Haltestelle',
     startupTitle: 'App-Fehler',
     startupHint: 'Kilometr kann nicht fortfahren. Teile den Bericht, um bei der Fehlersuche zu helfen.',
     startupShare: 'Teilen',
@@ -1330,7 +1338,6 @@ export const de: Strings = {
     titlePlain: (time: string) => `Verbindung • ${time}`,
   },
   widgets: {
-    nextTitle: 'Zeit zum Losgehen',
     journeyTitle: 'Deine Ziele',
     journeyDescription: 'Losgehzeit und Linien zu gespeicherten und zuletzt gesuchten Zielen',
     trackingTitle: 'Deine Fahrt',
@@ -1339,7 +1346,6 @@ export const de: Strings = {
     refresh: 'In der App aktualisieren',
     fromOrigin: (name: string) => `Von: ${name}`,
     picker: {
-      nextDescription: 'Zeit bis zum Losgehen, erste Linie und Fahrtziel',
       tripDescription: 'Zeit bis zum Losgehen oder zur Ankunft, Fortschritt und Umstiege',
       searchTitle: 'Wohin?',
       searchDescription: 'Route suchen oder einen gespeicherten Ort wählen',
@@ -1367,7 +1373,6 @@ export const de: Strings = {
     arrived: 'Angekommen',
     updated: (t: string) => `Stand ${t}`,
     stale: 'Nächste Verbindung suchen',
-    nextEmpty: 'Nächste Verbindung suchen',
     destEmpty: 'Suche eine Route, um sie hier zu sehen.',
     tripEmptyTitle: 'Keine Fahrt verfolgt',
     tripEmptyBody: 'Wähle eine Verbindung und schalte die Verfolgung ein.',

@@ -1241,6 +1241,14 @@ export const en: Strings = {
     delayTitle: (line: string, eta: string) => `Delayed • ${line} • ${eta}`,
   },
   ios: {
+    departure: 'Departure',
+    arrival: 'Arrival',
+    alighting: 'Get off',
+    walking: 'Walking',
+    waiting: 'Waiting',
+    riding: 'On the way',
+    transfer: 'Transfer',
+    nextStop: 'Next stop',
     startupTitle: 'App error',
     startupHint: 'Kilometr cannot continue. Share the report to help find the cause of the error.',
     startupShare: 'Share',
@@ -1318,7 +1326,6 @@ export const en: Strings = {
     titlePlain: (time: string) => `Connection • ${time}`,
   },
   widgets: {
-    nextTitle: 'Time to leave',
     journeyTitle: 'Your destinations',
     journeyDescription: 'When to leave and which lines to take to saved and recent destinations',
     trackingTitle: 'Your trip',
@@ -1327,7 +1334,6 @@ export const en: Strings = {
     refresh: 'Refresh in the app',
     fromOrigin: (name: string) => `From: ${name}`,
     picker: {
-      nextDescription: 'Time until you leave, your first line and destination',
       tripDescription: 'Time until departure or arrival, progress and transfers',
       searchTitle: 'Where to?',
       searchDescription: 'Find a route or take a shortcut to a saved place',
@@ -1349,7 +1355,6 @@ export const en: Strings = {
     arrived: 'Arrived',
     updated: (t: string) => `as of ${t}`,
     stale: 'Find the next connection',
-    nextEmpty: 'Find the next connection',
     destEmpty: 'Search for a route to see it here.',
     tripEmptyTitle: 'No trip tracked',
     tripEmptyBody: 'Choose a connection and turn on tracking.',
