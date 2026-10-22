@@ -508,11 +508,14 @@ jobs:
   build-aab:
     needs: build-apk
     if: needs.build-apk.outputs.publish == 'true' && needs.build-apk.outputs.channel == 'prod'
-    uses: ./.github/workflows/build-aab.yml
-    with:
-      release_tag: ${{ needs.build-apk.outputs.tag }}
-    # Reusable workflow nie dziedziczy sekretów repo sam z siebie; bez tego
-    # AAB nie widzi ANDROID_KEYSTORE_* i pada na etapie dekodowania klucza.
-    secrets: inherit
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
+      actions: write
+      contents: read
+    steps:
+      - name: Start Play AAB build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build-apk.outputs.tag }}
+        run: gh workflow run build-aab.yml --ref prod --field arch=all --field release_tag="$RELEASE_TAG"
