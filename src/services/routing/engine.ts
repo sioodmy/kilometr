@@ -4,6 +4,7 @@ import { AllowedTransferModes, Connection, Leg, LegStop, RawJourney, RouteStyle,
 import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
+import { isFareBoundary } from '../../gtfs/fareBoundary';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z raptor.ts i store.ts)
@@ -474,7 +475,7 @@ export function resolveCandidateOrigins(
     let anchorStop: { stop_id: string; stop_lat: number; stop_lon: number } | undefined;
     if (anchor?.stopId) {
       const byId = gtfsStore.stops.get(anchor.stopId);
-      if (byId) anchorStop = { stop_id: byId.stop_id, stop_lat: byId.stop_lat, stop_lon: byId.stop_lon };
+      if (byId && !isFareBoundary(byId.stop_name ?? '')) anchorStop = { stop_id: byId.stop_id, stop_lat: byId.stop_lat, stop_lon: byId.stop_lon };
     }
     if (!anchorStop && anchor?.lat !== undefined && anchor?.lon !== undefined) {
       const near = gtfsStore.findNearestStops(anchor.lat, anchor.lon, 400, 1);

@@ -1138,6 +1138,8 @@ export const en: Strings = {
     estBetween: (from: string, to: string) => `Vehicle (est.): ${from} → ${to}`,
   },
   leg: {
+    fareBoundary: 'Fare zone boundary',
+    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
     noData: 'No route data',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,

@@ -11,6 +11,7 @@ import {
 import { clearRaptorNetCache } from './network';
 import { getCity } from '../../cities';
 import { getActiveCityIdSync } from '../cityStore';
+import { isFareBoundary } from '../../gtfs/fareBoundary';
 import {
   POLINKA_ROUTE_ID,
   polinkaRoute,
@@ -242,7 +243,7 @@ export class LocalGtfsStore {
     const GRID_DEG_LON = 0.0015;
 
     const grid = new Map<string, any[]>();
-    const stopArray = Array.from(this.stops.values());
+    const stopArray = Array.from(this.stops.values()).filter((stop) => !isFareBoundary(stop.stop_name ?? ''));
 
     for (const s of stopArray) {
       const gx = Math.floor(s.stop_lon / GRID_DEG_LON);
@@ -628,7 +629,9 @@ export class LocalGtfsStore {
         w += 12;
         list[i] = { from_stop_id: fromId, to_stop_id: stopRefs[toRef], distance_m, duration_sec };
       }
-      this.footpaths.set(fromId, list);
+      if (!isFareBoundary(this.stops.get(fromId)?.stop_name ?? '')) {
+        this.footpaths.set(fromId, list.filter((path) => !isFareBoundary(this.stops.get(path.to_stop_id)?.stop_name ?? '')));
+      }
     }
     console.log(`[LocalGtfsStore] Footpaths z bloba: ${this.footpaths.size} przystanków.`);
     return true;
@@ -798,13 +801,14 @@ export class LocalGtfsStore {
   }
 
   private syncRustStops(): boolean {
-    if (this.rustStopCount === this.stops.size && this.rustStopIds.length === this.stops.size) {
+    if (this.rustStopCount === this.stops.size) {
       return this.rustStopIds.length > 0 || this.stops.size === 0;
     }
     const ids: string[] = [];
     const w = new BinaryWriter(32 + this.stops.size * 64);
-    w.u32(this.stops.size);
-    for (const stop of this.stops.values()) {
+    const stops = Array.from(this.stops.values()).filter((stop) => !isFareBoundary(stop.stop_name ?? ''));
+    w.u32(stops.length);
+    for (const stop of stops) {
       ids.push(stop.stop_id);
       w.str(String(stop.stop_id))
         .str(String(stop.stop_code ?? ''))
@@ -816,7 +820,7 @@ export class LocalGtfsStore {
     const res = invokeRustSync(CMD_LOAD_STOPS, w.finish());
     if (!res || res.byteLength < 4) return false;
     this.rustStopIds = ids;
-    this.rustStopCount = ids.length;
+    this.rustStopCount = this.stops.size;
     return true;
   }
 
@@ -844,6 +848,7 @@ export class LocalGtfsStore {
     const lonRange = maxDistanceMeters / (111000 * Math.cos((lat * Math.PI) / 180));
 
     for (const stop of this.stops.values()) {
+      if (isFareBoundary(stop.stop_name ?? '')) continue;
       if (Math.abs(stop.stop_lat - lat) > latRange) continue;
       if (Math.abs(stop.stop_lon - lon) > lonRange) continue;
 

@@ -3,6 +3,7 @@ import { buildFallbackStops, findUserSegment, locateVehicle } from '../vehiclePo
 import { getLineColors, inferTransitMode } from '../lineIdentity';
 import { clamp01, formatClock, parseClock, toAbsoluteMs } from './format';
 import type { TripPhase, TripProgress } from './types';
+import { isFareBoundary } from '../../gtfs/fareBoundary';
 
 const DAY = 86400;
 
@@ -127,7 +128,7 @@ function vehicleProgress(
   timeProgress: number,
   now: Date,
 ): VehicleProgress {
-  const stops: LegStop[] = buildFallbackStops(leg);
+  const stops: LegStop[] = buildFallbackStops(leg).filter((stop) => !isFareBoundary(stop.name));
   const segment = findUserSegment(stops, leg);
   const span = Math.max(1, segment.end - segment.start);
   const hops = Math.max(1, leg.stopsCount || span);
