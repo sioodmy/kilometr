@@ -31,6 +31,7 @@ export interface TrackingNativeModule {
   consumeStopRequest(): Promise<boolean>;
   hasStopRequest?(): Promise<boolean>;
   supportsTransferProtection?(): boolean;
+  supportsTransferDecisions?(): boolean;
   configureTransferProtection?(tripId: string, path: string): Promise<boolean>;
   getTransferProtectionState?(): Promise<string | null>;
 }
@@ -97,7 +98,11 @@ export function isNativeTrackingSupported(): boolean {
 }
 
 export function isTransferProtectionSupported(): boolean {
-  return Platform.OS === 'android' && getTrackingNative()?.supportsTransferProtection?.() === true;
+  return Platform.OS === 'android' || Platform.OS === 'ios';
+}
+
+export function usesNativeTransferProtection(): boolean {
+  return Platform.OS === 'android' && getTrackingNative()?.supportsTransferDecisions?.() === true;
 }
 
 /** Identyfikator powiadomienia śledzącej - wspólny dla update i dismiss. */

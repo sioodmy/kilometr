@@ -73,6 +73,7 @@ export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string
       validUntilMs: baseMs + horizonSec * 1000,
       networkPath: network.uri,
       connection: trip.connection,
+      activeLegIndex: trip.transfer?.activeLegIndex ?? 0,
       timeline: timeline.map(({ departMs, arriveMs }) => ({ departMs, arriveMs })),
       destinations,
       stops: net.base.stopIds.map((id) => {

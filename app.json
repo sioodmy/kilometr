@@ -8,6 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "app.kilometr",
+      "userInterfaceStyle": "dark",
       "supportsTablet": true
     },
     "android": {
@@ -75,10 +76,7 @@
         {
           "backgroundColor": "#111414",
           "image": "./assets/splash-icon.png",
-          "imageWidth": 200,
-          "dark": {
-            "backgroundColor": "#111414"
-          }
+          "imageWidth": 200
         }
       ],
       "expo-sqlite",

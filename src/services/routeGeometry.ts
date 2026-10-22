@@ -26,6 +26,7 @@ import { timeStringToSeconds } from '../gtfs/geo';
 import { selectEvictions } from './geometryEviction';
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
+import { isFareBoundary } from '../gtfs/fareBoundary';
 
 const CACHE_KEY = 'kilometr.map_geometry.v1';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -100,6 +101,7 @@ function legStops(leg: Leg): MapStop[] {
     arriveSec: boarded?.arriveSec,
   });
   for (const s of leg.intermediateStops ?? []) {
+    if (isFareBoundary(s.name)) continue;
     if (s.lat == null || s.lon == null) continue;
     // Z seq: końcówki kursu wycinamy po seq, stops linii pętlowe zostają.
     // Bez seq (starsze cache z backupu): twardy dedupe współrzędnymi jak kiedyś.

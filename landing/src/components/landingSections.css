@@ -102,8 +102,9 @@
     margin: 26px auto 0;
   }
   .closing-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 12px;
     width: min(100%, 480px);
     margin: 34px auto 0;
@@ -115,8 +116,11 @@
     padding: 14px 16px;
     border-radius: 12px;
   }
-  .closing-actions :is(svg, .play-symbol) {
+  .closing-actions svg {
     flex-shrink: 0;
+  }
+  .closing-support {
+    color: var(--muted);
   }
   @media (prefers-reduced-motion: no-preference) {
     .transit-train {
@@ -158,13 +162,6 @@
   @media (max-width: 420px) {
     .closing-actions {
       gap: 10px;
-    }
-    .closing-actions .button {
-      flex-direction: column;
-      min-height: 92px;
-      padding: 14px 10px;
-      gap: 8px;
-      font-size: 0.8125rem;
     }
   }
 }

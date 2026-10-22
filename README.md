@@ -74,7 +74,7 @@ Przykład z [Sideloadly](https://sideloadly.io/) na macOS lub Windows:
 1. Zainstaluj Sideloadly według instrukcji producenta. Na Windows przygotuj również wymagane przez niego komponenty Apple.
 2. Podłącz iPhone kablem, odblokuj go i zatwierdź zaufanie do komputera.
 3. Wybierz urządzenie w Sideloadly, przeciągnij `kilometr-unsigned.ipa` do okna i podaj własne konto Apple.
-4. Zachowaj rozszerzenie `KilometrLiveActivity`. Usunięcie rozszerzeń wyłącza ekran blokady i Dynamic Island. Aplikacja oraz rozszerzenie muszą zostać podpisane razem.
+4. Zachowaj rozszerzenie `KilometrLiveActivity`. Zawiera widgety i Live Activity. Aplikacja oraz rozszerzenie muszą zostać podpisane razem. Widgety wymagają również wspólnego App Group `group.app.kilometr.widgets` w obu profilach podpisujących. Jeśli narzędzie zmienia identyfikatory, musi zachować zgodność App Group i klucza `KilometrWidgetAppGroup` w obu plikach Info.plist.
 5. Uruchom instalację. Jeśli iOS tego wymaga, zaufaj profilowi w **Ustawienia → Ogólne → VPN i zarządzanie urządzeniem** oraz włącz **Tryb dewelopera** w **Prywatność i ochrona**. Postępuj według komunikatów telefonu.
 6. Otwórz Kilometr, pobierz dane miasta i zezwól na powiadomienia przy pierwszym przypięciu trasy lub ustawieniu przypomnienia.
 
@@ -82,11 +82,13 @@ Bezpłatny podpis Apple zwykle wygasa po 7 dniach. Odnawiaj go w narzędziu do s
 
 ### Co działa inaczej na iOS
 
-Silnik tras Rust i mapy offline działają natywnie. Live Activity pokazuje podróż na ekranie blokady, a na obsługiwanych iPhone'ach także w Dynamic Island. Dotknięcie otwiera trasę. Nie wymaga App Groups ani powiadomień push.
+Silnik tras Rust i mapy offline działają natywnie. Live Activity pokazuje podróż na ekranie blokady, a na obsługiwanych iPhone'ach także w Dynamic Island. Dotknięcie otwiera trasę. Live Activity nie wymaga powiadomień push. Widgety korzystają z App Group do odczytu danych zapisanych przez aplikację.
 
 iOS usypia aplikację w tle. Licznik rysuje system, ale nowe dane o pojazdach i opóźnieniach docierają podczas działania aplikacji. Po upływie ważności danych aktywność prosi o otwarcie Kilometr. Nie obiecujemy ciągłego śledzenia GPS po zamknięciu aplikacji. Alert przed wysiadaniem i komunikat o przyjeździe są planowane według ostatniego znanego rozkładu; zmiana trasy lub zakończenie śledzenia aktualizuje albo usuwa oczekujące alerty.
 
-Budzik przed wyjściem jest lokalnym przypomnieniem z dźwiękiem. Tryb cichy, Skupienie i ustawienia powiadomień mogą go wyciszyć. Nie zastępuje budzika systemowego i nie otwiera pełnego ekranu. Widgety pulpitu Androida nie są częścią tego IPA.
+Budzik przed wyjściem jest lokalnym przypomnieniem z dźwiękiem. Tryb cichy, Skupienie i ustawienia powiadomień mogą go wyciszyć. Nie zastępuje budzika systemowego i nie otwiera pełnego ekranu.
+
+Widgety „Twoje kierunki”, „Moje miejsca”, „Twoja podróż” i „Dokąd jedziemy?” korzystają z natywnych układów WidgetKit. Pokazują ostatni snapshot aplikacji i otwierają odpowiednią trasę lub wyszukiwanie. Widget „Czas wyjść” został usunięty na obu platformach.
 
 ### Sprawdzenie na urządzeniu
 

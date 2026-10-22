@@ -63,6 +63,7 @@
     "setup": "npm --prefix server run setup",
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
+    "check:transfers": "tsx --require ./scripts/stub-expo.cjs scripts/check-transfer-protection.ts",
     "check:alarm": "tsx scripts/check-departure-alarm.ts",
     "check:notification-runtime": "tsx --require ./scripts/stub-expo.cjs scripts/check-notification-runtime.ts",
     "check:live": "tsx --require ./scripts/stub-expo.cjs scripts/check-live.ts",
@@ -107,7 +108,8 @@
     "check:widget-strings": "tsx scripts/sync-widget-strings.ts --check",
     "sync:ios-strings": "tsx scripts/sync-ios-strings.ts",
     "check:ios-strings": "tsx scripts/sync-ios-strings.ts --check",
-    "check:ios": "tsx --require ./scripts/stub-expo.cjs scripts/check-ios-runtime.ts",
+    "check:ios": "tsx --require ./scripts/stub-expo.cjs scripts/check-ios-runtime.ts && tsx scripts/check-ios-locale.ts",
+    "check:ios-widgets": "tsx --require ./scripts/stub-expo.cjs scripts/check-ios-widgets.ts",
     "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
   },
   "private": true,

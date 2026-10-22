@@ -9,6 +9,7 @@ module.exports = function withIOS(config) {
     ? config.version
     : require('../app.json').expo.version;
   const build = config.ios?.buildNumber || '1';
+  const appGroup = `group.${config.ios.bundleIdentifier}.widgets`;
   config = withAppDelegate(config, (mod) => {
     if (mod.modResults.language !== 'swift') throw new Error('Kilometr requires a Swift AppDelegate');
     mod.modResults.contents = CodeGenerator.mergeContents({
@@ -25,6 +26,7 @@ module.exports = function withIOS(config) {
     mod.modResults.CFBundleShortVersionString = version;
     mod.modResults.CFBundleVersion = build;
     mod.modResults.NSSupportsLiveActivities = true;
+    mod.modResults.KilometrWidgetAppGroup = appGroup;
     mod.modResults.NSLocationWhenInUseUsageDescription =
       require('../src/i18n/native/en.json').ios.NSLocationWhenInUseUsageDescription;
     const nativeStrings = require('../src/i18n/native/en.json').ios;
@@ -38,8 +40,10 @@ module.exports = function withIOS(config) {
     return mod;
   });
   config = withEntitlementsPlist(config, (mod) => {
-    // Lokalne powiadomienia i ActivityKit bez APNs nie potrzebują konta deweloperskiego.
     delete mod.modResults['aps-environment'];
+    mod.modResults['com.apple.security.application-groups'] = [
+      ...new Set([...(mod.modResults['com.apple.security.application-groups'] || []), appGroup]),
+    ];
     return mod;
   });
   return withXcodeProject(config, (mod) => {
@@ -48,36 +52,71 @@ module.exports = function withIOS(config) {
     const folder = path.join(root, TARGET);
     fs.mkdirSync(folder, { recursive: true });
     const source = path.join(mod.modRequest.projectRoot, 'modules/kilometr-tracking/ios');
+    const widgetSource = path.join(mod.modRequest.projectRoot, 'modules/kilometr-widgets/ios/extension');
     const appName = IOSConfig.XcodeUtils.getProjectName(mod.modRequest.projectRoot);
     const diagnostics = path.join(appName, 'KilometrStartupDiagnostics.swift');
     fs.copyFileSync(path.join(__dirname, 'ios/KilometrStartupDiagnostics.swift'), path.join(root, diagnostics));
     IOSConfig.XcodeUtils.addBuildSourceFileToGroup({ filepath: diagnostics, groupName: appName, project });
     fs.copyFileSync(path.join(source, 'TripAttributes.swift'), path.join(folder, 'TripAttributes.swift'));
     fs.copyFileSync(path.join(source, 'extension/TripLiveActivity.swift'), path.join(folder, 'TripLiveActivity.swift'));
+    const widgetFiles = ['KilometrWidgets.swift', 'WidgetSnapshot.swift', 'WidgetStyle.swift'];
+    for (const file of widgetFiles) fs.copyFileSync(path.join(widgetSource, file), path.join(folder, file));
+    for (const locale of ['pl', 'en', 'de', 'uk']) {
+      fs.cpSync(path.join(widgetSource, `${locale}.lproj`), path.join(folder, `${locale}.lproj`), { recursive: true });
+    }
+    fs.writeFileSync(path.join(folder, `${TARGET}.entitlements`), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>com.apple.security.application-groups</key><array><string>${appGroup}</string></array>
+</dict></plist>
+`);
     fs.writeFileSync(path.join(folder, `${TARGET}-Info.plist`), `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleDisplayName</key><string>Kilometr</string>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
 <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
 <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
 <key>CFBundlePackageType</key><string>XPC!</string>
 <key>CFBundleShortVersionString</key><string>${version}</string>
 <key>CFBundleVersion</key><string>${build}</string>
+<key>KilometrWidgetAppGroup</key><string>${appGroup}</string>
 <key>NSExtension</key><dict><key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string></dict>
 </dict></plist>
 `);
-    if (project.pbxTargetByName(TARGET)) return mod;
-    const target = project.addTarget(TARGET, 'app_extension', TARGET, `${mod.ios.bundleIdentifier}.liveactivity`);
-    const group = project.addPbxGroup([], TARGET, TARGET);
-    project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
-    project.addBuildPhase([], 'PBXSourcesBuildPhase', 'Sources', target.uuid);
-    project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
-    project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
-    for (const file of ['TripAttributes.swift', 'TripLiveActivity.swift']) {
-      project.addSourceFile(file, { target: target.uuid }, group.uuid);
+    let targetId = Object.entries(project.pbxNativeTargetSection()).find(
+      ([key, target]) => !key.endsWith('_comment') && target.name?.replaceAll('"', '') === TARGET,
+    )?.[0];
+    if (!targetId) {
+      targetId = project.addTarget(TARGET, 'app_extension', TARGET, `${mod.ios.bundleIdentifier}.liveactivity`).uuid;
+      project.addBuildPhase([], 'PBXSourcesBuildPhase', 'Sources', targetId);
+      project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', targetId);
+      project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', targetId);
     }
-    const configurations = project.pbxXCConfigurationList()[target.pbxNativeTarget.buildConfigurationList];
+    let groupId = project.findPBXGroupKey({ name: TARGET });
+    if (!groupId) {
+      groupId = project.addPbxGroup([], TARGET, TARGET).uuid;
+      project.addToPbxGroup(groupId, project.getFirstProject().firstProject.mainGroup);
+    }
+    for (const file of ['TripAttributes.swift', 'TripLiveActivity.swift', ...widgetFiles]) {
+      project.addSourceFile(file, { target: targetId }, groupId);
+    }
+    let stringsId = project.findPBXVariantGroupKey({ name: 'Localizable.strings' });
+    if (!stringsId) {
+      stringsId = project.pbxCreateVariantGroup('Localizable.strings');
+      project.addToPbxGroup(stringsId, groupId);
+      const resource = { uuid: project.generateUuid(), fileRef: stringsId, basename: 'Localizable.strings', group: 'Resources', target: targetId };
+      project.addToPbxBuildFileSection(resource);
+      project.addToPbxResourcesBuildPhase(resource);
+    }
+    for (const locale of ['pl', 'en', 'de', 'uk']) {
+      const file = project.addFile(`${locale}.lproj/Localizable.strings`, stringsId);
+      if (file) project.pbxFileReferenceSection()[file.fileRef].name = locale;
+      project.addKnownRegion(locale);
+    }
+    const target = project.pbxNativeTargetSection()[targetId];
+    const configurations = project.pbxXCConfigurationList()[target.buildConfigurationList];
     for (const entry of configurations.buildConfigurations) {
       Object.assign(project.pbxXCBuildConfigurationSection()[entry.value].buildSettings, {
         SWIFT_VERSION: '5.0',
@@ -86,6 +125,7 @@ module.exports = function withIOS(config) {
         APPLICATION_EXTENSION_API_ONLY: 'YES',
         CODE_SIGN_STYLE: 'Automatic',
         GENERATE_INFOPLIST_FILE: 'NO',
+        CODE_SIGN_ENTITLEMENTS: `${TARGET}/${TARGET}.entitlements`,
         CURRENT_PROJECT_VERSION: `"${build}"`,
         MARKETING_VERSION: `"${version}"`,
       });
