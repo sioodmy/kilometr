@@ -1,15 +1,11 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { reloadWidgets } from '../../modules/kilometr-widgets';
-import { tr } from '../i18n/locale';
+import { getLocaleSync, tr } from '../i18n/locale';
 import { getLineColors, inferTransitMode, normalizeLineName } from './lineIdentity';
 import { toAbsoluteMs } from './notifications/format';
 import type { Connection, Leg } from '../types/models';
 
-// Snapshot dla natywnych widgetów z ekranu głównego (modules/kilometr-widgets).
-// Odjazdy zapisujemy jako znaczniki czasu: minuty do odjazdu liczy widget sam,
-// co minutę, więc odliczanie nie zamarza po zamknięciu apki. Po każdym zapisie
-// prosimy o przerysowanie, zamiast czekać na systemowe odświeżenie co 30 min.
-// Widgety NIE działają w Expo Go, wymagają dev-build APK.
+// Widgety natywne odliczają ze znaczników czasu, także bez procesu JS.
 
 const WIDGET_SNAPSHOT_FILE = 'kilometr-widget.json';
 
@@ -18,19 +14,6 @@ export interface WidgetLineBadge {
   line?: string;
   bg?: string;
   fg?: string;
-}
-
-export interface WidgetNext {
-  line: string;
-  mode: WidgetLineBadge['mode'];
-  lineBg: string;
-  lineFg: string;
-  dest: string;
-  departTs: number;
-  departAt: string;
-  delayMin: number;
-  live: boolean;
-  deepLink: string;
 }
 
 export interface WidgetQuickItem {
@@ -73,14 +56,14 @@ interface WidgetSnapshot {
   v: 2;
   updatedAt: number;
   origin: string;
+  locale: string;
   labels: Record<string, string>;
-  next: WidgetNext[];
   quick: WidgetQuickItem[];
   pinned: WidgetPinned | null;
   places: WidgetPlace[];
 }
 
-type WidgetData = Omit<WidgetSnapshot, 'v' | 'updatedAt' | 'labels'>;
+type WidgetData = Omit<WidgetSnapshot, 'v' | 'updatedAt' | 'labels' | 'locale'>;
 
 /** Deep link do ekranu połączeń: parametry 1:1 z useLocalSearchParams w app/routes. */
 export function buildRoutesLink(args: {
@@ -92,6 +75,7 @@ export function buildRoutesLink(args: {
   toTitle?: string;
   toLat?: number;
   toLon?: number;
+  open?: string;
 }): string {
   const q: Record<string, string> = {};
   if (args.fromTitle != null) q.fromTitle = args.fromTitle;
@@ -102,6 +86,7 @@ export function buildRoutesLink(args: {
   if (args.toTitle != null) q.toTitle = args.toTitle;
   if (args.toLat != null) q.toLat = String(args.toLat);
   if (args.toLon != null) q.toLon = String(args.toLon);
+  if (args.open != null) q.open = args.open;
   const qs = Object.entries(q)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join('&');
@@ -110,9 +95,9 @@ export function buildRoutesLink(args: {
 
 /** Etykiety widgetów w bieżącym języku apki. Placeholdery podstawia widget. */
 function widgetLabels(): Record<string, string> {
-  const w = tr().widgets;
+  const s = tr();
+  const w = s.widgets;
   return {
-    nextTitle: w.nextTitle,
     openApp: w.openApp,
     addPlace: w.addPlace,
     refresh: w.refresh,
@@ -133,12 +118,15 @@ function widgetLabels(): Record<string, string> {
     arrived: w.arrived,
     updated: w.updated('{t}'),
     stale: w.stale,
-    nextEmpty: w.nextEmpty,
     destEmpty: w.destEmpty,
     tripEmptyTitle: w.tripEmptyTitle,
     tripEmptyBody: w.tripEmptyBody,
     placesEmpty: w.placesEmpty,
     search: w.search,
+    placesTitle: w.picker.placesTitle,
+    searchTitle: w.picker.searchTitle,
+    departure: s.ios.departure,
+    arrival: s.ios.arrival,
   };
 }
 
@@ -172,7 +160,7 @@ const EMPTY: Omit<WidgetSnapshot, 'labels'> = {
   v: 2,
   updatedAt: 0,
   origin: '',
-  next: [],
+  locale: 'pl',
   quick: [],
   pinned: null,
   places: [],
@@ -196,11 +184,20 @@ async function writeMerged(partial: Partial<WidgetData>): Promise<void> {
     try {
       const raw = JSON.parse(await FileSystem.readAsStringAsync(path));
       // Stary format (v1) miał inne pola; zaczynamy od zera zamiast je mieszać.
-      if (raw?.v === 2) current = { ...current, ...raw };
+      if (raw?.v === 2) {
+        current = {
+          ...current,
+          updatedAt: raw.updatedAt,
+          origin: raw.origin,
+          quick: raw.quick,
+          pinned: raw.pinned,
+          places: raw.places,
+        };
+      }
     } catch {
       // brak pliku albo uszkodzony
     }
-    const departuresChanged = partial.next !== undefined || partial.quick !== undefined;
+    const departuresChanged = partial.quick !== undefined;
     const next: WidgetSnapshot = {
       ...current,
       ...partial,
@@ -208,9 +205,16 @@ async function writeMerged(partial: Partial<WidgetData>): Promise<void> {
       // „Stan z 12:30” dotyczy odjazdów, więc samo przypięcie go nie przesuwa.
       updatedAt: departuresChanged ? Date.now() : current.updatedAt,
       labels: widgetLabels(),
+      locale: getLocaleSync(),
     };
-    await FileSystem.writeAsStringAsync(path, JSON.stringify(next));
-    await reloadWidgets();
+    // Zapis atomowy jak w storage.writeValue: natywny widget czyta ten plik
+    // co minutę równolegle, a ubity proces w połowie zapisu zostawiał ucięty
+    // JSON i widgety pokazywały "Otwórz aplikację" do następnego merge.
+    const tmp = `${path}.tmp`;
+    const json = JSON.stringify(next);
+    await FileSystem.writeAsStringAsync(tmp, json);
+    await FileSystem.moveAsync({ from: tmp, to: path });
+    await reloadWidgets(json);
   } catch (err) {
     console.warn('[WidgetSnapshot] merge failed:', err);
   }

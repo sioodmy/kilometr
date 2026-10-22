@@ -40,7 +40,7 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   }
 }
 
-/** Tekst do pokazania, gdy brak uprawnień — bez zaglądania w ustawienia systemu. */
+/** Tekst do pokazania, gdy brak uprawnień - bez zaglądania w ustawienia systemu. */
 export function permissionDeniedMessage(): string {
   return tr().notification.permDenied;
 }

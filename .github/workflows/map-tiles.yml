@@ -9,7 +9,7 @@
 #   CLOUDFLARE_ACCOUNT_ID  id konta Cloudflare
 #
 # Bez sekretów Cloudflare workflow kończy się na artefakcie Actions
-# (do ręcznego wgrania) — R2 nie jest dotykane.
+# (do ręcznego wgrania) - R2 nie jest dotykane.
 #
 # Po wgraniu telefon pobiera pakiet z https://data.kilometr.app/maps/{miasto}-tiles.ktp
 # (Worker kilometr-timetable serwuje ten klucz z R2).
@@ -69,7 +69,7 @@ jobs:
       - name: Upload → R2
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "Brak sekretu CLOUDFLARE_API_TOKEN — pomijam upload do R2. Pakiet jest w artefakcie."
+            echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload do R2. Pakiet jest w artefakcie."
             exit 0
           fi
           npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/maps/${{ inputs.city }}-tiles.ktp" \

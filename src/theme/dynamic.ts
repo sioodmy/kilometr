@@ -5,10 +5,10 @@ import { applyScheme, type SchemeKey } from './tokens';
 // Kolory Material You z tapety.
 //
 // Android 12+ wystawia pięć palet tonalnych, w których nazwa zasobu koduje
-// ton: `system_accent1_200` to ton 20, `system_accent1_900` — ton 90. Dostępne
+// ton: `system_accent1_200` to ton 20, `system_accent1_900` - ton 90. Dostępne
 // tony to 0, 5, 10, 20, 30, …, 100, a powierzchnie w ciemnym motywie
 // Material 3 siedzą nisko (L* 4–24). Dlatego nie bierzemy „najbliższego tonu”,
-// tylko interpolujemy między dwoma tonami w przestrzeni liniowej — inaczej
+// tylko interpolujemy między dwoma tonami w przestrzeni liniowej - inaczej
 // karty i tło dostałyby ten sam kolor, a schody wysokości znikłyby z ekranu.
 //
 // Role (L*) są dokładnie te, co w oficjalnym Material Theme Builder dla trybu
@@ -17,7 +17,7 @@ import { applyScheme, type SchemeKey } from './tokens';
 // a tonalna paleta jest z definicji monotoniczna.
 //
 // Czego z tapety nie bierzemy: błędów, ostrzeżeń i kolorów linii
-// transportowych. Kolor linii to informacja, a nie dekoracja — musi być
+// transportowych. Kolor linii to informacja, a nie dekoracja - musi być
 // rozpoznawalny niezależnie od tapety.
 
 /** Surowa paleta z natywnego modułu: `rodzina_ton` → kolor. */
@@ -27,7 +27,7 @@ type SystemPalette = Record<string, string | number | null | undefined>;
 type Family = { tone: number; linear: number[]; hex: string; y: number }[];
 
 /**
- * Kanały w przestrzeni liniowej (0..1) — w niej miesza się tony, bo dopiero
+ * Kanały w przestrzeni liniowej (0..1) - w niej miesza się tony, bo dopiero
  * w niej luminancja jest liniowa, a mieszanie w sRGB rozjaśniałoby wynik.
  */
 function parseLinear(hex: string): number[] | null {
@@ -48,7 +48,7 @@ function toHex(linear: number[]): string | null {
   return `#${bytes.map((b) => b.toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** Względna jasność wg Rec. 709 — ta sama miara, której używa kontrast WCAG. */
+/** Względna jasność wg Rec. 709 - ta sama miara, której używa kontrast WCAG. */
 function relativeLuminance(linear: number[]): number {
   const [r, g, b] = linear;
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -61,7 +61,7 @@ function targetLuminance(lStar: number): number {
 
 /**
  * Kolor rodziny o jasności `targetL`. Interpolujemy po liniowej przestrzeni
- * RGB między sąsiednimi tonami — oba końce leżą na tej samej palecie, więc
+ * RGB między sąsiednimi tonami - oba końce leżą na tej samej palecie, więc
  * wynik zostaje w gamutie i zachowuje barwę.
  */
 function toneAt(family: Family, targetL: number): string | null {
@@ -101,7 +101,7 @@ function collect(palette: SystemPalette, family: string): Family {
 }
 
 /**
- * Role motywu ciemnego w skali L* — te same, co w Material Theme Builder
+ * Role motywu ciemnego w skali L* - te same, co w Material Theme Builder
  * (primary P80 na onPrimary P20, kontener P30 z P90, powierzchnie N4–N24).
  */
 const ROLE_L: Record<string, [family: string, lStar: number]> = {
@@ -141,7 +141,7 @@ const ROLE_L: Record<string, [family: string, lStar: number]> = {
 
 /**
  * Buduje paletę motywu z surowych tonów systemu. Role, dla których w palecie
- * brakuje tonu (albo system ich nie wystawia), pomijamy — wtedy zostaje
+ * brakuje tonu (albo system ich nie wystawia), pomijamy - wtedy zostaje
  * wartość startowa motywu.
  */
 function paletteFromSystem(raw: SystemPalette): Partial<Record<SchemeKey, string>> {
@@ -164,12 +164,12 @@ function paletteFromSystem(raw: SystemPalette): Partial<Record<SchemeKey, string
  * Wczytuje kolory tapety i podmienia paletę. Wołane przed pierwszym renderem
  * z `app/_layout`, więc ekran od razu startuje w kolorach systemu.
  *
- * Zwraca `true`, gdy motyw faktycznie poszedł z tapety — do logów i testów.
+ * Zwraca `true`, gdy motyw faktycznie poszedł z tapety - do logów i testów.
  */
 export async function initDynamicColors(): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
   if (typeof Platform.Version === 'number' && Platform.Version < 31) return false;
-  // Kolory czytamy tym samym lokalnym modułem co powiadomienia — to jedyny
+  // Kolory czytamy tym samym lokalnym modułem co powiadomienia - to jedyny
   // most do natywy w tej aplikacji, a szukanie drugiego nic nie wnosi.
   const native = getTrackingNative();
   if (typeof native?.getSystemPalette !== 'function') return false;
@@ -179,7 +179,7 @@ export async function initDynamicColors(): Promise<boolean> {
     applyScheme(patch);
     return true;
   } catch {
-    // Brak modułu (Expo Go) albo brak zasobów — zostaje własna paleta.
+    // Brak modułu (Expo Go) albo brak zasobów - zostaje własna paleta.
     return false;
   }
 }

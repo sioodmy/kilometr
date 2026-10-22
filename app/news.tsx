@@ -25,6 +25,7 @@ import {
   getCachedNews,
   loadNewsCache,
   markNewsSeen,
+  formatNewsDate,
   type MpkNewsItem,
 } from '../src/services/mpkNews';
 import { useActiveCity } from '../src/services/cityStore';
@@ -63,7 +64,11 @@ const NewsCard = memo(function NewsCard({
         <Text style={styles.sourceTag}>
           {item.source === 'mpk' ? s.news.sourceMpk(operator) : s.news.sourceCity(portal)}
         </Text>
-        {item.dateLabel ? <Text style={styles.metaText}>{item.dateLabel}</Text> : null}
+        {item.pubDate ? (
+          <Text style={styles.metaText}>{formatNewsDate(item.pubDate)}</Text>
+        ) : item.dateLabel ? (
+          <Text style={styles.metaText}>{item.dateLabel}</Text>
+        ) : null}
       </View>
       {item.urgent ? (
         <View style={styles.urgentLabel}>
@@ -168,7 +173,7 @@ export default function NewsScreen() {
           url: item.link,
           title: item.title,
           source: item.source,
-          meta: item.dateLabel,
+          meta: item.pubDate ? formatNewsDate(item.pubDate) : item.dateLabel,
           lines: item.lines.join(','),
         },
       });

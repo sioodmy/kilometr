@@ -12,8 +12,9 @@ import {
   rideNavigation,
   type NavigationTarget,
 } from './navigationTarget';
+import type { TransferProtectionState } from './notifications/transferTypes';
 
-export function useJourneyNavigation(connection: Connection) {
+export function useJourneyNavigation(connection: Connection, transfer?: TransferProtectionState) {
   const { location, state: locationState } = useCurrentLocation();
   const [clockNow, setNow] = useState(Date.now);
   const now = Math.max(clockNow, Date.now());
@@ -76,11 +77,18 @@ export function useJourneyNavigation(connection: Connection) {
     [connection, tripStops],
   );
   const vehicles = liveTracker.snapshot();
-  const target = navigationTarget(enriched, departureAt, now, {
+  const computedTarget = navigationTarget(enriched, departureAt, now, {
     location,
     vehicles,
     previous: previous.current?.connectionId === connection.id ? previous.current.target : null,
   });
+  const protectedLeg = transfer?.activeLegIndex === undefined ? null : enriched.legs[transfer.activeLegIndex];
+  const target = protectedLeg && protectedLeg.mode !== 'walk' && transfer?.arrivalAtMs &&
+    ['safe', 'risk', 'rerouting', 'alternative', 'changed', 'noAlternative'].includes(transfer.status) &&
+    now - transfer.updatedAt >= 0 && now - transfer.updatedAt <= 30_000
+    ? { leg: protectedLeg, legIndex: transfer.activeLegIndex!, end: true, phase: 'riding' as const,
+      departMs: navigationTimeline(enriched, departureAt)[transfer.activeLegIndex!]?.departMs ?? now, arriveMs: transfer.arrivalAtMs }
+    : computedTarget;
   useEffect(() => {
     previous.current = { connectionId: connection.id, target };
   }, [connection.id, target]);

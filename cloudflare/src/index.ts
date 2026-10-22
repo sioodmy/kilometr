@@ -1,5 +1,5 @@
 /**
- * kilometr-timetable — Worker serwujący gotowe rozkłady (Cloudflare free tier).
+ * kilometr-timetable - Worker serwujący gotowe rozkłady (Cloudflare free tier).
  *
  * Per-miasto:
  * - GET /{miasto}/manifest.json           → manifest buildu z R2
@@ -9,7 +9,7 @@
  * szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom (allowlista CITIES niżej).
  *
  * - GET /api/kd/departures     → PDP /operations (sekret po stronie serwera,
- *                                 cache 120 s — aplikacja tego NA RAZIE nie woła)
+ *                                 cache 120 s - aplikacja tego NA RAZIE nie woła)
  * - GET /api/kd/schedule       → PDP /schedules (cache 1 h, jw.)
  * - GET /health
  *
@@ -79,7 +79,7 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
-    // HEAD działa jak GET (Runtime sam ucina body) — klient sprawdza rozmiar/ETag.
+    // HEAD działa jak GET (Runtime sam ucina body) - klient sprawdza rozmiar/ETag.
     if (req.method !== 'GET' && req.method !== 'HEAD') return json({ error: 'method-not-allowed' }, 405);
 
     if (url.pathname === '/health') {
@@ -183,7 +183,7 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
 }
 
 /**
- * Gotowość pod przyszłe opóźnienia KD — passthrough do PDP z cache,
+ * Gotowość pod przyszłe opóźnienia KD - passthrough do PDP z cache,
  * żeby wielu użytkowników dzieliło jeden request (limity Basic!).
  * Aplikacja mobilna tego NA RAZIE nie woła → koszt PDP = 0.
  */
@@ -231,7 +231,9 @@ async function proxyPdp(req: Request, env: Env, ctx: ExecutionContext, kind: 'op
       signal: AbortSignal.timeout(20000),
     });
   } catch (err) {
-    return json({ error: 'pdp-unreachable', detail: String(err) }, 502);
+    // Powód zostaje w logach Workera (wrangler tail), do klienta idzie sam kod.
+    console.error('[pdp] fetch failed:', err);
+    return json({ error: 'pdp-unreachable' }, 502);
   }
   if (!res.ok) {
     return json({ error: 'pdp-error', status: res.status }, res.status === 429 ? 429 : 502);

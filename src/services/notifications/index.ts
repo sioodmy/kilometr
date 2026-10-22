@@ -1,6 +1,6 @@
 export type { TrackedTrip } from './types';
 export { setupNotifications } from './setup';
-export { areNotificationsSupported, isNativeTrackingSupported } from './module';
+export { areNotificationsSupported, isNativeTrackingSupported, isTransferProtectionSupported } from './module';
 export {
   canShowLiveUpdates,
   ensureNotificationPermission,
@@ -13,6 +13,7 @@ export { useNotificationPreferences } from './preferences';
 export { addTripResponseListener, getLastTripResponse, type TripResponse } from './response';
 export {
   getTrackedTripSync,
+  acceptTransferAlternative,
   restoreTrackedTrip,
   startTracking,
   startTrackedTripListener,

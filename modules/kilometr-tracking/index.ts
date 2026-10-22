@@ -5,7 +5,7 @@ import { requireOptionalNativeModule } from 'expo';
 // zwraca null zamiast rzucać, więc build bez modułu (albo Expo Go) cicho
 // schodzi na awaryjny wariant z expo-notifications.
 //
-// Moduł nie rysuje powiadomienia — przekazuje plan podróży do `LiveTripService`,
+// Moduł nie rysuje powiadomienia - przekazuje plan podróży do `LiveTripService`,
 // która sama pilnuje fazy i postępu. Dlatego nie ma tu ani `present`, ani
 // `dismiss`: jest `startTrip` / `stopTrip` i pytanie, czy system dopuści
 // powiadomienie do strefy Live Updates.
@@ -22,6 +22,9 @@ interface KilometrTrackingNativeModule {
   /** Czy przycisk „Zakończ" pod powiadomieniem zadziałał natywnie. */
   consumeStopRequest(): Promise<boolean>;
   hasStopRequest(): Promise<boolean>;
+  configureTransferProtection?(tripId: string, path: string): Promise<boolean>;
+  getTransferProtectionState?(): Promise<string | null>;
+  supportsTransferDecisions?(): boolean;
 }
 
 const native = requireOptionalNativeModule<KilometrTrackingNativeModule>('KilometrTracking');
@@ -62,4 +65,8 @@ export default {
   stopTrip,
   consumeStopRequest,
   hasStopRequest,
+  supportsTransferProtection: () => typeof native?.configureTransferProtection === 'function',
+  supportsTransferDecisions: () => native?.supportsTransferDecisions?.() === true,
+  configureTransferProtection: (tripId: string, path: string) => native?.configureTransferProtection?.(tripId, path) ?? Promise.resolve(false),
+  getTransferProtectionState: () => native?.getTransferProtectionState?.() ?? Promise.resolve(null),
 };

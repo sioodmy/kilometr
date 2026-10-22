@@ -9,7 +9,6 @@ import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONObject
 
-private const val KIND_NEXT = 0
 private const val KIND_DEST = 1
 private const val KIND_TRIP = 2
 private const val KIND_SEARCH = 3
@@ -31,72 +30,6 @@ private fun updated(labels: Labels, snap: JSONObject?): String {
 }
 
 internal object WidgetRenderers {
-  fun next(context: Context, snap: JSONObject?, widgetId: Int, options: Bundle?, now: Long): RemoteViews {
-    val views = RemoteViews(context.packageName, R.layout.kw_next)
-    val labels = Labels(snap?.optJSONObject("labels"))
-    val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
-    val height = heightDp(options, 180)
-    val width = widthDp(options, 180)
-    val compact = height < 170 * scale
-    if (compact) {
-      val padding = (12 * context.resources.displayMetrics.density).toInt()
-      views.setViewPadding(R.id.kw_content, padding, padding, padding, padding)
-      views.setViewPadding(R.id.kw_empty, padding, padding, padding, padding)
-    }
-    val item = snap?.optJSONArray("next").objects()
-      .filter { it.optLong("departTs") >= now - DEPARTED_GRACE_MS }
-      .minByOrNull { it.optLong("departTs") }
-
-    views.show(R.id.kw_content, item != null)
-    views.show(R.id.kw_empty, item == null)
-    if (item == null) {
-      val message = labels.get(if (compact) "search" else if (snap == null) "openApp" else "nextEmpty")
-        ?: context.getString(if (compact) R.string.kw_search_hint else R.string.kw_open_app)
-      views.setTextViewText(R.id.kw_empty_text, message)
-      views.show(R.id.kw_empty_icon, height >= 150 * scale)
-      views.setTextViewTextSize(R.id.kw_empty_text, TypedValue.COMPLEX_UNIT_SP, if (compact) 12f else 14f)
-      views.setOnClickPendingIntent(android.R.id.background, openLink(context, FALLBACK_LINK, requestCode(widgetId, KIND_NEXT)))
-      return views
-    }
-
-    views.setTextViewText(R.id.kw_next_label, labels.get("nextTitle") ?: context.getString(R.string.kw_next_label))
-    views.show(R.id.kw_next_header, height >= 130 * scale)
-    views.removeAllViews(R.id.kw_badge_slot)
-    views.show(R.id.kw_badge_slot, width >= 170 * scale && !compact)
-    views.addView(R.id.kw_badge_slot,
-      lineBadge(context, item.optString("mode"), item.optString("line"), item.optString("lineBg"), item.optString("lineFg")))
-
-    val ts = item.optLong("departTs")
-    val minutes = minutesUntil(ts, now)
-    val numeric = minutes in 1..59
-    val value = when {
-      minutes <= 0 -> labels.get("now") ?: item.optString("departAt")
-      minutes >= 60 -> item.optString("departAt").ifEmpty { clock(ts) }
-      else -> minutes.toString()
-    }
-    views.setTextViewText(R.id.kw_big, value)
-    views.show(R.id.kw_big_unit, numeric)
-    views.setTextViewText(R.id.kw_big_unit, labels.get("min") ?: context.getString(R.string.kw_min))
-    val paint = Paint().apply { textSize = 64f * scale }
-    val availableWidth = (width - 32 - if (numeric) 42 * scale else 0f).coerceAtLeast(32f)
-    val widthLimit = 64f * availableWidth / paint.measureText(value).coerceAtLeast(1f)
-    val heightLimit = ((height - 36 - 20 * scale - (if (compact) 20 else 56) * scale) / scale).coerceAtLeast(22f)
-    views.setTextViewTextSize(R.id.kw_big, TypedValue.COMPLEX_UNIT_SP,
-      minOf(if (numeric) 72f else 38f, widthLimit, heightLimit))
-    views.setTextViewTextSize(R.id.kw_big_unit, TypedValue.COMPLEX_UNIT_SP, if (compact) 14f else 18f)
-    views.setTextViewTextSize(R.id.kw_title, TypedValue.COMPLEX_UNIT_SP, if (compact) 14f else 16f)
-    views.setInt(R.id.kw_title, "setMaxLines", if (compact) 1 else 2)
-    views.setTextViewText(R.id.kw_title, item.optString("dest"))
-    views.show(R.id.kw_sub, !compact)
-    views.setTextViewText(R.id.kw_sub, updated(labels, snap))
-    views.setContentDescription(android.R.id.background,
-      listOf(labels.get("nextTitle"), countdown(labels, ts, item.optString("departAt"), now),
-        item.optString("line"), item.optString("dest"), updated(labels, snap)).filterNotNull().filter { it.isNotBlank() }.joinToString(", "))
-    views.setOnClickPendingIntent(android.R.id.background,
-      openLink(context, item.optString("deepLink"), requestCode(widgetId, KIND_NEXT)))
-    return views
-  }
-
   fun destinations(context: Context, snap: JSONObject?, widgetId: Int, options: Bundle?, now: Long): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.kw_dest)
     val labels = Labels(snap?.optJSONObject("labels"))

@@ -226,7 +226,7 @@ function compressTile(buf) {
 
   // Kafle zbieraliśmy współbiegle, więc kolejność katalogu nie odpowiada
   // kolejności bajtów w pliku. Sortujemy, a offsety przeliczamy dopiero
-  // potem — inaczej katalog wskazuje cudze bajty.
+  // potem - inaczej katalog wskazuje cudze bajty.
   entries.sort((a, b) => a.z - b.z || a.x - b.x || a.y - b.y);
 
   const dirBytes = entries.length * 18;

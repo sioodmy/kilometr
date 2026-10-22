@@ -37,11 +37,13 @@ import {
 import type { MapLeg } from '../map/types';
 import { useJourneyNavigation } from '../services/useJourneyNavigation';
 import { clockFromMs } from '../services/notifications/format';
+import type { TransferProtectionState } from '../services/notifications/transferTypes';
 
 interface StopCompassCardProps {
   connection: Connection;
   /** Otwiera pełną mapę trasy. Cały widget nawigacji jest w tym celu klikalny. */
   onOpenMap?: () => void;
+  transfer?: TransferProtectionState;
 }
 
 const OFF_ROUTE_M = 38;
@@ -117,7 +119,7 @@ function roundNavM(m: number): number {
   return Math.round(m / 50) * 50;
 }
 
-export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps) {
+export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompassCardProps) {
   const s = useStrings();
   const { height: winH } = useWindowDimensions();
   // Cały widget (mapa + panel instrukcji) mieści się na ekranie:
@@ -131,7 +133,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
     now,
     location,
     locationState: locState,
-  } = useJourneyNavigation(connection);
+  } = useJourneyNavigation(connection, transfer);
   const userLocation =
     location && locState === 'ok' && now - location.timestamp <= 15_000 ? location : null;
   const [focused, setFocused] = useState(false);
@@ -500,7 +502,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
 
   const distText = guidance ? s.compass.distanceText(roundNavM(guidance.maneuver.distanceM)) : null;
 
-  const headLabel = onTransit
+  const baseHeadLabel = onTransit
     ? ride?.nextStop
       ? s.compass.nextStopAt(ride.nextStop)
       : s.compass.rideTo(activeLeg?.toStop ?? '')
@@ -519,7 +521,7 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
         : walkDistanceM != null
           ? s.compass.distanceText(roundNavM(walkDistanceM))
           : '';
-  const footerText = onTransit
+  const baseFooterText = onTransit
     ? ride?.position
       ? `${s.compass.vehicleGps} · ${s.compass.alightAt(activeLeg?.toStop ?? '')}${ride.stopsLeft != null ? ` · ${s.compass.stopsRemaining(ride.stopsLeft)}` : ''}`
       : s.compass.vehicleGpsMissing
@@ -530,6 +532,9 @@ export function StopCompassCard({ connection, onOpenMap }: StopCompassCardProps)
           ? `${(finalWalk ? s.compass.navToDestination : s.compass.navToStop)(s.compass.distanceText(roundNavM(walkDistanceM)))} · ${s.compass.walkMins(walkMin)}`
           : s.compass.walkMins(walkMin)
         : '';
+
+  const headLabel = baseHeadLabel;
+  const footerText = baseFooterText;
 
   // „Potem” pokazujemy tylko wtedy, gdy następny manewr jest wyraźnie
   // dalej niż obecny. Inaczej dwie linijki mówią to samo.

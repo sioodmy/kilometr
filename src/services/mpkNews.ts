@@ -87,17 +87,17 @@ export type MpkNewsItem = {
 
 export type ArticleBlock = { kind: 'h' | 'p'; text: string };
 
-export const MPK_NEWS_URL = 'https://www.wroclaw.pl/komunikacja/rss';
-export const MPK_CHANGES_URL =
+const MPK_NEWS_URL = 'https://www.wroclaw.pl/komunikacja/rss';
+const MPK_CHANGES_URL =
   'https://mpk.wroc.pl/strefa-pasazera/zaplanuj-podroz/zmiany-w-komunikacji';
 /**
  * Komunikaty KMK (ZTP Kraków). Lista HTML (tytuł + link + linie + termin
  * wprost na karcie) + awaryjny RSS WordPressa (?post_type=komunikat, same
  * tytuły bez linii).
  */
-export const ZTP_KOMUNIKATY_URL = 'https://ztp.krakow.pl/kmk/komunikaty';
-export const ZTP_KOMUNIKATY_RSS = 'https://ztp.krakow.pl/feed?post_type=komunikat';
-export const GZM_NEWS_URL = 'https://rj.transportgzm.pl/v2/news/';
+const ZTP_KOMUNIKATY_URL = 'https://ztp.krakow.pl/kmk/komunikaty';
+const ZTP_KOMUNIKATY_RSS = 'https://ztp.krakow.pl/feed?post_type=komunikat';
+const GZM_NEWS_URL = 'https://rj.transportgzm.pl/v2/news/';
 /**
  * Komunikaty WTP Warszawa: zwykły kanał RSS 2.0 (tytuł + link + pubDate
  * + opis). Numery linii siedzą w tytułach („objazdy dla 138”, „autobusów
@@ -124,7 +124,7 @@ export const ZTM_GDANSK_BSK_URL = 'https://files.cloudgdansk.pl/d/otwarte-dane/z
  * dzieje; parser zwraca wtedy zero pozycji bez błędu).
  */
 export const MPK_LODZ_ROZKLADY_RSS = 'https://mpk.lodz.pl/rozklady/rss/rozklady.jsp';
-export const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=1211';
+const MPK_LODZ_UTRUDNIENIA_RSS = 'https://mpk.lodz.pl/showrss.action?c=1211';
 /**
  * Komunikaty ZTM Kielce: lista aktualności Joomla (tytuł + link + data
  * w time[datetime] + lead w pierwszym p + obrazek images/). Serwerowy HTML,
@@ -248,24 +248,24 @@ function extractImage(html: string): string | null {
   return decodeEntities(m[1]).replace(/&amp;/g, '&').trim() || null;
 }
 
-// Pilne = utrudnienia / wypadki / wykolejenia — to user chce sprawdzać najszybciej.
+// Pilne = utrudnienia / wypadki / wykolejenia - to user chce sprawdzać najszybciej.
 const URGENT_RE =
   /(wykolej|wypadek|kolizj|zderzenie|utrudnien|objazd|awari|przerwa w ruchu|wstrzyman|zablokowan|korek|zamknię)/i;
 
-/** RSS miasta miesza loty i PR z komunikacją — zostawiamy tylko treść dla pasażera. */
+/** RSS miasta miesza loty i PR z komunikacją - zostawiamy tylko treść dla pasażera. */
 const TRANSIT_RE =
   /(mpk|tramwaj|autobus|linia\b|przystank|bilet|komunikacj|utrudnien|objazd|torowisk|kasownik|rozkład|przejazd|kursowan|zajezdn|pantograf|wykolej|agglomeracyj|międzymiast|aglo)/i;
 
-export function isUrgentNews(title: string, description: string): boolean {
+function isUrgentNews(title: string, description: string): boolean {
   return URGENT_RE.test(`${title} ${description}`);
 }
 
-export function isTransitNews(title: string, description: string): boolean {
+function isTransitNews(title: string, description: string): boolean {
   return TRANSIT_RE.test(`${title} ${description}`);
 }
 
 /** Daty z mpk.wroc.pl i ogonki typu „| ZDJĘCIA, AKTUALIZACJA” z portalu miasta. */
-export function cleanNewsTitle(title: string): string {
+function cleanNewsTitle(title: string): string {
   const cleaned = title
     .replace(/^\d{1,2}\.\d{1,2}\.\d{4}\s*r\.?\s*[-–—:]\s*/i, '')
     .replace(/^\d{1,2}\.\d{1,2}\.\d{4}\s*[-–—:]\s*/i, '')
@@ -289,6 +289,11 @@ function htmlToText(html: string): string {
     .trim();
 }
 
+/**
+ * Etykieta daty komunikatu: względna ("przed chwilą", "2 godz. temu"),
+ * wiek liczony od teraz. UI ma liczyć ją przy renderze: zapamiętana w
+ * modelu utyka ("przed chwilą" zostaje na zawsze w cache).
+ */
 export function formatNewsDate(ts: number | null): string {
   if (!ts) return '';
   const t = NEWS_SVC_DICTS[getLocaleSync()].newsSvc;
@@ -306,7 +311,7 @@ export function formatNewsDate(ts: number | null): string {
   return `${dd}.${mm}.${d.getFullYear()}`;
 }
 
-export function parseMpkRss(xml: string): MpkNewsItem[] {
+function parseMpkRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
@@ -345,7 +350,7 @@ function parsePlDate(raw: string): number | null {
 }
 
 /** Komunikaty operacyjne z serwisu pasażera MPK (lista „zmiany w komunikacji”). */
-export function parseMpkChanges(html: string): MpkNewsItem[] {
+function parseMpkChanges(html: string): MpkNewsItem[] {
   const cards = html.split(/class="message__card"/i).slice(1);
   const items: MpkNewsItem[] = [];
   for (const card of cards) {
@@ -383,7 +388,7 @@ export function parseMpkChanges(html: string): MpkNewsItem[] {
  * + termin na karcie). Karta: div.card > .date, .lines, a.message-btn.
  * RSS WordPressa ma same tytuły bez linii, więc służy tylko za fallback.
  */
-export function parseZtpKomunikaty(html: string): MpkNewsItem[] {
+function parseZtpKomunikaty(html: string): MpkNewsItem[] {
   const cards = html.split(/<div class="card">/i).slice(1);
   const items: MpkNewsItem[] = [];
   for (const card of cards) {
@@ -450,7 +455,7 @@ function extractZtpLines(title: string, description: string): string[] {
  * Każdy komunikat dotyczy komunikacji, więc nie filtrujemy po słowach
  * jak miejski RSS Wrocławia. Daty "od ... do ..." z listy lądują w opisie.
  */
-export function parseZtpRss(xml: string): MpkNewsItem[] {
+function parseZtpRss(xml: string): MpkNewsItem[] {
   const items: MpkNewsItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   for (const b of blocks) {
@@ -490,7 +495,7 @@ export function parseZtpRss(xml: string): MpkNewsItem[] {
  * Numery linii nie mają własnych znaczników na liście, więc skanujemy
  * tekst (daty wycinamy wcześniej, żeby „18.10.2026” nie udawało linii).
  */
-export function parseGzmNews(html: string): MpkNewsItem[] {
+function parseGzmNews(html: string): MpkNewsItem[] {
   const cards = html.split(/<div class="panel panel-default">/i).slice(1);
   const items: MpkNewsItem[] = [];
   for (const card of cards) {
@@ -2281,7 +2286,7 @@ let inMemoryLastSeenTs: number | null = null;
 let inMemorySeenCity: string | null = null;
 let inMemorySeenUrgentIds: Set<string> | null = null;
 
-export function getTodayDateString(d: Date = new Date()): string {
+function getTodayDateString(d: Date = new Date()): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -2315,7 +2320,11 @@ export async function loadNewsCache(cityId?: CityId | string): Promise<MpkNewsIt
   }
 }
 
-function rememberNews(items: MpkNewsItem[], cityId: string): MpkNewsItem[] {
+async function rememberNews(items: MpkNewsItem[], cityId: string): Promise<MpkNewsItem[]> {
+  // 200 OK bez ani jednego sparsowanego komunikatu to zwykle zmiana layoutu
+  // źródła, nie "brak newsów": pusta lista nie może nadpisać dobrego cache
+  // (loadNewsCache i tak odrzuca pusty wpis, tu pojawia się zwrot starych).
+  if (items.length === 0) return (await loadNewsCache(cityId)) ?? [];
   cachedNewsItems = items;
   cachedNewsCity = cityId;
   void kvSet(cityKey(KEY_NEWS_CACHE, cityId), JSON.stringify(items));
@@ -2573,7 +2582,7 @@ function sortNews(items: MpkNewsItem[]): MpkNewsItem[] {
   });
 }
 
-export async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
+async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   // Bez limitu czasu wiszące połączenie z wroclaw.pl zostawiało ekran
   // „Pobieranie komunikatów…” na zawsze i blokowało odświeżenie plakietki.
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
@@ -2615,7 +2624,7 @@ export async function fetchArticle(url: string, signal?: AbortSignal): Promise<A
 }
 
 // Czy dziś pojawiło się pilne utrudnienie? → czerwony badge na dzwonku.
-export function isToday(ts: number | null): boolean {
+function isToday(ts: number | null): boolean {
   if (!ts) return false;
   const d = new Date(ts);
   const now = new Date();
@@ -2626,9 +2635,6 @@ export function isToday(ts: number | null): boolean {
   );
 }
 
-export function hasUrgentNewsToday(items: MpkNewsItem[]): boolean {
-  return items.some((i) => i.urgent && isToday(i.pubDate));
-}
 
 /**
  * Oznacza aktualności jako przeczytane (użytkownik wszedł do sekcji aktualności).

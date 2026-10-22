@@ -49,7 +49,7 @@ export type OfflineMapDownloadResult =
   | { ok: false; reason: 'fail' }
   | { ok: false; reason: 'cooldown'; retryAfterMs: number };
 
-/** `file:///.../files/maps/` — ten sam katalog co filesDir natywnego serwera. */
+/** `file:///.../files/maps/` - ten sam katalog co filesDir natywnego serwera. */
 function mapsUri(): string {
   return `${FileSystem.documentDirectory}${MAP_DIR_NAME}/`;
 }

@@ -5,7 +5,7 @@
 //    (FATAL EXCEPTION: SQLiteCantOpenDatabaseException na GrapheneOS).
 // 2. expo-sqlite/kv-store crashował w release buildach z
 //    ERR_USING_RELEASED_SHARED_OBJECT (NativeDatabase.prepareAsync rejectuje,
-//    bo natywny shared object jest przedwcześnie zwalniany — znany bug
+//    bo natywny shared object jest przedwcześnie zwalniany - znany bug
 //    expo-sqlite ≤57.0.3 na niektórych urządzeniach/Androidach).
 //
 // Zamiennik: prosty, bezpieczny KV oparty na expo-file-system/legacy + in-memory cache.

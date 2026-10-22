@@ -1,6 +1,6 @@
 // Render miniapki do SVG na hoście i sprawdzenie kadrowania: skala,
 // obrót kompasem i to, że strzałka manewru nie wypada poza kwadrat.
-// Zero React Native — powtarzamy dokładnie matematykę z NavMiniMap.tsx.
+// Zero React Native - powtarzamy dokładnie matematykę z NavMiniMap.tsx.
 
 import { routeFootLocal } from '../src/services/footRouter';
 

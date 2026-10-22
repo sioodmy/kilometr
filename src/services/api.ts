@@ -1,9 +1,9 @@
 import * as Location from 'expo-location';
-import { kvGet, kvGetStrict, kvSet } from './storage';
+import { kvGetStrict, kvSet } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { Connection, LegStop, RouteQuery, SavedPlace, SmartDestination, Suggestion } from '../types/models';
+import { Connection, LegStop, RouteQuery, SavedPlace, SavedRoute, SmartDestination, Suggestion } from '../types/models';
 import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
 import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
@@ -59,7 +59,7 @@ function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): numb
 }
 
 /**
- * Identyfikator nowego zapisu. Nie `Math.random().toString(36).substring(7)` —
+ * Identyfikator nowego zapisu. Nie `Math.random().toString(36).substring(7)`-
  * `substring(7)` potrafi zwrócić `''`, gdy zapis jest krótszy niż 7 znaków.
  * Wycinamy z końca, więc długość wyniku jest zawsze stała.
  */
@@ -125,7 +125,7 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
   if (!foundStop && !hadReverse) {
     const last = await loadLastLocation();
     if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
-      result = { title: last.title, address: last.address, lat, lon, stopId: last.stopId, accuracyM };
+      result = { title: last.title, address: last.address, lat, lon, stopId: last.stopId, city: last.city ?? city, accuracyM };
     }
   }
 
@@ -263,7 +263,7 @@ export const LocationService: ILocationService = {
  * miejsca startowego otwiera wyszukiwarkę po zapisaniu). Przy jednym
  * wspólnym `AbortController` nowsze zapytanie z drugiego pola zabijało
  * pierwsze, a przegrany dostawał `SearchAbortedError` zamieniany przez
- * wywołującego w „brak wyników” — czyli wynik znikiał bez powodu.
+ * wywołującego w „brak wyników” - czyli wynik znikiał bez powodu.
  */
 const searchAborts = new Map<string, AbortController>();
 const DEFAULT_SEARCH_SCOPE = 'default';
@@ -279,7 +279,7 @@ class SearchAbortedError extends Error {
   }
 }
 
-// Cache scalonych podpowiedzi (query + zaokrąglona pozycja) — powtórki migają.
+// Cache scalonych podpowiedzi (query + zaokrąglona pozycja) - powtórki migają.
 const mergedCache = new Map<string, { data: Suggestion[]; expires: number }>();
 const MERGED_TTL_MS = 120 * 1000;
 const MERGED_MAX = 60;
@@ -320,7 +320,10 @@ export const SearchService: ISearchService = {
     const isCurrent = () => searchAborts.get(scope) === ctrl;
 
     const hasPos = coords !== undefined;
-    const cacheKey = `v2:${q.toLowerCase()}|${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : '-'}`;
+    // Miasto w kluczu: po przełączeniu Wrocław → Kraków ten sam tekst przez
+    // 2 minuty wracał z cache starego miasta.
+    const searchCityId = getActiveCityIdSync();
+    const cacheKey = `v2:${searchCityId}:${q.toLowerCase()}|${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : '-'}`;
     const cachedMerged = mergedGet(cacheKey);
     if (cachedMerged) return cachedMerged;
 
@@ -366,7 +369,7 @@ export const SearchService: ISearchService = {
       ];
 
       // 2. Sieć (Nominatim) tylko gdy lokalnie za mało albo to adres z numerem.
-      // Adresy z numerami są domeną Nominatim — lokalny indeks ich nie ma.
+      // Adresy z numerami są domeną Nominatim - lokalny indeks ich nie ma.
       const normQ = normalizePolish(q);
       const looksLikeAddress = /\d/.test(normQ);
       const needNetwork = q.length >= 2 && (looksLikeAddress || localSuggestions.length < 5);
@@ -384,15 +387,15 @@ export const SearchService: ISearchService = {
       }
 
       // 3. Merge: przystanki absolutnie pierwsze (w kolejności trafienie+waga),
-      // reszta wg nazwy z karą za dystans — bliższe wyżej.
+      // reszta wg nazwy z karą za dystans - bliższe wyżej.
       const merged = dedupeAndSort(localSuggestions, remoteHits, hasPos, normQ).slice(0, 15);
       if (merged.length > 0) {
         mergedSet(cacheKey, merged);
-        if (isCurrent()) void saveSuggestions(q, merged);
+        if (isCurrent()) void saveSuggestions(q, merged, searchCityId);
         return merged;
       }
     } catch {
-      // offline / błąd — fallback niżej
+      // offline / błąd - fallback niżej
     }
 
     if (!isCurrent()) throw new SearchAbortedError();
@@ -413,6 +416,19 @@ const recentPlannedConnections = new Map<string, Connection>();
 
 export function getPlannedConnection(id: string): Connection | undefined {
   return recentPlannedConnections.get(normalizeConnectionId(id));
+}
+
+export function rememberPlannedConnection(connection: Connection): void {
+  recentPlannedConnections.set(connection.id, connection);
+}
+
+// Serializuje read-modify-write zapisanych tras: dwa równoległe zapisy nie mogą
+// zgubić jednego wpisu (każdy czyta-i-zapisuje całą listę).
+let routesLock: Promise<unknown> = Promise.resolve();
+function withRoutesLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = routesLock.then(fn, fn);
+  routesLock = run.catch(() => {});
+  return run;
 }
 
 export const RoutingService: IRoutingService = {
@@ -475,16 +491,13 @@ export const RoutingService: IRoutingService = {
     const found = getPlannedConnection(id);
     if (found) return { connection: found, source: 'live' };
 
-    const saved = await this.isRouteSaved(id);
-    if (saved) {
-      const allSaved = await getSavedRoutes();
-      const hit = allSaved.find(r => r.id === id)?.connection;
-      if (hit) return { connection: hit, source: 'live' };
-    }
+    const allSaved = await getSavedRoutes();
+    const hit = allSaved.find(r => r.id === id)?.connection;
+    if (hit) return { connection: hit, source: 'live' };
 
     const cached = await findCachedConnection(id);
     if (cached) {
-      // Z dysku: czasy przeliczamy na teraz i gasiemy `live`, żeby szczegóły
+      // Z dysku: czasy przeliczamy na teraz i gasimy `live`, żeby szczegóły
       // nie udawały, że mają opóźnienie z serwera. Ekran dostanie
       // `source: 'cache'` i powie o tym wprost użytkownikowi.
       return { connection: cached, source: 'cache' };
@@ -494,23 +507,33 @@ export const RoutingService: IRoutingService = {
   },
 
   async saveRoute(connection: Connection): Promise<void> {
-    try {
-      const all = await getSavedRoutes();
-      all.push({ id: connection.id, savedAt: Date.now(), connection });
-      await kvSet(savedRoutesKey(), JSON.stringify(all));
-    } catch (err) {
-      console.warn('[RoutingService] Failed to save route:', err);
-    }
+    return withRoutesLock(async () => {
+      try {
+        const all = await readSavedRoutes();
+        const existingIdx = all.findIndex((r) => r.id === connection.id);
+        const entry: SavedRoute = { id: connection.id, savedAt: Date.now(), connection };
+        if (existingIdx >= 0) {
+          all[existingIdx] = entry;
+        } else {
+          all.push(entry);
+        }
+        await kvSet(savedRoutesKey(), JSON.stringify(all));
+      } catch (err) {
+        console.warn('[RoutingService] Failed to save route:', err);
+      }
+    });
   },
 
   async deleteSavedRoute(id: string): Promise<void> {
-    try {
-      const all = await getSavedRoutes();
-      const filtered = all.filter(r => r.id !== id);
-      await kvSet(savedRoutesKey(), JSON.stringify(filtered));
-    } catch (err) {
-      console.warn('[RoutingService] Failed to delete saved route:', err);
-    }
+    return withRoutesLock(async () => {
+      try {
+        const all = await readSavedRoutes();
+        const filtered = all.filter(r => r.id !== id);
+        await kvSet(savedRoutesKey(), JSON.stringify(filtered));
+      } catch (err) {
+        console.warn('[RoutingService] Failed to delete saved route:', err);
+      }
+    });
   },
 
   async isRouteSaved(id: string): Promise<boolean> {
@@ -536,16 +559,36 @@ export const RoutingService: IRoutingService = {
 // w którym je zaplanowano). Ten sam wzorzec kluczy co miejsca.
 const SAVED_ROUTES_BASE_KEY = 'kilometr.saved_routes';
 
-function savedRoutesKey(cityId?: string): string {
+export function savedRoutesKey(cityId?: string): string {
   return cityKey(SAVED_ROUTES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
 }
 
-async function getSavedRoutes(): Promise<{id: string, savedAt: number, connection: Connection}[]> {
+// Odczyt listy zapisanych tras do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
+// żeby save/delete nie nadpisały prawdziwych danych pustą listą.
+// Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
+export async function readSavedRoutes(key?: string): Promise<SavedRoute[]> {
+  const raw = await kvGetStrict(key ?? savedRoutesKey());
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error(`${key ?? SAVED_ROUTES_BASE_KEY} is not an array`);
+  return parsed.filter(
+    (r): r is SavedRoute =>
+      Boolean(r) &&
+      typeof r.id === 'string' &&
+      typeof r.savedAt === 'number' &&
+      Boolean(r.connection) &&
+      typeof r.connection.id === 'string' &&
+      Array.isArray(r.connection.legs),
+  );
+}
+
+export async function getSavedRoutes(key?: string): Promise<SavedRoute[]> {
   try {
-    const raw = await kvGet(savedRoutesKey());
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return [];
+    return await readSavedRoutes(key);
+  } catch (err) {
+    console.warn('[RoutingService] Failed to read saved routes:', err);
+    return [];
+  }
 }
 
 // Miejsca są per-miasto: każde miasto ma własny kubełek (`cityKey`),
@@ -558,8 +601,6 @@ function placesKey(cityId?: string): string {
   return cityKey(PLACES_BASE_KEY, getCity(cityId ?? getActiveCityIdSync()).id);
 }
 
-// Odczyt listy miejsc do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
-// żeby add/update/delete nie nadpisały prawdziwych danych pustą listą.
 // Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
 async function readPlaces(key?: string): Promise<SavedPlace[]> {
   const raw = await kvGetStrict(key ?? placesKey());
@@ -646,7 +687,7 @@ export const FavoritesService: IFavoritesService = {
     try {
       const { getSmartDestinationsForLocation } = await import('./smartRanker');
       const city = activeCityDef();
-      // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS — a
+      // `??` łapie tylko brak, nie `NaN` z deep linka czy zepsutego GPS - a
       // ranking na `NaN` wypadałby z każdego promienia, czyli pokazałby
       // historię z całego miasta jako „w okolicy".
       const lat = Number.isFinite(coords?.lat) ? coords!.lat! : city.center.lat;
@@ -676,7 +717,7 @@ export const FavoritesService: IFavoritesService = {
       // dla 0.5 → "0.i" (3), dla 0.25 → "0.9" (3). Każde takie trafienie dawało
       // id = "" i dwa pola z tym samym id, a puste klucze psują `key` w liście,
       // `bySlot` i kotwicowanie po lokalizacji. Losujemy więc pełny zapis i
-      // obcinamy dopiero na jego końcu — długość jest wtedy stała.
+      // obcinamy dopiero na jego końcu - długość jest wtedy stała.
       const id = newId();
       const newPlace: SavedPlace = {
         id,

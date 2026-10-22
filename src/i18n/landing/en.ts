@@ -1,124 +1,144 @@
 import type { Strings } from './pl';
-import { cityNames } from './cities';
+import { previewRoute } from './journey';
+import { previewHome } from './home';
 
 export const en: Strings = {
   meta: {
-    title: 'Kilometr. Your city. Your pace.',
+    title: 'Kilometr',
+    imageAlt:
+      'Kilometr. Your open source journey planner. The app on an iPhone, city coats of arms and a transit network diagram.',
     description:
       'Public transport in cities across Poland. Plan journeys, check departures and use offline timetables. Free on Android.',
   },
   skip: 'Skip to content',
   nav: {
-    features: 'Features',
-    coverage: 'Coverage',
-    download: 'Download',
-    menu: 'Menu',
-    close: 'Close menu',
     label: 'Main navigation',
   },
   language: 'Website language',
-  theme: { light: 'Use light theme', dark: 'Use dark theme' },
   hero: {
     eyebrow: 'Kilometr for Android',
-    title: 'Your city.',
-    accent: 'Your pace.',
-    body: 'Your everyday public transport planner. Now in cities across Poland. Offline, too.',
-    play: 'Get it on Google Play',
-    secondary: 'See how it works',
+    title: 'Your',
+    accent: 'open-source',
+    titleEnd: 'journey planner',
+    body: 'Plan your route, check departures and head into town. Public transport across Poland, even offline. No ads or account needed.',
   },
-  intro: {
-    title: 'A good connection.\nEvery day.',
-    body: 'To work, to class, across town. Kilometr plans the route so you can get on with your day.',
+  install: {
+    android: 'Android',
+    ios: 'iOS',
+    platform: 'Choose your phone system',
+    newTab: '(opens in a new tab)',
   },
-  features: {
-    label: 'App features',
-    plan: 'Plan',
-    saved: 'Return',
-    ride: 'Ride',
-    planTitle: 'You pick the place.\nWe find the route.',
-    planBody:
-      'Enter an address or stop. Compare journeys, choose your transport and set your transfer preferences.',
-    planDetail:
-      'Buses, trams and rail where available. Including the walk to your stop and destination.',
-    savedTitle: 'Your places.\nCloser than you think.',
-    savedBody:
-      'Home, work, your favourite café. Save the places you return to and check the next departures on the home screen.',
-    savedDetail:
-      'Recent searches stay close at hand. Set your starting point independently of GPS.',
-    rideTitle: 'Know where you are.\nAnd what comes next.',
-    rideBody:
-      'See your route on the map, check the stops along the way and follow your journey. A notification reminds you when to leave.',
-    rideDetail: 'Vehicle positions and delays appear where the operator provides them.',
+  android: {
+    title: 'Join the Play Store beta',
+    intro:
+      'Kilometr is in testing. To download the Android app, first join the tester group, then join the beta on Google Play.',
+    noteTitle: 'Use one Google account for both steps',
+    noteBody:
+      'Join the group and the beta with the same Google account. Use it in the Play Store on your phone too.',
+    group: {
+      title: 'Join the tester group',
+      body: 'Open the Kilometr group in Google Groups. Sign in and select “Join group”. Opening the page alone does not add you to the group.',
+      action: 'Join the Google group',
+    },
+    testing: {
+      title: 'Join the beta and download the app',
+      body: 'After joining the group, open the testing page. Confirm that you want to join the programme, then follow its Google Play link to install Kilometr.',
+      action: 'Join the Google Play beta',
+    },
+    helpTitle: 'Cannot access the test?',
+    helpBody:
+      'Check that the group, testing page and Play Store all use the same Google account. If you just joined the group, wait a little and refresh the testing page. This is a test version, so you may encounter bugs.',
+    alternative: {
+      title: 'Boycotting Google? Download straight from the source',
+      body: 'Obtainium downloads Kilometr and its updates directly from our GitHub. The button opens the configuration in Obtainium or helps you install it.',
+      obtainium: 'Add to Obtainium',
+      fdroid: 'F-Droid',
+      soon: 'Coming soon',
+      json: 'Download Obtainium configuration (JSON)',
+    },
   },
-  offline: {
-    eyebrow: 'Made for the journey',
-    title: 'Signal gone.\nRoute still here.',
-    body: 'Download your city’s timetable and map. Kilometr calculates journeys on your phone, so you can plan without an internet connection.',
-    note: 'Internet is needed to download and update data, and for live information.',
-    local: 'Routes calculated on your phone',
-    timetable: 'Offline timetables',
-    maps: 'Your downloaded map',
-    airplane: 'Airplane mode',
-    ready: 'Ready when you are.',
+  ios: {
+    title: 'Install on iOS',
+    intro:
+      'You can install Kilometr on iOS from an IPA file, outside the App Store. This is called sideloading. Follow the steps below using Sideloadly.',
+    noteTitle: 'Prepare your phone and computer',
+    noteBody:
+      'You need an iPhone with iOS 16.4 or later, a Mac or Windows computer, a USB cable and an Apple account. A free account is enough.',
+    download: {
+      title: 'Download the app file',
+      body: 'Save kilometr-unsigned.ipa from the latest release to your computer. It is unsigned. You will sign it with your Apple account during installation.',
+      action: 'Download IPA',
+    },
+    tool: {
+      title: 'Install Sideloadly on your computer',
+      body: 'Download the version for your system from the official website. On Windows, also install the Apple versions of iTunes and iCloud linked there.',
+      action: 'Download Sideloadly',
+    },
+    sign: {
+      title: 'Connect your iPhone and install Kilometr',
+      body: 'Unlock your phone, connect it by cable and trust the computer. In Sideloadly, select your iPhone, drag in the IPA file and enter your Apple account. Keep the KilometrLiveActivity extension for Live Activities and Dynamic Island. Click Start and follow the prompts.',
+    },
+    open: {
+      title: 'Trust the app on your phone',
+      body: 'If iOS asks, go to Settings → General → VPN & Device Management and trust your Apple account profile. Enable Developer Mode in Settings → Privacy & Security if prompted. Then open Kilometr and download your city’s timetable.',
+    },
+    helpTitle: 'Remember to renew the signature',
+    helpBody:
+      'With a free Apple account, the signature expires after 7 days. Renew it with Sideloadly before the app stops opening. The tool supports automatic renewal when your computer and phone can connect. Use the same Apple account and app identifier for updates to keep your data.',
+    appStore: {
+      title: 'Why is Kilometr not on the App Store?',
+      body: 'Apple charges 99 USD a year for a developer account, even for a free app. These rules are a scandal for small open-source projects: they favour corporations over independent creators. We cannot afford it, so for now we offer an IPA file you can install yourself.',
+      supportBody:
+        'Want to help us cover this fee? You can support the project. Every donation helps us develop Kilometr and fund its publication.',
+    },
   },
-  coverage: {
-    cities: cityNames,
-    eyebrow: 'Now across Poland',
-    title: 'Another city.\nThe same Kilometr.',
-    body: 'At home during the week, somewhere else at the weekend. Pick a city and travel with the app you already know.',
-    count: (n) => `${n} cities and metropolitan areas`,
-    label: 'Choose a city',
-    map: 'Map of supported cities in Poland',
-    selected: (name) => `Selected city: ${name}`,
-    timetable: 'Timetables',
-    offline: 'Offline map',
-    rail: 'Regional rail',
-    note: 'Transport options and live data vary by city. Change your city in the app’s Settings.',
-    metro: 'Upper Silesian and Zagłębie Metropolis',
+  homePreview: {
+    screenLabel: 'Kilometr home screen on an iPhone',
+    statusTime: '21:36',
+    places: previewHome,
+    title: 'Where to?',
+    savedTitle: 'Saved places',
+    edit: 'Edit',
+    historyTitle: 'Recent places',
+    home: 'Home',
+    school: 'University',
+    gym: 'Gym',
+    stop: 'Stop',
+    searchLabel: 'Where are you going?',
+    startFrom: (title: string) => `from: ${title}`,
+    departIn: (n: number) => `in ${n} min`,
   },
-  principles: {
-    title: 'Just hop on.',
-    free: 'Free.',
-    freeBody: 'Plan journeys without a subscription or paid features.',
+  journeyDemo: {
+    choose: 'You choose',
+    ride: '...and off you go',
+    mock: 'Example journey. Times follow your device clock.',
+    route: previewRoute,
+    departIn: (n) => `in ${n} min`,
+    duration: (n) => `${n} min`,
+    transfers: (n) => (n === 0 ? 'direct' : n === 1 ? '1 transfer' : `${n} transfers`),
+    fromPrefix: 'from ',
+    toPrefix: 'to ',
+    stopsSummary: (n, mins, open) =>
+      `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
+    expandA11y: (line, dir, expanded) =>
+      `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
+  },
+  promise: {
     ads: 'No ads.',
-    adsBody: 'Your screen has room for your route.',
-    account: 'No account.',
-    accountBody: 'Open the app and choose where you’re going.',
-    open: 'Open source.',
-    openBody: 'Kilometr is developed in public. Read the code on GitHub.',
-    source: 'View the code on GitHub',
+    free: 'Free.',
+    forever: 'Forever.',
   },
-  donation: {
-    title: 'Help develop Kilometr.',
-    body: 'Kilometr is free and open source. If it helps you get around, you can support its development on Ko-fi.',
-    cta: 'Support on Ko-fi',
-  },
-  download: {
-    title: 'Next stop?\nYours.',
-    body: 'Take Kilometr on your next journey.',
-    android: 'For Android phones. Free.',
-    apk: 'APK on GitHub',
-    github: 'Stable release from GitHub',
-    alternatives: 'Prefer another way to install?',
-    nightly: 'Test releases',
-    obtainium: 'Add to Obtainium',
-    obtainiumHelp: 'Requires Obtainium to be installed.',
+  closing: {
+    title: 'You deserve more than jakdojade',
+    body: 'Plan journeys and check departures, even offline. Download Kilometr and, if it helps you, support its development.',
+    support: 'Support development',
   },
   footer: {
     tagline: 'See you on the way.',
     privacy: 'Privacy',
-    report: 'Benchmark',
     github: 'GitHub',
     license: 'Free software. GPL-3.0.',
     back: 'Back to the home page',
-  },
-  preview: {
-    home: 'App home screen',
-    routes: 'Journey results',
-    trip: 'Journey details',
-    placeholder: 'Screenshot placeholder',
-    device: 'Pixel 7a / 1080 × 2400',
-    placeholderLabel: (screen) => `${screen}. Space for an authentic screenshot from a Pixel 7a.`,
   },
   privacy: {
     title: 'Kilometr privacy policy',
@@ -146,18 +166,10 @@ export const en: Strings = {
       'The default public timetable, map, address and route geometry services use HTTPS. Local data is kept in private app storage protected by Android. Exported files and journey links are not password protected. Avoid sharing them if they contain an address you wish to keep private.',
     webTitle: 'This website',
     webBody:
-      'This website only saves your language and theme preferences in browser storage. It loads no analytics or advertising tools. GitHub Pages hosting and external sites you open via links are subject to their operators’ policies.',
+      'This website only saves your language preference in browser storage. It loads no analytics or advertising tools. GitHub Pages hosting and external sites you open via links are subject to their operators’ policies.',
     contactTitle: 'Privacy contact',
     contactBody:
       'Kilometr is maintained by sioodmy (github.com/sioodmy). Send privacy questions and data requests through Issues at github.com/sioodmy/kilometr. Issues are public, so do not include your home address or other sensitive data. Changes to data handling will be described in this policy with an updated date.',
     contact: 'Open an issue',
-  },
-  report: {
-    title: 'Journey planner benchmark',
-    intro:
-      'A historical comparison for Wrocław. Results apply to the tested routes, not all of Poland or current travel conditions.',
-    sample: '72 routes. Weekdays and weekends.',
-    body: 'The comparison with jakdojade covers 72 weekday and weekend routes, with a departure window of up to 120 minutes. Kilometr found an earlier arrival in 46 cases, an equal arrival in 24 and a later arrival in 2.',
-    methodology: 'Comparison code and methodology',
   },
 };

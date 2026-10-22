@@ -1,4 +1,4 @@
-// Stacje Polinki w wyszukiwarce — dopasowanie rozmyte wykonywane wsadowo w Rust.
+// Stacje Polinki w wyszukiwarce - dopasowanie rozmyte wykonywane wsadowo w Rust.
 
 import { polinkaStops } from '../data/polinka';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';

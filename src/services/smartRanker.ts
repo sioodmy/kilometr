@@ -112,16 +112,36 @@ async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
  * Liczy się nawyk, a nie historia wyszukiwania: powtórna kontrola tej samej
  * pary zwiększa `uses`, a wybór celu z innego miejsca tworzy osobny wpis
  * (szczegóły w `mergeTripSearch`). `measuredMinutes` to prawdziwy czas dojazdu
- * z planera — bez niego zostajemy przy `FALLBACK_TRIP_MIN`.
+ * z planera - bez niego zostajemy przy `FALLBACK_TRIP_MIN`.
+ *
+ * Odpisy idą przez kolejkę: dwa równoległe read-modify-write (szybkie dwa
+ * kliknięcia celu) kończyły się nadpisaniem pierwszego wpisu starym stanem.
  */
-export async function recordTripSearch(
+let saveQueue: Promise<void> = Promise.resolve();
+
+export function recordTripSearch(
   originLat: number,
   originLon: number,
   originTitle: string,
   dest: TripDestinationInput,
   measuredMinutes?: number,
 ): Promise<void> {
-  if (!dest.title || typeof dest.lat !== 'number' || typeof dest.lon !== 'number') return;
+  if (!dest.title || typeof dest.lat !== 'number' || typeof dest.lon !== 'number') return Promise.resolve();
+  saveQueue = saveQueue
+    .then(() => recordTripSearchNow(originLat, originLon, originTitle, dest, measuredMinutes))
+    .catch((err) => {
+      console.warn('[SmartRanker] recordTripSearch failed:', err);
+    });
+  return saveQueue;
+}
+
+async function recordTripSearchNow(
+  originLat: number,
+  originLon: number,
+  originTitle: string,
+  dest: TripDestinationInput,
+  measuredMinutes?: number,
+): Promise<void> {
   // `NaN` i `0` są fałszywe, więc `||` łapie też śmieci z deep linka.
   const cityFallback = defaultLocationForCity(getActiveCitySync().id);
   const history = await loadTripHistory();
@@ -143,7 +163,7 @@ export async function getSmartDestinationsForLocation(
   userLon: number,
   limit = 5,
 ): Promise<SmartDestination[]> {
-  // Dystans kotwiczenia z ustawień: miejsce bliżej niż to nie jest celem —
+  // Dystans kotwiczenia z ustawień: miejsce bliżej niż to nie jest celem-
   // skipujemy je i pokazujemy następne w rankingu.
   let exclusionRadiusM = EXCLUSION_RADIUS_FALLBACK_M;
   try {
@@ -181,7 +201,7 @@ export async function getSmartDestinationsForLocation(
 
 // ─── Natychmiastowy start: cache ostatniej listy ────────────────────────────
 // GPS potrafi myśleć parę sekund, więc na starcie malujemy gołe ostatnie
-// miejsca z cache (bez ikon i odjazdów — te dociągają się jak zwykle),
+// miejsca z cache (bez ikon i odjazdów - te dociągają się jak zwykle),
 // a gdy GPS + świeży ranking dotrą, lista zamienia się w miejscu.
 const smartCacheKey = (): string => cityKey('kilometr.smart_cache.v1', getActiveCityIdSync());
 const SMART_CACHE_MAX = 5;

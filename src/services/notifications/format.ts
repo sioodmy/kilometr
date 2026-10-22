@@ -3,7 +3,7 @@
 // Tu są WYŁĄCZNIE operacje językowo-neutralne: czasy bezwzględne, jednostki
 // metryczne i czysta arytmetyka. Wszystko, co ma być po polsku, angielsku,
 // niemiecku lub ukraińsku (jednostki po „min", liczby mnogie, nazwy faz),
-// żyje w słownikach `src/i18n` — patrz `buildPhaseCopy` w `content.ts`.
+// żyje w słownikach `src/i18n` - patrz `buildPhaseCopy` w `content.ts`.
 //
 // Zasada: „14:32" w treści powiadomienia, a liczbę typu „4 min" rysuje zegar
 // systemowy przez `setUsesChronometer`. Dzięki temu tekst nie zestarzeje się
@@ -18,7 +18,7 @@ export function formatClock(sec: number): string {
 }
 
 /**
- * 'HH:MM' z bezwzględnego znacznika ms — do tekstu w powiadomieniu, nie do
+ * 'HH:MM' z bezwzględnego znacznika ms - do tekstu w powiadomieniu, nie do
  * arytmetyki.
  */
 export function clockFromMs(ms: number): string {
@@ -40,16 +40,20 @@ const DAY_MS = DAY_SEC * 1000;
 
 /**
  * Sekundy od północy (mogą przekroczyć 86400 przy kursorze na jutrzejszy
- * rozkład — patrz engine.ts, dayOffsetSec) → bezwzględny znacznik ms.
+ * rozkład - patrz engine.ts, dayOffsetSec) → bezwzględny znacznik ms.
  *
- * Wybieramy wystąpienie najbliższe `now`, a nie to z dzisiejszego dnia.
- * Bez tego podróż o 23:58 oglądana o 00:03 dostałaby „dziś 23:58", czyli
- * ETA 24 godziny zamiast „3 minuty temu".
+ * Pełne doby w `sec` wynikają z kursoru daty (jutro = +86400, wczoraj =
+ * -86400), więc liczymy je wprost z midnight. Dla wartości z jednej doby
+ * wybieramy wystąpienie najbliższe `now`: podróż o 23:58 oglądana o 00:03
+ * ma być "3 minuty temu", a nie ETA za 24 godziny.
  */
 export function toAbsoluteMs(sec: number, now: Date = new Date()): number {
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
   const base = midnight.getTime() + Math.round(sec) * 1000;
+  // Bez tego jutrzejszy kurs (sec >= 86400) po południu wracał jako dzisiejszy:
+  // diff > 12h cofał go o dobę i tripMonitor widział "już dotarłeś".
+  if (Math.abs(sec) >= DAY_SEC) return base;
   const diff = base - now.getTime();
   if (diff < -DAY_MS / 2) return base + DAY_MS;
   if (diff > DAY_MS / 2) return base - DAY_MS;
@@ -61,7 +65,7 @@ export function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-/** '320 m', '1.2 km' — międzynarodowe symbole jednostek, bez odmiany. */
+/** '320 m', '1.2 km' - międzynarodowe symbole jednostek, bez odmiany. */
 export function formatDistance(meters: number | null | undefined): string {
   if (meters == null || !isFinite(meters) || meters < 0) return '';
   if (meters < 50) return `${Math.max(5, Math.round(meters / 5) * 5)} m`;

@@ -1,6 +1,14 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ArrowRight, BusFront, ChevronDown, Footprints, TrainFront, TramFront } from 'lucide-react-native';
+import {
+  ArrowRight,
+  BusFront,
+  ChevronDown,
+  Footprints,
+  Ticket,
+  TrainFront,
+  TramFront,
+} from 'lucide-react-native';
 import Animated, {
   LinearTransition,
   useAnimatedStyle,
@@ -24,6 +32,7 @@ import {
 } from '../services/vehiclePosition';
 import { useStrings, type Strings } from '../i18n';
 import { motion } from '../theme/motion';
+import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 
 const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
@@ -41,7 +50,7 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
 // pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
-// najstarszy wpis — bez dodatkowej kolejki.
+// najstarszy wpis - bez dodatkowej kolejki.
 const STOPS_CACHE_MAX = 80;
 const stopsCache = new Map<string, LegStop[]>();
 const stopsPromise = new Map<string, Promise<LegStop[]>>();
@@ -64,10 +73,11 @@ function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
 }
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
-// Rail ma KRESKĘ CIĄGŁĄ: kropka + łącznik flex:1 rozciągany na wysokość wiersza.
-// Dzięki temu linia jest rzeczywiście połączona przez wszystkie kropki.
+// Rail rysuje linię przez całą wysokość wiersza i zachodzi 1 px na sąsiednie
+// wiersze, więc między kropkami i na granicy stref nie ma żadnych szwów.
 const StopRow = memo(function StopRow({
   stop,
+  isFirst,
   isLast,
   index,
   vehicleMode,
@@ -80,33 +90,60 @@ const StopRow = memo(function StopRow({
   segmentStart,
 }: {
   stop: LegStop;
+  isFirst: boolean;
   isLast: boolean;
   index: number;
   segmentStart: number;
   vehicleMode: Leg['mode'];
   inSegment: boolean;
-  /** Przystanek startowy albo końcowy odcinka — wyróżniony wagą. */
+  /** Przystanek startowy albo końcowy odcinka - wyróżniony wagą. */
   emphasis: boolean;
   accent: string;
   connectorAccent: boolean;
   vehicleGap: number | null;
   vehicleLabel: string;
 }) {
+  const t = useStrings();
+  const boundary = parseFareBoundary(stop.name);
   // Przystanki przed wsiadaniem nie należą do naszej trasy, więc są wyszarzone
   // tak samo jak te, które pojazd już minął.
   const passed = (vehicleGap != null && index <= vehicleGap) || index < segmentStart;
   const markerHere = vehicleGap === index && !isLast;
+  // Linia biegnie przez cały wiersz i zachodzi 1 px na sąsiednie wiersze.
+  // Osobny łącznik pod kropką zostawiał cienką szwę między wierszami.
+  const lineCenter = boundary ? 20 : 10.5;
+  const showLine = !(isFirst && isLast);
+  const lineTop = isFirst ? lineCenter : -1;
+  const lineStyle = isLast
+    ? { top: lineTop, height: lineCenter + 1 - lineTop }
+    : { top: lineTop, bottom: -1 };
   return (
     <View style={s.stopRow}>
       <View style={s.stopRail}>
+        {showLine && (
+          <View
+            style={[
+              s.stopRailLine,
+              lineStyle,
+              {
+                backgroundColor:
+                  vehicleGap != null && index < vehicleGap
+                    ? scheme.outline
+                    : connectorAccent
+                      ? accent
+                      : scheme.outlineVariant,
+              },
+            ]}
+          />
+        )}
         <View
           style={[
-            s.dot,
+            boundary ? s.boundaryMark : s.dot,
             passed
               ? { backgroundColor: scheme.outline, borderColor: scheme.outline }
               : inSegment
-              ? { backgroundColor: accent, borderColor: accent }
-              : { backgroundColor: scheme.surface, borderColor: scheme.outlineVariant },
+                ? { backgroundColor: accent, borderColor: accent }
+                : { backgroundColor: scheme.surface, borderColor: scheme.outlineVariant },
           ]}
         />
         {markerHere && (
@@ -119,30 +156,31 @@ const StopRow = memo(function StopRow({
             <VehicleGlyph mode={vehicleMode} />
           </View>
         )}
-        {!isLast && (
-          <View
+      </View>
+      {boundary ? (
+        <View style={s.boundaryBody}>
+          <Ticket size={16} color={scheme.onSurfaceVariant} style={s.boundaryIcon} />
+          <View style={s.boundaryText}>
+            <Text style={s.boundaryTitle}>{t.leg.fareBoundary}</Text>
+            <Text style={s.boundaryDetail}>
+              {t.leg.fareBoundaryDetail(boundary.areas, boundary.point)}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={s.stopBody}>
+          <Text
             style={[
-              s.connector,
-              {
-                backgroundColor:
-                  vehicleGap != null && index < vehicleGap
-                    ? scheme.outline
-                    : connectorAccent
-                      ? accent
-                      : scheme.outlineVariant,
-              },
+              s.stopName,
+              emphasis && s.stopNameStrong,
+              passed ? s.stopNamePassed : !inSegment && s.stopNameDim,
             ]}
-          />
-        )}
-      </View>
-      <View style={s.stopBody}>
-        <Text
-          style={[s.stopName, emphasis && s.stopNameStrong, passed ? s.stopNamePassed : !inSegment && s.stopNameDim]}
-          numberOfLines={1}
-        >
-          {stop.name}
-        </Text>
-      </View>
+            numberOfLines={1}
+          >
+            {stop.name}
+          </Text>
+        </View>
+      )}
     </View>
   );
 });
@@ -195,7 +233,7 @@ function LegStopsList({
       // Odrzucenie NIE jest zapamiętywane. Wcześniej `.catch(() => [])` trafiał
       // do `stopsPromise` razem z sukcesem, więc jedna chwilowa awaria (zamknięta
       // baza, odjęty slot importu) zostawiała ten kurs z dwoma przystankami
-      // do końca życia procesu — użytkownik dostawał „trasa niepełna” bez
+      // do końca życia procesu - użytkownik dostawał „trasa niepełna” bez
       // możliwości naprawienia.
       promise = RoutingService.getTripStops(leg.tripId)
         .then((stops) => {
@@ -212,7 +250,7 @@ function LegStopsList({
       (fetched) => {
         if (!mounted.current) return;
         // Do cache trafiają TYLKO przystanki z bazy. Wersja z `buildFallbackStops`
-        // to dwa przystanki z etykiety — zapisana w cache na stałe psuła
+        // to dwa przystanki z etykiety - zapisana w cache na stałe psuła
         // wyświetlanie przy następnym otwarciu tego samego odcinka.
         if (fetched.length >= 2) cacheStops(cacheKey, fetched);
         setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
@@ -308,6 +346,7 @@ function LegStopsList({
           <StopRow
             key={`${stop.stopId}-${stop.seq}`}
             stop={stop}
+            isFirst={i === first && !vehicleAbove}
             isLast={i === segment.end}
             index={i}
             segmentStart={segment.start}
@@ -343,6 +382,15 @@ function TransitLegCard({
   // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
+  const stopsCount = useMemo(() => {
+    const stops = leg.intermediateStops;
+    if (!stops || stops.length < 2) return leg.stopsCount;
+    const segment = findUserSegment(stops, leg);
+    const segmentStops = stops.slice(segment.start, segment.end + 1);
+    const physicalStops = segmentStops.filter((stop) => !isFareBoundary(stop.name));
+    if (physicalStops.length === segmentStops.length) return leg.stopsCount;
+    return Math.max(0, physicalStops.length - 1);
+  }, [leg]);
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
 
@@ -378,9 +426,7 @@ function TransitLegCard({
           <Text style={s.stopPrefix}>{t.leg.fromPrefix}</Text>
           {leg.fromStop} <Text style={s.hour}>{leg.departAt}</Text>
         </Text>
-        <Text style={s.meta}>
-          {t.leg.stopsSummary(leg.stopsCount, leg.stopsCount * 2, expanded)}
-        </Text>
+        <Text style={s.meta}>{t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}</Text>
         <Text style={s.stopBig}>
           <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
           {leg.toStop} <Text style={s.hour}>{leg.arriveAt}</Text>
@@ -492,7 +538,7 @@ const s = StyleSheet.create({
   innerDot: { width: 8, height: 8, borderRadius: 99 },
   body: { flex: 1, paddingVertical: 8, gap: 2 },
   cardWrap: { flex: 1, marginBottom: 10 },
-  // M3 filled card: tonal surface, bez obramowań — kolor linii niosą
+  // M3 filled card: tonal surface, bez obramowań - kolor linii niosą
   // badge linii oraz kropki/linia na railu po lewej, więc pasek jest zbędny
   card: {
     flex: 1,
@@ -511,12 +557,28 @@ const s = StyleSheet.create({
   walkText: { ...type.titleSmall, color: scheme.onSurface },
   walkSubRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 1 },
   walkSub: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  // Rozwinięta lista kropek — wysokość animowana layout-animation przez rodzica,
+  // Rozwinięta lista kropek - wysokość animowana layout-animation przez rodzica,
   // tutaj zwykły kontener bez własnych animacji wejścia/wyjścia
   stopsWrap: { marginTop: 8, gap: 0 },
   stopsCollapsed: { height: 0, opacity: 0, overflow: 'hidden', marginTop: 0 },
   stopRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
   stopRail: { width: 22, alignItems: 'center', position: 'relative' },
+  stopRailLine: { position: 'absolute', left: 9.5, width: 3 },
+  boundaryMark: { width: 19, height: 2, marginTop: 19, zIndex: 1 },
+  boundaryBody: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    marginBottom: 6,
+  },
+  boundaryIcon: { marginTop: 2 },
+  boundaryText: { flex: 1, gap: 2 },
+  boundaryTitle: { ...type.labelMedium, color: scheme.onSurfaceVariant },
+  boundaryDetail: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   dot: { width: 13, height: 13, borderRadius: 99, borderWidth: 2, marginTop: 4, zIndex: 1 },
   vehicleMarker: {
     position: 'absolute',

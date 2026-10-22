@@ -21,7 +21,7 @@ private enum TripActivity {
     if UserDefaults.standard.string(forKey: savedTrip) == plan.tripId && wasDismissed() { return false }
     generation += 1
     let run = generation
-    let content = ActivityContent(state: plan.state, staleDate: Date(timeIntervalSince1970: plan.staleAt))
+    let content = ActivityContent(state: plan.state, staleDate: plan.arrived ? nil : Date(timeIntervalSince1970: plan.staleAt))
     let active = Activity<TripAttributes>.activities
     for activity in active where activity.attributes.tripId != plan.tripId {
       await activity.end(nil, dismissalPolicy: .immediate)
@@ -38,10 +38,17 @@ private enum TripActivity {
       return run == generation
     }
     guard !plan.arrived, UIApplication.shared.applicationState == .active else { return false }
+    // stop()/nowy kurs mógł wskoczyć w trakcie awaitów wyżej: bez tej bramki
+    // request tworzy żywą activity już po sprzątaniu i zostaje zombie.
+    guard run == generation else { return false }
     let activity = try Activity.request(
       attributes: TripAttributes(tripId: plan.tripId, deepLink: plan.deepLink),
       content: content, pushType: nil
     )
+    if run != generation {
+      await activity.end(nil, dismissalPolicy: .immediate)
+      return false
+    }
     UserDefaults.standard.set(activity.id, forKey: savedId)
     UserDefaults.standard.set(plan.tripId, forKey: savedTrip)
     return true

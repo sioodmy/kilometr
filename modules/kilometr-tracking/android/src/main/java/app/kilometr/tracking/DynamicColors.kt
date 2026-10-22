@@ -9,8 +9,8 @@ import android.os.Build
  * Android udostępnia pięć palet tonalnych (`system_accent1_*`,
  * `system_accent2_*`, `system_accent3_*`, `system_neutral1_*`,
  * `system_neutral2_*`), w których nazwa zasobu koduje ton: `accent1_200` to
- * ton 20, `accent1_900` — ton 90. Nie budujemy tu palety ani nie liczymy
- * kontrastu — dostarczamy surowe tony do JS, który przypisuje je do ról
+ * ton 20, `accent1_900` - ton 90. Nie budujemy tu palety ani nie liczymy
+ * kontrastu - dostarczamy surowe tony do JS, który przypisuje je do ról
  * motywu (`src/theme/dynamic.ts`).
  *
  * Zasada: jeśli systemu nie zna tych zasobów (Android 11 i starsze), zwracamy
@@ -25,7 +25,7 @@ internal object DynamicColors {
    * Surowa paleta systemu jako `rodzina_ton` → `#RRGGBBAA`, albo pusta mapa.
    *
    * Nazwy zasobów szukamy po identyfikatorze zamiast po stałych
-   * `android.R.color.*`, bo te ostatnie wymagają `compileSdk` z Android 12 —
+   * `android.R.color.*`, bo te ostatnie wymagają `compileSdk` z Android 12-
    * a buildy robimy różnymi narzędziami i nie chcemy, żeby zmiana SDK
    * wywalała cały moduł.
    */
@@ -44,7 +44,7 @@ internal object DynamicColors {
     } catch (_: Throwable) {
       return emptyMap()
     }
-    // Półpalety bez neutrali nie da się złożyć w czytelny motyw — wolimy
+    // Półpalety bez neutrali nie da się złożyć w czytelny motyw - wolimy
     // własną paletę niż powierzchnie w losowych kolorach.
     return if (out.containsKey("neutral1_900") && out.containsKey("accent1_200")) out else emptyMap()
   }

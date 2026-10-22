@@ -45,7 +45,7 @@ function isStale(last: string | null): boolean {
   return days >= REFRESH_DAYS;
 }
 
-/** Pobiera POI z Overpass i podmienia tabelę. Best-effort — błąd zostawia stare. */
+/** Pobiera POI z Overpass i podmienia tabelę. Best-effort - błąd zostawia stare. */
 async function refreshPoiIndex(): Promise<number> {
   if (refreshInFlight) return poiCount();
   // Zapytanie potrafi trwać 45 s, a użytkownik zmieni miasto w międzyczasie.
@@ -132,14 +132,14 @@ export function ensurePoiIndex(): void {
         void refreshPoiIndex();
       }
     } catch {
-      // indeks opcjonalny — search działa bez niego
+      // indeks opcjonalny - search działa bez niego
     }
   })();
 }
 
 /**
  * Szukanie po lokalnym indeksie. Scoring: dopasowanie nazwy minus
- * kara za dystans — najbliższe wygrywają jak w Jakdojade.
+ * kara za dystans - najbliższe wygrywają jak w Jakdojade.
  */
 export async function searchPois(
   query: string,
