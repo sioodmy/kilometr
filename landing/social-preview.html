@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1200" />
+    <meta name="robots" content="noindex" />
+    <title>%PAGE_TITLE%</title>
+    <style>
+      html,
+      body,
+      #root,
+      .landing-story,
+      .hero {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+      .hero {
+        padding: 0;
+        text-align: left;
+      }
+      .hero .hero-brand {
+        top: 54px;
+        left: 64px;
+        gap: 13px;
+        font-size: 29px;
+      }
+      .hero .hero-brand img {
+        width: 42px;
+        border-radius: 13px;
+      }
+      .hero-copy {
+        position: absolute;
+        top: 207px;
+        left: 64px;
+        width: 640px;
+        margin: 0;
+      }
+      .hero h1 {
+        font-size: 68px;
+        line-height: 1.07;
+        letter-spacing: -0.06em;
+      }
+      .hero-body {
+        max-width: 560px;
+        margin: 26px 0 0;
+        font-size: 22px;
+        line-height: 1.5;
+      }
+      .hero-actions {
+        display: none;
+      }
+      .product-stage {
+        position: absolute;
+        top: 49px;
+        left: 808px;
+        margin: 0;
+      }
+      .hero-phone {
+        width: 252px;
+      }
+      .hero-cities {
+        inset: 0;
+      }
+      .hero-city {
+        width: 84px;
+      }
+      .hero-city-mark {
+        height: 78px;
+        padding: 13px;
+        border-radius: 21px;
+        background: var(--surface);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+      .hero-city-wroclaw {
+        top: 85px;
+        left: 682px;
+      }
+      .hero-city-krakow {
+        top: 174px;
+        right: 23px;
+      }
+      .hero-city-warszawa {
+        top: 299px;
+        left: 705px;
+      }
+      .hero-city-poznan {
+        top: 408px;
+        right: 17px;
+      }
+      .hero-city-gzm,
+      .hero-city-lodz {
+        display: none;
+      }
+      .transit-backdrop {
+        mask-image: linear-gradient(90deg, transparent 15%, #000 66%);
+      }
+      .transit-backdrop svg {
+        height: 2230px;
+      }
+      .transit-trains,
+      .transit-journey-progress,
+      .transit-journey-cursor {
+        display: none;
+      }
+      .preview-platforms {
+        position: absolute;
+        left: 64px;
+        bottom: 55px;
+        color: var(--accent);
+        font-size: 20px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import { createElement } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { Hero } from './src/components/Hero';
+      import { TransitBackdrop } from './src/components/TransitBackdrop';
+      import { pl } from '../src/i18n/landing/pl';
+      import './src/styles.css';
+
+      createRoot(document.getElementById('root')).render(
+        createElement(
+          'div',
+          { className: 'landing-story' },
+          createElement(TransitBackdrop),
+          createElement(Hero),
+          createElement(
+            'p',
+            { className: 'preview-platforms' },
+            `${pl.install.android} · ${pl.install.ios}`,
+          ),
+        ),
+      );
+    </script>
+  </body>
+</html>

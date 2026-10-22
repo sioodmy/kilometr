@@ -82,9 +82,52 @@ export function Phone({ className = '' }: { className?: string }) {
   }, []);
 
   return (
-    <div className={`phone ${className}`}>
-      <div className="phone-screen" ref={screen} role="img" aria-label={s.screenLabel}>
+    <div className={`phone ${className}`} role="img" aria-label={s.screenLabel}>
+      <div className="iphone-hardware" aria-hidden="true">
+        <span className="iphone-button iphone-button-action" />
+        <span className="iphone-button iphone-button-volume-up" />
+        <span className="iphone-button iphone-button-volume-down" />
+        <span className="iphone-button iphone-button-power" />
+      </div>
+      <div className="phone-screen" ref={screen} aria-hidden="true">
         <div className="native-home" aria-hidden="true">
+          <div className="iphone-status-bar">
+            <span className="iphone-time">{s.statusTime}</span>
+            <div className="iphone-status-icons">
+              <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor">
+                <rect x="0" y="8" width="3" height="4" rx="0.8" />
+                <rect x="5" y="5.5" width="3" height="6.5" rx="0.8" />
+                <rect x="10" y="3" width="3" height="9" rx="0.8" />
+                <rect x="15" width="3" height="12" rx="0.8" />
+              </svg>
+              <svg width="17" height="13" viewBox="0 0 17 13" fill="none">
+                <path
+                  d="M1 3.5a11.5 11.5 0 0 1 15 0M3.7 6.5a7.4 7.4 0 0 1 9.6 0M6.5 9.4a3.2 3.2 0 0 1 4 0"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <circle cx="8.5" cy="12" r="1" fill="currentColor" />
+              </svg>
+              <svg width="27" height="13" viewBox="0 0 27 13" fill="currentColor">
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="23"
+                  height="12"
+                  rx="3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  opacity="0.5"
+                />
+                <rect x="2.5" y="2.5" width="19" height="8" rx="1.5" />
+                <path d="M25 4v5a2.7 2.7 0 0 0 0-5" opacity="0.5" />
+              </svg>
+            </div>
+          </div>
+          <div className="iphone-island">
+            <span className="iphone-camera" />
+          </div>
           <div className="native-home-content">
             <div className="native-home-body">
               <div className="native-home-topbar">
@@ -163,6 +206,7 @@ export function Phone({ className = '' }: { className?: string }) {
               <ChevronRight size={16} />
             </div>
           </div>
+          <div className="iphone-home-indicator" />
         </div>
       </div>
     </div>
