@@ -34,6 +34,8 @@ export const en: Strings = {
     nextDayTime: (time: string, days: number) => `${time} (+${days} ${days === 1 ? 'day' : 'days'})`,
   },
   transferGuard: {
+    enabled: 'On',
+    disabled: 'Off',
     title: 'Transfer protection',
     waiting: 'We will check your transfer once you start riding.',
     buffer: (line: string, n: number) => `Transfer to ${line} · ${n} min to spare`,

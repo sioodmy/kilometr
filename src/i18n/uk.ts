@@ -51,6 +51,8 @@ export const uk: Strings = {
     nextDayTime: (time: string, days: number) => `${time} (+${days} ${isOne(days) ? 'день' : isFew(days) ? 'дні' : 'днів'})`,
   },
   transferGuard: {
+    enabled: 'Увімкнено',
+    disabled: 'Вимкнено',
     title: 'Контроль пересадок',
     waiting: 'Контроль увімкнено. Очікуємо підтвердження поїздки за GPS.',
     buffer: (line: string, n: number) => `Пересадка на ${line} · ${n} хв запасу`,
