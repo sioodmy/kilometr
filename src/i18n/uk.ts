@@ -1011,6 +1011,11 @@ export const uk: Strings = {
       isOne(n) ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
   },
   search: {
+    suggestedPlaces: 'Рекомендовані місця',
+    emptyTitle: 'Куди їдемо?',
+    emptyHint: 'Введи зупинку, адресу або місце. Твій вибір з’явиться тут.',
+    errorTitle: 'Не вдалося виконати пошук',
+    errorHint: 'Зміни запит і спробуй ще раз. Перевір, чи завантажено розклад міста.',
     defaultPlaceholder: (city: string) => `Шукай ${prepInCity(city)}…`,
     originA11y: (t: string) => `Початок: ${t}. Натисни, щоб змінити.`,
     fromPrefix: 'З:',

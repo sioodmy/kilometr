@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   Church,
@@ -16,6 +17,7 @@ import {
   Store,
   Train,
   Utensils,
+  type LucideIcon,
 } from 'lucide-react-native';
 import { scheme, shape, type, type SchemeKey } from '../theme/tokens';
 import type { Suggestion } from '../types/models';
@@ -28,7 +30,7 @@ import { normalizePolish } from '../gtfs/geo';
  * kolory: na Androidzie 12+ paleta pochodzi z tapety i podmienia się po
  * imporcie modułu, więc kolory czytamy dopiero przy rysowaniu wiersza.
  */
-const KIND_TONES: Record<string, { Icon: any; bg: SchemeKey; fg: SchemeKey }> = {
+const KIND_TONES: Record<string, { Icon: LucideIcon; bg: SchemeKey; fg: SchemeKey }> = {
   stop: { Icon: BusFront, bg: 'secondaryContainer', fg: 'onSecondaryContainer' },
   address: { Icon: MapPin, bg: 'tertiaryContainer', fg: 'onTertiaryContainer' },
   history: { Icon: Clock3, bg: 'surfaceContainerHighest', fg: 'onSurfaceVariant' },
@@ -38,7 +40,7 @@ const KIND_TONES: Record<string, { Icon: any; bg: SchemeKey; fg: SchemeKey }> = 
 };
 
 /** Kategorie Nominatim - kolory stałe, bo są poza skalą motywu. */
-const KIND_LITERALS: Record<string, { Icon: any; bg: string; fg: string }> = {
+const KIND_LITERALS: Record<string, { Icon: LucideIcon; bg: string; fg: string }> = {
   restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
   medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
   school: { Icon: GraduationCap, bg: '#0D3559', fg: '#90CAF9' },
@@ -56,7 +58,11 @@ export function suggestionDisplayTitle(item: Pick<Suggestion, 'title' | 'kind'>)
   return item.kind === 'stop' ? item.title.toUpperCase() : item.title;
 }
 
-export interface SuggestionIconMeta { Icon: any; bg: string; fg: string; }
+export interface SuggestionIconMeta {
+  Icon: LucideIcon;
+  bg: string;
+  fg: string;
+}
 
 /** Ta sama ikonka co w wierszu wyszukiwarki - po kategorii, inaczej po rodzaju. */
 export function getSuggestionIconMeta(
@@ -81,7 +87,9 @@ export function getSuggestionIconMeta(
 function highlightRanges(title: string, query: string): [number, number][] {
   const normT = normalizePolish(title);
   if (normT.length !== title.length) return [];
-  const tokens = normalizePolish(query).split(/[\s,./()\\-]+/).filter((t) => t.length > 0);
+  const tokens = normalizePolish(query)
+    .split(/[\s,./()\\-]+/)
+    .filter((t) => t.length > 0);
   const ranges: [number, number][] = [];
   for (const tok of tokens) {
     let start = -1;
@@ -107,28 +115,37 @@ function highlightRanges(title: string, query: string): [number, number][] {
 
 function HighlightedTitle({ text, query }: { text: string; query?: string }) {
   const ranges = query ? highlightRanges(text, query) : [];
-  if (!ranges.length) return <Text style={styles.title} numberOfLines={1}>{text}</Text>;
+  if (!ranges.length) return <Text style={styles.title}>{text}</Text>;
   const parts: React.ReactNode[] = [];
   let pos = 0;
   ranges.forEach(([a, b], i) => {
     if (a > pos) parts.push(text.slice(pos, a));
-    parts.push(<Text key={i} style={styles.match}>{text.slice(a, b)}</Text>);
+    parts.push(
+      <Text key={i} style={styles.match}>
+        {text.slice(a, b)}
+      </Text>,
+    );
     pos = b;
   });
   if (pos < text.length) parts.push(text.slice(pos));
-  return <Text style={[styles.title, styles.dim]} numberOfLines={1}>{parts}</Text>;
+  return <Text style={[styles.title, styles.dim]}>{parts}</Text>;
 }
 
 export function SuggestionRow({
   item,
   onPress,
   query,
+  segment,
+  prominent = false,
 }: {
   item: Suggestion;
   onPress: () => void;
   /** Zapytanie do podświetlenia pasującego fragmentu tytułu. */
   query?: string;
+  segment?: 'first' | 'middle' | 'last' | 'single';
+  prominent?: boolean;
 }) {
+  const [focused, setFocused] = useState(false);
   const s = useStrings();
   const meta = getSuggestionIconMeta(item);
   const Icon = meta.Icon;
@@ -141,7 +158,7 @@ export function SuggestionRow({
     .replace(/\s*słup[a-ząćęłńóśźż.]*\s*\d+/gi, '')
     .trim();
 
-  if (!cleanAddress && item.kind === 'stop') {
+  if (item.kind === 'stop' && (!cleanAddress || cleanAddress === 'Przystanek')) {
     cleanAddress = s.suggestion.stopFallback;
   }
 
@@ -152,24 +169,32 @@ export function SuggestionRow({
   return (
     <Pressable
       onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       accessibilityRole="button"
       accessibilityLabel={`${displayTitle}${subtitle ? `, ${subtitle}` : ''}`}
       style={({ pressed }) => [
         styles.row,
+        segment && styles.segment,
+        (segment === 'first' || segment === 'single') && styles.segmentTop,
+        (segment === 'last' || segment === 'single') && styles.segmentBottom,
+        prominent && styles.prominent,
         pressed && { backgroundColor: scheme.surfaceContainerHighest, opacity: 0.9 },
+        focused && styles.focused,
       ]}
     >
-      <View style={[styles.icon, { backgroundColor: iconBg }]}>
+      <View style={[styles.icon, { backgroundColor: iconBg }, segment && styles.segmentIcon]}>
         <Icon size={19} color={iconFg} />
       </View>
       <View style={styles.mid}>
         <HighlightedTitle text={displayTitle} query={query} />
-        {subtitle ? (
-          <Text style={styles.sub} numberOfLines={1}>
-            {subtitle}
+        {(segment ? cleanAddress : subtitle) ? (
+          <Text style={styles.sub} numberOfLines={segment ? undefined : 1}>
+            {segment ? cleanAddress : subtitle}
           </Text>
         ) : null}
       </View>
+      {segment && distanceText ? <Text style={styles.distance}>{distanceText}</Text> : null}
     </Pressable>
   );
 }
@@ -184,8 +209,34 @@ const styles = StyleSheet.create({
     borderRadius: shape.large,
     minHeight: 56,
   },
-  icon: { width: 44, height: 44, borderRadius: shape.full, alignItems: 'center', justifyContent: 'center' },
-  mid: { flex: 1, gap: 1 },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segment: {
+    borderRadius: 4,
+    backgroundColor: scheme.surfaceContainer,
+    minHeight: 80,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    gap: 12,
+    paddingHorizontal: 12,
+  },
+  segmentTop: { borderTopLeftRadius: shape.large, borderTopRightRadius: shape.large },
+  segmentBottom: { borderBottomLeftRadius: shape.large, borderBottomRightRadius: shape.large },
+  segmentIcon: { borderRadius: shape.medium },
+  prominent: { backgroundColor: scheme.secondaryContainer },
+  focused: { borderColor: scheme.primary, borderWidth: 2 },
+  distance: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    maxWidth: '24%',
+    textAlign: 'right',
+  },
+  mid: { flex: 1, minWidth: 0, gap: 4 },
   title: { ...type.bodyLarge, color: scheme.onSurface },
   dim: { color: scheme.onSurfaceVariant },
   match: { color: scheme.onSurface, fontWeight: '700' },

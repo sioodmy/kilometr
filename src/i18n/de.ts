@@ -964,6 +964,12 @@ export const de: Strings = {
     lineAlertsCount: (n: number) => (n === 1 ? '1 Meldung' : `${n} Meldungen`),
   },
   search: {
+    suggestedPlaces: 'Vorgeschlagene Orte',
+    emptyTitle: 'Wohin geht’s?',
+    emptyHint: 'Gib eine Haltestelle, Adresse oder einen Ort ein. Deine Auswahl erscheint hier.',
+    errorTitle: 'Suche fehlgeschlagen',
+    errorHint:
+      'Ändere die Suchanfrage und versuche es erneut. Prüfe, ob der Stadtfahrplan heruntergeladen ist.',
     defaultPlaceholder: (city: string) => `In ${city} suchen…`,
     originA11y: (t: string) => `Startpunkt: ${t}. Tippen zum Ändern.`,
     fromPrefix: 'Ab:',
