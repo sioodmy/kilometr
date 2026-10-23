@@ -14,6 +14,8 @@ import { createLocationFilterState, filterLocationFix } from '../src/services/lo
 import type { Coord } from '../src/services/routeGeometry';
 import type { MapLeg } from '../src/map/types';
 import type { Connection, Leg, VehiclePosition } from '../src/types/models';
+import { compassDegrees } from '../src/services/compassHeading';
+import type { TransferProtectionState } from '../src/services/notifications/transferTypes';
 
 function leg(
   id: string,
@@ -241,6 +243,115 @@ check(
   'transfer cannot regress to the previous ride',
   navigationTarget(gpsConnection, departure, departure + 39 * 60000, { previous: earlyTransfer })
     ?.leg.id === second.id,
+);
+const protectedTransfer: TransferProtectionState = {
+  tripId: 'journey',
+  status: 'safe',
+  activeLegIndex: 0,
+  updatedAt: departure + 39 * 60000,
+  arrivalAtMs: departure + 45 * 60000,
+  revision: 1,
+};
+const alightingLocation = {
+  lat: gpsLeg.toLat!,
+  lon: gpsLeg.toLon!,
+  timestamp: protectedTransfer.updatedAt,
+  accuracy: 8,
+  speed: 0,
+  heading: null,
+};
+check(
+  'transfer protection cannot override alighting detected by GPS',
+  navigationTarget(gpsConnection, departure, protectedTransfer.updatedAt, {
+    previous: riding,
+    location: alightingLocation,
+    transfer: protectedTransfer,
+  })?.phase === 'transfer',
+);
+check(
+  'a completed ride stays completed when protection reports it again',
+  navigationTarget(gpsConnection, departure, protectedTransfer.updatedAt, {
+    previous: earlyTransfer,
+    transfer: protectedTransfer,
+    vehicles: [{ ...vehicle, updatedAt: protectedTransfer.updatedAt }],
+  })?.leg.id === second.id,
+);
+check(
+  'manual alighting works without device GPS and despite a late vehicle',
+  navigationTarget(gpsConnection, departure, rideNow, {
+    completedLegIndex: 0,
+    vehicles: [vehicle],
+    transfer: { ...protectedTransfer, updatedAt: rideNow },
+  })?.phase === 'transfer',
+);
+check(
+  'manual alighting on the last ride starts the final walk',
+  navigationTarget({ ...gpsConnection, legs: [gpsLeg, finalWalk] }, departure, rideNow, {
+    completedLegIndex: 0,
+  })?.phase === 'egress',
+);
+const lateWalkNow = departure + 62 * 60000;
+const lateWalk = navigationTarget(gpsConnection, departure, lateWalkNow, {
+  previous: earlyTransfer,
+  location: { ...alightingLocation, timestamp: lateWalkNow, speed: 1.3 },
+});
+check(
+  'a delayed transfer walk is not turned into a ride by the timetable',
+  lateWalk?.phase === 'transfer',
+);
+check(
+  'manual boarding starts the selected ride without GPS movement',
+  navigationTarget(gpsConnection, departure, rideNow, { boardedLegIndex: 0 })?.phase === 'riding',
+);
+check(
+  'a late final walk does not claim arrival while GPS is far from the destination',
+  navigationTarget(
+    { legs: [{ ...walk, toLat: 51.12, toLon: 17 }], delayMin: 0 },
+    departure,
+    lateWalkNow,
+    { location: { ...alightingLocation, lat: 51.11, timestamp: lateWalkNow } },
+  )?.phase === 'egress',
+);
+const deviceRide = rideNavigation(riding, rideNow, [vehicle], {
+  lat: 51.115,
+  lon: 17,
+  timestamp: rideNow,
+  accuracy: 8,
+  speed: 5,
+  heading: 0,
+});
+check(
+  'device GPS takes priority over a vehicle left behind',
+  deviceRide.source === 'device' &&
+    deviceRide.nextStop === 'Transfer' &&
+    deviceRide.stopsLeft === 1,
+);
+check(
+  'device progress does not create a vehicle position',
+  rideNavigation(riding, rideNow, [], { ...alightingLocation, timestamp: rideNow }).position ===
+    null,
+);
+check(
+  'missing positions do not invent ride progress',
+  rideNavigation(riding, rideNow, []).progress === null,
+);
+check(
+  'progress splits the route at the observed position',
+  deviceRide.traveledPath.at(-1)?.[0] === deviceRide.remainingPath[0][0] &&
+    deviceRide.progress! > 0.5,
+);
+check(
+  'true north at zero is a valid compass reading',
+  compassDegrees({ trueHeading: 0, magHeading: 12, accuracy: 3 }) === 0,
+);
+check(
+  'magnetic north is used when true north is unavailable',
+  compassDegrees({ trueHeading: -1, magHeading: 90, accuracy: 2 }) === 90,
+);
+check(
+  'uncalibrated and invalid compass readings are rejected',
+  compassDegrees({ trueHeading: 90, magHeading: 90, accuracy: 0 }) === null &&
+    compassDegrees({ trueHeading: NaN, magHeading: -1, accuracy: 2 }) === null,
 );
 check(
   'late departure stays in approach phase',

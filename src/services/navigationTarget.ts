@@ -5,6 +5,7 @@ import { bearingDegrees, distanceMeters, projectPointToPolyline } from '../gtfs/
 import { parseClock } from './notifications/format';
 import { buildFallbackStops, findUserSegment } from './vehiclePosition';
 import { isFareBoundary } from '../gtfs/fareBoundary';
+import type { TransferProtectionState } from './notifications/transferTypes';
 
 const DAY_SEC = 86400;
 const MAX_LIVE_AGE_MS = 120_000;
@@ -23,6 +24,9 @@ interface NavigationInput {
   location?: CurrentLocation | null;
   vehicles?: VehiclePosition[];
   previous?: NavigationTarget | null;
+  transfer?: TransferProtectionState;
+  completedLegIndex?: number;
+  boardedLegIndex?: number;
 }
 
 export function navigationTimeline(connection: Pick<Connection, 'legs'>, departureAt: number) {
@@ -105,6 +109,7 @@ export function navigationTarget(
   const location = freshLocation(input.location, now);
   let lastDelay = 0;
   for (const entry of rides) {
+    if (entry.legIndex <= (input.completedLegIndex ?? -1)) continue;
     if (input.previous && entry.legIndex < input.previous.legIndex) continue;
     const { leg } = entry;
     const inLiveWindow =
@@ -127,7 +132,18 @@ export function navigationTarget(
         ? (vehicle.delaySec - planned) * 1000
         : 0;
     const departMs = entry.departMs + delay;
-    const arriveMs = entry.arriveMs + delay;
+    const transfer = input.transfer;
+    const protectedArrival =
+      transfer?.activeLegIndex === entry.legIndex &&
+      transfer.arrivalAtMs != null &&
+      ['safe', 'risk', 'rerouting', 'alternative', 'changed', 'noAlternative'].includes(
+        transfer.status,
+      ) &&
+      now >= transfer.updatedAt &&
+      now - transfer.updatedAt <= 30_000
+        ? transfer.arrivalAtMs
+        : null;
+    const arriveMs = protectedArrival ?? entry.arriveMs + delay;
     lastDelay = delay;
     const alighted =
       atAlightingStop(leg, location) &&
@@ -156,25 +172,36 @@ export function navigationTarget(
       leg.fromLon != null &&
       distanceMeters(location.lat, location.lon, leg.fromLat, leg.fromLon) <= 35 &&
       !(input.previous?.legIndex === entry.legIndex && input.previous.phase === 'riding');
+    const justAlighted =
+      entry.legIndex > (input.previous?.legIndex ?? -1) &&
+      (input.completedLegIndex != null || input.previous?.phase === 'riding');
+    const stillWalking =
+      justAlighted ||
+      (input.previous?.legIndex === entry.legIndex &&
+        ['approach', 'transfer', 'waiting'].includes(input.previous.phase) &&
+        ((location && (location.speed ?? 0) < 2.2) ||
+          (!location && input.completedLegIndex != null)));
     const phase =
-      now < departMs
-        ? entry === rides[0]
-          ? 'approach'
-          : 'transfer'
-        : now < departMs + 45_000 || atBoardingStop
-          ? 'waiting'
-          : 'riding';
+      input.boardedLegIndex === entry.legIndex
+        ? 'riding'
+        : (now < departMs || stillWalking) && !atBoardingStop
+          ? entry === rides[0]
+            ? 'approach'
+            : 'transfer'
+          : now < departMs + 45_000 || atBoardingStop
+            ? 'waiting'
+            : 'riding';
     return { ...entry, departMs, arriveMs, phase, end: phase === 'riding' };
   }
   const last = timeline[timeline.length - 1];
   if (!last) return null;
   const arrived =
     last.leg.mode !== 'walk' ||
-    now >= last.arriveMs + lastDelay ||
-    (location &&
-      last.leg.toLat != null &&
-      last.leg.toLon != null &&
-      distanceMeters(location.lat, location.lon, last.leg.toLat, last.leg.toLon) <= 25);
+    (location
+      ? last.leg.toLat != null &&
+        last.leg.toLon != null &&
+        distanceMeters(location.lat, location.lon, last.leg.toLat, last.leg.toLon) <= 25
+      : now >= last.arriveMs + lastDelay);
   return { ...last, end: true, phase: arrived ? 'arrived' : 'egress' };
 }
 
@@ -184,29 +211,45 @@ export interface RideNavigation {
   heading: number | null;
   nextStop: string | null;
   stopsLeft: number | null;
+  progress: number | null;
+  stops: Coord[];
+  source: 'device' | 'vehicle' | null;
+  remainingPath: Coord[];
+  traveledPath: Coord[];
 }
 
 export function rideNavigation(
   target: NavigationTarget,
   now: number,
   vehicles: VehiclePosition[],
+  location?: CurrentLocation | null,
 ): RideNavigation {
   const { leg } = target;
   const stops = rideStops(leg);
   const points = stops.filter((stop) => stop.lat != null && stop.lon != null);
   const path: Coord[] = points.map((stop) => [stop.lat!, stop.lon!]);
   const vehicle = navigationVehicle(leg, vehicles, now);
-  const projection = vehicle ? rideProjection(leg, vehicle.lat, vehicle.lon) : null;
-  const hasPosition = vehicle != null;
+  const device = freshLocation(location, now);
+  const deviceProjection = device ? rideProjection(leg, device.lat, device.lon) : null;
+  const useDevice = deviceProjection != null && deviceProjection.distanceMeters <= 150;
+  const projection = useDevice
+    ? deviceProjection
+    : vehicle
+      ? rideProjection(leg, vehicle.lat, vehicle.lon)
+      : null;
+  const hasPosition = useDevice || vehicle != null;
   const gap = projection != null && projection.distanceMeters <= 350 ? projection.segmentIndex : -1;
-  const namedNext = vehicle?.nextStopName
-    ? stops.findIndex((stop) => stop.name === vehicle.nextStopName)
-    : -1;
+  const namedNext =
+    !useDevice && vehicle?.nextStopName
+      ? stops.findIndex((stop) => stop.name === vehicle.nextStopName)
+      : -1;
   const nextIndex = namedNext > 0 ? namedNext : Math.min(points.length - 1, gap + 1);
   const knownStops = points.length === stops.length && (stops.length > 2 || leg.stopsCount <= 1);
+  const projected: Coord | null =
+    gap >= 0 && projection ? [projection.closestLat, projection.closestLon] : null;
   return {
     path,
-    position: hasPosition ? [vehicle.lat, vehicle.lon] : null,
+    position: vehicle ? [vehicle.lat, vehicle.lon] : null,
     heading: gap >= 0 && path[gap + 1] ? bearingDegrees(...path[gap], ...path[gap + 1]) : null,
     nextStop:
       hasPosition && knownStops && (gap >= 0 || namedNext > 0)
@@ -216,5 +259,10 @@ export function rideNavigation(
       hasPosition && knownStops && (gap >= 0 || namedNext > 0)
         ? Math.max(1, stops.length - nextIndex)
         : null,
+    progress: gap >= 0 ? projection!.fractionAlongShape : null,
+    stops: path,
+    source: useDevice ? 'device' : vehicle ? 'vehicle' : null,
+    remainingPath: projected ? [projected, ...path.slice(gap + 1)] : path,
+    traveledPath: projected ? [...path.slice(0, gap + 1), projected] : [],
   };
 }

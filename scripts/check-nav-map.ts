@@ -2,13 +2,40 @@ import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
 import { buildNavMapDocument } from '../src/map/navMapDocument';
 
-type Message = { t: string; state?: string };
-type MapEvent = { sourceId?: string; tile?: { state: string }; error?: Error };
+type Message = { t: string; state?: string; following?: boolean; northUp?: boolean };
+type MapEvent = {
+  sourceId?: string;
+  tile?: { state: string };
+  error?: Error;
+  originalEvent?: object;
+};
+interface CameraUpdate {
+  user: [number, number] | null;
+  vehicle?: [number, number] | null;
+  heading: number | null;
+  userHeading?: number | null;
+  riding?: boolean;
+  reduceMotion?: boolean;
+}
+interface MapBridge {
+  ReactNativeWebView: { postMessage: (data: string) => void };
+  addEventListener: () => void;
+  __navRoute: (route: {
+    id?: string;
+    path: number[][];
+    stop: number[];
+    accent: string;
+    riding: boolean;
+  }) => void;
+  __navCamera: (camera: CameraUpdate) => void;
+  __navControl: (action: 'follow' | 'north' | 'overview') => void;
+}
 async function boot(failAssets = false) {
   const messages: Message[] = [];
   const events = new Map<string, (event: MapEvent) => void>();
   const cameras: Record<string, unknown>[] = [];
   const sources: unknown[] = [];
+  const markers: { position: number[]; removed: boolean; rotation: number }[] = [];
   let tilesLoaded = false;
   let sourceLoaded = false;
   let bearing = 0;
@@ -38,21 +65,56 @@ async function boot(failAssets = false) {
       cameras.push(options);
     }
     easeTo(options: Record<string, unknown>) {
+      if (Array.isArray(options.center))
+        center = { lng: options.center[0], lat: options.center[1] };
+      if (typeof options.bearing === 'number') bearing = options.bearing;
       cameras.push(options);
     }
     fitBounds(_bounds: unknown, options: Record<string, unknown>) {
       cameras.push({ ...options, fitted: true });
     }
   }
+  class FakeMarker {
+    value = { position: [] as number[], removed: false, rotation: 0 };
+    constructor() {
+      markers.push(this.value);
+    }
+    setLngLat(position: number[]) {
+      this.value.position = position;
+      return this;
+    }
+    addTo() {
+      return this;
+    }
+    remove() {
+      this.value.removed = true;
+    }
+    setRotation(value: number) {
+      this.value.rotation = value;
+    }
+    getElement() {
+      return { style: {}, querySelector: () => ({ style: {}, textContent: '' }) };
+    }
+  }
+  const bridge: MapBridge = {
+    ReactNativeWebView: {
+      postMessage: (data: string) => {
+        messages.push(JSON.parse(data));
+      },
+    },
+    addEventListener: () => undefined,
+    __navRoute: () => undefined,
+    __navCamera: () => undefined,
+    __navControl: () => undefined,
+  };
   const context = {
-    window: {
-      ReactNativeWebView: { postMessage: (data: string) => messages.push(JSON.parse(data)) },
-      addEventListener: () => undefined,
-    } as Record<string, any>,
+    window: bridge,
+    document: { createElement: () => ({ className: '', innerHTML: '' }) },
     maplibregl: failAssets
       ? undefined
       : {
           Map: FakeMap,
+          Marker: FakeMarker,
           LngLatBounds: class {
             extend() {
               return this;
@@ -72,6 +134,7 @@ async function boot(failAssets = false) {
     messages,
     cameras,
     sources,
+    markers,
     window: context.window,
     emit: (name: string, event: MapEvent = {}) => events.get(name)?.(event),
     loaded: () => {
@@ -89,6 +152,9 @@ async function check() {
   assert.equal(map.messages.length, 1, 'style readiness must not hide the tile spinner');
   map.emit('dataloading', { sourceId: 'openmaptiles' });
   assert.equal(map.messages.at(-1)?.state, 'loading');
+  map.emit('error', { error: new Error('tile unavailable') });
+  assert.equal(map.messages.at(-1)?.state, 'error');
+  map.emit('dataloading', { sourceId: 'openmaptiles' });
   map.emit('sourcedata', { sourceId: 'openmaptiles', tile: { state: 'loaded' } });
   map.emit('render');
   assert.equal(map.messages.at(-1)?.state, 'loading', 'wait for the visible tiles to finish');
@@ -96,17 +162,12 @@ async function check() {
   map.emit('render');
   assert.equal(map.messages.at(-1)?.state, 'ready');
   map.emit('dataloading', { sourceId: 'openmaptiles' });
-  map.emit('error', { error: new Error('tile unavailable') });
-  assert.equal(map.messages.at(-1)?.state, 'error');
   map.emit('render');
   assert.equal(
     map.messages.at(-1)?.state,
-    'error',
-    'failed tiles cannot masquerade as a loaded map',
+    'ready',
+    'panning does not cover a working map with a spinner',
   );
-  map.emit('sourcedata', { sourceId: 'openmaptiles', tile: { state: 'loaded' } });
-  map.emit('render');
-  assert.equal(map.messages.at(-1)?.state, 'ready', 'successful tile retry recovers the map');
 
   map.window.__navRoute({
     path: [
@@ -125,8 +186,53 @@ async function check() {
   map.window.__navCamera({ user: [51.105, 17.005], heading: 359, riding: true });
   assert.deepEqual(Array.from(map.cameras.at(-1)?.center as number[]), [17.005, 51.105]);
   assert.equal(map.cameras.at(-1)?.zoom, 15.5);
+  const initialBearing = Number(map.cameras.at(-1)?.bearing);
   map.window.__navCamera({ user: [51.105, 17.005], heading: 1, riding: true });
-  assert.equal(map.cameras.at(-1)?.bearing, 361, 'camera takes the short rotation across north');
+  assert.equal(
+    Number(map.cameras.at(-1)?.bearing) - initialBearing,
+    2,
+    'camera takes the short rotation across north',
+  );
+  assert.deepEqual(
+    Array.from(map.markers[0].position),
+    [17.005, 51.105],
+    'marker is attached to its map coordinate',
+  );
+  map.emit('dragstart', { originalEvent: {} });
+  assert.equal(map.messages.at(-1)?.following, false, 'dragging unlocks the camera');
+  const beforeFree = map.cameras.length;
+  map.window.__navCamera({ user: [51.106, 17.006], heading: 45 });
+  assert.equal(
+    map.cameras.length,
+    beforeFree,
+    'GPS and compass cannot steal the camera while browsing',
+  );
+  assert.deepEqual(
+    Array.from(map.markers[0].position),
+    [17.006, 51.106],
+    'position keeps updating while unlocked',
+  );
+  map.window.__navControl('follow');
+  assert.equal(map.messages.at(-1)?.following, true);
+  assert.equal(map.cameras.at(-1)?.bearing, 45, 'recenter restores the current compass heading');
+  map.window.__navControl('north');
+  assert.equal(map.cameras.at(-1)?.bearing, 0, 'north-up mode keeps north at the top');
+  map.window.__navCamera({ user: [51.106, 17.006], heading: 100 });
+  assert.equal(map.cameras.at(-1)?.bearing, 0, 'sensor updates respect north-up mode');
+  map.window.__navControl('north');
+  map.window.__navCamera({ user: [51.106, 17.006], heading: 120, reduceMotion: true });
+  assert.equal(map.cameras.at(-1)?.duration, 0, 'reduced motion disables camera animation');
+  map.window.__navControl('overview');
+  assert.equal(map.messages.at(-1)?.following, false);
+  assert.equal(map.cameras.at(-1)?.fitted, true);
+  map.window.__navControl('north');
+  assert.equal(map.messages.at(-1)?.following, false, 'north-up keeps an explored map unlocked');
+  assert.equal(
+    map.cameras.at(-1)?.center,
+    undefined,
+    'orientation control does not recenter while exploring',
+  );
+  map.window.__navControl('follow');
   map.window.__navCamera({ user: null, heading: null, riding: true });
   assert.equal(
     map.cameras.at(-1)?.fitted,

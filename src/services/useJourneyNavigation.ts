@@ -28,6 +28,11 @@ export function useJourneyNavigation(connection: Connection, transfer?: Transfer
     stops: Map<string, LegStop[]>;
   } | null>(null);
   const previous = useRef<{ connectionId: string; target: NavigationTarget | null } | null>(null);
+  const [completed, setCompleted] = useState<{
+    connectionId: string;
+    target: NavigationTarget;
+  } | null>(null);
+  const [boarded, setBoarded] = useState<{ connectionId: string; legIndex: number } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -77,21 +82,33 @@ export function useJourneyNavigation(connection: Connection, transfer?: Transfer
     [connection, tripStops],
   );
   const vehicles = liveTracker.snapshot();
-  const computedTarget = navigationTarget(enriched, departureAt, now, {
+  const target = navigationTarget(enriched, departureAt, now, {
     location,
     vehicles,
     previous: previous.current?.connectionId === connection.id ? previous.current.target : null,
+    transfer,
+    completedLegIndex:
+      completed?.connectionId === connection.id ? completed.target.legIndex : undefined,
+    boardedLegIndex: boarded?.connectionId === connection.id ? boarded.legIndex : undefined,
   });
-  const protectedLeg = transfer?.activeLegIndex === undefined ? null : enriched.legs[transfer.activeLegIndex];
-  const target = protectedLeg && protectedLeg.mode !== 'walk' && transfer?.arrivalAtMs &&
-    ['safe', 'risk', 'rerouting', 'alternative', 'changed', 'noAlternative'].includes(transfer.status) &&
-    now - transfer.updatedAt >= 0 && now - transfer.updatedAt <= 30_000
-    ? { leg: protectedLeg, legIndex: transfer.activeLegIndex!, end: true, phase: 'riding' as const,
-      departMs: navigationTimeline(enriched, departureAt)[transfer.activeLegIndex!]?.departMs ?? now, arriveMs: transfer.arrivalAtMs }
-    : computedTarget;
   useEffect(() => {
     previous.current = { connectionId: connection.id, target };
   }, [connection.id, target]);
-  const ride = target?.phase === 'riding' ? rideNavigation(target, now, vehicles) : null;
-  return { target, ride, now, location, locationState };
+  const ride = target?.phase === 'riding' ? rideNavigation(target, now, vehicles, location) : null;
+  const alight = () => {
+    if (target?.phase !== 'riding') return;
+    setCompleted({ connectionId: connection.id, target });
+  };
+  const board = () => {
+    if (!target || target.leg.mode === 'walk') return;
+    setBoarded({ connectionId: connection.id, legIndex: target.legIndex });
+  };
+  const undoAlight =
+    completed?.connectionId === connection.id && target?.phase !== 'riding'
+      ? () => {
+          previous.current = { connectionId: connection.id, target: completed.target };
+          setCompleted(null);
+        }
+      : undefined;
+  return { target, ride, now, location, locationState, alight, board, undoAlight };
 }
