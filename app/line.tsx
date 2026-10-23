@@ -239,15 +239,25 @@ export default function LineScreen() {
                   <Text style={styles.subtitle}>{terminal ? t.terminalHint : t.scheduled}</Text>
                   {!terminal &&
                     hours.map(([hour, minutes]) => (
-                      <View key={hour} style={styles.hourRow}>
-                        <Text style={styles.hour}>
-                          {hour >= 24
-                            ? t.nextDayTime(
-                                String(hour % 24).padStart(2, '0'),
-                                Math.floor(hour / 24),
-                              )
-                            : String(hour).padStart(2, '0')}
-                        </Text>
+                      <View
+                        key={hour}
+                        style={styles.hourRow}
+                        accessible
+                        accessibilityLabel={minutes
+                          .map((minute) => {
+                            const time = timetableClock(hour * 3600 + Number(minute) * 60);
+                            return hour >= 24 ? t.nextDayTime(time, Math.floor(hour / 24)) : time;
+                          })
+                          .join(', ')}
+                      >
+                        <View style={styles.hourLabel}>
+                          <Text style={styles.hour}>{hour % 24}</Text>
+                          {hour >= 24 && (
+                            <Text style={styles.subtitle}>
+                              {t.dayOffset(Math.floor(hour / 24))}
+                            </Text>
+                          )}
+                        </View>
                         <View style={styles.minutes}>
                           {minutes.map((minute) => (
                             <Text key={minute} style={styles.minute}>
@@ -405,18 +415,26 @@ const styles = StyleSheet.create({
   departuresTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onSurface },
   hourRow: {
     flexDirection: 'row',
-    gap: 12,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: scheme.outlineVariant,
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingVertical: 2,
   },
-  hour: { ...type.titleMedium, color: scheme.primary, width: 72, fontVariant: ['tabular-nums'] },
-  minutes: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  hourLabel: { gap: 2 },
+  hour: {
+    fontSize: 32,
+    lineHeight: 36,
+    fontWeight: '700',
+    color: scheme.primary,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  minutes: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 2 },
   minute: {
-    ...type.bodyLarge,
+    ...type.bodyMedium,
+    lineHeight: 18,
+    fontWeight: '600',
     color: scheme.onSurface,
-    minWidth: 28,
-    textAlign: 'center',
+    includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   state: { paddingVertical: 32, paddingHorizontal: 16, alignItems: 'center', gap: 16 },

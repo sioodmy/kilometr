@@ -29,6 +29,7 @@ export const en: Strings = {
     nextDay: 'Next day',
     previousDay: 'Previous day',
     back: 'Back',
+    dayOffset: (days: number) => `+${days} ${days === 1 ? 'day' : 'days'}`,
     nextDayTime: (time: string, days: number) => `${time} (+${days} ${days === 1 ? 'day' : 'days'})`,
   },
   transferGuard: {

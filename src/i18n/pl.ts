@@ -43,6 +43,7 @@ export const pl = {
     nextDay: 'Następny dzień',
     previousDay: 'Poprzedni dzień',
     back: 'Wróć',
+    dayOffset: (days: number) => `+${days} ${days === 1 ? 'dzień' : 'dni'}`,
     nextDayTime: (time: string, days: number) => `${time} (+${days} ${days === 1 ? 'dzień' : 'dni'})`,
   },
   transferGuard: {

@@ -46,6 +46,7 @@ export const uk: Strings = {
     nextDay: 'Наступний день',
     previousDay: 'Попередній день',
     back: 'Назад',
+    dayOffset: (days: number) => `+${days} ${isOne(days) ? 'день' : isFew(days) ? 'дні' : 'днів'}`,
     nextDayTime: (time: string, days: number) => `${time} (+${days} ${isOne(days) ? 'день' : isFew(days) ? 'дні' : 'днів'})`,
   },
   transferGuard: {
