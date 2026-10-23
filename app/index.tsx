@@ -1179,6 +1179,12 @@ export default function HomeScreen() {
                 : undefined
             }
             onQuery={setQuery}
+            onSelectLine={(line) => {
+              setSheetMode(null);
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+              router.push({ pathname: '/line', params: { routeId: line.routeId } });
+            }}
             onSelect={(s) => {
               if (sheetMode === 'start') {
                 handleStartSelect(s);
