@@ -250,47 +250,49 @@ export function NavMiniMap({
           />
         </View>
       ) : null}
-      <View style={styles.topControls} pointerEvents="box-none">
-        <Pressable
-          onPress={() => control('north')}
-          disabled={mapState !== 'ready'}
-          onFocus={() => setFocused('north')}
-          onBlur={() => setFocused(null)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: northUp, disabled: mapState !== 'ready' }}
-          accessibilityLabel={northUp ? s.compass.compassUp : s.compass.northUp}
-          style={({ pressed }) => [
-            styles.iconButton,
-            northUp && styles.selected,
-            pressed && styles.pressed,
-            focused === 'north' && styles.focused,
-          ]}
-        >
-          <Compass size={24} color={northUp ? scheme.onPrimaryContainer : scheme.onSurface} />
-        </Pressable>
-        <Pressable
-          onPress={() => control('overview')}
-          disabled={mapState !== 'ready'}
-          onFocus={() => setFocused('overview')}
-          onBlur={() => setFocused(null)}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: mapState !== 'ready' }}
-          accessibilityLabel={s.compass.routeOverview}
-          style={({ pressed }) => [
-            styles.iconButton,
-            pressed && styles.pressed,
-            focused === 'overview' && styles.focused,
-          ]}
-        >
-          <Route size={23} color={scheme.onSurface} />
-        </Pressable>
-      </View>
+      {interactive ? (
+        <View style={styles.topControls} pointerEvents="box-none">
+          <Pressable
+            onPress={() => control('north')}
+            disabled={mapState !== 'ready'}
+            onFocus={() => setFocused('north')}
+            onBlur={() => setFocused(null)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: northUp, disabled: mapState !== 'ready' }}
+            accessibilityLabel={northUp ? s.compass.compassUp : s.compass.northUp}
+            style={({ pressed }) => [
+              styles.iconButton,
+              northUp && styles.selected,
+              pressed && styles.pressed,
+              focused === 'north' && styles.focused,
+            ]}
+          >
+            <Compass size={24} color={northUp ? scheme.onPrimaryContainer : scheme.onSurface} />
+          </Pressable>
+          <Pressable
+            onPress={() => control('overview')}
+            disabled={mapState !== 'ready'}
+            onFocus={() => setFocused('overview')}
+            onBlur={() => setFocused(null)}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: mapState !== 'ready' }}
+            accessibilityLabel={s.compass.routeOverview}
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed && styles.pressed,
+              focused === 'overview' && styles.focused,
+            ]}
+          >
+            <Route size={23} color={scheme.onSurface} />
+          </Pressable>
+        </View>
+      ) : null}
       {hint ? (
         <View style={styles.hint}>
           <Text style={styles.hintText}>{hint}</Text>
         </View>
       ) : null}
-      {mapState === 'ready' && (user || vehicle) ? (
+      {interactive && mapState === 'ready' && (user || vehicle) ? (
         <Pressable
           onPress={() => control('follow')}
           onFocus={() => setFocused('follow')}

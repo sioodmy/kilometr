@@ -218,8 +218,8 @@ async function boot(failAssets = false, interactive = true) {
 async function check() {
   await checkWorkerCompatibility();
   const map = await boot();
-  assert.equal(map.interactive, true, 'embedded map keeps its gestures');
-  assert.equal((await boot(false, false)).interactive, false, 'fullscreen map disables gestures');
+  assert.equal(map.interactive, true, 'fullscreen map enables gestures');
+  assert.equal((await boot(false, false)).interactive, false, 'embedded map disables gestures');
   map.emit('style.load');
   assert.deepEqual(map.messages, [{ t: 'ready' }]);
   map.emit('render');
