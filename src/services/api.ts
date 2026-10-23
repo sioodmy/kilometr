@@ -3,13 +3,27 @@ import { kvGetStrict, kvSet } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { Connection, LegStop, RouteQuery, SavedPlace, SavedRoute, SmartDestination, Suggestion } from '../types/models';
-import { IFavoritesService, ILocationService, IRoutingService, ISearchService, LocationResult } from './types';
-import { addRecentSuggestion, loadLastLocation, loadRecent, loadSuggestions, saveConnections, saveLastLocation, saveSuggestions, findCachedConnection } from './offlineCache';
+import {
+  Connection,
+  LegStop,
+  RouteQuery,
+  SavedPlace,
+  SavedRoute,
+  SmartDestination,
+} from '../types/models';
+import { IFavoritesService, ILocationService, IRoutingService, LocationResult } from './types';
+import {
+  loadLastLocation,
+  saveConnections,
+  saveLastLocation,
+  findCachedConnection,
+} from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
 import { normalizeConnectionId } from './routing/connectionIdentity';
+
+export { SearchService } from './searchService';
 
 let cachedLocation: LocationResult | null = null;
 let cachedAt = 0;
@@ -254,161 +268,6 @@ export const LocationService: ILocationService = {
   },
   refineLocation,
   subscribe,
-};
-
-/**
- * Abort per kontekst, nie globalny. Wyszukiwarka miejsca docelowego i
- * wyszukiwarka adresu w „Nowym zapisanym miejscu” to dwa niezależne pola
- * tekstowe, które potrafią być otwarte w tej samej chwili (arkusz wyboru
- * miejsca startowego otwiera wyszukiwarkę po zapisaniu). Przy jednym
- * wspólnym `AbortController` nowsze zapytanie z drugiego pola zabijało
- * pierwsze, a przegrany dostawał `SearchAbortedError` zamieniany przez
- * wywołującego w „brak wyników” - czyli wynik znikiał bez powodu.
- */
-const searchAborts = new Map<string, AbortController>();
-const DEFAULT_SEARCH_SCOPE = 'default';
-
-/**
- * Wyszukiwanie przerwane nowszym zapytaniem. Odróżniamy to od „brak wyników”,
- * bo inaczej anulowany request wpisywałby pustą listę po wynikach nowszego.
- */
-class SearchAbortedError extends Error {
-  constructor() {
-    super('Wyszukiwanie przerwane przez nowe zapytanie');
-    this.name = 'SearchAbortedError';
-  }
-}
-
-// Cache scalonych podpowiedzi (query + zaokrąglona pozycja) - powtórki migają.
-const mergedCache = new Map<string, { data: Suggestion[]; expires: number }>();
-const MERGED_TTL_MS = 120 * 1000;
-const MERGED_MAX = 60;
-const NETWORK_DELAY_MS = 280;
-
-function mergedGet(key: string): Suggestion[] | null {
-  const e = mergedCache.get(key);
-  if (!e) return null;
-  if (e.expires < Date.now()) {
-    mergedCache.delete(key);
-    return null;
-  }
-  return e.data;
-}
-
-function mergedSet(key: string, data: Suggestion[]): void {
-  if (mergedCache.size >= MERGED_MAX) {
-    const oldest = mergedCache.keys().next().value;
-    if (oldest) mergedCache.delete(oldest);
-  }
-  mergedCache.set(key, { data, expires: Date.now() + MERGED_TTL_MS });
-}
-
-export const SearchService: ISearchService = {
-  async search(
-    query: string,
-    coords?: { lat: number; lon: number },
-    scope: string = DEFAULT_SEARCH_SCOPE,
-    onPartial?: (results: Suggestion[]) => void,
-  ): Promise<Suggestion[]> {
-    const q = query.trim();
-    if (!q) return [];
-
-    searchAborts.get(scope)?.abort();
-    const ctrl = new AbortController();
-    searchAborts.set(scope, ctrl);
-    // Zapytanie uznane za nieaktualne → nie wrzucamy go do cache podpowiedzi.
-    const isCurrent = () => searchAborts.get(scope) === ctrl;
-
-    const hasPos = coords !== undefined;
-    // Miasto w kluczu: po przełączeniu Wrocław → Kraków ten sam tekst przez
-    // 2 minuty wracał z cache starego miasta.
-    const searchCityId = getActiveCityIdSync();
-    const cacheKey = `v2:${searchCityId}:${q.toLowerCase()}|${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : '-'}`;
-    const cachedMerged = mergedGet(cacheKey);
-    if (cachedMerged) return cachedMerged;
-
-    try {
-      const { searchStops } = await import('./gtfsDatabase');
-      const { searchPois, ensurePoiIndex } = await import('./poiIndex');
-      const { searchPwrBuildings } = await import('./pwrBuildings');
-      const { searchPolinkaStops } = await import('./polinkaSearch');
-      const { searchNominatimDirect } = await import('./nominatimDirect');
-      const { dedupeAndSort } = await import('./searchRank');
-      const { distanceMeters } = await import('../gtfs/geo');
-      const { normalizePolish } = await import('../gtfs/geo');
-
-      // Lokalny indeks POI odświeża się w tle, nigdy nie blokuje.
-      ensurePoiIndex();
-
-      // 1. Lokalne źródła (szybkie, offline): przystanki GTFS + indeks POI
-      // + specyfiki miasta (Polinka i budynki PWr tylko we Wrocławiu).
-      const [stopHits, poiHits] = await Promise.all([
-        searchStops(q, 12).catch(() => []),
-        searchPois(q, coords?.lat, coords?.lon, 8).catch(() => []),
-      ]);
-      if (!isCurrent()) throw new SearchAbortedError();
-      const city = activeCityDef();
-      const stopSuggestions: Suggestion[] = stopHits.map((h) => ({
-        id: `stop-${h.stop_id}`,
-        title: h.name.toUpperCase(),
-        address: 'Przystanek',
-        kind: 'stop' as const,
-        lat: h.lat,
-        lon: h.lon,
-        distanceM:
-          coords !== undefined
-            ? Math.round(distanceMeters(coords.lat, coords.lon, h.lat, h.lon))
-            : undefined,
-        weight: h.weight,
-      }));
-      const localSuggestions = [
-        ...stopSuggestions,
-        ...(city.features.cable ? searchPolinkaStops(q, coords?.lat, coords?.lon) : []),
-        ...poiHits,
-        ...(city.features.campusPois ? searchPwrBuildings(q, coords?.lat, coords?.lon, 8) : []),
-      ];
-
-      // 2. Sieć (Nominatim) tylko gdy lokalnie za mało albo to adres z numerem.
-      // Adresy z numerami są domeną Nominatim - lokalny indeks ich nie ma.
-      const normQ = normalizePolish(q);
-      const looksLikeAddress = /\d/.test(normQ);
-      const needNetwork = q.length >= 2 && (looksLikeAddress || localSuggestions.length < 5);
-      let remoteHits: Suggestion[] = [];
-      if (needNetwork) {
-        // Lokalne trafienia od razu na ekran, sieć dopiero gdy user przestanie pisać
-        // (Nominatim ma limit 1 req/s, a każdy znak i tak by anulował żądanie).
-        if (onPartial && localSuggestions.length > 0) {
-          onPartial(dedupeAndSort(localSuggestions, [], hasPos, normQ).slice(0, 15));
-        }
-        await new Promise((r) => setTimeout(r, NETWORK_DELAY_MS));
-        if (!isCurrent()) throw new SearchAbortedError();
-        remoteHits = await searchNominatimDirect(q, coords?.lat, coords?.lon, ctrl.signal).catch(() => []);
-        if (!isCurrent()) throw new SearchAbortedError();
-      }
-
-      // 3. Merge: przystanki absolutnie pierwsze (w kolejności trafienie+waga),
-      // reszta wg nazwy z karą za dystans - bliższe wyżej.
-      const merged = dedupeAndSort(localSuggestions, remoteHits, hasPos, normQ).slice(0, 15);
-      if (merged.length > 0) {
-        mergedSet(cacheKey, merged);
-        if (isCurrent()) void saveSuggestions(q, merged, searchCityId);
-        return merged;
-      }
-    } catch {
-      // offline / błąd - fallback niżej
-    }
-
-    if (!isCurrent()) throw new SearchAbortedError();
-    return loadSuggestions(q);
-  },
-
-  async recent(): Promise<Suggestion[]> {
-    return loadRecent();
-  },
-
-  async recordRecent(item: Suggestion): Promise<void> {
-    await addRecentSuggestion(item);
-  },
 };
 
 // In-memory recent connections for getConnectionById

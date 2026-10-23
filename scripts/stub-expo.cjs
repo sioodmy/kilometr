@@ -62,6 +62,7 @@ const stubs = {
       getAllAsync: async () => [],
       getFirstAsync: async () => null,
       runAsync: async () => ({ lastInsertRowId: 1, changes: 1 }),
+      withTransactionAsync: async (task) => task(),
     }),
   },
   'expo-sqlite/kv-store': {},

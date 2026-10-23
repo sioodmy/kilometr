@@ -8,6 +8,7 @@ import type {
 } from '../types/models';
 
 export interface ISearchService {
+  cancel(scope?: string): void;
   /**
    * `scope` rozdziela anulowanie między niezależnymi polami wyszukiwania-
    * bez niego zapytanie w jednym polu zabijałoby zapytanie w drugim.
