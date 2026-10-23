@@ -1,5 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useReducedMotion } from 'react-native-reanimated';
 import {
   ArrowUp,
   ArrowUpLeft,
@@ -16,8 +27,12 @@ import {
   TramFront,
   BusFront,
   TrainFront,
+  Footprints,
+  X,
+  Compass,
+  ChevronDown,
 } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import { getLineColors, LineBadge, mapLineColor } from './LineBadge';
 import { useWalkSpeedMps, walkMinutesFor } from '../services/settings';
@@ -41,20 +56,12 @@ import type { TransferProtectionState } from '../services/notifications/transfer
 
 interface StopCompassCardProps {
   connection: Connection;
-  /** Otwiera pełną mapę trasy. Cały widget nawigacji jest w tym celu klikalny. */
+  /** Otwiera przegląd całej podróży. */
   onOpenMap?: () => void;
   transfer?: TransferProtectionState;
 }
 
 const OFF_ROUTE_M = 38;
-// Cały widget (mapa + panel instrukcji) ma zmieścić się na ekranie: 70%
-// wysokości okna zostawia miejsce na paski systemowe i naraz widoczny
-// nagłówek strony szczegółów.
-const NAV_WIDGET_FRACTION = 0.7;
-// Panel instrukcji M3 (~98 px treści) plus padding 8 widgetu i dystans 8
-// mapy od panelu. Stała: mapa dostaje resztę widgetu, więc wysokość mapy
-// nie skacze wraz z treścią panelu (np. przy „Wyznaczam nową trasę”).
-const MAP_WIDGET_RESERVE = 122;
 const ARRIVED_M = 20;
 const REROUTE_COOLDOWN_MS = 4000;
 const REROUTE_MIN_MOVE_M = 12;
@@ -71,15 +78,6 @@ function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
     Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
-}
-
-function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 /** Ikona pieszego skrętu albo dotarcia do celu. */
@@ -121,11 +119,15 @@ function roundNavM(m: number): number {
 
 export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompassCardProps) {
   const s = useStrings();
-  const { height: winH } = useWindowDimensions();
-  // Cały widget (mapa + panel instrukcji) mieści się na ekranie:
-  // 70% wysokości okna, mapa dostaje resztę nad panelem instrukcji.
-  const navWidgetH = Math.round(winH * NAV_WIDGET_FRACTION);
-  const navMapH = Math.max(180, navWidgetH - MAP_WIDGET_RESERVE);
+  const reduceMotion = useReducedMotion();
+  const { height: winH, width: winW, fontScale } = useWindowDimensions();
+  const [fullscreen, setFullscreen] = useState(false);
+  const [needsCalibration, setNeedsCalibration] = useState(false);
+  const [calibrationExpanded, setCalibrationExpanded] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState<number>();
+  const cardHeight = useRef(0);
+  const landscape = fullscreen && winW > winH;
+  const navMapH = Math.round(Math.max(220, Math.min(380, winH * 0.42)));
   const walkMps = useWalkSpeedMps();
   const {
     target: targetSelection,
@@ -133,11 +135,13 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
     now,
     location,
     locationState: locState,
+    alight,
+    board,
+    undoAlight,
   } = useJourneyNavigation(connection, transfer);
   const userLocation =
     location && locState === 'ok' && now - location.timestamp <= 15_000 ? location : null;
-  const [focused, setFocused] = useState(false);
-  const [settingsFocused, setSettingsFocused] = useState(false);
+  const [focused, setFocused] = useState<string | null>(null);
   const onTransit = targetSelection?.phase === 'riding';
   const finalWalk = targetSelection?.phase === 'egress' || targetSelection?.phase === 'arrived';
   const activeLeg = targetSelection?.leg ?? connection.legs[0];
@@ -282,27 +286,13 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
     );
   }, [routeForTarget, userLocation, guidance, navigationSpans, offRoute, routeProjection]);
 
-  const { distanceM, stopBearing } = useMemo(() => {
-    if (!userLocation || targetLat == null || targetLon == null) {
-      return { distanceM: null, stopBearing: 0 };
-    }
+  const distanceM = useMemo(() => {
+    if (!userLocation || targetLat == null || targetLon == null) return null;
     const dist = calculateDistanceMeters(userLocation.lat, userLocation.lon, targetLat, targetLon);
-    const bearing = calculateBearing(userLocation.lat, userLocation.lon, targetLat, targetLon);
-    return {
-      distanceM: Math.round(dist / 5) * 5,
-      stopBearing: bearing,
-    };
+    return Math.round(dist / 5) * 5;
   }, [userLocation, targetLat, targetLon]);
 
-  // Orientacja minimapki bez magnetometru: wzdłuż aktualnego odcinka trasy
-  // pieszej (dzięki czemu zakręt w lewo/prawo na mapie zawsze pokrywa się z
-  // ikoną manewru), a poza trasą według kursu ruchu GPS lub kierunku do przystanku.
-  const activeHeading = useMemo<number>(() => {
-    if (!onTransit && routeProjection && !offRoute) {
-      return routeProjection.segmentBearingDeg;
-    }
-    return gpsMovementHeading ?? stopBearing;
-  }, [onTransit, routeProjection, offRoute, gpsMovementHeading, stopBearing]);
+  const activeHeading = gpsMovementHeading;
 
   const snapThreshold = useMemo(
     () => Math.max(26, Math.min(45, (userLocation?.accuracy ?? 10) * 1.25)),
@@ -522,9 +512,11 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
           ? s.compass.distanceText(roundNavM(walkDistanceM))
           : '';
   const baseFooterText = onTransit
-    ? ride?.position
-      ? `${s.compass.vehicleGps} · ${s.compass.alightAt(activeLeg?.toStop ?? '')}${ride.stopsLeft != null ? ` · ${s.compass.stopsRemaining(ride.stopsLeft)}` : ''}`
-      : s.compass.vehicleGpsMissing
+    ? ride?.source === 'device'
+      ? s.compass.deviceGps
+      : ride?.source === 'vehicle'
+        ? s.compass.vehicleGps
+        : s.compass.vehicleGpsMissing
     : waitingAtStop
       ? s.compass.boardAt(stopName)
       : walkMin != null
@@ -566,340 +558,402 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
   }, [nextUp, guidance, hasArrived, s]);
 
   const openMap = useCallback(() => {
+    setFullscreen(false);
     onOpenMap?.();
   }, [onOpenMap]);
 
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardHeaderIcon}>
-          <Navigation2 size={18} color={scheme.primary} />
-        </View>
-        <View style={styles.cardHeaderText}>
-          <Text style={styles.cardTitle}>{s.compass.journeyTitle}</Text>
-          <Text style={styles.cardSubtitle}>
-            {onTransit
-              ? s.compass.riding
-              : finalWalk
-                ? s.compass.headToDestination
-                : targetSelection?.phase === 'transfer'
-                  ? s.compass.transferWalk
-                  : s.compass.followCompass}
+  const phaseLabel = onTransit
+    ? s.compass.riding
+    : finalWalk
+      ? s.compass.headToDestination
+      : targetSelection?.phase === 'transfer'
+        ? s.compass.transferWalk
+        : s.compass.followCompass;
+  const content = (
+    <>
+      <View style={styles.header}>
+        <Navigation2 size={22} color={scheme.primary} />
+        <View style={styles.copy}>
+          <Text style={styles.title} accessibilityRole="header">
+            {s.compass.journeyTitle}
           </Text>
+          <Text style={styles.secondary}>{phaseLabel}</Text>
         </View>
-      </View>
-
-      <View style={styles.stopInfo}>
-        <View style={styles.badgeRow}>
-          {activeLeg && <LineBadge mode={activeLeg.mode} line={activeLeg.line} />}
-          {activeLeg?.direction && (
-            <Text style={styles.directionText} numberOfLines={1}>
-              {s.compass.directionPrefix(activeLeg.direction)}
-            </Text>
+        <Pressable
+          onPress={() => setFullscreen(!fullscreen)}
+          onFocus={() => setFocused('fullscreen')}
+          onBlur={() => setFocused(null)}
+          accessibilityRole="button"
+          accessibilityLabel={fullscreen ? s.compass.closeFullscreen : s.compass.fullscreen}
+          style={({ pressed }) => [
+            styles.iconButton,
+            pressed && styles.pressed,
+            focused === 'fullscreen' && styles.focused,
+          ]}
+        >
+          {fullscreen ? (
+            <X size={24} color={scheme.onSurface} />
+          ) : (
+            <Maximize2 size={23} color={scheme.onSurface} />
           )}
-        </View>
-        <Text style={styles.stopName}>{stopName}</Text>
-        {platform ? (
-          <View style={styles.platformBadge}>
-            <Text style={styles.platformText}>{platform}</Text>
-          </View>
-        ) : null}
+        </Pressable>
       </View>
-
-      {showNav && stopPos ? (
-        <View style={[styles.navWidget, { minHeight: navWidgetH }]}>
+      <View style={[fullscreen && styles.fullBody, landscape && styles.landscape]}>
+        {showNav && stopPos ? (
           <NavMiniMap
-            path={onTransit ? (ride?.path ?? []) : displayRoutePath}
-            user={onTransit ? (ride?.position ?? null) : displayUserPos}
+            targetId={targetKey ?? activeLeg?.id ?? connection.id}
+            path={onTransit ? (ride?.remainingPath ?? []) : displayRoutePath}
+            traveled={onTransit ? ride?.traveledPath : undefined}
+            stops={onTransit ? ride?.stops : undefined}
+            user={onTransit ? userPos : displayUserPos}
+            vehicle={onTransit ? ride?.position : null}
             stop={stopPos}
-            headingDeg={onTransit ? (ride?.heading ?? null) : activeHeading}
-            accuracyM={onTransit ? null : (userLocation?.accuracy ?? null)}
-            accent={mapLineColor(lineAccent)}
-            vehicleMode={onTransit ? activeLeg?.mode : undefined}
-            onOpenMap={onOpenMap}
-            style={[styles.navMapPane, { height: navMapH }]}
+            headingDeg={activeHeading ?? (onTransit ? (ride?.heading ?? null) : null)}
+            accuracyM={userLocation?.accuracy ?? null}
+            accent={mapLineColor(onTransit ? lineAccent : scheme.primary)}
+            riding={onTransit}
+            interactive={fullscreen}
+            line={onTransit ? activeLeg?.line : undefined}
+            onCompassCalibrationChange={setNeedsCalibration}
+            style={[styles.map, fullscreen ? styles.fullMap : { height: navMapH }]}
           />
-          <Pressable
-            style={[styles.navSheet, focused && styles.focused]}
-            onPress={openMap}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            disabled={!onOpenMap}
-            accessibilityRole="button"
-            accessibilityLabel={s.compass.navA11y(`${headLabel}. ${footerText}`, headDist)}
-          >
-            {rerouting && !onTransit && targetSelection?.phase !== 'arrived' ? (
-              <View style={styles.navCopy}>
-                <Text style={styles.navInstruction} numberOfLines={2}>
-                  {s.compass.rerouting}
-                </Text>
-                {headDist ? (
-                  <Text style={styles.navDistance} numberOfLines={1}>
-                    {headDist}
-                  </Text>
-                ) : null}
-              </View>
-            ) : (
-              <View style={styles.navRowMain}>
-                <View style={styles.maneuverBadge}>
-                  {onTransit || waitingAtStop ? (
-                    <VehicleIcon size={28} strokeWidth={2.2} color={scheme.onPrimary} />
-                  ) : (
-                    <ManeuverIcon size={28} strokeWidth={2.2} color={scheme.onPrimary} />
-                  )}
+        ) : (
+          <View style={styles.noMap}>
+            <LocateFixed size={24} color={scheme.onSurfaceVariant} />
+            <Text style={styles.secondary}>{compassHint}</Text>
+          </View>
+        )}
+        <ScrollView
+          nestedScrollEnabled
+          style={[
+            styles.sheetScroll,
+            fullscreen && !landscape && {
+              height: sheetHeight,
+              maxHeight: winH * (fontScale > 1.3 ? 0.55 : 0.48),
+            },
+            landscape && { width: Math.min(360, winW * 0.46), height: '100%' },
+          ]}
+          contentContainerStyle={styles.sheet}
+          onContentSizeChange={(_, height) => setSheetHeight(height)}
+          showsVerticalScrollIndicator={fullscreen}
+        >
+          {needsCalibration ? (
+            <View style={styles.calibration}>
+              <Pressable
+                onPress={() => setCalibrationExpanded((value) => !value)}
+                onFocus={() => setFocused('calibration')}
+                onBlur={() => setFocused(null)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: calibrationExpanded }}
+                accessibilityLabel={`${s.compass.compassAccuracyLow}. ${s.compass.calibrationHelp}`}
+                style={({ pressed }) => [
+                  styles.calibrationButton,
+                  pressed && styles.pressed,
+                  focused === 'calibration' && styles.focused,
+                ]}
+              >
+                <Compass size={24} color={scheme.onWarningContainer} />
+                <View style={styles.copy}>
+                  <Text style={styles.calibrationTitle}>{s.compass.compassAccuracyLow}</Text>
+                  <Text style={styles.calibrationHelp}>{s.compass.calibrationHelp}</Text>
                 </View>
-                <View style={styles.navCopy}>
-                  <Text style={styles.navInstruction} numberOfLines={2}>
-                    {headLabel}
-                  </Text>
-                  {nextUpText && !onTransit && !waitingAtStop ? (
-                    <Text style={styles.navNext} numberOfLines={2}>
-                      {nextUpText}
-                    </Text>
-                  ) : null}
-                </View>
-                {headDist ? (
-                  <Text style={styles.navDistance} numberOfLines={1}>
-                    {headDist}
-                  </Text>
-                ) : null}
-              </View>
-            )}
-            <View style={styles.navFooter}>
-              <Text style={styles.navFooterText}>{footerText}</Text>
-              <Maximize2 size={16} color={scheme.onSurfaceVariant} />
+                <ChevronDown
+                  size={22}
+                  color={scheme.onWarningContainer}
+                  style={{ transform: [{ rotate: calibrationExpanded ? '180deg' : '0deg' }] }}
+                />
+              </Pressable>
+              {calibrationExpanded ? (
+                <Text style={styles.calibrationBody}>{s.compass.calibrateCompass}</Text>
+              ) : null}
             </View>
-          </Pressable>
-        </View>
-      ) : (
-        <Pressable
-          onPress={openMap}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={({ pressed }) => [
-            styles.hintRow,
-            styles.navSlot,
-            styles.navSlotHint,
-            pressed && styles.navWidgetPressed,
-            focused && styles.focused,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={s.compass.navA11y(stopName ?? '', '')}
-        >
-          <LocateFixed size={18} color={scheme.onSurfaceVariant} />
-          <Text style={styles.hintText}>{compassHint}</Text>
-          <Maximize2 size={16} color={scheme.onSurfaceVariant} />
-        </Pressable>
-      )}
+          ) : null}
+          <View style={styles.lineRow}>
+            {activeLeg && <LineBadge mode={activeLeg.mode} line={activeLeg.line} />}
+            <Text style={[styles.secondary, styles.shrink]}>
+              {activeLeg?.direction ? s.compass.directionPrefix(activeLeg.direction) : stopName}
+            </Text>
+            {platform ? <Text style={styles.platform}>{platform}</Text> : null}
+          </View>
+          <View style={[styles.instructionRow, fontScale > 1.3 && styles.wrap]}>
+            <View style={styles.maneuver}>
+              {onTransit || waitingAtStop ? (
+                <VehicleIcon size={30} strokeWidth={2.3} color={scheme.onPrimaryContainer} />
+              ) : (
+                <ManeuverIcon size={32} strokeWidth={2.3} color={scheme.onPrimaryContainer} />
+              )}
+            </View>
+            <View style={styles.copy}>
+              {onTransit && ride?.nextStop ? (
+                <Text style={styles.secondary}>
+                  {ride.stopsLeft === 1 ? s.compass.prepareToAlight : s.compass.nextStop}
+                </Text>
+              ) : null}
+              {headDist ? <Text style={styles.distance}>{headDist}</Text> : null}
+              <Text style={[styles.instruction, onTransit && styles.nextStop]}>
+                {rerouting && !onTransit && targetSelection?.phase !== 'arrived'
+                  ? s.compass.rerouting
+                  : onTransit && ride?.nextStop
+                    ? ride.nextStop
+                    : headLabel}
+              </Text>
+              {nextUpText && !onTransit && !waitingAtStop ? (
+                <Text style={styles.secondary}>{nextUpText}</Text>
+              ) : null}
+            </View>
+          </View>
+          {onTransit ? (
+            <View style={styles.rideDestination}>
+              {ride?.nextStop !== stopName ? (
+                <Text style={styles.destination}>{s.compass.alightAt(stopName)}</Text>
+              ) : null}
+              {ride?.stopsLeft != null ? (
+                <Text style={styles.remaining}>{s.compass.stopsRemaining(ride.stopsLeft)}</Text>
+              ) : null}
+              {ride?.progress != null ? (
+                <View
+                  style={styles.progress}
+                  accessibilityRole="progressbar"
+                  accessibilityLabel={s.compass.rideProgress}
+                  accessibilityValue={{ min: 0, max: 100, now: Math.round(ride.progress * 100) }}
+                >
+                  <View
+                    style={[styles.progressFill, { width: `${Math.round(ride.progress * 100)}%` }]}
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <Text style={styles.destination}>{stopName}</Text>
+          )}
+          <Text style={styles.secondary}>{footerText}</Text>
+          {onTransit || undoAlight ? (
+            <Pressable
+              onPress={onTransit ? alight : undoAlight}
+              onFocus={() => setFocused('alight')}
+              onBlur={() => setFocused(null)}
+              accessibilityRole="button"
+              accessibilityLabel={onTransit ? s.compass.alighted : s.compass.undoAlight}
+              style={({ pressed }) => [
+                styles.action,
+                pressed && styles.pressed,
+                focused === 'alight' && styles.focused,
+              ]}
+            >
+              <Footprints size={21} color={scheme.onSecondaryContainer} />
+              <Text style={styles.actionText}>
+                {onTransit ? s.compass.alighted : s.compass.undoAlight}
+              </Text>
+            </Pressable>
+          ) : null}
+          {waitingAtStop && !onTransit ? (
+            <Pressable
+              onPress={board}
+              onFocus={() => setFocused('board')}
+              onBlur={() => setFocused(null)}
+              accessibilityRole="button"
+              accessibilityLabel={s.compass.boarded}
+              style={({ pressed }) => [
+                styles.action,
+                pressed && styles.pressed,
+                focused === 'board' && styles.focused,
+              ]}
+            >
+              <VehicleIcon size={21} color={scheme.onSecondaryContainer} />
+              <Text style={styles.actionText}>{s.compass.boarded}</Text>
+            </Pressable>
+          ) : null}
+          {locState === 'denied' && hasTarget ? (
+            <Pressable
+              onPress={() => void Linking.openSettings()}
+              onFocus={() => setFocused('settings')}
+              onBlur={() => setFocused(null)}
+              accessibilityRole="button"
+              accessibilityLabel={s.compass.openSettingsA11y}
+              style={({ pressed }) => [
+                styles.action,
+                pressed && styles.pressed,
+                focused === 'settings' && styles.focused,
+              ]}
+            >
+              <Text style={styles.actionText}>{s.compass.enableLoc}</Text>
+            </Pressable>
+          ) : null}
+          {onOpenMap ? (
+            <Pressable
+              onPress={openMap}
+              onFocus={() => setFocused('overview')}
+              onBlur={() => setFocused(null)}
+              accessibilityRole="button"
+              accessibilityLabel={s.compass.openMap}
+              style={({ pressed }) => [
+                styles.overview,
+                pressed && styles.pressed,
+                focused === 'overview' && styles.focused,
+              ]}
+            >
+              <MapPinned size={19} color={scheme.onSurfaceVariant} />
+              <Text style={styles.secondary}>{s.compass.openMap}</Text>
+            </Pressable>
+          ) : null}
+        </ScrollView>
+      </View>
+    </>
+  );
 
-      {locState === 'denied' && hasTarget && (
-        <Pressable
-          onPress={() => void Linking.openSettings()}
-          onFocus={() => setSettingsFocused(true)}
-          onBlur={() => setSettingsFocused(false)}
-          style={({ pressed }) => [
-            styles.settingsBtn,
-            pressed && { opacity: 0.8 },
-            settingsFocused && styles.focused,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={s.compass.openSettingsA11y}
-        >
-          <Text style={styles.settingsBtnText}>{s.compass.enableLoc}</Text>
-        </Pressable>
-      )}
+  return fullscreen ? (
+    <View style={{ height: cardHeight.current }}>
+      <Modal
+        visible
+        animationType={reduceMotion ? 'none' : 'slide'}
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setFullscreen(false)}
+      >
+        <SafeAreaView style={styles.fullscreen} onAccessibilityEscape={() => setFullscreen(false)}>
+          {content}
+        </SafeAreaView>
+      </Modal>
+    </View>
+  ) : (
+    <View
+      style={styles.card}
+      onLayout={(event) => {
+        cardHeight.current = event.nativeEvent.layout.height;
+      }}
+    >
+      {content}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    padding: 16,
-    gap: 12,
-    ...elev.level2,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    overflow: 'hidden',
   },
-  cardHeader: {
+  fullscreen: { flex: 1, backgroundColor: scheme.surface },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 4,
+    paddingLeft: 18,
+    paddingRight: 8,
+    paddingVertical: 8,
   },
-  cardHeaderIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardTitle: {
-    ...type.titleMedium,
-    fontWeight: '700',
-    color: scheme.onSurface,
-  },
-  cardHeaderText: { flex: 1, minWidth: 0 },
-  cardSubtitle: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-  },
-  stopInfo: {
-    gap: 6,
-    backgroundColor: scheme.surfaceContainerHighest,
+  title: { ...type.titleMedium, color: scheme.onSurface, fontWeight: '700' },
+  secondary: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
+  copy: { flex: 1, minWidth: 0, gap: 4 },
+  shrink: { flex: 1, minWidth: 0 },
+  iconButton: {
+    width: 48,
+    height: 48,
     borderRadius: shape.medium,
-    padding: 12,
-    marginTop: 4,
-  },
-  badgeRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  directionText: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
-  },
-  stopName: {
-    ...type.titleMedium,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    marginTop: 4,
-  },
-  platformBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.small,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 2,
-  },
-  platformText: {
-    ...type.labelSmall,
-    color: scheme.primary,
-    fontWeight: '600',
-  },
-
-  // Slot rezerwuje wysokość docelowego widgetu, żeby przejście
-  // oczekiwanie -> mapa nie przesuwało reszty ekranu.
-  navSlot: {
-    minHeight: 148,
-  },
-  navSlotHint: {
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  navWidget: {
-    backgroundColor: scheme.surfaceContainerLowest,
-    borderRadius: shape.large,
-    padding: 8,
-  },
-  navWidgetPressed: {
-    opacity: 0.85,
-  },
-  focused: { borderColor: scheme.primary, borderWidth: 2 },
-  // Mapa ma stałą wysokość (inline: reszta widgetu 70% ekranu nad panelem)
-  // i styka się z panelem instrukcji bez promieni na styku; góra zostaje
-  // zaokrąglona (14 odpowiada defaultowi NavMiniMap).
-  navMapPane: {
-    minWidth: 0,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  navSheet: {
     borderWidth: 2,
     borderColor: 'transparent',
-    backgroundColor: scheme.surfaceContainerHighest,
-    padding: 14,
-    gap: 10,
-    // Bez promieni u góry: box styka się z mapą; dół zachowuje zaokrąglenie.
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
-    borderBottomLeftRadius: shape.medium,
-    borderBottomRightRadius: shape.medium,
   },
-  navRowMain: {
+  pressed: { opacity: 0.75 },
+  focused: { borderColor: scheme.primary },
+  fullBody: { flex: 1, minHeight: 0 },
+  landscape: { flexDirection: 'row' },
+  map: { borderRadius: 0 },
+  fullMap: { flex: 1, minHeight: 120 },
+  noMap: { minHeight: 160, gap: 12, padding: 24, alignItems: 'center', justifyContent: 'center' },
+  sheetScroll: { flexGrow: 0, flexShrink: 1 },
+  sheet: { backgroundColor: scheme.surfaceContainer, padding: 18, gap: 14 },
+  calibration: {
+    backgroundColor: scheme.warningContainer,
+    borderRadius: shape.medium,
+    padding: 8,
+    gap: 4,
+  },
+  calibrationButton: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    padding: 6,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderRadius: shape.small,
   },
-  // Plakietka manewru w tonalnym kolorze akcentu, jak w komponentach M3.
-  maneuverBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: shape.full,
-    backgroundColor: scheme.primary,
+  calibrationTitle: { ...type.labelLarge, color: scheme.onWarningContainer, fontWeight: '700' },
+  calibrationHelp: { ...type.bodySmall, color: scheme.onWarningContainer },
+  calibrationBody: {
+    ...type.bodyMedium,
+    color: scheme.onWarningContainer,
+    lineHeight: 21,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+  },
+  lineRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  platform: {
+    ...type.labelLarge,
+    color: scheme.onSecondaryContainer,
+    backgroundColor: scheme.secondaryContainer,
+    padding: 8,
+    borderRadius: shape.small,
+  },
+  instructionRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  wrap: { flexDirection: 'column', alignItems: 'stretch' },
+  maneuver: {
+    width: 56,
+    height: 56,
+    borderRadius: 20,
+    backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  navCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 3,
-  },
-  navDistance: {
-    fontSize: 22,
-    lineHeight: 26,
+  distance: {
+    fontSize: 34,
     fontWeight: '800',
     color: scheme.onSurface,
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
-    flexShrink: 1,
-    marginLeft: 2,
   },
-  navInstruction: {
-    ...type.titleMedium,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    lineHeight: 24,
-    includeFontPadding: false,
+  instruction: { ...type.titleMedium, fontWeight: '700', color: scheme.onSurface, lineHeight: 24 },
+  nextStop: { ...type.headlineSmall, fontWeight: '700', lineHeight: 30 },
+  rideDestination: { gap: 8 },
+  destination: { ...type.bodyLarge, fontWeight: '600', color: scheme.onSurface },
+  remaining: { ...type.labelLarge, color: scheme.primary },
+  progress: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: scheme.outlineVariant,
+    overflow: 'hidden',
   },
-  navNext: {
-    ...type.labelSmall,
-    color: scheme.onSurfaceVariant,
-  },
-  navFooter: {
+  progressFill: { height: 6, borderRadius: 3, backgroundColor: scheme.primary },
+  action: {
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  navFooterText: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-    flex: 1,
-    minWidth: 0,
-  },
-  hintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'center',
     gap: 10,
-    padding: 12,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHighest,
-  },
-  hintText: {
-    ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
-    flex: 1,
-    lineHeight: 19,
-  },
-  settingsBtn: {
-    minHeight: 44,
+    backgroundColor: scheme.secondaryContainer,
+    borderRadius: shape.large,
     borderWidth: 2,
     borderColor: 'transparent',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
   },
-  settingsBtnText: {
+  actionText: {
     ...type.labelLarge,
     color: scheme.onSecondaryContainer,
-    fontWeight: '600',
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  overview: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: shape.medium,
+    paddingHorizontal: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
 });

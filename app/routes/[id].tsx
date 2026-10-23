@@ -282,6 +282,11 @@ export default function RouteDetailsScreen() {
         ) : (
           <>
             <LegTimeline legs={item.legs} />
+            <StopCompassCard
+              connection={item}
+              transfer={isTrackedThis ? trackedTrip.transfer : undefined}
+              onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+            />
             {hasTransfers && (
               <TransferProtectionCard state={isTrackedThis ? trackedTrip.transfer : undefined}
                 active={isTrackedThis && trackedTrip.protectionEnabled === true} busy={trackingBusy}
@@ -305,14 +310,6 @@ export default function RouteDetailsScreen() {
                 <ChevronRight size={20} color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
               </Pressable>
             )}
-
-            {/* Nawigacja do przystanku jest klikalna i otwiera pełną
-                mapę trasy. */}
-            <StopCompassCard
-              connection={item}
-              transfer={isTrackedThis ? trackedTrip.transfer : undefined}
-              onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
-            />
 
             <ConnectionLineAlerts connection={item} />
           </>

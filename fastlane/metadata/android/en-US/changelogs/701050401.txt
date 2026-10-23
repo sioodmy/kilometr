@@ -1,0 +1,3 @@
+The F-Droid build uses Android system GPS and builds Expo modules from source.
+Removed FCM and Install Referrer. Local notifications remain available.
+The map engine is included in the app. It no longer downloads JavaScript from the network.

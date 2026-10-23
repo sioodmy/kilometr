@@ -283,7 +283,7 @@ head("Range RAPTOR: wszystkie odjazdy w oknie");
   const tripIds = new Set(js.map((j) => transit(j)[0]?.tripId));
   check('każdy kurs z okna 30 min osobno', tripIds.size >= 6, `${tripIds.size} kursów`);
   const deps = js.map((j) => j.departureSec).sort((a, b) => a - b);
-  check('najwcześniejszy odjazd na starcie okna', deps[0] <= hms(8, 0), fmt(deps[0] ?? 0));
+  check('odjazd nie wymaga wyjścia przed początkiem okna', deps[0] >= hms(8, 0) && deps[0] < hms(8, 5), fmt(deps[0] ?? 0));
 }
 
 

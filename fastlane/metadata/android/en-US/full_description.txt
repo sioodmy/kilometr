@@ -1,0 +1,9 @@
+Kilometr plans public transport journeys on your phone. Download timetables to find connections and check departures without internet. Download the offline map separately in the app.
+
+• Routes with transfers, walking times and transport filters.
+• Stop departures and saved places.
+• Journey tracking, local notifications and departure reminders.
+• Vehicle positions and service news when online.
+• Back up settings and saved places to a file.
+
+No ads or account. Available in Polish, English, German and Ukrainian.

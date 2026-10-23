@@ -13,13 +13,11 @@
 // noga piesza dostawałaby dwa punkty i rysowała się w linii prostej przez
 // budynki. Bez routera zostaje wersja prosta, wolna, ale zawsze pokazuje trasę.
 //
-// Nogi szynowe (tramwaj, pociąg) nigdy nie idą do OSRM. Router samochodowy
-// prowadzi po jezdni, więc na torowisku wydzielonym albo w strefie bez aut
-// dokładał pętelki i objazdy. Takie nogi zostają na prostych między
-// przystankami, czyli czysto i blisko torów.
+// Kolej korzysta z torów w kafelkach mapy. Pozostałe nogi szynowe
+// zostają przy geometrii przybliżonej, bez routera samochodowego.
 
 import { OSRM_BASE_URL } from '../config';
-import { routeFootLocal, routeFootLocalSync } from './footRouter';
+import { routeFootLocal, routeFootLocalSync, routeRailLocal } from './footRouter';
 import { kvGet, kvSet } from './storage';
 import { getLineColors, mapLineColor } from '../components/LineBadge';
 import { timeStringToSeconds } from '../gtfs/geo';
@@ -38,20 +36,16 @@ const PINS_MAX = 40;
 const WAYPOINTS_PER_REQUEST = 20;
 const REQUEST_TIMEOUT_MS = 8000;
 
-/** Profil routera: kurs jedzie po jezdni, spacer po chodnikach. */
-type RouteProfile = 'driving' | 'foot';
+/** Rozdziela cache dróg, chodników i torów. */
+type RouteProfile = 'driving' | 'foot' | 'rail';
 
-/**
- * Tory nie leżą na jezdni, więc router samochodowy robi pętelki i objazdy.
- * Kolej linowa tym bardziej: Polinka leci nad Odrą wprost, a OSRM po jezdni
- * objechałby rzekę mostem Grunwaldzkim i narysowała 2 km zamiast 400 m.
- * Metro jedzie tunelem, więc OSRM nie ma po czym prowadzić.
- */
-function isRailLeg(leg: MapLeg): boolean {
-  return leg.mode === 'tram' || leg.mode === 'train' || leg.mode === 'cable' || leg.mode === 'subway';
+/** Tryby bez obsługi geometrii nie mogą trafić do routera samochodowego. */
+function isApproxOnlyLeg(leg: MapLeg): boolean {
+  return leg.mode === 'tram' || leg.mode === 'cable' || leg.mode === 'subway';
 }
 
 function legProfile(leg: MapLeg): RouteProfile {
+  if (leg.mode === 'train') return 'rail';
   return leg.mode === 'walk' ? 'foot' : 'driving';
 }
 
@@ -272,7 +266,7 @@ async function writeCache(key: string, coords: Coord[]): Promise<void> {
  */
 export async function pinRouteGeometry(route: MapRoute): Promise<void> {
   for (const leg of route.legs) {
-    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
+    if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
     const key = `${legProfile(leg)}:${waypointKey(legWaypoints(leg))}`;
     await pinKey(key);
   }
@@ -290,7 +284,7 @@ export async function warmRouteGeometry(
   let warmed = 0;
   for (const leg of route.legs) {
     if (signal?.aborted) break;
-    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
+    if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
     const coords = await fetchLegGeometry(leg, signal).catch(() => null);
     if (!coords || coords.length < 2) continue;
     const profile = legProfile(leg);
@@ -314,6 +308,9 @@ async function fetchChunk(
   if (points.length < 2) return null;
   if (profile === 'foot') {
     return routeFootLocal(points, signal);
+  }
+  if (profile === 'rail') {
+    return routeRailLocal(points, signal);
   }
   const coordsParam = points.map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
   const url = `${OSRM_BASE_URL}/route/v1/${profile}/${coordsParam}?overview=full&geometries=geojson`;
@@ -342,12 +339,11 @@ async function fetchChunk(
 }
 
 /**
- * Geometria jednej nogi: waypointy po przystankach, jedno zapytanie (albo kilka
- * po 20 waypointów) i sklejone w jeden ciąg. Zwraca null dla nóg szynowych
- * oraz gdy sieć zawodzi, wtedy noga zostaje prosta.
+ * Dobiera router do trybu transportu. Brak pełnego przebiegu zostawia
+ * geometrię przybliżoną, bez zapisywania niekompletnego wyniku w cache.
  */
 async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
-  if (isRailLeg(leg)) return null;
+  if (isApproxOnlyLeg(leg)) return null;
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
   );
@@ -362,9 +358,10 @@ async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coor
   if (hit) return hit;
 
   const chunks: Coord[] = [];
-  for (let i = 0; i < points.length - 1; i += WAYPOINTS_PER_REQUEST - 1) {
+  const chunkSize = profile === 'rail' ? points.length : WAYPOINTS_PER_REQUEST;
+  for (let i = 0; i < points.length - 1; i += chunkSize - 1) {
     if (signal?.aborted) return null;
-    const slice = points.slice(i, i + WAYPOINTS_PER_REQUEST);
+    const slice = points.slice(i, i + chunkSize);
     const part = await fetchChunk(slice, profile, signal);
     if (!part) return null;
     // Sklej bez powtórzenia punktu granicznego.
@@ -421,7 +418,7 @@ export function straightGeometry(leg: MapLeg): Coord[] {
 
 /**
  * Uzupełnia geometrię nóg po kolei. Nogi piesze liczy lokalnie w Rust,
- * a autobusowe dociąga z OSRM.
+ * kolejowe liczy po torach, a autobusowe dociąga z OSRM.
  */
 export async function resolveGeometry(
   route: MapRoute,
@@ -430,7 +427,7 @@ export async function resolveGeometry(
 ): Promise<void> {
   for (const leg of route.legs) {
     if (signal?.aborted) return;
-    if (leg.stops.length < 2 || isRailLeg(leg)) continue;
+    if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
     const coords = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
     if (coords && coords.length > 1) onLeg(leg.id, coords);

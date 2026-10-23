@@ -18,7 +18,6 @@ const allowed = new Set([
   'android.permission.VIBRATE',
   'android.permission.WAKE_LOCK',
   'android.permission.RECEIVE_BOOT_COMPLETED',
-  'com.google.android.c2dm.permission.RECEIVE',
   'app.kilometr.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
 ]);
 

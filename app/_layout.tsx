@@ -154,6 +154,8 @@ export default function RootLayout() {
               <Stack.Screen name="index" />
               <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
               <Stack.Screen name="routes" options={{ headerShown: false }} />
+              <Stack.Screen name="line" />
+              <Stack.Screen name="line-departures" />
               {/* Mapa ma własny gest przesuwania - natywny swipe-back zjadałby
                 przeciąganie widoku i mapa skakałaby przy powrocie. */}
               <Stack.Screen name="map" options={{ gestureEnabled: false }} />

@@ -1,0 +1,73 @@
+Categories:
+  - Public Transport
+License: GPL-3.0-or-later
+AuthorName: sioodmy
+WebSite: https://sioodmy.github.io/kilometr/
+SourceCode: https://github.com/sioodmy/kilometr
+IssueTracker: https://github.com/sioodmy/kilometr/issues
+Changelog: https://github.com/sioodmy/kilometr/releases
+
+AutoName: Kilometr
+RepoType: git
+Repo: https://github.com/sioodmy/kilometr.git
+
+Builds:
+  - versionName: v1.5.4
+    versionCode: 701050401
+    commit: v1.5.4
+    sudo:
+      - apt-get update
+      - apt-get install -y --no-install-recommends build-essential curl git python3
+        pkg-config libssl-dev
+      - curl -Lo node.tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.xz
+      - echo '9aa8e9d2298ab68c600bd6fb86a6c13bce11a4eca1ba9b39d79fa021755d7c37  node.tar.xz' | sha256sum -c -
+      - tar xf node.tar.xz --strip-components=1 -C /usr/local
+      - rm node.tar.xz
+    init:
+      - npm ci
+    srclibs:
+      - rustup@1.28.2
+    prebuild:
+      - $$rustup$$/rustup-init.sh -y --profile minimal --default-toolchain 1.90.0
+        --target aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+      - sdkmanager 'cmake;3.30.5'
+      - APP_VERSION=$$VERSION$$ npm run prebuild:fdroid
+      - find node_modules -type d -name local-maven-repo -prune -exec rm -rf {} +
+    scanignore:
+      - node_modules/hermes-compiler/hermesc/linux64-bin/hermesc
+      - node_modules/react-native-safe-area-context/android/build.gradle
+      - node_modules/react-native-screens/android/build.gradle
+      - node_modules/react-native-svg/android/build.gradle
+      - node_modules/@react-native-masked-view/masked-view/android/build.gradle
+      - node_modules/expo-modules-core/android/ExpoModulesCorePlugin.gradle
+      - node_modules/react-native-share/android/build.gradle
+      - node_modules/react-native-view-shot/android/build.gradle
+      - node_modules/react-native-webview/android/build.gradle
+      - node_modules/react-native/ReactAndroid/publish.gradle
+    scandelete:
+      - node_modules/expo-sqlite/android/vec
+      - node_modules/expo-sqlite/android/libsql
+      - node_modules/expo-sqlite/web/wa-sqlite/wa-sqlite.wasm
+      - node_modules/hermes-compiler/hermesc/osx-bin
+      - node_modules/@esbuild/*/bin
+      - node_modules/esbuild/bin/esbuild
+      - node_modules/@expo/expo-modules-macros-plugin/apple/ExpoModulesMacros-tool
+      - node_modules/expo/template.tgz
+      - node_modules/*/prebuilds
+      - node_modules/expo-sqlite/ios/libsql.xcframework
+      - node_modules/fb-dotslash/bin
+      - node_modules/oxc-parser/parser.wasm32-wasip1.wasm
+      - node_modules/react-native/React/I18n/strings
+    build:
+      - export PATH=$HOME/.cargo/bin:$PATH
+      - cd android
+      - FDROID_BUILD=1 APP_VERSION=$$VERSION$$ BUILD_NUMBER=1 gradle assembleRelease
+        -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64,x86
+        -x lint --no-daemon --console=plain
+    output: android/app/build/outputs/apk/release/app-release-unsigned.apk
+    ndk: 27.1.12297006
+
+AutoUpdateMode: None
+UpdateCheckMode: None
+CurrentVersion: v1.5.4
+CurrentVersionCode: 701050401

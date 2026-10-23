@@ -2,6 +2,7 @@ import { RAPTOR_WASM_BASE64 } from "./wasmBase64";
 
 const STATUS_NET_MISSING = -1;
 const FOOT_QUERY_MAGIC = 0x464f4f54; // "FOOT"
+const RAIL_QUERY_MAGIC = 0x5241494c;
 
 type NativeKilometrRaptorModule = {
   isAvailable(): boolean;
@@ -377,10 +378,10 @@ function loadFootTileSync(
   }
 }
 
-function packFootWaypoints(waypoints: ReadonlyArray<readonly [number, number]>): Uint8Array {
+function packFootWaypoints(waypoints: ReadonlyArray<readonly [number, number]>, rail = false): Uint8Array {
   const buf = new ArrayBuffer(8 + waypoints.length * 16);
   const view = new DataView(buf);
-  view.setUint32(0, FOOT_QUERY_MAGIC, true);
+  view.setUint32(0, rail ? RAIL_QUERY_MAGIC : FOOT_QUERY_MAGIC, true);
   view.setUint32(4, waypoints.length, true);
   let offset = 8;
   for (let i = 0; i < waypoints.length; i++) {
@@ -410,10 +411,11 @@ function unpackFootRoute(bytes: Uint8Array | null): [number, number][] | null {
 }
 
 export function routeFootWaypointsSync(
-  waypoints: ReadonlyArray<readonly [number, number]>
+  waypoints: ReadonlyArray<readonly [number, number]>,
+  rail = false,
 ): [number, number][] | null {
   if (waypoints.length < 2) return null;
-  const packed = packFootWaypoints(waypoints);
+  const packed = packFootWaypoints(waypoints, rail);
   const nativeMod = getNativeModule();
   if (nativeMod) {
     return unpackFootRoute(nativeMod.routeFootSync(packed));
@@ -433,16 +435,17 @@ export function routeFootWaypointsSync(
 }
 
 export async function routeFootWaypointsAsync(
-  waypoints: ReadonlyArray<readonly [number, number]>
+  waypoints: ReadonlyArray<readonly [number, number]>,
+  rail = false,
 ): Promise<[number, number][] | null> {
   if (waypoints.length < 2) return null;
-  const packed = packFootWaypoints(waypoints);
+  const packed = packFootWaypoints(waypoints, rail);
   const nativeMod = getNativeModule();
   if (nativeMod) {
     const res = await nativeMod.routeFoot(packed);
     return unpackFootRoute(res);
   }
-  return routeFootWaypointsSync(waypoints);
+  return routeFootWaypointsSync(waypoints, rail);
 }
 
 export const CMD_FUZZY = 10;
