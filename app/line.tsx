@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -10,71 +10,23 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react-native';
+import { ArrowLeft, Check, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
-import { useActiveCity } from '../src/services/cityStore';
-import {
-  loadLineTimetable,
-  shiftTimetableDate,
-  timetableClock,
-  timetableToday,
-  type LineStop,
-} from '../src/services/lineTimetable';
+import { useLineTimetable } from '../src/services/useLineTimetable';
+import { shiftTimetableDate, timetableToday, type LineStop } from '../src/services/lineTimetable';
 import { scheme, shape, type } from '../src/theme/tokens';
-
-type Timetable = Awaited<ReturnType<typeof loadLineTimetable>>;
 
 export default function LineScreen() {
   const { routeId } = useLocalSearchParams<{ routeId: string }>();
   const router = useRouter();
   const s = useStrings();
   const t = s.lineTimetable;
-  const { cityId } = useActiveCity();
   const [date, setDate] = useState(timetableToday);
-  const [data, setData] = useState<Timetable | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [retry, setRetry] = useState(0);
+  const { data, loading, error, retry } = useLineTimetable(routeId ?? '', date);
   const [patternId, setPatternId] = useState('');
-  const [selectedStop, setSelectedStop] = useState(-1);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-    setData(null);
-    void loadLineTimetable(routeId ?? '', date)
-      .then((result) => {
-        if (!cancelled) {
-          setData(result);
-          setSelectedStop(-1);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [routeId, date, cityId, retry]);
 
   const pattern = data?.patterns.find((item) => item.id === patternId) ?? data?.patterns[0];
-  const stop = pattern?.stops[selectedStop];
-  const hours = useMemo(() => {
-    const groups = new Map<number, string[]>();
-    for (const seconds of stop?.departures ?? []) {
-      const hour = Math.floor(seconds / 3600);
-      const minutes = groups.get(hour) ?? [];
-      const minute = timetableClock(seconds).slice(3);
-      if (!minutes.includes(minute)) minutes.push(minute);
-      groups.set(hour, minutes);
-    }
-    return [...groups];
-  }, [stop]);
   const dateLabel = new Intl.DateTimeFormat(getLocaleSync(), {
     weekday: 'long',
     day: 'numeric',
@@ -102,7 +54,6 @@ export default function LineScreen() {
       <FlatList
         data={loading || error ? [] : (pattern?.stops ?? [])}
         keyExtractor={(item, index) => `${item.id}:${index}`}
-        extraData={selectedStop}
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={styles.header}>
@@ -166,10 +117,7 @@ export default function LineScreen() {
                     return (
                       <Pressable
                         key={item.id}
-                        onPress={() => {
-                          setPatternId(item.id);
-                          setSelectedStop(-1);
-                        }}
+                        onPress={() => setPatternId(item.id)}
                         accessibilityRole="radio"
                         accessibilityState={{ selected }}
                         style={[styles.direction, selected && styles.directionSelected]}
@@ -202,73 +150,38 @@ export default function LineScreen() {
           </View>
         }
         renderItem={({ item, index }: { item: LineStop; index: number }) => {
-          const selected = index === selectedStop;
           const terminal = index === (pattern?.stops.length ?? 0) - 1;
           return (
             <View style={styles.stopGroup}>
               <Pressable
-                onPress={() => setSelectedStop(selected ? -1 : index)}
+                onPress={() => {
+                  if (!pattern) return;
+                  router.push({
+                    pathname: '/line-departures',
+                    params: {
+                      routeId,
+                      date,
+                      patternId: pattern.id,
+                      stopIndex: String(index),
+                    },
+                  });
+                }}
                 accessibilityRole="button"
                 accessibilityLabel={t.selectStop(item.name)}
-                accessibilityState={{ expanded: selected }}
-                style={[styles.stop, selected && styles.stopSelected]}
+                style={styles.stop}
                 android_ripple={{ color: scheme.outlineVariant }}
               >
                 <View style={styles.track}>
                   {index > 0 && <View style={styles.trackAbove} />}
                   {!terminal && <View style={styles.trackBelow} />}
-                  <View style={[styles.dot, selected && styles.dotSelected]} />
+                  <View style={styles.dot} />
                 </View>
                 <View style={styles.stopText}>
-                  <Text style={[styles.stopName, selected && styles.selectedText]}>
-                    {item.name}
-                  </Text>
+                  <Text style={styles.stopName}>{item.name}</Text>
                   {!!item.code && <Text style={styles.subtitle}>{t.stopCode(item.code)}</Text>}
                 </View>
-                {selected ? (
-                  <Clock3 size={20} color={scheme.primary} />
-                ) : (
-                  <ChevronRight size={20} color={scheme.onSurfaceVariant} />
-                )}
+                <ChevronRight size={20} color={scheme.onSurfaceVariant} />
               </Pressable>
-              {selected && (
-                <View style={styles.departures} accessibilityLiveRegion="polite">
-                  <Text style={styles.departuresTitle} accessibilityRole="header">
-                    {terminal ? t.terminal : t.departures}
-                  </Text>
-                  <Text style={styles.subtitle}>{terminal ? t.terminalHint : t.scheduled}</Text>
-                  {!terminal &&
-                    hours.map(([hour, minutes]) => (
-                      <View
-                        key={hour}
-                        style={styles.hourRow}
-                        accessible
-                        accessibilityLabel={minutes
-                          .map((minute) => {
-                            const time = timetableClock(hour * 3600 + Number(minute) * 60);
-                            return hour >= 24 ? t.nextDayTime(time, Math.floor(hour / 24)) : time;
-                          })
-                          .join(', ')}
-                      >
-                        <View style={styles.hourLabel}>
-                          <Text style={styles.hour}>{hour % 24}</Text>
-                          {hour >= 24 && (
-                            <Text style={styles.subtitle}>
-                              {t.dayOffset(Math.floor(hour / 24))}
-                            </Text>
-                          )}
-                        </View>
-                        <View style={styles.minutes}>
-                          {minutes.map((minute) => (
-                            <Text key={minute} style={styles.minute}>
-                              {minute}
-                            </Text>
-                          ))}
-                        </View>
-                      </View>
-                    ))}
-                </View>
-              )}
             </View>
           );
         }}
@@ -279,11 +192,7 @@ export default function LineScreen() {
               {loading ? t.loading : error ? t.error : data?.line ? t.empty : t.missing}
             </Text>
             {error && (
-              <Pressable
-                onPress={() => setRetry((value) => value + 1)}
-                accessibilityRole="button"
-                style={styles.retry}
-              >
+              <Pressable onPress={retry} accessibilityRole="button" style={styles.retry}>
                 <Text style={styles.retryText}>{s.common.retry}</Text>
               </Pressable>
             )}
@@ -366,7 +275,6 @@ const styles = StyleSheet.create({
     borderRadius: shape.medium,
     backgroundColor: scheme.surfaceContainerLow,
   },
-  stopSelected: { backgroundColor: scheme.surfaceContainerHigh },
   track: {
     width: 36,
     alignSelf: 'stretch',
@@ -396,47 +304,8 @@ const styles = StyleSheet.create({
     borderColor: scheme.outline,
     backgroundColor: scheme.surfaceContainerLow,
   },
-  dotSelected: {
-    width: 18,
-    height: 18,
-    borderColor: scheme.primary,
-    backgroundColor: scheme.primary,
-  },
   stopText: { flex: 1, paddingVertical: 14, gap: 4 },
   stopName: { ...type.bodyLarge, color: scheme.onSurface },
-  selectedText: { fontWeight: '700' },
-  departures: {
-    padding: 16,
-    marginVertical: 4,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainer,
-    gap: 10,
-  },
-  departuresTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onSurface },
-  hourRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingVertical: 2,
-  },
-  hourLabel: { gap: 2 },
-  hour: {
-    fontSize: 32,
-    lineHeight: 36,
-    fontWeight: '700',
-    color: scheme.primary,
-    includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
-  },
-  minutes: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 2 },
-  minute: {
-    ...type.bodyMedium,
-    lineHeight: 18,
-    fontWeight: '600',
-    color: scheme.onSurface,
-    includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
-  },
   state: { paddingVertical: 32, paddingHorizontal: 16, alignItems: 'center', gap: 16 },
   stateText: { ...type.bodyLarge, color: scheme.onSurfaceVariant, textAlign: 'center' },
   retry: {

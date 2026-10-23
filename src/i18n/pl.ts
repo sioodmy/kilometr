@@ -37,6 +37,7 @@ export const pl = {
     error: 'Nie udało się wczytać rozkładu. Spróbuj ponownie.',
     empty: 'Brak kursów w zapisanym rozkładzie na ten dzień. Wybierz inny dzień lub zaktualizuj rozkład w Ustawieniach.',
     missing: 'Tej linii nie ma w zapisanym rozkładzie. Wróć do wyszukiwarki lub zaktualizuj dane w Ustawieniach.',
+    missingStop: 'Tego przystanku lub wariantu nie ma już w rozkładzie. Wróć do listy przystanków.',
     terminal: 'Przystanek końcowy',
     terminalHint: 'Wybierz wcześniejszy przystanek, aby sprawdzić odjazdy.',
     scheduled: 'Godziny według zapisanego rozkładu',

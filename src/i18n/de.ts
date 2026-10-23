@@ -23,6 +23,7 @@ export const de: Strings = {
     error: 'Der Fahrplan konnte nicht geladen werden. Versuche es erneut.',
     empty: 'Keine Fahrten im gespeicherten Fahrplan für diesen Tag. Wähle einen anderen Tag oder aktualisiere den Fahrplan in den Einstellungen.',
     missing: 'Diese Linie fehlt im gespeicherten Fahrplan. Kehre zur Suche zurück oder aktualisiere die Daten in den Einstellungen.',
+    missingStop: 'Diese Haltestelle oder Linienvariante ist nicht mehr im Fahrplan. Kehre zur Haltestellenliste zurück.',
     terminal: 'Endhaltestelle',
     terminalHint: 'Wähle eine frühere Haltestelle, um Abfahrten zu sehen.',
     scheduled: 'Zeiten aus dem gespeicherten Fahrplan',

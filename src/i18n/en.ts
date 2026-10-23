@@ -23,6 +23,7 @@ export const en: Strings = {
     error: 'Could not load the timetable. Try again.',
     empty: 'No trips in the saved timetable for this date. Choose another day or update the timetable in Settings.',
     missing: 'This line is missing from the saved timetable. Return to search or update the data in Settings.',
+    missingStop: 'This stop or route variant is no longer in the timetable. Return to the stop list.',
     terminal: 'Last stop',
     terminalHint: 'Choose an earlier stop to see departures.',
     scheduled: 'Times from the saved timetable',
