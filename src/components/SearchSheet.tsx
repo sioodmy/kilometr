@@ -6,7 +6,7 @@ import BottomSheet, {
   TouchableOpacity,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
 import type { TextInput } from 'react-native-gesture-handler';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
@@ -15,9 +15,12 @@ import type { Suggestion } from '../types/models';
 import { SuggestionRow } from './SuggestionRow';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { frecency, matchSuggestions, rankWithFrecency } from '../services/searchFrecency';
+import { searchTransitLines, type TransitLine } from '../services/lineTimetable';
+import { LineBadge } from './LineBadge';
 
 type Row =
   | { type: 'header'; label: string }
+  | { type: 'line'; line: TransitLine }
   | {
       type: 'item';
       item: Suggestion;
@@ -41,6 +44,7 @@ export function SearchSheet({
   savedQuick,
   onQuery,
   onSelect,
+  onSelectLine,
   onClose,
   placeholder: placeholderProp,
   originTitle,
@@ -57,6 +61,7 @@ export function SearchSheet({
   savedQuick: Suggestion[];
   onQuery: (q: string) => void;
   onSelect: (s: Suggestion) => void;
+  onSelectLine?: (line: TransitLine) => void;
   onClose: () => void;
   placeholder?: string;
   originTitle?: string;
@@ -100,6 +105,36 @@ export function SearchSheet({
   };
 
   const trimmed = query.trim();
+  const canSearchLines = !!onSelectLine;
+  const [lineMatches, setLineMatches] = useState<{
+    query: string;
+    city: string;
+    lines: TransitLine[];
+  } | null>(null);
+  const lines = useMemo(
+    () => (lineMatches?.query === trimmed && lineMatches.city === cityId ? lineMatches.lines : []),
+    [lineMatches, trimmed, cityId],
+  );
+
+  useEffect(() => {
+    if (!canSearchLines || !trimmed) return;
+    let cancelled = false;
+    void searchTransitLines(trimmed)
+      .then((matches) => {
+        if (!cancelled) setLineMatches({ query: trimmed, city: cityId, lines: matches });
+      })
+      .catch(() => {
+        if (!cancelled) setLineMatches(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [trimmed, cityId, canSearchLines]);
+
+  const handleLineSelect = (line: TransitLine) => {
+    inputRef.current?.blur();
+    onSelectLine?.(line);
+  };
 
   // Zapisane nazwy pasują od pierwszej litery, zanim odpowie lokalny indeks.
   const personal = useMemo(() => {
@@ -164,9 +199,14 @@ export function SearchSheet({
       append(s.search.suggestedPlaces, ordered);
       return out;
     }
+    if (lines.length) {
+      out.push({ type: 'header', label: s.lineTimetable.title });
+      for (const line of lines) out.push({ type: 'line', line });
+      hasItem = true;
+    }
     append(s.search.resultsFor(trimmed, ranked.length), ranked);
     return out;
-  }, [trimmed, recent, ranked, s]);
+  }, [trimmed, recent, ranked, s, lines]);
 
   const first = trimmed ? ranked[0] : undefined;
 
@@ -242,7 +282,9 @@ export function SearchSheet({
             autoCorrect={false}
             autoCapitalize="none"
             blurOnSubmit={false}
-            onSubmitEditing={() => first && handleSelect(first)}
+            onSubmitEditing={() =>
+              lines[0] ? handleLineSelect(lines[0]) : first && handleSelect(first)
+            }
           />
           {query ? (
             <TouchableOpacity
@@ -264,7 +306,13 @@ export function SearchSheet({
 
       <BottomSheetFlatList
         data={rows}
-        keyExtractor={(r: Row) => (r.type === 'header' ? `h-${r.label}` : r.item.id)}
+        keyExtractor={(r: Row) =>
+          r.type === 'header'
+            ? `h-${r.label}`
+            : r.type === 'line'
+              ? `line-${r.line.routeId}`
+              : r.item.id
+        }
         overScrollMode="never"
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
@@ -305,6 +353,23 @@ export function SearchSheet({
             <Text style={styles.section} accessibilityRole="header">
               {row.label}
             </Text>
+          ) : row.type === 'line' ? (
+            <TouchableOpacity
+              onPress={() => handleLineSelect(row.line)}
+              accessibilityRole="button"
+              accessibilityLabel={s.lineTimetable.open(row.line.shortName)}
+              activeOpacity={0.7}
+              style={styles.lineResult}
+            >
+              <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
+              <View style={styles.lineText}>
+                <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
+                <Text style={styles.lineSubtitle}>
+                  {row.line.longName || s.lineTimetable.searchHint}
+                </Text>
+              </View>
+              <ChevronRight size={22} color={scheme.onPrimaryContainer} />
+            </TouchableOpacity>
           ) : (
             <SuggestionRow
               item={row.item}
@@ -362,6 +427,18 @@ export function SearchSheet({
 }
 
 const styles = StyleSheet.create({
+  lineResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    minHeight: 80,
+    borderRadius: shape.large,
+    backgroundColor: scheme.primaryContainer,
+  },
+  lineText: { flex: 1, gap: 4 },
+  lineTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
+  lineSubtitle: { ...type.bodySmall, color: scheme.onPrimaryContainer },
   sheet: {
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,

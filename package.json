@@ -108,6 +108,7 @@
     "check:map-colors": "tsx scripts/check-map-colors.ts",
     "check:personalization": "tsx --require ./scripts/stub-expo.cjs scripts/check-personalization.ts",
     "check:line-badge": "tsx scripts/check-line-badge.ts",
+    "check:line-timetable": "tsx --require ./scripts/stub-expo.cjs scripts/check-line-timetable.ts",
     "check:widget-badge": "tsx scripts/check-widget-badge.ts",
     "sync:widget-strings": "tsx scripts/sync-widget-strings.ts",
     "check:widget-strings": "tsx scripts/sync-widget-strings.ts --check",
