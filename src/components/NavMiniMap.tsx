@@ -14,6 +14,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import type { Coord } from '../services/routeGeometry';
 import { useStrings } from '../i18n';
 import { buildNavMapDocument } from '../map/navMapDocument';
+import { mapDocumentSource } from '../map/bundledMapLibre';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import { acquireMapServer } from '../services/mapServerLease';
 import { useDeviceHeading } from '../services/useDeviceHeading';
@@ -32,6 +33,7 @@ interface NavMiniMapProps {
   accent: string;
   riding: boolean;
   line?: string;
+  onCompassCalibrationChange?: (needed: boolean) => void;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -57,6 +59,7 @@ export function NavMiniMap({
   accent,
   riding,
   line,
+  onCompassCalibrationChange,
   style,
 }: NavMiniMapProps) {
   const s = useStrings();
@@ -164,6 +167,13 @@ export function NavMiniMap({
     [sendCamera, headingDeg, riding],
   );
   const compassState = useDeviceHeading(user != null || vehicle != null, onHeading);
+  useEffect(() => {
+    const timer = setTimeout(
+      () => onCompassCalibrationChange?.(compassState === 'calibrate'),
+      compassState === 'calibrate' ? 600 : compassState === 'ok' ? 1500 : 0,
+    );
+    return () => clearTimeout(timer);
+  }, [compassState, onCompassCalibrationChange]);
 
   useEffect(sendRoute, [sendRoute, targetId, path, traveled, stops, stop, accent, riding, line]);
   useEffect(sendCamera, [sendCamera, user, vehicle, headingDeg, reduceMotion, targetId]);
@@ -204,12 +214,7 @@ export function NavMiniMap({
     ready.current = false;
     setMapState('error');
   }, []);
-  const hint =
-    accuracyM != null && accuracyM > 50
-      ? s.compass.gpsWeak
-      : compassState === 'calibrate'
-        ? s.compass.calibrateCompass
-        : null;
+  const hint = accuracyM != null && accuracyM > 50 ? s.compass.gpsWeak : null;
 
   return (
     <View style={[styles.frame, style]}>
@@ -218,7 +223,7 @@ export function NavMiniMap({
           key={`${cityId}:${retry}`}
           ref={webRef}
           style={styles.web}
-          source={offlineBase ? { html, baseUrl: `${offlineBase}/` } : { html }}
+          source={mapDocumentSource(html, offlineBase ?? null)}
           originWhitelist={['*']}
           onMessage={onMessage}
           onLoadStart={onLoadStart}

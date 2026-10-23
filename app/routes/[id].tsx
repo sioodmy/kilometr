@@ -281,12 +281,12 @@ export default function RouteDetailsScreen() {
           </View>
         ) : (
           <>
+            <LegTimeline legs={item.legs} />
             <StopCompassCard
               connection={item}
               transfer={isTrackedThis ? trackedTrip.transfer : undefined}
               onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
             />
-            <LegTimeline legs={item.legs} />
             {hasTransfers && (
               <TransferProtectionCard state={isTrackedThis ? trackedTrip.transfer : undefined}
                 active={isTrackedThis && trackedTrip.protectionEnabled === true} busy={trackingBusy}

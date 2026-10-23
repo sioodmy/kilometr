@@ -29,6 +29,8 @@ import {
   TrainFront,
   Footprints,
   X,
+  Compass,
+  ChevronDown,
 } from 'lucide-react-native';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
@@ -120,6 +122,8 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
   const reduceMotion = useReducedMotion();
   const { height: winH, width: winW, fontScale } = useWindowDimensions();
   const [fullscreen, setFullscreen] = useState(false);
+  const [needsCalibration, setNeedsCalibration] = useState(false);
+  const [calibrationExpanded, setCalibrationExpanded] = useState(false);
   const cardHeight = useRef(0);
   const landscape = fullscreen && winW > winH;
   const navMapH = Math.round(Math.max(220, Math.min(380, winH * 0.42)));
@@ -608,6 +612,7 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
             accent={mapLineColor(onTransit ? lineAccent : scheme.primary)}
             riding={onTransit}
             line={onTransit ? activeLeg?.line : undefined}
+            onCompassCalibrationChange={setNeedsCalibration}
             style={[styles.map, fullscreen ? styles.fullMap : { height: navMapH }]}
           />
         ) : (
@@ -626,6 +631,37 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
           contentContainerStyle={styles.sheet}
           showsVerticalScrollIndicator={fullscreen}
         >
+          {needsCalibration ? (
+            <View style={styles.calibration}>
+              <Pressable
+                onPress={() => setCalibrationExpanded((value) => !value)}
+                onFocus={() => setFocused('calibration')}
+                onBlur={() => setFocused(null)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: calibrationExpanded }}
+                accessibilityLabel={`${s.compass.compassAccuracyLow}. ${s.compass.calibrationHelp}`}
+                style={({ pressed }) => [
+                  styles.calibrationButton,
+                  pressed && styles.pressed,
+                  focused === 'calibration' && styles.focused,
+                ]}
+              >
+                <Compass size={24} color={scheme.onWarningContainer} />
+                <View style={styles.copy}>
+                  <Text style={styles.calibrationTitle}>{s.compass.compassAccuracyLow}</Text>
+                  <Text style={styles.calibrationHelp}>{s.compass.calibrationHelp}</Text>
+                </View>
+                <ChevronDown
+                  size={22}
+                  color={scheme.onWarningContainer}
+                  style={{ transform: [{ rotate: calibrationExpanded ? '180deg' : '0deg' }] }}
+                />
+              </Pressable>
+              {calibrationExpanded ? (
+                <Text style={styles.calibrationBody}>{s.compass.calibrateCompass}</Text>
+              ) : null}
+            </View>
+          ) : null}
           <View style={styles.lineRow}>
             {activeLeg && <LineBadge mode={activeLeg.mode} line={activeLeg.line} />}
             <Text style={[styles.secondary, styles.shrink]}>
@@ -822,6 +858,31 @@ const styles = StyleSheet.create({
   noMap: { minHeight: 160, gap: 12, padding: 24, alignItems: 'center', justifyContent: 'center' },
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   sheet: { backgroundColor: scheme.surfaceContainer, padding: 18, gap: 14 },
+  calibration: {
+    backgroundColor: scheme.warningContainer,
+    borderRadius: shape.medium,
+    padding: 8,
+    gap: 4,
+  },
+  calibrationButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 6,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderRadius: shape.small,
+  },
+  calibrationTitle: { ...type.labelLarge, color: scheme.onWarningContainer, fontWeight: '700' },
+  calibrationHelp: { ...type.bodySmall, color: scheme.onWarningContainer },
+  calibrationBody: {
+    ...type.bodyMedium,
+    color: scheme.onWarningContainer,
+    lineHeight: 21,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+  },
   lineRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   platform: {
     ...type.labelLarge,

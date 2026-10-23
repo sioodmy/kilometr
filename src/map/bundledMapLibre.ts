@@ -10,7 +10,12 @@ export function bundledMapLibreHead(): string {
     `<script data-maplibre>${escapeScript(MAPLIBRE_JS)}</script>` +
     `<script data-maplibre>(function(){` +
     `var url=URL.createObjectURL(new Blob([${worker}],{type:'text/javascript'}));` +
-    `maplibregl.setWorkerUrl(url);` +
+    // MapLibre 6 wybiera klasyczny Worker po końcówce .cjs, również we fragmencie URL.
+    `maplibregl.setWorkerUrl(url+'#maplibre-worker.cjs');` +
     `})();</script>`
   );
+}
+
+export function mapDocumentSource(html: string, offlineBase: string | null) {
+  return { html, baseUrl: offlineBase ? `${offlineBase}/` : 'https://kilometr.app/' };
 }
