@@ -195,3 +195,48 @@ export async function routeFootLocal(
 
   return routeFootWaypointsAsync(waypoints);
 }
+
+/** Wyznacza przebieg kolei z kafelków mapy, także z pobranego pakietu offline. */
+export async function routeRailLocal(
+  waypoints: ReadonlyArray<FootCoord>,
+  signal?: AbortSignal,
+): Promise<FootCoord[] | null> {
+  if (waypoints.length < 2 || signal?.aborted) return null;
+  const path: FootCoord[] = [];
+  for (let i = 1; i < waypoints.length; i++) {
+    if (signal?.aborted) return null;
+    const from = path.at(-1) ?? waypoints[i - 1];
+    const to = waypoints[i];
+    if (![...from, ...to].every(Number.isFinite)) return null;
+    const x0 = lonToTileX(from[1]);
+    const y0 = latToTileY(from[0]);
+    const x1 = lonToTileX(to[1]);
+    const y1 = latToTileY(to[0]);
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+    const tiles = new Map<string, [number, number]>();
+    for (let step = 0; step <= steps; step++) {
+      const x = Math.round(x0 + ((x1 - x0) * step) / steps);
+      const y = Math.round(y0 + ((y1 - y0) * step) / steps);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (x + dx < 0 || y + dy < 0 || x + dx >= 2 ** TILE_ZOOM || y + dy >= 2 ** TILE_ZOOM) continue;
+          tiles.set(`${x + dx}/${y + dy}`, [x + dx, y + dy]);
+        }
+      }
+      if (tiles.size > 48) return null;
+    }
+    const needed = Array.from(tiles.values());
+    for (let offset = 0; offset < needed.length; offset += 4) {
+      if (signal?.aborted) return null;
+      await Promise.all(needed.slice(offset, offset + 4).map(([x, y]) => ensureSingleFootTile(x, y, signal)));
+    }
+    if (signal?.aborted) return null;
+    const part = await routeFootWaypointsAsync([from, to], true);
+    if (!part || part.length < 2) return null;
+    const start = part[0];
+    // Rzut na siatkę kafelka może przesunąć wspólny punkt o ułamek metra.
+    if (path.length && (Math.abs(start[0] - from[0]) > 1e-5 || Math.abs(start[1] - from[1]) > 1e-5)) return null;
+    path.push(...(path.length ? part.slice(1) : part));
+  }
+  return signal?.aborted ? null : path;
+}
