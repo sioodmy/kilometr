@@ -15,8 +15,8 @@
     "expo-haptics": "~57.0.3",
     "expo-linking": "~57.0.10",
     "expo-localization": "~57.0.2",
-    "expo-location": "~57.0.19",
-    "expo-notifications": "~57.0.20",
+    "expo-location": "57.0.19",
+    "expo-notifications": "57.0.20",
     "expo-router": "~57.0.22",
     "expo-sharing": "~57.0.22",
     "expo-splash-screen": "~57.0.9",
@@ -44,6 +44,8 @@
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "knip": "^6.42.1",
+    "maplibre-gl": "4.7.1",
+    "patch-package": "8.0.1",
     "prettier": "^3.9.10",
     "tsx": "^4.20.0",
     "typescript": "~6.0.3",
@@ -110,17 +112,28 @@
     "check:ios-strings": "tsx scripts/sync-ios-strings.ts --check",
     "check:ios": "tsx --require ./scripts/stub-expo.cjs scripts/check-ios-runtime.ts && tsx scripts/check-ios-locale.ts",
     "check:ios-widgets": "tsx --require ./scripts/stub-expo.cjs scripts/check-ios-widgets.ts",
-    "check:subprojects": "npm --prefix server run build && npm --prefix landing run build"
+    "check:subprojects": "npm --prefix server run build && npm --prefix landing run build",
+    "postinstall": "patch-package --error-on-fail && node scripts/bundle-maplibre.mjs",
+    "prebuild:fdroid": "node scripts/prebuild-fdroid.mjs",
+    "check:fdroid": "node --test scripts/check-fdroid.test.mjs"
   },
   "private": true,
   "expo": {
     "autolinking": {
       "buildFromSource": [
         "expo-notifications"
-      ]
+      ],
+      "android": {
+        "buildFromSource": [
+          "expo-notifications",
+          "expo-application"
+        ]
+      }
     }
   },
   "overrides": {
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "expo-application": "57.0.3",
+    "expo-modules-autolinking": "57.0.13"
   }
 }

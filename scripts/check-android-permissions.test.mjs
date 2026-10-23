@@ -97,6 +97,7 @@ for (const [format, { flag, render }] of Object.entries(formats)) {
       'com.sec.android.provider.badge.permission.WRITE',
       'com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE',
       'com.google.android.c2dm.permission.SEND',
+      'com.google.android.c2dm.permission.RECEIVE',
       'android.permission.DUMP',
       'android.permission.BIND_JOB_SERVICE',
       'kilometr.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',

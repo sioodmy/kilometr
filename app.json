@@ -30,6 +30,7 @@
         "android.permission.VIBRATE"
       ],
       "blockedPermissions": [
+        "com.google.android.c2dm.permission.RECEIVE",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.ACTIVITY_RECOGNITION",
         "com.google.android.gms.permission.ACTIVITY_RECOGNITION",
