@@ -245,16 +245,16 @@ export function AddPlaceSheet({
   );
   const [isChangingLoc, setIsChangingLoc] = useState(!initialPlace);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // Każde zapytanie anuluje poprzedni timer i unieważnia starsze odpowiedzi.
-  const locSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Lokalny indeks odpowiada od razu; numery zapytań odrzucają stare odpowiedzi.
   const locSearchSeq = useRef(0);
-  const anchorSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const anchorSearchSeq = useRef(0);
 
   useEffect(() => {
     return () => {
-      if (locSearchTimer.current) clearTimeout(locSearchTimer.current);
-      if (anchorSearchTimer.current) clearTimeout(anchorSearchTimer.current);
+      ++locSearchSeq.current;
+      ++anchorSearchSeq.current;
+      SearchService.cancel('add-place-address');
+      SearchService.cancel('add-place-anchor');
     };
   }, []);
 
@@ -327,7 +327,7 @@ export function AddPlaceSheet({
 
   const handleQueryChange = (text: string) => {
     setQuery(text);
-    if (locSearchTimer.current) clearTimeout(locSearchTimer.current);
+    SearchService.cancel('add-place-address');
     const seq = ++locSearchSeq.current;
     if (!text.trim()) {
       setSuggestions([]);
@@ -335,25 +335,24 @@ export function AddPlaceSheet({
       return;
     }
     setSearching(true);
-    locSearchTimer.current = setTimeout(() => {
-      SearchService.search(text, undefined, 'add-place-address')
-        .then((res) => {
-          if (seq !== locSearchSeq.current) return;
-          setSuggestions(res);
-        })
-        .catch(() => {
-          // Zapytanie przerwane nowszym albo błąd - stan ogarnia kolejne.
-          if (seq === locSearchSeq.current) setSuggestions([]);
-        })
-        .finally(() => {
-          if (seq === locSearchSeq.current) setSearching(false);
-        });
-    }, 220);
+    SearchService.search(text, undefined, 'add-place-address', (partial) => {
+      if (seq === locSearchSeq.current) setSuggestions(partial);
+    })
+      .then((res) => {
+        if (seq !== locSearchSeq.current) return;
+        setSuggestions(res);
+      })
+      .catch(() => {
+        if (seq === locSearchSeq.current) setSuggestions([]);
+      })
+      .finally(() => {
+        if (seq === locSearchSeq.current) setSearching(false);
+      });
   };
 
   const handleAnchorQueryChange = (text: string) => {
     setAnchorQuery(text);
-    if (anchorSearchTimer.current) clearTimeout(anchorSearchTimer.current);
+    SearchService.cancel('add-place-anchor');
     const seq = ++anchorSearchSeq.current;
     if (!text.trim()) {
       setAnchorSuggestions([]);
@@ -361,23 +360,24 @@ export function AddPlaceSheet({
       return;
     }
     setSearchingAnchor(true);
-    anchorSearchTimer.current = setTimeout(() => {
-      SearchService.search(
-        text,
-        selectedLoc ? { lat: selectedLoc.lat, lon: selectedLoc.lon } : undefined,
-        'add-place-anchor',
-      )
-        .then((res) => {
-          if (seq !== anchorSearchSeq.current) return;
-          setAnchorSuggestions(res);
-        })
-        .catch(() => {
-          if (seq === anchorSearchSeq.current) setAnchorSuggestions([]);
-        })
-        .finally(() => {
-          if (seq === anchorSearchSeq.current) setSearchingAnchor(false);
-        });
-    }, 220);
+    SearchService.search(
+      text,
+      selectedLoc ? { lat: selectedLoc.lat, lon: selectedLoc.lon } : undefined,
+      'add-place-anchor',
+      (partial) => {
+        if (seq === anchorSearchSeq.current) setAnchorSuggestions(partial);
+      },
+    )
+      .then((res) => {
+        if (seq !== anchorSearchSeq.current) return;
+        setAnchorSuggestions(res);
+      })
+      .catch(() => {
+        if (seq === anchorSearchSeq.current) setAnchorSuggestions([]);
+      })
+      .finally(() => {
+        if (seq === anchorSearchSeq.current) setSearchingAnchor(false);
+      });
   };
 
   const handleSave = () => {

@@ -329,6 +329,7 @@ export default function RoutesScreen() {
   const [results, setResults] = useState<Suggestion[]>([]);
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [savedQuick, setSavedQuick] = useState<Suggestion[]>([]);
   // GPS spoza strefy aktywnego miasta nie może być startem trasy.
   const [gpsOutside, setGpsOutside] = useState(false);
@@ -402,32 +403,37 @@ export default function RoutesScreen() {
     };
   }, [gpsOrigin, activeAnchor]);
 
-  // Debounced search (jak na głównym), bias wg aktualnego startu
+  // Lokalny indeks odpowiada od razu, odległości względem aktualnego startu.
   const searchSeq = useRef(0);
   useEffect(() => {
+    const seq = ++searchSeq.current;
     if (!sheetFor) return;
     const q = query.trim();
-    const seq = ++searchSeq.current;
+    setSearchError(false);
     if (!q) {
       setResults([]);
       setSearchLoading(false);
       return;
     }
     setSearchLoading(true);
-    const t = setTimeout(() => {
-      SearchService.search(q, { lat: fromLat, lon: fromLon }, 'routes-start', (partial) => {
-        if (seq === searchSeq.current) setResults(partial);
+    SearchService.search(q, { lat: fromLat, lon: fromLon }, 'routes-start', (partial) => {
+      if (seq === searchSeq.current) setResults(partial);
+    })
+      .then((r) => {
+        if (seq !== searchSeq.current) return;
+        setResults(r);
+        setSearchLoading(false);
       })
-        .then((r) => {
-          if (seq !== searchSeq.current) return;
-          setResults(r);
+      .catch(() => {
+        if (seq === searchSeq.current) {
+          setSearchError(true);
           setSearchLoading(false);
-        })
-        .catch(() => {
-          if (seq === searchSeq.current) setSearchLoading(false);
-        });
-    }, 90);
-    return () => clearTimeout(t);
+        }
+      });
+    return () => {
+      ++searchSeq.current;
+      SearchService.cancel('routes-start');
+    };
   }, [query, sheetFor, fromLat, fromLon]);
 
   const recentWithGps = useMemo(
@@ -1238,6 +1244,7 @@ export default function RoutesScreen() {
           placeholder={sheetFor === 'from' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
           query={query}
           loading={searchLoading}
+          error={searchError}
           results={results}
           recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}

@@ -995,6 +995,11 @@ export const pl = {
       n === 1 ? '1 komunikat' : isFew(n) ? `${n} komunikaty` : `${n} komunikatów`,
   },
   search: {
+    suggestedPlaces: 'Proponowane miejsca',
+    emptyTitle: 'Dokąd jedziesz?',
+    emptyHint: 'Wpisz nazwę przystanku, adres lub miejsce. Twoje wybory pojawią się tutaj.',
+    errorTitle: 'Nie udało się wyszukać',
+    errorHint: 'Zmień zapytanie i spróbuj ponownie. Sprawdź, czy masz pobrany rozkład miasta.',
     defaultPlaceholder: (city: string) => `Szukaj ${prepInCity(city)}…`,
     originA11y: (t: string) => `Punkt startowy: ${t}. Dotknij, aby zmienić.`,
     fromPrefix: 'Z:',

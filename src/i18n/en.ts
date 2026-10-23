@@ -957,6 +957,11 @@ export const en: Strings = {
     lineAlertsCount: (n: number) => (n === 1 ? '1 update' : `${n} updates`),
   },
   search: {
+    suggestedPlaces: 'Suggested places',
+    emptyTitle: 'Where to?',
+    emptyHint: 'Enter a stop, address or place. Your choices will appear here.',
+    errorTitle: 'Search failed',
+    errorHint: 'Change your query and try again. Check that the city timetable is downloaded.',
     defaultPlaceholder: (city: string) => `Search in ${city}…`,
     originA11y: (t: string) => `Start: ${t}. Tap to change.`,
     fromPrefix: 'From:',
