@@ -124,6 +124,7 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
   const [fullscreen, setFullscreen] = useState(false);
   const [needsCalibration, setNeedsCalibration] = useState(false);
   const [calibrationExpanded, setCalibrationExpanded] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState<number>();
   const cardHeight = useRef(0);
   const landscape = fullscreen && winW > winH;
   const navMapH = Math.round(Math.max(220, Math.min(380, winH * 0.42)));
@@ -626,10 +627,14 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
           nestedScrollEnabled
           style={[
             styles.sheetScroll,
-            fullscreen && !landscape && { maxHeight: winH * (fontScale > 1.3 ? 0.55 : 0.48) },
+            fullscreen && !landscape && {
+              height: sheetHeight,
+              maxHeight: winH * (fontScale > 1.3 ? 0.55 : 0.48),
+            },
             landscape && { width: Math.min(360, winW * 0.46), height: '100%' },
           ]}
           contentContainerStyle={styles.sheet}
+          onContentSizeChange={(_, height) => setSheetHeight(height)}
           showsVerticalScrollIndicator={fullscreen}
         >
           {needsCalibration ? (
