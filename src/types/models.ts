@@ -185,6 +185,7 @@ export interface Connection {
   /** minutes until departure, from "now" */
   departInMin: number;
   departureSec: number;
+  arrivalSec?: number;
   departAt: string;
   arriveAt: string;
   durationMin: number;

@@ -948,6 +948,8 @@ export const pl = {
     moreFail: 'Nie udało się dociągnąć dalszych połączeń.',
     moreRetryA11y: 'Spróbuj dociągnąć dalsze połączenia',
     noMore: 'To wszystkie odjazdy z tej trasy.',
+    noMoreArrival: 'Brak wcześniejszych połączeń w tym oknie. Wybierz wcześniejszy czas przyjazdu.',
+    emptyArrival: 'Brak połączeń przed wybraną godziną. Sprawdź późniejszy czas przyjazdu lub inny cel.',
     emptyFiltered: 'Brak połączeń dla wybranych filtrów',
     emptyNone: 'Nie znaleziono połączeń',
     emptyModeDirect: (veh: string) =>
@@ -1117,10 +1119,13 @@ export const pl = {
     savePlace: 'Zapisz miejsce',
   },
   timeSheet: {
+    title: 'Czas podróży',
+    modeDeparture: 'Odjazd o',
+    modeArrival: 'Przyjazd na',
+    selectedArrival: (day: string, hh: string, mm: string) => `Przyjazd: ${day}, ${hh}:${mm}`,
     confirmAction: 'Pokaż połączenia',
     selectedDeparture: (day: string, hh: string, mm: string) => `${day}, ${hh}:${mm}`,
     minutePreset: (mm: string) => `Ustaw minutę: ${mm}`,
-    titleDepart: 'Czas odjazdu',
     dayToday: 'Dzisiaj',
     dayTomorrow: 'Jutro',
     hourLabel: 'godzina',

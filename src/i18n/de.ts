@@ -918,6 +918,8 @@ export const de: Strings = {
     moreFail: 'Weitere Verbindungen konnten nicht geladen werden.',
     moreRetryA11y: 'Versuchen, weitere Verbindungen zu laden',
     noMore: 'Das sind alle Abfahrten dieser Route.',
+    noMoreArrival: 'Keine früheren Verbindungen in diesem Zeitfenster. Wähle eine frühere Ankunftszeit.',
+    emptyArrival: 'Keine Verbindungen vor der gewählten Uhrzeit. Wähle eine spätere Ankunftszeit oder ein anderes Ziel.',
     emptyFiltered: 'Keine Verbindungen für die gewählten Filter',
     emptyNone: 'Keine Verbindungen gefunden',
     emptyModeDirect: (veh: string) =>
@@ -1087,10 +1089,13 @@ export const de: Strings = {
     savePlace: 'Ort speichern',
   },
   timeSheet: {
+    title: 'Reisezeit',
+    modeDeparture: 'Abfahrt um',
+    modeArrival: 'Ankunft bis',
+    selectedArrival: (day: string, hh: string, mm: string) => `Ankunft bis: ${day}, ${hh}:${mm}`,
     confirmAction: 'Verbindungen anzeigen',
     selectedDeparture: (day: string, hh: string, mm: string) => `${day}, ${hh}:${mm}`,
     minutePreset: (mm: string) => `Minute auf ${mm} setzen`,
-    titleDepart: 'Abfahrtszeit',
     dayToday: 'Heute',
     dayTomorrow: 'Morgen',
     hourLabel: 'Stunde',

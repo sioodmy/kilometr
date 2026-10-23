@@ -104,8 +104,8 @@ export async function buildSearchSlices(rawTargetSec: number, arrivalMode = fals
   const dateStr = toDateStr(targetDate);
   // Wycinek horyzontu zamiast pełnej doby: okna RAPTOR-a sięgają +3600 s,
   // a przesiadkowe nogi jeszcze dalej - bierzemy zapas do +3 h.
-  // W trybie przyjazdu szukamy od ~2 h przed celem do samego celu.
-  const searchStartSec = arrivalMode ? Math.max(0, departureSec - 7200) : departureSec;
+  // Przyjazd obejmuje też wyjście przed północą poprzedniego dnia.
+  const searchStartSec = arrivalMode ? departureSec - 10800 : departureSec;
   const dayIndex = arrivalMode
     ? await gtfsStore.getDayIndexSlice(weekday, dateStr, searchStartSec - 1800, departureSec + 600)
     : await gtfsStore.getDayIndexSlice(weekday, dateStr, departureSec - 1800, departureSec + 10800);
@@ -121,8 +121,8 @@ export async function buildSearchSlices(rawTargetSec: number, arrivalMode = fals
     const overnightIdx = await gtfsStore.getDayIndexSlice(
       yDate.getDay(),
       toDateStr(yDate),
-      86400 - 7200,
-      86400 + departureSec + 10800,
+      86400 + Math.min(-7200, searchStartSec - 1800),
+      86400 + (arrivalMode ? departureSec + 600 : departureSec + 10800),
     );
     const merged = mergedOvernight(dayIndex, overnightIdx);
     searchIndex = merged.index;
@@ -214,11 +214,7 @@ export interface PlanOptions {
   toLon: number;
   toId?: string;
   departureTimeSec?: number;
-  /**
-   * „Bądź na X” - zamiast „wyjdź o X”. Silnik szuka odjazdów w oknie
-   * ~2 h przed celem i zwraca te z przybyciem <= arriveBySec
-   * (posortowane od najpóźniejszego przybycia = najmniej czekania).
-   */
+  /** Przyjazd najpóźniej o tej godzinie. RAPTOR szuka wstecz od celu. */
   arriveBySec?: number;
   /** 0–3, default 2. 0 = tylko bezpośrednie. */
   maxTransfers?: number;
@@ -235,7 +231,7 @@ export interface PlanOptions {
   allowedTransferModes?: Partial<AllowedTransferModes>;
   /** sekundy, default 300. Minimalny zapas na wsiadanie do pociągu po przesiadce. */
   trainMinTransferSec?: number;
-  /** sekundy, default 90. Minimalny czas na przesiadkę. */
+  /** Minimalny czas na przesiadkę, domyślnie 120 s. */
   minTransferSec?: number;
   /** metry, default 800. Jak daleko wolno iść na przystanek / z przystanku. */
   maxWalkM?: number;
@@ -273,18 +269,15 @@ interface MapCtx {
   tripDelays: Map<string, number>;
 }
 
-/**
- * Sortowanie po koszcie uogólnionym (te same wagi co w RAPTOR-ze): przyjazd
- * liczony od teraz + dodatkowa waga marszu + kara za przesiadkę.
- */
-function sortConnectionsByCost(connections: Connection[], cost: CostParams, walkSpeedMps: number): Connection[] {
+/** Stosuje wagi RAPTOR-a także na liście: czas, marsz i przesiadki.
+ * Dla przyjazdu premiuje późniejsze wyjście przed terminem. */
+export function sortConnectionsByCost(connections: Connection[], cost: CostParams, walkSpeedMps: number, arriveBySec?: number): Connection[] {
   const extraWalk = Math.max(0, cost.walkReluctance - 1);
   const costOf = (c: Connection) => {
     let walkM = 0;
     for (const l of c.legs) if (l.mode === 'walk') walkM += l.walkM ?? 0;
     return (
-      c.departureSec +
-      c.durationMin * 60 +
+      (arriveBySec !== undefined ? arriveBySec - c.departureSec : (c.arrivalSec ?? c.departureSec + c.durationMin * 60)) +
       (extraWalk * walkM * WALK_DETOUR_FACTOR) / walkSpeedMps +
       c.transfers * cost.transferPenaltySec
     );
@@ -293,22 +286,8 @@ function sortConnectionsByCost(connections: Connection[], cost: CostParams, walk
   connections.sort((a, b) => {
     const d = costs.get(a)! - costs.get(b)!;
     if (Math.abs(d) > 1e-6) return d;
-    return a.departureSec - b.departureSec;
-  });
-  return connections;
-}
-
-/**
- * Sortowanie trybu „bądź na X”: najpierw najpóźniejsze przybycie
- * (najmniej czekania na miejscu), potem krótszy czas jazdy.
- */
-function sortConnectionsByArrival(connections: Connection[]): Connection[] {
-  connections.sort((a, b) => {
-    const arrA = a.departureSec + a.durationMin * 60;
-    const arrB = b.departureSec + b.durationMin * 60;
-    if (arrA !== arrB) return arrB - arrA;
-    if (a.durationMin !== b.durationMin) return a.durationMin - b.durationMin;
-    return b.departureSec - a.departureSec;
+    if (a.transfers !== b.transfers) return a.transfers - b.transfers;
+    return arriveBySec !== undefined ? b.departureSec - a.departureSec : a.departureSec - b.departureSec;
   });
   return connections;
 }
@@ -427,6 +406,7 @@ function mapJourneysToConnections(
       toTitle: options.toTitle,
       departInMin,
       departureSec: adjDepartureSec,
+      arrivalSec: adjArrivalSec,
       departAt: secondsToTimeString(adjDepartureSec),
       arriveAt: secondsToTimeString(adjArrivalSec),
       durationMin,
@@ -511,18 +491,22 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   // Wycinek dnia (+ nocny merge) przez SHARED buildSearchSlices: rozgrzewka
   // uruchamiana tym samym kodem, co samo wyszukiwanie.
-  const arrivalMode = options.arriveBySec !== undefined && Number.isFinite(options.arriveBySec);
+  const arrivalTarget = options.arriveBySec;
+  const arrivalMode = arrivalTarget !== undefined && Number.isFinite(arrivalTarget);
   const rawTarget = Math.max(
     -86400 * 2,
-    Math.round(arrivalMode ? (options.arriveBySec as number) : (options.departureTimeSec ?? currentSec)),
+    Math.round(arrivalMode ? arrivalTarget : (options.departureTimeSec ?? currentSec)),
   );
   const slices = await buildSearchSlices(rawTarget, arrivalMode);
   const { departureSec, dayOffsetSec, searchStartSec, searchIndex, patternOffsets } = slices;
+  const earliestDepartureSec = arrivalMode && rawTarget >= currentSec
+    ? Math.max(searchStartSec, currentSec - dayOffsetSec)
+    : searchStartSec;
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));
   const modes: TransitModePreference =
     options.modes === 'tram' || options.modes === 'bus' ? options.modes : 'all';
-  const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 60)));
+  const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 120)));
   // Pille z ustawień wygrywają ze starymi przełącznikami: jawny wpis w
   // allowedTransferModes nadpisuje trainsEnabled i cableEnabled.
   const allow = options.allowedTransferModes;
@@ -567,10 +551,9 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   await liveTracker.ensureFresh();
   const tripDelays = dayOffsetSec === 0 ? liveTracker.getTripDelays() : new Map<string, number>();
   const rawJourneys: RawJourney[] = [];
-  // Okna [start, długość]: pierwsze krótkie, żeby UI dostało najbliższe
-  // odjazdy od razu; drugie dopełnia godzinę. Tryb przyjazdu: 2 h przed celem.
+  // Przyjazdy: ostatnia godzina przed celem. Odjazdy: dwa okna do przodu.
   const timeWindows: [number, number][] = arrivalMode
-    ? [[0, Math.max(0, departureSec - searchStartSec)]]
+    ? [[0, 3600]]
     : [
         [0, 900],
         [900, 2700],
@@ -598,12 +581,8 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       return transit.every((s) => s.mode === modes || (modes === 'bus' && s.mode === 'trolleybus'));
     });
   const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays };
-  // W trybie przyjazdu odrzucamy wszystko z przybyciem po celu
-  // (RAPTOR liczy w przód, więc część okien wystaje za cel).
-  const arrivedByTarget = (list: Connection[]) =>
-    arrivalMode ? list.filter((c) => c.departureSec + c.durationMin * 60 <= rawTarget) : list;
   const sortPartial = (list: Connection[]) =>
-    arrivalMode ? sortConnectionsByArrival(list) : sortConnectionsByCost(list, cost, userWalkSpeed);
+    sortConnectionsByCost(list, cost, userWalkSpeed, arrivalMode ? rawTarget : undefined);
   const select = (list: RawJourney[]) =>
     selectJourneys(applyModeFilter(list), searchStartSec, {
       cost,
@@ -618,7 +597,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const MAX_BOARD_AHEAD_SEC = 7200;
 
   for (const [offsetSec, windowSec] of timeWindows) {
-    const batch = await runRaptorAsync(gtfsStore, origins, destinations, searchStartSec + offsetSec, {
+    const batch = await runRaptorAsync(gtfsStore, origins, destinations, (arrivalMode ? departureSec : searchStartSec) + offsetSec, {
       maxTransfers,
       minTransferSec,
       trainsEnabled,
@@ -634,9 +613,13 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       maxTransferWalkM: maxWalkM,
       cost,
       latestArrivalSec: arrivalMode ? departureSec : undefined,
+      arriveBy: arrivalMode,
     });
     for (const j of batch) {
-      if (j.transfers <= maxTransfers && j.departureSec <= searchStartSec + MAX_BOARD_AHEAD_SEC) {
+      const inWindow = arrivalMode
+        ? j.arrivalSec <= departureSec && j.departureSec >= earliestDepartureSec
+        : j.departureSec <= searchStartSec + MAX_BOARD_AHEAD_SEC;
+      if (j.transfers <= maxTransfers && inWindow) {
         rawJourneys.push(j);
       }
     }
@@ -645,9 +628,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     // żeby FlatList zdążyła się przemalować między oknami.
     if (options.onProgress && rawJourneys.length > 0) {
       const partial = sortPartial(
-        arrivedByTarget(
-          mapJourneysToConnections(select(rawJourneys), options, mapCtx),
-        ),
+        mapJourneysToConnections(select(rawJourneys), options, mapCtx),
       );
       if (partial.length > 0) {
         options.onProgress(partial);
@@ -661,16 +642,17 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const filtered = select(rawJourneys);
 
   // 4. Map into Connection model
-  const connections = arrivedByTarget(mapJourneysToConnections(filtered, options, mapCtx));
+  const connections = mapJourneysToConnections(filtered, options, mapCtx);
 
   // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) - jeśli prosto
   // jest w zasięgu spaceru z ustawień, dokładamy ją do listy.
   const directM = Math.round(
     distanceMeters(options.fromLat, options.fromLon, options.toLat, options.toLon)
   );
-  if (directM <= maxWalkM && directM > 0) {
-    const effectiveDist = directM * WALK_DETOUR_FACTOR;
-    const walkSec = Math.max(60, Math.round(effectiveDist / userWalkSpeed));
+  const directWalkSec = Math.max(60, Math.round(directM * WALK_DETOUR_FACTOR / userWalkSpeed));
+  const canStartWalk = !arrivalMode || rawTarget - directWalkSec >= earliestDepartureSec + dayOffsetSec;
+  if (directM <= maxWalkM && directM > 0 && canStartWalk) {
+    const walkSec = directWalkSec;
     // W trybie przyjazdu spacer kończy się dokładnie na celu.
     const walkArrSec = arrivalMode ? rawTarget : departureSec + dayOffsetSec + walkSec;
     const walkDepSec = walkArrSec - walkSec;
@@ -681,6 +663,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       toTitle: options.toTitle,
       departInMin: walkInMin,
       departureSec: walkDepSec,
+      arrivalSec: walkArrSec,
       departAt: secondsToTimeString(walkDepSec),
       arriveAt: secondsToTimeString(walkArrSec),
       durationMin: Math.max(1, Math.round(walkSec / 60)),
@@ -709,8 +692,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     });
   }
 
-  if (arrivalMode) sortConnectionsByArrival(connections);
-  else sortConnectionsByCost(connections, cost, userWalkSpeed);
+  sortPartial(connections);
   for (const connection of connections) {
     connection.id = stableConnectionId(connection);
   }

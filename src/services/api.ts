@@ -473,7 +473,7 @@ export const RoutingService: IRoutingService = {
         recentPlannedConnections.set(c.id, c);
       }
 
-      if (!query.departureTimeSec && !query.arriveBySec) {
+      if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
         void saveConnections(query, connections);
         // Zawczasu pobierz i przypnij przebieg ulic kilku najlepszych
         // połączeń, żeby ostatnie trasy działały offline.
