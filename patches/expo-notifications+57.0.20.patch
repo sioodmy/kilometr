@@ -1,0 +1,770 @@
+diff --git a/node_modules/expo-notifications/android/build.gradle b/node_modules/expo-notifications/android/build.gradle
+index 6d41e7f..11a58d0 100644
+--- a/node_modules/expo-notifications/android/build.gradle
++++ b/node_modules/expo-notifications/android/build.gradle
+@@ -39,8 +39,6 @@ dependencies {
+   implementation 'androidx.lifecycle:lifecycle-common-java8:2.9.3'
+   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+ 
+-  // release notes in https://firebase.google.com/support/release-notes/android - cmd + f "Cloud Messaging version"
+-  implementation 'com.google.firebase:firebase-messaging:25.0.1'
+ 
+   implementation 'me.leolin:ShortcutBadger:1.1.22@aar'
+ 
+diff --git a/node_modules/expo-notifications/android/src/main/AndroidManifest.xml b/node_modules/expo-notifications/android/src/main/AndroidManifest.xml
+index 777403d..570b9da 100644
+--- a/node_modules/expo-notifications/android/src/main/AndroidManifest.xml
++++ b/node_modules/expo-notifications/android/src/main/AndroidManifest.xml
+@@ -3,14 +3,6 @@
+   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+ 
+   <application>
+-    <service
+-      android:name=".service.ExpoFirebaseMessagingService"
+-      android:exported="false">
+-      <intent-filter android:priority="-1">
+-        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+-      </intent-filter>
+-    </service>
+-
+     <receiver
+       android:name=".service.NotificationsService"
+       android:enabled="true"
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/NotificationSerializer.java b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/NotificationSerializer.java
+index bcc1b6d..1cbeed7 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/NotificationSerializer.java
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/NotificationSerializer.java
+@@ -10,7 +10,6 @@ import expo.modules.notifications.service.NotificationsService;
+ 
+ import androidx.annotation.Nullable;
+ 
+-import com.google.firebase.messaging.RemoteMessage;
+ 
+ import org.jetbrains.annotations.NotNull;
+ import org.json.JSONArray;
+@@ -31,7 +30,6 @@ import expo.modules.notifications.notifications.model.Notification;
+ import expo.modules.notifications.notifications.model.NotificationRequest;
+ import expo.modules.notifications.notifications.model.NotificationResponse;
+ import expo.modules.notifications.notifications.model.TextInputNotificationResponse;
+-import expo.modules.notifications.notifications.model.triggers.FirebaseNotificationTrigger;
+ 
+ import expo.modules.notifications.notifications.triggers.ChannelAwareTrigger;
+ 
+@@ -61,20 +59,7 @@ public class NotificationSerializer {
+     Bundle content = toBundle(request.getContent());
+     Bundle existingContentData = content.getBundle("data");
+     if (existingContentData == null) {
+-      if (requestTrigger instanceof FirebaseNotificationTrigger trigger) {
+-        RemoteMessage message = trigger.getRemoteMessage();
+-        Map<String, String> data = message.getData();
+-        String dataBody = data.get("body");
+-        if (isValidJSONString(dataBody)) {
+-          // If the body is a JSON object string, the notification was sent by the Expo notification service,
+-          // so we do the expected remapping of fields (we JSON-parse the string into an object in JS)
+-          content.putString("dataString", dataBody);
+-        } else {
+-          // The message was sent directly from Firebase or some other service,
+-          // and we copy the data as is
+-          content.putBundle("data", toBundle(data));
+-        }
+-      } else if(
++      if(
+         requestTrigger instanceof SchedulableNotificationTrigger ||
+         requestTrigger instanceof ChannelAwareTrigger ||
+           requestTrigger == null
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/RemoteMessageSerializer.java b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/RemoteMessageSerializer.java
+deleted file mode 100644
+index 1f44f0e..0000000
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/RemoteMessageSerializer.java
++++ /dev/null
+@@ -1,112 +0,0 @@
+-package expo.modules.notifications.notifications;
+-
+-import android.os.Bundle;
+-
+-import com.google.firebase.messaging.RemoteMessage;
+-
+-import java.util.Map;
+-
+-import androidx.annotation.NonNull;
+-import androidx.annotation.Nullable;
+-
+-/**
+- * Serializes all the information available in {@link RemoteMessage}
+- * to {@link Bundle}.
+- */
+-public class RemoteMessageSerializer {
+-  /**
+-   * Serializes all the information available in {@link RemoteMessage}
+-   *
+-   * @param message {@link RemoteMessage} to serialize
+-   * @return Serialized message
+-   */
+-  public static @NonNull Bundle toBundle(RemoteMessage message) {
+-    Bundle serializedMessage = new Bundle();
+-    serializedMessage.putString("collapseKey", message.getCollapseKey());
+-    serializedMessage.putBundle("data", toBundle(message.getData()));
+-    serializedMessage.putString("from", message.getFrom());
+-    serializedMessage.putString("messageId", message.getMessageId());
+-    serializedMessage.putString("messageType", message.getMessageType());
+-    serializedMessage.putBundle("notification", toBundle(message.getNotification()));
+-    serializedMessage.putInt("originalPriority", message.getOriginalPriority());
+-    serializedMessage.putInt("priority", message.getPriority());
+-    serializedMessage.putLong("sentTime", message.getSentTime());
+-    serializedMessage.putString("to", message.getTo());
+-    serializedMessage.putInt("ttl", message.getTtl());
+-    return serializedMessage;
+-  }
+-
+-  private static Bundle toBundle(Map<String, String> data) {
+-    Bundle serializedData = new Bundle();
+-    // we put the dataString in the bundle to achieve a cross-platform behavior
+-    // users can call JSON.parse() on the dataString to get the data in JS.
+-    // Converting to Bundle which would seem to be the equivalent of JSON.parse
+-    // lacks some dynamic properties of JSON.parse so we don't do it.
+-    serializedData.putString("dataString", data.getOrDefault("body", null));
+-    for (Map.Entry<String, String> dataEntry : data.entrySet()) {
+-      serializedData.putString(dataEntry.getKey(), dataEntry.getValue());
+-    }
+-    return serializedData;
+-  }
+-
+-  private static Bundle toBundle(@Nullable RemoteMessage.Notification notification) {
+-    if (notification == null) {
+-      return null;
+-    }
+-
+-    Bundle serializedNotification = new Bundle();
+-    serializedNotification.putString("body", notification.getBody());
+-    serializedNotification.putStringArray("bodyLocalizationArgs", notification.getBodyLocalizationArgs());
+-    serializedNotification.putString("bodyLocalizationKey", notification.getBodyLocalizationKey());
+-    serializedNotification.putString("channelId", notification.getChannelId());
+-    serializedNotification.putString("clickAction", notification.getClickAction());
+-    serializedNotification.putString("color", notification.getColor());
+-    serializedNotification.putBoolean("usesDefaultLightSettings", notification.getDefaultLightSettings());
+-    serializedNotification.putBoolean("usesDefaultSound", notification.getDefaultSound());
+-    serializedNotification.putBoolean("usesDefaultVibrateSettings", notification.getDefaultVibrateSettings());
+-    if (notification.getEventTime() != null) {
+-      serializedNotification.putLong("eventTime", notification.getEventTime());
+-    } else {
+-      serializedNotification.putString("eventTime", null);
+-    }
+-    serializedNotification.putString("icon", notification.getIcon());
+-    if (notification.getImageUrl() != null) {
+-      serializedNotification.putString("imageUrl", notification.getImageUrl().toString());
+-    } else {
+-      serializedNotification.putString("imageUrl", null);
+-    }
+-    serializedNotification.putIntArray("lightSettings", notification.getLightSettings());
+-    if (notification.getLink() != null) {
+-      serializedNotification.putString("link", notification.getLink().toString());
+-    } else {
+-      serializedNotification.putString("link", null);
+-    }
+-    serializedNotification.putBoolean("localOnly", notification.getLocalOnly());
+-    if (notification.getNotificationCount() != null) {
+-      serializedNotification.putInt("notificationCount", notification.getNotificationCount());
+-    } else {
+-      serializedNotification.putString("notificationCount", null);
+-    }
+-    if (notification.getNotificationPriority() != null) {
+-      serializedNotification.putInt("notificationPriority", notification.getNotificationPriority());
+-    } else {
+-      serializedNotification.putString("notificationPriority", null);
+-    }
+-    serializedNotification.putString("sound", notification.getSound());
+-    serializedNotification.putBoolean("sticky", notification.getSticky());
+-    serializedNotification.putString("tag", notification.getTag());
+-    serializedNotification.putString("ticker", notification.getTicker());
+-    serializedNotification.putString("title", notification.getTitle());
+-    serializedNotification.putStringArray("titleLocalizationArgs", notification.getTitleLocalizationArgs());
+-    serializedNotification.putString("titleLocalizationKey", notification.getTitleLocalizationKey());
+-    if (notification.getVibrateTimings() != null) {
+-      serializedNotification.putLongArray("vibrateTimings", notification.getVibrateTimings());
+-    }
+-    if (notification.getVisibility() != null) {
+-      serializedNotification.putInt("visibility", notification.getVisibility());
+-    } else {
+-      serializedNotification.putString("visibility", null);
+-    }
+-    return serializedNotification;
+-  }
+-}
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/debug/DebugLogging.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/debug/DebugLogging.kt
+index ea19b97..be3728a 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/debug/DebugLogging.kt
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/debug/DebugLogging.kt
+@@ -4,7 +4,6 @@ import android.os.Build
+ import android.os.Bundle
+ import android.util.Log
+ import androidx.annotation.RequiresApi
+-import com.google.firebase.messaging.RemoteMessage
+ import expo.modules.notifications.BuildConfig
+ import expo.modules.notifications.notifications.model.Notification
+ import java.util.function.Consumer
+@@ -40,27 +39,6 @@ object DebugLogging {
+     }
+   }
+ 
+-  fun logRemoteMessage(caller: String, message: RemoteMessage) {
+-    if (!BuildConfig.DEBUG) {
+-      // Do not log for release/production builds
+-      return
+-    }
+-    val logMessage =
+-      """
+-      $caller:
+-        notification.channelId: ${message.notification?.channelId}
+-        notification.vibrateTimings: ${message.notification?.vibrateTimings?.contentToString()}
+-        notification.body: ${message.notification?.body}
+-        notification.color: ${message.notification?.color}
+-        notification.sound: ${message.notification?.sound}
+-        notification.title: ${message.notification?.title}
+-        notification.collapseKey: ${message.collapseKey}
+-        data: ${message.data}
+-      """.trimIndent()
+-
+-    Log.i("expo-notifications", logMessage)
+-  }
+-
+   fun logNotification(caller: String, notification: Notification) {
+     if (!BuildConfig.DEBUG) {
+       // Do not log for release/production builds
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/handling/NotificationsHandler.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/handling/NotificationsHandler.kt
+index 626038b..5cfac16 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/handling/NotificationsHandler.kt
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/handling/NotificationsHandler.kt
+@@ -10,7 +10,6 @@ import expo.modules.notifications.notifications.NotificationManager
+ import expo.modules.notifications.notifications.interfaces.NotificationListener
+ import expo.modules.notifications.notifications.model.Notification
+ import expo.modules.notifications.notifications.model.NotificationBehaviorRecord
+-import expo.modules.notifications.notifications.model.RemoteNotificationContent
+ 
+ /**
+  * [NotificationListener] responsible for managing app's reaction to incoming
+@@ -94,13 +93,6 @@ open class NotificationsHandler : Module(), NotificationListener {
+    */
+   override fun onNotificationReceived(notification: Notification) {
+     val context = appContext.reactContext ?: return
+-    val content = notification.notificationRequest.content
+-    if (content is RemoteNotificationContent && content.isDataOnly) {
+-      // We do not notify JS about data-only notifications, for consistency with iOS.
+-      // onDidReceiveNotification is triggered
+-      // and JS task will run if set up
+-      return
+-    }
+     val task = SingleNotificationHandlerTask(
+       context,
+       appContext.eventEmitter(this),
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/model/RemoteNotificationContent.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/model/RemoteNotificationContent.kt
+deleted file mode 100644
+index cdbc237..0000000
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/model/RemoteNotificationContent.kt
++++ /dev/null
+@@ -1,91 +0,0 @@
+-package expo.modules.notifications.notifications.model
+-
+-import android.content.Context
+-import android.graphics.Bitmap
+-import android.os.Parcel
+-import android.os.Parcelable
+-import com.google.firebase.messaging.RemoteMessage
+-import expo.modules.notifications.notifications.enums.NotificationPriority
+-import expo.modules.notifications.notifications.interfaces.INotificationContent
+-import expo.modules.notifications.notifications.presentation.builders.downloadImage
+-
+-/**
+- * A POJO representing a remote notification content: title, message, body, etc.
+- * The content originates in a RemoteMessage object.
+- *
+- * Instances of this class are not persisted in SharedPreferences (unlike {@link NotificationContent}. This class does
+- * not implement Serializable, but Parcelable ensures we can pass instances between different parts of the application.
+- */
+-class RemoteNotificationContent(private val remoteMessage: RemoteMessage) : INotificationContent {
+-
+-  constructor(parcel: Parcel) : this(parcel.readParcelable<RemoteMessage>(RemoteMessage::class.java.classLoader)!!)
+-
+-  private val notificationData = NotificationData(remoteMessage.data)
+-
+-  override suspend fun getImage(context: Context): Bitmap? {
+-    val uri = remoteMessage.notification?.imageUrl
+-    return uri?.let { downloadImage(it) }
+-  }
+-
+-  override fun containsImage(): Boolean {
+-    return remoteMessage.notification?.imageUrl != null
+-  }
+-
+-  override val title = remoteMessage.notification?.title ?: notificationData.title
+-
+-  override val text = remoteMessage.notification?.body ?: notificationData.message
+-
+-  override val shouldPlayDefaultSound = remoteMessage.notification?.sound == null && notificationData.shouldPlayDefaultSound
+-
+-  override val soundName = remoteMessage.notification?.sound ?: notificationData.sound
+-
+-  override val shouldUseDefaultVibrationPattern: Boolean
+-    get() = remoteMessage.notification?.defaultVibrateSettings ?: notificationData.shouldUseDefaultVibrationPattern
+-
+-  override val vibrationPattern = remoteMessage.notification?.vibrateTimings ?: notificationData.vibrationPattern
+-
+-  override val body = notificationData.body
+-
+-  override val priority: NotificationPriority
+-    get() = when (remoteMessage.priority) {
+-      RemoteMessage.PRIORITY_HIGH -> NotificationPriority.HIGH
+-      else -> NotificationPriority.DEFAULT
+-    }
+-
+-  override val color: Number?
+-    get() {
+-      val colorSource = remoteMessage.notification?.color ?: notificationData.color
+-      return colorSource?.let { android.graphics.Color.parseColor(it) }
+-    }
+-
+-  // NOTE the following getter functions are here because the local notification content class has them
+-  // and this class conforms to the same interface.
+-  // They are not supported by FCM but were previously implemented by JSONNotificationContentBuilder.java.
+-  override val isAutoDismiss = notificationData.autoDismiss
+-
+-  val isDataOnly = remoteMessage.notification == null
+-
+-  override val categoryId = notificationData.categoryId
+-
+-  override val isSticky = notificationData.isSticky
+-
+-  override val subText = notificationData.subText
+-
+-  override val badgeCount = notificationData.badge
+-
+-  override fun describeContents(): Int = 0
+-
+-  override fun writeToParcel(dest: Parcel, flags: Int) {
+-    dest.writeParcelable(remoteMessage, flags)
+-  }
+-
+-  companion object CREATOR : Parcelable.Creator<RemoteNotificationContent> {
+-    override fun createFromParcel(parcel: Parcel): RemoteNotificationContent {
+-      return RemoteNotificationContent(parcel)
+-    }
+-
+-    override fun newArray(size: Int): Array<RemoteNotificationContent?> {
+-      return arrayOfNulls(size)
+-    }
+-  }
+-}
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/model/triggers/FirebaseNotificationTrigger.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/model/triggers/FirebaseNotificationTrigger.kt
+deleted file mode 100644
+index d972ff9..0000000
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/model/triggers/FirebaseNotificationTrigger.kt
++++ /dev/null
+@@ -1,51 +0,0 @@
+-package expo.modules.notifications.notifications.model.triggers
+-
+-import android.os.Build
+-import android.os.Bundle
+-import android.os.Parcel
+-import android.os.Parcelable
+-import androidx.annotation.RequiresApi
+-import androidx.core.os.bundleOf
+-import com.google.firebase.messaging.RemoteMessage
+-import expo.modules.notifications.notifications.RemoteMessageSerializer
+-import expo.modules.notifications.notifications.interfaces.NotificationTrigger
+-
+-/**
+- * A trigger representing an incoming remote Firebase notification.
+- */
+-class FirebaseNotificationTrigger(val remoteMessage: RemoteMessage) : NotificationTrigger {
+-
+-  private constructor(parcel: Parcel) : this(
+-    parcel.readParcelable(FirebaseNotificationTrigger::class.java.classLoader)
+-      ?: throw IllegalArgumentException("RemoteMessage from readParcelable must not be null")
+-  )
+-
+-  @RequiresApi(api = Build.VERSION_CODES.O)
+-  override fun getNotificationChannel(): String? {
+-    val channelId = remoteMessage.notification?.channelId ?: remoteMessage.data["channelId"]
+-    return channelId ?: super.getNotificationChannel()
+-  }
+-
+-  override fun toBundle(): Bundle {
+-    return bundleOf(
+-      "type" to "push",
+-      "remoteMessage" to RemoteMessageSerializer.toBundle(remoteMessage)
+-    )
+-  }
+-
+-  override fun describeContents(): Int {
+-    return 0
+-  }
+-
+-  override fun writeToParcel(dest: Parcel, flags: Int) {
+-    dest.writeParcelable(remoteMessage, 0)
+-  }
+-
+-  companion object {
+-    @JvmField
+-    val CREATOR = object : Parcelable.Creator<FirebaseNotificationTrigger> {
+-      override fun createFromParcel(parcel: Parcel) = FirebaseNotificationTrigger(parcel)
+-      override fun newArray(size: Int) = arrayOfNulls<FirebaseNotificationTrigger>(size)
+-    }
+-  }
+-}
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/ExpoFirebaseMessagingService.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/ExpoFirebaseMessagingService.kt
+deleted file mode 100644
+index f175435..0000000
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/ExpoFirebaseMessagingService.kt
++++ /dev/null
+@@ -1,15 +0,0 @@
+-package expo.modules.notifications.service
+-
+-import com.google.firebase.messaging.FirebaseMessagingService
+-import com.google.firebase.messaging.RemoteMessage
+-import expo.modules.notifications.service.interfaces.FirebaseMessagingDelegate
+-
+-open class ExpoFirebaseMessagingService : FirebaseMessagingService() {
+-  protected open val firebaseMessagingDelegate: FirebaseMessagingDelegate by lazy {
+-    expo.modules.notifications.service.delegates.FirebaseMessagingDelegate(this)
+-  }
+-
+-  override fun onMessageReceived(remoteMessage: RemoteMessage) = firebaseMessagingDelegate.onMessageReceived(remoteMessage)
+-  override fun onNewToken(token: String) = firebaseMessagingDelegate.onNewToken(token)
+-  override fun onDeletedMessages() = firebaseMessagingDelegate.onDeletedMessages()
+-}
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/FirebaseMessagingDelegate.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/FirebaseMessagingDelegate.kt
+index eecdae8..16b04a8 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/FirebaseMessagingDelegate.kt
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/FirebaseMessagingDelegate.kt
+@@ -2,75 +2,13 @@ package expo.modules.notifications.service.delegates
+ 
+ import android.content.Context
+ import android.os.Bundle
+-import com.google.firebase.messaging.RemoteMessage
+ import expo.modules.interfaces.taskManager.TaskServiceProviderHelper
+-import expo.modules.notifications.notifications.RemoteMessageSerializer
+ import expo.modules.notifications.notifications.background.BackgroundRemoteNotificationTaskConsumer
+-import expo.modules.notifications.notifications.debug.DebugLogging
+-import expo.modules.notifications.notifications.interfaces.INotificationContent
+-import expo.modules.notifications.notifications.model.Notification
+-import expo.modules.notifications.notifications.model.NotificationRequest
+-import expo.modules.notifications.notifications.model.RemoteNotificationContent
+-import expo.modules.notifications.notifications.model.triggers.FirebaseNotificationTrigger
+-import expo.modules.notifications.service.NotificationsService
+-import expo.modules.notifications.service.interfaces.FirebaseMessagingDelegate
+-import expo.modules.notifications.tokens.interfaces.FirebaseTokenListener
+-import java.util.*
+ 
+-open class FirebaseMessagingDelegate(protected val context: Context) : FirebaseMessagingDelegate {
++class FirebaseMessagingDelegate {
+   companion object {
+-    // Unfortunately we cannot save state between instances of a service other way
+-    // than by static properties.
+-    /**
+-     * We store this value to be able to inform new listeners of last known token.
+-     */
+-    protected var sLastToken: String? = null
+-
+-    /**
+-     * A Set of listeners. Used to check quickly whether given listener
+-     * is already registered and to iterate over when notifying of new token.
+-     * If you register a listener, make sure to also un-register it
+-     */
+-    protected val sTokenListenersReferences = HashSet<FirebaseTokenListener>()
+-
+-    /**
+-     * Used only by [FirebaseTokenListener] instances. If you look for a place to register
+-     * your listener, use [FirebaseTokenListener] singleton module.
+-     *
+-     * Purposefully the argument is expected to be a [FirebaseTokenListener] and just a listener.
+-     *
+-     * This class doesn't hold strong references to listeners, so you need to own your listeners.
+-     *
+-     * @param listener A listener instance to be informed of new push device tokens.
+-     */
+-    @JvmStatic
+-    fun addTokenListener(listener: FirebaseTokenListener) = synchronized(sTokenListenersReferences) {
+-      // Checks whether this listener has already been registered
+-      if (!sTokenListenersReferences.contains(listener)) {
+-        sTokenListenersReferences.add(listener)
+-        // Since it's a new listener and we know of a last valid token, let's let them know.
+-        sLastToken?.let {
+-          listener.onNewToken(it)
+-        }
+-      }
+-    }
+-
+-    @JvmStatic
+-    fun removeTokenListener(listener: FirebaseTokenListener) = synchronized(sTokenListenersReferences) {
+-      sTokenListenersReferences.remove(listener)
+-    }
+-
+-    /**
+-     * A set of background task consumers, notified when a notification is received
+-     * while the app is not in the foreground.
+-     */
+     protected var sBackgroundTaskConsumers = mutableSetOf<BackgroundRemoteNotificationTaskConsumer>()
+ 
+-    /**
+-     * Background tasks are registered in [BackgroundRemoteNotificationTaskConsumer] instances.
+-     *
+-     * @param taskConsumer A task instance to be executed when a notification is received while the app is not in the foreground
+-     */
+     fun addBackgroundTaskConsumer(taskConsumer: BackgroundRemoteNotificationTaskConsumer) {
+       sBackgroundTaskConsumers.add(taskConsumer)
+     }
+@@ -82,9 +20,6 @@ open class FirebaseMessagingDelegate(protected val context: Context) : FirebaseM
+     fun getBackgroundTasks(): List<BackgroundRemoteNotificationTaskConsumer> = sBackgroundTaskConsumers.toList()
+ 
+     fun runTaskManagerTasks(applicationContext: Context, bundle: Bundle) {
+-      // getTaskServiceImpl() has a side effect:
+-      // the TaskService constructor calls restoreTasks which then constructs a BackgroundRemoteNotificationTaskConsumer,
+-      // and the getBackgroundTasks() call below doesn't return an empty collection.
+       TaskServiceProviderHelper.getTaskServiceImpl(applicationContext)
+       getBackgroundTasks().forEach {
+         it.executeTask(bundle)
+@@ -92,52 +27,4 @@ open class FirebaseMessagingDelegate(protected val context: Context) : FirebaseM
+     }
+   }
+ 
+-  /**
+-   * Called on new token, dispatches it to [NotificationsService.sTokenListenersReferences].
+-   *
+-   * @param token New device push token.
+-   */
+-  override fun onNewToken(token: String) {
+-    for (listenerReference in sTokenListenersReferences) {
+-      listenerReference.onNewToken(token)
+-    }
+-    sLastToken = token
+-  }
+-
+-  override fun onMessageReceived(remoteMessage: RemoteMessage) {
+-    // the entry point for notifications. For its behavior, see table at https://firebase.google.com/docs/cloud-messaging/android/receive
+-    DebugLogging.logRemoteMessage("FirebaseMessagingDelegate.onMessageReceived: message", remoteMessage)
+-    val notification = createNotification(remoteMessage)
+-    DebugLogging.logNotification("FirebaseMessagingDelegate.onMessageReceived: notification", notification)
+-    NotificationsService.receive(context, notification)
+-    runTaskManagerTasks(context.applicationContext, RemoteMessageSerializer.toBundle(remoteMessage))
+-  }
+-
+-  protected fun createNotification(remoteMessage: RemoteMessage): Notification {
+-    val identifier = getNotificationIdentifier(remoteMessage)
+-
+-    val request = createNotificationRequest(identifier, RemoteNotificationContent(remoteMessage), FirebaseNotificationTrigger(remoteMessage))
+-    return Notification(request, Date(remoteMessage.sentTime))
+-  }
+-
+-  /**
+-   * To match iOS behavior, we want to assign the remote message's tag as the notification ID.
+-   * If a notification comes in with the same tag as a notification that is already in the tray,
+-   * the existing notification is replaced, but the ID can remain constant.
+-   */
+-  protected fun getNotificationIdentifier(remoteMessage: RemoteMessage): String {
+-    return remoteMessage.data["tag"] ?: remoteMessage.messageId ?: UUID.randomUUID().toString()
+-  }
+-
+-  protected open fun createNotificationRequest(
+-    identifier: String,
+-    content: INotificationContent,
+-    notificationTrigger: FirebaseNotificationTrigger
+-  ): NotificationRequest {
+-    return NotificationRequest(identifier, content, notificationTrigger)
+-  }
+-
+-  override fun onDeletedMessages() {
+-    NotificationsService.handleDropped(context)
+-  }
+ }
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/interfaces/FirebaseMessagingDelegate.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/interfaces/FirebaseMessagingDelegate.kt
+deleted file mode 100644
+index 124e188..0000000
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/interfaces/FirebaseMessagingDelegate.kt
++++ /dev/null
+@@ -1,20 +0,0 @@
+-package expo.modules.notifications.service.interfaces
+-
+-import com.google.firebase.messaging.RemoteMessage
+-import expo.modules.notifications.service.NotificationsService
+-
+-/**
+- * A delegate to [NotificationsService] responsible for handling Firebase events.
+- */
+-interface FirebaseMessagingDelegate {
+-  /**
+-   * Called on new token, dispatches it to [NotificationsService.sTokenListenersReferences].
+-   *
+-   * @param token New device push token.
+-   */
+-  fun onNewToken(token: String)
+-
+-  fun onMessageReceived(remoteMessage: RemoteMessage)
+-
+-  fun onDeletedMessages()
+-}
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/tokens/PushTokenModule.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/tokens/PushTokenModule.kt
+index d6efb87..fc2ece3 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/tokens/PushTokenModule.kt
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/tokens/PushTokenModule.kt
+@@ -1,99 +1,20 @@
+ package expo.modules.notifications.tokens
+ 
+-import com.google.firebase.messaging.FirebaseMessaging
+ import expo.modules.kotlin.Promise
+ import expo.modules.kotlin.modules.Module
+ import expo.modules.kotlin.modules.ModuleDefinition
+-import expo.modules.notifications.service.delegates.FirebaseMessagingDelegate.Companion.addTokenListener
+-import expo.modules.notifications.service.delegates.FirebaseMessagingDelegate.Companion.removeTokenListener
+-import expo.modules.notifications.tokens.interfaces.FirebaseTokenListener
+-
+-private const val NEW_TOKEN_EVENT_NAME = "onDevicePushToken"
+-private const val NEW_TOKEN_EVENT_TOKEN_KEY = "devicePushToken"
+-private const val REGISTRATION_FAIL_CODE = "E_REGISTRATION_FAILED"
+-private const val UNREGISTER_FOR_NOTIFICATIONS_FAIL_CODE = "E_UNREGISTER_FOR_NOTIFICATIONS_FAILED"
+-
+-class PushTokenModule : Module(), FirebaseTokenListener {
+-  /**
+-   * Callback called when [FirebaseMessagingDelegate] gets notified of a new token.
+-   * Emits a [NEW_TOKEN_EVENT_NAME] event.
+-   *
+-   * @param token New push token.
+-   */
+-  override fun onNewToken(token: String) {
+-    runCatching {
+-      // onNewToken is emitted asynchronously and the module may be destroyed by the time sendEvent is called
+-      // that would result in an exception
+-      sendEvent(
+-        NEW_TOKEN_EVENT_NAME,
+-        mapOf(
+-          NEW_TOKEN_EVENT_TOKEN_KEY to token
+-        )
+-      )
+-    }
+-  }
+ 
++class PushTokenModule : Module() {
+   override fun definition() = ModuleDefinition {
+     Name("ExpoPushTokenManager")
+-
+     Events("onDevicePushToken")
+ 
+-    OnCreate {
+-      addTokenListener(this@PushTokenModule)
+-    }
+-
+-    OnDestroy {
+-      removeTokenListener(this@PushTokenModule)
+-    }
+-
+-    /**
+-     * Fetches Firebase push token and resolves the promise.
+-     *
+-     * @param promise Promise to be resolved with the token.
+-     */
+     AsyncFunction("getDevicePushTokenAsync") { promise: Promise ->
+-      val instance = getFirebaseMessagingInstance(promise) ?: return@AsyncFunction
+-      instance.token
+-        .addOnCompleteListener { task ->
+-          if (!task.isSuccessful) {
+-            val exception = task.exception
+-            promise.reject(REGISTRATION_FAIL_CODE, "Fetching the token failed: ${exception?.message ?: "unknown"}", exception)
+-            return@addOnCompleteListener
+-          }
+-          val token = task.result ?: run {
+-            promise.reject(REGISTRATION_FAIL_CODE, "Fetching the token failed. Invalid token.", null)
+-            return@addOnCompleteListener
+-          }
+-
+-          promise.resolve(token)
+-          onNewToken(token)
+-        }
++      promise.reject("ERR_PUSH_DISABLED", "FCM is disabled in Kilometr.", null)
+     }
+ 
+     AsyncFunction("unregisterForNotificationsAsync") { promise: Promise ->
+-      val instance = getFirebaseMessagingInstance(promise) ?: return@AsyncFunction
+-      instance.deleteToken()
+-        .addOnCompleteListener { task ->
+-          if (!task.isSuccessful) {
+-            val exception = task.exception
+-            promise.reject(UNREGISTER_FOR_NOTIFICATIONS_FAIL_CODE, "Unregistering for notifications failed: ${exception?.message ?: "unknown"}", exception)
+-            return@addOnCompleteListener
+-          }
+-          promise.resolve(null)
+-        }
+-    }
+-  }
+-
+-  private fun getFirebaseMessagingInstance(promise: Promise): FirebaseMessaging? {
+-    return try {
+-      FirebaseMessaging.getInstance()
+-    } catch (e: IllegalStateException) {
+-      promise.reject(
+-        REGISTRATION_FAIL_CODE,
+-        "Unable to get Firebase Messaging instance. Did you configure `googleServicesFile` path in app config? Make sure to complete the guide at https://docs.expo.dev/push-notifications/fcm-credentials/ : ${e.message}",
+-        e
+-      )
+-      null
++      promise.resolve(null)
+     }
+   }
+ }
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/topics/TopicSubscriptionModule.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/topics/TopicSubscriptionModule.kt
+index 5facd2d..6b93242 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/topics/TopicSubscriptionModule.kt
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/topics/TopicSubscriptionModule.kt
+@@ -1,51 +1,19 @@
+ package expo.modules.notifications.topics
+ 
+-import com.google.firebase.messaging.FirebaseMessaging
+ import expo.modules.kotlin.Promise
+ import expo.modules.kotlin.modules.Module
+ import expo.modules.kotlin.modules.ModuleDefinition
+ 
+-private const val TOPIC_SUBSCRIBE_FAIL_CODE = "E_TOPIC_SUBSCRIBE_FAILED"
+-private const val TOPIC_UNSUBSCRIBE_FAIL_CODE = "E_TOPIC_UNSUBSCRIBE_FAILED"
+-
+ class TopicSubscriptionModule : Module() {
+   override fun definition() = ModuleDefinition {
+     Name("ExpoTopicSubscriptionModule")
+ 
+-    /**
+-     * Subscribe to a broadcast topic
+-     *
+-     * @param topic Broadcast topic to subscribe to
+-     * @param promise Promise to be settled when the operation completes
+-     */
+-    AsyncFunction("subscribeToTopicAsync") { topic: String, promise: Promise ->
+-      FirebaseMessaging.getInstance().subscribeToTopic(topic)
+-        .addOnCompleteListener { task ->
+-          if (task.isSuccessful) {
+-            promise.resolve(null)
+-          } else {
+-            val exception = task.exception
+-            promise.reject(TOPIC_SUBSCRIBE_FAIL_CODE, "Subscribing to the topic '$topic' failed: ${exception?.message ?: "unknown"}", exception)
+-          }
+-        }
++    AsyncFunction("subscribeToTopicAsync") { _: String, promise: Promise ->
++      promise.reject("ERR_PUSH_DISABLED", "FCM is disabled in Kilometr.", null)
+     }
+ 
+-    /**
+-     * Unsubscribe from a previously subscribed broadcast topic
+-     *
+-     * @param topic Broadcast topic to unsubscribe from
+-     * @param promise Promise to be settled when the operation completes
+-     */
+-    AsyncFunction("unsubscribeFromTopicAsync") { topic: String, promise: Promise ->
+-      FirebaseMessaging.getInstance().unsubscribeFromTopic(topic)
+-        .addOnCompleteListener { task ->
+-          if (task.isSuccessful) {
+-            promise.resolve(null)
+-          } else {
+-            val exception = task.exception
+-            promise.reject(TOPIC_UNSUBSCRIBE_FAIL_CODE, "Unsubscribing from the topic '$topic' failed: ${exception?.message ?: "unknown"}", exception)
+-          }
+-        }
++    AsyncFunction("unsubscribeFromTopicAsync") { _: String, promise: Promise ->
++      promise.resolve(null)
+     }
+   }
+ }

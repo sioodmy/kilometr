@@ -77,6 +77,11 @@ function versionCodeFromVersion(version) {
 // debug.keystore, więc inne buildy zostają bez zmian.
 const withAndroidSigning = (config) =>
   withAppBuildGradle(config, (mod) => {
+    if (process.env.FDROID_BUILD === '1') {
+      mod.modResults.contents = mod.modResults.contents.replace(/^\s*signingConfig\s+.*$/gm, '');
+      return mod;
+    }
+
     const keystorePath = process.env.ANDROID_KEYSTORE_PATH;
     const storePassword = process.env.ANDROID_KEYSTORE_PASSWORD;
     const keyAlias = process.env.ANDROID_KEYSTORE_ALIAS;

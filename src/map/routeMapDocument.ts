@@ -8,12 +8,7 @@ import { scheme } from '../theme/tokens';
 import { MAP_ATTRIBUTION } from '../config';
 import { buildMapStyle, MAP_COLORS, ROUTE_SOURCE_ID } from './mapStyle';
 import type { MapRoute, MapVehicle } from './types';
-
-const MAPLIBRE_VERSION = '4.7.1';
-const MAPLIBRE_CDNS = [
-  'https://cdn.jsdelivr.net/npm/maplibre-gl@' + MAPLIBRE_VERSION + '/dist',
-  'https://unpkg.com/maplibre-gl@' + MAPLIBRE_VERSION + '/dist',
-];
+import { bundledMapLibreHead } from './bundledMapLibre';
 
 export interface RouteMapDocumentOptions {
   route: MapRoute | null;
@@ -27,8 +22,7 @@ export interface RouteMapDocumentOptions {
   center?: [number, number] | null;
   /**
    * Bazowy URL lokalnego serwera mapy (np. `http://127.0.0.1:45999`). Gdy
-   * podany, kafle, glify i sam silnik mapy idą z telefonu, więc mapa działa
-   * bez internetu. Bez niego wszystko leci z CDN-ów jak dotąd.
+   * podany, kafle i glify idą z telefonu. Silnik jest w paczce aplikacji.
    */
   offlineBase?: string | null;
 }
@@ -142,39 +136,10 @@ const runtime = [
   '  try { if (bridge && bridge.postMessage) bridge.postMessage(JSON.stringify(msg)); } catch (e) {}',
   '}',
   'function postError(message) { post({ t: "error", message: String(message) }); }',
-  'function loadScript(url) {',
-  '  return new Promise(function (resolve, reject) {',
-  '    var s = document.createElement("script");',
-  '    s.src = url; s.async = false;',
-  '    s.onload = function () { resolve(url); };',
-  '    s.onerror = function () { reject(new Error("skrypt " + url)); };',
-  '    document.head.appendChild(s);',
-  '  });',
-  '}',
-  'function loadCss(base) {',
-  '  return new Promise(function (resolve, reject) {',
-  '    var link = document.createElement("link");',
-  '    link.rel = "stylesheet";',
-  '    link.href = base + "/maplibre-gl.css";',
-  '    link.onload = function () { resolve(base); };',
-  '    link.onerror = function () { if (link.parentNode) link.parentNode.removeChild(link); reject(new Error("css " + base)); };',
-  '    document.head.appendChild(link);',
-  '  });',
-  '}',
   'function loadMapLibre() {',
-  '  var i = 0;',
-  '  function attempt() {',
-  '    if (i >= P.cdns.length) return Promise.reject(new Error("Nie udało się pobrać silnika mapy"));',
-  '    var base = P.cdns[i++];',
-  '    return loadCss(base)',
-  '      .then(function () { return loadScript(base + "/maplibre-gl.js"); })',
-  '      .then(function () {',
-  '        if (window.maplibregl) return true;',
-  '        throw new Error("maplibregl brak");',
-  '      })',
-  '      .catch(attempt);',
-  '  }',
-  '  return attempt();',
+  '  return typeof maplibregl === "undefined"',
+  '    ? Promise.reject(new Error("ERR_MAPLIBRE_UNAVAILABLE"))',
+  '    : Promise.resolve();',
   '}',
   'var map = null;',
   'var route = null;',
@@ -293,7 +258,7 @@ const runtime = [
   '          if (index === stops.length - 1 && near(last, stop)) return;',
   '          var marker = addMarker(',
   '            [stop.lon, stop.lat],',
-  '            \'<div class="k-stop \'+ stop.role +\'"><i></i></div>\',',
+  "            '<div class=\"k-stop '+ stop.role +'\"><i></i></div>',",
   '            "k-marker-stop"',
   '          );',
   '          marker.getElement().addEventListener("click", function () {',
@@ -582,11 +547,7 @@ const runtime = [
 
 function bootstrapPayload(opts: RouteMapDocumentOptions): string {
   const base = opts.offlineBase ?? null;
-  // Offline silnik mapy też musi iść z telefonu: z CDN-u nie pobierzemy go
-  // bez sieci, a bez niego nie ma czego rysować.
-  const cdns = base ? [`${base}/assets`] : MAPLIBRE_CDNS;
   const payload = {
-    cdns,
     style: buildMapStyle(base),
     routeSourceId: ROUTE_SOURCE_ID,
     hitLayerId: 'trasa-chwyt',
@@ -610,6 +571,7 @@ export function buildRouteMapDocument(opts: RouteMapDocumentOptions): string {
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">',
     '<meta name="color-scheme" content="dark">',
+    bundledMapLibreHead(),
     '<title>Mapa trasy</title>',
     '<style>' + css() + '</style>',
     '</head>',

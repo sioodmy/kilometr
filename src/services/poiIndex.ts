@@ -38,6 +38,7 @@ function poiQuery(cityId: CityId): string {
 }
 
 let refreshInFlight = false;
+const lastChecks = new Map<CityId, number>();
 
 function isStale(last: string | null): boolean {
   if (!last) return true;
@@ -121,6 +122,10 @@ async function refreshPoiIndex(): Promise<number> {
  * Nigdy nie blokuje wyszukiwania.
  */
 export function ensurePoiIndex(): void {
+  const cityId = getActiveCityIdSync();
+  const now = Date.now();
+  if (now - (lastChecks.get(cityId) ?? -Infinity) < 60_000) return;
+  lastChecks.set(cityId, now);
   void (async () => {
     try {
       const [count, last, ver] = await Promise.all([
@@ -128,7 +133,10 @@ export function ensurePoiIndex(): void {
         getMeta('poi_last_refresh'),
         getMeta('poi_addr_version'),
       ]);
-      if (count === 0 || isStale(last) || ver !== ADDR_VERSION) {
+      if (
+        getActiveCityIdSync() === cityId &&
+        (count === 0 || isStale(last) || ver !== ADDR_VERSION)
+      ) {
         void refreshPoiIndex();
       }
     } catch {

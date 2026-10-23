@@ -95,6 +95,7 @@ export default function HomeScreen() {
   const [results, setResults] = useState<Suggestion[]>([]);
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [locTitle, setLocTitle] = useState(() => defaultLocationForCity(getActiveCityIdSync()).title);
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lon: number }>(() => {
     const d = defaultLocationForCity(getActiveCityIdSync());
@@ -596,13 +597,15 @@ export default function HomeScreen() {
 
   // Ostatnie przejazdy w identycznej kolejności co na ekranie głównym (smart history)
   const recentFromSmart: Suggestion[] = useMemo(() => {
+    const remembered = new Map(recent.map((item) => [item.id, item]));
     const list: Suggestion[] = smart.map((s) => ({
       id: s.id,
       title: s.title,
       address: s.address,
-      kind: 'history',
+      kind: remembered.get(s.id)?.kind ?? 'history',
       lat: s.lat,
       lon: s.lon,
+      searchUsage: remembered.get(s.id)?.searchUsage,
     }));
     const seen = new Set(list.map((i) => i.id));
     for (const r of recent) {
@@ -738,34 +741,37 @@ export default function HomeScreen() {
     }
   };
 
-  // Debounced search. searchSeq unieważnia odpowiedzi starszych zapytań
-  // w momencie zmiany tekstu - inaczej wolniejsze „d” kasowało wynik „dw”.
+  // Lokalny indeks odpowiada od razu; tylko sieć czeka na przerwę w pisaniu.
   const searchSeq = useRef(0);
   useEffect(() => {
+    const seq = ++searchSeq.current;
     if (!sheetMode) return;
     const q = query.trim();
-    const seq = ++searchSeq.current;
+    setSearchError(false);
     if (!q) {
       setResults([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const t = setTimeout(() => {
-      SearchService.search(q, currentCoords, 'home-sheet', (partial) => {
-        if (seq === searchSeq.current) setResults(partial);
+    SearchService.search(q, currentCoords, 'home-sheet', (partial) => {
+      if (seq === searchSeq.current) setResults(partial);
+    })
+      .then((r) => {
+        if (seq !== searchSeq.current) return;
+        setResults(r);
+        setLoading(false);
       })
-        .then((r) => {
-          if (seq !== searchSeq.current) return;
-          setResults(r);
+      .catch(() => {
+        if (seq === searchSeq.current) {
+          setSearchError(true);
           setLoading(false);
-        })
-        .catch(() => {
-          // Przerwane zapytanie albo błąd - nowsze zapytanie ogarnie stan.
-          if (seq === searchSeq.current) setLoading(false);
-        });
-    }, 90);
-    return () => clearTimeout(t);
+        }
+      });
+    return () => {
+      ++searchSeq.current;
+      SearchService.cancel('home-sheet');
+    };
   }, [query, sheetMode, currentCoords]);
 
   const quick = useMemo<Suggestion[]>(
@@ -794,7 +800,7 @@ export default function HomeScreen() {
     goToRoutes(d);
   };
 
-  const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number }) => {
+  const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number; kind?: Suggestion['kind'] }) => {
     // GPS spoza strefy nie może być startem: zamiast puszczać trasę
     // z pozycji spoza strefy prosimy o ręczny wybór startu.
     if (gpsUnsupported && !isCustomStart) {
@@ -804,7 +810,7 @@ export default function HomeScreen() {
     // Własna trasa użytkownika ma priorytet - stopujemy dogrzewanie reszty.
     routeSearchGen.current++;
     void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
-    void SearchService.recordRecent(to as Suggestion).then(() => {
+    void SearchService.recordRecent({ ...to, address: to.address ?? '', kind: to.kind ?? 'history' }).then(() => {
       SearchService.recent().then(setRecent);
     });
     router.push({
@@ -1155,6 +1161,7 @@ export default function HomeScreen() {
           <SearchSheet
             query={query}
             loading={loading}
+            error={searchError}
             results={results}
             recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
             savedQuick={quick}
@@ -1172,13 +1179,19 @@ export default function HomeScreen() {
                 : undefined
             }
             onQuery={setQuery}
+            onSelectLine={(line) => {
+              setSheetMode(null);
+              setReturnToDestinationAfterStart(false);
+              setQuery('');
+              router.push({ pathname: '/line', params: { routeId: line.routeId } });
+            }}
             onSelect={(s) => {
               if (sheetMode === 'start') {
                 handleStartSelect(s);
               } else {
                 setSheetMode(null);
                 setQuery('');
-                goToRoutes({ id: s.id, title: s.title, address: s.address, lat: s.lat, lon: s.lon });
+                goToRoutes(s);
               }
             }}
             onClose={() => {

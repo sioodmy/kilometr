@@ -20,6 +20,7 @@ import React, {
 import { Linking, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { buildRouteMapDocument } from '../map/routeMapDocument';
+import { mapDocumentSource } from '../map/bundledMapLibre';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
 import { scheme } from '../theme/tokens';
@@ -184,9 +185,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         key={attempt}
         ref={webRef}
         style={styles.web}
-        // baseUrl = origin dokumentu. Bez niego WebView ma origin null i
-        // fetch kafelków z 127.0.0.1 pada na CORS (czarna mapa offline).
-        source={offlineBase ? { html, baseUrl: `${offlineBase}/` } : { html }}
+        source={mapDocumentSource(html, offlineBase)}
         originWhitelist={['*']}
         onMessage={handleMessage}
         onShouldStartLoadWithRequest={() => {

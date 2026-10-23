@@ -272,30 +272,31 @@ function useOnboardingPlaces() {
   }, [reload]);
 
   useEffect(() => {
+    const seq = ++searchSeq.current;
     if (!activeSlot) return;
     const q = query.trim();
-    const seq = ++searchSeq.current;
     if (!q) {
       setResults([]);
       setSearching(false);
       return;
     }
     setSearching(true);
-    const t = setTimeout(() => {
-      SearchService.search(q, undefined, undefined, (partial) => {
-        if (seq === searchSeq.current) setResults(partial);
+    SearchService.search(q, undefined, 'onboarding', (partial) => {
+      if (seq === searchSeq.current) setResults(partial);
+    })
+      .then((r) => {
+        if (seq === searchSeq.current) setResults(r);
       })
-        .then((r) => {
-          if (seq === searchSeq.current) setResults(r);
-        })
-        .catch(() => {
-          if (seq === searchSeq.current) setResults([]);
-        })
-        .finally(() => {
-          if (seq === searchSeq.current) setSearching(false);
-        });
-    }, 90);
-    return () => clearTimeout(t);
+      .catch(() => {
+        if (seq === searchSeq.current) setResults([]);
+      })
+      .finally(() => {
+        if (seq === searchSeq.current) setSearching(false);
+      });
+    return () => {
+      ++searchSeq.current;
+      SearchService.cancel('onboarding');
+    };
   }, [query, activeSlot]);
 
   const bySlot = useMemo(() => {
