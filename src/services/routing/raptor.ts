@@ -5,17 +5,13 @@ import {
 } from '../../../modules/kilometr-raptor';
 import { DayIndex, LocalGtfsStore as GtfsStore } from './store';
 import { JourneySegment, RawJourney, RouteStyle, TransitModePreference } from './types';
-import {
-  classifyTransitMode,
-  getRaptorNet,
-  packRaptorNet,
-  type RaptorNet,
-} from './network';
+import { classifyTransitMode, getRaptorNet, packRaptorNet, type RaptorNet } from './network';
 
 export { classifyTransitMode };
 
 const INF = 0x3fffffff;
 const QUERY_MAGIC = 0x52515231;
+const ARRIVE_BY_QUERY_MAGIC = 0x52515232;
 
 const DEFAULT_WALK_SPEED_MPS = 1.34;
 /** Najdłuższa piesza przesiadka między przystankami (siatka w store.ts sięga 800 m). */
@@ -43,10 +39,10 @@ export interface CostParams {
 
 /** Styl trasy z ustawień. Spacer zawsze ważony mocniej niż jazda, żeby 30 s zysku nie wyrzucało z tramwaju. */
 const ROUTE_STYLE_COSTS: Record<RouteStyle, CostParams> = {
-  fastest: { walkReluctance: 1.25, transferPenaltySec: 240 },
-  balanced: { walkReluctance: 1.8, transferPenaltySec: 600 },
-  lessWalking: { walkReluctance: 3, transferPenaltySec: 600 },
-  fewerTransfers: { walkReluctance: 1.8, transferPenaltySec: 1200 },
+  fastest: { walkReluctance: 1.25, transferPenaltySec: 120 },
+  balanced: { walkReluctance: 1.8, transferPenaltySec: 300 },
+  lessWalking: { walkReluctance: 3, transferPenaltySec: 300 },
+  fewerTransfers: { walkReluctance: 1.8, transferPenaltySec: 900 },
 };
 
 export function costParamsFor(style: RouteStyle | undefined): CostParams {
@@ -56,7 +52,7 @@ export function costParamsFor(style: RouteStyle | undefined): CostParams {
 export interface RaptorOptions {
   /** maksymalna liczba przesiadek (0 = tylko bezpośrednie). Default 2. */
   maxTransfers?: number;
-  /** minimalny odstęp między przyjazdem a kolejnym odjazdem w sekundach. Default 60. */
+  /** Minimalny odstęp między przyjazdem a kolejnym odjazdem, domyślnie 120 s. */
   minTransferSec?: number;
   /** indeks dzienny (rozkład sobotni/niedzielny różni się od powszedniego) */
   dayIndex?: DayIndex;
@@ -84,12 +80,7 @@ export interface RaptorOptions {
   timeOffsetSec?: number;
   /** Zegar per wzorzec dla zunifikowanego indeksu nocnego (patrz mergeDayIndexes). */
   patternTimeOffsets?: Map<string, number>;
-  /**
-   * Okno odjazdów (sekundy) od departureTimeSec. Range RAPTOR liczy w nim
-   * wszystkie sensowne odjazdy naraz, zamiast osobnego przebiegu na każdy
-   * start. 0 = jeden przebieg od departureTimeSec. Zawsze dochodzi też
-   * najszybsza podróż z odjazdem po oknie.
-   */
+  /** Okno odjazdów po podanej godzinie lub przyjazdów przed nią. 0 = pojedynczy przebieg. */
   windowSec?: number;
   /** Tempo marszu na przesiadkach (m/s). Default 1.34. */
   walkSpeedMps?: number;
@@ -99,6 +90,8 @@ export interface RaptorOptions {
   cost?: CostParams;
   /** Tryb „bądź na”: podróże z przyjazdem po tej godzinie są bezużyteczne. */
   latestArrivalSec?: number;
+  /** Podana godzina oznacza przyjazd do celu, łącznie z odejściem od przystanku. */
+  arriveBy?: boolean;
 }
 
 /**
@@ -153,7 +146,11 @@ export function isPointlessShortRide(rj: RawJourney): boolean {
     if (t.mode === 'cable') continue;
     if (t.stopsCount <= 0) return true;
   }
-  if (transitSegs.length === 1 && transitSegs[0].stopsCount <= 1 && transitSegs[0].mode !== 'cable') {
+  if (
+    transitSegs.length === 1 &&
+    transitSegs[0].stopsCount <= 1 &&
+    transitSegs[0].mode !== 'cable'
+  ) {
     let totalWalkM = 0;
     for (const s of rj.segments) {
       if (s.type === 'walk') totalWalkM += s.walkMeters ?? 0;
@@ -249,7 +246,7 @@ function packRaptorQuery(
     pos += 8;
   };
 
-  writeI32(QUERY_MAGIC);
+  writeI32(options.arriveBy ? ARRIVE_BY_QUERY_MAGIC : QUERY_MAGIC);
   writeI32(net.id);
   writeI32(t0);
   writeI32(windowSec);
@@ -297,6 +294,7 @@ function unpackJourneys(
   net: RaptorNet,
   t0: number,
   bytes: Uint8Array | null,
+  arriveBy = false,
 ): RawJourney[] {
   if (!bytes || bytes.byteLength < 4) return [];
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -346,14 +344,14 @@ function unpackJourneys(
       const from = pat.stops[bPos];
       const to = pat.stops[aPos];
 
-      if (li === 0 && accessM > 50) {
+      if (li === 0 && accessSec > 0 && accessM > 0) {
         segments.push({
           type: 'walk',
           fromStopId: 'origin',
           fromStopName: 'Punkt startowy',
           toStopId: ids[firstStop],
           toStopName: stopName(firstStop),
-          departSec: Math.max(t0, depSec - accessSec),
+          departSec: depSec - accessSec,
           arriveSec: depSec,
           stopsCount: 0,
           walkMeters: accessM,
@@ -400,7 +398,7 @@ function unpackJourneys(
 
     if (segments.length === 0) continue;
 
-    if (egressM > 50) {
+    if (egressSec > 0 && egressM > 0) {
       segments.push({
         type: 'walk',
         fromStopId: ids[dest],
@@ -414,13 +412,15 @@ function unpackJourneys(
       });
     }
 
+    const firstTransit = segments.find((s) => s.type === 'transit');
+    if (!firstTransit) continue;
     const rj: RawJourney = {
-      departureSec: segments[0].departSec,
-      arrivalSec: segments[segments.length - 1].arriveSec,
+      departureSec: firstTransit.departSec - accessSec,
+      arrivalSec: prevArr + egressSec,
       transfers: nLegs - 1,
       segments,
     };
-    if (!isPointlessShortRide(rj)) {
+    if ((!arriveBy || rj.arrivalSec <= t0) && !isPointlessShortRide(rj)) {
       out.push(rj);
     }
   }
@@ -457,7 +457,7 @@ export async function runRaptorAsync(
   const packedQuery = packRaptorQuery(net, origins, destinations, departureTimeSec, options);
   if (!packedQuery) return [];
   const res = await runRaptorQueryAsync(net.id, () => packRaptorNet(net), packedQuery);
-  return unpackJourneys(store, net, Math.round(departureTimeSec), res);
+  return unpackJourneys(store, net, Math.round(departureTimeSec), res, options.arriveBy);
 }
 
 export function runRaptor(
@@ -479,7 +479,7 @@ export function runRaptor(
   const packedQuery = packRaptorQuery(net, origins, destinations, departureTimeSec, options);
   if (!packedQuery) return [];
   const res = runRaptorQuerySync(net.id, () => packRaptorNet(net), packedQuery);
-  return unpackJourneys(store, net, Math.round(departureTimeSec), res);
+  return unpackJourneys(store, net, Math.round(departureTimeSec), res, options.arriveBy);
 }
 
 /** Sekundy marszu w podróży (dojście, przesiadki, odejście). */
@@ -503,31 +503,41 @@ export interface SelectOptions {
  */
 function journeyCost(j: RawJourney, refSec: number, opts: SelectOptions = {}): number {
   const cost = opts.cost ?? ROUTE_STYLE_COSTS.balanced;
-  const base = opts.arriveBySec !== undefined ? opts.arriveBySec - j.departureSec : j.arrivalSec - refSec;
-  return base + (Math.max(1, cost.walkReluctance) - 1) * journeyWalkSec(j) + j.transfers * cost.transferPenaltySec;
+  const base =
+    opts.arriveBySec !== undefined ? opts.arriveBySec - j.departureSec : j.arrivalSec - refSec;
+  return (
+    base +
+    (Math.max(1, cost.walkReluctance) - 1) * journeyWalkSec(j) +
+    j.transfers * cost.transferPenaltySec
+  );
 }
 
-/**
- * Selekcja listy: duplikaty kursów, dominacja (później wyjść, wcześniej być,
- * mniej przesiadek i nie więcej marszu), różnorodność linii i limit.
- * Najszybszy przyjazd zawsze zostaje na liście.
- */
-export function selectJourneys(journeys: RawJourney[], refSec: number, opts: SelectOptions = {}): RawJourney[] {
+/** Usuwa duplikaty i zdominowane warianty, ogranicza powtórzenia linii.
+ * Zachowuje najwcześniejszy przyjazd albo najpóźniejsze wyjście przed terminem. */
+export function selectJourneys(
+  journeys: RawJourney[],
+  refSec: number,
+  opts: SelectOptions = {},
+): RawJourney[] {
   const limit = opts.limit ?? 10;
-  const scored = journeys.map((j) => ({
-    j,
-    cost: journeyCost(j, refSec, opts),
-    walk: journeyWalkSec(j),
-    chain: j.segments
-      .filter((s) => s.type === 'transit')
-      .map((s) => s.tripId)
-      .join('|'),
-    combo: j.segments
-      .filter((s) => s.type === 'transit')
-      .map((s) => s.line)
-      .join('+'),
-  }));
-  scored.sort((a, b) => a.cost - b.cost || a.j.arrivalSec - b.j.arrivalSec);
+  const scored = journeys
+    .filter((j) => opts.arriveBySec === undefined || j.arrivalSec <= opts.arriveBySec)
+    .map((j) => ({
+      j,
+      cost: journeyCost(j, refSec, opts),
+      walk: journeyWalkSec(j),
+      chain: j.segments
+        .filter((s) => s.type === 'transit')
+        .map((s) => s.tripId)
+        .join('|'),
+      combo: j.segments
+        .filter((s) => s.type === 'transit')
+        .map((s) => s.line)
+        .join('+'),
+    }));
+  scored.sort(
+    (a, b) => a.cost - b.cost || a.j.transfers - b.j.transfers || a.j.arrivalSec - b.j.arrivalSec,
+  );
 
   const byChain = new Set<string>();
   const unique = scored.filter((x) => {
@@ -565,9 +575,17 @@ export function selectJourneys(journeys: RawJourney[], refSec: number, opts: Sel
     if (result.length >= limit) break;
   }
 
-  if (result.length > 0 && opts.arriveBySec === undefined) {
+  if (result.length > 0) {
     let fastest = front[0]?.j;
-    for (const x of front) if (fastest && x.j.arrivalSec < fastest.arrivalSec) fastest = x.j;
+    for (const x of front) {
+      if (
+        fastest &&
+        (opts.arriveBySec !== undefined
+          ? x.j.departureSec > fastest.departureSec
+          : x.j.arrivalSec < fastest.arrivalSec)
+      )
+        fastest = x.j;
+    }
     if (fastest && !result.includes(fastest)) {
       if (result.length >= limit) result.pop();
       result.push(fastest);

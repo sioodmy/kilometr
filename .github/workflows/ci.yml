@@ -112,6 +112,9 @@ jobs:
       - name: Run logic tests (RAPTOR routing engine)
         run: npm run check:routing
 
+      - name: Run logic tests (Arrive by)
+        run: npm run check:arrival
+
       - name: Run logic tests (Duplicate connections)
         run: npm run check:connections
 

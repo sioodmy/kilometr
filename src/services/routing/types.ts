@@ -13,6 +13,8 @@ export type TransitModePreference = 'all' | 'tram' | 'bus';
 /** Styl trasy z ustawień: wagi spaceru i przesiadek w koszcie planera. */
 export type RouteStyle = 'fastest' | 'balanced' | 'lessWalking' | 'fewerTransfers';
 
+export type JourneyTimeMode = 'departure' | 'arrival';
+
 export interface LegStop {
   stopId: string;
   name: string;
@@ -53,6 +55,7 @@ export interface Connection {
   toTitle: string;
   departInMin: number;
   departureSec: number;
+  arrivalSec?: number;
   departAt: string;
   arriveAt: string;
   durationMin: number;
