@@ -32,6 +32,7 @@ interface NavMiniMapProps {
   accuracyM: number | null;
   accent: string;
   riding: boolean;
+  interactive?: boolean;
   line?: string;
   onCompassCalibrationChange?: (needed: boolean) => void;
   style?: StyleProp<ViewStyle>;
@@ -58,6 +59,7 @@ export function NavMiniMap({
   accuracyM,
   accent,
   riding,
+  interactive = true,
   line,
   onCompassCalibrationChange,
   style,
@@ -72,7 +74,7 @@ export function NavMiniMap({
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [retry, setRetry] = useState(0);
   const [following, setFollowing] = useState(true);
-  const [northUp, setNorthUp] = useState(false);
+  const [northUp, setNorthUp] = useState(true);
   const [focused, setFocused] = useState<string | null>(null);
   const latestRoute = useRef({
     id: targetId,
@@ -96,7 +98,7 @@ export function NavMiniMap({
   latestCamera.current = {
     user,
     vehicle,
-    heading: deviceHeading.current ?? headingDeg,
+    heading: riding ? headingDeg : (deviceHeading.current ?? headingDeg),
     userHeading: deviceHeading.current ?? (riding ? null : headingDeg),
     reduceMotion,
     headingOnly: false,
@@ -109,8 +111,8 @@ export function NavMiniMap({
       const c = getActiveCitySync().center;
       center = [c.lon, c.lat];
     } catch {}
-    return buildNavMapDocument({ offlineBase, center });
-  }, [offlineBase, cityId]);
+    return buildNavMapDocument({ offlineBase, center, interactive });
+  }, [offlineBase, cityId, interactive]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,7 +161,7 @@ export function NavMiniMap({
       if (deviceHeading.current === value) return;
       deviceHeading.current = value;
       const current = latestCamera.current;
-      current.heading = value ?? headingDeg;
+      current.heading = riding ? headingDeg : (value ?? headingDeg);
       current.userHeading = value ?? (riding ? null : headingDeg);
       current.headingOnly = true;
       sendCamera();
@@ -169,11 +171,11 @@ export function NavMiniMap({
   const compassState = useDeviceHeading(user != null || vehicle != null, onHeading);
   useEffect(() => {
     const timer = setTimeout(
-      () => onCompassCalibrationChange?.(compassState === 'calibrate'),
-      compassState === 'calibrate' ? 600 : compassState === 'ok' ? 1500 : 0,
+      () => onCompassCalibrationChange?.(!northUp && compassState === 'calibrate'),
+      northUp ? 0 : compassState === 'calibrate' ? 600 : compassState === 'ok' ? 1500 : 0,
     );
     return () => clearTimeout(timer);
-  }, [compassState, onCompassCalibrationChange]);
+  }, [compassState, northUp, onCompassCalibrationChange]);
 
   useEffect(sendRoute, [sendRoute, targetId, path, traveled, stops, stop, accent, riding, line]);
   useEffect(sendCamera, [sendCamera, user, vehicle, headingDeg, reduceMotion, targetId]);
@@ -219,32 +221,34 @@ export function NavMiniMap({
   return (
     <View style={[styles.frame, style]}>
       {html ? (
-        <WebView
-          key={`${cityId}:${retry}`}
-          ref={webRef}
-          style={styles.web}
-          source={mapDocumentSource(html, offlineBase ?? null)}
-          originWhitelist={['*']}
-          onMessage={onMessage}
-          onLoadStart={onLoadStart}
-          onError={onError}
-          onHttpError={onError}
-          onRenderProcessGone={onError}
-          onContentProcessDidTerminate={onError}
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-          scrollEnabled={false}
-          nestedScrollEnabled
-          bounces={false}
-          overScrollMode="never"
-          showsVerticalScrollIndicator={false}
-          showsHorizontalScrollIndicator={false}
-          setSupportMultipleWindows={false}
-          javaScriptCanOpenWindowsAutomatically={false}
-          setBuiltInZoomControls={false}
-          androidLayerType="hardware"
-          allowsBackForwardNavigationGestures={false}
-        />
+        <View style={styles.web} pointerEvents={interactive ? 'auto' : 'none'}>
+          <WebView
+            key={`${cityId}:${retry}`}
+            ref={webRef}
+            style={styles.web}
+            source={mapDocumentSource(html, offlineBase ?? null)}
+            originWhitelist={['*']}
+            onMessage={onMessage}
+            onLoadStart={onLoadStart}
+            onError={onError}
+            onHttpError={onError}
+            onRenderProcessGone={onError}
+            onContentProcessDidTerminate={onError}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            scrollEnabled={false}
+            nestedScrollEnabled
+            bounces={false}
+            overScrollMode="never"
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
+            setSupportMultipleWindows={false}
+            javaScriptCanOpenWindowsAutomatically={false}
+            setBuiltInZoomControls={false}
+            androidLayerType="hardware"
+            allowsBackForwardNavigationGestures={false}
+          />
+        </View>
       ) : null}
       <View style={styles.topControls} pointerEvents="box-none">
         <Pressable

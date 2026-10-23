@@ -74,6 +74,7 @@ interface CameraUpdate {
   userHeading?: number | null;
   riding?: boolean;
   reduceMotion?: boolean;
+  headingOnly?: boolean;
 }
 interface MapBridge {
   ReactNativeWebView: { postMessage: (data: string) => void };
@@ -88,7 +89,7 @@ interface MapBridge {
   __navCamera: (camera: CameraUpdate) => void;
   __navControl: (action: 'follow' | 'north' | 'overview') => void;
 }
-async function boot(failAssets = false) {
+async function boot(failAssets = false, interactive = true) {
   const messages: Message[] = [];
   const events = new Map<string, (event: MapEvent) => void>();
   const cameras: Record<string, unknown>[] = [];
@@ -98,7 +99,12 @@ async function boot(failAssets = false) {
   let sourceLoaded = false;
   let bearing = 0;
   let center = { lng: 17, lat: 51.1 };
+  let moving = false;
+  let mapInteractive: boolean | undefined;
   class FakeMap {
+    constructor(options: { interactive: boolean }) {
+      mapInteractive = options.interactive;
+    }
     on(name: string, fn: (event: MapEvent) => void) {
       events.set(name, fn);
     }
@@ -113,6 +119,9 @@ async function boot(failAssets = false) {
     }
     getBearing() {
       return bearing;
+    }
+    isMoving() {
+      return moving;
     }
     getCenter() {
       return center;
@@ -182,7 +191,7 @@ async function boot(failAssets = false) {
     setTimeout: () => 1,
     clearTimeout: () => undefined,
   };
-  const html = buildNavMapDocument({ offlineBase: null, center: [17, 51.1] });
+  const html = buildNavMapDocument({ offlineBase: null, center: [17, 51.1], interactive });
   assert(html.includes('<script data-maplibre>'), 'silnik mapy jest w dokumencie');
   assert(!html.includes('cdn.jsdelivr.net/npm/maplibre-gl@'), 'mapa nie pobiera kodu z CDN');
   for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g))
@@ -193,6 +202,10 @@ async function boot(failAssets = false) {
     cameras,
     sources,
     markers,
+    interactive: mapInteractive,
+    setMoving: (value: boolean) => {
+      moving = value;
+    },
     window: context.window,
     emit: (name: string, event: MapEvent = {}) => events.get(name)?.(event),
     loaded: () => {
@@ -205,6 +218,8 @@ async function boot(failAssets = false) {
 async function check() {
   await checkWorkerCompatibility();
   const map = await boot();
+  assert.equal(map.interactive, true, 'embedded map keeps its gestures');
+  assert.equal((await boot(false, false)).interactive, false, 'fullscreen map disables gestures');
   map.emit('style.load');
   assert.deepEqual(map.messages, [{ t: 'ready' }]);
   map.emit('render');
@@ -245,6 +260,21 @@ async function check() {
   map.window.__navCamera({ user: [51.105, 17.005], heading: 359, riding: true });
   assert.deepEqual(Array.from(map.cameras.at(-1)?.center as number[]), [17.005, 51.105]);
   assert.equal(map.cameras.at(-1)?.zoom, 15.5);
+  assert.equal(map.cameras.at(-1)?.bearing, 0, 'navigation starts with a stable north-up map');
+  const beforeHeading = map.cameras.length;
+  map.window.__navCamera({ user: [51.105, 17.005], heading: 40, headingOnly: true });
+  assert.equal(
+    map.cameras.length,
+    beforeHeading,
+    'compass updates leave the north-up camera alone',
+  );
+  map.window.__navControl('north');
+  const beforeMoving = map.cameras.length;
+  map.setMoving(true);
+  map.window.__navCamera({ user: [51.105, 17.005], heading: 90, headingOnly: true });
+  assert.equal(map.cameras.length, beforeMoving, 'compass cannot interrupt camera movement');
+  map.setMoving(false);
+  map.window.__navCamera({ user: [51.105, 17.005], heading: 359, riding: true });
   const initialBearing = Number(map.cameras.at(-1)?.bearing);
   map.window.__navCamera({ user: [51.105, 17.005], heading: 1, riding: true });
   assert.equal(

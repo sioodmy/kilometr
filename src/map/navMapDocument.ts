@@ -5,6 +5,7 @@ import { scheme } from '../theme/tokens';
 export interface NavMapDocumentOptions {
   offlineBase: string | null;
   center?: [number, number] | null;
+  interactive?: boolean;
 }
 
 const runtime = (routeSourceId: string) => `
@@ -14,7 +15,7 @@ const runtime = (routeSourceId: string) => `
   var route = {};
   var camera = {};
   var following = true;
-  var northUp = false;
+  var northUp = true;
   var initialized = false;
   var framed = false;
   var userMarker = null;
@@ -112,10 +113,20 @@ const runtime = (routeSourceId: string) => `
     }
     framed = false;
     var bearing = northUp ? 0 : typeof camera.heading === 'number' ? camera.heading : map.getBearing();
+    if (camera.headingOnly && !force && initialized) {
+      if (northUp || route.riding || map.isMoving()) return;
+      var difference = shortestBearing(map.getBearing(), bearing) - map.getBearing();
+      if (Math.abs(difference) < 3) return;
+      map.easeTo({
+        bearing: map.getBearing() + difference,
+        duration: camera.reduceMotion ? 0 : 200, essential: false,
+      });
+      return;
+    }
     var options = {
       center: [position[1], position[0]],
       bearing: shortestBearing(map.getBearing(), bearing),
-      duration: camera.reduceMotion ? 0 : force ? 350 : camera.headingOnly ? 100 : 550,
+      duration: camera.reduceMotion ? 0 : force ? 350 : 550,
       essential: false,
     };
     if (!initialized || force) options.zoom = route.riding ? 15.5 : 17;
@@ -140,6 +151,7 @@ const runtime = (routeSourceId: string) => `
       overview();
     } else if (action === 'north') {
       northUp = !northUp;
+      camera.headingOnly = false;
       if (following) follow(false);
       else map.easeTo({
         bearing: shortestBearing(map.getBearing(), northUp ? 0 : camera.heading || 0),
@@ -162,7 +174,7 @@ const runtime = (routeSourceId: string) => `
     map = new maplibregl.Map({
       container: 'map', style: window.__NAV__.style,
       center: window.__NAV__.center || [0, 0], zoom: 17, bearing: 0,
-      interactive: true, attributionControl: false, fadeDuration: 0,
+      interactive: window.__NAV__.interactive, attributionControl: false, fadeDuration: 0,
       renderWorldCopies: false, pitchWithRotate: false, maxPitch: 0,
     });
     map.on('dragstart', unlock);
@@ -187,10 +199,15 @@ const runtime = (routeSourceId: string) => `
 })();
 `;
 
-export function buildNavMapDocument({ offlineBase, center }: NavMapDocumentOptions): string {
+export function buildNavMapDocument({
+  offlineBase,
+  center,
+  interactive = true,
+}: NavMapDocumentOptions): string {
   const payload = JSON.stringify({
     style: buildMapStyle(offlineBase),
     center: center ?? null,
+    interactive,
   }).replace(/</g, '\\u003c');
   return [
     '<!doctype html><html><head><meta charset="utf-8">',

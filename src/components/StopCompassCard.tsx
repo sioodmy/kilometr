@@ -597,7 +597,7 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
           )}
         </Pressable>
       </View>
-      <View style={[fullscreen && styles.fullBody, landscape && styles.landscape]}>
+      <View style={[landscape && styles.fullBody, landscape && styles.landscape]}>
         {showNav && stopPos ? (
           <NavMiniMap
             targetId={targetKey ?? activeLeg?.id ?? connection.id}
@@ -611,9 +611,10 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
             accuracyM={userLocation?.accuracy ?? null}
             accent={mapLineColor(onTransit ? lineAccent : scheme.primary)}
             riding={onTransit}
+            interactive={!fullscreen}
             line={onTransit ? activeLeg?.line : undefined}
             onCompassCalibrationChange={setNeedsCalibration}
-            style={[styles.map, fullscreen ? styles.fullMap : { height: navMapH }]}
+            style={[styles.map, landscape ? styles.fullMap : { height: navMapH }]}
           />
         ) : (
           <View style={styles.noMap}>
@@ -623,9 +624,9 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
         )}
         <ScrollView
           nestedScrollEnabled
+          scrollEnabled={!fullscreen || landscape}
           style={[
             styles.sheetScroll,
-            fullscreen && !landscape && { maxHeight: winH * (fontScale > 1.3 ? 0.55 : 0.48) },
             landscape && { width: Math.min(360, winW * 0.46), height: '100%' },
           ]}
           contentContainerStyle={styles.sheet}
@@ -805,7 +806,7 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
         onRequestClose={() => setFullscreen(false)}
       >
         <SafeAreaView style={styles.fullscreen} onAccessibilityEscape={() => setFullscreen(false)}>
-          {content}
+          {landscape ? content : <ScrollView>{content}</ScrollView>}
         </SafeAreaView>
       </Modal>
     </View>

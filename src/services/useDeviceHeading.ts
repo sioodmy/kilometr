@@ -15,12 +15,29 @@ export function useDeviceHeading(enabled: boolean, onHeading: (value: number | n
       let generation = 0;
       let subscription: Location.LocationSubscription | null = null;
       let pendingHeading: number | null = null;
+      let filteredHeading: number | null = null;
+      let publishedHeading: number | null = null;
       let lastSentAt = 0;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const flush = () => {
         timer = undefined;
-        lastSentAt = Date.now();
-        callback.current(pendingHeading);
+        const now = Date.now();
+        const elapsed = now - lastSentAt;
+        lastSentAt = now;
+        if (pendingHeading == null) return;
+        const delta =
+          filteredHeading == null ? 0 : ((pendingHeading - filteredHeading + 540) % 360) - 180;
+        filteredHeading =
+          filteredHeading == null
+            ? pendingHeading
+            : (filteredHeading + delta * (1 - Math.exp(-elapsed / 350)) + 360) % 360;
+        if (
+          publishedHeading != null &&
+          Math.abs(((filteredHeading - publishedHeading + 540) % 360) - 180) < 3
+        )
+          return;
+        publishedHeading = filteredHeading;
+        callback.current(filteredHeading);
       };
       const stop = () => {
         generation += 1;
@@ -29,6 +46,8 @@ export function useDeviceHeading(enabled: boolean, onHeading: (value: number | n
         clearTimeout(timer);
         timer = undefined;
         pendingHeading = null;
+        filteredHeading = null;
+        publishedHeading = null;
         lastSentAt = 0;
         callback.current(null);
       };
@@ -43,20 +62,22 @@ export function useDeviceHeading(enabled: boolean, onHeading: (value: number | n
           const watch = await Location.watchHeadingAsync(
             (sample) => {
               if (token !== generation) return;
-              const value = compassDegrees(sample);
+              const value = sample.accuracy === 1 ? null : compassDegrees(sample);
               setState(value == null || sample.accuracy === 1 ? 'calibrate' : 'ok');
               pendingHeading = value;
               if (value == null) {
                 clearTimeout(timer);
                 timer = undefined;
+                filteredHeading = null;
+                publishedHeading = null;
                 callback.current(null);
                 return;
               }
               const elapsed = Date.now() - lastSentAt;
-              if (elapsed >= 80) {
+              if (elapsed >= 200) {
                 clearTimeout(timer);
                 flush();
-              } else if (!timer) timer = setTimeout(flush, 80 - elapsed);
+              } else if (!timer) timer = setTimeout(flush, 200 - elapsed);
             },
             () => {
               if (token !== generation) return;
