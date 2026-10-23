@@ -24,6 +24,8 @@ export interface Suggestion extends LatLon {
   distanceM?: number;
   /** stop popularity: departures served (drives stop ranking) */
   weight?: number;
+  /** Wygaszana częstotliwość wyborów, zapisywana tylko w historii wyszukiwania. */
+  searchUsage?: { score: number; lastUsedAt: number };
 }
 
 export type SavedPlaceIcon =
@@ -185,6 +187,7 @@ export interface Connection {
   /** minutes until departure, from "now" */
   departInMin: number;
   departureSec: number;
+  arrivalSec?: number;
   departAt: string;
   arriveAt: string;
   durationMin: number;

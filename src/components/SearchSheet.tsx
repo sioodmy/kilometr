@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
 import BottomSheet, {
   BottomSheetFlatList,
@@ -6,17 +6,28 @@ import BottomSheet, {
   TouchableOpacity,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
 import type { TextInput } from 'react-native-gesture-handler';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
 import type { Suggestion } from '../types/models';
 import { SuggestionRow } from './SuggestionRow';
-import { fuzzyMatch } from '../gtfs/fuzzy';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
+import { frecency, matchSuggestions, rankWithFrecency } from '../services/searchFrecency';
+import { searchTransitLines, type TransitLine } from '../services/lineTimetable';
+import { LineBadge } from './LineBadge';
 
-type Row = { type: 'header'; label: string } | { type: 'item'; item: Suggestion };
+type Row =
+  | { type: 'header'; label: string }
+  | { type: 'line'; line: TransitLine }
+  | {
+      type: 'item';
+      item: Suggestion;
+      first: boolean;
+      last: boolean;
+      prominent: boolean;
+    };
 
 const QUICK_CHIPS = 3;
 const PERSONAL_MAX = 3;
@@ -27,11 +38,13 @@ const SAME_PLACE_M = 60;
 export function SearchSheet({
   query,
   loading,
+  error = false,
   results,
   recent,
   savedQuick,
   onQuery,
   onSelect,
+  onSelectLine,
   onClose,
   placeholder: placeholderProp,
   originTitle,
@@ -42,11 +55,13 @@ export function SearchSheet({
   open?: boolean;
   query: string;
   loading: boolean;
+  error?: boolean;
   results: Suggestion[];
   recent: Suggestion[];
   savedQuick: Suggestion[];
   onQuery: (q: string) => void;
   onSelect: (s: Suggestion) => void;
+  onSelectLine?: (line: TransitLine) => void;
   onClose: () => void;
   placeholder?: string;
   originTitle?: string;
@@ -57,6 +72,7 @@ export function SearchSheet({
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
+  const [focused, setFocused] = useState(false);
   const s = useStrings();
   const { cityId } = useActiveCity();
   // Miejscownik ("w Krakowie"), nie mianownik: wchodzi po przyimku w placeholderze.
@@ -89,24 +105,53 @@ export function SearchSheet({
   };
 
   const trimmed = query.trim();
+  const canSearchLines = !!onSelectLine;
+  const [lineMatches, setLineMatches] = useState<{
+    query: string;
+    city: string;
+    lines: TransitLine[];
+  } | null>(null);
+  const lines = useMemo(
+    () => (lineMatches?.query === trimmed && lineMatches.city === cityId ? lineMatches.lines : []),
+    [lineMatches, trimmed, cityId],
+  );
 
-  // Zapisane miejsca i historia pasujące do zapytania idą przed wyniki z bazy:
-  // „d” od razu podsuwa „Dom”, zanim sieć cokolwiek zwróci.
+  useEffect(() => {
+    if (!canSearchLines || !trimmed) return;
+    let cancelled = false;
+    void searchTransitLines(trimmed)
+      .then((matches) => {
+        if (!cancelled) setLineMatches({ query: trimmed, city: cityId, lines: matches });
+      })
+      .catch(() => {
+        if (!cancelled) setLineMatches(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [trimmed, cityId, canSearchLines]);
+
+  const handleLineSelect = (line: TransitLine) => {
+    inputRef.current?.blur();
+    onSelectLine?.(line);
+  };
+
+  // Zapisane nazwy pasują od pierwszej litery, zanim odpowie lokalny indeks.
   const personal = useMemo(() => {
     if (!trimmed) return [];
     const seen = new Set<string>();
-    const scored: { item: Suggestion; score: number }[] = [];
+    const candidates: Suggestion[] = [];
     for (const item of [...savedQuick, ...recent]) {
       if (seen.has(item.id)) continue;
       seen.add(item.id);
-      const score = Math.max(
-        fuzzyMatch(trimmed, item.title).score,
-        item.address ? fuzzyMatch(trimmed, item.address).score - 20 : 0,
-      );
-      if (score >= PERSONAL_MIN_SCORE) scored.push({ item, score });
+      candidates.push(item);
     }
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, PERSONAL_MAX).map((x) => x.item);
+    const matches = matchSuggestions(trimmed, candidates);
+    return rankWithFrecency(
+      candidates.filter((_, index) => matches[index] >= PERSONAL_MIN_SCORE),
+      recent,
+      trimmed,
+    ).slice(0, PERSONAL_MAX);
   }, [trimmed, savedQuick, recent]);
 
   const rest = useMemo(
@@ -115,35 +160,55 @@ export function SearchSheet({
         (r) =>
           !personal.some(
             (p) =>
-              normalizePolish(p.title) === normalizePolish(r.title) ||
-              distanceMeters(p.lat, p.lon, r.lat, r.lon) < SAME_PLACE_M,
+              p.id === r.id ||
+              (normalizePolish(p.title) === normalizePolish(r.title) &&
+                distanceMeters(p.lat, p.lon, r.lat, r.lon) < SAME_PLACE_M),
           ),
       ),
     [results, personal],
   );
+  const ranked = useMemo(
+    () => rankWithFrecency([...personal, ...rest], recent, trimmed),
+    [personal, rest, recent, trimmed],
+  );
 
   const rows = useMemo<Row[]>(() => {
-    if (!trimmed) {
-      return recent.length
-        ? [
-            { type: 'header', label: s.search.recentTrips },
-            ...recent.map((item) => ({ type: 'item' as const, item })),
-          ]
-        : [];
-    }
     const out: Row[] = [];
-    if (personal.length) {
-      out.push({ type: 'header', label: s.search.yourPlaces });
-      for (const item of personal) out.push({ type: 'item', item });
+    let hasItem = false;
+    const append = (label: string, items: Suggestion[]) => {
+      if (!items.length) return;
+      out.push({ type: 'header', label });
+      items.forEach((item, index) => {
+        out.push({
+          type: 'item',
+          item,
+          first: index === 0,
+          last: index === items.length - 1,
+          prominent: !!trimmed && !hasItem,
+        });
+        hasItem = true;
+      });
+    };
+    if (!trimmed) {
+      const now = Date.now();
+      const ordered = [...recent].sort(
+        (a, b) =>
+          Number(b.id === '__gps') - Number(a.id === '__gps') ||
+          frecency(b, now) - frecency(a, now),
+      );
+      append(s.search.suggestedPlaces, ordered);
+      return out;
     }
-    if (rest.length) {
-      out.push({ type: 'header', label: s.search.resultsFor(trimmed, rest.length) });
-      for (const item of rest) out.push({ type: 'item', item });
+    if (lines.length) {
+      out.push({ type: 'header', label: s.lineTimetable.title });
+      for (const line of lines) out.push({ type: 'line', line });
+      hasItem = true;
     }
+    append(s.search.resultsFor(trimmed, ranked.length), ranked);
     return out;
-  }, [trimmed, recent, personal, rest, s]);
+  }, [trimmed, recent, ranked, s, lines]);
 
-  const first = trimmed ? (personal[0] ?? rest[0]) : undefined;
+  const first = trimmed ? ranked[0] : undefined;
 
   const handleSelect = (item: Suggestion) => {
     onSelect(item);
@@ -162,6 +227,9 @@ export function SearchSheet({
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
       onChange={(idx) => {
         if (idx === -1) {
           onClose();
@@ -189,7 +257,7 @@ export function SearchSheet({
           </TouchableOpacity>
         )}
 
-        <View style={styles.searchRow}>
+        <View style={[styles.inputBox, focused && styles.inputFocused]}>
           <TouchableOpacity
             onPress={handleClose}
             style={styles.leadingBtn}
@@ -197,55 +265,60 @@ export function SearchSheet({
             accessibilityRole="button"
             accessibilityLabel={s.search.closeA11y}
           >
-            <ArrowLeft size={23} color={scheme.onSurface} />
+            <ArrowLeft size={23} color={scheme.onSurfaceVariant} />
           </TouchableOpacity>
-          <View style={styles.inputBox}>
-            <Search size={20} color={scheme.onSurfaceVariant} />
-            <BottomSheetTextInput
-              ref={inputRef}
-              value={query}
-              onChangeText={onQuery}
-              placeholder={placeholder}
-              accessibilityLabel={placeholder}
-              placeholderTextColor={scheme.onSurfaceVariant}
-              style={styles.input}
-              returnKeyType="search"
-              autoCorrect={false}
-              autoCapitalize="none"
-              blurOnSubmit={false}
-              onSubmitEditing={() => first && handleSelect(first)}
-            />
-            {loading && (
-              <ActivityIndicator size="small" color={scheme.primary} style={styles.spinner} />
-            )}
-            {query ? (
-              <TouchableOpacity
-                onPress={() => {
-                  onQuery('');
-                  inputRef.current?.focus();
-                }}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                style={styles.trailingBtn}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={s.search.clearA11y}
-              >
-                <X size={19} color={scheme.onSurfaceVariant} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
+          <BottomSheetTextInput
+            ref={inputRef}
+            value={query}
+            onChangeText={onQuery}
+            placeholder={placeholder}
+            accessibilityLabel={placeholder}
+            placeholderTextColor={scheme.onSurfaceVariant}
+            style={styles.input}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            selectionColor={scheme.primary}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            blurOnSubmit={false}
+            onSubmitEditing={() =>
+              lines[0] ? handleLineSelect(lines[0]) : first && handleSelect(first)
+            }
+          />
+          {query ? (
+            <TouchableOpacity
+              onPress={() => {
+                onQuery('');
+                inputRef.current?.focus();
+              }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.trailingBtn}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={s.search.clearA11y}
+            >
+              <X size={19} color={scheme.onSurfaceVariant} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
       <BottomSheetFlatList
         data={rows}
-        keyExtractor={(r: Row, idx: number) =>
-          r.type === 'header' ? `h-${r.label}` : `${r.item.id}-${idx}`
+        keyExtractor={(r: Row) =>
+          r.type === 'header'
+            ? `h-${r.label}`
+            : r.type === 'line'
+              ? `line-${r.line.routeId}`
+              : r.item.id
         }
         overScrollMode="never"
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
         ListHeaderComponent={
           <View style={{ gap: 6 }}>
             {notice ? (
@@ -277,20 +350,76 @@ export function SearchSheet({
         }
         renderItem={({ item: row }: { item: Row }) =>
           row.type === 'header' ? (
-            <Text style={styles.section}>{row.label}</Text>
+            <Text style={styles.section} accessibilityRole="header">
+              {row.label}
+            </Text>
+          ) : row.type === 'line' ? (
+            <TouchableOpacity
+              onPress={() => handleLineSelect(row.line)}
+              accessibilityRole="button"
+              accessibilityLabel={s.lineTimetable.open(row.line.shortName)}
+              activeOpacity={0.7}
+              style={styles.lineResult}
+            >
+              <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
+              <View style={styles.lineText}>
+                <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
+                <Text style={styles.lineSubtitle}>
+                  {row.line.longName || s.lineTimetable.searchHint}
+                </Text>
+              </View>
+              <ChevronRight size={22} color={scheme.onPrimaryContainer} />
+            </TouchableOpacity>
           ) : (
-            <SuggestionRow item={row.item} query={trimmed} onPress={() => handleSelect(row.item)} />
+            <SuggestionRow
+              item={row.item}
+              query={trimmed}
+              onPress={() => handleSelect(row.item)}
+              segment={row.first ? (row.last ? 'single' : 'first') : row.last ? 'last' : 'middle'}
+              prominent={row.prominent}
+            />
           )
         }
-        ListEmptyComponent={
-          trimmed ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>
-                {loading ? s.search.searching(cityLoc) : s.search.noResultsFor(trimmed)}
-              </Text>
-              {!loading && <Text style={styles.emptySub}>{s.search.noResultsHint(cityId)}</Text>}
+        ListFooterComponent={
+          loading && rows.length > 0 ? (
+            <View style={styles.status} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={scheme.primary} />
+              <Text style={styles.emptySub}>{s.search.searching(cityLoc)}</Text>
             </View>
+          ) : error && rows.length > 0 ? (
+            <Text style={styles.error} accessibilityRole="alert">
+              {s.search.errorHint}
+            </Text>
           ) : null
+        }
+        ListEmptyComponent={
+          <View style={styles.empty} accessibilityLiveRegion="polite">
+            <View style={styles.emptyIcon}>
+              {loading ? (
+                <ActivityIndicator color={scheme.primary} />
+              ) : (
+                <Search size={28} color={scheme.primary} />
+              )}
+            </View>
+            <Text style={styles.emptyTitle}>
+              {loading
+                ? s.search.searching(cityLoc)
+                : error
+                  ? s.search.errorTitle
+                  : trimmed
+                    ? s.search.noResultsFor(trimmed)
+                    : s.search.emptyTitle}
+            </Text>
+            {!loading && (
+              <Text style={styles.emptySub}>
+                {error
+                  ? s.search.errorHint
+                  : trimmed
+                    ? s.search.noResultsHint(cityId)
+                    : s.search.emptyHint}
+              </Text>
+            )}
+          </View>
         }
       />
     </BottomSheet>
@@ -298,13 +427,25 @@ export function SearchSheet({
 }
 
 const styles = StyleSheet.create({
+  lineResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    minHeight: 80,
+    borderRadius: shape.large,
+    backgroundColor: scheme.primaryContainer,
+  },
+  lineText: { flex: 1, gap: 4 },
+  lineTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
+  lineSubtitle: { ...type.bodySmall, color: scheme.onPrimaryContainer },
   sheet: {
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
   },
   handle: { backgroundColor: scheme.outlineVariant, width: 36 },
-  head: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 18, gap: 12 },
+  head: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, gap: 12 },
   originHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -314,6 +455,7 @@ const styles = StyleSheet.create({
     borderRadius: shape.medium,
     maxWidth: '100%',
     minHeight: 48,
+    backgroundColor: scheme.surfaceContainer,
   },
   originHintLabel: {
     ...type.bodySmall,
@@ -332,18 +474,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 2,
   },
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   inputBox: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    paddingLeft: 14,
+    borderRadius: shape.extraLarge,
+    borderWidth: 2,
+    borderColor: scheme.outline,
+    paddingLeft: 2,
     paddingRight: 4,
-    minHeight: 56,
-    gap: 6,
+    minHeight: 64,
+    gap: 2,
   },
+  inputFocused: { borderColor: scheme.primary },
   leadingBtn: {
     width: 48,
     height: 48,
@@ -351,7 +494,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: shape.medium,
   },
-  spinner: { marginHorizontal: 4 },
   trailingBtn: {
     width: 48,
     height: 48,
@@ -362,28 +504,29 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     ...type.bodyLarge,
+    minWidth: 0,
     color: scheme.onSurface,
     paddingVertical: 14,
     paddingHorizontal: 4,
   },
-  list: { paddingHorizontal: 4, paddingBottom: 40, gap: 2 },
+  list: { paddingHorizontal: 16, paddingBottom: 40, gap: 2 },
   section: {
-    ...type.labelMedium,
+    ...type.labelLarge,
     color: scheme.onSurfaceVariant,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingHorizontal: 8,
+    paddingTop: 18,
+    paddingBottom: 8,
   },
   quickRow: {
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     paddingVertical: 6,
     flexWrap: 'wrap',
   },
   quick: {
     backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.medium,
+    borderRadius: shape.full,
     paddingHorizontal: 14,
     paddingVertical: 10,
     minHeight: 48,
@@ -395,10 +538,27 @@ const styles = StyleSheet.create({
     color: scheme.onSecondaryContainer,
     fontWeight: '600',
   },
-  empty: { padding: 24, alignItems: 'center', gap: 6 },
-  emptyTitle: { ...type.titleMedium, color: scheme.onSurface },
+  empty: { paddingHorizontal: 16, paddingVertical: 28, alignItems: 'center', gap: 12 },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: shape.large,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: { ...type.titleMedium, color: scheme.onSurface, textAlign: 'center' },
+  status: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 20,
+  },
+  error: { ...type.bodyMedium, color: scheme.error, padding: 16 },
   emptySub: {
     ...type.bodyMedium,
+    flexShrink: 1,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 20,

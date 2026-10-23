@@ -5,6 +5,7 @@ use std::collections::{BinaryHeap, HashMap};
 use std::sync::{Mutex, OnceLock};
 
 pub const FOOT_QUERY_MAGIC: u32 = 0x464F_4F54; // "FOOT"
+const RAIL_QUERY_MAGIC: u32 = 0x5241_494C;
 const TILE_ZOOM: u32 = 14;
 const DEFAULT_EXTENT: i32 = 4096;
 const MAX_CACHED_TILES: usize = 48;
@@ -33,6 +34,7 @@ struct CachedFootTile {
     tx: i32,
     ty: i32,
     segs: Vec<SplitSeg>,
+    rails: Vec<SplitSeg>,
 }
 
 static FOOT_TILES: OnceLock<Mutex<Vec<CachedFootTile>>> = OnceLock::new();
@@ -58,14 +60,16 @@ pub fn load_foot_tile(tx: i32, ty: i32, mvt_bytes: &[u8]) -> bool {
     if mvt_bytes.is_empty() || tx < 0 || ty < 0 {
         return false;
     }
-    let raw_segs = parse_mvt_transportation(tx, ty, mvt_bytes);
+    let raw_segs = parse_mvt_transportation(tx, ty, mvt_bytes, false);
     let split_segs = pre_split_tile_segments(tx, ty, &raw_segs);
+    let rails = pre_split_tile_segments(tx, ty, &parse_mvt_transportation(tx, ty, mvt_bytes, true));
     let Ok(mut guard) = tile_registry().lock() else {
         return false;
     };
     if let Some(pos) = guard.iter().position(|t| t.tx == tx && t.ty == ty) {
         let mut entry = guard.remove(pos);
         entry.segs = split_segs;
+        entry.rails = rails;
         guard.push(entry);
         return true;
     }
@@ -76,6 +80,7 @@ pub fn load_foot_tile(tx: i32, ty: i32, mvt_bytes: &[u8]) -> bool {
         tx,
         ty,
         segs: split_segs,
+        rails,
     });
     true
 }
@@ -357,7 +362,7 @@ fn emit_ring_segments(
     }
 }
 
-fn parse_mvt_transportation(tx: i32, ty: i32, mvt_bytes: &[u8]) -> Vec<RawSeg> {
+fn parse_mvt_transportation(tx: i32, ty: i32, mvt_bytes: &[u8], rail: bool) -> Vec<RawSeg> {
     let mut raw_segs = Vec::with_capacity(8192);
     let mut pos = 0;
 
@@ -541,9 +546,13 @@ fn parse_mvt_transportation(tx: i32, ty: i32, mvt_bytes: &[u8]) -> Vec<RawSeg> {
                     }
                 }
 
-                let Some((weight_milli, is_connector)) = classify_pedestrian_way(
-                    class, subclass, foot, access, service, brunnel, ramp,
-                ) else {
+                let classification = if rail {
+                    (class == b"rail" && matches!(subclass, b"rail" | b"narrow_gauge"))
+                        .then_some((1000, false))
+                } else {
+                    classify_pedestrian_way(class, subclass, foot, access, service, brunnel, ramp)
+                };
+                let Some((weight_milli, is_connector)) = classification else {
                     continue;
                 };
 
@@ -898,6 +907,7 @@ fn try_route_with_margin(
     tiles: &[CachedFootTile],
     g_waypoints: &[(i32, i32)],
     margin: i32,
+    rail: bool,
 ) -> Option<Vec<(f64, f64)>> {
     let mut min_x = i32::MAX;
     let mut max_x = i32::MIN;
@@ -960,7 +970,7 @@ fn try_route_with_margin(
         if tx_max < min_x || tx_min > max_x || ty_max < min_y || ty_min > max_y {
             continue;
         }
-        for s in &tile.segs {
+        for s in if rail { &tile.rails } else { &tile.segs } {
             if s.x1.max(s.x2) < min_x
                 || s.x1.min(s.x2) > max_x
                 || s.y1.max(s.y2) < min_y
@@ -1054,6 +1064,9 @@ fn try_route_with_margin(
                     py,
                 });
             }
+        }
+        if rail && best_d2 > 800.0_f64.powi(2) {
+            return None;
         }
         best
     };
@@ -1182,7 +1195,7 @@ fn try_route_with_margin(
         full_grid_path.extend_from_slice(&leg_pts);
     }
 
-    let cleaned = smooth_micro_jogs(&full_grid_path);
+    let cleaned = if rail { full_grid_path } else { smooth_micro_jogs(&full_grid_path) };
     if cleaned.len() < 2 {
         return None;
     }
@@ -1268,6 +1281,10 @@ fn smooth_micro_jogs(pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
 }
 
 pub fn route_foot_waypoints(waypoints: &[(f64, f64)]) -> Option<Vec<(f64, f64)>> {
+    route_waypoints(waypoints, false)
+}
+
+fn route_waypoints(waypoints: &[(f64, f64)], rail: bool) -> Option<Vec<(f64, f64)>> {
     if waypoints.len() < 2 {
         return None;
     }
@@ -1283,10 +1300,10 @@ pub fn route_foot_waypoints(waypoints: &[(f64, f64)]) -> Option<Vec<(f64, f64)>>
         return None;
     }
 
-    if let Some(path) = try_route_with_margin(&guard, &g_waypoints, 1400) {
+    if let Some(path) = try_route_with_margin(&guard, &g_waypoints, 1400, rail) {
         return Some(path);
     }
-    try_route_with_margin(&guard, &g_waypoints, 3200)
+    try_route_with_margin(&guard, &g_waypoints, 3200, rail)
 }
 
 pub fn execute_foot_route_bytes(req: &[u8]) -> Vec<u8> {
@@ -1294,7 +1311,7 @@ pub fn execute_foot_route_bytes(req: &[u8]) -> Vec<u8> {
         return encode_status(-2);
     }
     let magic = u32::from_le_bytes([req[0], req[1], req[2], req[3]]);
-    if magic != FOOT_QUERY_MAGIC {
+    if magic != FOOT_QUERY_MAGIC && magic != RAIL_QUERY_MAGIC {
         return encode_status(-2);
     }
     let count = u32::from_le_bytes([req[4], req[5], req[6], req[7]]) as usize;
@@ -1331,7 +1348,7 @@ pub fn execute_foot_route_bytes(req: &[u8]) -> Vec<u8> {
         waypoints.push((lat, lon));
     }
 
-    let Some(coords) = route_foot_waypoints(&waypoints) else {
+    let Some(coords) = route_waypoints(&waypoints, magic == RAIL_QUERY_MAGIC) else {
         return encode_status(-1);
     };
 
@@ -1374,7 +1391,7 @@ mod tests {
         ((n << 1) ^ (n >> 31)) as u32 as u64
     }
 
-    fn build_synthetic_mvt_tile() -> Vec<u8> {
+    fn build_synthetic_mvt_tile(class: &[u8], subclass: &[u8]) -> Vec<u8> {
         // Synthetic OpenMapTiles `transportation` layer with a street grid:
         // Horizontal roads at y = 1000, 1500, 2000; vertical roads at x = 1000, 1500, 2000.
         let mut layer = Vec::new();
@@ -1394,8 +1411,7 @@ mod tests {
             layer.extend_from_slice(k);
         }
 
-        // field 4: val 0 = "path", val 1 = "footway"
-        for v in [b"path".as_slice(), b"footway".as_slice()] {
+        for v in [class, subclass] {
             let mut vbuf = Vec::new();
             push_varint(&mut vbuf, (1 << 3) | 2);
             push_varint(&mut vbuf, v.len() as u64);
@@ -1457,7 +1473,7 @@ mod tests {
     #[test]
     fn parses_synthetic_mvt_and_routes_l_turn() {
         clear_foot_tiles();
-        let mvt = build_synthetic_mvt_tile();
+        let mvt = build_synthetic_mvt_tile(b"path", b"footway");
         let tx = 8967;
         let ty = 5477;
         assert!(load_foot_tile(tx, ty, &mvt));
@@ -1481,5 +1497,29 @@ mod tests {
         assert!((route[0].0 - p_start.0).abs() < 1e-4);
         let last = route[route.len() - 1];
         assert!((last.0 - p_end.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn rail_profile_follows_tracks_and_excludes_streets() {
+        let tx = 8967;
+        let ty = 5477;
+        let tracks = build_synthetic_mvt_tile(b"rail", b"rail");
+        let streets = build_synthetic_mvt_tile(b"minor", b"residential");
+        assert!(parse_mvt_transportation(tx, ty, &streets, true).is_empty());
+        assert!(parse_mvt_transportation(tx, ty, &tracks, false).is_empty());
+        let rails = pre_split_tile_segments(tx, ty, &parse_mvt_transportation(tx, ty, &tracks, true));
+        let tiles = [CachedFootTile { tx, ty, segs: Vec::new(), rails }];
+        let start = (tx * 4096 + 1000, ty * 4096 + 1000);
+        let end = (tx * 4096 + 2000, ty * 4096 + 2000);
+        let route = try_route_with_margin(&tiles, &[start, end], 1400, true).expect("rail route");
+        assert!(route.len() > 2);
+        for (lat, lon) in route {
+            let (x, y) = lat_lon_to_global_grid(lat, lon);
+            assert!([1000, 1500, 2000].contains(&(x - tx * 4096))
+                || [1000, 1500, 2000].contains(&(y - ty * 4096)));
+        }
+        assert!(try_route_with_margin(&tiles, &[start, end], 1400, false).is_none());
+        let far = (start.0 - 2000, start.1 - 2000);
+        assert!(try_route_with_margin(&tiles, &[far, end], 3200, true).is_none());
     }
 }

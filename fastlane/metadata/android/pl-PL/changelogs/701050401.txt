@@ -1,0 +1,3 @@
+Wariant F-Droid korzysta z systemowego GPS Androida i kompiluje moduły Expo ze źródeł.
+Usunięto FCM i Install Referrer. Powiadomienia lokalne zostają.
+Silnik mapy jest częścią aplikacji. Nie wymaga pobierania JavaScriptu z sieci.

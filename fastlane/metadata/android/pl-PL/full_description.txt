@@ -1,0 +1,9 @@
+Kilometr planuje podróże komunikacją miejską na telefonie. Po pobraniu rozkładów możesz wyszukiwać połączenia i sprawdzać odjazdy bez internetu. Mapę offline pobierasz osobno w aplikacji.
+
+• Połączenia z przesiadkami, czasem dojścia i filtrami środków transportu.
+• Odjazdy z przystanków i zapisane miejsca.
+• Śledzenie podróży, powiadomienia lokalne i przypomnienia o odjeździe.
+• Informacje o położeniu pojazdów i aktualności, gdy masz internet.
+• Kopia zapasowa ustawień i zapisanych miejsc do pliku.
+
+Bez reklam i konta. Dostępna po polsku, angielsku, niemiecku i ukraińsku.

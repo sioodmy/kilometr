@@ -50,12 +50,15 @@ import {
 } from '../../src/services/dataManager';
 import { liveTracker } from '../../src/services/liveTracker';
 import { deduplicateConnections, mergeConnections } from '../../src/services/routing/connectionIdentity';
+import { sortConnectionsByCost } from '../../src/services/routing/engine';
+import { costParamsFor } from '../../src/services/routing/raptor';
+import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
-import { DepartureTimeSheet } from '../../src/components/DepartureTimeSheet';
+import { DepartureTimeSheet, type JourneyTimeSelection } from '../../src/components/DepartureTimeSheet';
 import {
   RoutesThumbBar,
   type ModePreference,
@@ -170,6 +173,17 @@ export default function RoutesScreen() {
   };
 
   const [items, setItems] = useState<Connection[]>([]);
+  const [timeSheetOpen, setTimeSheetOpen] = useState(false);
+  const [targetTimeSec, setTargetTimeSec] = useState<number | undefined>(undefined);
+  const [timeMode, setTimeMode] = useState<JourneyTimeMode>('departure');
+  const arrivalMode = timeMode === 'arrival';
+  const timeLabel = targetTimeSec === undefined
+    ? s.routes.now
+    : (arrivalMode ? s.timeSheet.selectedArrival : s.timeSheet.selectedDeparture)(
+        targetTimeSec >= 86400 ? s.common.tomorrow : s.common.today,
+        String(Math.floor(targetTimeSec / 3600) % 24).padStart(2, '0'),
+        String(Math.floor(targetTimeSec % 3600 / 60)).padStart(2, '0'),
+      );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -236,12 +250,12 @@ export default function RoutesScreen() {
         leg.mode === 'walk' || leg.mode === modeFilter || (modeFilter === 'bus' && leg.mode === 'trolleybus'),
       ));
     }
-    return [...list].sort(
-      (a, b) =>
-        a.departureSec + a.durationMin * 60 - (b.departureSec + b.durationMin * 60) ||
-        a.departureSec - b.departureSec,
+    const cfg = getSettingsSync();
+    return sortConnectionsByCost(
+      [...list], costParamsFor(cfg.routeStyle), profileWalkSpeedMps(cfg.walkPace),
+      arrivalMode ? targetTimeSec : undefined,
     );
-  }, [items, directOnly, modeFilter]);
+  }, [items, directOnly, modeFilter, arrivalMode, targetTimeSec]);
 
   // Dock przesuwa się nad listą bez zmiany wysokości jej viewportu.
   const dockProgress = useSharedValue(1);
@@ -277,12 +291,6 @@ export default function RoutesScreen() {
     };
   }, []);
 
-  // Stan wyboru godziny odjazdu - nad queryAt, bo zapytanie mapuje czas na
-  // parametr silnika (departureTimeSec).
-  const [timeSheetOpen, setTimeSheetOpen] = useState(false);
-  const [departureTimeSec, setDepartureTimeSec] = useState<number | undefined>(undefined);
-  const [timeLabel, setTimeLabel] = useState(s.routes.now);
-
   const queryAt = (depSec: number | undefined) => {
     const cfg = getSettingsSync();
     return {
@@ -298,7 +306,8 @@ export default function RoutesScreen() {
       anchorStopId: activeAnchor?.stopId,
       anchorStopLat: activeAnchor?.lat,
       anchorStopLon: activeAnchor?.lon,
-      departureTimeSec: depSec,
+      departureTimeSec: arrivalMode ? undefined : depSec,
+      arriveBySec: arrivalMode ? depSec : undefined,
       // Jednorazowe filtry nadpisują systemowe maxTransfers / typ pojazdów.
       maxTransfers: directOnly ? 0 : cfg.maxTransfers,
       modes: modeFilter,
@@ -320,6 +329,7 @@ export default function RoutesScreen() {
   const [results, setResults] = useState<Suggestion[]>([]);
   const [recent, setRecent] = useState<Suggestion[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [savedQuick, setSavedQuick] = useState<Suggestion[]>([]);
   // GPS spoza strefy aktywnego miasta nie może być startem trasy.
   const [gpsOutside, setGpsOutside] = useState(false);
@@ -393,32 +403,37 @@ export default function RoutesScreen() {
     };
   }, [gpsOrigin, activeAnchor]);
 
-  // Debounced search (jak na głównym), bias wg aktualnego startu
+  // Lokalny indeks odpowiada od razu, odległości względem aktualnego startu.
   const searchSeq = useRef(0);
   useEffect(() => {
+    const seq = ++searchSeq.current;
     if (!sheetFor) return;
     const q = query.trim();
-    const seq = ++searchSeq.current;
+    setSearchError(false);
     if (!q) {
       setResults([]);
       setSearchLoading(false);
       return;
     }
     setSearchLoading(true);
-    const t = setTimeout(() => {
-      SearchService.search(q, { lat: fromLat, lon: fromLon }, 'routes-start', (partial) => {
-        if (seq === searchSeq.current) setResults(partial);
+    SearchService.search(q, { lat: fromLat, lon: fromLon }, 'routes-start', (partial) => {
+      if (seq === searchSeq.current) setResults(partial);
+    })
+      .then((r) => {
+        if (seq !== searchSeq.current) return;
+        setResults(r);
+        setSearchLoading(false);
       })
-        .then((r) => {
-          if (seq !== searchSeq.current) return;
-          setResults(r);
+      .catch(() => {
+        if (seq === searchSeq.current) {
+          setSearchError(true);
           setSearchLoading(false);
-        })
-        .catch(() => {
-          if (seq === searchSeq.current) setSearchLoading(false);
-        });
-    }, 90);
-    return () => clearTimeout(t);
+        }
+      });
+    return () => {
+      ++searchSeq.current;
+      SearchService.cancel('routes-start');
+    };
   }, [query, sheetFor, fromLat, fromLon]);
 
   const recentWithGps = useMemo(
@@ -540,10 +555,10 @@ export default function RoutesScreen() {
     setLoading(true);
     setLoadError(false);
     setOffline(false);
-    setNoMoreEarlier(false);
+    setNoMoreEarlier(arrivalMode);
     setNoMoreLater(false);
     setLoadMoreFailed(false);
-    const depSec = targetDepSec !== undefined ? targetDepSec : departureTimeSec;
+    const depSec = targetDepSec !== undefined ? targetDepSec : targetTimeSec;
     try {
       // Wcześniej niż dotąd: pusty sklep dawał „zero połączeń", a ekran
       // pokazywał to jako wynik wyszukiwania.
@@ -601,7 +616,7 @@ export default function RoutesScreen() {
    */
   const quietRefresh = async (targetDepSec?: number) => {
     const seq = ++fetchSeq.current;
-    const depSec = targetDepSec !== undefined ? targetDepSec : departureTimeSec;
+    const depSec = targetDepSec !== undefined ? targetDepSec : targetTimeSec;
     try {
       const c = await RoutingService.getConnections(queryAt(depSec));
       if (seq !== fetchSeq.current) return false;
@@ -646,12 +661,14 @@ export default function RoutesScreen() {
     setLoadingMore(true);
     setLoadMoreFailed(false);
     const lastDeparture = items[items.length - 1].departureSec;
-    const nextDeparture = lastDeparture + 60;
+    const nextTime = arrivalMode
+      ? Math.min(...items.map((c) => c.arrivalSec ?? c.departureSec + c.durationMin * 60)) - 1
+      : lastDeparture + 60;
     const seq = ++fetchSeq.current;
 
     try {
-      // Paginacja zawsze kotwiczy się do czasów ODJAZDÓW z krawędzi listy.
-      const c = await RoutingService.getConnections(queryAt(nextDeparture));
+      // Przyjazdy przewijamy wstecz, bez przekraczania wybranego terminu.
+      const c = await RoutingService.getConnections(queryAt(nextTime));
       if (seq !== fetchSeq.current) return;
       setItems((prev) => {
         const { list, added } = mergeConnections(prev, c);
@@ -670,6 +687,7 @@ export default function RoutesScreen() {
 
   // Starsze (historyczne, już odjechane) - dokładane Z GÓRY
   const handleLoadEarlier = async () => {
+    if (arrivalMode) return;
     if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreEarlier || offline) return;
     const firstDeparture = items[0].departureSec;
     if (!firstDeparture || firstDeparture <= 0) return;
@@ -838,7 +856,7 @@ export default function RoutesScreen() {
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
-      fetchRoutes(departureTimeSec, items.length > 0);
+      fetchRoutes(targetTimeSec, items.length > 0);
     });
     return () => {
       task.cancel();
@@ -847,7 +865,7 @@ export default function RoutesScreen() {
     // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
     // importu dostawał pustą listę i nigdy sam się nie odpytywał, więc
     // połączenia zostawały niewidoczne mimo gotowego rozkładu.
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady, departureTimeSec]);
+  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady, targetTimeSec, timeMode]);
 
   // Pull znad listy NIE odświeża - dociąga historyczne (już odjechane)
   // połączenia. To JEDYNY sposób na ich wczytanie; odświeżanie listy robią
@@ -885,12 +903,17 @@ export default function RoutesScreen() {
     setToLon(tempLon);
   };
 
-  const handleTimeSelect = (result: { timeSec: number | undefined; label: string }) => {
-    setDepartureTimeSec(result.timeSec);
-    setTimeLabel(result.label);
+  const handleTimeSelect = (result: JourneyTimeSelection) => {
+    if (targetTimeSec === result.timeSec && timeMode === result.mode) return;
+    fetchSeq.current++;
+    setItems([]);
+    setLoading(true);
+    setTargetTimeSec(result.timeSec);
+    setTimeMode(result.mode);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
-  const isCustomTime = departureTimeSec !== undefined;
+  const isCustomTime = targetTimeSec !== undefined;
 
   const openConnection = useCallback(
     (item: Connection) => {
@@ -1055,7 +1078,7 @@ export default function RoutesScreen() {
           )}
           {timetableReady && (
             <Pressable
-              onPress={() => fetchRoutes(departureTimeSec)}
+              onPress={() => fetchRoutes(targetTimeSec)}
               style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
             >
               <Text style={styles.retryText}>{s.common.retry}</Text>
@@ -1069,6 +1092,7 @@ export default function RoutesScreen() {
           accessibilityState={{ busy: loading }}
           pointerEvents={loading ? 'none' : 'auto'}
           refreshControl={
+            arrivalMode ? undefined :
             <RefreshControl
               refreshing={loadingEarlier}
               onRefresh={handlePullEarlier}
@@ -1106,7 +1130,7 @@ export default function RoutesScreen() {
             <View style={styles.countRow}>
               {loading && <ActivityIndicator size="small" color={scheme.primary} accessibilityLabel={s.routes.searching} />}
               <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(displayed.length)} • {isCustomTime ? s.routes.countDepart(timeLabel) : s.routes.countNearest}
+                {connectionsLabel(displayed.length)} • {isCustomTime ? (arrivalMode ? timeLabel : s.routes.countDepart(timeLabel)) : s.routes.countNearest}
                 {directOnly ? s.routes.countDirect : ''}
                 {modeFilter === 'tram' ? s.routes.countTram : modeFilter === 'bus' ? s.routes.countBus : ''}
                 {loadingEarlier ? s.routes.countEarlier : ''}
@@ -1158,7 +1182,7 @@ export default function RoutesScreen() {
                     </Pressable>
                   </>
                 ) : (
-                  <Text style={styles.footerText}>{s.routes.noMore}</Text>
+                  <Text style={styles.footerText}>{arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}</Text>
                 )}
               </View>
             ) : null
@@ -1177,7 +1201,7 @@ export default function RoutesScreen() {
                     ? s.routes.emptyDirect
                     : modeFilter !== 'all'
                       ? s.routes.emptyMode(modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen)
-                      : s.routes.emptyPlain}
+                      : arrivalMode ? s.routes.emptyArrival : s.routes.emptyPlain}
               </Text>
               {directOnly && (
                 <Pressable
@@ -1207,7 +1231,8 @@ export default function RoutesScreen() {
       {/* 4. Bottom sheet wyboru daty i godziny */}
       {timeSheetOpen && (
         <DepartureTimeSheet
-          initialTimeSec={departureTimeSec}
+          initialTimeSec={targetTimeSec}
+          initialMode={timeMode}
           onClose={() => setTimeSheetOpen(false)}
           onSelect={handleTimeSelect}
         />
@@ -1219,6 +1244,7 @@ export default function RoutesScreen() {
           placeholder={sheetFor === 'from' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
           query={query}
           loading={searchLoading}
+          error={searchError}
           results={results}
           recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}

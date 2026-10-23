@@ -15,14 +15,22 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X } from 'lucide-react-native';
+import { Check, X } from 'lucide-react-native';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
+import type { JourneyTimeMode } from '../services/routing/types';
+
+export interface JourneyTimeSelection {
+  timeSec: number | undefined;
+  mode: JourneyTimeMode;
+  label: string;
+}
 
 interface DepartureTimeSheetProps {
   initialTimeSec?: number;
+  initialMode?: JourneyTimeMode;
   onClose: () => void;
-  onSelect: (result: { timeSec: number | undefined; label: string }) => void;
+  onSelect: (result: JourneyTimeSelection) => void;
 }
 
 function pad(n: number): string {
@@ -149,7 +157,12 @@ function WheelPicker({
   );
 }
 
-export function DepartureTimeSheet({ initialTimeSec, onClose, onSelect }: DepartureTimeSheetProps) {
+export function DepartureTimeSheet({
+  initialTimeSec,
+  initialMode = 'departure',
+  onClose,
+  onSelect,
+}: DepartureTimeSheetProps) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
   const { height, width, fontScale } = useWindowDimensions();
@@ -157,7 +170,7 @@ export function DepartureTimeSheet({ initialTimeSec, onClose, onSelect }: Depart
   const compact = width / fontScale < 300;
   const sheetHeight = Math.min(
     height - insets.top - insets.bottom - 16,
-    660 + Math.max(0, fontScale - 1) * 420,
+    724 + Math.max(0, fontScale - 1) * 420,
   );
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -171,8 +184,9 @@ export function DepartureTimeSheet({ initialTimeSec, onClose, onSelect }: Depart
   }, []);
 
   const [openedAt] = useState(() => new Date());
+  const [mode, setMode] = useState(initialMode);
   const initialSeconds = initialTimeSec ?? openedAt.getHours() * 3600 + openedAt.getMinutes() * 60;
-  const [isNow, setIsNow] = useState(initialTimeSec === undefined);
+  const [isNow, setIsNow] = useState(initialTimeSec === undefined && initialMode === 'departure');
   const [day, setDay] = useState<'today' | 'tomorrow'>(
     initialSeconds >= 86400 ? 'tomorrow' : 'today',
   );
@@ -193,19 +207,26 @@ export function DepartureTimeSheet({ initialTimeSec, onClose, onSelect }: Depart
 
   const handleSetNow = () => {
     const now = new Date();
-    setIsNow(true);
+    setIsNow(mode === 'departure');
     setDay('today');
     setHour(now.getHours());
     setMinute(now.getMinutes());
   };
 
   const dayLabel = day === 'today' ? s.common.today : s.common.tomorrow;
-  const selection = isNow
-    ? s.common.now
-    : s.timeSheet.selectedDeparture(dayLabel, pad(hour), pad(minute));
+  const selection =
+    isNow && mode === 'departure'
+      ? s.common.now
+      : mode === 'arrival'
+        ? s.timeSheet.selectedArrival(dayLabel, pad(hour), pad(minute))
+        : s.timeSheet.selectedDeparture(dayLabel, pad(hour), pad(minute));
   const handleConfirm = () => {
     onSelect({
-      timeSec: isNow ? undefined : (day === 'tomorrow' ? 86400 : 0) + hour * 3600 + minute * 60,
+      timeSec:
+        isNow && mode === 'departure'
+          ? undefined
+          : (day === 'tomorrow' ? 86400 : 0) + hour * 3600 + minute * 60,
+      mode,
       label: selection,
     });
     onClose();
@@ -254,7 +275,7 @@ export function DepartureTimeSheet({ initialTimeSec, onClose, onSelect }: Depart
       <View style={{ height: sheetHeight - HANDLE_HEIGHT }} accessibilityViewIsModal>
         <View style={styles.header}>
           <Text style={styles.title} accessibilityRole="header">
-            {s.timeSheet.titleDepart}
+            {s.timeSheet.title}
           </Text>
           <Pressable
             onPress={onClose}
@@ -273,6 +294,42 @@ export function DepartureTimeSheet({ initialTimeSec, onClose, onSelect }: Depart
           nestedScrollEnabled
           overScrollMode="never"
         >
+          <View
+            style={[styles.modeSelector, compact && styles.modeSelectorCompact]}
+            accessibilityRole="tablist"
+          >
+            {(
+              [
+                { value: 'departure', label: s.timeSheet.modeDeparture },
+                { value: 'arrival', label: s.timeSheet.modeArrival },
+              ] as const
+            ).map((option) => {
+              const active = mode === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => {
+                    setMode(option.value);
+                    if (option.value === 'arrival') setIsNow(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.modeTab,
+                    active && styles.modeTabActive,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  {active && (
+                    <Check size={18} color={scheme.onPrimaryContainer} accessible={false} />
+                  )}
+                  <Text style={[styles.modeText, active && styles.presetTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
           <View style={[styles.presetsRow, compact && styles.presetsCompact]}>
             {[
               { label: s.common.now, action: handleSetNow, active: isNow },
@@ -440,6 +497,32 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: scheme.surfaceContainerHighest },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 24, paddingBottom: 24, gap: 24 },
+  modeSelector: {
+    flexDirection: 'row',
+    padding: 4,
+    gap: 4,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  modeSelectorCompact: { flexDirection: 'column' },
+  modeTab: {
+    flex: 1,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: shape.medium,
+  },
+  modeTabActive: { backgroundColor: scheme.primaryContainer },
+  modeText: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
   presetsRow: { flexDirection: 'row', gap: 8 },
   presetsCompact: { flexWrap: 'wrap' },
   preset: {

@@ -1,0 +1,28 @@
+diff --git a/node_modules/expo-modules-autolinking/build/platforms/android/android.js b/node_modules/expo-modules-autolinking/build/platforms/android/android.js
+index d7ca907..cd4fe06 100644
+--- a/node_modules/expo-modules-autolinking/build/platforms/android/android.js
++++ b/node_modules/expo-modules-autolinking/build/platforms/android/android.js
+@@ -18,7 +18,8 @@ const utils_1 = require("../../utils");
+ const ANDROID_PROPERTIES_FILE = 'gradle.properties';
+ const ANDROID_EXTRA_BUILD_DEPS_KEY = 'android.extraMavenRepos';
+ function getConfiguration(options) {
+-    return options.buildFromSource ? { buildFromSource: options.buildFromSource } : undefined;
++    const buildFromSource = process.env.FDROID_BUILD === '1' ? ['.*'] : options.buildFromSource;
++    return buildFromSource ? { buildFromSource } : undefined;
+ }
+ function isAndroidProject(projectRoot) {
+     return (fs_1.default.existsSync(path_1.default.join(projectRoot, 'build.gradle')) ||
+diff --git a/node_modules/expo-modules-autolinking/src/platforms/android/android.ts b/node_modules/expo-modules-autolinking/src/platforms/android/android.ts
+index cb78326..271f86e 100644
+--- a/node_modules/expo-modules-autolinking/src/platforms/android/android.ts
++++ b/node_modules/expo-modules-autolinking/src/platforms/android/android.ts
+@@ -15,7 +15,8 @@ interface AndroidConfigurationOutput {
+ export function getConfiguration(
+   options: AutolinkingOptions
+ ): AndroidConfigurationOutput | undefined {
+-  return options.buildFromSource ? { buildFromSource: options.buildFromSource } : undefined;
++  const buildFromSource = process.env.FDROID_BUILD === '1' ? ['.*'] : options.buildFromSource;
++  return buildFromSource ? { buildFromSource } : undefined;
+ }
+ 
+ export function isAndroidProject(projectRoot: string): boolean {

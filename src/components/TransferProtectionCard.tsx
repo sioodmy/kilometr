@@ -26,12 +26,14 @@ export function TransferAction({
   label,
   onPress,
   disabled,
+  selected,
   style,
 }: {
   children: ReactNode;
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  selected?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const [focused, setFocused] = useState(false);
@@ -52,7 +54,7 @@ export function TransferAction({
     <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ disabled: !!disabled, selected }}
       disabled={disabled}
       onPress={onPress}
       onPressIn={() => setPress(1)}
@@ -114,16 +116,16 @@ export function TransferProtectionCard({
   onPress: () => void;
 }) {
   const s = useStrings();
-  const warning = transferNeedsAttention(state);
-  const unavailable = state?.status === 'unavailable';
-  const Icon = warning ? ShieldAlert : unavailable ? ShieldOff : ShieldCheck;
-  const color = warning
-    ? scheme.onWarningContainer
-    : state?.status === 'changed'
-      ? s.transferGuard.changedBody(state.nextLine ?? '', state.transferStop ?? '')
-      : unavailable
-        ? scheme.onSurfaceVariant
+  const warning = active && transferNeedsAttention(state);
+  const unavailable = active && state?.status === 'unavailable';
+  const Icon = !active ? ShieldOff : warning || unavailable ? ShieldAlert : ShieldCheck;
+  const color =
+    !active || unavailable
+      ? scheme.onSurfaceVariant
+      : warning
+        ? scheme.onWarningContainer
         : scheme.onPrimaryContainer;
+  const statusLabel = active ? s.transferGuard.enabled : s.transferGuard.disabled;
   const body = !active
     ? s.transferGuard.startBody
     : warning
@@ -135,12 +137,25 @@ export function TransferProtectionCard({
           : s.transferGuard.waiting;
   return (
     <TransferAction
-      label={active ? s.transferGuard.showOptions : s.transferGuard.start}
+      label={`${active ? s.transferGuard.showOptions : s.transferGuard.start}. ${statusLabel}`}
       onPress={onPress}
       disabled={busy}
-      style={[styles.card, warning && styles.warning, unavailable && styles.unavailable]}
+      selected={active}
+      style={[
+        styles.card,
+        active && styles.active,
+        warning && styles.warning,
+        unavailable && styles.unavailable,
+      ]}
     >
-      <View style={[styles.symbol, warning && styles.warningSymbol]}>
+      <View
+        style={[
+          styles.symbol,
+          active && styles.activeSymbol,
+          warning && styles.warningSymbol,
+          unavailable && styles.unavailableSymbol,
+        ]}
+      >
         {busy ? (
           <ActivityIndicator color={color} />
         ) : (
@@ -148,7 +163,9 @@ export function TransferProtectionCard({
         )}
       </View>
       <View style={styles.copy}>
-        {active && <Text style={[styles.eyebrow, { color }]}>{s.transferGuard.title}</Text>}
+        <Text style={[styles.eyebrow, { color }]}>
+          {s.transferGuard.title} · {statusLabel}
+        </Text>
         <Text style={[styles.title, { color }]}>
           {active ? transferTitle(state, s) : s.transferGuard.start}
         </Text>
@@ -179,9 +196,15 @@ const styles = StyleSheet.create({
     outlineStyle: 'solid',
   },
   disabled: { opacity: 0.5 },
-  card: { backgroundColor: scheme.primaryContainer, padding: 18, justifyContent: 'flex-start' },
-  warning: { backgroundColor: scheme.warningContainer },
-  unavailable: { backgroundColor: scheme.surfaceContainerHigh },
+  card: {
+    backgroundColor: scheme.surfaceContainer,
+    borderColor: scheme.outlineVariant,
+    padding: 18,
+    justifyContent: 'flex-start',
+  },
+  active: { backgroundColor: scheme.primaryContainer, borderColor: scheme.primary },
+  warning: { backgroundColor: scheme.warningContainer, borderColor: scheme.warning },
+  unavailable: { backgroundColor: scheme.surfaceContainerHigh, borderColor: scheme.outline },
   symbol: {
     width: 52,
     height: 56,
@@ -191,8 +214,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     borderBottomLeftRadius: 22,
     borderBottomRightRadius: 8,
-    backgroundColor: scheme.onPrimaryContainer + '14',
+    backgroundColor: scheme.onSurfaceVariant + '14',
   },
+  activeSymbol: { backgroundColor: scheme.onPrimaryContainer + '14' },
+  unavailableSymbol: { backgroundColor: scheme.onSurfaceVariant + '14' },
   warningSymbol: { backgroundColor: scheme.onWarningContainer + '14' },
   copy: { flex: 1, minWidth: 0, gap: 5 },
   eyebrow: { fontSize: 12, fontWeight: '500', lineHeight: 17 },

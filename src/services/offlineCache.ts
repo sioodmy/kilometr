@@ -1,6 +1,7 @@
 import { kvGet, kvSet } from './storage';
 import { getActiveCityIdSync } from './cityStore';
 import { normalizeConnectionId } from './routing/connectionIdentity';
+import { frecency, suggestionIdentity } from './searchFrecency';
 
 import type { Connection, RouteQuery, Suggestion } from '../types/models';
 
@@ -205,14 +206,18 @@ export async function saveSuggestions(query: string, results: Suggestion[], city
 }
 
 /** Offline: dokładny query, a jak brak - najdłuższy zapamiętany prefiks. */
-export async function loadSuggestions(query: string): Promise<Suggestion[]> {
+export async function loadSuggestions(query: string, cityId?: string): Promise<Suggestion[]> {
   const key = normQuery(query);
   if (!key) return [];
-  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(cityScopedKey(KEYS.suggestions));
+  const all = await readJSON<Record<string, Stamped<Suggestion[]>>>(
+    cityScopedKey(KEYS.suggestions, cityId),
+  );
   if (!all) return [];
   // Cache żyje między wersjami apki (TTL 7 dni), więc wpis może mieć stary
   // kształt: brak tytułu/adresu dawał TypeError w każdej podpowiedzi.
-  const usable = (s: Suggestion) => typeof s?.title === 'string' && typeof s?.address === 'string';
+  const usable = (s: Suggestion) =>
+    typeof s?.id === 'string' && typeof s.title === 'string' && typeof s.address === 'string' &&
+    Number.isFinite(s.lat) && Number.isFinite(s.lon);
   const fresh = (e: Stamped<Suggestion[]> | undefined) =>
     e && Date.now() - e.savedAt <= SUGGESTIONS_TTL_MS && Array.isArray(e.data) ? e.data.filter(usable) : null;
   const exact = fresh(all[key]);
@@ -234,33 +239,56 @@ export async function loadSuggestions(query: string): Promise<Suggestion[]> {
   return [];
 }
 
-async function saveRecent(items: Suggestion[]): Promise<void> {
-  try {
-    await kvSet(cityScopedKey(KEYS.recent), JSON.stringify({ savedAt: Date.now(), data: items }));
-  } catch {
-    // best-effort
-  }
+export async function loadRecent(cityId?: string): Promise<Suggestion[]> {
+  const entry = await readJSON<Stamped<Suggestion[]>>(cityScopedKey(KEYS.recent, cityId));
+  if (!entry || !Array.isArray(entry.data)) return [];
+  const now = Date.now();
+  return entry.data
+    .filter(
+      (item) =>
+        typeof item?.id === 'string' &&
+        typeof item?.title === 'string' &&
+        typeof item.address === 'string' &&
+        Number.isFinite(item.lat) &&
+        Number.isFinite(item.lon),
+    )
+    .map((item) => ({
+      ...item,
+      distanceM: undefined,
+      kind: item.kind ?? 'history',
+      searchUsage: item.searchUsage ?? { score: 1, lastUsedAt: entry.savedAt },
+    }))
+    .sort((a, b) => frecency(b, now) - frecency(a, now));
 }
 
-export async function loadRecent(): Promise<Suggestion[]> {
-  const entry = await readJSON<Stamped<Suggestion[]>>(cityScopedKey(KEYS.recent));
-  if (!entry || Date.now() - entry.savedAt > SUGGESTIONS_TTL_MS) return [];
-  return Array.isArray(entry.data) ? entry.data : [];
-}
+let recentWrite: Promise<unknown> = Promise.resolve();
 
 export async function addRecentSuggestion(item: Suggestion): Promise<Suggestion[]> {
   if (!item || !item.id || item.id === '__gps') return loadRecent();
-  try {
-    const current = await loadRecent();
+  const cityId = getActiveCityIdSync();
+  const update = recentWrite.then(async () => {
+    const current = await loadRecent(cityId);
+    const identity = suggestionIdentity(item);
+    const previous = current.find((x) => x.id === item.id || suggestionIdentity(x) === identity);
+    const now = Date.now();
     const updated = [
-      item,
-      ...current.filter((x) => x.id !== item.id && (x.title !== item.title || x.lat !== item.lat || x.lon !== item.lon)),
-    ].slice(0, 10);
-    await saveRecent(updated);
+      {
+        ...item,
+        distanceM: undefined,
+        searchUsage: { score: (previous ? frecency(previous, now) : 0) + 1, lastUsedAt: now },
+      },
+      ...current.filter((x) => x.id !== item.id && suggestionIdentity(x) !== identity),
+    ]
+      .sort((a, b) => frecency(b, now) - frecency(a, now))
+      .slice(0, 100);
+    await kvSet(
+      cityScopedKey(KEYS.recent, cityId),
+      JSON.stringify({ savedAt: now, data: updated }),
+    );
     return updated;
-  } catch {
-    return [];
-  }
+  });
+  recentWrite = update.catch(() => undefined);
+  return update.catch(() => []);
 }
 
 // ─── Ostatnia znana lokalizacja (ulica z reverse-geocode) ────────────────────
