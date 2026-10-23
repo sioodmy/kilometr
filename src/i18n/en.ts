@@ -911,6 +911,8 @@ export const en: Strings = {
     moreFail: 'Could not load more connections.',
     moreRetryA11y: 'Try loading more connections',
     noMore: 'These are all departures for this route.',
+    noMoreArrival: 'No earlier connections in this window. Choose an earlier arrival time.',
+    emptyArrival: 'No connections before the selected time. Try a later arrival time or another destination.',
     emptyFiltered: 'No connections for the selected filters',
     emptyNone: 'No connections found',
     emptyModeDirect: (veh: string) =>
@@ -1079,10 +1081,13 @@ export const en: Strings = {
     savePlace: 'Save place',
   },
   timeSheet: {
+    title: 'Journey time',
+    modeDeparture: 'Depart at',
+    modeArrival: 'Arrive by',
+    selectedArrival: (day: string, hh: string, mm: string) => `Arrive by: ${day}, ${hh}:${mm}`,
     confirmAction: 'Show connections',
     selectedDeparture: (day: string, hh: string, mm: string) => `${day}, ${hh}:${mm}`,
     minutePreset: (mm: string) => `Set minute to ${mm}`,
-    titleDepart: 'Departure time',
     dayToday: 'Today',
     dayTomorrow: 'Tomorrow',
     hourLabel: 'hour',

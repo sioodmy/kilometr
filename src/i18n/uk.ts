@@ -964,6 +964,8 @@ export const uk: Strings = {
     moreFail: 'Не вдалося підвантажити дальші сполучення.',
     moreRetryA11y: 'Спробувати підвантажити дальші сполучення',
     noMore: 'Це всі відправлення цього маршруту.',
+    noMoreArrival: 'У цьому проміжку немає раніших сполучень. Вибери раніший час прибуття.',
+    emptyArrival: 'Немає сполучень до вибраного часу. Спробуй пізніший час прибуття або іншу ціль.',
     emptyFiltered: 'Немає сполучень за вибраними фільтрами',
     emptyNone: 'Сполучень не знайдено',
     emptyModeDirect: (veh: string) =>
@@ -1133,10 +1135,13 @@ export const uk: Strings = {
     savePlace: 'Зберегти місце',
   },
   timeSheet: {
+    title: 'Час подорожі',
+    modeDeparture: 'Відправлення о',
+    modeArrival: 'Прибуття до',
+    selectedArrival: (day: string, hh: string, mm: string) => `Прибуття до: ${day}, ${hh}:${mm}`,
     confirmAction: 'Показати сполучення',
     selectedDeparture: (day: string, hh: string, mm: string) => `${day}, ${hh}:${mm}`,
     minutePreset: (mm: string) => `Установити хвилину: ${mm}`,
-    titleDepart: 'Час відправлення',
     dayToday: 'Сьогодні',
     dayTomorrow: 'Завтра',
     hourLabel: 'година',
