@@ -78,13 +78,13 @@ export function timetableClock(seconds: number): string {
   return `${String(Math.floor(minutes / 60) % 24).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-export interface TimetableTrip {
+interface TimetableTrip {
   trip_id: string;
   headsign: string;
   direction: number;
 }
 
-export interface TimetableTime {
+interface TimetableTime {
   trip_id: string;
   stop_id: string;
   name: string;
@@ -94,7 +94,7 @@ export interface TimetableTime {
 }
 
 /** Rozdziela objazdy i skrócone kursy według pełnej kolejności przystanków. */
-export function buildLinePatterns(trips: TimetableTrip[], times: TimetableTime[]): LinePattern[] {
+function buildLinePatterns(trips: TimetableTrip[], times: TimetableTime[]): LinePattern[] {
   const byTrip = new Map<string, TimetableTime[]>();
   for (const time of times) {
     const group = byTrip.get(time.trip_id) ?? [];
