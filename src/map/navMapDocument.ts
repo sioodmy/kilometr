@@ -1,10 +1,5 @@
 import { buildMapStyle, ROUTE_SOURCE_ID } from './mapStyle';
-
-const MAPLIBRE_VERSION = '4.7.1';
-const CDN_ASSETS = [
-  `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist`,
-  `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist`,
-];
+import { bundledMapLibreHead } from './bundledMapLibre';
 
 export interface NavMapDocumentOptions {
   offlineBase: string | null;
@@ -16,8 +11,6 @@ const runtime = (routeSourceId: string) => `
 (function () {
   var map = null;
   var sourceId = ${JSON.stringify(routeSourceId)};
-  var assets = window.__NAV__.assets;
-  var index = 0;
   var currentRoute = { type: 'FeatureCollection', features: [] };
   var tileContent = false;
   var lastStatus = '';
@@ -29,25 +22,10 @@ const runtime = (routeSourceId: string) => `
     lastStatus = value;
     post({ t: 'tiles', state: value });
   }
-  function loadElement(element) {
-    return new Promise(function (resolve, reject) {
-      var timer = setTimeout(function () { element.remove(); reject(new Error('asset timeout')); }, 8000);
-      element.onload = function () { clearTimeout(timer); resolve(); };
-      element.onerror = function () { clearTimeout(timer); element.remove(); reject(new Error('asset failed')); };
-      document.head.appendChild(element);
-    });
-  }
   function loadAssets() {
-    if (index >= assets.length) return Promise.reject(new Error('map assets unavailable'));
-    var base = assets[index++];
-    var css = document.createElement('link');
-    css.rel = 'stylesheet';
-    css.href = base + '/maplibre-gl.css';
-    return loadElement(css).then(function () {
-      var js = document.createElement('script');
-      js.src = base + '/maplibre-gl.js';
-      return loadElement(js);
-    }).catch(loadAssets);
+    return typeof maplibregl === 'undefined'
+      ? Promise.reject(new Error('ERR_MAPLIBRE_UNAVAILABLE'))
+      : Promise.resolve();
   }
   function routeData(msg) {
     var features = [];
@@ -179,8 +157,7 @@ const runtime = (routeSourceId: string) => `
 
 export function buildNavMapDocument({ offlineBase, center }: NavMapDocumentOptions): string {
   const mapStyle = buildMapStyle(offlineBase);
-  const assets = offlineBase ? [`${offlineBase}/assets`] : CDN_ASSETS;
-  const payload = JSON.stringify({ assets, style: mapStyle, center: center ?? null }).replace(
+  const payload = JSON.stringify({ style: mapStyle, center: center ?? null }).replace(
     /</g,
     '\\u003c',
   );
@@ -190,6 +167,7 @@ export function buildNavMapDocument({ offlineBase, center }: NavMapDocumentOptio
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">',
     '<meta name="color-scheme" content="dark">',
+    bundledMapLibreHead(),
     '<style>html,body,#map{position:absolute;inset:0;width:100%;height:100%;margin:0;overflow:hidden;background:#101413}*{box-sizing:border-box}.maplibregl-ctrl-attrib{display:none!important}</style>',
     '</head><body>',
     '<div id="map"></div>',

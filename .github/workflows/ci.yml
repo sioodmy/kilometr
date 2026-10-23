@@ -56,6 +56,28 @@ jobs:
           npx expo config --type introspect --json > "$RUNNER_TEMP/expo-config.json"
           npm run check:android-permissions -- "$RUNNER_TEMP/expo-config.json" --expo-config
 
+  fdroid-config:
+    name: F-Droid Prebuild
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check:fdroid
+      - name: Prepare unsigned F-Droid project
+        run: APP_VERSION=v1.5.4 npm run prebuild:fdroid
+      - run: FDROID_BUILD=1 npm run check:fdroid
+      - name: Check F-Droid manifest
+        env:
+          FDROID_BUILD: '1'
+          APP_VERSION: v1.5.4
+        run: |
+          npx expo config --type introspect --json > "$RUNNER_TEMP/fdroid-config.json"
+          npm run check:android-permissions -- "$RUNNER_TEMP/fdroid-config.json" --expo-config
+
   logic-tests:
     name: Logic Tests
     runs-on: ubuntu-latest

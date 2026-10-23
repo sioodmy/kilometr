@@ -4,14 +4,6 @@ import { buildNavMapDocument } from '../src/map/navMapDocument';
 
 type Message = { t: string; state?: string };
 type MapEvent = { sourceId?: string; tile?: { state: string }; error?: Error };
-type Element = {
-  onload: () => void;
-  onerror: () => void;
-  remove: () => void;
-  src?: string;
-  href?: string;
-};
-
 async function boot(failAssets = false) {
   const messages: Message[] = [];
   const events = new Map<string, (event: MapEvent) => void>();
@@ -57,25 +49,22 @@ async function boot(failAssets = false) {
       ReactNativeWebView: { postMessage: (data: string) => messages.push(JSON.parse(data)) },
       addEventListener: () => undefined,
     } as Record<string, any>,
-    document: {
-      createElement: () => ({ remove: () => undefined }),
-      head: {
-        appendChild: (element: Element) =>
-          queueMicrotask(() => (failAssets ? element.onerror() : element.onload())),
-      },
-    },
-    maplibregl: {
-      Map: FakeMap,
-      LngLatBounds: class {
-        extend() {
-          return this;
-        }
-      },
-    },
+    maplibregl: failAssets
+      ? undefined
+      : {
+          Map: FakeMap,
+          LngLatBounds: class {
+            extend() {
+              return this;
+            }
+          },
+        },
     setTimeout: () => 1,
     clearTimeout: () => undefined,
   };
   const html = buildNavMapDocument({ offlineBase: null, center: [17, 51.1] });
+  assert(html.includes('<script data-maplibre>'), 'silnik mapy jest w dokumencie');
+  assert(!html.includes('cdn.jsdelivr.net/npm/maplibre-gl@'), 'mapa nie pobiera kodu z CDN');
   for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g))
     runInNewContext(script[1], context);
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -152,7 +141,7 @@ async function check() {
   const offline = await boot(true);
   assert.equal(offline.messages.at(-1)?.state, 'error', 'asset failures reach the native retry UI');
   console.log(
-    'PASS map bridge: tile loading, failure, recovery, GPS camera, route overview and CDN failure',
+    'PASS map bridge: tile loading, failure, recovery, GPS camera, route overview and bundled engine failure',
   );
 }
 

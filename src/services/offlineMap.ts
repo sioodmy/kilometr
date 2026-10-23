@@ -1,13 +1,12 @@
 // Pobieranie zestawu mapy offline aktywnego miasta (per-miasto plik `.ktp`).
 //
 // Wzorzec ten sam co przy rozkładzie: pobierz do pliku tymczasowego, sprawdź,
-// podmieniaj atomowo. Trzy rodzaje plików:
+// podmieniaj atomowo. Dwa rodzaje plików:
 //   - pakiet kafelków `.ktp` (kafle OSM, rozmiar zależny od miasta) z R2,
-//   - silnik MapLibre (`maplibre-gl.js` + `.css`) z CDN-u,
 //   - glify (czcionki etykiet) z OpenFreeMap.
 //
 // Po pobraniu natywny serwer mapy serwuje je z filesDir/maps, więc mapa działa
-// bez internetu. Bez zestawu mapa dalej działa, tylko online.
+// bez internetu. Silnik MapLibre jest w paczce aplikacji.
 //
 // Pakiet z R2 ma twardy limit (downloadLimits): raz pobrany starczy na długo.
 
@@ -35,8 +34,6 @@ function tilePackUrl(cityId?: string): string {
 
 const FONTS = ['Noto Sans Regular', 'Noto Sans Bold', 'Noto Sans Italic'];
 const GLYPH_RANGES = ['0-255', '256-511'];
-
-const MAPLIBRE_VERSION = '4.7.1';
 
 export interface OfflineMapProgress {
   /** 0..1 */
@@ -100,9 +97,7 @@ async function downloadTo(url: string, dest: string): Promise<boolean> {
 
 /**
  * Pobiera cały zestaw mapy offline. Zwraca ok, gdy pakiet kafelków jest na
- * miejscu. Silnik i glify są potrzebne do rysowania, ale brak któregoś z nich
- * nie przerywa całości: mapa po prostu nie pokaże etykiet albo w ogóle się
- * nie narysuje, więc brak silnika traktujemy jako porażkę.
+ * miejscu. Brak glifów nie przerywa pobierania, mapa nie pokaże wtedy etykiet.
  *
  * Limit R2: kolejne udane pobranie pakietu dopiero po miesiącu
  * (nawet po usunięciu lokalnych plików).
@@ -121,20 +116,6 @@ export async function downloadOfflineMap(
   const root = mapsUri();
   await ensureDir(root);
 
-  // 1. Silnik mapy (mały, ale bez niego nie ma czego rysować).
-  report(0.02, 'maplibre-gl.js');
-  const jsOk = await downloadTo(
-    `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`,
-    `${root}maplibre-gl.js`,
-  );
-  report(0.08, 'maplibre-gl.css');
-  await downloadTo(
-    `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`,
-    `${root}maplibre-gl.css`,
-  );
-  if (!jsOk) return { ok: false, reason: 'fail' };
-
-  // 2. Glify: po jednym pliku na font i zakres.
   let done = 0;
   const total = FONTS.length * GLYPH_RANGES.length;
   for (const font of FONTS) {
@@ -151,7 +132,6 @@ export async function downloadOfflineMap(
     }
   }
 
-  // 3. Pakiet kafelków: największy, więc na końcu.
   const s = tr();
   report(0.35, s.settings.offlineMapStepTiles(s.city.gen(city.id)));
   const ok = await downloadTo(tilePackUrl(city.id), `${root}${city.tilePack}`);

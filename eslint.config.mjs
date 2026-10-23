@@ -14,6 +14,7 @@ export default tseslint.config(
       '.expo/',
       'android/',
       'ios/',
+      'src/map/maplibreAssets.generated.ts',
       // Vendored skille (1:1 z upstream), nie nasz kod.
       '.agents/',
     ],
