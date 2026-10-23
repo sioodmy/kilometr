@@ -9,68 +9,95 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
-import Svg, { Circle, Polygon } from 'react-native-svg';
-import { BusFront, TrainFront, TramFront } from 'lucide-react-native';
+import { Compass, LocateFixed, Route } from 'lucide-react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import type { Coord } from '../services/routeGeometry';
-import type { LegMode } from '../types/models';
 import { useStrings } from '../i18n';
 import { buildNavMapDocument } from '../map/navMapDocument';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import { acquireMapServer } from '../services/mapServerLease';
-import { scheme, type } from '../theme/tokens';
+import { useDeviceHeading } from '../services/useDeviceHeading';
+import { elev, scheme, shape, type } from '../theme/tokens';
 
 interface NavMiniMapProps {
+  targetId: string;
   path: Coord[];
+  traveled?: Coord[];
+  stops?: Coord[];
   user: Coord | null;
+  vehicle?: Coord | null;
   stop: Coord | null;
   headingDeg: number | null;
   accuracyM: number | null;
   accent: string;
-  vehicleMode?: LegMode;
-  onOpenMap?: () => void;
-  style?: StyleProp<ViewStyle>;
-}
-
-interface NavMapRouteUpdate {
-  path: Coord[];
-  stop: Coord | null;
-  accent: string;
   riding: boolean;
+  line?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
 interface NavMapCameraUpdate {
   user: Coord | null;
+  vehicle: Coord | null;
   heading: number | null;
-  riding: boolean;
+  userHeading: number | null;
+  reduceMotion: boolean;
+  headingOnly: boolean;
 }
 
 export function NavMiniMap({
+  targetId,
   path,
+  traveled,
+  stops,
   user,
+  vehicle = null,
   stop,
   headingDeg,
   accuracyM,
   accent,
-  vehicleMode,
-  onOpenMap,
+  riding,
+  line,
   style,
 }: NavMiniMapProps) {
   const s = useStrings();
-  const riding = vehicleMode != null;
+  const reduceMotion = useReducedMotion();
   const webRef = useRef<WebView>(null);
   const ready = useRef(false);
+  const deviceHeading = useRef<number | null>(null);
   const { cityId } = useActiveCity();
-  // undefined = czekamy na lokalny serwer; nie ładuj CDN zanim wiemy.
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [retry, setRetry] = useState(0);
-  const [focused, setFocused] = useState(false);
-  const [retryFocused, setRetryFocused] = useState(false);
-  const latestRoute = useRef<NavMapRouteUpdate>({ path, stop, accent, riding });
-  const latestCamera = useRef<NavMapCameraUpdate>({ user, heading: headingDeg, riding });
-  const lastSentCamera = useRef<{ lat: number; lon: number; heading: number | null } | null>(null);
-  latestRoute.current = { path, stop, accent, riding };
-  latestCamera.current = { user, heading: headingDeg, riding };
+  const [following, setFollowing] = useState(true);
+  const [northUp, setNorthUp] = useState(false);
+  const [focused, setFocused] = useState<string | null>(null);
+  const latestRoute = useRef({
+    id: targetId,
+    path,
+    traveled,
+    stops,
+    stop,
+    accent,
+    riding,
+    label: line,
+  });
+  const latestCamera = useRef<NavMapCameraUpdate>({
+    user,
+    vehicle,
+    heading: headingDeg,
+    userHeading: null,
+    reduceMotion,
+    headingOnly: false,
+  });
+  latestRoute.current = { id: targetId, path, traveled, stops, stop, accent, riding, label: line };
+  latestCamera.current = {
+    user,
+    vehicle,
+    heading: deviceHeading.current ?? headingDeg,
+    userHeading: deviceHeading.current ?? (riding ? null : headingDeg),
+    reduceMotion,
+    headingOnly: false,
+  };
 
   const html = useMemo(() => {
     if (offlineBase === undefined) return null;
@@ -78,15 +105,14 @@ export function NavMiniMap({
     try {
       const c = getActiveCitySync().center;
       center = [c.lon, c.lat];
-    } catch {
-      center = null;
-    }
+    } catch {}
     return buildNavMapDocument({ offlineBase, center });
   }, [offlineBase, cityId]);
 
   useEffect(() => {
     let cancelled = false;
     let release: (() => void) | null = null;
+    ready.current = false;
     setOfflineBase(undefined);
     setMapState('loading');
     void acquireMapServer()
@@ -114,94 +140,76 @@ export function NavMiniMap({
   }, [mapState, retry]);
 
   const sendRoute = useCallback(() => {
-    if (!ready.current) return;
-    webRef.current?.injectJavaScript(
-      `window.__navRoute(${JSON.stringify(latestRoute.current)});true;`,
-    );
+    if (ready.current)
+      webRef.current?.injectJavaScript(
+        `window.__navRoute(${JSON.stringify(latestRoute.current)});true;`,
+      );
   }, []);
-
-  const sendCamera = useCallback((force = false) => {
-    if (!ready.current) return;
-    const cur = latestCamera.current;
-    if (!cur.user) {
-      lastSentCamera.current = null;
-      webRef.current?.injectJavaScript(`window.__navCamera(${JSON.stringify(cur)});true;`);
-      return;
-    }
-    const prev = lastSentCamera.current;
-    if (!force && prev) {
-      const dLatM = (cur.user[0] - prev.lat) * 111320;
-      const dLonM = (cur.user[1] - prev.lon) * 70000;
-      const movedM = Math.hypot(dLatM, dLonM);
-      let headingDiff = 0;
-      if (cur.heading != null && prev.heading != null) {
-        headingDiff = Math.abs(cur.heading - prev.heading) % 360;
-        if (headingDiff > 180) headingDiff = 360 - headingDiff;
-      } else if (cur.heading !== prev.heading) {
-        headingDiff = 180;
-      }
-      if (movedM < 0.35 && headingDiff < 1.2) return;
-    }
-    lastSentCamera.current = {
-      lat: cur.user[0],
-      lon: cur.user[1],
-      heading: cur.heading,
-    };
-    webRef.current?.injectJavaScript(`window.__navCamera(${JSON.stringify(cur)});true;`);
+  const sendCamera = useCallback(() => {
+    if (ready.current)
+      webRef.current?.injectJavaScript(
+        `window.__navCamera(${JSON.stringify(latestCamera.current)});true;`,
+      );
   }, []);
+  const onHeading = useCallback(
+    (value: number | null) => {
+      if (deviceHeading.current === value) return;
+      deviceHeading.current = value;
+      const current = latestCamera.current;
+      current.heading = value ?? headingDeg;
+      current.userHeading = value ?? (riding ? null : headingDeg);
+      current.headingOnly = true;
+      sendCamera();
+    },
+    [sendCamera, headingDeg, riding],
+  );
+  const compassState = useDeviceHeading(user != null || vehicle != null, onHeading);
 
-  const sendAll = useCallback(() => {
-    sendRoute();
-    sendCamera(true);
-  }, [sendCamera, sendRoute]);
-
-  useEffect(sendRoute, [sendRoute, path, stop, accent, riding]);
-  useEffect(() => {
-    lastSentCamera.current = null;
-    sendCamera(true);
-  }, [sendCamera, riding]);
-  useEffect(() => {
-    sendCamera(false);
-  }, [sendCamera, user, headingDeg, path]);
+  useEffect(sendRoute, [sendRoute, targetId, path, traveled, stops, stop, accent, riding, line]);
+  useEffect(sendCamera, [sendCamera, user, vehicle, headingDeg, reduceMotion, targetId]);
 
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
       try {
-        const message = JSON.parse(event.nativeEvent.data) as { t?: string; state?: string };
+        const message: unknown = JSON.parse(event.nativeEvent.data);
+        if (!message || typeof message !== 'object' || !('t' in message)) return;
         if (message.t === 'ready') {
           ready.current = true;
-          sendAll();
-        }
-        if (
+          sendRoute();
+          sendCamera();
+        } else if (message.t === 'tracking' && 'following' in message && 'northUp' in message) {
+          setFollowing(message.following === true);
+          setNorthUp(message.northUp === true);
+        } else if (
           message.t === 'tiles' &&
+          'state' in message &&
           (message.state === 'ready' || message.state === 'loading' || message.state === 'error')
         ) {
           setMapState(message.state);
         }
       } catch {}
     },
-    [sendAll],
+    [sendCamera, sendRoute],
   );
 
+  const control = (action: 'follow' | 'north' | 'overview') => {
+    if (ready.current)
+      webRef.current?.injectJavaScript(`window.__navControl(${JSON.stringify(action)});true;`);
+  };
   const onLoadStart = useCallback(() => {
     ready.current = false;
-    lastSentCamera.current = null;
     setMapState('loading');
   }, []);
-
   const onError = useCallback(() => {
     ready.current = false;
     setMapState('error');
   }, []);
-
-  const accuracyRadius = accuracyM != null ? Math.min(36, Math.max(6, accuracyM * 0.8)) : 0;
-  const userColor = scheme.primary;
-  const VehicleIcon =
-    vehicleMode === 'tram'
-      ? TramFront
-      : vehicleMode === 'train' || vehicleMode === 'subway'
-        ? TrainFront
-        : BusFront;
+  const hint =
+    accuracyM != null && accuracyM > 50
+      ? s.compass.gpsWeak
+      : compassState === 'calibrate'
+        ? s.compass.calibrateCompass
+        : null;
 
   return (
     <View style={[styles.frame, style]}>
@@ -210,7 +218,6 @@ export function NavMiniMap({
           key={`${cityId}:${retry}`}
           ref={webRef}
           style={styles.web}
-          pointerEvents="none"
           source={offlineBase ? { html, baseUrl: `${offlineBase}/` } : { html }}
           originWhitelist={['*']}
           onMessage={onMessage}
@@ -222,6 +229,7 @@ export function NavMiniMap({
           accessible={false}
           importantForAccessibility="no-hide-descendants"
           scrollEnabled={false}
+          nestedScrollEnabled
           bounces={false}
           overScrollMode="never"
           showsVerticalScrollIndicator={false}
@@ -233,44 +241,64 @@ export function NavMiniMap({
           allowsBackForwardNavigationGestures={false}
         />
       ) : null}
-      {user && mapState === 'ready' ? (
-        <View pointerEvents="none" style={styles.markerOverlay}>
-          {riding ? (
-            <View style={styles.vehicleMarker}>
-              <VehicleIcon size={24} color={scheme.onPrimary} strokeWidth={2.2} />
-            </View>
-          ) : (
-            <Svg width={80} height={80} viewBox="0 0 80 80">
-              {accuracyRadius > 0 ? (
-                <Circle
-                  cx={40}
-                  cy={40}
-                  r={accuracyRadius}
-                  fill={userColor}
-                  fillOpacity={0.13}
-                  stroke={userColor}
-                  strokeOpacity={0.3}
-                  strokeWidth={1}
-                />
-              ) : null}
-              {headingDeg != null ? (
-                <Polygon points="40,38 28,14 52,14" fill={userColor} fillOpacity={0.26} />
-              ) : null}
-              <Circle cx={40} cy={40} r={10} fill={userColor} fillOpacity={0.22} />
-              <Circle cx={40} cy={40} r={5} fill={userColor} stroke="#FFFFFF" strokeWidth={2} />
-            </Svg>
-          )}
+      <View style={styles.topControls} pointerEvents="box-none">
+        <Pressable
+          onPress={() => control('north')}
+          disabled={mapState !== 'ready'}
+          onFocus={() => setFocused('north')}
+          onBlur={() => setFocused(null)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: northUp, disabled: mapState !== 'ready' }}
+          accessibilityLabel={northUp ? s.compass.compassUp : s.compass.northUp}
+          style={({ pressed }) => [
+            styles.iconButton,
+            northUp && styles.selected,
+            pressed && styles.pressed,
+            focused === 'north' && styles.focused,
+          ]}
+        >
+          <Compass size={24} color={northUp ? scheme.onPrimaryContainer : scheme.onSurface} />
+        </Pressable>
+        <Pressable
+          onPress={() => control('overview')}
+          disabled={mapState !== 'ready'}
+          onFocus={() => setFocused('overview')}
+          onBlur={() => setFocused(null)}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: mapState !== 'ready' }}
+          accessibilityLabel={s.compass.routeOverview}
+          style={({ pressed }) => [
+            styles.iconButton,
+            pressed && styles.pressed,
+            focused === 'overview' && styles.focused,
+          ]}
+        >
+          <Route size={23} color={scheme.onSurface} />
+        </Pressable>
+      </View>
+      {hint ? (
+        <View style={styles.hint}>
+          <Text style={styles.hintText}>{hint}</Text>
         </View>
       ) : null}
-      {onOpenMap ? (
+      {mapState === 'ready' && (user || vehicle) ? (
         <Pressable
-          style={[StyleSheet.absoluteFill, focused && styles.focused]}
-          onPress={onOpenMap}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onPress={() => control('follow')}
+          onFocus={() => setFocused('follow')}
+          onBlur={() => setFocused(null)}
           accessibilityRole="button"
-          accessibilityLabel={s.compass.openMap}
-        />
+          accessibilityState={{ selected: following }}
+          accessibilityLabel={following ? s.compass.following : s.compass.recenter}
+          style={({ pressed }) => [
+            styles.followButton,
+            following && styles.following,
+            pressed && styles.pressed,
+            focused === 'follow' && styles.focused,
+          ]}
+        >
+          <LocateFixed size={23} color={following ? scheme.onPrimaryContainer : scheme.onPrimary} />
+          {!following ? <Text style={styles.followText}>{s.compass.recenter}</Text> : null}
+        </Pressable>
       ) : null}
       {mapState !== 'ready' ? (
         <View style={styles.statusOverlay} pointerEvents="box-none">
@@ -282,9 +310,13 @@ export function NavMiniMap({
             {mapState === 'error' ? (
               <Pressable
                 onPress={() => setRetry((value) => value + 1)}
-                onFocus={() => setRetryFocused(true)}
-                onBlur={() => setRetryFocused(false)}
-                style={[styles.retry, retryFocused && styles.focused]}
+                onFocus={() => setFocused('retry')}
+                onBlur={() => setFocused(null)}
+                style={({ pressed }) => [
+                  styles.retry,
+                  pressed && styles.pressed,
+                  focused === 'retry' && styles.focused,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel={s.compass.mapRetry}
               >
@@ -301,23 +333,56 @@ export function NavMiniMap({
 const styles = StyleSheet.create({
   frame: {
     minWidth: 0,
-    height: 112,
     overflow: 'hidden',
-    borderRadius: 14,
+    borderRadius: shape.large,
     backgroundColor: '#101413',
   },
   web: { flex: 1, backgroundColor: '#101413' },
-  vehicleMarker: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+  topControls: { position: 'absolute', top: 12, right: 12, gap: 8 },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
     borderWidth: 2,
-    borderColor: scheme.onSurface,
-    backgroundColor: scheme.primary,
+    borderColor: 'transparent',
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
+    ...elev.level2,
   },
-  focused: { borderWidth: 2, borderColor: scheme.primary },
+  selected: { backgroundColor: scheme.primaryContainer },
+  pressed: { opacity: 0.75 },
+  focused: { borderColor: scheme.primary },
+  followButton: {
+    position: 'absolute',
+    bottom: 14,
+    left: 12,
+    maxWidth: '70%',
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: 12,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: shape.large,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: scheme.primary,
+    ...elev.level2,
+  },
+  following: { backgroundColor: scheme.primaryContainer },
+  followText: { ...type.labelLarge, color: scheme.onPrimary, fontWeight: '700', flexShrink: 1 },
+  hint: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 72,
+    padding: 10,
+    borderRadius: shape.small,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  hintText: { ...type.bodySmall, color: scheme.onSurface },
   statusOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
@@ -330,28 +395,19 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: 12,
+    borderRadius: shape.medium,
   },
   statusText: { ...type.bodyMedium, color: scheme.onSurface, textAlign: 'center' },
   retry: {
-    minHeight: 44,
-    minWidth: 44,
+    minHeight: 48,
+    minWidth: 48,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: shape.medium,
     borderWidth: 2,
     borderColor: 'transparent',
     backgroundColor: scheme.secondaryContainer,
     justifyContent: 'center',
   },
   retryText: { ...type.labelLarge, color: scheme.onSecondaryContainer },
-  markerOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });
