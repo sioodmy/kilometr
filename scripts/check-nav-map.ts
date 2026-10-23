@@ -1,6 +1,64 @@
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
+import { buildSync } from 'esbuild';
 import { buildNavMapDocument } from '../src/map/navMapDocument';
+import { bundledMapLibreHead, mapDocumentSource } from '../src/map/bundledMapLibre';
+import { MAPLIBRE_WORKER } from '../src/map/maplibreAssets.generated';
+
+async function checkWorkerCompatibility() {
+  assert.doesNotThrow(
+    () => new Function(MAPLIBRE_WORKER),
+    'bundled worker is valid classic JavaScript',
+  );
+  const bootstrap = Array.from(
+    bundledMapLibreHead().matchAll(/<script data-maplibre>([\s\S]*?)<\/script>/g),
+  ).at(-1)?.[1];
+  assert(bootstrap);
+  let workerUrl = '';
+  runInNewContext(bootstrap, {
+    Blob,
+    URL: { createObjectURL: () => 'blob:null/test-worker' },
+    maplibregl: {
+      setWorkerUrl: (url: string) => {
+        workerUrl = url;
+      },
+    },
+  });
+  const factory = buildSync({
+    stdin: {
+      contents: `import {workerFactory} from './node_modules/maplibre-gl/src/util/web_worker.ts';
+        import {config} from './node_modules/maplibre-gl/src/util/config.ts';
+        export function create(url) { config.WORKER_URL = url; return workerFactory(); }`,
+      resolveDir: process.cwd(),
+    },
+    bundle: true,
+    format: 'iife',
+    globalName: 'WorkerFactoryTest',
+    write: false,
+    logLevel: 'silent',
+  }).outputFiles[0].text;
+  const workers: { type?: string }[] = [];
+  const context = {
+    location: { href: 'about:blank', origin: 'null' },
+    URL,
+    Worker: class {
+      constructor(_url: string, options?: { type: string }) {
+        workers.push(options ?? {});
+      }
+    },
+    WorkerFactoryTest: { create: (_url: string): Promise<unknown> => Promise.resolve() },
+  };
+  runInNewContext(factory, context);
+  await context.WorkerFactoryTest.create(workerUrl);
+  assert.equal(workers.length, 1);
+  assert.equal(
+    workers[0].type,
+    undefined,
+    'opaque WebView uses a classic worker instead of a silently failing module worker',
+  );
+  assert.equal(new URL(mapDocumentSource('', null).baseUrl).origin, 'https://kilometr.app');
+  assert.equal(mapDocumentSource('', 'http://127.0.0.1:1234').baseUrl, 'http://127.0.0.1:1234/');
+}
 
 type Message = { t: string; state?: string; following?: boolean; northUp?: boolean };
 type MapEvent = {
@@ -145,6 +203,7 @@ async function boot(failAssets = false) {
 }
 
 async function check() {
+  await checkWorkerCompatibility();
   const map = await boot();
   map.emit('style.load');
   assert.deepEqual(map.messages, [{ t: 'ready' }]);

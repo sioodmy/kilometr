@@ -8,8 +8,7 @@ const root = dirname(require.resolve('maplibre-gl/package.json'));
 const license = readFileSync(join(root, 'LICENSE.txt'), 'utf8');
 const css = readFileSync(join(root, 'dist/maplibre-gl.css'), 'utf8');
 
-// MapLibre 6 jest tylko ESM. Silnik idzie jako IIFE, a worker jako osobny
-// plik ESM, bo przeglądarka nie zaimportuje modułu wprost z node_modules.
+// Oba skrypty są samodzielne, także w WebView bez obsługi workerów modułowych.
 function bundle(entry, format, globalName) {
   return buildSync({
     entryPoints: [join(root, entry)],
@@ -24,7 +23,7 @@ function bundle(entry, format, globalName) {
 }
 
 const js = bundle('dist/maplibre-gl.mjs', 'iife', 'maplibregl');
-const worker = bundle('dist/maplibre-gl-worker.mjs', 'esm');
+const worker = bundle('dist/maplibre-gl-worker.mjs', 'iife');
 
 writeFileSync(
   new URL('../src/map/maplibreAssets.generated.ts', import.meta.url),
