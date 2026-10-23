@@ -48,6 +48,8 @@ export const pl = {
     nextDayTime: (time: string, days: number) => `${time} (+${days} ${days === 1 ? 'dzień' : 'dni'})`,
   },
   transferGuard: {
+    enabled: 'Włączona',
+    disabled: 'Wyłączona',
     title: 'Ochrona przesiadek',
     waiting: 'Po rozpoczęciu jazdy sprawdzimy Twoją przesiadkę.',
     buffer: (line: string, n: number) => `Przesiadka na ${line} · ${n} min zapasu`,

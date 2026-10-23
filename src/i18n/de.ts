@@ -34,6 +34,8 @@ export const de: Strings = {
     nextDayTime: (time: string, days: number) => `${time} (+${days} ${days === 1 ? 'Tag' : 'Tage'})`,
   },
   transferGuard: {
+    enabled: 'Aktiviert',
+    disabled: 'Deaktiviert',
     title: 'Umstiegsbegleitung',
     waiting: 'Die Überwachung ist aktiv. Wir warten auf die GPS-Bestätigung deiner Fahrt.',
     buffer: (line: string, n: number) => `Umstieg auf ${line} · ${n} Min. Reserve`,
