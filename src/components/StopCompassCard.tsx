@@ -9,7 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useReducedMotion } from 'react-native-reanimated';
 import {
   ArrowUp,
@@ -810,9 +810,11 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
         navigationBarTranslucent
         onRequestClose={() => setFullscreen(false)}
       >
-        <SafeAreaView style={styles.fullscreen} onAccessibilityEscape={() => setFullscreen(false)}>
-          {content}
-        </SafeAreaView>
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.fullscreen} onAccessibilityEscape={() => setFullscreen(false)}>
+            {content}
+          </SafeAreaView>
+        </SafeAreaProvider>
       </Modal>
     </View>
   ) : (

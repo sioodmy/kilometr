@@ -18,6 +18,7 @@ struct TripAttributes: ActivityAttributes {
     let arrivalLabel: String?
     let detail: String?
     let startAt: Double
+    let timerStartAt: Double?
     let endAt: Double
     let countdownAt: Double
     let staleLabel: String
