@@ -134,6 +134,9 @@ async function main() {
     assert.equal(plan.timerLabel, strings.ios.departure);
     assert.equal(plan.targetName, 'A');
     assert.equal(plan.mode, 'tram');
+    assert.equal(plan.startAt, at(12, 20) / 1000);
+    assert.equal(plan.timerStartAt, at(12, 0) / 1000);
+    assert.ok(plan.timerStartAt <= p.computedAt / 1000, 'Departure countdown starts before now');
     assert.ok(plan.staleAt <= at(12, 2) / 1000);
     assert.equal(new URL(plan.deepLink).searchParams.get('open'), connection.id);
     const warning = JSON.parse(buildIOSLiveActivity(p, { ...trip, transfer: {

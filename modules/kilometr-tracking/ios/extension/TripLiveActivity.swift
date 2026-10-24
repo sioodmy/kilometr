@@ -12,11 +12,10 @@ private struct TripCountdown: View {
       if context.state.phase == "arrived" {
         Image(systemName: "checkmark.circle.fill")
           .accessibilityLabel(context.state.phaseLabel ?? context.state.title)
-      } else if context.isStale {
-        Text(Date(timeIntervalSince1970: context.state.endAt), style: .time).monospacedDigit()
       } else {
-        let end = context.state.countdownAt
-        Text(timerInterval: Date(timeIntervalSince1970: min(context.state.startAt, end - 1))...Date(timeIntervalSince1970: end),
+        let end = context.isStale ? context.state.endAt : context.state.countdownAt
+        let start = context.state.timerStartAt ?? min(Date().timeIntervalSince1970, context.state.startAt)
+        Text(timerInterval: Date(timeIntervalSince1970: min(start, end - 1))...Date(timeIntervalSince1970: end),
              countsDown: true).monospacedDigit()
       }
     }

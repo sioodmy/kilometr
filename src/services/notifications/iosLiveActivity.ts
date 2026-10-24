@@ -61,6 +61,7 @@ export function buildIOSLiveActivity(p: TripProgress, trip: TrackedTrip, s: Stri
       180,
     ),
     startAt: plan.startAtMs / 1000,
+    timerStartAt: Math.min(p.computedAt, plan.startAtMs) / 1000,
     endAt: Math.max(plan.startAtMs + 1000, p.arriveAtMs) / 1000,
     countdownAt: Math.max(p.computedAt, rideEnd ?? plan.countdownAtMs) / 1000,
     staleAt: Math.min(
