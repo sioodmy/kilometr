@@ -1290,6 +1290,7 @@ export default function RoutesScreen() {
           onToggleDirect={() => setDirectOnly(!directOnly)}
           timeLabel={timeLabel}
           isCustomTime={isCustomTime}
+          arrivalMode={arrivalMode}
           onOpenTimeSheet={() => setTimeSheetOpen(true)}
           modeFilter={modeFilter}
           onCycleMode={handleCycleMode}

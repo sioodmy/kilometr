@@ -124,6 +124,7 @@ export const uk: Strings = {
     kmh: (v: string) => `${v} км/год`,
     add15: '+15 хв',
     add30: '+30 хв',
+    add45: '+45 хв',
     add60: '+1 год.',
   },
   home: {
@@ -1184,6 +1185,8 @@ export const uk: Strings = {
     minuteLabel: 'хвилина',
     confirmNow: 'Шукати від зараз',
     confirmDepart: (day: string, hh: string, mm: string) => `Застосувати: ${day}, ${hh}:${mm}`,
+    pastWarning: 'Обраний час вже минув',
+    switchTomorrow: 'Перемкнути на завтра',
   },
   routesBar: {
     modeTram: 'Трам',
@@ -1199,6 +1202,8 @@ export const uk: Strings = {
     directOffA11y: 'Фільтр лише прямих: вимкнено. Натисни, щоб увімкнути.',
     modeFilterA11y: (cur: string) => `Фільтрувати транспорт: зараз ${cur}. Натисни, щоб змінити.`,
     timeA11y: (label: string) => `Час відправлення: ${label}. Натисни, щоб змінити.`,
+    timeArrivalA11y: (label: string) => `Час прибуття: ${label}. Торкніться, щоб змінити.`,
+    arrivalShort: (time: string) => `до ${time}`,
   },
   connection: {
     previewTitle: 'Перегляд маршруту',

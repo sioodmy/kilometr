@@ -106,6 +106,7 @@ export const en: Strings = {
     kmh: (v: string) => `${v} km/h`,
     add15: '+15 min',
     add30: '+30 min',
+    add45: '+45 min',
     add60: '+1 hr',
   },
   home: {
@@ -1130,6 +1131,8 @@ export const en: Strings = {
     minuteLabel: 'minute',
     confirmNow: 'Search from now',
     confirmDepart: (day: string, hh: string, mm: string) => `Apply: ${day}, ${hh}:${mm}`,
+    pastWarning: 'The selected time has already passed',
+    switchTomorrow: 'Switch to tomorrow',
   },
   routesBar: {
     modeTram: 'Tram',
@@ -1145,6 +1148,8 @@ export const en: Strings = {
     directOffA11y: 'Direct-only filter: off. Tap to turn on.',
     modeFilterA11y: (cur: string) => `Filter transport: currently ${cur}. Tap to change.`,
     timeA11y: (label: string) => `Departure time: ${label}. Tap to change.`,
+    timeArrivalA11y: (label: string) => `Arrival time: ${label}. Tap to change.`,
+    arrivalShort: (time: string) => `by ${time}`,
   },
   connection: {
     previewTitle: 'Journey preview',

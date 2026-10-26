@@ -120,6 +120,7 @@ export const pl = {
     kmh: (v: string) => `${v} km/h`,
     add15: '+15 min',
     add30: '+30 min',
+    add45: '+45 min',
     add60: '+1 godz.',
   },
   home: {
@@ -1168,6 +1169,8 @@ export const pl = {
     minuteLabel: 'minuta',
     confirmNow: 'Wyszukaj od teraz',
     confirmDepart: (day: string, hh: string, mm: string) => `Zastosuj: ${day}, ${hh}:${mm}`,
+    pastWarning: 'Wybrana godzina już minęła',
+    switchTomorrow: 'Przełącz na jutro',
   },
   routesBar: {
     modeTram: 'Tram',
@@ -1184,6 +1187,8 @@ export const pl = {
     modeFilterA11y: (cur: string) =>
       `Filtruj środek transportu: aktualnie ${cur}. Dotknij, aby zmienić.`,
     timeA11y: (label: string) => `Czas odjazdu: ${label}. Dotknij, aby zmienić.`,
+    timeArrivalA11y: (label: string) => `Czas przyjazdu: ${label}. Dotknij, aby zmienić.`,
+    arrivalShort: (time: string) => `do ${time}`,
   },
   connection: {
     previewTitle: 'Podgląd połączenia',

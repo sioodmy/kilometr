@@ -12,6 +12,7 @@ import {
   ArrowUpDown,
   BusFront,
   Clock3,
+  Flag,
   Layers,
   TramFront,
   Zap,
@@ -49,6 +50,7 @@ export interface RoutesThumbBarProps {
   onToggleDirect: () => void;
   timeLabel: string;
   isCustomTime: boolean;
+  arrivalMode?: boolean;
   onOpenTimeSheet: () => void;
   modeFilter: ModePreference;
   onCycleMode: () => void;
@@ -69,6 +71,7 @@ export function RoutesThumbBar({
   onToggleDirect,
   timeLabel,
   isCustomTime,
+  arrivalMode,
   onOpenTimeSheet,
   modeFilter,
   onCycleMode,
@@ -90,7 +93,8 @@ export function RoutesThumbBar({
   // Etykieta czasu bywa pełna („Jutro, 08:15”) i nie mieściłaby się w kolumnie,
   // więc w docku zostaje sama godzina. Dzień i tak widać w nagłówku listy,
   // a pełna etykieta idzie do accessibilityLabel.
-  const timeShort = timeLabel.includes(', ') ? timeLabel.split(', ')[1] : timeLabel;
+  const rawTimeShort = timeLabel.includes(', ') ? timeLabel.split(', ')[1] : timeLabel;
+  const timeShort = arrivalMode ? s.routesBar.arrivalShort(rawTimeShort) : rawTimeShort;
 
   const swapSpin = useSharedValue(0);
   const swapStyle = useAnimatedStyle(() => {
@@ -164,21 +168,27 @@ export function RoutesThumbBar({
 
       <ThumbBarItem
         onPress={onOpenTimeSheet}
-        active={isCustomTime}
+        active={isCustomTime || Boolean(arrivalMode)}
         icon={
           <Animated.View
-            key={isCustomTime ? 'time-custom' : 'time-now'}
-            entering={isCustomTime ? slideUpIn : slideDownIn}
+            key={arrivalMode ? 'time-arrival' : isCustomTime ? 'time-custom' : 'time-now'}
+            entering={isCustomTime || arrivalMode ? slideUpIn : slideDownIn}
             exiting={iconOut}
           >
-            <Clock3
-              size={17}
-              color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-            />
+            {arrivalMode ? (
+              <Flag size={17} color={scheme.onPrimaryContainer} />
+            ) : (
+              <Clock3
+                size={17}
+                color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+              />
+            )}
           </Animated.View>
         }
         label={timeShort}
-        accessibilityLabel={s.routesBar.timeA11y(timeLabel)}
+        accessibilityLabel={
+          arrivalMode ? s.routesBar.timeArrivalA11y(timeLabel) : s.routesBar.timeA11y(timeLabel)
+        }
       />
     </ThumbBar>
   );
