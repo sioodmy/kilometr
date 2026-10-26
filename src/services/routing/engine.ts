@@ -425,6 +425,42 @@ function mapJourneysToConnections(
 }
 
 /**
+ * Świeże opóźnienia na już wyplanowanych połączeniach: tracker polluje cały
+ * czas, a UI trzyma obiekty wyplanowane raz, więc bez przemapowania flagi
+ * live i delayMin zamroziłyby się w chwili wyszukiwania. Czasy NIE są
+ * przeliczane (raptor liczył je z opóźnieniami z chwili planu).
+ * Zwraca te same obiekty, gdy nic się nie zmieniło (bez przerysów).
+ */
+export function applyLiveDelays(connections: Connection[], tripDelays: Map<string, number>): Connection[] {
+  if (tripDelays.size === 0) return connections;
+  let changed = false;
+  const out = connections.map((c) => {
+    // Kursy z jutra (dayOffset) dostają dzisiejsze opóźnienia? Ten sam trip_id
+    // jutro to inny kurs, więc nie.
+    if (c.departureSec >= 86400) return c;
+    let maxDelayMin = 0;
+    let live = false;
+    const legs = c.legs.map((leg) => {
+      const d = leg.tripId && leg.mode !== 'walk' ? tripDelays.get(leg.tripId) : undefined;
+      const legLive = d !== undefined;
+      if (legLive) {
+        live = true;
+        const m = Math.round(d / 60);
+        if (Math.abs(m) > Math.abs(maxDelayMin)) maxDelayMin = m;
+      }
+      if (legLive === leg.live) return leg;
+      changed = true;
+      return { ...leg, live: legLive };
+    });
+    const summaryChanged = c.live !== live || c.delayMin !== maxDelayMin;
+    if (!summaryChanged && !changed) return c;
+    changed = true;
+    return { ...c, legs, live, delayMin: maxDelayMin };
+  });
+  return changed ? out : connections;
+}
+
+/**
  * Wyznacza kandydatów przystanków początkowych (origins) wokół pozycji startu.
  * Celowo szeroko (wszystko do maxWalkM): dalszy przystanek z bezpośrednim
  * odjazdem wygrywa z najbliższym słupkiem wymagającym 3 przesiadek.

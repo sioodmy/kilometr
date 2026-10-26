@@ -13,14 +13,16 @@ function activeCity() {
   }
 }
 // - Rozkład GTFS: Open Data Wrocław (katalog + zip)
-// - Pozycje pojazdów: mpk.wroc.pl/bus_position (POST, bez klucza), wprost z
-//   telefonu, bez cache'a brzegowego. Workers Free ma limit 100k requestów
-//   na dobę, a pojedynczy użytkownik generowałby 4 tys. samym pollingiem.
+// - Pozycje i opóźnienia pojazdów: zbiorkom.live (Open Data API, bez klucza),
+//   główne źródło dla wszystkich miast (ZBIORKOM niżej). Feed podaje też
+//   opóźnienie wprost, więc matcher używa go zamiast liczyć sam.
+// - Awaryjnie Wrocław: POST mpk.wroc.pl/bus_position, gdy zbiorkom nie
+//   odpowiada (MPK.busPositionUrl niżej).
 // - Adresy/POI: Nominatim + Overpass (HTTPS, z nagłówkiem User-Agent)
 //
 // Limity: GTFS-RT nie istnieje dla wrocławskiego MPK - opóźnienia liczymy
-// sami, dopasowując GPS z bus_position do rozkładu (matcher w liveTracker).
-// Pociągi KD i awaryjny fallback MPK idą przez zbiorkom.live (ZBIORKOM niżej).
+// sami, dopasowując GPS do rozkładu (matcher w liveTracker), chyba że feed
+// podaje je wprost (zbiorkom.live to robi). Pociągi KD idą przez zbiorkom.live.
 //
 // Linie dla bus_position. Lista zgagała się z rozkładem: MPK wprowadziło 76
 // oraz 913/917/923/928/933/937/938/941/944/945/961/964, których tu nie było,
@@ -62,11 +64,11 @@ export const MPK = {
 
 /**
  * ZbiorKom.live Open Data API (https://api.zbiorkom.live, bez klucza).
- * Dwa zastosowania:
+ * Główne źródło pozycji i opóźnień dla wszystkich miast:
  * - miasto `pkp`, agencja `KD`: pozycje i opóźnienia pociągów KD
  *   (nasz rozkład nie ma dla nich żadnego feedu live),
- * - miasto `wroclaw`: fallback pozycji autobusów i tramwajów, gdy
- *   bezpośredni `bus_position` MPK nie odpowiada.
+ * - miasta `wroclaw` / `krakow` / ...: pozycje autobusów, tramwajów,
+ *   trolejbusów i metra plus opóźnienia (`delay` w odpowiedzi).
  * Bbox w ścieżce to minLon,minLat,maxLon,maxLat (cały Wrocław).
  */
 export const ZBIORKOM = {

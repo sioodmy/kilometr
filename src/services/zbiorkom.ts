@@ -3,9 +3,9 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok` / `opole` / `rzeszow` / `lublin` / `radom`: awaryjne (Wrocław) albo podstawowe
-//   (reszta) pozycje autobusów, tramwajów, trolejbusów i metra, gdy
-//   bezpośredni feed nie odpowiada.
+//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok` / `opole` / `rzeszow` / `lublin` / `radom`:
+//   główne źródło pozycji i opóźnień (feed podaje `delay` wprost).
+//   Bezpośredni POST bus_position MPK zostaje tylko jako awaria Wrocławia.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -290,7 +290,11 @@ function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
     const lat = loc[1];
     const lon = loc[0];
     if (!lat || !lon) continue;
-    rows.push({ name: line, type: p.vehicle?.type === '0' ? 'tram' : 'bus', x: lat, y: lon, k: id });
+    // Opóźnienie z API (ms → s) idzie do matchera jako główny pomiar; matcher
+    // sam odrzuci absurdalne wartości (limit DELAY_CAP_SEC).
+    const delaySec =
+      typeof p.delay === 'number' && Number.isFinite(p.delay) ? Math.round(p.delay / 1000) : undefined;
+    rows.push({ name: line, type: p.vehicle?.type === '0' ? 'tram' : 'bus', x: lat, y: lon, k: id, delaySec });
   }
   return rows;
 }

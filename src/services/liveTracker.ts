@@ -1,11 +1,12 @@
-// Lokalny tracker pojazdów MPK: poll pozycji + dopasowanie kursów do
-// rozkładu (opóźnienia). Zasilanie RAPTOR-a (tripDelays) i flag live w UI.
-// Działa w całości na telefonie, bez serwera pośredniczącego. Uzasadnienie
-// przy fetchAll.
+// Lokalny tracker pojazdów: poll pozycji (główne źródło: zbiorkom.live, wszędzie)
+// + dopasowanie kursów do rozkładu (opóźnienia). Zasilanie RAPTOR-a (tripDelays)
+// i flag live w UI. Działa w całości na telefonie, bez serwera pośredniczącego.
+// Uzasadnienie przy fetchAll.
 //
 // Matcher rzutuje pozycję GPS na geometrię trasy kursu (odcinki między
 // kolejnymi przystankami) oraz sprawdza oczekiwany czas w rozkładzie.
 // Eliminuje to błędy pojazdów w ruchu między przystankami i fałszywe dopasowania.
+// Opóźnienie bierze wprost z feedu, gdy ten je podaje; estymata z GPS to zapas.
 
 import {
   BinaryReader,
@@ -24,8 +25,14 @@ import { kvGet, kvSet } from './storage';
 import { fetchZbBialystokRows, fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKielceRows, fetchZbKml, fetchZbKrakowRows, fetchZbLodzRails, fetchZbLodzRows, fetchZbLublinRows, fetchZbOlsztynRows, fetchZbOpoleRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbRadomRows, fetchZbRzeszowRows, fetchZbSkmtRails, fetchZbSzczecinRows, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 
-/** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
-const POLL_MS = 20000;
+/**
+ * Tempo polla na ekranie. Pomiar feedu zbiorkom.live: treść zmienia się co
+ * ~4-30 s, więc 5 s łapie każdą aktualizację (1 s = 5x transferu za te same
+ * dane). W tle wolniej, bo tam liczy się bateria.
+ */
+const POLL_MS = 5000;
+/** Tempo polla w tle: apka nieaktywna, ale śledzenie podróży potrzebuje danych. */
+const BACKGROUND_POLL_MS = 20000;
 /**
  * Dane uznajemy za wartościowe tak długo, ile minęło od ostatniego sukcesu.
  *
@@ -87,6 +94,12 @@ export interface RawVehicleRow {
   x: number;
   y: number;
   k: number | string;
+  /**
+   * Opóźnienie wprost z feedu (zbiorkom.live, sekundy). Główny pomiar:
+   * matcher używa go zamiast własnej estymaty z GPS. `undefined` = feed go
+   * nie podaje (MPK bus_position), wtedy liczymy sami.
+   */
+  delaySec?: number;
 }
 
 /**
@@ -149,6 +162,14 @@ class LiveTracker {
   }
 
   /**
+   * Znacznik ostatniej udanej dostawy danych (0 = nigdy). UI porównuje go
+   * między tickami: zmiana = przyszły nowe opóźnienia, można przerysować.
+   */
+  getLastOk(): number {
+    return this.lastOk;
+  }
+
+  /**
    * Czyści stan w pamięci (zmiana miasta, nowy import). Snapshotu na dysku NIE
    * kasujemy: klucze są per-miasto, a wpis, który tam jest, należy do miasta,
    * z którego właśnie wyszliśmy. Nadpisze go następny udany poll.
@@ -159,6 +180,8 @@ class LiveTracker {
     this.tripDelays.clear();
     this.lastOk = 0;
     this.restored = false;
+    // Nowe miasto: pierwszy udany poll ma od razu pójść na dysk pod nowy klucz.
+    this.lastPersistAt = 0;
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -198,18 +221,31 @@ class LiveTracker {
     this.appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         if (this.wantPoll || this.pinned > 0) this.armTimer();
-      } else if (this.pinned === 0) {
+      } else if (this.pinned > 0) {
+        // Pin w tle zostaje, ale przechodzi na rzadsze tempo (bateria).
+        this.armTimer();
+      } else {
         this.disarmTimer();
       }
     });
   }
 
+  private timerMs = 0;
+
+  /**
+   * Tempo polla zależy od stanu aplikacji (na ekranie co 5 s, w tle co 20 s),
+   * więc przy każdej zmianie stanu przestawiamy interval. Wywołanie z tym
+   * samym tempem jest no-op (nie Restartujemy polla co re-render).
+   */
   private armTimer(): void {
-    if (this.timer) return;
+    const ms = AppState.currentState === 'active' ? POLL_MS : BACKGROUND_POLL_MS;
+    if (this.timer && this.timerMs === ms) return;
+    this.disarmTimer();
     void this.poll();
+    this.timerMs = ms;
     this.timer = setInterval(() => {
       void this.poll();
-    }, POLL_MS);
+    }, ms);
   }
 
   private disarmTimer(): void {
@@ -222,7 +258,7 @@ class LiveTracker {
   /**
    * Szybka ścieżka przed planowaniem: gdy snapshot świeży - nic nie robi,
    * w przeciwnym razie odpala poll W TLE i wraca od razu (planowanie nigdy
-   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤20 s).
+   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤5 s).
    */
   async ensureFresh(): Promise<void> {
     this.start();
@@ -429,45 +465,25 @@ class LiveTracker {
   }
 
   /**
-   * Pozycje pojazdów per-miasto:
-   * - Wrocław: wprost z MPK (POST bus_position), awaryjnie zbiorkom.live,
-   * - Kraków / GZM / Warszawa / Poznań / Trójmiasto / Łódź / Szczecin / Kielce / Olsztyn / Białystok / Opole / Rzeszów / Lublin / Radom:
-   *   zbiorkom.live (ZTP, ZTM, WTP, ZTM Poznań, ZTM Gdańsk + ZKM Gdynia,
-   *   ZDiT Łódź, ZDiTM Szczecin, ZTM Kielce, ZDZiT Olsztyn, BKM, MZK, ZTM Rzeszów, ZDiTM Lublin i MZDiK Radom nie mają publicznego bus_position).
-   *
-   * Wrocław świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby
-   * 100k requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK
-   * i tak odpowiada w 291 ms medianowo i nie zawodzi. Jedno ponowienie po
-   * krótkiej przerwie wystarczy na przejściowy timeout.
+   * Pozycje pojazdów per-miasto: główne źródło zbiorkom.live dla wszystkich
+   * miast (żaden z operatorów nie ma publicznego bus_position).
+   * Fallback: POST bus_position MPK (tylko Wrocław), gdy zbiorkom nie odpowie.
+   * Jedno ponowienie po krótkiej przerwie łapie przejściowy timeout.
    */
   private async fetchAll(): Promise<RawVehicleRow[] | null> {
-    let direct = false;
-    try {
-      direct = getCity(safeCityId()).features.directBusPosition;
-    } catch {
-      direct = true;
-    }
-    if (!direct) {
-      const krakow = await this.fetchZbCity();
-      if (krakow) return krakow;
-      await new Promise((r) => setTimeout(r, 1200));
-      return this.fetchZbCity();
-    }
-    const first = await this.fetchDirect();
+    const first = await this.fetchZbCity();
     if (first) return first;
     await new Promise((r) => setTimeout(r, 1200));
-    const second = await this.fetchDirect();
+    const second = await this.fetchZbCity();
     if (second) return second;
     try {
-      const fallback = await fetchZbWroclawRows();
-      this.recordSource('zbiorkom', fallback !== null, fallback === null ? 'brak odpowiedzi' : undefined);
-      if (fallback) console.warn('[LiveTracker] MPK down, fallback zbiorkom.live');
-      return fallback;
-    } catch (err) {
-      this.recordSource('zbiorkom', false, err);
-      console.warn('[LiveTracker] zbiorkom fallback failed:', err);
-      return null;
+      if (!getCity(safeCityId()).features.directBusPosition) return null;
+    } catch {
+      // Nieznane miasto: próbujemy fallbacku i tak (getCity domyślnie daje Wrocław).
     }
+    const fallback = await this.fetchDirect();
+    if (fallback) console.warn('[LiveTracker] zbiorkom down, fallback bus_position MPK');
+    return fallback;
   }
 
   private async fetchZbCity(): Promise<RawVehicleRow[] | null> {
@@ -559,8 +575,19 @@ class LiveTracker {
     return rows.length > 0 ? rows : null;
   }
 
+  /** Ostatni zapis snapshotu: przy polli co 5 s zapis na dysk co raz to tarcie. */
+  private lastPersistAt = 0;
+  /** Minimalna przerwa między zapisami snapshotu na dysk. */
+  private static PERSIST_MIN_MS = 30000;
+
   private persistSnapshot(rows: RawVehicleRow[], rails?: RailFeed[], cityId?: string): void {
-    void kvSet(snapshotKey(cityId), JSON.stringify({ at: Date.now(), rows, rails: rails ?? [] } satisfies StoredSnapshot));
+    // Snapshot służy tylko odtworzeniu po restarcie (okno 15 min), więc wolno
+    // mu gubić intermediate polle. Bez throttlingu pisalibyśmy ~600 KB na dysk
+    // co 5 s.
+    const now = Date.now();
+    if (now - this.lastPersistAt < LiveTracker.PERSIST_MIN_MS) return;
+    this.lastPersistAt = now;
+    void kvSet(snapshotKey(cityId), JSON.stringify({ at: now, rows, rails: rails ?? [] } satisfies StoredSnapshot));
   }
 
   /**
@@ -794,6 +821,14 @@ class LiveTracker {
         `[LiveTracker] ${line} ${vehicleId}: odrzucone opóźnienie ${Math.round(bestDelay / 60)} min (> ${DELAY_CAP_SEC / 60})`,
       );
     }
+    // Główny pomiar opóźnienia przychodzi z feedu (zbiorkom.live podaje go
+    // wprost); estymata z GPS zostaje tylko jako zapas, gdy feed go nie ma.
+    // Przy podejrzanym dopasowaniu (delayOutOfRange) nie stawiamy ani jednego,
+    // ani drugiego: pomiar do złego kursu to zmyślone „na czas”.
+    const apiDelay =
+      typeof row.delaySec === 'number' && Number.isFinite(row.delaySec) ? row.delaySec : null;
+    const apiUsable =
+      apiDelay !== null && Math.abs(apiDelay) <= DELAY_CAP_SEC && !delayOutOfRange;
     // Typ z feedu bywa zgadywany, więc po dopasowaniu bierzemy go z bazy:
     // route_type 0 to tramwaj, 1 to metro, 2 to pociąg (SKA), 11 to trolejbus.
     // Bez meczu zostaje typ z wiersza. Ta sama kolejność co w ścieżce Rusta.
@@ -816,7 +851,7 @@ class LiveTracker {
         // `null` = brak wiarygodnego pomiaru (a nie „na czas”). Dzięki temu
         // `matchSingle` nie ustawia `matchedTripId`, więc RAPTOR nie dostaje
         // fałszywego opóźnienia, a UI pokazuje rozkład zamiast zielonego badge.
-        delaySec: bestTripId && !delayOutOfRange ? bestDelay : null,
+        delaySec: bestTripId && !delayOutOfRange ? (apiUsable ? apiDelay! : bestDelay) : null,
         matchedTripId: bestTripId && !delayOutOfRange ? bestTripId : undefined,
         currentStopName: bestCurrentStop,
         nextStopName: bestNextStop,
@@ -968,6 +1003,12 @@ class LiveTracker {
       const nextIdx = r.u32();
       const tripId = ok ? this.liveTripIds[tripIdx] : undefined;
       const delayOutOfRange = !!tripId && delay !== 0 && Math.abs(delay) > DELAY_CAP_SEC;
+      // Główny pomiar z feedu (jak w matchRow): przy plauzibilnym dopasowaniu
+      // opóźnienie od operatora wygrywa z estymatą z GPS.
+      const apiDelay =
+        typeof row.delaySec === 'number' && Number.isFinite(row.delaySec) ? row.delaySec : null;
+      const apiUsable =
+        tripId != null && !delayOutOfRange && apiDelay !== null && Math.abs(apiDelay) <= DELAY_CAP_SEC;
       // Ścieżka Rusta nie zna route_type, więc typ bierzemy z bazy po meczu
       // (metro M1/M2 z feedu miasta przychodzi jako „bus", a po meczu
       // dostaje route_type 1 i kropkę metra).
@@ -987,7 +1028,7 @@ class LiveTracker {
           lat: row.x,
           lon: row.y,
           type: vtype,
-          delaySec: tripId && !delayOutOfRange ? delay : null,
+          delaySec: tripId && !delayOutOfRange ? (apiUsable ? apiDelay! : delay) : null,
           matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
           currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
           nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,

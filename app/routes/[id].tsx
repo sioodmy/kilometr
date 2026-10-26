@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -19,6 +19,7 @@ import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
 import { getPlannedConnection } from '../../src/services/api';
 import { normalizeConnectionId } from '../../src/services/routing/connectionIdentity';
+import { applyLiveDelays } from '../../src/services/routing/engine';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
@@ -54,7 +55,26 @@ export default function RouteDetailsScreen() {
   const alarmItem = getDepartureAlarmSync()?.connection;
   const immediateItem = cachedItem?.id === id ? cachedItem : alarmItem?.id === id ? alarmItem : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
-  const item = trackedTrip?.connection.id === id ? trackedTrip.connection : loadedItem?.id === id ? loadedItem : immediateItem ?? null;
+  const rawItem = trackedTrip?.connection.id === id ? trackedTrip.connection : loadedItem?.id === id ? loadedItem : immediateItem ?? null;
+  // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia: bez
+  // tickera karta pokazywałaby wartości z chwili wyszukiwania.
+  const [liveTick, setLiveTick] = useState(0);
+  const lastLiveOk = useRef(0);
+  useEffect(() => {
+    const t = setInterval(() => {
+      const ok = liveTracker.getLastOk();
+      if (ok !== lastLiveOk.current) {
+        lastLiveOk.current = ok;
+        setLiveTick(ok);
+      }
+    }, 5000);
+    return () => clearInterval(t);
+  }, []);
+  const item = useMemo(
+    () => (rawItem ? (applyLiveDelays([rawItem], liveTracker.getTripDelays())[0] ?? null) : null),
+    // liveTick wymusza przemapowanie po każdym nowym polli trackera.
+    [rawItem, liveTick],
+  );
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [offline, setOffline] = useState(false);
