@@ -33,6 +33,7 @@ export function useJourneyNavigation(connection: Connection, transfer?: Transfer
     target: NavigationTarget;
   } | null>(null);
   const [boarded, setBoarded] = useState<{ connectionId: string; legIndex: number } | null>(null);
+  const [resumed, setResumed] = useState<{ connectionId: string; legIndex: number } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -90,23 +91,28 @@ export function useJourneyNavigation(connection: Connection, transfer?: Transfer
     completedLegIndex:
       completed?.connectionId === connection.id ? completed.target.legIndex : undefined,
     boardedLegIndex: boarded?.connectionId === connection.id ? boarded.legIndex : undefined,
+    resumedLegIndex: resumed?.connectionId === connection.id ? resumed.legIndex : undefined,
   });
   useEffect(() => {
     previous.current = { connectionId: connection.id, target };
   }, [connection.id, target]);
   const ride = target?.phase === 'riding' ? rideNavigation(target, now, vehicles, location) : null;
   const alight = () => {
-    if (target?.phase !== 'riding') return;
+    if (target?.phase !== 'riding' || !ride?.canAlight) return;
+    setResumed(null);
     setCompleted({ connectionId: connection.id, target });
   };
   const board = () => {
     if (!target || target.leg.mode === 'walk') return;
+    setResumed(null);
+    setCompleted(null);
     setBoarded({ connectionId: connection.id, legIndex: target.legIndex });
   };
   const undoAlight =
-    completed?.connectionId === connection.id && target?.phase !== 'riding'
+    completed?.connectionId === connection.id
       ? () => {
           previous.current = { connectionId: connection.id, target: completed.target };
+          setResumed({ connectionId: connection.id, legIndex: completed.target.legIndex });
           setCompleted(null);
         }
       : undefined;
