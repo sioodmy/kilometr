@@ -605,15 +605,16 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
             path={onTransit ? (ride?.remainingPath ?? []) : displayRoutePath}
             traveled={onTransit ? ride?.traveledPath : undefined}
             stops={onTransit ? ride?.stops : undefined}
-            user={onTransit ? userPos : displayUserPos}
+            user={onTransit ? null : displayUserPos}
             vehicle={onTransit ? ride?.position : null}
             stop={stopPos}
-            headingDeg={activeHeading ?? (onTransit ? (ride?.heading ?? null) : null)}
+            headingDeg={onTransit ? null : activeHeading}
             accuracyM={userLocation?.accuracy ?? null}
             accent={mapLineColor(onTransit ? lineAccent : scheme.primary)}
             riding={onTransit}
             interactive={fullscreen}
             line={onTransit ? activeLeg?.line : undefined}
+            mode={onTransit ? activeLeg?.mode : undefined}
             onCompassCalibrationChange={setNeedsCalibration}
             style={[styles.map, fullscreen ? styles.fullMap : { height: navMapH }]}
           />
@@ -627,17 +628,18 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
           nestedScrollEnabled
           style={[
             styles.sheetScroll,
-            fullscreen && !landscape && {
-              height: sheetHeight,
-              maxHeight: winH * (fontScale > 1.3 ? 0.55 : 0.48),
-            },
+            fullscreen &&
+              !landscape && {
+                height: sheetHeight,
+                maxHeight: winH * (fontScale > 1.3 ? 0.55 : 0.48),
+              },
             landscape && { width: Math.min(360, winW * 0.46), height: '100%' },
           ]}
           contentContainerStyle={styles.sheet}
           onContentSizeChange={(_, height) => setSheetHeight(height)}
           showsVerticalScrollIndicator={fullscreen}
         >
-          {needsCalibration ? (
+          {needsCalibration && !onTransit ? (
             <View style={styles.calibration}>
               <Pressable
                 onPress={() => setCalibrationExpanded((value) => !value)}
@@ -727,13 +729,13 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
             <Text style={styles.destination}>{stopName}</Text>
           )}
           <Text style={styles.secondary}>{footerText}</Text>
-          {onTransit || undoAlight ? (
+          {onTransit && ride?.canAlight ? (
             <Pressable
-              onPress={onTransit ? alight : undoAlight}
+              onPress={alight}
               onFocus={() => setFocused('alight')}
               onBlur={() => setFocused(null)}
               accessibilityRole="button"
-              accessibilityLabel={onTransit ? s.compass.alighted : s.compass.undoAlight}
+              accessibilityLabel={s.compass.alighted}
               style={({ pressed }) => [
                 styles.action,
                 pressed && styles.pressed,
@@ -741,9 +743,24 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
               ]}
             >
               <Footprints size={21} color={scheme.onSecondaryContainer} />
-              <Text style={styles.actionText}>
-                {onTransit ? s.compass.alighted : s.compass.undoAlight}
-              </Text>
+              <Text style={styles.actionText}>{s.compass.alighted}</Text>
+            </Pressable>
+          ) : null}
+          {undoAlight ? (
+            <Pressable
+              onPress={undoAlight}
+              onFocus={() => setFocused('undoAlight')}
+              onBlur={() => setFocused(null)}
+              accessibilityRole="button"
+              accessibilityLabel={s.compass.undoAlight}
+              style={({ pressed }) => [
+                styles.action,
+                pressed && styles.pressed,
+                focused === 'undoAlight' && styles.focused,
+              ]}
+            >
+              <RotateCcw size={21} color={scheme.onSecondaryContainer} />
+              <Text style={styles.actionText}>{s.compass.undoAlight}</Text>
             </Pressable>
           ) : null}
           {waitingAtStop && !onTransit ? (
@@ -811,7 +828,10 @@ export function StopCompassCard({ connection, onOpenMap, transfer }: StopCompass
         onRequestClose={() => setFullscreen(false)}
       >
         <SafeAreaProvider>
-          <SafeAreaView style={styles.fullscreen} onAccessibilityEscape={() => setFullscreen(false)}>
+          <SafeAreaView
+            style={styles.fullscreen}
+            onAccessibilityEscape={() => setFullscreen(false)}
+          >
             {content}
           </SafeAreaView>
         </SafeAreaProvider>

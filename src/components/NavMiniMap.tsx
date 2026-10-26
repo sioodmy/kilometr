@@ -12,6 +12,8 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { Compass, LocateFixed, Route } from 'lucide-react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import type { Coord } from '../services/routeGeometry';
+import type { LegMode } from '../types/models';
+import { getLineColors, normalizeLineName } from '../services/lineIdentity';
 import { useStrings } from '../i18n';
 import { buildNavMapDocument } from '../map/navMapDocument';
 import { mapDocumentSource } from '../map/bundledMapLibre';
@@ -34,6 +36,7 @@ interface NavMiniMapProps {
   riding: boolean;
   interactive?: boolean;
   line?: string;
+  mode?: LegMode;
   onCompassCalibrationChange?: (needed: boolean) => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -61,6 +64,7 @@ export function NavMiniMap({
   riding,
   interactive = true,
   line,
+  mode,
   onCompassCalibrationChange,
   style,
 }: NavMiniMapProps) {
@@ -70,6 +74,8 @@ export function NavMiniMap({
   const ready = useRef(false);
   const deviceHeading = useRef<number | null>(null);
   const { cityId } = useActiveCity();
+  const badge = getLineColors(line, mode, cityId);
+  const label = normalizeLineName(line, mode);
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [retry, setRetry] = useState(0);
@@ -84,7 +90,9 @@ export function NavMiniMap({
     stop,
     accent,
     riding,
-    label: line,
+    label,
+    badgeBackground: badge.bg,
+    badgeForeground: badge.fg,
   });
   const latestCamera = useRef<NavMapCameraUpdate>({
     user,
@@ -94,12 +102,23 @@ export function NavMiniMap({
     reduceMotion,
     headingOnly: false,
   });
-  latestRoute.current = { id: targetId, path, traveled, stops, stop, accent, riding, label: line };
+  latestRoute.current = {
+    id: targetId,
+    path,
+    traveled,
+    stops,
+    stop,
+    accent,
+    riding,
+    label,
+    badgeBackground: badge.bg,
+    badgeForeground: badge.fg,
+  };
   latestCamera.current = {
     user,
     vehicle,
     heading: riding ? headingDeg : (deviceHeading.current ?? headingDeg),
-    userHeading: deviceHeading.current ?? (riding ? null : headingDeg),
+    userHeading: riding ? null : (deviceHeading.current ?? headingDeg),
     reduceMotion,
     headingOnly: false,
   };
@@ -162,22 +181,34 @@ export function NavMiniMap({
       deviceHeading.current = value;
       const current = latestCamera.current;
       current.heading = riding ? headingDeg : (value ?? headingDeg);
-      current.userHeading = value ?? (riding ? null : headingDeg);
+      current.userHeading = riding ? null : (value ?? headingDeg);
       current.headingOnly = true;
       sendCamera();
     },
     [sendCamera, headingDeg, riding],
   );
-  const compassState = useDeviceHeading(user != null || vehicle != null, onHeading);
+  const compassState = useDeviceHeading(!riding && user != null, onHeading);
   useEffect(() => {
     const timer = setTimeout(
-      () => onCompassCalibrationChange?.(!northUp && compassState === 'calibrate'),
+      () => onCompassCalibrationChange?.(!riding && !northUp && compassState === 'calibrate'),
       northUp ? 0 : compassState === 'calibrate' ? 600 : compassState === 'ok' ? 1500 : 0,
     );
     return () => clearTimeout(timer);
-  }, [compassState, northUp, onCompassCalibrationChange]);
+  }, [compassState, northUp, riding, onCompassCalibrationChange]);
 
-  useEffect(sendRoute, [sendRoute, targetId, path, traveled, stops, stop, accent, riding, line]);
+  useEffect(sendRoute, [
+    sendRoute,
+    targetId,
+    path,
+    traveled,
+    stops,
+    stop,
+    accent,
+    riding,
+    label,
+    badge.bg,
+    badge.fg,
+  ]);
   useEffect(sendCamera, [sendCamera, user, vehicle, headingDeg, reduceMotion, targetId]);
 
   const onMessage = useCallback(
@@ -252,23 +283,25 @@ export function NavMiniMap({
       ) : null}
       {interactive ? (
         <View style={styles.topControls} pointerEvents="box-none">
-          <Pressable
-            onPress={() => control('north')}
-            disabled={mapState !== 'ready'}
-            onFocus={() => setFocused('north')}
-            onBlur={() => setFocused(null)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: northUp, disabled: mapState !== 'ready' }}
-            accessibilityLabel={northUp ? s.compass.compassUp : s.compass.northUp}
-            style={({ pressed }) => [
-              styles.iconButton,
-              northUp && styles.selected,
-              pressed && styles.pressed,
-              focused === 'north' && styles.focused,
-            ]}
-          >
-            <Compass size={24} color={northUp ? scheme.onPrimaryContainer : scheme.onSurface} />
-          </Pressable>
+          {!riding ? (
+            <Pressable
+              onPress={() => control('north')}
+              disabled={mapState !== 'ready'}
+              onFocus={() => setFocused('north')}
+              onBlur={() => setFocused(null)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: northUp, disabled: mapState !== 'ready' }}
+              accessibilityLabel={northUp ? s.compass.compassUp : s.compass.northUp}
+              style={({ pressed }) => [
+                styles.iconButton,
+                northUp && styles.selected,
+                pressed && styles.pressed,
+                focused === 'north' && styles.focused,
+              ]}
+            >
+              <Compass size={24} color={northUp ? scheme.onPrimaryContainer : scheme.onSurface} />
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={() => control('overview')}
             disabled={mapState !== 'ready'}
