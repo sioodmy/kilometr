@@ -52,7 +52,7 @@ import {
 import { liveTracker } from '../../src/services/liveTracker';
 import { deduplicateConnections, mergeConnections } from '../../src/services/routing/connectionIdentity';
 import { loadEarlierConnections } from '../../src/services/routing/earlierConnections';
-import { sortConnectionsByCost } from '../../src/services/routing/engine';
+import { applyLiveDelays, sortConnectionsByCost } from '../../src/services/routing/engine';
 import { costParamsFor } from '../../src/services/routing/raptor';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
@@ -210,10 +210,21 @@ export default function RoutesScreen() {
   // `unknown` też oznacza brak danych: przed pierwszym udanym pollem (albo przy
   // starcie apki) nie mamy żadnego opóźnienia, więc cisza była kłamstwem.
   const [liveStale, setLiveStale] = useState(false);
+  // Tick przerysowujący opóźnienia: wyplanowane połączenia mają flagi live
+  // z chwili wyszukiwania, bez tickera byłyby zamrożone od wyszukania.
+  const [liveTick, setLiveTick] = useState(0);
+  const lastLiveOk = useRef(0);
   useEffect(() => {
-    const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
+    const check = () => {
+      setLiveStale(liveTracker.getLiveState() !== 'fresh');
+      const ok = liveTracker.getLastOk();
+      if (ok !== lastLiveOk.current) {
+        lastLiveOk.current = ok;
+        setLiveTick(ok);
+      }
+    };
     check();
-    const t = setInterval(check, 15000);
+    const t = setInterval(check, 5000);
     return () => clearInterval(t);
   }, []);
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
@@ -246,7 +257,7 @@ export default function RoutesScreen() {
   );
 
   const displayed = useMemo(() => {
-    let list = items;
+    let list = applyLiveDelays(items, liveTracker.getTripDelays());
     if (directOnly) {
       list = list.filter((c) => c.transfers === 0);
     }
@@ -260,7 +271,7 @@ export default function RoutesScreen() {
       [...list], costParamsFor(cfg.routeStyle), profileWalkSpeedMps(cfg.walkPace),
       arrivalMode ? targetTimeSec : undefined,
     );
-  }, [items, directOnly, modeFilter, arrivalMode, targetTimeSec]);
+  }, [items, directOnly, modeFilter, arrivalMode, targetTimeSec, liveTick]);
 
   // Dock przesuwa się nad listą bez zmiany wysokości jej viewportu.
   const dockProgress = useSharedValue(1);
