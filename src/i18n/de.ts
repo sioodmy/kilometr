@@ -106,6 +106,7 @@ export const de: Strings = {
     kmh: (v: string) => `${v} km/h`,
     add15: '+15 Min.',
     add30: '+30 Min.',
+    add45: '+45 Min.',
     add60: '+1 Std.',
   },
   home: {
@@ -1139,6 +1140,8 @@ export const de: Strings = {
     minuteLabel: 'Minute',
     confirmNow: 'Ab jetzt suchen',
     confirmDepart: (day: string, hh: string, mm: string) => `Übernehmen: ${day}, ${hh}:${mm}`,
+    pastWarning: 'Die gewählte Zeit ist bereits vergangen',
+    switchTomorrow: 'Auf morgen umstellen',
   },
   routesBar: {
     modeTram: 'Tram',
@@ -1154,6 +1157,8 @@ export const de: Strings = {
     directOffA11y: 'Nur-Direkt-Filter: inaktiv. Tippen zum Einschalten.',
     modeFilterA11y: (cur: string) => `Verkehrsmittel filtern: aktuell ${cur}. Tippen zum Ändern.`,
     timeA11y: (label: string) => `Abfahrtszeit: ${label}. Tippen zum Ändern.`,
+    timeArrivalA11y: (label: string) => `Ankunftszeit: ${label}. Zum Ändern tippen.`,
+    arrivalShort: (time: string) => `bis ${time}`,
   },
   connection: {
     previewTitle: 'Verbindungsvorschau',
