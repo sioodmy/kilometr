@@ -44,6 +44,9 @@ jobs:
             landing/package-lock.json
 
       - name: Build landing page (React → docs/)
+        env:
+          ANDROID_APP_LINK_FINGERPRINTS: ${{ vars.ANDROID_APP_LINK_FINGERPRINTS }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           npm ci

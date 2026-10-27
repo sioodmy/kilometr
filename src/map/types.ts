@@ -19,6 +19,7 @@ export interface MapStop extends LatLon {
 
 export interface MapLeg {
   id: string;
+  geometry?: [number, number][];
   mode: LegMode;
   line?: string;
   /** kierunek kursu (np. "BISKUPIN") */

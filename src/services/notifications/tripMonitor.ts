@@ -34,6 +34,8 @@ import type { NotificationPreferences, TripProgress, TrackedTrip } from './types
 import type { TransferProtectionState } from './transferTypes';
 import { hasTransfer } from './transferTypes';
 import type { ForegroundTransferProtection } from './transferForeground';
+import { decodeSharedConnection } from '../../sharing/connection';
+import { sharedLiveConnection, sharedVehicle } from '../../sharing/native';
 
 // Orkiestrator śledzenia podróży. Trzyma jedną aktywną podróż, cyklicznie
 // przelicza plan (żeby łapać opóźnienia i zmiany kursu), z tego wycieka
@@ -175,7 +177,12 @@ async function refresh(): Promise<void> {
     const prefs: NotificationPreferences = getNotificationPreferencesSync();
 
     // Planujemy tylko do momentu odjazdu (patrz `planLocked`).
-    if (!planLocked) {
+    if (before.sharedJourney) {
+      const journey = decodeSharedConnection(before.sharedJourney);
+      if (!journey) { await stopTracking(); return; }
+      tracked = { ...before, connection: sharedLiveConnection(before.connection, journey,
+        liveTracker.getLiveState() === 'fresh' ? liveTracker.getTripDelays() : new Map()) };
+    } else if (!planLocked) {
       try {
         const fresh = await planTracked();
         if (run !== generation) return;
@@ -203,7 +210,7 @@ async function refresh(): Promise<void> {
 
     // Użytkownik wyłączył wszystkie powiadomienia - nie ma po co dalej
     // planować, tym bardziej że samo śledzenie kosztuje odpytania planera.
-    if ((!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) || trip.protectionEnabled && !prefs.trackingEnabled) {
+    if ((!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) || (trip.protectionEnabled || trip.sharedJourney) && !prefs.trackingEnabled) {
       await stopTracking();
       return;
     }
@@ -212,7 +219,7 @@ async function refresh(): Promise<void> {
 
     const walkSpeedMps = profileWalkSpeedMps(getSettingsSync().walkPace);
     const base = computeTripProgress(conn, { walkSpeedMps });
-    const vehicle = vehicleForTrip(base);
+    const vehicle = trip.sharedJourney ? sharedVehicle(conn, liveTracker.snapshot())?.vehicle : vehicleForTrip(base);
     // Drugi przelot z pojazdem: GPS potrafi wskazać przystanek dokładniej
     // niż interpolacja po czasie, a wynik różni się w tym, ile zostało.
     const p = vehicle ? computeTripProgress(conn, { vehicle, walkSpeedMps }) : base;
@@ -311,10 +318,10 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   await consumeNativeStop();
   generation++;
   const run = generation;
-  const protectionEnabled = trip.protectionEnabled === true && hasTransfer(trip.connection);
+  const protectionEnabled = !trip.sharedJourney && trip.protectionEnabled === true && hasTransfer(trip.connection);
   tracked = { ...trip, protectionEnabled, startedAt: Date.now() };
   arrivedAt = 0;
-  planLocked = protectionEnabled || trip.transfer?.status === 'changed';
+  planLocked = !!trip.sharedJourney || protectionEnabled || trip.transfer?.status === 'changed';
   lastDelayMin = trip.connection.delayMin;
   progress = computeTripProgress(trip.connection, {
     walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
@@ -486,8 +493,8 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
       await kvRemove(STORAGE_KEY);
       return null;
     }
-    tracked = { ...parsed, protectionEnabled: parsed.protectionEnabled === true && hasTransfer(parsed.connection) };
-    planLocked = tracked.protectionEnabled === true || tracked.transfer?.status === 'changed';
+    tracked = { ...parsed, protectionEnabled: !parsed.sharedJourney && parsed.protectionEnabled === true && hasTransfer(parsed.connection) };
+    planLocked = !!tracked.sharedJourney || tracked.protectionEnabled === true || tracked.transfer?.status === 'changed';
     generation++;
     await loadNotificationPreferences();
     progress = computeTripProgress(parsed.connection, {
@@ -559,6 +566,7 @@ async function persist(): Promise<void> {
 /** Sekcja przypięcia w snapshocie widgetów - godziny dokłada odświeżenie. */
 function pushWidgetPinned(trip: TrackedTrip | null): Promise<void> {
   if (!trip) return mergeWidgetSnapshot({ pinned: null });
+  if (trip.sharedJourney) return Promise.resolve();
   const conn = trip.connection;
   // Postęp ma już godziny z opóźnieniem live; bez niego liczymy z rozkładu.
   const departTs = progress?.departAtMs || departureTs(conn);

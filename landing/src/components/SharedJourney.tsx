@@ -19,6 +19,7 @@ import {
   formatShareTime,
   shareMessage,
   transferCount,
+  encodeSharedConnection,
   type SharedLeg,
 } from '../../../src/sharing/connection';
 import type { StaticStop } from '../../../src/sharing/timetable';
@@ -213,6 +214,13 @@ export default function SharedJourney({ hash }: { hash: string }) {
       <div className="journey-heading">
         <h1>{s.pageTitle}</h1>
         <p>{date}</p>
+        <a
+          className="journey-button"
+          href={`kilometr://shared?trip=${encodeSharedConnection(journey)}`}
+        >
+          {s.openApp}
+        </a>
+        <p>{s.appHint}</p>
       </div>
       <div className="journey-layout">
         <aside

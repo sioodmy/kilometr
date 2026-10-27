@@ -44,6 +44,37 @@ export const de: ShareStrings = {
   hideStops: 'Haltestellen ausblenden',
   privacy: 'Der Link enthält deine Route und Zeiten. Jeder, dem du ihn sendest, kann ihn öffnen.',
   pageTitle: 'Geteilte Verbindung',
+  openApp: 'In der App öffnen',
+  appHint:
+    'In der App siehst du die Karte und die Fahrzeugposition, wenn GPS-Daten verfügbar sind.',
+  nativeHint:
+    'Der Link öffnet die Verbindung in der App. Ohne App öffnet sich eine Vorschau im Browser.',
+  follow: 'An Benachrichtigungen anheften',
+  following: 'Beobachtung beenden',
+  followHint:
+    'Ankunft und Fahrtverlauf auf dem Sperrbildschirm. Kein Zugriff auf deinen Standort nötig.',
+  vehicleLive: 'Fahrzeugposition per GPS',
+  noVehicle:
+    'Keine aktuelle GPS-Position. Die Karte zeigt die Route. Zeiten stammen aus dem geteilten Plan.',
+  vehicleOnly: 'Du beobachtest das Fahrzeug. Der Link teilt den Standort des Absenders nicht.',
+  finished: 'Fahrt beendet',
+  planned: 'Fahrtplan',
+  map: 'Karte der Fahrt',
+  fitMap: 'Gesamte Route zeigen',
+  mapUnavailable: 'Der Streckenverlauf ist nicht verfügbar. Versuche, ihn erneut zu laden.',
+  geometryLoading: 'Streckenverlauf wird geladen…',
+  approximateGeometry: 'Ungefährer Verlauf über die Haltestellen.',
+  mapError: 'Die Karte konnte nicht geladen werden. Der Fahrtverlauf steht unten.',
+  retryMap: 'Karte erneut laden',
+  switchCity: (city) => `Verbindung öffnen: ${city}`,
+  switchCityHint:
+    'Diese Verbindung gehört zu einer anderen Stadt. Der Wechsel beendet die aktuelle Verfolgung.',
+  replaceTitle: 'Diese Verbindung beobachten?',
+  replaceBody:
+    'Die aktuelle Verfolgung wird beendet. Die Benachrichtigung zeigt die geteilte Fahrt.',
+  trackError: 'Die Verbindung konnte nicht angeheftet werden. Versuche es erneut.',
+  notificationTitle: (place, time) => `${place}, Ankunft ${time}`,
+  notificationArrived: 'Fahrzeug am Ziel angekommen',
   itinerary: 'Reiseverlauf',
   loading: 'Haltestellen werden aus dem Fahrplan geladen…',
   stopsUnavailable:

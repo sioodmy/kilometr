@@ -21,6 +21,7 @@ import { getActiveCityIdSync } from '../services/cityStore';
 import { buildShareUrl, createSharedConnection, shareMessage } from '../sharing/connection';
 import type { Connection } from '../types/models';
 import { JourneyShareCard } from './JourneyShareCard';
+import { getSharedJourneyData } from '../services/sharedJourneyData';
 
 export function ShareConnectionSheet({
   connection,
@@ -37,7 +38,8 @@ export function ShareConnectionSheet({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [journey] = useState(() => {
+  const [geometryLoading, setGeometryLoading] = useState(true);
+  const [journey, setJourney] = useState(() => {
     try {
       return createSharedConnection(connection, getActiveCityIdSync());
     } catch {
@@ -51,7 +53,35 @@ export function ShareConnectionSheet({
     /* Zbyt duży link pozostawia widoczną kartę i komunikat błędu. */
   }
   const message = journey ? `${shareMessage(journey, s)}\n${url}` : '';
-  const available = !!journey && !!url;
+  const available = !!journey && !!url && !geometryLoading;
+
+  useEffect(() => {
+    const snapshot = journey;
+    if (!snapshot) {
+      setGeometryLoading(false);
+      return;
+    }
+    let active = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort();
+      if (active) setGeometryLoading(false);
+    }, 12000);
+    void getSharedJourneyData(snapshot, controller.signal)
+      .then((details) => {
+        if (active && !controller.signal.aborted) setJourney(details.journey);
+      })
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(timeout);
+        if (active) setGeometryLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, []);
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -139,7 +169,13 @@ export function ShareConnectionSheet({
           </View>
         )}
         <Text style={styles.note}>{s.snapshot}</Text>
-        {(error || !available) && (
+        <Text style={styles.note}>{s.nativeHint}</Text>
+        {geometryLoading && (
+          <Text style={styles.note} accessibilityLiveRegion="polite">
+            {s.geometryLoading}
+          </Text>
+        )}
+        {(error || !journey || !url) && (
           <Text style={styles.error} accessibilityRole="alert">
             {error || s.error}
           </Text>
