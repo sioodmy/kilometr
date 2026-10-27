@@ -161,6 +161,12 @@ export interface Leg {
   toStop: string;
   departAt: string; // "14:02"
   arriveAt: string; // "14:18"
+  /** Rozkład pojazdu lub bazowy czas spaceru, z offsetem dnia. */
+  scheduledDepartureSec?: number;
+  scheduledArrivalSec?: number;
+  /** Opóźnienie już uwzględnione w godzinach tego odcinka. */
+  delaySec?: number;
+  arrivalDelaySec?: number;
   stopsCount: number;
   /** metres for walk legs */
   walkM?: number;

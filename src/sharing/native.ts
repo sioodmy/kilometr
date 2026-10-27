@@ -112,7 +112,11 @@ export function sharedLiveConnection(
     cursor = arr;
     if (index === 0) departure = dep;
     arrival = arr;
-    return { ...leg, live, departAt: formatShareTime(dep), arriveAt: formatShareTime(arr) };
+    return { ...leg, live, departAt: formatShareTime(dep), arriveAt: formatShareTime(arr),
+      scheduledDepartureSec: shared.scheduledDeparture === undefined ? undefined : from * 60,
+      scheduledArrivalSec: shared.scheduledArrival === undefined ? undefined : to * 60,
+      delaySec: live ? (dep - from) * 60 : undefined,
+      arrivalDelaySec: live ? (arr - to) * 60 : undefined };
   });
   return {
     ...connection,
