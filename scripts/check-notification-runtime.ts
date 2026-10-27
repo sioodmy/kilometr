@@ -1,3 +1,7 @@
+// Daty w teście są lokalne, a rozkład liczy się w strefie Warszawy.
+// Bez tego CI (UTC) widzi odjazd sprzed dwóch godzin i test kończy śledzenie.
+process.env.TZ = 'Europe/Warsaw';
+
 import assert from 'node:assert/strict';
 import Module, { createRequire, registerHooks } from 'node:module';
 import { mock } from 'node:test';

@@ -3,7 +3,7 @@ import { formatShareTime, transferCount, type SharedConnection } from './connect
 import { sharedJourneySeconds } from './progress';
 import { decodePath } from './geometry';
 
-export function sharedConnectionId(encoded: string): string {
+function sharedConnectionId(encoded: string): string {
   let hash = 2166136261;
   for (let i = 0; i < encoded.length; i++) hash = Math.imul(hash ^ encoded.charCodeAt(i), 16777619);
   return `shared-${(hash >>> 0).toString(16)}`;
