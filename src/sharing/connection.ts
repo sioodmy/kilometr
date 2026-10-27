@@ -2,8 +2,9 @@ import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import { CITIES, type CityId } from '../cities';
 import type { ShareStrings } from '../i18n/share/pl';
 import type { Connection, LegMode } from '../types/models';
+import { decodePath, encodePath } from './geometry';
 
-const SHARE_BASE_URL = 'https://kilometr.app/';
+const SHARE_BASE_URL = 'https://kilometr.app/trip/';
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 const modes: readonly string[] = ['walk', 'tram', 'bus', 'train', 'cable', 'trolleybus', 'subway'];
 const maxEncodedLength = 8192;
@@ -24,6 +25,11 @@ export interface SharedLeg {
   alight?: string;
   stops: number;
   walk?: number;
+  fromLat?: number;
+  fromLon?: number;
+  toLat?: number;
+  toLon?: number;
+  path?: string;
 }
 
 export interface SharedConnection {
@@ -38,7 +44,7 @@ export interface SharedConnection {
 }
 
 export function formatShareTime(minutes: number): string {
-  const dayMinutes = minutes % 1440;
+  const dayMinutes = ((minutes % 1440) + 1440) % 1440;
   return `${String(Math.floor(dayMinutes / 60)).padStart(2, '0')}:${String(dayMinutes % 60).padStart(2, '0')}`;
 }
 
@@ -107,6 +113,11 @@ export function createSharedConnection(
     alight: leg.toStopId,
     stops: leg.stopsCount,
     walk: leg.walkM == null ? undefined : Math.round(leg.walkM),
+    fromLat: leg.fromLat,
+    fromLon: leg.fromLon,
+    toLat: leg.toLat,
+    toLon: leg.toLon,
+    path: leg.geometry ? encodePath(leg.geometry) : undefined,
   }));
   const journey: SharedConnection = {
     v: 1,
@@ -136,6 +147,18 @@ function optionalText(value: unknown): boolean {
 
 function integer(value: unknown, max: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
+}
+
+function coordinates(lat: unknown, lon: unknown): boolean {
+  return (
+    (lat === undefined && lon === undefined) ||
+    (typeof lat === 'number' &&
+      Number.isFinite(lat) &&
+      Math.abs(lat) <= 90 &&
+      typeof lon === 'number' &&
+      Number.isFinite(lon) &&
+      Math.abs(lon) <= 180)
+  );
 }
 
 function isSharedConnection(value: unknown): value is SharedConnection {
@@ -179,6 +202,9 @@ function isSharedConnection(value: unknown): value is SharedConnection {
       leg.arrival < leg.departure ||
       leg.arrival > value.arrival ||
       !integer(leg.stops, 1000) ||
+      !coordinates(leg.fromLat, leg.fromLon) ||
+      !coordinates(leg.toLat, leg.toLon) ||
+      (leg.path !== undefined && (typeof leg.path !== 'string' || !decodePath(leg.path))) ||
       (leg.walk !== undefined && !integer(leg.walk, 100000))
     )
       return false;

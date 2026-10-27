@@ -14,7 +14,15 @@ import {
   scheduledVehiclePosition,
   sharedJourneySeconds,
   sharedLegStops,
+  sharedTimeMs,
 } from '../src/sharing/progress';
+import { sharedTripPath } from '../src/sharing/links';
+import { sharedToConnection, sharedLiveConnection, sharedVehicle } from '../src/sharing/native';
+import { computeTripProgress } from '../src/services/notifications/tripProgress';
+import { buildLivePlan, tripNotificationData } from '../src/services/notifications/content';
+import { pl as strings } from '../src/i18n/pl';
+import { appLinkFiles } from '../landing/appLinks';
+import { clipPath, decodePath, encodePath } from '../src/sharing/geometry';
 import { pl } from '../src/i18n/share/pl';
 import { en } from '../src/i18n/share/en';
 import { de } from '../src/i18n/share/de';
@@ -55,6 +63,7 @@ const journey = createSharedConnection(connection, 'wroclaw', new Date('2026-10-
 assert.equal(journey.date, '2026-10-19');
 assert.equal(journey.arrival, 1460);
 assert.equal(formatShareTime(journey.arrival), '00:20');
+assert.equal(formatShareTime(-1), '23:59');
 assert.deepEqual(
   decodeSharedConnection(encodeSharedConnection(journey)),
   JSON.parse(JSON.stringify(journey)),
@@ -75,6 +84,7 @@ assert.equal(
 const url = new URL(buildShareUrl(journey, 'uk'));
 assert.equal(url.origin, 'https://kilometr.app');
 assert.equal(url.search, '');
+assert.equal(url.pathname, '/trip/');
 assert.equal(new URLSearchParams(url.hash.slice(1)).get('lang'), 'uk');
 assert.ok(url.href.length < 1000);
 for (const s of [pl, en, de, uk]) {
@@ -184,3 +194,124 @@ assert.deepEqual(
   { index: 1, fraction: 0.5 },
 );
 console.log('Udostępnianie: URL, daty, północ, słowniki, przystanki i pozycja według rozkładu OK.');
+
+const encoded = encodeSharedConnection(journey);
+for (const link of [
+  url.href,
+  `https://kilometr.app/#trip=${encoded}`,
+  `kilometr://shared?trip=${encoded}`,
+  `kilometr://trip/#trip=${encoded}`,
+  `/shared?trip=${encoded}`,
+])
+  assert.equal(sharedTripPath(link), `/shared?trip=${encoded}`);
+assert.equal(sharedTripPath('https://kilometr.app/trip/#trip=broken'), '/shared');
+assert.equal(sharedTripPath('https://kilometr.app/'), null);
+assert.equal(sharedTripPath(`https://evil.example/trip/#trip=${encoded}`), null);
+assert.equal(sharedTripPath(`https://kilometr.app.evil.example/trip/#trip=${encoded}`), null);
+assert.equal(sharedTripPath('kilometr://routes?open=other'), null);
+for (const coords of [{ fromLat: 91, fromLon: 17 }, { fromLat: 51 }, { toLat: 51, toLon: 181 }])
+  assert.equal(
+    decodeSharedConnection(pack({ ...journey, legs: [{ ...journey.legs[0], ...coords }] })),
+    null,
+  );
+const midnight = new Date('2026-10-19T22:05:00Z');
+const nativeConnection = sharedToConnection(journey, encoded);
+const nativeProgress = computeTripProgress(nativeConnection, { now: midnight });
+assert.equal(nativeProgress.phase, 'riding');
+assert.equal(nativeProgress.etaMin, 15);
+assert.equal(
+  computeTripProgress(nativeConnection, { now: new Date('2026-10-20T22:05:00Z') }).phase,
+  'arrived',
+);
+assert.equal(sharedTimeMs('2026-10-19', 87600), Date.parse('2026-10-19T22:20:00Z'));
+assert.equal(sharedTimeMs('2026-10-25', 4 * 3600), Date.parse('2026-10-25T03:00:00Z'));
+const live = sharedLiveConnection(nativeConnection, journey, new Map([['tram-4', 300]]), midnight);
+assert.equal(live.arriveAt, '00:25');
+assert.equal(live.delayMin, 5);
+assert.equal(
+  sharedLiveConnection(live, journey, new Map([['tram-4', 300]]), midnight).arriveAt,
+  '00:25',
+);
+assert.equal(sharedLiveConnection(live, journey, new Map(), midnight).arriveAt, '00:20');
+assert.equal(
+  sharedLiveConnection(
+    nativeConnection,
+    journey,
+    new Map([['tram-4', 300]]),
+    new Date('2026-10-20T22:05:00Z'),
+  ).live,
+  false,
+);
+const gps = {
+  vehicleId: '4-1',
+  matchedTripId: 'tram-4',
+  line: '4',
+  lat: 51.1,
+  lon: 17.03,
+  delaySec: 0,
+  updatedAt: midnight.getTime(),
+};
+assert.equal(sharedVehicle(live, [{ ...gps, matchedTripId: 'other' }], midnight), null);
+assert.equal(
+  sharedVehicle(live, [{ ...gps, updatedAt: midnight.getTime() - 90_001 }], midnight),
+  null,
+);
+assert.equal(sharedVehicle(live, [gps], midnight)?.vehicle.vehicleId, '4-1');
+assert.equal(sharedVehicle(live, [gps], new Date('2026-10-20T22:05:00Z')), null);
+const observed = {
+  id: nativeConnection.id,
+  connection: nativeConnection,
+  sharedJourney: encoded,
+  fromTitle: journey.from,
+  fromLat: 51.1,
+  fromLon: 17.03,
+  toId: journey.to,
+  toTitle: journey.to,
+  toLat: 51.2,
+  toLon: 17.05,
+  startedAt: midnight.getTime(),
+};
+const plan = buildLivePlan(nativeProgress, nativeConnection, observed, strings);
+assert.equal(plan.deepLink, `kilometr://shared?trip=${encoded}`);
+assert.equal(plan.alightAlertsEnabled, false);
+assert.equal(plan.transferAlertsEnabled, false);
+assert.equal(plan.transferProtectionEnabled, false);
+assert.equal(plan.copy.arrived.title, strings.share.notificationArrived);
+assert.equal(tripNotificationData(observed).sharedTrip, encoded);
+assert.deepEqual(appLinkFiles('', ''), []);
+assert.throws(() => appLinkFiles('invalid', ''));
+assert.throws(() => appLinkFiles('', 'invalid'));
+const associations = appLinkFiles('', 'ABCDE12345');
+assert.equal(
+  JSON.parse(associations[0].source).applinks.details[0].appIDs[0],
+  'ABCDE12345.app.kilometr',
+);
+console.log(
+  'Udostępnianie natywne: linki, walidacja, daty, GPS, opóźnienia i plan Live Update OK.',
+);
+
+const shape: [number, number][] = [
+  [51.1, 17.01],
+  [51.1, 17.02],
+  [51.11, 17.02],
+  [51.11, 17.03],
+];
+assert.deepEqual(decodePath(encodePath(shape)), shape);
+assert.deepEqual(clipPath(shape, shape[1], shape[3]), shape.slice(1));
+assert.equal(clipPath(shape, [52, 18], shape[3]), null);
+assert.equal(clipPath(shape, shape[3], shape[0]), null);
+assert.equal(decodePath('_'.repeat(30)), null);
+const withGeometry = { ...journey, legs: [{ ...journey.legs[0], path: encodePath(shape) }] };
+assert.deepEqual(
+  sharedToConnection(withGeometry, encodeSharedConnection(withGeometry)).legs[0].geometry,
+  shape,
+);
+assert.equal(
+  decodeSharedConnection(
+    pack({ ...journey, legs: [{ ...journey.legs[0], path: 'invalid-path' }] }),
+  ),
+  null,
+);
+console.log(
+  'Geometria: kodowanie, wycinanie kierunkowe, walidacja i odtworzenie z linku offline OK.',
+);

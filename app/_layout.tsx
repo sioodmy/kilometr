@@ -2,7 +2,14 @@ import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { LogBox, Platform } from 'react-native';
 import { Fragment, useEffect, useState } from 'react';
-import { DarkTheme, ThemeProvider, Stack, router, usePathname } from 'expo-router';
+import {
+  DarkTheme,
+  ThemeProvider,
+  Stack,
+  router,
+  usePathname,
+  useGlobalSearchParams,
+} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
@@ -37,6 +44,10 @@ function navigateFromNotification(res: TripResponse) {
     return;
   }
   if (!res.link) return;
+  if (res.link.sharedTrip) {
+    router.push({ pathname: '/shared', params: { trip: res.link.sharedTrip } });
+    return;
+  }
   router.push({ pathname: '/routes', params: res.link });
 }
 
@@ -44,6 +55,7 @@ export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const pathname = usePathname();
+  const params = useGlobalSearchParams<{ trip?: string }>();
   const reduceMotion = useReducedMotion();
   const themeSetting = useThemeSetting();
   const navigationTheme = {
@@ -98,7 +110,11 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (ready && needsOnboarding) router.replace('/onboarding');
+    if (ready && needsOnboarding)
+      router.replace({
+        pathname: '/onboarding',
+        params: pathname === '/shared' && params.trip ? { sharedTrip: params.trip } : {},
+      });
   }, [ready, needsOnboarding]);
 
   useEffect(() => {

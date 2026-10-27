@@ -390,6 +390,7 @@ const runtime = [
   '    var stops = leg.stops || [];',
   '    var pts = [];',
   '    for (var j = 0; j < stops.length; j++) pts.push([stops[j].lon, stops[j].lat]);',
+  '    if (leg.geometry) pts = leg.geometry.map(function (p) { return [p[1], p[0]]; });',
   '    legGeom[leg.id] = pts;',
   '  }',
   '  if (selectedLeg && !legById(selectedLeg)) selectedLeg = null;',

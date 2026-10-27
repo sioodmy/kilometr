@@ -151,6 +151,7 @@ export interface VehiclePosition {
 
 export interface Leg {
   id: string;
+  geometry?: [number, number][];
   mode: LegMode;
   /** e.g. "4", "K", "D" - undefined for walk */
   line?: string;
@@ -182,6 +183,7 @@ export interface Leg {
 
 export interface Connection {
   id: string;
+  serviceDate?: string;
   fromTitle: string;
   toTitle: string;
   /** minutes until departure, from "now" */

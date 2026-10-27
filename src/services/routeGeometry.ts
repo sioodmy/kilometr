@@ -128,6 +128,7 @@ function legToMapLeg(leg: Leg): MapLeg {
   const stops = legStops(leg);
   return {
     id: leg.id,
+    geometry: leg.geometry,
     mode: leg.mode,
     line: leg.line,
     direction: leg.direction,
@@ -142,7 +143,7 @@ function legToMapLeg(leg: Leg): MapLeg {
     tripId: leg.tripId,
     platformCode: leg.platformCode,
     stops,
-    approx: true,
+    approx: !leg.geometry,
   };
 }
 
@@ -413,6 +414,7 @@ export async function fetchFootRoute(
 
 /** Prosty odcinek przez przystanki, natychmiastowa wersja trasy. */
 export function straightGeometry(leg: MapLeg): Coord[] {
+  if (leg.geometry) return leg.geometry;
   return legWaypoints(leg);
 }
 
@@ -427,6 +429,7 @@ export async function resolveGeometry(
 ): Promise<void> {
   for (const leg of route.legs) {
     if (signal?.aborted) return;
+    if (leg.geometry) { onLeg(leg.id, leg.geometry); continue; }
     if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
     const coords = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;

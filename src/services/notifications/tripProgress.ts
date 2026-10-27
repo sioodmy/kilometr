@@ -4,6 +4,7 @@ import { getLineColors, inferTransitMode } from '../lineIdentity';
 import { clamp01, formatClock, parseClock, toAbsoluteMs } from './format';
 import type { TripPhase, TripProgress } from './types';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
+import { sharedTimeMs } from '../../sharing/progress';
 
 const DAY = 86400;
 
@@ -64,7 +65,8 @@ function legClock(legs: Leg[], boardIndex: number, departureSec: number): LegClo
  * potrafią przekroczyć 86400 i osobne "najbliższe wystąpienie" dla
  * każdego z nich rozjeżdżało podróż o dobę.
  */
-function toMsAll(secList: number[], now: Date, anchorSec: number): number[] {
+function toMsAll(secList: number[], now: Date, anchorSec: number, serviceDate?: string): number[] {
+  if (serviceDate) return secList.map((sec) => sharedTimeMs(serviceDate, sec));
   const anchorMs = toAbsoluteMs(anchorSec, now);
   return secList.map((s) => anchorMs + Math.round(s - anchorSec) * 1000);
 }
@@ -207,10 +209,12 @@ export function computeTripProgress(conn: Connection, input: TripProgressInput =
   const hasTransit = boardIndex >= 0;
 
   const clock = legClock(legs, boardIndex, conn.departureSec);
-  const legDepartMs = toMsAll(clock.departSec, now, conn.departureSec);
-  const legArriveMs = toMsAll(clock.arriveSec, now, conn.departureSec);
+  const legDepartMs = toMsAll(clock.departSec, now, conn.departureSec, conn.serviceDate);
+  const legArriveMs = toMsAll(clock.arriveSec, now, conn.departureSec, conn.serviceDate);
 
-  const departAtMs = toAbsoluteMs(conn.departureSec, now);
+  const departAtMs = conn.serviceDate
+    ? sharedTimeMs(conn.serviceDate, conn.departureSec)
+    : toAbsoluteMs(conn.departureSec, now);
   // Godzina przyjazdu bierzemy z ostatniego odcinka (ma poprawkę na północ);
   // fallback na durationMin, gdy rozkład nie miał sekwencji odcinków.
   const lastLegArriveMs = legArriveMs.length > 0 ? legArriveMs[legArriveMs.length - 1] : null;
@@ -368,8 +372,8 @@ export function computeLegTimeline(conn: Connection, now: Date = new Date()): Le
   const legs = conn.legs;
   const boardIndex = firstTransitLegIndex(legs);
   const clock = legClock(legs, boardIndex, conn.departureSec);
-  const departMs = toMsAll(clock.departSec, now, conn.departureSec);
-  const arriveMs = toMsAll(clock.arriveSec, now, conn.departureSec);
+  const departMs = toMsAll(clock.departSec, now, conn.departureSec, conn.serviceDate);
+  const arriveMs = toMsAll(clock.arriveSec, now, conn.departureSec, conn.serviceDate);
   return legs.map((leg, index) => ({
     leg,
     index,

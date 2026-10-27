@@ -209,8 +209,8 @@ function acquire(): () => void {
   };
 }
 
-export function useCurrentLocation(): LocationSnapshot {
+export function useCurrentLocation(enabled = true): LocationSnapshot {
   const value = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  useEffect(() => acquire(), []);
+  useEffect(() => enabled ? acquire() : undefined, [enabled]);
   return value;
 }

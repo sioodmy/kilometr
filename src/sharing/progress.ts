@@ -22,6 +22,16 @@ export function sharedJourneySeconds(date: string, now = new Date()): number {
   return elapsedDays + part('hour') * 3600 + part('minute') * 60 + part('second');
 }
 
+export function sharedTimeMs(date: string, seconds: number): number {
+  let ms = Date.parse(date) + seconds * 1000;
+  for (let i = 0; i < 3; i++) {
+    const delta = seconds - sharedJourneySeconds(date, new Date(ms));
+    if (delta === 0) break;
+    ms += delta * 1000;
+  }
+  return ms;
+}
+
 export function sharedLegStops(leg: SharedLeg, stops: StaticStop[] = []): StaticStop[] {
   if (stops.length >= 2) {
     const offset = Math.round((leg.departure * 60 - stops[0].departure) / day) * day;

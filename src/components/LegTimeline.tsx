@@ -68,7 +68,8 @@ function cacheStops(key: string, stops: LegStop[]) {
 const LEAD_STOPS = 3;
 
 function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
-  const Icon = mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
+  const Icon =
+    mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
   return <Icon size={14} color={scheme.onPrimary} strokeWidth={2.4} />;
 }
 
@@ -190,16 +191,23 @@ function LegStopsList({
   leg,
   accent,
   userLocation,
+  allowLive,
 }: {
   leg: Leg;
   accent: string;
   userLocation: CurrentLocation | null;
+  allowLive: boolean;
 }) {
   const t = useStrings();
   const cacheKey = leg.tripId || leg.id;
-  const [stops, setStops] = useState<LegStop[]>(() => stopsCache.get(cacheKey) ?? buildFallbackStops(leg));
+  const [stops, setStops] = useState<LegStop[]>(
+    () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
+  );
   const [loading, setLoading] = useState(
-    () => !stopsCache.has(cacheKey) && !!leg.tripId && !(leg.intermediateStops && leg.intermediateStops.length >= 2),
+    () =>
+      !stopsCache.has(cacheKey) &&
+      !!leg.tripId &&
+      !(leg.intermediateStops && leg.intermediateStops.length >= 2),
   );
   const [vehicle, setVehicle] = useState<TrackedVehicle | null>(null);
   const mounted = useRef(true);
@@ -271,27 +279,29 @@ function LegStopsList({
     const refreshVehicle = () => {
       const now = Date.now();
       setNow(now);
-      if (!leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')) {
+      if (!allowLive || !leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')) {
         setVehicle(null);
         return;
       }
-      const match = liveTracker.snapshot(leg.line).find(
-        (candidate) =>
-          candidate.type === leg.mode &&
-          candidate.matchedTripId === leg.tripId &&
-          now - candidate.updatedAt >= 0 &&
-          now - candidate.updatedAt <= 120_000,
-      );
+      const match = liveTracker
+        .snapshot(leg.line)
+        .find(
+          (candidate) =>
+            candidate.type === leg.mode &&
+            candidate.matchedTripId === leg.tripId &&
+            now - candidate.updatedAt >= 0 &&
+            now - candidate.updatedAt <= 120_000,
+        );
       setVehicle(match ?? null);
     };
     refreshVehicle();
     const timer = setInterval(refreshVehicle, 5000);
     return () => clearInterval(timer);
-  }, [leg.line, leg.mode, leg.tripId]);
+  }, [leg.line, leg.mode, leg.tripId, allowLive]);
 
   const livePosition = useMemo(
-    () => locateLiveStopPosition(stops, leg, vehicle, userLocation, now),
-    [stops, leg, vehicle, userLocation, now],
+    () => allowLive ? locateLiveStopPosition(stops, leg, vehicle, userLocation, now) : null,
+    [stops, leg, vehicle, userLocation, now, allowLive],
   );
   const vehicleGap = livePosition?.gap ?? null;
   // Zanim pojazd dojedzie do przystanku wsiadania, pokazujemy też kilka
@@ -356,7 +366,11 @@ function LegStopsList({
             accent={accent}
             connectorAccent={connectorAccent}
             vehicleGap={vehicleGap}
-            vehicleLabel={t.leg.vehicleBetween(genericModeGen(t, leg.mode), stop.name, stops[i + 1]?.name ?? stop.name)}
+            vehicleLabel={t.leg.vehicleBetween(
+              genericModeGen(t, leg.mode),
+              stop.name,
+              stops[i + 1]?.name ?? stop.name,
+            )}
           />
         );
       })}
@@ -373,11 +387,13 @@ function TransitLegCard({
   expanded,
   onToggle,
   userLocation,
+  allowLive,
 }: {
   leg: Leg;
   expanded: boolean;
   onToggle: () => void;
   userLocation: CurrentLocation | null;
+  allowLive: boolean;
 }) {
   // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
   const t = useStrings();
@@ -438,7 +454,7 @@ function TransitLegCard({
             accessibilityElementsHidden={!expanded}
             importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
           >
-            <LegStopsList leg={leg} accent={accent} userLocation={userLocation} />
+            <LegStopsList leg={leg} accent={accent} userLocation={userLocation} allowLive={allowLive} />
           </Animated.View>
         )}
       </Pressable>
@@ -447,10 +463,10 @@ function TransitLegCard({
 }
 
 /** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
-export function LegTimeline({ legs }: { legs: Leg[] }) {
+export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observeOnly?: boolean }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const walkMps = useWalkSpeedMps();
-  const { location } = useCurrentLocation();
+  const { location } = useCurrentLocation(!observeOnly);
 
   return (
     <View style={s.list}>
@@ -472,9 +488,7 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
                 {!last && <View style={s.walkLine} />}
               </View>
               <View style={s.body}>
-                <Text style={s.walkText}>
-                  {formatWalkTime(walkMin)}
-                </Text>
+                <Text style={s.walkText}>{formatWalkTime(walkMin)}</Text>
                 {isSameStop ? (
                   <Text style={s.walkSub} numberOfLines={1}>
                     {leg.fromStop}
@@ -507,7 +521,8 @@ export function LegTimeline({ legs }: { legs: Leg[] }) {
               <TransitLegCard
                 leg={leg}
                 expanded={expandedId === leg.id}
-                userLocation={location}
+                userLocation={observeOnly ? null : location}
+                allowLive={!observeOnly || leg.live}
                 onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
               />
             </View>
@@ -555,7 +570,13 @@ const s = StyleSheet.create({
   hour: { color: scheme.onSurfaceVariant, fontWeight: '400' },
   meta: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   walkText: { ...type.titleSmall, color: scheme.onSurface },
-  walkSubRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 1 },
+  walkSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 1,
+  },
   walkSub: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
   // Rozwinięta lista kropek - wysokość animowana layout-animation przez rodzica,
   // tutaj zwykły kontener bez własnych animacji wejścia/wyjścia
@@ -611,7 +632,10 @@ const s = StyleSheet.create({
   stopNameStrong: { fontWeight: '700' },
   stopNameDim: { color: scheme.onSurfaceVariant },
   stopNamePassed: { color: scheme.outline },
-  skeletonDot: { borderColor: scheme.outlineVariant, backgroundColor: scheme.surfaceContainerHighest },
+  skeletonDot: {
+    borderColor: scheme.outlineVariant,
+    backgroundColor: scheme.surfaceContainerHighest,
+  },
   skeletonLine: {
     height: 12,
     borderRadius: 6,

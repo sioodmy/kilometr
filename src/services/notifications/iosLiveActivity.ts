@@ -21,7 +21,7 @@ export function buildIOSLiveActivity(p: TripProgress, trip: TrackedTrip, s: Stri
     waiting: s.ios.waiting,
     riding: s.ios.riding,
     transfer: s.ios.transfer,
-    arrived: s.notification.arrivedTitle,
+    arrived: trip.sharedJourney ? s.share.notificationArrived : s.notification.arrivedTitle,
   };
   const colors =
     p.lineMode === 'walk'
