@@ -137,7 +137,7 @@ function formatDepartIn(departInMin: number | undefined): string | null {
     const mm = String(target.getMinutes()).padStart(2, '0');
     return `${hh}:${mm}`;
   }
-  if (m <= 1) return tr().common.departNow;
+  if (m <= 0) return tr().common.departNow;
   return tr().common.departIn(m);
 }
 

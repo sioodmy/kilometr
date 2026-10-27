@@ -55,6 +55,8 @@ export default function RouteDetailsScreen() {
   const alarmItem = getDepartureAlarmSync()?.connection;
   const immediateItem = cachedItem?.id === id ? cachedItem : alarmItem?.id === id ? alarmItem : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
+  const [offline, setOffline] = useState(false);
+  const [liveStale, setLiveStale] = useState(() => liveTracker.getLiveState() !== 'fresh');
   const rawItem = trackedTrip?.connection.id === id ? trackedTrip.connection : loadedItem?.id === id ? loadedItem : immediateItem ?? null;
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia: bez
   // tickera karta pokazywałaby wartości z chwili wyszukiwania.
@@ -71,13 +73,12 @@ export default function RouteDetailsScreen() {
     return () => clearInterval(t);
   }, []);
   const item = useMemo(
-    () => (rawItem ? (applyLiveDelays([rawItem], liveTracker.getTripDelays())[0] ?? null) : null),
+    () => (rawItem ? (applyLiveDelays([rawItem], offline || liveStale ? new Map() : liveTracker.getTripDelays())[0] ?? null) : null),
     // liveTick wymusza przemapowanie po każdym nowym polli trackera.
-    [rawItem, liveTick],
+    [rawItem, liveTick, offline, liveStale],
   );
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [offline, setOffline] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [alarmOpen, setAlarmOpen] = useState(false);
   const [alarmFocused, setAlarmFocused] = useState(false);
@@ -87,7 +88,6 @@ export default function RouteDetailsScreen() {
   // powodu danych. Bez tickera baner „brak danych” był zamrożony w stanie z
   // chwili renderu i pojawiał się dopiero przy jakiejś przypadkowej
   // przerysowie całego ekranu.
-  const [liveStale, setLiveStale] = useState(() => liveTracker.getLiveState() !== 'fresh');
   useEffect(() => {
     const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
     const t = setInterval(check, 15000);

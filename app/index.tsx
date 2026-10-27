@@ -11,6 +11,7 @@ import { defaultLocationForCity } from '../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch, type LocationResult } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
+import { boardingDepartureMs, refreshConnectionTimes } from '../src/services/routing/connectionTimes';
 import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
@@ -119,10 +120,11 @@ export default function HomeScreen() {
   // przeliczenie). Wartości <= 0 (np. trasa piesza) zostają jak z backendu.
   const liveDepartures = useMemo(() => {
     const d = new Date();
-    const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    const delays = liveTracker.getLiveState() === 'fresh' ? liveTracker.getTripDelays() : new Map<string, number>();
     const out: Record<string, number> = {};
     for (const [id, c] of Object.entries(firstConns)) {
-      out[id] = c.departureSec > 0 ? Math.round((c.departureSec - nowS) / 60) : c.departInMin;
+      const current = refreshConnectionTimes(c, delays, d);
+      out[id] = c.departureSec > 0 ? Math.ceil((boardingDepartureMs(current, d) - d.getTime()) / 60000) : c.departInMin;
     }
     return out;
   }, [firstConns, homeTick]);
@@ -489,13 +491,10 @@ export default function HomeScreen() {
   const quickRefreshGen = useRef(0);
   useEffect(() => {
     if (sheetMode !== null || smart.length === 0) return;
-    const nowS = (() => {
-      const d = new Date();
-      return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-    })();
+    const now = new Date();
     const expired = smart.filter((d) => {
       const c = firstConns[d.id];
-      if (!c || c.departureSec <= 0 || c.departureSec > nowS) return false;
+      if (!c || c.departureSec <= 0 || boardingDepartureMs(c, now) > now.getTime()) return false;
       return c.legs.some((l) => l.mode !== 'walk' && l.line);
     });
     if (expired.length === 0) return;

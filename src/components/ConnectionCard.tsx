@@ -9,6 +9,8 @@ import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionP
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { tr, useStrings } from '../i18n';
+import { boardingDepartureMs, boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
+import { secondsToTimeString } from '../gtfs/geo';
 
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
 export function transfersLabel(n: number): string {
@@ -18,12 +20,6 @@ export function transfersLabel(n: number): string {
 /** Poprawna odmiana liczby połączeń (słownik i18n: 1 / 2-4 / 5+). */
 export function connectionsLabel(n: number): string {
   return tr().connection.connections(n);
-}
-
-/** Minuty od północy dla "teraz". */
-function nowSec(): number {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
 }
 
 function parseHMtoSec(hm: string): number | null {
@@ -202,17 +198,22 @@ export const ConnectionCard = memo(function ConnectionCard({
   const verticalTimes = (width - 60) / fontScale < 140;
   const Direction = verticalTimes ? ArrowDown : ArrowRight;
   const walkMps = useWalkSpeedMps();
-  const now = useMemo(() => nowSec(), [tick]);
+  const now = useMemo(() => new Date(), [tick]);
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
   const stripData = useMemo(() => buildJourneyStripData(item.legs, walkMps), [item.legs, walkMps]);
   const transfers = useMemo(() => interchangeStops(item.interchange), [item.interchange]);
 
-  const minsAgo = item.departureSec > 0 ? Math.round((now - item.departureSec) / 60) : -1;
+  const departureMs = boardingDepartureMs(item, now);
+  const departAt = walkOnly ? item.departAt : secondsToTimeString(boardingDepartureSec(item));
+  const firstVehicle = boarding[0];
+  const scheduledDeparture = firstVehicle?.live && Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
+    ? scheduledLegTimes(firstVehicle, boardingDepartureSec(item)).departure : undefined;
+  const minsAgo = item.departureSec > 0 ? Math.floor((now.getTime() - departureMs) / 60000) : -1;
   const historical = minsAgo >= 1;
 
   const effectiveMin =
-    item.departureSec > 0 ? Math.round((item.departureSec - now) / 60) : item.departInMin;
+    item.departureSec > 0 ? Math.max(0, Math.ceil((departureMs - now.getTime()) / 60000)) : item.departInMin;
 
   const walkM = walkOnly ? item.legs[0]?.walkM : undefined;
   const walkMin = item.durationMin || (walkM != null ? walkMinutesFor(walkM, walkMps) : 1);
@@ -223,10 +224,10 @@ export const ConnectionCard = memo(function ConnectionCard({
       : tr().common.departAgo(minsAgo)
     : walkOnly && walkM != null
       ? formatWalkTime(walkMin)
-      : effectiveMin <= 1
+      : effectiveMin <= 0
         ? tr().common.departNow
         : effectiveMin > 59
-          ? item.departAt
+          ? departAt
           : tr().common.departIn(effectiveMin);
   const departureColor =
     dimmed || historical
@@ -246,7 +247,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   const accessibilityDesc = tr().connection.cardA11y(
     departureText,
     item.durationMin,
-    item.departAt,
+    departAt,
     item.arriveAt,
     walkOnly ? tr().connection.walkRoute : transferText,
     linesSummary,
@@ -295,7 +296,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 
         <View style={[styles.journeyMeta, fontScale > 1.3 && styles.journeyMetaStacked]}>
           <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
-            <Text style={styles.hours}>{item.departAt}</Text>
+            <Text style={styles.hours}>{departAt}</Text>
             <Direction size={14} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
             <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
           </View>
@@ -320,6 +321,7 @@ export const ConnectionCard = memo(function ConnectionCard({
               { color: dimmed ? scheme.onSurfaceVariant : item.delayMin > 0 ? scheme.error : scheme.warning },
             ]}
           >
+            {scheduledDeparture != null && `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} · `}
             {item.delayMin > 0
               ? s.routeDetails.late(item.delayMin)
               : s.routeDetails.early(-item.delayMin)}
