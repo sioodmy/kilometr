@@ -34,6 +34,10 @@ export interface Leg {
   toStop: string;
   departAt: string;
   arriveAt: string;
+  scheduledDepartureSec?: number;
+  scheduledArrivalSec?: number;
+  delaySec?: number;
+  arrivalDelaySec?: number;
   stopsCount: number;
   walkM?: number;
   live: boolean;

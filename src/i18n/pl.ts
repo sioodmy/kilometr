@@ -1004,6 +1004,9 @@ export const pl = {
   },
   routeDetails: {
     departure: 'Wyjście',
+    vehicleDeparture: 'Odjazd',
+    scheduledTime: (time: string) => `Planowo ${time}`,
+    walkDeparture: (time: string, place: string) => `Wyjście pieszo o ${time}: ${place}`,
     arrival: 'Na miejscu',
     origin: 'Skąd',
     destination: 'Dokąd',

@@ -5,6 +5,7 @@ import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
+import { refreshConnectionTimes, scheduledLegTimes } from './connectionTimes';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z raptor.ts i store.ts)
@@ -316,7 +317,6 @@ function mapJourneysToConnections(
     for (let lIdx = 0; lIdx < rj.segments.length; lIdx++) {
       const seg = rj.segments[lIdx];
       let legLive = false;
-      let legDelayMin = 0;
 
       if (seg.type === 'transit') {
         // Ten sam snapshot opóźnień co w RAPTOR-ze: czasy segmentów są już
@@ -325,11 +325,7 @@ function mapJourneysToConnections(
         const dSec = ctx.tripDelays.get(seg.tripId ?? '');
         if (dSec !== undefined) {
           legLive = true;
-          legDelayMin = Math.round(dSec / 60);
           overallLive = true;
-          if (Math.abs(legDelayMin) > Math.abs(maxDelayMin)) {
-            maxDelayMin = legDelayMin;
-          }
         }
       }
 
@@ -356,7 +352,7 @@ function mapJourneysToConnections(
           ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId, seg.departSec, seg.arriveSec)
           : undefined;
 
-      legs.push({
+      const leg: Leg = {
         id: `c${idx + 1}l${lIdx + 1}`,
         mode: seg.type === 'walk' ? 'walk' : seg.mode || 'bus',
         line: seg.line,
@@ -378,7 +374,17 @@ function mapJourneysToConnections(
         tripId: seg.type === 'transit' ? seg.tripId : undefined,
         routeId: seg.type === 'transit' ? seg.routeId : undefined,
         intermediateStops,
-      });
+      };
+      if (seg.type === 'transit') {
+        const scheduled = scheduledLegTimes(leg, adjDepartSec + ctx.dayOffsetSec);
+        leg.scheduledDepartureSec = scheduled.departure;
+        leg.scheduledArrivalSec = scheduled.arrival;
+        leg.delaySec = scheduled.departure == null ? undefined : adjDepartSec + ctx.dayOffsetSec - scheduled.departure;
+        leg.arrivalDelaySec = scheduled.arrival == null ? undefined : adjArriveSec + ctx.dayOffsetSec - scheduled.arrival;
+        const delayMin = Math.round((leg.delaySec ?? ctx.tripDelays.get(seg.tripId ?? '') ?? 0) / 60);
+        if (Math.abs(delayMin) > Math.abs(maxDelayMin)) maxDelayMin = delayMin;
+      }
+      legs.push(leg);
     }
 
     const transitLegs = legs.filter((l) => l.mode !== 'walk');
@@ -424,40 +430,10 @@ function mapJourneysToConnections(
   return deduplicateConnections(connections);
 }
 
-/**
- * Świeże opóźnienia na już wyplanowanych połączeniach: tracker polluje cały
- * czas, a UI trzyma obiekty wyplanowane raz, więc bez przemapowania flagi
- * live i delayMin zamroziłyby się w chwili wyszukiwania. Czasy NIE są
- * przeliczane (raptor liczył je z opóźnieniami z chwili planu).
- * Zwraca te same obiekty, gdy nic się nie zmieniło (bez przerysów).
- */
+/** Odświeża godziny i flagi live. Niezmienione połączenia zachowują referencje. */
 export function applyLiveDelays(connections: Connection[], tripDelays: Map<string, number>): Connection[] {
-  if (tripDelays.size === 0) return connections;
-  let changed = false;
-  const out = connections.map((c) => {
-    // Kursy z jutra (dayOffset) dostają dzisiejsze opóźnienia? Ten sam trip_id
-    // jutro to inny kurs, więc nie.
-    if (c.departureSec >= 86400) return c;
-    let maxDelayMin = 0;
-    let live = false;
-    const legs = c.legs.map((leg) => {
-      const d = leg.tripId && leg.mode !== 'walk' ? tripDelays.get(leg.tripId) : undefined;
-      const legLive = d !== undefined;
-      if (legLive) {
-        live = true;
-        const m = Math.round(d / 60);
-        if (Math.abs(m) > Math.abs(maxDelayMin)) maxDelayMin = m;
-      }
-      if (legLive === leg.live) return leg;
-      changed = true;
-      return { ...leg, live: legLive };
-    });
-    const summaryChanged = c.live !== live || c.delayMin !== maxDelayMin;
-    if (!summaryChanged && !changed) return c;
-    changed = true;
-    return { ...c, legs, live, delayMin: maxDelayMin };
-  });
-  return changed ? out : connections;
+  const updated = connections.map((connection) => refreshConnectionTimes(connection, tripDelays));
+  return updated.every((connection, index) => connection === connections[index]) ? connections : updated;
 }
 
 /**

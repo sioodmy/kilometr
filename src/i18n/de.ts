@@ -974,6 +974,9 @@ export const de: Strings = {
   },
   routeDetails: {
     departure: 'Abfahrt',
+    vehicleDeparture: 'Abfahrt',
+    scheduledTime: (time: string) => `Planmäßig ${time}`,
+    walkDeparture: (time: string, place: string) => `Zu Fuß los um ${time}: ${place}`,
     arrival: 'Ankunft',
     origin: 'Von',
     destination: 'Nach',

@@ -33,6 +33,8 @@ import {
 import { useStrings, type Strings } from '../i18n';
 import { motion } from '../theme/motion';
 import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
+import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
+import { scheduledLegTimes } from '../services/routing/connectionTimes';
 
 const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
@@ -398,6 +400,8 @@ function TransitLegCard({
   // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
+  const scheduledDeparture = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt)).departure;
+  const delayMin = leg.live ? Math.round((leg.delaySec ?? 0) / 60) : 0;
   const stopsCount = useMemo(() => {
     const stops = leg.intermediateStops;
     if (!stops || stops.length < 2) return leg.stopsCount;
@@ -442,6 +446,13 @@ function TransitLegCard({
           <Text style={s.stopPrefix}>{t.leg.fromPrefix}</Text>
           {leg.fromStop} <Text style={s.hour}>{leg.departAt}</Text>
         </Text>
+        {delayMin !== 0 && scheduledDeparture != null && (
+          <Text style={[s.meta, { color: delayMin > 0 ? scheme.error : scheme.warning }]}>
+            {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
+            {' · '}
+            {delayMin > 0 ? t.routeDetails.late(delayMin) : t.routeDetails.early(-delayMin)}
+          </Text>
+        )}
         <Text style={s.meta}>{t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}</Text>
         <Text style={s.stopBig}>
           <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>

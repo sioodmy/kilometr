@@ -53,6 +53,7 @@ import { liveTracker } from '../../src/services/liveTracker';
 import { deduplicateConnections, mergeConnections } from '../../src/services/routing/connectionIdentity';
 import { loadEarlierConnections } from '../../src/services/routing/earlierConnections';
 import { applyLiveDelays, sortConnectionsByCost } from '../../src/services/routing/engine';
+import { boardingDepartureMs } from '../../src/services/routing/connectionTimes';
 import { costParamsFor } from '../../src/services/routing/raptor';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
@@ -68,12 +69,6 @@ import {
 import { useThumbBarInset } from '../../src/components/ThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 import { useStrings } from '../../src/i18n';
-
-/** Sekundy od północy - jeden zegar dla całego ekranu. */
-function nowSeconds(): number {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-}
 
 // Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
@@ -257,7 +252,7 @@ export default function RoutesScreen() {
   );
 
   const displayed = useMemo(() => {
-    let list = applyLiveDelays(items, liveTracker.getTripDelays());
+    let list = applyLiveDelays(items, offline || liveStale ? new Map() : liveTracker.getTripDelays());
     if (directOnly) {
       list = list.filter((c) => c.transfers === 0);
     }
@@ -271,7 +266,7 @@ export default function RoutesScreen() {
       [...list], costParamsFor(cfg.routeStyle), profileWalkSpeedMps(cfg.walkPace),
       arrivalMode ? targetTimeSec : undefined,
     );
-  }, [items, directOnly, modeFilter, arrivalMode, targetTimeSec, liveTick]);
+  }, [items, directOnly, modeFilter, arrivalMode, targetTimeSec, liveTick, offline, liveStale]);
 
   // Dock przesuwa się nad listą bez zmiany wysokości jej viewportu.
   const dockProgress = useSharedValue(1);
@@ -930,7 +925,7 @@ export default function RoutesScreen() {
       // Granica "przeszłość" liczona przy każdym rysunku: ref zaczepiony przy
       // zamontowaniu ekranu zmroził nam style dłużej niż minute, bo nowy
       // "tick" dziecka odświeżał napis, a karta zostawała jasna.
-      const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
+      const past = item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
       return (
         <ConnectionCard
           item={item}

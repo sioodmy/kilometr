@@ -1020,6 +1020,9 @@ export const uk: Strings = {
   },
   routeDetails: {
     departure: 'Вихід',
+    vehicleDeparture: 'Відправлення',
+    scheduledTime: (time: string) => `За розкладом ${time}`,
+    walkDeparture: (time: string, place: string) => `Вийти пішки о ${time}: ${place}`,
     arrival: 'Прибуття',
     origin: 'Звідки',
     destination: 'Куди',
