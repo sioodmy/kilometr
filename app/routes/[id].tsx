@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChevronLeft,
-  ChevronRight,
   AlarmClock,
   CloudOff,
   Pin,
@@ -26,7 +25,7 @@ import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts'
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
-import { StopCompassCard } from '../../src/components/StopCompassCard';
+import { RouteMapCard } from '../../src/components/RouteMapCard';
 import { TransferProtectionCard } from '../../src/components/TransferProtectionCard';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
@@ -253,6 +252,16 @@ export default function RouteDetailsScreen() {
             <Share2 size={21} color={scheme.onSurfaceVariant} />
           </Pressable>
         )}
+        {item.legs.some((leg) => leg.mode !== 'walk') && (
+          <Pressable onPress={() => setAlarmOpen(true)} accessibilityRole="button"
+            onFocus={() => setAlarmFocused(true)} onBlur={() => setAlarmFocused(false)}
+            accessibilityState={{ selected: currentAlarm != null }}
+            accessibilityLabel={currentAlarm ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}` : s.alarm.set}
+            style={({ pressed }) => [styles.trackBtn, currentAlarm && styles.trackBtnActive,
+              pressed && { opacity: 0.75 }, alarmFocused && styles.alarmFocused]}>
+            <AlarmClock size={21} color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
+          </Pressable>
+        )}
         <Pressable
           onPress={() => void toggleTracking()}
           disabled={trackingBusy}
@@ -302,33 +311,14 @@ export default function RouteDetailsScreen() {
         ) : (
           <>
             <LegTimeline legs={item.legs} />
-            <StopCompassCard
+            <RouteMapCard
               connection={item}
-              transfer={isTrackedThis ? trackedTrip.transfer : undefined}
               onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
             />
             {hasTransfers && (
               <TransferProtectionCard state={isTrackedThis ? trackedTrip.transfer : undefined}
                 active={isTrackedThis && trackedTrip.protectionEnabled === true} busy={trackingBusy}
                 onPress={() => { if (isTrackedThis && trackedTrip.protectionEnabled) openTransferProtection(); else void toggleTracking(true); }} />
-            )}
-            {item.legs.some((leg) => leg.mode !== 'walk') && (
-              <Pressable onPress={() => setAlarmOpen(true)} accessibilityRole="button"
-                onFocus={() => setAlarmFocused(true)} onBlur={() => setAlarmFocused(false)}
-                accessibilityLabel={currentAlarm ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}` : s.alarm.set}
-                style={({ pressed }) => [styles.alarmButton, currentAlarm && styles.alarmButtonActive,
-                  pressed && { opacity: 0.75 }, alarmFocused && { borderColor: scheme.primary }]}>
-                <AlarmClock size={25} color={currentAlarm ? scheme.onPrimaryContainer : scheme.primary} />
-                <View style={styles.alarmCopy}>
-                  <Text style={[styles.alarmTitle, currentAlarm && { color: scheme.onPrimaryContainer }]}>
-                    {currentAlarm ? s.alarm.ringsAt(currentAlarm.time) : s.alarm.set}
-                  </Text>
-                  <Text style={[styles.alarmHint, currentAlarm && { color: scheme.onPrimaryContainer }]}>
-                    {currentAlarm ? s.alarm.lead(currentAlarm.leadMin) : Platform.OS === 'ios' ? s.ios.alarmHint : s.alarm.hint}
-                  </Text>
-                </View>
-                <ChevronRight size={20} color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
-              </Pressable>
             )}
 
             <ConnectionLineAlerts connection={item} />
@@ -371,12 +361,7 @@ const styles = StyleSheet.create({
   },
   trackBtnActive: { backgroundColor: scheme.primaryContainer },
   body: { paddingHorizontal: 16, gap: 18, paddingBottom: 40 },
-  alarmButton: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18,
-    borderRadius: 24, backgroundColor: scheme.surfaceContainerHigh, borderWidth: 2, borderColor: 'transparent' },
-  alarmButtonActive: { backgroundColor: scheme.primaryContainer },
-  alarmCopy: { flex: 1, minWidth: 0, gap: 5 },
-  alarmTitle: { ...type.titleMedium, color: scheme.onSurface, fontWeight: '600' },
-  alarmHint: { ...type.bodySmall, lineHeight: 18, color: scheme.onSurfaceVariant },
+  alarmFocused: { borderWidth: 2, borderColor: scheme.primary },
   offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',

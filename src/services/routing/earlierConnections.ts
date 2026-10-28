@@ -16,7 +16,9 @@ export async function loadEarlierConnections(
     const batch = await load(fromSec);
     if (isCancelled()) return null;
     const earlier = batch.filter((item) => item.departureSec > 0 && item.departureSec < beforeSec);
-    const result = mergeConnections(current, earlier);
+    const candidates = mergeConnections(current, earlier);
+    const nearest = candidates.list.filter((item) => item.departureSec < beforeSec).slice(-3);
+    const result = mergeConnections(current, nearest);
     if (result.added > 0 || fromSec === 0) return result;
   }
 }
