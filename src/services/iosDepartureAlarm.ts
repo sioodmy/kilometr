@@ -10,21 +10,21 @@ const ID = 'kilometr.departureAlarm';
 type Plan = DepartureAlarm & {
   routeLabel: string;
   boardingLabel: string;
-  labels: { ringTitle: string; preview: string };
+  labels: { ringTitle: string };
 };
 
-async function schedule(json: string, preview = false): Promise<boolean> {
+async function schedule(json: string): Promise<boolean> {
   const N = getNotifications();
   if (!N || !await hasNotificationPermission()) return false;
   const plan = JSON.parse(json) as Plan;
-  if (!preview && plan.at <= Date.now()) return false;
+  if (plan.at <= Date.now()) return false;
   const connection = plan.connection;
   const first = connection.legs[0];
   const last = connection.legs[connection.legs.length - 1];
   await N.scheduleNotificationAsync({
-    identifier: preview ? `${ID}.preview` : ID,
+    identifier: ID,
     content: {
-      title: preview ? plan.labels.preview : plan.labels.ringTitle,
+      title: plan.labels.ringTitle,
       body: `${plan.routeLabel}\n${plan.boardingLabel}`,
       sound: 'default',
       categoryIdentifier: ALERT_CATEGORY,
@@ -37,15 +37,13 @@ async function schedule(json: string, preview = false): Promise<boolean> {
           ? { toLat: String(last.toLat), toLon: String(last.toLon) } : {}),
       },
     },
-    trigger: preview ? null : { type: N.SchedulableTriggerInputTypes.DATE, date: new Date(plan.at) },
+    trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: new Date(plan.at) },
   });
-  if (!preview) {
-    try {
-      await kvSet(KEY, JSON.stringify({ ...plan, status: 'scheduled' }));
-    } catch (error) {
-      await N.cancelScheduledNotificationAsync(ID);
-      throw error;
-    }
+  try {
+    await kvSet(KEY, JSON.stringify({ ...plan, status: 'scheduled' }));
+  } catch (error) {
+    await N.cancelScheduledNotificationAsync(ID);
+    throw error;
   }
   return true;
 }
@@ -73,12 +71,9 @@ export const iosDepartureAlarm = {
   async cancel(): Promise<boolean> {
     const N = getNotifications();
     if (!N) return false;
-    for (const id of [ID, `${ID}.preview`]) {
-      await N.cancelScheduledNotificationAsync(id);
-      await N.dismissNotificationAsync(id);
-    }
+    await N.cancelScheduledNotificationAsync(ID);
+    await N.dismissNotificationAsync(ID);
     await kvRemove(KEY);
     return true;
   },
-  preview: (json: string) => schedule(json, true),
 };

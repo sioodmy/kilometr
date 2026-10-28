@@ -1252,8 +1252,6 @@ export const uk: Strings = {
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
-    vehicleFarBack: 'Транспорт ще далі на маршруті',
-    vehicleNotStarted: 'Рейс ще не розпочався',
     fromPrefix: 'з ',
     toPrefix: 'до ',
     stopsSummary: (n: number, mins: number, open: boolean) => {
@@ -1440,7 +1438,6 @@ export const uk: Strings = {
     save: 'Увімкнути будильник',
     saving: 'Налаштування будильника…',
     remove: 'Видалити будильник',
-    preview: 'Перегляд будильника',
     ringTitle: 'Час збиратися',
     dismiss: 'Вимкнути будильник',
     showRoute: 'Показати сполучення',

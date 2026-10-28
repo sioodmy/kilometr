@@ -1243,8 +1243,6 @@ export const pl = {
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} między ${from} a ${to}`,
-    vehicleFarBack: 'Pojazd jest dalej na trasie',
-    vehicleNotStarted: 'Kurs jeszcze nie ruszył',
     fromPrefix: 'z ',
     toPrefix: 'do ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
@@ -1439,7 +1437,6 @@ export const pl = {
     save: 'Włącz budzik',
     saving: 'Ustawianie budzika…',
     remove: 'Usuń budzik',
-    preview: 'Podgląd budzika',
     ringTitle: 'Pora się zbierać',
     dismiss: 'Wyłącz budzik',
     showRoute: 'Pokaż połączenie',

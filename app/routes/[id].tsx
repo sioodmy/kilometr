@@ -29,7 +29,7 @@ import { RouteMapCard } from '../../src/components/RouteMapCard';
 import { TransferProtectionCard } from '../../src/components/TransferProtectionCard';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
-import { DepartureAlarmDialog } from '../../src/components/DepartureAlarmDialog';
+import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
 import { getDepartureAlarmSync, useDepartureAlarm } from '../../src/services/departureAlarm';
 import {
   areNotificationsSupported,
@@ -329,7 +329,7 @@ export default function RouteDetailsScreen() {
       </ScrollView>
       </View>
       {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
-      {alarmOpen && <DepartureAlarmDialog connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />}
+      {alarmOpen && <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />}
     </SafeAreaView>
   );
 }

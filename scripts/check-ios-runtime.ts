@@ -240,7 +240,7 @@ async function main() {
     journeyAt: at(12, 20),
     routeLabel: 'Dom → Cel',
     boardingLabel: '4 • 12:20 • A',
-    labels: { ringTitle: pl.alarm.ringTitle, preview: pl.alarm.preview },
+    labels: { ringTitle: pl.alarm.ringTitle },
   });
   permission = false;
   assert.equal(await iosDepartureAlarm.schedule(plan), false);
@@ -249,8 +249,6 @@ async function main() {
   assert.equal(await iosDepartureAlarm.schedule(plan), true);
   assert.equal(JSON.parse((await iosDepartureAlarm.getAlarm())!).status, 'scheduled');
   assert.equal(scheduled.get('kilometr.departureAlarm')!.content.data?.toLat, '51.12');
-  await iosDepartureAlarm.preview(plan);
-  assert.equal(scheduled.size, 2);
   await iosDepartureAlarm.cancel();
   assert.equal(scheduled.size, 0);
   assert.equal(await iosDepartureAlarm.getAlarm(), null);
