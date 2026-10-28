@@ -294,7 +294,15 @@ function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
     // sam odrzuci absurdalne wartości (limit DELAY_CAP_SEC).
     const delaySec =
       typeof p.delay === 'number' && Number.isFinite(p.delay) ? Math.round(p.delay / 1000) : undefined;
-    rows.push({ name: line, type: p.vehicle?.type === '0' ? 'tram' : 'bus', x: lat, y: lon, k: id, delaySec });
+    rows.push({
+      name: line,
+      type: p.vehicle?.type === '0' ? 'tram' : 'bus',
+      x: lat,
+      y: lon,
+      k: id,
+      delaySec,
+      updatedAt: p.timestamp ?? Date.now(),
+    });
   }
   return rows;
 }

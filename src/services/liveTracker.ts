@@ -24,6 +24,7 @@ import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
 import { fetchZbBialystokRows, fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKielceRows, fetchZbKml, fetchZbKrakowRows, fetchZbLodzRails, fetchZbLodzRows, fetchZbLublinRows, fetchZbOlsztynRows, fetchZbOpoleRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbRadomRows, fetchZbRzeszowRows, fetchZbSkmtRails, fetchZbSzczecinRows, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
+import { vehicleIsFresh } from './liveFreshness';
 
 /**
  * Tempo polla na ekranie. Pomiar feedu zbiorkom.live: treść zmienia się co
@@ -94,6 +95,8 @@ export interface RawVehicleRow {
   x: number;
   y: number;
   k: number | string;
+  /** Czas pomiaru z feedu w ms; brak tylko dla bezpośredniego źródła MPK. */
+  updatedAt?: number;
   /**
    * Opóźnienie wprost z feedu (zbiorkom.live, sekundy). Główny pomiar:
    * matcher używa go zamiast własnej estymaty z GPS. `undefined` = feed go
@@ -135,7 +138,6 @@ function toDateStr(date: Date): string {
 class LiveTracker {
   private byId = new Map<string, TrackedVehicle>();
   private byLine = new Map<string, TrackedVehicle[]>();
-  private tripDelays = new Map<string, number>();
   /** Kiedy ostatni raz przyszły dane (albo odtwarzamy je z dysku). 0 = jeszcze nigdy. */
   private lastOk = 0;
   private inFlight = false;
@@ -177,7 +179,6 @@ class LiveTracker {
   reset(): void {
     this.byId.clear();
     this.byLine.clear();
-    this.tripDelays.clear();
     this.lastOk = 0;
     this.restored = false;
     // Nowe miasto: pierwszy udany poll ma od razu pójść na dysk pod nowy klucz.
@@ -267,14 +268,15 @@ class LiveTracker {
     void this.poll();
   }
 
-  /**
-   * Opóźnienia kursów: tripId -> sekundy. Do RAPTOR-a.
-   *
-   * Kopia, nie referencja: konsument dostaje stan, którego nie może zepsuć
-   * następny poll (matchSingle pisał do tej samej mapy co poprzedni snapshot).
-   */
+  /** Zwraca niezależną mapę aktualnych pomiarów kursów dla RAPTOR-a. */
   getTripDelays(): Map<string, number> {
-    return new Map(this.tripDelays);
+    const delays = new Map<string, number>();
+    for (const vehicle of this.snapshot()) {
+      if (vehicle.matchedTripId && vehicle.delaySec != null && Number.isFinite(vehicle.delaySec)) {
+        delays.set(vehicle.matchedTripId, vehicle.delaySec);
+      }
+    }
+    return delays;
   }
 
   /** Zdrowie źródeł live w tej sesji (do diagnostyki i canary). */
@@ -301,12 +303,16 @@ class LiveTracker {
 
   /** Ostatni snapshot (np. do spinania pozycji z kartą przejazdu). */
   lookup(vehicleId: string): TrackedVehicle | undefined {
-    return this.byId.get(vehicleId);
+    const vehicle = this.byId.get(vehicleId);
+    return vehicle && vehicleIsFresh(vehicle.updatedAt) ? vehicle : undefined;
   }
 
   snapshot(line?: string): TrackedVehicle[] {
-    if (line) return this.byLine.get(line.trim().toUpperCase()) ?? [];
-    return Array.from(this.byId.values());
+    const now = Date.now();
+    const vehicles = line
+      ? this.byLine.get(line.trim().toUpperCase()) ?? []
+      : Array.from(this.byId.values());
+    return vehicles.filter((vehicle) => vehicleIsFresh(vehicle.updatedAt, now));
   }
 
   /** Bezstanowe odpytanie źródła MPK (canary/diagnostyka), bez zapisu snapshotu. */
@@ -422,11 +428,14 @@ class LiveTracker {
   /** Dopasowanie pojedynczego pojazdu na żądanie (np. przy wejściu w kartę przejazdu). */
   async matchSingle(row: RawVehicleRow): Promise<TrackedVehicle | null> {
     if (!row.x || !row.y || !row.name) return null;
+    const observedAt = row.updatedAt ?? Date.now();
+    if (!vehicleIsFresh(observedAt)) return null;
+    row = { ...row, updatedAt: observedAt };
     const line = row.name.trim().toUpperCase();
     const vehicleId = `${line}-${row.k}`;
 
     const existing = this.byId.get(vehicleId);
-    if (existing && Date.now() - existing.updatedAt < 10000) {
+    if (existing && vehicleIsFresh(existing.updatedAt) && observedAt <= existing.updatedAt) {
       return existing;
     }
 
@@ -445,9 +454,6 @@ class LiveTracker {
       const { tracked } = this.matchRow(row, dayIndex, nowSec, patternPolylines);
 
       this.byId.set(vehicleId, tracked);
-      if (tracked.matchedTripId && tracked.delaySec !== null) {
-        this.tripDelays.set(tracked.matchedTripId, tracked.delaySec);
-      }
       let list = this.byLine.get(line);
       if (!list) {
         list = [];
@@ -605,8 +611,8 @@ class LiveTracker {
       if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd) && !Array.isArray(parsed.rails))) return;
       // Stary snapshot to nie „live”: bez tego apka po dłuższej przerwie
       // pokazywałaby nieaktualne pojazdy, dopóki nie wróci pierwszy poll.
-      if (!snapshotIsUsable(parsed.at, Date.now())) return;
-      if (Array.isArray(parsed.rows) && parsed.rows.length > 0) await this.matchAll(parsed.rows);
+      if (!snapshotIsUsable(parsed.at, Date.now()) || this.lastOk > parsed.at) return;
+      if (Array.isArray(parsed.rows) && parsed.rows.length > 0) await this.matchAll(parsed.rows, parsed.at);
       const rails: RailFeed[] = Array.isArray(parsed.rails)
         ? parsed.rails
         : Array.isArray(parsed.kd)
@@ -617,7 +623,7 @@ class LiveTracker {
       }
       if (this.byId.size === 0) return;
       // Wiek liczymy od chwili snapshotu, nie od teraz, żeby stare dane nie udawały świeżych.
-      this.lastOk = parsed.at;
+      this.lastOk = Math.max(this.lastOk, parsed.at);
     } catch (err) {
       console.warn('[LiveTracker] snapshot restore failed:', err);
     }
@@ -652,6 +658,7 @@ class LiveTracker {
 
     for (const veh of vehicles) {
       if (!veh.lat || !veh.lon || !veh.trainNumber) continue;
+      if (!vehicleIsFresh(veh.updatedAt)) continue;
       const vehicleId = `${prefix}${veh.trainNumber}:${veh.id}`;
       const match = matchZbKd(veh, dayIndex);
       const outOfRange = match != null && Math.abs(veh.delaySec) > DELAY_CAP_SEC;
@@ -676,10 +683,6 @@ class LiveTracker {
       };
       // Najświeższy odczyt wygrywa: gdy pociąg zniknie z feedu, jego wpis
       // zniknie przy następnej przebudowie matchAll tak samo jak wpisy MPK.
-      const prev = this.byId.get(vehicleId);
-      if (prev?.matchedTripId && tracked.matchedTripId !== prev.matchedTripId) {
-        this.tripDelays.delete(prev.matchedTripId);
-      }
       this.byId.set(vehicleId, tracked);
       let list = this.byLine.get(tracked.line);
       if (!list) {
@@ -689,9 +692,6 @@ class LiveTracker {
       const idx = list.findIndex((v) => v.vehicleId === vehicleId);
       if (idx >= 0) list[idx] = this.byId.get(vehicleId)!;
       else list.push(this.byId.get(vehicleId)!);
-      if (tracked.matchedTripId && tracked.delaySec !== null) {
-        this.tripDelays.set(tracked.matchedTripId, tracked.delaySec);
-      }
     }
   }
 
@@ -701,6 +701,8 @@ class LiveTracker {
     nowSec: number,
     patternPolylines: Map<string, PatternPolylineNode[]>,
   ): { tracked: TrackedVehicle; score: number } {
+    const observedAt = row.updatedAt ?? Date.now();
+    nowSec -= Math.round((Date.now() - observedAt) / 1000);
     const line = row.name.trim().toUpperCase();
     const vehicleId = `${line}-${row.k}`;
     const lat = row.x;
@@ -827,8 +829,8 @@ class LiveTracker {
     // ani drugiego: pomiar do złego kursu to zmyślone „na czas”.
     const apiDelay =
       typeof row.delaySec === 'number' && Number.isFinite(row.delaySec) ? row.delaySec : null;
-    const apiUsable =
-      apiDelay !== null && Math.abs(apiDelay) <= DELAY_CAP_SEC && !delayOutOfRange;
+    const invalidApiDelay = row.delaySec !== undefined &&
+      (apiDelay === null || Math.abs(apiDelay) > DELAY_CAP_SEC);
     // Typ z feedu bywa zgadywany, więc po dopasowaniu bierzemy go z bazy:
     // route_type 0 to tramwaj, 1 to metro, 2 to pociąg (SKA), 11 to trolejbus.
     // Bez meczu zostaje typ z wiersza. Ta sama kolejność co w ścieżce Rusta.
@@ -851,11 +853,11 @@ class LiveTracker {
         // `null` = brak wiarygodnego pomiaru (a nie „na czas”). Dzięki temu
         // `matchSingle` nie ustawia `matchedTripId`, więc RAPTOR nie dostaje
         // fałszywego opóźnienia, a UI pokazuje rozkład zamiast zielonego badge.
-        delaySec: bestTripId && !delayOutOfRange ? (apiUsable ? apiDelay! : bestDelay) : null,
-        matchedTripId: bestTripId && !delayOutOfRange ? bestTripId : undefined,
+        delaySec: bestTripId && !delayOutOfRange && !invalidApiDelay ? (apiDelay ?? bestDelay) : null,
+        matchedTripId: bestTripId && !delayOutOfRange && !invalidApiDelay ? bestTripId : undefined,
         currentStopName: bestCurrentStop,
         nextStopName: bestNextStop,
-        updatedAt: Date.now(),
+        updatedAt: observedAt,
       },
       score: bestTripId ? bestScore : Number.POSITIVE_INFINITY,
     };
@@ -986,7 +988,9 @@ class LiveTracker {
     if (usable.length === 0) return null;
     const w = new BinaryWriter(16 + usable.length * 48);
     w.i32(nowSec).u32(usable.length);
+    const now = Date.now();
     for (const row of usable) w.str(row.name.trim().toUpperCase()).f64(row.x).f64(row.y);
+    for (const row of usable) w.i32(nowSec - Math.round((now - (row.updatedAt ?? now)) / 1000));
     const res = invokeRustSync(CMD_LIVE_MATCH_BATCH, w.finish());
     if (!res || res.byteLength < 4) return null;
     const r = new BinaryReader(res);
@@ -1007,8 +1011,8 @@ class LiveTracker {
       // opóźnienie od operatora wygrywa z estymatą z GPS.
       const apiDelay =
         typeof row.delaySec === 'number' && Number.isFinite(row.delaySec) ? row.delaySec : null;
-      const apiUsable =
-        tripId != null && !delayOutOfRange && apiDelay !== null && Math.abs(apiDelay) <= DELAY_CAP_SEC;
+      const invalidApiDelay = row.delaySec !== undefined &&
+        (apiDelay === null || Math.abs(apiDelay) > DELAY_CAP_SEC);
       // Ścieżka Rusta nie zna route_type, więc typ bierzemy z bazy po meczu
       // (metro M1/M2 z feedu miasta przychodzi jako „bus", a po meczu
       // dostaje route_type 1 i kropkę metra).
@@ -1028,11 +1032,11 @@ class LiveTracker {
           lat: row.x,
           lon: row.y,
           type: vtype,
-          delaySec: tripId && !delayOutOfRange ? (apiUsable ? apiDelay! : delay) : null,
-          matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
+          delaySec: tripId && !delayOutOfRange && !invalidApiDelay ? (apiDelay ?? delay) : null,
+          matchedTripId: tripId && !delayOutOfRange && !invalidApiDelay ? tripId : undefined,
           currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
           nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
-          updatedAt: Date.now(),
+          updatedAt: row.updatedAt ?? now,
         },
         score: tripId && !delayOutOfRange ? Math.abs(delay) : Number.POSITIVE_INFINITY,
       });
@@ -1040,7 +1044,9 @@ class LiveTracker {
     return matched;
   }
 
-  private async matchAll(rows: RawVehicleRow[]): Promise<void> {
+  private async matchAll(rows: RawVehicleRow[], observedAt = Date.now()): Promise<void> {
+    rows = rows.map((row) => ({ ...row, updatedAt: row.updatedAt ?? observedAt }))
+      .filter((row) => vehicleIsFresh(row.updatedAt));
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
     } catch (err) {
@@ -1080,13 +1086,10 @@ class LiveTracker {
     // Jeden kurs = jeden pojazd (patrz resolveConflicts), inaczej opóźnienia
     // i strzałka na mapie skakałyby między pojazdami w kolejności z API.
     const { byId, delays } = this.resolveConflicts(matched);
-    // Przebudowa dotyczy tylko miasta: pociągi regionalne (osobny poll)
-    // przeżywają, żeby chwilowa dziura w feedzie kolei nie gasiła opóźnień.
-    // Wpisy kolei noszą prefiks z dwukropkiem (`KD:123:veh`, `KŚ:…`, `KM:…`),
-    // miejskie to `linia-id` bez dwukropka, więc rozróżnienie nie wymaga
-    // listy agencji per-miasto.
+    // Brak pojazdu w pojedynczym pollu nie kasuje pomiaru przed upływem jego ważności.
     for (const [id, kept] of this.byId) {
-      if (!id.includes(':')) continue;
+      if (byId.has(id) || !vehicleIsFresh(kept.updatedAt)) continue;
+      if (kept.matchedTripId && delays.has(kept.matchedTripId)) continue;
       byId.set(id, kept);
       if (kept.matchedTripId && kept.delaySec !== null) delays.set(kept.matchedTripId, kept.delaySec);
     }
@@ -1100,9 +1103,9 @@ class LiveTracker {
       list.push(tracked);
     }
 
+    if (observedAt < this.lastOk) return;
     this.byId = byId;
     this.byLine = newByLine;
-    this.tripDelays = delays;
   }
 }
 

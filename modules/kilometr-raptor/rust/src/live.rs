@@ -305,13 +305,13 @@ impl LiveScheduleIndex {
 
     /// Dopasowuje wsadowo wszystkie pojazdy i rozwiązuje konflikty (`resolveConflicts`-
     /// jeden pojazd na kurs z najniższym wynikiem `score`).
-    pub fn match_batch(&self, rows: &[(String, f64, f64)], now_sec: i32) -> Vec<VehicleMatchResult> {
+    pub fn match_batch(&self, rows: &[(String, f64, f64, i32)]) -> Vec<VehicleMatchResult> {
         let mut raw_matches: Vec<Option<(u32, i32, u32, u32, f64)>> =
             Vec::with_capacity(rows.len());
         let mut by_trip: HashMap<u32, (usize, f64)> = HashMap::new();
 
-        for (idx, (line, lat, lon)) in rows.iter().enumerate() {
-            let m = self.match_single(line, *lat, *lon, now_sec);
+        for (idx, (line, lat, lon, observed_sec)) in rows.iter().enumerate() {
+            let m = self.match_single(line, *lat, *lon, *observed_sec);
             if let Some((trip_idx, _, _, _, score)) = m {
                 match by_trip.get(&trip_idx) {
                     Some(&(_, best_score)) if score >= best_score => {}
@@ -696,7 +696,7 @@ pub fn handle_live_load_schedule_cmd(payload: &[u8]) -> Vec<u8> {
 }
 
 /// Cmd 21: Wsadowe dopasowanie pojazdów MPK + rozwiązanie konfliktów (`matchAll` + `resolveConflicts`).
-/// Wejście: `[now_sec: i32, row_count: u32, (line: str, lat: f64, lon: f64)*]`
+/// Wejście: `[now_sec: i32, row_count: u32, (line: str, lat: f64, lon: f64)*, observed_sec: i32*?]`
 /// Wyjście: `[row_count: u32, (matched: u8, trip_idx: u32, delay_sec: i32, curr_stop_idx: u32, next_stop_idx: u32)*]`
 pub fn handle_live_match_batch_cmd(payload: &[u8]) -> Vec<u8> {
     if payload.len() < 8 {
@@ -710,10 +710,15 @@ pub fn handle_live_match_batch_cmd(payload: &[u8]) -> Vec<u8> {
         let line = read_str(payload, &mut off).to_string();
         let lat = read_f64(payload, &mut off);
         let lon = read_f64(payload, &mut off);
-        rows.push((line, lat, lon));
+        rows.push((line, lat, lon, now_sec));
+    }
+    if payload.len().saturating_sub(off) == count * 4 {
+        for row in &mut rows {
+            row.3 = read_i32(payload, &mut off);
+        }
     }
 
-    let results = LIVE_SCHEDULE.with(|s| s.borrow().match_batch(&rows, now_sec));
+    let results = LIVE_SCHEDULE.with(|s| s.borrow().match_batch(&rows));
     let mut out = Vec::with_capacity(4 + results.len() * 17);
     write_u32(&mut out, results.len() as u32);
     for r in results {
@@ -977,10 +982,10 @@ mod tests {
 
         // Dwa pojazdy na tej samej linii 4 blisko tego samego kursu - wygrywa dokładniejszy!
         let rows = vec![
-            ("4".to_string(), 51.1025, 17.000), // idealnie w połowie seg 0 (expected = 36090)
-            ("4".to_string(), 51.1025, 17.002), // ~140m z boku (gorszy score)
+            ("4".to_string(), 51.1025, 17.000, 36100), // idealnie w połowie seg 0 (expected = 36090)
+            ("4".to_string(), 51.1025, 17.002, 36100), // ~140m z boku (gorszy score)
         ];
-        let matched = idx.match_batch(&rows, 36100);
+        let matched = idx.match_batch(&rows);
         assert!(matched[0].matched);
         assert_eq!(matched[0].trip_idx, 42);
         assert_eq!(matched[0].delay_sec, 10);
@@ -988,5 +993,28 @@ mod tests {
         assert_eq!(matched[0].next_stop_idx, 11);
         // Drugi pojazd przegrał konflikt o ten sam trip_idx 42!
         assert!(!matched[1].matched);
+
+        let rows = vec![
+            ("4".to_string(), 51.1025, 17.000, 36150),
+            ("4".to_string(), 51.1025, 17.000, 36090),
+        ];
+        let matched = idx.match_batch(&rows);
+        assert!(!matched[0].matched);
+        assert!(matched[1].matched);
+        assert_eq!(matched[1].delay_sec, 0);
+
+        LIVE_SCHEDULE.with(|s| *s.borrow_mut() = idx);
+        let mut payload = Vec::new();
+        write_i32(&mut payload, 36150);
+        write_u32(&mut payload, 1);
+        payload.extend_from_slice(&1u16.to_le_bytes());
+        payload.extend_from_slice(b"4");
+        write_f64(&mut payload, 51.1025);
+        write_f64(&mut payload, 17.000);
+        let legacy = handle_live_match_batch_cmd(&payload);
+        assert_eq!(i32::from_le_bytes(legacy[9..13].try_into().unwrap()), 60);
+        write_i32(&mut payload, 36090);
+        let timestamped = handle_live_match_batch_cmd(&payload);
+        assert_eq!(i32::from_le_bytes(timestamped[9..13].try_into().unwrap()), 0);
     }
 }

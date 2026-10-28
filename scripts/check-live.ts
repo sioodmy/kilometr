@@ -17,10 +17,11 @@
  * - brak połączenia z kodem grada za linię, której nie ma w rozkładzie.
  */
 
-import { liveTracker, snapshotIsUsable } from '../src/services/liveTracker';
+import { liveTracker, snapshotIsUsable, type RawVehicleRow, type TrackedVehicle } from '../src/services/liveTracker';
+import { vehicleIsFresh } from '../src/services/liveFreshness';
 import { AppState } from 'react-native';
 import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from '../src/services/zbiorkom';
-import { gtfsStore } from '../src/services/routing/store';
+import { gtfsStore, type DayIndex } from '../src/services/routing/store';
 import { locateLiveStopPosition } from '../src/services/vehiclePosition';
 import type { Leg, LegStop } from '../src/types/models';
 
@@ -132,6 +133,13 @@ expect('starszy niż 15 min odrzucony', snapshotIsUsable(nowMs - 15 * 60 * 1000 
 expect('brak znacznika odrzucony', snapshotIsUsable(undefined, nowMs), false);
 expect('NaN odrzucony', snapshotIsUsable(NaN, nowMs), false);
 expect('znacznik z przyszłości odrzucony', snapshotIsUsable(nowMs + 60_000, nowMs), false);
+
+describe('Wiek pomiaru pojazdu');
+expect('pomiar na granicy 90 s ważny', vehicleIsFresh(nowMs - 90_000, nowMs), true);
+expect('pomiar starszy niż 90 s wygasa', vehicleIsFresh(nowMs - 90_001, nowMs), false);
+expect('przyszły pomiar odrzucony', vehicleIsFresh(nowMs + 1, nowMs), false);
+expect('NaN odrzucony', vehicleIsFresh(NaN, nowMs), false);
+expect('zerowy czas odrzucony', vehicleIsFresh(0, nowMs), false);
 
 // ─── getTripDelays nie oddaje żywej mapy ──────────────────────────────────
 
@@ -434,6 +442,7 @@ expect('bus: x to szerokość', zbRows?.[0].x, 51.03);
 expect('bus: y to długość', zbRows?.[0].y, 16.98);
 expect('tram z type 0', zbRows?.[1].type, 'tram');
 expect('k to string fleet number', zbRows?.[0].k, '9247');
+expect('zachowany czas pomiaru operatora', zbRows?.[0].updatedAt, 1791643596000);
 stubFetchOnce({}, false);
 expect('HTTP nie-OK = null (sygnał do dalszego fallbacku)', await fetchZbWroclawRows(), null);
 
@@ -517,6 +526,105 @@ gtfsStore.routes.delete('KD:R:1:2');
 gtfsStore.stops.delete('KD:S:1');
 gtfsStore.stops.delete('KD:S:2');
 gtfsStore.stopTimes.delete('KD:T:1:2:20261010');
+
+describe('Niepełny i zamrożony feed autobusów');
+const tracker = liveTracker as unknown as {
+  byId: Map<string, TrackedVehicle>;
+  byLine: Map<string, TrackedVehicle[]>;
+  matchAll(rows: RawVehicleRow[], observedAt?: number): Promise<void>;
+  matchRowsRust(rows: RawVehicleRow[], index: DayIndex, nowSec: number): Map<string, {
+    tracked: TrackedVehicle;
+    score: number;
+  }> | null;
+  matchRow(row: RawVehicleRow, index: typeof kdIndex, nowSec: number, polylines: Map<string, unknown>): {
+    tracked: TrackedVehicle;
+  };
+};
+const originalClock = Date.now;
+const fixedNow = new Date(2026, 9, 28, 10, 0).getTime();
+Date.now = () => fixedNow;
+const oldLoaded = gtfsStore.isLoaded;
+const oldSlice = gtfsStore.getDayIndexSlice;
+const oldMatcher = tracker.matchRowsRust;
+try {
+  liveTracker.reset();
+  gtfsStore.isLoaded = true;
+  gtfsStore.getDayIndexSlice = async () => kdIndex;
+  tracker.matchRowsRust = () => new Map();
+  const bus: TrackedVehicle = {
+    vehicleId: '145-1', line: '145', type: 'bus', lat: 51.1, lon: 17,
+    delaySec: 900, matchedTripId: 'late-bus', updatedAt: fixedNow - 20_000,
+  };
+  tracker.byId.set(bus.vehicleId, bus);
+  tracker.byLine.set(bus.line, [bus]);
+  expect('duże znane opóźnienie dociera do planera', liveTracker.getTripDelays().get('late-bus'), 900);
+  await tracker.matchAll([]);
+  expect('brak w jednym pollu zachowuje znane opóźnienie', liveTracker.getTripDelays().get('late-bus'), 900);
+  tracker.matchRowsRust = () => new Map([['145-2', {
+    tracked: { ...bus, vehicleId: '145-2', delaySec: 600, updatedAt: fixedNow }, score: 0,
+  }]]);
+  await tracker.matchAll([{ name: '145', type: 'bus', x: 51.1, y: 17, k: 2, updatedAt: fixedNow }]);
+  expect('nowy pomiar kursu zastępuje podtrzymany pojazd', liveTracker.snapshot().length, 1);
+  expect('stary pojazd nie nadpisuje opóźnienia nowego', liveTracker.getTripDelays().get('late-bus'), 600);
+  tracker.matchRowsRust = () => new Map();
+  tracker.byId.clear();
+  tracker.byId.set(bus.vehicleId, bus);
+  tracker.byLine.set(bus.line, [bus]);
+  bus.updatedAt = fixedNow - 90_001;
+  internals.lastOk = fixedNow;
+  expect('świeży feed nie przedłuża pomiaru autobusu', liveTracker.getTripDelays().has('late-bus'), false);
+  expect('stary autobus znika z mapy', liveTracker.snapshot('145').length, 0);
+  expect('starego pojazdu nie zwraca lookup', liveTracker.lookup(bus.vehicleId), undefined);
+  await tracker.matchAll([]);
+  expect('wygasłe wpisy usuwane z pamięci', tracker.byId.size, 0);
+  const row: RawVehicleRow = { name: '145', type: 'bus', x: 51.1, y: 17, k: 1 };
+  await tracker.matchAll([row], fixedNow - 300_000);
+  expect('stary snapshot bez timestamp nie odżywa', liveTracker.snapshot().length, 0);
+  expect('stary snapshot nie jest nawet dopasowywany', tracker.byId.size, 0);
+  await tracker.matchAll([{ ...row, updatedAt: fixedNow + 1 }]);
+  expect('przyszły czas nie trafia do matchera', tracker.byId.size, 0);
+
+  gtfsStore.routes.set('test-bus-route', { route_short_name: '145', route_type: 3 });
+  gtfsStore.stops.set('test-bus-a', { stop_name: 'A', stop_lat: 51.1, stop_lon: 17 });
+  gtfsStore.stops.set('test-bus-b', { stop_name: 'B', stop_lat: 51.11, stop_lon: 17 });
+  gtfsStore.stopTimes.set('test-bus-trip', [
+    { stop_id: 'test-bus-a', departure_sec: 36000, arrival_sec: 36000 },
+    { stop_id: 'test-bus-b', departure_sec: 36600, arrival_sec: 36600 },
+  ]);
+  const index = {
+    ...kdIndex,
+    patterns: new Map([['test-bus-pattern', {
+      routeId: 'test-bus-route', stopSequence: ['test-bus-a', 'test-bus-b'],
+      trips: [{ trip_id: 'test-bus-trip' }],
+    }]]),
+  };
+  const match = (delaySec?: number) => tracker.matchRow(
+    { ...row, updatedAt: fixedNow - 60_000, delaySec }, index, 36060, new Map(),
+  ).tracked;
+  expect('GPS liczony na chwilę pomiaru, nie pobrania', match().delaySec, 0);
+  expect('brak opóźnienia w API pozwala na estymatę GPS', match().matchedTripId, 'test-bus-trip');
+  expect('jawne zero z feedu pozostaje pomiarem', match(0).delaySec, 0);
+  expect('odrzucone duże opóźnienie nie staje się zerem', match(3600).delaySec, null);
+  expect('odrzucone opóźnienie nie potwierdza kursu', match(3600).matchedTripId, undefined);
+  expect('NaN z feedu nie staje się zerem', match(NaN).delaySec, null);
+
+  tracker.matchRowsRust = oldMatcher;
+  const rustRows = [{ ...row, updatedAt: fixedNow - 60_000 }];
+  expect('Rust/WASM: GPS liczony na czas pomiaru',
+    tracker.matchRowsRust(rustRows, index, 36060)?.get('145-1')?.tracked.delaySec, 0);
+  expect('Rust/WASM: podejrzane opóźnienie bez fałszywego zera',
+    tracker.matchRowsRust([{ ...rustRows[0], delaySec: 3600 }], index, 36060)?.get('145-1')?.tracked.delaySec, null);
+} finally {
+  Date.now = originalClock;
+  gtfsStore.isLoaded = oldLoaded;
+  gtfsStore.getDayIndexSlice = oldSlice;
+  tracker.matchRowsRust = oldMatcher;
+  gtfsStore.routes.delete('test-bus-route');
+  gtfsStore.stops.delete('test-bus-a');
+  gtfsStore.stops.delete('test-bus-b');
+  gtfsStore.stopTimes.delete('test-bus-trip');
+  liveTracker.reset();
+}
 
 // ─── Podsumowanie ─────────────────────────────────────────────────────────
 
