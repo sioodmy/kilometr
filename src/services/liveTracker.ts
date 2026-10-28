@@ -1,11 +1,12 @@
-// Lokalny tracker pojazdów MPK: poll pozycji + dopasowanie kursów do
-// rozkładu (opóźnienia). Zasilanie RAPTOR-a (tripDelays) i flag live w UI.
-// Działa w całości na telefonie, bez serwera pośredniczącego. Uzasadnienie
-// przy fetchAll.
+// Lokalny tracker pojazdów: poll pozycji (główne źródło: zbiorkom.live, wszędzie)
+// + dopasowanie kursów do rozkładu (opóźnienia). Zasilanie RAPTOR-a (tripDelays)
+// i flag live w UI. Działa w całości na telefonie, bez serwera pośredniczącego.
+// Uzasadnienie przy fetchAll.
 //
 // Matcher rzutuje pozycję GPS na geometrię trasy kursu (odcinki między
 // kolejnymi przystankami) oraz sprawdza oczekiwany czas w rozkładzie.
 // Eliminuje to błędy pojazdów w ruchu między przystankami i fałszywe dopasowania.
+// Pomiar z feedu weryfikujemy względem GPS i historii pojazdu.
 
 import {
   BinaryReader,
@@ -23,9 +24,18 @@ import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
 import { fetchZbBialystokRows, fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKielceRows, fetchZbKml, fetchZbKrakowRows, fetchZbLodzRails, fetchZbLodzRows, fetchZbLublinRows, fetchZbOlsztynRows, fetchZbOpoleRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbRadomRows, fetchZbRzeszowRows, fetchZbSkmtRails, fetchZbSzczecinRows, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
+import { MAX_DELAY_SEC, MAX_SAMPLE_AGE_MS, sampleTime, matchHints, matchScore, fusedDelay } from './liveQuality';
+import { buildRoutingSnapshot, type RoutingSnapshot } from './routing/reliability';
+import { normalizeName } from './vehiclePosition';
 
-/** Jak często pytamy o pozycje. MPK odświeża je co ~5 s, więc 20 s to zapas. */
-const POLL_MS = 20000;
+/**
+ * Tempo polla na ekranie. Pomiar feedu zbiorkom.live: treść zmienia się co
+ * ~4-30 s, więc 5 s łapie każdą aktualizację (1 s = 5x transferu za te same
+ * dane). W tle wolniej, bo tam liczy się bateria.
+ */
+const POLL_MS = 5000;
+/** Tempo polla w tle: apka nieaktywna, ale śledzenie podróży potrzebuje danych. */
+const BACKGROUND_POLL_MS = 20000;
 /**
  * Dane uznajemy za wartościowe tak długo, ile minęło od ostatniego sukcesu.
  *
@@ -38,9 +48,9 @@ const POLL_MS = 20000;
  */
 const GIVE_UP_MS = 150000;
 /** Ile sekund w tył i przód wokół „teraz" bierzemy kursy z rozkładu. */
-const WINDOW_SEC = 1800;
+const WINDOW_SEC = MAX_DELAY_SEC + 3600;
 const MAX_CORRIDOR_DIST_M = 350;
-const DELAY_CAP_SEC = 1800;
+const DELAY_CAP_SEC = MAX_DELAY_SEC;
 /** Ostatni udany snapshot na dysku, żeby restart apki nie startował od zera. */
 function snapshotKey(cityId?: string): string {
   const id = cityId ?? safeCityId();
@@ -87,6 +97,13 @@ export interface RawVehicleRow {
   x: number;
   y: number;
   k: number | string;
+  /** Sekundy z API, weryfikowane względem GPS. */
+  delaySec?: number;
+  /** Czas pomiaru GPS w milisekundach epoch. */
+  timestamp?: number;
+  headsign?: string;
+  brigade?: string;
+  upcomingStops?: { name: string; schedSec: number }[];
 }
 
 /**
@@ -110,6 +127,7 @@ interface PatternPolylineNode {
   lon: number;
   stopId: string;
   name: string;
+  schedulePos: number;
 }
 
 function toDateStr(date: Date): string {
@@ -149,6 +167,14 @@ class LiveTracker {
   }
 
   /**
+   * Znacznik ostatniej udanej dostawy danych (0 = nigdy). UI porównuje go
+   * między tickami: zmiana = przyszły nowe opóźnienia, można przerysować.
+   */
+  getLastOk(): number {
+    return this.lastOk;
+  }
+
+  /**
    * Czyści stan w pamięci (zmiana miasta, nowy import). Snapshotu na dysku NIE
    * kasujemy: klucze są per-miasto, a wpis, który tam jest, należy do miasta,
    * z którego właśnie wyszliśmy. Nadpisze go następny udany poll.
@@ -157,8 +183,13 @@ class LiveTracker {
     this.byId.clear();
     this.byLine.clear();
     this.tripDelays.clear();
+    this.liveScheduleKey = null;
+    this.latestDayIndex = null;
+    this.sampleHistory.clear();
     this.lastOk = 0;
     this.restored = false;
+    // Nowe miasto: pierwszy udany poll ma od razu pójść na dysk pod nowy klucz.
+    this.lastPersistAt = 0;
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -198,18 +229,31 @@ class LiveTracker {
     this.appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         if (this.wantPoll || this.pinned > 0) this.armTimer();
-      } else if (this.pinned === 0) {
+      } else if (this.pinned > 0) {
+        // Pin w tle zostaje, ale przechodzi na rzadsze tempo (bateria).
+        this.armTimer();
+      } else {
         this.disarmTimer();
       }
     });
   }
 
+  private timerMs = 0;
+
+  /**
+   * Tempo polla zależy od stanu aplikacji (na ekranie co 5 s, w tle co 20 s),
+   * więc przy każdej zmianie stanu przestawiamy interval. Wywołanie z tym
+   * samym tempem jest no-op (nie Restartujemy polla co re-render).
+   */
   private armTimer(): void {
-    if (this.timer) return;
+    const ms = AppState.currentState === 'active' ? POLL_MS : BACKGROUND_POLL_MS;
+    if (this.timer && this.timerMs === ms) return;
+    this.disarmTimer();
     void this.poll();
+    this.timerMs = ms;
     this.timer = setInterval(() => {
       void this.poll();
-    }, POLL_MS);
+    }, ms);
   }
 
   private disarmTimer(): void {
@@ -222,7 +266,7 @@ class LiveTracker {
   /**
    * Szybka ścieżka przed planowaniem: gdy snapshot świeży - nic nie robi,
    * w przeciwnym razie odpala poll W TLE i wraca od razu (planowanie nigdy
-   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤20 s).
+   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤5 s).
    */
   async ensureFresh(): Promise<void> {
     this.start();
@@ -238,7 +282,23 @@ class LiveTracker {
    * następny poll (matchSingle pisał do tej samej mapy co poprzedni snapshot).
    */
   getTripDelays(): Map<string, number> {
-    return new Map(this.tripDelays);
+    const now = Date.now();
+    return new Map(this.snapshot().filter(v => v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS).map(v => [v.matchedTripId!, v.delaySec!]));
+  }
+
+  private latestDayIndex: DayIndex | null = null;
+  private sampleHistory = new Map<string, { lat: number; lon: number; since: number }>();
+
+  getRoutingSnapshot(index = this.latestDayIndex, offsets?: Map<string, number>): RoutingSnapshot {
+    return buildRoutingSnapshot(index, gtfsStore, this.snapshot(), this.getLiveState() === 'fresh', Date.now(), offsets);
+  }
+
+  private previousFor(row: RawVehicleRow): TrackedVehicle | undefined {
+    const v = this.byId.get(`${row.name.trim().toUpperCase()}-${row.k}`);
+    const at = sampleTime(row, Date.now());
+    const headsign: string | undefined = v?.matchedTripId ? gtfsStore.trips.get(v.matchedTripId)?.trip_headsign : undefined;
+    if (row.headsign && headsign && normalizeName(row.headsign) !== normalizeName(headsign)) return undefined;
+    return v && at != null && at - v.updatedAt >= 0 && at - v.updatedAt <= MAX_SAMPLE_AGE_MS ? v : undefined;
   }
 
   /** Zdrowie źródeł live w tej sesji (do diagnostyki i canary). */
@@ -265,12 +325,15 @@ class LiveTracker {
 
   /** Ostatni snapshot (np. do spinania pozycji z kartą przejazdu). */
   lookup(vehicleId: string): TrackedVehicle | undefined {
-    return this.byId.get(vehicleId);
+    const vehicle = this.byId.get(vehicleId);
+    const now = Date.now();
+    return vehicle && vehicle.updatedAt <= now && now - vehicle.updatedAt <= MAX_SAMPLE_AGE_MS ? vehicle : undefined;
   }
 
   snapshot(line?: string): TrackedVehicle[] {
-    if (line) return this.byLine.get(line.trim().toUpperCase()) ?? [];
-    return Array.from(this.byId.values());
+    const vehicles = line ? (this.byLine.get(line.trim().toUpperCase()) ?? []) : Array.from(this.byId.values());
+    const now = Date.now();
+    return vehicles.filter(v => v.updatedAt <= now && now - v.updatedAt <= MAX_SAMPLE_AGE_MS);
   }
 
   /** Bezstanowe odpytanie źródła MPK (canary/diagnostyka), bez zapisu snapshotu. */
@@ -385,7 +448,7 @@ class LiveTracker {
 
   /** Dopasowanie pojedynczego pojazdu na żądanie (np. przy wejściu w kartę przejazdu). */
   async matchSingle(row: RawVehicleRow): Promise<TrackedVehicle | null> {
-    if (!row.x || !row.y || !row.name) return null;
+    if (!row.x || !row.y || !row.name || sampleTime(row, Date.now()) == null) return null;
     const line = row.name.trim().toUpperCase();
     const vehicleId = `${line}-${row.k}`;
 
@@ -429,45 +492,25 @@ class LiveTracker {
   }
 
   /**
-   * Pozycje pojazdów per-miasto:
-   * - Wrocław: wprost z MPK (POST bus_position), awaryjnie zbiorkom.live,
-   * - Kraków / GZM / Warszawa / Poznań / Trójmiasto / Łódź / Szczecin / Kielce / Olsztyn / Białystok / Opole / Rzeszów / Lublin / Radom:
-   *   zbiorkom.live (ZTP, ZTM, WTP, ZTM Poznań, ZTM Gdańsk + ZKM Gdynia,
-   *   ZDiT Łódź, ZDiTM Szczecin, ZTM Kielce, ZDZiT Olsztyn, BKM, MZK, ZTM Rzeszów, ZDiTM Lublin i MZDiK Radom nie mają publicznego bus_position).
-   *
-   * Wrocław świadomie bez pośrednika: cache brzegowy na Cloudflare kosztowałby
-   * 100k requestów na dobę (limit Workers Free), a pomiary pokazują, że MPK
-   * i tak odpowiada w 291 ms medianowo i nie zawodzi. Jedno ponowienie po
-   * krótkiej przerwie wystarczy na przejściowy timeout.
+   * Pozycje pojazdów per-miasto: główne źródło zbiorkom.live dla wszystkich
+   * miast (żaden z operatorów nie ma publicznego bus_position).
+   * Fallback: POST bus_position MPK (tylko Wrocław), gdy zbiorkom nie odpowie.
+   * Jedno ponowienie po krótkiej przerwie łapie przejściowy timeout.
    */
   private async fetchAll(): Promise<RawVehicleRow[] | null> {
-    let direct = false;
-    try {
-      direct = getCity(safeCityId()).features.directBusPosition;
-    } catch {
-      direct = true;
-    }
-    if (!direct) {
-      const krakow = await this.fetchZbCity();
-      if (krakow) return krakow;
-      await new Promise((r) => setTimeout(r, 1200));
-      return this.fetchZbCity();
-    }
-    const first = await this.fetchDirect();
+    const first = await this.fetchZbCity();
     if (first) return first;
     await new Promise((r) => setTimeout(r, 1200));
-    const second = await this.fetchDirect();
+    const second = await this.fetchZbCity();
     if (second) return second;
     try {
-      const fallback = await fetchZbWroclawRows();
-      this.recordSource('zbiorkom', fallback !== null, fallback === null ? 'brak odpowiedzi' : undefined);
-      if (fallback) console.warn('[LiveTracker] MPK down, fallback zbiorkom.live');
-      return fallback;
-    } catch (err) {
-      this.recordSource('zbiorkom', false, err);
-      console.warn('[LiveTracker] zbiorkom fallback failed:', err);
-      return null;
+      if (!getCity(safeCityId()).features.directBusPosition) return null;
+    } catch {
+      // Nieznane miasto: próbujemy fallbacku i tak (getCity domyślnie daje Wrocław).
     }
+    const fallback = await this.fetchDirect();
+    if (fallback) console.warn('[LiveTracker] zbiorkom down, fallback bus_position MPK');
+    return fallback;
   }
 
   private async fetchZbCity(): Promise<RawVehicleRow[] | null> {
@@ -559,8 +602,19 @@ class LiveTracker {
     return rows.length > 0 ? rows : null;
   }
 
+  /** Ostatni zapis snapshotu: przy polli co 5 s zapis na dysk co raz to tarcie. */
+  private lastPersistAt = 0;
+  /** Minimalna przerwa między zapisami snapshotu na dysk. */
+  private static PERSIST_MIN_MS = 30000;
+
   private persistSnapshot(rows: RawVehicleRow[], rails?: RailFeed[], cityId?: string): void {
-    void kvSet(snapshotKey(cityId), JSON.stringify({ at: Date.now(), rows, rails: rails ?? [] } satisfies StoredSnapshot));
+    // Snapshot służy tylko odtworzeniu po restarcie (okno 15 min), więc wolno
+    // mu gubić intermediate polle. Bez throttlingu pisalibyśmy ~600 KB na dysk
+    // co 5 s.
+    const now = Date.now();
+    if (now - this.lastPersistAt < LiveTracker.PERSIST_MIN_MS) return;
+    this.lastPersistAt = now;
+    void kvSet(snapshotKey(cityId), JSON.stringify({ at: now, rows, rails: rails ?? [] } satisfies StoredSnapshot));
   }
 
   /**
@@ -579,7 +633,9 @@ class LiveTracker {
       // Stary snapshot to nie „live”: bez tego apka po dłuższej przerwie
       // pokazywałaby nieaktualne pojazdy, dopóki nie wróci pierwszy poll.
       if (!snapshotIsUsable(parsed.at, Date.now())) return;
-      if (Array.isArray(parsed.rows) && parsed.rows.length > 0) await this.matchAll(parsed.rows);
+      if (Array.isArray(parsed.rows) && parsed.rows.length > 0) {
+        await this.matchAll(parsed.rows.map(row => ({ ...row, timestamp: row.timestamp ?? parsed.at })));
+      }
       const rails: RailFeed[] = Array.isArray(parsed.rails)
         ? parsed.rails
         : Array.isArray(parsed.kd)
@@ -678,6 +734,10 @@ class LiveTracker {
     const vehicleId = `${line}-${row.k}`;
     const lat = row.x;
     const lon = row.y;
+    const previous = this.previousFor(row);
+    const hints = matchHints(row, previous);
+    const at = sampleTime(row, Date.now()) ?? Date.now();
+    const sampleSec = nowSec - Math.round((Date.now() - at) / 1000);
     let type: 'bus' | 'tram' | 'trolleybus' | 'subway' | 'train' =
       row.type === 'tram' ? 'tram' : row.type === 'trolleybus' ? 'trolleybus' : 'bus';
 
@@ -698,7 +758,7 @@ class LiveTracker {
       let polyline = patternPolylines.get(patternId);
       if (!polyline) {
         polyline = [];
-        for (const stopId of pattern.stopSequence as string[]) {
+        for (const [schedulePos, stopId] of (pattern.stopSequence as string[]).entries()) {
           const s = gtfsStore.stops.get(stopId);
           if (s && s.stop_lat != null && s.stop_lon != null) {
             polyline.push({
@@ -706,6 +766,7 @@ class LiveTracker {
               lon: s.stop_lon,
               stopId,
               name: s.stop_name || stopId,
+              schedulePos,
             });
           }
         }
@@ -726,17 +787,14 @@ class LiveTracker {
 
       for (const trip of trips) {
         const times = gtfsStore.stopTimes.get(trip.trip_id);
-        if (!times || times.length <= segIdx + 1) continue;
+        if (!times || times.length <= p2.schedulePos) continue;
 
-        const dep1 = times[segIdx].departure_sec;
-        const arr2 = times[segIdx + 1].arrival_sec;
+        const dep1 = times[p1.schedulePos].departure_sec;
+        const arr2 = times[p2.schedulePos].arrival_sec;
         const expectedSec = Math.round(dep1 + t * (arr2 - dep1));
-        const delay = nowSec - expectedSec;
-
-        // Odfiltruj kursy spoza realistycznego okna opóźnienia (-5 min do +35 min)
-        if (delay < -300 || delay > 2100) continue;
-
-        const score = Math.abs(delay) + proj.distanceMeters * 2;
+        const delay = sampleSec - expectedSec;
+        const score = matchScore(hints, trip.trip_id, trip.trip_headsign ?? '', delay,
+          proj.distanceMeters, lat, lon, p2.lat, p2.lon, p2.name, arr2);
         if (score < bestScore) {
           bestScore = score;
           bestTripId = trip.trip_id;
@@ -766,10 +824,11 @@ class LiveTracker {
             if (d > 200) continue;
 
             const expectedSec = times[i].departure_sec ?? times[i].arrival_sec ?? nowSec;
-            const delay = nowSec - expectedSec;
-            if (delay < -300 || delay > 2100) continue;
-
-            const score = Math.abs(delay) + d * 2;
+            const delay = sampleSec - expectedSec;
+            const next = gtfsStore.stops.get(times[i + 1]?.stop_id);
+            const score = matchScore(hints, trip.trip_id, trip.trip_headsign ?? '', delay,
+              d, lat, lon, next?.stop_lat ?? stop.stop_lat, next?.stop_lon ?? stop.stop_lon,
+              next?.stop_name ?? stop.stop_name, times[i + 1]?.departure_sec ?? expectedSec);
             if (score < bestScore) {
               bestScore = score;
               bestTripId = trip.trip_id;
@@ -782,12 +841,6 @@ class LiveTracker {
       }
     }
 
-    // Poza DELAY_CAP_SEC opóźnienie nie znaczy „pojazd 40 minut spóźniony”
-    // tylko „dopasowanie do kursu jest podejrzane”. Wcześniej taki wynik
-    // zerowano, a pojazd zostawał `live: true` - użytkownik dostawał zielony
-    // „Na czas” przy tramwaju, który wyraźnie nie jest na czas. Teraz zamiast
-    // kłamstwa jest brak informacji: delaySec = null, a UI pada z powrotem na
-    // „Rozkład”, bo `live` jest wyprowadzane z `delaySec`.
     const delayOutOfRange = bestDelay !== 0 && Math.abs(bestDelay) > DELAY_CAP_SEC;
     if (delayOutOfRange) {
       console.warn(
@@ -813,14 +866,11 @@ class LiveTracker {
         lat,
         lon,
         type,
-        // `null` = brak wiarygodnego pomiaru (a nie „na czas”). Dzięki temu
-        // `matchSingle` nie ustawia `matchedTripId`, więc RAPTOR nie dostaje
-        // fałszywego opóźnienia, a UI pokazuje rozkład zamiast zielonego badge.
-        delaySec: bestTripId && !delayOutOfRange ? bestDelay : null,
+        delaySec: bestTripId && !delayOutOfRange ? fusedDelay(row, bestDelay, previous?.matchedTripId === bestTripId ? previous : undefined) : null,
         matchedTripId: bestTripId && !delayOutOfRange ? bestTripId : undefined,
         currentStopName: bestCurrentStop,
         nextStopName: bestNextStop,
-        updatedAt: Date.now(),
+        updatedAt: at,
       },
       score: bestTripId ? bestScore : Number.POSITIVE_INFINITY,
     };
@@ -874,7 +924,7 @@ class LiveTracker {
 
   private ensureLiveSchedule(dayIndex: DayIndex): boolean {
     if (this.liveScheduleKey === dayIndex && this.liveTripIds.length > 0) return true;
-    const byLine = new Map<string, any[]>();
+    const byLine = new Map<string, { routeId: string; stopSequence: string[]; trips: { trip_id: string; trip_headsign?: string }[] }[]>();
     for (const pattern of dayIndex.patterns.values()) {
       const route = gtfsStore.routes.get(pattern.routeId);
       const line = String(route?.route_short_name ?? pattern.routeId ?? '').trim().toUpperCase();
@@ -893,17 +943,17 @@ class LiveTracker {
     for (const [line, patterns] of byLine) {
       w.str(line).u32(patterns.length);
       for (const pattern of patterns) {
-        const seq: { nameIdx: number; lat: number; lon: number }[] = [];
-        for (const stopId of (pattern.stopSequence as string[]) ?? []) {
+        const seq: { nameIdx: number; lat: number; lon: number; pos: number }[] = [];
+        for (const [pos, stopId] of pattern.stopSequence.entries()) {
           const stop = gtfsStore.stops.get(stopId);
           if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
           const nameIdx = stopNames.length;
           stopNames.push(stop.stop_name || stopId);
-          seq.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon });
+          seq.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, pos });
         }
         w.u16(seq.length);
-        for (const node of seq) w.u32(node.nameIdx).f64(node.lat).f64(node.lon);
-        const trips = (pattern.trips as { trip_id: string }[]) ?? [];
+        for (const node of seq) w.u32(node.nameIdx).f64(node.lat).f64(node.lon).str(normalizeName(stopNames[node.nameIdx]));
+        const trips = pattern.trips;
         w.u32(trips.length);
         for (const trip of trips) {
           const times = gtfsStore.stopTimes.get(trip.trip_id) as
@@ -911,9 +961,9 @@ class LiveTracker {
             | undefined;
           const tripIdx = tripIds.length;
           tripIds.push(trip.trip_id);
-          w.u32(tripIdx);
+          w.u32(tripIdx).str(normalizeName(trip.trip_headsign ?? ''));
           for (let i = 0; i < seq.length; i++) {
-            const t = times?.[i];
+            const t = times?.[seq[i].pos];
             w.i32(t ? t.departure_sec | 0 : -2147483648).i32(t ? t.arrival_sec | 0 : -2147483648);
           }
           const fallback: { nameIdx: number; lat: number; lon: number; dep: number }[] = [];
@@ -929,7 +979,7 @@ class LiveTracker {
             }
           }
           w.u16(fallback.length);
-          for (const fb of fallback) w.u32(fb.nameIdx).f64(fb.lat).f64(fb.lon).i32(fb.dep | 0);
+          for (const fb of fallback) w.u32(fb.nameIdx).f64(fb.lat).f64(fb.lon).i32(fb.dep | 0).str(normalizeName(stopNames[fb.nameIdx]));
         }
       }
     }
@@ -951,12 +1001,22 @@ class LiveTracker {
     if (usable.length === 0) return null;
     const w = new BinaryWriter(16 + usable.length * 48);
     w.i32(nowSec).u32(usable.length);
-    for (const row of usable) w.str(row.name.trim().toUpperCase()).f64(row.x).f64(row.y);
+    const now = Date.now();
+    for (const row of usable) {
+      const hints = matchHints(row, this.previousFor(row));
+      const previous = hints.previous;
+      const prevIdx = previous?.matchedTripId ? this.liveTripIds.indexOf(previous.matchedTripId) : -1;
+      w.str(row.name.trim().toUpperCase()).f64(row.x).f64(row.y)
+        .i32(nowSec - Math.round((now - (sampleTime(row, now) ?? now)) / 1000))
+        .i32(hints.api ?? -2147483648).str(hints.headsign).i32(prevIdx)
+        .f64(previous?.lat ?? row.x).f64(previous?.lon ?? row.y)
+        .str(hints.nextStop).i32(hints.nextSec ?? -2147483648);
+    }
     const res = invokeRustSync(CMD_LIVE_MATCH_BATCH, w.finish());
     if (!res || res.byteLength < 4) return null;
     const r = new BinaryReader(res);
     const count = r.u32();
-    if (count !== usable.length || res.byteLength < 4 + count * 17) return null;
+    if (count !== usable.length || res.byteLength < 4 + count * 25) return null;
     const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
     for (let i = 0; i < count; i++) {
       const row = usable[i];
@@ -966,8 +1026,10 @@ class LiveTracker {
       const delay = r.i32();
       const curIdx = r.u32();
       const nextIdx = r.u32();
+      const score = r.f64();
       const tripId = ok ? this.liveTripIds[tripIdx] : undefined;
       const delayOutOfRange = !!tripId && delay !== 0 && Math.abs(delay) > DELAY_CAP_SEC;
+      const previous = this.previousFor(row);
       // Ścieżka Rusta nie zna route_type, więc typ bierzemy z bazy po meczu
       // (metro M1/M2 z feedu miasta przychodzi jako „bus", a po meczu
       // dostaje route_type 1 i kropkę metra).
@@ -987,13 +1049,13 @@ class LiveTracker {
           lat: row.x,
           lon: row.y,
           type: vtype,
-          delaySec: tripId && !delayOutOfRange ? delay : null,
+          delaySec: tripId && !delayOutOfRange ? fusedDelay(row, delay, previous?.matchedTripId === tripId ? previous : undefined) : null,
           matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
           currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
           nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
-          updatedAt: Date.now(),
+          updatedAt: sampleTime(row, now) ?? now,
         },
-        score: tripId && !delayOutOfRange ? Math.abs(delay) : Number.POSITIVE_INFINITY,
+        score: tripId && !delayOutOfRange ? score : Number.POSITIVE_INFINITY,
       });
     }
     return matched;
@@ -1022,6 +1084,21 @@ class LiveTracker {
     }
 
     const patternPolylines = new Map<string, PatternPolylineNode[]>();
+    this.latestDayIndex = dayIndex;
+    const seen = new Set<string>();
+    rows = rows.filter(row => {
+      const id = `${row.name.trim().toUpperCase()}-${row.k}`;
+      if (seen.has(id) || sampleTime(row, now.getTime()) == null) return false;
+      seen.add(id);
+      if (row.timestamp == null) {
+        const old = this.sampleHistory.get(id);
+        if (!old || old.lat !== row.x || old.lon !== row.y) {
+          this.sampleHistory.set(id, { lat: row.x, lon: row.y, since: now.getTime() });
+        } else if (now.getTime() - old.since > MAX_SAMPLE_AGE_MS) return false;
+      }
+      return true;
+    });
+    for (const id of this.sampleHistory.keys()) if (!seen.has(id)) this.sampleHistory.delete(id);
     const matched =
       this.matchRowsRust(rows, dayIndex, nowSec) ??
       new Map<string, { tracked: TrackedVehicle; score: number }>();

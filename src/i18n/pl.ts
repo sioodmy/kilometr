@@ -120,6 +120,7 @@ export const pl = {
     kmh: (v: string) => `${v} km/h`,
     add15: '+15 min',
     add30: '+30 min',
+    add45: '+45 min',
     add60: '+1 godz.',
   },
   home: {
@@ -969,7 +970,10 @@ export const pl = {
     countDirect: ' • tylko bezpośrednie',
     countTram: ' • tramwaje',
     countBus: ' • autobusy',
-    countEarlier: ' • wczytuję wcześniejsze…',
+    earlierAction: 'Wcześniejsze połączenia',
+    earlierLoading: 'Wczytuję wcześniejsze połączenia…',
+    earlierEmpty: 'Brak wcześniejszych połączeń tego dnia',
+    earlierRetry: 'Nie udało się wczytać. Spróbuj ponownie',
     offlineTapA11y: 'Ostatnie dane z cache. Dotknij, aby odświeżyć.',
     offlineChip: 'offline',
     noLiveChip: 'brak danych live',
@@ -1000,6 +1004,12 @@ export const pl = {
   },
   routeDetails: {
     departure: 'Wyjście',
+    vehicleDeparture: 'Odjazd',
+    scheduledTime: (time: string) => `Planowo ${time}`,
+    estimatedDelay: (n: number) => `Około +${n} min, szacunek z innych autobusów`,
+    untrackedVehicle: 'Brak aktualnej pozycji. Możliwe opóźnienie.',
+    uncertainTransfer: 'Mało czasu na przesiadkę. Opóźnienie tego autobusu jest niepewne.',
+    walkDeparture: (time: string, place: string) => `Wyjście pieszo o ${time}: ${place}`,
     arrival: 'Na miejscu',
     origin: 'Skąd',
     destination: 'Dokąd',
@@ -1165,6 +1175,8 @@ export const pl = {
     minuteLabel: 'minuta',
     confirmNow: 'Wyszukaj od teraz',
     confirmDepart: (day: string, hh: string, mm: string) => `Zastosuj: ${day}, ${hh}:${mm}`,
+    pastWarning: 'Wybrana godzina już minęła',
+    switchTomorrow: 'Przełącz na jutro',
   },
   routesBar: {
     modeTram: 'Tram',
@@ -1181,6 +1193,8 @@ export const pl = {
     modeFilterA11y: (cur: string) =>
       `Filtruj środek transportu: aktualnie ${cur}. Dotknij, aby zmienić.`,
     timeA11y: (label: string) => `Czas odjazdu: ${label}. Dotknij, aby zmienić.`,
+    timeArrivalA11y: (label: string) => `Czas przyjazdu: ${label}. Dotknij, aby zmienić.`,
+    arrivalShort: (time: string) => `do ${time}`,
   },
   connection: {
     previewTitle: 'Podgląd połączenia',
@@ -1229,8 +1243,6 @@ export const pl = {
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} między ${from} a ${to}`,
-    vehicleFarBack: 'Pojazd jest dalej na trasie',
-    vehicleNotStarted: 'Kurs jeszcze nie ruszył',
     fromPrefix: 'z ',
     toPrefix: 'do ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
@@ -1425,7 +1437,6 @@ export const pl = {
     save: 'Włącz budzik',
     saving: 'Ustawianie budzika…',
     remove: 'Usuń budzik',
-    preview: 'Podgląd budzika',
     ringTitle: 'Pora się zbierać',
     dismiss: 'Wyłącz budzik',
     showRoute: 'Pokaż połączenie',

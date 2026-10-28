@@ -76,6 +76,16 @@ export function ManagePlacesSheet({
           <X size={22} color={scheme.onSurfaceVariant} />
         </Pressable>
       </View>
+      <View style={styles.addSection}>
+        <Pressable
+          onPress={onAddNew}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
+        >
+          <Plus size={22} color={scheme.onPrimary} />
+          <Text style={styles.addText}>{s.places.addNew}</Text>
+        </Pressable>
+      </View>
       <BottomSheetFlatList
         data={places}
         keyExtractor={(place: SavedPlace) => place.id}
@@ -172,16 +182,6 @@ export function ManagePlacesSheet({
           );
         }}
       />
-      <View style={styles.footer}>
-        <Pressable
-          onPress={onAddNew}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
-        >
-          <Plus size={22} color={scheme.onPrimary} />
-          <Text style={styles.addText}>{s.places.addNew}</Text>
-        </Pressable>
-      </View>
     </BottomSheet>
   );
 }
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
   empty: { paddingHorizontal: 12, paddingVertical: 28, gap: 16, alignItems: 'center' },
   emptyTitle: { ...type.titleLarge, color: scheme.onSurface, textAlign: 'center' },
   emptyBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
-  footer: { padding: 20, paddingTop: 12 },
+  addSection: { paddingHorizontal: 20, paddingBottom: 16 },
   addBtn: {
     minHeight: 56,
     padding: 16,

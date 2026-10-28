@@ -145,6 +145,9 @@ jobs:
       - name: Run logic tests (Address search)
         run: npm run check:search
 
+      - name: Run logic tests (Offline address index)
+        run: npm run check:addresses
+
       - name: Run logic tests (Warsaw city)
         run: npm run check:warsaw
 

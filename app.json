@@ -8,6 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "app.kilometr",
+      "associatedDomains": ["applinks:kilometr.app"],
       "userInterfaceStyle": "dark",
       "supportsTablet": true
     },
@@ -56,7 +57,15 @@
         "me.everything.badger.permission.BADGE_COUNT_WRITE",
         "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE"
       ],
-      "package": "app.kilometr"
+      "package": "app.kilometr",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "https", "host": "kilometr.app", "pathPrefix": "/trip/" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

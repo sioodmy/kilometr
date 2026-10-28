@@ -9,6 +9,9 @@ import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionP
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { tr, useStrings } from '../i18n';
+import { boardingDepartureMs, boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
+import { reliabilityNotice } from './reliabilityNotice';
+import { secondsToTimeString } from '../gtfs/geo';
 
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
 export function transfersLabel(n: number): string {
@@ -18,12 +21,6 @@ export function transfersLabel(n: number): string {
 /** Poprawna odmiana liczby połączeń (słownik i18n: 1 / 2-4 / 5+). */
 export function connectionsLabel(n: number): string {
   return tr().connection.connections(n);
-}
-
-/** Minuty od północy dla "teraz". */
-function nowSec(): number {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
 }
 
 function parseHMtoSec(hm: string): number | null {
@@ -130,7 +127,7 @@ function interchangeStops(raw?: string): string[] {
     .filter(Boolean);
 }
 
-function JourneyStrip({ data }: { data: JourneyStripData }) {
+function JourneyStrip({ data, muted }: { data: JourneyStripData; muted: boolean }) {
   const s = useStrings();
   const { width } = useWindowDimensions();
   if (data.transitLegs.length === 0) return null;
@@ -165,7 +162,7 @@ function JourneyStrip({ data }: { data: JourneyStripData }) {
           <View key={step.key} style={styles.stripCell}>
             {i > 0 && <ChevronRight size={12} color={scheme.onSurfaceVariant} strokeWidth={1.8} />}
             {leg ? (
-              <LineBadge mode={leg.mode} line={leg.line} maxWidth={width - 96} />
+              <LineBadge mode={leg.mode} line={leg.line} maxWidth={width - 96} muted={muted} />
             ) : (
               <View style={styles.walkStep}>
                 <DirectionsWalk size={15} color={scheme.onSurfaceVariant} />
@@ -202,17 +199,23 @@ export const ConnectionCard = memo(function ConnectionCard({
   const verticalTimes = (width - 60) / fontScale < 140;
   const Direction = verticalTimes ? ArrowDown : ArrowRight;
   const walkMps = useWalkSpeedMps();
-  const now = useMemo(() => nowSec(), [tick]);
+  const now = useMemo(() => new Date(), [tick]);
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
   const stripData = useMemo(() => buildJourneyStripData(item.legs, walkMps), [item.legs, walkMps]);
   const transfers = useMemo(() => interchangeStops(item.interchange), [item.interchange]);
 
-  const minsAgo = item.departureSec > 0 ? Math.round((now - item.departureSec) / 60) : -1;
+  const departureMs = boardingDepartureMs(item, now);
+  const departAt = walkOnly ? item.departAt : secondsToTimeString(boardingDepartureSec(item));
+  const firstVehicle = boarding[0];
+  const notice = reliabilityNotice(boarding, s);
+  const scheduledDeparture = firstVehicle?.live && Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
+    ? scheduledLegTimes(firstVehicle, boardingDepartureSec(item)).departure : undefined;
+  const minsAgo = item.departureSec > 0 ? Math.floor((now.getTime() - departureMs) / 60000) : -1;
   const historical = minsAgo >= 1;
 
   const effectiveMin =
-    item.departureSec > 0 ? Math.round((item.departureSec - now) / 60) : item.departInMin;
+    item.departureSec > 0 ? Math.max(0, Math.ceil((departureMs - now.getTime()) / 60000)) : item.departInMin;
 
   const walkM = walkOnly ? item.legs[0]?.walkM : undefined;
   const walkMin = item.durationMin || (walkM != null ? walkMinutesFor(walkM, walkMps) : 1);
@@ -223,16 +226,17 @@ export const ConnectionCard = memo(function ConnectionCard({
       : tr().common.departAgo(minsAgo)
     : walkOnly && walkM != null
       ? formatWalkTime(walkMin)
-      : effectiveMin <= 1
+      : effectiveMin <= 0
         ? tr().common.departNow
         : effectiveMin > 59
-          ? item.departAt
+          ? departAt
           : tr().common.departIn(effectiveMin);
-  const departureColor = historical
-    ? scheme.onSurfaceVariant
-    : item.live && item.delayMin > 0
-      ? scheme.error
-      : scheme.primary;
+  const departureColor =
+    dimmed || historical
+      ? scheme.onSurfaceVariant
+      : item.live && item.delayMin > 0
+        ? scheme.error
+        : scheme.primary;
 
   const linesSummary = boarding
     .map((b) => b.line)
@@ -245,65 +249,18 @@ export const ConnectionCard = memo(function ConnectionCard({
   const accessibilityDesc = tr().connection.cardA11y(
     departureText,
     item.durationMin,
-    item.departAt,
+    departAt,
     item.arriveAt,
     walkOnly ? tr().connection.walkRoute : transferText,
     linesSummary,
   );
-
-  // Przeszłe: zwarta linia zamiast pełnej karty, żeby kolejne odjazdy
-  // były pierwszym, na co spada wzrok.
-  if (dimmed) {
-    return (
-      <ConnectionPeekTarget item={item} handlers={peek}>
-        <Pressable
-          onPress={() => onPress(item)}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityDesc}
-          accessibilityHint={peek ? s.connection.previewHint : undefined}
-          accessibilityActions={
-            peek
-              ? [{ name: 'activate' }, { name: 'longpress', label: s.connection.previewTitle }]
-              : undefined
-          }
-          onAccessibilityTap={() => onPress(item)}
-          onAccessibilityAction={(event) => {
-            if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
-            if (event.nativeEvent.actionName === 'activate') onPress(item);
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={({ pressed }) => [
-            styles.pastCard,
-            focused && styles.focused,
-            pressed && { backgroundColor: scheme.surfaceContainerHigh },
-          ]}
-        >
-          <Text style={styles.pastDepart} numberOfLines={fontScale > 1.3 ? undefined : 1}>
-            {departureText}
-          </Text>
-          <Text style={styles.pastHours} numberOfLines={fontScale > 1.3 ? undefined : 1}>
-            {item.departAt} → {item.arriveAt}
-          </Text>
-          <View style={styles.pastDur}>
-            <Text style={styles.pastDurText}>{tr().common.durMin(item.durationMin)}</Text>
-          </View>
-          {boarding[0]?.line ? (
-            <View>
-              <LineBadge mode={boarding[0].mode} line={boarding[0].line} compact />
-            </View>
-          ) : null}
-        </Pressable>
-      </ConnectionPeekTarget>
-    );
-  }
 
   return (
     <ConnectionPeekTarget item={item} handlers={peek}>
       <Pressable
         onPress={() => onPress(item)}
         accessibilityRole="button"
-        accessibilityLabel={accessibilityDesc}
+        accessibilityLabel={[accessibilityDesc, notice].filter(Boolean).join('. ')}
         accessibilityHint={peek ? s.connection.previewHint : undefined}
         accessibilityActions={
           peek
@@ -317,21 +274,31 @@ export const ConnectionCard = memo(function ConnectionCard({
         }}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        style={({ pressed }) => [styles.card, focused && styles.focused, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.card,
+          dimmed && styles.pastCard,
+          focused && styles.focused,
+          pressed && styles.pressed,
+        ]}
       >
         <View style={styles.schedule}>
           <Text style={[styles.departure, { color: departureColor }]}>
             {walkOnly ? s.connection.walkRoute : departureText}
           </Text>
-          <View style={styles.duration}>
-            <Clock3 size={14} color={scheme.onSecondaryContainer} />
-            <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
+          <View style={[styles.duration, dimmed && styles.mutedDuration]}>
+            <Clock3
+              size={14}
+              color={dimmed ? scheme.onSurfaceVariant : scheme.onSecondaryContainer}
+            />
+            <Text style={[styles.durationText, dimmed && styles.mutedText]}>
+              {s.common.durMin(item.durationMin)}
+            </Text>
           </View>
         </View>
 
         <View style={[styles.journeyMeta, fontScale > 1.3 && styles.journeyMetaStacked]}>
           <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
-            <Text style={styles.hours}>{item.departAt}</Text>
+            <Text style={styles.hours}>{departAt}</Text>
             <Direction size={14} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
             <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
           </View>
@@ -346,18 +313,23 @@ export const ConnectionCard = memo(function ConnectionCard({
             <Text style={styles.walkLabel}>{s.connection.walkAll}</Text>
           </View>
         ) : stripData.transitLegs.length > 0 ? (
-          <JourneyStrip data={stripData} />
+          <JourneyStrip data={stripData} muted={dimmed} />
         ) : null}
 
-        {item.live && item.delayMin !== 0 && (
+        {!notice && item.live && item.delayMin !== 0 && (
           <Text
-            style={[styles.delay, { color: item.delayMin > 0 ? scheme.error : scheme.warning }]}
+            style={[
+              styles.delay,
+              { color: dimmed ? scheme.onSurfaceVariant : item.delayMin > 0 ? scheme.error : scheme.warning },
+            ]}
           >
+            {scheduledDeparture != null && `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} · `}
             {item.delayMin > 0
               ? s.routeDetails.late(item.delayMin)
               : s.routeDetails.early(-item.delayMin)}
           </Text>
         )}
+        {notice && <Text style={[styles.delay, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
       </Pressable>
     </ConnectionPeekTarget>
   );
@@ -372,42 +344,9 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
-  pastCard: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.medium,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    minHeight: 48,
-  },
-  pastDepart: {
-    ...type.labelLarge,
-    fontWeight: '600',
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
-  },
-  pastHours: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    flexGrow: 1,
-    flexShrink: 1,
-  },
-  pastDur: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.small,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  pastDurText: {
-    ...type.labelSmall,
-    fontWeight: '600',
-    color: scheme.onSurfaceVariant,
-  },
+  pastCard: { backgroundColor: scheme.surfaceContainerLow },
+  mutedDuration: { backgroundColor: scheme.surfaceContainerHighest },
+  mutedText: { color: scheme.onSurfaceVariant },
   schedule: {
     flexDirection: 'row',
     flexWrap: 'wrap',

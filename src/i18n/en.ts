@@ -106,6 +106,7 @@ export const en: Strings = {
     kmh: (v: string) => `${v} km/h`,
     add15: '+15 min',
     add30: '+30 min',
+    add45: '+45 min',
     add60: '+1 hr',
   },
   home: {
@@ -932,7 +933,10 @@ export const en: Strings = {
     countDirect: ' • direct only',
     countTram: ' • trams',
     countBus: ' • buses',
-    countEarlier: ' • loading earlier…',
+    earlierAction: 'Earlier connections',
+    earlierLoading: 'Loading earlier connections…',
+    earlierEmpty: 'No earlier connections for this day',
+    earlierRetry: 'Could not load connections. Try again',
     offlineTapA11y: 'Latest cached data. Tap to refresh.',
     offlineChip: 'offline',
     noLiveChip: 'no live data',
@@ -963,6 +967,12 @@ export const en: Strings = {
   },
   routeDetails: {
     departure: 'Departure',
+    vehicleDeparture: 'Vehicle departure',
+    scheduledTime: (time: string) => `Scheduled ${time}`,
+    estimatedDelay: (n: number) => `About +${n} min, estimated from other buses`,
+    untrackedVehicle: 'No current position. Delays are possible.',
+    uncertainTransfer: 'Short transfer. This bus has no confirmed delay.',
+    walkDeparture: (time: string, place: string) => `Start walking at ${time}: ${place}`,
     arrival: 'Arrival',
     origin: 'From',
     destination: 'To',
@@ -1127,6 +1137,8 @@ export const en: Strings = {
     minuteLabel: 'minute',
     confirmNow: 'Search from now',
     confirmDepart: (day: string, hh: string, mm: string) => `Apply: ${day}, ${hh}:${mm}`,
+    pastWarning: 'The selected time has already passed',
+    switchTomorrow: 'Switch to tomorrow',
   },
   routesBar: {
     modeTram: 'Tram',
@@ -1142,6 +1154,8 @@ export const en: Strings = {
     directOffA11y: 'Direct-only filter: off. Tap to turn on.',
     modeFilterA11y: (cur: string) => `Filter transport: currently ${cur}. Tap to change.`,
     timeA11y: (label: string) => `Departure time: ${label}. Tap to change.`,
+    timeArrivalA11y: (label: string) => `Arrival time: ${label}. Tap to change.`,
+    arrivalShort: (time: string) => `by ${time}`,
   },
   connection: {
     previewTitle: 'Journey preview',
@@ -1182,8 +1196,6 @@ export const en: Strings = {
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} between ${from} and ${to}`,
-    vehicleFarBack: 'Vehicle is further back on the route',
-    vehicleNotStarted: 'This run has not started yet',
     fromPrefix: 'from ',
     toPrefix: 'to ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
@@ -1366,7 +1378,6 @@ export const en: Strings = {
     save: 'Turn on alarm',
     saving: 'Setting alarm…',
     remove: 'Remove alarm',
-    preview: 'Preview alarm',
     ringTitle: 'Time to get ready',
     dismiss: 'Dismiss alarm',
     showRoute: 'Show connection',

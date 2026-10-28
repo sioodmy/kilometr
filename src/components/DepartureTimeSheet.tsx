@@ -15,7 +15,7 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, X } from 'lucide-react-native';
+import { AlertCircle, Check, X } from 'lucide-react-native';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { JourneyTimeMode } from '../services/routing/types';
@@ -193,6 +193,11 @@ export function DepartureTimeSheet({
   const [hour, setHour] = useState(Math.floor(initialSeconds / 3600) % 24);
   const [minute, setMinute] = useState(Math.floor((initialSeconds % 3600) / 60));
 
+  const now = new Date();
+  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60;
+  const selectedSec = hour * 3600 + minute * 60;
+  const isPast = !isNow && day === 'today' && selectedSec < nowSec;
+
   const handleQuickAdd = (addMinutes: number) => {
     const now = new Date();
     const baseSec = isNow
@@ -312,7 +317,15 @@ export function DepartureTimeSheet({
                   accessibilityState={{ selected: active }}
                   onPress={() => {
                     setMode(option.value);
-                    if (option.value === 'arrival') setIsNow(false);
+                    if (option.value === 'arrival') {
+                      setIsNow(false);
+                      if (day === 'today' && hour * 3600 + minute * 60 <= nowSec) {
+                        const targetSec = nowSec + 30 * 60;
+                        setHour(Math.floor(targetSec / 3600) % 24);
+                        setMinute(Math.floor((targetSec % 3600) / 60));
+                        if (targetSec >= 86400) setDay('tomorrow');
+                      }
+                    }
                   }}
                   style={({ pressed }) => [
                     styles.modeTab,
@@ -331,12 +344,21 @@ export function DepartureTimeSheet({
             })}
           </View>
           <View style={[styles.presetsRow, compact && styles.presetsCompact]}>
-            {[
-              { label: s.common.now, action: handleSetNow, active: isNow },
-              { label: s.common.add15, action: () => handleQuickAdd(15), active: false },
-              { label: s.common.add30, action: () => handleQuickAdd(30), active: false },
-              { label: s.common.add60, action: () => handleQuickAdd(60), active: false },
-            ].map((preset) => (
+            {(
+              mode === 'departure'
+                ? [
+                    { label: s.common.now, action: handleSetNow, active: isNow },
+                    { label: s.common.add15, action: () => handleQuickAdd(15), active: false },
+                    { label: s.common.add30, action: () => handleQuickAdd(30), active: false },
+                    { label: s.common.add60, action: () => handleQuickAdd(60), active: false },
+                  ]
+                : [
+                    { label: s.common.add15, action: () => handleQuickAdd(15), active: false },
+                    { label: s.common.add30, action: () => handleQuickAdd(30), active: false },
+                    { label: s.common.add45, action: () => handleQuickAdd(45), active: false },
+                    { label: s.common.add60, action: () => handleQuickAdd(60), active: false },
+                  ]
+            ).map((preset) => (
               <Pressable
                 key={preset.label}
                 onPress={preset.action}
@@ -452,17 +474,45 @@ export function DepartureTimeSheet({
         </ScrollView>
 
         <View style={styles.footer}>
-          <Text style={styles.selection} accessibilityLiveRegion="polite">
-            {selection}
-          </Text>
+          {isPast ? (
+            <View style={styles.warningBox}>
+              <View style={styles.warningLeft}>
+                <AlertCircle size={16} color={scheme.onErrorContainer} />
+                <Text style={styles.warningText}>{s.timeSheet.pastWarning}</Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setDay('tomorrow');
+                  setIsNow(false);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={s.timeSheet.switchTomorrow}
+                style={({ pressed }) => [styles.warningAction, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={styles.warningActionText}>{s.timeSheet.switchTomorrow}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={styles.selection} accessibilityLiveRegion="polite">
+              {selection}
+            </Text>
+          )}
           <Pressable
             onPress={handleConfirm}
+            disabled={isPast}
             accessibilityRole="button"
+            accessibilityState={{ disabled: isPast }}
             accessibilityLabel={s.timeSheet.confirmAction}
             accessibilityHint={selection}
-            style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
+            style={({ pressed }) => [
+              styles.confirmBtn,
+              isPast && styles.confirmBtnDisabled,
+              pressed && !isPast && { opacity: 0.85 },
+            ]}
           >
-            <Text style={styles.confirmText}>{s.timeSheet.confirmAction}</Text>
+            <Text style={[styles.confirmText, isPast && styles.confirmTextDisabled]}>
+              {s.timeSheet.confirmAction}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -623,6 +673,39 @@ const styles = StyleSheet.create({
     borderTopColor: scheme.outlineVariant,
   },
   selection: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: scheme.errorContainer,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: shape.medium,
+    justifyContent: 'space-between',
+  },
+  warningLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  warningText: {
+    ...type.bodySmall,
+    color: scheme.onErrorContainer,
+    fontWeight: '500',
+    flex: 1,
+  },
+  warningAction: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: shape.small,
+    backgroundColor: scheme.error,
+  },
+  warningActionText: {
+    ...type.labelSmall,
+    color: scheme.onError,
+    fontWeight: '600',
+  },
   confirmBtn: {
     minHeight: 56,
     paddingHorizontal: 20,
@@ -632,10 +715,17 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primary,
     borderRadius: shape.large,
   },
+  confirmBtnDisabled: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    opacity: 0.6,
+  },
   confirmText: {
     ...type.labelLarge,
     fontWeight: '600',
     color: scheme.onPrimary,
     textAlign: 'center',
+  },
+  confirmTextDisabled: {
+    color: scheme.onSurfaceVariant,
   },
 });

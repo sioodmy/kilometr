@@ -1,3 +1,4 @@
+pub mod address;
 pub mod foot_router;
 pub mod jni_bridge;
 pub mod live;
@@ -23,8 +24,9 @@ pub fn dispatch_invoke(cmd: i32, payload: &[u8]) -> Vec<u8> {
         14 => search::handle_dedupe_and_sort_cmd(payload),
         15 => search::handle_smart_rank_cmd(payload),
         16 => search::handle_raptor_integration_cmd(payload),
-        20 => live::handle_live_load_schedule_cmd(payload),
-        21 => live::handle_live_match_batch_cmd(payload),
+        17 => address::handle_address_cmd(payload),
+        25 => live::handle_live_load_schedule_cmd(payload),
+        26 => live::handle_live_match_batch_cmd(payload),
         22 => live::handle_match_zb_kd_cmd(payload),
         23 => live::handle_match_vehicle_to_leg_cmd(payload),
         24 => live::handle_route_geometry_cmd(payload),

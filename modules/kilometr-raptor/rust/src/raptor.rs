@@ -65,6 +65,11 @@ pub fn predict_delay_sec(measured_sec: i32, ahead_sec: i32, is_board: bool) -> i
     js_round((measured_sec as f64) * 0.5_f64.powf(ahead / ARRIVE_EARLY_HALF_LIFE_SEC))
 }
 
+fn predict_delay_for_kind(measured: i32, ahead: i32, board: bool, kind: u8) -> i32 {
+    if kind == KIND_BUS && measured > 0 { return measured; }
+    predict_delay_sec(measured, ahead, board)
+}
+
 #[derive(Clone, Copy)]
 pub struct PatternMeta {
     pub kind: u8,
@@ -475,6 +480,7 @@ pub struct QueryInput {
     pub origins: Vec<(usize, i32, i32)>,
     pub destinations: Vec<(usize, i32, i32)>,
     pub delays: Vec<(usize, usize, i32)>,
+    pub transfer_buffers: Vec<(usize, usize, i32)>,
 }
 
 impl QueryInput {
@@ -539,6 +545,13 @@ impl QueryInput {
             let d0 = r.next()?;
             delays.push((p, j, d0));
         }
+        let mut transfer_buffers = Vec::new();
+        if r.pos < bytes.len() {
+            let count = usize::try_from(r.next()?).ok()?;
+            for _ in 0..count {
+                transfer_buffers.push((usize::try_from(r.next()?).ok()?, usize::try_from(r.next()?).ok()?, r.next()?.clamp(0, 600)));
+            }
+        }
 
         Some(Self {
             arrive_by: magic == ARRIVE_BY_QUERY_MAGIC,
@@ -560,6 +573,7 @@ impl QueryInput {
             origins,
             destinations,
             delays,
+            transfer_buffers,
         })
     }
 }
@@ -691,11 +705,11 @@ impl DelayOverlay {
                 let sign = if reverse { -1 } else { 1 };
                 let db = sign * match vehicle_at {
                     None => d0,
-                    Some(va) => predict_delay_sec(d0, board_time - va, !reverse),
+                    Some(va) => predict_delay_for_kind(d0, board_time - va, !reverse, pat.kind),
                 };
                 let da = sign * match vehicle_at {
                     None => d0,
-                    Some(va) => predict_delay_sec(d0, arrival_time - va, reverse),
+                    Some(va) => predict_delay_for_kind(d0, arrival_time - va, reverse, pat.kind),
                 };
                 self.dep_arena[base_off + k] = sd + db;
                 self.arr_arena[base_off + k] = sa + da;
@@ -782,6 +796,7 @@ struct RaptorScratch {
     pos_head: Vec<i32>,
     pos_next: Vec<i32>,
     delays: DelayOverlay,
+    transfer_buffers: HashMap<(usize, usize), i32>,
 }
 
 impl RaptorScratch {
@@ -814,6 +829,7 @@ impl RaptorScratch {
             pos_head: Vec::new(),
             pos_next: Vec::new(),
             delays: DelayOverlay::new(),
+            transfer_buffers: HashMap::new(),
         }
     }
 
@@ -949,6 +965,15 @@ impl RaptorScratch {
     }
 
     #[inline]
+    fn arrival_buffer(&self, n_stops: usize, k: usize, stop: usize) -> i32 {
+        if self.reverse || k == 0 { return 0; }
+        let mut id = k * n_stops + stop;
+        if self.p_type[id] == 3 { id = k * n_stops + self.p_a[id] as usize; }
+        if self.p_type[id] != 2 { return 0; }
+        self.transfer_buffers.get(&(self.p_a[id] as usize, self.p_b[id] as usize)).copied().unwrap_or(0)
+    }
+
+    #[inline]
     fn board_ready(
         &self,
         n_stops: usize,
@@ -964,9 +989,9 @@ impl RaptorScratch {
             return r;
         }
         if self.p_type[id] == 3 {
-            return r.max(self.p_c[id] + train_need.max(self.p_b[id] + TRANSFER_WALK_SLACK_SEC));
+            return r.max(self.p_c[id] + train_need.max(self.p_b[id] + TRANSFER_WALK_SLACK_SEC) + self.arrival_buffer(n_stops, km1, s));
         }
-        r.max(self.arr_at[id] + train_need)
+        r.max(self.arr_at[id] + train_need + self.arrival_buffer(n_stops, km1, s))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -990,7 +1015,6 @@ impl RaptorScratch {
         if arr_t > latest_arr {
             return;
         }
-        let val_t = a + js_round(wr * (e as f64));
         let mut ba = INF;
         let mut bv = INF;
         for r in 1..=k {
@@ -1000,9 +1024,6 @@ impl RaptorScratch {
             if self.best_val[r] < bv {
                 bv = self.best_val[r];
             }
-        }
-        if arr_t >= ba && val_t >= bv {
-            return;
         }
         let b_stop = net.pat_stops(p)[b_pos] as usize;
         let Some(mut legs) = self.backtrack(net, k - 1, b_stop) else {
@@ -1025,6 +1046,9 @@ impl RaptorScratch {
         if self.pointless(net, &legs, s) {
             return;
         }
+        let uncertainty: i32 = legs.iter().map(|l| if self.transfer_buffers.contains_key(&(l.p, l.j)) { 120 } else { 0 }).sum();
+        let val_t = a + js_round(wr * (e as f64)) + uncertainty;
+        if arr_t >= ba && val_t >= bv { return; }
         cands.push(ICand { legs, dest: s });
         if arr_t < self.best_arr[k] {
             self.best_arr[k] = arr_t;
@@ -1038,11 +1062,11 @@ impl RaptorScratch {
     }
 
     #[inline]
-    fn earliest_trip(&self, net: &CompiledNet, p: usize, pos: usize, r: i32) -> i32 {
+    fn earliest_trip(&self, net: &CompiledNet, p: usize, pos: usize, r: i32, transferring: bool) -> i32 {
         let pat = &net.patterns[p];
         let n = pat.n;
         let n_trips = pat.n_trips;
-        if !self.delays.has_delay(p) {
+        if !self.delays.has_delay(p) && !(self.reverse && transferring && !self.transfer_buffers.is_empty()) {
             let dep = net.pat_dep(p);
             let j = lower_bound_trips(dep, n, n_trips, pos, r);
             return if j < n_trips { j as i32 } else { -1 };
@@ -1059,7 +1083,8 @@ impl RaptorScratch {
                 break;
             }
             let t = dep[j * n + pos];
-            if t >= r && t < best_t {
+            let extra = if self.reverse && transferring { self.transfer_buffers.get(&(p, j)).copied().unwrap_or(0) } else { 0 };
+            if t >= r + extra && t < best_t {
                 best_t = t;
                 best = j as i32;
             }
@@ -1114,7 +1139,8 @@ impl RaptorScratch {
                     );
                 }
                 if a < *bound_val {
-                    let ready = a + if self.reverse && is_train { train_need } else { min_t };
+                    let extra = if self.reverse { 0 } else { self.transfer_buffers.get(&(p, cur as usize)).copied().unwrap_or(0) };
+                    let ready = a + if self.reverse && is_train { train_need } else { min_t } + extra;
                     let mut best_s = INF;
                     for r in 0..=k {
                         let v = self.tau[r * n_stops + s];
@@ -1148,7 +1174,7 @@ impl RaptorScratch {
                     INF
                 };
                 if cur < 0 || r <= cur_dep {
-                    let j = self.earliest_trip(net, p, i, r);
+                    let j = self.earliest_trip(net, p, i, r, km1 > 0);
                     if j >= 0 {
                         let j_usize = j as usize;
                         let new_dep = self.delays.dep(net, p)[j_usize * n + i];
@@ -1200,7 +1226,7 @@ impl RaptorScratch {
                 if src + w >= bound_val {
                     continue;
                 }
-                let ready = src + need.max(w + TRANSFER_WALK_SLACK_SEC);
+                let ready = src + need.max(w + TRANSFER_WALK_SLACK_SEC) + self.arrival_buffer(n_stops, k, s);
                 let mut best_s = INF;
                 for r in 0..=k {
                     let v = self.tau[r * n_stops + to];
@@ -1381,6 +1407,11 @@ impl RaptorScratch {
                 } else {
                     min_t
                 };
+                let extra = if self.reverse {
+                    self.transfer_buffers.get(&(l.p, l.j)).copied().unwrap_or(0)
+                } else {
+                    self.transfer_buffers.get(&(prev.p, prev.j)).copied().unwrap_or(0)
+                };
 
                 if self.pos_next.len() < n {
                     self.pos_next.resize(n, -1);
@@ -1402,7 +1433,7 @@ impl RaptorScratch {
 
                     // Direct transfer at stop s
                     let mut p_idx = self.pos_head[s];
-                    let ready_direct = t + need;
+                    let ready_direct = t + need + extra;
                     while p_idx >= 0 {
                         let pos = p_idx as usize;
                         if dep[row + pos] >= ready_direct && cv < b[pos] {
@@ -1423,7 +1454,7 @@ impl RaptorScratch {
                                 continue;
                             }
                             let to = net.fp_to[e] as usize;
-                            let ready_fp = t + need.max(w + TRANSFER_WALK_SLACK_SEC);
+                            let ready_fp = t + need.max(w + TRANSFER_WALK_SLACK_SEC) + extra;
                             let val_fp = cv + (wr - 1.0) * (w as f64);
                             let mut fp_pos = self.pos_head[to];
                             while fp_pos >= 0 {
@@ -1591,6 +1622,10 @@ pub fn run_on_net(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
             let pat = net.patterns.get(p)?;
             (j < pat.n_trips).then(|| (p, pat.n_trips - 1 - j, d))
         }).collect(),
+        transfer_buffers: q.transfer_buffers.iter().filter_map(|&(p, j, d)| {
+            let pat = net.patterns.get(p)?;
+            (j < pat.n_trips).then(|| (p, pat.n_trips - 1 - j, d))
+        }).collect(),
         ..q.clone()
     };
     let reversed = run_forward(net.reversed(), &reverse_q);
@@ -1659,6 +1694,10 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
         }
 
         s.delays.build(net, &q.delays, q.now_sec, q.arrive_by);
+        s.transfer_buffers.clear();
+        for &(p, j, extra) in &q.transfer_buffers {
+            s.transfer_buffers.insert((p, j), extra);
+        }
 
         for &(stop, walk_sec, walk_m) in &q.origins {
             if stop >= n_stops {
@@ -1797,7 +1836,8 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
             };
             let cost_v = (time as f64)
                 + (q.wr - 1.0) * (walk_sec as f64)
-                + (transfers as f64) * (q.transfer_penalty_sec as f64);
+                + (transfers as f64) * (q.transfer_penalty_sec as f64)
+                + c.legs.iter().map(|l| if s.transfer_buffers.contains_key(&(l.p, l.j)) { 120.0 } else { 0.0 }).sum::<f64>();
             let ci = CandInfo {
                 c,
                 arr,
@@ -2091,6 +2131,7 @@ mod tests {
             origins: vec![(0, 90, 20)],
             destinations: vec![(1, 90, 20)],
             delays: Vec::new(),
+            transfer_buffers: Vec::new(),
         };
         let result = run_on_net(&net, &q);
         assert_eq!(result[0], 1);

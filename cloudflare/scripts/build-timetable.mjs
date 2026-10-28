@@ -120,6 +120,7 @@ import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
+import { addressSnapshotIsFresh, importAddresses, loadAddressSnapshot } from './build-addresses.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -2110,7 +2111,7 @@ async function main() {
 
   // 1. Zdalny manifest (skip, gdy nic się nie zmieniło - oszczędzamy limity).
   let remote = null;
-  if (PUBLIC_URL && !FORCE) {
+  if (PUBLIC_URL) {
     try {
       remote = await fetchJson(`${PUBLIC_URL}/${CITY}/manifest.json`, {}, 15000);
       log('remote manifest version:', remote.version);
@@ -2273,7 +2274,7 @@ async function main() {
   const radomVersionReliable = CITY !== 'radom' || !!radomFingerprint;
 
 
-  if (!FORCE && remote?.sources) {
+  if (!FORCE && remote?.sources && addressSnapshotIsFresh(remote.addresses)) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
       // Ten sam ZTP wystarczy do skipu tylko wtedy, gdy zdalna baza faktycznie
       // ma Koleje Małopolskie. Manifest sprzed ich wdrożenia ma zgodny odcisk
@@ -2477,6 +2478,13 @@ async function main() {
       warn('zdalny manifest bez realnego KD, przebudowuję zamiast skipować.');
     }
   }
+
+  const addressSnapshot = await loadAddressSnapshot(CITY, join(ROOT, 'dist', 'address-cache')).catch((error) => {
+    if (remote?.addresses?.count) throw error;
+    warn(`Adresy OSM niedostępne: ${error.message}. Publikuję rozkład bez indeksu adresów.`);
+    return null;
+  });
+  if (addressSnapshot) log(`Adresy OSM: ${addressSnapshot.count}, snapshot ${addressSnapshot.builtAt}`);
 
   // 3. Pobieranie ZIP-ów + rozpakowanie (unzip z systemu, Node nie ma wbudowanego).
   // frequencies.txt występuje tylko w Warszawie (metro M1/M2 na headwayach);
@@ -4042,7 +4050,8 @@ async function main() {
   // Na telefonie tego nie powtarzamy (import i tak jest ciężki, a indeksy wystarczą).
   log('analyze…');
   db.exec('ANALYZE');
-  const version = CITY === 'krakow'
+  const addressMetadata = importAddresses(db, addressSnapshot);
+  const transitVersion = CITY === 'krakow'
     ? `${todayCompact()}-krk${createHash('sha256').update(`${ztpFingerprint}|${kmlVersion}`).digest('hex').slice(0, 8)}`
     : CITY === 'gzm'
       ? `${todayCompact()}-gzm${createHash('sha256').update(`${gtmFingerprint}|${ksVersion}|${icprVersion}`).digest('hex').slice(0, 8)}`
@@ -4071,10 +4080,12 @@ async function main() {
             : CITY === 'radom'
               ? `${todayCompact()}-radom${createHash('sha256').update(`${radomFingerprint}`).digest('hex').slice(0, 8)}`
             : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
+  const version = `${transitVersion}-addr${addressMetadata?.fingerprint.slice(0, 8) ?? 'none'}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
+  meta.run('address_snapshot', JSON.stringify(addressMetadata));
   meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
@@ -4114,6 +4125,7 @@ async function main() {
 
   const manifest = {
     version,
+    addresses: addressMetadata,
     builtAt: new Date().toISOString(),
     city: CITY,
     db: {

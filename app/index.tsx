@@ -11,6 +11,7 @@ import { defaultLocationForCity } from '../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import { FavoritesService, LocationService, RoutingService, SearchService, recordTripSearch, type LocationResult } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
+import { boardingDepartureMs, refreshConnectionTimes } from '../src/services/routing/connectionTimes';
 import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
@@ -48,6 +49,8 @@ import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
+import { CitySelectSheet } from '../src/components/CitySelectSheet';
+import type { CityId } from '../src/cities';
 import { UnsupportedCityCard } from '../src/components/UnsupportedCityCard';
 
 /** Kopia mapy bez klucza; zwraca tę samą referencję, gdy nic nie znika. */
@@ -61,7 +64,7 @@ function withoutKey<T>(prev: Record<string, T>, key: string): Record<string, T> 
 export default function HomeScreen() {
   const s = useStrings();
   const router = useRouter();
-  const { cityId } = useActiveCity();
+  const { cityId, setCity } = useActiveCity();
   const cityGen = s.city.gen(cityId);
   const GPS_ITEM: Suggestion = {
     id: '__gps',
@@ -90,6 +93,9 @@ export default function HomeScreen() {
   const [gpsCity, setGpsCity] = useState<string | null>(null);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [manageSheetOpen, setManageSheetOpen] = useState(false);
+  const [citySheetOpen, setCitySheetOpen] = useState(false);
+  const [switchingCity, setSwitchingCity] = useState(false);
+  const [switchingCityId, setSwitchingCityId] = useState<CityId | null>(null);
   const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Suggestion[]>([]);
@@ -114,10 +120,11 @@ export default function HomeScreen() {
   // przeliczenie). Wartości <= 0 (np. trasa piesza) zostają jak z backendu.
   const liveDepartures = useMemo(() => {
     const d = new Date();
-    const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    const snapshot = liveTracker.getRoutingSnapshot();
     const out: Record<string, number> = {};
     for (const [id, c] of Object.entries(firstConns)) {
-      out[id] = c.departureSec > 0 ? Math.round((c.departureSec - nowS) / 60) : c.departInMin;
+      const current = refreshConnectionTimes(c, snapshot.delays, d, snapshot.confidence);
+      out[id] = c.departureSec > 0 ? Math.ceil((boardingDepartureMs(current, d) - d.getTime()) / 60000) : c.departInMin;
     }
     return out;
   }, [firstConns, homeTick]);
@@ -148,7 +155,7 @@ export default function HomeScreen() {
   const optionRef = useRef<LastTripOption>(0);
   const lastTripRef = useRef<TripHistoryItem | null>(null);
   lastTripRef.current = lastTrip;
-  const sheetsOpen = sheetMode !== null || manageSheetOpen || addPlaceOpen;
+  const sheetsOpen = sheetMode !== null || manageSheetOpen || addPlaceOpen || citySheetOpen;
 
   // Widgety mogą otworzyć wyszukiwarkę albo zarządzanie zapisanymi miejscami.
   // Parametry czyścimy, żeby powrót na ekran nie otwierał arkusza ponownie.
@@ -484,13 +491,10 @@ export default function HomeScreen() {
   const quickRefreshGen = useRef(0);
   useEffect(() => {
     if (sheetMode !== null || smart.length === 0) return;
-    const nowS = (() => {
-      const d = new Date();
-      return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-    })();
+    const now = new Date();
     const expired = smart.filter((d) => {
       const c = firstConns[d.id];
-      if (!c || c.departureSec <= 0 || c.departureSec > nowS) return false;
+      if (!c || c.departureSec <= 0 || boardingDepartureMs(c, now) > now.getTime()) return false;
       return c.legs.some((l) => l.mode !== 'walk' && l.line);
     });
     if (expired.length === 0) return;
@@ -904,6 +908,29 @@ export default function HomeScreen() {
     [atTop, lastTrip, sheetsOpen, openLastTrip],
   );
 
+  const handleCityChange = async (id: CityId) => {
+    if (id === cityId || switchingCity) return;
+    setSwitchingCity(true);
+    setSwitchingCityId(id);
+    try {
+      await setCity(id);
+      await refreshDataStatus()
+        .then(setDataStatus)
+        .catch(() => {});
+      const def = defaultLocationForCity(id);
+      if (!isCustomStart) {
+        setLocTitle(def.title);
+        setCurrentCoords({ lat: def.lat, lon: def.lon });
+      }
+      refreshPlaces();
+      requestSmart(def.title, { lat: def.lat, lon: def.lon });
+    } finally {
+      setSwitchingCity(false);
+      setSwitchingCityId(null);
+      setCitySheetOpen(false);
+    }
+  };
+
   const handleSavePlace = async (placeData: {
     id?: string;
     name: string;
@@ -1002,10 +1029,17 @@ export default function HomeScreen() {
           >
             {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
             <View style={styles.topBar}>
-              <View style={styles.cityContext}>
+              <Pressable
+                style={({ pressed }) => [styles.cityContext, pressed && { opacity: 0.7 }]}
+                onPress={() => setCitySheetOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
+                accessibilityHint={s.city.settingsHint}
+                hitSlop={8}
+              >
                 <MapPin size={16} color={scheme.primary} />
                 <Text style={styles.cityName}>{s.city.name(cityId)}</Text>
-              </View>
+              </Pressable>
               <View style={styles.topActions}>
                 <Pressable
                   style={styles.iconBtn}
@@ -1138,7 +1172,7 @@ export default function HomeScreen() {
           </ScrollView>
         </SafeAreaView>
 
-        {!sheetMode && !manageSheetOpen && !addPlaceOpen && (
+        {!sheetMode && !manageSheetOpen && !addPlaceOpen && !citySheetOpen && (
           <HomeThumbBar
             onOpenSearch={() => {
               setReturnToDestinationAfterStart(false);
@@ -1233,6 +1267,18 @@ export default function HomeScreen() {
             }}
             onSave={handleSavePlace}
             onDelete={handleDeletePlace}
+          />
+        )}
+
+        {citySheetOpen && (
+          <CitySelectSheet
+            selectedCityId={cityId}
+            onSelectCity={(id) => {
+              void handleCityChange(id);
+            }}
+            onClose={() => setCitySheetOpen(false)}
+            switchingCity={switchingCity}
+            switchingCityId={switchingCityId}
           />
         )}
       </View>

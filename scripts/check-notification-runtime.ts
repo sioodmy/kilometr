@@ -1,3 +1,7 @@
+// Daty w teście są lokalne, a rozkład liczy się w strefie Warszawy.
+// Bez tego CI (UTC) widzi odjazd sprzed dwóch godzin i test kończy śledzenie.
+process.env.TZ = 'Europe/Warsaw';
+
 import assert from 'node:assert/strict';
 import Module, { createRequire, registerHooks } from 'node:module';
 import { mock } from 'node:test';
@@ -9,6 +13,8 @@ import type {
 import type { Connection } from '../src/types/models';
 import type { LivePlan, TrackedTrip } from '../src/services/notifications/types';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../src/services/notifications/types';
+import { createSharedConnection, encodeSharedConnection } from '../src/sharing/connection';
+import { sharedToConnection } from '../src/sharing/native';
 
 const require = createRequire(import.meta.url);
 const at = (h: number, m: number) => new Date(2026, 9, 19, h, m).getTime();
@@ -97,7 +103,8 @@ const stubs: Record<string, unknown> = {
   },
   '../settings': { getSettingsSync: () => ({}), profileWalkSpeedMps: () => 1.3 },
   '../api': { RoutingService: { getConnections: () => route() }, rememberPlannedConnection: (value: Connection) => { remembered.push(value); } },
-  '../liveTracker': { liveTracker: { snapshot: () => [], pin: () => {}, start: () => {}, stop: () => {} } },
+  '../liveTracker': { liveTracker: { snapshot: () => [], pin: () => {}, start: () => {}, stop: () => {},
+    getLiveState: () => 'fresh', getTripDelays: () => new Map([['t1', 300]]) } },
   '../../cities': { inCityBounds: () => true },
   '../cityStore': { getActiveCitySync: () => ({}) },
   '../widgetSnapshot': {
@@ -408,6 +415,25 @@ async function main() {
     transfer: { tripId: trip.id, status: 'changed', updatedAt: Date.now(), revision: 0 },
   });
   assert.equal(replans, 0, 'potwierdzona trasa bezpośrednia pozostaje zablokowana po wyłączeniu ochrony');
+  await monitor.stopTracking();
+  mock.timers.setTime(at(12, 10));
+  const shared = createSharedConnection({ ...connection, departAt: connection.legs[0].departAt }, 'wroclaw', new Date());
+  const sharedJourney = encodeSharedConnection(shared);
+  const sharedConnection = sharedToConnection(shared, sharedJourney);
+  replans = 0;
+  await monitor.startTracking({ ...trip, id: sharedConnection.id, sharedJourney, connection: sharedConnection });
+  assert.equal(replans, 0, 'obserwowanie nie wyszukuje innego połączenia przed odjazdem');
+  assert.deepEqual(monitor.getTrackedTripSync()?.connection.legs.map((leg) => leg.tripId), sharedConnection.legs.map((leg) => leg.tripId));
+  assert.equal(plans.at(-1)?.deepLink, `kilometr://shared?trip=${sharedJourney}`);
+  assert.equal(plans.at(-1)?.alightAlertsEnabled, false);
+  assert.equal(plans.at(-1)?.transferProtectionEnabled, false);
+  const savedShared = storage.get('kilometr.trackedTrip.v2');
+  await monitor.stopTracking();
+  assert.ok(savedShared);
+  storage.set('kilometr.trackedTrip.v2', savedShared);
+  await monitor.restoreTrackedTrip();
+  assert.equal(monitor.getTrackedTripSync()?.sharedJourney, sharedJourney, 'powrót po restarcie zachowuje link obserwowanej podróży');
+  assert.equal(replans, 0);
   await monitor.stopTracking();
   unsubscribe();
   console.log(

@@ -34,7 +34,6 @@ interface AlarmNative {
   openPermission(kind: keyof AlarmPermissions): Promise<boolean>;
   schedule(json: string): Promise<boolean>;
   cancel(): Promise<boolean>;
-  preview(json: string): Promise<boolean>;
 }
 
 const native: AlarmNative | null = Platform.OS === 'android'
@@ -81,7 +80,7 @@ function buildPlan(connection: Connection, leadMin: number, reference: Date) {
     journeyLabel: a.journeyAt(clockFromMs(timing.journeyAt)),
     boardingLabel: a.boarding(timing.leg.line || s.notification.modeBus, clockFromMs(timing.boardAt), timing.leg.fromStop),
     labels: {
-      title: a.title, preview: a.preview, ringTitle: a.ringTitle, dismiss: a.dismiss,
+      title: a.title, ringTitle: a.ringTitle, dismiss: a.dismiss,
       showRoute: a.showRoute, close: s.common.close,
       channel: a.channel, channelDescription: a.channelDescription,
     },
@@ -105,11 +104,6 @@ export async function setDepartureAlarm(connection: Connection, leadMin: number,
 export async function cancelDepartureAlarm(): Promise<void> {
   if (!await native?.cancel()) throw new Error('Alarm cancellation failed');
   await refreshDepartureAlarm();
-}
-
-export async function previewDepartureAlarm(connection: Connection, leadMin: number, reference: Date): Promise<boolean> {
-  const plan = buildPlan(connection, leadMin, reference);
-  return native && plan ? native.preview(JSON.stringify(plan)) : false;
 }
 
 export function useDepartureAlarm() {
