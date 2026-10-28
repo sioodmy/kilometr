@@ -20,8 +20,14 @@ interface AddressRow {
 
 type Database = Awaited<ReturnType<typeof getGtfsDb>>;
 let readyDb: Database | null = null;
+let readyCityId: string | null = null;
+let addressCount = 0;
 let loading: { db: Database; promise: Promise<boolean> } | null = null;
 let generation = 0;
+
+export function hasOfflineAddressIndex(): boolean {
+  return readyDb !== null && readyCityId === getActiveCityIdSync() && addressCount > 0;
+}
 
 function accepted(writer: BinaryWriter): boolean {
   const result = invokeRustSync(CMD_ADDRESSES, writer.finish());
@@ -37,10 +43,12 @@ export async function warmupAddressIndex(): Promise<boolean> {
   if (loading?.db === db) return loading.promise;
   const token = ++generation;
   readyDb = null;
+  readyCityId = null;
   const current = () => token === generation && cityId === getActiveCityIdSync();
   const promise = (async () => {
     if (!accepted(new BinaryWriter().u8Val(0))) return false;
     let after = 0;
+    let count = 0;
     while (current()) {
       const rows = await db.getAllAsync<AddressRow>(
         'SELECT rowid, osm_id, street, house, locality, lat, lon FROM addresses WHERE rowid > ? ORDER BY rowid LIMIT 2000',
@@ -60,9 +68,12 @@ export async function warmupAddressIndex(): Promise<boolean> {
       }
       if (!accepted(writer)) return false;
       after = rows[rows.length - 1].rowid;
+      count += rows.length;
     }
     if (!current() || !accepted(new BinaryWriter().u8Val(2))) return false;
     readyDb = db;
+    readyCityId = cityId;
+    addressCount = count;
     return true;
   })();
   loading = { db, promise };
