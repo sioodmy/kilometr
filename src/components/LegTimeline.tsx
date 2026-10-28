@@ -35,6 +35,7 @@ import { motion } from '../theme/motion';
 import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { scheduledLegTimes } from '../services/routing/connectionTimes';
+import { reliabilityNotice } from './reliabilityNotice';
 
 const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
@@ -401,7 +402,8 @@ function TransitLegCard({
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
   const scheduledDeparture = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt)).departure;
-  const delayMin = leg.live ? Math.round((leg.delaySec ?? 0) / 60) : 0;
+  const delayMin = leg.live || leg.delayConfidence === 'estimated' ? Math.round((leg.delaySec ?? 0) / 60) : 0;
+  const notice = reliabilityNotice([leg], t);
   const stopsCount = useMemo(() => {
     const stops = leg.intermediateStops;
     if (!stops || stops.length < 2) return leg.stopsCount;
@@ -429,7 +431,7 @@ function TransitLegCard({
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded)}
+        accessibilityLabel={[t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded), notice].filter(Boolean).join('. ')}
         style={({ pressed }) => [s.card, pressed && { opacity: 0.96 }]}
       >
         <View style={s.cardTop}>
@@ -450,9 +452,10 @@ function TransitLegCard({
           <Text style={[s.meta, { color: delayMin > 0 ? scheme.error : scheme.warning }]}>
             {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
             {' · '}
-            {delayMin > 0 ? t.routeDetails.late(delayMin) : t.routeDetails.early(-delayMin)}
+            {leg.delayConfidence === 'estimated' ? t.routeDetails.estimatedDelay(delayMin) : delayMin > 0 ? t.routeDetails.late(delayMin) : t.routeDetails.early(-delayMin)}
           </Text>
         )}
+        {notice && (delayMin === 0 || scheduledDeparture == null) && <Text style={s.meta}>{notice}</Text>}
         <Text style={s.meta}>{t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}</Text>
         <Text style={s.stopBig}>
           <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
@@ -475,6 +478,7 @@ function TransitLegCard({
 
 /** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
 export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observeOnly?: boolean }) {
+  const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const walkMps = useWalkSpeedMps();
   const { location } = useCurrentLocation(!observeOnly);
@@ -520,6 +524,10 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
           );
         }
         const { bg: accent } = getLineColors(leg.line, leg.mode);
+        const nextVehicle = legs.slice(i + 1).find(next => next.mode !== 'walk');
+        let transferGap = nextVehicle ? timeStringToSeconds(nextVehicle.departAt) - timeStringToSeconds(leg.arriveAt) : Infinity;
+        if (transferGap < -43200) transferGap += 86400;
+        const uncertainTransfer = (leg.delayConfidence === 'estimated' || leg.delayConfidence === 'untracked') && transferGap < 360;
         return (
           <Animated.View key={leg.id} layout={legTransition} style={s.row}>
             <View style={s.rail}>
@@ -536,6 +544,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                 allowLive={!observeOnly || leg.live}
                 onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
               />
+              {uncertainTransfer && <Text style={s.meta}>{t.routeDetails.uncertainTransfer}</Text>}
             </View>
           </Animated.View>
         );

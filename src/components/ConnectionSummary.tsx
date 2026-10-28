@@ -7,6 +7,7 @@ import { LineBadge } from './LineBadge';
 import { RollingTime } from './RollingTime';
 import { boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { secondsToTimeString } from '../gtfs/geo';
+import { reliabilityNotice } from './reliabilityNotice';
 
 export function ConnectionSummary({
   item,
@@ -31,6 +32,7 @@ export function ConnectionSummary({
     firstVehicle?.live && !offline ? Math.round((firstVehicle.delaySec ?? 0) / 60) : 0;
   const hasApproach = item.legs[0]?.mode === 'walk' && firstVehicle != null;
   const live = item.live && !offline;
+  const notice = offline ? undefined : reliabilityNotice(boarding, s);
   const statusColor =
     live && item.delayMin > 0
       ? scheme.error
@@ -106,13 +108,14 @@ export function ConnectionSummary({
             ))}
           </View>
         )}
-        {(!live || departureDelay === 0 || item.delayMin !== departureDelay) && (
+        {!notice && (!live || departureDelay === 0 || item.delayMin !== departureDelay) && (
           <View style={styles.fact}>
-            {live && item.delayMin === 0 && <Check size={16} color={scheme.primary} />}
+            {!notice && live && item.delayMin === 0 && <Check size={16} color={scheme.primary} />}
             <Text style={[styles.status, { color: statusColor }]}>{status}</Text>
           </View>
         )}
       </View>
+      {notice && <Text style={[styles.status, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
     </View>
   );
 }
