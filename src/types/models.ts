@@ -149,6 +149,8 @@ export interface VehiclePosition {
   matchedTripId?: string;
 }
 
+export type DelayConfidence = 'live' | 'estimated' | 'untracked' | 'scheduled';
+
 export interface Leg {
   id: string;
   geometry?: [number, number][];
@@ -170,8 +172,9 @@ export interface Leg {
   stopsCount: number;
   /** metres for walk legs */
   walkM?: number;
-  /** GTFS-RT trip present? */
+  /** Potwierdzony pomiar, bez szacunków z innych pojazdów. */
   live: boolean;
+  delayConfidence?: DelayConfidence;
   fromStopId?: string;
   toStopId?: string;
   fromLat?: number;

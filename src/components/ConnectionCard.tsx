@@ -10,6 +10,7 @@ import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/set
 
 import { tr, useStrings } from '../i18n';
 import { boardingDepartureMs, boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
+import { reliabilityNotice } from './reliabilityNotice';
 import { secondsToTimeString } from '../gtfs/geo';
 
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
@@ -207,6 +208,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   const departureMs = boardingDepartureMs(item, now);
   const departAt = walkOnly ? item.departAt : secondsToTimeString(boardingDepartureSec(item));
   const firstVehicle = boarding[0];
+  const notice = reliabilityNotice(boarding, s);
   const scheduledDeparture = firstVehicle?.live && Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
     ? scheduledLegTimes(firstVehicle, boardingDepartureSec(item)).departure : undefined;
   const minsAgo = item.departureSec > 0 ? Math.floor((now.getTime() - departureMs) / 60000) : -1;
@@ -258,7 +260,7 @@ export const ConnectionCard = memo(function ConnectionCard({
       <Pressable
         onPress={() => onPress(item)}
         accessibilityRole="button"
-        accessibilityLabel={accessibilityDesc}
+        accessibilityLabel={[accessibilityDesc, notice].filter(Boolean).join('. ')}
         accessibilityHint={peek ? s.connection.previewHint : undefined}
         accessibilityActions={
           peek
@@ -314,7 +316,7 @@ export const ConnectionCard = memo(function ConnectionCard({
           <JourneyStrip data={stripData} muted={dimmed} />
         ) : null}
 
-        {item.live && item.delayMin !== 0 && (
+        {!notice && item.live && item.delayMin !== 0 && (
           <Text
             style={[
               styles.delay,
@@ -327,6 +329,7 @@ export const ConnectionCard = memo(function ConnectionCard({
               : s.routeDetails.early(-item.delayMin)}
           </Text>
         )}
+        {notice && <Text style={[styles.delay, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
       </Pressable>
     </ConnectionPeekTarget>
   );

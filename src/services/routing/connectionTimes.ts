@@ -1,6 +1,6 @@
 import { secondsToTimeString, timeStringToSeconds } from '../../gtfs/geo';
 import { sharedJourneySeconds, sharedTimeMs } from '../../sharing/progress';
-import type { Connection, Leg } from '../../types/models';
+import type { Connection, DelayConfidence, Leg } from '../../types/models';
 import { toAbsoluteMs } from '../notifications/format';
 import { predictDelaySec } from './delays';
 
@@ -57,6 +57,7 @@ export function refreshConnectionTimes(
   connection: Connection,
   tripDelays: ReadonlyMap<string, number>,
   now = new Date(),
+  confidence: ReadonlyMap<string, DelayConfidence> = new Map(),
 ): Connection {
   const firstVehicle = connection.legs.find((leg) => leg.mode !== 'walk');
   if (!firstVehicle) return connection;
@@ -89,17 +90,19 @@ export function refreshConnectionTimes(
     }
     const times = scheduledLegTimes(leg, oldDeparture);
     const measured = sameDay && leg.tripId ? tripDelays.get(leg.tripId) : undefined;
-    const live = measured != null && Number.isFinite(measured);
+    const hasDelay = measured != null && Number.isFinite(measured);
+    const delayConfidence = sameDay ? (confidence.get(leg.tripId ?? '') ?? (hasDelay ? 'live' : 'scheduled')) : 'scheduled';
+    const live = hasDelay && delayConfidence === 'live';
     const delaySec =
-      live && times.departure != null
-        ? predictDelaySec(measured, times.departure - (nowSec - measured), 'board')
-        : live
+      hasDelay && times.departure != null
+        ? predictDelaySec(measured, times.departure - (nowSec - measured), 'board', leg.mode)
+        : hasDelay
           ? measured
           : 0;
     const arrivalDelaySec =
-      live && times.arrival != null
-        ? predictDelaySec(measured, times.arrival - (nowSec - measured), 'arrive')
-        : live
+      hasDelay && times.arrival != null
+        ? predictDelaySec(measured, times.arrival - (nowSec - measured), 'arrive', leg.mode)
+        : hasDelay
           ? measured
           : 0;
     const delayMin = Math.round(delaySec / 60);
@@ -119,6 +122,7 @@ export function refreshConnectionTimes(
       times.arrival == null ? leg.arriveAt : secondsToTimeString(times.arrival + arrivalDelaySec);
     if (
       leg.live === live &&
+      leg.delayConfidence === delayConfidence &&
       leg.delaySec === delaySec &&
       leg.arrivalDelaySec === arrivalDelaySec &&
       leg.departAt === departAt &&
@@ -130,6 +134,7 @@ export function refreshConnectionTimes(
     return {
       ...leg,
       live,
+      delayConfidence,
       delaySec,
       arrivalDelaySec,
       scheduledDepartureSec: times.departure,

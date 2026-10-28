@@ -120,10 +120,10 @@ export default function HomeScreen() {
   // przeliczenie). Wartości <= 0 (np. trasa piesza) zostają jak z backendu.
   const liveDepartures = useMemo(() => {
     const d = new Date();
-    const delays = liveTracker.getLiveState() === 'fresh' ? liveTracker.getTripDelays() : new Map<string, number>();
+    const snapshot = liveTracker.getRoutingSnapshot();
     const out: Record<string, number> = {};
     for (const [id, c] of Object.entries(firstConns)) {
-      const current = refreshConnectionTimes(c, delays, d);
+      const current = refreshConnectionTimes(c, snapshot.delays, d, snapshot.confidence);
       out[id] = c.departureSec > 0 ? Math.ceil((boardingDepartureMs(current, d) - d.getTime()) / 60000) : c.departInMin;
     }
     return out;

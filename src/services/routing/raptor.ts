@@ -58,6 +58,7 @@ export interface RaptorOptions {
   dayIndex?: DayIndex;
   /** znane opóźnienia kursów (GPS): tripId -> sekundy, zmierzone teraz. */
   tripDelays?: Map<string, number>;
+  transferBuffers?: Map<string, number>;
   /**
    * Teraz (sekundy od północy, zegar zapytania). Z nim opóźnienia są
    * prognozowane per przystanek (pojazd nadrabia, patrz delays.ts); bez niego
@@ -208,6 +209,11 @@ function packRaptorQuery(
       }
     }
   }
+  const bufferEntries: Array<[number, number, number]> = [];
+  for (const [id, extra] of options.transferBuffers ?? []) {
+    const loc = net.tripLoc.get(id);
+    if (loc && extra > 0) bufferEntries.push([loc[0], loc[1], Math.round(extra)]);
+  }
 
   const maxTransfers = Math.max(0, Math.min(3, options.maxTransfers ?? 2));
   const minT = Math.max(0, Math.min(600, options.minTransferSec ?? 120));
@@ -232,7 +238,7 @@ function packRaptorQuery(
 
   const headerWords = 22;
   const totalWords =
-    headerWords + validOrigins.length * 3 + validDests.length * 3 + delayEntries.length * 3;
+    headerWords + validOrigins.length * 3 + validDests.length * 3 + delayEntries.length * 3 + 1 + bufferEntries.length * 3;
   const buf = new ArrayBuffer(totalWords * 4);
   const view = new DataView(buf);
   let pos = 0;
@@ -284,6 +290,10 @@ function packRaptorQuery(
     writeI32(p);
     writeI32(j);
     writeI32(d0);
+  }
+  writeI32(bufferEntries.length);
+  for (const [p, j, extra] of bufferEntries) {
+    writeI32(p); writeI32(j); writeI32(extra);
   }
 
   return new Uint8Array(buf);
@@ -494,6 +504,7 @@ export interface SelectOptions {
   /** Tryb „bądź na”: koszt liczony od wyjścia do celu, nie od teraz. */
   arriveBySec?: number;
   limit?: number;
+  uncertaintyPenalty?: ReadonlyMap<string, number>;
 }
 
 /**
@@ -508,7 +519,8 @@ function journeyCost(j: RawJourney, refSec: number, opts: SelectOptions = {}): n
   return (
     base +
     (Math.max(1, cost.walkReluctance) - 1) * journeyWalkSec(j) +
-    j.transfers * cost.transferPenaltySec
+    j.transfers * cost.transferPenaltySec +
+    j.segments.reduce((sum, s) => sum + (opts.uncertaintyPenalty?.get(s.tripId ?? '') ?? 0), 0)
   );
 }
 
@@ -555,6 +567,7 @@ export function selectJourneys(
           y.j.arrivalSec <= x.j.arrivalSec &&
           y.j.transfers <= x.j.transfers &&
           y.walk <= x.walk + 30 &&
+          y.cost <= x.cost &&
           (y.j.departureSec > x.j.departureSec ||
             y.j.arrivalSec < x.j.arrivalSec ||
             y.j.transfers < x.j.transfers ||
