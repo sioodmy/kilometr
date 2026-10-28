@@ -2,7 +2,7 @@ import { getCity } from '../cities';
 import { normalizePolish } from '../gtfs/geo';
 import type { Suggestion } from '../types/models';
 import { getActiveCityIdSync } from './cityStore';
-import { searchAddresses } from './addressIndex';
+import { hasOfflineAddressIndex, searchAddresses } from './addressIndex';
 import { searchStops } from './gtfsDatabase';
 import { searchNominatimDirect } from './nominatimDirect';
 import { addRecentSuggestion, loadRecent, loadSuggestions, saveSuggestions } from './offlineCache';
@@ -76,10 +76,8 @@ export const SearchService: ISearchService = {
       }
       cache.delete(key);
       ensurePoiIndex();
-      const localPromise = Promise.all([
-        searchStops(q, 24).catch(() => []),
-        searchPois(q, coords?.lat, coords?.lon, 16).catch(() => []),
-      ]);
+      const stopsPromise = searchStops(q, 24).catch(() => []);
+      const poisPromise = searchPois(q, coords?.lat, coords?.lon, 16).catch(() => []);
       const addressesPromise = searchAddresses(q, coords?.lat, coords?.lon, 16).catch(() => []);
       const [history, offline] = await Promise.all([
         loadRecent(cityId),
@@ -91,25 +89,16 @@ export const SearchService: ISearchService = {
       if (personal.length || offline.length) {
         onPartial?.(rank(dedupeAndSort(personal, offline, !!coords, q), history));
       }
-      const [stopHits, poiHits] = await localPromise;
-      assertCurrent();
       const city = getCity(cityId);
-      const stops: Suggestion[] = stopHits.map((hit) => ({
-        id: `stop-${hit.stop_id}`,
-        title: hit.name.toUpperCase(),
-        address: '',
-        kind: 'stop',
-        lat: hit.lat,
-        lon: hit.lon,
-        weight: hit.weight,
-      }));
-      const local = [
-        ...stops,
-        ...poiHits,
+      const extras = [
         ...(city.features.cable ? searchPolinkaStops(q, coords?.lat, coords?.lon) : []),
         ...(city.features.campusPois ? searchPwrBuildings(q, coords?.lat, coords?.lon, 8) : []),
         ...personal,
       ];
+      let stops: Suggestion[] = [];
+      let pois: Suggestion[] = [];
+      let addresses: Suggestion[] = [];
+      let local = extras;
       const merge = (remote: Suggestion[]) =>
         dedupeAndSort(
           withDistances(local.length ? local : offline, coords?.lat, coords?.lon),
@@ -117,18 +106,41 @@ export const SearchService: ISearchService = {
           !!coords,
           q,
         );
-      const localResults = rank(merge([]), history);
-      onPartial?.(localResults);
-
-      const addressHits = await addressesPromise;
-      assertCurrent();
-      if (addressHits.length) {
-        local.push(...addressHits);
+      const publish = () => {
+        assertCurrent();
+        local = [...stops, ...pois, ...extras, ...addresses];
         onPartial?.(rank(merge([]), history));
-      }
+      };
+      await Promise.all([
+        stopsPromise.then((hits) => {
+          stops = hits.map((hit) => ({
+            id: `stop-${hit.stop_id}`,
+            title: hit.name.toUpperCase(),
+            address: '',
+            kind: 'stop',
+            lat: hit.lat,
+            lon: hit.lon,
+            weight: hit.weight,
+          }));
+          publish();
+        }),
+        poisPromise.then((hits) => {
+          pois = hits;
+          publish();
+        }),
+        addressesPromise.then((hits) => {
+          addresses = hits;
+          publish();
+        }),
+      ]);
 
       let remote: Suggestion[] = [];
-      if (q.length >= 2 && !addressHits.length && (/\d/.test(q) || local.length < 5)) {
+      if (
+        q.length >= 2 &&
+        !addresses.length &&
+        !hasOfflineAddressIndex() &&
+        (/\d/.test(q) || local.length < 5)
+      ) {
         await waitForNetwork(ctrl.signal);
         assertCurrent();
         remote = await searchNominatimDirect(persistedQuery, coords?.lat, coords?.lon, ctrl.signal);

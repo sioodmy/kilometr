@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { DatabaseSync } from 'node:sqlite';
-import { warmupAddressIndex, searchAddresses } from '../src/services/addressIndex';
+import {
+  hasOfflineAddressIndex,
+  warmupAddressIndex,
+  searchAddresses,
+} from '../src/services/addressIndex';
 import { setActiveCityId } from '../src/services/cityStore';
 import { getGtfsDb } from '../src/services/gtfsDatabase';
 import { SearchService } from '../src/services/searchService';
@@ -41,11 +45,14 @@ async function main() {
   sqlite.exec('COMMIT');
 
   let addressReads = 0;
-  async function attachDatabase() {
+  async function attachDatabase(waitForPois?: Promise<void>) {
     const db = await getGtfsDb();
     Object.assign(db, {
       getAllAsync: async (sql: string, ...params: (string | number)[]) => {
-        if (!sql.includes('FROM addresses')) return [];
+        if (!sql.includes('FROM addresses')) {
+          if (sql.includes('FROM pois')) await waitForPois;
+          return [];
+        }
         addressReads++;
         return sqlite.prepare(sql).all(...params);
       },
@@ -69,8 +76,9 @@ async function main() {
       exact.map((hit) => hit.title),
       ['Grunwaldzka 12', 'Grunwaldzka 12A'],
     );
-    const typo = await searchAddresses('grunwladzka 12');
-    assert.equal(typo[0].title, 'Grunwaldzka 12');
+    assert.equal(hasOfflineAddressIndex(), true);
+    assert.deepEqual(await searchAddresses('grunwladzka 12'), []);
+    assert.equal((await searchAddresses('grun 12'))[0].title, 'Grunwaldzka 12');
     assert.equal((await searchAddresses('grunwaldzka 14/2'))[0].title, 'Grunwaldzka 14/2');
     assert.deepEqual(await searchAddresses('grunwaldzka 13'), []);
     assert.equal((await searchAddresses('grunwaldzka')).length, 1);
@@ -79,10 +87,40 @@ async function main() {
     assert.equal(nearStreet.id, farStreet.id);
     assert.notEqual(nearStreet.lat, farStreet.lat);
     assert.equal((await searchAddresses('12 grunwaldzka wroclaw'))[0].title, 'Grunwaldzka 12');
-    const results = await SearchService.search('Grunwladzka 12', undefined, 'addresses');
+    const results = await SearchService.search('Grunwaldzka 12', undefined, 'addresses');
     assert.equal(results[0].title, 'Grunwaldzka 12');
+    assert.deepEqual(await SearchService.search('Grunwladzka 12', undefined, 'addresses'), []);
+    assert.deepEqual(await SearchService.search('Grunwaldzka 13', undefined, 'addresses'), []);
     assert.equal(remoteCalls, 0);
     assert.equal(addressReads, readsAfterLoad);
+
+    let releasePois = () => {};
+    const blockedPois = new Promise<void>((resolve) => {
+      releasePois = resolve;
+    });
+    await attachDatabase(blockedPois);
+    let addressShown = () => {};
+    const addressReady = new Promise<void>((resolve) => {
+      addressShown = resolve;
+    });
+    const independent = SearchService.search('grunwaldzka 14', undefined, 'independent', (hits) => {
+      if (hits.some((hit) => hit.title === 'Grunwaldzka 14/2')) addressShown();
+    });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        addressReady,
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('Adresy czekają na POI')), 1000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeout);
+      releasePois();
+      await independent;
+      await attachDatabase();
+    }
+    assert.equal(remoteCalls, 0);
 
     const timings: number[] = [];
     for (let i = 0; i < 100; i++) {
@@ -128,7 +166,7 @@ async function main() {
     assert.deepEqual(await staleSearch, []);
     assert.equal((await searchAddresses('grunwaldzka 12'))[0].title, 'Grunwaldzka 12');
     console.log(
-      `PASS: SQLite → Rust/WASM → SearchService, offline, literówki, numery i zmiana miasta.`,
+      `PASS: SQLite → Rust/WASM → SearchService, offline, prefiksy, brak trafień, numery i zmiana miasta.`,
     );
     console.log(
       `Node/WASM, 100 004 syntetyczne adresy, 2001 ulic: ładowanie ${loadTime.toFixed(1)} ms; zapytania p50 ${timings[50].toFixed(2)} ms, p95 ${timings[95].toFixed(2)} ms.`,

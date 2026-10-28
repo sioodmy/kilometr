@@ -1,9 +1,8 @@
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
-use crate::search::{
-    damerau_levenshtein_chars, distance_meters, expand_token_synonyms, normalize_polish,
-};
+use crate::search::{distance_meters, expand_token_synonyms, normalize_polish};
 
 #[derive(Default)]
 struct AddressCatalog {
@@ -13,6 +12,7 @@ struct AddressCatalog {
 }
 
 struct Street {
+    id: String,
     name: String,
     locality: String,
     addresses: Vec<Address>,
@@ -28,7 +28,6 @@ struct Address {
 
 struct Word {
     text: String,
-    chars: Vec<char>,
     streets: Vec<usize>,
 }
 
@@ -38,6 +37,28 @@ struct Hit<'a> {
     with_house: bool,
     score: i32,
     distance: Option<i32>,
+}
+
+impl Hit<'_> {
+    fn compare(&self, other: &Self) -> Ordering {
+        other
+            .score
+            .cmp(&self.score)
+            .then_with(|| self.distance.cmp(&other.distance))
+            .then_with(|| self.street.name.cmp(&other.street.name))
+            .then_with(|| self.street.locality.cmp(&other.street.locality))
+            .then_with(|| self.address.id.cmp(&other.address.id))
+    }
+}
+
+fn insert_hit<'a>(hits: &mut Vec<Hit<'a>>, hit: Hit<'a>, limit: usize) {
+    let index = hits
+        .binary_search_by(|other| other.compare(&hit))
+        .unwrap_or_else(|i| i);
+    if index < limit {
+        hits.insert(index, hit);
+        hits.truncate(limit);
+    }
 }
 
 fn tokens(text: &str) -> Vec<&str> {
@@ -68,6 +89,7 @@ impl AddressCatalog {
         let key = (name.to_owned(), locality.to_owned());
         let idx = *self.street_ids.entry(key).or_insert_with(|| {
             self.streets.push(Street {
+                id: id.to_owned(),
                 name: name.to_owned(),
                 locality: locality.to_owned(),
                 addresses: Vec::new(),
@@ -85,7 +107,10 @@ impl AddressCatalog {
 
     fn finish(&mut self) {
         let mut postings: HashMap<String, Vec<usize>> = HashMap::new();
-        for (idx, street) in self.streets.iter().enumerate() {
+        for (idx, street) in self.streets.iter_mut().enumerate() {
+            street
+                .addresses
+                .sort_unstable_by(|a, b| a.norm_house.cmp(&b.norm_house));
             let text = normalize_polish(&format!("{} {}", street.name, street.locality));
             let unique: HashSet<&str> = tokens(&text).into_iter().collect();
             for word in unique {
@@ -94,17 +119,14 @@ impl AddressCatalog {
         }
         self.words = postings
             .into_iter()
-            .map(|(text, streets)| Word {
-                chars: text.chars().collect(),
-                text,
-                streets,
-            })
+            .map(|(text, streets)| Word { text, streets })
             .collect();
+        self.words.sort_unstable_by(|a, b| a.text.cmp(&b.text));
         self.street_ids.clear();
         self.street_ids.shrink_to_fit();
     }
 
-    // Dopasowujemy unikalne słowa ulic, a nie każdy punkt adresowy osobno.
+    // Prefiksy znajdujemy binarnie w słowniku, bez skanowania ulic i liczenia literówek.
     fn match_streets(&self, query: &[&str]) -> HashMap<usize, i32> {
         let mut matches: Option<HashMap<usize, i32>> = None;
         let mut ordered = query.to_vec();
@@ -112,28 +134,20 @@ impl AddressCatalog {
         for token in ordered {
             let mut current: HashMap<usize, i32> = HashMap::new();
             for variant in expand_token_synonyms(token) {
-                let chars: Vec<char> = variant.chars().collect();
-                let numeric = chars.iter().any(|c| c.is_ascii_digit());
-                let budget = if chars.len() >= 6 { 2 } else { 1 };
-                for word in &self.words {
+                let numeric = variant.chars().any(|c| c.is_ascii_digit());
+                let start = self
+                    .words
+                    .partition_point(|word| word.text.as_str() < variant);
+                for word in self.words[start..]
+                    .iter()
+                    .take_while(|word| word.text.starts_with(variant))
+                {
                     let score = if word.text == variant {
                         100
-                    } else if !numeric && word.text.starts_with(variant) {
+                    } else if !numeric {
                         90
-                    } else if !numeric && chars.len() >= 4 {
-                        let mut distance = budget + 1;
-                        for len in [chars.len().saturating_sub(1), chars.len(), chars.len() + 1] {
-                            if len <= word.chars.len() {
-                                distance = distance
-                                    .min(damerau_levenshtein_chars(&chars, &word.chars[..len]));
-                            }
-                        }
-                        if distance > budget {
-                            continue;
-                        }
-                        84 - distance as i32 * 10
                     } else {
-                        continue;
+                        break;
                     };
                     for &idx in &word.streets {
                         if matches
@@ -190,15 +204,20 @@ impl AddressCatalog {
                 }
             }
         }
-        let mut hits = Vec::new();
+        let mut hits = Vec::with_capacity(limit);
         for (idx, score) in matches {
             let street = &self.streets[idx];
-            let mut street_hits = Vec::new();
-            for address in &street.addresses {
+            let start = house.as_ref().map_or(0, |house| {
+                street
+                    .addresses
+                    .partition_point(|address| address.norm_house < *house)
+            });
+            let mut nearest: Option<Hit<'_>> = None;
+            for address in &street.addresses[start..] {
                 let mut score = score;
                 if let Some(house) = &house {
                     if !address.norm_house.starts_with(house) {
-                        continue;
+                        break;
                     }
                     let remainder = &address.norm_house[house.len()..];
                     if remainder.starts_with(|c: char| c.is_ascii_digit()) {
@@ -211,32 +230,26 @@ impl AddressCatalog {
                 let distance = position.map(|(lat, lon)| {
                     distance_meters(lat, lon, address.lat, address.lon).round() as i32
                 });
-                street_hits.push(Hit {
+                let hit = Hit {
                     address,
                     street,
                     with_house: house.is_some(),
                     score,
                     distance,
-                });
+                };
+                if house.is_some() {
+                    insert_hit(&mut hits, hit, limit);
+                } else if nearest
+                    .as_ref()
+                    .is_none_or(|best| hit.compare(best).is_lt())
+                {
+                    nearest = Some(hit);
+                }
             }
-            street_hits.sort_by(|a, b| {
-                b.score
-                    .cmp(&a.score)
-                    .then_with(|| a.distance.cmp(&b.distance))
-                    .then_with(|| a.address.id.cmp(&b.address.id))
-            });
-            street_hits.truncate(if house.is_some() { limit } else { 1 });
-            hits.extend(street_hits);
+            if let Some(hit) = nearest {
+                insert_hit(&mut hits, hit, limit);
+            }
         }
-        hits.sort_by(|a, b| {
-            b.score
-                .cmp(&a.score)
-                .then_with(|| a.distance.cmp(&b.distance))
-                .then_with(|| a.street.name.cmp(&b.street.name))
-                .then_with(|| a.street.locality.cmp(&b.street.locality))
-                .then_with(|| a.address.id.cmp(&b.address.id))
-        });
-        hits.truncate(limit);
         hits
     }
 }
@@ -328,7 +341,7 @@ pub fn handle_address_cmd(payload: &[u8]) -> Vec<u8> {
                         let id = if hit.with_house {
                             &hit.address.id
                         } else {
-                            &hit.street.addresses[0].id
+                            &hit.street.id
                         };
                         write_string(
                             &mut out,
@@ -362,6 +375,49 @@ pub fn handle_address_cmd(payload: &[u8]) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    #[test]
+    #[ignore]
+    fn benchmark_city_catalog() {
+        let mut catalog = catalog();
+        let mut seed = 17u32;
+        for street in 0..10_000 {
+            let mut name = String::new();
+            for _ in 0..12 {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                name.push((b'a' + ((seed >> 16) % 26) as u8) as char);
+            }
+            for house in 1..=10 {
+                catalog.append(
+                    &format!("{street}/{house}"),
+                    &name,
+                    &house.to_string(),
+                    "Wrocław",
+                    51.1 + street as f64 * 0.000001,
+                    17.0,
+                );
+            }
+        }
+        catalog.finish();
+        for query in [
+            "gr",
+            "grun",
+            "grunwaldzka",
+            "grunwaldzka 12",
+            "grunwladzka 12",
+            "wroclaw",
+            "nieistniejaca 99",
+        ] {
+            let mut timings = Vec::new();
+            for _ in 0..50 {
+                let start = std::time::Instant::now();
+                std::hint::black_box(catalog.search(query, Some((51.11, 17.04)), 16));
+                timings.push(start.elapsed());
+            }
+            timings.sort();
+            println!("{query}: p50 {:?}, p95 {:?}", timings[25], timings[47]);
+        }
+    }
+
     fn catalog() -> AddressCatalog {
         let mut catalog = AddressCatalog::default();
         for (id, street, house, city) in [
@@ -380,10 +436,11 @@ mod tests {
     }
 
     #[test]
-    fn fuzzy_street_and_strict_house_number() {
+    fn street_prefix_and_strict_house_number() {
         let catalog = catalog();
         for query in [
-            "Grunwladzka 12",
+            "Grunwaldzka 12",
+            "grun 12",
             "12 grunwaldzka",
             "ul. Grunwaldzka 12 Wroclaw",
         ] {
@@ -393,6 +450,10 @@ mod tests {
             assert_eq!(hits[1].address.house, "12A");
         }
         assert!(catalog.search("grunwaldzka 13", None, 10).is_empty());
+        assert!(catalog.search("grunwladzka 12", None, 10).is_empty());
+        let limited = catalog.search("grun 12", None, 1);
+        assert_eq!(limited.len(), 1);
+        assert_eq!(limited[0].address.house, "12");
         assert_eq!(
             catalog.search("grunwaldzka 12a", None, 10)[0].address.house,
             "12A"
