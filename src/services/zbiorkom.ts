@@ -290,11 +290,16 @@ function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
     const lat = loc[1];
     const lon = loc[0];
     if (!lat || !lon) continue;
-    // Opóźnienie z API (ms → s) idzie do matchera jako główny pomiar; matcher
-    // sam odrzuci absurdalne wartości (limit DELAY_CAP_SEC).
     const delaySec =
       typeof p.delay === 'number' && Number.isFinite(p.delay) ? Math.round(p.delay / 1000) : undefined;
-    rows.push({ name: line, type: p.vehicle?.type === '0' ? 'tram' : 'bus', x: lat, y: lon, k: id, delaySec });
+    rows.push({
+      name: line, type: p.vehicle?.type === '0' ? 'tram' : 'bus', x: lat, y: lon, k: id, delaySec,
+      timestamp: p.timestamp, headsign: p.headsign, brigade: p.brigade,
+      upcomingStops: p.upcomingStops?.flatMap(s => {
+        const at = s.scheduledDeparture ?? s.scheduledArrival;
+        return s.name && at != null && Number.isFinite(at) ? [{ name: s.name, schedSec: toSecOfDay(at) }] : [];
+      }),
+    });
   }
   return rows;
 }

@@ -3,6 +3,8 @@ import { costParamsFor, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, s
 import { AllowedTransferModes, Connection, Leg, LegStop, RawJourney, RouteStyle, TransitModePreference } from './types';
 import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
+import { MAX_DELAY_SEC } from '../liveQuality';
+import { emptyRoutingSnapshot, type RoutingSnapshot } from './reliability';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
 import { refreshConnectionTimes, scheduledLegTimes } from './connectionTimes';
@@ -108,8 +110,8 @@ export async function buildSearchSlices(rawTargetSec: number, arrivalMode = fals
   // Przyjazd obejmuje też wyjście przed północą poprzedniego dnia.
   const searchStartSec = arrivalMode ? departureSec - 10800 : departureSec;
   const dayIndex = arrivalMode
-    ? await gtfsStore.getDayIndexSlice(weekday, dateStr, searchStartSec - 1800, departureSec + 600)
-    : await gtfsStore.getDayIndexSlice(weekday, dateStr, departureSec - 1800, departureSec + 10800);
+    ? await gtfsStore.getDayIndexSlice(weekday, dateStr, searchStartSec - MAX_DELAY_SEC, departureSec + 600)
+    : await gtfsStore.getDayIndexSlice(weekday, dateStr, departureSec - MAX_DELAY_SEC, departureSec + 10800);
 
   // Nocny indeks ZUNIFIKOWANY (mergeDayIndexes): po północy kursy 24:xx+
   // należą do wczorajszego dnia serwisowego, ale nogi z obu dni muszą łączyć
@@ -122,7 +124,7 @@ export async function buildSearchSlices(rawTargetSec: number, arrivalMode = fals
     const overnightIdx = await gtfsStore.getDayIndexSlice(
       yDate.getDay(),
       toDateStr(yDate),
-      86400 + Math.min(-7200, searchStartSec - 1800),
+      86400 + Math.min(-7200, searchStartSec - MAX_DELAY_SEC),
       86400 + (arrivalMode ? departureSec + 600 : departureSec + 10800),
     );
     const merged = mergedOvernight(dayIndex, overnightIdx);
@@ -268,6 +270,7 @@ interface MapCtx {
   currentSec: number;
   dayOffsetSec: number;
   tripDelays: Map<string, number>;
+  confidence: RoutingSnapshot['confidence'];
 }
 
 /** Stosuje wagi RAPTOR-a także na liście: czas, marsz i przesiadki.
@@ -280,7 +283,8 @@ export function sortConnectionsByCost(connections: Connection[], cost: CostParam
     return (
       (arriveBySec !== undefined ? arriveBySec - c.departureSec : (c.arrivalSec ?? c.departureSec + c.durationMin * 60)) +
       (extraWalk * walkM * WALK_DETOUR_FACTOR) / walkSpeedMps +
-      c.transfers * cost.transferPenaltySec
+      c.transfers * cost.transferPenaltySec +
+      c.legs.reduce((sum, leg) => sum + (leg.delayConfidence === 'estimated' || leg.delayConfidence === 'untracked' ? 120 : 0), 0)
     );
   };
   const costs = new Map(connections.map((c) => [c, costOf(c)]));
@@ -323,7 +327,7 @@ function mapJourneysToConnections(
         // efektywne (NIE dodajemy opóźnienia drugi raz). Tu tylko flaga live
         // i wartość do wyświetlenia.
         const dSec = ctx.tripDelays.get(seg.tripId ?? '');
-        if (dSec !== undefined) {
+        if (dSec !== undefined && ctx.confidence.get(seg.tripId ?? '') === 'live') {
           legLive = true;
           overallLive = true;
         }
@@ -371,6 +375,7 @@ function mapJourneysToConnections(
         stopsCount: seg.stopsCount,
         walkM: seg.walkMeters,
         live: legLive,
+        delayConfidence: seg.type === 'transit' ? (ctx.confidence.get(seg.tripId ?? '') ?? 'scheduled') : undefined,
         tripId: seg.type === 'transit' ? seg.tripId : undefined,
         routeId: seg.type === 'transit' ? seg.routeId : undefined,
         intermediateStops,
@@ -432,7 +437,9 @@ function mapJourneysToConnections(
 
 /** Odświeża godziny i flagi live. Niezmienione połączenia zachowują referencje. */
 export function applyLiveDelays(connections: Connection[], tripDelays: Map<string, number>): Connection[] {
-  const updated = connections.map((connection) => refreshConnectionTimes(connection, tripDelays));
+  const snapshot = tripDelays.size > 0 ? liveTracker.getRoutingSnapshot() : emptyRoutingSnapshot();
+  const delays = new Map([...tripDelays, ...snapshot.delays]);
+  const updated = connections.map((connection) => refreshConnectionTimes(connection, delays, new Date(), snapshot.confidence));
   return updated.every((connection, index) => connection === connections[index]) ? connections : updated;
 }
 
@@ -561,7 +568,9 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Opóźnienia GPS tylko dla dzisiejszych kursów: ten sam trip_id jutro to
   // inny kurs. Tracker odświeża się w tle; planowanie nigdy nie czeka na sieć.
   await liveTracker.ensureFresh();
-  const tripDelays = dayOffsetSec === 0 ? liveTracker.getTripDelays() : new Map<string, number>();
+  const snapshot = dayOffsetSec === 0 ? liveTracker.getRoutingSnapshot(searchIndex, patternOffsets) : emptyRoutingSnapshot();
+  const tripDelays = snapshot.delays;
+  const uncertaintyPenalty = new Map([...snapshot.transferBuffers.keys()].map(id => [id, 120]));
   const rawJourneys: RawJourney[] = [];
   // Przyjazdy: ostatnia godzina przed celem. Odjazdy: dwa okna do przodu.
   const timeWindows: [number, number][] = arrivalMode
@@ -592,12 +601,13 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       if (modes === 'all') return true;
       return transit.every((s) => s.mode === modes || (modes === 'bus' && s.mode === 'trolleybus'));
     });
-  const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays };
+  const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays, confidence: snapshot.confidence };
   const sortPartial = (list: Connection[]) =>
     sortConnectionsByCost(list, cost, userWalkSpeed, arrivalMode ? rawTarget : undefined);
   const select = (list: RawJourney[]) =>
     selectJourneys(applyModeFilter(list), searchStartSec, {
       cost,
+      uncertaintyPenalty,
       arriveBySec: arrivalMode ? departureSec : undefined,
     });
 
@@ -617,6 +627,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       trainMinTransferSec,
       dayIndex: searchIndex,
       tripDelays,
+      transferBuffers: snapshot.transferBuffers,
       nowSec: currentSec,
       allowedModes: modes,
       patternTimeOffsets: patternOffsets,

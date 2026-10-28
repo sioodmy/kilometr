@@ -41,6 +41,7 @@ export interface Leg {
   stopsCount: number;
   walkM?: number;
   live: boolean;
+  delayConfidence?: import('../../types/models').DelayConfidence;
   fromStopId?: string;
   toStopId?: string;
   fromLat?: number;
