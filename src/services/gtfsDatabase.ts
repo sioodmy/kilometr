@@ -99,6 +99,14 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
           district TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_pois_norm ON pois (norm_name);
+        CREATE TABLE IF NOT EXISTS addresses (
+          osm_id TEXT PRIMARY KEY NOT NULL,
+          street TEXT NOT NULL,
+          house TEXT NOT NULL,
+          locality TEXT NOT NULL DEFAULT '',
+          lat REAL NOT NULL,
+          lon REAL NOT NULL
+        );
       `);
       // Migracje istniejących baz (CREATE TABLE IF NOT EXISTS ich nie rusza).
       // Upewnij się, że kolumna weight istnieje w tabeli stops:

@@ -83,6 +83,7 @@
     "check:places": "tsx scripts/check-places.ts",
     "check:polish-inflections": "tsx scripts/check-polish-inflections.ts",
     "check:search": "tsx --require ./scripts/stub-expo.cjs scripts/check-search.ts",
+    "check:addresses": "node --test cloudflare/scripts/build-addresses.test.mjs && tsx --require ./scripts/stub-expo.cjs scripts/check-addresses.ts",
     "check:search-speed": "tsx --require ./scripts/stub-expo.cjs scripts/check-search-speed.ts",
     "check:warsaw": "tsx --require ./scripts/stub-expo.cjs scripts/check-warsaw.ts",
     "check:poznan": "tsx --require ./scripts/stub-expo.cjs scripts/check-poznan.ts",
