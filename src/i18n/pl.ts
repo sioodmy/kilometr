@@ -1439,7 +1439,6 @@ export const pl = {
     save: 'Włącz budzik',
     saving: 'Ustawianie budzika…',
     remove: 'Usuń budzik',
-    preview: 'Podgląd budzika',
     ringTitle: 'Pora się zbierać',
     dismiss: 'Wyłącz budzik',
     showRoute: 'Pokaż połączenie',

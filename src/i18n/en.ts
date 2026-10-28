@@ -1380,7 +1380,6 @@ export const en: Strings = {
     save: 'Turn on alarm',
     saving: 'Setting alarm…',
     remove: 'Remove alarm',
-    preview: 'Preview alarm',
     ringTitle: 'Time to get ready',
     dismiss: 'Dismiss alarm',
     showRoute: 'Show connection',

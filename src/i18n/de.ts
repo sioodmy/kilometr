@@ -1392,7 +1392,6 @@ export const de: Strings = {
     save: 'Wecker einschalten',
     saving: 'Wecker wird gestellt…',
     remove: 'Wecker entfernen',
-    preview: 'Wecker ansehen',
     ringTitle: 'Zeit, dich fertigzumachen',
     dismiss: 'Wecker ausschalten',
     showRoute: 'Verbindung anzeigen',
