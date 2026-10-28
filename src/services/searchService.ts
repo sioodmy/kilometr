@@ -2,6 +2,7 @@ import { getCity } from '../cities';
 import { normalizePolish } from '../gtfs/geo';
 import type { Suggestion } from '../types/models';
 import { getActiveCityIdSync } from './cityStore';
+import { searchAddresses } from './addressIndex';
 import { searchStops } from './gtfsDatabase';
 import { searchNominatimDirect } from './nominatimDirect';
 import { addRecentSuggestion, loadRecent, loadSuggestions, saveSuggestions } from './offlineCache';
@@ -79,6 +80,7 @@ export const SearchService: ISearchService = {
         searchStops(q, 24).catch(() => []),
         searchPois(q, coords?.lat, coords?.lon, 16).catch(() => []),
       ]);
+      const addressesPromise = searchAddresses(q, coords?.lat, coords?.lon, 16).catch(() => []);
       const [history, offline] = await Promise.all([
         loadRecent(cityId),
         loadSuggestions(persistedQuery, cityId),
@@ -118,8 +120,15 @@ export const SearchService: ISearchService = {
       const localResults = rank(merge([]), history);
       onPartial?.(localResults);
 
+      const addressHits = await addressesPromise;
+      assertCurrent();
+      if (addressHits.length) {
+        local.push(...addressHits);
+        onPartial?.(rank(merge([]), history));
+      }
+
       let remote: Suggestion[] = [];
-      if (q.length >= 2 && (/\d/.test(q) || local.length < 5)) {
+      if (q.length >= 2 && !addressHits.length && (/\d/.test(q) || local.length < 5)) {
         await waitForNetwork(ctrl.signal);
         assertCurrent();
         remote = await searchNominatimDirect(persistedQuery, coords?.lat, coords?.lon, ctrl.signal);
