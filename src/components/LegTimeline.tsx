@@ -67,9 +67,6 @@ function cacheStops(key: string, stops: LegStop[]) {
   }
 }
 
-/** Ile przystanków przed wsiadaniem widać, zanim pojazd do nas dojedzie. */
-const LEAD_STOPS = 3;
-
 function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
   const Icon =
     mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
@@ -85,21 +82,17 @@ const StopRow = memo(function StopRow({
   isLast,
   index,
   vehicleMode,
-  inSegment,
   emphasis,
   accent,
   connectorAccent,
   vehicleGap,
   vehicleLabel,
-  segmentStart,
 }: {
   stop: LegStop;
   isFirst: boolean;
   isLast: boolean;
   index: number;
-  segmentStart: number;
   vehicleMode: Leg['mode'];
-  inSegment: boolean;
   /** Przystanek startowy albo końcowy odcinka - wyróżniony wagą. */
   emphasis: boolean;
   accent: string;
@@ -109,9 +102,8 @@ const StopRow = memo(function StopRow({
 }) {
   const t = useStrings();
   const boundary = parseFareBoundary(stop.name);
-  // Przystanki przed wsiadaniem nie należą do naszej trasy, więc są wyszarzone
-  // tak samo jak te, które pojazd już minął.
-  const passed = (vehicleGap != null && index <= vehicleGap) || index < segmentStart;
+  // Przystanek pojazd już minął: wyszarzony, tak samo jak dotychczas przejechane.
+  const passed = vehicleGap != null && index <= vehicleGap;
   const markerHere = vehicleGap === index && !isLast;
   // Linia biegnie przez cały wiersz i zachodzi 1 px na sąsiednie wiersze.
   // Osobny łącznik pod kropką zostawiał cienką szwę między wierszami.
@@ -145,9 +137,7 @@ const StopRow = memo(function StopRow({
             boundary ? s.boundaryMark : s.dot,
             passed
               ? { backgroundColor: scheme.outline, borderColor: scheme.outline }
-              : inSegment
-                ? { backgroundColor: accent, borderColor: accent }
-                : { backgroundColor: scheme.surface, borderColor: scheme.outlineVariant },
+              : { backgroundColor: accent, borderColor: accent },
           ]}
         />
         {markerHere && (
@@ -177,7 +167,7 @@ const StopRow = memo(function StopRow({
             style={[
               s.stopName,
               emphasis && s.stopNameStrong,
-              passed ? s.stopNamePassed : !inSegment && s.stopNameDim,
+              passed ? s.stopNamePassed : null,
             ]}
             numberOfLines={1}
           >
@@ -224,8 +214,8 @@ function LegStopsList({
 
   // Lazy load pełnej sekwencji kursu, raz, wynik w cache modułowym. Odcinek
   // z planu (`intermediateStops`) to tylko wsiadanie-wysiadanie: pokazujemy
-  // go od razu, ale do pozycji pojazdu i przystanków przed wsiadaniem
-  // potrzebny jest cały kurs z czasami.
+  // go od razu, ale do pozycji pojazdu między przystankami potrzebny jest
+  // cały kurs z czasami.
   useEffect(() => {
     const cached = stopsCache.get(cacheKey);
     if (cached) {
@@ -307,12 +297,6 @@ function LegStopsList({
     [stops, leg, vehicle, userLocation, now, allowLive],
   );
   const vehicleGap = livePosition?.gap ?? null;
-  // Zanim pojazd dojedzie do przystanku wsiadania, pokazujemy też kilka
-  // przystanków wcześniej, żeby było widać, gdzie teraz jest.
-  const showLead = vehicleGap != null && vehicleGap < segment.start;
-  const first = showLead ? Math.max(0, segment.start - LEAD_STOPS) : segment.start;
-  const visible = stops.slice(first, segment.end + 1);
-  const vehicleAbove = vehicleGap != null && vehicleGap < first;
 
   if (loading) {
     return (
@@ -331,40 +315,17 @@ function LegStopsList({
 
   return (
     <View style={s.stopsWrap}>
-      {vehicleAbove && (
-        <View style={s.stopRow}>
-          <View style={s.stopRail}>
-            <View
-              accessible
-              accessibilityRole="image"
-              accessibilityLabel={first === 0 ? t.leg.vehicleNotStarted : t.leg.vehicleFarBack}
-              style={s.vehicleMarkerLead}
-            >
-              <VehicleGlyph mode={leg.mode} />
-            </View>
-            <View style={[s.connector, { backgroundColor: scheme.outline }]} />
-          </View>
-          <View style={s.stopBody}>
-            <Text style={[s.stopName, s.stopNamePassed]} numberOfLines={1}>
-              {first === 0 ? t.leg.vehicleNotStarted : t.leg.vehicleFarBack}
-            </Text>
-          </View>
-        </View>
-      )}
-      {visible.map((stop, offset) => {
-        const i = first + offset;
-        const inSegment = i >= segment.start && i <= segment.end;
-        const connectorAccent = i >= segment.start && i + 1 <= segment.end;
+      {stops.slice(segment.start, segment.end + 1).map((stop, offset) => {
+        const i = segment.start + offset;
+        const connectorAccent = i + 1 <= segment.end;
         return (
           <StopRow
             key={`${stop.stopId}-${stop.seq}`}
             stop={stop}
-            isFirst={i === first && !vehicleAbove}
+            isFirst={i === segment.start}
             isLast={i === segment.end}
             index={i}
-            segmentStart={segment.start}
             vehicleMode={leg.mode}
-            inSegment={inSegment}
             emphasis={i === segment.start || i === segment.end}
             accent={accent}
             connectorAccent={connectorAccent}
@@ -635,22 +596,9 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 3,
   },
-  vehicleMarkerLead: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: scheme.surface,
-    backgroundColor: scheme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 3,
-  },
-  connector: { width: 3, flex: 1, minHeight: 12, borderRadius: 99, marginTop: -1 },
   stopBody: { flex: 1, justifyContent: 'center', minHeight: 30, paddingBottom: 6 },
   stopName: { ...type.bodyMedium, color: scheme.onSurface },
   stopNameStrong: { fontWeight: '700' },
-  stopNameDim: { color: scheme.onSurfaceVariant },
   stopNamePassed: { color: scheme.outline },
   skeletonDot: {
     borderColor: scheme.outlineVariant,

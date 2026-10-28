@@ -1196,8 +1196,6 @@ export const en: Strings = {
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} between ${from} and ${to}`,
-    vehicleFarBack: 'Vehicle is further back on the route',
-    vehicleNotStarted: 'This run has not started yet',
     fromPrefix: 'from ',
     toPrefix: 'to ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
