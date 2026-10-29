@@ -410,7 +410,8 @@ function unpackFootRoute(bytes: Uint8Array | null): [number, number][] | null {
   return out;
 }
 
-export function routeFootWaypointsSync(
+/** Trasa piesza synchronicznie, przez moduł natywny albo wasm. */
+function routeFootWaypointsSync(
   waypoints: ReadonlyArray<readonly [number, number]>,
   rail = false,
 ): [number, number][] | null {
