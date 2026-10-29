@@ -223,6 +223,7 @@ const NAMED: Record<string, string> = {
   nacute: 'ń', Nacute: 'Ń', zacute: 'ź', Zacute: 'Ź',
   lstrok: 'ł', Lstrok: 'Ł', zdot: 'ż', Zdot: 'Ż',
   ndash: '\u2013', mdash: '\u2014', hellip: '…',
+  middot: '·', bull: '•',
   laquo: '«', raquo: '»', bdquo: '„', ldquo: '“', rdquo: '”',
   lsquo: '‘', rsquo: '’',
 };
@@ -349,6 +350,13 @@ function parsePlDate(raw: string): number | null {
   return Number.isFinite(ts) ? ts : null;
 }
 
+/**
+ * Token linii MPK Wrocław: 144, N, A, E1, C2. Karta listy czasem niesie
+ * kropkę albo inny separator zamiast numeru, więc bierzemy tylko kształt
+ * numeru linii.
+ */
+const WROCLAW_LINE_RE = /^(?:[A-Z]{1,3}\d{0,3}|\d{1,3}[A-Z]?)$/i;
+
 /** Komunikaty operacyjne z serwisu pasażera MPK (lista „zmiany w komunikacji”). */
 function parseMpkChanges(html: string): MpkNewsItem[] {
   const cards = html.split(/class="message__card"/i).slice(1);
@@ -361,9 +369,12 @@ function parseMpkChanges(html: string): MpkNewsItem[] {
     const link = decodeEntities(linkM[1]).trim();
     const rawTitle = htmlToText(linkM[2]).replace(/\s+/g, ' ').trim();
     const title = cleanNewsTitle(rawTitle);
-    const lines = [...card.matchAll(/class="message__number">([^<]+)/gi)].map((m) =>
-      decodeEntities(m[1]).trim(),
-    );
+    const lines: string[] = [];
+    for (const m of card.matchAll(/class="message__number">([^<]+)/gi)) {
+      const tok = decodeEntities(m[1]).trim().toUpperCase();
+      if (!WROCLAW_LINE_RE.test(tok) || lines.includes(tok)) continue;
+      lines.push(tok);
+    }
     const range = decodeEntities((card.match(/class="date__value">([^<]+)/i) ?? [])[1] ?? '').trim();
     const pubDate = range ? parsePlDate(range.split(/\s*-\s*/)[0] ?? '') : null;
     if (!title) continue;
@@ -2135,6 +2146,9 @@ function scrubArticleHtml(raw: string): string {
   let out = raw;
   out = removeTaggedBlocks(out, /<div\b[^>]*(?:bbGallery|data-bbgallery-box|expandedSocial|socialEmbed)[^>]*>/gi);
   out = out
+    // Word wypisuje punktory list jako warunkowe komentarze ze znakiem
+    // „&middot;” i garścią &nbsp;: to chrom formatowania, nie treść.
+    .replace(/<!--\s*\[if !supportLists\]\s*-->[\s\S]*?<!--\s*\[endif\]\s*-->/gi, ' ')
     .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe[^>]*>/gi, ' ')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, ' ')
     .replace(/<button\b[^>]*>[\s\S]*?<\/button[^>]*>/gi, ' ')
