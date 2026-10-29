@@ -2,7 +2,9 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
-use crate::search::{distance_meters, expand_token_synonyms, normalize_polish};
+use crate::search::{
+    damerau_levenshtein_chars, distance_meters, expand_token_synonyms, normalize_polish,
+};
 
 #[derive(Default)]
 struct AddressCatalog {
@@ -28,6 +30,7 @@ struct Address {
 
 struct Word {
     text: String,
+    chars: Vec<char>,
     streets: Vec<usize>,
 }
 
@@ -119,20 +122,40 @@ impl AddressCatalog {
         }
         self.words = postings
             .into_iter()
-            .map(|(text, streets)| Word { text, streets })
+            .map(|(text, streets)| Word {
+                chars: text.chars().collect(),
+                text,
+                streets,
+            })
             .collect();
         self.words.sort_unstable_by(|a, b| a.text.cmp(&b.text));
         self.street_ids.clear();
         self.street_ids.shrink_to_fit();
     }
 
-    // Prefiksy znajdujemy binarnie w słowniku, bez skanowania ulic i liczenia literówek.
-    fn match_streets(&self, query: &[&str]) -> HashMap<usize, i32> {
+    fn record(
+        current: &mut HashMap<usize, i32>,
+        previous: Option<&HashMap<usize, i32>>,
+        idx: usize,
+        score: i32,
+    ) {
+        if previous.is_none_or(|previous| previous.contains_key(&idx)) {
+            current
+                .entry(idx)
+                .and_modify(|best| *best = (*best).max(score))
+                .or_insert(score);
+        }
+    }
+
+    // Prefiksy znajdujemy binarnie w słowniku. Literówki skanują słownik tylko
+    // w trybie fuzzy, czyli po jawnym braku trafień (patrz `search`).
+    fn match_streets(&self, query: &[&str], fuzzy: bool) -> HashMap<usize, i32> {
         let mut matches: Option<HashMap<usize, i32>> = None;
         let mut ordered = query.to_vec();
         ordered.sort_by_key(|token| !token.chars().any(|c| c.is_ascii_digit()));
         for token in ordered {
             let mut current: HashMap<usize, i32> = HashMap::new();
+            let previous = matches.as_ref();
             for variant in expand_token_synonyms(token) {
                 let numeric = variant.chars().any(|c| c.is_ascii_digit());
                 let start = self
@@ -150,14 +173,23 @@ impl AddressCatalog {
                         break;
                     };
                     for &idx in &word.streets {
-                        if matches
-                            .as_ref()
-                            .is_none_or(|previous| previous.contains_key(&idx))
-                        {
-                            current
-                                .entry(idx)
-                                .and_modify(|best| *best = (*best).max(score))
-                                .or_insert(score);
+                        Self::record(&mut current, previous, idx, score);
+                    }
+                }
+                if fuzzy && !numeric && variant.chars().count() >= 4 {
+                    let q_chars: Vec<char> = variant.chars().collect();
+                    let max_edits = if q_chars.len() >= 7 { 2 } else { 1 };
+                    for word in &self.words {
+                        if word.chars.len().abs_diff(q_chars.len()) > max_edits {
+                            continue;
+                        }
+                        let distance = damerau_levenshtein_chars(&q_chars, &word.chars);
+                        if distance as usize > max_edits {
+                            continue;
+                        }
+                        let score = 84 - distance as i32 * 10;
+                        for &idx in &word.streets {
+                            Self::record(&mut current, previous, idx, score);
                         }
                     }
                 }
@@ -175,13 +207,14 @@ impl AddressCatalog {
         matches.unwrap_or_default()
     }
 
-    fn search(&self, query: &str, position: Option<(f64, f64)>, limit: usize) -> Vec<Hit<'_>> {
-        let normalized = normalize_polish(query);
-        if normalized.chars().count() < 2 || normalized.len() > 160 || limit == 0 {
-            return Vec::new();
-        }
-        let query_tokens = tokens(&normalized);
-        let mut matches = self.match_streets(&query_tokens);
+    fn search_matches(
+        &self,
+        query_tokens: &[&str],
+        position: Option<(f64, f64)>,
+        limit: usize,
+        fuzzy: bool,
+    ) -> Vec<Hit<'_>> {
+        let mut matches = self.match_streets(query_tokens, fuzzy);
         let mut house = None;
         if matches.is_empty() {
             for (index, token) in query_tokens.iter().enumerate().rev() {
@@ -196,7 +229,7 @@ impl AddressCatalog {
                 if remaining.is_empty() {
                     continue;
                 }
-                let candidates = self.match_streets(&remaining);
+                let candidates = self.match_streets(&remaining, fuzzy);
                 if !candidates.is_empty() {
                     matches = candidates;
                     house = Some(normalize_house(token));
@@ -251,6 +284,26 @@ impl AddressCatalog {
             }
         }
         hits
+    }
+
+    /// Dokładne trafienia liczy zawsze; fuzzy dopiero, gdy nic nie wyszło.
+    fn search(
+        &self,
+        query: &str,
+        position: Option<(f64, f64)>,
+        limit: usize,
+        fuzzy: bool,
+    ) -> Vec<Hit<'_>> {
+        let normalized = normalize_polish(query);
+        if normalized.chars().count() < 2 || normalized.len() > 160 || limit == 0 {
+            return Vec::new();
+        }
+        let query_tokens = tokens(&normalized);
+        let exact = self.search_matches(&query_tokens, position, limit, false);
+        if !exact.is_empty() || !fuzzy {
+            return exact;
+        }
+        self.search_matches(&query_tokens, position, limit, true)
     }
 }
 
@@ -326,11 +379,13 @@ pub fn handle_address_cmd(payload: &[u8]) -> Vec<u8> {
                 let lat = reader.f64()?;
                 let lon = reader.f64()?;
                 let limit = (reader.u32()? as usize).min(50);
+                // Opcjonalny ogon: starsze wywołania wysyłają tylko tryb dokładny.
+                let fuzzy = reader.take::<1>().is_some_and(|flag| flag[0] != 0);
                 let position =
                     (has_position && lat.is_finite() && lon.is_finite()).then_some((lat, lon));
                 CATALOG.with(|catalog| {
                     let catalog = catalog.borrow();
-                    let hits = catalog.search(query, position, limit);
+                    let hits = catalog.search(query, position, limit, fuzzy);
                     out.extend_from_slice(&(hits.len() as u32).to_le_bytes());
                     for hit in hits {
                         let title = if hit.with_house {
@@ -398,23 +453,26 @@ mod tests {
             }
         }
         catalog.finish();
-        for query in [
-            "gr",
-            "grun",
-            "grunwaldzka",
-            "grunwaldzka 12",
-            "grunwladzka 12",
-            "wroclaw",
-            "nieistniejaca 99",
+        for (query, fuzzy) in [
+            ("gr", false),
+            ("grun", false),
+            ("grunwaldzka", false),
+            ("grunwaldzka 12", false),
+            ("grunwladzka 12", true),
+            ("wroclaw", true),
+            ("nieistniejaca 99", true),
         ] {
             let mut timings = Vec::new();
             for _ in 0..50 {
                 let start = std::time::Instant::now();
-                std::hint::black_box(catalog.search(query, Some((51.11, 17.04)), 16));
+                std::hint::black_box(catalog.search(query, Some((51.11, 17.04)), 16, fuzzy));
                 timings.push(start.elapsed());
             }
             timings.sort();
-            println!("{query}: p50 {:?}, p95 {:?}", timings[25], timings[47]);
+            println!(
+                "{query} (fuzzy {fuzzy}): p50 {:?}, p95 {:?}",
+                timings[25], timings[47]
+            );
         }
     }
 
@@ -444,32 +502,62 @@ mod tests {
             "12 grunwaldzka",
             "ul. Grunwaldzka 12 Wroclaw",
         ] {
-            let hits = catalog.search(query, None, 10);
+            let hits = catalog.search(query, None, 10, false);
             assert_eq!(hits.len(), 2, "{query}");
             assert_eq!(hits[0].address.house, "12");
             assert_eq!(hits[1].address.house, "12A");
         }
-        assert!(catalog.search("grunwaldzka 13", None, 10).is_empty());
-        assert!(catalog.search("grunwladzka 12", None, 10).is_empty());
-        let limited = catalog.search("grun 12", None, 1);
+        assert!(catalog.search("grunwaldzka 13", None, 10, false).is_empty());
+        assert!(catalog.search("grunwladzka 12", None, 10, false).is_empty());
+        let limited = catalog.search("grun 12", None, 1, false);
         assert_eq!(limited.len(), 1);
         assert_eq!(limited[0].address.house, "12");
         assert_eq!(
-            catalog.search("grunwaldzka 12a", None, 10)[0].address.house,
+            catalog.search("grunwaldzka 12a", None, 10, false)[0]
+                .address
+                .house,
             "12A"
         );
         assert_eq!(
-            catalog.search("grunwaldzka 14/2", None, 10)[0]
+            catalog.search("grunwaldzka 14/2", None, 10, false)[0]
                 .address
                 .house,
             "14/2"
         );
-        assert_eq!(catalog.search("3 maja", None, 10)[0].street.name, "3 Maja");
-        assert_eq!(catalog.search("3 maja 7", None, 10)[0].address.house, "7");
-        assert_eq!(catalog.search("dluga 5 gdansk", None, 10).len(), 1);
-        assert_eq!(catalog.search("dluga 5", None, 10).len(), 2);
-        assert!(catalog.search("", None, 10).is_empty());
-        assert!(catalog.search("grunwaldzka", None, 0).is_empty());
+        assert_eq!(
+            catalog.search("3 maja", None, 10, false)[0].street.name,
+            "3 Maja"
+        );
+        assert_eq!(
+            catalog.search("3 maja 7", None, 10, false)[0].address.house,
+            "7"
+        );
+        assert_eq!(catalog.search("dluga 5 gdansk", None, 10, false).len(), 1);
+        assert_eq!(catalog.search("dluga 5", None, 10, false).len(), 2);
+        assert!(catalog.search("", None, 10, false).is_empty());
+        assert!(catalog.search("grunwaldzka", None, 0, false).is_empty());
+    }
+
+    #[test]
+    fn fuzzy_fallback_only_after_exact_miss() {
+        let catalog = catalog();
+        assert!(catalog.search("grunwladzka 12", None, 10, false).is_empty());
+        let typo = catalog.search("grunwladzka 12", None, 10, true);
+        assert_eq!(typo.len(), 2);
+        assert_eq!(typo[0].address.house, "12");
+        assert_eq!(typo[1].address.house, "12A");
+        assert_eq!(
+            catalog.search("grunwaldza", None, 10, true)[0].street.name,
+            "Grunwaldzka"
+        );
+        assert_eq!(
+            catalog.search("grunwaldza 12", None, 10, true)[0].address.house,
+            "12"
+        );
+        // Numer domu nadal musi być dokładny.
+        assert!(catalog.search("grunwaldzka 1x", None, 10, true).is_empty());
+        // Krótkie zapytania nie fuzzy'ują.
+        assert!(catalog.search("gri", None, 10, true).is_empty());
     }
 
     #[test]
