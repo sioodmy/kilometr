@@ -1,0 +1,80 @@
+# Cykliczna agregacja i analiza komunikatów transportowych (DeepSeek LLM) → Cloudflare R2.
+#
+# Działa co 20 minut lub na żądanie (workflow_dispatch).
+# Pobiera feedy miejskie, filtruje spam, analizuje utrudnienia (z zachowaniem cache
+# w Actions, by nie płacić dwa razy za te same artykuły) i wrzuca gotowe
+# disruptions.json per-miasto do Cloudflare R2.
+
+name: Disruptions sync → R2
+
+on:
+  schedule:
+    # Co 20 minut
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      city:
+        description: 'Miasto (puste = wszystkie obsługiwane)'
+        required: false
+        default: ''
+        type: choice
+        options: ['', wroclaw, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: disruptions-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-disruptions:
+    name: Aggregate & Analyze Disruptions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Przywróć cache przeanalizowanych newsów
+        uses: actions/cache@v4
+        with:
+          path: cloudflare/data/news-cache.json
+          key: disruptions-news-cache-${{ github.run_id }}
+          restore-keys: |
+            disruptions-news-cache-
+
+      - name: Przetwarzanie komunikatów (DeepSeek)
+        run: |
+          CITY="${{ inputs.city }}"
+          if [ -z "$CITY" ]; then
+            CITY="all"
+          fi
+          node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=6
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+      - name: Upload disruptions.json do Cloudflare R2
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload do R2."
+            exit 0
+          fi
+          for city_dir in cloudflare/dist/*/; do
+            if [ -d "$city_dir" ]; then
+              CITY=$(basename "$city_dir")
+              FILE="$city_dir/disruptions.json"
+              if [ -f "$FILE" ]; then
+                echo "Wysyłanie $FILE do R2 (kilometr-timetable/$CITY/disruptions.json)..."
+                npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/$CITY/disruptions.json" \
+                  --file="$FILE" --content-type application/json
+              fi
+            fi
+          done
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

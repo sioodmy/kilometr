@@ -8,6 +8,7 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "build": "node scripts/build-timetable.mjs",
+    "process-news": "node scripts/process-news.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
