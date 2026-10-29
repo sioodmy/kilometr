@@ -3,7 +3,6 @@ import {
   hasFootTileSync,
   loadFootTileAsync,
   routeFootWaypointsAsync,
-  routeFootWaypointsSync,
 } from '../../modules/kilometr-raptor';
 
 export type FootCoord = [number, number];
@@ -161,14 +160,6 @@ function canRouteFootSync(waypoints: ReadonlyArray<FootCoord>): boolean {
   const tiles = tilesForWaypoints(waypoints);
   if (tiles.length === 0) return false;
   return tiles.every(([tx, ty]) => hasFootTileSync(tx, ty));
-}
-
-export function routeFootLocalSync(
-  waypoints: ReadonlyArray<FootCoord>,
-): FootCoord[] | null {
-  if (waypoints.length < 2) return null;
-  if (!canRouteFootSync(waypoints)) return null;
-  return routeFootWaypointsSync(waypoints);
 }
 
 export async function routeFootLocal(
