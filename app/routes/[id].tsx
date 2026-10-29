@@ -89,11 +89,12 @@ export default function RouteDetailsScreen() {
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
   const [offline, setOffline] = useState(false);
   const [liveStale, setLiveStale] = useState(() => liveTracker.getLiveState() !== 'fresh');
-  const rawItem = isTrackedThis
-    ? trackedTrip.connection
-    : loadedItem?.id === id
-      ? loadedItem
-      : (immediateItem ?? null);
+  const rawItem =
+    isTrackedThis && trackedTrip
+      ? trackedTrip.connection
+      : loadedItem?.id === id
+        ? loadedItem
+        : (immediateItem ?? null);
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia: bez
   // tickera karta pokazywałaby wartości z chwili wyszukiwania.
   const [liveTick, setLiveTick] = useState(0);
@@ -204,52 +205,61 @@ export default function RouteDetailsScreen() {
     }
   };
 
-  // Cache po id po\u0142\u0105czenia z wyszukiwania
   useEffect(() => {
-    if (immediateItem) return;
-    RoutingService.getCachedConnection(id)
-      .then((c) => {
-        if (c) {
-          setItem(c);
-        } else {
-          setLoadFailed(true);
+    // Brak id to nie „wczytujemy” - inaczej ekran zostawał ze spinnerem w nieskończoność.
+    if (!id) {
+      setLoadFailed(true);
+      return;
+    }
+    setLoadFailed(false);
+    setOffline(false);
+    if (immediateItem) {
+      setItem(immediateItem);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const hit = await RoutingService.getConnectionById(String(id));
+        if (cancelled) return;
+        if (hit) {
+          setItem(hit.connection);
+          setOffline(hit.source === 'cache');
+          return;
         }
-      })
-      .catch(() => {
-        setOffline(true);
         setLoadFailed(true);
-      });
+      } catch (err) {
+        console.warn('[RouteDetails] load failed:', err);
+        if (!cancelled) setLoadFailed(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, [id, immediateItem]);
 
-  const noLegs = item && (!item.legs || item.legs.length === 0);
-  const dataNote = useMemo(() => {
-    if (offline) return s.offline.cachedBadge;
-    if (liveStale) return s.connectionCard.liveFeedStale;
-    return null;
-  }, [offline, liveStale, s]);
-
-  if (loadFailed && !item) {
+  if (loadFailed) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
+            style={styles.iconBtn}
             accessibilityRole="button"
-            accessibilityLabel={s.common.back}
-            style={styles.backBtn}
+            accessibilityLabel={s.map.backA11y}
           >
-            <ChevronLeft size={24} color={scheme.onSurface} />
+            <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
           <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
-          <View style={styles.headerRight} />
         </View>
-        <View style={styles.center}>
-          <RouteOff size={48} color={scheme.onSurfaceVariant} />
-          <Text style={styles.errorTitle}>{s.routeDetails.routeNotFound}</Text>
-          <Text style={styles.errorText}>
-            {offline ? s.routeDetails.routeNotFoundOffline : s.routeDetails.routeNotFoundOnline}
-          </Text>
-          <Pressable onPress={goBack} style={styles.retryBtn}>
+        <View style={styles.loading}>
+          <Text style={styles.loadingText}>{s.routeDetails.loadFail}</Text>
+          <Pressable
+            onPress={goBack}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+          >
             <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
           </Pressable>
         </View>
@@ -259,44 +269,55 @@ export default function RouteDetailsScreen() {
 
   if (!item) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
+            style={styles.iconBtn}
             accessibilityRole="button"
-            accessibilityLabel={s.common.back}
-            style={styles.backBtn}
+            accessibilityLabel={s.map.backA11y}
           >
-            <ChevronLeft size={24} color={scheme.onSurface} />
+            <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
           <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
-          <View style={styles.headerRight} />
         </View>
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={scheme.primary} />
-          <Text style={styles.loadingText}>{s.routeDetails.loading}</Text>
+        <View style={styles.loading}>
+          <ActivityIndicator color={scheme.primary} />
         </View>
       </SafeAreaView>
     );
   }
 
+  const noLegs = item.legs.length === 0;
+
+  // Treść komunikatu o źródle danych. Kolejność ma znaczenie: połączenie
+  // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
+  const dataNote = offline
+    ? s.routeDetails.offlineNote
+    : liveStale
+      ? s.routeDetails.noLiveNote
+      : null;
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={goBack}
-          accessibilityRole="button"
-          accessibilityLabel={s.common.back}
-          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
-          hitSlop={8}
-        >
-          <ChevronLeft size={24} color={scheme.onSurface} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {s.routeDetails.title}
-        </Text>
-        <View style={styles.headerRight}>
-          {item && (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View
+        style={styles.screen}
+        importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'}
+        accessibilityElementsHidden={sharing || alarmOpen}
+      >
+        <View style={styles.header}>
+          <Pressable
+            onPress={goBack}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.backA11y}
+          >
+            <ChevronLeft size={23} color={scheme.onSurface} />
+          </Pressable>
+          <Text style={styles.headerTitle} accessibilityRole="header">
+            {s.routeDetails.title}
+          </Text>
+          {!noLegs && (
             <Pressable
               onPress={() => setSharing(true)}
               accessibilityRole="button"
@@ -352,184 +373,125 @@ export default function RouteDetailsScreen() {
             />
           </Pressable>
         </View>
-      </View>
 
-      <ScrollView
-        contentContainerStyle={styles.body}
-        showsVerticalScrollIndicator={false}
-        overScrollMode="never"
-      >
-        <ConnectionSummary item={item} offline={offline} />
-        {dataNote && (
-          <View style={styles.offlineBanner}>
-            <CloudOff size={16} color={scheme.onSurfaceVariant} />
-            <Text style={styles.offlineBannerText}>{dataNote}</Text>
-          </View>
-        )}
+        <ScrollView
+          contentContainerStyle={styles.body}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+        >
+          <ConnectionSummary item={item} offline={offline} />
+          {dataNote && (
+            <View style={styles.offlineBanner}>
+              <CloudOff size={16} color={scheme.onSurfaceVariant} />
+              <Text style={styles.offlineBannerText}>{dataNote}</Text>
+            </View>
+          )}
 
-        {noLegs ? (
-          <View style={styles.emptyCard}>
-            <RouteOff size={20} color={scheme.onSurfaceVariant} />
-            <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
-            <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
-            <Pressable
-              onPress={() => router.back()}
-              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-            >
-              <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <>
-            <LegTimeline legs={item.legs} />
-            <RouteMapCard
-              connection={item}
-              onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
-            />
-            {hasTransfers && (
-              <TransferProtectionCard
-                state={isTrackedThis ? trackedTrip.transfer : undefined}
-                active={isTrackedThis && trackedTrip.protectionEnabled === true}
-                busy={trackingBusy}
-                onToggle={(val) => void toggleTracking(val)}
-                onOpenDetails={openTransferProtection}
+          {noLegs ? (
+            <View style={styles.emptyCard}>
+              <RouteOff size={20} color={scheme.onSurfaceVariant} />
+              <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
+              <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
+              <Pressable
+                onPress={() => router.back()}
+                style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <LegTimeline legs={item.legs} />
+              <RouteMapCard
+                connection={item}
+                onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
               />
-            )}
-            <ConnectionLineAlerts
-              lines={item.legs.map((l) => l.line).filter(Boolean) as string[]}
-            />
-          </>
-        )}
-      </ScrollView>
-      {item && (
-        <ShareConnectionSheet
-          connection={item}
-          visible={sharing}
-          onClose={() => setSharing(false)}
-        />
-      )}
-      {item && (
-        <DepartureAlarmSheet
-          connection={item}
-          visible={alarmOpen}
-          onClose={() => setAlarmOpen(false)}
-        />
+              {hasTransfers && (
+                <TransferProtectionCard
+                  state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
+                  active={isTrackedThis && trackedTrip?.protectionEnabled === true}
+                  busy={trackingBusy}
+                  onPress={() => {
+                    if (isTrackedThis && trackedTrip?.protectionEnabled) {
+                      openTransferProtection();
+                    } else {
+                      void toggleTracking(true);
+                    }
+                  }}
+                />
+              )}
+
+              <ConnectionLineAlerts connection={item} />
+            </>
+          )}
+
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      </View>
+      {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
+      {alarmOpen && (
+        <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
       )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: scheme.surface,
+  safe: { flex: 1, backgroundColor: scheme.surface },
+  screen: { flex: 1 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  loadingText: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  retryBtn: {
+    backgroundColor: scheme.primary,
+    borderRadius: shape.full,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginTop: 8,
   },
+  retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    gap: 10,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: scheme.outlineVariant,
   },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: type.titleMedium.fontSize,
-    fontFamily: type.titleMedium.fontFamily,
-    color: scheme.onSurface,
+  iconBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerRight: {
+  headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
+  trackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  backBtn: {
-    padding: 8,
-    borderRadius: shape.cornerFull,
-  },
-  trackBtn: {
-    padding: 8,
-    borderRadius: shape.cornerFull,
-  },
-  trackBtnActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  alarmFocused: {
-    outlineWidth: 2,
-    outlineColor: scheme.primary,
-  },
-  body: {
-    padding: 16,
-    gap: 16,
-  },
-  center: {
-    flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    gap: 12,
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
   },
-  loadingText: {
-    fontSize: type.bodyMedium.fontSize,
-    fontFamily: type.bodyMedium.fontFamily,
-    color: scheme.onSurfaceVariant,
-  },
-  errorTitle: {
-    fontSize: type.titleMedium.fontSize,
-    fontFamily: type.titleMedium.fontFamily,
-    color: scheme.onSurface,
-    textAlign: 'center',
-  },
-  errorText: {
-    fontSize: type.bodyMedium.fontSize,
-    fontFamily: type.bodyMedium.fontFamily,
-    color: scheme.onSurfaceVariant,
-    textAlign: 'center',
-  },
-  retryBtn: {
-    backgroundColor: scheme.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: shape.cornerFull,
-    marginTop: 8,
-  },
-  retryText: {
-    color: scheme.onPrimary,
-    fontSize: type.labelLarge.fontSize,
-    fontFamily: type.labelLarge.fontFamily,
-  },
-  emptyCard: {
-    padding: 24,
-    alignItems: 'center',
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.cornerMedium,
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: type.titleMedium.fontSize,
-    fontFamily: type.titleMedium.fontFamily,
-    color: scheme.onSurface,
-  },
-  emptyText: {
-    fontSize: type.bodyMedium.fontSize,
-    fontFamily: type.bodyMedium.fontFamily,
-    color: scheme.onSurfaceVariant,
-    textAlign: 'center',
-  },
+  trackBtnActive: { backgroundColor: scheme.primaryContainer },
+  body: { paddingHorizontal: 16, gap: 18, paddingBottom: 40 },
+  alarmFocused: { borderWidth: 2, borderColor: scheme.primary },
   offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    padding: 12,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.cornerMedium,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.medium,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
-  offlineBannerText: {
-    fontSize: type.bodySmall.fontSize,
-    fontFamily: type.bodySmall.fontFamily,
-    color: scheme.onSurfaceVariant,
-    flex: 1,
+  offlineBannerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flex: 1 },
+  emptyCard: {
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.large,
+    padding: 20,
   },
+  emptyTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
+  emptyText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
 });

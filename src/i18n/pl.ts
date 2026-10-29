@@ -870,7 +870,13 @@ export const pl = {
     filterNoHistoryBody:
       'Sprawdź połączenie w aplikacji, a tu zobaczysz komunikaty o liniach z tej trasy.',
     resolved: 'Ruch przywrócony',
-    solutionLabel: 'Rozwiązanie',
+    solutionLabel: 'Trasa objazdu',
+    detourLabel: 'Trasa objazdu',
+    detourAndReplacement: 'Objazd i autobus zastępczy',
+    replacementBus: 'Autobus zastępczy',
+    urgentChip: 'Utrudnienie',
+    plannedChip: 'Zmiana trasy',
+    omittedStopsPrefix: 'Omija:',
   },
   newsSvc: {
     justNow: 'przed chwilą',
