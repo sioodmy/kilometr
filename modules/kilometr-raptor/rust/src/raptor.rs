@@ -591,6 +591,9 @@ struct ILeg {
 struct ICand {
     legs: Vec<ILeg>,
     dest: usize,
+    /// Opcjonalne końcowe dojście pieszo: (skąd, sek, metry). Pozwala kończyć
+    /// podróż spacerem zamiast wymuszonej przesiadki na ostatni krótki kurs.
+    walk_out: Option<(usize, i32, i32)>,
 }
 
 #[derive(Clone)]
@@ -1049,7 +1052,7 @@ impl RaptorScratch {
         let uncertainty: i32 = legs.iter().map(|l| if self.transfer_buffers.contains_key(&(l.p, l.j)) { 120 } else { 0 }).sum();
         let val_t = a + js_round(wr * (e as f64)) + uncertainty;
         if arr_t >= ba && val_t >= bv { return; }
-        cands.push(ICand { legs, dest: s });
+        cands.push(ICand { legs, dest: s, walk_out: None });
         if arr_t < self.best_arr[k] {
             self.best_arr[k] = arr_t;
         }
@@ -1196,7 +1199,9 @@ impl RaptorScratch {
         k: usize,
         min_t: i32,
         train_need: i32,
+        latest_arr: i32,
         bound_val: i32,
+        cands: &mut Vec<ICand>,
     ) {
         let n_stops = net.n_stops;
         let kk = k * n_stops;
@@ -1245,6 +1250,28 @@ impl RaptorScratch {
                 self.p_b[id] = w;
                 self.p_c[id] = src;
                 self.mark(to);
+
+                // Spacer zamiast wymuszonej przesiadki: cel sprawdzany jest
+                // tylko przy wysiadaniu z kursu, więc bez tego każda podróż
+                // musiała kończyć się pojazdem i przesiadka na 1 przystanek
+                // wygrywała z dojściem z buta. Gdy dojście pieszo z końca
+                // kursu trafia na przystanek pod celem, dołóż wariant
+                // „koniec pieszo”.
+                let dest_egress = self.egress_sec[to];
+                if dest_egress >= 0
+                    && (self.egress_sec[s] < 0 || w + dest_egress < self.egress_sec[s])
+                    && src + w + dest_egress <= latest_arr
+                {
+                    if let Some(legs) = self.backtrack(net, k, s) {
+                        if !self.pointless(net, &legs, to) {
+                            cands.push(ICand {
+                                legs,
+                                dest: to,
+                                walk_out: Some((s, w, foot_distance_m(net, s, to, w))),
+                            });
+                        }
+                    }
+                }
             }
         }
     }
@@ -1340,7 +1367,7 @@ impl RaptorScratch {
                     cands,
                 );
             }
-            self.relax_footpaths(net, fp_dur, k, min_t, train_need, bound_val);
+            self.relax_footpaths(net, fp_dur, k, min_t, train_need, latest_arr, bound_val, cands);
             if self.mark_count == 0 {
                 break;
             }
@@ -1566,6 +1593,7 @@ impl RaptorScratch {
         Some(ICand {
             legs,
             dest: lp_stops[best_a as usize] as usize,
+            walk_out: None,
         })
     }
 }
@@ -1820,11 +1848,12 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
             let first_stop = net.pat_stops(first.p)[first.b] as usize;
             let access = s.access_sec[first_stop];
             let egress = s.egress_sec[c.dest];
+            let walk_out_sec = c.walk_out.as_ref().map(|(_, wsec, _)| *wsec).unwrap_or(0);
             let first_dep = s.delays.dep(net, first.p)[first.j * net.patterns[first.p].n + first.b];
             let last_arr = s.delays.arr(net, last.p)[last.j * net.patterns[last.p].n + last.a];
             let dep = q.t0.max(first_dep - access);
-            let arr = last_arr + egress;
-            let mut walk_sec = access + egress;
+            let arr = last_arr + walk_out_sec + egress;
+            let mut walk_sec = access + egress + walk_out_sec;
             for l in &c.legs {
                 walk_sec += l.walk_in;
             }
@@ -1865,8 +1894,12 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
         let mut count = 0_i32;
 
         for ci in unique_cands {
-            let refined = s
-                .refine(
+            // Dojście końcowe nie pasuje do refina (ten optymalizuje tylko
+            // wysiadanie z kursu), więc varianty „koniec pieszo” idą jak są.
+            let refined = if ci.c.walk_out.is_some() {
+                ci.c.clone()
+            } else {
+                s.refine(
                     net,
                     &fp_dur,
                     &ci.c,
@@ -1877,7 +1910,8 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
                     q.t0,
                     q.latest_arr,
                 )
-                .unwrap_or(ci.c);
+                .unwrap_or(ci.c)
+            };
 
             let key = FullKey::from_cand(&refined);
             if !seen.insert(key) {
@@ -1927,6 +1961,16 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
 
                 prev_stop = Some(to);
             }
+
+            // Trzeba pamiętać: dojście końcowe (3 słowa) zawsze, żeby dekod po
+            // stronie TS mógł je spakować w nogę spacerową.
+            let (walk_from, walk_wsec, walk_wm) = match refined.walk_out {
+                Some((from, wsec, wm)) => (from as i32, wsec, wm),
+                None => (-1, 0, 0),
+            };
+            out_words.push(walk_from);
+            out_words.push(walk_wsec);
+            out_words.push(walk_wm);
             count += 1;
         }
 
@@ -2139,6 +2183,89 @@ mod tests {
         assert_eq!(&result[8..], &[0, 0, 0, 1, 0, 0, start, start + 300]);
         q.t0 -= 1;
         assert_eq!(run_on_net(&net, &q), vec![0]);
+    }
+
+    #[test]
+    fn terminal_walk_replaces_forced_short_transfer() {
+        // S0 --kurs--> S1, dalej pieszo do S2 pod celem. Bez końca pieszo
+        // podróż nie mogła się skończyć na przystanku S2 (cel sprawdzany
+        // wyłącznie przy wysiadaniu), więc planer wymuszał przesiadkę
+        // na ostatni przystanek. Teraz wariant „koniec pieszo” wygrywa.
+        let start = 8 * 3600;
+        let mut words = vec![
+            NET_MAGIC,
+            3, // n_stops
+            2, // fp_count
+            1, // fp_total (S1->S2)
+            1, // n_pat
+            3, // sp_count
+            2, // sp_total
+            // fp_start (fp_count+1 = 3)
+            0, 0, 1,
+            // fp_to (1)
+            2,
+            // fp_dist_m (1)
+            160,
+            // fp_fixed_sec (1)
+            0,
+            // sp_start (4)
+            0, 1, 2, 2,
+            // sp_pat (2)
+            0, 0,
+            // sp_pos (2)
+            0, 1,
+            // pattern 0: tram, 2 przystanki, 1 kurs
+            KIND_TRAM as i32,
+            2,
+            1,
+            // stops
+            0, 1,
+        ];
+        for t in [start, start + 300] {
+            words.push(t);
+        }
+        for t in [start, start + 300] {
+            words.push(t);
+        }
+        let mut bytes = Vec::with_capacity(words.len() * 4);
+        for w in words {
+            bytes.extend_from_slice(&w.to_le_bytes());
+        }
+        assert!(load_network(705, &bytes));
+
+        let net = registry().read().unwrap().get(705).unwrap();
+        let q = QueryInput {
+            arrive_by: false,
+            net_id: 705,
+            t0: start - 60,
+            window_sec: 3600,
+            max_transfers: 1,
+            min_t: 60,
+            train_need: 300,
+            trains_enabled: true,
+            cable_enabled: true,
+            allowed_mode: ALLOWED_ALL,
+            speed_mps: DEFAULT_WALK_SPEED_MPS,
+            max_transfer_walk_m: 800,
+            wr: 1.8,
+            transfer_penalty_sec: 300,
+            latest_arr: INF,
+            now_sec: None,
+            origins: vec![(0, 30, 0)],
+            destinations: vec![(2, 30, 0)],
+            delays: Vec::new(),
+            transfer_buffers: Vec::new(),
+        };
+        let out = run_on_net(&net, &q);
+
+        assert_eq!(out[0], 1);
+        assert_eq!(out[1], 2, "cel musi być S2 - koniec podróży na spacerze");
+        assert_eq!(&out[1..8], &[2, 0, 30, 0, 30, 0, 1]);
+        assert_eq!(&out[8..16], &[0, 0, 0, 1, 0, 0, start, start + 300]);
+        // Trailing: skąd (S1), ~137 s, ~160 m
+        assert_eq!(out[16], 1);
+        assert_eq!(out[17], 137);
+        assert_eq!(out[18], 160);
     }
 
     #[test]
