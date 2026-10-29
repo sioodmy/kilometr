@@ -832,6 +832,8 @@ export const en: Strings = {
     filterNoHistoryTitle: 'No lines yet',
     filterNoHistoryBody:
       'Look up a connection in the app, then you will see updates for those lines here.',
+    resolved: 'Traffic restored',
+    solutionLabel: 'Solution',
   },
   newsSvc: {
     justNow: 'just now',
@@ -995,6 +997,8 @@ export const en: Strings = {
     lineAlertsAll: 'All news',
     lineAlertsEmpty: 'No updates for the lines on this trip.',
     lineAlertsCount: (n: number) => (n === 1 ? '1 update' : `${n} updates`),
+    lineAlertsLoading: 'Checking for disruptions…',
+    lineAlertsError: 'Could not check for disruptions.',
   },
   search: {
     suggestedPlaces: 'Suggested places',

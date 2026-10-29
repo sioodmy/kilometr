@@ -884,6 +884,8 @@ export const uk: Strings = {
     filterNoHistoryTitle: 'Ще немає ліній',
     filterNoHistoryBody:
       'Знайди сполучення в застосунку, тоді тут з’являться повідомлення про ці лінії.',
+    resolved: 'Рух відновлено',
+    solutionLabel: 'Рішення',
   },
   newsSvc: {
     justNow: 'щойно',
@@ -1049,6 +1051,8 @@ export const uk: Strings = {
     lineAlertsEmpty: 'Немає повідомлень про лінії цього маршруту.',
     lineAlertsCount: (n: number) =>
       isOne(n) ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
+    lineAlertsLoading: 'Перевіряємо порушення руху…',
+    lineAlertsError: 'Не вдалося перевірити порушення руху.',
   },
   search: {
     suggestedPlaces: 'Рекомендовані місця',
