@@ -106,6 +106,11 @@
  *   kilometr-gtfs.db.gz  - ta sama baza spakowana gzip (level 9) do R2
  *   manifest.json: miasto, wersja, statystyki, sha256 bazy (.gz i surowej)
  *
+ * Snapshot adresów ({miasto}/addresses.json.gz) buduje loadAddressSnapshot
+ * i workflow wgrywa go do R2: świeży zasila kolejny build bez Overpassa,
+ * stary jest awaryjnym zapasem, gdy Overpass padł całkiem. Telefon
+ * tego pliku nie czyta, adresy siedzą w bazie.
+ *
  * Wymagania: Node.js ≥ 22.5 (node:sqlite), program `unzip` w PATH
  * (linux/macos: standard; Windows: Git Bash / WSL). Zero zależności npm.
  *
@@ -2479,7 +2484,12 @@ async function main() {
     }
   }
 
-  const addressSnapshot = await loadAddressSnapshot(CITY, join(ROOT, 'dist', 'address-cache')).catch((error) => {
+  const addressSnapshot = await loadAddressSnapshot(
+    CITY,
+    join(ROOT, 'dist', 'address-cache'),
+    fetch,
+    PUBLIC_URL,
+  ).catch((error) => {
     if (remote?.addresses?.count) throw error;
     warn(`Adresy OSM niedostępne: ${error.message}. Publikuję rozkład bez indeksu adresów.`);
     return null;

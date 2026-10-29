@@ -954,6 +954,8 @@ export const en: Strings = {
     emptyMode: (veh: string) =>
       `There is no ${veh} service on this route right now. Switch to “All” to see the rest.`,
     emptyPlain: 'Try a different destination or check another departure time.',
+    samePlaceTitle: 'Start and destination are the same place',
+    samePlaceBody: 'You are already there, so there is nothing to plan. Pick another destination to see connections.',
     vehicleTramGen: 'by tram',
     vehicleBusGen: 'by bus',
     vehicleTrolleyGen: 'by trolleybus',
