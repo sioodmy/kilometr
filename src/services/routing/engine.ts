@@ -14,6 +14,10 @@ import { refreshConnectionTimes, scheduledLegTimes } from './connectionTimes';
 // ────────────────────────────────────────────────────────────────────────────
 const WALK_SPEED_MPS = 1.34;
 const WALK_DETOUR_FACTOR = 1.15;
+/** Poniżej tego dystansu start i cel to praktycznie ten sam punkt (spacer, nie przejazd). */
+const SAME_POINT_M = 40;
+/** Do ilu sekund spaceru wolno wycinać warianty z przesiadką wolniejsze od marszu. */
+const WALK_BEATS_TRANSIT_MAX_SEC = 15 * 60;
 /**
  * Ile przystanków w zasięgu dojścia bierzemy pod uwagę. Dawne 12 najbliższych
  * w centrum sięgało ledwie 300 m, więc dalszy przystanek z tramwajem prosto
@@ -314,6 +318,9 @@ function mapJourneysToConnections(
     // Kotwica nie może wymuszać bezsensu: "wsiądź i wysiądź po 1 przystanku,
     // resztę idź z buta" odrzucamy niezależnie od preferencji startu.
     if (isPointlessShortRide(rj)) continue;
+    // Przejazd w jedną stronę i z powrotem (ten sam przystanek dwa razy)
+    // nic nie daje, a RAPTOR potrafi go zaproponować przy bliskim celu.
+    if (revisitsStops(rj)) continue;
     const legs: Leg[] = [];
     let overallLive = false;
     let maxDelayMin = 0;
@@ -502,6 +509,71 @@ export function resolveCandidateOrigins(
   return origins;
 }
 
+/**
+ * Podróż wraca po własnych śladach: ten sam przystanek dwa razy, np. kurs
+ * w jedną stronę i z powrotem, żeby dojść pieszo. Takie warianty tylko
+ * marnują czas, więc odrzucamy je przed mapowaniem na UI.
+ */
+function revisitsStops(rj: RawJourney): boolean {
+  const seen = new Set<string>();
+  let prev = '';
+  for (const seg of rj.segments) {
+    if (seg.type !== 'transit') continue;
+    for (const id of [seg.fromStopId, seg.toStopId]) {
+      if (!id || id === prev) continue;
+      if (seen.has(id)) return true;
+      seen.add(id);
+      prev = id;
+    }
+  }
+  return false;
+}
+
+/** Pojedyncza noga piesza jako połączenie. Używane też dla startu = celu. */
+function buildWalkOnlyConnection(
+  options: PlanOptions,
+  directM: number,
+  walkDepSec: number,
+  walkArrSec: number,
+  walkSec: number,
+  currentSec: number,
+): Connection {
+  const walkInMin = Math.max(0, Math.round((walkDepSec - currentSec) / 60));
+  return {
+    id: `walk-only-${walkDepSec}`,
+    fromTitle: options.fromTitle,
+    toTitle: options.toTitle,
+    departInMin: walkInMin,
+    departureSec: walkDepSec,
+    arrivalSec: walkArrSec,
+    departAt: secondsToTimeString(walkDepSec),
+    arriveAt: secondsToTimeString(walkArrSec),
+    durationMin: Math.max(1, Math.round(walkSec / 60)),
+    transfers: 0,
+    delayMin: 0,
+    live: false,
+    legs: [
+      {
+        id: 'walk-only-l1',
+        mode: 'walk',
+        fromStop: options.fromTitle,
+        toStop: options.toTitle,
+        fromStopId: 'origin',
+        toStopId: 'destination',
+        fromLat: options.fromLat,
+        fromLon: options.fromLon,
+        toLat: options.toLat,
+        toLon: options.toLon,
+        departAt: secondsToTimeString(walkDepSec),
+        arriveAt: secondsToTimeString(walkArrSec),
+        stopsCount: 0,
+        walkM: directM,
+        live: false,
+      },
+    ],
+  };
+}
+
 export async function planConnections(options: PlanOptions): Promise<Connection[]> {
   await gtfsStore.load();
 
@@ -535,6 +607,18 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const maxWalkM = Math.max(100, Math.min(2000, Math.round(options.maxWalkM ?? 800)));
   const userWalkSpeed = Math.max(0.8, Math.min(2.0, options.walkSpeedMps ?? WALK_SPEED_MPS));
   const cost = costParamsFor(options.routeStyle);
+
+  // Start i cel w tym samym miejscu: RAPTOR umie tu wymyślić przejazd w jedną
+  // stronę i z powrotem, a to zwykły spacer. Jedna noga piesza i koniec.
+  const directM = Math.round(
+    distanceMeters(options.fromLat, options.fromLon, options.toLat, options.toLon)
+  );
+  const directWalkSec = Math.max(60, Math.round((directM * WALK_DETOUR_FACTOR) / userWalkSpeed));
+  const walkArrSec = arrivalMode ? rawTarget : departureSec + dayOffsetSec + directWalkSec;
+  const walkDepSec = walkArrSec - directWalkSec;
+  if (directM <= SAME_POINT_M) {
+    return [buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec)];
+  }
 
   // 1. Resolve candidate boarding stops near origin.
   const origins = resolveCandidateOrigins(
@@ -669,50 +753,25 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
 
   // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) - jeśli prosto
   // jest w zasięgu spaceru z ustawień, dokładamy ją do listy.
-  const directM = Math.round(
-    distanceMeters(options.fromLat, options.fromLon, options.toLat, options.toLon)
-  );
-  const directWalkSec = Math.max(60, Math.round(directM * WALK_DETOUR_FACTOR / userWalkSpeed));
-  const canStartWalk = !arrivalMode || rawTarget - directWalkSec >= earliestDepartureSec + dayOffsetSec;
-  if (directM <= maxWalkM && directM > 0 && canStartWalk) {
-    const walkSec = directWalkSec;
-    // W trybie przyjazdu spacer kończy się dokładnie na celu.
-    const walkArrSec = arrivalMode ? rawTarget : departureSec + dayOffsetSec + walkSec;
-    const walkDepSec = walkArrSec - walkSec;
-    const walkInMin = Math.max(0, Math.round((walkDepSec - currentSec) / 60));
-    connections.push({
-      id: `walk-only-${walkDepSec}`,
-      fromTitle: options.fromTitle,
-      toTitle: options.toTitle,
-      departInMin: walkInMin,
-      departureSec: walkDepSec,
-      arrivalSec: walkArrSec,
-      departAt: secondsToTimeString(walkDepSec),
-      arriveAt: secondsToTimeString(walkArrSec),
-      durationMin: Math.max(1, Math.round(walkSec / 60)),
-      transfers: 0,
-      delayMin: 0,
-      live: false,
-      legs: [
-        {
-          id: 'walk-only-l1',
-          mode: 'walk',
-          fromStop: options.fromTitle,
-          toStop: options.toTitle,
-          fromStopId: 'origin',
-          toStopId: 'destination',
-          fromLat: options.fromLat,
-          fromLon: options.fromLon,
-          toLat: options.toLat,
-          toLon: options.toLon,
-          departAt: secondsToTimeString(walkDepSec),
-          arriveAt: secondsToTimeString(walkArrSec),
-          stopsCount: 0,
-          walkM: directM,
-          live: false,
-        },
-      ],
-    });
+  const canStartWalk = !arrivalMode || walkDepSec >= earliestDepartureSec + dayOffsetSec;
+  const walkAdded = directM > 0 && directM <= maxWalkM && canStartWalk;
+  if (walkAdded) {
+    connections.push(buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec));
+  }
+
+  // Marsz bije przesiadki: gdy pieszo docierasz równie szybko jak wariantem
+  // z przesiadką, taki wariant jest tylko stratą czasu (typowy przypadek:
+  // cel o jeden przystanek, a RAPTOR proponuje jazdę tam i z powrotem).
+  // Tylko dla krótkich spacerów, żeby nie wycinać kursów, które ktoś woła
+  // wybrać zamiast 20 minut na nogach.
+  if (walkAdded && directWalkSec <= WALK_BEATS_TRANSIT_MAX_SEC) {
+    for (let i = connections.length - 1; i >= 0; i--) {
+      const c = connections[i];
+      if (c.id.startsWith('walk-only-') || c.transfers === 0) continue;
+      const arrivalSec = c.arrivalSec ?? c.departureSec + c.durationMin * 60;
+      const worse = arrivalMode ? c.departureSec <= walkDepSec : arrivalSec >= walkArrSec;
+      if (worse) connections.splice(i, 1);
+    }
   }
 
   sortPartial(connections);

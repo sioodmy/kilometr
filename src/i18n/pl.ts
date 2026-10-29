@@ -991,6 +991,8 @@ export const pl = {
     emptyMode: (veh: string) =>
       `Na tej trasie nie ma teraz kursu ${veh}. Przełącz na „Wszystkie”, aby zobaczyć resztę połączeń.`,
     emptyPlain: 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.',
+    samePlaceTitle: 'Start i cel to ten sam punkt',
+    samePlaceBody: 'Jesteś na miejscu, więc nie ma czego planować. Wybierz inny cel, żeby zobaczyć połączenia.',
     vehicleTramGen: 'tramwajem',
     vehicleBusGen: 'autobusem',
     vehicleTrolleyGen: 'trolejbusem',

@@ -324,7 +324,7 @@ function unpackJourneys(
   const out: RawJourney[] = [];
 
   for (let c = 0; c < count; c++) {
-    if (pos + 28 > bytes.byteLength) break;
+    if (pos + 40 > bytes.byteLength) break;
     const dest = readI32();
     const firstStop = readI32();
     const accessSec = readI32();
@@ -404,6 +404,27 @@ function unpackJourneys(
 
       prevStop = to;
       prevArr = arrSec;
+    }
+
+    // Opcjonalne dojście pieszo po ostatnim kursie (koniec podróży na spacerze
+    // zamiast przymusowej przesiadki na 1 przystanek). Kolejność słów z Rust:
+    // stopFrom, sekundy, metry.
+    const walkFromStop = readI32();
+    const walkOutSec = readI32();
+    const walkOutM = readI32();
+    if (walkFromStop >= 0 && walkOutSec > 0 && prevStop >= 0 && walkFromStop !== dest) {
+      segments.push({
+        type: 'walk',
+        fromStopId: ids[walkFromStop],
+        fromStopName: stopName(walkFromStop),
+        toStopId: ids[dest],
+        toStopName: stopName(dest),
+        departSec: prevArr,
+        arriveSec: prevArr + walkOutSec,
+        stopsCount: 0,
+        walkMeters: walkOutM,
+      });
+      prevArr += walkOutSec;
     }
 
     if (segments.length === 0) continue;

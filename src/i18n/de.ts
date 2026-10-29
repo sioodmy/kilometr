@@ -961,6 +961,8 @@ export const de: Strings = {
     emptyMode: (veh: string) =>
       `Auf dieser Route gibt es gerade keinen ${veh}-Kurs. Wechsle auf „Alle“, um den Rest zu sehen.`,
     emptyPlain: 'Versuch ein anderes Ziel oder prüfe eine andere Abfahrtszeit.',
+    samePlaceTitle: 'Start und Ziel sind derselbe Ort',
+    samePlaceBody: 'Du bist schon da, also gibt es nichts zu planen. Wähle ein anderes Ziel, um Verbindungen zu sehen.',
     vehicleTramGen: 'mit der Tram',
     vehicleBusGen: 'mit dem Bus',
     vehicleTrolleyGen: 'mit dem Obus',
