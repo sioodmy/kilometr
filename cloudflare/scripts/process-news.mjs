@@ -12,6 +12,7 @@ const CACHE_FILE = path.join(DATA_DIR, 'news-cache.json');
 
 const SUPPORTED_CITIES = [
   'wroclaw',
+  'gzm',
   'warszawa',
   'poznan',
   'trojmiasto',
@@ -160,6 +161,37 @@ function isObviousJunk(title, content) {
   return false;
 }
 
+// Lista komunikatów ZTM GZM to serwerowy HTML bez JSON-a i paginacji.
+function parseGzmList(html, limit) {
+  const cards = html.split(/<div class="panel panel-default">/i).slice(1);
+  const items = [];
+  for (const card of cards.slice(0, limit)) {
+    const linkMatch = card.match(/href="(\/v2\/news\/i\/\d+\/?)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkMatch) continue;
+    const link = `https://rj.transportgzm.pl${linkMatch[1].trim()}`;
+    const title = cleanHtml(linkMatch[2]).replace(/\s+/g, ' ').trim();
+    const dateMatch = card.match(
+      /(?:Ostatnia aktualizacja|Data obowiązywania od):\s*(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}:\d{2}))?/,
+    );
+    const pubDate = dateMatch
+      ? `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}T${dateMatch[4] || '00:00'}:00`
+      : null;
+    const lead = cleanHtml((card.match(/<p class="lead list_lead">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    if (!title) continue;
+    items.push({
+      id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
+      title,
+      link,
+      pubDate,
+      content: lead.slice(0, 3000),
+    });
+  }
+  return items;
+}
+
 function parseRssItems(xml, limit) {
   const items = [];
   const itemMatches = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
@@ -229,6 +261,11 @@ async function fetchCityFeed(city, limit) {
       const res = await fetch('https://www.wroclaw.pl/komunikacja/rss', { headers: browserHeaders });
       if (!res.ok) throw new Error(`HTTP ${res.status} from Wroclaw RSS`);
       return parseRssItems(await res.text(), limit);
+    }
+    case 'gzm': {
+      const res = await fetch('https://rj.transportgzm.pl/v2/news/', { headers: browserHeaders });
+      if (!res.ok) throw new Error(`HTTP ${res.status} from ZTM GZM`);
+      return parseGzmList(await res.text(), limit);
     }
     case 'krakow': {
       const res = await fetch('https://ztp.krakow.pl/feed?post_type=komunikat', { headers: browserHeaders });
@@ -643,10 +680,20 @@ async function main() {
   const cachedCount = Object.keys(cache.entries).length;
   console.log(`Załadowano cache lokalny: ${cachedCount} wpisów.`);
 
-  const targetCities =
+  const requestedCities =
     CITY_ARG === 'all'
       ? SUPPORTED_CITIES
-      : [CITY_ARG];
+      : CITY_ARG.split(',').map((city) => city.trim()).filter(Boolean);
+  const targetCities = requestedCities.filter((city) => {
+    if (SUPPORTED_CITIES.includes(city)) return true;
+    console.warn(`[!] Pomijam nieobsługiwane miasto: ${city}`);
+    return false;
+  });
+  if (targetCities.length === 0) {
+    console.error('Brak obsługiwanych miast do przetworzenia.');
+    process.exit(1);
+  }
+  console.log(`Miasta: ${targetCities.join(', ')}`);
 
   let totalAccepted = 0;
   for (const city of targetCities) {

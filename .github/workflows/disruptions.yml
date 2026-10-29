@@ -18,7 +18,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow]
+        options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow]
 
 permissions:
   contents: read
@@ -31,6 +31,10 @@ jobs:
   sync-disruptions:
     name: Aggregate & Analyze Disruptions
     runs-on: ubuntu-latest
+    env:
+      # Domyślna lista miast dla harmonogramu. Zmień tutaj albo w
+      # Settings > Secrets and variables > Actions > Variables (DISRUPTION_CITIES).
+      DISRUPTION_CITIES: ${{ vars.DISRUPTION_CITIES }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -52,7 +56,7 @@ jobs:
         run: |
           CITY="${{ inputs.city }}"
           if [ -z "$CITY" ]; then
-            CITY="all"
+            CITY="${DISRUPTION_CITIES:-wroclaw,gzm,warszawa}"
           fi
           node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=6
         env:
