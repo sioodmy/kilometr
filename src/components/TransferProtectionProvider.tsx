@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronRight, ShieldAlert } from 'lucide-react-native';
+import { ChevronRight, ShieldAlert } from './icons';
 import * as Haptics from 'expo-haptics';
 import { useStrings } from '../i18n';
 import { scheme } from '../theme/tokens';

@@ -52,7 +52,7 @@ import {
   UtensilsCrossed,
   Waves,
   Wine,
-} from 'lucide-react-native';
+} from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon } from '../types/models';
 import { useStrings } from '../i18n';

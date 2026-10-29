@@ -78,6 +78,15 @@ async function main() {
     );
     assert.equal(hasOfflineAddressIndex(), true);
     assert.deepEqual(await searchAddresses('grunwladzka 12'), []);
+    const fuzzy = await searchAddresses('grunwladzka 12', undefined, undefined, 16, true);
+    assert.deepEqual(
+      fuzzy.map((hit) => hit.title),
+      ['Grunwaldzka 12', 'Grunwaldzka 12A'],
+    );
+    assert.equal(
+      (await searchAddresses('grunwaldza', undefined, undefined, 16, true))[0].title,
+      'Grunwaldzka',
+    );
     assert.equal((await searchAddresses('grun 12'))[0].title, 'Grunwaldzka 12');
     assert.equal((await searchAddresses('grunwaldzka 14/2'))[0].title, 'Grunwaldzka 14/2');
     assert.deepEqual(await searchAddresses('grunwaldzka 13'), []);
@@ -87,9 +96,16 @@ async function main() {
     assert.equal(nearStreet.id, farStreet.id);
     assert.notEqual(nearStreet.lat, farStreet.lat);
     assert.equal((await searchAddresses('12 grunwaldzka wroclaw'))[0].title, 'Grunwaldzka 12');
+    const exactStarted = performance.now();
     const results = await SearchService.search('Grunwaldzka 12', undefined, 'addresses');
+    const exactElapsed = performance.now() - exactStarted;
     assert.equal(results[0].title, 'Grunwaldzka 12');
-    assert.deepEqual(await SearchService.search('Grunwladzka 12', undefined, 'addresses'), []);
+    const typoStarted = performance.now();
+    const typoResults = await SearchService.search('Grunwladzka 12', undefined, 'addresses');
+    const typoElapsed = performance.now() - typoStarted;
+    assert.equal(typoResults[0].title, 'Grunwaldzka 12');
+    assert.ok(exactElapsed < 200, `dokładny adres bez czekania na fuzzy: ${exactElapsed} ms`);
+    assert.ok(typoElapsed >= 200, `literówka czeka na pauzę w pisaniu: ${typoElapsed} ms`);
     assert.deepEqual(await SearchService.search('Grunwaldzka 13', undefined, 'addresses'), []);
     assert.equal(remoteCalls, 0);
     assert.equal(addressReads, readsAfterLoad);

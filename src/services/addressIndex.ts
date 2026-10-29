@@ -84,11 +84,13 @@ export async function warmupAddressIndex(): Promise<boolean> {
   }
 }
 
+/** Dokładne trafienia od razu; `fuzzy` włącza droższy fallback na literówki. */
 export async function searchAddresses(
   query: string,
   userLat?: number,
   userLon?: number,
   limit = 16,
+  fuzzy = false,
 ): Promise<Suggestion[]> {
   if (query.trim().length < 2 || limit <= 0) return [];
   const cityId = getActiveCityIdSync();
@@ -99,7 +101,8 @@ export async function searchAddresses(
     .u8Val(Number.isFinite(userLat) && Number.isFinite(userLon) ? 1 : 0)
     .f64(userLat ?? 0)
     .f64(userLon ?? 0)
-    .u32(Math.min(50, limit));
+    .u32(Math.min(50, limit))
+    .u8Val(fuzzy ? 1 : 0);
   const result = invokeRustSync(CMD_ADDRESSES, writer.finish());
   if (!result || result.byteLength < 4) return [];
   const reader = new BinaryReader(result);

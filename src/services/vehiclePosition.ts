@@ -4,6 +4,7 @@ import { tr } from '../i18n/locale';
 import type { Leg, LegStop, VehiclePosition } from '../types/models';
 import { bearingDegrees, projectPointToPolyline } from '../gtfs/geo';
 import type { CurrentLocation } from './currentLocation';
+import { isFareBoundary } from '../gtfs/fareBoundary';
 
 // Czysta logika „gdzie jest pojazd". Wydzielona z komponentu LegTimeline,
 // bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień-
@@ -427,4 +428,64 @@ export function locateVehicle(
     isLive: false,
     label: s.estBetween(stops[gap].name, stops[gap + 1].name),
   };
+}
+
+/**
+ * Zwraca przystanek na trasie (stops), w pobliżu którego aktualnie znajduje się pojazd.
+ * Wykorzystuje współrzędne GPS z feedu live (do 3 km od trasy) albo nazwy bieżącego/następnego przystanku.
+ */
+export function findNearestStopOnRoute(
+  stops: LegStop[],
+  vehicle: VehiclePosition | null,
+): LegStop | null {
+  if (!stops || stops.length === 0 || !vehicle) return null;
+
+  // 1. Współrzędne GPS z pojazdu: szukamy najbliższego fizycznego przystanku na trasie
+  if (vehicle.lat != null && vehicle.lon != null) {
+    let best: LegStop | null = null;
+    let minD = Infinity;
+
+    for (const stop of stops) {
+      if (stop.lat == null || stop.lon == null) continue;
+      if (isFareBoundary(stop.name)) continue;
+      const dLat = (stop.lat - vehicle.lat) * 111_139;
+      const dLon = (stop.lon - vehicle.lon) * 111_139 * Math.cos((vehicle.lat * Math.PI) / 180);
+      const dist = Math.hypot(dLat, dLon);
+      if (dist < minD) {
+        minD = dist;
+        best = stop;
+      }
+    }
+
+    if (best && minD <= 3000) {
+      return best;
+    }
+  }
+
+  // 2. Nazwa bieżącego lub następnego przystanku z API
+  if (vehicle.currentStopName) {
+    const curNorm = normalizeName(vehicle.currentStopName);
+    const found = stops.find(
+      (s) =>
+        !isFareBoundary(s.name) &&
+        (normalizeName(s.name) === curNorm ||
+          normalizeName(s.name).includes(curNorm) ||
+          curNorm.includes(normalizeName(s.name))),
+    );
+    if (found) return found;
+  }
+
+  if (vehicle.nextStopName) {
+    const nextNorm = normalizeName(vehicle.nextStopName);
+    const found = stops.find(
+      (s) =>
+        !isFareBoundary(s.name) &&
+        (normalizeName(s.name) === nextNorm ||
+          normalizeName(s.name).includes(nextNorm) ||
+          nextNorm.includes(normalizeName(s.name))),
+    );
+    if (found) return found;
+  }
+
+  return null;
 }

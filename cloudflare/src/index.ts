@@ -3,6 +3,7 @@
  *
  * Per-miasto:
  * - GET /{miasto}/manifest.json           → manifest buildu z R2
+ * - GET /{miasto}/disruptions.json        → ustrukturyzowane alerty i utrudnienia z R2 (cache 120s)
  * - GET /{miasto}/db/kilometr-gtfs.db.gz  → skompresowany prebuilt SQLite z R2 (Range, ETag)
  * - GET /maps/{miasto}-tiles.ktp          → pakiet kafli offline z R2
  * Miasta: wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz,
@@ -33,6 +34,12 @@ const PDP_BASE = 'https://pdp-api.plk-sa.pl';
 
 const dbKeyFor = (city: string): string => `${city}/db/kilometr-gtfs.db.gz`;
 const manifestKeyFor = (city: string): string => `${city}/manifest.json`;
+const disruptionsKeyFor = (city: string): string => `${city}/disruptions.json`;
+/**
+ * Snapshot adresów OSM (cache buildu timetable.yml): świeży zasila build bez
+ * Overpassa, stary jest awaryjnym zapasem. Nigdy nie trafia do telefonu.
+ */
+const addressesKeyFor = (city: string): string => `${city}/addresses.json.gz`;
 /**
  * Pakiet kafelków mapy offline. Buduje go workflow map-tiles.yml (--city),
  * a telefon pobiera raz i trzyma lokalnie (osobny plik na miasto).
@@ -86,15 +93,21 @@ export default {
       return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString(), cities: [...CITIES] });
     }
 
-    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
+    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
     const cityMatch = CITY_PATH_RE.exec(url.pathname);
     if (cityMatch) {
       const [, city, rest] = cityMatch;
       if (rest === '/manifest.json') {
         return serveManifest(env, manifestKeyFor(city));
       }
+      if (rest === '/disruptions.json') {
+        return serveDisruptions(env, disruptionsKeyFor(city));
+      }
       if (rest === '/db/kilometr-gtfs.db.gz') {
         return serveDb(req, env, dbKeyFor(city));
+      }
+      if (rest === '/addresses.json.gz') {
+        return serveObject(env, addressesKeyFor(city), 'application/gzip', 'timetable.yml');
       }
     }
     const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
@@ -126,6 +139,19 @@ async function serveManifest(env: Env, key: string): Promise<Response> {
   return new Response(obj.body, { headers });
 }
 
+async function serveDisruptions(env: Env, key: string): Promise<Response> {
+  const obj = await env.TIMETABLE_BUCKET.get(key);
+  if (!obj) {
+    return json({ alerts: [], generated_at: new Date().toISOString() }, 200, 60);
+  }
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/json; charset=utf-8');
+  if (obj.etag) headers.set('ETag', obj.etag);
+  // 120 s cache na krawędzi CDN
+  headers.set('Cache-Control', 'public, max-age=120');
+  return new Response(obj.body, { headers });
+}
+
 /**
  * Serwuje bazę SQLite (skompresowaną gzipem) z obsługą Range requests
  * (potrzebne do wznawiania downloadu w aplikacji przez expo-file-system).
@@ -141,108 +167,73 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
         404,
       );
     }
-    if (m) {
-      const size = head.size;
-      let start = m[1] === '' ? size - Number(m[2] || 0) : Number(m[1]);
-      let end = m[2] === '' ? size - 1 : Number(m[2]);
-      if (Number.isNaN(start)) start = 0;
-      if (Number.isNaN(end)) end = size - 1;
-      start = Math.max(0, start);
-      end = Math.min(size - 1, end);
-      if (start <= end) {
-        const obj = await env.TIMETABLE_BUCKET.get(key, {
-          range: { offset: start, length: end - start + 1 },
-        });
-        if (obj) {
-          const headers = new Headers();
-          headers.set('Content-Type', 'application/gzip');
-          headers.set('Accept-Ranges', 'bytes');
-          headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
-          headers.set('Content-Length', String(end - start + 1));
-          if (head.etag) headers.set('ETag', head.etag);
-          headers.set('Cache-Control', 'public, max-age=300');
-          return new Response(obj.body, { status: 206, headers });
-        }
-      }
+    const total = head.size;
+    let start = m && m[1] ? parseInt(m[1], 10) : 0;
+    let end = m && m[2] ? parseInt(m[2], 10) : total - 1;
+    if (isNaN(start)) start = 0;
+    if (isNaN(end) || end >= total) end = total - 1;
+    if (start > end || start >= total) {
+      return new Response(null, {
+        status: 416,
+        headers: { 'Content-Range': `bytes */${total}` },
+      });
     }
+
+    const obj = await env.TIMETABLE_BUCKET.get(key, { range: { offset: start, length: end - start + 1 } });
+    if (!obj) return json({ error: 'r2-read-failed' }, 500);
+
+    const headers = new Headers();
+    headers.set('Content-Type', 'application/gzip');
+    headers.set('Accept-Ranges', 'bytes');
+    headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
+    headers.set('Content-Length', String(end - start + 1));
+    if (head.etag) headers.set('ETag', head.etag);
+    headers.set('Cache-Control', 'public, max-age=300');
+    return new Response(obj.body, { status: 206, headers });
   }
-  const obj = await env.TIMETABLE_BUCKET.get(key);
-  if (!obj) {
-    return json(
-      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
-      404,
-    );
-  }
-  const headers = new Headers();
-  headers.set('Content-Type', 'application/gzip');
-  headers.set('Accept-Ranges', 'bytes');
-  headers.set('Content-Length', String(obj.size));
-  if (obj.etag) headers.set('ETag', obj.etag);
-  headers.set('Cache-Control', 'public, max-age=300');
-  return new Response(obj.body, { headers });
+
+  return serveObject(env, key, 'application/gzip', 'timetable.yml');
 }
 
 /**
- * Gotowość pod przyszłe opóźnienia KD - passthrough do PDP z cache,
- * żeby wielu użytkowników dzieliło jeden request (limity Basic!).
- * Aplikacja mobilna tego NA RAZIE nie woła → koszt PDP = 0.
+ * Proksy do PDP API (PLK) z walidacją i cache po stronie Workera.
+ * Dzięki temu aplikacja nie dostaje klucza do PDP ani nie uderza bezpośrednio
+ * w API PLK (ochrona limitu zapytań).
  */
-async function proxyPdp(req: Request, env: Env, ctx: ExecutionContext, kind: 'operations' | 'schedules'): Promise<Response> {
+async function proxyPdp(
+  req: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  endpoint: 'operations' | 'schedules',
+): Promise<Response> {
   if (!env.PDP_API_KEY) {
-    return json({ error: 'kd-not-configured', hint: 'Brak sekretu PDP_API_KEY w Workerze (wrangler secret put).' }, 503);
+    return json({ error: 'pdp-disabled', hint: 'Brak PDP_API_KEY w secretach Workera.' }, 503);
   }
+
   const url = new URL(req.url);
-  const stations = (url.searchParams.get('stations') ?? '').trim();
-  if (!/^[0-9, ]{1,200}$/.test(stations) || !/\d/.test(stations)) {
-    return json({ error: 'bad-stations', hint: 'Podaj stations=jako ID po przecinku, np. ?stations=33506,33512.' }, 400);
-  }
-  // Deduplikacja + sortowanie normalizuje klucz cache: ta sama lista w innej
-  // kolejności trafia w ten sam wpis, zamiast omijać cache i palić limit PDP.
-  const idList = Array.from(new Set(stations.split(',').map((s) => s.trim()).filter(Boolean)));
-  if (idList.length === 0 || idList.length > 30) {
-    return json({ error: 'bad-stations', hint: 'Podaj od 1 do 30 unikalnych ID stacji.' }, 400);
-  }
-  const ids = idList.join(',');
-
-  const upstream = new URL(PDP_BASE + (kind === 'operations' ? '/api/v1/operations/shortened' : '/api/v1/schedules/shortened'));
-  upstream.searchParams.set('stations', ids);
-  if (kind === 'operations') {
-    upstream.searchParams.set('withPlanned', url.searchParams.get('withPlanned') === 'false' ? 'false' : 'true');
-    const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize')) || 1000, 1), 5000);
-    upstream.searchParams.set('pageSize', String(pageSize));
-  } else {
-    const df = url.searchParams.get('dateFrom');
-    const dt = url.searchParams.get('dateTo');
-    if (df && /^\d{4}-\d{2}-\d{2}$/.test(df)) upstream.searchParams.set('dateFrom', df);
-    if (dt && /^\d{4}-\d{2}-\d{2}$/.test(dt)) upstream.searchParams.set('dateTo', dt);
-    upstream.searchParams.set('carriersInclude', url.searchParams.get('carriersInclude') || 'KD');
-    upstream.searchParams.set('dictionaries', 'false');
-  }
-
+  const cacheKey = new Request(url.toString(), req);
   const cache = caches.default;
-  const cacheKey = new Request(upstream.toString(), { method: 'GET' });
-  const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
 
-  let res: Response;
-  try {
-    res = await fetch(upstream.toString(), {
-      headers: { 'X-API-Key': env.PDP_API_KEY, Accept: 'application/json' },
-      signal: AbortSignal.timeout(20000),
-    });
-  } catch (err) {
-    // Powód zostaje w logach Workera (wrangler tail), do klienta idzie sam kod.
-    console.error('[pdp] fetch failed:', err);
-    return json({ error: 'pdp-unreachable' }, 502);
-  }
-  if (!res.ok) {
-    return json({ error: 'pdp-error', status: res.status }, res.status === 429 ? 429 : 502);
-  }
-  const body = await res.text();
-  const ttl = kind === 'operations' ? 120 : 3600;
-  const out = new Response(body, {
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': `public, max-age=${ttl}` },
+  const targetUrl = new URL(`/api/v1/${endpoint}${url.search}`, PDP_BASE);
+  const upstreamRes = await fetch(targetUrl.toString(), {
+    headers: {
+      'X-API-KEY': env.PDP_API_KEY,
+      Accept: 'application/json',
+    },
   });
-  ctx.waitUntil(cache.put(cacheKey, out.clone()));
-  return out;
+
+  if (!upstreamRes.ok) {
+    return json(
+      { error: 'upstream-error', status: upstreamRes.status },
+      upstreamRes.status === 404 ? 404 : 502,
+    );
+  }
+
+  const data = await upstreamRes.json();
+  const ttl = endpoint === 'operations' ? 120 : 3600;
+  const res = json(data, 200, ttl);
+  ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  return res;
 }

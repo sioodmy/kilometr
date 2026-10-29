@@ -21,7 +21,7 @@ import { liveTracker, snapshotIsUsable } from '../src/services/liveTracker';
 import { AppState } from 'react-native';
 import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from '../src/services/zbiorkom';
 import { gtfsStore } from '../src/services/routing/store';
-import { locateLiveStopPosition } from '../src/services/vehiclePosition';
+import { locateLiveStopPosition, findNearestStopOnRoute } from '../src/services/vehiclePosition';
 import type { Leg, LegStop } from '../src/types/models';
 
 // ─── Framework asercji ─────────────────────────────────────────────────────
@@ -521,6 +521,65 @@ gtfsStore.routes.delete('KD:R:1:2');
 gtfsStore.stops.delete('KD:S:1');
 gtfsStore.stops.delete('KD:S:2');
 gtfsStore.stopTimes.delete('KD:T:1:2:20261010');
+
+// ─── LiveTracker.subscribe ──────────────────────────────────────────────
+describe('LiveTracker: subskrypcje zdarzeń');
+let notified = 0;
+const unsub = liveTracker.subscribe(() => {
+  notified++;
+});
+liveTracker.reset();
+expect('reset wywołuje listener', notified, 1);
+unsub();
+liveTracker.reset();
+expect('po unsub listener nie jest wywoływany', notified, 1);
+
+// ─── findNearestStopOnRoute ─────────────────────────────────────────────
+describe('findNearestStopOnRoute: wyszukiwanie najbliższego przystanku');
+const testStops: LegStop[] = [
+  { stopId: 's1', name: 'Rynek', lat: 51.11, lon: 17.03, seq: 1 },
+  { stopId: 's2', name: 'granica Wrocław - Długołęka', lat: 51.115, lon: 17.035, seq: 2 },
+  { stopId: 's3', name: 'Plac Bema', lat: 51.12, lon: 17.04, seq: 3 },
+  { stopId: 's4', name: 'Kromera', lat: 51.13, lon: 17.06, seq: 4 },
+];
+
+expect('brak pojazdu = null', findNearestStopOnRoute(testStops, null), null);
+expect('pusta lista przystanków = null', findNearestStopOnRoute([], { lat: 51.11, lon: 17.03 } as any), null);
+
+// GPS blisko Rynku (~100m)
+expect(
+  'GPS blisko przystanku wskazuje ten przystanek',
+  findNearestStopOnRoute(testStops, { lat: 51.1105, lon: 17.0305 } as any)?.name,
+  'Rynek',
+);
+
+// GPS najbliżej granicy stref biletowych (ale granica jest odfiltrowywana)
+expect(
+  'granica stref biletowych jest pomijana przy wyliczaniu najbliższego przystanku',
+  findNearestStopOnRoute(testStops, { lat: 51.1152, lon: 17.0351 } as any)?.name,
+  'Plac Bema',
+);
+
+// GPS > 3km z matchingiem po currentStopName
+expect(
+  'GPS daleko ale znany currentStopName = właściwy przystanek',
+  findNearestStopOnRoute(testStops, { lat: 52.0, lon: 18.0, currentStopName: 'Plac Bema' } as any)?.name,
+  'Plac Bema',
+);
+
+// GPS null ale znany nextStopName
+expect(
+  'brak GPS ale znany nextStopName = właściwy przystanek',
+  findNearestStopOnRoute(testStops, { nextStopName: 'Kromera' } as any)?.name,
+  'Kromera',
+);
+
+// GPS > 3km bez dopasowania po nazwie = null
+expect(
+  'GPS > 3km i obca nazwa = null',
+  findNearestStopOnRoute(testStops, { lat: 52.0, lon: 18.0, currentStopName: 'Warszawa Centralna' } as any),
+  null,
+);
 
 // ─── Podsumowanie ─────────────────────────────────────────────────────────
 

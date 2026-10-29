@@ -24,7 +24,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowUp, Check, Footprints, X } from 'lucide-react-native';
+import { ArrowUp, Check, Footprints, X } from './icons';
 import { useStrings } from '../i18n';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import { motion } from '../theme/motion';

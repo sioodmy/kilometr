@@ -75,7 +75,7 @@ import {
   Waves,
   Wine,
   X,
-} from 'lucide-react-native';
+} from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon, Suggestion } from '../types/models';
 import { SearchService, fetchNearestStops, type NearestStop } from '../services';

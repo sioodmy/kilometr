@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FileDown, FileUp } from 'lucide-react-native';
+import { FileDown, FileUp } from './icons';
 import Constants from 'expo-constants';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings, type Strings } from '../i18n';
