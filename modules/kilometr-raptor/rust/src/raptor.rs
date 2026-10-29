@@ -1663,13 +1663,24 @@ pub fn run_on_net(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
         let header = &reversed[pos..pos + 7];
         let count = header[6] as usize;
         let end = pos + 7 + count * 8;
-        if end > reversed.len() || count == 0 {
+        if end + 3 > reversed.len() || count == 0 {
             break;
         }
+        // Końcowe dojście pieszo z odwróconego przebiegu to w oryginale
+        // dojście do przystanku przed pierwszym kursem: sklej je z egressem
+        // w jedno access walk, żeby struktura nóg wyszła naturalnie.
+        let walk_from = reversed[end];
+        let walk_sec = reversed[end + 1];
+        let walk_m = reversed[end + 2];
         let legs: Vec<_> = reversed[pos + 7..end].chunks_exact(8).collect();
         // Pierwotne dojście i odejście zamieniają się miejscami wraz z czasem.
         if -legs[0][6] + header[2] <= q.t0 {
-            out.extend_from_slice(&[header[1], header[0], header[4], header[5], header[2], header[3], header[6]]);
+            let (first_stop, access_sec, access_m) = if walk_from >= 0 && walk_sec > 0 {
+                (walk_from, header[4] + walk_sec, header[5] + walk_m)
+            } else {
+                (header[0], header[4], header[5])
+            };
+            out.extend_from_slice(&[header[1], first_stop, access_sec, access_m, header[2], header[3], header[6]]);
             for i in (0..count).rev() {
                 let l = legs[i];
                 let pat = net.patterns[l[0] as usize];
@@ -1680,9 +1691,11 @@ pub fn run_on_net(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
                     walk.map_or(0, |l| l[4]), walk.map_or(0, |l| l[5]), -l[7], -l[6],
                 ]);
             }
+            // Dojście zostało już wchłonięte w access: brak osobnej nogi.
+            out.extend_from_slice(&[-1, 0, 0]);
             out[0] += 1;
         }
-        pos = end;
+        pos = end + 3;
     }
     out
 }
@@ -2180,7 +2193,8 @@ mod tests {
         let result = run_on_net(&net, &q);
         assert_eq!(result[0], 1);
         assert_eq!(&result[1..8], &[1, 0, 90, 20, 90, 20, 1]);
-        assert_eq!(&result[8..], &[0, 0, 0, 1, 0, 0, start, start + 300]);
+        assert_eq!(&result[8..16], &[0, 0, 0, 1, 0, 0, start, start + 300]);
+        assert_eq!(&result[16..19], &[-1, 0, 0]);
         q.t0 -= 1;
         assert_eq!(run_on_net(&net, &q), vec![0]);
     }
