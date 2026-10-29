@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, BellOff, ChevronLeft, LocateFixed, MapPin, RefreshCw } from 'lucide-react-native';
+import { Bell, BellOff, ChevronLeft, LocateFixed, MapPin, RefreshCw } from '../src/components/icons';
 import { useStrings, getLocaleSync } from '../src/i18n';
 import { getCity } from '../src/cities';
 import { scheme, shape, type } from '../src/theme/tokens';

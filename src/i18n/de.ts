@@ -839,6 +839,8 @@ export const de: Strings = {
     filterNoHistoryTitle: 'Noch keine Linien',
     filterNoHistoryBody:
       'Suche eine Verbindung in der App, danach siehst du hier Meldungen zu diesen Linien.',
+    resolved: 'Verkehr wieder frei',
+    solutionLabel: 'Lösung',
   },
   newsSvc: {
     justNow: 'gerade eben',
@@ -1002,6 +1004,8 @@ export const de: Strings = {
     lineAlertsAll: 'Alle Neuigkeiten',
     lineAlertsEmpty: 'Keine Meldungen zu den Linien dieser Verbindung.',
     lineAlertsCount: (n: number) => (n === 1 ? '1 Meldung' : `${n} Meldungen`),
+    lineAlertsLoading: 'Störungen werden geprüft…',
+    lineAlertsError: 'Störungen konnten nicht geprüft werden.',
   },
   search: {
     suggestedPlaces: 'Vorgeschlagene Orte',

@@ -55,6 +55,7 @@
 //   treść w div.content).
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
+import { TIMETABLE } from './gtfsConfig';
 import { kvGet, kvSet } from './storage';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
@@ -72,6 +73,46 @@ function newsTitleFallback(): string {
 
 export type NewsSource = 'city' | 'mpk';
 
+export interface DisruptionImpactedLine {
+  line: string;
+  direction: string | null;
+  impact_type: string;
+  omitted_stops: string[];
+  temporary_stops: string[];
+  replacement_line: string | null;
+  details: string;
+}
+
+export interface DisruptionStop {
+  name: string;
+  action: string;
+  lines: string[];
+  details: string;
+}
+
+export interface DisruptionAlert {
+  id: string;
+  source_title: string;
+  link: string;
+  published_at: string | null;
+  is_transit_alert: boolean;
+  headline: string;
+  disruption_type: 'accident' | 'infrastructure_failure' | 'planned_works' | 'event' | 'weather' | 'fare' | 'other';
+  is_emergency: boolean;
+  is_resolved: boolean;
+  severity: 'info' | 'minor' | 'major' | 'blocking';
+  glance: {
+    problem: string;
+    solution: string | null;
+    timeframe: string;
+  };
+  valid_from: string;
+  valid_to: string | null;
+  all_lines: string[];
+  impacted_lines: DisruptionImpactedLine[];
+  stops: DisruptionStop[];
+}
+
 export type MpkNewsItem = {
   id: string;
   title: string;
@@ -83,6 +124,7 @@ export type MpkNewsItem = {
   dateLabel: string;
   source: NewsSource;
   lines: string[];
+  disruption?: DisruptionAlert;
 };
 
 export type ArticleBlock = { kind: 'h' | 'p'; text: string };
@@ -2345,9 +2387,58 @@ async function rememberNews(items: MpkNewsItem[], cityId: string): Promise<MpkNe
   return items;
 }
 
-/** Aktualności aktywnego miasta. Wrocław = legacy fetchMpkNews. */
+export async function fetchDisruptionsFromWorker(
+  cityId: string,
+  signal?: AbortSignal,
+): Promise<MpkNewsItem[] | null> {
+  try {
+    const url = `${TIMETABLE.baseUrl}/${cityId}/disruptions.json`;
+    const res = await fetch(url, {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json());
+    if (!Array.isArray(data.alerts) || data.alerts.length === 0) return null;
+
+    return data.alerts.map((alert: DisruptionAlert) => {
+      const pubTs = alert.published_at ? new Date(alert.published_at).getTime() : Date.now();
+      return {
+        id: alert.id,
+        title: alert.headline || alert.source_title,
+        link: alert.link,
+        description: alert.glance?.problem
+          ? (alert.glance.problem + (alert.glance.solution ? ' ' + alert.glance.solution : ''))
+          : alert.source_title,
+        imageUrl: null,
+        urgent: alert.is_emergency && !alert.is_resolved,
+        pubDate: isNaN(pubTs) ? null : pubTs,
+        dateLabel: alert.glance?.timeframe || '',
+        source: 'mpk',
+        lines: alert.all_lines || [],
+        disruption: alert,
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Aktualności aktywnego miasta. Najpierw R2 disruptions.json, potem fallback. */
 export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const city = getCity(activeCityId());
+
+  // 1. Sprawdź zcentralizowane alerty z Cloudflare R2 (wygenerowane przez potok LLM)
+  try {
+    const richItems = await fetchDisruptionsFromWorker(city.id, signal);
+    if (richItems && richItems.length > 0) {
+      return rememberNews(richItems, city.id);
+    }
+  } catch {
+    // Płynny fallback do dotychczasowych scraperów miejskich
+  }
+
+  // 2. Bezpośredni fallback do feedów poszczególnych miast
   if (city.id === 'krakow') return fetchZtpNews(signal, city.id);
   if (city.id === 'gzm') return fetchGzmNews(signal, city.id);
   if (city.id === 'warszawa') return fetchWtpNews(signal, city.id);

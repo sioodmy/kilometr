@@ -869,6 +869,8 @@ export const pl = {
     filterNoHistoryTitle: 'Brak Twoich linii',
     filterNoHistoryBody:
       'Sprawdź połączenie w aplikacji, a tu zobaczysz komunikaty o liniach z tej trasy.',
+    resolved: 'Ruch przywrócony',
+    solutionLabel: 'Rozwiązanie',
   },
   newsSvc: {
     justNow: 'przed chwilą',
@@ -1033,6 +1035,8 @@ export const pl = {
     lineAlertsEmpty: 'Brak komunikatów o liniach z tej trasy.',
     lineAlertsCount: (n: number) =>
       n === 1 ? '1 komunikat' : isFew(n) ? `${n} komunikaty` : `${n} komunikatów`,
+    lineAlertsLoading: 'Sprawdzam utrudnienia…',
+    lineAlertsError: 'Nie udało się sprawdzić utrudnień.',
   },
   search: {
     suggestedPlaces: 'Proponowane miejsca',

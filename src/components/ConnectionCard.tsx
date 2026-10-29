@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ArrowDown, ArrowRight, ChevronRight, Clock3, Footprints } from 'lucide-react-native';
+import { ArrowDown, ArrowRight, ChevronRight, Clock3, Footprints } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
@@ -160,7 +160,7 @@ function JourneyStrip({ data, muted }: { data: JourneyStripData; muted: boolean 
         const leg = 'leg' in step ? step.leg : undefined;
         return (
           <View key={step.key} style={styles.stripCell}>
-            {i > 0 && <ChevronRight size={12} color={scheme.onSurfaceVariant} strokeWidth={1.8} />}
+            {i > 0 && <ChevronRight size={12} color={scheme.onSurfaceVariant} />}
             {leg ? (
               <LineBadge mode={leg.mode} line={leg.line} maxWidth={width - 96} muted={muted} />
             ) : (
@@ -299,7 +299,7 @@ export const ConnectionCard = memo(function ConnectionCard({
         <View style={[styles.journeyMeta, fontScale > 1.3 && styles.journeyMetaStacked]}>
           <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
             <Text style={styles.hours}>{departAt}</Text>
-            <Direction size={14} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
+            <Direction size={14} color={scheme.onSurfaceVariant} />
             <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
           </View>
           <Text style={styles.metaText} numberOfLines={fontScale > 1.3 ? undefined : 1}>
@@ -309,7 +309,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 
         {walkOnly ? (
           <View style={styles.walkOnlyWrap}>
-            <Footprints size={18} color={scheme.onSurfaceVariant} strokeWidth={1.8} />
+            <Footprints size={18} color={scheme.onSurfaceVariant} />
             <Text style={styles.walkLabel}>{s.connection.walkAll}</Text>
           </View>
         ) : stripData.transitLegs.length > 0 ? (

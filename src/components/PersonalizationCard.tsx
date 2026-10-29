@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Check, Wallpaper } from 'lucide-react-native';
+import { Check, Wallpaper } from './icons';
 import { useStrings } from '../i18n';
 import {
   getWallpaperScheme,

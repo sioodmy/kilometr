@@ -1,8 +1,8 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChevronRight, TriangleAlert } from 'lucide-react-native';
-import { elev, scheme, shape, type } from '../theme/tokens';
+import { ChevronRight, CircleCheck, TriangleAlert } from './icons';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection } from '../types/models';
@@ -16,6 +16,8 @@ import { linesFromConnections, newsTouchesLines } from '../services/recentRouteL
 
 const MAX_ROWS = 3;
 
+type Status = 'loading' | 'error' | 'ready';
+
 function overlappingLines(item: MpkNewsItem, lineSet: Set<string>): string[] {
   const fromBadge = item.lines.filter((l) => lineSet.has(l.trim().toUpperCase()));
   if (fromBadge.length > 0) return fromBadge;
@@ -24,50 +26,92 @@ function overlappingLines(item: MpkNewsItem, lineSet: Set<string>): string[] {
   );
 }
 
+// Brak pasujących komunikatów to brak karty: trasa bez utrudnień nie dostaje pustego bloku.
 export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   connection,
+  lines: linesProp,
 }: {
-  connection: Connection;
+  connection?: Connection;
+  lines?: string[];
 }) {
   const s = useStrings();
   const router = useRouter();
-  const lines = useMemo(() => linesFromConnections([connection]), [connection]);
+  const lines = useMemo(
+    () => linesProp ?? (connection ? linesFromConnections([connection]) : []),
+    [connection, linesProp],
+  );
   const lineSet = useMemo(() => new Set(lines), [lines]);
   const [news, setNews] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
-  const [ready, setReady] = useState(() => (getCachedNews()?.length ?? 0) > 0);
+  const [status, setStatus] = useState<Status>(() =>
+    (getCachedNews()?.length ?? 0) > 0 ? 'ready' : 'loading',
+  );
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (lines.length === 0) {
-      setReady(true);
+      setStatus('ready');
       return;
     }
     let live = true;
     void (async () => {
-      if ((getCachedNews()?.length ?? 0) === 0) {
+      let hasData = (getCachedNews()?.length ?? 0) > 0;
+      if (!hasData) {
         const cached = await loadNewsCache();
-        if (live && cached && cached.length > 0) setNews(cached);
+        if (live && cached && cached.length > 0) {
+          setNews(cached);
+          hasData = true;
+        }
       }
       try {
         const fresh = await fetchCityNews();
-        if (live) setNews(fresh);
+        if (live) {
+          setNews(fresh);
+          setStatus('ready');
+        }
       } catch {
-        // zostaw cache
-      } finally {
-        if (live) setReady(true);
+        if (live) setStatus(hasData ? 'ready' : 'error');
       }
     })();
     return () => {
       live = false;
     };
-  }, [lines.length]);
+  }, [lines.length, attempt]);
 
   const matched = useMemo(() => {
     if (lineSet.size === 0) return [];
     return news.filter((item) => newsTouchesLines(item, lineSet));
   }, [news, lineSet]);
 
-  // Bez zmian - zero UI. Spinner/placeholder też nie, żeby nie migał pustą kartą.
-  if (!ready || matched.length === 0) return null;
+  if (lineSet.size === 0) return null;
+
+  if (status === 'loading') {
+    return (
+      <View style={styles.stateCard}>
+        <ActivityIndicator size="small" color={scheme.primary} />
+        <Text style={styles.stateText}>{s.routeDetails.lineAlertsLoading}</Text>
+      </View>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <View style={styles.stateCard}>
+        <Text style={styles.stateText}>{s.routeDetails.lineAlertsError}</Text>
+        <Pressable
+          onPress={() => {
+            setStatus('loading');
+            setAttempt((n) => n + 1);
+          }}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.retry, pressed && { opacity: 0.85 }]}
+        >
+          <Text style={styles.retryText}>{s.common.retry}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (matched.length === 0) return null;
 
   const openItem = (item: MpkNewsItem) => {
     if (!item.link) return;
@@ -95,6 +139,9 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
       <View style={styles.list}>
         {shown.map((item, index) => {
           const hitLines = overlappingLines(item, lineSet);
+          const isResolved = Boolean(item.disruption?.is_resolved);
+          const solution = item.disruption?.glance?.solution;
+
           return (
             <Pressable
               key={item.id}
@@ -108,10 +155,14 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
                 pressed && { opacity: 0.85 },
               ]}
             >
-              <View style={item.urgent ? styles.urgentBar : styles.quietBar} />
               <View style={styles.rowBody}>
                 <View style={styles.rowMeta}>
-                  {item.urgent ? (
+                  {isResolved ? (
+                    <View style={styles.resolvedChip}>
+                      <CircleCheck size={12} color={scheme.onPrimaryContainer} />
+                      <Text style={styles.resolvedText}>{s.news.resolved}</Text>
+                    </View>
+                  ) : item.urgent ? (
                     <View style={styles.urgent}>
                       <TriangleAlert size={11} color={scheme.onWarningContainer} />
                       <Text style={styles.urgentText}>{s.news.chip}</Text>
@@ -119,9 +170,20 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
                   ) : null}
                   {item.dateLabel ? <Text style={styles.meta}>{item.dateLabel}</Text> : null}
                 </View>
-                <Text style={styles.rowTitle} numberOfLines={2}>
+                <Text
+                  style={[styles.rowTitle, isResolved && styles.rowTitleResolved]}
+                  numberOfLines={2}
+                >
                   {item.title}
                 </Text>
+                {solution ? (
+                  <View style={styles.solutionBox}>
+                    <Text style={styles.solutionLabel}>{s.news.solutionLabel}</Text>
+                    <Text style={styles.solutionText} numberOfLines={2}>
+                      {solution}
+                    </Text>
+                  </View>
+                ) : null}
                 {hitLines.length > 0 ? (
                   <View style={styles.linesRow}>
                     {hitLines.map((line) => (
@@ -140,7 +202,8 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         onPress={() => router.push('/news')}
         accessibilityRole="button"
         accessibilityLabel={s.routeDetails.lineAlertsAll}
-        style={({ pressed }) => [styles.footer, pressed && { opacity: 0.85 }]}
+        android_ripple={{ color: scheme.outlineVariant }}
+        style={styles.footer}
       >
         <Text style={styles.footerText}>{s.routeDetails.lineAlertsAll}</Text>
         <ChevronRight size={16} color={scheme.primary} />
@@ -152,13 +215,30 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
+    borderRadius: shape.extraLarge,
     paddingTop: 14,
-    paddingBottom: 10,
+    paddingBottom: 6,
     paddingHorizontal: 4,
     gap: 4,
-    ...elev.level1,
   },
+  stateCard: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    padding: 16,
+  },
+  stateText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
+  retry: {
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  retryText: { ...type.labelLarge, fontWeight: '600', color: scheme.onSecondaryContainer },
   head: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -175,20 +255,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingVertical: 12,
-    paddingRight: 10,
+    paddingHorizontal: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
   rowFirst: { borderTopWidth: 0 },
-  urgentBar: {
-    width: 3,
-    alignSelf: 'stretch',
-    marginLeft: 10,
-    borderRadius: 2,
-    backgroundColor: scheme.warning,
-  },
-  quietBar: { width: 3, marginLeft: 10 },
-  rowBody: { flex: 1, minWidth: 0, gap: 5 },
+  rowBody: { flex: 1, minWidth: 0, gap: 6 },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   urgent: {
     flexDirection: 'row',
@@ -200,16 +272,34 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   urgentText: { ...type.labelSmall, fontWeight: '700', color: scheme.onWarningContainer },
+  resolvedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: scheme.primaryContainer,
+    borderRadius: shape.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  resolvedText: { ...type.labelSmall, fontWeight: '700', color: scheme.onPrimaryContainer },
+  solutionBox: {
+    backgroundColor: scheme.surfaceContainerLowest,
+    borderRadius: shape.large,
+    padding: 10,
+    gap: 2,
+  },
+  solutionLabel: { ...type.labelSmall, fontWeight: '600', color: scheme.onSurfaceVariant },
+  solutionText: { ...type.bodyMedium, color: scheme.onSurface },
   meta: { ...type.labelSmall, color: scheme.onSurfaceVariant },
-  rowTitle: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '500' },
+  rowTitle: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface },
+  rowTitleResolved: { color: scheme.onSurfaceVariant },
   linesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    minHeight: 48,
     paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 4,
   },
   footerText: { ...type.titleSmall, color: scheme.primary, fontWeight: '600' },
 });

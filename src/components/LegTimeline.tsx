@@ -8,7 +8,7 @@ import {
   Ticket,
   TrainFront,
   TramFront,
-} from 'lucide-react-native';
+} from './icons';
 import Animated, {
   LinearTransition,
   useAnimatedStyle,
@@ -81,7 +81,7 @@ function cacheStops(key: string, stops: LegStop[]) {
 function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
   const Icon =
     mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
-  return <Icon size={14} color={scheme.onPrimary} strokeWidth={2.4} />;
+  return <Icon size={14} color={scheme.onPrimary} />;
 }
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
@@ -533,7 +533,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                     <Text style={s.walkSub} numberOfLines={1}>
                       {leg.fromStop}
                     </Text>
-                    <ArrowRight size={12} color={scheme.onSurfaceVariant} strokeWidth={2} />
+                    <ArrowRight size={12} color={scheme.onSurfaceVariant} />
                     <Text style={s.walkSub} numberOfLines={1}>
                       {leg.toStop}
                     </Text>
