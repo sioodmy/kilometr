@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Tło brandu Kilometr -->
+  <g id="layer-background">
+    <rect width="1024" height="1024" fill="#00a884"/>
+  </g>
+
+  <!-- Szyny, zwrotnica i strzałka (Litera K) -->
+  <g id="layer-mark" transform="translate(512, 512) scale(0.82) translate(-512, -512)">
+    <g id="layer-tracks" fill="none" stroke="#04362c" stroke-width="80" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Tor główny (pion) wyrównany do szczytu strzałki -->
+      <line x1="352" y1="180" x2="352" y2="794"/>
+      <!-- Zwrotnica góra (odgałęzienie do strzałki) -->
+      <path d="M 352 512 C 390 380, 480 300, 600 220"/>
+      <!-- Zwrotnica dół (odgałęzienie do przystanku) -->
+      <path d="M 352 512 C 400 664, 510 754, 672 754"/>
+    </g>
+
+    <!-- Zaokrąglony grot strzałki (Wariant 2A) -->
+    <g id="layer-arrow" transform="translate(605, 215) rotate(-35)">
+      <path d="M -18 -68 L 96 0 L -18 68 L 8 0 Z" fill="#04362c" stroke="#04362c" stroke-width="40" stroke-linejoin="round" stroke-linecap="round"/>
+    </g>
+
+    <!-- Węzły i przystanki -->
+    <g id="layer-nodes">
+      <!-- Pierścień węzła z wnętrzem w kolorze tła -->
+      <circle cx="352" cy="512" r="102" fill="#04362c"/>
+      <circle cx="352" cy="512" r="50" fill="#00a884"/>
+      <!-- Przystanek docelowy -->
+      <circle cx="672" cy="754" r="32" fill="#04362c"/>
+    </g>
+  </g>
+</svg>
