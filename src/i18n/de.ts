@@ -840,7 +840,13 @@ export const de: Strings = {
     filterNoHistoryBody:
       'Suche eine Verbindung in der App, danach siehst du hier Meldungen zu diesen Linien.',
     resolved: 'Verkehr wieder frei',
-    solutionLabel: 'Lösung',
+    solutionLabel: 'Umleitung',
+    detourLabel: 'Umleitung',
+    detourAndReplacement: 'Umleitung und Ersatzverkehr',
+    replacementBus: 'Ersatzbus',
+    urgentChip: 'Störung',
+    plannedChip: 'Fahrplanänderung',
+    omittedStopsPrefix: 'Ohne Halt:',
   },
   newsSvc: {
     justNow: 'gerade eben',

@@ -885,7 +885,13 @@ export const uk: Strings = {
     filterNoHistoryBody:
       'Знайди сполучення в застосунку, тоді тут з’являться повідомлення про ці лінії.',
     resolved: 'Рух відновлено',
-    solutionLabel: 'Рішення',
+    solutionLabel: 'Траса об\'їзду',
+    detourLabel: 'Траса об\'їзду',
+    detourAndReplacement: 'Об\'їзд та компенсаційний автобус',
+    replacementBus: 'Компенсаційний автобус',
+    urgentChip: 'Ускладнення',
+    plannedChip: 'Зміна маршруту',
+    omittedStopsPrefix: 'Пропускає:',
   },
   newsSvc: {
     justNow: 'щойно',
