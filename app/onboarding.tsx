@@ -16,7 +16,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
@@ -370,6 +370,7 @@ function useOnboardingPlaces() {
 export default function OnboardingScreen() {
   const s = useStrings();
   const router = useRouter();
+  const { sharedTrip } = useLocalSearchParams<{ sharedTrip?: string }>();
   const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 360;
   const reduceMotion = useReducedMotion();
@@ -434,8 +435,8 @@ export default function OnboardingScreen() {
     if (leaving) return;
     setLeaving(true);
     await setOnboardingSeen();
-    router.replace('/');
-  }, [leaving, router]);
+    router.replace(sharedTrip ? { pathname: '/shared', params: { trip: sharedTrip } } : '/');
+  }, [leaving, router, sharedTrip]);
 
   const next = useCallback(() => setStep((v) => Math.min(v + 1, steps.length - 1)), [steps.length]);
   const back = useCallback(() => setStep((v) => Math.max(v - 1, 0)), []);

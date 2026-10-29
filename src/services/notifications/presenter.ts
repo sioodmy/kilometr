@@ -99,7 +99,7 @@ export async function presentTrip(
     await dismissTracking();
     return;
   }
-  await scheduleIOSTripAlerts(p, trip).catch((error) => {
+  await (trip.sharedJourney ? cancelScheduledAlerts() : scheduleIOSTripAlerts(p, trip)).catch((error) => {
     console.warn('[Notifications] iOS schedule:', error);
   });
 

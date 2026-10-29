@@ -298,11 +298,17 @@ export function AddPlaceSheet({
         setAnchorQuery('');
         return true;
       }
+      if (isChangingLoc && selectedLoc) {
+        setIsChangingLoc(false);
+        setQuery('');
+        setSuggestions([]);
+        return true;
+      }
       closeRef.current();
       return true;
     });
     return () => sub.remove();
-  }, [isPickingIcon, isPickingAnchor]);
+  }, [isPickingIcon, isPickingAnchor, isChangingLoc, selectedLoc]);
 
   // Gdy zmienia się lokalizacja miejsca, pobierz najbliższe przystanki
   useEffect(() => {
@@ -726,9 +732,24 @@ export function AddPlaceSheet({
               </BottomSheetScrollView>
             )}
           </View>
-        ) : isChangingLoc && suggestions.length > 0 ? (
+        ) : isChangingLoc ? (
           <View style={{ flex: 1 }}>
             <View style={styles.header}>
+              {selectedLoc ? (
+                <Pressable
+                  onPress={() => {
+                    setIsChangingLoc(false);
+                    setQuery('');
+                    setSuggestions([]);
+                  }}
+                  hitSlop={10}
+                  style={styles.backBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.map.backA11y}
+                >
+                  <ChevronLeft size={22} color={scheme.onSurface} />
+                </Pressable>
+              ) : null}
               <View style={styles.headerLeft}>
                 <Text style={styles.title}>
                   {isEditing ? s.places.editPlace : s.places.newPlace}
@@ -761,30 +782,44 @@ export function AddPlaceSheet({
               />
               {searching && <ActivityIndicator size="small" color={scheme.primary} />}
               {query ? (
-                <Pressable onPress={() => handleQueryChange('')} style={styles.clearBtn} accessibilityRole="button" accessibilityLabel={s.search.clearA11y}>
+                <Pressable
+                  onPress={() => handleQueryChange('')}
+                  style={styles.clearBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.search.clearA11y}
+                  hitSlop={10}
+                >
                   <X size={17} color={scheme.onSurfaceVariant} />
                 </Pressable>
               ) : null}
             </View>
 
-            <BottomSheetFlatList
-              data={suggestions}
-              keyExtractor={(i: Suggestion) => i.id}
-              overScrollMode="never"
-              keyboardShouldPersistTaps="handled"
-              style={{ flex: 1, marginTop: 10 }}
-              contentContainerStyle={styles.suggestionsList}
-              renderItem={({ item }: { item: Suggestion }) => (
-                <SuggestionRow
-                  item={item}
-                  onPress={() => {
-                    setSelectedLoc(item);
-                    setIsChangingLoc(false);
-                    if (!name.trim()) setName(item.title);
-                  }}
-                />
-              )}
-            />
+            {query.trim().length >= 2 && !searching && suggestions.length === 0 ? (
+              <Text style={styles.searchEmpty} accessibilityRole="alert">
+                {s.search.noResultsFor(query.trim())}
+              </Text>
+            ) : (
+              <BottomSheetFlatList
+                data={suggestions}
+                keyExtractor={(i: Suggestion) => i.id}
+                overScrollMode="never"
+                keyboardShouldPersistTaps="handled"
+                style={{ flex: 1, marginTop: 10 }}
+                contentContainerStyle={styles.suggestionsList}
+                renderItem={({ item }: { item: Suggestion }) => (
+                  <SuggestionRow
+                    item={item}
+                    onPress={() => {
+                      setSelectedLoc(item);
+                      setIsChangingLoc(false);
+                      setQuery('');
+                      setSuggestions([]);
+                      if (!name.trim()) setName(item.title);
+                    }}
+                  />
+                )}
+              />
+            )}
           </View>
         ) : (
           <BottomSheetScrollView
@@ -888,7 +923,7 @@ export function AddPlaceSheet({
 
             <View style={styles.locSection}>
               <Text style={styles.fieldLabel}>{s.places.addressLabel}</Text>
-              {selectedLoc && !isChangingLoc ? (
+              {selectedLoc && (
                 <View style={[styles.selectedCard, compact && styles.selectedCardCompact]}>
                   <View style={styles.selectedIconWrap}>
                     <MapPin size={18} color={scheme.primary} />
@@ -905,6 +940,7 @@ export function AddPlaceSheet({
                     onPress={() => {
                       setIsChangingLoc(true);
                       setQuery('');
+                      setSuggestions([]);
                       sheetRef.current?.snapToIndex(1);
                     }}
                     style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.8 }]}
@@ -914,39 +950,10 @@ export function AddPlaceSheet({
                     <Text style={styles.changeBtnText}>{s.places.changeBtn}</Text>
                   </Pressable>
                 </View>
-              ) : (
-                <View style={styles.searchBox}>
-                  <Search size={18} color={scheme.onSurfaceVariant} />
-                  <BottomSheetTextInput
-                    value={query}
-                    onChangeText={handleQueryChange}
-                    placeholder={s.places.queryHint}
-                    accessibilityLabel={s.places.addressLabel}
-                    placeholderTextColor={scheme.onSurfaceVariant}
-                    style={styles.searchInput}
-                  />
-                  {searching && <ActivityIndicator size="small" color={scheme.primary} />}
-                  {query ? (
-                    <Pressable
-                      onPress={() => handleQueryChange('')}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.search.clearA11y}
-                      style={({ pressed }) => [styles.clearBtn, pressed && { opacity: 0.7 }]}
-                    >
-                      <X size={17} color={scheme.onSurfaceVariant} />
-                    </Pressable>
-                  ) : null}
-                </View>
-              )}
-              {isChangingLoc && query.trim().length >= 2 && !searching && suggestions.length === 0 && (
-                <Text style={styles.searchEmpty} accessibilityRole="alert">
-                  {s.search.noResultsFor(query.trim())}
-                </Text>
               )}
             </View>
 
-            {!isChangingLoc && selectedLoc && (
+            {selectedLoc && (
               <View style={styles.anchorSection}>
                 <View style={styles.anchorSectionHeader}>
                   <Text style={styles.fieldLabel}>{s.places.anchorOptional}</Text>
@@ -1005,8 +1012,7 @@ export function AddPlaceSheet({
               </View>
             )}
 
-            {!isChangingLoc && (
-              <View style={styles.bottomActions}>
+            <View style={styles.bottomActions}>
                 {isEditing && confirmDelete ? (
                   <View style={styles.confirmDeleteBox}>
                     <View style={styles.confirmDeleteTextGroup}>
@@ -1069,7 +1075,6 @@ export function AddPlaceSheet({
                   </View>
                 )}
               </View>
-            )}
           </BottomSheetScrollView>
         )}
       </View>

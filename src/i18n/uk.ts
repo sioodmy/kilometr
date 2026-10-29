@@ -124,6 +124,7 @@ export const uk: Strings = {
     kmh: (v: string) => `${v} км/год`,
     add15: '+15 хв',
     add30: '+30 хв',
+    add45: '+45 хв',
     add60: '+1 год.',
   },
   home: {
@@ -985,7 +986,10 @@ export const uk: Strings = {
     countDirect: ' • лише прямі',
     countTram: ' • трамваї',
     countBus: ' • автобуси',
-    countEarlier: ' • завантажую раніші…',
+    earlierAction: 'Раніші сполучення',
+    earlierLoading: 'Завантажую раніші сполучення…',
+    earlierEmpty: 'Немає раніших сполучень цього дня',
+    earlierRetry: 'Не вдалося завантажити. Спробуй ще раз',
     offlineTapA11y: 'Останні дані з кешу. Натисни, щоб оновити.',
     offlineChip: 'офлайн',
     noLiveChip: 'немає live-даних',
@@ -1016,6 +1020,12 @@ export const uk: Strings = {
   },
   routeDetails: {
     departure: 'Вихід',
+    vehicleDeparture: 'Відправлення',
+    scheduledTime: (time: string) => `За розкладом ${time}`,
+    estimatedDelay: (n: number) => `Близько +${n} хв, оцінка за іншими автобусами`,
+    untrackedVehicle: 'Немає актуальної позиції. Можливе запізнення.',
+    uncertainTransfer: 'Мало часу на пересадку. Запізнення цього автобуса не підтверджено.',
+    walkDeparture: (time: string, place: string) => `Вийти пішки о ${time}: ${place}`,
     arrival: 'Прибуття',
     origin: 'Звідки',
     destination: 'Куди',
@@ -1181,6 +1191,8 @@ export const uk: Strings = {
     minuteLabel: 'хвилина',
     confirmNow: 'Шукати від зараз',
     confirmDepart: (day: string, hh: string, mm: string) => `Застосувати: ${day}, ${hh}:${mm}`,
+    pastWarning: 'Обраний час вже минув',
+    switchTomorrow: 'Перемкнути на завтра',
   },
   routesBar: {
     modeTram: 'Трам',
@@ -1196,6 +1208,8 @@ export const uk: Strings = {
     directOffA11y: 'Фільтр лише прямих: вимкнено. Натисни, щоб увімкнути.',
     modeFilterA11y: (cur: string) => `Фільтрувати транспорт: зараз ${cur}. Натисни, щоб змінити.`,
     timeA11y: (label: string) => `Час відправлення: ${label}. Натисни, щоб змінити.`,
+    timeArrivalA11y: (label: string) => `Час прибуття: ${label}. Торкніться, щоб змінити.`,
+    arrivalShort: (time: string) => `до ${time}`,
   },
   connection: {
     previewTitle: 'Перегляд маршруту',
@@ -1238,8 +1252,6 @@ export const uk: Strings = {
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
-    vehicleFarBack: 'Транспорт ще далі на маршруті',
-    vehicleNotStarted: 'Рейс ще не розпочався',
     fromPrefix: 'з ',
     toPrefix: 'до ',
     stopsSummary: (n: number, mins: number, open: boolean) => {
@@ -1426,7 +1438,6 @@ export const uk: Strings = {
     save: 'Увімкнути будильник',
     saving: 'Налаштування будильника…',
     remove: 'Видалити будильник',
-    preview: 'Перегляд будильника',
     ringTitle: 'Час збиратися',
     dismiss: 'Вимкнути будильник',
     showRoute: 'Показати сполучення',

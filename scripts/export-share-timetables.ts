@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { CITIES } from '../src/cities';
 import { tripShard, type StaticStop } from '../src/sharing/timetable';
+import { loadShareShapes } from './share-shapes';
 
 const output = resolve(
   process.env.SHARE_TIMETABLE_OUTPUT || join(__dirname, '../landing/public/timetables'),
@@ -14,6 +15,7 @@ const output = resolve(
 const source = process.env.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app';
 const selected = process.argv.find((arg) => arg.startsWith('--city='))?.slice(7);
 const localDb = process.argv.find((arg) => arg.startsWith('--db='))?.slice(5);
+const localZip = process.argv.find((arg) => arg.startsWith('--gtfs-zip='))?.slice(11);
 const cities = CITIES.filter((city) => !selected || city.id === selected);
 if (!cities.length || (localDb && cities.length !== 1))
   throw new Error('Podaj poprawne --city dla lokalnej bazy.');
@@ -31,6 +33,7 @@ async function exportCity(city: string) {
   try {
     let file: string;
     let version: string;
+    let sources: unknown;
     if (localDb) {
       file = resolve(localDb);
       version = createHash('sha256')
@@ -41,7 +44,9 @@ async function exportCity(city: string) {
         (await download(`${source}/${city}/manifest.json`)).toString(),
       ) as {
         db: { path: string; sha256: string; sizeBytes: number };
+        sources?: unknown;
       };
+      sources = manifest.sources;
       if (manifest.db.path !== `${city}/db/kilometr-gtfs.db.gz`)
         throw new Error('Niepoprawna ścieżka rozkładu.');
       const compressed = await download(`${source}/${manifest.db.path}`);
@@ -52,7 +57,20 @@ async function exportCity(city: string) {
       await writeFile(file, gunzipSync(compressed));
     }
     db = new DatabaseSync(file, { readOnly: true });
-    const query = db.prepare(`SELECT st.trip_id, st.stop_id, s.name, st.arr_sec, st.dep_sec
+    const tripIds = db
+      .prepare('SELECT trip_id FROM trips')
+      .all()
+      .map((row) => String(row.trip_id));
+    const geometry = await loadShareShapes(tripIds, sources, localZip);
+    const geometryKeys = new Map(
+      [...geometry.shapes].map(([id, path]) => [
+        id,
+        createHash('sha256').update(path).digest('hex').slice(0, 16),
+      ]),
+    );
+    const shardTripShapes = new Map<string, Record<string, string>>();
+    const query =
+      db.prepare(`SELECT st.trip_id, st.stop_id, s.name, s.lat, s.lon, st.arr_sec, st.dep_sec
       FROM stop_times st JOIN stops s ON s.stop_id = st.stop_id ORDER BY st.trip_id, st.seq`);
     let count = 0;
     let currentTrip = '';
@@ -67,6 +85,12 @@ async function exportCity(city: string) {
         writeSync(fd, '{"v":1,"trips":{');
       } else writeSync(fd, ',');
       writeSync(fd, `${JSON.stringify(currentTrip)}:${JSON.stringify(currentStops)}`);
+      const shape = geometry.tripShapes.get(currentTrip);
+      if (shape && geometry.shapes.has(shape)) {
+        const trips = shardTripShapes.get(key) ?? {};
+        trips[currentTrip] = geometryKeys.get(shape)!;
+        shardTripShapes.set(key, trips);
+      }
     };
     for (const row of query.iterate()) {
       const trip = String(row.trip_id);
@@ -80,6 +104,8 @@ async function exportCity(city: string) {
         name: String(row.name),
         arrival: Number(row.arr_sec),
         departure: Number(row.dep_sec),
+        lat: Number(row.lat),
+        lon: Number(row.lon),
       });
       count++;
     }
@@ -89,9 +115,18 @@ async function exportCity(city: string) {
     // Każdy deploy niesie jeden spójny snapshot, bez baz SQLite w artefakcie Pages.
     await rm(directory, { recursive: true, force: true });
     await mkdir(join(directory, version), { recursive: true });
+    await mkdir(join(directory, version, 'shapes'), { recursive: true });
     let bytes = 0;
+    for (const [id, path] of geometry.shapes) {
+      const compressed = gzipSync(JSON.stringify({ v: 1, path }), { level: 9 });
+      bytes += compressed.length;
+      await writeFile(
+        join(directory, version, 'shapes', `${geometryKeys.get(id)}.json.gz`),
+        compressed,
+      );
+    }
     for (const [key, fd] of shards) {
-      writeSync(fd, '}}');
+      writeSync(fd, `},"tripShapes":${JSON.stringify(shardTripShapes.get(key) ?? {})}}`);
       closeSync(fd);
       shards.delete(key);
       const compressed = gzipSync(await readFile(join(temp, `${key}.json`)), { level: 9 });

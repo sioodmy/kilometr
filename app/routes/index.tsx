@@ -4,6 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Anchor,
+  ChevronUp,
   ChevronLeft,
   CloudOff,
   X,
@@ -50,7 +51,9 @@ import {
 } from '../../src/services/dataManager';
 import { liveTracker } from '../../src/services/liveTracker';
 import { deduplicateConnections, mergeConnections } from '../../src/services/routing/connectionIdentity';
-import { sortConnectionsByCost } from '../../src/services/routing/engine';
+import { loadEarlierConnections } from '../../src/services/routing/earlierConnections';
+import { applyLiveDelays, sortConnectionsByCost } from '../../src/services/routing/engine';
+import { boardingDepartureMs } from '../../src/services/routing/connectionTimes';
 import { costParamsFor } from '../../src/services/routing/raptor';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
@@ -66,12 +69,6 @@ import {
 import { useThumbBarInset } from '../../src/components/ThumbBar';
 import { SearchSheet } from '../../src/components/SearchSheet';
 import { useStrings } from '../../src/i18n';
-
-/** Sekundy od północy - jeden zegar dla całego ekranu. */
-function nowSeconds(): number {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-}
 
 // Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
@@ -208,10 +205,21 @@ export default function RoutesScreen() {
   // `unknown` też oznacza brak danych: przed pierwszym udanym pollem (albo przy
   // starcie apki) nie mamy żadnego opóźnienia, więc cisza była kłamstwem.
   const [liveStale, setLiveStale] = useState(false);
+  // Tick przerysowujący opóźnienia: wyplanowane połączenia mają flagi live
+  // z chwili wyszukiwania, bez tickera byłyby zamrożone od wyszukania.
+  const [liveTick, setLiveTick] = useState(0);
+  const lastLiveOk = useRef(0);
   useEffect(() => {
-    const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
+    const check = () => {
+      setLiveStale(liveTracker.getLiveState() !== 'fresh');
+      const ok = liveTracker.getLastOk();
+      if (ok !== lastLiveOk.current) {
+        lastLiveOk.current = ok;
+        setLiveTick(ok);
+      }
+    };
     check();
-    const t = setInterval(check, 15000);
+    const t = setInterval(check, 5000);
     return () => clearInterval(t);
   }, []);
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
@@ -225,6 +233,9 @@ export default function RoutesScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [noMoreEarlier, setNoMoreEarlier] = useState(false);
+  const [earlierFailed, setEarlierFailed] = useState(false);
+  const [earlierFocused, setEarlierFocused] = useState(false);
+  const earlierRequest = useRef(false);
   const [noMoreLater, setNoMoreLater] = useState(false);
   // Doładowanie potrafi paść (baza w trakcie importu, pusty dzień) i wtedy
   // lista po cichu przestawała się dociągać. Bez tego użytkownik scrollował
@@ -241,7 +252,7 @@ export default function RoutesScreen() {
   );
 
   const displayed = useMemo(() => {
-    let list = items;
+    let list = applyLiveDelays(items, offline || liveStale ? new Map() : liveTracker.getTripDelays());
     if (directOnly) {
       list = list.filter((c) => c.transfers === 0);
     }
@@ -255,7 +266,7 @@ export default function RoutesScreen() {
       [...list], costParamsFor(cfg.routeStyle), profileWalkSpeedMps(cfg.walkPace),
       arrivalMode ? targetTimeSec : undefined,
     );
-  }, [items, directOnly, modeFilter, arrivalMode, targetTimeSec]);
+  }, [items, directOnly, modeFilter, arrivalMode, targetTimeSec, liveTick, offline, liveStale]);
 
   // Dock przesuwa się nad listą bez zmiany wysokości jej viewportu.
   const dockProgress = useSharedValue(1);
@@ -273,11 +284,7 @@ export default function RoutesScreen() {
     };
   });
 
-  // Refs pod utrzymanie pozycji scrolla przy dokładaniu z góry
   const listRef = useRef<FlatList<Connection>>(null);
-  const scrollY = useRef(0);
-  const contentH = useRef(0);
-  const pendingAdjust = useRef<number | null>(null);
   // Odliczane „uspokojenie listy” przed zmianą widoczności docka
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stan docka oczekujący na koniec pauzy po zmianie (patrz setDockVisible)
@@ -533,7 +540,7 @@ export default function RoutesScreen() {
 
   const applyLiveList = (c: Connection[], depSec: number | undefined) => {
     // Default: tylko aktualne i przyszłe - bez historycznych.
-    // Przeszłe dociąga użytkownik gestem (scroll w górę + przytrzymanie).
+    // Wcześniejsze odjazdy użytkownik wczytuje gestem lub przyciskiem.
     // Przy jawnie wybranej godzinie (np. z przeszłości) pokazuj wszystko jak jest.
     let list = deduplicateConnections(c).sort((a, b) => a.departureSec - b.departureSec);
     if (depSec === undefined) {
@@ -556,6 +563,7 @@ export default function RoutesScreen() {
     setLoadError(false);
     setOffline(false);
     setNoMoreEarlier(arrivalMode);
+    setEarlierFailed(false);
     setNoMoreLater(false);
     setLoadMoreFailed(false);
     const depSec = targetDepSec !== undefined ? targetDepSec : targetTimeSec;
@@ -688,35 +696,30 @@ export default function RoutesScreen() {
   // Starsze (historyczne, już odjechane) - dokładane Z GÓRY
   const handleLoadEarlier = async () => {
     if (arrivalMode) return;
-    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreEarlier || offline) return;
+    if (loading || loadingMore || earlierRequest.current || items.length === 0 || noMoreEarlier || offline) return;
     const firstDeparture = items[0].departureSec;
     if (!firstDeparture || firstDeparture <= 0) return;
 
+    earlierRequest.current = true;
     setLoadingEarlier(true);
+    setEarlierFailed(false);
     const seq = ++fetchSeq.current;
 
     try {
-      // Historia dokładana od czasu odjazdu.
-      const c = await RoutingService.getConnections(queryAt(firstDeparture - 1800));
-      if (seq !== fetchSeq.current) return;
-      setItems((prev) => {
-        const { list, added } = mergeConnections(prev, c);
-        if (added === 0) {
-          setNoMoreEarlier(true);
-          return list;
-        }
-        // Bazę do korekty scrolla bierzemy dopiero TU - czyli jeszcze przed
-        // renderem, w którym dojdą nowe wiersze. Pomiar na starcie
-        // zapytania bywał nieaktualny (np. rozciągał się nagłówek), przez co
-        // lista skakała dwa razy zamiast raz.
-        pendingAdjust.current = contentH.current;
-        return list;
-      });
+      const result = await loadEarlierConnections(
+        items,
+        (at) => RoutingService.getConnections(queryAt(at)),
+        () => seq !== fetchSeq.current,
+      );
+      if (!result) return;
+      setNoMoreEarlier(result.added === 0);
+      setItems(result.list);
     } catch {
-      // po cichu - lista zostaje
+      if (seq === fetchSeq.current) setEarlierFailed(true);
     } finally {
       // Jak w handleLoadMore: spinner gaśnie nawet gdy zapytanie zostało
       // unieważnione przez nowszy fetchSeq.
+      earlierRequest.current = false;
       setLoadingEarlier(false);
     }
   };
@@ -810,15 +813,10 @@ export default function RoutesScreen() {
     evaluateDockOnSettle();
   };
 
-  // Handler scrolla pilnuje pozycji (korekta po dociągnięciu starszych
-  // odjazdów z góry) i kierunku do chowania docka. Historyczne odjazdy
-  // dociąga JUŻ TYLKO gest pull-to-load znad listy (RefreshControl niżej)-
-  // automatyczne dokładanie po samym dotknięciu góry było za łatwe.
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     const dy = y - lastScrollY.current;
     lastScrollY.current = y;
-    scrollY.current = y;
 
     // 1. Na samej górze listy (y <= 12) - dock wraca od razu, bez
     //    czekania na puszczenie palca: tam scroll i tak się kończy.
@@ -840,20 +838,6 @@ export default function RoutesScreen() {
     }
   };
 
-  const handleContentSizeChange = (_w: number, h: number) => {
-    contentH.current = h;
-    if (pendingAdjust.current != null) {
-      const delta = h - pendingAdjust.current;
-      pendingAdjust.current = null;
-      if (delta > 0) {
-        listRef.current?.scrollToOffset({
-          offset: Math.max(0, scrollY.current + delta),
-          animated: false,
-        });
-      }
-    }
-  };
-
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
       fetchRoutes(targetTimeSec, items.length > 0);
@@ -867,9 +851,7 @@ export default function RoutesScreen() {
     // połączenia zostawały niewidoczne mimo gotowego rozkładu.
   }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady, targetTimeSec, timeMode]);
 
-  // Pull znad listy NIE odświeża - dociąga historyczne (już odjechane)
-  // połączenia. To JEDYNY sposób na ich wczytanie; odświeżanie listy robią
-  // filtry, czas i powrót na ekran (fetchRoutes w efektach).
+  // Gest i przycisk dokładają wcześniejsze odjazdy do tej samej listy.
   const handlePullEarlier = () => {
     void loadEarlierRef.current();
   };
@@ -914,6 +896,7 @@ export default function RoutesScreen() {
   };
 
   const isCustomTime = targetTimeSec !== undefined;
+  const earlierDisabled = loading || loadingMore || loadingEarlier || noMoreEarlier;
 
   const openConnection = useCallback(
     (item: Connection) => {
@@ -942,7 +925,7 @@ export default function RoutesScreen() {
       // Granica "przeszłość" liczona przy każdym rysunku: ref zaczepiony przy
       // zamontowaniu ekranu zmroził nam style dłużej niż minute, bo nowy
       // "tick" dziecka odświeżał napis, a karta zostawała jasna.
-      const past = item.departureSec > 0 && item.departureSec < nowSeconds() - 60;
+      const past = item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
       return (
         <ConnectionCard
           item={item}
@@ -1092,16 +1075,21 @@ export default function RoutesScreen() {
           accessibilityState={{ busy: loading }}
           pointerEvents={loading ? 'none' : 'auto'}
           refreshControl={
-            arrivalMode ? undefined :
+            arrivalMode || noMoreEarlier || offline ? undefined :
             <RefreshControl
               refreshing={loadingEarlier}
               onRefresh={handlePullEarlier}
+              enabled={!loading && !loadingMore && !noMoreEarlier && !offline}
+              title={s.routes.earlierAction}
+              titleColor={scheme.onSurfaceVariant}
               tintColor={scheme.primary}
               colors={[scheme.primary]}
               progressBackgroundColor={scheme.surfaceContainerHigh}
             />
           }
           data={displayed}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 80 }}
+          alwaysBounceVertical={!arrivalMode}
           initialNumToRender={8}
           maxToRenderPerBatch={8}
           // wymusza przeliczenie etykiet „za X min” bez refetchu
@@ -1122,7 +1110,6 @@ export default function RoutesScreen() {
           onScrollEndDrag={handleScrollEndDrag}
           onMomentumScrollBegin={handleMomentumScrollBegin}
           onMomentumScrollEnd={handleMomentumScrollEnd}
-          onContentSizeChange={handleContentSizeChange}
           renderItem={renderConnection}
           ListHeaderComponent={
             <>
@@ -1133,7 +1120,6 @@ export default function RoutesScreen() {
                 {connectionsLabel(displayed.length)} • {isCustomTime ? (arrivalMode ? timeLabel : s.routes.countDepart(timeLabel)) : s.routes.countNearest}
                 {directOnly ? s.routes.countDirect : ''}
                 {modeFilter === 'tram' ? s.routes.countTram : modeFilter === 'bus' ? s.routes.countBus : ''}
-                {loadingEarlier ? s.routes.countEarlier : ''}
               </Text>
               {offline && (
                 <Pressable
@@ -1154,6 +1140,36 @@ export default function RoutesScreen() {
                 </View>
               )}
             </View>
+            {!arrivalMode && !offline && (
+              <Pressable
+                onPress={handlePullEarlier}
+                onFocus={() => setEarlierFocused(true)}
+                onBlur={() => setEarlierFocused(false)}
+                disabled={earlierDisabled}
+                accessibilityRole="button"
+                accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
+                style={({ pressed }) => [
+                  styles.earlierButton,
+                  earlierFocused && styles.earlierFocused,
+                  pressed && { opacity: 0.75 },
+                ]}
+              >
+                {loadingEarlier ? (
+                  <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
+                ) : !noMoreEarlier ? (
+                  <ChevronUp size={18} color={scheme.onSurfaceVariant} />
+                ) : null}
+                <Text style={styles.earlierText} accessibilityLiveRegion="polite">
+                  {loadingEarlier
+                    ? s.routes.earlierLoading
+                    : noMoreEarlier
+                      ? s.routes.earlierEmpty
+                      : earlierFailed
+                        ? s.routes.earlierRetry
+                        : s.routes.earlierAction}
+                </Text>
+              </Pressable>
+            )}
             </>
           }
           // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
@@ -1269,6 +1285,7 @@ export default function RoutesScreen() {
           onToggleDirect={() => setDirectOnly(!directOnly)}
           timeLabel={timeLabel}
           isCustomTime={isCustomTime}
+          arrivalMode={arrivalMode}
           onOpenTimeSheet={() => setTimeSheetOpen(true)}
           modeFilter={modeFilter}
           onCycleMode={handleCycleMode}
@@ -1287,6 +1304,25 @@ export default function RoutesScreen() {
 }
 
 const styles = StyleSheet.create({
+  earlierButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: shape.medium,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    marginBottom: 8,
+  },
+  earlierFocused: { borderColor: scheme.primary },
+  earlierText: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   safe: { flex: 1, backgroundColor: scheme.surface },
   topBar: {
     flexDirection: 'row',

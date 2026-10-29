@@ -106,6 +106,7 @@ export const de: Strings = {
     kmh: (v: string) => `${v} km/h`,
     add15: '+15 Min.',
     add30: '+30 Min.',
+    add45: '+45 Min.',
     add60: '+1 Std.',
   },
   home: {
@@ -939,7 +940,10 @@ export const de: Strings = {
     countDirect: ' • nur direkt',
     countTram: ' • Trams',
     countBus: ' • Busse',
-    countEarlier: ' • lade frühere…',
+    earlierAction: 'Frühere Verbindungen',
+    earlierLoading: 'Frühere Verbindungen werden geladen…',
+    earlierEmpty: 'Keine früheren Verbindungen an diesem Tag',
+    earlierRetry: 'Verbindungen konnten nicht geladen werden. Erneut versuchen',
     offlineTapA11y: 'Neueste Cache-Daten. Tippen zum Aktualisieren.',
     offlineChip: 'offline',
     noLiveChip: 'keine Live-Daten',
@@ -970,6 +974,12 @@ export const de: Strings = {
   },
   routeDetails: {
     departure: 'Abfahrt',
+    vehicleDeparture: 'Abfahrt',
+    scheduledTime: (time: string) => `Planmäßig ${time}`,
+    estimatedDelay: (n: number) => `Etwa +${n} Min., aus anderen Bussen geschätzt`,
+    untrackedVehicle: 'Keine aktuelle Position. Verspätung möglich.',
+    uncertainTransfer: 'Wenig Zeit zum Umsteigen. Die Verspätung dieses Busses ist ungewiss.',
+    walkDeparture: (time: string, place: string) => `Zu Fuß los um ${time}: ${place}`,
     arrival: 'Ankunft',
     origin: 'Von',
     destination: 'Nach',
@@ -1136,6 +1146,8 @@ export const de: Strings = {
     minuteLabel: 'Minute',
     confirmNow: 'Ab jetzt suchen',
     confirmDepart: (day: string, hh: string, mm: string) => `Übernehmen: ${day}, ${hh}:${mm}`,
+    pastWarning: 'Die gewählte Zeit ist bereits vergangen',
+    switchTomorrow: 'Auf morgen umstellen',
   },
   routesBar: {
     modeTram: 'Tram',
@@ -1151,6 +1163,8 @@ export const de: Strings = {
     directOffA11y: 'Nur-Direkt-Filter: inaktiv. Tippen zum Einschalten.',
     modeFilterA11y: (cur: string) => `Verkehrsmittel filtern: aktuell ${cur}. Tippen zum Ändern.`,
     timeA11y: (label: string) => `Abfahrtszeit: ${label}. Tippen zum Ändern.`,
+    timeArrivalA11y: (label: string) => `Ankunftszeit: ${label}. Zum Ändern tippen.`,
+    arrivalShort: (time: string) => `bis ${time}`,
   },
   connection: {
     previewTitle: 'Verbindungsvorschau',
@@ -1192,8 +1206,6 @@ export const de: Strings = {
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
     vehicleBetween: (mode: string, from: string, to: string) =>
       `${mode} zwischen ${from} und ${to}`,
-    vehicleFarBack: 'Fahrzeug ist weiter hinten auf der Strecke',
-    vehicleNotStarted: 'Die Fahrt hat noch nicht begonnen',
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
     stopsSummary: (n: number, mins: number, open: boolean) =>
@@ -1378,7 +1390,6 @@ export const de: Strings = {
     save: 'Wecker einschalten',
     saving: 'Wecker wird gestellt…',
     remove: 'Wecker entfernen',
-    preview: 'Wecker ansehen',
     ringTitle: 'Zeit, dich fertigzumachen',
     dismiss: 'Wecker ausschalten',
     showRoute: 'Verbindung anzeigen',

@@ -184,6 +184,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 /** Kontekst powiadomienia: co użytkownik śledzi i skąd ma wrócić po tapnięciu. */
 export interface TrackedTrip {
   id: string;
+  sharedJourney?: string;
   fromTitle: string;
   fromLat: number;
   fromLon: number;

@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { deduplicateConnections, mergeConnections, normalizeConnectionId, stableConnectionId } from '../src/services/routing/connectionIdentity';
+import { loadEarlierConnections } from '../src/services/routing/earlierConnections';
 import type { Connection } from '../src/types/models';
 
 const tram: Connection = {
@@ -74,3 +75,57 @@ for (const title of ['Dworzec Główny', 'Adres / wejście #2', 'Nazwa 100% i %2
 assert.equal(normalizeConnectionId('conn-1-36000'), 'conn-1-36000');
 console.log('PASS: duplikaty kursów, stabilne ID, przystanki, przesiadki, dni i paginacja');
 console.log('PASS: ID po przejściu przez Expo Router SDK 57, polskie znaki, procenty i zgodność starszych ID');
+
+async function checkEarlier() {
+  const earlier = {
+    ...tram,
+    id: 'earlier',
+    departureSec: 28800,
+    legs: tram.legs.map((leg) => ({ ...leg, departAt: '08:02', arriveAt: '08:18' })),
+  };
+  const queries: number[] = [];
+  const result = await loadEarlierConnections([tram], async (fromSec) => {
+    queries.push(fromSec);
+    return fromSec <= earlier.departureSec ? [earlier, tram, next] : [tram, next];
+  }, () => false);
+  assert.deepEqual(queries, [34200, 32400, 28800]);
+  assert.deepEqual(result, { list: [earlier, tram], added: 1 });
+
+  const duplicateQueries: number[] = [];
+  const olderDuplicate = { ...duplicate, departureSec: tram.departureSec - 30 };
+  const unique = await loadEarlierConnections([tram], async (fromSec) => {
+    duplicateQueries.push(fromSec);
+    return fromSec <= earlier.departureSec ? [earlier] : [olderDuplicate];
+  }, () => false);
+  assert.deepEqual(duplicateQueries, queries);
+  assert.equal(unique?.added, 1);
+
+  const emptyQueries: number[] = [];
+  const empty = await loadEarlierConnections([tram], async (fromSec) => {
+    emptyQueries.push(fromSec);
+    return [tram, next];
+  }, () => false);
+  assert.deepEqual(empty, { list: [tram], added: 0 });
+  assert.equal(emptyQueries.at(-1), 0);
+  assert.equal(emptyQueries.length, 6);
+  assert.ok(emptyQueries.every((at) => at >= 0));
+
+  let cancelled = false;
+  let calls = 0;
+  const stale = await loadEarlierConnections([tram], async () => {
+    calls++;
+    cancelled = true;
+    return [earlier];
+  }, () => cancelled);
+  assert.equal(stale, null);
+  assert.equal(calls, 1);
+  await assert.rejects(loadEarlierConnections([tram], async () => {
+    throw new Error('unavailable');
+  }, () => false), /unavailable/);
+  console.log('PASS: wcześniejsze kursy po przerwie, duplikaty, granica dnia, anulowanie i błąd');
+}
+
+checkEarlier().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

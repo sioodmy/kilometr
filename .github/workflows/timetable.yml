@@ -57,6 +57,7 @@ jobs:
     # filtrujemy samą listę miast, a nie warunek.
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce", "olsztyn", "bialystok", "opole", "rzeszow", "lublin", "radom"]') }}
     steps:
@@ -70,6 +71,17 @@ jobs:
 
       - name: Check unzip
         run: command -v unzip || (echo "::error::brak unzip na runnerze" && exit 1)
+
+      - name: Data cache adresów
+        id: address-cache-date
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache adresów OSM miasta
+        uses: actions/cache@v4
+        with:
+          path: cloudflare/dist/address-cache/${{ matrix.city }}.json.gz
+          key: addresses-v1-${{ matrix.city }}-${{ steps.address-cache-date.outputs.day }}
+          restore-keys: addresses-v1-${{ matrix.city }}-
 
       - name: Build timetable.db + manifest (${{ matrix.city }})
         id: build
@@ -86,6 +98,7 @@ jobs:
         env:
           PDP_API_KEY: ${{ secrets.PDP_API_KEY }}
           TIMETABLE_PUBLIC_URL: ${{ secrets.TIMETABLE_PUBLIC_URL }}
+          ADDRESS_OVERPASS_URL: ${{ vars.ADDRESS_OVERPASS_URL }}
 
       - name: Manifest → summary
         if: steps.build.outputs.exit == '0'

@@ -47,7 +47,7 @@ export interface CityDef {
     campusPois: boolean;
     /** Pociągi regionalne w prebuilt (KD we Wrocławiu). */
     regionalRail: boolean;
-    /** Bezpośredni POST bus_position (tylko MPK Wrocław). */
+    /** Bezpośredni POST bus_position jako fallback live (tylko MPK Wrocław). */
     directBusPosition: boolean;
   };
 }

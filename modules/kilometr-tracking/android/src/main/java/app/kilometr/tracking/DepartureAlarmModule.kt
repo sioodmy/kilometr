@@ -10,7 +10,6 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import expo.modules.kotlin.functions.Queues
 
 class DepartureAlarmModule : Module() {
   private val context: Context?
@@ -53,12 +52,5 @@ class DepartureAlarmModule : Module() {
 
     AsyncFunction("schedule") { json: String -> context?.let { DepartureAlarmStore.schedule(it, json) } ?: false }
     AsyncFunction("cancel") { context?.let { DepartureAlarmStore.cancel(it) }; true }
-
-    AsyncFunction("preview") { json: String ->
-      val activity = appContext.currentActivity ?: return@AsyncFunction false
-      activity.startActivity(Intent(activity, DepartureAlarmActivity::class.java)
-        .putExtra("preview", json))
-      true
-    }.runOnQueue(Queues.MAIN)
   }
 }

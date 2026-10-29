@@ -6,7 +6,7 @@ import { normalizePolish, timeStringToSeconds } from './geo';
 import type { GtfsCalendar, GtfsCalendarDate, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from './types';
 
 /** Dzieli linię CSV z uwzględnieniem cudzysłowów. */
-function parseCsvLine(line: string): string[] {
+export function parseCsvLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;

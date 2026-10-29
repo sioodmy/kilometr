@@ -85,7 +85,8 @@ const runtime = (routeSourceId: string) => `
     existing.setLngLat([position[1], position[0]]);
     var element = existing.getElement();
     if (vehicle) {
-      element.style.background = route.accent;
+      element.style.background = route.badgeBackground || route.accent;
+      element.style.color = route.badgeForeground || '#101413';
       element.querySelector('span').textContent = route.label || '';
     } else {
       existing.setRotation(camera.userHeading || 0);
@@ -95,8 +96,8 @@ const runtime = (routeSourceId: string) => `
   }
   function overview() {
     var coordinates = (route.traveled || []).concat(route.path || [], route.stop ? [route.stop] : []);
-    if (camera.user) coordinates.push(camera.user);
-    if (camera.vehicle) coordinates.push(camera.vehicle);
+    if (!route.riding && camera.user) coordinates.push(camera.user);
+    if (route.riding && camera.vehicle) coordinates.push(camera.vehicle);
     if (!coordinates.length) return;
     var first = [coordinates[0][1], coordinates[0][0]];
     var bounds = coordinates.reduce(function (b, p) { return b.extend([p[1], p[0]]); }, new maplibregl.LngLatBounds(first, first));
@@ -105,14 +106,14 @@ const runtime = (routeSourceId: string) => `
   }
   function follow(force) {
     if (!map || !following) return;
-    var position = camera.user || camera.vehicle;
+    var position = route.riding ? camera.vehicle : camera.user;
     if (!position) {
       initialized = false;
       if (!framed || force) overview();
       return;
     }
     framed = false;
-    var bearing = northUp ? 0 : typeof camera.heading === 'number' ? camera.heading : map.getBearing();
+    var bearing = route.riding || northUp ? 0 : typeof camera.heading === 'number' ? camera.heading : map.getBearing();
     if (camera.headingOnly && !force && initialized) {
       if (northUp || route.riding || map.isMoving()) return;
       var difference = shortestBearing(map.getBearing(), bearing) - map.getBearing();
@@ -138,8 +139,8 @@ const runtime = (routeSourceId: string) => `
   function updateCamera(msg) {
     camera = msg;
     if (!map) return;
-    userMarker = marker(userMarker, msg.user, false);
-    vehicleMarker = marker(vehicleMarker, msg.vehicle, true);
+    userMarker = marker(userMarker, route.riding ? null : msg.user, false);
+    vehicleMarker = marker(vehicleMarker, route.riding ? msg.vehicle : null, true);
     follow(false);
   }
   window.__navRoute = updateRoute;
@@ -150,6 +151,7 @@ const runtime = (routeSourceId: string) => `
       following = false;
       overview();
     } else if (action === 'north') {
+      if (route.riding) return;
       northUp = !northUp;
       camera.headingOnly = false;
       if (following) follow(false);
