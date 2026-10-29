@@ -40,10 +40,18 @@ function proseNames(text) {
   return names;
 }
 
+// Nazwa może być odmieniona, ale jej rdzeń musi być w treści.
+function nameMatchesSource(name, source) {
+  const words = normalizeName(name).split(' ').filter((word) => word.length > 2);
+  if (words.length === 0) return true;
+  return words.every((word) => source.includes(word.slice(0, 4)));
+}
+
 /**
  * Zwraca nazwy własne, których nie ma w treści źródłowej.
- * Prozę sprawdza dokładnie, bo model ma przepisywać formę z komunikatu.
- * Przystanki sprawdza po rdzeniu, bo w JSON mają być w mianowniku.
+ * Prozę sprawdza po rdzeniu, żeby dopuścić poprawną odmianę, ale wyłapać
+ * nazwy spoza treści. Przystanki sprawdza tak samo, bo w JSON mają być
+ * w mianowniku.
  */
 export function findUnknownNames(analysis, sourceText) {
   if (!analysis || analysis.is_transit_alert === false) return [];
@@ -54,7 +62,7 @@ export function findUnknownNames(analysis, sourceText) {
 
   for (const text of [analysis.headline, analysis.glance?.problem, analysis.glance?.solution]) {
     for (const name of proseNames(text)) {
-      if (!source.includes(normalizeName(name))) unknown.add(name);
+      if (!nameMatchesSource(name, source)) unknown.add(name);
     }
   }
 

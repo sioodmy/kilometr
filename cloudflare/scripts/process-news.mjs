@@ -585,7 +585,7 @@ async function processCity(city, limit, cache) {
     }
 
     try {
-      const sourceText = item.fullContent || item.content || item.title;
+      const sourceText = `${item.title}\n${item.fullContent || item.content || ''}`;
       let result =
         PROVIDER === 'deepseek'
           ? await callDeepSeek(item, city, API_KEY, MODEL)
