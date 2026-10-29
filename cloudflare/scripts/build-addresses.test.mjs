@@ -100,6 +100,36 @@ test('Pierwszy build odrzuca częściową odpowiedź HTTP 200', async () => {
   }
 });
 
+test('Padnięte instancje Overpassa przejmuje lustro, a wszystkie naraz kończą błędem', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kilometr-addresses-mirrors-'));
+  try {
+    const calls = [];
+    const failing = async (url) => {
+      calls.push(url);
+      return new Response('', { status: 502 });
+    };
+    await assert.rejects(loadAddressSnapshot('wroclaw', dir, failing), /HTTP 502/);
+    // Bez cache padnie na pierwszym kafelku: po jednej próbie na każde lustro.
+    assert.equal(calls.length, 3);
+
+    calls.length = 0;
+    let attempt = 0;
+    const recovers = async (url) => {
+      calls.push(url);
+      // Główna instancja i pierwsze lustro padają, trzecie zawsze działa.
+      return attempt++ % 3 === 2
+        ? new Response(JSON.stringify({ elements: [element] }))
+        : new Response('', { status: 504 });
+    };
+    const snapshot = await loadAddressSnapshot('wroclaw', dir, recovers);
+    assert.equal(snapshot.count, 1);
+    // 6 kafelków × 3 instancje: dwie padają, za każdym razem ratuje lustro.
+    assert.equal(calls.length, 18);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('Brak pierwszego snapshotu pozwala zachować sam rozkład', () => {
   const db = new DatabaseSync(':memory:');
   try {

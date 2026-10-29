@@ -6,7 +6,17 @@ import { getCity } from '../../src/cities.ts';
 
 export const ADDRESS_SCHEMA_VERSION = 1;
 const MAX_AGE_MS = 7 * 86400000;
-const OVERPASS_URL = process.env.ADDRESS_OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
+/**
+ * Kolejno próbowane instancje Overpassa; pierwszy wpis można nadpisać
+ * przez ADDRESS_OVERPASS_URL. Kilka kolejnych dni 502/504 z głównego
+ * serwera kończyło się firmowaniem bazy bez indeksu adresów, więc
+ * pojedyncza padnięta instancja nie ubija już snapshotu.
+ */
+const OVERPASS_MIRRORS = [
+  process.env.ADDRESS_OVERPASS_URL || 'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
 
 export function addressSnapshotIsFresh(snapshot, now = Date.now()) {
   const age = now - Date.parse(snapshot?.builtAt);
@@ -100,7 +110,7 @@ function readSnapshot(file, city) {
   }
 }
 
-/** Pobiera małe obszary kolejno; niepełna odpowiedź nigdy nie zastępuje cache. */
+/** Pobiera małe obszary kolejno, z lusterkami awaryjnymi; niepełna odpowiedź nigdy nie zastępuje cache. */
 export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch) {
   const city = getCity(cityId);
   const file = join(cacheDir, `${city.id}.json.gz`);
@@ -119,7 +129,7 @@ export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch) {
         const east = bounds.minLon + ((x + 1) * (bounds.maxLon - bounds.minLon)) / lonSteps;
         const bbox = [south, west, north, east].join(',');
         const query = `[out:json][timeout:90];(nwr["addr:housenumber"]["addr:street"](${bbox});nwr["addr:housenumber"]["addr:place"](${bbox}););out center qt;`;
-        const response = await fetcher(OVERPASS_URL, {
+        const request = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -127,12 +137,23 @@ export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch) {
           },
           body: new URLSearchParams({ data: query }),
           signal: AbortSignal.timeout(120_000),
-        });
-        if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
-        const json = await response.json();
-        if (json.remark || !Array.isArray(json.elements))
-          throw new Error(`Niepełna odpowiedź Overpass: ${json.remark || 'brak elements'}`);
-        for (const row of addressesFromElements(json.elements, bounds)) rows.push(row);
+        };
+        let lastError = null;
+        for (const url of OVERPASS_MIRRORS) {
+          try {
+            const response = await fetcher(url, request);
+            if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
+            const json = await response.json();
+            if (json.remark || !Array.isArray(json.elements))
+              throw new Error(`Niepełna odpowiedź Overpass: ${json.remark || 'brak elements'}`);
+            for (const row of addressesFromElements(json.elements, bounds)) rows.push(row);
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        if (lastError) throw lastError;
       }
     }
     const unique = dedupeAddresses(rows);
