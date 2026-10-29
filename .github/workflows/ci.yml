@@ -18,6 +18,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   typecheck:
     name: App Typecheck
@@ -26,57 +30,90 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Cache npm
+        uses: actions/cache@v4
         with:
-          node-version: 20
-          cache: npm
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
 
       - name: Install dependencies
-        run: npm ci
+        run: nix develop .#ci -c npm ci
 
       - name: Run TypeScript typecheck
-        run: npm run typecheck
+        run: nix develop .#ci -c npm run typecheck
 
       - name: Check Android version codes
-        run: node --test scripts/check-android-version-code.test.mjs
+        run: nix develop .#ci -c node --test scripts/check-android-version-code.test.mjs
 
       - name: Check widget translations
-        run: npm run check:widget-strings
+        run: nix develop .#ci -c npm run check:widget-strings
 
       - name: Check iOS translations
-        run: npm run check:ios-strings
+        run: nix develop .#ci -c npm run check:ios-strings
 
       - name: Run ESLint
-        run: npm run lint
+        run: nix develop .#ci -c npm run lint
 
       - name: Check Android permissions
         run: |
-          npm run check:permission-gate
-          npx expo config --type introspect --json > "$RUNNER_TEMP/expo-config.json"
-          npm run check:android-permissions -- "$RUNNER_TEMP/expo-config.json" --expo-config
+          nix develop .#ci -c bash -c '
+            set -euo pipefail
+            npm run check:permission-gate
+            npx expo config --type introspect --json > "$RUNNER_TEMP/expo-config.json"
+            npm run check:android-permissions -- "$RUNNER_TEMP/expo-config.json" --expo-config
+          '
 
   fdroid-config:
     name: F-Droid Prebuild
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Cache npm
+        uses: actions/cache@v4
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run check:fdroid
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: nix develop .#ci -c npm ci
+
+      - name: Check F-Droid
+        run: nix develop .#ci -c npm run check:fdroid
+
       - name: Prepare unsigned F-Droid project
-        run: APP_VERSION=v1.5.4 npm run prebuild:fdroid
-      - run: FDROID_BUILD=1 npm run check:fdroid
+        run: nix develop .#ci -c bash -c "APP_VERSION=v1.5.4 npm run prebuild:fdroid"
+
+      - name: Check F-Droid after prebuild
+        run: nix develop .#ci -c bash -c "FDROID_BUILD=1 npm run check:fdroid"
+
       - name: Check F-Droid manifest
         env:
           FDROID_BUILD: '1'
           APP_VERSION: v1.5.4
         run: |
-          npx expo config --type introspect --json > "$RUNNER_TEMP/fdroid-config.json"
-          npm run check:android-permissions -- "$RUNNER_TEMP/fdroid-config.json" --expo-config
+          nix develop .#ci -c bash -c '
+            set -euo pipefail
+            npx expo config --type introspect --json > "$RUNNER_TEMP/fdroid-config.json"
+            npm run check:android-permissions -- "$RUNNER_TEMP/fdroid-config.json" --expo-config
+          '
 
   logic-tests:
     name: Logic Tests
@@ -85,18 +122,22 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # registerHooks w check-notification-runtime.ts wymaga Node 22.15+.
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Cache npm
+        uses: actions/cache@v4
         with:
-          node-version: 22
-          cache: npm
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
 
       - name: Install dependencies
-        run: npm ci
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        run: nix develop .#ci -c npm ci
 
       - name: Cache Rust RAPTOR target
         uses: actions/cache@v4
@@ -107,124 +148,124 @@ jobs:
             rust-raptor-ci-${{ runner.os }}-
 
       - name: Run Rust RAPTOR unit tests
-        run: cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+        run: nix develop .#ci -c cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
 
       - name: Run logic tests (RAPTOR routing engine)
-        run: npm run check:routing
+        run: nix develop .#ci -c npm run check:routing
 
       - name: Run logic tests (Arrive by)
-        run: npm run check:arrival
+        run: nix develop .#ci -c npm run check:arrival
 
       - name: Run logic tests (Duplicate connections)
-        run: npm run check:connections
+        run: nix develop .#ci -c npm run check:connections
 
       - name: Run logic tests (Live transit matchers & geo)
-        run: npm run check:live
+        run: nix develop .#ci -c npm run check:live
 
       - name: Run logic tests (Polinka cable car)
-        run: npm run check:polinka
+        run: nix develop .#ci -c npm run check:polinka
 
       - name: Run logic tests (Backup format)
-        run: npm run check:backup
+        run: nix develop .#ci -c npm run check:backup
 
       - name: Run logic tests (Journey sharing)
-        run: npm run check:sharing
+        run: nix develop .#ci -c npm run check:sharing
 
       - name: Run logic tests (Storage)
-        run: npm run check:storage
+        run: nix develop .#ci -c npm run check:storage
 
       - name: Run logic tests (KV migration)
-        run: npm run check:kv-migration
+        run: nix develop .#ci -c npm run check:kv-migration
 
       - name: Run logic tests (Offline cache)
-        run: npm run check:offline-cache
+        run: nix develop .#ci -c npm run check:offline-cache
 
       - name: Run logic tests (Places per city)
-        run: npm run check:places
+        run: nix develop .#ci -c npm run check:places
 
       - name: Run logic tests (Address search)
-        run: npm run check:search
+        run: nix develop .#ci -c npm run check:search
 
       - name: Run logic tests (Offline address index)
-        run: npm run check:addresses
+        run: nix develop .#ci -c npm run check:addresses
 
       - name: Run logic tests (Warsaw city)
-        run: npm run check:warsaw
+        run: nix develop .#ci -c npm run check:warsaw
 
       - name: Run logic tests (Poznań city)
-        run: npm run check:poznan
+        run: nix develop .#ci -c npm run check:poznan
 
       - name: Run logic tests (Tricity)
-        run: npm run check:trojmiasto
+        run: nix develop .#ci -c npm run check:trojmiasto
 
       - name: Run logic tests (Łódź city)
-        run: npm run check:lodz
+        run: nix develop .#ci -c npm run check:lodz
 
       - name: Run logic tests (Szczecin city)
-        run: npm run check:szczecin
+        run: nix develop .#ci -c npm run check:szczecin
 
       - name: Run logic tests (Kielce city)
-        run: npm run check:kielce
+        run: nix develop .#ci -c npm run check:kielce
 
       - name: Run logic tests (Olsztyn city)
-        run: npm run check:olsztyn
+        run: nix develop .#ci -c npm run check:olsztyn
 
       - name: Run logic tests (Białystok city)
-        run: npm run check:bialystok
+        run: nix develop .#ci -c npm run check:bialystok
 
       - name: Run logic tests (Opole city)
-        run: npm run check:opole
+        run: nix develop .#ci -c npm run check:opole
 
       - name: Run logic tests (Rzeszów city)
-        run: npm run check:rzeszow
+        run: nix develop .#ci -c npm run check:rzeszow
 
       - name: Run logic tests (Lublin city)
-        run: npm run check:lublin
+        run: nix develop .#ci -c npm run check:lublin
 
       - name: Run logic tests (Radom city)
-        run: npm run check:radom
+        run: nix develop .#ci -c npm run check:radom
 
       - name: Run logic tests (Home pull gesture)
-        run: npm run check:pull
+        run: nix develop .#ci -c npm run check:pull
 
       - name: Run logic tests (Notifications)
-        run: npm run check:notifications
+        run: nix develop .#ci -c npm run check:notifications
 
       - name: Run logic tests (Departure alarm)
-        run: npm run check:alarm
+        run: nix develop .#ci -c npm run check:alarm
 
       - name: Run logic tests (Notification lifecycle)
-        run: npm run check:notification-runtime
+        run: nix develop .#ci -c npm run check:notification-runtime
 
       - name: Run iOS notification tests
-        run: npm run check:ios
+        run: nix develop .#ci -c npm run check:ios
 
       - name: Run widget snapshot tests
-        run: npm run check:ios-widgets
+        run: nix develop .#ci -c npm run check:ios-widgets
 
       - name: Run logic tests (Smart rank)
-        run: npm run check:smart-rank
+        run: nix develop .#ci -c npm run check:smart-rank
 
       - name: Run logic tests (Navigation target)
-        run: npm run check:navigation-target
+        run: nix develop .#ci -c npm run check:navigation-target
 
       - name: Check navigation map loading and GPS camera
-        run: npm run check:nav-map
+        run: nix develop .#ci -c npm run check:nav-map
 
       - name: Run logic tests (Navigation)
-        run: npm run check:nav
+        run: nix develop .#ci -c npm run check:nav
 
       - name: Run logic tests (Minimap)
-        run: npm run check:minimap
+        run: nix develop .#ci -c npm run check:minimap
 
       - name: Run logic tests (Geometry cache)
-        run: npm run check:geometry-cache
+        run: nix develop .#ci -c npm run check:geometry-cache
 
       - name: Run logic tests (Map colors)
-        run: npm run check:map-colors
+        run: nix develop .#ci -c npm run check:map-colors
 
       - name: Run logic tests (Personalization)
-        run: npm run check:personalization
+        run: nix develop .#ci -c npm run check:personalization
 
   verify-subprojects:
     name: Lint & Typecheck Subprojects
@@ -233,34 +274,46 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Cache npm
+        uses: actions/cache@v4
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-            landing/package-lock.json
-            cloudflare/package-lock.json
+          path: ~/.npm
+          key: npm-subprojects-${{ runner.os }}-${{ hashFiles('package-lock.json', 'server/package-lock.json', 'landing/package-lock.json', 'cloudflare/package-lock.json') }}
+          restore-keys: |
+            npm-subprojects-${{ runner.os }}-
 
       - name: Install shared app dependencies
-        run: npm ci
+        run: nix develop .#ci -c npm ci
 
       - name: Build & typecheck server
         run: |
-          npm --prefix server ci
-          npm --prefix server run build
+          nix develop .#ci -c bash -c '
+            set -euo pipefail
+            npm --prefix server ci
+            npm --prefix server run build
+          '
 
       - name: Build & typecheck landing
         run: |
-          npm --prefix landing ci
-          npm --prefix landing run build
+          nix develop .#ci -c bash -c '
+            set -euo pipefail
+            npm --prefix landing ci
+            npm --prefix landing run build
+          '
 
       - name: Typecheck Cloudflare
         run: |
-          npm --prefix cloudflare ci
-          npm --prefix cloudflare run typecheck
+          nix develop .#ci -c bash -c '
+            set -euo pipefail
+            npm --prefix cloudflare ci
+            npm --prefix cloudflare run typecheck
+          '
 
       - name: Check unused code and dependencies
-        run: npm run check:dead-code
+        run: nix develop .#ci -c npm run check:dead-code
