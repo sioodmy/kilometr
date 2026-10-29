@@ -27,6 +27,8 @@ interface NavigationInput {
   transfer?: TransferProtectionState;
   completedLegIndex?: number;
   boardedLegIndex?: number;
+  /** Po cofnięciu wysiadania czekamy na ponowne potwierdzenie. */
+  resumedLegIndex?: number;
 }
 
 export function navigationTimeline(connection: Pick<Connection, 'legs'>, departureAt: number) {
@@ -70,6 +72,7 @@ function freshLocation(location: CurrentLocation | null | undefined, now: number
     now >= location.timestamp &&
     now - location.timestamp <= 15_000 &&
     location.accuracy != null &&
+    location.accuracy >= 0 &&
     location.accuracy <= 50
     ? location
     : null;
@@ -145,26 +148,25 @@ export function navigationTarget(
         : null;
     const arriveMs = protectedArrival ?? entry.arriveMs + delay;
     lastDelay = delay;
+    if (input.resumedLegIndex === entry.legIndex) {
+      return { ...entry, departMs, arriveMs, phase: 'riding', end: true };
+    }
     const alighted =
       atAlightingStop(leg, location) &&
       ((input.previous?.legIndex === entry.legIndex && input.previous.phase === 'riding') ||
         now >= arriveMs - 60_000);
     if (alighted && now > departMs + 45_000) continue;
     const position = vehicle ? rideProjection(leg, vehicle.lat, vehicle.lon) : null;
-    const stillRiding =
-      position != null && position.distanceMeters <= 150 && position.fractionAlongShape < 0.98;
-    const devicePosition =
-      location && (location.speed ?? 0) >= 2.2
-        ? rideProjection(leg, location.lat, location.lon)
-        : null;
-    const ridingDevice =
+    const devicePosition = location ? rideProjection(leg, location.lat, location.lon) : null;
+    const useDevice =
       input.previous?.legIndex === entry.legIndex &&
       input.previous.phase === 'riding' &&
       devicePosition != null &&
-      devicePosition.distanceMeters <= 120 &&
-      devicePosition.fractionAlongShape < 0.98;
-    if (now >= arriveMs && !((stillRiding || ridingDevice) && now < arriveMs + MAX_DELAY_MS))
-      continue;
+      devicePosition.distanceMeters <= 150;
+    const stillRiding = useDevice
+      ? devicePosition.fractionAlongShape < 0.98
+      : position != null && position.distanceMeters <= 150 && position.fractionAlongShape < 0.98;
+    if (now >= arriveMs && !(stillRiding && now < arriveMs + MAX_DELAY_MS)) continue;
     const atBoardingStop =
       location &&
       (location.speed ?? 0) < 2.2 &&
@@ -216,6 +218,7 @@ export interface RideNavigation {
   source: 'device' | 'vehicle' | null;
   remainingPath: Coord[];
   traveledPath: Coord[];
+  canAlight: boolean;
 }
 
 export function rideNavigation(
@@ -232,12 +235,10 @@ export function rideNavigation(
   const device = freshLocation(location, now);
   const deviceProjection = device ? rideProjection(leg, device.lat, device.lon) : null;
   const useDevice = deviceProjection != null && deviceProjection.distanceMeters <= 150;
-  const projection = useDevice
-    ? deviceProjection
-    : vehicle
-      ? rideProjection(leg, vehicle.lat, vehicle.lon)
-      : null;
-  const hasPosition = useDevice || vehicle != null;
+  const vehicleProjection = vehicle ? rideProjection(leg, vehicle.lat, vehicle.lon) : null;
+  const useVehicle = vehicleProjection != null && vehicleProjection.distanceMeters <= 350;
+  const projection = useDevice ? deviceProjection : useVehicle ? vehicleProjection : null;
+  const hasPosition = projection != null;
   const gap = projection != null && projection.distanceMeters <= 350 ? projection.segmentIndex : -1;
   const namedNext =
     !useDevice && vehicle?.nextStopName
@@ -247,9 +248,17 @@ export function rideNavigation(
   const knownStops = points.length === stops.length && (stops.length > 2 || leg.stopsCount <= 1);
   const projected: Coord | null =
     gap >= 0 && projection ? [projection.closestLat, projection.closestLon] : null;
+  const remainingPath = projected ? [projected, ...path.slice(gap + 1)] : path;
+  const remainingM = remainingPath.reduce(
+    (total, point, index) =>
+      index === 0 ? total : total + distanceMeters(...remainingPath[index - 1], ...point),
+    0,
+  );
+  const alightingRadiusM = 200 + (useDevice ? Math.min(100, (device?.accuracy ?? 0) * 2) : 0);
+  const observed = useDevice ? device : useVehicle ? vehicle : null;
   return {
     path,
-    position: vehicle ? [vehicle.lat, vehicle.lon] : null,
+    position: projected,
     heading: gap >= 0 && path[gap + 1] ? bearingDegrees(...path[gap], ...path[gap + 1]) : null,
     nextStop:
       hasPosition && knownStops && (gap >= 0 || namedNext > 0)
@@ -261,8 +270,14 @@ export function rideNavigation(
         : null,
     progress: gap >= 0 ? projection!.fractionAlongShape : null,
     stops: path,
-    source: useDevice ? 'device' : vehicle ? 'vehicle' : null,
-    remainingPath: projected ? [projected, ...path.slice(gap + 1)] : path,
+    source: useDevice ? 'device' : useVehicle ? 'vehicle' : null,
+    remainingPath,
     traveledPath: projected ? [...path.slice(0, gap + 1), projected] : [],
+    canAlight:
+      observed != null &&
+      leg.toLat != null &&
+      leg.toLon != null &&
+      remainingM <= alightingRadiusM &&
+      distanceMeters(observed.lat, observed.lon, leg.toLat, leg.toLon) <= alightingRadiusM,
   };
 }

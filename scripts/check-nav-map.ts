@@ -257,10 +257,31 @@ async function check() {
   };
   assert.equal(route.features[0].properties.walk, 0, 'riding uses the solid transit line');
   assert.deepEqual(Array.from(route.features[0].geometry.coordinates[0]), [17, 51.1]);
-  map.window.__navCamera({ user: [51.105, 17.005], heading: 359, riding: true });
+  map.window.__navCamera({
+    user: [51.1, 17],
+    vehicle: [51.105, 17.005],
+    heading: 359,
+    userHeading: 40,
+  });
   assert.deepEqual(Array.from(map.cameras.at(-1)?.center as number[]), [17.005, 51.105]);
   assert.equal(map.cameras.at(-1)?.zoom, 15.5);
   assert.equal(map.cameras.at(-1)?.bearing, 0, 'navigation starts with a stable north-up map');
+  assert.equal(map.markers.length, 1, 'riding shows one line badge without a separate GPS dot');
+  map.window.__navControl('north');
+  map.window.__navCamera({ user: null, vehicle: [51.105, 17.005], heading: 90 });
+  assert.equal(map.cameras.at(-1)?.bearing, 0, 'riding ignores phone heading and compass control');
+  map.window.__navRoute({
+    id: 'walk',
+    path: [
+      [51.1, 17],
+      [51.11, 17.01],
+    ],
+    stop: [51.11, 17.01],
+    accent: '#fff',
+    riding: false,
+  });
+  map.window.__navCamera({ user: [51.105, 17.005], heading: 359 });
+  assert(map.markers[0].removed, 'walking removes the line badge');
   const beforeHeading = map.cameras.length;
   map.window.__navCamera({ user: [51.105, 17.005], heading: 40, headingOnly: true });
   assert.equal(
@@ -283,7 +304,7 @@ async function check() {
     'camera takes the short rotation across north',
   );
   assert.deepEqual(
-    Array.from(map.markers[0].position),
+    Array.from(map.markers[1].position),
     [17.005, 51.105],
     'marker is attached to its map coordinate',
   );
@@ -297,7 +318,7 @@ async function check() {
     'GPS and compass cannot steal the camera while browsing',
   );
   assert.deepEqual(
-    Array.from(map.markers[0].position),
+    Array.from(map.markers[1].position),
     [17.006, 51.106],
     'position keeps updating while unlocked',
   );

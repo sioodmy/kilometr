@@ -25,7 +25,6 @@ import androidx.core.content.ContextCompat
 import org.json.JSONObject
 
 class DepartureAlarmActivity : Activity() {
-  private var preview = false
   private lateinit var data: JSONObject
   private lateinit var colors: JSONObject
   private val closed = object : BroadcastReceiver() {
@@ -34,22 +33,18 @@ class DepartureAlarmActivity : Activity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    preview = intent.hasExtra("preview")
-    val payload = if (preview) intent.getStringExtra("preview")?.let { JSONObject(it) }
-      else DepartureAlarmStore.read(this)?.takeIf { it.optString("status") == "ringing" }
+    val payload = DepartureAlarmStore.read(this)?.takeIf { it.optString("status") == "ringing" }
     if (payload == null) { finish(); return }
     data = payload
     colors = data.getJSONObject("colors")
-    if (!preview) {
-      if (Build.VERSION.SDK_INT >= 27) {
-        setShowWhenLocked(true)
-        setTurnScreenOn(true)
-      } else {
-        @Suppress("DEPRECATION")
-        window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
-      }
-      window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    if (Build.VERSION.SDK_INT >= 27) {
+      setShowWhenLocked(true)
+      setTurnScreenOn(true)
+    } else {
+      @Suppress("DEPRECATION")
+      window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
     }
+    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     ContextCompat.registerReceiver(this, closed, IntentFilter(DepartureAlarmStore.CLOSE), ContextCompat.RECEIVER_NOT_EXPORTED)
     render()
   }
@@ -124,7 +119,7 @@ class DepartureAlarmActivity : Activity() {
       importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
     content.addView(icon, LinearLayout.LayoutParams(dp(80), dp(80)).apply { bottomMargin = dp(20) })
-    content.add(text(labels.getString(if (preview) "preview" else "title"), 16f, "onSurfaceVariant", 500))
+    content.add(text(labels.getString("title"), 16f, "onSurfaceVariant", 500))
     content.add(text(labels.getString("ringTitle"), 32f, "onSurface", 600), 20)
     val clock = text(data.getString("time"), 96f, "primary", 500).apply {
       letterSpacing = -0.05f
@@ -146,22 +141,18 @@ class DepartureAlarmActivity : Activity() {
     content.add(journey, 32)
     scroll.addView(content)
     root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-    if (preview) {
-      root.add(button(labels.getString("close"), true) { finish() })
-    } else {
-      root.add(button(labels.getString("dismiss"), true) { DepartureAlarmStore.cancel(this); finish() })
-      root.add(button(labels.getString("showRoute"), false) {
-        DepartureAlarmStore.cancel(this)
-        startActivity(DepartureAlarmStore.routeIntent(this, data))
-        finish()
-      }, 12)
-    }
+    root.add(button(labels.getString("dismiss"), true) { DepartureAlarmStore.cancel(this); finish() })
+    root.add(button(labels.getString("showRoute"), false) {
+      DepartureAlarmStore.cancel(this)
+      startActivity(DepartureAlarmStore.routeIntent(this, data))
+      finish()
+    }, 12)
     setContentView(root)
   }
 
   @Deprecated("Deprecated in Java")
   override fun onBackPressed() {
-    if (!preview) DepartureAlarmStore.cancel(this)
+    DepartureAlarmStore.cancel(this)
     super.onBackPressed()
   }
 

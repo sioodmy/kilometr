@@ -3,7 +3,17 @@ import { isStopAction } from './categories';
 
 // Odpowiedź konsumujemy raz. Wiek powiadomienia nie określa czasu tapnięcia.
 
-const LINK_KEYS = ['fromTitle', 'fromLat', 'fromLon', 'toId', 'toTitle', 'toLat', 'toLon', 'open'];
+const LINK_KEYS = [
+  'fromTitle',
+  'fromLat',
+  'fromLon',
+  'toId',
+  'toTitle',
+  'toLat',
+  'toLon',
+  'open',
+  'sharedTrip',
+];
 
 export interface TripResponse {
   /** Dane do nawigacji - null, gdy to nie powiadomienie podróży. */
@@ -28,7 +38,7 @@ function parseData(data: unknown, actionIdentifier: string | undefined): TripRes
     if (typeof v === 'string') link[k] = v;
   }
   return {
-    link: link.toLat && link.toLon ? link : null,
+    link: link.sharedTrip || (link.toLat && link.toLon) ? link : null,
     stop,
     alert: typeof d.alert === 'string' ? d.alert : null,
   };

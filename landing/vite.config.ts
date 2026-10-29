@@ -1,10 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { pl } from '../src/i18n/landing/pl';
+import { appLinkFiles } from './appLinks';
 
 export default defineConfig({
   plugins: [
     react(),
+    {
+      name: 'app-links',
+      generateBundle() {
+        for (const asset of appLinkFiles(
+          process.env.ANDROID_APP_LINK_FINGERPRINTS ?? '',
+          process.env.APPLE_TEAM_ID ?? '',
+        ))
+          this.emitFile({ type: 'asset', ...asset });
+      },
+    },
     {
       name: 'landing-metadata',
       transformIndexHtml: (html) =>

@@ -434,6 +434,10 @@ expect('bus: x to szerokość', zbRows?.[0].x, 51.03);
 expect('bus: y to długość', zbRows?.[0].y, 16.98);
 expect('tram z type 0', zbRows?.[1].type, 'tram');
 expect('k to string fleet number', zbRows?.[0].k, '9247');
+expect('czas próbki trafia do matchera', zbRows?.[0].timestamp, 1791643596000);
+expect('kierunek trafia do matchera', zbRows?.[0].headsign, 'Krzyki');
+expect('brygada trafia do matchera', zbRows?.[0].brigade, '32');
+expect('opóźnienie trafia do matchera w sekundach', zbRows?.[0].delaySec, 847);
 stubFetchOnce({}, false);
 expect('HTTP nie-OK = null (sygnał do dalszego fallbacku)', await fetchZbWroclawRows(), null);
 

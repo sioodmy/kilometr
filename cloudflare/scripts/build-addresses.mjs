@@ -1,0 +1,188 @@
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { gunzipSync, gzipSync } from 'node:zlib';
+import { getCity } from '../../src/cities.ts';
+
+export const ADDRESS_SCHEMA_VERSION = 1;
+const MAX_AGE_MS = 7 * 86400000;
+const OVERPASS_URL = process.env.ADDRESS_OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
+
+export function addressSnapshotIsFresh(snapshot, now = Date.now()) {
+  const age = now - Date.parse(snapshot?.builtAt);
+  return (
+    snapshot?.schemaVersion === ADDRESS_SCHEMA_VERSION &&
+    snapshot.count > 0 &&
+    age >= 0 &&
+    age < MAX_AGE_MS
+  );
+}
+
+/** Zapisuje wyłącznie oznaczone adresy OSM, bez interpolacji numerów. */
+export function addressesFromElements(elements, bounds) {
+  const rows = [];
+  for (const element of elements) {
+    const tags = element?.tags;
+    const street = tags?.['addr:street'] || tags?.['addr:place'];
+    const house = tags?.['addr:housenumber'];
+    const locality = tags?.['addr:city'] || tags?.['addr:town'] || tags?.['addr:village'] || '';
+    const lat = element?.lat ?? element?.center?.lat;
+    const lon = element?.lon ?? element?.center?.lon;
+    if (
+      typeof street !== 'string' ||
+      !street.trim() ||
+      typeof house !== 'string' ||
+      !house.trim() ||
+      typeof locality !== 'string' ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon) ||
+      lat < bounds.minLat ||
+      lat > bounds.maxLat ||
+      lon < bounds.minLon ||
+      lon > bounds.maxLon ||
+      !['node', 'way', 'relation'].includes(element.type) ||
+      !Number.isSafeInteger(element.id)
+    )
+      continue;
+    rows.push([
+      `${element.type}/${element.id}`,
+      street.trim(),
+      house.trim(),
+      locality.trim(),
+      lat,
+      lon,
+    ]);
+  }
+  return rows;
+}
+
+export function dedupeAddresses(rows) {
+  const seenIds = new Set();
+  const seenAddresses = new Set();
+  return rows
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .filter((row) => {
+      const [id, street, house, locality, lat, lon] = row;
+      const key = `${street.toLocaleLowerCase('pl')}\0${house.toLocaleLowerCase('pl')}\0${locality.toLocaleLowerCase('pl')}\0${lat.toFixed(4)}\0${lon.toFixed(4)}`;
+      if (seenIds.has(id) || seenAddresses.has(key)) return false;
+      seenIds.add(id);
+      seenAddresses.add(key);
+      return true;
+    });
+}
+
+function readSnapshot(file, city) {
+  try {
+    const snapshot = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8'));
+    if (
+      snapshot.city !== city.id ||
+      snapshot.schemaVersion !== ADDRESS_SCHEMA_VERSION ||
+      JSON.stringify(snapshot.bounds) !== JSON.stringify(city.bounds) ||
+      !Array.isArray(snapshot.rows) ||
+      snapshot.rows.length !== snapshot.count ||
+      !snapshot.count
+    )
+      return null;
+    for (const row of snapshot.rows) {
+      if (
+        !Array.isArray(row) ||
+        row.length !== 6 ||
+        !row.slice(0, 4).every((v) => typeof v === 'string') ||
+        !Number.isFinite(row[4]) ||
+        !Number.isFinite(row[5])
+      )
+        return null;
+    }
+    const fingerprint = createHash('sha256').update(JSON.stringify(snapshot.rows)).digest('hex');
+    return snapshot.fingerprint === fingerprint ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Pobiera małe obszary kolejno; niepełna odpowiedź nigdy nie zastępuje cache. */
+export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch) {
+  const city = getCity(cityId);
+  const file = join(cacheDir, `${city.id}.json.gz`);
+  const cached = readSnapshot(file, city);
+  if (addressSnapshotIsFresh(cached)) return cached;
+  try {
+    const rows = [];
+    const bounds = city.bounds;
+    const latSteps = Math.ceil((bounds.maxLat - bounds.minLat) / 0.25);
+    const lonSteps = Math.ceil((bounds.maxLon - bounds.minLon) / 0.25);
+    for (let y = 0; y < latSteps; y++) {
+      for (let x = 0; x < lonSteps; x++) {
+        const south = bounds.minLat + (y * (bounds.maxLat - bounds.minLat)) / latSteps;
+        const north = bounds.minLat + ((y + 1) * (bounds.maxLat - bounds.minLat)) / latSteps;
+        const west = bounds.minLon + (x * (bounds.maxLon - bounds.minLon)) / lonSteps;
+        const east = bounds.minLon + ((x + 1) * (bounds.maxLon - bounds.minLon)) / lonSteps;
+        const bbox = [south, west, north, east].join(',');
+        const query = `[out:json][timeout:90];(nwr["addr:housenumber"]["addr:street"](${bbox});nwr["addr:housenumber"]["addr:place"](${bbox}););out center qt;`;
+        const response = await fetcher(OVERPASS_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'KilometrAddressBuild/1.0 (https://github.com/sioodmy/kilometr)',
+          },
+          body: new URLSearchParams({ data: query }),
+          signal: AbortSignal.timeout(120_000),
+        });
+        if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
+        const json = await response.json();
+        if (json.remark || !Array.isArray(json.elements))
+          throw new Error(`Niepełna odpowiedź Overpass: ${json.remark || 'brak elements'}`);
+        for (const row of addressesFromElements(json.elements, bounds)) rows.push(row);
+      }
+    }
+    const unique = dedupeAddresses(rows);
+    if (!unique.length) throw new Error('Pusty indeks adresów');
+    const snapshot = {
+      schemaVersion: ADDRESS_SCHEMA_VERSION,
+      city: city.id,
+      bounds,
+      builtAt: new Date().toISOString(),
+      count: unique.length,
+      fingerprint: createHash('sha256').update(JSON.stringify(unique)).digest('hex'),
+      attribution: '© OpenStreetMap contributors',
+      license: 'ODbL-1.0',
+      licenseUrl: 'https://www.openstreetmap.org/copyright',
+      rows: unique,
+    };
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(`${file}.tmp`, gzipSync(JSON.stringify(snapshot)));
+    renameSync(`${file}.tmp`, file);
+    return snapshot;
+  } catch (error) {
+    if (!cached) throw error;
+    console.warn(
+      `[addresses] ${city.id}: ${error.message}; zachowuję snapshot z ${cached.builtAt}`,
+    );
+    return cached;
+  }
+}
+
+export function importAddresses(db, snapshot) {
+  db.exec(`CREATE TABLE addresses (
+    osm_id TEXT PRIMARY KEY NOT NULL,
+    street TEXT NOT NULL,
+    house TEXT NOT NULL,
+    locality TEXT NOT NULL DEFAULT '',
+    lat REAL NOT NULL,
+    lon REAL NOT NULL
+  )`);
+  if (!snapshot) return null;
+  const insert = db.prepare(
+    'INSERT INTO addresses (osm_id, street, house, locality, lat, lon) VALUES (?, ?, ?, ?, ?, ?)',
+  );
+  db.exec('BEGIN');
+  try {
+    for (const row of snapshot.rows) insert.run(...row);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+  const { rows: _rows, bounds: _bounds, ...metadata } = snapshot;
+  return metadata;
+}

@@ -10,7 +10,7 @@ use crate::search::{distance_meters, normalize_polish};
 
 const MAX_CORRIDOR_DIST_M: f64 = 350.0;
 const MIN_DELAY_SEC: i32 = -300;
-const MAX_DELAY_SEC: i32 = 2100;
+const MAX_DELAY_SEC: i32 = 5400;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PolylineProjection {
@@ -176,15 +176,18 @@ pub fn interpolate_route_with_cum(
 
 struct LiveTripEntry {
     trip_idx: u32,
+    headsign: String,
     /// Dla każdego przystanku w `pattern.valid_stop_indices`: `(dep_sec, arr_sec)` lub `i32::MIN`
     valid_dep: Vec<i32>,
     valid_arr: Vec<i32>,
     /// Surowa sekwencja przystanków kursu do fallbacku <= 200 m: `(stop_idx, lat, lon, dep_sec)`
     fallback_stops: Vec<(u32, f64, f64, i32)>,
+    fallback_names: Vec<String>,
 }
 
 struct LivePatternEntry {
     valid_stop_indices: Vec<u32>,
+    stop_names: Vec<String>,
     coords: Vec<(f64, f64)>,
     min_lat: f64,
     max_lat: f64,
@@ -206,11 +209,54 @@ pub struct VehicleMatchResult {
     pub delay_sec: i32,
     pub current_stop_idx: u32,
     pub next_stop_idx: u32,
+    pub score: f64,
+}
+
+#[derive(Default)]
+struct MatchRow {
+    line: String,
+    lat: f64,
+    lon: f64,
+    sample_sec: i32,
+    api_delay: Option<i32>,
+    headsign: String,
+    previous_trip: Option<u32>,
+    previous_lat: f64,
+    previous_lon: f64,
+    next_stop: String,
+    next_sec: Option<i32>,
+}
+
+impl MatchRow {
+    fn score(&self, trip: &LiveTripEntry, delay: i32, dist: f64, next: (f64, f64), next_name: &str, next_sec: i32) -> f64 {
+        if !(MIN_DELAY_SEC..=MAX_DELAY_SEC).contains(&delay) { return f64::INFINITY; }
+        let direction_match = !self.headsign.is_empty() && self.headsign == trip.headsign;
+        if !self.headsign.is_empty() && !trip.headsign.is_empty() && !direction_match { return f64::INFINITY; }
+        let same_trip = self.previous_trip == Some(trip.trip_idx);
+        let stop_match = !self.next_stop.is_empty() && self.next_stop == next_name;
+        if delay > 2100 && !direction_match && !same_trip && !stop_match { return f64::INFINITY; }
+        let mut score = (delay - self.api_delay.unwrap_or(0)).abs() as f64 + dist * 2.0;
+        if same_trip { score -= 240.0; }
+        if stop_match {
+            if let Some(sec) = self.next_sec {
+                let diff = (next_sec - sec).abs();
+                score += diff.min((diff - 86400).abs()) as f64 * 2.0;
+            }
+        }
+        if distance_meters(self.previous_lat, self.previous_lon, self.lat, self.lon) >= 25.0 {
+            let cos = self.lat.to_radians().cos();
+            let dx = (self.lon - self.previous_lon) * cos;
+            let dy = self.lat - self.previous_lat;
+            if dx * (next.1 - self.lon) * cos + dy * (next.0 - self.lat) < 0.0 { score += 900.0; }
+        }
+        score
+    }
 }
 
 impl LiveScheduleIndex {
-    fn match_single(&self, line: &str, lat: f64, lon: f64, now_sec: i32) -> Option<(u32, i32, u32, u32, f64)> {
-        let patterns = self.by_line.get(line)?;
+    fn match_single(&self, row: &MatchRow) -> Option<(u32, i32, u32, u32, f64)> {
+        let patterns = self.by_line.get(&row.line)?;
+        let (lat, lon, now_sec) = (row.lat, row.lon, row.sample_sec);
         if patterns.is_empty() {
             return None;
         }
@@ -267,8 +313,8 @@ impl LiveScheduleIndex {
                 if !(MIN_DELAY_SEC..=MAX_DELAY_SEC).contains(&delay) {
                     continue;
                 }
-                let score = (delay.abs() as f64) + proj.distance_meters * 2.0;
-                if best.map_or(true, |b| score < b.4) {
+                let score = row.score(trip, delay, proj.distance_meters, (lat2, lon2), &pattern.stop_names[seg_idx + 1], arr2);
+                if score.is_finite() && best.map_or(true, |b| score < b.4) {
                     best = Some((trip.trip_idx, delay, curr_stop_idx, next_stop_idx, score));
                 }
             }
@@ -290,8 +336,9 @@ impl LiveScheduleIndex {
                         if !(MIN_DELAY_SEC..=MAX_DELAY_SEC).contains(&delay) {
                             continue;
                         }
-                        let score = (delay.abs() as f64) + dist * 2.0;
-                        if best.map_or(true, |b| score < b.4) {
+                        let next = trip.fallback_stops[(i + 1).min(st_len - 1)];
+                        let score = row.score(trip, delay, dist, (next.1, next.2), &trip.fallback_names[(i + 1).min(st_len - 1)], next.3);
+                        if score.is_finite() && best.map_or(true, |b| score < b.4) {
                             let next_stop_idx = trip.fallback_stops[(i + 1).min(st_len - 1)].0;
                             best = Some((trip.trip_idx, delay, stop_idx, next_stop_idx, score));
                         }
@@ -305,13 +352,13 @@ impl LiveScheduleIndex {
 
     /// Dopasowuje wsadowo wszystkie pojazdy i rozwiązuje konflikty (`resolveConflicts`-
     /// jeden pojazd na kurs z najniższym wynikiem `score`).
-    pub fn match_batch(&self, rows: &[(String, f64, f64)], now_sec: i32) -> Vec<VehicleMatchResult> {
+    fn match_batch(&self, rows: &[MatchRow]) -> Vec<VehicleMatchResult> {
         let mut raw_matches: Vec<Option<(u32, i32, u32, u32, f64)>> =
             Vec::with_capacity(rows.len());
         let mut by_trip: HashMap<u32, (usize, f64)> = HashMap::new();
 
-        for (idx, (line, lat, lon)) in rows.iter().enumerate() {
-            let m = self.match_single(line, *lat, *lon, now_sec);
+        for (idx, row) in rows.iter().enumerate() {
+            let m = self.match_single(row);
             if let Some((trip_idx, _, _, _, score)) = m {
                 match by_trip.get(&trip_idx) {
                     Some(&(_, best_score)) if score >= best_score => {}
@@ -327,7 +374,7 @@ impl LiveScheduleIndex {
             .into_iter()
             .enumerate()
             .map(|(idx, m)| match m {
-                Some((trip_idx, delay_sec, curr_stop, next_stop, _)) => {
+                Some((trip_idx, delay_sec, curr_stop, next_stop, score)) => {
                     if by_trip.get(&trip_idx).map(|&(win_idx, _)| win_idx) == Some(idx) {
                         VehicleMatchResult {
                             matched: true,
@@ -335,6 +382,7 @@ impl LiveScheduleIndex {
                             delay_sec,
                             current_stop_idx: curr_stop,
                             next_stop_idx: next_stop,
+                            score,
                         }
                     } else {
                         VehicleMatchResult {
@@ -343,6 +391,7 @@ impl LiveScheduleIndex {
                             delay_sec: 0,
                             current_stop_idx: u32::MAX,
                             next_stop_idx: u32::MAX,
+                            score: f64::INFINITY,
                         }
                     }
                 }
@@ -352,6 +401,7 @@ impl LiveScheduleIndex {
                     delay_sec: 0,
                     current_stop_idx: u32::MAX,
                     next_stop_idx: u32::MAX,
+                    score: f64::INFINITY,
                 },
             })
             .collect()
@@ -600,9 +650,7 @@ fn write_f64(out: &mut Vec<u8>, v: f64) {
     out.extend_from_slice(&v.to_le_bytes());
 }
 
-/// Cmd 20: Załadowanie wycinka rozkładu do `LIVE_SCHEDULE` w pamięci Rust.
-/// Wejście:
-/// `[line_count: u32, (line_str, pat_count: u32, (valid_stop_count: u16, (stop_idx: u32, lat: f64, lon: f64)*, trip_count: u32, (trip_idx: u32, (dep_sec: i32, arr_sec: i32)*valid_stop_count, fb_count: u16, (stop_idx: u32, lat: f64, lon: f64, dep_sec: i32)*fb_count)*)*)*]`
+/// Ładuje rozkład z nazwami przystanków i kierunkami kursów (cmd 25).
 pub fn handle_live_load_schedule_cmd(payload: &[u8]) -> Vec<u8> {
     if payload.len() < 4 {
         return Vec::new();
@@ -619,6 +667,7 @@ pub fn handle_live_load_schedule_cmd(payload: &[u8]) -> Vec<u8> {
         for _ in 0..pat_count {
             let valid_count = read_u16(payload, &mut off) as usize;
             let mut valid_stop_indices = Vec::with_capacity(valid_count);
+            let mut stop_names = Vec::with_capacity(valid_count);
             let mut coords = Vec::with_capacity(valid_count);
             let mut min_lat = f64::INFINITY;
             let mut max_lat = f64::NEG_INFINITY;
@@ -629,6 +678,7 @@ pub fn handle_live_load_schedule_cmd(payload: &[u8]) -> Vec<u8> {
                 let s_idx = read_u32(payload, &mut off);
                 let lat = read_f64(payload, &mut off);
                 let lon = read_f64(payload, &mut off);
+                stop_names.push(read_str(payload, &mut off).to_string());
                 valid_stop_indices.push(s_idx);
                 coords.push((lat, lon));
                 if lat < min_lat {
@@ -649,6 +699,7 @@ pub fn handle_live_load_schedule_cmd(payload: &[u8]) -> Vec<u8> {
             let mut trips = Vec::with_capacity(trip_count);
             for _ in 0..trip_count {
                 let trip_idx = read_u32(payload, &mut off);
+                let headsign = read_str(payload, &mut off).to_string();
                 let mut valid_dep = Vec::with_capacity(valid_count);
                 let mut valid_arr = Vec::with_capacity(valid_count);
                 for _ in 0..valid_count {
@@ -657,23 +708,28 @@ pub fn handle_live_load_schedule_cmd(payload: &[u8]) -> Vec<u8> {
                 }
                 let fb_count = read_u16(payload, &mut off) as usize;
                 let mut fallback_stops = Vec::with_capacity(fb_count);
+                let mut fallback_names = Vec::with_capacity(fb_count);
                 for _ in 0..fb_count {
                     let s_idx = read_u32(payload, &mut off);
                     let lat = read_f64(payload, &mut off);
                     let lon = read_f64(payload, &mut off);
                     let dep_sec = read_i32(payload, &mut off);
                     fallback_stops.push((s_idx, lat, lon, dep_sec));
+                    fallback_names.push(read_str(payload, &mut off).to_string());
                 }
                 trips.push(LiveTripEntry {
                     trip_idx,
+                    headsign,
                     valid_dep,
                     valid_arr,
                     fallback_stops,
+                    fallback_names,
                 });
             }
 
             patterns.push(LivePatternEntry {
                 valid_stop_indices,
+                stop_names,
                 coords,
                 min_lat,
                 max_lat,
@@ -695,26 +751,37 @@ pub fn handle_live_load_schedule_cmd(payload: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Cmd 21: Wsadowe dopasowanie pojazdów MPK + rozwiązanie konfliktów (`matchAll` + `resolveConflicts`).
-/// Wejście: `[now_sec: i32, row_count: u32, (line: str, lat: f64, lon: f64)*]`
-/// Wyjście: `[row_count: u32, (matched: u8, trip_idx: u32, delay_sec: i32, curr_stop_idx: u32, next_stop_idx: u32)*]`
+/// Dopasowuje próbki z kierunkiem, czasem pomiaru i historią pojazdu.
 pub fn handle_live_match_batch_cmd(payload: &[u8]) -> Vec<u8> {
     if payload.len() < 8 {
         return Vec::new();
     }
     let mut off = 0usize;
-    let now_sec = read_i32(payload, &mut off);
+    let _now_sec = read_i32(payload, &mut off);
     let count = read_u32(payload, &mut off) as usize;
     let mut rows = Vec::with_capacity(count);
     for _ in 0..count {
         let line = read_str(payload, &mut off).to_string();
         let lat = read_f64(payload, &mut off);
         let lon = read_f64(payload, &mut off);
-        rows.push((line, lat, lon));
+        let sample_sec = read_i32(payload, &mut off);
+        let delay = read_i32(payload, &mut off);
+        let headsign = read_str(payload, &mut off).to_string();
+        let previous = read_i32(payload, &mut off);
+        let previous_lat = read_f64(payload, &mut off);
+        let previous_lon = read_f64(payload, &mut off);
+        let next_stop = read_str(payload, &mut off).to_string();
+        let next_sec = read_i32(payload, &mut off);
+        rows.push(MatchRow { line, lat, lon, sample_sec,
+            api_delay: (delay != i32::MIN).then_some(delay), headsign,
+            previous_trip: (previous >= 0).then_some(previous as u32),
+            previous_lat, previous_lon, next_stop,
+            next_sec: (next_sec != i32::MIN).then_some(next_sec),
+        });
     }
 
-    let results = LIVE_SCHEDULE.with(|s| s.borrow().match_batch(&rows, now_sec));
-    let mut out = Vec::with_capacity(4 + results.len() * 17);
+    let results = LIVE_SCHEDULE.with(|s| s.borrow().match_batch(&rows));
+    let mut out = Vec::with_capacity(4 + results.len() * 25);
     write_u32(&mut out, results.len() as u32);
     for r in results {
         out.push(if r.matched { 1 } else { 0 });
@@ -722,6 +789,7 @@ pub fn handle_live_match_batch_cmd(payload: &[u8]) -> Vec<u8> {
         write_i32(&mut out, r.delay_sec);
         write_u32(&mut out, r.current_stop_idx);
         write_u32(&mut out, r.next_stop_idx);
+        write_f64(&mut out, r.score);
     }
     out
 }
@@ -961,6 +1029,7 @@ mod tests {
             "4".into(),
             vec![LivePatternEntry {
                 valid_stop_indices: vec![10, 11, 12],
+                stop_names: vec!["A".into(), "B".into(), "C".into()],
                 coords: vec![(51.100, 17.000), (51.105, 17.000), (51.110, 17.000)],
                 min_lat: 51.100,
                 max_lat: 51.110,
@@ -968,19 +1037,21 @@ mod tests {
                 max_lon: 17.000,
                 trips: vec![LiveTripEntry {
                     trip_idx: 42,
+                    headsign: "C".into(),
                     valid_dep: vec![36000, 36180, 36360],
                     valid_arr: vec![36000, 36180, 36360],
                     fallback_stops: vec![],
+                    fallback_names: vec![],
                 }],
             }],
         );
 
         // Dwa pojazdy na tej samej linii 4 blisko tego samego kursu - wygrywa dokładniejszy!
-        let rows = vec![
-            ("4".to_string(), 51.1025, 17.000), // idealnie w połowie seg 0 (expected = 36090)
-            ("4".to_string(), 51.1025, 17.002), // ~140m z boku (gorszy score)
-        ];
-        let matched = idx.match_batch(&rows, 36100);
+        let rows: Vec<_> = [17.000, 17.002].iter().map(|&lon| MatchRow {
+            line: "4".into(), lat: 51.1025, lon, sample_sec: 36100,
+            previous_lat: 51.1025, previous_lon: lon, ..MatchRow::default()
+        }).collect();
+        let matched = idx.match_batch(&rows);
         assert!(matched[0].matched);
         assert_eq!(matched[0].trip_idx, 42);
         assert_eq!(matched[0].delay_sec, 10);

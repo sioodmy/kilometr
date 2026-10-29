@@ -19,6 +19,7 @@ import {
 import { downloadPrebuiltDb, fetchManifest, getLocalTimetableVersion } from './timetableSync';
 import { getTimetableDownloadGate, markTimetableDownloaded } from './downloadLimits';
 import { getActiveCityIdSync } from './cityStore';
+import { warmupAddressIndex } from './addressIndex';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -145,12 +146,7 @@ export async function refreshDataStatus(): Promise<DataStatus> {
   return status;
 }
 
-/**
- * Tło po starcie: rozgrzany indeks RAPTOR-a na bieżącą porę (żeby pierwsze
- * wyszukiwanie tras nie płaciło pełnego kosztu budowy indeksu) oraz wagi
- * przystanków (ranking podpowiedzi). Oba równolegle: kolejka wag przed
- * rozgrzewką opóźniała ją o własny czas, a pierwsze wyszukiwanie traciło.
- */
+/** Po starcie rozgrzewa równolegle routing, adresy i wagi przystanków. */
 async function ensureSearchReady(): Promise<void> {
   const weights = (async () => {
     try {
@@ -169,7 +165,10 @@ async function ensureSearchReady(): Promise<void> {
       console.warn('[DataManager] routing warmup failed:', err);
     }
   })();
-  await Promise.all([weights, warmup]);
+  const addresses = warmupAddressIndex().catch((err: unknown) => {
+    console.warn('[DataManager] address warmup failed:', err);
+  });
+  await Promise.all([weights, warmup, addresses]);
 }
 
 export let importInProgress = false;

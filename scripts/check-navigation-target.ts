@@ -149,8 +149,10 @@ const vehicle: VehiclePosition = {
 };
 const gps = rideNavigation(riding, rideNow, [vehicle]);
 check(
-  'vehicle marker uses exact GPS coordinates',
-  gps.position?.[0] === vehicle.lat && gps.position[1] === vehicle.lon,
+  'vehicle fallback is projected onto the route',
+  gps.position != null &&
+    Math.abs(gps.position[0] - vehicle.lat) < 0.00001 &&
+    gps.position[1] === 17,
 );
 check(
   'GPS determines next stop and remaining stops',
@@ -240,6 +242,14 @@ check(
   })?.phase === 'riding' && rideNavigation(riding, delayedNow, []).position === null,
 );
 check(
+  'a phone stopped mid-route keeps riding even when the feed has reached the destination',
+  navigationTarget(gpsConnection, departure, delayedNow, {
+    previous: riding,
+    vehicles: [{ ...vehicle, lat: gpsLeg.toLat!, updatedAt: delayedNow }],
+    location: { lat: 51.105, lon: 17, timestamp: delayedNow, accuracy: 8, speed: 0, heading: null },
+  })?.phase === 'riding',
+);
+check(
   'transfer cannot regress to the previous ride',
   navigationTarget(gpsConnection, departure, departure + 39 * 60000, { previous: earlyTransfer })
     ?.leg.id === second.id,
@@ -314,7 +324,7 @@ check(
 );
 const deviceRide = rideNavigation(riding, rideNow, [vehicle], {
   lat: 51.115,
-  lon: 17,
+  lon: 17.0002,
   timestamp: rideNow,
   accuracy: 8,
   speed: 5,
@@ -324,12 +334,78 @@ check(
   'device GPS takes priority over a vehicle left behind',
   deviceRide.source === 'device' &&
     deviceRide.nextStop === 'Transfer' &&
-    deviceRide.stopsLeft === 1,
+    deviceRide.stopsLeft === 1 &&
+    deviceRide.position != null &&
+    Math.abs(deviceRide.position[0] - 51.115) < 0.00001 &&
+    deviceRide.position[1] === 17,
 );
 check(
-  'device progress does not create a vehicle position',
-  rideNavigation(riding, rideNow, [], { ...alightingLocation, timestamp: rideNow }).position ===
-    null,
+  'device GPS alone puts the line badge on the route',
+  rideNavigation(riding, rideNow, [], { ...alightingLocation, timestamp: rideNow })
+    .position?.[0] === gpsLeg.toLat,
+);
+const nearAlighting = { ...alightingLocation, lat: 51.118, timestamp: rideNow, accuracy: 15 };
+check('alighting stays hidden halfway through the ride', !deviceRide.canAlight);
+check(
+  'alighting uses the GPS uncertainty near the final stop',
+  rideNavigation(riding, rideNow, [vehicle], nearAlighting).canAlight &&
+    !rideNavigation(riding, rideNow, [vehicle], { ...nearAlighting, accuracy: 5 }).canAlight,
+);
+check(
+  'a vehicle near the destination cannot override a phone far away',
+  !rideNavigation(riding, rideNow, [{ ...vehicle, lat: 51.119 }], {
+    ...nearAlighting,
+    lat: 51.11,
+  }).canAlight,
+);
+check(
+  'stale and inaccurate device GPS fall back to the vehicle',
+  rideNavigation(riding, rideNow, [vehicle], { ...nearAlighting, timestamp: rideNow - 15_001 })
+    .source === 'vehicle' &&
+    rideNavigation(riding, rideNow, [vehicle], { ...nearAlighting, accuracy: 100 }).source ===
+      'vehicle',
+);
+check(
+  'missing GPS keeps alighting hidden even after scheduled arrival',
+  !rideNavigation(riding, delayedNow, []).canAlight,
+);
+check(
+  'nearby vehicle GPS can offer alighting without a phone fix',
+  rideNavigation(riding, rideNow, [{ ...vehicle, lat: 51.119 }]).canAlight,
+);
+const loopLeg: Leg = {
+  ...gpsLeg,
+  fromLat: 51.119,
+  intermediateStops: [
+    { stopId: 'a', name: 'Start', seq: 1, lat: 51.119, lon: 17 },
+    { stopId: 'b', name: 'Middle', seq: 2, lat: 51.11, lon: 17 },
+    { stopId: 'c', name: 'Transfer', seq: 3, lat: 51.12, lon: 17.001 },
+  ],
+  toLon: 17.001,
+};
+check(
+  'nearby endpoints on a loop do not offer alighting early',
+  !rideNavigation({ ...riding, leg: loopLeg }, rideNow, [], {
+    ...nearAlighting,
+    lat: 51.119,
+    lon: 17,
+  }).canAlight,
+);
+const resumedAtStop = navigationTarget(gpsConnection, departure, delayedNow, {
+  previous: riding,
+  resumedLegIndex: 0,
+  location: { ...alightingLocation, timestamp: delayedNow },
+});
+check(
+  'undo restores riding despite arrival time and stationary GPS at the stop',
+  resumedAtStop?.leg.id === gpsLeg.id && resumedAtStop.phase === 'riding',
+);
+check(
+  'alighting can be confirmed again after undo',
+  navigationTarget(gpsConnection, departure, delayedNow, {
+    previous: resumedAtStop,
+    completedLegIndex: 0,
+  })?.leg.id === second.id,
 );
 check(
   'missing positions do not invent ride progress',

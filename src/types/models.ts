@@ -149,8 +149,11 @@ export interface VehiclePosition {
   matchedTripId?: string;
 }
 
+export type DelayConfidence = 'live' | 'estimated' | 'untracked' | 'scheduled';
+
 export interface Leg {
   id: string;
+  geometry?: [number, number][];
   mode: LegMode;
   /** e.g. "4", "K", "D" - undefined for walk */
   line?: string;
@@ -160,11 +163,18 @@ export interface Leg {
   toStop: string;
   departAt: string; // "14:02"
   arriveAt: string; // "14:18"
+  /** Rozkład pojazdu lub bazowy czas spaceru, z offsetem dnia. */
+  scheduledDepartureSec?: number;
+  scheduledArrivalSec?: number;
+  /** Opóźnienie już uwzględnione w godzinach tego odcinka. */
+  delaySec?: number;
+  arrivalDelaySec?: number;
   stopsCount: number;
   /** metres for walk legs */
   walkM?: number;
-  /** GTFS-RT trip present? */
+  /** Potwierdzony pomiar, bez szacunków z innych pojazdów. */
   live: boolean;
+  delayConfidence?: DelayConfidence;
   fromStopId?: string;
   toStopId?: string;
   fromLat?: number;
@@ -182,6 +192,7 @@ export interface Leg {
 
 export interface Connection {
   id: string;
+  serviceDate?: string;
   fromTitle: string;
   toTitle: string;
   /** minutes until departure, from "now" */

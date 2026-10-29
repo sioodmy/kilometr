@@ -410,7 +410,8 @@ function unpackFootRoute(bytes: Uint8Array | null): [number, number][] | null {
   return out;
 }
 
-export function routeFootWaypointsSync(
+/** Trasa piesza synchronicznie, przez moduł natywny albo wasm. */
+function routeFootWaypointsSync(
   waypoints: ReadonlyArray<readonly [number, number]>,
   rail = false,
 ): [number, number][] | null {
@@ -452,8 +453,9 @@ export const CMD_FUZZY = 10;
 export const CMD_LOAD_STOPS = 11;
 export const CMD_STOPS_QUERY = 12;
 export const CMD_DEDUPE_AND_SORT = 14;
-export const CMD_LIVE_LOAD_SCHEDULE = 20;
-export const CMD_LIVE_MATCH_BATCH = 21;
+export const CMD_ADDRESSES = 17;
+export const CMD_LIVE_LOAD_SCHEDULE = 25;
+export const CMD_LIVE_MATCH_BATCH = 26;
 export const CMD_MATCH_ZB_KD = 22;
 export const CMD_PLAN_MATCH = 31;
 

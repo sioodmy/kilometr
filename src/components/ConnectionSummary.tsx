@@ -4,6 +4,10 @@ import { useStrings } from '../i18n';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import { LineBadge } from './LineBadge';
+import { RollingTime } from './RollingTime';
+import { boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
+import { secondsToTimeString } from '../gtfs/geo';
+import { reliabilityNotice } from './reliabilityNotice';
 
 export function ConnectionSummary({
   item,
@@ -16,9 +20,19 @@ export function ConnectionSummary({
 }) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
-  const stacked = (availableWidth ?? width) / fontScale < 330;
+  const stacked = ((availableWidth ?? width - 32) - 44) / fontScale < 280;
   const boarding = item.legs.filter((leg) => leg.mode !== 'walk');
+  const firstVehicle = boarding[0];
+  const departureSec = boardingDepartureSec(item);
+  const departure = firstVehicle ? secondsToTimeString(departureSec) : item.departAt;
+  const scheduled = firstVehicle
+    ? scheduledLegTimes(firstVehicle, departureSec).departure
+    : undefined;
+  const departureDelay =
+    firstVehicle?.live && !offline ? Math.round((firstVehicle.delaySec ?? 0) / 60) : 0;
+  const hasApproach = item.legs[0]?.mode === 'walk' && firstVehicle != null;
   const live = item.live && !offline;
+  const notice = offline ? undefined : reliabilityNotice(boarding, s);
   const statusColor =
     live && item.delayMin > 0
       ? scheme.error
@@ -40,19 +54,43 @@ export function ConnectionSummary({
     <View style={styles.summary}>
       <View style={[styles.endpoints, stacked && styles.endpointsStacked]}>
         <View style={styles.endpoint}>
-          <Text style={styles.label}>{s.routeDetails.departure}</Text>
-          <Text style={styles.time}>{item.departAt}</Text>
-          <Text style={styles.place}>{item.fromTitle}</Text>
+          <Text style={styles.label}>
+            {firstVehicle ? s.routeDetails.vehicleDeparture : s.routeDetails.departure}
+          </Text>
+          <RollingTime value={departure} style={styles.time} />
+          {departureDelay !== 0 && scheduled != null && (
+            <View style={styles.delayDetails} accessibilityLiveRegion="polite">
+              <Text style={styles.label}>
+                {s.routeDetails.scheduledTime(secondsToTimeString(scheduled))}
+              </Text>
+              <Text
+                style={[
+                  styles.status,
+                  { color: departureDelay > 0 ? scheme.error : scheme.warning },
+                ]}
+              >
+                {departureDelay > 0
+                  ? s.routeDetails.late(departureDelay)
+                  : s.routeDetails.early(-departureDelay)}
+              </Text>
+            </View>
+          )}
+          <Text style={styles.place}>{firstVehicle?.fromStop ?? item.fromTitle}</Text>
         </View>
         <View style={[styles.direction, stacked && styles.directionStacked]}>
           <Direction size={22} color={scheme.primary} strokeWidth={1.8} />
         </View>
         <View style={styles.endpoint}>
           <Text style={styles.label}>{s.routeDetails.arrival}</Text>
-          <Text style={styles.time}>{item.arriveAt}</Text>
+          <RollingTime value={item.arriveAt} style={styles.time} />
           <Text style={styles.place}>{item.toTitle}</Text>
         </View>
       </View>
+      {hasApproach && (
+        <Text style={styles.label}>
+          {s.routeDetails.walkDeparture(item.departAt, item.fromTitle)}
+        </Text>
+      )}
       <View style={styles.facts}>
         <View style={styles.fact}>
           <Clock3 size={17} color={scheme.primary} />
@@ -70,11 +108,14 @@ export function ConnectionSummary({
             ))}
           </View>
         )}
-        <View style={styles.fact}>
-          {live && item.delayMin === 0 && <Check size={16} color={scheme.primary} />}
-          <Text style={[styles.status, { color: statusColor }]}>{status}</Text>
-        </View>
+        {!notice && (!live || departureDelay === 0 || item.delayMin !== departureDelay) && (
+          <View style={styles.fact}>
+            {!notice && live && item.delayMin === 0 && <Check size={16} color={scheme.primary} />}
+            <Text style={[styles.status, { color: statusColor }]}>{status}</Text>
+          </View>
+        )}
       </View>
+      {notice && <Text style={[styles.status, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
     </View>
   );
 }
@@ -89,6 +130,7 @@ const styles = StyleSheet.create({
   endpoints: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   endpointsStacked: { flexDirection: 'column' },
   endpoint: { flex: 1, minWidth: 0, gap: 6 },
+  delayDetails: { gap: 4 },
   label: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
   time: {
     fontSize: 38,

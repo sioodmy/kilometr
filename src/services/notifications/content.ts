@@ -88,6 +88,26 @@ export function buildPhaseCopy(
   // zestarzeje się przy zamkniętej aplikacji.
   const ride = rideLengthMin(p, s);
 
+  if (conn.serviceDate) {
+    const title = s.share.notificationTitle(conn.toTitle, arriveAt);
+    const detail = join(service, position, delay);
+    return {
+      walking: { title, text: s.share.pageTitle, subText: detail },
+      waiting: {
+        title: n.departTitle(service, boardAt),
+        text: boarding,
+        subText: s.share.pageTitle,
+      },
+      transfer: {
+        title: n.transferTitle(service, boardAt),
+        text: boarding,
+        subText: s.share.pageTitle,
+      },
+      riding: { title, text: s.share.pageTitle, subText: detail },
+      arrived: { title: s.share.notificationArrived, text: conn.toTitle, subText: arriveAt },
+    };
+  }
+
   return {
     walking: {
       title:
@@ -311,9 +331,9 @@ export function buildLivePlan(
     stopAfterMs: options.stopAfterMs ?? endAtMs + ARRIVED_LINGER_MS,
     segments: buildSegments(timeline, startAtMs, endAtMs),
     states: buildStates(p, conn, s),
-    alightAlertsEnabled: options.alightAlertsEnabled ?? true,
+    alightAlertsEnabled: !trip.sharedJourney && (options.alightAlertsEnabled ?? true),
     transferProtectionEnabled: trip.protectionEnabled ?? false,
-    transferAlertsEnabled: options.transferAlertsEnabled ?? true,
+    transferAlertsEnabled: !trip.sharedJourney && (options.transferAlertsEnabled ?? true),
     copy: buildPhaseCopy(p, conn, s),
     // Po przyjeździe „Zakończ" nie ma już czego kończyć - przycisk zmienia się
     // na potwierdzenie. Plan i tak przychodzi na każdą zmianę fazy, więc etykieta
@@ -381,10 +401,12 @@ function join(...parts: (string | null | undefined)[]): string {
 
 /** Deep link do ekranu połączeń - te same parametry co w buildRoutesLink. */
 function buildTripLink(trip: TrackedTrip): string {
+  if (trip.sharedJourney) return `kilometr://shared?trip=${trip.sharedJourney}`;
   return `kilometr://routes?${queryString(tripParams(trip))}`;
 }
 
 function tripParams(trip: TrackedTrip): Record<string, string> {
+  if (trip.sharedJourney) return { sharedTrip: trip.sharedJourney };
   return {
     fromTitle: trip.fromTitle,
     fromLat: String(trip.fromLat),

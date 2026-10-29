@@ -5,11 +5,14 @@ export interface StaticStop {
   name: string;
   arrival: number;
   departure: number;
+  lat?: number;
+  lon?: number;
 }
 
 export interface TimetableShard {
   v: 1;
   trips: Record<string, StaticStop[]>;
+  tripShapes?: Record<string, string>;
 }
 
 export function tripShard(tripId: string): string {
