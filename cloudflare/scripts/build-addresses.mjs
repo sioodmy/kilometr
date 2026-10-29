@@ -10,13 +10,29 @@ const MAX_AGE_MS = 7 * 86400000;
  * Kolejno próbowane instancje Overpassa; pierwszy wpis można nadpisać
  * przez ADDRESS_OVERPASS_URL. Kilka kolejnych dni 502/504 z głównego
  * serwera kończyło się firmowaniem bazy bez indeksu adresów, więc
- * pojedyncza padnięta instancja nie ubija już snapshotu.
+ * pojedyncza padnięta instancja nie ubija już snapshotu. mail.ru to
+ * ostatni przystanek (własny mirror planety, wolniejszy albo z dziurami
+ * w importach, więc zaufany tylko gdy wyczerpie się wszystko powyżej).
  */
 const OVERPASS_MIRRORS = [
   process.env.ADDRESS_OVERPASS_URL || 'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
+/**
+ * Seria na instancję w ramach jednego kafelka (502 oznacza „kolejka pełna”,
+ * więc parę chwil później ta sama instancja często odpowiada). Odczyt z env
+ * przy każdym użyciu, żeby testy i retry tuning działały bez reindeksacji.
+ */
+const MIRROR_ATTEMPTS = 3;
+const retryWaitMs = (attempt) => {
+  const waits = (process.env.ADDRESS_RETRY_WAIT_MS || '10000,30000')
+    .split(',')
+    .map((v) => Number(v.trim()))
+    .filter((v) => Number.isFinite(v) && v >= 0);
+  return waits[attempt] ?? waits.at(-1) ?? 30_000;
+};
 
 export function addressSnapshotIsFresh(snapshot, now = Date.now()) {
   const age = now - Date.parse(snapshot?.builtAt);
@@ -177,18 +193,25 @@ export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch, sna
         };
         let lastError = null;
         for (const url of OVERPASS_MIRRORS) {
-          try {
-            const response = await fetcher(url, request);
-            if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
-            const json = await response.json();
-            if (json.remark || !Array.isArray(json.elements))
-              throw new Error(`Niepełna odpowiedź Overpass: ${json.remark || 'brak elements'}`);
-            for (const row of addressesFromElements(json.elements, bounds)) rows.push(row);
-            lastError = null;
-            break;
-          } catch (error) {
-            lastError = error;
+          for (let attempt = 0; attempt < MIRROR_ATTEMPTS; attempt++) {
+            try {
+              const response = await fetcher(url, request);
+              if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
+              const json = await response.json();
+              if (json.remark || !Array.isArray(json.elements))
+                throw new Error(`Niepełna odpowiedź Overpass: ${json.remark || 'brak elements'}`);
+              for (const row of addressesFromElements(json.elements, bounds)) rows.push(row);
+              lastError = null;
+              break;
+            } catch (error) {
+              lastError = error;
+              if (attempt < MIRROR_ATTEMPTS - 1) {
+                // Pełna kolejka zwykle zsycha się w kilka-kilkanaście sekund.
+                await new Promise((r) => setTimeout(r, retryWaitMs(attempt)));
+              }
+            }
           }
+          if (!lastError) break;
         }
         if (lastError) throw lastError;
       }
