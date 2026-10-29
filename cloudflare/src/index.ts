@@ -34,6 +34,11 @@ const PDP_BASE = 'https://pdp-api.plk-sa.pl';
 const dbKeyFor = (city: string): string => `${city}/db/kilometr-gtfs.db.gz`;
 const manifestKeyFor = (city: string): string => `${city}/manifest.json`;
 /**
+ * Snapshot adresów OSM (cache buildu timetable.yml): świeży zasila build bez
+ * Overpassa, stary jest awaryjnym zapasem. Nigdy nie trafia do telefonu.
+ */
+const addressesKeyFor = (city: string): string => `${city}/addresses.json.gz`;
+/**
  * Pakiet kafelków mapy offline. Buduje go workflow map-tiles.yml (--city),
  * a telefon pobiera raz i trzyma lokalnie (osobny plik na miasto).
  */
@@ -95,6 +100,9 @@ export default {
       }
       if (rest === '/db/kilometr-gtfs.db.gz') {
         return serveDb(req, env, dbKeyFor(city));
+      }
+      if (rest === '/addresses.json.gz') {
+        return serveObject(env, addressesKeyFor(city), 'application/gzip', 'timetable.yml');
       }
     }
     const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
