@@ -1256,6 +1256,14 @@ export const uk: Strings = {
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
+    modeTram: 'Трамвай',
+    modeBus: 'Автобус',
+    modeTrain: 'Поїзд',
+    modeSubway: 'Метро',
+    modeTrolley: 'Тролейбус',
+    modeCable: 'Канатна дорога',
+    modeVehicle: 'Транспорт',
+    nearStop: (mode: string, stop: string) => `${mode} поблизу зупинки: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
       return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
