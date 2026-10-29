@@ -86,13 +86,23 @@ test('wyłapuje zmyśloną nazwę dzielnicy', () => {
 });
 
 test('wyłapuje Włochów jako nazwę dzielnicy', () => {
-  const source = 'Objazd przez Włochy.';
+  const source = 'Objazd przez Wolę.';
   const analysis = {
     is_transit_alert: true,
     headline: 'Objazd przez Włochów',
     glance: { problem: 'Tramwaje jadą przez Włochów.', solution: null },
   };
   assert.deepEqual(findUnknownNames(analysis, source), ['Włochów']);
+});
+
+test('przepuszcza odmienioną nazwę z treści', () => {
+  const source = 'Bieruń. Przystanek Bieruń Królowej Jadwigi.';
+  const analysis = {
+    is_transit_alert: true,
+    headline: 'Przystanek w Bieruniu',
+    glance: { problem: 'Przystanek w Bieruniu jest przesunięty.', solution: null },
+  };
+  assert.deepEqual(findUnknownNames(analysis, source), []);
 });
 
 test('przepuszcza nazwy z treści i mianownik przystanku', () => {
