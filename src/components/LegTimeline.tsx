@@ -76,6 +76,7 @@ function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
 // Rail rysuje linię przez całą wysokość wiersza i zachodzi 1 px na sąsiednie
 // wiersze, więc między kropkami i na granicy stref nie ma żadnych szwów.
+// Osobne segmenty nad i pod kropką zapobiegają pomarańczowym szwom na minionym odcinku.
 const StopRow = memo(function StopRow({
   stop,
   isFirst,
@@ -105,29 +106,38 @@ const StopRow = memo(function StopRow({
   // Przystanek pojazd już minął: wyszarzony, tak samo jak dotychczas przejechane.
   const passed = vehicleGap != null && index <= vehicleGap;
   const markerHere = vehicleGap === index && !isLast;
-  // Linia biegnie przez cały wiersz i zachodzi 1 px na sąsiednie wiersze.
-  // Osobny łącznik pod kropką zostawiał cienką szwę między wierszami.
   const lineCenter = boundary ? 20 : 10.5;
-  const showLine = !(isFirst && isLast);
-  const lineTop = isFirst ? lineCenter : -1;
-  const lineStyle = isLast
-    ? { top: lineTop, height: lineCenter + 1 - lineTop }
-    : { top: lineTop, bottom: -1 };
+  const incomingPassed = vehicleGap != null && index <= vehicleGap;
+  const outgoingPassed = vehicleGap != null && index < vehicleGap;
   return (
     <View style={s.stopRow}>
       <View style={s.stopRail}>
-        {showLine && (
+        {!isFirst && (
           <View
             style={[
               s.stopRailLine,
-              lineStyle,
+              { top: -1, height: lineCenter + 2 },
               {
-                backgroundColor:
-                  vehicleGap != null && index < vehicleGap
-                    ? scheme.outline
-                    : connectorAccent
-                      ? accent
-                      : scheme.outlineVariant,
+                backgroundColor: incomingPassed
+                  ? scheme.outline
+                  : connectorAccent
+                    ? accent
+                    : scheme.outlineVariant,
+              },
+            ]}
+          />
+        )}
+        {!isLast && (
+          <View
+            style={[
+              s.stopRailLine,
+              { top: lineCenter, bottom: -1 },
+              {
+                backgroundColor: outgoingPassed
+                  ? scheme.outline
+                  : connectorAccent
+                    ? accent
+                    : scheme.outlineVariant,
               },
             ]}
           />
