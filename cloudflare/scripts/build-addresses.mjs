@@ -10,13 +10,33 @@ const MAX_AGE_MS = 7 * 86400000;
  * Kolejno próbowane instancje Overpassa; pierwszy wpis można nadpisać
  * przez ADDRESS_OVERPASS_URL. Kilka kolejnych dni 502/504 z głównego
  * serwera kończyło się firmowaniem bazy bez indeksu adresów, więc
- * pojedyncza padnięta instancja nie ubija już snapshotu.
+ * pojedyncza padnięta instancja nie ubija już snapshotu. mail.ru to
+ * ostatni przystanek (własny mirror planety, wolniejszy albo z dziurami
+ * w importach, więc zaufany tylko gdy wyczerpie się wszystko powyżej).
  */
 const OVERPASS_MIRRORS = [
   process.env.ADDRESS_OVERPASS_URL || 'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
+/**
+ * Rozdzielczość kafli Overpassa: start 0.25°, przy padniętym kaflu schodzimy
+ * połówkami do MIN_TILE_DEG (GZM to 41 gmin, więc nie schodzimy w nieskończoność).
+ */
+const TILE_DEG = 0.25;
+const MIN_TILE_DEG = 0.06;
+/** Sufit czasu na Overpass w jednym buildzie: po nim wolimy R2/cache niż wisieć. */
+const OVERPASS_BUDGET_MS = 20 * 60_000;
+/** Dwie rundy po lusterkach z pauzą między nimi; potem podział kafelka. */
+const MIRROR_ROUNDS = 2;
+const retryWaitMs = (round) => {
+  const waits = (process.env.ADDRESS_RETRY_WAIT_MS || '5000')
+    .split(',')
+    .map((v) => Number(v.trim()))
+    .filter((v) => Number.isFinite(v) && v >= 0);
+  return waits[round] ?? waits.at(-1) ?? 5000;
+};
 
 export function addressSnapshotIsFresh(snapshot, now = Date.now()) {
   const age = now - Date.parse(snapshot?.builtAt);
@@ -154,43 +174,67 @@ export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch, sna
     return remote;
   }
   try {
-    const rows = [];
     const bounds = city.bounds;
-    const latSteps = Math.ceil((bounds.maxLat - bounds.minLat) / 0.25);
-    const lonSteps = Math.ceil((bounds.maxLon - bounds.minLon) / 0.25);
-    for (let y = 0; y < latSteps; y++) {
-      for (let x = 0; x < lonSteps; x++) {
-        const south = bounds.minLat + (y * (bounds.maxLat - bounds.minLat)) / latSteps;
-        const north = bounds.minLat + ((y + 1) * (bounds.maxLat - bounds.minLat)) / latSteps;
-        const west = bounds.minLon + (x * (bounds.maxLon - bounds.minLon)) / lonSteps;
-        const east = bounds.minLon + ((x + 1) * (bounds.maxLon - bounds.minLon)) / lonSteps;
-        const bbox = [south, west, north, east].join(',');
-        const query = `[out:json][timeout:90];(nwr["addr:housenumber"]["addr:street"](${bbox});nwr["addr:housenumber"]["addr:place"](${bbox}););out center qt;`;
-        const request = {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'KilometrAddressBuild/1.0 (https://github.com/sioodmy/kilometr)',
-          },
-          body: new URLSearchParams({ data: query }),
-          signal: AbortSignal.timeout(120_000),
-        };
-        let lastError = null;
+    const deadline = Date.now() + OVERPASS_BUDGET_MS;
+    const rows = [];
+    /** Kafelek z ratunkiem: lustra → pauza → lustra → podział na ćwiartki. */
+    const fetchTile = async (south, west, north, east) => {
+      const bbox = [south, west, north, east].join(',');
+      const query = `[out:json][timeout:90];(nwr["addr:housenumber"]["addr:street"](${bbox});nwr["addr:housenumber"]["addr:place"](${bbox}););out center qt;`;
+      const request = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'KilometrAddressBuild/1.0 (https://github.com/sioodmy/kilometr)',
+        },
+        body: new URLSearchParams({ data: query }),
+        signal: AbortSignal.timeout(120_000),
+      };
+      let lastError = null;
+      for (let round = 0; round < MIRROR_ROUNDS; round++) {
         for (const url of OVERPASS_MIRRORS) {
+          if (Date.now() > deadline) throw new Error('Overpass: przekroczony budżet czasu');
           try {
             const response = await fetcher(url, request);
             if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
             const json = await response.json();
             if (json.remark || !Array.isArray(json.elements))
               throw new Error(`Niepełna odpowiedź Overpass: ${json.remark || 'brak elements'}`);
-            for (const row of addressesFromElements(json.elements, bounds)) rows.push(row);
-            lastError = null;
-            break;
+            return addressesFromElements(json.elements, bounds);
           } catch (error) {
             lastError = error;
           }
         }
-        if (lastError) throw lastError;
+        if (round < MIRROR_ROUNDS - 1) await new Promise((r) => setTimeout(r, retryWaitMs(round)));
+      }
+      // Za duże zapytanie zwykle umiera na limitach serwera: tniemy na ćwiartki,
+      // aż dojdzie do MIN_TILE_DEG (GZM ma 225 kafli 0.1°, więc bez przesady).
+      const latSpan = north - south;
+      const lonSpan = east - west;
+      if (Math.max(latSpan, lonSpan) > MIN_TILE_DEG * 1.01) {
+        const midLat = (south + north) / 2;
+        const midLon = (west + east) / 2;
+        const parts = [
+          [south, west, midLat, midLon],
+          [south, midLon, midLat, east],
+          [midLat, west, north, midLon],
+          [midLat, midLon, north, east],
+        ];
+        const out = [];
+        for (const [s, w, n, e] of parts) out.push(...(await fetchTile(s, w, n, e)));
+        return out;
+      }
+      throw lastError ?? new Error('Overpass: brak odpowiedzi');
+    };
+    const latSteps = Math.ceil((bounds.maxLat - bounds.minLat) / TILE_DEG);
+    const lonSteps = Math.ceil((bounds.maxLon - bounds.minLon) / TILE_DEG);
+    for (let y = 0; y < latSteps; y++) {
+      for (let x = 0; x < lonSteps; x++) {
+        const south = bounds.minLat + (y * (bounds.maxLat - bounds.minLat)) / latSteps;
+        const north = bounds.minLat + ((y + 1) * (bounds.maxLat - bounds.minLat)) / latSteps;
+        const west = bounds.minLon + (x * (bounds.maxLon - bounds.minLon)) / lonSteps;
+        const east = bounds.minLon + ((x + 1) * (bounds.maxLon - bounds.minLon)) / lonSteps;
+        rows.push(...(await fetchTile(south, west, north, east)));
       }
     }
     const unique = dedupeAddresses(rows);

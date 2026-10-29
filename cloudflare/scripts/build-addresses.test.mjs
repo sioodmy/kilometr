@@ -6,6 +6,10 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { gunzipSync, gzipSync } from 'node:zlib';
+
+// Backoff na testy: zero czekania między seriami luster.
+process.env.ADDRESS_RETRY_WAIT_MS = '1,1';
+
 import {
   ADDRESS_SCHEMA_VERSION,
   addressesFromElements,
@@ -111,8 +115,9 @@ test('Padnięte instancje Overpassa przejmuje lustro, a wszystkie naraz kończą
       return new Response('', { status: 502 });
     };
     await assert.rejects(loadAddressSnapshot('wroclaw', dir, failing), /HTTP 502/);
-    // Bez cache padnie na pierwszym kafelku: po jednej próbie na każde lustro.
-    assert.equal(calls.length, 3);
+    // Każdy kafel idzie po lusterkach rundami i schodzi w ćwiartki, więc
+    // liczy się to, że w ogóle dotknął sieci i odpadł, a nie dokładna liczba.
+    assert.ok(calls.length >= 8);
 
     calls.length = 0;
     let attempt = 0;
@@ -189,8 +194,8 @@ test('Stary snapshot z R2 wygrywa z bazą bez adresów, gdy Overpass padnie cał
     };
     const snapshot = await loadAddressSnapshot('wroclaw', dir, fetcher, 'https://data.kilometr.app');
     assert.equal(snapshot.builtAt, '2026-09-01T05:00:00.000Z');
-    // Padnie na pierwszym kafelku: 1 (R2) + 3 instancje Overpassa.
-    assert.equal(calls.length, 4);
+    // Padnie na pierwszym kafelku: 1 (R2) + rundy luster i ćwiartki.
+    assert.ok(calls.length > 8);
     assert.equal(JSON.parse(gunzipSync(readFileSync(join(dir, 'wroclaw.json.gz'))).toString('utf8')).builtAt, '2026-09-01T05:00:00.000Z');
   } finally {
     rmSync(dir, { recursive: true });
