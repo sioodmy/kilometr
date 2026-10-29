@@ -43,16 +43,28 @@ jobs:
             package-lock.json
             landing/package-lock.json
 
-      - name: Build landing page (React → docs/)
-        env:
-          ANDROID_APP_LINK_FINGERPRINTS: ${{ vars.ANDROID_APP_LINK_FINGERPRINTS }}
-          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      - name: Install dependencies
         run: |
           set -euo pipefail
           npm ci
           npm --prefix landing ci
-          npx tsx scripts/export-share-timetables.ts
-          npm --prefix landing run build
+
+      - name: Export share timetables (best effort)
+        continue-on-error: true
+        run: npx tsx scripts/export-share-timetables.ts
+
+      - name: Build landing page (React → docs/)
+        env:
+          ANDROID_APP_LINK_FINGERPRINTS: ${{ vars.ANDROID_APP_LINK_FINGERPRINTS }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: npm --prefix landing run build
+
+      - name: Verify Pages output
+        run: |
+          set -euo pipefail
+          test -f docs/index.html
+          test -f docs/trip/index.html
+          test -f docs/.well-known/assetlinks.json
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
