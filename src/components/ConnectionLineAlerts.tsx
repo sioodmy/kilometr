@@ -29,12 +29,17 @@ function overlappingLines(item: MpkNewsItem, lineSet: Set<string>): string[] {
 // Brak pasujących komunikatów to brak karty: trasa bez utrudnień nie dostaje pustego bloku.
 export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   connection,
+  lines: linesProp,
 }: {
-  connection: Connection;
+  connection?: Connection;
+  lines?: string[];
 }) {
   const s = useStrings();
   const router = useRouter();
-  const lines = useMemo(() => linesFromConnections([connection]), [connection]);
+  const lines = useMemo(
+    () => linesProp ?? (connection ? linesFromConnections([connection]) : []),
+    [connection, linesProp],
+  );
   const lineSet = useMemo(() => new Set(lines), [lines]);
   const [news, setNews] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [status, setStatus] = useState<Status>(() =>
