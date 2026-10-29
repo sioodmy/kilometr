@@ -29,10 +29,16 @@ import {
   sendDisruptionAlert,
   shouldAlertDelay,
 } from './alerts';
-import { areNotificationsSupported, getTrackingNative, usesNativeTransferProtection, warnUnsupportedOnce } from './module';
+import {
+  areNotificationsSupported,
+  getTrackingNative,
+  usesNativeTransferProtection,
+  warnUnsupportedOnce,
+} from './module';
 import type { NotificationPreferences, TripProgress, TrackedTrip } from './types';
 import type { TransferProtectionState } from './transferTypes';
 import { hasTransfer } from './transferTypes';
+import { applyLiveDelays } from '../routing/engine';
 import type { ForegroundTransferProtection } from './transferForeground';
 import { decodeSharedConnection } from '../../sharing/connection';
 import { sharedLiveConnection, sharedVehicle } from '../../sharing/native';
@@ -125,6 +131,7 @@ async function planTracked(): Promise<Connection | null> {
     anchorStopId: tracked.anchorStopId,
     anchorStopLat: tracked.anchorStopLat,
     anchorStopLon: tracked.anchorStopLon,
+    departureTimeSec: tracked.connection.departureSec,
     maxTransfers: s.maxTransfers,
     minTransferSec: s.minTransferSec,
     trainsEnabled: s.trainsEnabled,
@@ -176,31 +183,37 @@ async function refresh(): Promise<void> {
 
     const prefs: NotificationPreferences = getNotificationPreferencesSync();
 
-    // Planujemy tylko do momentu odjazdu (patrz `planLocked`).
-    if (before.sharedJourney) {
-      const journey = decodeSharedConnection(before.sharedJourney);
-      if (!journey) { await stopTracking(); return; }
-      tracked = { ...before, connection: sharedLiveConnection(before.connection, journey,
-        liveTracker.getLiveState() === 'fresh' ? liveTracker.getTripDelays() : new Map()) };
-    } else if (!planLocked) {
-      try {
-        const fresh = await planTracked();
-        if (run !== generation) return;
-        if (!fresh) {
-          // Brak połączeń (albo awaria sieci) - zostaje ostatni znany plan.
-          // Oddajemy śledzenie dopiero wtedy, gdy minęło pół godziny od
-          // ODJAZDU (nie od rozpoczęcia śledzenia): przypięty na dwie
-          // godziny kurs nie może zniknąć tylko dlatego, że planer chwilowo
-          // zwrócił pustkę.
-          const deadline = (progress?.departAtMs ?? before.startedAt) + 30 * 60 * 1000;
-          if (Date.now() > deadline) {
-            await stopTracking();
+    const current = tracked ?? before;
+    const tripDelays =
+      liveTracker.getLiveState() === 'fresh' ? liveTracker.getTripDelays() : new Map();
+    if (current.sharedJourney) {
+      const journey = decodeSharedConnection(current.sharedJourney);
+      if (!journey) {
+        await stopTracking();
+        return;
+      }
+      tracked = {
+        ...current,
+        connection: sharedLiveConnection(current.connection, journey, tripDelays),
+      };
+    } else {
+      // Zawsze na bieżąco nanosimy aktualne opóźnienia i live-status na śledzone połączenie:
+      const updated = applyLiveDelays([current.connection], tripDelays)[0] ?? current.connection;
+      tracked = { ...current, connection: updated };
+
+      const hasTransfers = current.connection.legs.filter((l) => l.mode !== 'walk').length > 1;
+      // Re-planowanie przez RAPTOR-a ma sens tylko przed odjazdem i tylko dla połączeń
+      // z przesiadkami (kursy bezpośrednie to jeden stały przejazd, opóźnienia załatwia applyLiveDelays):
+      if (!planLocked && hasTransfers) {
+        try {
+          const fresh = await planTracked();
+          if (run !== generation) return;
+          if (fresh) {
+            tracked = { ...current, connection: fresh };
           }
-        } else {
-          tracked = { ...before, connection: fresh };
+        } catch {
+          // offline - zostaje ostatni plan
         }
-      } catch {
-        // offline - zostaje ostatni plan
       }
     }
 
@@ -210,7 +223,10 @@ async function refresh(): Promise<void> {
 
     // Użytkownik wyłączył wszystkie powiadomienia - nie ma po co dalej
     // planować, tym bardziej że samo śledzenie kosztuje odpytania planera.
-    if ((!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) || (trip.protectionEnabled || trip.sharedJourney) && !prefs.trackingEnabled) {
+    if (
+      (!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) ||
+      ((trip.protectionEnabled || trip.sharedJourney) && !prefs.trackingEnabled)
+    ) {
       await stopTracking();
       return;
     }
@@ -219,7 +235,9 @@ async function refresh(): Promise<void> {
 
     const walkSpeedMps = profileWalkSpeedMps(getSettingsSync().walkPace);
     const base = computeTripProgress(conn, { walkSpeedMps });
-    const vehicle = trip.sharedJourney ? sharedVehicle(conn, liveTracker.snapshot())?.vehicle : vehicleForTrip(base);
+    const vehicle = trip.sharedJourney
+      ? sharedVehicle(conn, liveTracker.snapshot())?.vehicle
+      : vehicleForTrip(base);
     // Drugi przelot z pojazdem: GPS potrafi wskazać przystanek dokładniej
     // niż interpolacja po czasie, a wynik różni się w tym, ile zostało.
     const p = vehicle ? computeTripProgress(conn, { vehicle, walkSpeedMps }) : base;
@@ -247,7 +265,11 @@ async function refresh(): Promise<void> {
       return;
     }
     const arrivalAt = Math.max(p.arriveAtMs, trip.transfer?.arrivalAtMs ?? p.arriveAtMs);
-    if (p.phase === 'arrived' && Date.now() >= arrivalAt && (!trip.protectionEnabled || trip.transfer?.status === 'complete')) {
+    if (
+      p.phase === 'arrived' &&
+      Date.now() >= arrivalAt &&
+      (!trip.protectionEnabled || trip.transfer?.status === 'complete')
+    ) {
       // Komunikat o dotarciu pojawia się dopiero po uwzględnieniu opóźnienia z telefonu.
       if (arrivedAt === 0) {
         arrivedAt = arrivalAt;
@@ -318,7 +340,8 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   await consumeNativeStop();
   generation++;
   const run = generation;
-  const protectionEnabled = !trip.sharedJourney && trip.protectionEnabled === true && hasTransfer(trip.connection);
+  const protectionEnabled =
+    !trip.sharedJourney && trip.protectionEnabled === true && hasTransfer(trip.connection);
   tracked = { ...trip, protectionEnabled, startedAt: Date.now() };
   arrivedAt = 0;
   planLocked = !!trip.sharedJourney || protectionEnabled || trip.transfer?.status === 'changed';
@@ -351,16 +374,32 @@ async function configureTransferProtection(run: number): Promise<void> {
     notify();
     return;
   }
-  tracked = { ...trip, transfer: { tripId: trip.id, status: 'preparing', updatedAt: Date.now(), revision: 0, scope: 'background' } };
+  tracked = {
+    ...trip,
+    transfer: {
+      tripId: trip.id,
+      status: 'preparing',
+      updatedAt: Date.now(),
+      revision: 0,
+      scope: 'background',
+    },
+  };
   notify();
   let path: string | undefined;
   try {
     const { prepareTransferSnapshot, removeTransferSnapshot } = await import('./transferSnapshot');
     path = await prepareTransferSnapshot(trip);
-    if (run !== generation || !tracked) { removeTransferSnapshot(path); return; }
+    if (run !== generation || !tracked) {
+      removeTransferSnapshot(path);
+      return;
+    }
     const native = getTrackingNative();
-    if (!await native?.configureTransferProtection?.(trip.id, path)) throw new Error('Transfer protection unavailable');
-    if (run !== generation || !tracked) { removeTransferSnapshot(path); return; }
+    if (!(await native?.configureTransferProtection?.(trip.id, path)))
+      throw new Error('Transfer protection unavailable');
+    if (run !== generation || !tracked) {
+      removeTransferSnapshot(path);
+      return;
+    }
     tracked = { ...tracked, transferContextPath: path };
     await persist();
     if (progress) await presentTrip(tracked, progress, getNotificationPreferencesSync());
@@ -371,7 +410,16 @@ async function configureTransferProtection(run: number): Promise<void> {
       removeTransferSnapshot(path);
     }
     if (run === generation && tracked) {
-      tracked = { ...tracked, transfer: { tripId: trip.id, status: 'unavailable', updatedAt: Date.now(), revision: 0, reason: 'routing' } };
+      tracked = {
+        ...tracked,
+        transfer: {
+          tripId: trip.id,
+          status: 'unavailable',
+          updatedAt: Date.now(),
+          revision: 0,
+          reason: 'routing',
+        },
+      };
       notify();
     }
   }
@@ -382,7 +430,10 @@ async function syncTransferProtection(): Promise<void> {
   if (!trip?.protectionEnabled) return;
   const run = generation;
   try {
-    if (Date.now() - trip.startedAt > 8 * 60 * 60_000) { await stopTracking(); return; }
+    if (Date.now() - trip.startedAt > 8 * 60 * 60_000) {
+      await stopTracking();
+      return;
+    }
     if (!usesNativeTransferProtection()) {
       if (AppState.currentState !== 'active') return;
       if (!foregroundProtection) {
@@ -397,7 +448,12 @@ async function syncTransferProtection(): Promise<void> {
     const raw = await getTrackingNative()?.getTransferProtectionState?.();
     if (!raw || tracked?.id !== trip.id || tracked.startedAt !== trip.startedAt) return;
     const state = JSON.parse(raw) as TransferProtectionState;
-    if (state.tripId !== trip.id || !Number.isFinite(state.updatedAt) || !Number.isFinite(state.revision)) return;
+    if (
+      state.tripId !== trip.id ||
+      !Number.isFinite(state.updatedAt) ||
+      !Number.isFinite(state.revision)
+    )
+      return;
     if (Date.now() - trip.startedAt > 8 * 60 * 60_000 || state.reason === 'expired') {
       await stopTracking();
       return;
@@ -407,10 +463,18 @@ async function syncTransferProtection(): Promise<void> {
     planLocked = true;
   } catch (error) {
     console.warn('[TransferProtection] state:', error);
-    if (run === generation && tracked) tracked = { ...tracked, transfer: {
-      tripId: trip.id, status: 'unavailable', updatedAt: Date.now(), revision: trip.transferRevision ?? 0,
-      reason: 'routing', scope: usesNativeTransferProtection() ? 'background' : 'foreground',
-    } };
+    if (run === generation && tracked)
+      tracked = {
+        ...tracked,
+        transfer: {
+          tripId: trip.id,
+          status: 'unavailable',
+          updatedAt: Date.now(),
+          revision: trip.transferRevision ?? 0,
+          reason: 'routing',
+          scope: usesNativeTransferProtection() ? 'background' : 'foreground',
+        },
+      };
   }
 }
 
@@ -419,17 +483,35 @@ export async function acceptTransferAlternative(alternativeId: string): Promise<
   await refresh();
   const trip = tracked;
   const alternative = trip?.transfer?.alternative;
-  if (!trip || !alternative || alternative.id !== alternativeId || alternative.validUntil <= Date.now() ||
-    Date.now() - (trip.transfer?.updatedAt ?? 0) > 30_000) return false;
+  if (
+    !trip ||
+    !alternative ||
+    alternative.id !== alternativeId ||
+    alternative.validUntil <= Date.now() ||
+    Date.now() - (trip.transfer?.updatedAt ?? 0) > 30_000
+  )
+    return false;
   const connection = alternative.connection;
   rememberPlannedConnection(connection);
-  await startTracking({ ...trip, connection, fromTitle: connection.fromTitle,
+  await startTracking({
+    ...trip,
+    connection,
+    fromTitle: connection.fromTitle,
     fromLat: connection.legs[0]?.fromLat ?? trip.fromLat,
-    fromLon: connection.legs[0]?.fromLon ?? trip.fromLon, transferContextPath: undefined,
-    transfer: { tripId: trip.id, status: 'changed', updatedAt: Date.now(), revision: 0,
-      activeLegIndex: alternative.activeLegIndex, nextLine: alternative.nextLine,
-      transferStop: alternative.transferStop }, transferRevision: 0 });
-  return tracked?.connection === connection;
+    fromLon: connection.legs[0]?.fromLon ?? trip.fromLon,
+    transferContextPath: undefined,
+    transfer: {
+      tripId: trip.id,
+      status: 'changed',
+      updatedAt: Date.now(),
+      revision: 0,
+      activeLegIndex: alternative.activeLegIndex,
+      nextLine: alternative.nextLine,
+      transferStop: alternative.transferStop,
+    },
+    transferRevision: 0,
+  });
+  return tracked?.connection === connection || tracked?.connection.id === connection.id;
 }
 
 /**
@@ -454,7 +536,11 @@ export async function stopTracking(): Promise<void> {
   await dismissTracking();
   if (contextPath) {
     const { removeTransferSnapshot } = await import('./transferSnapshot');
-    try { removeTransferSnapshot(contextPath); } catch { /* The service has already stopped. */ }
+    try {
+      removeTransferSnapshot(contextPath);
+    } catch {
+      /* The service has already stopped. */
+    }
   }
   await kvRemove(STORAGE_KEY);
   await mergeWidgetSnapshot({ pinned: null });
@@ -493,8 +579,17 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
       await kvRemove(STORAGE_KEY);
       return null;
     }
-    tracked = { ...parsed, protectionEnabled: !parsed.sharedJourney && parsed.protectionEnabled === true && hasTransfer(parsed.connection) };
-    planLocked = !!tracked.sharedJourney || tracked.protectionEnabled === true || tracked.transfer?.status === 'changed';
+    tracked = {
+      ...parsed,
+      protectionEnabled:
+        !parsed.sharedJourney &&
+        parsed.protectionEnabled === true &&
+        hasTransfer(parsed.connection),
+    };
+    planLocked =
+      !!tracked.sharedJourney ||
+      tracked.protectionEnabled === true ||
+      tracked.transfer?.status === 'changed';
     generation++;
     await loadNotificationPreferences();
     progress = computeTripProgress(parsed.connection, {
