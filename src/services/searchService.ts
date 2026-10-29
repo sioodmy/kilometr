@@ -18,6 +18,8 @@ const cache = new Map<string, { data: Suggestion[]; expires: number }>();
 const CACHE_TTL_MS = 120_000;
 const CACHE_MAX = 60;
 const NETWORK_DELAY_MS = 280;
+// Literówki dopiero po pauzie w pisaniu; dokładne adresy odpowiadają od razu.
+const FUZZY_DELAY_MS = 250;
 
 class SearchAbortedError extends Error {
   constructor() {
@@ -31,7 +33,7 @@ function cancel(scope = 'default'): void {
   requests.delete(scope);
 }
 
-function waitForNetwork(signal: AbortSignal): Promise<void> {
+function waitForIdle(signal: AbortSignal, delay: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const abort = () => {
       clearTimeout(timer);
@@ -40,7 +42,7 @@ function waitForNetwork(signal: AbortSignal): Promise<void> {
     const timer = setTimeout(() => {
       signal.removeEventListener('abort', abort);
       resolve();
-    }, NETWORK_DELAY_MS);
+    }, delay);
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) abort();
   });
@@ -98,6 +100,7 @@ export const SearchService: ISearchService = {
       let stops: Suggestion[] = [];
       let pois: Suggestion[] = [];
       let addresses: Suggestion[] = [];
+      let fuzzyPromise: Promise<void> | null = null;
       let local = extras;
       const merge = (remote: Suggestion[]) =>
         dedupeAndSort(
@@ -110,6 +113,13 @@ export const SearchService: ISearchService = {
         assertCurrent();
         local = [...stops, ...pois, ...extras, ...addresses];
         onPartial?.(rank(merge([]), history));
+      };
+      const searchFuzzyAddresses = async () => {
+        await waitForIdle(ctrl.signal, FUZZY_DELAY_MS);
+        addresses = await searchAddresses(persistedQuery, coords?.lat, coords?.lon, 16, true).catch(
+          () => [],
+        );
+        publish();
       };
       await Promise.all([
         stopsPromise.then((hits) => {
@@ -131,8 +141,12 @@ export const SearchService: ISearchService = {
         addressesPromise.then((hits) => {
           addresses = hits;
           publish();
+          if (!hits.length && q.length >= 4 && hasOfflineAddressIndex()) {
+            fuzzyPromise = searchFuzzyAddresses();
+          }
         }),
       ]);
+      if (fuzzyPromise) await fuzzyPromise;
 
       let remote: Suggestion[] = [];
       if (
@@ -141,7 +155,7 @@ export const SearchService: ISearchService = {
         !hasOfflineAddressIndex() &&
         (/\d/.test(q) || local.length < 5)
       ) {
-        await waitForNetwork(ctrl.signal);
+        await waitForIdle(ctrl.signal, NETWORK_DELAY_MS);
         assertCurrent();
         remote = await searchNominatimDirect(persistedQuery, coords?.lat, coords?.lon, ctrl.signal);
         assertCurrent();
