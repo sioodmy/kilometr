@@ -12,7 +12,14 @@ import {
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, AlarmClock, CloudOff, Pin, RouteOff, Share2 } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  AlarmClock,
+  CloudOff,
+  Pin,
+  RouteOff,
+  Share2,
+} from '../../src/components/icons';
 import { scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
@@ -237,7 +244,7 @@ export default function RouteDetailsScreen() {
           <View style={styles.headerRight} />
         </View>
         <View style={styles.center}>
-          <RouteOff size={48} color={scheme.onSurfaceVariant} strokeWidth={1.5} />
+          <RouteOff size={48} color={scheme.onSurfaceVariant} />
           <Text style={styles.errorTitle}>{s.routeDetails.routeNotFound}</Text>
           <Text style={styles.errorText}>
             {offline ? s.routeDetails.routeNotFoundOffline : s.routeDetails.routeNotFoundOnline}
@@ -342,7 +349,6 @@ export default function RouteDetailsScreen() {
             <Pin
               size={21}
               color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-              fill={isTrackedThis ? scheme.onPrimaryContainer : 'transparent'}
             />
           </Pressable>
         </View>
@@ -356,14 +362,14 @@ export default function RouteDetailsScreen() {
         <ConnectionSummary item={item} offline={offline} />
         {dataNote && (
           <View style={styles.offlineBanner}>
-            <CloudOff size={16} color={scheme.onSurfaceVariant} strokeWidth={2} />
+            <CloudOff size={16} color={scheme.onSurfaceVariant} />
             <Text style={styles.offlineBannerText}>{dataNote}</Text>
           </View>
         )}
 
         {noLegs ? (
           <View style={styles.emptyCard}>
-            <RouteOff size={20} color={scheme.onSurfaceVariant} strokeWidth={2} />
+            <RouteOff size={20} color={scheme.onSurfaceVariant} />
             <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
             <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
             <Pressable

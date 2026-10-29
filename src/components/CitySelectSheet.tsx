@@ -7,7 +7,7 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, MapPinOff, Search, X } from 'lucide-react-native';
+import { Check, MapPinOff, Search, X } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import { CITIES, type CityDef, type CityId } from '../cities';

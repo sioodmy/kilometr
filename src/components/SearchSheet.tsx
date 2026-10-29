@@ -6,7 +6,7 @@ import BottomSheet, {
   TouchableOpacity,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, LocateFixed, MapPinOff, Search, X } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, LocateFixed, MapPinOff, Search, X } from './icons';
 import type { TextInput } from 'react-native-gesture-handler';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';

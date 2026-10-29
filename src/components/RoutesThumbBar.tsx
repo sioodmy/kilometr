@@ -16,7 +16,7 @@ import {
   Layers,
   TramFront,
   Zap,
-} from 'lucide-react-native';
+} from './icons';
 import { scheme } from '../theme/tokens';
 import { motion } from '../theme/motion';
 import { ThumbBar, ThumbBarDivider, ThumbBarItem } from './ThumbBar';
@@ -138,7 +138,6 @@ export function RoutesThumbBar({
             <Zap
               size={17}
               color={directOnly ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-              fill={directOnly ? scheme.onPrimaryContainer : 'transparent'}
             />
           </Animated.View>
         }

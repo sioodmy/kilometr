@@ -1,7 +1,7 @@
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, ExternalLink } from 'lucide-react-native';
+import { ChevronLeft, ExternalLink } from '../src/components/icons';
 import { useStrings } from '../src/i18n';
 import { PRIVACY_CONTACT_URL, PRIVACY_SECTIONS } from '../src/privacy';
 import { scheme, shape, type } from '../src/theme/tokens';

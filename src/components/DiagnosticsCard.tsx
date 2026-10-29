@@ -11,7 +11,7 @@ import {
   Download,
   Stethoscope,
   TriangleAlert,
-} from 'lucide-react-native';
+} from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
