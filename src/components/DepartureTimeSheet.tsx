@@ -15,7 +15,7 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertCircle, Check, X } from 'lucide-react-native';
+import { AlertCircle, Check, X } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { JourneyTimeMode } from '../services/routing/types';

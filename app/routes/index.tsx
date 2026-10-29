@@ -8,7 +8,7 @@ import {
   ChevronLeft,
   CloudOff,
   X,
-} from 'lucide-react-native';
+} from '../../src/components/icons';
 import {
   interpolate,
   useAnimatedStyle,
@@ -972,7 +972,7 @@ export default function RoutesScreen() {
               accessibilityRole="button"
               accessibilityLabel={s.routes.dismissAnchorA11y}
             >
-              <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
+              <X size={12} color={scheme.onSurfaceVariant} />
             </Pressable>
           </View>
         )}

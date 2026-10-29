@@ -869,6 +869,8 @@ export const pl = {
     filterNoHistoryTitle: 'Brak Twoich linii',
     filterNoHistoryBody:
       'Sprawdź połączenie w aplikacji, a tu zobaczysz komunikaty o liniach z tej trasy.',
+    resolved: 'Ruch przywrócony',
+    solutionLabel: 'Rozwiązanie',
   },
   newsSvc: {
     justNow: 'przed chwilą',
@@ -1033,6 +1035,8 @@ export const pl = {
     lineAlertsEmpty: 'Brak komunikatów o liniach z tej trasy.',
     lineAlertsCount: (n: number) =>
       n === 1 ? '1 komunikat' : isFew(n) ? `${n} komunikaty` : `${n} komunikatów`,
+    lineAlertsLoading: 'Sprawdzam utrudnienia…',
+    lineAlertsError: 'Nie udało się sprawdzić utrudnień.',
   },
   search: {
     suggestedPlaces: 'Proponowane miejsca',
@@ -1247,6 +1251,14 @@ export const pl = {
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} między ${from} a ${to}`,
     fromPrefix: 'z ',
     toPrefix: 'do ',
+    modeTram: 'Tramwaj',
+    modeBus: 'Autobus',
+    modeTrain: 'Pociąg',
+    modeSubway: 'Metro',
+    modeTrolley: 'Trolejbus',
+    modeCable: 'Kolejka linowa',
+    modeVehicle: 'Pojazd',
+    nearStop: (mode: string, stop: string) => `${mode} w pobliżu przystanku: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
   },

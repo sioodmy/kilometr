@@ -152,6 +152,25 @@ class LiveTracker {
   /** Kto sam tego wymaga, bo działa w tle (śledzenie podróży). Pin > 0 = poll i na tle. */
   private pinned = 0;
   private appStateSub: { remove(): void } | null = null;
+  private listeners = new Set<() => void>();
+
+  /** Subskrypcja na zdarzenia aktualizacji live (nowe dane po udanym poll/restore). */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch (err) {
+        console.warn('[LiveTracker] listener error:', err);
+      }
+    }
+  }
 
   /**
    * Stan danych live: 'fresh' (mamy świeże opóźnienia), 'stale' (od dawna
@@ -190,6 +209,7 @@ class LiveTracker {
     this.restored = false;
     // Nowe miasto: pierwszy udany poll ma od razu pójść na dysk pod nowy klucz.
     this.lastPersistAt = 0;
+    this.notify();
   }
 
   /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
@@ -375,7 +395,10 @@ class LiveTracker {
         ok = true;
         if (!rows || rows.length === 0) void this.persistSnapshot([], rails, cityAtStart);
       }
-      if (ok && safeCityId() === cityAtStart) this.lastOk = Date.now();
+      if (ok && safeCityId() === cityAtStart) {
+        this.lastOk = Date.now();
+        this.notify();
+      }
     } catch (err) {
       console.warn('[LiveTracker] poll failed:', err);
     } finally {
@@ -647,6 +670,7 @@ class LiveTracker {
       if (this.byId.size === 0) return;
       // Wiek liczymy od chwili snapshotu, nie od teraz, żeby stare dane nie udawały świeżych.
       this.lastOk = parsed.at;
+      this.notify();
     } catch (err) {
       console.warn('[LiveTracker] snapshot restore failed:', err);
     }

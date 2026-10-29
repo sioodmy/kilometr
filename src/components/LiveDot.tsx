@@ -5,37 +5,45 @@ import Animated, {
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 
-// M3-style live indicator: solid dot + expanding halo. No text needed-
-// pulsing = tracked live, static = schedule. Replaces "• GPS" labels.
+// M3-style live indicator: solid dot + single expanding halo ping on data arrival.
+// Pulsing reflects the actual vehicle/feed polling updates rather than an infinite loop.
 export function LiveDot({
   color,
   size = 8,
   pulse = true,
+  pingKey,
 }: {
   color: string;
   size?: number;
   pulse?: boolean;
+  pingKey?: number | string;
 }) {
-  const halo = useSharedValue(0);
+  const halo = useSharedValue(1);
 
   useEffect(() => {
-    if (!pulse) return;
-    halo.value = withRepeat(
-      withTiming(1, { duration: 1600, easing: Easing.out(Easing.ease) }),
-      -1,
-      false,
-    );
+    if (!pulse) {
+      cancelAnimation(halo);
+      halo.value = 1;
+      return;
+    }
+    cancelAnimation(halo);
+    halo.value = 0;
+    halo.value = withTiming(1, { duration: 1200, easing: Easing.out(Easing.quad) });
     return () => cancelAnimation(halo);
-  }, [halo, pulse]);
+  }, [halo, pulse, pingKey]);
 
-  const haloStyle = useAnimatedStyle(() => ({
-    opacity: pulse ? 0.45 * (1 - halo.value) : 0.25,
-    transform: [{ scale: pulse ? 1 + halo.value * 1.6 : 1.4 }],
-  }));
+  const haloStyle = useAnimatedStyle(() => {
+    const p = Math.min(1, Math.max(0, halo.value));
+    const opacity = p >= 1 ? 0 : 0.55 * (1 - p);
+    const scale = 1 + p * 1.5;
+    return {
+      opacity,
+      transform: [{ scale }],
+    };
+  });
 
   const r = size / 2;
   return (
@@ -49,7 +57,15 @@ export function LiveDot({
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center', justifyContent: 'center' },
-  halo: { position: 'absolute', width: '62%', height: '62%' },
+  wrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  halo: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
   dot: {},
 });

@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { History } from 'lucide-react-native';
+import { History } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode, SmartDestination } from '../types/models';
 import type { SuggestionIconMeta } from './SuggestionRow';

@@ -4,7 +4,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Download, MapPinned, Trash2 } from 'lucide-react-native';
+import { Download, MapPinned, Trash2 } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';

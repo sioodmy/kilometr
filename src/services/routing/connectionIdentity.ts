@@ -1,20 +1,37 @@
-import type { Connection } from './types';
+import { secondsToTimeString } from '../../gtfs/geo';
+import type { Connection, Leg } from './types';
+
+function scheduledLegDepart(leg: Leg): string {
+  if (leg.scheduledDepartureSec != null) {
+    return secondsToTimeString(leg.scheduledDepartureSec);
+  }
+  return leg.departAt;
+}
+
+function scheduledLegArrive(leg: Leg): string {
+  if (leg.scheduledArrivalSec != null) {
+    return secondsToTimeString(leg.scheduledArrivalSec);
+  }
+  return leg.arriveAt;
+}
 
 function connectionIdentity(connection: Connection): string {
   const first = connection.legs[0];
   const last = connection.legs[connection.legs.length - 1];
   const rides = connection.legs.filter((leg) => leg.mode !== 'walk');
+  const schedBaseSec =
+    connection.departureSec - (connection.delayMin ? connection.delayMin * 60 : 0);
   return JSON.stringify([
     [first?.fromLat, first?.fromLon, connection.fromTitle],
     [last?.toLat, last?.toLon, connection.toTitle],
-    Math.floor(connection.departureSec / 86400),
+    Math.floor(schedBaseSec / 86400),
     rides.map((leg) => [
       leg.mode,
       leg.line || leg.routeId || leg.tripId,
       leg.fromStopId || leg.fromStop,
       leg.toStopId || leg.toStop,
-      leg.departAt,
-      leg.arriveAt,
+      scheduledLegDepart(leg),
+      scheduledLegArrive(leg),
     ]),
   ]);
 }

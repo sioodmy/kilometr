@@ -884,6 +884,8 @@ export const uk: Strings = {
     filterNoHistoryTitle: 'Ще немає ліній',
     filterNoHistoryBody:
       'Знайди сполучення в застосунку, тоді тут з’являться повідомлення про ці лінії.',
+    resolved: 'Рух відновлено',
+    solutionLabel: 'Рішення',
   },
   newsSvc: {
     justNow: 'щойно',
@@ -1049,6 +1051,8 @@ export const uk: Strings = {
     lineAlertsEmpty: 'Немає повідомлень про лінії цього маршруту.',
     lineAlertsCount: (n: number) =>
       isOne(n) ? '1 повідомлення' : isFew(n) ? `${n} повідомлення` : `${n} повідомлень`,
+    lineAlertsLoading: 'Перевіряємо порушення руху…',
+    lineAlertsError: 'Не вдалося перевірити порушення руху.',
   },
   search: {
     suggestedPlaces: 'Рекомендовані місця',
@@ -1256,6 +1260,14 @@ export const uk: Strings = {
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
+    modeTram: 'Трамвай',
+    modeBus: 'Автобус',
+    modeTrain: 'Поїзд',
+    modeSubway: 'Метро',
+    modeTrolley: 'Тролейбус',
+    modeCable: 'Канатна дорога',
+    modeVehicle: 'Транспорт',
+    nearStop: (mode: string, stop: string) => `${mode} поблизу зупинки: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
       return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;

@@ -839,6 +839,8 @@ export const de: Strings = {
     filterNoHistoryTitle: 'Noch keine Linien',
     filterNoHistoryBody:
       'Suche eine Verbindung in der App, danach siehst du hier Meldungen zu diesen Linien.',
+    resolved: 'Verkehr wieder frei',
+    solutionLabel: 'Lösung',
   },
   newsSvc: {
     justNow: 'gerade eben',
@@ -1002,6 +1004,8 @@ export const de: Strings = {
     lineAlertsAll: 'Alle Neuigkeiten',
     lineAlertsEmpty: 'Keine Meldungen zu den Linien dieser Verbindung.',
     lineAlertsCount: (n: number) => (n === 1 ? '1 Meldung' : `${n} Meldungen`),
+    lineAlertsLoading: 'Störungen werden geprüft…',
+    lineAlertsError: 'Störungen konnten nicht geprüft werden.',
   },
   search: {
     suggestedPlaces: 'Vorgeschlagene Orte',
@@ -1210,6 +1214,14 @@ export const de: Strings = {
       `${mode} zwischen ${from} und ${to}`,
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
+    modeTram: 'Straßenbahn',
+    modeBus: 'Bus',
+    modeTrain: 'Zug',
+    modeSubway: 'U-Bahn',
+    modeTrolley: 'Oberleitungsbus',
+    modeCable: 'Seilbahn',
+    modeVehicle: 'Fahrzeug',
+    nearStop: (mode: string, stop: string) => `${mode} nahe Haltestelle: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
   },
