@@ -4,7 +4,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import type { ComponentProps, ComponentType } from 'react';
 import type { StyleProp, TextStyle } from 'react-native';
 
-export type IconProps = {
+type IconProps = {
   size?: number;
   color?: string;
   style?: StyleProp<TextStyle>;
