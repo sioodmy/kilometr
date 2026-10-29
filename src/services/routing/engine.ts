@@ -16,6 +16,8 @@ const WALK_SPEED_MPS = 1.34;
 const WALK_DETOUR_FACTOR = 1.15;
 /** Poniżej tego dystansu start i cel to praktycznie ten sam punkt (spacer, nie przejazd). */
 const SAME_POINT_M = 40;
+/** Do ilu sekund spaceru wolno wycinać warianty z przesiadką wolniejsze od marszu. */
+const WALK_BEATS_TRANSIT_MAX_SEC = 15 * 60;
 /**
  * Ile przystanków w zasięgu dojścia bierzemy pod uwagę. Dawne 12 najbliższych
  * w centrum sięgało ledwie 300 m, więc dalszy przystanek z tramwajem prosto
@@ -760,7 +762,9 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // Marsz bije przesiadki: gdy pieszo docierasz równie szybko jak wariantem
   // z przesiadką, taki wariant jest tylko stratą czasu (typowy przypadek:
   // cel o jeden przystanek, a RAPTOR proponuje jazdę tam i z powrotem).
-  if (walkAdded) {
+  // Tylko dla krótkich spacerów, żeby nie wycinać kursów, które ktoś woła
+  // wybrać zamiast 20 minut na nogach.
+  if (walkAdded && directWalkSec <= WALK_BEATS_TRANSIT_MAX_SEC) {
     for (let i = connections.length - 1; i >= 0; i--) {
       const c = connections[i];
       if (c.id.startsWith('walk-only-') || c.transfers === 0) continue;
