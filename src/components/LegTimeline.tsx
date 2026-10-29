@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowRight,
@@ -8,7 +8,7 @@ import {
   Ticket,
   TrainFront,
   TramFront,
-} from 'lucide-react-native';
+} from './icons';
 import Animated, {
   LinearTransition,
   useAnimatedStyle,
@@ -26,6 +26,7 @@ import { useCurrentLocation, type CurrentLocation } from '../services/currentLoc
 
 import {
   buildFallbackStops,
+  findNearestStopOnRoute,
   findUserSegment,
   locateLiveStopPosition,
   normalizeName,
@@ -41,6 +42,16 @@ const legTransition = LinearTransition.duration(motion.enter.duration).easing(mo
 
 // Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
 // pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
+function genericModeNom(t: Strings, mode: Leg['mode']): string {
+  if (mode === 'tram') return t.leg.modeTram;
+  if (mode === 'train') return t.leg.modeTrain;
+  if (mode === 'subway') return t.leg.modeSubway;
+  if (mode === 'trolleybus') return t.leg.modeTrolley;
+  if (mode === 'cable') return t.leg.modeCable;
+  if (mode === 'bus') return t.leg.modeBus;
+  return t.leg.modeVehicle;
+}
+
 function genericModeGen(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.routes.vehicleTramGen;
   if (mode === 'train') return t.routes.vehicleTrainGen;
@@ -70,12 +81,13 @@ function cacheStops(key: string, stops: LegStop[]) {
 function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
   const Icon =
     mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
-  return <Icon size={14} color={scheme.onPrimary} strokeWidth={2.4} />;
+  return <Icon size={14} color={scheme.onPrimary} />;
 }
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
 // Rail rysuje linię przez całą wysokość wiersza i zachodzi 1 px na sąsiednie
 // wiersze, więc między kropkami i na granicy stref nie ma żadnych szwów.
+// Osobne segmenty nad i pod kropką zapobiegają pomarańczowym szwom na minionym odcinku.
 const StopRow = memo(function StopRow({
   stop,
   isFirst,
@@ -105,29 +117,38 @@ const StopRow = memo(function StopRow({
   // Przystanek pojazd już minął: wyszarzony, tak samo jak dotychczas przejechane.
   const passed = vehicleGap != null && index <= vehicleGap;
   const markerHere = vehicleGap === index && !isLast;
-  // Linia biegnie przez cały wiersz i zachodzi 1 px na sąsiednie wiersze.
-  // Osobny łącznik pod kropką zostawiał cienką szwę między wierszami.
   const lineCenter = boundary ? 20 : 10.5;
-  const showLine = !(isFirst && isLast);
-  const lineTop = isFirst ? lineCenter : -1;
-  const lineStyle = isLast
-    ? { top: lineTop, height: lineCenter + 1 - lineTop }
-    : { top: lineTop, bottom: -1 };
+  const incomingPassed = vehicleGap != null && index <= vehicleGap;
+  const outgoingPassed = vehicleGap != null && index < vehicleGap;
   return (
     <View style={s.stopRow}>
       <View style={s.stopRail}>
-        {showLine && (
+        {!isFirst && (
           <View
             style={[
               s.stopRailLine,
-              lineStyle,
+              { top: -1, height: lineCenter + 2 },
               {
-                backgroundColor:
-                  vehicleGap != null && index < vehicleGap
-                    ? scheme.outline
-                    : connectorAccent
-                      ? accent
-                      : scheme.outlineVariant,
+                backgroundColor: incomingPassed
+                  ? scheme.outline
+                  : connectorAccent
+                    ? accent
+                    : scheme.outlineVariant,
+              },
+            ]}
+          />
+        )}
+        {!isLast && (
+          <View
+            style={[
+              s.stopRailLine,
+              { top: lineCenter, bottom: -1 },
+              {
+                backgroundColor: outgoingPassed
+                  ? scheme.outline
+                  : connectorAccent
+                    ? accent
+                    : scheme.outlineVariant,
               },
             ]}
           />
@@ -185,115 +206,29 @@ function LegStopsList({
   accent,
   userLocation,
   allowLive,
+  stops,
+  vehicle,
+  loading,
 }: {
   leg: Leg;
   accent: string;
   userLocation: CurrentLocation | null;
   allowLive: boolean;
+  stops: LegStop[];
+  vehicle: TrackedVehicle | null;
+  loading: boolean;
 }) {
   const t = useStrings();
-  const cacheKey = leg.tripId || leg.id;
-  const [stops, setStops] = useState<LegStop[]>(
-    () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
-  );
-  const [loading, setLoading] = useState(
-    () =>
-      !stopsCache.has(cacheKey) &&
-      !!leg.tripId &&
-      !(leg.intermediateStops && leg.intermediateStops.length >= 2),
-  );
-  const [vehicle, setVehicle] = useState<TrackedVehicle | null>(null);
-  const mounted = useRef(true);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  // Lazy load pełnej sekwencji kursu, raz, wynik w cache modułowym. Odcinek
-  // z planu (`intermediateStops`) to tylko wsiadanie-wysiadanie: pokazujemy
-  // go od razu, ale do pozycji pojazdu między przystankami potrzebny jest
-  // cały kurs z czasami.
-  useEffect(() => {
-    const cached = stopsCache.get(cacheKey);
-    if (cached) {
-      setStops(cached);
-      setLoading(false);
-      return;
-    }
-    if (!leg.tripId) {
-      setStops(buildFallbackStops(leg));
-      setLoading(false);
-      return;
-    }
-    setLoading(!(leg.intermediateStops && leg.intermediateStops.length >= 2));
-    let promise = stopsPromise.get(leg.tripId);
-    if (!promise) {
-      // Odrzucenie NIE jest zapamiętywane. Wcześniej `.catch(() => [])` trafiał
-      // do `stopsPromise` razem z sukcesem, więc jedna chwilowa awaria (zamknięta
-      // baza, odjęty slot importu) zostawiała ten kurs z dwoma przystankami
-      // do końca życia procesu - użytkownik dostawał „trasa niepełna” bez
-      // możliwości naprawienia.
-      promise = RoutingService.getTripStops(leg.tripId)
-        .then((stops) => {
-          stopsPromise.delete(leg.tripId!);
-          return stops;
-        })
-        .catch((err) => {
-          stopsPromise.delete(leg.tripId!);
-          throw err;
-        });
-      stopsPromise.set(leg.tripId, promise);
-    }
-    promise.then(
-      (fetched) => {
-        if (!mounted.current) return;
-        // Do cache trafiają TYLKO przystanki z bazy. Wersja z `buildFallbackStops`
-        // to dwa przystanki z etykiety - zapisana w cache na stałe psuła
-        // wyświetlanie przy następnym otwarciu tego samego odcinka.
-        if (fetched.length >= 2) cacheStops(cacheKey, fetched);
-        setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
-        setLoading(false);
-      },
-      (err) => {
-        console.warn('[LegTimeline] trip stops failed:', err);
-        if (!mounted.current) return;
-        setStops(buildFallbackStops(leg));
-        setLoading(false);
-      },
-    );
-  }, [cacheKey, leg]);
-
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
   const [now, setNow] = useState(() => Date.now());
+
   useEffect(() => {
-    const refreshVehicle = () => {
-      const now = Date.now();
-      setNow(now);
-      if (!allowLive || !leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')) {
-        setVehicle(null);
-        return;
-      }
-      const match = liveTracker
-        .snapshot(leg.line)
-        .find(
-          (candidate) =>
-            candidate.type === leg.mode &&
-            candidate.matchedTripId === leg.tripId &&
-            now - candidate.updatedAt >= 0 &&
-            now - candidate.updatedAt <= 120_000,
-        );
-      setVehicle(match ?? null);
-    };
-    refreshVehicle();
-    const timer = setInterval(refreshVehicle, 5000);
+    const timer = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(timer);
-  }, [leg.line, leg.mode, leg.tripId, allowLive]);
+  }, []);
 
   const livePosition = useMemo(
-    () => allowLive ? locateLiveStopPosition(stops, leg, vehicle, userLocation, now) : null,
+    () => (allowLive ? locateLiveStopPosition(stops, leg, vehicle, userLocation, now) : null),
     [stops, leg, vehicle, userLocation, now, allowLive],
   );
   const vehicleGap = livePosition?.gap ?? null;
@@ -342,7 +277,7 @@ function LegStopsList({
   );
 }
 
-// ─── Karta jednego przejazdu (klik = rozwiń) ──────────────────────────────────
+// ─── Karta jednego przejazdu (klik = rozwiń) ─────────────────────────────────
 // Rozwijanie animowaną wysokością (a nie montowaniem): lista montuje się raz
 // przy pierwszym otwarciu i zostaje, a kontener płynnie rośnie/maleje.
 // Dzięki temu zero skoku layoutu i zero flickeru.
@@ -377,6 +312,116 @@ function TransitLegCard({
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
 
+  const cacheKey = leg.tripId || leg.id;
+  const [stops, setStops] = useState<LegStop[]>(
+    () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
+  );
+  const [loading, setLoading] = useState(
+    () =>
+      !stopsCache.has(cacheKey) &&
+      !!leg.tripId &&
+      !(leg.intermediateStops && leg.intermediateStops.length >= 2),
+  );
+  const [vehicle, setVehicle] = useState<TrackedVehicle | null>(null);
+  const [lastOk, setLastOk] = useState(() => liveTracker.getLastOk());
+
+  // Lazy load pełnej sekwencji kursu, raz, wynik w cache modułowym.
+  useEffect(() => {
+    let mounted = true;
+    const cached = stopsCache.get(cacheKey);
+    if (cached) {
+      setStops(cached);
+      setLoading(false);
+      return;
+    }
+    if (!leg.tripId) {
+      setStops(buildFallbackStops(leg));
+      setLoading(false);
+      return;
+    }
+    setLoading(!(leg.intermediateStops && leg.intermediateStops.length >= 2));
+    let promise = stopsPromise.get(leg.tripId);
+    if (!promise) {
+      promise = RoutingService.getTripStops(leg.tripId)
+        .then((fetched) => {
+          stopsPromise.delete(leg.tripId!);
+          return fetched;
+        })
+        .catch((err) => {
+          stopsPromise.delete(leg.tripId!);
+          throw err;
+        });
+      stopsPromise.set(leg.tripId, promise);
+    }
+    promise.then(
+      (fetched) => {
+        if (!mounted) return;
+        if (fetched.length >= 2) cacheStops(cacheKey, fetched);
+        setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('[TransitLegCard] trip stops failed:', err);
+        if (!mounted) return;
+        setStops(buildFallbackStops(leg));
+        setLoading(false);
+      },
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [cacheKey, leg]);
+
+  // Śledzenie pojazdu live dopasowanego do tego kursu
+  useEffect(() => {
+    const updateVehicle = () => {
+      const now = Date.now();
+      setLastOk(liveTracker.getLastOk());
+      if (
+        !allowLive ||
+        !leg.tripId ||
+        (leg.mode !== 'tram' &&
+          leg.mode !== 'bus' &&
+          leg.mode !== 'subway' &&
+          leg.mode !== 'trolleybus' &&
+          leg.mode !== 'train')
+      ) {
+        setVehicle(null);
+        return;
+      }
+      const match = liveTracker
+        .snapshot(leg.line)
+        .find(
+          (candidate) =>
+            candidate.matchedTripId === leg.tripId &&
+            now - candidate.updatedAt >= 0 &&
+            now - candidate.updatedAt <= 120_000,
+        );
+      setVehicle(match ?? null);
+    };
+
+    updateVehicle();
+    const unsub = liveTracker.subscribe(updateVehicle);
+    const timer = setInterval(updateVehicle, 5000);
+    return () => {
+      unsub();
+      clearInterval(timer);
+    };
+  }, [leg.line, leg.mode, leg.tripId, allowLive]);
+
+  const nearestStop = useMemo(() => {
+    if (!allowLive || (!vehicle && !leg.live)) return null;
+    return findNearestStopOnRoute(stops, vehicle);
+  }, [stops, vehicle, allowLive, leg.live]);
+
+  const liveNearLabel = useMemo(() => {
+    if (!nearestStop) return null;
+    const modeName = genericModeNom(t, leg.mode);
+    return t.leg.nearStop(modeName, nearestStop.name);
+  }, [nearestStop, t, leg.mode]);
+
+  const pingKey = vehicle?.updatedAt ?? (leg.live ? lastOk : undefined);
+
   useEffect(() => {
     if (expanded) setHasOpened(true);
     chevron.value = withTiming(expanded ? 1 : 0, motion.state);
@@ -400,7 +445,7 @@ function TransitLegCard({
           <Text style={s.dir} numberOfLines={1}>
             {leg.direction}
           </Text>
-          {leg.live ? <LiveDot color={scheme.success} size={8} /> : null}
+          {leg.live ? <LiveDot color={scheme.success} size={8} pingKey={pingKey} /> : null}
           <Animated.View style={chevronStyle}>
             <ChevronDown size={18} color={scheme.onSurfaceVariant} />
           </Animated.View>
@@ -417,6 +462,11 @@ function TransitLegCard({
           </Text>
         )}
         {notice && (delayMin === 0 || scheduledDeparture == null) && <Text style={s.meta}>{notice}</Text>}
+        {liveNearLabel ? (
+          <Text style={s.liveNearText} numberOfLines={1}>
+            {liveNearLabel}
+          </Text>
+        ) : null}
         <Text style={s.meta}>{t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}</Text>
         <Text style={s.stopBig}>
           <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
@@ -429,13 +479,22 @@ function TransitLegCard({
             accessibilityElementsHidden={!expanded}
             importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
           >
-            <LegStopsList leg={leg} accent={accent} userLocation={userLocation} allowLive={allowLive} />
+            <LegStopsList
+              leg={leg}
+              accent={accent}
+              userLocation={userLocation}
+              allowLive={allowLive}
+              stops={stops}
+              vehicle={vehicle}
+              loading={loading}
+            />
           </Animated.View>
         )}
       </Pressable>
     </Animated.View>
   );
 }
+
 
 /** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
 export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observeOnly?: boolean }) {
@@ -474,7 +533,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                     <Text style={s.walkSub} numberOfLines={1}>
                       {leg.fromStop}
                     </Text>
-                    <ArrowRight size={12} color={scheme.onSurfaceVariant} strokeWidth={2} />
+                    <ArrowRight size={12} color={scheme.onSurfaceVariant} />
                     <Text style={s.walkSub} numberOfLines={1}>
                       {leg.toStop}
                     </Text>
@@ -550,6 +609,11 @@ const s = StyleSheet.create({
   stopPrefix: { fontWeight: '400', color: scheme.onSurfaceVariant },
   hour: { color: scheme.onSurfaceVariant, fontWeight: '400' },
   meta: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  liveNearText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '500',
+  },
   walkText: { ...type.titleSmall, color: scheme.onSurface },
   walkSubRow: {
     flexDirection: 'row',

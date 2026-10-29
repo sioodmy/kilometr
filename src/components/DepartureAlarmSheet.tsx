@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlarmClock, Minus, Plus, Volume2, X } from 'lucide-react-native';
+import { AlarmClock, Minus, Plus, Volume2, X } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { Connection } from '../types/models';

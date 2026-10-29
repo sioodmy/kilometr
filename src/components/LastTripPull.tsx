@@ -10,7 +10,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import { ArrowRight, RotateCcw, Search } from 'lucide-react-native';
+import { ArrowRight, RotateCcw, Search } from './icons';
 import { elev, scheme, shape, spacing, type } from '../theme/tokens';
 import type { TripHistoryItem } from '../services/smartRanker';
 import { useStrings } from '../i18n';
@@ -131,7 +131,7 @@ export function LastTripPull({
             </Text>
           </Animated.View>
           <Animated.View style={arrowStyle}>
-            <ArrowRight size={20} color={scheme.primary} strokeWidth={2.5} />
+            <ArrowRight size={20} color={scheme.primary} />
           </Animated.View>
           <Animated.View
             key={`to-${to}`}

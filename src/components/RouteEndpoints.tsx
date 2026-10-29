@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ArrowUpDown } from 'lucide-react-native';
+import { ArrowUpDown } from './icons';
 import { useStrings } from '../i18n';
 import { scheme, shape, type } from '../theme/tokens';
 
@@ -52,7 +52,7 @@ export function RouteEndpoints({
         accessibilityLabel={s.routes.swapA11y}
         style={({ pressed }) => [styles.swap, pressed && styles.pressed]}
       >
-        <ArrowUpDown size={22} color={scheme.primary} strokeWidth={1.8} />
+        <ArrowUpDown size={22} color={scheme.primary} />
       </Pressable>
     </View>
   );

@@ -37,7 +37,7 @@ import {
   TrainFront,
   TramFront,
   Turtle,
-} from 'lucide-react-native';
+} from '../src/components/icons';
 import type { RouteStyle, TransitVehicleMode } from '../src/services/routing/types';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';

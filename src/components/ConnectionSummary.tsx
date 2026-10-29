@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ArrowDown, ArrowRight, Check, Clock3 } from 'lucide-react-native';
+import { ArrowDown, ArrowRight, Check, Clock3 } from './icons';
 import { useStrings } from '../i18n';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
@@ -78,7 +78,7 @@ export function ConnectionSummary({
           <Text style={styles.place}>{firstVehicle?.fromStop ?? item.fromTitle}</Text>
         </View>
         <View style={[styles.direction, stacked && styles.directionStacked]}>
-          <Direction size={22} color={scheme.primary} strokeWidth={1.8} />
+          <Direction size={22} color={scheme.primary} />
         </View>
         <View style={styles.endpoint}>
           <Text style={styles.label}>{s.routeDetails.arrival}</Text>

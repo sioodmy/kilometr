@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, Copy, ImageUp, Link, MessageCircle, X } from 'lucide-react-native';
+import { Check, Copy, ImageUp, Link, MessageCircle, X } from './icons';
 import * as Clipboard from 'expo-clipboard';
 import { captureRef } from 'react-native-view-shot';
 import { scheme, shape, type } from '../theme/tokens';

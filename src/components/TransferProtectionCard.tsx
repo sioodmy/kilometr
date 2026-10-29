@@ -14,7 +14,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { ChevronRight, ShieldCheck, ShieldAlert, ShieldOff } from 'lucide-react-native';
+import { ChevronRight, ShieldCheck, ShieldAlert, ShieldOff } from './icons';
 import { useStrings, type Strings } from '../i18n';
 import { scheme } from '../theme/tokens';
 import type { TransferProtectionState } from '../services/notifications/transferTypes';
@@ -159,7 +159,7 @@ export function TransferProtectionCard({
         {busy ? (
           <ActivityIndicator color={color} />
         ) : (
-          <Icon size={28} color={color} strokeWidth={1.8} />
+          <Icon size={28} color={color} />
         )}
       </View>
       <View style={styles.copy}>

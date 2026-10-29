@@ -11,12 +11,20 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, {
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import {
+  Check,
   ChevronLeft,
+  CircleCheck,
   Newspaper,
   RefreshCw,
   TriangleAlert,
-} from 'lucide-react-native';
+} from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
@@ -40,6 +48,24 @@ type Row =
   | { kind: 'head'; id: string; label: string }
   | { kind: 'item'; id: string; item: MpkNewsItem };
 
+type Tone = 'urgent' | 'resolved' | 'quiet';
+
+function toneColors(tone: Tone) {
+  if (tone === 'urgent') {
+    return {
+      card: scheme.warningContainer,
+      ink: scheme.onWarningContainer,
+      muted: scheme.onWarningContainer,
+    };
+  }
+  if (tone === 'resolved') {
+    return { card: scheme.surfaceContainerLowest, ink: scheme.onSurfaceVariant, muted: scheme.outline };
+  }
+  return { card: scheme.surfaceContainerLow, ink: scheme.onSurface, muted: scheme.onSurfaceVariant };
+}
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 const NewsCard = memo(function NewsCard({
   item,
   operator,
@@ -52,31 +78,54 @@ const NewsCard = memo(function NewsCard({
   onOpen: (item: MpkNewsItem) => void;
 }) {
   const s = useStrings();
+  const resolved = Boolean(item.disruption?.is_resolved);
+  const tone: Tone = resolved ? 'resolved' : item.urgent ? 'urgent' : 'quiet';
+  const c = toneColors(tone);
+  const solution = item.disruption?.glance?.solution;
+  const press = useSharedValue(0);
+  const animated = useAnimatedStyle(() => ({
+    borderRadius: 28 - press.value * 8,
+    transform: [{ scale: 1 - press.value * 0.015 }],
+  }));
+  const setPress = (value: number) => {
+    press.value = withSpring(value, {
+      damping: 22,
+      stiffness: 400,
+      reduceMotion: ReduceMotion.System,
+    });
+  };
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={() => onOpen(item)}
+      onPressIn={() => setPress(1)}
+      onPressOut={() => setPress(0)}
       accessibilityRole="button"
       accessibilityLabel={item.title}
       android_ripple={{ color: scheme.outlineVariant }}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={[styles.card, { backgroundColor: c.card }, animated]}
     >
       <View style={styles.metaRow}>
-        <Text style={styles.sourceTag}>
+        <Text style={[styles.sourceTag, { color: c.muted }]}>
           {item.source === 'mpk' ? s.news.sourceMpk(operator) : s.news.sourceCity(portal)}
         </Text>
         {item.pubDate ? (
-          <Text style={styles.metaText}>{formatNewsDate(item.pubDate)}</Text>
+          <Text style={[styles.metaText, { color: c.muted }]}>{formatNewsDate(item.pubDate)}</Text>
         ) : item.dateLabel ? (
-          <Text style={styles.metaText}>{item.dateLabel}</Text>
+          <Text style={[styles.metaText, { color: c.muted }]}>{item.dateLabel}</Text>
         ) : null}
       </View>
-      {item.urgent ? (
+      {resolved ? (
+        <View style={styles.resolvedLabel}>
+          <CircleCheck size={14} color={scheme.onPrimaryContainer} />
+          <Text style={styles.resolvedText}>{s.news.resolved}</Text>
+        </View>
+      ) : item.urgent ? (
         <View style={styles.urgentLabel}>
-          <TriangleAlert size={16} color={scheme.warning} />
-          <Text style={styles.urgentText}>{s.news.chip}</Text>
+          <TriangleAlert size={16} color={c.ink} />
+          <Text style={[styles.urgentText, { color: c.ink }]}>{s.news.chip}</Text>
         </View>
       ) : null}
-      <Text style={styles.cardTitle}>{item.title}</Text>
+      <Text style={[styles.cardTitle, { color: c.ink }]}>{item.title}</Text>
       {item.lines.length > 0 ? (
         <View style={styles.linesRow}>
           {item.lines.slice(0, 8).map((line) => (
@@ -87,12 +136,29 @@ const NewsCard = memo(function NewsCard({
           ) : null}
         </View>
       ) : null}
-      {item.source === 'city' && item.description ? (
-        <Text style={styles.cardDesc} numberOfLines={2}>
+      {item.disruption?.glance?.problem ? (
+        <Text style={[styles.cardDesc, { color: c.muted }]} numberOfLines={2}>
+          {item.disruption.glance.problem}
+        </Text>
+      ) : item.source === 'city' && item.description ? (
+        <Text style={[styles.cardDesc, { color: c.muted }]} numberOfLines={2}>
           {item.description}
         </Text>
       ) : null}
-    </Pressable>
+      {solution ? (
+        <View
+          style={[
+            styles.solutionBox,
+            tone === 'urgent' && { backgroundColor: scheme.onWarningContainer + '1F' },
+          ]}
+        >
+          <Text style={[styles.solutionLabel, { color: c.muted }]}>{s.news.solutionLabel}</Text>
+          <Text style={[styles.cardSolution, { color: c.ink }]} numberOfLines={3}>
+            {solution}
+          </Text>
+        </View>
+      ) : null}
+    </AnimatedPressable>
   );
 });
 
@@ -242,25 +308,29 @@ export default function NewsScreen() {
       </View>
 
       {items.length > 0 || myLines.length > 0 ? (
-        <View style={styles.filterRow}>
+        <View style={styles.segment}>
           <Pressable
             onPress={() => setFilter('all')}
-            style={[styles.filterChip, filter === 'all' && styles.filterChipOn]}
+            style={[styles.segmentItem, filter === 'all' && styles.segmentItemOn]}
             accessibilityRole="button"
             accessibilityState={{ selected: filter === 'all' }}
           >
-            <Text style={[styles.filterText, filter === 'all' && styles.filterTextOn]}>
+            {filter === 'all' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
+            <Text style={[styles.segmentText, filter === 'all' && styles.segmentTextOn]}>
               {s.news.filterAll}
             </Text>
           </Pressable>
           <Pressable
             onPress={() => setFilter('myLines')}
-            style={[styles.filterChip, filter === 'myLines' && styles.filterChipOn]}
+            style={[styles.segmentItem, filter === 'myLines' && styles.segmentItemOn]}
             accessibilityRole="button"
             accessibilityState={{ selected: filter === 'myLines' }}
             accessibilityLabel={s.news.filterMyLinesA11y}
           >
-            <Text style={[styles.filterText, filter === 'myLines' && styles.filterTextOn]}>
+            {filter === 'myLines' ? (
+              <Check size={16} color={scheme.onSecondaryContainer} />
+            ) : null}
+            <Text style={[styles.segmentText, filter === 'myLines' && styles.segmentTextOn]}>
               {s.news.filterMyLines}
             </Text>
           </Pressable>
@@ -355,7 +425,7 @@ const styles = StyleSheet.create({
   back: {
     width: 48,
     height: 48,
-    borderRadius: 16,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
@@ -363,38 +433,48 @@ const styles = StyleSheet.create({
   iconBtn: {
     width: 48,
     height: 48,
-    borderRadius: 16,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerCity: { flex: 1, ...type.titleSmall, color: scheme.onSurfaceVariant },
   headerText: { paddingHorizontal: 24, paddingBottom: 24, gap: 6 },
-  headerTitle: { ...type.displaySmall, fontSize: 32, lineHeight: 40, fontWeight: '500', color: scheme.onSurface },
+  headerTitle: {
+    ...type.displaySmall,
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '600',
+    letterSpacing: -0.4,
+    color: scheme.onSurface,
+  },
   headerSub: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
-  filterRow: {
+  segment: {
     flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingBottom: 12,
+    gap: 4,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    padding: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
-  filterChip: {
+  segmentItem: {
     flex: 1,
-    borderRadius: 16,
-    backgroundColor: scheme.surfaceContainerLow,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 48,
-    justifyContent: 'center',
+    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: shape.full,
   },
-  filterChipOn: { backgroundColor: scheme.secondaryContainer },
-  filterText: { ...type.labelLarge, color: scheme.onSurfaceVariant, textAlign: 'center' },
-  filterTextOn: { color: scheme.onSecondaryContainer, fontWeight: '600' },
+  segmentItemOn: { backgroundColor: scheme.secondaryContainer },
+  segmentText: { ...type.labelLarge, color: scheme.onSurfaceVariant },
+  segmentTextOn: { color: scheme.onSecondaryContainer, fontWeight: '600' },
   list: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 40, gap: 12 },
   section: {
     ...type.titleMedium,
-    fontWeight: '500',
+    fontWeight: '600',
     color: scheme.onSurface,
     paddingTop: 16,
     paddingBottom: 4,
@@ -407,18 +487,36 @@ const styles = StyleSheet.create({
     gap: 12,
     overflow: 'hidden',
   },
-  cardPressed: { opacity: 0.9 },
   metaRow: { flexDirection: 'row', alignItems: 'center', columnGap: 12, rowGap: 4, flexWrap: 'wrap', justifyContent: 'space-between' },
-  metaText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
+  metaText: { ...type.bodySmall, flexShrink: 1 },
   urgentLabel: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  urgentText: { ...type.labelMedium, fontWeight: '600', color: scheme.warning, flexShrink: 1 },
-  sourceTag: { ...type.labelMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  cardTitle: { ...type.titleLarge, fontSize: 20, lineHeight: 27, fontWeight: '500', color: scheme.onSurface },
-  cardDesc: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  urgentText: { ...type.labelMedium, fontWeight: '600', flexShrink: 1 },
+  resolvedLabel: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: scheme.primaryContainer,
+    borderRadius: shape.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  resolvedText: { ...type.labelMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
+  solutionBox: {
+    backgroundColor: scheme.surface,
+    borderRadius: shape.large,
+    padding: 12,
+    gap: 4,
+  },
+  solutionLabel: { ...type.labelMedium, fontWeight: '600' },
+  cardSolution: { ...type.bodyMedium, lineHeight: 20 },
+  sourceTag: { ...type.labelMedium, flexShrink: 1 },
+  cardTitle: { ...type.titleLarge, fontSize: 20, lineHeight: 27, fontWeight: '500' },
+  cardDesc: { ...type.bodyMedium },
   linesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   moreLines: { ...type.labelSmall, color: scheme.onSurfaceVariant, alignSelf: 'center' },
   skel: { borderRadius: shape.small, backgroundColor: scheme.surfaceContainerHighest },
@@ -428,7 +526,7 @@ const styles = StyleSheet.create({
   stateIcon: {
     width: 64,
     height: 64,
-    borderRadius: 20,
+    borderRadius: 24,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -437,7 +535,7 @@ const styles = StyleSheet.create({
   stateIconMuted: {
     width: 64,
     height: 64,
-    borderRadius: 20,
+    borderRadius: 24,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
@@ -447,7 +545,7 @@ const styles = StyleSheet.create({
   stateText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
   retryBtn: {
     backgroundColor: scheme.primary,
-    borderRadius: 16,
+    borderRadius: shape.full,
     minHeight: 48,
     justifyContent: 'center',
     paddingVertical: 12,

@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { BusFront, CableCar, TrainFront, TramFront } from 'lucide-react-native';
+import { BusFront, CableCar, TrainFront, TramFront } from './icons';
 import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode } from '../types/models';

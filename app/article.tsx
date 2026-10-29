@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, ExternalLink } from 'lucide-react-native';
+import { ChevronLeft, ExternalLink } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { useActiveCity } from '../src/services/cityStore';
@@ -168,8 +168,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   back: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
@@ -178,11 +178,12 @@ const styles = StyleSheet.create({
   source: { ...type.labelSmall, color: scheme.onSurfaceVariant, flex: 1 },
   body: { paddingHorizontal: 18, paddingBottom: 40 },
   title: {
-    ...type.titleLarge,
+    ...type.headlineSmall,
     fontWeight: '600',
+    letterSpacing: -0.2,
     color: scheme.onSurface,
     marginTop: 4,
-    lineHeight: 28,
+    lineHeight: 32,
   },
   meta: { ...type.labelMedium, color: scheme.onSurfaceVariant, marginTop: 10 },
   linesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 },
@@ -233,6 +234,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    minHeight: 44,
     paddingVertical: 10,
   },
   browserSoftText: { ...type.titleSmall, color: scheme.primary },

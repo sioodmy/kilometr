@@ -25,6 +25,7 @@ import {
 import { clockFromMs, toAbsoluteMs } from '../src/services/notifications/format';
 import { pl } from '../src/i18n/pl';
 import type { Connection, Leg, LegStop } from '../src/types/models';
+import { stableConnectionId } from '../src/services/routing/connectionIdentity';
 import type { TrackedTrip } from '../src/services/notifications';
 
 // ─── Framework asercji ─────────────────────────────────────────────────────
@@ -539,6 +540,74 @@ expect(
   '04:03',
 );
 expect('pusty plan → null', resolveTrackedConnection([], tracked10, at0401, GRACE), null);
+
+// Regression ze zgłoszenia użytkownika: tramwaj 4 o 10:35 spóźniony 2 minuty
+// (przyjazd 10:37) NIE MOŻE przeskoczyć na następną 4 o 10:50, gdy planer zwróci
+// tylko odjazdy w przyszłości!
+const tram1035: Connection = {
+  ...simple,
+  id: 'tram-4-1035',
+  departAt: '10:35',
+  departureSec: 10 * 3600 + 35 * 60,
+  durationMin: 20,
+  legs: [
+    { ...simple.legs[0], departAt: '10:30', arriveAt: '10:34', mode: 'walk' },
+    {
+      ...simple.legs[1],
+      line: '4',
+      departAt: '10:35',
+      arriveAt: '10:55',
+      scheduledDepartureSec: 10 * 3600 + 35 * 60,
+      scheduledArrivalSec: 10 * 3600 + 55 * 60,
+      tripId: 'trip-4-1035',
+    },
+  ],
+};
+const laterTram1050: Connection = {
+  ...tram1035,
+  id: 'tram-4-1050',
+  departAt: '10:50',
+  departureSec: 10 * 3600 + 50 * 60,
+  legs: [
+    { ...tram1035.legs[0], departAt: '10:45', arriveAt: '10:49' },
+    {
+      ...tram1035.legs[1],
+      departAt: '10:50',
+      arriveAt: '11:10',
+      scheduledDepartureSec: 10 * 3600 + 50 * 60,
+      scheduledArrivalSec: 10 * 3600 + 70 * 60,
+      tripId: 'trip-4-1050',
+    },
+  ],
+};
+// O 10:37 pasażer stoi na przystanku, tramwaj spóźniony o 2 min:
+const at1037 = 10 * 3600 + 37 * 60;
+expect(
+  'spóźniony tramwaj 4 (10:35) nie przeskakuje na 10:50',
+  resolveTrackedConnection([laterTram1050], tram1035, at1037, GRACE)?.departAt,
+  '10:35',
+);
+
+// Identyfikator połączenia nie zmienia się po naniesieniu 2 minut opóźnienia:
+const delayedTram1035: Connection = {
+  ...tram1035,
+  departAt: '10:37',
+  delayMin: 2,
+  legs: [
+    tram1035.legs[0],
+    {
+      ...tram1035.legs[1],
+      departAt: '10:37',
+      arriveAt: '10:57',
+      delaySec: 120,
+    },
+  ],
+};
+expect(
+  'ID połączenia jest stabilne mimo opóźnienia na żywo',
+  stableConnectionId(delayedTram1035),
+  stableConnectionId(tram1035),
+);
 
 // ─── Plan przekazywany do natywnego Live Update ────────────────────────────
 

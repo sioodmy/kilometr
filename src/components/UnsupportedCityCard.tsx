@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MapPinOff, Navigation } from 'lucide-react-native';
+import { MapPinOff, Navigation } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { CITIES, suggestCityForCoords, type CityId } from '../cities';

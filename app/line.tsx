@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Check, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Check, ChevronLeft, ChevronRight } from '../src/components/icons';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
 import { useLineTimetable } from '../src/services/useLineTimetable';

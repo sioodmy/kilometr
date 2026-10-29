@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChevronRight, LocateFixed, MapPin, MapPinOff, Search, X } from 'lucide-react-native';
+import { ChevronRight, LocateFixed, MapPin, MapPinOff, Search, X } from './icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';

@@ -631,7 +631,7 @@ pub fn build_leg_clock(leg_dep_arr: &[(i32, i32)], board_index: isize, departure
 // ============================================================================
 
 const LOOSE_WINDOW_SEC: i32 = 1800;
-const DELAY_WINDOW_SEC: i32 = 900;
+const DELAY_WINDOW_SEC: i32 = 300;
 
 pub struct PlanMatchConn {
     pub orig_idx: u32,
@@ -663,8 +663,13 @@ fn match_tracked_idx(
             .iter()
             .enumerate()
             .filter(|(_, c)| {
-                c.signature == committed.signature
-                    && (c.departure_sec - committed.departure_sec).abs() <= window_sec
+                if c.signature != committed.signature {
+                    return false;
+                }
+                if !committed.trip_ids.is_empty() && !c.trip_ids.is_empty() {
+                    return c.trip_ids.iter().all(|id| committed.trip_ids.contains(id));
+                }
+                (c.departure_sec - committed.departure_sec).abs() <= window_sec
             })
             .map(|(i, _)| i)
             .collect();
@@ -674,9 +679,13 @@ fn match_tracked_idx(
         }
     }
 
-    conns
-        .iter()
-        .position(|c| c.departure_sec == committed.departure_sec)
+    if committed.trip_ids.is_empty() {
+        conns
+            .iter()
+            .position(|c| c.departure_sec == committed.departure_sec)
+    } else {
+        None
+    }
 }
 
 fn conn_in_progress_idx(conns: &[PlanMatchConn], now_sec: i32) -> Option<usize> {
@@ -733,9 +742,12 @@ pub fn resolve_tracked_connection_core(
         if let Some(idx) = match_tracked_idx(conns, comm, window_sec) {
             return (2, conns[idx].orig_idx);
         }
-        if still_ahead {
-            return (1, 0);
+        if let Some(idx) = conn_in_progress_idx(conns, now_sec) {
+            if conns[idx].signature == comm.signature {
+                return (2, conns[idx].orig_idx);
+            }
         }
+        return (1, 0);
     }
     if let Some(idx) = conn_in_progress_idx(conns, now_sec).or_else(|| next_departure_idx(conns, now_sec, grace_sec)) {
         return (2, conns[idx].orig_idx);
@@ -1662,5 +1674,30 @@ mod tests {
 
         let res = locate_live_stop_position(&stops, &leg, Some(&veh), Some(loc), now_ms, now_sec);
         assert_eq!(res, Some((1, 0))); // gap=1, source=0 (device)
+    }
+
+    #[test]
+    fn delayed_tracked_connection_does_not_jump_to_next_departure() {
+        let committed = PlanMatchConn {
+            orig_idx: 0,
+            departure_sec: 10 * 3600 + 35 * 60, // 10:35
+            duration_min: 20,
+            trip_ids: vec!["trip-4-1035".into()],
+            signature: "4@STOP".into(),
+        };
+        let next_run = PlanMatchConn {
+            orig_idx: 1,
+            departure_sec: 10 * 3600 + 50 * 60, // 10:50
+            duration_min: 20,
+            trip_ids: vec!["trip-4-1050".into()],
+            signature: "4@STOP".into(),
+        };
+        // at 10:37 (2 min delay), raptor only returns future departures (10:50)
+        let now_sec = 10 * 3600 + 37 * 60;
+        let grace_sec = 240;
+        let (status, idx) = resolve_tracked_connection_core(&[next_run], Some(&committed), now_sec, grace_sec);
+        // Status 1 means: preserve committed! (never switch to next_run idx 1)
+        assert_eq!(status, 1);
+        assert_eq!(idx, 0);
     }
 }
