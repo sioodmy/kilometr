@@ -12,7 +12,8 @@ export function sampleTime(row: RawVehicleRow, now: number): number | null {
     : null;
 }
 
-export function apiDelay(row: RawVehicleRow): number | undefined {
+/** Opóźnienie z feedu RT w ms, jeśli wiersz go podaje. */
+function apiDelay(row: RawVehicleRow): number | undefined {
   const d = row.delaySec;
   return d != null && Number.isFinite(d) && d >= -300 && d <= MAX_DELAY_SEC ? d : undefined;
 }

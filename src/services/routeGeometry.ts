@@ -17,7 +17,7 @@
 // zostają przy geometrii przybliżonej, bez routera samochodowego.
 
 import { OSRM_BASE_URL } from '../config';
-import { routeFootLocal, routeFootLocalSync, routeRailLocal } from './footRouter';
+import { routeFootLocal, routeRailLocal } from './footRouter';
 import { kvGet, kvSet } from './storage';
 import { getLineColors, mapLineColor } from '../components/LineBadge';
 import { timeStringToSeconds } from '../gtfs/geo';
@@ -372,44 +372,6 @@ async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coor
   if (signal?.aborted) return null;
   void writeCache(key, chunks);
   return chunks;
-}
-
-/**
- * Trasa piesza między dwoma dowolnymi punktami wyznaczana lokalnie w silniku Rust
- * na wektorowych kafelkach OSM.
- */
-export function routeFootSync(from: Coord, to: Coord): Coord[] | null {
-  if (from[0] === to[0] && from[1] === to[1]) return null;
-  return routeFootLocalSync([from, to]);
-}
-
-export async function fetchFootRoute(
-  from: Coord,
-  to: Coord,
-  signal?: AbortSignal,
-): Promise<Coord[] | null> {
-  const r = (v: number) => Math.round(v * 1e4) / 1e4;
-  const points: Coord[] = [
-    [r(from[0]), r(from[1])],
-    [r(to[0]), r(to[1])],
-  ];
-  if (points[0][0] === points[1][0] && points[0][1] === points[1][1]) return null;
-
-  // Gdy kafelki są już w pamięci silnika Rust, wyznaczamy trasę od ręki bez czekania na I/O.
-  const immediate = routeFootLocalSync([from, to]);
-  if (immediate && immediate.length > 1) {
-    return immediate;
-  }
-
-  const key = `foot:${points[0][0]},${points[0][1]}>${points[1][0]},${points[1][1]}`;
-  const cache = await readCache();
-  const hit = cache.get(key);
-  if (hit && hit.length > 1) return hit;
-  if (signal?.aborted) return null;
-  const path = await routeFootLocal([from, to], signal);
-  if (!path || path.length < 2 || signal?.aborted) return null;
-  void writeCache(key, path);
-  return path;
 }
 
 /** Prosty odcinek przez przystanki, natychmiastowa wersja trasy. */
