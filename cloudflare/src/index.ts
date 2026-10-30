@@ -4,6 +4,7 @@
  * Per-miasto:
  * - GET /{miasto}/manifest.json           → manifest buildu z R2
  * - GET /{miasto}/disruptions.json        → ustrukturyzowane alerty i utrudnienia z R2 (cache 120s)
+ * - GET /{miasto}/stop-hints.json         → mikrowskazówki lokalizacyjne przystanków z R2
  * - GET /{miasto}/db/kilometr-gtfs.db.gz  → skompresowany prebuilt SQLite z R2 (Range, ETag)
  * - GET /maps/{miasto}-tiles.ktp          → pakiet kafli offline z R2
  * Miasta: wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz,
@@ -35,6 +36,7 @@ const PDP_BASE = 'https://pdp-api.plk-sa.pl';
 const dbKeyFor = (city: string): string => `${city}/db/kilometr-gtfs.db.gz`;
 const manifestKeyFor = (city: string): string => `${city}/manifest.json`;
 const disruptionsKeyFor = (city: string): string => `${city}/disruptions.json`;
+const stopHintsKeyFor = (city: string): string => `${city}/stop-hints.json`;
 /**
  * Snapshot adresów OSM (cache buildu timetable.yml): świeży zasila build bez
  * Overpassa, stary jest awaryjnym zapasem. Nigdy nie trafia do telefonu.
@@ -93,7 +95,7 @@ export default {
       return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString(), cities: [...CITIES] });
     }
 
-    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
+    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/stop-hints.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
     const cityMatch = CITY_PATH_RE.exec(url.pathname);
     if (cityMatch) {
       const [, city, rest] = cityMatch;
@@ -102,6 +104,9 @@ export default {
       }
       if (rest === '/disruptions.json') {
         return serveDisruptions(env, disruptionsKeyFor(city));
+      }
+      if (rest === '/stop-hints.json') {
+        return serveObject(env, stopHintsKeyFor(city), 'application/json; charset=utf-8', 'stop-hints');
       }
       if (rest === '/db/kilometr-gtfs.db.gz') {
         return serveDb(req, env, dbKeyFor(city));
@@ -142,98 +147,101 @@ async function serveManifest(env: Env, key: string): Promise<Response> {
 async function serveDisruptions(env: Env, key: string): Promise<Response> {
   const obj = await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
-    return json({ alerts: [], generated_at: new Date().toISOString() }, 200, 60);
+    // Brak alertów = pusta lista w formacie feedu, a nie 404.
+    // Telefon traktuje to jako brak utrudnień w mieście i nie loguje błędu.
+    return json({ alerts: [], generatedAt: new Date().toISOString() }, 200, 120);
   }
   const headers = new Headers();
   headers.set('Content-Type', 'application/json; charset=utf-8');
   if (obj.etag) headers.set('ETag', obj.etag);
-  // 120 s cache na krawędzi CDN
+  // 120 s cache w przeglądarce / CDN - alerty odświeżamy co 20 minut,
+  // więc krótszy cache jest świeży, ale nie obciąża R2.
   headers.set('Cache-Control', 'public, max-age=120');
   return new Response(obj.body, { headers });
 }
 
-/**
- * Serwuje bazę SQLite (skompresowaną gzipem) z obsługą Range requests
- * (potrzebne do wznawiania downloadu w aplikacji przez expo-file-system).
- */
 async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
-  const range = req.headers.get('Range');
-  if (range) {
-    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-    const head = await env.TIMETABLE_BUCKET.head(key);
-    if (!head) {
-      return json(
-        { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
-        404,
-      );
-    }
-    const total = head.size;
-    let start = m && m[1] ? parseInt(m[1], 10) : 0;
-    let end = m && m[2] ? parseInt(m[2], 10) : total - 1;
-    if (isNaN(start)) start = 0;
-    if (isNaN(end) || end >= total) end = total - 1;
-    if (start > end || start >= total) {
-      return new Response(null, {
-        status: 416,
-        headers: { 'Content-Range': `bytes */${total}` },
-      });
-    }
+  // Range requesty (pobieranie we fragmentach): telefon może wznawiać.
+  const rangeHeader = req.headers.get('Range');
+  const range = parseRange(rangeHeader);
 
-    const obj = await env.TIMETABLE_BUCKET.get(key, { range: { offset: start, length: end - start + 1 } });
-    if (!obj) return json({ error: 'r2-read-failed' }, 500);
+  const obj = await env.TIMETABLE_BUCKET.get(key, { range: range ?? undefined });
+  if (!obj) {
+    return json(
+      { error: 'not-built-yet', hint: 'Baza SQLite jeszcze nie istnieje w R2. Odpal timetable.yml.' },
+      404,
+    );
+  }
 
-    const headers = new Headers();
-    headers.set('Content-Type', 'application/gzip');
-    headers.set('Accept-Ranges', 'bytes');
-    headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
-    headers.set('Content-Length', String(end - start + 1));
-    if (head.etag) headers.set('ETag', head.etag);
-    headers.set('Cache-Control', 'public, max-age=300');
+  const headers = new Headers();
+  // Celowo octet-stream + brak Content-Encoding: gzip - plik NA DYSKU to .db.gz,
+  // telefon sam go dekompresuje po pobraniu. Gdyby Worker dał Content-Encoding:
+  // gzip, przeglądarka/fetch rozpakowałaby go po cichu w locie, niszcząc logikę
+  // dekompresji po stronie klienta.
+  headers.set('Content-Type', 'application/octet-stream');
+  headers.set('Accept-Ranges', 'bytes');
+  if (obj.etag) headers.set('ETag', obj.etag);
+  headers.set('Cache-Control', 'public, max-age=3600');
+
+  if (range && 'offset' in range) {
+    const end = range.length !== undefined ? range.offset + range.length - 1 : obj.size - 1;
+    headers.set('Content-Range', `bytes ${range.offset}-${end}/${obj.size}`);
+    headers.set('Content-Length', String(end - range.offset + 1));
     return new Response(obj.body, { status: 206, headers });
   }
 
-  return serveObject(env, key, 'application/gzip', 'timetable.yml');
+  headers.set('Content-Length', String(obj.size));
+  return new Response(obj.body, { status: 200, headers });
 }
 
-/**
- * Proksy do PDP API (PLK) z walidacją i cache po stronie Workera.
- * Dzięki temu aplikacja nie dostaje klucza do PDP ani nie uderza bezpośrednio
- * w API PLK (ochrona limitu zapytań).
- */
+function parseRange(h: string | null): { offset: number; length?: number } | null {
+  if (!h) return null;
+  const m = /^bytes=(\d+)-(\d+)?$/.exec(h.trim());
+  if (!m) return null;
+  const start = parseInt(m[1], 10);
+  if (Number.isNaN(start)) return null;
+  if (m[2] !== undefined) {
+    const end = parseInt(m[2], 10);
+    if (!Number.isNaN(end) && end >= start) return { offset: start, length: end - start + 1 };
+  }
+  return { offset: start };
+}
+
 async function proxyPdp(
   req: Request,
   env: Env,
   ctx: ExecutionContext,
   endpoint: 'operations' | 'schedules',
 ): Promise<Response> {
-  if (!env.PDP_API_KEY) {
-    return json({ error: 'pdp-disabled', hint: 'Brak PDP_API_KEY w secretach Workera.' }, 503);
+  const key = env.PDP_API_KEY;
+  if (!key) {
+    return json({ error: 'pdp-not-configured', hint: 'Klucz PDP_API_KEY nie jest ustawiony w Workerze.' }, 503);
   }
 
-  const url = new URL(req.url);
-  const cacheKey = new Request(url.toString(), req);
+  const inUrl = new URL(req.url);
+  const outUrl = new URL(`${PDP_BASE}/${endpoint}${inUrl.search}`);
+
+  // Cache API Cloudflare - redukuje ruch do PDP (limit rate'u).
+  const cacheKey = new Request(outUrl.toString(), { headers: req.headers });
   const cache = caches.default;
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
-  const targetUrl = new URL(`/api/v1/${endpoint}${url.search}`, PDP_BASE);
-  const upstreamRes = await fetch(targetUrl.toString(), {
+  const res = await fetch(outUrl.toString(), {
     headers: {
-      'X-API-KEY': env.PDP_API_KEY,
+      Authorization: `Bearer ${key}`,
       Accept: 'application/json',
+      'User-Agent': 'kilometr-timetable-worker/1.0',
     },
   });
 
-  if (!upstreamRes.ok) {
-    return json(
-      { error: 'upstream-error', status: upstreamRes.status },
-      upstreamRes.status === 404 ? 404 : 502,
-    );
-  }
-
-  const data = await upstreamRes.json();
+  const body = await res.arrayBuffer();
   const ttl = endpoint === 'operations' ? 120 : 3600;
-  const res = json(data, 200, ttl);
-  ctx.waitUntil(cache.put(cacheKey, res.clone()));
-  return res;
+  const headers = new Headers();
+  headers.set('Content-Type', res.headers.get('Content-Type') ?? 'application/json; charset=utf-8');
+  headers.set('Cache-Control', `public, max-age=${ttl}`);
+
+  const out = new Response(body, { status: res.status, headers });
+  if (res.ok) ctx.waitUntil(cache.put(cacheKey, out.clone()));
+  return out;
 }

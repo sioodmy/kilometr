@@ -12,12 +12,7 @@ import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection } from '../types/models';
-import {
-  fetchCityNews,
-  getCachedNews,
-  loadNewsCache,
-  type MpkNewsItem,
-} from '../services/mpkNews';
+import { fetchCityNews, getCachedNews, loadNewsCache, type MpkNewsItem } from '../services/mpkNews';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
 
 const MAX_ROWS = 3;
@@ -55,7 +50,7 @@ function getTransitActionLabel(item: MpkNewsItem, s: ReturnType<typeof useString
  * Ujednolicona lista linii, których dotyczy dana zmiana / komunikat.
  * Bierzemy ze struktury AI disruption.all_lines, impacted_lines oraz item.lines.
  */
-export function getDisruptionLines(item: MpkNewsItem): string[] {
+function getDisruptionLines(item: MpkNewsItem): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
 
@@ -245,24 +240,13 @@ const AlertSubCard = memo(function AlertSubCard({
       {displayLines.length > 0 && (
         <View style={styles.linesRow}>
           {displayLines.map((line) => (
-            <LineBadge
-              key={line}
-              line={line}
-              compact
-              active={lineSet.has(line)}
-            />
+            <LineBadge key={line} line={line} compact active={lineSet.has(line)} />
           ))}
         </View>
       )}
 
       {/* 3. Nagłówek utrudnienia (Smart AI Headline) */}
-      <Text
-        style={[
-          styles.headlineText,
-          isResolved && styles.headlineResolved,
-        ]}
-        numberOfLines={2}
-      >
+      <Text style={[styles.headlineText, isResolved && styles.headlineResolved]} numberOfLines={2}>
         {headline}
       </Text>
 
@@ -277,15 +261,9 @@ const AlertSubCard = memo(function AlertSubCard({
       {solution ? (
         <View style={styles.solutionBox}>
           <View style={styles.solutionHeader}>
-            <BusFront
-              size={14}
-              color={isUrgent ? scheme.warning : scheme.primary}
-            />
+            <BusFront size={14} color={isUrgent ? scheme.warning : scheme.primary} />
             <Text
-              style={[
-                styles.solutionLabel,
-                { color: isUrgent ? scheme.warning : scheme.primary },
-              ]}
+              style={[styles.solutionLabel, { color: isUrgent ? scheme.warning : scheme.primary }]}
             >
               {getTransitActionLabel(item, s)}
             </Text>
@@ -410,7 +388,8 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
             setAttempt((n) => n + 1);
           }}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}>
+          style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
+        >
           <Text style={styles.retryBtnText}>{s.common.retry}</Text>
         </Pressable>
       </View>
@@ -460,9 +439,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         </View>
 
         <View style={styles.counterPill}>
-          <Text style={styles.counterText}>
-            {s.routeDetails.lineAlertsCount(matched.length)}
-          </Text>
+          <Text style={styles.counterText}>{s.routeDetails.lineAlertsCount(matched.length)}</Text>
         </View>
       </View>
 
