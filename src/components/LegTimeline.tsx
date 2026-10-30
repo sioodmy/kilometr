@@ -599,7 +599,7 @@ function TransitLegCard({
           {(expanded || hasOpened) && (
             <Animated.View
               layout={legTransition}
-              style={expanded ? s.stopsWrap : s.stopsCollapsed}
+              style={expanded ? [s.stopsWrap, s.stopsIndent] : s.stopsCollapsed}
               accessibilityElementsHidden={!expanded}
               importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
             >
@@ -824,7 +824,7 @@ const s = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 8,
     marginTop: 2,
-    marginLeft: 14,
+    marginLeft: 16,
   },
   liveSensorsCol: {
     width: 19,
@@ -832,7 +832,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
-    marginLeft: -4,
   },
   liveTextCol: {
     flex: 1,
@@ -940,8 +939,10 @@ const s = StyleSheet.create({
   },
   stopsWrap: {
     marginTop: 8,
-    marginLeft: 28,
     gap: 0,
+  },
+  stopsIndent: {
+    marginLeft: 40,
   },
   stopsCollapsed: {
     height: 0,
