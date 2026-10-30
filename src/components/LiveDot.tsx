@@ -12,54 +12,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Sensors } from './icons';
 
-// M3-style live indicator: solid dot + single expanding halo ping on data arrival.
-// Pulsing reflects the actual vehicle/feed polling updates rather than an infinite loop.
-export function LiveDot({
-  color,
-  size = 8,
-  pulse = true,
-  pingKey,
-}: {
-  color: string;
-  size?: number;
-  pulse?: boolean;
-  pingKey?: number | string;
-}) {
-  const halo = useSharedValue(1);
-
-  useEffect(() => {
-    if (!pulse) {
-      cancelAnimation(halo);
-      halo.value = 1;
-      return;
-    }
-    cancelAnimation(halo);
-    halo.value = 0;
-    halo.value = withTiming(1, { duration: 1200, easing: Easing.out(Easing.quad) });
-    return () => cancelAnimation(halo);
-  }, [halo, pulse, pingKey]);
-
-  const haloStyle = useAnimatedStyle(() => {
-    const p = Math.min(1, Math.max(0, halo.value));
-    const opacity = p >= 1 ? 0 : 0.55 * (1 - p);
-    const scale = 1 + p * 1.5;
-    return {
-      opacity,
-      transform: [{ scale }],
-    };
-  });
-
-  const r = size / 2;
-  return (
-    <View style={[styles.wrap, { width: size * 3, height: size * 3 }]}>
-      <Animated.View
-        style={[styles.halo, { backgroundColor: color, borderRadius: size * 2 }, haloStyle]}
-      />
-      <View style={[styles.dot, { backgroundColor: color, width: size, height: size, borderRadius: r }]} />
-    </View>
-  );
-}
-
+// M3 Expressive live indicator: ikona sensors z dwoma opóźnionymi pierścieniami
+// i skokiem ikony przy każdym odświeżeniu danych. Animacja reaguje na realny
+// polling pojazdu, a nie na nieskończoną pętlę.
 export function LiveSensors({
   color,
   size = 16,
@@ -167,5 +122,4 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  dot: {},
 });
