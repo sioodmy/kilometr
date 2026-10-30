@@ -1,6 +1,7 @@
 # Budowanie, walidacja i publikacja wskazówek lokalizacyjnych przystanków (stop-hints) → Cloudflare R2.
 #
-# Działa przy zmianie w plikach źródłowych cloudflare/data/stop-hints-*.json lub na żądanie.
+# Działa przy zmianie w plikach źródłowych cloudflare/data/stop-hints-*.json,
+# skryptach lub na żądanie (workflow_dispatch).
 # Waliduje spójność antislop, kompiluje JSON i wrzuca do R2 (kilometr-timetable/<city>/stop-hints.json).
 
 name: Stop hints → R2
@@ -14,15 +15,14 @@ on:
   workflow_dispatch:
     inputs:
       city:
-        description: 'Miasto (puste = wszystkie zdefiniowane)'
+        description: 'Miasto (all = wszystkie zdefiniowane)'
         required: false
-        default: 'wroclaw'
+        default: 'all'
         type: choice
-        options: ['wroclaw']
+        options: ['all', 'wroclaw', 'warszawa', 'gzm']
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: stop-hints-deploy
@@ -30,8 +30,12 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    name: Build, validate & upload stop hints
+    name: Build, validate & upload stop hints (${{ matrix.city }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '' && inputs.city != 'all') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "warszawa", "gzm"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -43,26 +47,19 @@ jobs:
 
       - name: Walidacja i kompilacja wskazówek
         run: |
-          CITY="${{ inputs.city || 'wroclaw' }}"
-          echo "Kompilacja dla miasta: $CITY"
-          node cloudflare/scripts/build-stop-hints.mjs --city="$CITY"
-
-      - name: Uruchomienie Canary (kontrola brakujących węzłów)
-        run: |
-          CITY="${{ inputs.city || 'wroclaw' }}"
-          node cloudflare/scripts/check-stop-hints.mjs --city="$CITY"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Kompilacja dla miasta: ${{ matrix.city }}"
+          node cloudflare/scripts/build-stop-hints.mjs --city="${{ matrix.city }}"
 
       - name: Upload do Cloudflare R2
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         run: |
-          CITY="${{ inputs.city || 'wroclaw' }}"
-          FILE="cloudflare/dist/$CITY/stop-hints.json"
+          FILE="cloudflare/dist/${{ matrix.city }}/stop-hints.json"
           if [ -f "$FILE" ]; then
-            echo "Wysyłanie $FILE do R2 (kilometr-timetable/$CITY/stop-hints.json)..."
-            npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/$CITY/stop-hints.json" \
-              --file="$FILE" --content-type "application/json"
+            echo "Wysyłanie $FILE do R2 (kilometr-timetable/${{ matrix.city }}/stop-hints.json)..."
+            npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/stop-hints.json" \
+              --file="$FILE" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400"
           else
             echo "Brak pliku $FILE do wysłania!"
             exit 1

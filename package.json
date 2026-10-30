@@ -124,6 +124,7 @@
     "check:fdroid": "node --test scripts/check-fdroid.test.mjs",
     "check:stop-hints": "node cloudflare/scripts/check-stop-hints.mjs",
     "stop-hints:build": "node cloudflare/scripts/build-stop-hints.mjs",
+    "stop-hints:generate": "node cloudflare/scripts/generate-grounded-stop-hints.mjs",
     "stop-hints:context": "node cloudflare/scripts/stop-hints-context.mjs"
   },
   "private": true,
