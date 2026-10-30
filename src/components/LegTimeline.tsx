@@ -64,9 +64,14 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
-function formatPlatformLabel(code?: string | null, mode?: Leg['mode']): string | null {
-  if (!code) return null;
-  const trimmed = code.trim();
+function formatPlatformLabel(code?: string | null, mode?: Leg['mode'], stopName?: string | null): string | null {
+  let trimmed = (code || '').trim();
+  if (!trimmed && stopName) {
+    const m = stopName.trim().match(/\s(\d{2})$/);
+    if (m) {
+      trimmed = m[1];
+    }
+  }
   if (!trimmed) return null;
 
   if (/^(peron|słupek|słup|stanowisko)\b/i.test(trimmed)) {
@@ -95,9 +100,13 @@ function formatPlatformLabel(code?: string | null, mode?: Leg['mode']): string |
     return `Peron ${trimmed}`;
   }
 
-  // 1-2 cyfry (np. Warszawa '01', '02')
+  // 1-2 cyfry (np. Warszawa '01', Poznań '71', '42')
   if (/^\d{1,2}$/.test(trimmed)) {
-    if (trimmed.startsWith('0') || parseInt(trimmed, 10) >= 10) {
+    const n = parseInt(trimmed, 10);
+    if (n >= 41 && n <= 49) {
+      return `PST Słupek ${trimmed}`;
+    }
+    if (trimmed.startsWith('0') || n >= 10) {
       return `Słupek ${trimmed}`;
     }
     return `Peron ${trimmed}`;
@@ -362,7 +371,7 @@ function TransitLegCard({
   const activeCityId = useMemo(() => getActiveCityIdSync(), []);
   const stopHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
   const departurePlatform = useMemo(
-    () => formatPlatformLabel(leg.platformCode, leg.mode),
+    () => formatPlatformLabel(leg.platformCode, leg.mode, leg.fromStop),
     [leg.platformCode, leg.mode],
   );
 

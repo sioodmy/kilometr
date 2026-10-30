@@ -3,6 +3,7 @@ import { STOP_HINTS_WROCLAW, WROCLAW_STOP_HINTS } from '../data/stopHintsWroclaw
 import { STOP_HINTS_WARSZAWA } from '../data/stopHintsWarszawa';
 import { STOP_HINTS_GZM } from '../data/stopHintsGzm';
 import { STOP_HINTS_KRAKOW } from '../data/stopHintsKrakow';
+import { STOP_HINTS_POZNAN } from '../data/stopHintsPoznan';
 import type { StopHintsDataset, StopHintValue } from '../types/stopHints';
 
 const cache = new Map<string, StopHintsDataset>();
@@ -26,6 +27,9 @@ export function getBundledStopHints(cityId: string): StopHintsDataset | null {
   }
   if (c === 'krakow' || c === 'kraków') {
     return STOP_HINTS_KRAKOW;
+  }
+  if (c === 'poznan' || c === 'poznań') {
+    return STOP_HINTS_POZNAN;
   }
   return null;
 }

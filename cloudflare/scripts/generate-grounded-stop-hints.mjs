@@ -218,6 +218,15 @@ async function processCity(city) {
         name = (p[2] || '').replace(/"/g, '').trim();
         lat = parseFloat(p[4]);
         lon = parseFloat(p[5]);
+      } else if (city === 'poznan') {
+        id = p[0].trim();
+        name = (p[1] || '').replace(/"/g, '').trim();
+        const m = name.match(/\s(\d{2})$/);
+        code = m ? m[1] : '';
+        lat = parseFloat(p[3]);
+        lon = parseFloat(p[4]);
+        const n = parseInt(code, 10);
+        isTram = (n >= 41 && n <= 49) || (n >= 71 && n <= 79);
       } else {
         // Wrocław
         id = p[0].trim();
@@ -476,6 +485,286 @@ async function processCity(city) {
       '2469011-00202t':
         'Peron tramwajowy • ul. 3 Maja przed wejściem do Galerii Katowickiej.',
     };
+  } else if (city === 'poznan') {
+    SPECIFIC_POLE_HINTS = {
+      // Poznań Główny / Dworzec Zachodni
+      'poznan-glowny73-wqjhw':
+        'Peron tramwajowy na Moście Dworcowym w stronę Ronda Kaponiera.',
+      'poznan-glowny73':
+        'Peron tramwajowy na Moście Dworcowym w stronę Ronda Kaponiera.',
+      'poznan-glowny74-wqo4m':
+        'Peron tramwajowy na Moście Dworcowym w stronę ul. Głogowskiej i Dębca.',
+      'poznan-glowny74':
+        'Peron tramwajowy na Moście Dworcowym w stronę ul. Głogowskiej i Dębca.',
+      'poznan-glowny41-wozxq':
+        'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Os. Sobieskiego.',
+      'poznan-glowny41':
+        'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Os. Sobieskiego.',
+      'poznan-glowny42-wpigc':
+        'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Dworca Zachodniego.',
+      'poznan-glowny42':
+        'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Dworca Zachodniego.',
+      'poznan-glowny01-wl51l':
+        'Słupek 01 • Przystanek autobusowy na placu Dworcowym przed wejściem na dworzec PKP.',
+      'poznan-glowny01':
+        'Słupek 01 • Przystanek autobusowy na placu Dworcowym przed wejściem na dworzec PKP.',
+      'poznan-glowny02-wl51n':
+        'Słupek 02 • Przystanek autobusowy na placu Dworcowym przed wejściem do galerii Avenida.',
+      'poznan-glowny02':
+        'Słupek 02 • Przystanek autobusowy na placu Dworcowym przed wejściem do galerii Avenida.',
+      'poznan-glowny05-wpn2o':
+        'Stanowisko 05 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
+      'poznan-glowny05':
+        'Stanowisko 05 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
+      'poznan-glowny06-wq0yg':
+        'Stanowisko 06 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
+      'poznan-glowny06':
+        'Stanowisko 06 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
+      'dworzec-zachodni71-wgrmp':
+        'Peron tramwajowy na ul. Głogowskiej przed wejściem do Dworca Zachodniego PKP w stronę centrum.',
+      'dworzec-zachodni71':
+        'Peron tramwajowy na ul. Głogowskiej przed wejściem do Dworca Zachodniego PKP w stronę centrum.',
+      'dworzec-zachodni72-wh5iq':
+        'Peron tramwajowy na ul. Głogowskiej naprzeciwko Dworca Zachodniego PKP w stronę Górczyna.',
+      'dworzec-zachodni72':
+        'Peron tramwajowy na ul. Głogowskiej naprzeciwko Dworca Zachodniego PKP w stronę Górczyna.',
+      'dworzec-zachodni41-wip2j':
+        'Peron PST w wykopie przy Dworcu Zachodnim w stronę Dworca Głównego i Mostu Teatralnego.',
+      'dworzec-zachodni41':
+        'Peron PST w wykopie przy Dworcu Zachodnim w stronę Dworca Głównego i Mostu Teatralnego.',
+      'dworzec-zachodni42-wift7':
+        'Pętla PST przy Dworcu Zachodnim, peron dla wysiadających.',
+      'dworzec-zachodni42':
+        'Pętla PST przy Dworcu Zachodnim, peron dla wysiadających.',
+      'dworzec-zachodni02-wi1x6':
+        'Zatoka autobusowa na ul. Zachodniej przed wejściem do tunelu Dworca Zachodniego.',
+      'dworzec-zachodni02':
+        'Zatoka autobusowa na ul. Zachodniej przed wejściem do tunelu Dworca Zachodniego.',
+
+      // Rondo Kaponiera
+      'rondo-kaponiera45-wm64d':
+        'Poziom -2 w wykopie PST, peron w stronę Mostu Teatralnego i Os. Sobieskiego.',
+      'rondo-kaponiera45':
+        'Poziom -2 w wykopie PST, peron w stronę Mostu Teatralnego i Os. Sobieskiego.',
+      'rondo-kaponiera46-wmfdq':
+        'Poziom -2 w wykopie PST, peron w stronę Dworca Zachodniego.',
+      'rondo-kaponiera46':
+        'Poziom -2 w wykopie PST, peron w stronę Dworca Zachodniego.',
+      'rondo-kaponiera71-wliz8':
+        'Poziom 0, peron tramwajowy na ul. Roosevelta obok hotelu Mercure w stronę Mostu Teatralnego.',
+      'rondo-kaponiera71':
+        'Poziom 0, peron tramwajowy na ul. Roosevelta obok hotelu Mercure w stronę Mostu Teatralnego.',
+      'rondo-kaponiera72-wls8k':
+        'Poziom 0, peron tramwajowy na ul. Roosevelta obok Bałtyku w stronę Mostu Dworcowego.',
+      'rondo-kaponiera72':
+        'Poziom 0, peron tramwajowy na ul. Roosevelta obok Bałtyku w stronę Mostu Dworcowego.',
+      'rondo-kaponiera73-wmon0':
+        'Poziom 0, peron tramwajowy na ul. Zwierzynieckiej obok DS Jowita w stronę ul. Kraszewskiego.',
+      'rondo-kaponiera73':
+        'Poziom 0, peron tramwajowy na ul. Zwierzynieckiej obok DS Jowita w stronę ul. Kraszewskiego.',
+      'rondo-kaponiera74-wmxwd':
+        'Poziom 0, peron tramwajowy na ul. Święty Marcin przed CK Zamek w stronę centrum.',
+      'rondo-kaponiera74':
+        'Poziom 0, peron tramwajowy na ul. Święty Marcin przed CK Zamek w stronę centrum.',
+      'rondo-kaponiera01-wkhxt':
+        'Słupek 01 • Zatoka autobusowa na ul. Zwierzynieckiej obok Domu Studenckiego Jowita.',
+      'rondo-kaponiera01':
+        'Słupek 01 • Zatoka autobusowa na ul. Zwierzynieckiej obok Domu Studenckiego Jowita.',
+      'rondo-kaponiera02-wi6ls':
+        'Słupek 02 • Zatoka autobusowa na ul. Zwierzynieckiej przed hotelem Mercure.',
+      'rondo-kaponiera02':
+        'Słupek 02 • Zatoka autobusowa na ul. Zwierzynieckiej przed hotelem Mercure.',
+      'rondo-kaponiera05-wmfdi':
+        'Słupek 05 • Zatoka autobusowa na ul. Roosevelta obok wejścia do Kaponiery.',
+      'rondo-kaponiera05':
+        'Słupek 05 • Zatoka autobusowa na ul. Roosevelta obok wejścia do Kaponiery.',
+      'rondo-kaponiera06-wmomr':
+        'Słupek 06 • Zatoka autobusowa na ul. Roosevelta obok wieżowca Bałtyk.',
+      'rondo-kaponiera06':
+        'Słupek 06 • Zatoka autobusowa na ul. Roosevelta obok wieżowca Bałtyk.',
+
+      // Most Teatralny
+      'most-teatralny44-wn2jy':
+        'Dolny peron PST w wykopie pod wiaduktem w stronę Dworca Zachodniego.',
+      'most-teatralny44':
+        'Dolny peron PST w wykopie pod wiaduktem w stronę Dworca Zachodniego.',
+      'most-teatralny45-wocut':
+        'Dolny peron PST w wykopie pod wiaduktem w stronę Os. Sobieskiego.',
+      'most-teatralny45':
+        'Dolny peron PST w wykopie pod wiaduktem w stronę Os. Sobieskiego.',
+      'most-teatralny46-wnyyt':
+        'Rampa wyjazdowa PST przy parku Wieniawskiego w stronę ul. Roosevelta.',
+      'most-teatralny46':
+        'Rampa wyjazdowa PST przy parku Wieniawskiego w stronę ul. Roosevelta.',
+      'most-teatralny71-wmfec':
+        'Peron tramwajowy na ul. Roosevelta przed Teatrem Nowym w stronę Ronda Kaponiera.',
+      'most-teatralny71':
+        'Peron tramwajowy na ul. Roosevelta przed Teatrem Nowym w stronę Ronda Kaponiera.',
+      'most-teatralny72-wlnmj':
+        'Peron tramwajowy na Moście Teatralnym w stronę Jeżyc i ul. Dąbrowskiego.',
+      'most-teatralny72':
+        'Peron tramwajowy na Moście Teatralnym w stronę Jeżyc i ul. Dąbrowskiego.',
+      'most-teatralny73-wnubr':
+        'Peron tramwajowy na ul. Fredry przed Teatrem Wielkim w stronę centrum.',
+      'most-teatralny73':
+        'Peron tramwajowy na ul. Fredry przed Teatrem Wielkim w stronę centrum.',
+      'most-teatralny01-wnbt9':
+        'Słupek 01 • Zatoka autobusowa na Moście Teatralnym w stronę centrum.',
+      'most-teatralny01':
+        'Słupek 01 • Zatoka autobusowa na Moście Teatralnym w stronę centrum.',
+      'most-teatralny02-wm1ic':
+        'Słupek 02 • Zatoka autobusowa na Moście Teatralnym w stronę Jeżyc.',
+      'most-teatralny02':
+        'Słupek 02 • Zatoka autobusowa na Moście Teatralnym w stronę Jeżyc.',
+
+      // Rondo Rataje
+      'rondo-rataje71-xxd3e':
+        'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Starołęki.',
+      'rondo-rataje71':
+        'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Starołęki.',
+      'rondo-rataje72-xxmcs':
+        'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Ronda Śródka.',
+      'rondo-rataje72':
+        'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Ronda Śródka.',
+      'rondo-rataje73-xys1a':
+        'Peron tramwajowy na ul. Krzywoustego przed mostem Królowej Jadwigi.',
+      'rondo-rataje73':
+        'Peron tramwajowy na ul. Krzywoustego przed mostem Królowej Jadwigi.',
+      'rondo-rataje74-xz1an':
+        'Peron tramwajowy na ul. Krzywoustego obok dworca Rondo Rataje w stronę Franowa.',
+      'rondo-rataje74':
+        'Peron tramwajowy na ul. Krzywoustego obok dworca Rondo Rataje w stronę Franowa.',
+      'rondo-rataje75-xwlbs':
+        'Peron tramwajowy przed wejściem do galerii Posnania.',
+      'rondo-rataje75':
+        'Peron tramwajowy przed wejściem do galerii Posnania.',
+      'rondo-rataje76-xw7fu':
+        'Peron tramwajowy obok dworca autobusowego Rondo Rataje.',
+      'rondo-rataje76':
+        'Peron tramwajowy obok dworca autobusowego Rondo Rataje.',
+      'rondo-rataje06-xwul7':
+        'Stanowisko 06 • Dworzec autobusowy Rondo Rataje obok galerii Posnania.',
+      'rondo-rataje06':
+        'Stanowisko 06 • Dworzec autobusowy Rondo Rataje obok galerii Posnania.',
+
+      // Rondo Śródka
+      'rondo-srodka43-y5q4v':
+        'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Ronda Rataje.',
+      'rondo-srodka43':
+        'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Ronda Rataje.',
+      'rondo-srodka44-y5ze7':
+        'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Zawad.',
+      'rondo-srodka44':
+        'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Zawad.',
+      'rondo-srodka45-y7s7n':
+        'Peron tramwajowy na ul. Wyszyńskiego przed mostem Mieszka I w stronę Katedry.',
+      'rondo-srodka45':
+        'Peron tramwajowy na ul. Wyszyńskiego przed mostem Mieszka I w stronę Katedry.',
+      'rondo-srodka46-y863o':
+        'Peron tramwajowy na ul. Warszawskiej obok dworca Śródka w stronę Miłostowa.',
+      'rondo-srodka46':
+        'Peron tramwajowy na ul. Warszawskiej obok dworca Śródka w stronę Miłostowa.',
+      'rondo-srodka01-y7nkx':
+        'Stanowisko 01 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka01':
+        'Stanowisko 01 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka03-y7wul':
+        'Stanowisko 03 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka03':
+        'Stanowisko 03 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka04-y52zi':
+        'Stanowisko 04 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka04':
+        'Stanowisko 04 • Dworzec autobusowy Rondo Śródka.',
+
+      // Os. Sobieskiego
+      'os-sobieskiego41-wscs0':
+        'Peron 1 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
+      'os-sobieskiego41':
+        'Peron 1 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
+      'os-sobieskiego42-wqxum':
+        'Peron 2 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
+      'os-sobieskiego42':
+        'Peron 2 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
+      'os-sobieskiego01-wqjyl':
+        'Stanowisko 01 • Dworzec autobusowy Os. Sobieskiego obok pętli PST.',
+      'os-sobieskiego01':
+        'Stanowisko 01 • Dworzec autobusowy Os. Sobieskiego obok pętli PST.',
+
+      // Rynek Jeżycki
+      'rynek-jezycki71-walhm':
+        'Peron tramwajowy na ul. Dąbrowskiego obok Rynku Jeżyckiego w stronę Ogrodów.',
+      'rynek-jezycki71':
+        'Peron tramwajowy na ul. Dąbrowskiego obok Rynku Jeżyckiego w stronę Ogrodów.',
+      'rynek-jezycki72-wa2yw':
+        'Peron tramwajowy na ul. Dąbrowskiego obok Rynku Jeżyckiego w stronę centrum.',
+      'rynek-jezycki72':
+        'Peron tramwajowy na ul. Dąbrowskiego obok Rynku Jeżyckiego w stronę centrum.',
+      'rynek-jezycki73-wbmj1':
+        'Peron tramwajowy na ul. Kraszewskiego obok Rynku Jeżyckiego w stronę Zwierzynieckiej.',
+      'rynek-jezycki73':
+        'Peron tramwajowy na ul. Kraszewskiego obok Rynku Jeżyckiego w stronę Zwierzynieckiej.',
+      'rynek-jezycki74-wcnka':
+        'Peron tramwajowy na ul. Kraszewskiego obok Rynku Jeżyckiego w stronę Dąbrowskiego.',
+      'rynek-jezycki74':
+        'Peron tramwajowy na ul. Kraszewskiego obok Rynku Jeżyckiego w stronę Dąbrowskiego.',
+
+      // Rynek Wildecki
+      'rynek-wildecki71-wvoll':
+        'Peron tramwajowy na ul. Wierzbięcice obok Rynku Wildeckiego w stronę Dębca.',
+      'rynek-wildecki71':
+        'Peron tramwajowy na ul. Wierzbięcice obok Rynku Wildeckiego w stronę Dębca.',
+      'rynek-wildecki72-ww2hn':
+        'Peron tramwajowy na ul. Wierzbięcice obok Rynku Wildeckiego w stronę Mostu Dworcowego.',
+      'rynek-wildecki72':
+        'Peron tramwajowy na ul. Wierzbięcice obok Rynku Wildeckiego w stronę Mostu Dworcowego.',
+
+      // Aleje Marcinkowskiego / Plac Wolności
+      'aleje-marcinkowskiego71-x63pc':
+        'Peron tramwajowy w Alejach Marcinkowskiego obok Placu Wolności w stronę mostu Rocha.',
+      'aleje-marcinkowskiego71':
+        'Peron tramwajowy w Alejach Marcinkowskiego obok Placu Wolności w stronę mostu Rocha.',
+      'aleje-marcinkowskiego72-x6m89':
+        'Peron tramwajowy w Alejach Marcinkowskiego obok Placu Wolności w stronę Ronda Kaponiera.',
+      'aleje-marcinkowskiego72':
+        'Peron tramwajowy w Alejach Marcinkowskiego obok Placu Wolności w stronę Ronda Kaponiera.',
+
+      // Pl. Wielkopolski & Pl. Bernardyński
+      'pl-wielkopolski41-x9bh3':
+        'Peron tramwajowy przy placu targowym na Placu Wielkopolskim w stronę Małych Garbar.',
+      'pl-wielkopolski41':
+        'Peron tramwajowy przy placu targowym na Placu Wielkopolskim w stronę Małych Garbar.',
+      'pl-wielkopolski42-x927s':
+        'Peron tramwajowy przy placu targowym na Placu Wielkopolskim w stronę Placu Ratajskiego.',
+      'pl-wielkopolski42':
+        'Peron tramwajowy przy placu targowym na Placu Wielkopolskim w stronę Placu Ratajskiego.',
+      'pl-bernardynski71-xh17f':
+        'Peron tramwajowy na Placu Bernardyńskim przed kościołem św. Franciszka z Asyżu w stronę mostu Rocha.',
+      'pl-bernardynski71':
+        'Peron tramwajowy na Placu Bernardyńskim przed kościołem św. Franciszka z Asyżu w stronę mostu Rocha.',
+      'pl-bernardynski72-xgry4':
+        'Peron tramwajowy na Placu Bernardyńskim przed kościołem św. Franciszka z Asyżu w stronę centrum.',
+      'pl-bernardynski72':
+        'Peron tramwajowy na Placu Bernardyńskim przed kościołem św. Franciszka z Asyżu w stronę centrum.',
+
+      // Pętle PKM
+      'gorczyn-pkm41-vh0fq':
+        'Peron odjazdowy tramwajów na pętli Górczyn PKM przed dworcem kolejowym.',
+      'gorczyn-pkm41':
+        'Peron odjazdowy tramwajów na pętli Górczyn PKM przed dworcem kolejowym.',
+      'debiec-pkm41-w9k5d':
+        'Peron odjazdowy tramwajów na pętli Dębiec PKM przed pętlą autobusową.',
+      'debiec-pkm41':
+        'Peron odjazdowy tramwajów na pętli Dębiec PKM przed pętlą autobusową.',
+      'staroleka-pkm41-xa7k4':
+        'Peron odjazdowy tramwajów na pętli Starołęka PKM przed dworcem kolejowym.',
+      'staroleka-pkm41':
+        'Peron odjazdowy tramwajów na pętli Starołęka PKM przed dworcem kolejowym.',
+      'ogrody41-viy5n':
+        'Peron odjazdowy tramwajów na pętli Ogrody przy pętli autobusowej na ul. Dąbrowskiego.',
+      'ogrody41':
+        'Peron odjazdowy tramwajów na pętli Ogrody przy pętli autobusowej na ul. Dąbrowskiego.',
+    };
   } else if (city === 'krakow') {
     SPECIFIC_POLE_HINTS = {
       // Dworzec Główny Tunel (KST pod peronami PKP)
@@ -713,7 +1002,7 @@ async function processCity(city) {
   let skippedCount = 0;
 
   for (const stop of allStops) {
-    const key = city === 'warszawa' ? stop.id : stop.code || stop.id;
+    const key = (city === 'warszawa' || city === 'poznan') ? stop.id : stop.code || stop.id;
     if (stopsOutput[key]) continue;
 
     const landmark = findNearbyLandmark(stop.lat, stop.lon);
@@ -729,9 +1018,11 @@ async function processCity(city) {
         ? stop.code && parseInt(stop.code, 10) >= 30
           ? 'Peron tramwajowy'
           : 'Zatoka autobusowa'
-        : stop.isTram
-          ? 'Peron tramwajowy'
-          : 'Zatoka autobusowa';
+        : city === 'poznan' && parseInt(stop.code, 10) >= 41 && parseInt(stop.code, 10) <= 49
+          ? 'Peron PST w wykopie'
+          : stop.isTram
+            ? 'Peron tramwajowy'
+            : 'Zatoka autobusowa';
 
     const streetStr = formatStreet(stop.street);
 
@@ -755,6 +1046,13 @@ async function processCity(city) {
           polePrefix = `Słupek ${poleNum} • `;
         }
       }
+    } else if (city === 'poznan') {
+      const n = parseInt(stop.code, 10);
+      if (n >= 41 && n <= 49) {
+        polePrefix = `Słupek ${stop.code} (PST) • `;
+      } else if (stop.code) {
+        polePrefix = `Słupek ${stop.code} • `;
+      }
     }
 
     let sentence = '';
@@ -773,6 +1071,15 @@ async function processCity(city) {
     }
     if (stop.prefix && stop.id) {
       stopsOutput[`${stop.prefix}:${stop.id}`] = sentence;
+    }
+    if (city === 'poznan') {
+      if (stop.name) {
+        stopsOutput[stop.name] = sentence;
+      }
+      const slug = stop.id.split('-').slice(0, -1).join('-');
+      if (slug && slug !== stop.id) {
+        stopsOutput[slug] = sentence;
+      }
     }
   }
 
@@ -806,7 +1113,7 @@ async function main() {
   const allArg = process.argv.includes('--all');
 
   const citiesToRun = allArg
-    ? ['wroclaw', 'warszawa', 'gzm', 'krakow']
+    ? ['wroclaw', 'warszawa', 'gzm', 'krakow', 'poznan']
     : [cityArg ? cityArg.split('=')[1] : 'wroclaw'];
 
   for (const city of citiesToRun) {

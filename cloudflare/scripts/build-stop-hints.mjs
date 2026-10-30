@@ -36,6 +36,7 @@ const PHYSICAL_ANCHOR_PATTERNS = [
   /pkp/i,
   /metro/i,
   /most/i,
+  /mo[sś]c/i,
   /wiadukt/i,
   /wyspa centralna/i,
   /peron \d/i,

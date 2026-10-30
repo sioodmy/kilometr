@@ -19,7 +19,7 @@ on:
         required: false
         default: 'all'
         type: choice
-        options: ['all', 'wroclaw', 'warszawa', 'gzm', 'krakow']
+        options: ['all', 'wroclaw', 'warszawa', 'gzm', 'krakow', 'poznan']
 
 permissions:
   contents: read
@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '' && inputs.city != 'all') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "warszawa", "gzm", "krakow"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '' && inputs.city != 'all') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "warszawa", "gzm", "krakow", "poznan"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
