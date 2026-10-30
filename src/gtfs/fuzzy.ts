@@ -1,3 +1,4 @@
+import { normalizePolish } from './geo';
 // Fuzzy search - wykonywany natywnie w Rust (JNI na Androidzie / inline WASM w Node/Hermes).
 import {
   BinaryReader,
@@ -50,6 +51,12 @@ export function fuzzyMatch(query: string, target: string): FuzzyResult {
     const score = r.i32();
     return { matches, score };
   }
+  const q = normalizePolish(query).toLowerCase().trim();
+  const t = normalizePolish(target).toLowerCase().trim();
+  if (!q || !t) return { matches: false, score: 0 };
+  if (t === q) return { matches: true, score: 100 };
+  if (t.startsWith(q)) return { matches: true, score: 90 };
+  if (t.includes(q)) return { matches: true, score: 75 };
   return { matches: false, score: 0 };
 }
 

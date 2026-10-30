@@ -105,9 +105,24 @@ function resolveStopHint(
     return extractHintText(dataset.stops[stopCode]);
   }
 
-  // UWAGA: Świadomie NIE robimy fallbacku do ogólnych opisów węzłów (clusters).
-  // Pasażer musi mieć pewność z którego konkretnie peronu/słupka odjeżdża.
-  // Ogólny opis całego węzła nie daje mu odpowiedzi na pytanie "skąd odjeżdża mój pojazd".
+  // Warianty z normalizacją kluczy (np. leading zeroes lub 5-cyfrowe dopełnienia dla przesiadek)
+  if (stopId) {
+    const trimmedId = stopId.trim();
+    if (dataset.stops[trimmedId]) return extractHintText(dataset.stops[trimmedId]);
+    const noLeadingZeros = trimmedId.replace(/^0+/, '');
+    if (noLeadingZeros && dataset.stops[noLeadingZeros]) return extractHintText(dataset.stops[noLeadingZeros]);
+    const pad5 = trimmedId.padStart(5, '0');
+    if (dataset.stops[pad5]) return extractHintText(dataset.stops[pad5]);
+  }
+  if (stopCode) {
+    const trimmedCode = stopCode.trim();
+    if (dataset.stops[trimmedCode]) return extractHintText(dataset.stops[trimmedCode]);
+    const noLeadingZeros = trimmedCode.replace(/^0+/, '');
+    if (noLeadingZeros && dataset.stops[noLeadingZeros]) return extractHintText(dataset.stops[noLeadingZeros]);
+    const pad5 = trimmedCode.padStart(5, '0');
+    if (dataset.stops[pad5]) return extractHintText(dataset.stops[pad5]);
+  }
+
   return null;
 }
 
@@ -123,4 +138,3 @@ export function useStopHint(
     [dataset, stopCode, stopId, stopName],
   );
 }
-

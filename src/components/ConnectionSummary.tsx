@@ -1,13 +1,11 @@
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ArrowDown, ArrowRight, Check, Clock3 } from './icons';
+import { ArrowDown, ArrowRight, Clock3 } from './icons';
 import { useStrings } from '../i18n';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
-import { LineBadge } from './LineBadge';
 import { RollingTime } from './RollingTime';
 import { boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { secondsToTimeString } from '../gtfs/geo';
-import { reliabilityNotice } from './reliabilityNotice';
 
 export function ConnectionSummary({
   item,
@@ -31,23 +29,6 @@ export function ConnectionSummary({
   const departureDelay =
     firstVehicle?.live && !offline ? Math.round((firstVehicle.delaySec ?? 0) / 60) : 0;
   const hasApproach = item.legs[0]?.mode === 'walk' && firstVehicle != null;
-  const live = item.live && !offline;
-  const notice = offline ? undefined : reliabilityNotice(boarding, s);
-  const statusColor =
-    live && item.delayMin > 0
-      ? scheme.error
-      : live && item.delayMin < 0
-        ? scheme.warning
-        : scheme.onSurfaceVariant;
-  const status = !live
-    ? offline
-      ? s.routeDetails.scheduleCache
-      : s.routeDetails.schedule
-    : item.delayMin > 0
-      ? s.routeDetails.late(item.delayMin)
-      : item.delayMin < 0
-        ? s.routeDetails.early(-item.delayMin)
-        : s.routeDetails.onTime;
   const Direction = stacked ? ArrowDown : ArrowRight;
 
   return (
@@ -100,22 +81,6 @@ export function ConnectionSummary({
           {boarding.length === 0 ? s.connection.walkAll : s.connection.transfers(item.transfers)}
         </Text>
       </View>
-      <View style={styles.footer}>
-        {boarding.length > 0 && (
-          <View style={styles.lines}>
-            {boarding.map((leg, index) => (
-              <LineBadge key={`${leg.id}-${index}`} line={leg.line} mode={leg.mode} compact />
-            ))}
-          </View>
-        )}
-        {!notice && (!live || departureDelay === 0 || item.delayMin !== departureDelay) && (
-          <View style={styles.fact}>
-            {!notice && live && item.delayMin === 0 && <Check size={16} color={scheme.primary} />}
-            <Text style={[styles.status, { color: statusColor }]}>{status}</Text>
-          </View>
-        )}
-      </View>
-      {notice && <Text style={[styles.status, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
     </View>
   );
 }
@@ -146,16 +111,5 @@ const styles = StyleSheet.create({
   facts: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 18, rowGap: 8 },
   fact: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 },
   duration: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
-  footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: scheme.outlineVariant,
-    paddingTop: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  lines: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, flexShrink: 1 },
   status: { ...type.bodySmall, flexShrink: 1 },
 });
