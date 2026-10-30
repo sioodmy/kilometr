@@ -5,6 +5,7 @@ import {
   BusFront,
   ChevronDown,
   Footprints,
+  MapPin,
   Ticket,
   TrainFront,
   TramFront,
@@ -37,11 +38,13 @@ import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
+import { useStopHint } from '../services/stopHints';
+import { getActiveCityIdSync } from '../services/cityStore';
 
 const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
-// Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
-// pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
+// Środek transportu w dopełniaczu („tramwajem między A a B”). Osobna gałąź na
+// pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem”.
 function genericModeNom(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.leg.modeTram;
   if (mode === 'train') return t.leg.modeTrain;
@@ -61,7 +64,63 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
-// ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
+function formatPlatformLabel(code?: string | null, mode?: Leg['mode'], stopName?: string | null): string | null {
+  let trimmed = (code || '').trim();
+  if (!trimmed && stopName) {
+    const m = stopName.trim().match(/\s(\d{2})$/);
+    if (m) {
+      trimmed = m[1];
+    }
+  }
+  if (!trimmed) return null;
+
+  if (/^(peron|słupek|słup|stanowisko)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Węzły GZM: np. 2469011-00103 -> Stanowisko 3
+  const gzmMatch = trimmed.match(/-(\d{3})(\d{2})([a-z]?)$/i);
+  if (gzmMatch) {
+    return `Stanowisko ${parseInt(gzmMatch[2], 10)}`;
+  }
+
+  // Zespoły / Kraków: np. 103-05 -> Słupek 05 (lub Peron 1/2 dla tramwaju)
+  const krkMatch = trimmed.match(/^\d{1,4}-(\d{2})$/);
+  if (krkMatch) {
+    const poleNum = krkMatch[1];
+    const n = parseInt(poleNum, 10);
+    if (mode === 'tram' && (n === 1 || n === 2)) {
+      return `Peron ${n}`;
+    }
+    return `Słupek ${poleNum}`;
+  }
+
+  // Pociąg / metro
+  if (mode === 'train' || mode === 'subway') {
+    return `Peron ${trimmed}`;
+  }
+
+  // 1-2 cyfry (np. Warszawa '01', Poznań '71', '42')
+  if (/^\d{1,2}$/.test(trimmed)) {
+    const n = parseInt(trimmed, 10);
+    if (n >= 41 && n <= 49) {
+      return `PST Słupek ${trimmed}`;
+    }
+    if (trimmed.startsWith('0') || n >= 10) {
+      return `Słupek ${trimmed}`;
+    }
+    return `Peron ${trimmed}`;
+  }
+
+  // 5-cyfrowy kod słupka (np. Wrocław 20820)
+  if (/^\d{5}$/.test(trimmed)) {
+    return `Słupek ${trimmed}`;
+  }
+
+  return `Peron ${trimmed}`;
+}
+
+// ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ───────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
 // pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
 // najstarszy wpis - bez dodatkowej kolejki.
@@ -185,11 +244,7 @@ const StopRow = memo(function StopRow({
       ) : (
         <View style={s.stopBody}>
           <Text
-            style={[
-              s.stopName,
-              emphasis && s.stopNameStrong,
-              passed ? s.stopNamePassed : null,
-            ]}
+            style={[s.stopName, emphasis && s.stopNameStrong, passed ? s.stopNamePassed : null]}
             numberOfLines={1}
           >
             {stop.name}
@@ -200,7 +255,7 @@ const StopRow = memo(function StopRow({
   );
 });
 
-// ─── Rozwijana lista kropek dla jednego lega ───────────────────────────────────
+// ─── Rozwijana lista kropek dla jednego lega ──────────────────────────────────
 function LegStopsList({
   leg,
   accent,
@@ -277,7 +332,7 @@ function LegStopsList({
   );
 }
 
-// ─── Karta jednego przejazdu (klik = rozwiń) ─────────────────────────────────
+// ─── Karta jednego przejazdu (klik = rozwiń) ──────────────────────────────────
 // Rozwijanie animowaną wysokością (a nie montowaniem): lista montuje się raz
 // przy pierwszym otwarciu i zostaje, a kontener płynnie rośnie/maleje.
 // Dzięki temu zero skoku layoutu i zero flickeru.
@@ -298,7 +353,8 @@ function TransitLegCard({
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
   const scheduledDeparture = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt)).departure;
-  const delayMin = leg.live || leg.delayConfidence === 'estimated' ? Math.round((leg.delaySec ?? 0) / 60) : 0;
+  const delayMin =
+    leg.live || leg.delayConfidence === 'estimated' ? Math.round((leg.delaySec ?? 0) / 60) : 0;
   const notice = reliabilityNotice([leg], t);
   const stopsCount = useMemo(() => {
     const stops = leg.intermediateStops;
@@ -311,6 +367,13 @@ function TransitLegCard({
   }, [leg]);
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
+
+  const activeCityId = useMemo(() => getActiveCityIdSync(), []);
+  const stopHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
+  const departurePlatform = useMemo(
+    () => formatPlatformLabel(leg.platformCode, leg.mode, leg.fromStop),
+    [leg.platformCode, leg.mode],
+  );
 
   const cacheKey = leg.tripId || leg.id;
   const [stops, setStops] = useState<LegStop[]>(
@@ -437,9 +500,27 @@ function TransitLegCard({
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={[t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded), notice].filter(Boolean).join('. ')}
+        accessibilityLabel={[
+          t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded),
+          notice,
+        ]
+          .filter(Boolean)
+          .join('. ')}
         style={({ pressed }) => [s.card, pressed && { opacity: 0.96 }]}
       >
+        {stopHint && (
+          <View style={s.hintBanner} accessibilityRole="text">
+            <View style={s.hintPinWrapper}>
+              <MapPin size={13} color={scheme.primary} />
+            </View>
+            <Text style={s.hintText} numberOfLines={3}>
+              {!/^(słupek|peron|stanowisko)\b/i.test(stopHint) && departurePlatform ? (
+                <Text style={s.hintPlatformBold}>{departurePlatform} • </Text>
+              ) : null}
+              {stopHint}
+            </Text>
+          </View>
+        )}
         <View style={s.cardTop}>
           <LineBadge mode={leg.mode} line={leg.line} />
           <Text style={s.dir} numberOfLines={1}>
@@ -450,18 +531,34 @@ function TransitLegCard({
             <ChevronDown size={18} color={scheme.onSurfaceVariant} />
           </Animated.View>
         </View>
-        <Text style={s.stopBig}>
-          <Text style={s.stopPrefix}>{t.leg.fromPrefix}</Text>
-          {leg.fromStop} <Text style={s.hour}>{leg.departAt}</Text>
-        </Text>
+        <View style={s.stopHeaderRow}>
+          <View style={s.stopTitleWrap}>
+            <Text style={s.stopBig}>
+              <Text style={s.stopPrefix}>{t.leg.fromPrefix}</Text>
+              {leg.fromStop}
+            </Text>
+            {departurePlatform ? (
+              <View style={s.platformBadge}>
+                <Text style={s.platformBadgeText}>{departurePlatform}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={s.hour}>{leg.departAt}</Text>
+        </View>
         {delayMin !== 0 && scheduledDeparture != null && (
           <Text style={[s.meta, { color: delayMin > 0 ? scheme.error : scheme.warning }]}>
             {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
             {' · '}
-            {leg.delayConfidence === 'estimated' ? t.routeDetails.estimatedDelay(delayMin) : delayMin > 0 ? t.routeDetails.late(delayMin) : t.routeDetails.early(-delayMin)}
+            {leg.delayConfidence === 'estimated'
+              ? t.routeDetails.estimatedDelay(delayMin)
+              : delayMin > 0
+                ? t.routeDetails.late(delayMin)
+                : t.routeDetails.early(-delayMin)}
           </Text>
         )}
-        {notice && (delayMin === 0 || scheduledDeparture == null) && <Text style={s.meta}>{notice}</Text>}
+        {notice && (delayMin === 0 || scheduledDeparture == null) && (
+          <Text style={s.meta}>{notice}</Text>
+        )}
         {liveNearLabel ? (
           <Text style={s.liveNearText} numberOfLines={1}>
             {liveNearLabel}
@@ -494,7 +591,6 @@ function TransitLegCard({
     </Animated.View>
   );
 }
-
 
 /** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
 export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observeOnly?: boolean }) {
@@ -544,10 +640,14 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
           );
         }
         const { bg: accent } = getLineColors(leg.line, leg.mode);
-        const nextVehicle = legs.slice(i + 1).find(next => next.mode !== 'walk');
-        let transferGap = nextVehicle ? timeStringToSeconds(nextVehicle.departAt) - timeStringToSeconds(leg.arriveAt) : Infinity;
+        const nextVehicle = legs.slice(i + 1).find((next) => next.mode !== 'walk');
+        let transferGap = nextVehicle
+          ? timeStringToSeconds(nextVehicle.departAt) - timeStringToSeconds(leg.arriveAt)
+          : Infinity;
         if (transferGap < -43200) transferGap += 86400;
-        const uncertainTransfer = (leg.delayConfidence === 'estimated' || leg.delayConfidence === 'untracked') && transferGap < 360;
+        const uncertainTransfer =
+          (leg.delayConfidence === 'estimated' || leg.delayConfidence === 'untracked') &&
+          transferGap < 360;
         return (
           <Animated.View key={leg.id} layout={legTransition} style={s.row}>
             <View style={s.rail}>
@@ -603,8 +703,62 @@ const s = StyleSheet.create({
     gap: 8,
     ...elev.level1,
   },
+  hintBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.medium,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    overflow: 'hidden',
+  },
+  hintPinWrapper: {
+    marginTop: 1.5,
+    flexShrink: 0,
+  },
+  hintText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontSize: 12,
+    lineHeight: 16,
+    flex: 1,
+    flexShrink: 1,
+  },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dir: { flex: 1, ...type.labelLarge, color: scheme.onSurface },
+  stopHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  stopTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  platformBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: shape.small,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  platformBadgeText: {
+    ...type.labelSmall,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  hintPlatformBold: {
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
   stopBig: { ...type.titleSmall, color: scheme.onSurface },
   stopPrefix: { fontWeight: '400', color: scheme.onSurfaceVariant },
   hour: { color: scheme.onSurfaceVariant, fontWeight: '400' },

@@ -833,7 +833,13 @@ export const en: Strings = {
     filterNoHistoryBody:
       'Look up a connection in the app, then you will see updates for those lines here.',
     resolved: 'Traffic restored',
-    solutionLabel: 'Solution',
+    solutionLabel: 'Detour route',
+    detourLabel: 'Detour route',
+    detourAndReplacement: 'Detour & replacement bus',
+    replacementBus: 'Replacement bus',
+    urgentChip: 'Disruption',
+    plannedChip: 'Service change',
+    omittedStopsPrefix: 'Skips:',
   },
   newsSvc: {
     justNow: 'just now',
