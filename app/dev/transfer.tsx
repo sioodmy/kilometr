@@ -51,7 +51,6 @@ export default function TransferPreview() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.demo}>{s.transferGuard.demo}</Text>
         <ConnectionSummary item={fixture.connection} />
-        <LegTimeline legs={fixture.connection.legs} />
         {hasTransfer(fixture.connection) && (
           <TransferProtectionCard
             state={active ? fixture.state : undefined}
@@ -62,6 +61,7 @@ export default function TransferPreview() {
             }}
           />
         )}
+        <LegTimeline legs={fixture.connection.legs} />
         {hasTransfer(fixture.connection) && (
           <View style={styles.modes}>
             {modes.map((mode, index) => (

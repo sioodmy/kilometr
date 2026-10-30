@@ -19,7 +19,7 @@ import Animated, {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
-import { LiveDot } from './LiveDot';
+import { LiveSensors } from './LiveDot';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import { liveTracker, type TrackedVehicle } from '../services/liveTracker';
@@ -369,10 +369,11 @@ function TransitLegCard({
   const [hasOpened, setHasOpened] = useState(expanded);
 
   const activeCityId = useMemo(() => getActiveCityIdSync(), []);
-  const stopHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
+  const resolvedHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
+  const stopHint = leg.stopHint ?? resolvedHint;
   const departurePlatform = useMemo(
     () => formatPlatformLabel(leg.platformCode, leg.mode, leg.fromStop),
-    [leg.platformCode, leg.mode],
+    [leg.platformCode, leg.mode, leg.fromStop],
   );
 
   const cacheKey = leg.tripId || leg.id;
@@ -470,7 +471,7 @@ function TransitLegCard({
       unsub();
       clearInterval(timer);
     };
-  }, [leg.line, leg.mode, leg.tripId, allowLive]);
+  }, [allowLive, leg.line, leg.mode, leg.tripId]);
 
   const nearestStop = useMemo(() => {
     if (!allowLive || (!vehicle && !leg.live)) return null;
@@ -508,91 +509,134 @@ function TransitLegCard({
           .join('. ')}
         style={({ pressed }) => [s.card, pressed && { opacity: 0.96 }]}
       >
-        {stopHint && (
-          <View style={s.hintBanner} accessibilityRole="text">
-            <View style={s.hintPinWrapper}>
-              <MapPin size={13} color={scheme.primary} />
-            </View>
-            <Text style={s.hintText} numberOfLines={3}>
-              {!/^(słupek|peron|stanowisko)\b/i.test(stopHint) && departurePlatform ? (
-                <Text style={s.hintPlatformBold}>{departurePlatform} • </Text>
-              ) : null}
-              {stopHint}
-            </Text>
-          </View>
-        )}
-        <View style={s.cardTop}>
-          <LineBadge mode={leg.mode} line={leg.line} />
-          <Text style={s.dir} numberOfLines={1}>
-            {leg.direction}
-          </Text>
-          {leg.live ? <LiveDot color={scheme.success} size={8} pingKey={pingKey} /> : null}
-          <Animated.View style={chevronStyle}>
-            <ChevronDown size={18} color={scheme.onSurfaceVariant} />
-          </Animated.View>
-        </View>
-        <View style={s.stopHeaderRow}>
+        {/* 1. Przystanek początkowy (bez prefixu "z") + godzina odjazdu po prawej */}
+        <View style={s.cardStartRow}>
           <View style={s.stopTitleWrap}>
-            <Text style={s.stopBig}>
-              <Text style={s.stopPrefix}>{t.leg.fromPrefix}</Text>
-              {leg.fromStop}
-            </Text>
+            <Text style={s.cardStopName}>{leg.fromStop}</Text>
             {departurePlatform ? (
               <View style={s.platformBadge}>
                 <Text style={s.platformBadgeText}>{departurePlatform}</Text>
               </View>
             ) : null}
           </View>
-          <Text style={s.hour}>{leg.departAt}</Text>
+          <Text style={s.cardTime}>{leg.departAt}</Text>
         </View>
-        {delayMin !== 0 && scheduledDeparture != null && (
-          <Text style={[s.meta, { color: delayMin > 0 ? scheme.error : scheme.warning }]}>
-            {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
-            {' · '}
-            {leg.delayConfidence === 'estimated'
-              ? t.routeDetails.estimatedDelay(delayMin)
-              : delayMin > 0
-                ? t.routeDetails.late(delayMin)
-                : t.routeDetails.early(-delayMin)}
-          </Text>
-        )}
-        {notice && (delayMin === 0 || scheduledDeparture == null) && (
-          <Text style={s.meta}>{notice}</Text>
-        )}
-        {liveNearLabel ? (
-          <Text style={s.liveNearText} numberOfLines={1}>
-            {liveNearLabel}
-          </Text>
+
+        {/* 2. Stop-hint: M3 tonal callout container z mikro-ikoną */}
+        {stopHint ? (
+          <View style={s.stopHintContainer}>
+            <MapPin size={13} color={scheme.primary} style={s.stopHintIcon} />
+            <Text style={s.cardStopHint}>
+              {!/^(słupek|peron|stanowisko)\b/i.test(stopHint) && departurePlatform ? (
+                <Text style={s.hintPlatformBold}>{departurePlatform} • </Text>
+              ) : null}
+              {stopHint}
+            </Text>
+          </View>
         ) : null}
-        <Text style={s.meta}>{t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}</Text>
-        <Text style={s.stopBig}>
-          <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
-          {leg.toStop} <Text style={s.hour}>{leg.arriveAt}</Text>
-        </Text>
-        {(expanded || hasOpened) && (
-          <Animated.View
-            layout={legTransition}
-            style={expanded ? s.stopsWrap : s.stopsCollapsed}
-            accessibilityElementsHidden={!expanded}
-            importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
-          >
-            <LegStopsList
-              leg={leg}
-              accent={accent}
-              userLocation={userLocation}
-              allowLive={allowLive}
-              stops={stops}
-              vehicle={vehicle}
-              loading={loading}
-            />
-          </Animated.View>
-        )}
+
+        {/* 3. Poziomy separator */}
+        <View style={s.cardSeparator} />
+
+        {/* 4. Środek: linia, kierunek, sensors live + na czas, rozwijana lista, podsumowanie */}
+        <View style={s.cardMiddleSection}>
+          <View style={s.cardTop}>
+            <LineBadge mode={leg.mode} line={leg.line} />
+            <Text style={s.dir} numberOfLines={1}>
+              {leg.direction}
+            </Text>
+            <Animated.View style={chevronStyle}>
+              <ChevronDown size={18} color={scheme.onSurfaceVariant} />
+            </Animated.View>
+          </View>
+
+          {leg.live || notice || (delayMin !== 0 && scheduledDeparture != null) ? (
+            <View style={s.liveStatusBlock}>
+              <View style={s.liveSensorsCol}>
+                {leg.live ? (
+                  <LiveSensors color={scheme.success} size={15} pingKey={pingKey} />
+                ) : null}
+              </View>
+              <View style={s.liveTextCol}>
+                {leg.live ? (
+                  <Text style={s.liveLocationLabel} numberOfLines={1}>
+                    {nearestStop
+                      ? `Obecna lokacja: ${nearestStop.name}`
+                      : leg.liveNextStop
+                        ? `Obecna lokacja: ${leg.liveNextStop}`
+                        : liveNearLabel || 'Śledzenie na żywo'}
+                  </Text>
+                ) : null}
+
+                {delayMin !== 0 && scheduledDeparture != null ? (
+                  <Text
+                    style={[
+                      s.delayLabel,
+                      { color: delayMin > 0 ? scheme.error : scheme.warning },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
+                    {' · '}
+                    {leg.delayConfidence === 'estimated'
+                      ? t.routeDetails.estimatedDelay(delayMin)
+                      : delayMin > 0
+                        ? t.routeDetails.late(delayMin)
+                        : t.routeDetails.early(-delayMin)}
+                  </Text>
+                ) : leg.live ? (
+                  <Text style={[s.delayLabel, { color: scheme.success }]} numberOfLines={1}>
+                    {notice || t.routeDetails.onTime}
+                  </Text>
+                ) : notice ? (
+                  <Text style={s.meta}>{notice}</Text>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Przystanki rozwijają się NAD etykietą podsumowania */}
+          {(expanded || hasOpened) && (
+            <Animated.View
+              layout={legTransition}
+              style={expanded ? s.stopsWrap : s.stopsCollapsed}
+              accessibilityElementsHidden={!expanded}
+              importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
+            >
+              <LegStopsList
+                leg={leg}
+                accent={accent}
+                userLocation={userLocation}
+                allowLive={allowLive}
+                stops={stops}
+                vehicle={vehicle}
+                loading={loading}
+              />
+            </Animated.View>
+          )}
+
+          {/* Etykieta podsumowania przystanków - bliżej separatora, dalej od sekcji live/na czas */}
+          <View style={s.stopsSummaryWrap}>
+            <Text style={s.stopsSummaryLabel}>
+              {t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
+            </Text>
+          </View>
+        </View>
+
+        {/* 5. Poziomy separator */}
+        <View style={s.cardSeparator} />
+
+        {/* 6. Przystanek docelowy (bez prefixu "do:") + godzina przyjazdu po prawej */}
+        <View style={s.cardEndRow}>
+          <Text style={s.cardStopName}>{leg.toStop}</Text>
+          <Text style={s.cardTime}>{leg.arriveAt}</Text>
+        </View>
       </Pressable>
     </Animated.View>
   );
 }
 
-/** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
+/** Vertical timeline bez railu po lewej stronie, wyśrodkowane dojścia pieszo. */
 export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observeOnly?: boolean }) {
   const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -602,7 +646,6 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
   return (
     <View style={s.list}>
       {legs.map((leg, i) => {
-        const last = i === legs.length - 1;
         if (leg.mode === 'walk') {
           const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
           const isSameStop =
@@ -610,36 +653,34 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
 
           return (
-            <Animated.View key={leg.id} layout={legTransition} style={s.row}>
-              <View style={s.rail}>
-                <View style={s.walkLine} />
-                <View style={[s.node, s.walkNode]}>
-                  <Footprints size={13} color={scheme.onSurfaceVariant} />
-                </View>
-                {!last && <View style={s.walkLine} />}
+            <Animated.View key={leg.id} layout={legTransition} style={s.walkCentered}>
+              <View style={s.walkConnectorLine} />
+              <View style={s.walkPill}>
+                <Footprints size={15} color={scheme.primary} />
+                <Text style={s.walkPillTitle}>
+                  {formatWalkTime(walkMin)}
+                  {leg.walkM ? ` · ${Math.round(leg.walkM)} m` : ''}
+                </Text>
               </View>
-              <View style={s.body}>
-                <Text style={s.walkText}>{formatWalkTime(walkMin)}</Text>
-                {isSameStop ? (
+              {isSameStop ? (
+                <Text style={s.walkSub} numberOfLines={1}>
+                  {leg.fromStop}
+                </Text>
+              ) : (
+                <View style={s.walkSubRow}>
                   <Text style={s.walkSub} numberOfLines={1}>
                     {leg.fromStop}
                   </Text>
-                ) : (
-                  <View style={s.walkSubRow}>
-                    <Text style={s.walkSub} numberOfLines={1}>
-                      {leg.fromStop}
-                    </Text>
-                    <ArrowRight size={12} color={scheme.onSurfaceVariant} />
-                    <Text style={s.walkSub} numberOfLines={1}>
-                      {leg.toStop}
-                    </Text>
-                  </View>
-                )}
-              </View>
+                  <ArrowRight size={11} color={scheme.onSurfaceVariant} />
+                  <Text style={s.walkSub} numberOfLines={1}>
+                    {leg.toStop}
+                  </Text>
+                </View>
+              )}
+              <View style={s.walkConnectorLine} />
             </Animated.View>
           );
         }
-        const { bg: accent } = getLineColors(leg.line, leg.mode);
         const nextVehicle = legs.slice(i + 1).find((next) => next.mode !== 'walk');
         let transferGap = nextVehicle
           ? timeStringToSeconds(nextVehicle.departAt) - timeStringToSeconds(leg.arriveAt)
@@ -648,24 +689,35 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
         const uncertainTransfer =
           (leg.delayConfidence === 'estimated' || leg.delayConfidence === 'untracked') &&
           transferGap < 360;
+        const hasNextLeg = i < legs.length - 1;
+        const nextLegIsTransit = hasNextLeg && legs[i + 1].mode !== 'walk';
         return (
-          <Animated.View key={leg.id} layout={legTransition} style={s.row}>
-            <View style={s.rail}>
-              {!last && <View style={[s.spine, { backgroundColor: accent }]} />}
-              <View style={[s.node, { borderColor: accent }]}>
-                <View style={[s.innerDot, { backgroundColor: accent }]} />
+          <Animated.View key={leg.id} layout={legTransition} style={s.cardContainer}>
+            <TransitLegCard
+              leg={leg}
+              expanded={expandedId === leg.id}
+              userLocation={observeOnly ? null : location}
+              allowLive={!observeOnly || leg.live}
+              onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
+            />
+            {uncertainTransfer && <Text style={s.uncertainText}>{t.routeDetails.uncertainTransfer}</Text>}
+            {nextLegIsTransit && (
+              <View style={s.walkCentered}>
+                <View style={s.walkConnectorLine} />
+                <View style={s.walkPill}>
+                  <Footprints size={15} color={scheme.primary} />
+                  <Text style={s.walkPillTitle}>
+                    {transferGap > 0 && transferGap < 3600
+                      ? `Przesiadka · ~${Math.round(transferGap / 60)} min`
+                      : 'Przesiadka'}
+                  </Text>
+                </View>
+                <Text style={s.walkSub} numberOfLines={1}>
+                  {leg.toStop}
+                </Text>
+                <View style={s.walkConnectorLine} />
               </View>
-            </View>
-            <View style={s.cardWrap}>
-              <TransitLegCard
-                leg={leg}
-                expanded={expandedId === leg.id}
-                userLocation={observeOnly ? null : location}
-                allowLive={!observeOnly || leg.live}
-                onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
-              />
-              {uncertainTransfer && <Text style={s.meta}>{t.routeDetails.uncertainTransfer}</Text>}
-            </View>
+            )}
           </Animated.View>
         );
       })}
@@ -674,66 +726,140 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
 }
 
 const s = StyleSheet.create({
-  list: { gap: 2 },
-  row: { flexDirection: 'row', gap: 12 },
-  rail: { width: 34, alignItems: 'center', position: 'relative', paddingVertical: 4 },
-  spine: { position: 'absolute', top: 0, bottom: -6, width: 4, borderRadius: 99, opacity: 0.85 },
-  walkLine: { width: 2, height: 18, backgroundColor: scheme.outlineVariant },
-  node: {
-    width: 26,
-    height: 26,
-    borderRadius: 99,
-    backgroundColor: scheme.surface,
-    borderWidth: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
+  list: {
+    gap: 6,
+    paddingHorizontal: 10,
   },
-  walkNode: { borderWidth: 1, borderColor: scheme.outlineVariant },
-  innerDot: { width: 8, height: 8, borderRadius: 99 },
-  body: { flex: 1, paddingVertical: 8, gap: 2 },
-  cardWrap: { flex: 1, marginBottom: 10 },
-  // M3 filled card: tonal surface, bez obramowań - kolor linii niosą
-  // badge linii oraz kropki/linia na railu po lewej, więc pasek jest zbędny
+  cardContainer: {
+    width: '100%',
+    marginBottom: 4,
+  },
   card: {
-    flex: 1,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 14,
+    width: '100%',
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: 20,
+    padding: 16,
     gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
     ...elev.level1,
   },
-  hintBanner: {
+  cardStartRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 7,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.medium,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
-    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  hintPinWrapper: {
-    marginTop: 1.5,
-    flexShrink: 0,
+  cardEndRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  hintText: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    fontSize: 12,
-    lineHeight: 16,
-    flex: 1,
+  cardStopName: {
+    fontSize: 22,
+    lineHeight: 28,
+    color: scheme.onSurface,
+    fontWeight: '800',
+    letterSpacing: -0.3,
     flexShrink: 1,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dir: { flex: 1, ...type.labelLarge, color: scheme.onSurface },
-  stopHeaderRow: {
+  cardTime: {
+    fontSize: 24,
+    lineHeight: 28,
+    color: scheme.onSurface,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  stopHintContainer: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(92, 219, 190, 0.08)',
+    borderRadius: shape.small,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(92, 219, 190, 0.18)',
+    alignSelf: 'flex-start',
+  },
+  stopHintIcon: {
+    marginTop: 2,
+  },
+  cardStopHint: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontSize: 12.5,
+    lineHeight: 17,
+    flexShrink: 1,
+  },
+  hintPlatformBold: {
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  cardSeparator: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    width: '100%',
+    marginVertical: 6,
+  },
+  cardMiddleSection: {
+    gap: 6,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+  },
+  dir: {
+    flex: 1,
+    ...type.labelLarge,
+    color: scheme.onSurface,
+  },
+  liveStatusBlock: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 2,
+    marginLeft: 14,
+  },
+  liveSensorsCol: {
+    width: 19,
+    height: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+    marginLeft: -4,
+  },
+  liveTextCol: {
+    flex: 1,
+    gap: 3,
+    justifyContent: 'center',
+  },
+  liveLocationLabel: {
+    ...type.bodySmall,
+    color: scheme.onSurface,
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  delayLabel: {
+    ...type.bodySmall,
+    fontWeight: '600',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  stopsSummaryWrap: {
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  stopsSummaryLabel: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontSize: 12.5,
   },
   stopTitleWrap: {
     flexDirection: 'row',
@@ -755,36 +881,95 @@ const s = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
-  hintPlatformBold: {
-    fontWeight: '700',
-    color: scheme.onSurface,
-  },
-  stopBig: { ...type.titleSmall, color: scheme.onSurface },
-  stopPrefix: { fontWeight: '400', color: scheme.onSurfaceVariant },
-  hour: { color: scheme.onSurfaceVariant, fontWeight: '400' },
-  meta: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  liveNearText: {
+  meta: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-    fontWeight: '500',
   },
-  walkText: { ...type.titleSmall, color: scheme.onSurface },
+  walkCentered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+    gap: 5,
+    width: '100%',
+  },
+  walkConnectorLine: {
+    width: 2,
+    height: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.20)',
+    borderRadius: 1,
+  },
+  walkPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: scheme.surfaceContainerHighest,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    ...elev.level1,
+  },
+  walkPillTitle: {
+    ...type.labelMedium,
+    color: scheme.onSurface,
+    fontWeight: '700',
+    fontSize: 13,
+    letterSpacing: 0.1,
+  },
   walkSubRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     flexWrap: 'wrap',
-    marginTop: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
   },
-  walkSub: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  // Rozwinięta lista kropek - wysokość animowana layout-animation przez rodzica,
-  // tutaj zwykły kontener bez własnych animacji wejścia/wyjścia
-  stopsWrap: { marginTop: 8, gap: 0 },
-  stopsCollapsed: { height: 0, opacity: 0, overflow: 'hidden', marginTop: 0 },
-  stopRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
-  stopRail: { width: 22, alignItems: 'center', position: 'relative' },
-  stopRailLine: { position: 'absolute', left: 9.5, width: 3 },
-  boundaryMark: { width: 19, height: 2, marginTop: 19, zIndex: 1 },
+  walkSub: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  uncertainText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  stopsWrap: {
+    marginTop: 8,
+    marginLeft: 28,
+    gap: 0,
+  },
+  stopsCollapsed: {
+    height: 0,
+    opacity: 0,
+    overflow: 'hidden',
+    marginTop: 0,
+  },
+  stopRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'stretch',
+  },
+  stopRail: {
+    width: 22,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  stopRailLine: {
+    position: 'absolute',
+    left: 9.5,
+    width: 3,
+  },
+  boundaryMark: {
+    width: 19,
+    height: 2,
+    marginTop: 19,
+    zIndex: 1,
+  },
   boundaryBody: {
     flex: 1,
     flexDirection: 'row',
@@ -795,11 +980,29 @@ const s = StyleSheet.create({
     borderColor: scheme.outlineVariant,
     marginBottom: 6,
   },
-  boundaryIcon: { marginTop: 2 },
-  boundaryText: { flex: 1, gap: 2 },
-  boundaryTitle: { ...type.labelMedium, color: scheme.onSurfaceVariant },
-  boundaryDetail: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  dot: { width: 13, height: 13, borderRadius: 99, borderWidth: 2, marginTop: 4, zIndex: 1 },
+  boundaryIcon: {
+    marginTop: 2,
+  },
+  boundaryText: {
+    flex: 1,
+    gap: 2,
+  },
+  boundaryTitle: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+  },
+  boundaryDetail: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+  },
+  dot: {
+    width: 13,
+    height: 13,
+    borderRadius: 99,
+    borderWidth: 2,
+    marginTop: 4,
+    zIndex: 1,
+  },
   vehicleMarker: {
     position: 'absolute',
     top: 17,
@@ -814,10 +1017,22 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 3,
   },
-  stopBody: { flex: 1, justifyContent: 'center', minHeight: 30, paddingBottom: 6 },
-  stopName: { ...type.bodyMedium, color: scheme.onSurface },
-  stopNameStrong: { fontWeight: '700' },
-  stopNamePassed: { color: scheme.outline },
+  stopBody: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 30,
+    paddingBottom: 6,
+  },
+  stopName: {
+    ...type.bodyMedium,
+    color: scheme.onSurface,
+  },
+  stopNameStrong: {
+    fontWeight: '700',
+  },
+  stopNamePassed: {
+    color: scheme.outline,
+  },
   skeletonDot: {
     borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainerHighest,

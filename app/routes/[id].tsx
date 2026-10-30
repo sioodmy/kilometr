@@ -401,11 +401,6 @@ export default function RouteDetailsScreen() {
             </View>
           ) : (
             <>
-              <LegTimeline legs={item.legs} />
-              <RouteMapCard
-                connection={item}
-                onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
-              />
               {hasTransfers && (
                 <TransferProtectionCard
                   state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
@@ -420,7 +415,11 @@ export default function RouteDetailsScreen() {
                   }}
                 />
               )}
-
+              <LegTimeline legs={item.legs} />
+              <RouteMapCard
+                connection={item}
+                onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+              />
               <ConnectionLineAlerts connection={item} />
             </>
           )}

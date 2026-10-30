@@ -116,6 +116,7 @@ export const Sandwich = icon('lunch-dining');
 export const ScanLine = icon('qr-code-scanner');
 export const Scissors = icon('content-cut');
 export const Search = icon('search');
+export const Sensors = icon('sensors');
 export const Settings2 = icon('tune');
 export const Share2 = icon('share');
 export const ShieldAlert = icon('gpp-bad');
