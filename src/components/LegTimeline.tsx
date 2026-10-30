@@ -11,6 +11,7 @@ import {
   TramFront,
 } from './icons';
 import Animated, {
+  Easing,
   LinearTransition,
   useAnimatedStyle,
   useSharedValue,
@@ -368,6 +369,15 @@ function TransitLegCard({
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
 
+  // Mierzymy szerokość badge linii, by wyśrodkować ikonę sensors pod nim
+  // i wyrównać kółko rozwijanej listy z początkiem tekstu statusu live.
+  const [badgeWidth, setBadgeWidth] = useState(56);
+  const [stopsListHeight, setStopsListHeight] = useState(0);
+  const stopsHeightAnim = useSharedValue(0);
+  const sensorSize = 19;
+  const sensorCenterOffset = Math.max(0, badgeWidth / 2 - sensorSize / 2);
+  const stopsIndent = sensorCenterOffset + sensorSize + 8 - 11;
+
   const activeCityId = useMemo(() => getActiveCityIdSync(), []);
   const resolvedHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
   const stopHint = leg.stopHint ?? resolvedHint;
@@ -495,6 +505,21 @@ function TransitLegCard({
     transform: [{ rotate: `${chevron.value * 180}deg` }],
   }));
 
+  // Pionowa animacja wysokości listy przystanków (bez ukosnego rozwijania).
+  useEffect(() => {
+    if (stopsListHeight > 0) {
+      stopsHeightAnim.value = withTiming(expanded ? stopsListHeight : 0, {
+        duration: 220,
+        easing: Easing.out(Easing.quad),
+      });
+    }
+  }, [expanded, stopsListHeight, stopsHeightAnim]);
+
+  const stopsAnimStyle = useAnimatedStyle(() => ({
+    height: stopsHeightAnim.value,
+    opacity: stopsHeightAnim.value > 0 ? 1 : 0,
+  }));
+
   return (
     <Animated.View layout={legTransition}>
       <Pressable
@@ -541,7 +566,12 @@ function TransitLegCard({
         {/* 4. Środek: linia, kierunek, sensors live + na czas, rozwijana lista, podsumowanie */}
         <View style={s.cardMiddleSection}>
           <View style={s.cardTop}>
-            <LineBadge mode={leg.mode} line={leg.line} />
+            <View
+              style={s.badgeWrap}
+              onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}
+            >
+              <LineBadge mode={leg.mode} line={leg.line} />
+            </View>
             <Text style={s.dir} numberOfLines={1}>
               {leg.direction}
             </Text>
@@ -552,7 +582,7 @@ function TransitLegCard({
 
           {leg.live || notice || (delayMin !== 0 && scheduledDeparture != null) ? (
             <View style={s.liveStatusBlock}>
-              <View style={s.liveSensorsCol}>
+              <View style={[s.liveSensorsCol, { marginLeft: sensorCenterOffset }]}>
                 {leg.live ? (
                   <LiveSensors color={scheme.success} size={15} pingKey={pingKey} />
                 ) : null}
@@ -595,11 +625,28 @@ function TransitLegCard({
             </View>
           ) : null}
 
-          {/* Przystanki rozwijają się NAD etykietą podsumowania */}
+          {/* Pionowa animacja rozwijania listy przystanków */}
+          <View
+            style={s.stopsMeasure}
+            pointerEvents="none"
+            onLayout={(e) => setStopsListHeight(e.nativeEvent.layout.height)}
+          >
+            <LegStopsList
+              leg={leg}
+              accent={accent}
+              userLocation={userLocation}
+              allowLive={allowLive}
+              stops={stops}
+              vehicle={vehicle}
+              loading={loading}
+            />
+          </View>
           {(expanded || hasOpened) && (
             <Animated.View
-              layout={legTransition}
-              style={expanded ? [s.stopsWrap, s.stopsIndent] : s.stopsCollapsed}
+              style={[
+                stopsAnimStyle,
+                { marginLeft: stopsIndent, overflow: 'hidden' },
+              ]}
               accessibilityElementsHidden={!expanded}
               importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
             >
@@ -814,6 +861,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  badgeWrap: {
+    alignItems: 'center',
+  },
   dir: {
     flex: 1,
     ...type.labelLarge,
@@ -824,7 +874,6 @@ const s = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 8,
     marginTop: 2,
-    marginLeft: 16,
   },
   liveSensorsCol: {
     width: 19,
@@ -941,14 +990,12 @@ const s = StyleSheet.create({
     marginTop: 8,
     gap: 0,
   },
-  stopsIndent: {
-    marginLeft: 40,
-  },
-  stopsCollapsed: {
-    height: 0,
+  stopsMeasure: {
+    position: 'absolute',
     opacity: 0,
-    overflow: 'hidden',
-    marginTop: 0,
+    left: -9999,
+    top: 0,
+    width: '100%',
   },
   stopRow: {
     flexDirection: 'row',
