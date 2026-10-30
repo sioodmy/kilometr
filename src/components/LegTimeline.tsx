@@ -79,6 +79,17 @@ function formatPlatformLabel(code?: string | null, mode?: Leg['mode']): string |
     return `Stanowisko ${parseInt(gzmMatch[2], 10)}`;
   }
 
+  // Zespoły / Kraków: np. 103-05 -> Słupek 05 (lub Peron 1/2 dla tramwaju)
+  const krkMatch = trimmed.match(/^\d{1,4}-(\d{2})$/);
+  if (krkMatch) {
+    const poleNum = krkMatch[1];
+    const n = parseInt(poleNum, 10);
+    if (mode === 'tram' && (n === 1 || n === 2)) {
+      return `Peron ${n}`;
+    }
+    return `Słupek ${poleNum}`;
+  }
+
   // Pociąg / metro
   if (mode === 'train' || mode === 'subway') {
     return `Peron ${trimmed}`;

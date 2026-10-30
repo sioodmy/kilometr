@@ -23,6 +23,9 @@ const FORBIDDEN_FLUFF = [
 const PHYSICAL_ANCHOR_PATTERNS = [
   /obok/i,
   /po (?:.+ )?stronie/i,
+  /od (?:.+ )?strony/i,
+  /od strony/i,
+  /plant/i,
   /przy/i,
   /przed/i,
   /pod/i,

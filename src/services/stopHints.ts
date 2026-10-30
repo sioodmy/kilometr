@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { STOP_HINTS_WROCLAW, WROCLAW_STOP_HINTS } from '../data/stopHintsWroclaw';
 import { STOP_HINTS_WARSZAWA } from '../data/stopHintsWarszawa';
 import { STOP_HINTS_GZM } from '../data/stopHintsGzm';
+import { STOP_HINTS_KRAKOW } from '../data/stopHintsKrakow';
 import type { StopHintsDataset, StopHintValue } from '../types/stopHints';
 
 const cache = new Map<string, StopHintsDataset>();
@@ -22,6 +23,9 @@ export function getBundledStopHints(cityId: string): StopHintsDataset | null {
   }
   if (c === 'gzm' || c === 'katowice' || c === 'metropolia') {
     return STOP_HINTS_GZM;
+  }
+  if (c === 'krakow' || c === 'kraków') {
+    return STOP_HINTS_KRAKOW;
   }
   return null;
 }
@@ -88,11 +92,11 @@ export function resolveStopHint(
 ): string | null {
   if (!dataset) return null;
 
-  // 1. Sprawdź po unikalnym stopId (np. Warszawa "700201", GZM "3220", Wrocław "10101")
+  // 1. Sprawdź po unikalnym stopId (np. Warszawa "700201", GZM "3220", Wrocław "10101", Kraków "stop_322_117319")
   if (stopId && dataset.stops[stopId]) {
     return extractHintText(dataset.stops[stopId]);
   }
-  // 2. Sprawdź po stopCode (np. Wrocław "20820", GZM "2470011-08702", Warszawa "01")
+  // 2. Sprawdź po stopCode (np. Wrocław "20820", GZM "2470011-08702", Kraków "901-01", Warszawa "01")
   if (stopCode && dataset.stops[stopCode]) {
     return extractHintText(dataset.stops[stopCode]);
   }
@@ -115,3 +119,5 @@ export function useStopHint(
     [dataset, stopCode, stopId, stopName],
   );
 }
+
+export { WROCLAW_STOP_HINTS };
