@@ -90,6 +90,7 @@ export const Layers = icon('layers');
 export const Library = icon('local-library');
 export const Link = icon('link');
 export const LocateFixed = icon('my-location');
+export const LocationOn = icon('location-on');
 export const MapPin = icon('place');
 export const MapPinOff = icon('location-off');
 export const MapPinned = icon('map');

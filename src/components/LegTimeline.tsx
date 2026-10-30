@@ -5,11 +5,14 @@ import {
   BusFront,
   ChevronDown,
   Footprints,
+  LocateFixed,
+  LocationOn,
   MapPin,
   Ticket,
   TrainFront,
   TramFront,
 } from './icons';
+import Svg, { Line } from 'react-native-svg';
 import Animated, {
   Easing,
   LinearTransition,
@@ -43,6 +46,24 @@ import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
 
 const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
+
+/** Kropkowany łącznik między kartami, pigułkami pieszymi i znacznikami trasy. */
+function DottedConnector({ height = 12 }: { height?: number }) {
+  return (
+    <Svg width={4} height={height}>
+      <Line
+        x1={2}
+        y1={0}
+        x2={2}
+        y2={height}
+        stroke="rgba(255, 255, 255, 0.30)"
+        strokeWidth={2}
+        strokeDasharray="1 5"
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
 
 // Środek transportu w dopełniaczu („tramwajem między A a B”). Osobna gałąź na
 // pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem”.
@@ -692,6 +713,10 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
 
   return (
     <View style={s.list}>
+      <View style={s.terminalStart}>
+        <LocateFixed size={32} color={scheme.primary} />
+        <DottedConnector height={20} />
+      </View>
       {legs.map((leg, i) => {
         if (leg.mode === 'walk') {
           const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
@@ -701,7 +726,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
 
           return (
             <Animated.View key={leg.id} layout={legTransition} style={s.walkCentered}>
-              <View style={s.walkConnectorLine} />
+              <DottedConnector />
               <View style={s.walkPill}>
                 <Footprints size={15} color={scheme.primary} />
                 <Text style={s.walkPillTitle}>
@@ -724,7 +749,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                   </Text>
                 </View>
               )}
-              <View style={s.walkConnectorLine} />
+              <DottedConnector />
             </Animated.View>
           );
         }
@@ -750,7 +775,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
             {uncertainTransfer && <Text style={s.uncertainText}>{t.routeDetails.uncertainTransfer}</Text>}
             {nextLegIsTransit && (
               <View style={s.walkCentered}>
-                <View style={s.walkConnectorLine} />
+                <DottedConnector />
                 <View style={s.walkPill}>
                   <Footprints size={15} color={scheme.primary} />
                   <Text style={s.walkPillTitle}>
@@ -762,12 +787,16 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                 <Text style={s.walkSub} numberOfLines={1}>
                   {leg.toStop}
                 </Text>
-                <View style={s.walkConnectorLine} />
+                <DottedConnector />
               </View>
             )}
           </Animated.View>
         );
       })}
+      <View style={s.terminalEnd}>
+        <DottedConnector height={20} />
+        <LocationOn size={32} color={scheme.primary} />
+      </View>
     </View>
   );
 }
@@ -793,13 +822,13 @@ const s = StyleSheet.create({
   },
   cardStartRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
   },
   cardEndRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
   },
@@ -933,18 +962,22 @@ const s = StyleSheet.create({
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
+  terminalStart: {
+    alignItems: 'center',
+    gap: 2,
+    paddingTop: 4,
+  },
+  terminalEnd: {
+    alignItems: 'center',
+    gap: 2,
+    paddingBottom: 4,
+  },
   walkCentered: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
     gap: 5,
     width: '100%',
-  },
-  walkConnectorLine: {
-    width: 2,
-    height: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.20)',
-    borderRadius: 1,
   },
   walkPill: {
     flexDirection: 'row',
