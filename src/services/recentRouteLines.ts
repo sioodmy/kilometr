@@ -156,16 +156,29 @@ export async function getRecentRouteLines(
     .map(([line]) => line);
 }
 
-export function newsTouchesLines(item: { lines: string[]; title: string; description: string }, lines: Set<string>): boolean {
+// Znaki słów w języku polskim dla granic wyrazów (bezpieczne dla Hermesa bez flagi unicode \p{L})
+const PL_WORD_CHARS =
+  '0-9A-Za-z\\u0104\\u0105\\u0106\\u0107\\u0118\\u0119\\u0141\\u0142\\u0143\\u0144\\u00D3\\u00F3\\u015A\\u015B\\u0179\\u017A\\u017B\\u017C';
+
+export function newsTouchesLines(
+  item: { lines: string[]; title: string; description: string },
+  lines: Set<string>,
+): boolean {
   if (lines.size === 0) return false;
-  for (const raw of item.lines) {
-    if (lines.has(normalizeLine(raw))) return true;
+  // 1. Jeśli komunikat ma skatalogowane linie, sprawdzamy wyłącznie je:
+  // feedy RSS i scrapery precyzyjnie tagują linie, a przeszukiwanie tekstu generuje fałszywe
+  // trafienia (np. pojedyncza litera 'D' pasująca do polskiego słowa w tekście dla linii 945).
+  if (item.lines && item.lines.length > 0) {
+    for (const raw of item.lines) {
+      if (lines.has(normalizeLine(raw))) return true;
+    }
+    return false;
   }
+  // 2. Fallback dla artykułów prasowych bez wyodrębnionych linii w polach metadanych:
   const hay = `${item.title} ${item.description}`;
   for (const line of lines) {
     const escaped = line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Linie MPK to cyfry / litery (N, D, A) - bez unicode property (Hermes).
-    const re = new RegExp(`(?:^|[^0-9A-Za-z])${escaped}(?![0-9A-Za-z])`, 'i');
+    const re = new RegExp(`(?:^|[^${PL_WORD_CHARS}])${escaped}(?![${PL_WORD_CHARS}])`, 'i');
     if (re.test(hay)) return true;
   }
   return false;

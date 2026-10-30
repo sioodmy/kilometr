@@ -26,22 +26,21 @@ type Status = 'loading' | 'error' | 'ready';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-
 function getTransitActionLabel(item: MpkNewsItem, s: ReturnType<typeof useStrings>): string {
-  const solutionText = (item.disruption?.glance?.solution || "").toLowerCase();
+  const solutionText = (item.disruption?.glance?.solution || '').toLowerCase();
   const hasReplacement =
-    solutionText.includes("zastępcz") ||
-    solutionText.includes("za tramwaj") ||
-    solutionText.includes("za autobus") ||
-    solutionText.includes("replacement") ||
-    solutionText.includes("ersatz");
+    solutionText.includes('zastępcz') ||
+    solutionText.includes('za tramwaj') ||
+    solutionText.includes('za autobus') ||
+    solutionText.includes('replacement') ||
+    solutionText.includes('ersatz');
   const hasDetour =
-    solutionText.includes("objazd") ||
-    solutionText.includes("objazdem") ||
-    solutionText.includes("objazdy") ||
-    solutionText.includes("zmienion") ||
-    solutionText.includes("detour") ||
-    solutionText.includes("umleitung");
+    solutionText.includes('objazd') ||
+    solutionText.includes('objazdem') ||
+    solutionText.includes('objazdy') ||
+    solutionText.includes('zmienion') ||
+    solutionText.includes('detour') ||
+    solutionText.includes('umleitung');
 
   if (hasReplacement && hasDetour) {
     return s.news.detourAndReplacement;
@@ -52,29 +51,74 @@ function getTransitActionLabel(item: MpkNewsItem, s: ReturnType<typeof useString
   return s.news.detourLabel;
 }
 
-function overlappingLines(item: MpkNewsItem, lineSet: Set<string>): string[] {
-  const fromBadge = item.lines.filter((l) => lineSet.has(l.trim().toUpperCase()));
-  if (fromBadge.length > 0) return fromBadge;
-  return [...lineSet].filter((line) =>
-    newsTouchesLines({ lines: [], title: item.title, description: item.description }, new Set([line])),
-  );
+/**
+ * Ujednolicona lista linii, których dotyczy dana zmiana / komunikat.
+ * Bierzemy ze struktury AI disruption.all_lines, impacted_lines oraz item.lines.
+ */
+export function getDisruptionLines(item: MpkNewsItem): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  const add = (raw?: string | null) => {
+    if (!raw) return;
+    const clean = raw.trim().toUpperCase();
+    if (!clean || seen.has(clean)) return;
+    seen.add(clean);
+    result.push(clean);
+  };
+
+  if (item.disruption?.all_lines) {
+    for (const l of item.disruption.all_lines) add(l);
+  }
+  if (item.disruption?.impacted_lines) {
+    for (const imp of item.disruption.impacted_lines) add(imp.line);
+  }
+  if (item.lines) {
+    for (const l of item.lines) add(l);
+  }
+
+  return result;
+}
+
+/**
+ * Sprawdza, czy utrudnienie dotyczy linii z bieżącego połączenia.
+ */
+function alertTouchesRoute(item: MpkNewsItem, lineSet: Set<string>): boolean {
+  if (lineSet.size === 0) return false;
+  const alertLines = getDisruptionLines(item);
+  if (alertLines.length > 0) {
+    return alertLines.some((l) => lineSet.has(l));
+  }
+  return newsTouchesLines({ lines: [], title: item.title, description: item.description }, lineSet);
+}
+
+/**
+ * Czyści powtarzające się statusy z timeframe w nagłówku,
+ * np. "Od godz. 12:30 (ruch przywrócony)" -> "Od godz. 12:30".
+ */
+function cleanHeaderTimeframe(raw?: string | null): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  const withoutParentheses = trimmed.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  return withoutParentheses || trimmed;
 }
 
 /**
  * Karta pojedynczego utrudnienia w stylu Material 3 Expressive:
- * - Asymetryczne lub mocno zaokrąglone narożniki kontenera
- * - Dedykowany tonalny boks na inteligentne rozwiązanie / objazd (AI glance solution)
+ * - Asymetryczne lub zaokrąglone narożniki kontenera
+ * - Dedykowany tonalny boks na objazd / rozwiązanie (AI glance solution)
  * - Tonalny status chip (ruch przywrócony / pilne utrudnienie / planowana zmiana)
+ * - Stały, ujednolicony wiersz linii, których zmiana dotyczy (zaraz pod nagłówkiem)
  * - Wyróżnienie linii z bieżącego połączenia oraz komunikacji zastępczej
  * - Reaktywna animacja naciśnięcia ze sprężystością (spring)
  */
 const AlertSubCard = memo(function AlertSubCard({
   item,
-  hitLines,
+  lineSet,
   onPress,
 }: {
   item: MpkNewsItem;
-  hitLines: string[];
+  lineSet: Set<string>;
   onPress: () => void;
 }) {
   const s = useStrings();
@@ -83,32 +127,57 @@ const AlertSubCard = memo(function AlertSubCard({
   const headline = item.disruption?.headline || item.title;
   const problem = item.disruption?.glance?.problem;
   const solution = item.disruption?.glance?.solution;
-  const timeframe = item.disruption?.glance?.timeframe || item.dateLabel;
+  const timeframe = cleanHeaderTimeframe(item.disruption?.glance?.timeframe || item.dateLabel);
+
+  // Ujednolicona lista linii, których dotyczy zmiana:
+  // Linie pasażera z bieżącego połączenia umieszczamy na początku, potem pozostałe
+  const displayLines = useMemo(() => {
+    const all = getDisruptionLines(item);
+    if (all.length === 0) return [];
+    const matched: string[] = [];
+    const others: string[] = [];
+    for (const l of all) {
+      if (lineSet.has(l)) {
+        matched.push(l);
+      } else {
+        others.push(l);
+      }
+    }
+    return [...matched, ...others];
+  }, [item, lineSet]);
 
   // Znajdź ew. komunikację zastępczą dla linii z tego połączenia
   const replacementLine = useMemo(() => {
     if (!item.disruption?.impacted_lines) return null;
-    const hitSet = new Set(hitLines);
     for (const imp of item.disruption.impacted_lines) {
-      if ((!imp.line || hitSet.has(imp.line)) && imp.replacement_line) {
+      if ((!imp.line || lineSet.has(imp.line)) && imp.replacement_line) {
         return imp.replacement_line;
       }
     }
+    for (const imp of item.disruption.impacted_lines) {
+      if (imp.replacement_line) return imp.replacement_line;
+    }
     return null;
-  }, [item.disruption?.impacted_lines, hitLines]);
+  }, [item.disruption?.impacted_lines, lineSet]);
 
   // Znajdź pomijane przystanki
   const omittedStops = useMemo(() => {
     if (!item.disruption?.impacted_lines) return [];
-    const hitSet = new Set(hitLines);
     const set = new Set<string>();
     for (const imp of item.disruption.impacted_lines) {
-      if ((!imp.line || hitSet.has(imp.line)) && imp.omitted_stops) {
+      if ((!imp.line || lineSet.has(imp.line)) && imp.omitted_stops) {
         for (const st of imp.omitted_stops) set.add(st);
       }
     }
+    if (set.size === 0) {
+      for (const imp of item.disruption.impacted_lines) {
+        if (imp.omitted_stops) {
+          for (const st of imp.omitted_stops) set.add(st);
+        }
+      }
+    }
     return [...set];
-  }, [item.disruption?.impacted_lines, hitLines]);
+  }, [item.disruption?.impacted_lines, lineSet]);
 
   const press = useSharedValue(0);
   const animatedCardStyle = useAnimatedStyle(() => ({
@@ -141,9 +210,9 @@ const AlertSubCard = memo(function AlertSubCard({
         animatedCardStyle,
       ]}
     >
-      {/* Pasek statusu i metadanych */}
+      {/* 1. Pasek statusu i terminu (zawsze 1 linia, bez wrapowania) */}
       <View style={styles.alertHeaderRow}>
-        <View style={styles.alertBadgesGroup}>
+        <View style={styles.statusChip}>
           {isResolved ? (
             <View style={styles.resolvedBadge}>
               <CircleCheck size={12} color={scheme.onPrimaryContainer} />
@@ -160,19 +229,11 @@ const AlertSubCard = memo(function AlertSubCard({
               <Text style={styles.infoBadgeText}>{s.news.plannedChip}</Text>
             </View>
           )}
-
-          {hitLines.length > 0 && (
-            <View style={styles.lineBadgesRow}>
-              {hitLines.map((line) => (
-                <LineBadge key={line} line={line} compact />
-              ))}
-            </View>
-          )}
         </View>
 
         <View style={styles.alertHeaderRight}>
           {timeframe ? (
-            <Text style={styles.timeframeText} numberOfLines={1}>
+            <Text style={styles.timeframeText} numberOfLines={1} ellipsizeMode="tail">
               {timeframe}
             </Text>
           ) : null}
@@ -180,7 +241,21 @@ const AlertSubCard = memo(function AlertSubCard({
         </View>
       </View>
 
-      {/* Nagłówek utrudnienia (Smart AI Headline) */}
+      {/* 2. Ujednolicony placement linii, których dotyczy zmiana */}
+      {displayLines.length > 0 && (
+        <View style={styles.linesRow}>
+          {displayLines.map((line) => (
+            <LineBadge
+              key={line}
+              line={line}
+              compact
+              active={lineSet.has(line)}
+            />
+          ))}
+        </View>
+      )}
+
+      {/* 3. Nagłówek utrudnienia (Smart AI Headline) */}
       <Text
         style={[
           styles.headlineText,
@@ -191,14 +266,14 @@ const AlertSubCard = memo(function AlertSubCard({
         {headline}
       </Text>
 
-      {/* Kontekst problemu (Smart AI Glance Problem), jeśli wnosi coś poza samym nagłówkiem */}
+      {/* 4. Kontekst problemu (Smart AI Glance Problem), jeśli wnosi coś poza samym nagłówkiem */}
       {problem && problem.trim() !== headline.trim() ? (
         <Text style={styles.problemText} numberOfLines={2}>
           {problem}
         </Text>
       ) : null}
 
-      {/* Inteligentny boks rozwiązania (Smart AI Glance Solution) */}
+      {/* 5. Inteligentny boks rozwiązania / objazdu (Smart AI Glance Solution) */}
       {solution ? (
         <View style={styles.solutionBox}>
           <View style={styles.solutionHeader}>
@@ -221,7 +296,7 @@ const AlertSubCard = memo(function AlertSubCard({
         </View>
       ) : null}
 
-      {/* Pigułka komunikacji zastępczej */}
+      {/* 6. Pigułka komunikacji zastępczej */}
       {replacementLine ? (
         <View style={styles.replacementRow}>
           <BusFront size={13} color={scheme.primary} />
@@ -231,7 +306,7 @@ const AlertSubCard = memo(function AlertSubCard({
         </View>
       ) : null}
 
-      {/* Pomijane przystanki */}
+      {/* 7. Pomijane przystanki */}
       {omittedStops.length > 0 ? (
         <View style={styles.omittedRow}>
           <RouteOff size={13} color={scheme.onSurfaceVariant} />
@@ -271,15 +346,18 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   }, [routeLines]);
 
   useEffect(() => {
+    if (lineSet.size === 0) {
+      setStatus('ready');
+      return;
+    }
+
     let cancelled = false;
 
     async function load() {
-      if (lineSet.size === 0) return;
       const mem = getCachedNews();
       if (mem && mem.length > 0) {
         setNews(mem);
         setStatus('ready');
-        return;
       }
 
       const disk = await loadNewsCache();
@@ -287,8 +365,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
       if (disk && disk.length > 0) {
         setNews(disk);
         setStatus('ready');
-      } else {
-        setStatus('loading');
       }
 
       try {
@@ -310,7 +386,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 
   const matched = useMemo(() => {
     if (lineSet.size === 0) return [];
-    return news.filter((item) => overlappingLines(item, lineSet).length > 0);
+    return news.filter((item) => alertTouchesRoute(item, lineSet));
   }, [news, lineSet]);
 
   if (lineSet.size === 0) return null;
@@ -334,8 +410,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
             setAttempt((n) => n + 1);
           }}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
-        >
+          style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}>
           <Text style={styles.retryBtnText}>{s.common.retry}</Text>
         </Pressable>
       </View>
@@ -350,6 +425,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 
   const openItem = (item: MpkNewsItem) => {
     if (!item.link) return;
+    const alertLines = getDisruptionLines(item);
     router.push({
       pathname: '/article',
       params: {
@@ -357,7 +433,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         title: item.disruption?.headline || item.title,
         source: item.source,
         meta: item.dateLabel,
-        lines: item.lines.join(','),
+        lines: alertLines.join(','),
       },
     });
   };
@@ -392,17 +468,14 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 
       {/* Lista kart utrudnień */}
       <View style={styles.cardsList}>
-        {shown.map((item) => {
-          const hitLines = overlappingLines(item, lineSet);
-          return (
-            <AlertSubCard
-              key={item.id}
-              item={item}
-              hitLines={hitLines}
-              onPress={() => openItem(item)}
-            />
-          );
-        })}
+        {shown.map((item) => (
+          <AlertSubCard
+            key={item.id}
+            item={item}
+            lineSet={lineSet}
+            onPress={() => openItem(item)}
+          />
+        ))}
       </View>
 
       {/* Dolny przycisk M3 Expressive do wszystkich aktualności */}
@@ -525,24 +598,22 @@ const styles = StyleSheet.create({
     borderColor: scheme.outlineVariant + '35',
   },
 
-  // Wiersz statusu w karcie
+  // Wiersz nagłówka w karcie
   alertHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
   },
-  alertBadgesGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-    flex: 1,
+  statusChip: {
+    flexShrink: 0,
   },
   alertHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 1,
+    justifyContent: 'flex-end',
   },
   urgentBadge: {
     flexDirection: 'row',
@@ -586,43 +657,45 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: scheme.onSecondaryContainer,
   },
-  lineBadgesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   timeframeText: {
     ...type.labelSmall,
     color: scheme.onSurfaceVariant,
-    maxWidth: 130,
+    flexShrink: 1,
+  },
+
+  // Ujednolicony wiersz linii, których zmiana dotyczy
+  linesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
   },
 
   // Teksty w karcie
   headlineText: {
     ...type.titleSmall,
-    fontSize: 15.5,
-    lineHeight: 21,
-    fontWeight: '600',
+    fontWeight: '700',
     color: scheme.onSurface,
+    lineHeight: 20,
   },
   headlineResolved: {
-    color: scheme.onSurfaceVariant,
+    color: scheme.onSurface,
   },
   problemText: {
-    ...type.bodySmall,
-    fontSize: 13,
-    lineHeight: 18,
+    ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
+    lineHeight: 19,
   },
 
-  // Inteligentny boks rozwiązania (Glance Solution)
+  // Tonalny boks rozwiązania (Smart AI Glance Solution)
   solutionBox: {
     backgroundColor: scheme.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant + '40',
     borderRadius: shape.medium,
     padding: 12,
     gap: 6,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant + "30",
   },
   solutionHeader: {
     flexDirection: 'row',
@@ -636,56 +709,54 @@ const styles = StyleSheet.create({
   },
   solutionText: {
     ...type.bodyMedium,
-    fontSize: 13.5,
-    lineHeight: 19,
     color: scheme.onSurface,
+    lineHeight: 19,
   },
 
   // Komunikacja zastępcza i pomijane przystanki
   replacementRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.small,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: scheme.primary + "30",
+    borderColor: scheme.outlineVariant + '35',
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: shape.small,
   },
   replacementText: {
-    ...type.labelMedium,
-    color: scheme.primary,
+    ...type.labelSmall,
     fontWeight: '600',
+    color: scheme.onSurface,
     flex: 1,
   },
   omittedRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   omittedText: {
     ...type.bodySmall,
-    fontSize: 12,
     color: scheme.onSurfaceVariant,
     flex: 1,
   },
 
-  // Przycisk "Wszystkie aktualności"
+  // Dolny przycisk
   allNewsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    minHeight: 48,
-    backgroundColor: scheme.surfaceContainerHigh,
+    gap: 6,
+    minHeight: 44,
     borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
     paddingHorizontal: 16,
   },
   allNewsBtnText: {
     ...type.labelLarge,
-    color: scheme.primary,
     fontWeight: '700',
+    color: scheme.primary,
   },
 });
