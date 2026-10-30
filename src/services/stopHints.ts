@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { STOP_HINTS_WROCLAW, WROCLAW_STOP_HINTS } from '../data/stopHintsWroclaw';
+import { STOP_HINTS_WROCLAW } from '../data/stopHintsWroclaw';
 import { STOP_HINTS_WARSZAWA } from '../data/stopHintsWarszawa';
 import { STOP_HINTS_GZM } from '../data/stopHintsGzm';
 import { STOP_HINTS_KRAKOW } from '../data/stopHintsKrakow';
@@ -14,7 +14,7 @@ function extractHintText(val: StopHintValue | undefined): string | null {
   return val.hint || null;
 }
 
-export function getBundledStopHints(cityId: string): StopHintsDataset | null {
+function getBundledStopHints(cityId: string): StopHintsDataset | null {
   const c = cityId.toLowerCase();
   if (c === 'wroclaw' || c === 'wrocław') {
     return STOP_HINTS_WROCLAW;
@@ -34,7 +34,7 @@ export function getBundledStopHints(cityId: string): StopHintsDataset | null {
   return null;
 }
 
-export async function fetchStopHints(
+async function fetchStopHints(
   cityId: string,
   signal?: AbortSignal,
 ): Promise<StopHintsDataset | null> {
@@ -62,7 +62,7 @@ export async function fetchStopHints(
   return bundled;
 }
 
-export function useStopHints(cityId: string) {
+function useStopHints(cityId: string) {
   const [data, setData] = useState<StopHintsDataset | null>(() => getBundledStopHints(cityId));
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export function useStopHints(cityId: string) {
   return data;
 }
 
-export function resolveStopHint(
+function resolveStopHint(
   dataset: StopHintsDataset | null,
   stopCode?: string | null,
   stopId?: string | null,
@@ -124,4 +124,3 @@ export function useStopHint(
   );
 }
 
-export { WROCLAW_STOP_HINTS };

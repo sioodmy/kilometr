@@ -117,7 +117,7 @@ async function main() {
     let skippedPoles = 0;
     evaluatedStops = [];
 
-    for (const [name, poles] of clusterMap.entries()) {
+    for (const [, poles] of clusterMap.entries()) {
       if (poles.length <= 2) {
         skippedClusters++;
         skippedPoles += poles.length;

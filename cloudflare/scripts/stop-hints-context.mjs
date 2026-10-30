@@ -20,8 +20,6 @@ import path from 'node:path';
 import { execSync, spawn } from 'node:child_process';
 import readline from 'node:readline';
 
-const ROOT_DIR = path.resolve(import.meta.dirname, '../..');
-
 const ARGS = process.argv.slice(2);
 function getArg(prefix, fallback = null) {
   const match = ARGS.find((a) => a.startsWith(prefix));
