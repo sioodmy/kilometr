@@ -59,7 +59,7 @@ export function ConnectionSummary({
           <Text style={styles.place}>{firstVehicle?.fromStop ?? item.fromTitle}</Text>
         </View>
         <View style={[styles.direction, stacked && styles.directionStacked]}>
-          <Direction size={22} color={scheme.primary} />
+          <Direction size={30} color={scheme.primary} />
         </View>
         <View style={styles.endpoint}>
           <Text style={styles.label}>{s.routeDetails.arrival}</Text>
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   place: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface, lineHeight: 23 },
-  direction: { paddingTop: 35 },
+  direction: { paddingTop: 31 },
   directionStacked: { paddingTop: 0 },
   facts: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 18, rowGap: 8 },
   fact: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 },
