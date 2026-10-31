@@ -2,16 +2,17 @@
 // skrypty testowe, a barrel i18n importuje `expo-localization`.
 import { tr } from '../i18n/locale';
 import type { Leg, LegStop, VehiclePosition } from '../types/models';
-import { bearingDegrees, projectPointToPolyline } from '../gtfs/geo';
+import { bearingDegrees, distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import type { CurrentLocation } from './currentLocation';
 import { isFareBoundary } from '../gtfs/fareBoundary';
 
-// Czysta logika „gdzie jest pojazd". Wydzielona z komponentu LegTimeline,
-// bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień-
+// Czysta logika „gdzie jest pojazd”. Wydzielona z komponentu LegTimeline,
+// bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień –
 // serwis nie powinien importować komponentu (i nie da się go wtedy
 // przetestować bez react-native).
 
 const COMBINING_MARKS = /[\u0300-\u036f]/g;
+const STOP_PROXIMITY_METERS = 65;
 
 export function normalizeName(s: string): string {
   return (s || '')
@@ -92,6 +93,13 @@ export interface VehicleGap {
   label: string;
 }
 
+export type MarkerPlacement = 'at_stop' | 'between';
+
+export interface StopTimelineMarker {
+  index: number;
+  placement: MarkerPlacement;
+}
+
 export interface LiveStopPosition {
   /**
    * Przerwa, na której stoi pojazd: gap i oznacza "między stops[i] a
@@ -101,6 +109,24 @@ export interface LiveStopPosition {
    */
   gap: number;
   source: 'vehicle' | 'device' | 'estimate';
+  /**
+   * Indeks przystanku w tablicy stops, na którym pojazd aktualnie stoi (lub null jeśli jest w trasie).
+   */
+  atStopIndex: number | null;
+  /**
+   * Najwyższy indeks przystanku w tablicy stops, który został już zaliczony (przejechany dalej).
+   * Przystanek index jest zaliczony wtedy i tylko wtedy, gdy index <= passedStopIndex.
+   * Gdy pojazd stoi na przystanku i, passedStopIndex to i - 1 (przystanek i NIE jest jeszcze zaliczony).
+   * Wartość -1 oznacza, że żaden przystanek nie został jeszcze zaliczony.
+   */
+  passedStopIndex: number;
+  /**
+   * Pozycja markera pojazdu w osi czasu:
+   * - index: indeks przystanku
+   * - placement: 'at_stop' (wycentrowany na kropce przystanku) lub 'between' (na linii poniżej przystanku)
+   * - null jeśli pojazd jest poza widocznym wycinkiem
+   */
+  marker: StopTimelineMarker | null;
 }
 
 interface StopProjection {
@@ -263,6 +289,204 @@ function ridingDeviceGap(
   return projection.gap;
 }
 
+interface RawVehicleState {
+  stopIndex: number;
+  phase: 'at_stop' | 'departed';
+  source: 'vehicle' | 'device' | 'estimate';
+}
+
+function computeRawVehiclePosition(
+  stops: LegStop[],
+  leg: Leg,
+  window: LegWindow,
+  vehicle: VehiclePosition | null,
+  location: CurrentLocation | null,
+  now: number,
+): RawVehicleState | null {
+  // 1. GPS telefonu pasażera jadącego pojazdem
+  const riding = ridingDeviceGap(stops, leg, window, location, now);
+  if (riding != null && location != null) {
+    const fromStop = stops[riding];
+    const toStop = stops[riding + 1];
+    if (
+      fromStop?.lat != null &&
+      fromStop?.lon != null &&
+      distanceMeters(location.lat, location.lon, fromStop.lat, fromStop.lon) <= STOP_PROXIMITY_METERS
+    ) {
+      return { stopIndex: riding, phase: 'at_stop', source: 'device' };
+    }
+    if (
+      toStop?.lat != null &&
+      toStop?.lon != null &&
+      distanceMeters(location.lat, location.lon, toStop.lat, toStop.lon) <= STOP_PROXIMITY_METERS
+    ) {
+      return { stopIndex: riding + 1, phase: 'at_stop', source: 'device' };
+    }
+    return { stopIndex: riding, phase: 'departed', source: 'device' };
+  }
+
+  // 2. Pozycja pojazdu z API (MPK / zbiorkom)
+  if (vehicle && now - vehicle.updatedAt >= 0 && now - vehicle.updatedAt <= 120_000) {
+    const namedGap = adjacentStopGap(
+      stops,
+      vehicle.currentStopName,
+      vehicle.nextStopName,
+      vehicle.lat,
+      vehicle.lon,
+    );
+    const hasCoords = vehicle.lat != null && vehicle.lon != null;
+
+    if (namedGap >= 0) {
+      if (hasCoords) {
+        const fromStop = stops[namedGap];
+        const toStop = stops[namedGap + 1];
+        if (
+          fromStop?.lat != null &&
+          fromStop?.lon != null &&
+          distanceMeters(vehicle.lat, vehicle.lon, fromStop.lat, fromStop.lon) <= STOP_PROXIMITY_METERS
+        ) {
+          return { stopIndex: namedGap, phase: 'at_stop', source: 'vehicle' };
+        }
+        if (
+          toStop?.lat != null &&
+          toStop?.lon != null &&
+          distanceMeters(vehicle.lat, vehicle.lon, toStop.lat, toStop.lon) <= STOP_PROXIMITY_METERS
+        ) {
+          return { stopIndex: namedGap + 1, phase: 'at_stop', source: 'vehicle' };
+        }
+      }
+      return { stopIndex: namedGap, phase: 'departed', source: 'vehicle' };
+    }
+
+    if (hasCoords) {
+      let nearestIdx = -1;
+      let minDistance = Infinity;
+      for (let i = 0; i < stops.length; i++) {
+        const s = stops[i];
+        if (s.lat == null || s.lon == null || isFareBoundary(s.name)) continue;
+        const d = distanceMeters(vehicle.lat, vehicle.lon, s.lat, s.lon);
+        if (d < minDistance) {
+          minDistance = d;
+          nearestIdx = i;
+        }
+      }
+      if (nearestIdx >= 0 && minDistance <= STOP_PROXIMITY_METERS) {
+        return { stopIndex: nearestIdx, phase: 'at_stop', source: 'vehicle' };
+      }
+
+      const projection = projectToStops(stops, vehicle.lat, vehicle.lon);
+      if (projection && projection.distanceM <= 120) {
+        const fromStop = stops[projection.gap];
+        const toStop = stops[projection.gap + 1];
+        if (
+          fromStop?.lat != null &&
+          fromStop?.lon != null &&
+          distanceMeters(vehicle.lat, vehicle.lon, fromStop.lat, fromStop.lon) <= STOP_PROXIMITY_METERS
+        ) {
+          return { stopIndex: projection.gap, phase: 'at_stop', source: 'vehicle' };
+        }
+        if (
+          toStop?.lat != null &&
+          toStop?.lon != null &&
+          distanceMeters(vehicle.lat, vehicle.lon, toStop.lat, toStop.lon) <= STOP_PROXIMITY_METERS
+        ) {
+          return { stopIndex: projection.gap + 1, phase: 'at_stop', source: 'vehicle' };
+        }
+        return { stopIndex: projection.gap, phase: 'departed', source: 'vehicle' };
+      }
+    }
+
+    if (vehicle.currentStopName) {
+      const curNorm = normalizeName(vehicle.currentStopName);
+      const curIdx = stops.findIndex((s) => !isFareBoundary(s.name) && normalizeName(s.name) === curNorm);
+      if (curIdx >= 0) {
+        const isNext = vehicle.nextStopName && normalizeName(vehicle.nextStopName) !== curNorm;
+        return {
+          stopIndex: curIdx,
+          phase: isNext ? 'departed' : 'at_stop',
+          source: 'vehicle',
+        };
+      }
+    }
+  }
+
+  // 3. Szacunek z rozkładu jazdy
+  const hasStopTimes = stops.length > 2 && stops.every((stop) => stopTimeSec(stop) != null);
+  const estimate = hasStopTimes
+    ? estimateGapFromStopTimes(stops, leg, window, now)
+    : estimateGap(leg, window, now);
+  if (estimate == null) return null;
+
+  if (estimate < 0) {
+    return { stopIndex: -1, phase: 'at_stop', source: 'estimate' };
+  }
+  if (estimate >= stops.length - 1) {
+    return { stopIndex: stops.length - 1, phase: 'at_stop', source: 'estimate' };
+  }
+
+  return { stopIndex: estimate, phase: 'departed', source: 'estimate' };
+}
+
+/**
+ * Konwertuje pozycję na całkowity monotonny ranking postępu wzdłuż trasy:
+ * - 2 * i     = pojazd stoi na przystanku i (przystanek i NIE jest jeszcze zaliczony)
+ * - 2 * i + 1 = pojazd odjechał z przystanku i w stronę i + 1 (przystanek i JEST zaliczony)
+ */
+export function positionToRank(position: LiveStopPosition | null): number {
+  if (!position) return -1;
+  if (position.atStopIndex != null) {
+    return position.atStopIndex * 2;
+  }
+  if (position.passedStopIndex >= 0) {
+    return position.passedStopIndex * 2 + 1;
+  }
+  return -1;
+}
+
+/**
+ * Rekonstruuje pełną pozycję LiveStopPosition na podstawie monotonnego rankingu.
+ */
+export function rankToLivePosition(
+  rank: number,
+  stops: LegStop[],
+  leg: Leg,
+  source: 'vehicle' | 'device' | 'estimate' = 'vehicle',
+): LiveStopPosition {
+  const window = findUserSegment(stops, leg);
+  if (rank < 0) {
+    return {
+      gap: -1,
+      source,
+      atStopIndex: null,
+      passedStopIndex: -1,
+      marker: null,
+    };
+  }
+  const stopIndex = Math.floor(rank / 2);
+  const isDeparted = rank % 2 === 1;
+  const atStopIndex = isDeparted ? null : stopIndex;
+  const passedStopIndex = isDeparted ? stopIndex : stopIndex - 1;
+
+  let marker: StopTimelineMarker | null = null;
+  if (isDeparted) {
+    if (stopIndex >= window.start && stopIndex < window.end) {
+      marker = { index: stopIndex, placement: 'between' };
+    }
+  } else {
+    if (stopIndex >= window.start && stopIndex <= window.end) {
+      marker = { index: stopIndex, placement: 'at_stop' };
+    }
+  }
+
+  return {
+    gap: stopIndex,
+    source,
+    atStopIndex,
+    passedStopIndex,
+    marker,
+  };
+}
+
 /**
  * Pozycja do rozwijanej osi przystanków. Kolejność źródeł:
  *
@@ -273,6 +497,11 @@ function ridingDeviceGap(
  * 2. API (MPK, awaryjnie zbiorkom.live), gdy pojazd jest świeży
  *    i przypisany do tego kursu.
  * 3. Szacunek z rozkładu.
+ *
+ * Opcjonalny parametr `prevRank`:
+ * Gdy przekazany, wymusza ścisłą monotoniczność wzdłuż trasy (nigdy nie cofa
+ * postępu, nie odznacza zaliczonych przystanków, ani nie powoduje znikania markera
+ * przy chwilowym szumie GPS lub opuszczeniu pojedynczego zapytania API).
  */
 export function locateLiveStopPosition(
   stops: LegStop[],
@@ -280,6 +509,7 @@ export function locateLiveStopPosition(
   vehicle: VehiclePosition | null,
   location: CurrentLocation | null,
   now = Date.now(),
+  prevRank?: number,
 ): LiveStopPosition | null {
   if (
     stops.length < 2 ||
@@ -289,32 +519,54 @@ export function locateLiveStopPosition(
   }
 
   const window = findUserSegment(stops, leg);
+  const raw = computeRawVehiclePosition(stops, leg, window, vehicle, location, now);
 
-  const riding = ridingDeviceGap(stops, leg, window, location, now);
-  if (riding != null) return { gap: riding, source: 'device' };
+  let rawRank = -1;
+  if (raw != null && raw.stopIndex >= 0) {
+    rawRank = 2 * raw.stopIndex + (raw.phase === 'departed' ? 1 : 0);
+  }
 
-  if (vehicle && now - vehicle.updatedAt >= 0 && now - vehicle.updatedAt <= 120_000) {
-    const namedGap = adjacentStopGap(
-      stops,
-      vehicle.currentStopName,
-      vehicle.nextStopName,
-      vehicle.lat,
-      vehicle.lon,
-    );
-    if (namedGap >= 0) return { gap: namedGap, source: 'vehicle' };
-
-    const projection = projectToStops(stops, vehicle.lat, vehicle.lon);
-    if (projection && projection.distanceM <= 120) {
-      return { gap: projection.gap, source: 'vehicle' };
+  // Wymuszenie monotoniczności, jeśli podano poprzedni ranking
+  if (prevRank != null && prevRank >= 0) {
+    if (raw == null || rawRank < prevRank) {
+      return rankToLivePosition(prevRank, stops, leg, raw?.source ?? 'vehicle');
     }
   }
 
-  const hasStopTimes = stops.length > 2 && stops.every((stop) => stopTimeSec(stop) != null);
-  const estimate = hasStopTimes
-    ? estimateGapFromStopTimes(stops, leg, window, now)
-    : estimateGap(leg, window, now);
-  if (estimate == null) return null;
-  return { gap: estimate, source: 'estimate' };
+  if (raw == null) return null;
+
+  if (raw.stopIndex < 0) {
+    return {
+      gap: -1,
+      source: raw.source,
+      atStopIndex: null,
+      passedStopIndex: -1,
+      marker: null,
+    };
+  }
+
+  const atStopIndex = raw.phase === 'at_stop' ? raw.stopIndex : null;
+  // Przystanek jest zaliczony tylko jeśli pojazd z niego odjechał w trasę
+  const passedStopIndex = raw.phase === 'departed' ? raw.stopIndex : raw.stopIndex - 1;
+
+  let marker: StopTimelineMarker | null = null;
+  if (raw.phase === 'at_stop') {
+    if (raw.stopIndex >= window.start && raw.stopIndex <= window.end) {
+      marker = { index: raw.stopIndex, placement: 'at_stop' };
+    }
+  } else {
+    if (raw.stopIndex >= window.start && raw.stopIndex < window.end) {
+      marker = { index: raw.stopIndex, placement: 'between' };
+    }
+  }
+
+  return {
+    gap: raw.stopIndex,
+    source: raw.source,
+    atStopIndex,
+    passedStopIndex,
+    marker,
+  };
 }
 
 /** Kierunek jazdy musi zgadzać się z odcinkiem, o ile GPS w ogóle go podaje. */
