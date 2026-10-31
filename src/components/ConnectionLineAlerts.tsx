@@ -252,9 +252,7 @@ const AlertSubCard = memo(function AlertSubCard({
 
       {/* 4. Kontekst problemu (Smart AI Glance Problem), jeśli wnosi coś poza samym nagłówkiem */}
       {problem && problem.trim() !== headline.trim() ? (
-        <Text style={styles.problemText} numberOfLines={2}>
-          {problem}
-        </Text>
+        <Text style={styles.problemText}>{problem}</Text>
       ) : null}
 
       {/* 5. Inteligentny boks rozwiązania / objazdu (Smart AI Glance Solution) */}
@@ -268,9 +266,7 @@ const AlertSubCard = memo(function AlertSubCard({
               {getTransitActionLabel(item, s)}
             </Text>
           </View>
-          <Text style={styles.solutionText} numberOfLines={3}>
-            {solution}
-          </Text>
+          <Text style={styles.solutionText}>{solution}</Text>
         </View>
       ) : null}
 

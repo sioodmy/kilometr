@@ -37,16 +37,12 @@ import {
   type MpkNewsItem,
 } from '../src/services/mpkNews';
 import { useActiveCity } from '../src/services/cityStore';
-import {
-  loadRecentRouteLines,
-  newsTouchesLines,
-} from '../src/services/recentRouteLines';
+import { loadRecentRouteLines, newsTouchesLines } from '../src/services/recentRouteLines';
 
 type NewsFilter = 'all' | 'myLines';
 
 type Row =
-  | { kind: 'head'; id: string; label: string }
-  | { kind: 'item'; id: string; item: MpkNewsItem };
+  { kind: 'head'; id: string; label: string } | { kind: 'item'; id: string; item: MpkNewsItem };
 
 type Tone = 'urgent' | 'resolved' | 'quiet';
 
@@ -59,9 +55,17 @@ function toneColors(tone: Tone) {
     };
   }
   if (tone === 'resolved') {
-    return { card: scheme.surfaceContainerLowest, ink: scheme.onSurfaceVariant, muted: scheme.outline };
+    return {
+      card: scheme.surfaceContainerLowest,
+      ink: scheme.onSurfaceVariant,
+      muted: scheme.outline,
+    };
   }
-  return { card: scheme.surfaceContainerLow, ink: scheme.onSurface, muted: scheme.onSurfaceVariant };
+  return {
+    card: scheme.surfaceContainerLow,
+    ink: scheme.onSurface,
+    muted: scheme.onSurfaceVariant,
+  };
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -137,13 +141,9 @@ const NewsCard = memo(function NewsCard({
         </View>
       ) : null}
       {item.disruption?.glance?.problem ? (
-        <Text style={[styles.cardDesc, { color: c.muted }]} numberOfLines={2}>
-          {item.disruption.glance.problem}
-        </Text>
-      ) : item.source === 'city' && item.description ? (
-        <Text style={[styles.cardDesc, { color: c.muted }]} numberOfLines={2}>
-          {item.description}
-        </Text>
+        <Text style={[styles.cardDesc, { color: c.muted }]}>{item.disruption.glance.problem}</Text>
+      ) : item.description ? (
+        <Text style={[styles.cardDesc, { color: c.muted }]}>{item.description}</Text>
       ) : null}
       {solution ? (
         <View
@@ -153,9 +153,7 @@ const NewsCard = memo(function NewsCard({
           ]}
         >
           <Text style={[styles.solutionLabel, { color: c.muted }]}>{s.news.solutionLabel}</Text>
-          <Text style={[styles.cardSolution, { color: c.ink }]} numberOfLines={3}>
-            {solution}
-          </Text>
+          <Text style={[styles.cardSolution, { color: c.ink }]}>{solution}</Text>
         </View>
       ) : null}
     </AnimatedPressable>
@@ -270,14 +268,13 @@ export default function NewsScreen() {
   }, [visibleItems, s]);
 
   const urgentCount = visibleItems.filter((i) => i.urgent).length;
-  const filterEmpty =
-    filter === 'myLines' && items.length > 0 && visibleItems.length === 0;
+  const filterEmpty = filter === 'myLines' && items.length > 0 && visibleItems.length === 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
           style={styles.back}
           accessibilityRole="button"
           accessibilityLabel={s.map.backA11y}
@@ -293,11 +290,17 @@ export default function NewsScreen() {
           accessibilityState={{ disabled: refreshing || loading, busy: refreshing }}
           accessibilityLabel={s.news.refreshA11y}
         >
-          {refreshing ? <ActivityIndicator size="small" color={scheme.primary} /> : <RefreshCw size={21} color={scheme.onSurface} />}
+          {refreshing ? (
+            <ActivityIndicator size="small" color={scheme.primary} />
+          ) : (
+            <RefreshCw size={21} color={scheme.onSurface} />
+          )}
         </Pressable>
       </View>
       <View style={styles.headerText}>
-        <Text style={styles.headerTitle} accessibilityRole="header">{s.news.title}</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">
+          {s.news.title}
+        </Text>
         <Text style={styles.headerSub}>
           {loading && items.length === 0
             ? s.news.sourceLoading(feedsLabel)
@@ -327,9 +330,7 @@ export default function NewsScreen() {
             accessibilityState={{ selected: filter === 'myLines' }}
             accessibilityLabel={s.news.filterMyLinesA11y}
           >
-            {filter === 'myLines' ? (
-              <Check size={16} color={scheme.onSecondaryContainer} />
-            ) : null}
+            {filter === 'myLines' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
             <Text style={[styles.segmentText, filter === 'myLines' && styles.segmentTextOn]}>
               {s.news.filterMyLines}
             </Text>
@@ -355,7 +356,10 @@ export default function NewsScreen() {
           <Text style={styles.stateTitle}>{s.news.noConnection}</Text>
           <Text style={styles.stateText}>{error}</Text>
           <Pressable
-            onPress={() => { setLoading(true); void load(false); }}
+            onPress={() => {
+              setLoading(true);
+              void load(false);
+            }}
             accessibilityRole="button"
             style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
           >
@@ -380,7 +384,9 @@ export default function NewsScreen() {
           }
           renderItem={({ item: row }) =>
             row.kind === 'head' ? (
-              <Text style={styles.section} accessibilityRole="header">{row.label}</Text>
+              <Text style={styles.section} accessibilityRole="header">
+                {row.label}
+              </Text>
             ) : (
               <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
             )
@@ -487,7 +493,14 @@ const styles = StyleSheet.create({
     gap: 12,
     overflow: 'hidden',
   },
-  metaRow: { flexDirection: 'row', alignItems: 'center', columnGap: 12, rowGap: 4, flexWrap: 'wrap', justifyContent: 'space-between' },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: 4,
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   metaText: { ...type.bodySmall, flexShrink: 1 },
   urgentLabel: {
     flexDirection: 'row',
@@ -520,7 +533,14 @@ const styles = StyleSheet.create({
   linesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   moreLines: { ...type.labelSmall, color: scheme.onSurfaceVariant, alignSelf: 'center' },
   skel: { borderRadius: shape.small, backgroundColor: scheme.surfaceContainerHighest },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 8, flexWrap: 'wrap' },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingTop: 8,
+    flexWrap: 'wrap',
+  },
   emptyWrap: { alignItems: 'center', gap: 12, paddingVertical: 40, paddingHorizontal: 12 },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   stateIcon: {
