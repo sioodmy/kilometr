@@ -17,7 +17,7 @@ const locationRoot = 'node_modules/expo-location';
 const locationPackage = JSON.parse(readFileSync(`${locationRoot}/package.json`, 'utf8'));
 assert.equal(
   locationPackage.version,
-  '57.0.19',
+  '57.0.22',
   'Sprawdź adapter lokalizacji po aktualizacji Expo.',
 );
 
