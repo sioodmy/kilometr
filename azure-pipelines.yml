@@ -61,9 +61,9 @@ jobs:
         fetchTags: true
 
       - task: UseNode@1
-        displayName: Use Node.js 20
+        displayName: Use Node.js 22
         inputs:
-          version: '20.x'
+          version: '22.x'
 
       - task: JavaToolInstaller@0
         displayName: Use Java 17
@@ -231,7 +231,7 @@ jobs:
 
       # Domyślne 2 GB JVM za mało dla równoległej kompilacji C++ (RN 0.86, new arch).
       # `expo prebuild` generuje gradle.properties BEZ znaku nowej linii na końcu,
-      # więc `cat >>` sklejałby doklejaną właściwość z ostatnią istniejącą
+      # więc `cat >>` sklejałoby doklejaną właściwość z ostatnią istniejącą
       # ("expo.inlineModules.watchedDirectories=[]org.gradle.jvmargs=...") i Gradle
       # czyta tę wartość jako "[]org.gradle.jvmargs=...".
       - bash: |
