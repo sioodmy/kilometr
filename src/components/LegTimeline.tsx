@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowRight,
@@ -35,6 +35,7 @@ import {
   findUserSegment,
   locateLiveStopPosition,
   normalizeName,
+  positionToRank,
 } from '../services/vehiclePosition';
 import { useStrings, type Strings } from '../i18n';
 import { motion } from '../theme/motion';
@@ -178,7 +179,10 @@ const StopRow = memo(function StopRow({
   emphasis,
   accent,
   connectorAccent,
-  vehicleGap,
+  passed,
+  markerPlacement,
+  incomingPassed,
+  outgoingPassed,
   vehicleLabel,
 }: {
   stop: LegStop;
@@ -190,17 +194,15 @@ const StopRow = memo(function StopRow({
   emphasis: boolean;
   accent: string;
   connectorAccent: boolean;
-  vehicleGap: number | null;
+  passed: boolean;
+  markerPlacement: 'at_stop' | 'between' | null;
+  incomingPassed: boolean;
+  outgoingPassed: boolean;
   vehicleLabel: string;
 }) {
   const t = useStrings();
   const boundary = parseFareBoundary(stop.name);
-  // Przystanek pojazd już minął: wyszarzony, tak samo jak dotychczas przejechane.
-  const passed = vehicleGap != null && index <= vehicleGap;
-  const markerHere = vehicleGap === index && !isLast;
   const lineCenter = boundary ? 20 : 10.5;
-  const incomingPassed = vehicleGap != null && index <= vehicleGap;
-  const outgoingPassed = vehicleGap != null && index < vehicleGap;
   return (
     <View style={s.stopRow}>
       <View style={s.stopRail}>
@@ -242,12 +244,15 @@ const StopRow = memo(function StopRow({
               : { backgroundColor: accent, borderColor: accent },
           ]}
         />
-        {markerHere && (
+        {markerPlacement != null && (
           <View
             accessible
             accessibilityRole="image"
             accessibilityLabel={vehicleLabel}
-            style={s.vehicleMarker}
+            style={[
+              s.vehicleMarker,
+              markerPlacement === 'at_stop' && { top: lineCenter - 12 },
+            ]}
           >
             <VehicleGlyph mode={vehicleMode} />
           </View>
@@ -304,11 +309,21 @@ function LegStopsList({
     return () => clearInterval(timer);
   }, []);
 
-  const livePosition = useMemo(
-    () => (allowLive ? locateLiveStopPosition(stops, leg, vehicle, userLocation, now) : null),
-    [stops, leg, vehicle, userLocation, now, allowLive],
-  );
-  const vehicleGap = livePosition?.gap ?? null;
+  const lastLegIdRef = useRef(leg.id);
+  const rankRef = useRef<number>(-1);
+  if (lastLegIdRef.current !== leg.id) {
+    lastLegIdRef.current = leg.id;
+    rankRef.current = -1;
+  }
+
+  const livePosition = useMemo(() => {
+    if (!allowLive) return null;
+    const pos = locateLiveStopPosition(stops, leg, vehicle, userLocation, now, rankRef.current);
+    if (pos) {
+      rankRef.current = Math.max(rankRef.current, positionToRank(pos));
+    }
+    return pos;
+  }, [stops, leg, vehicle, userLocation, now, allowLive]);
 
   if (loading) {
     return (
@@ -330,6 +345,18 @@ function LegStopsList({
       {stops.slice(segment.start, segment.end + 1).map((stop, offset) => {
         const i = segment.start + offset;
         const connectorAccent = i + 1 <= segment.end;
+        const passed = livePosition != null && i <= livePosition.passedStopIndex;
+        const markerPlacement =
+          livePosition?.marker && livePosition.marker.index === i
+            ? livePosition.marker.placement
+            : null;
+        const incomingPassed =
+          livePosition != null &&
+          (i <= livePosition.passedStopIndex || livePosition.atStopIndex === i);
+        const outgoingPassed =
+          livePosition != null &&
+          (i + 1 <= livePosition.passedStopIndex || livePosition.atStopIndex === i + 1);
+
         return (
           <StopRow
             key={`${stop.stopId}-${stop.seq}`}
@@ -341,12 +368,19 @@ function LegStopsList({
             emphasis={i === segment.start || i === segment.end}
             accent={accent}
             connectorAccent={connectorAccent}
-            vehicleGap={vehicleGap}
-            vehicleLabel={t.leg.vehicleBetween(
-              genericModeGen(t, leg.mode),
-              stop.name,
-              stops[i + 1]?.name ?? stop.name,
-            )}
+            passed={passed}
+            markerPlacement={markerPlacement}
+            incomingPassed={incomingPassed}
+            outgoingPassed={outgoingPassed}
+            vehicleLabel={
+              markerPlacement === 'at_stop'
+                ? t.leg.nearStop(genericModeNom(t, leg.mode), stop.name)
+                : t.leg.vehicleBetween(
+                    genericModeGen(t, leg.mode),
+                    stop.name,
+                    stops[i + 1]?.name ?? stop.name,
+                  )
+            }
           />
         );
       })}
@@ -492,7 +526,13 @@ function TransitLegCard({
             now - candidate.updatedAt >= 0 &&
             now - candidate.updatedAt <= 120_000,
         );
-      setVehicle(match ?? null);
+      setVehicle((prev) => {
+        if (match) return match;
+        if (prev && now - prev.updatedAt >= 0 && now - prev.updatedAt <= 120_000) {
+          return prev;
+        }
+        return null;
+      });
     };
 
     updateVehicle();
@@ -559,7 +599,7 @@ function TransitLegCard({
         <View style={s.cardStartRow}>
           <View style={s.stopTitleWrap}>
             <Text style={s.cardStopName}>{leg.fromStop}</Text>
-            {departurePlatform ? (
+            {departurePlatform && !stopHint ? (
               <View style={s.platformBadge}>
                 <Text style={s.platformBadgeText}>{departurePlatform}</Text>
               </View>

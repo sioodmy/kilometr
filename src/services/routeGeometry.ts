@@ -15,21 +15,25 @@
 //
 // Kolej korzysta z torów w kafelkach mapy. Pozostałe nogi szynowe
 // zostają przy geometrii przybliżonej, bez routera samochodowego.
+// W przypadku autobusów router samochodowy OSRM bywa wyprowadzany w pole
+// przez zakazy wjazdu dla aut (buspasy, strefy piesze, bramki autobusowe,
+// np. I Obwodnica w Krakowie). Odcinki z nienaturalnymi objazdami są
+// automatycznie wykrywane i zastępowane czystą prostą między przystankami.
 
 import { OSRM_BASE_URL } from '../config';
 import { routeFootLocal, routeRailLocal } from './footRouter';
 import { kvGet, kvSet } from './storage';
-import { getLineColors, mapLineColor } from '../components/LineBadge';
+import { getLineColors, mapLineColor } from './lineIdentity';
 import { timeStringToSeconds } from '../gtfs/geo';
 import { selectEvictions } from './geometryEviction';
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
 import { isFareBoundary } from '../gtfs/fareBoundary';
 
-const CACHE_KEY = 'kilometr.map_geometry.v1';
+const CACHE_KEY = 'kilometr.map_geometry.v3';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 60;
-const PINS_KEY = 'kilometr.map_geometry.pins.v1';
+const PINS_KEY = 'kilometr.map_geometry.pins.v3';
 /** Ile tras trzymamy przypiętych. Powyżej tego najstarsze wypadają. */
 const PINS_MAX = 40;
 /** OSRM demo jest wolne przy dużej liczbie waypointów, dzielimy nogi na porcje. */
@@ -57,7 +61,7 @@ interface CacheEntry {
   c: Coord[];
 }
 
-// ─── Model trasy ─────────────────────────────────────────────
+// ─── Model trasy ─────────────────────────────────────────────────────────────
 
 function legStops(leg: Leg): MapStop[] {
   const stops: MapStop[] = [];
@@ -126,8 +130,7 @@ function legStops(leg: Leg): MapStop[] {
 function legToMapLeg(leg: Leg): MapLeg {
   const { bg } = getLineColors(leg.line, leg.mode);
   const stops = legStops(leg);
-  return {
-    id: leg.id,
+  return { id: leg.id,
     geometry: leg.geometry,
     mode: leg.mode,
     line: leg.line,
@@ -167,7 +170,7 @@ export function buildMapRoute(connection: Connection): MapRoute {
   };
 }
 
-// ─── Geometria z OSRM ────────────────────────────────────────
+// ─── Geometria z OSRM ────────────────────────────────────────────────────────
 
 function waypointKey(coords: Coord[]): string {
   // 5 m ≈ 4–5 miejsc po przecinku - tyle wystarczy, żeby klucz był stabilny.
@@ -301,6 +304,151 @@ export async function warmRouteGeometry(
   return warmed;
 }
 
+/** Oblicza azymut geograficzny (bearing w stopniach 0..359) z p1 do p2. */
+export function calcBearing(p1: Coord, p2: Coord): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const toDeg = (r: number) => (r * 180) / Math.PI;
+  const dLon = toRad(p2[1] - p1[1]);
+  const lat1 = toRad(p1[0]);
+  const lat2 = toRad(p2[0]);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return Math.round((toDeg(Math.atan2(y, x)) + 360) % 360);
+}
+
+/**
+ * Wyznacza parametr bearings dla OSRM na podstawie kierunku korytarza transportowego.
+ * Pozwala uniknąć przyciągania do ślepych zaułków, parkingów i prostopadłych alejek.
+ */
+export function computeBearingsParam(points: Coord[]): string | null {
+  if (points.length < 2) return null;
+  const angleDiff = (a: number, b: number) => {
+    const diff = Math.abs(a - b) % 360;
+    return diff > 180 ? 360 - diff : diff;
+  };
+
+  return points
+    .map((p, i) => {
+      if (i === 0) {
+        return `${calcBearing(points[0], points[1])},60`;
+      }
+      if (i === points.length - 1) {
+        return `${calcBearing(points[i - 1], points[i])},60`;
+      }
+      const bIn = calcBearing(points[i - 1], points[i]);
+      const bOut = calcBearing(points[i], points[i + 1]);
+      if (angleDiff(bIn, bOut) <= 60) {
+        return `${bOut},60`;
+      }
+      return '';
+    })
+    .join(';');
+}
+
+/**
+ * Usuwa z geometrii tzw. anteny (wypustki / nawrotki), gdzie router zjechał
+ * w ślepą uliczkę/zatoczkę, zawrócił i wrócił tą samą drogą.
+ */
+export function removeSpurs(pts: Coord[]): Coord[] {
+  let res = [...pts];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 1; i < res.length - 1; i++) {
+      let back = i - 1;
+      let fwd = i + 1;
+      let matched = 0;
+      while (back >= 0 && fwd < res.length && distanceM(res[back], res[fwd]) < 25) {
+        matched++;
+        back--;
+        fwd++;
+      }
+      if (matched > 0) {
+        res.splice(back + 1, fwd - 1 - (back + 1));
+        changed = true;
+        break;
+      }
+    }
+  }
+  return res;
+}
+
+/** Odległość w metrach między dwoma punktami geograficznymi. */
+export function distanceM(p1: Coord, p2: Coord): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = (p2[0] - p1[0]) * 111320;
+  const dLon = (p2[1] - p1[1]) * 111320 * Math.cos(toRad((p1[0] + p2[0]) / 2));
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
+
+/**
+ * Odległość punktu P od odcinka AB w metrach (rzut z domknięciem do końców).
+ */
+export function distanceToSegment(p: Coord, a: Coord, b: Coord): number {
+  const [lat, lon] = p;
+  const [lat1, lon1] = a;
+  const [lat2, lon2] = b;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const midLat = toRad((lat1 + lat2) / 2);
+  const kx = Math.cos(midLat);
+  const x = toRad(lon - lon1) * kx;
+  const y = toRad(lat - lat1);
+  const dx = toRad(lon2 - lon1) * kx;
+  const dy = toRad(lat2 - lat1);
+  const lenSq = dx * dx + dy * dy;
+  const t = lenSq > 0 ? Math.max(0, Math.min(1, (x * dx + y * dy) / lenSq)) : 0;
+  const pLat = lat1 + t * (lat2 - lat1);
+  const pLon = lon1 + t * (lon2 - lon1);
+  return distanceM(p, [pLat, pLon]);
+}
+
+/**
+ * Domyka geometrię odcinka do dokładnych współrzędnych przystanków krańcowych (p1 i p2)
+ * oraz eliminuje powtórzenia sąsiadujących punktów.
+ */
+export function sanitizeLegCoords(coords: Coord[], p1: Coord, p2: Coord): Coord[] {
+  if (coords.length < 2) return [p1, p2];
+  const cleaned: Coord[] = [p1];
+  for (const c of coords) {
+    const last = cleaned[cleaned.length - 1];
+    if (last[0] !== c[0] || last[1] !== c[1]) {
+      cleaned.push(c);
+    }
+  }
+  const last = cleaned[cleaned.length - 1];
+  if (last[0] !== p2[0] || last[1] !== p2[1]) {
+    cleaned.push(p2);
+  }
+  return cleaned.length >= 2 ? cleaned : [p1, p2];
+}
+
+/**
+ * Sprawdza, czy odcinek wyznaczony przez OSRM dla profilu samochodowego
+ * nie jest objazdem spowodowanym ograniczeniami ruchu (np. buspas, deptak,
+ * zakaz wjazdu dla aut, ulica jednokierunkowa).
+ */
+export function isOsrmLegDetour(
+  p1: Coord,
+  p2: Coord,
+  osrmDistM: number,
+  stepCoords: Coord[],
+  hasUturn: boolean = false,
+): boolean {
+  if (stepCoords.length < 2) return true;
+  if (hasUturn) return true;
+  const crowDist = distanceM(p1, p2);
+  const maxAllowedDist = Math.max(crowDist * 1.85 + 200, 350);
+  if (osrmDistM > maxAllowedDist) return true;
+
+  const maxAllowedOffset = Math.max(crowDist * 0.75, 400);
+  for (const pt of stepCoords) {
+    if (distanceToSegment(pt, p1, p2) > maxAllowedOffset) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function fetchChunk(
   points: Coord[],
   profile: RouteProfile,
@@ -314,23 +462,73 @@ async function fetchChunk(
     return routeRailLocal(points, signal);
   }
   const coordsParam = points.map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
-  const url = `${OSRM_BASE_URL}/route/v1/${profile}/${coordsParam}?overview=full&geometries=geojson`;
+  const bearingsParam = profile === 'driving' ? computeBearingsParam(points) : null;
+  const baseUrl = `${OSRM_BASE_URL}/route/v1/${profile}/${coordsParam}?overview=false&steps=true&geometries=geojson`;
+  const url = bearingsParam ? `${baseUrl}&bearings=${bearingsParam}` : baseUrl;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   // Anulowanie z ekranu ma przerwać także żądanie w locie, nie tylko pętlę.
   const onAbort = () => ctrl.abort();
   signal?.addEventListener('abort', onAbort);
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    let res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok && bearingsParam) {
+      // W razie gdyby OSRM nie dopasował drogi w zadanym kącie, ponów bez bearings
+      res = await fetch(baseUrl, { signal: ctrl.signal });
+    }
     if (!res.ok) return null;
     const body = (await res.json()) as {
       code?: string;
-      routes?: { geometry?: { coordinates?: [number, number][] } }[];
+      routes?: {
+        legs?: {
+          distance?: number;
+          steps?: {
+            maneuver?: { modifier?: string };
+            geometry?: { coordinates?: [number, number][] };
+          }[];
+        }[];
+      }[];
     };
-    if (body.code !== 'Ok') return null;
-    const line = body.routes?.[0]?.geometry?.coordinates;
-    if (!Array.isArray(line) || line.length < 2) return null;
-    return line.map(([lon, lat]) => [lat, lon] as Coord);
+    if (body.code !== 'Ok' || !body.routes?.[0]?.legs) return null;
+    const legs = body.routes[0].legs;
+    if (legs.length !== points.length - 1) return null;
+
+    const out: Coord[] = [];
+    for (let i = 0; i < legs.length; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const stepCoords: Coord[] = [];
+      let hasUturn = false;
+
+      for (const step of legs[i].steps ?? []) {
+        if (step.maneuver?.modifier === 'uturn') {
+          hasUturn = true;
+        }
+        for (const [lon, lat] of step.geometry?.coordinates ?? []) {
+          stepCoords.push([lat, lon]);
+        }
+      }
+
+      const unspurred = removeSpurs(stepCoords);
+      const detour = isOsrmLegDetour(
+        p1,
+        p2,
+        legs[i].distance ?? 0,
+        unspurred,
+        hasUturn && unspurred.length === stepCoords.length,
+      );
+      const legPoints = detour ? [p1, p2] : sanitizeLegCoords(unspurred, p1, p2);
+
+      if (out.length === 0) {
+        out.push(...legPoints);
+      } else {
+        // Sklej bez powtórzenia punktu granicznego
+        out.push(...legPoints.slice(1));
+      }
+    }
+
+    const finalOut = removeSpurs(out);
+    return finalOut.length >= 2 ? finalOut : null;
   } catch {
     return null;
   } finally {
@@ -400,14 +598,6 @@ export async function resolveGeometry(
       await new Promise((r) => setTimeout(r, 350));
     }
   }
-}
-
-/** Odległość w metrach między dwoma punktami geograficznymi. */
-export function distanceM(p1: Coord, p2: Coord): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = (p2[0] - p1[0]) * 111320;
-  const dLon = (p2[1] - p1[1]) * 111320 * Math.cos(toRad((p1[0] + p2[0]) / 2));
-  return Math.sqrt(dLat * dLat + dLon * dLon);
 }
 
 /** Skumulowane odległości wzdłuż linii; długość = coords.length + 1. */

@@ -26,6 +26,14 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
 
+  # Zależności Cloudflare Workers (cloudflare)
+  - package-ecosystem: "npm"
+    directory: "/cloudflare"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
   # Aktualizacje GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
