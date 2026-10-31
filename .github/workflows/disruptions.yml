@@ -45,7 +45,7 @@ jobs:
           node-version: 22
 
       - name: Przywróć cache przeanalizowanych newsów
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: cloudflare/data/news-cache.json
           key: disruptions-news-cache-${{ github.run_id }}
