@@ -50,15 +50,15 @@ const legTransition = LinearTransition.duration(motion.enter.duration).easing(mo
 /** Kropkowany łącznik między kartami, pigułkami pieszymi i znacznikami trasy. */
 function DottedConnector({ height = 12 }: { height?: number }) {
   return (
-    <Svg width={4} height={height}>
+    <Svg width={6} height={height}>
       <Line
-        x1={2}
-        y1={0}
-        x2={2}
-        y2={height}
+        x1={3}
+        y1={2}
+        x2={3}
+        y2={height - 2}
         stroke="rgba(255, 255, 255, 0.30)"
-        strokeWidth={2}
-        strokeDasharray="1 5"
+        strokeWidth={3}
+        strokeDasharray="0 6"
         strokeLinecap="round"
       />
     </Svg>
@@ -714,7 +714,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
   return (
     <View style={s.list}>
       <View style={s.terminalStart}>
-        <LocateFixed size={32} color={scheme.primary} />
+        <LocateFixed size={32} color={scheme.onSurfaceVariant} />
         <DottedConnector height={20} />
       </View>
       {legs.map((leg, i) => {
@@ -795,7 +795,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
       })}
       <View style={s.terminalEnd}>
         <DottedConnector height={20} />
-        <LocationOn size={32} color={scheme.primary} />
+        <LocationOn size={32} color={scheme.onSurfaceVariant} />
       </View>
     </View>
   );
@@ -964,12 +964,12 @@ const s = StyleSheet.create({
   },
   terminalStart: {
     alignItems: 'center',
-    gap: 2,
+    gap: 12,
     paddingTop: 4,
   },
   terminalEnd: {
     alignItems: 'center',
-    gap: 2,
+    gap: 12,
     paddingBottom: 4,
   },
   walkCentered: {
