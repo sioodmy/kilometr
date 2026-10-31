@@ -37,7 +37,7 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Cache npm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -85,7 +85,7 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Cache npm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -129,7 +129,7 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Cache npm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -140,7 +140,7 @@ jobs:
         run: nix develop .#ci -c npm ci
 
       - name: Cache Rust RAPTOR target
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: modules/kilometr-raptor/rust/target
           key: rust-raptor-ci-${{ runner.os }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
@@ -281,7 +281,7 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Cache npm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: npm-subprojects-${{ runner.os }}-${{ hashFiles('package-lock.json', 'server/package-lock.json', 'landing/package-lock.json', 'cloudflare/package-lock.json') }}
