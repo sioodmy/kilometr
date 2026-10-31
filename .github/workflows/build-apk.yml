@@ -11,7 +11,7 @@ name: Build & Release APK
 # Ręczne uruchomienie (workflow_dispatch) ma dwa tryby:
 #
 # - `release` (domyślny): jak push. Kanał wynika z gałęzi (nightly/prod),
-#   więc nie da się zbudować „prod" z nieaudytowanego brancha. Publikuje
+#   więc nie da się zbudować „prod” z nieaudytowanego brancha. Publikuje
 #   GitHub Release z APK jako assetem.
 # - `artifact-only`: buduje APK z DOWOLNEJ gałęzi i tylko dołącza go jako
 #   artefakt Actions. Nic nie publikuje, żadnego release ani tagu. Do tego
@@ -76,10 +76,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       # Bramka: APK pobiera bazę z R2 przy starcie, więc nie wypuszczamy
@@ -149,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
           # Kanał ZAWSZE z gałęzi. Nawet przy workflow_dispatch, dzięki temu
-          # nie da się odpalić builda „prod" z dev/feature brancha.
+          # nie da się odpalić builda „prod” z dev/feature brancha.
           CHANNEL="${GITHUB_REF_NAME}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             ARCH="${INPUT_ARCH:-}"
@@ -167,7 +167,7 @@ jobs:
 
           if [ "$MODE" = "artifact-only" ]; then
             # Buduje z dowolnej gałęzi i tylko dołącza APK jako artefakt.
-            # Żadnego tagu ani wydania, więc nie wolno zależeć od channela.
+            # żadnego tagu ani wydania, więc nie wolno zależeć od channela.
             CHANNEL="artifact-only"
             TAG="test-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
             APK_NAME="kilometr-test.apk"
@@ -244,7 +244,7 @@ jobs:
           # ("expo.inlineModules.watchedDirectories=[]org.gradle.jvmargs=..."). Gradle
           # czyta wtedy tę wartość jako "[]org.gradle.jvmargs=..." i przekazuje ją do
           # `node ... mirror-kotlin-inline-modules --watched-directories-serialized`,
-          # gdzie JSON.parse() pada → build wywala się na
+          # gdzie JSON.parse() pada -> build wywala się na
           # "Process 'command 'node'' finished with non-zero exit value 1".
           printf '\n' >> "$GP"
           cat >> "$GP" <<'EOF'
@@ -422,7 +422,7 @@ jobs:
           path: apk-dist/*
 
       # W trybie artifact-only nie ma wydania, więc podpowiadamy w podsumowaniu
-      # runu, gdzie zabrać APK (Actions → ten run → Artifacts).
+      # runu, gdzie zabrać APK (Actions -> ten run -> Artifacts).
       - name: Summarize artifact-only build
         if: steps.release.outputs.publish != 'true'
         env:
@@ -447,7 +447,7 @@ jobs:
           PRERELEASE: ${{ steps.release.outputs.prerelease }}
         run: |
           set -euo pipefail
-          # Build → zawsze nowy release z autogenerowanymi notkami. Bez
+          # Build -> zawsze nowy release z autogenerowanymi notkami. Bez
           # artefaktów do ręcznego szukania: APK jest assetem release'u.
           if [ "$CHANNEL" = "prod" ]; then
             TITLE="Kilometr $TAG"
