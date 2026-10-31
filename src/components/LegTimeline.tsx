@@ -723,6 +723,13 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
           const isSameStop =
             normalizeName(leg.fromStop) === normalizeName(leg.toStop) ||
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
+          const prevLeg = legs[i - 1];
+          const nextLeg = legs[i + 1];
+          const isTransferWalk =
+            prevLeg != null &&
+            prevLeg.mode !== 'walk' &&
+            nextLeg != null &&
+            nextLeg.mode !== 'walk';
 
           return (
             <Animated.View key={leg.id} layout={legTransition} style={s.walkCentered}>
@@ -734,21 +741,23 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                   {leg.walkM ? ` · ${Math.round(leg.walkM)} m` : ''}
                 </Text>
               </View>
-              {isSameStop ? (
-                <Text style={s.walkSub} numberOfLines={1}>
-                  {leg.fromStop}
-                </Text>
-              ) : (
-                <View style={s.walkSubRow}>
+              {!isTransferWalk ? (
+                isSameStop ? (
                   <Text style={s.walkSub} numberOfLines={1}>
                     {leg.fromStop}
                   </Text>
-                  <ArrowRight size={11} color={scheme.onSurfaceVariant} />
-                  <Text style={s.walkSub} numberOfLines={1}>
-                    {leg.toStop}
-                  </Text>
-                </View>
-              )}
+                ) : (
+                  <View style={s.walkSubRow}>
+                    <Text style={s.walkSub} numberOfLines={1}>
+                      {leg.fromStop}
+                    </Text>
+                    <ArrowRight size={11} color={scheme.onSurfaceVariant} />
+                    <Text style={s.walkSub} numberOfLines={1}>
+                      {leg.toStop}
+                    </Text>
+                  </View>
+                )
+              ) : null}
               <DottedConnector />
             </Animated.View>
           );
@@ -784,9 +793,6 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                       : 'Przesiadka'}
                   </Text>
                 </View>
-                <Text style={s.walkSub} numberOfLines={1}>
-                  {leg.toStop}
-                </Text>
                 <DottedConnector />
               </View>
             )}
