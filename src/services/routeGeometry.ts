@@ -30,10 +30,10 @@ import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
 import { isFareBoundary } from '../gtfs/fareBoundary';
 
-const CACHE_KEY = 'kilometr.map_geometry.v2';
+const CACHE_KEY = 'kilometr.map_geometry.v3';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 60;
-const PINS_KEY = 'kilometr.map_geometry.pins.v2';
+const PINS_KEY = 'kilometr.map_geometry.pins.v3';
 /** Ile tras trzymamy przypiętych. Powyżej tego najstarsze wypadają. */
 const PINS_MAX = 40;
 /** OSRM demo jest wolne przy dużej liczbie waypointów, dzielimy nogi na porcje. */
@@ -304,6 +304,75 @@ export async function warmRouteGeometry(
   return warmed;
 }
 
+/** Oblicza azymut geograficzny (bearing w stopniach 0..359) z p1 do p2. */
+export function calcBearing(p1: Coord, p2: Coord): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const toDeg = (r: number) => (r * 180) / Math.PI;
+  const dLon = toRad(p2[1] - p1[1]);
+  const lat1 = toRad(p1[0]);
+  const lat2 = toRad(p2[0]);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return Math.round((toDeg(Math.atan2(y, x)) + 360) % 360);
+}
+
+/**
+ * Wyznacza parametr bearings dla OSRM na podstawie kierunku korytarza transportowego.
+ * Pozwala uniknąć przyciągania do ślepych zaułków, parkingów i prostopadłych alejek.
+ */
+export function computeBearingsParam(points: Coord[]): string | null {
+  if (points.length < 2) return null;
+  const angleDiff = (a: number, b: number) => {
+    const diff = Math.abs(a - b) % 360;
+    return diff > 180 ? 360 - diff : diff;
+  };
+
+  return points
+    .map((p, i) => {
+      if (i === 0) {
+        return `${calcBearing(points[0], points[1])},60`;
+      }
+      if (i === points.length - 1) {
+        return `${calcBearing(points[i - 1], points[i])},60`;
+      }
+      const bIn = calcBearing(points[i - 1], points[i]);
+      const bOut = calcBearing(points[i], points[i + 1]);
+      if (angleDiff(bIn, bOut) <= 60) {
+        return `${bOut},60`;
+      }
+      return '';
+    })
+    .join(';');
+}
+
+/**
+ * Usuwa z geometrii tzw. anteny (wypustki / nawrotki), gdzie router zjechał
+ * w ślepą uliczkę/zatoczkę, zawrócił i wrócił tą samą drogą.
+ */
+export function removeSpurs(pts: Coord[]): Coord[] {
+  let res = [...pts];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 1; i < res.length - 1; i++) {
+      let back = i - 1;
+      let fwd = i + 1;
+      let matched = 0;
+      while (back >= 0 && fwd < res.length && distanceM(res[back], res[fwd]) < 25) {
+        matched++;
+        back--;
+        fwd++;
+      }
+      if (matched > 0) {
+        res.splice(back + 1, fwd - 1 - (back + 1));
+        changed = true;
+        break;
+      }
+    }
+  }
+  return res;
+}
+
 /** Odległość w metrach między dwoma punktami geograficznymi. */
 export function distanceM(p1: Coord, p2: Coord): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -363,8 +432,10 @@ export function isOsrmLegDetour(
   p2: Coord,
   osrmDistM: number,
   stepCoords: Coord[],
+  hasUturn: boolean = false,
 ): boolean {
   if (stepCoords.length < 2) return true;
+  if (hasUturn) return true;
   const crowDist = distanceM(p1, p2);
   const maxAllowedDist = Math.max(crowDist * 1.85 + 200, 350);
   if (osrmDistM > maxAllowedDist) return true;
@@ -391,14 +462,20 @@ async function fetchChunk(
     return routeRailLocal(points, signal);
   }
   const coordsParam = points.map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
-  const url = `${OSRM_BASE_URL}/route/v1/${profile}/${coordsParam}?overview=false&steps=true&geometries=geojson`;
+  const bearingsParam = profile === 'driving' ? computeBearingsParam(points) : null;
+  const baseUrl = `${OSRM_BASE_URL}/route/v1/${profile}/${coordsParam}?overview=false&steps=true&geometries=geojson`;
+  const url = bearingsParam ? `${baseUrl}&bearings=${bearingsParam}` : baseUrl;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   // Anulowanie z ekranu ma przerwać także żądanie w locie, nie tylko pętlę.
   const onAbort = () => ctrl.abort();
   signal?.addEventListener('abort', onAbort);
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    let res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok && bearingsParam) {
+      // W razie gdyby OSRM nie dopasował drogi w zadanym kącie, ponów bez bearings
+      res = await fetch(baseUrl, { signal: ctrl.signal });
+    }
     if (!res.ok) return null;
     const body = (await res.json()) as {
       code?: string;
@@ -406,6 +483,7 @@ async function fetchChunk(
         legs?: {
           distance?: number;
           steps?: {
+            maneuver?: { modifier?: string };
             geometry?: { coordinates?: [number, number][] };
           }[];
         }[];
@@ -420,15 +498,26 @@ async function fetchChunk(
       const p1 = points[i];
       const p2 = points[i + 1];
       const stepCoords: Coord[] = [];
+      let hasUturn = false;
 
       for (const step of legs[i].steps ?? []) {
+        if (step.maneuver?.modifier === 'uturn') {
+          hasUturn = true;
+        }
         for (const [lon, lat] of step.geometry?.coordinates ?? []) {
           stepCoords.push([lat, lon]);
         }
       }
 
-      const detour = isOsrmLegDetour(p1, p2, legs[i].distance ?? 0, stepCoords);
-      const legPoints = detour ? [p1, p2] : sanitizeLegCoords(stepCoords, p1, p2);
+      const unspurred = removeSpurs(stepCoords);
+      const detour = isOsrmLegDetour(
+        p1,
+        p2,
+        legs[i].distance ?? 0,
+        unspurred,
+        hasUturn && unspurred.length === stepCoords.length,
+      );
+      const legPoints = detour ? [p1, p2] : sanitizeLegCoords(unspurred, p1, p2);
 
       if (out.length === 0) {
         out.push(...legPoints);
@@ -438,7 +527,8 @@ async function fetchChunk(
       }
     }
 
-    return out.length >= 2 ? out : null;
+    const finalOut = removeSpurs(out);
+    return finalOut.length >= 2 ? finalOut : null;
   } catch {
     return null;
   } finally {

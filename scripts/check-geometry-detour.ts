@@ -9,6 +9,9 @@ import {
   distanceToSegment,
   sanitizeLegCoords,
   isOsrmLegDetour,
+  calcBearing,
+  computeBearingsParam,
+  removeSpurs,
   type Coord,
 } from '../src/services/routeGeometry';
 
@@ -125,8 +128,76 @@ console.log('=== Geometria tras: filtrowanie objazdów i ubytków OSRM ===');
   const isUTurnDetour = isOsrmLegDetour(pA, pB, 1600, uTurnSteps);
   assert(isUTurnDetour, 'isOsrmLegDetour: odrzuca pętlę/nawrotkę za przystankiem');
 
-  // D. Brak geometrii z OSRM (puste steps)
+  // D. Flaga hasUturn (nierozwiązana nawrotka w ślepej uliczce)
+  assert(isOsrmLegDetour(pA, pB, 200, [[50.08, 20.0], [50.081, 20.0]], true), 'isOsrmLegDetour: odrzuca odcinek z nierozwiązanym U-turnem');
+
+  // E. Brak geometrii z OSRM (puste steps)
   assert(isOsrmLegDetour(pA, pB, 0, []), 'isOsrmLegDetour: puste steps traktowane jak objazd / fallback');
+}
+
+// 5. Obliczanie azymutów (calcBearing)
+{
+  const p0: Coord = [50.0, 20.0];
+  const pNorth: Coord = [50.01, 20.0];
+  const pEast: Coord = [50.0, 20.01];
+  const pSouth: Coord = [49.99, 20.0];
+  const pWest: Coord = [50.0, 19.99];
+
+  assert(calcBearing(p0, pNorth) === 0, 'calcBearing: północ to 0°');
+  assert(calcBearing(p0, pEast) === 90, 'calcBearing: wschód to 90°');
+  assert(calcBearing(p0, pSouth) === 180, 'calcBearing: południe to 180°');
+  assert(calcBearing(p0, pWest) === 270, 'calcBearing: zachód to 270°');
+}
+
+// 6. Obliczanie bearings dla OSRM (computeBearingsParam)
+{
+  // Ciągły korytarz wzdłuż Hallera we Wrocławiu (105° -> 100°): kąty w pobliżu 100°
+  const corridor: Coord[] = [
+    [51.091286, 16.986561], // Aleja Pracy
+    [51.090339, 16.992138], // Ojca Beyzyma
+    [51.089526, 16.999699], // Mielecka
+  ];
+  const param = computeBearingsParam(corridor);
+  assert(param !== null && param.includes('105,60') && param.includes('100,60'), 'computeBearingsParam: generuje ograniczenia azymutu dla prostego korytarza');
+
+  // Ostry skręt 90°: środkowy przystanek powinien być pusty (brak restrykcji)
+  const sharpTurn: Coord[] = [
+    [50.0, 20.0],
+    [50.01, 20.0], // jedzie na północ (0°)
+    [50.01, 20.02], // skręca w prawo na wschód (90°)
+  ];
+  const turnParam = computeBearingsParam(sharpTurn);
+  assert(turnParam !== null && turnParam.split(';')[1] === '', 'computeBearingsParam: nie ogranicza azymutu przy ostrym skręcie (split(";")[1] === "")');
+}
+
+// 7. Eliminacja anten / nawrotek (removeSpurs) - przypadek Wrocław Beyzyma
+{
+  // Ciąg punktów: Aleja Hallera -> wjazd w ślepą Beyzyma na 35m -> nawrotka -> wyjazd na Hallera
+  const spurCoords: Coord[] = [
+    [51.090401, 16.992284], // Hallera
+    [51.090339, 16.992256], // zjazd w Beyzyma
+    [51.090330, 16.992253],
+    [51.090284, 16.992235],
+    [51.090249, 16.992222],
+    [51.090237, 16.992217],
+    [51.090132, 16.992176],
+    [51.090083, 16.992156],
+    [51.090013, 16.992128], // dno zaułka (nawrotka)
+    [51.090083, 16.992156], // powrót po tych samych współrzędnych
+    [51.090132, 16.992176],
+    [51.090237, 16.992217],
+    [51.090249, 16.992222],
+    [51.090284, 16.992235],
+    [51.090330, 16.992253],
+    [51.090339, 16.992256],
+    [51.090401, 16.992284], // powrót na Hallera
+    [51.090333, 16.992608], // dalej na wschód Hallera
+    [51.090319, 16.992678],
+  ];
+
+  const cleaned = removeSpurs(spurCoords);
+  assert(cleaned.length === 3, `removeSpurs: redukuje 19 punktów z anteną do 3 punktów na Hallera (len=${cleaned.length})`);
+  assert(cleaned[0][0] === 51.090401 && cleaned[1][0] === 51.090333, 'removeSpurs: linia biegnie bezpośrednio wzdłuż Alei Hallera');
 }
 
 if (failures.length > 0) {
