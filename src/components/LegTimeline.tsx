@@ -153,7 +153,6 @@ const StopRow = memo(function StopRow({
   stop,
   isFirst,
   isLast,
-  index,
   vehicleMode,
   emphasis,
   accent,
@@ -167,7 +166,6 @@ const StopRow = memo(function StopRow({
   stop: LegStop;
   isFirst: boolean;
   isLast: boolean;
-  index: number;
   vehicleMode: Leg['mode'];
   /** Przystanek startowy albo końcowy odcinka - wyróżniony wagą. */
   emphasis: boolean;
@@ -342,7 +340,6 @@ function LegStopsList({
             stop={stop}
             isFirst={i === segment.start}
             isLast={i === segment.end}
-            index={i}
             vehicleMode={leg.mode}
             emphasis={i === segment.start || i === segment.end}
             accent={accent}

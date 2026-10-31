@@ -93,9 +93,9 @@ export interface VehicleGap {
   label: string;
 }
 
-export type MarkerPlacement = 'at_stop' | 'between';
+type MarkerPlacement = 'at_stop' | 'between';
 
-export interface StopTimelineMarker {
+interface StopTimelineMarker {
   index: number;
   placement: MarkerPlacement;
 }
@@ -446,7 +446,7 @@ export function positionToRank(position: LiveStopPosition | null): number {
 /**
  * Rekonstruuje pełną pozycję LiveStopPosition na podstawie monotonnego rankingu.
  */
-export function rankToLivePosition(
+function rankToLivePosition(
   rank: number,
   stops: LegStop[],
   leg: Leg,
