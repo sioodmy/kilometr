@@ -109,6 +109,7 @@
     "check:nav-map": "tsx --require ./scripts/stub-expo.cjs scripts/check-nav-map.ts",
     "check:minimap": "tsx scripts/check-minimap.ts",
     "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
+    "check:geometry-detour": "tsx --require ./scripts/stub-expo.cjs scripts/check-geometry-detour.ts",
     "check:map-colors": "tsx scripts/check-map-colors.ts",
     "check:personalization": "tsx --require ./scripts/stub-expo.cjs scripts/check-personalization.ts",
     "check:line-badge": "tsx scripts/check-line-badge.ts",
