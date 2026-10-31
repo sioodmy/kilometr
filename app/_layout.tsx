@@ -10,7 +10,7 @@ import {
   usePathname,
   useGlobalSearchParams,
 } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
+import BootSplash from 'react-native-bootsplash';
 import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -36,7 +36,6 @@ import {
 } from '../src/services/notifications';
 
 LogBox.ignoreAllLogs(true);
-void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function navigateFromNotification(res: TripResponse) {
   if (res.stop) {
@@ -126,7 +125,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!ready || (needsOnboarding && pathname !== '/onboarding')) return;
-    const frame = requestAnimationFrame(() => SplashScreen.hide());
+    const frame = requestAnimationFrame(() => {
+      void BootSplash.hide({ fade: true });
+    });
     return () => cancelAnimationFrame(frame);
   }, [ready, needsOnboarding, pathname]);
 
