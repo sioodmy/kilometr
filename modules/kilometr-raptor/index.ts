@@ -105,13 +105,18 @@ function decodeBase64(b64: string): Uint8Array {
   return out;
 }
 
-function getWasmExports(): WasmExports {
+function getWasmExports(): WasmExports | null {
   if (cachedWasm) return cachedWasm;
-  const wasmBytes = decodeBase64(RAPTOR_WASM_BASE64);
-  const module = new WebAssembly.Module(wasmBytes as BufferSource);
-  const instance = new WebAssembly.Instance(module, {});
-  cachedWasm = instance.exports as unknown as WasmExports;
-  return cachedWasm;
+  if (typeof WebAssembly === 'undefined') return null;
+  try {
+    const wasmBytes = decodeBase64(RAPTOR_WASM_BASE64);
+    const module = new WebAssembly.Module(wasmBytes as BufferSource);
+    const instance = new WebAssembly.Instance(module, {});
+    cachedWasm = instance.exports as unknown as WasmExports;
+    return cachedWasm;
+  } catch {
+    return null;
+  }
 }
 
 function readStatus(bytes: Uint8Array | null): number {
@@ -174,11 +179,12 @@ function ensureNativeNetworkSync(
 }
 
 function ensureWasmNetworkSync(
-  wasm: WasmExports,
+  wasm: WasmExports | null,
   netId: number,
   getPackedNet: () => Uint8Array,
   forceReload = false
 ): boolean {
+  if (!wasm) return false;
   if (!forceReload && wasmLoadedNetIds.has(netId)) {
     return true;
   }
@@ -206,6 +212,7 @@ function runWasmQuerySync(
   packedQuery: Uint8Array
 ): Uint8Array | null {
   const wasm = getWasmExports();
+  if (!wasm) return null;
   if (!ensureWasmNetworkSync(wasm, netId, getPackedNet, false)) {
     return null;
   }
@@ -245,6 +252,7 @@ export async function warmupRaptorNetworkAsync(
     return ensureNativeNetworkAsync(nativeMod, netId, getPackedNet, false);
   }
   const wasm = getWasmExports();
+  if (!wasm) return false;
   return ensureWasmNetworkSync(wasm, netId, getPackedNet, false);
 }
 
@@ -329,7 +337,7 @@ export function hasFootTileSync(tx: number, ty: number): boolean {
     return nativeMod.hasFootTileSync(tx, ty);
   }
   const wasm = getWasmExports();
-  return wasm.raptor_has_foot_tile(tx, ty) === 1;
+  return wasm ? wasm.raptor_has_foot_tile(tx, ty) === 1 : false;
 }
 
 export async function ensureFootTileFromPackAsync(
@@ -369,6 +377,7 @@ function loadFootTileSync(
     return nativeMod.loadFootTileSync(tx, ty, mvtBytes);
   }
   const wasm = getWasmExports();
+  if (!wasm) return false;
   const ptr = wasm.raptor_alloc(mvtBytes.byteLength);
   try {
     new Uint8Array(wasm.memory.buffer, ptr, mvtBytes.byteLength).set(mvtBytes);
@@ -422,6 +431,7 @@ function routeFootWaypointsSync(
     return unpackFootRoute(nativeMod.routeFootSync(packed));
   }
   const wasm = getWasmExports();
+  if (!wasm) return null;
   const ptr = wasm.raptor_alloc(packed.byteLength);
   try {
     new Uint8Array(wasm.memory.buffer, ptr, packed.byteLength).set(packed);
@@ -461,6 +471,7 @@ export const CMD_PLAN_MATCH = 31;
 
 function invokeWasmSync(cmd: number, payload: Uint8Array): Uint8Array | null {
   const wasm = getWasmExports();
+  if (!wasm) return null;
   const len = payload.byteLength;
   const ptr = len > 0 ? wasm.raptor_scratch_ptr(len) : 0;
   if (len > 0) {

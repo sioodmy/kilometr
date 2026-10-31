@@ -183,6 +183,8 @@ export interface Leg {
   toLon?: number;
   /** GTFS stop_code / numer słupka (np. 10121) */
   platformCode?: string;
+  stopHint?: string;
+  liveNextStop?: string;
   /** GTFS trip_id kursu - klucz do /trips/:id/stops i matchowania pojazdu */
   tripId?: string;
   routeId?: string;

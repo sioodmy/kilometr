@@ -1,0 +1,69 @@
+# Budowanie, walidacja i publikacja wskazówek lokalizacyjnych przystanków (stop-hints) → Cloudflare R2.
+#
+# Działa przy zmianie w plikach źródłowych cloudflare/data/stop-hints-*.json,
+# skryptach lub na żądanie (workflow_dispatch).
+# Waliduje spójność antislop, kompiluje JSON i wrzuca do R2 (kilometr-timetable/<city>/stop-hints.json).
+
+name: Stop hints → R2
+
+on:
+  push:
+    paths:
+      - 'cloudflare/data/stop-hints-*.json'
+      - 'cloudflare/scripts/*stop-hints*.mjs'
+      - '.github/workflows/stop-hints.yml'
+  workflow_dispatch:
+    inputs:
+      city:
+        description: 'Miasto (all = wszystkie zdefiniowane)'
+        required: false
+        default: 'all'
+        type: choice
+        options: ['all', 'wroclaw', 'warszawa', 'gzm', 'krakow', 'poznan']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stop-hints-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build, validate & upload stop hints (${{ matrix.city }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '' && inputs.city != 'all') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "warszawa", "gzm", "krakow", "poznan"]') }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Walidacja i kompilacja wskazówek
+        run: |
+          echo "Kompilacja dla miasta: ${{ matrix.city }}"
+          node cloudflare/scripts/build-stop-hints.mjs --city="${{ matrix.city }}"
+
+      - name: Upload do Cloudflare R2
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          FILE="cloudflare/dist/${{ matrix.city }}/stop-hints.json"
+          if [ -f "$FILE" ]; then
+            echo "Wysyłanie $FILE do R2 (kilometr-timetable/${{ matrix.city }}/stop-hints.json)..."
+            npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/stop-hints.json" \
+              --file="$FILE" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400"
+          else
+            echo "Brak pliku $FILE do wysłania!"
+            exit 1
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

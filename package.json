@@ -121,7 +121,11 @@
     "check:subprojects": "npm --prefix server run build && npm --prefix landing run build",
     "postinstall": "patch-package --error-on-fail && node scripts/bundle-maplibre.mjs",
     "prebuild:fdroid": "node scripts/prebuild-fdroid.mjs",
-    "check:fdroid": "node --test scripts/check-fdroid.test.mjs"
+    "check:fdroid": "node --test scripts/check-fdroid.test.mjs",
+    "check:stop-hints": "node cloudflare/scripts/check-stop-hints.mjs",
+    "stop-hints:build": "node cloudflare/scripts/build-stop-hints.mjs",
+    "stop-hints:generate": "node cloudflare/scripts/generate-grounded-stop-hints.mjs",
+    "stop-hints:context": "node cloudflare/scripts/stop-hints-context.mjs"
   },
   "private": true,
   "expo": {
