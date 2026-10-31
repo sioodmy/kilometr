@@ -559,7 +559,7 @@ function TransitLegCard({
         <View style={s.cardStartRow}>
           <View style={s.stopTitleWrap}>
             <Text style={s.cardStopName}>{leg.fromStop}</Text>
-            {departurePlatform ? (
+            {departurePlatform && !stopHint ? (
               <View style={s.platformBadge}>
                 <Text style={s.platformBadgeText}>{departurePlatform}</Text>
               </View>
