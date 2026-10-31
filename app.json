@@ -83,10 +83,10 @@
       "expo-router",
       "expo-status-bar",
       [
-        "react-native-bootsplash/expo",
+        "react-native-bootsplash",
         {
           "logo": "./assets/splash-icon.png",
-          "logoWidth": 200,
+          "logoWidth": 134,
           "background": "#111414"
         }
       ],
