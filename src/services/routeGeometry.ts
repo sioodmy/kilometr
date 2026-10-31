@@ -350,7 +350,7 @@ export function computeBearingsParam(points: Coord[]): string | null {
  * w ślepą uliczkę/zatoczkę, zawrócił i wrócił tą samą drogą.
  */
 export function removeSpurs(pts: Coord[]): Coord[] {
-  let res = [...pts];
+  const res = [...pts];
   let changed = true;
   while (changed) {
     changed = false;
