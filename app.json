@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "platforms": ["android", "ios", "web"],
     "ios": {
       "bundleIdentifier": "app.kilometr",
       "associatedDomains": ["applinks:kilometr.app"],
@@ -82,11 +83,11 @@
       "expo-router",
       "expo-status-bar",
       [
-        "expo-splash-screen",
+        "react-native-bootsplash",
         {
-          "backgroundColor": "#111414",
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 200
+          "logo": "./assets/splash-icon.png",
+          "logoWidth": 134,
+          "background": "#111414"
         }
       ],
       "expo-sqlite",

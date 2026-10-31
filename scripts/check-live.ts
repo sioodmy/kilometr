@@ -21,7 +21,11 @@ import { liveTracker, snapshotIsUsable } from '../src/services/liveTracker';
 import { AppState } from 'react-native';
 import { fetchZbKd, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from '../src/services/zbiorkom';
 import { gtfsStore } from '../src/services/routing/store';
-import { locateLiveStopPosition, findNearestStopOnRoute } from '../src/services/vehiclePosition';
+import {
+  locateLiveStopPosition,
+  findNearestStopOnRoute,
+  positionToRank,
+} from '../src/services/vehiclePosition';
 import type { Leg, LegStop } from '../src/types/models';
 
 // ─── Framework asercji ─────────────────────────────────────────────────────
@@ -208,7 +212,7 @@ expect(
     matchedTripId: 'trip-4',
     updatedAt: routeNow,
   }, null, routeNow),
-  { gap: 1, source: 'vehicle' },
+  { gap: 1, source: 'vehicle', atStopIndex: null, passedStopIndex: 1, marker: { index: 1, placement: 'between' } },
 );
 expect(
   'dokładny, poruszający się GPS na trasie koryguje brak pozycji API',
@@ -220,7 +224,7 @@ expect(
     heading: 0,
     timestamp: routeNow,
   }, routeNow),
-  { gap: 1, source: 'device' },
+  { gap: 1, source: 'device', atStopIndex: null, passedStopIndex: 1, marker: { index: 1, placement: 'between' } },
 );
 expect(
   'GPS daleko od trasy zostaje odrzucony i spada na szacunek z rozkładu',
@@ -232,7 +236,7 @@ expect(
     heading: 0,
     timestamp: routeNow,
   }, routeNow),
-  { gap: 0, source: 'estimate' },
+  { gap: 0, source: 'estimate', atStopIndex: null, passedStopIndex: 0, marker: { index: 0, placement: 'between' } },
 );
 expect(
   'pasażer w jadącym tramwaju wygrywa z feedem twierdzącym co innego',
@@ -261,7 +265,7 @@ expect(
     },
     routeNow,
   ),
-  { gap: 1, source: 'device' },
+  { gap: 1, source: 'device', atStopIndex: null, passedStopIndex: 1, marker: { index: 1, placement: 'between' } },
 );
 const lateNow = new Date(2026, 9, 10, 10, 24).getTime();
 expect(
@@ -280,7 +284,7 @@ expect(
     },
     lateNow,
   ),
-  { gap: 1, source: 'device' },
+  { gap: 1, source: 'device', atStopIndex: null, passedStopIndex: 1, marker: { index: 1, placement: 'between' } },
 );
 expect(
   'wolny GPS nie udaje pozycji jadącego pojazdu (leci szacunek z rozkładu)',
@@ -292,12 +296,12 @@ expect(
     heading: 0,
     timestamp: routeNow,
   }, routeNow),
-  { gap: 0, source: 'estimate' },
+  { gap: 0, source: 'estimate', atStopIndex: null, passedStopIndex: 0, marker: { index: 0, placement: 'between' } },
 );
 expect(
   'bez API i bez GPS zostaje szacunek z rozkładu (1/4 kursu = gap 0)',
   locateLiveStopPosition(routeStops, routeLeg, null, null, routeNow),
-  { gap: 0, source: 'estimate' },
+  { gap: 0, source: 'estimate', atStopIndex: null, passedStopIndex: 0, marker: { index: 0, placement: 'between' } },
 );
 expect(
   'szacunek w połowie kursu wskazuje środkową przerwę',
@@ -308,7 +312,7 @@ expect(
     null,
     new Date(2026, 9, 10, 10, 5).getTime(),
   ),
-  { gap: 1, source: 'estimate' },
+  { gap: 1, source: 'estimate', atStopIndex: null, passedStopIndex: 1, marker: { index: 1, placement: 'between' } },
 );
 expect(
   'szacunek przed odjazdem stawia ikonę przed przystankiem startowym (gap -1)',
@@ -319,7 +323,7 @@ expect(
     null,
     new Date(2026, 9, 10, 9, 50).getTime(),
   ),
-  { gap: -1, source: 'estimate' },
+  { gap: -1, source: 'estimate', atStopIndex: null, passedStopIndex: -1, marker: null },
 );
 expect(
   'szacunek dawno po odjeździe nie udaje pozycji (kurs za 3 godziny)',
@@ -371,22 +375,126 @@ const transferNow = new Date(2026, 9, 10, 9, 47).getTime();
 expect(
   'pierwsza noga w trakcie jazdy: pojazd za przystankiem A 3',
   locateLiveStopPosition(firstTrip, firstLeg, null, null, transferNow),
-  { gap: 3, source: 'estimate' },
+  { gap: 3, source: 'estimate', atStopIndex: null, passedStopIndex: 3, marker: { index: 3, placement: 'between' } },
 );
 expect(
   'druga noga przed odjazdem: kurs jeszcze nie ruszył',
   locateLiveStopPosition(secondTrip, secondLeg, null, null, transferNow),
-  { gap: -1, source: 'estimate' },
+  { gap: -1, source: 'estimate', atStopIndex: null, passedStopIndex: -1, marker: null },
 );
 expect(
   'druga noga: pojazd dwa przystanki przed wsiadaniem',
   locateLiveStopPosition(secondTrip, secondLeg, null, null, new Date(2026, 9, 10, 9, 55).getTime()),
-  { gap: 2, source: 'estimate' },
+  { gap: 2, source: 'estimate', atStopIndex: null, passedStopIndex: 2, marker: null },
 );
 expect(
   'opóźnienie z efektywnego odjazdu przesuwa szacunek',
   locateLiveStopPosition(secondTrip, { ...secondLeg, departAt: '10:02' }, null, null, new Date(2026, 9, 10, 9, 55).getTime()),
-  { gap: 0, source: 'estimate' },
+  { gap: 0, source: 'estimate', atStopIndex: null, passedStopIndex: 0, marker: null },
+);
+
+describe('Monotoniczność i zaliczanie przystanków dopiero po przejechaniu dalej');
+// 1. Pojazd stoi na przystanku Środek (index 1) - przystanek NIE może być zaliczony
+const atStopPos = locateLiveStopPosition(routeStops, routeLeg, {
+  vehicleId: '4-1',
+  line: '4',
+  lat: 51.105, // dokładnie na przystanku Środek
+  lon: 17,
+  delaySec: 0,
+  currentStopName: 'Środek',
+  nextStopName: 'Koniec',
+  matchedTripId: 'trip-4',
+  updatedAt: routeNow,
+}, null, routeNow);
+
+expect(
+  'pojazd na przystanku: atStopIndex wskazuje ten przystanek',
+  atStopPos?.atStopIndex,
+  1,
+);
+expect(
+  'pojazd na przystanku: przystanek nie jest jeszcze zaliczony (passedStopIndex = 0)',
+  atStopPos?.passedStopIndex,
+  0,
+);
+expect(
+  'pojazd na przystanku: marker jest wycentrowany na przystanku (placement: at_stop)',
+  atStopPos?.marker,
+  { index: 1, placement: 'at_stop' },
+);
+
+// 2. Pojazd rusza i odjeżdża w trasę (index 1 -> index 2)
+const departedPos = locateLiveStopPosition(routeStops, routeLeg, {
+  vehicleId: '4-1',
+  line: '4',
+  lat: 51.108, // 300m za przystankiem Środek w stronę Końca
+  lon: 17,
+  delaySec: 0,
+  currentStopName: 'Środek',
+  nextStopName: 'Koniec',
+  matchedTripId: 'trip-4',
+  updatedAt: routeNow,
+}, null, routeNow);
+
+expect(
+  'po odjeździe: atStopIndex jest null',
+  departedPos?.atStopIndex,
+  null,
+);
+expect(
+  'po odjeździe: przystanek zostaje zaliczony (passedStopIndex = 1)',
+  departedPos?.passedStopIndex,
+  1,
+);
+expect(
+  'po odjeździe: marker przeskakuje na linię między przystankami (placement: between)',
+  departedPos?.marker,
+  { index: 1, placement: 'between' },
+);
+
+// 3. Monotoniczność: GPS skacze z powrotem na przystanek (szum pomiarowy)
+const rankAfterDeparture = positionToRank(departedPos); // rank = 3
+const jitterPos = locateLiveStopPosition(routeStops, routeLeg, {
+  vehicleId: '4-1',
+  line: '4',
+  lat: 51.105, // GPS znowu zaraportował współrzędne przystanku Środek
+  lon: 17,
+  delaySec: 0,
+  currentStopName: 'Środek',
+  nextStopName: 'Koniec',
+  matchedTripId: 'trip-4',
+  updatedAt: routeNow + 2000,
+}, null, routeNow + 2000, rankAfterDeparture);
+
+expect(
+  'monotoniczność zapobiega cofaniu: ranking nie spada',
+  positionToRank(jitterPos),
+  rankAfterDeparture,
+);
+expect(
+  'monotoniczność zapobiega cofaniu: przystanek nadal pozostaje zaliczony',
+  jitterPos?.passedStopIndex,
+  1,
+);
+expect(
+  'monotoniczność zapobiega cofaniu: marker nie wraca do tyłu',
+  jitterPos?.marker,
+  { index: 1, placement: 'between' },
+);
+
+// 4. Monotoniczność zapobiega znikaniu: brak pozycji w API utrzymuje ostatni stan
+const droppedPos = locateLiveStopPosition(
+  routeStops,
+  routeLeg,
+  null, // chwilowy brak odpowiedzi z API
+  null,
+  routeNow + 5000,
+  rankAfterDeparture,
+);
+expect(
+  'chwilowy drop z feedu nie powoduje znikania markera',
+  droppedPos?.marker,
+  { index: 1, placement: 'between' },
 );
 
 // ─── zbiorkom.live: mapowanie odpowiedzi ─────────────────────────────────
