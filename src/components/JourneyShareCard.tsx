@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ArrowRight } from 'lucide-react-native';
+import { ArrowRight } from './icons';
 import { useStrings, getLocaleSync } from '../i18n';
 import { scheme, shape, type } from '../theme/tokens';
 import { formatShareTime, transferCount, type SharedConnection } from '../sharing/connection';

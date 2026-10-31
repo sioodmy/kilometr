@@ -8,7 +8,7 @@ import {
   ChevronLeft,
   CloudOff,
   X,
-} from 'lucide-react-native';
+} from '../../src/components/icons';
 import {
   interpolate,
   useAnimatedStyle,
@@ -118,6 +118,9 @@ export default function RoutesScreen() {
   const [toLat, setToLat] = useState(Number(params.toLat ?? 0));
   const [toLon, setToLon] = useState(Number(params.toLon ?? 0));
   const [toId, setToId] = useState(String(params.toId ?? ''));
+  // Ten sam punkt po obu stronach: nie ma czego planować, a silnik sam z siebie
+  // potrafi tu wygenerować przejazd w kółko.
+  const samePlace = distanceMeters(fromLat, fromLon, toLat, toLon) <= 40;
 
   // Przycisk „Zakończ” w powiadomieniu to deep link z parametrem action=stop.
   // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl
@@ -839,6 +842,12 @@ export default function RoutesScreen() {
   };
 
   useEffect(() => {
+    if (samePlace) {
+      setItems([]);
+      setLoading(false);
+      setLoadError(false);
+      return;
+    }
     const task = InteractionManager.runAfterInteractions(() => {
       fetchRoutes(targetTimeSec, items.length > 0);
     });
@@ -849,7 +858,7 @@ export default function RoutesScreen() {
     // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
     // importu dostawał pustą listę i nigdy sam się nie odpytywał, więc
     // połączenia zostawały niewidoczne mimo gotowego rozkładu.
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, activeAnchor, directOnly, modeFilter, timetableReady, targetTimeSec, timeMode]);
+  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, samePlace, activeAnchor, directOnly, modeFilter, timetableReady, targetTimeSec, timeMode]);
 
   // Gest i przycisk dokładają wcześniejsze odjazdy do tej samej listy.
   const handlePullEarlier = () => {
@@ -863,7 +872,7 @@ export default function RoutesScreen() {
   };
 
   const handleSwap = () => {
-    if (fromLat === toLat && fromLon === toLon && fromTitle === toTitle) return;
+    if (samePlace || (fromLat === toLat && fromLon === toLon && fromTitle === toTitle)) return;
     setItems([]);
     setLoading(true);
     // Wyniki po swapie to zupełnie nowa lista - wracamy na górę.
@@ -963,7 +972,7 @@ export default function RoutesScreen() {
               accessibilityRole="button"
               accessibilityLabel={s.routes.dismissAnchorA11y}
             >
-              <X size={12} color={scheme.onSurfaceVariant} strokeWidth={2.5} />
+              <X size={12} color={scheme.onSurfaceVariant} />
             </Pressable>
           </View>
         )}
@@ -990,7 +999,17 @@ export default function RoutesScreen() {
       </View>
 
       {/* 3. Lista połączeń */}
-      {loading && items.length === 0 ? (
+      {/* Ten sam punkt startu i celu: zamiast przejazdów w kółko mówimy
+          wprost, że cel jest na miejscu. */}
+      {samePlace ? (
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingBottom: thumbInset }}>
+          {routeHeader}
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>{s.routes.samePlaceTitle}</Text>
+            <Text style={styles.emptySub}>{s.routes.samePlaceBody}</Text>
+          </View>
+        </ScrollView>
+      ) : loading && items.length === 0 ? (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: thumbInset }}>
         {routeHeader}
         <View style={styles.skeletonList}>

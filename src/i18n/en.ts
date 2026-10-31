@@ -832,6 +832,14 @@ export const en: Strings = {
     filterNoHistoryTitle: 'No lines yet',
     filterNoHistoryBody:
       'Look up a connection in the app, then you will see updates for those lines here.',
+    resolved: 'Traffic restored',
+    solutionLabel: 'Detour route',
+    detourLabel: 'Detour route',
+    detourAndReplacement: 'Detour & replacement bus',
+    replacementBus: 'Replacement bus',
+    urgentChip: 'Disruption',
+    plannedChip: 'Service change',
+    omittedStopsPrefix: 'Skips:',
   },
   newsSvc: {
     justNow: 'just now',
@@ -954,6 +962,8 @@ export const en: Strings = {
     emptyMode: (veh: string) =>
       `There is no ${veh} service on this route right now. Switch to “All” to see the rest.`,
     emptyPlain: 'Try a different destination or check another departure time.',
+    samePlaceTitle: 'Start and destination are the same place',
+    samePlaceBody: 'You are already there, so there is nothing to plan. Pick another destination to see connections.',
     vehicleTramGen: 'by tram',
     vehicleBusGen: 'by bus',
     vehicleTrolleyGen: 'by trolleybus',
@@ -993,6 +1003,8 @@ export const en: Strings = {
     lineAlertsAll: 'All news',
     lineAlertsEmpty: 'No updates for the lines on this trip.',
     lineAlertsCount: (n: number) => (n === 1 ? '1 update' : `${n} updates`),
+    lineAlertsLoading: 'Checking for disruptions…',
+    lineAlertsError: 'Could not check for disruptions.',
   },
   search: {
     suggestedPlaces: 'Suggested places',
@@ -1198,6 +1210,14 @@ export const en: Strings = {
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} between ${from} and ${to}`,
     fromPrefix: 'from ',
     toPrefix: 'to ',
+    modeTram: 'Tram',
+    modeBus: 'Bus',
+    modeTrain: 'Train',
+    modeSubway: 'Subway',
+    modeTrolley: 'Trolleybus',
+    modeCable: 'Cable car',
+    modeVehicle: 'Vehicle',
+    nearStop: (mode: string, stop: string) => `${mode} near stop: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
   },

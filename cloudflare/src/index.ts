@@ -3,6 +3,8 @@
  *
  * Per-miasto:
  * - GET /{miasto}/manifest.json           → manifest buildu z R2
+ * - GET /{miasto}/disruptions.json        → ustrukturyzowane alerty i utrudnienia z R2 (cache 120s)
+ * - GET /{miasto}/stop-hints.json         → mikrowskazówki lokalizacyjne przystanków z R2
  * - GET /{miasto}/db/kilometr-gtfs.db.gz  → skompresowany prebuilt SQLite z R2 (Range, ETag)
  * - GET /maps/{miasto}-tiles.ktp          → pakiet kafli offline z R2
  * Miasta: wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz,
@@ -33,6 +35,13 @@ const PDP_BASE = 'https://pdp-api.plk-sa.pl';
 
 const dbKeyFor = (city: string): string => `${city}/db/kilometr-gtfs.db.gz`;
 const manifestKeyFor = (city: string): string => `${city}/manifest.json`;
+const disruptionsKeyFor = (city: string): string => `${city}/disruptions.json`;
+const stopHintsKeyFor = (city: string): string => `${city}/stop-hints.json`;
+/**
+ * Snapshot adresów OSM (cache buildu timetable.yml): świeży zasila build bez
+ * Overpassa, stary jest awaryjnym zapasem. Nigdy nie trafia do telefonu.
+ */
+const addressesKeyFor = (city: string): string => `${city}/addresses.json.gz`;
 /**
  * Pakiet kafelków mapy offline. Buduje go workflow map-tiles.yml (--city),
  * a telefon pobiera raz i trzyma lokalnie (osobny plik na miasto).
@@ -86,15 +95,24 @@ export default {
       return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString(), cities: [...CITIES] });
     }
 
-    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
+    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/stop-hints.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
     const cityMatch = CITY_PATH_RE.exec(url.pathname);
     if (cityMatch) {
       const [, city, rest] = cityMatch;
       if (rest === '/manifest.json') {
         return serveManifest(env, manifestKeyFor(city));
       }
+      if (rest === '/disruptions.json') {
+        return serveDisruptions(env, disruptionsKeyFor(city));
+      }
+      if (rest === '/stop-hints.json') {
+        return serveObject(env, stopHintsKeyFor(city), 'application/json; charset=utf-8', 'stop-hints');
+      }
       if (rest === '/db/kilometr-gtfs.db.gz') {
         return serveDb(req, env, dbKeyFor(city));
+      }
+      if (rest === '/addresses.json.gz') {
+        return serveObject(env, addressesKeyFor(city), 'application/gzip', 'timetable.yml');
       }
     }
     const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
@@ -126,123 +144,104 @@ async function serveManifest(env: Env, key: string): Promise<Response> {
   return new Response(obj.body, { headers });
 }
 
-/**
- * Serwuje bazę SQLite (skompresowaną gzipem) z obsługą Range requests
- * (potrzebne do wznawiania downloadu w aplikacji przez expo-file-system).
- */
-async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
-  const range = req.headers.get('Range');
-  if (range) {
-    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-    const head = await env.TIMETABLE_BUCKET.head(key);
-    if (!head) {
-      return json(
-        { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
-        404,
-      );
-    }
-    if (m) {
-      const size = head.size;
-      let start = m[1] === '' ? size - Number(m[2] || 0) : Number(m[1]);
-      let end = m[2] === '' ? size - 1 : Number(m[2]);
-      if (Number.isNaN(start)) start = 0;
-      if (Number.isNaN(end)) end = size - 1;
-      start = Math.max(0, start);
-      end = Math.min(size - 1, end);
-      if (start <= end) {
-        const obj = await env.TIMETABLE_BUCKET.get(key, {
-          range: { offset: start, length: end - start + 1 },
-        });
-        if (obj) {
-          const headers = new Headers();
-          headers.set('Content-Type', 'application/gzip');
-          headers.set('Accept-Ranges', 'bytes');
-          headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
-          headers.set('Content-Length', String(end - start + 1));
-          if (head.etag) headers.set('ETag', head.etag);
-          headers.set('Cache-Control', 'public, max-age=300');
-          return new Response(obj.body, { status: 206, headers });
-        }
-      }
-    }
-  }
+async function serveDisruptions(env: Env, key: string): Promise<Response> {
   const obj = await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
-    return json(
-      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
-      404,
-    );
+    // Brak alertów = pusta lista w formacie feedu, a nie 404.
+    // Telefon traktuje to jako brak utrudnień w mieście i nie loguje błędu.
+    return json({ alerts: [], generatedAt: new Date().toISOString() }, 200, 120);
   }
   const headers = new Headers();
-  headers.set('Content-Type', 'application/gzip');
-  headers.set('Accept-Ranges', 'bytes');
-  headers.set('Content-Length', String(obj.size));
+  headers.set('Content-Type', 'application/json; charset=utf-8');
   if (obj.etag) headers.set('ETag', obj.etag);
-  headers.set('Cache-Control', 'public, max-age=300');
+  // 120 s cache w przeglądarce / CDN - alerty odświeżamy co 20 minut,
+  // więc krótszy cache jest świeży, ale nie obciąża R2.
+  headers.set('Cache-Control', 'public, max-age=120');
   return new Response(obj.body, { headers });
 }
 
-/**
- * Gotowość pod przyszłe opóźnienia KD - passthrough do PDP z cache,
- * żeby wielu użytkowników dzieliło jeden request (limity Basic!).
- * Aplikacja mobilna tego NA RAZIE nie woła → koszt PDP = 0.
- */
-async function proxyPdp(req: Request, env: Env, ctx: ExecutionContext, kind: 'operations' | 'schedules'): Promise<Response> {
-  if (!env.PDP_API_KEY) {
-    return json({ error: 'kd-not-configured', hint: 'Brak sekretu PDP_API_KEY w Workerze (wrangler secret put).' }, 503);
-  }
-  const url = new URL(req.url);
-  const stations = (url.searchParams.get('stations') ?? '').trim();
-  if (!/^[0-9, ]{1,200}$/.test(stations) || !/\d/.test(stations)) {
-    return json({ error: 'bad-stations', hint: 'Podaj stations=jako ID po przecinku, np. ?stations=33506,33512.' }, 400);
-  }
-  // Deduplikacja + sortowanie normalizuje klucz cache: ta sama lista w innej
-  // kolejności trafia w ten sam wpis, zamiast omijać cache i palić limit PDP.
-  const idList = Array.from(new Set(stations.split(',').map((s) => s.trim()).filter(Boolean)));
-  if (idList.length === 0 || idList.length > 30) {
-    return json({ error: 'bad-stations', hint: 'Podaj od 1 do 30 unikalnych ID stacji.' }, 400);
-  }
-  const ids = idList.join(',');
+async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
+  // Range requesty (pobieranie we fragmentach): telefon może wznawiać.
+  const rangeHeader = req.headers.get('Range');
+  const range = parseRange(rangeHeader);
 
-  const upstream = new URL(PDP_BASE + (kind === 'operations' ? '/api/v1/operations/shortened' : '/api/v1/schedules/shortened'));
-  upstream.searchParams.set('stations', ids);
-  if (kind === 'operations') {
-    upstream.searchParams.set('withPlanned', url.searchParams.get('withPlanned') === 'false' ? 'false' : 'true');
-    const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize')) || 1000, 1), 5000);
-    upstream.searchParams.set('pageSize', String(pageSize));
-  } else {
-    const df = url.searchParams.get('dateFrom');
-    const dt = url.searchParams.get('dateTo');
-    if (df && /^\d{4}-\d{2}-\d{2}$/.test(df)) upstream.searchParams.set('dateFrom', df);
-    if (dt && /^\d{4}-\d{2}-\d{2}$/.test(dt)) upstream.searchParams.set('dateTo', dt);
-    upstream.searchParams.set('carriersInclude', url.searchParams.get('carriersInclude') || 'KD');
-    upstream.searchParams.set('dictionaries', 'false');
+  const obj = await env.TIMETABLE_BUCKET.get(key, { range: range ?? undefined });
+  if (!obj) {
+    return json(
+      { error: 'not-built-yet', hint: 'Baza SQLite jeszcze nie istnieje w R2. Odpal timetable.yml.' },
+      404,
+    );
   }
 
+  const headers = new Headers();
+  // Celowo octet-stream + brak Content-Encoding: gzip - plik NA DYSKU to .db.gz,
+  // telefon sam go dekompresuje po pobraniu. Gdyby Worker dał Content-Encoding:
+  // gzip, przeglądarka/fetch rozpakowałaby go po cichu w locie, niszcząc logikę
+  // dekompresji po stronie klienta.
+  headers.set('Content-Type', 'application/octet-stream');
+  headers.set('Accept-Ranges', 'bytes');
+  if (obj.etag) headers.set('ETag', obj.etag);
+  headers.set('Cache-Control', 'public, max-age=3600');
+
+  if (range && 'offset' in range) {
+    const end = range.length !== undefined ? range.offset + range.length - 1 : obj.size - 1;
+    headers.set('Content-Range', `bytes ${range.offset}-${end}/${obj.size}`);
+    headers.set('Content-Length', String(end - range.offset + 1));
+    return new Response(obj.body, { status: 206, headers });
+  }
+
+  headers.set('Content-Length', String(obj.size));
+  return new Response(obj.body, { status: 200, headers });
+}
+
+function parseRange(h: string | null): { offset: number; length?: number } | null {
+  if (!h) return null;
+  const m = /^bytes=(\d+)-(\d+)?$/.exec(h.trim());
+  if (!m) return null;
+  const start = parseInt(m[1], 10);
+  if (Number.isNaN(start)) return null;
+  if (m[2] !== undefined) {
+    const end = parseInt(m[2], 10);
+    if (!Number.isNaN(end) && end >= start) return { offset: start, length: end - start + 1 };
+  }
+  return { offset: start };
+}
+
+async function proxyPdp(
+  req: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  endpoint: 'operations' | 'schedules',
+): Promise<Response> {
+  const key = env.PDP_API_KEY;
+  if (!key) {
+    return json({ error: 'pdp-not-configured', hint: 'Klucz PDP_API_KEY nie jest ustawiony w Workerze.' }, 503);
+  }
+
+  const inUrl = new URL(req.url);
+  const outUrl = new URL(`${PDP_BASE}/${endpoint}${inUrl.search}`);
+
+  // Cache API Cloudflare - redukuje ruch do PDP (limit rate'u).
+  const cacheKey = new Request(outUrl.toString(), { headers: req.headers });
   const cache = caches.default;
-  const cacheKey = new Request(upstream.toString(), { method: 'GET' });
-  const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
 
-  let res: Response;
-  try {
-    res = await fetch(upstream.toString(), {
-      headers: { 'X-API-Key': env.PDP_API_KEY, Accept: 'application/json' },
-      signal: AbortSignal.timeout(20000),
-    });
-  } catch (err) {
-    // Powód zostaje w logach Workera (wrangler tail), do klienta idzie sam kod.
-    console.error('[pdp] fetch failed:', err);
-    return json({ error: 'pdp-unreachable' }, 502);
-  }
-  if (!res.ok) {
-    return json({ error: 'pdp-error', status: res.status }, res.status === 429 ? 429 : 502);
-  }
-  const body = await res.text();
-  const ttl = kind === 'operations' ? 120 : 3600;
-  const out = new Response(body, {
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': `public, max-age=${ttl}` },
+  const res = await fetch(outUrl.toString(), {
+    headers: {
+      Authorization: `Bearer ${key}`,
+      Accept: 'application/json',
+      'User-Agent': 'kilometr-timetable-worker/1.0',
+    },
   });
-  ctx.waitUntil(cache.put(cacheKey, out.clone()));
+
+  const body = await res.arrayBuffer();
+  const ttl = endpoint === 'operations' ? 120 : 3600;
+  const headers = new Headers();
+  headers.set('Content-Type', res.headers.get('Content-Type') ?? 'application/json; charset=utf-8');
+  headers.set('Cache-Control', `public, max-age=${ttl}`);
+
+  const out = new Response(body, { status: res.status, headers });
+  if (res.ok) ctx.waitUntil(cache.put(cacheKey, out.clone()));
   return out;
 }

@@ -1,15 +1,20 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowRight,
   BusFront,
   ChevronDown,
   Footprints,
+  LocateFixed,
+  LocationOn,
+  MapPin,
   Ticket,
   TrainFront,
   TramFront,
-} from 'lucide-react-native';
+} from './icons';
+import Svg, { Line } from 'react-native-svg';
 import Animated, {
+  Easing,
   LinearTransition,
   useAnimatedStyle,
   useSharedValue,
@@ -18,7 +23,7 @@ import Animated, {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
-import { LiveDot } from './LiveDot';
+import { LiveSensors } from './LiveDot';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import { liveTracker, type TrackedVehicle } from '../services/liveTracker';
@@ -26,6 +31,7 @@ import { useCurrentLocation, type CurrentLocation } from '../services/currentLoc
 
 import {
   buildFallbackStops,
+  findNearestStopOnRoute,
   findUserSegment,
   locateLiveStopPosition,
   normalizeName,
@@ -36,11 +42,41 @@ import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
+import { useStopHint } from '../services/stopHints';
+import { getActiveCityIdSync } from '../services/cityStore';
 
 const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
-// Środek transportu w dopełniaczu („tramwajem między A a B"). Osobna gałąź na
-// pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem".
+/** Kropkowany łącznik między kartami, pigułkami pieszymi i znacznikami trasy. */
+function DottedConnector({ height = 12 }: { height?: number }) {
+  return (
+    <Svg width={6} height={height}>
+      <Line
+        x1={3}
+        y1={2}
+        x2={3}
+        y2={height - 2}
+        stroke="rgba(255, 255, 255, 0.30)"
+        strokeWidth={3}
+        strokeDasharray="0 6"
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+// Środek transportu w dopełniaczu („tramwajem między A a B”). Osobna gałąź na
+// pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem”.
+function genericModeNom(t: Strings, mode: Leg['mode']): string {
+  if (mode === 'tram') return t.leg.modeTram;
+  if (mode === 'train') return t.leg.modeTrain;
+  if (mode === 'subway') return t.leg.modeSubway;
+  if (mode === 'trolleybus') return t.leg.modeTrolley;
+  if (mode === 'cable') return t.leg.modeCable;
+  if (mode === 'bus') return t.leg.modeBus;
+  return t.leg.modeVehicle;
+}
+
 function genericModeGen(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.routes.vehicleTramGen;
   if (mode === 'train') return t.routes.vehicleTrainGen;
@@ -50,7 +86,63 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
-// ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ────────────────────
+function formatPlatformLabel(code?: string | null, mode?: Leg['mode'], stopName?: string | null): string | null {
+  let trimmed = (code || '').trim();
+  if (!trimmed && stopName) {
+    const m = stopName.trim().match(/\s(\d{2})$/);
+    if (m) {
+      trimmed = m[1];
+    }
+  }
+  if (!trimmed) return null;
+
+  if (/^(peron|słupek|słup|stanowisko)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Węzły GZM: np. 2469011-00103 -> Stanowisko 3
+  const gzmMatch = trimmed.match(/-(\d{3})(\d{2})([a-z]?)$/i);
+  if (gzmMatch) {
+    return `Stanowisko ${parseInt(gzmMatch[2], 10)}`;
+  }
+
+  // Zespoły / Kraków: np. 103-05 -> Słupek 05 (lub Peron 1/2 dla tramwaju)
+  const krkMatch = trimmed.match(/^\d{1,4}-(\d{2})$/);
+  if (krkMatch) {
+    const poleNum = krkMatch[1];
+    const n = parseInt(poleNum, 10);
+    if (mode === 'tram' && (n === 1 || n === 2)) {
+      return `Peron ${n}`;
+    }
+    return `Słupek ${poleNum}`;
+  }
+
+  // Pociąg / metro
+  if (mode === 'train' || mode === 'subway') {
+    return `Peron ${trimmed}`;
+  }
+
+  // 1-2 cyfry (np. Warszawa '01', Poznań '71', '42')
+  if (/^\d{1,2}$/.test(trimmed)) {
+    const n = parseInt(trimmed, 10);
+    if (n >= 41 && n <= 49) {
+      return `PST Słupek ${trimmed}`;
+    }
+    if (trimmed.startsWith('0') || n >= 10) {
+      return `Słupek ${trimmed}`;
+    }
+    return `Peron ${trimmed}`;
+  }
+
+  // 5-cyfrowy kod słupka (np. Wrocław 20820)
+  if (/^\d{5}$/.test(trimmed)) {
+    return `Słupek ${trimmed}`;
+  }
+
+  return `Peron ${trimmed}`;
+}
+
+// ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ───────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
 // pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
 // najstarszy wpis - bez dodatkowej kolejki.
@@ -70,12 +162,13 @@ function cacheStops(key: string, stops: LegStop[]) {
 function VehicleGlyph({ mode }: { mode: Leg['mode'] }) {
   const Icon =
     mode === 'tram' ? TramFront : mode === 'train' || mode === 'subway' ? TrainFront : BusFront;
-  return <Icon size={14} color={scheme.onPrimary} strokeWidth={2.4} />;
+  return <Icon size={14} color={scheme.onPrimary} />;
 }
 
 // ─── Wiersz przystanku (memo = brak re-renderów listy) ─────
 // Rail rysuje linię przez całą wysokość wiersza i zachodzi 1 px na sąsiednie
 // wiersze, więc między kropkami i na granicy stref nie ma żadnych szwów.
+// Osobne segmenty nad i pod kropką zapobiegają pomarańczowym szwom na minionym odcinku.
 const StopRow = memo(function StopRow({
   stop,
   isFirst,
@@ -105,29 +198,38 @@ const StopRow = memo(function StopRow({
   // Przystanek pojazd już minął: wyszarzony, tak samo jak dotychczas przejechane.
   const passed = vehicleGap != null && index <= vehicleGap;
   const markerHere = vehicleGap === index && !isLast;
-  // Linia biegnie przez cały wiersz i zachodzi 1 px na sąsiednie wiersze.
-  // Osobny łącznik pod kropką zostawiał cienką szwę między wierszami.
   const lineCenter = boundary ? 20 : 10.5;
-  const showLine = !(isFirst && isLast);
-  const lineTop = isFirst ? lineCenter : -1;
-  const lineStyle = isLast
-    ? { top: lineTop, height: lineCenter + 1 - lineTop }
-    : { top: lineTop, bottom: -1 };
+  const incomingPassed = vehicleGap != null && index <= vehicleGap;
+  const outgoingPassed = vehicleGap != null && index < vehicleGap;
   return (
     <View style={s.stopRow}>
       <View style={s.stopRail}>
-        {showLine && (
+        {!isFirst && (
           <View
             style={[
               s.stopRailLine,
-              lineStyle,
+              { top: -1, height: lineCenter + 2 },
               {
-                backgroundColor:
-                  vehicleGap != null && index < vehicleGap
-                    ? scheme.outline
-                    : connectorAccent
-                      ? accent
-                      : scheme.outlineVariant,
+                backgroundColor: incomingPassed
+                  ? scheme.outline
+                  : connectorAccent
+                    ? accent
+                    : scheme.outlineVariant,
+              },
+            ]}
+          />
+        )}
+        {!isLast && (
+          <View
+            style={[
+              s.stopRailLine,
+              { top: lineCenter, bottom: -1 },
+              {
+                backgroundColor: outgoingPassed
+                  ? scheme.outline
+                  : connectorAccent
+                    ? accent
+                    : scheme.outlineVariant,
               },
             ]}
           />
@@ -164,11 +266,7 @@ const StopRow = memo(function StopRow({
       ) : (
         <View style={s.stopBody}>
           <Text
-            style={[
-              s.stopName,
-              emphasis && s.stopNameStrong,
-              passed ? s.stopNamePassed : null,
-            ]}
+            style={[s.stopName, emphasis && s.stopNameStrong, passed ? s.stopNamePassed : null]}
             numberOfLines={1}
           >
             {stop.name}
@@ -179,121 +277,35 @@ const StopRow = memo(function StopRow({
   );
 });
 
-// ─── Rozwijana lista kropek dla jednego lega ───────────────────────────────────
+// ─── Rozwijana lista kropek dla jednego lega ──────────────────────────────────
 function LegStopsList({
   leg,
   accent,
   userLocation,
   allowLive,
+  stops,
+  vehicle,
+  loading,
 }: {
   leg: Leg;
   accent: string;
   userLocation: CurrentLocation | null;
   allowLive: boolean;
+  stops: LegStop[];
+  vehicle: TrackedVehicle | null;
+  loading: boolean;
 }) {
   const t = useStrings();
-  const cacheKey = leg.tripId || leg.id;
-  const [stops, setStops] = useState<LegStop[]>(
-    () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
-  );
-  const [loading, setLoading] = useState(
-    () =>
-      !stopsCache.has(cacheKey) &&
-      !!leg.tripId &&
-      !(leg.intermediateStops && leg.intermediateStops.length >= 2),
-  );
-  const [vehicle, setVehicle] = useState<TrackedVehicle | null>(null);
-  const mounted = useRef(true);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  // Lazy load pełnej sekwencji kursu, raz, wynik w cache modułowym. Odcinek
-  // z planu (`intermediateStops`) to tylko wsiadanie-wysiadanie: pokazujemy
-  // go od razu, ale do pozycji pojazdu między przystankami potrzebny jest
-  // cały kurs z czasami.
-  useEffect(() => {
-    const cached = stopsCache.get(cacheKey);
-    if (cached) {
-      setStops(cached);
-      setLoading(false);
-      return;
-    }
-    if (!leg.tripId) {
-      setStops(buildFallbackStops(leg));
-      setLoading(false);
-      return;
-    }
-    setLoading(!(leg.intermediateStops && leg.intermediateStops.length >= 2));
-    let promise = stopsPromise.get(leg.tripId);
-    if (!promise) {
-      // Odrzucenie NIE jest zapamiętywane. Wcześniej `.catch(() => [])` trafiał
-      // do `stopsPromise` razem z sukcesem, więc jedna chwilowa awaria (zamknięta
-      // baza, odjęty slot importu) zostawiała ten kurs z dwoma przystankami
-      // do końca życia procesu - użytkownik dostawał „trasa niepełna” bez
-      // możliwości naprawienia.
-      promise = RoutingService.getTripStops(leg.tripId)
-        .then((stops) => {
-          stopsPromise.delete(leg.tripId!);
-          return stops;
-        })
-        .catch((err) => {
-          stopsPromise.delete(leg.tripId!);
-          throw err;
-        });
-      stopsPromise.set(leg.tripId, promise);
-    }
-    promise.then(
-      (fetched) => {
-        if (!mounted.current) return;
-        // Do cache trafiają TYLKO przystanki z bazy. Wersja z `buildFallbackStops`
-        // to dwa przystanki z etykiety - zapisana w cache na stałe psuła
-        // wyświetlanie przy następnym otwarciu tego samego odcinka.
-        if (fetched.length >= 2) cacheStops(cacheKey, fetched);
-        setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
-        setLoading(false);
-      },
-      (err) => {
-        console.warn('[LegTimeline] trip stops failed:', err);
-        if (!mounted.current) return;
-        setStops(buildFallbackStops(leg));
-        setLoading(false);
-      },
-    );
-  }, [cacheKey, leg]);
-
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
   const [now, setNow] = useState(() => Date.now());
+
   useEffect(() => {
-    const refreshVehicle = () => {
-      const now = Date.now();
-      setNow(now);
-      if (!allowLive || !leg.tripId || (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')) {
-        setVehicle(null);
-        return;
-      }
-      const match = liveTracker
-        .snapshot(leg.line)
-        .find(
-          (candidate) =>
-            candidate.type === leg.mode &&
-            candidate.matchedTripId === leg.tripId &&
-            now - candidate.updatedAt >= 0 &&
-            now - candidate.updatedAt <= 120_000,
-        );
-      setVehicle(match ?? null);
-    };
-    refreshVehicle();
-    const timer = setInterval(refreshVehicle, 5000);
+    const timer = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(timer);
-  }, [leg.line, leg.mode, leg.tripId, allowLive]);
+  }, []);
 
   const livePosition = useMemo(
-    () => allowLive ? locateLiveStopPosition(stops, leg, vehicle, userLocation, now) : null,
+    () => (allowLive ? locateLiveStopPosition(stops, leg, vehicle, userLocation, now) : null),
     [stops, leg, vehicle, userLocation, now, allowLive],
   );
   const vehicleGap = livePosition?.gap ?? null;
@@ -363,7 +375,8 @@ function TransitLegCard({
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
   const scheduledDeparture = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt)).departure;
-  const delayMin = leg.live || leg.delayConfidence === 'estimated' ? Math.round((leg.delaySec ?? 0) / 60) : 0;
+  const delayMin =
+    leg.live || leg.delayConfidence === 'estimated' ? Math.round((leg.delaySec ?? 0) / 60) : 0;
   const notice = reliabilityNotice([leg], t);
   const stopsCount = useMemo(() => {
     const stops = leg.intermediateStops;
@@ -377,6 +390,133 @@ function TransitLegCard({
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
 
+  // Mierzymy szerokość badge linii, by wyśrodkować ikonę sensors pod nim
+  // i wyrównać kółko rozwijanej listy z początkiem tekstu statusu live.
+  const [badgeWidth, setBadgeWidth] = useState(56);
+  const [stopsListHeight, setStopsListHeight] = useState(0);
+  const stopsHeightAnim = useSharedValue(0);
+  const sensorSize = 19;
+  const sensorCenterOffset = Math.max(0, badgeWidth / 2 - sensorSize / 2);
+  const stopsIndent = sensorCenterOffset + sensorSize + 8 - 11;
+
+  const activeCityId = useMemo(() => getActiveCityIdSync(), []);
+  const resolvedHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
+  const stopHint = leg.stopHint ?? resolvedHint;
+  const departurePlatform = useMemo(
+    () => formatPlatformLabel(leg.platformCode, leg.mode, leg.fromStop),
+    [leg.platformCode, leg.mode, leg.fromStop],
+  );
+
+  const cacheKey = leg.tripId || leg.id;
+  const [stops, setStops] = useState<LegStop[]>(
+    () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
+  );
+  const [loading, setLoading] = useState(
+    () =>
+      !stopsCache.has(cacheKey) &&
+      !!leg.tripId &&
+      !(leg.intermediateStops && leg.intermediateStops.length >= 2),
+  );
+  const [vehicle, setVehicle] = useState<TrackedVehicle | null>(null);
+  const [lastOk, setLastOk] = useState(() => liveTracker.getLastOk());
+
+  // Lazy load pełnej sekwencji kursu, raz, wynik w cache modułowym.
+  useEffect(() => {
+    let mounted = true;
+    const cached = stopsCache.get(cacheKey);
+    if (cached) {
+      setStops(cached);
+      setLoading(false);
+      return;
+    }
+    if (!leg.tripId) {
+      setStops(buildFallbackStops(leg));
+      setLoading(false);
+      return;
+    }
+    setLoading(!(leg.intermediateStops && leg.intermediateStops.length >= 2));
+    let promise = stopsPromise.get(leg.tripId);
+    if (!promise) {
+      promise = RoutingService.getTripStops(leg.tripId)
+        .then((fetched) => {
+          stopsPromise.delete(leg.tripId!);
+          return fetched;
+        })
+        .catch((err) => {
+          stopsPromise.delete(leg.tripId!);
+          throw err;
+        });
+      stopsPromise.set(leg.tripId, promise);
+    }
+    promise.then(
+      (fetched) => {
+        if (!mounted) return;
+        if (fetched.length >= 2) cacheStops(cacheKey, fetched);
+        setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('[TransitLegCard] trip stops failed:', err);
+        if (!mounted) return;
+        setStops(buildFallbackStops(leg));
+        setLoading(false);
+      },
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [cacheKey, leg]);
+
+  // Śledzenie pojazdu live dopasowanego do tego kursu
+  useEffect(() => {
+    const updateVehicle = () => {
+      const now = Date.now();
+      setLastOk(liveTracker.getLastOk());
+      if (
+        !allowLive ||
+        !leg.tripId ||
+        (leg.mode !== 'tram' &&
+          leg.mode !== 'bus' &&
+          leg.mode !== 'subway' &&
+          leg.mode !== 'trolleybus' &&
+          leg.mode !== 'train')
+      ) {
+        setVehicle(null);
+        return;
+      }
+      const match = liveTracker
+        .snapshot(leg.line)
+        .find(
+          (candidate) =>
+            candidate.matchedTripId === leg.tripId &&
+            now - candidate.updatedAt >= 0 &&
+            now - candidate.updatedAt <= 120_000,
+        );
+      setVehicle(match ?? null);
+    };
+
+    updateVehicle();
+    const unsub = liveTracker.subscribe(updateVehicle);
+    const timer = setInterval(updateVehicle, 5000);
+    return () => {
+      unsub();
+      clearInterval(timer);
+    };
+  }, [allowLive, leg.line, leg.mode, leg.tripId]);
+
+  const nearestStop = useMemo(() => {
+    if (!allowLive || (!vehicle && !leg.live)) return null;
+    return findNearestStopOnRoute(stops, vehicle);
+  }, [stops, vehicle, allowLive, leg.live]);
+
+  const liveNearLabel = useMemo(() => {
+    if (!nearestStop) return null;
+    const modeName = genericModeNom(t, leg.mode);
+    return t.leg.nearStop(modeName, nearestStop.name);
+  }, [nearestStop, t, leg.mode]);
+
+  const pingKey = vehicle?.updatedAt ?? (leg.live ? lastOk : undefined);
+
   useEffect(() => {
     if (expanded) setHasOpened(true);
     chevron.value = withTiming(expanded ? 1 : 0, motion.state);
@@ -386,58 +526,185 @@ function TransitLegCard({
     transform: [{ rotate: `${chevron.value * 180}deg` }],
   }));
 
+  // Pionowa animacja wysokości listy przystanków (bez ukosnego rozwijania).
+  useEffect(() => {
+    if (stopsListHeight > 0) {
+      stopsHeightAnim.value = withTiming(expanded ? stopsListHeight : 0, {
+        duration: 220,
+        easing: Easing.out(Easing.quad),
+      });
+    }
+  }, [expanded, stopsListHeight, stopsHeightAnim]);
+
+  const stopsAnimStyle = useAnimatedStyle(() => ({
+    height: stopsHeightAnim.value,
+    opacity: stopsHeightAnim.value > 0 ? 1 : 0,
+  }));
+
   return (
     <Animated.View layout={legTransition}>
       <Pressable
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={[t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded), notice].filter(Boolean).join('. ')}
+        accessibilityLabel={[
+          t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded),
+          notice,
+        ]
+          .filter(Boolean)
+          .join('. ')}
         style={({ pressed }) => [s.card, pressed && { opacity: 0.96 }]}
       >
-        <View style={s.cardTop}>
-          <LineBadge mode={leg.mode} line={leg.line} />
-          <Text style={s.dir} numberOfLines={1}>
-            {leg.direction}
-          </Text>
-          {leg.live ? <LiveDot color={scheme.success} size={8} /> : null}
-          <Animated.View style={chevronStyle}>
-            <ChevronDown size={18} color={scheme.onSurfaceVariant} />
-          </Animated.View>
+        {/* 1. Przystanek początkowy (bez prefixu "z") + godzina odjazdu po prawej */}
+        <View style={s.cardStartRow}>
+          <View style={s.stopTitleWrap}>
+            <Text style={s.cardStopName}>{leg.fromStop}</Text>
+            {departurePlatform ? (
+              <View style={s.platformBadge}>
+                <Text style={s.platformBadgeText}>{departurePlatform}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={s.cardTime}>{leg.departAt}</Text>
         </View>
-        <Text style={s.stopBig}>
-          <Text style={s.stopPrefix}>{t.leg.fromPrefix}</Text>
-          {leg.fromStop} <Text style={s.hour}>{leg.departAt}</Text>
-        </Text>
-        {delayMin !== 0 && scheduledDeparture != null && (
-          <Text style={[s.meta, { color: delayMin > 0 ? scheme.error : scheme.warning }]}>
-            {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
-            {' · '}
-            {leg.delayConfidence === 'estimated' ? t.routeDetails.estimatedDelay(delayMin) : delayMin > 0 ? t.routeDetails.late(delayMin) : t.routeDetails.early(-delayMin)}
-          </Text>
-        )}
-        {notice && (delayMin === 0 || scheduledDeparture == null) && <Text style={s.meta}>{notice}</Text>}
-        <Text style={s.meta}>{t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}</Text>
-        <Text style={s.stopBig}>
-          <Text style={s.stopPrefix}>{t.leg.toPrefix}</Text>
-          {leg.toStop} <Text style={s.hour}>{leg.arriveAt}</Text>
-        </Text>
-        {(expanded || hasOpened) && (
-          <Animated.View
-            layout={legTransition}
-            style={expanded ? s.stopsWrap : s.stopsCollapsed}
-            accessibilityElementsHidden={!expanded}
-            importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
+
+        {/* 2. Stop-hint: M3 tonal callout container z mikro-ikoną */}
+        {stopHint ? (
+          <View style={s.stopHintContainer}>
+            <MapPin size={13} color={scheme.primary} style={s.stopHintIcon} />
+            <Text style={s.cardStopHint}>
+              {!/^(słupek|peron|stanowisko)\b/i.test(stopHint) && departurePlatform ? (
+                <Text style={s.hintPlatformBold}>{departurePlatform} • </Text>
+              ) : null}
+              {stopHint}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* 3. Poziomy separator */}
+        <View style={s.cardSeparator} />
+
+        {/* 4. Środek: linia, kierunek, sensors live + na czas, rozwijana lista, podsumowanie */}
+        <View style={s.cardMiddleSection}>
+          <View style={s.cardTop}>
+            <View
+              style={s.badgeWrap}
+              onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}
+            >
+              <LineBadge mode={leg.mode} line={leg.line} />
+            </View>
+            <Text style={s.dir} numberOfLines={1}>
+              {leg.direction}
+            </Text>
+            <Animated.View style={chevronStyle}>
+              <ChevronDown size={18} color={scheme.onSurfaceVariant} />
+            </Animated.View>
+          </View>
+
+          {leg.live || notice || (delayMin !== 0 && scheduledDeparture != null) ? (
+            <View style={s.liveStatusBlock}>
+              <View style={[s.liveSensorsCol, { marginLeft: sensorCenterOffset }]}>
+                {leg.live ? (
+                  <LiveSensors color={scheme.success} size={15} pingKey={pingKey} />
+                ) : null}
+              </View>
+              <View style={s.liveTextCol}>
+                {leg.live ? (
+                  <Text style={s.liveLocationLabel} numberOfLines={1}>
+                    {nearestStop
+                      ? `Obecna lokacja: ${nearestStop.name}`
+                      : leg.liveNextStop
+                        ? `Obecna lokacja: ${leg.liveNextStop}`
+                        : liveNearLabel || 'Śledzenie na żywo'}
+                  </Text>
+                ) : null}
+
+                {delayMin !== 0 && scheduledDeparture != null ? (
+                  <Text
+                    style={[
+                      s.delayLabel,
+                      { color: delayMin > 0 ? scheme.error : scheme.warning },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
+                    {' · '}
+                    {leg.delayConfidence === 'estimated'
+                      ? t.routeDetails.estimatedDelay(delayMin)
+                      : delayMin > 0
+                        ? t.routeDetails.late(delayMin)
+                        : t.routeDetails.early(-delayMin)}
+                  </Text>
+                ) : leg.live ? (
+                  <Text style={[s.delayLabel, { color: scheme.success }]} numberOfLines={1}>
+                    {notice || t.routeDetails.onTime}
+                  </Text>
+                ) : notice ? (
+                  <Text style={s.meta}>{notice}</Text>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Pionowa animacja rozwijania listy przystanków */}
+          <View
+            style={s.stopsMeasure}
+            pointerEvents="none"
+            onLayout={(e) => setStopsListHeight(e.nativeEvent.layout.height)}
           >
-            <LegStopsList leg={leg} accent={accent} userLocation={userLocation} allowLive={allowLive} />
-          </Animated.View>
-        )}
+            <LegStopsList
+              leg={leg}
+              accent={accent}
+              userLocation={userLocation}
+              allowLive={allowLive}
+              stops={stops}
+              vehicle={vehicle}
+              loading={loading}
+            />
+          </View>
+          {(expanded || hasOpened) && (
+            <Animated.View
+              style={[
+                stopsAnimStyle,
+                { marginLeft: stopsIndent, overflow: 'hidden' },
+              ]}
+              accessibilityElementsHidden={!expanded}
+              importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
+            >
+              <LegStopsList
+                leg={leg}
+                accent={accent}
+                userLocation={userLocation}
+                allowLive={allowLive}
+                stops={stops}
+                vehicle={vehicle}
+                loading={loading}
+              />
+            </Animated.View>
+          )}
+
+          {/* Etykieta podsumowania przystanków - bliżej separatora, dalej od sekcji live/na czas */}
+          <View style={s.stopsSummaryWrap}>
+            <Text style={s.stopsSummaryLabel}>
+              {t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
+            </Text>
+          </View>
+        </View>
+
+        {/* 5. Poziomy separator */}
+        <View style={s.cardSeparator} />
+
+        {/* 6. Przystanek docelowy (bez prefixu "do:") + godzina przyjazdu po prawej */}
+        <View style={s.cardEndRow}>
+          <Text style={s.cardStopName}>{leg.toStop}</Text>
+          <Text style={s.cardTime}>{leg.arriveAt}</Text>
+        </View>
       </Pressable>
     </Animated.View>
   );
 }
 
-/** Jakdojade-style vertical timeline. Boxy tram/bus są klikalne (akordeon). */
+/** Vertical timeline bez railu po lewej stronie, wyśrodkowane dojścia pieszo. */
 export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observeOnly?: boolean }) {
   const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -446,26 +713,36 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
 
   return (
     <View style={s.list}>
+      <View style={s.terminalStart}>
+        <LocateFixed size={32} color={scheme.onSurfaceVariant} />
+        <DottedConnector height={20} />
+      </View>
       {legs.map((leg, i) => {
-        const last = i === legs.length - 1;
         if (leg.mode === 'walk') {
           const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
           const isSameStop =
             normalizeName(leg.fromStop) === normalizeName(leg.toStop) ||
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
+          const prevLeg = legs[i - 1];
+          const nextLeg = legs[i + 1];
+          const isTransferWalk =
+            prevLeg != null &&
+            prevLeg.mode !== 'walk' &&
+            nextLeg != null &&
+            nextLeg.mode !== 'walk';
 
           return (
-            <Animated.View key={leg.id} layout={legTransition} style={s.row}>
-              <View style={s.rail}>
-                <View style={s.walkLine} />
-                <View style={[s.node, s.walkNode]}>
-                  <Footprints size={13} color={scheme.onSurfaceVariant} />
-                </View>
-                {!last && <View style={s.walkLine} />}
+            <Animated.View key={leg.id} layout={legTransition} style={s.walkCentered}>
+              <DottedConnector />
+              <View style={s.walkPill}>
+                <Footprints size={15} color={scheme.primary} />
+                <Text style={s.walkPillTitle}>
+                  {formatWalkTime(walkMin)}
+                  {leg.walkM ? ` · ${Math.round(leg.walkM)} m` : ''}
+                </Text>
               </View>
-              <View style={s.body}>
-                <Text style={s.walkText}>{formatWalkTime(walkMin)}</Text>
-                {isSameStop ? (
+              {!isTransferWalk ? (
+                isSameStop ? (
                   <Text style={s.walkSub} numberOfLines={1}>
                     {leg.fromStop}
                   </Text>
@@ -474,99 +751,312 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                     <Text style={s.walkSub} numberOfLines={1}>
                       {leg.fromStop}
                     </Text>
-                    <ArrowRight size={12} color={scheme.onSurfaceVariant} strokeWidth={2} />
+                    <ArrowRight size={11} color={scheme.onSurfaceVariant} />
                     <Text style={s.walkSub} numberOfLines={1}>
                       {leg.toStop}
                     </Text>
                   </View>
-                )}
-              </View>
+                )
+              ) : null}
+              <DottedConnector />
             </Animated.View>
           );
         }
-        const { bg: accent } = getLineColors(leg.line, leg.mode);
-        const nextVehicle = legs.slice(i + 1).find(next => next.mode !== 'walk');
-        let transferGap = nextVehicle ? timeStringToSeconds(nextVehicle.departAt) - timeStringToSeconds(leg.arriveAt) : Infinity;
+        const nextVehicle = legs.slice(i + 1).find((next) => next.mode !== 'walk');
+        let transferGap = nextVehicle
+          ? timeStringToSeconds(nextVehicle.departAt) - timeStringToSeconds(leg.arriveAt)
+          : Infinity;
         if (transferGap < -43200) transferGap += 86400;
-        const uncertainTransfer = (leg.delayConfidence === 'estimated' || leg.delayConfidence === 'untracked') && transferGap < 360;
+        const uncertainTransfer =
+          (leg.delayConfidence === 'estimated' || leg.delayConfidence === 'untracked') &&
+          transferGap < 360;
+        const hasNextLeg = i < legs.length - 1;
+        const nextLegIsTransit = hasNextLeg && legs[i + 1].mode !== 'walk';
         return (
-          <Animated.View key={leg.id} layout={legTransition} style={s.row}>
-            <View style={s.rail}>
-              {!last && <View style={[s.spine, { backgroundColor: accent }]} />}
-              <View style={[s.node, { borderColor: accent }]}>
-                <View style={[s.innerDot, { backgroundColor: accent }]} />
+          <Animated.View key={leg.id} layout={legTransition} style={s.cardContainer}>
+            <TransitLegCard
+              leg={leg}
+              expanded={expandedId === leg.id}
+              userLocation={observeOnly ? null : location}
+              allowLive={!observeOnly || leg.live}
+              onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
+            />
+            {uncertainTransfer && <Text style={s.uncertainText}>{t.routeDetails.uncertainTransfer}</Text>}
+            {nextLegIsTransit && (
+              <View style={s.walkCentered}>
+                <DottedConnector />
+                <View style={s.walkPill}>
+                  <Footprints size={15} color={scheme.primary} />
+                  <Text style={s.walkPillTitle}>
+                    {transferGap > 0 && transferGap < 3600
+                      ? `Przesiadka · ~${Math.round(transferGap / 60)} min`
+                      : 'Przesiadka'}
+                  </Text>
+                </View>
+                <DottedConnector />
               </View>
-            </View>
-            <View style={s.cardWrap}>
-              <TransitLegCard
-                leg={leg}
-                expanded={expandedId === leg.id}
-                userLocation={observeOnly ? null : location}
-                allowLive={!observeOnly || leg.live}
-                onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
-              />
-              {uncertainTransfer && <Text style={s.meta}>{t.routeDetails.uncertainTransfer}</Text>}
-            </View>
+            )}
           </Animated.View>
         );
       })}
+      <View style={s.terminalEnd}>
+        <DottedConnector height={20} />
+        <LocationOn size={32} color={scheme.onSurfaceVariant} />
+      </View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  list: { gap: 2 },
-  row: { flexDirection: 'row', gap: 12 },
-  rail: { width: 34, alignItems: 'center', position: 'relative', paddingVertical: 4 },
-  spine: { position: 'absolute', top: 0, bottom: -6, width: 4, borderRadius: 99, opacity: 0.85 },
-  walkLine: { width: 2, height: 18, backgroundColor: scheme.outlineVariant },
-  node: {
-    width: 26,
-    height: 26,
-    borderRadius: 99,
-    backgroundColor: scheme.surface,
-    borderWidth: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
+  list: {
+    gap: 6,
+    paddingHorizontal: 10,
   },
-  walkNode: { borderWidth: 1, borderColor: scheme.outlineVariant },
-  innerDot: { width: 8, height: 8, borderRadius: 99 },
-  body: { flex: 1, paddingVertical: 8, gap: 2 },
-  cardWrap: { flex: 1, marginBottom: 10 },
-  // M3 filled card: tonal surface, bez obramowań - kolor linii niosą
-  // badge linii oraz kropki/linia na railu po lewej, więc pasek jest zbędny
+  cardContainer: {
+    width: '100%',
+    marginBottom: 4,
+  },
   card: {
-    flex: 1,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    padding: 14,
+    width: '100%',
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: 20,
+    padding: 16,
     gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
     ...elev.level1,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dir: { flex: 1, ...type.labelLarge, color: scheme.onSurface },
-  stopBig: { ...type.titleSmall, color: scheme.onSurface },
-  stopPrefix: { fontWeight: '400', color: scheme.onSurfaceVariant },
-  hour: { color: scheme.onSurfaceVariant, fontWeight: '400' },
-  meta: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  walkText: { ...type.titleSmall, color: scheme.onSurface },
+  cardStartRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  cardEndRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  cardStopName: {
+    fontSize: 22,
+    lineHeight: 28,
+    color: scheme.onSurface,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    flexShrink: 1,
+  },
+  cardTime: {
+    fontSize: 24,
+    lineHeight: 28,
+    color: scheme.onSurface,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  stopHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(92, 219, 190, 0.08)',
+    borderRadius: shape.small,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(92, 219, 190, 0.18)',
+    alignSelf: 'flex-start',
+  },
+  stopHintIcon: {
+    marginTop: 2,
+  },
+  cardStopHint: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontSize: 12.5,
+    lineHeight: 17,
+    flexShrink: 1,
+  },
+  hintPlatformBold: {
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  cardSeparator: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    width: '100%',
+    marginVertical: 6,
+  },
+  cardMiddleSection: {
+    gap: 6,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  badgeWrap: {
+    alignItems: 'center',
+  },
+  dir: {
+    flex: 1,
+    ...type.labelLarge,
+    color: scheme.onSurface,
+  },
+  liveStatusBlock: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 2,
+  },
+  liveSensorsCol: {
+    width: 19,
+    height: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  liveTextCol: {
+    flex: 1,
+    gap: 3,
+    justifyContent: 'center',
+  },
+  liveLocationLabel: {
+    ...type.bodySmall,
+    color: scheme.onSurface,
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  delayLabel: {
+    ...type.bodySmall,
+    fontWeight: '600',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  stopsSummaryWrap: {
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  stopsSummaryLabel: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontSize: 12.5,
+  },
+  stopTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  platformBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: shape.small,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  platformBadgeText: {
+    ...type.labelSmall,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  meta: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+  },
+  terminalStart: {
+    alignItems: 'center',
+    gap: 12,
+    paddingTop: 4,
+  },
+  terminalEnd: {
+    alignItems: 'center',
+    gap: 12,
+    paddingBottom: 4,
+  },
+  walkCentered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+    gap: 5,
+    width: '100%',
+  },
+  walkPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: scheme.surfaceContainerHighest,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    ...elev.level1,
+  },
+  walkPillTitle: {
+    ...type.labelMedium,
+    color: scheme.onSurface,
+    fontWeight: '700',
+    fontSize: 13,
+    letterSpacing: 0.1,
+  },
   walkSubRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     flexWrap: 'wrap',
-    marginTop: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
   },
-  walkSub: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  // Rozwinięta lista kropek - wysokość animowana layout-animation przez rodzica,
-  // tutaj zwykły kontener bez własnych animacji wejścia/wyjścia
-  stopsWrap: { marginTop: 8, gap: 0 },
-  stopsCollapsed: { height: 0, opacity: 0, overflow: 'hidden', marginTop: 0 },
-  stopRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
-  stopRail: { width: 22, alignItems: 'center', position: 'relative' },
-  stopRailLine: { position: 'absolute', left: 9.5, width: 3 },
-  boundaryMark: { width: 19, height: 2, marginTop: 19, zIndex: 1 },
+  walkSub: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  uncertainText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  stopsWrap: {
+    marginTop: 8,
+    gap: 0,
+  },
+  stopsMeasure: {
+    position: 'absolute',
+    opacity: 0,
+    left: -9999,
+    top: 0,
+    width: '100%',
+  },
+  stopRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'stretch',
+  },
+  stopRail: {
+    width: 22,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  stopRailLine: {
+    position: 'absolute',
+    left: 9.5,
+    width: 3,
+  },
+  boundaryMark: {
+    width: 19,
+    height: 2,
+    marginTop: 19,
+    zIndex: 1,
+  },
   boundaryBody: {
     flex: 1,
     flexDirection: 'row',
@@ -577,11 +1067,29 @@ const s = StyleSheet.create({
     borderColor: scheme.outlineVariant,
     marginBottom: 6,
   },
-  boundaryIcon: { marginTop: 2 },
-  boundaryText: { flex: 1, gap: 2 },
-  boundaryTitle: { ...type.labelMedium, color: scheme.onSurfaceVariant },
-  boundaryDetail: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  dot: { width: 13, height: 13, borderRadius: 99, borderWidth: 2, marginTop: 4, zIndex: 1 },
+  boundaryIcon: {
+    marginTop: 2,
+  },
+  boundaryText: {
+    flex: 1,
+    gap: 2,
+  },
+  boundaryTitle: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+  },
+  boundaryDetail: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+  },
+  dot: {
+    width: 13,
+    height: 13,
+    borderRadius: 99,
+    borderWidth: 2,
+    marginTop: 4,
+    zIndex: 1,
+  },
   vehicleMarker: {
     position: 'absolute',
     top: 17,
@@ -596,10 +1104,22 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 3,
   },
-  stopBody: { flex: 1, justifyContent: 'center', minHeight: 30, paddingBottom: 6 },
-  stopName: { ...type.bodyMedium, color: scheme.onSurface },
-  stopNameStrong: { fontWeight: '700' },
-  stopNamePassed: { color: scheme.outline },
+  stopBody: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 30,
+    paddingBottom: 6,
+  },
+  stopName: {
+    ...type.bodyMedium,
+    color: scheme.onSurface,
+  },
+  stopNameStrong: {
+    fontWeight: '700',
+  },
+  stopNamePassed: {
+    color: scheme.outline,
+  },
   skeletonDot: {
     borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainerHighest,

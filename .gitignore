@@ -62,5 +62,6 @@ server/data/
 cloudflare/dist/
 cloudflare/.dev.vars
 cloudflare/.wrangler/
+cloudflare/.cache/
+cloudflare/data/*-new.json
 .wrangler/
-cloudflare/node_modules/

@@ -21,9 +21,18 @@ if (!cities.length || (localDb && cities.length !== 1))
   throw new Error('Podaj poprawne --city dla lokalnej bazy.');
 
 async function download(url: string): Promise<Buffer> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
-  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
+      if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
+    }
+  }
+  throw lastError;
 }
 
 async function exportCity(city: string) {

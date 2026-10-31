@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,14 +19,17 @@ import {
   Pin,
   RouteOff,
   Share2,
-} from 'lucide-react-native';
+} from '../../src/components/icons';
 import { scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
 import { RoutingService } from '../../src/services';
 import { getPlannedConnection } from '../../src/services/api';
-import { normalizeConnectionId } from '../../src/services/routing/connectionIdentity';
+import {
+  normalizeConnectionId,
+  stableConnectionId,
+} from '../../src/services/routing/connectionIdentity';
 import { applyLiveDelays } from '../../src/services/routing/engine';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
@@ -46,17 +58,43 @@ export default function RouteDetailsScreen() {
   const s = useStrings();
   const router = useRouter();
   const openTransferProtection = useTransferProtection();
-  const goBack = () => router.canGoBack() ? router.back() : router.replace('/routes');
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const id = normalizeConnectionId(routeId ?? '');
   const { trip: trackedTrip } = useTrackedTrip();
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
-  const immediateItem = cachedItem?.id === id ? cachedItem : alarmItem?.id === id ? alarmItem : getPlannedConnection(String(id));
+
+  const isTrackedThis = useMemo(() => {
+    if (!trackedTrip) return false;
+    const trackedId = trackedTrip.id ? normalizeConnectionId(trackedTrip.id) : '';
+    const trackedConnId = trackedTrip.connection.id
+      ? normalizeConnectionId(trackedTrip.connection.id)
+      : '';
+    if (trackedId === id || trackedConnId === id) return true;
+    try {
+      if (normalizeConnectionId(stableConnectionId(trackedTrip.connection)) === id) return true;
+    } catch {
+      // ignore
+    }
+    return false;
+  }, [trackedTrip, id]);
+
+  const immediateItem =
+    cachedItem?.id === id
+      ? cachedItem
+      : alarmItem?.id === id
+        ? alarmItem
+        : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
   const [offline, setOffline] = useState(false);
   const [liveStale, setLiveStale] = useState(() => liveTracker.getLiveState() !== 'fresh');
-  const rawItem = trackedTrip?.connection.id === id ? trackedTrip.connection : loadedItem?.id === id ? loadedItem : immediateItem ?? null;
+  const rawItem =
+    isTrackedThis && trackedTrip
+      ? trackedTrip.connection
+      : loadedItem?.id === id
+        ? loadedItem
+        : (immediateItem ?? null);
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia: bez
   // tickera karta pokazywałaby wartości z chwili wyszukiwania.
   const [liveTick, setLiveTick] = useState(0);
@@ -72,7 +110,13 @@ export default function RouteDetailsScreen() {
     return () => clearInterval(t);
   }, []);
   const item = useMemo(
-    () => (rawItem ? (applyLiveDelays([rawItem], offline || liveStale ? new Map() : liveTracker.getTripDelays())[0] ?? null) : null),
+    () =>
+      rawItem
+        ? (applyLiveDelays(
+            [rawItem],
+            offline || liveStale ? new Map() : liveTracker.getTripDelays(),
+          )[0] ?? null)
+        : null,
     // liveTick wymusza przemapowanie po każdym nowym polli trackera.
     [rawItem, liveTick, offline, liveStale],
   );
@@ -93,7 +137,12 @@ export default function RouteDetailsScreen() {
     return () => clearInterval(t);
   }, []);
 
-  const isTrackedThis = trackedTrip != null && trackedTrip.connection.id === String(id);
+  useEffect(() => {
+    if (isTrackedThis && trackedTrip?.connection) {
+      setItem(trackedTrip.connection);
+    }
+  }, [isTrackedThis, trackedTrip?.connection]);
+
   const hasTransfers = item != null && hasTransfer(item);
 
   // Nagłówek przełącza śledzenie, karta włącza ochronę. Monitor trzyma jedną podróż.
@@ -109,7 +158,7 @@ export default function RouteDetailsScreen() {
         Alert.alert(s.routes.trackUnsupportedTitle, s.routes.trackUnsupportedBody);
         return;
       }
-      const ok = !areNotificationsSupported() || await ensureNotificationPermission();
+      const ok = !areNotificationsSupported() || (await ensureNotificationPermission());
       if (!ok) {
         Alert.alert(s.routes.notifOffTitle, permissionDeniedMessage());
         return;
@@ -118,7 +167,10 @@ export default function RouteDetailsScreen() {
       if (protectionEnabled) {
         let permission = await Location.getForegroundPermissionsAsync();
         if (!permission.granted) permission = await Location.requestForegroundPermissionsAsync();
-        protectionEnabled = permission.granted && permission.android?.accuracy !== 'coarse' && permission.ios?.accuracy !== 'reduced';
+        protectionEnabled =
+          permission.granted &&
+          permission.android?.accuracy !== 'coarse' &&
+          permission.ios?.accuracy !== 'reduced';
         if (!protectionEnabled) {
           Alert.alert(s.transferGuard.title, s.transferGuard.locationRequired, [
             { text: s.common.cancel, style: 'cancel' },
@@ -139,18 +191,19 @@ export default function RouteDetailsScreen() {
         toTitle: item.toTitle,
         toLat: lastLeg?.toLat ?? fallback.lat,
         toLon: lastLeg?.toLon ?? fallback.lon,
+        anchorStopId: firstLeg?.fromStopId,
+        anchorStopLat: firstLeg?.fromLat,
+        anchorStopLon: firstLeg?.fromLon,
         connection: item,
         startedAt: Date.now(),
         protectionEnabled,
       });
     } catch {
       Alert.alert(s.transferGuard.title, s.transferGuard.routingError);
-    } finally { setTrackingBusy(false); }
+    } finally {
+      setTrackingBusy(false);
+    }
   };
-
-  useEffect(() => {
-    if (trackedTrip?.connection.id === id) setItem(trackedTrip.connection);
-  }, [id, trackedTrip?.connection]);
 
   useEffect(() => {
     // Brak id to nie „wczytujemy” - inaczej ekran zostawał ze spinnerem w nieskończoność.
@@ -184,13 +237,18 @@ export default function RouteDetailsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, immediateItem]);
 
   if (loadFailed) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
+          <Pressable
+            onPress={goBack}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.backA11y}
+          >
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
           <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
@@ -213,7 +271,12 @@ export default function RouteDetailsScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
-          <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
+          <Pressable
+            onPress={goBack}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.backA11y}
+          >
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
           <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
@@ -237,99 +300,137 @@ export default function RouteDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.screen} importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'} accessibilityElementsHidden={sharing || alarmOpen}>
-      <View style={styles.header}>
-        <Pressable onPress={goBack} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={s.map.backA11y}>
-          <ChevronLeft size={23} color={scheme.onSurface} />
-        </Pressable>
-        <Text style={styles.headerTitle} accessibilityRole="header">
-          {s.routeDetails.title}
-        </Text>
-        {!noLegs && (
-          <Pressable onPress={() => setSharing(true)} accessibilityRole="button"
-            accessibilityLabel={s.share.title}
-            style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}>
-            <Share2 size={21} color={scheme.onSurfaceVariant} />
+      <View
+        style={styles.screen}
+        importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'}
+        accessibilityElementsHidden={sharing || alarmOpen}
+      >
+        <View style={styles.header}>
+          <Pressable
+            onPress={goBack}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.backA11y}
+          >
+            <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
-        )}
-        {item.legs.some((leg) => leg.mode !== 'walk') && (
-          <Pressable onPress={() => setAlarmOpen(true)} accessibilityRole="button"
-            onFocus={() => setAlarmFocused(true)} onBlur={() => setAlarmFocused(false)}
-            accessibilityState={{ selected: currentAlarm != null }}
-            accessibilityLabel={currentAlarm ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}` : s.alarm.set}
-            style={({ pressed }) => [styles.trackBtn, currentAlarm && styles.trackBtnActive,
-              pressed && { opacity: 0.75 }, alarmFocused && styles.alarmFocused]}>
-            <AlarmClock size={21} color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
-          </Pressable>
-        )}
-        <Pressable
-          onPress={() => void toggleTracking()}
-          disabled={trackingBusy}
-          accessibilityRole="button"
-          accessibilityState={{ selected: isTrackedThis }}
-          accessibilityLabel={
-            isTrackedThis ? s.routes.stopTrackingTripA11y : s.routes.trackTripA11y
-          }
-          style={({ pressed }) => [
-            styles.trackBtn,
-            isTrackedThis && styles.trackBtnActive,
-            pressed && { opacity: 0.7 },
-          ]}
-          hitSlop={8}
-        >
-          <Pin
-            size={21}
-            color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-            fill={isTrackedThis ? scheme.onPrimaryContainer : 'transparent'}
-          />
-        </Pressable>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} overScrollMode="never">
-        <ConnectionSummary item={item} offline={offline} />
-        {dataNote && (
-          <View style={styles.offlineBanner}>
-            <CloudOff size={16} color={scheme.onSurfaceVariant} strokeWidth={2} />
-            <Text style={styles.offlineBannerText}>{dataNote}</Text>
-          </View>
-        )}
-
-        {noLegs ? (
-          <View style={styles.emptyCard}>
-            <RouteOff size={20} color={scheme.onSurfaceVariant} strokeWidth={2} />
-            <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
-            <Text style={styles.emptyText}>
-              {s.routeDetails.noTripBody}
-            </Text>
+          <Text style={styles.headerTitle} accessibilityRole="header">
+            {s.routeDetails.title}
+          </Text>
+          {!noLegs && (
             <Pressable
-              onPress={() => router.back()}
-              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+              onPress={() => setSharing(true)}
+              accessibilityRole="button"
+              accessibilityLabel={s.share.title}
+              style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}
             >
-              <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
+              <Share2 size={21} color={scheme.onSurfaceVariant} />
             </Pressable>
-          </View>
-        ) : (
-          <>
-            <LegTimeline legs={item.legs} />
-            <RouteMapCard
-              connection={item}
-              onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+          )}
+          {item.legs.some((leg) => leg.mode !== 'walk') && (
+            <Pressable
+              onPress={() => setAlarmOpen(true)}
+              accessibilityRole="button"
+              onFocus={() => setAlarmFocused(true)}
+              onBlur={() => setAlarmFocused(false)}
+              accessibilityState={{ selected: currentAlarm != null }}
+              accessibilityLabel={
+                currentAlarm
+                  ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`
+                  : s.alarm.set
+              }
+              style={({ pressed }) => [
+                styles.trackBtn,
+                currentAlarm && styles.trackBtnActive,
+                pressed && { opacity: 0.75 },
+                alarmFocused && styles.alarmFocused,
+              ]}
+            >
+              <AlarmClock
+                size={21}
+                color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+              />
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => void toggleTracking()}
+            disabled={trackingBusy}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isTrackedThis }}
+            accessibilityLabel={
+              isTrackedThis ? s.routes.stopTrackingTripA11y : s.routes.trackTripA11y
+            }
+            style={({ pressed }) => [
+              styles.trackBtn,
+              isTrackedThis && styles.trackBtnActive,
+              pressed && { opacity: 0.7 },
+            ]}
+            hitSlop={8}
+          >
+            <Pin
+              size={21}
+              color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
             />
-            {hasTransfers && (
-              <TransferProtectionCard state={isTrackedThis ? trackedTrip.transfer : undefined}
-                active={isTrackedThis && trackedTrip.protectionEnabled === true} busy={trackingBusy}
-                onPress={() => { if (isTrackedThis && trackedTrip.protectionEnabled) openTransferProtection(); else void toggleTracking(true); }} />
-            )}
+          </Pressable>
+        </View>
 
-            <ConnectionLineAlerts connection={item} />
-          </>
-        )}
+        <ScrollView
+          contentContainerStyle={styles.body}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+        >
+          <ConnectionSummary item={item} offline={offline} />
+          {dataNote && (
+            <View style={styles.offlineBanner}>
+              <CloudOff size={16} color={scheme.onSurfaceVariant} />
+              <Text style={styles.offlineBannerText}>{dataNote}</Text>
+            </View>
+          )}
 
-        <View style={{ height: 24 }} />
-      </ScrollView>
+          {noLegs ? (
+            <View style={styles.emptyCard}>
+              <RouteOff size={20} color={scheme.onSurfaceVariant} />
+              <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
+              <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
+              <Pressable
+                onPress={() => router.back()}
+                style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              {hasTransfers && (
+                <TransferProtectionCard
+                  state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
+                  active={isTrackedThis && trackedTrip?.protectionEnabled === true}
+                  busy={trackingBusy}
+                  onPress={() => {
+                    if (isTrackedThis && trackedTrip?.protectionEnabled) {
+                      openTransferProtection();
+                    } else {
+                      void toggleTracking(true);
+                    }
+                  }}
+                />
+              )}
+              <LegTimeline legs={item.legs} />
+              <RouteMapCard
+                connection={item}
+                onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+              />
+              <ConnectionLineAlerts connection={item} />
+            </>
+          )}
+
+          <View style={{ height: 24 }} />
+        </ScrollView>
       </View>
       {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
-      {alarmOpen && <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />}
+      {alarmOpen && (
+        <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
+      )}
     </SafeAreaView>
   );
 }
@@ -347,8 +448,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  iconBtn: { width: 48, height: 48, borderRadius: shape.medium, alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  iconBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: shape.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
   trackBtn: {
     flexDirection: 'row',
@@ -357,7 +470,6 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainer,
   },
   trackBtnActive: { backgroundColor: scheme.primaryContainer },
   body: { paddingHorizontal: 16, gap: 18, paddingBottom: 40 },

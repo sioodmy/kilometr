@@ -869,6 +869,14 @@ export const pl = {
     filterNoHistoryTitle: 'Brak Twoich linii',
     filterNoHistoryBody:
       'Sprawdź połączenie w aplikacji, a tu zobaczysz komunikaty o liniach z tej trasy.',
+    resolved: 'Ruch przywrócony',
+    solutionLabel: 'Trasa objazdu',
+    detourLabel: 'Trasa objazdu',
+    detourAndReplacement: 'Objazd i autobus zastępczy',
+    replacementBus: 'Autobus zastępczy',
+    urgentChip: 'Utrudnienie',
+    plannedChip: 'Zmiana trasy',
+    omittedStopsPrefix: 'Omija:',
   },
   newsSvc: {
     justNow: 'przed chwilą',
@@ -991,6 +999,8 @@ export const pl = {
     emptyMode: (veh: string) =>
       `Na tej trasie nie ma teraz kursu ${veh}. Przełącz na „Wszystkie”, aby zobaczyć resztę połączeń.`,
     emptyPlain: 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.',
+    samePlaceTitle: 'Start i cel to ten sam punkt',
+    samePlaceBody: 'Jesteś na miejscu, więc nie ma czego planować. Wybierz inny cel, żeby zobaczyć połączenia.',
     vehicleTramGen: 'tramwajem',
     vehicleBusGen: 'autobusem',
     vehicleTrolleyGen: 'trolejbusem',
@@ -1031,6 +1041,8 @@ export const pl = {
     lineAlertsEmpty: 'Brak komunikatów o liniach z tej trasy.',
     lineAlertsCount: (n: number) =>
       n === 1 ? '1 komunikat' : isFew(n) ? `${n} komunikaty` : `${n} komunikatów`,
+    lineAlertsLoading: 'Sprawdzam utrudnienia…',
+    lineAlertsError: 'Nie udało się sprawdzić utrudnień.',
   },
   search: {
     suggestedPlaces: 'Proponowane miejsca',
@@ -1245,6 +1257,14 @@ export const pl = {
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} między ${from} a ${to}`,
     fromPrefix: 'z ',
     toPrefix: 'do ',
+    modeTram: 'Tramwaj',
+    modeBus: 'Autobus',
+    modeTrain: 'Pociąg',
+    modeSubway: 'Metro',
+    modeTrolley: 'Trolejbus',
+    modeCable: 'Kolejka linowa',
+    modeVehicle: 'Pojazd',
+    nearStop: (mode: string, stop: string) => `${mode} w pobliżu przystanku: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
   },

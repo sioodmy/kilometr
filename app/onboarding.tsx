@@ -36,7 +36,7 @@ import {
   TramFront,
   WifiOff,
   X,
-} from 'lucide-react-native';
+} from '../src/components/icons';
 import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
@@ -505,7 +505,7 @@ export default function OnboardingScreen() {
           >
             <View style={st.welcomeHero}>
               <View style={st.heroMark}>
-                <TramFront size={48} color={scheme.onPrimaryContainer} strokeWidth={1.8} />
+                <TramFront size={48} color={scheme.onPrimaryContainer} />
               </View>
               <Text style={[st.hero, compact && st.heroCompact]}>{s.onboarding.brand}</Text>
               <Text style={st.lead}>{s.onboarding.tagline}</Text>

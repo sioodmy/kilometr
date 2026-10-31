@@ -17,8 +17,8 @@ import {
   Store,
   Train,
   Utensils,
-  type LucideIcon,
-} from 'lucide-react-native';
+  type IconComponent,
+} from './icons';
 import { scheme, shape, type, type SchemeKey } from '../theme/tokens';
 import type { Suggestion } from '../types/models';
 import { formatDistance } from '../services/settings';
@@ -30,7 +30,7 @@ import { normalizePolish } from '../gtfs/geo';
  * kolory: na Androidzie 12+ paleta pochodzi z tapety i podmienia się po
  * imporcie modułu, więc kolory czytamy dopiero przy rysowaniu wiersza.
  */
-const KIND_TONES: Record<string, { Icon: LucideIcon; bg: SchemeKey; fg: SchemeKey }> = {
+const KIND_TONES: Record<string, { Icon: IconComponent; bg: SchemeKey; fg: SchemeKey }> = {
   stop: { Icon: BusFront, bg: 'secondaryContainer', fg: 'onSecondaryContainer' },
   address: { Icon: MapPin, bg: 'tertiaryContainer', fg: 'onTertiaryContainer' },
   history: { Icon: Clock3, bg: 'surfaceContainerHighest', fg: 'onSurfaceVariant' },
@@ -40,7 +40,7 @@ const KIND_TONES: Record<string, { Icon: LucideIcon; bg: SchemeKey; fg: SchemeKe
 };
 
 /** Kategorie Nominatim - kolory stałe, bo są poza skalą motywu. */
-const KIND_LITERALS: Record<string, { Icon: LucideIcon; bg: string; fg: string }> = {
+const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: string }> = {
   restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
   medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
   school: { Icon: GraduationCap, bg: '#0D3559', fg: '#90CAF9' },
@@ -59,7 +59,7 @@ export function suggestionDisplayTitle(item: Pick<Suggestion, 'title' | 'kind'>)
 }
 
 export interface SuggestionIconMeta {
-  Icon: LucideIcon;
+  Icon: IconComponent;
   bg: string;
   fg: string;
 }

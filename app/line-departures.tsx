@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft } from '../src/components/icons';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
 import { timetableClock, timetableToday } from '../src/services/lineTimetable';

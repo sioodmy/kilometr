@@ -3,8 +3,14 @@
 // (prod: vX.Y.Z, nightly: nightly-YYYYMMDD-HHMM-<sha>, podgląd z PR-a:
 // dev-YYYYMMDD-HHMM-<sha> albo test-YYYYMMDD-HHMM-<sha>, Play: play-<...>).
 // Lokalnie bez tej zmiennej zostaje wersja z app.json.
+const fs = require('fs');
+const path = require('path');
 const appJson = require('./app.json');
-const { withAppBuildGradle } = require('expo/config-plugins');
+const {
+  withAppBuildGradle,
+  withDangerousMod,
+  withGradleProperties,
+} = require('expo/config-plugins');
 
 // Slot na numer kompilacji/hotfixu z CI (BUILD_NUMBER, np. GITHUB_RUN_ATTEMPT).
 // Dwie ostatnie cyfry versionCode prod, więc zakres 1-99; domyślnie 1.
@@ -118,20 +124,94 @@ const withAndroidSigning = (config) =>
     return mod;
   });
 
+// Release bez R8 nie przechodzi progu Google Play (min. 25% zaciemniania,
+// shrinkingu i optymalizacji DEX). Szablon Expo SDK 57 ma R8 wyłączony,
+// więc włączamy go w gradle.properties razem z usuwaniem nieużywanych zasobów.
+const withReleaseMinify = (config) =>
+  withGradleProperties(config, (config) => {
+    const setProperty = (key, value) => {
+      const existing = config.modResults.find(
+        (item) => item.type === 'property' && item.key === key,
+      );
+      if (existing) existing.value = value;
+      else config.modResults.push({ type: 'property', key, value });
+    };
+    setProperty('android.enableMinifyInReleaseBuilds', 'true');
+    setProperty('android.enableShrinkResourcesInReleaseBuilds', 'true');
+    return config;
+  });
+
+// Preset optymalizujący (a nie tylko obfuzkujący) kod. Bez niego R8 dostaje
+// -dontoptimize i Play nadal zgłasza niską optymalizację DEX.
+const withOptimizePreset = (config) =>
+  withAppBuildGradle(config, (mod) => {
+    const gradle = mod.modResults.contents;
+    if (gradle.includes('proguard-android-optimize.txt')) return mod;
+    if (!gradle.includes('proguard-android.txt')) {
+      throw new Error(
+        'Nie włączam optymalizacji R8: build.gradle bez proguard-android.txt z szablonu Expo.',
+      );
+    }
+    mod.modResults.contents = gradle.replace(
+      'proguard-android.txt',
+      'proguard-android-optimize.txt',
+    );
+    return mod;
+  });
+
+// Reguły JNI/WebView trzymamy w repo i doklejamy do wygenerowanego pliku
+// w prebuildzie: android/ nie jest wersjonowany.
+const PROGUARD_START = '# >>> kilometr: reguły R8';
+const PROGUARD_END = '# <<< kilometr: reguły R8';
+
+const withProguardRules = (config) =>
+  withDangerousMod(config, [
+    'android',
+    (config) => {
+      const rulesFile = path.join(
+        config.modRequest.platformProjectRoot,
+        'app',
+        'proguard-rules.pro',
+      );
+      const rules = fs.readFileSync(
+        path.join(__dirname, 'plugins', 'proguard-rules.pro'),
+        'utf8',
+      );
+      const current = fs.existsSync(rulesFile) ? fs.readFileSync(rulesFile, 'utf8') : '';
+      const start = current.indexOf(PROGUARD_START);
+      const end = current.indexOf(PROGUARD_END);
+      const base =
+        start >= 0 && end > start
+          ? current.slice(0, start) + current.slice(end + PROGUARD_END.length)
+          : current;
+      fs.writeFileSync(
+        rulesFile,
+        `${base.trimEnd()}\n\n${PROGUARD_START}\n${rules.trim()}\n${PROGUARD_END}\n`,
+      );
+      return config;
+    },
+  ]);
+
 module.exports = ({ config }) => {
   const expo = staticExpo(config);
   const version = process.env.APP_VERSION || expo.version || '1.0.0';
 
-  return withAndroidSigning({
-    ...expo,
-    version,
-    ios: {
-      ...(expo.ios || {}),
-      buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
-    },
-    android: {
-      ...(expo.android || {}),
-      versionCode: versionCodeFromVersion(version),
-    },
-  });
+  return withReleaseMinify(
+    withOptimizePreset(
+      withProguardRules(
+        withAndroidSigning({
+          ...expo,
+          version,
+          ios: {
+            ...(expo.ios || {}),
+            buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
+          },
+          android: {
+            ...(expo.android || {}),
+            versionCode: versionCodeFromVersion(version),
+          },
+        }),
+      ),
+    ),
+  );
 };

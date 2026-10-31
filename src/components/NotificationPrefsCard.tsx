@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { Activity, BellRing, Navigation } from 'lucide-react-native';
+import { Activity, BellRing, Navigation } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {

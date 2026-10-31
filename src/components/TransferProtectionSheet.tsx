@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReducedMotion } from 'react-native-reanimated';
-import { Clock3, MapPin, ShieldAlert, ShieldCheck, X } from 'lucide-react-native';
+import { Clock3, MapPin, ShieldAlert, ShieldCheck, X } from './icons';
 import { useStrings } from '../i18n';
 import { scheme } from '../theme/tokens';
 import type { Connection } from '../types/models';
@@ -142,7 +142,6 @@ export function TransferProtectionSheet({
             <View style={[styles.symbol, warning && styles.warningSymbol]}>
               <Icon
                 size={32}
-                strokeWidth={1.8}
                 color={warning ? scheme.onWarningContainer : scheme.onPrimaryContainer}
               />
             </View>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Maximize2 } from 'lucide-react-native';
+import { Maximize2 } from './icons';
 import { useStrings } from '../i18n';
 import type { Connection } from '../types/models';
 import { acquireMapServer } from '../services/mapServerLease';

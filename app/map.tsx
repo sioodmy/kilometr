@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ScanLine, WifiOff } from 'lucide-react-native';
+import { ChevronLeft, ScanLine, WifiOff } from '../src/components/icons';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';

@@ -308,6 +308,15 @@ jobs:
           set -euo pipefail
           mkdir -p aab-dist
           cp android/app/build/outputs/bundle/release/app-release.aab aab-dist/app-release.aab
+          # R8 obfuskuje nazwy; bez mapping.txt stosy z Play są nieczytelne.
+          # Plik wgrywa się osobno w Play Console razem z wydaniem.
+          MAPPING=android/app/build/outputs/mapping/release/mapping.txt
+          if [ -f "$MAPPING" ]; then
+            cp "$MAPPING" aab-dist/mapping.txt
+          else
+            echo "::error::Brak $MAPPING, R8 nie zostawił pliku mapowania."
+            exit 1
+          fi
           (cd aab-dist && sha256sum app-release.aab > app-release.aab.sha256)
           {
             echo "versionName=$VERSION"
