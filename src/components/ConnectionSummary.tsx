@@ -64,11 +64,8 @@ export function ConnectionSummary({
   const containerAnimatedStyle = useAnimatedStyle(() => {
     if (!hasTransform) return {};
     const translateY = interpolate(progress.value, [0, 1], [deltaY, 0]);
-    const borderRadius = interpolate(progress.value, [0, 1], [shape.large, shape.extraLarge]);
-
     return {
       transform: [{ translateY }],
-      borderRadius,
     };
   });
 
@@ -82,59 +79,73 @@ export function ConnectionSummary({
     };
   });
 
+  const innerContent = (
+    <>
+      <View style={[styles.endpoints, stacked && styles.endpointsStacked]}>
+        <View style={styles.endpoint}>
+          <Text style={styles.label}>
+            {firstVehicle ? s.routeDetails.vehicleDeparture : s.routeDetails.departure}
+          </Text>
+          <RollingTime value={departure} style={styles.time} />
+          {departureDelay !== 0 && scheduled != null && (
+            <View style={styles.delayDetails} accessibilityLiveRegion="polite">
+              <Text style={styles.label}>
+                {s.routeDetails.scheduledTime(secondsToTimeString(scheduled))}
+              </Text>
+              <Text
+                style={[
+                  styles.status,
+                  { color: departureDelay > 0 ? scheme.error : scheme.warning },
+                ]}
+              >
+                {departureDelay > 0
+                  ? s.routeDetails.late(departureDelay)
+                  : s.routeDetails.early(-departureDelay)}
+              </Text>
+            </View>
+          )}
+          <Text style={styles.place}>{firstVehicle?.fromStop ?? item.fromTitle}</Text>
+        </View>
+        <View style={[styles.direction, stacked && styles.directionStacked]}>
+          <Direction size={30} color={scheme.primary} />
+        </View>
+        <View style={styles.endpoint}>
+          <Text style={styles.label}>{s.routeDetails.arrival}</Text>
+          <RollingTime value={item.arriveAt} style={styles.time} />
+          <Text style={styles.place}>{item.toTitle}</Text>
+        </View>
+      </View>
+      {hasApproach && (
+        <Text style={styles.label}>
+          {isFallbackOrigin(item.fromTitle) && firstVehicle?.fromStop
+            ? s.routeDetails.walkDepartureTo(item.departAt, firstVehicle.fromStop)
+            : s.routeDetails.walkDeparture(item.departAt, item.fromTitle)}
+        </Text>
+      )}
+      <View style={styles.facts}>
+        <View style={styles.fact}>
+          <Clock3 size={17} color={scheme.primary} />
+          <Text style={styles.duration}>{s.common.durMin(item.durationMin)}</Text>
+        </View>
+        <Text style={styles.label}>
+          {boarding.length === 0 ? s.connection.walkAll : s.connection.transfers(item.transfers)}
+        </Text>
+      </View>
+    </>
+  );
+
+  if (!hasTransform) {
+    return (
+      <View style={styles.summary}>
+        <View style={styles.content}>{innerContent}</View>
+      </View>
+    );
+  }
+
   return (
     <Animated.View style={[styles.summary, containerAnimatedStyle]}>
       <Animated.View style={[styles.content, contentAnimatedStyle]}>
-        <View style={[styles.endpoints, stacked && styles.endpointsStacked]}>
-          <View style={styles.endpoint}>
-            <Text style={styles.label}>
-              {firstVehicle ? s.routeDetails.vehicleDeparture : s.routeDetails.departure}
-            </Text>
-            <RollingTime value={departure} style={styles.time} />
-            {departureDelay !== 0 && scheduled != null && (
-              <View style={styles.delayDetails} accessibilityLiveRegion="polite">
-                <Text style={styles.label}>
-                  {s.routeDetails.scheduledTime(secondsToTimeString(scheduled))}
-                </Text>
-                <Text
-                  style={[
-                    styles.status,
-                    { color: departureDelay > 0 ? scheme.error : scheme.warning },
-                  ]}
-                >
-                  {departureDelay > 0
-                    ? s.routeDetails.late(departureDelay)
-                    : s.routeDetails.early(-departureDelay)}
-                </Text>
-              </View>
-            )}
-            <Text style={styles.place}>{firstVehicle?.fromStop ?? item.fromTitle}</Text>
-          </View>
-          <View style={[styles.direction, stacked && styles.directionStacked]}>
-            <Direction size={30} color={scheme.primary} />
-          </View>
-          <View style={styles.endpoint}>
-            <Text style={styles.label}>{s.routeDetails.arrival}</Text>
-            <RollingTime value={item.arriveAt} style={styles.time} />
-            <Text style={styles.place}>{item.toTitle}</Text>
-          </View>
-        </View>
-        {hasApproach && (
-          <Text style={styles.label}>
-            {isFallbackOrigin(item.fromTitle) && firstVehicle?.fromStop
-              ? s.routeDetails.walkDepartureTo(item.departAt, firstVehicle.fromStop)
-              : s.routeDetails.walkDeparture(item.departAt, item.fromTitle)}
-          </Text>
-        )}
-        <View style={styles.facts}>
-          <View style={styles.fact}>
-            <Clock3 size={17} color={scheme.primary} />
-            <Text style={styles.duration}>{s.common.durMin(item.durationMin)}</Text>
-          </View>
-          <Text style={styles.label}>
-            {boarding.length === 0 ? s.connection.walkAll : s.connection.transfers(item.transfers)}
-          </Text>
-        </View>
+        {innerContent}
       </Animated.View>
     </Animated.View>
   );

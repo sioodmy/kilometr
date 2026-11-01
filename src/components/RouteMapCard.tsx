@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Maximize2 } from './icons';
 import { useStrings } from '../i18n';
 import type { Connection } from '../types/models';
@@ -20,8 +20,25 @@ export function RouteMapCard({ connection, onOpenMap }: {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [attempt, setAttempt] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
+  const [readyToMountMap, setReadyToMountMap] = useState(false);
+
+  // Odłóż start procesu WebView (MapLibre GL) na moment po zakończeniu
+  // animacji wejścia ekranu - likwiduje to zacięcia klatek (frame drops) na Androidzie.
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setReadyToMountMap(true);
+    });
+    const fallback = setTimeout(() => {
+      setReadyToMountMap(true);
+    }, 280);
+    return () => {
+      handle.cancel();
+      clearTimeout(fallback);
+    };
+  }, []);
 
   useEffect(() => {
+    if (!readyToMountMap) return;
     let cancelled = false;
     let release: (() => void) | undefined;
     setOfflineBase(undefined);
@@ -34,15 +51,16 @@ export function RouteMapCard({ connection, onOpenMap }: {
       if (!cancelled) setOfflineBase(null);
     });
     return () => { cancelled = true; release?.(); };
-  }, [attempt]);
+  }, [attempt, readyToMountMap]);
 
   useEffect(() => {
-    if (status !== 'loading') return;
+    if (!readyToMountMap || status !== 'loading') return;
     const timer = setTimeout(() => setStatus('error'), 20_000);
     return () => clearTimeout(timer);
-  }, [status, attempt]);
+  }, [status, attempt, readyToMountMap]);
 
   useEffect(() => {
+    if (!readyToMountMap) return;
     const abort = new AbortController();
     geometry.current.clear();
     void resolveGeometry(route, (legId, coords) => {
@@ -51,7 +69,7 @@ export function RouteMapCard({ connection, onOpenMap }: {
       mapRef.current?.setGeometry(legId, coords);
     }, abort.signal);
     return () => abort.abort();
-  }, [route]);
+  }, [route, readyToMountMap]);
 
   return (
     <View style={styles.card}>
@@ -65,7 +83,7 @@ export function RouteMapCard({ connection, onOpenMap }: {
         </Pressable>
       </View>
       <View style={styles.map}>
-        {offlineBase !== undefined && (
+        {readyToMountMap && offlineBase !== undefined && (
           <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <RouteMap key={attempt} ref={mapRef} route={route} offlineBase={offlineBase}
               paddingTop={24} paddingBottom={24}
@@ -77,11 +95,11 @@ export function RouteMapCard({ connection, onOpenMap }: {
               onError={() => setStatus('error')} />
           </View>
         )}
-        {status !== 'ready' && (
+        {(!readyToMountMap || status !== 'ready') && (
           <View style={styles.status} accessibilityLiveRegion="polite">
-            {status === 'loading' && <ActivityIndicator color={scheme.primary} />}
-            <Text style={styles.statusText}>{status === 'loading' ? s.compass.mapLoading : s.compass.mapFailed}</Text>
-            {status === 'error' && (
+            {(!readyToMountMap || status === 'loading') && <ActivityIndicator color={scheme.primary} />}
+            <Text style={styles.statusText}>{(!readyToMountMap || status === 'loading') ? s.compass.mapLoading : s.compass.mapFailed}</Text>
+            {readyToMountMap && status === 'error' && (
               <Pressable onPress={() => setAttempt((value) => value + 1)} accessibilityRole="button"
                 onFocus={() => setFocused('retry')} onBlur={() => setFocused(null)}
                 style={({ pressed }) => [styles.button, styles.retry, pressed && styles.pressed, focused === 'retry' && styles.focused]}>

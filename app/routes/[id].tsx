@@ -65,14 +65,9 @@ export default function RouteDetailsScreen() {
   const router = useRouter();
   const openTransferProtection = useTransferProtection();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
-  const { id: routeId, fromY: rawFromY, } = useLocalSearchParams<{
-    id: string;
-    fromY?: string;
-      }>();
-  const id = normalizeConnectionId(routeId ?? '');
-  const fromY = rawFromY ? parseFloat(rawFromY) : undefined;
+  const { id: routeId } = useLocalSearchParams<{ id: string }>();
+  const id = normalizeConnectionId(routeId ?? "");
   const reduceMotion = useReducedMotion();
-  const hasTransform = fromY != null && !reduceMotion;
   const { trip: trackedTrip } = useTrackedTrip();
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
@@ -320,9 +315,9 @@ export default function RouteDetailsScreen() {
         <Animated.View
           style={styles.header}
           entering={
-            reduceMotion || !hasTransform
+            reduceMotion
               ? undefined
-              : FadeInUp.duration(260).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+              : FadeInUp.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
           }
         >
           <Pressable
@@ -398,13 +393,13 @@ export default function RouteDetailsScreen() {
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
         >
-          <ConnectionSummary item={item} offline={offline} fromY={fromY} />
+          <ConnectionSummary item={item} offline={offline} />
           {dataNote && (
             <Animated.View
               entering={
-                reduceMotion || !hasTransform
+                reduceMotion
                   ? undefined
-                  : FadeInDown.duration(260).delay(40).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                  : FadeInDown.duration(200).delay(30).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
               }
               style={styles.offlineBanner}
             >
@@ -428,9 +423,9 @@ export default function RouteDetailsScreen() {
           ) : (
             <Animated.View
               entering={
-                reduceMotion || !hasTransform
+                reduceMotion
                   ? undefined
-                  : FadeInDown.duration(320).delay(60).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                  : FadeInDown.duration(220).delay(40).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
               }
               style={styles.detailsContent}
             >

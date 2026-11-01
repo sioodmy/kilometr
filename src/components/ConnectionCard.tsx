@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ArrowDown, ArrowRight, ChevronRight, Clock3, Footprints } from './icons';
@@ -193,7 +193,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 }: {
   item: Connection;
   onPress: (item: Connection, sourceLayout?: CardLayoutInfo) => void;
-  /** historyczne (przeszłe) połączenie - przygaszony wygląd */
+  /** historyczne (przyszłe) połączenie - przygaszony wygląd */
   dimmed?: boolean;
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;
@@ -251,7 +251,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   const transferText = [
     walkOnly ? s.connection.walkLeg : transfersLabel(item.transfers),
     ...transfers,
-  ].join(' · ');
+  ].join(' • ');
   const accessibilityDesc = tr().connection.cardA11y(
     departureText,
     item.durationMin,
@@ -261,34 +261,14 @@ export const ConnectionCard = memo(function ConnectionCard({
     linesSummary,
   );
 
-  const cardRef = useRef<View>(null);
-
   const handlePress = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    if (cardRef.current) {
-      let called = false;
-      const timer = setTimeout(() => {
-        if (!called) {
-          called = true;
-          onPress(item);
-        }
-      }, 50);
-      cardRef.current.measureInWindow((_x, y, _width, height) => {
-        if (!called) {
-          called = true;
-          clearTimeout(timer);
-          onPress(item, { y, height });
-        }
-      });
-    } else {
-      onPress(item);
-    }
+    onPress(item);
   }, [item, onPress]);
 
   return (
     <ConnectionPeekTarget item={item} handlers={peek}>
       <Pressable
-        ref={cardRef}
         collapsable={false}
         onPress={handlePress}
         accessibilityRole="button"
@@ -355,7 +335,7 @@ export const ConnectionCard = memo(function ConnectionCard({
               { color: dimmed ? scheme.onSurfaceVariant : item.delayMin > 0 ? scheme.error : scheme.warning },
             ]}
           >
-            {scheduledDeparture != null && `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} · `}
+            {scheduledDeparture != null && `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} • `}
             {item.delayMin > 0
               ? s.routeDetails.late(item.delayMin)
               : s.routeDetails.early(-item.delayMin)}
@@ -408,60 +388,8 @@ const styles = StyleSheet.create({
   },
   durationText: {
     ...type.labelLarge,
-    fontWeight: '600',
+    fontWeight: '700',
     color: scheme.onSecondaryContainer,
-    flexShrink: 1,
-  },
-  timeRange: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    maxWidth: '100%',
-  },
-  timeRangeStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
-  hours: {
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: '600',
-    letterSpacing: -0.7,
-    fontVariant: ['tabular-nums'],
-    color: scheme.onSurfaceVariant,
-    includeFontPadding: false,
-  },
-  arrival: { fontWeight: '400', color: scheme.onSurfaceVariant },
-  strip: { flexGrow: 0, width: '100%' },
-  stripContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingRight: 2,
-  },
-  stripCell: {
-    flexDirection: 'row',
-    gap: 5,
-    alignItems: 'center',
-  },
-  walkStep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    minHeight: 28,
-  },
-  walkMinutes: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
-  },
-  walkOnlyWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 28,
-  },
-  walkLabel: {
-    ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
   },
   journeyMeta: {
     flexDirection: 'row',
@@ -469,12 +397,74 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  journeyMetaStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
-  delay: { ...type.bodySmall, fontWeight: '500', flexShrink: 1 },
-  focused: { borderColor: scheme.primary },
-  pressed: {
+  journeyMetaStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
+  timeRange: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timeRangeStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
+  },
+  hours: {
+    ...type.titleSmall,
+    fontVariant: ['tabular-nums'],
+    color: scheme.onSurface,
+  },
+  arrival: {
+    color: scheme.onSurfaceVariant,
+  },
+  walkOnlyWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  walkLabel: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+  },
+  strip: {
+    marginTop: 2,
+  },
+  stripContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stripCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  walkStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: shape.small,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    transform: [{ scale: 0.99 }],
+  },
+  walkMinutes: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  delay: {
+    ...type.labelSmall,
+    fontWeight: '700',
+  },
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.985 }],
+  },
+  focused: {
+    borderColor: scheme.primary,
   },
 });

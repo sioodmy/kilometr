@@ -178,6 +178,14 @@ export default function RootLayout() {
                   animationDuration: 240,
                 }}
               />
+              <Stack.Screen
+                name="routes/[id]"
+                options={{
+                  headerShown: false,
+                  animation: reduceMotion ? "none" : "fade",
+                  animationDuration: 200,
+                }}
+              />
               <Stack.Screen name="line" />
               <Stack.Screen name="line-departures" />
               {/* Mapa ma własny gest przesuwania - natywny swipe-back zjadałby

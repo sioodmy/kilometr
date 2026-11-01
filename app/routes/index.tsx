@@ -61,7 +61,7 @@ import { costParamsFor } from '../../src/services/routing/raptor';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionCard, connectionsLabel, type CardLayoutInfo } from '../../src/components/ConnectionCard';
+import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
 import { DepartureTimeSheet, type JourneyTimeSelection } from '../../src/components/DepartureTimeSheet';
@@ -912,14 +912,9 @@ export default function RoutesScreen() {
   const earlierDisabled = loading || loadingMore || loadingEarlier || noMoreEarlier;
 
   const openConnection = useCallback(
-    (item: Connection, sourceLayout?: CardLayoutInfo) => {
+    (item: Connection) => {
       closePreview();
-      const params: Record<string, string> = { id: item.id };
-      if (sourceLayout && sourceLayout.y > 0 && sourceLayout.height > 0) {
-        params.fromY = String(Math.round(sourceLayout.y));
-        params.fromH = String(Math.round(sourceLayout.height));
-      }
-      router.push({ pathname: '/routes/[id]', params });
+      router.push({ pathname: '/routes/[id]', params: { id: item.id } });
     },
     [closePreview, router],
   );
