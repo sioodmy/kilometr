@@ -520,27 +520,6 @@ export interface PoiRow {
   district: string | null;
 }
 
-/** Atomowa podmiana indeksu POI (Overpass → SQLite). */
-export async function replacePois(rows: PoiRow[]): Promise<void> {
-  const db = await getGtfsDb();
-  await db.withTransactionAsync(async () => {
-    await db.runAsync('DELETE FROM pois');
-    const CHUNK = 100;
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK);
-      const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
-      const params: (string | number | null)[] = [];
-      for (const r of chunk) {
-        params.push(r.osm_id, r.kind, r.category, r.name, r.norm_name, r.address, r.lat, r.lon, r.street, r.district);
-      }
-      await db.runAsync(
-        'INSERT OR REPLACE INTO pois (osm_id, kind, category, name, norm_name, address, lat, lon, street, district) VALUES ' + placeholders,
-        ...params,
-      );
-    }
-  });
-}
-
 export async function poiCount(): Promise<number> {
   try {
     const db = await getGtfsDb();
@@ -558,12 +537,30 @@ export async function poiCount(): Promise<number> {
 export async function findPoiCandidates(query: string, limit = 60): Promise<PoiRow[]> {
   const q = query.trim().toLowerCase();
   if (!q || q.length < 2) return [];
+  const normQ = normalizePolish(q);
+  const tokens = normQ.split(/[\s,./()\\-]+/).filter((t) => t.length >= 2);
   const db = await getGtfsDb();
-  const like = `%${q.replace(/[%_]/g, '')}%`;
+
+  const clauses: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (tokens.length > 1) {
+    for (const token of tokens) {
+      const variants = expandTokenSynonyms(token).filter((v) => v.length >= 2);
+      const list = variants.length ? variants : [token];
+      clauses.push(`(${list.map(() => 'norm_name LIKE ?').join(' OR ')})`);
+      for (const v of list) params.push(`%${v.replace(/[%_]/g, '')}%`);
+    }
+  } else {
+    const clean = normQ.replace(/[%_\s\-./()]/g, '');
+    clauses.push('(norm_name LIKE ? OR replace(norm_name, " ", "") LIKE ?)');
+    params.push(`%${clean}%`, `%${clean}%`);
+  }
+
+  params.push(limit);
   return db.getAllAsync<PoiRow>(
-    'SELECT osm_id, kind, category, name, norm_name, address, lat, lon, street, district FROM pois WHERE norm_name LIKE ? LIMIT ?',
-    like,
-    limit,
+    `SELECT osm_id, kind, category, name, norm_name, address, lat, lon, street, district FROM pois WHERE ${clauses.join(' AND ')} LIMIT ?`,
+    ...params,
   );
 }
 

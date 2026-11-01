@@ -16,6 +16,8 @@
 import { isMultiCityArea } from '../src/cities';
 import { setActiveCityId } from '../src/services/cityStore';
 import { addressCity, cityFirstAddress, toSuggestion } from '../src/services/nominatimDirect';
+import { classifyPoi, buildPoiAddress } from '../src/services/poiClassify';
+import { fuzzyMatch } from '../src/gtfs/fuzzy';
 
 let passed = 0;
 const failures: string[] = [];
@@ -145,6 +147,62 @@ async function main(): Promise<void> {
     });
     expect('tytuł jak dotąd', s?.title, 'Długa 1');
     expect('miasto przed dzielnicami', s?.address, 'Gdańsk, Główne Miasto, Śródmieście');
+  }
+
+
+  describe("Klasyfikacja POI i budowanie adresu");
+  {
+    expect("komercyjny kompleks (Sky Tower)", classifyPoi({ landuse: "commercial" }), {
+      category: "place",
+      label: "Centrum komercyjne",
+    });
+    expect("galeria handlowa", classifyPoi({ shop: "mall" }), {
+      category: "shop",
+      label: "Galeria handlowa",
+    });
+    expect(
+      "adres POI ze street i suburb",
+      buildPoiAddress("Centrum komercyjne", {
+        "addr:street": "Powstańców Śląskich",
+        "addr:housenumber": "95",
+        "addr:suburb": "Krzyki",
+      }).address,
+      "Centrum komercyjne • Krzyki, Powstańców Śląskich 95",
+    );
+  }
+
+  describe("Fuzzy match POI (spacje i formy łączone)");
+  {
+    expect("sky tower vs Sky Tower", fuzzyMatch("sky tower", "Sky Tower").matches, true);
+    expect("skytower bez spacji vs Sky Tower", fuzzyMatch("skytower", "Sky Tower").matches, true);
+    expect(
+      "galeriadominikanska vs Galeria Dominikańska",
+      fuzzyMatch("galeriadominikanska", "Galeria Dominikańska").matches,
+      true,
+    );
+  }
+
+  describe("Sky Tower z Nominatim jako miejsce / landmark");
+  await setActiveCityId("wroclaw");
+  {
+    const s = toSuggestion({
+      place_id: 54510846,
+      display_name: "Sky Tower, Powstańców Śląskich, Krzyki, Wrocław, województwo dolnośląskie, Polska",
+      lat: "51.0945",
+      lon: "17.0195",
+      class: "landuse",
+      type: "commercial",
+      name: "Sky Tower",
+      address: {
+        commercial: "Sky Tower",
+        suburb: "Krzyki",
+        city: "Wrocław",
+        state: "województwo dolnośląskie",
+      },
+    });
+    expect("tytuł to nazwa obiektu", s?.title, "Sky Tower");
+    expect("rodzaj to place", s?.kind, "place");
+    expect("kategoria to place", s?.category, "place");
   }
 
   describe('Poza metropoliami adres bez zmian');

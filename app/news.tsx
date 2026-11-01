@@ -12,11 +12,19 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
   ReduceMotion,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import {
   Check,
   ChevronLeft,
@@ -37,16 +45,12 @@ import {
   type MpkNewsItem,
 } from '../src/services/mpkNews';
 import { useActiveCity } from '../src/services/cityStore';
-import {
-  loadRecentRouteLines,
-  newsTouchesLines,
-} from '../src/services/recentRouteLines';
+import { loadRecentRouteLines, newsTouchesLines } from '../src/services/recentRouteLines';
 
 type NewsFilter = 'all' | 'myLines';
 
 type Row =
-  | { kind: 'head'; id: string; label: string }
-  | { kind: 'item'; id: string; item: MpkNewsItem };
+  { kind: 'head'; id: string; label: string } | { kind: 'item'; id: string; item: MpkNewsItem };
 
 type Tone = 'urgent' | 'resolved' | 'quiet';
 
@@ -59,9 +63,17 @@ function toneColors(tone: Tone) {
     };
   }
   if (tone === 'resolved') {
-    return { card: scheme.surfaceContainerLowest, ink: scheme.onSurfaceVariant, muted: scheme.outline };
+    return {
+      card: scheme.surfaceContainerLowest,
+      ink: scheme.onSurfaceVariant,
+      muted: scheme.outline,
+    };
   }
-  return { card: scheme.surfaceContainerLow, ink: scheme.onSurface, muted: scheme.onSurfaceVariant };
+  return {
+    card: scheme.surfaceContainerLow,
+    ink: scheme.onSurface,
+    muted: scheme.onSurfaceVariant,
+  };
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -96,7 +108,10 @@ const NewsCard = memo(function NewsCard({
   };
   return (
     <AnimatedPressable
-      onPress={() => onOpen(item)}
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        onOpen(item);
+      }}
       onPressIn={() => setPress(1)}
       onPressOut={() => setPress(0)}
       accessibilityRole="button"
@@ -137,13 +152,9 @@ const NewsCard = memo(function NewsCard({
         </View>
       ) : null}
       {item.disruption?.glance?.problem ? (
-        <Text style={[styles.cardDesc, { color: c.muted }]} numberOfLines={2}>
-          {item.disruption.glance.problem}
-        </Text>
-      ) : item.source === 'city' && item.description ? (
-        <Text style={[styles.cardDesc, { color: c.muted }]} numberOfLines={2}>
-          {item.description}
-        </Text>
+        <Text style={[styles.cardDesc, { color: c.muted }]}>{item.disruption.glance.problem}</Text>
+      ) : item.description ? (
+        <Text style={[styles.cardDesc, { color: c.muted }]}>{item.description}</Text>
       ) : null}
       {solution ? (
         <View
@@ -153,9 +164,7 @@ const NewsCard = memo(function NewsCard({
           ]}
         >
           <Text style={[styles.solutionLabel, { color: c.muted }]}>{s.news.solutionLabel}</Text>
-          <Text style={[styles.cardSolution, { color: c.ink }]} numberOfLines={3}>
-            {solution}
-          </Text>
+          <Text style={[styles.cardSolution, { color: c.ink }]}>{solution}</Text>
         </View>
       ) : null}
     </AnimatedPressable>
@@ -186,6 +195,24 @@ export default function NewsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<NewsFilter>('all');
   const [myLines, setMyLines] = useState<string[]>([]);
+  const reduceMotion = useReducedMotion();
+  const spinValue = useSharedValue(0);
+
+  const spinStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spinValue.value}deg` }],
+  }));
+
+  const handleManualRefresh = () => {
+    if (refreshing || loading) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (!reduceMotion) {
+      spinValue.value = withTiming(spinValue.value + 360, {
+        duration: 500,
+        easing: Easing.bezier(0.2, 0, 0, 1),
+      });
+    }
+    void load(true);
+  };
 
   const refreshMyLines = useCallback(async () => {
     const lines = await loadRecentRouteLines();
@@ -270,14 +297,13 @@ export default function NewsScreen() {
   }, [visibleItems, s]);
 
   const urgentCount = visibleItems.filter((i) => i.urgent).length;
-  const filterEmpty =
-    filter === 'myLines' && items.length > 0 && visibleItems.length === 0;
+  const filterEmpty = filter === 'myLines' && items.length > 0 && visibleItems.length === 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
           style={styles.back}
           accessibilityRole="button"
           accessibilityLabel={s.map.backA11y}
@@ -286,18 +312,29 @@ export default function NewsScreen() {
         </Pressable>
         <Text style={styles.headerCity}>{cityName}</Text>
         <Pressable
-          onPress={() => void load(true)}
-          style={styles.iconBtn}
+          onPress={handleManualRefresh}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            pressed && !refreshing && !loading && { opacity: 0.75, transform: [{ scale: 0.94 }] },
+          ]}
           disabled={refreshing || loading}
           accessibilityRole="button"
           accessibilityState={{ disabled: refreshing || loading, busy: refreshing }}
           accessibilityLabel={s.news.refreshA11y}
         >
-          {refreshing ? <ActivityIndicator size="small" color={scheme.primary} /> : <RefreshCw size={21} color={scheme.onSurface} />}
+          {refreshing ? (
+            <ActivityIndicator size="small" color={scheme.primary} />
+          ) : (
+            <Animated.View style={spinStyle}>
+              <RefreshCw size={21} color={scheme.onSurface} />
+            </Animated.View>
+          )}
         </Pressable>
       </View>
       <View style={styles.headerText}>
-        <Text style={styles.headerTitle} accessibilityRole="header">{s.news.title}</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">
+          {s.news.title}
+        </Text>
         <Text style={styles.headerSub}>
           {loading && items.length === 0
             ? s.news.sourceLoading(feedsLabel)
@@ -310,8 +347,17 @@ export default function NewsScreen() {
       {items.length > 0 || myLines.length > 0 ? (
         <View style={styles.segment}>
           <Pressable
-            onPress={() => setFilter('all')}
-            style={[styles.segmentItem, filter === 'all' && styles.segmentItemOn]}
+            onPress={() => {
+              if (filter !== 'all') {
+                void Haptics.selectionAsync().catch(() => {});
+                setFilter('all');
+              }
+            }}
+            style={({ pressed }) => [
+              styles.segmentItem,
+              filter === 'all' && styles.segmentItemOn,
+              pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+            ]}
             accessibilityRole="button"
             accessibilityState={{ selected: filter === 'all' }}
           >
@@ -321,15 +367,22 @@ export default function NewsScreen() {
             </Text>
           </Pressable>
           <Pressable
-            onPress={() => setFilter('myLines')}
-            style={[styles.segmentItem, filter === 'myLines' && styles.segmentItemOn]}
+            onPress={() => {
+              if (filter !== 'myLines') {
+                void Haptics.selectionAsync().catch(() => {});
+                setFilter('myLines');
+              }
+            }}
+            style={({ pressed }) => [
+              styles.segmentItem,
+              filter === 'myLines' && styles.segmentItemOn,
+              pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+            ]}
             accessibilityRole="button"
             accessibilityState={{ selected: filter === 'myLines' }}
             accessibilityLabel={s.news.filterMyLinesA11y}
           >
-            {filter === 'myLines' ? (
-              <Check size={16} color={scheme.onSecondaryContainer} />
-            ) : null}
+            {filter === 'myLines' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
             <Text style={[styles.segmentText, filter === 'myLines' && styles.segmentTextOn]}>
               {s.news.filterMyLines}
             </Text>
@@ -355,7 +408,10 @@ export default function NewsScreen() {
           <Text style={styles.stateTitle}>{s.news.noConnection}</Text>
           <Text style={styles.stateText}>{error}</Text>
           <Pressable
-            onPress={() => { setLoading(true); void load(false); }}
+            onPress={() => {
+              setLoading(true);
+              void load(false);
+            }}
             accessibilityRole="button"
             style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
           >
@@ -378,15 +434,45 @@ export default function NewsScreen() {
               colors={[scheme.primary]}
             />
           }
-          renderItem={({ item: row }) =>
+          renderItem={({ item: row, index }) =>
             row.kind === 'head' ? (
-              <Text style={styles.section} accessibilityRole="header">{row.label}</Text>
+              <Animated.View
+                layout={reduceMotion ? undefined : LinearTransition.duration(200)}
+                entering={reduceMotion ? undefined : FadeIn.duration(200)}
+              >
+                <Text style={styles.section} accessibilityRole="header">
+                  {row.label}
+                </Text>
+              </Animated.View>
             ) : (
-              <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
+              <Animated.View
+                layout={
+                  reduceMotion
+                    ? undefined
+                    : LinearTransition.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                }
+                entering={
+                  reduceMotion || index >= 6
+                    ? undefined
+                    : FadeInDown.delay(index * 35)
+                        .duration(220)
+                        .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                }
+                exiting={
+                  reduceMotion
+                    ? undefined
+                    : FadeOutUp.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
+                }
+              >
+                <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
+              </Animated.View>
             )
           }
           ListEmptyComponent={
-            <View style={styles.emptyWrap}>
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeInDown.duration(240)}
+              style={styles.emptyWrap}
+            >
               <View style={styles.stateIconMuted}>
                 <Newspaper size={28} color={scheme.onSurfaceVariant} />
               </View>
@@ -404,7 +490,7 @@ export default function NewsScreen() {
                     : s.news.filterEmptyBody
                   : s.news.emptyBody(cityName)}
               </Text>
-            </View>
+            </Animated.View>
           }
         />
       )}
@@ -487,7 +573,14 @@ const styles = StyleSheet.create({
     gap: 12,
     overflow: 'hidden',
   },
-  metaRow: { flexDirection: 'row', alignItems: 'center', columnGap: 12, rowGap: 4, flexWrap: 'wrap', justifyContent: 'space-between' },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: 4,
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   metaText: { ...type.bodySmall, flexShrink: 1 },
   urgentLabel: {
     flexDirection: 'row',
@@ -520,7 +613,14 @@ const styles = StyleSheet.create({
   linesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   moreLines: { ...type.labelSmall, color: scheme.onSurfaceVariant, alignSelf: 'center' },
   skel: { borderRadius: shape.small, backgroundColor: scheme.surfaceContainerHighest },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 8, flexWrap: 'wrap' },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingTop: 8,
+    flexWrap: 'wrap',
+  },
   emptyWrap: { alignItems: 'center', gap: 12, paddingVertical: 40, paddingHorizontal: 12 },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   stateIcon: {

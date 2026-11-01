@@ -1,4 +1,5 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ArrowDown, ArrowRight, ChevronRight, Clock3, Footprints } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
@@ -12,6 +13,11 @@ import { tr, useStrings } from '../i18n';
 import { boardingDepartureMs, boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
 import { secondsToTimeString } from '../gtfs/geo';
+
+export interface CardLayoutInfo {
+  y: number;
+  height: number;
+}
 
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
 export function transfersLabel(n: number): string {
@@ -186,8 +192,8 @@ export const ConnectionCard = memo(function ConnectionCard({
   peek,
 }: {
   item: Connection;
-  onPress: (item: Connection) => void;
-  /** historyczne (przeszłe) połączenie - przygaszony wygląd */
+  onPress: (item: Connection, sourceLayout?: CardLayoutInfo) => void;
+  /** historyczne (przyszłe) połączenie - przygaszony wygląd */
   dimmed?: boolean;
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;
@@ -245,7 +251,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   const transferText = [
     walkOnly ? s.connection.walkLeg : transfersLabel(item.transfers),
     ...transfers,
-  ].join(' · ');
+  ].join(' • ');
   const accessibilityDesc = tr().connection.cardA11y(
     departureText,
     item.durationMin,
@@ -255,10 +261,16 @@ export const ConnectionCard = memo(function ConnectionCard({
     linesSummary,
   );
 
+  const handlePress = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    onPress(item);
+  }, [item, onPress]);
+
   return (
     <ConnectionPeekTarget item={item} handlers={peek}>
       <Pressable
-        onPress={() => onPress(item)}
+        collapsable={false}
+        onPress={handlePress}
         accessibilityRole="button"
         accessibilityLabel={[accessibilityDesc, notice].filter(Boolean).join('. ')}
         accessibilityHint={peek ? s.connection.previewHint : undefined}
@@ -267,10 +279,10 @@ export const ConnectionCard = memo(function ConnectionCard({
             ? [{ name: 'activate' }, { name: 'longpress', label: s.connection.previewTitle }]
             : undefined
         }
-        onAccessibilityTap={() => onPress(item)}
+        onAccessibilityTap={handlePress}
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
-          if (event.nativeEvent.actionName === 'activate') onPress(item);
+          if (event.nativeEvent.actionName === 'activate') handlePress();
         }}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -323,7 +335,7 @@ export const ConnectionCard = memo(function ConnectionCard({
               { color: dimmed ? scheme.onSurfaceVariant : item.delayMin > 0 ? scheme.error : scheme.warning },
             ]}
           >
-            {scheduledDeparture != null && `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} · `}
+            {scheduledDeparture != null && `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} • `}
             {item.delayMin > 0
               ? s.routeDetails.late(item.delayMin)
               : s.routeDetails.early(-item.delayMin)}
@@ -376,60 +388,8 @@ const styles = StyleSheet.create({
   },
   durationText: {
     ...type.labelLarge,
-    fontWeight: '600',
+    fontWeight: '700',
     color: scheme.onSecondaryContainer,
-    flexShrink: 1,
-  },
-  timeRange: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    maxWidth: '100%',
-  },
-  timeRangeStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
-  hours: {
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: '600',
-    letterSpacing: -0.7,
-    fontVariant: ['tabular-nums'],
-    color: scheme.onSurfaceVariant,
-    includeFontPadding: false,
-  },
-  arrival: { fontWeight: '400', color: scheme.onSurfaceVariant },
-  strip: { flexGrow: 0, width: '100%' },
-  stripContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingRight: 2,
-  },
-  stripCell: {
-    flexDirection: 'row',
-    gap: 5,
-    alignItems: 'center',
-  },
-  walkStep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    minHeight: 28,
-  },
-  walkMinutes: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
-  },
-  walkOnlyWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 28,
-  },
-  walkLabel: {
-    ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
   },
   journeyMeta: {
     flexDirection: 'row',
@@ -437,12 +397,74 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  journeyMetaStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
-  delay: { ...type.bodySmall, fontWeight: '500', flexShrink: 1 },
-  focused: { borderColor: scheme.primary },
-  pressed: {
+  journeyMetaStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
+  timeRange: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timeRangeStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
+  },
+  hours: {
+    ...type.titleSmall,
+    fontVariant: ['tabular-nums'],
+    color: scheme.onSurface,
+  },
+  arrival: {
+    color: scheme.onSurfaceVariant,
+  },
+  walkOnlyWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  walkLabel: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+  },
+  strip: {
+    marginTop: 2,
+  },
+  stripContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stripCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  walkStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: shape.small,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    transform: [{ scale: 0.99 }],
+  },
+  walkMinutes: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  delay: {
+    ...type.labelSmall,
+    fontWeight: '700',
+  },
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.985 }],
+  },
+  focused: {
+    borderColor: scheme.primary,
   },
 });

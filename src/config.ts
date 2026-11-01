@@ -78,3 +78,30 @@ export function defaultLocationForCity(cityId?: string): LocationFallback {
     lon: city.center.lon,
   };
 }
+
+/** Sprawdza, czy nazwa punktu startowego to generyczny placeholder lokalizacji/GPS. */
+export function isFallbackOrigin(title?: string | null): boolean {
+  if (!title) return true;
+  const t = title.trim().toLowerCase();
+  try {
+    const s = tr();
+    if (t === s.home.locationFallback.trim().toLowerCase()) return true;
+    if (t === s.home.gpsTitle.trim().toLowerCase()) return true;
+  } catch {}
+  return (
+    t === 'twoja lokalizacja' ||
+    t === 'moja lokalizacja' ||
+    t === 'moja lokalizacja (gps)' ||
+    t === 'your location' ||
+    t === 'my location' ||
+    t === 'current location' ||
+    t === 'current location (gps)' ||
+    t === 'dein standort' ||
+    t === 'mein standort' ||
+    t === 'mein standort (gps)' ||
+    t === 'твоя локація' ||
+    t === 'моя локація' ||
+    t === 'моя локація (gps)' ||
+    t === 'поточна локація (gps)'
+  );
+}
