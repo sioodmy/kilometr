@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { ChevronLeft, ExternalLink } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
@@ -43,6 +45,7 @@ export default function ArticleScreen() {
   const [blocks, setBlocks] = useState<ArticleBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [empty, setEmpty] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!url) {
@@ -81,7 +84,10 @@ export default function ArticleScreen() {
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
-          style={styles.back}
+          style={({ pressed }) => [
+            styles.back,
+            pressed && { opacity: 0.75, transform: [{ scale: 0.94 }] },
+          ]}
           hitSlop={10}
           accessibilityLabel={s.map.backA11y}
         >
@@ -96,15 +102,17 @@ export default function ArticleScreen() {
         showsVerticalScrollIndicator={false}
         overScrollMode="never"
       >
-        <Text style={styles.title}>{title}</Text>
-        {meta ? <Text style={styles.meta}>{meta}</Text> : null}
-        {lines.length > 0 ? (
-          <View style={styles.linesRow}>
-            {lines.map((line) => (
-              <LineBadge key={line} line={line} compact />
-            ))}
-          </View>
-        ) : null}
+        <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(200)}>
+          <Text style={styles.title}>{title}</Text>
+          {meta ? <Text style={styles.meta}>{meta}</Text> : null}
+          {lines.length > 0 ? (
+            <View style={styles.linesRow}>
+              {lines.map((line) => (
+                <LineBadge key={line} line={line} compact />
+              ))}
+            </View>
+          ) : null}
+        </Animated.View>
 
         {loading ? (
           <View style={styles.loadingBlock}>
@@ -119,7 +127,10 @@ export default function ArticleScreen() {
             <Text style={styles.failSub}>{s.news.articleEmpty}</Text>
           </View>
         ) : (
-          <View style={styles.article}>
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.duration(240)}
+            style={styles.article}
+          >
             {blocks.map((block, i) =>
               block.kind === 'h' ? (
                 <Text key={i} style={styles.heading}>
@@ -131,17 +142,20 @@ export default function ArticleScreen() {
                 </Text>
               ),
             )}
-          </View>
+          </Animated.View>
         )}
 
         {url ? (
           <Pressable
-            onPress={openBrowser}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              openBrowser();
+            }}
             accessibilityRole="link"
             accessibilityLabel={s.news.openBrowser}
             style={({ pressed }) => [
               empty ? styles.browserStrong : styles.browserSoft,
-              pressed && { opacity: 0.85 },
+              pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
             ]}
           >
             <ExternalLink
