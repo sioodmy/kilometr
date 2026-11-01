@@ -983,6 +983,7 @@ export const en: Strings = {
     untrackedVehicle: 'No current position. Delays are possible.',
     uncertainTransfer: 'Short transfer. This bus has no confirmed delay.',
     walkDeparture: (time: string, place: string) => `Start walking at ${time}: ${place}`,
+    walkDepartureTo: (time: string, stop: string) => `Start walking at ${time}: walk to: ${stop}`,
     arrival: 'Arrival',
     origin: 'From',
     destination: 'To',
@@ -1179,6 +1180,7 @@ export const en: Strings = {
     connections: (n: number) => (n === 1 ? '1 connection' : `${n} connections`),
     walkAll: 'all on foot',
     walkLeg: 'on foot',
+    walkTo: (stop: string) => `Walk to: ${stop}`,
     cardA11y: (
       dep: string,
       dur: number,

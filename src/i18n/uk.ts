@@ -1036,6 +1036,7 @@ export const uk: Strings = {
     untrackedVehicle: 'Немає актуальної позиції. Можливе запізнення.',
     uncertainTransfer: 'Мало часу на пересадку. Запізнення цього автобуса не підтверджено.',
     walkDeparture: (time: string, place: string) => `Вийти пішки о ${time}: ${place}`,
+    walkDepartureTo: (time: string, stop: string) => `Вийти пішки о ${time}: пішки до: ${stop}`,
     arrival: 'Прибуття',
     origin: 'Звідки',
     destination: 'Куди',
@@ -1235,6 +1236,7 @@ export const uk: Strings = {
       isOne(n) ? '1 сполучення' : isFew(n) ? `${n} сполучення` : `${n} сполучень`,
     walkAll: 'цілком пішки',
     walkLeg: 'пішки',
+    walkTo: (stop: string) => `Пішки до: ${stop}`,
     cardA11y: (
       dep: string,
       dur: number,

@@ -1020,6 +1020,7 @@ export const pl = {
     untrackedVehicle: 'Brak aktualnej pozycji. Możliwe opóźnienie.',
     uncertainTransfer: 'Mało czasu na przesiadkę. Opóźnienie tego autobusu jest niepewne.',
     walkDeparture: (time: string, place: string) => `Wyjście pieszo o ${time}: ${place}`,
+    walkDepartureTo: (time: string, stop: string) => `Wyjście pieszo o ${time}: dojście do: ${stop}`,
     arrival: 'Na miejscu',
     origin: 'Skąd',
     destination: 'Dokąd',
@@ -1226,6 +1227,7 @@ export const pl = {
       n === 1 ? '1 połączenie' : isFew(n) ? `${n} połączenia` : `${n} połączeń`,
     walkAll: 'całość pieszo',
     walkLeg: 'pieszo',
+    walkTo: (stop: string) => `Dojście do: ${stop}`,
     cardA11y: (
       dep: string,
       dur: number,
