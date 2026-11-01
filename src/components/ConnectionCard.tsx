@@ -1,4 +1,5 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ArrowDown, ArrowRight, ChevronRight, Clock3, Footprints } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
@@ -12,6 +13,11 @@ import { tr, useStrings } from '../i18n';
 import { boardingDepartureMs, boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
 import { secondsToTimeString } from '../gtfs/geo';
+
+export interface CardLayoutInfo {
+  y: number;
+  height: number;
+}
 
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
 export function transfersLabel(n: number): string {
@@ -186,7 +192,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   peek,
 }: {
   item: Connection;
-  onPress: (item: Connection) => void;
+  onPress: (item: Connection, sourceLayout?: CardLayoutInfo) => void;
   /** historyczne (przeszłe) połączenie - przygaszony wygląd */
   dimmed?: boolean;
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
@@ -255,10 +261,36 @@ export const ConnectionCard = memo(function ConnectionCard({
     linesSummary,
   );
 
+  const cardRef = useRef<View>(null);
+
+  const handlePress = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (cardRef.current) {
+      let called = false;
+      const timer = setTimeout(() => {
+        if (!called) {
+          called = true;
+          onPress(item);
+        }
+      }, 50);
+      cardRef.current.measureInWindow((_x, y, _width, height) => {
+        if (!called) {
+          called = true;
+          clearTimeout(timer);
+          onPress(item, { y, height });
+        }
+      });
+    } else {
+      onPress(item);
+    }
+  }, [item, onPress]);
+
   return (
     <ConnectionPeekTarget item={item} handlers={peek}>
       <Pressable
-        onPress={() => onPress(item)}
+        ref={cardRef}
+        collapsable={false}
+        onPress={handlePress}
         accessibilityRole="button"
         accessibilityLabel={[accessibilityDesc, notice].filter(Boolean).join('. ')}
         accessibilityHint={peek ? s.connection.previewHint : undefined}
@@ -267,10 +299,10 @@ export const ConnectionCard = memo(function ConnectionCard({
             ? [{ name: 'activate' }, { name: 'longpress', label: s.connection.previewTitle }]
             : undefined
         }
-        onAccessibilityTap={() => onPress(item)}
+        onAccessibilityTap={handlePress}
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
-          if (event.nativeEvent.actionName === 'activate') onPress(item);
+          if (event.nativeEvent.actionName === 'activate') handlePress();
         }}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}

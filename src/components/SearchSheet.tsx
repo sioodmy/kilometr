@@ -239,9 +239,9 @@ export function SearchSheet({
   const first = trimmed ? ranked[0] : undefined;
 
   const handleSelect = (item: Suggestion) => {
+    inputRef.current?.blur();
     onSelect(item);
     if (closeOnSelect) {
-      inputRef.current?.blur();
       ref.current?.close();
     }
   };

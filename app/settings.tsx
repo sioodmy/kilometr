@@ -12,6 +12,18 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import {
   BusFront,
   BellRing,
@@ -20,7 +32,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Coffee,
   Download,
   DatabaseBackup,
@@ -116,7 +127,11 @@ function Stepper({
   return (
     <View style={styles.stepper}>
       <Pressable
-        onPress={onMinus}
+        onPress={() => {
+          if (minusDisabled) return;
+          void Haptics.selectionAsync().catch(() => {});
+          onMinus();
+        }}
         disabled={minusDisabled}
         accessibilityRole="button"
         accessibilityLabel={s.settings.decrease(label)}
@@ -124,7 +139,7 @@ function Stepper({
         style={({ pressed }) => [
           styles.stepBtn,
           minusDisabled && styles.stepBtnDisabled,
-          pressed && !minusDisabled && { opacity: 0.7 },
+          pressed && !minusDisabled && { opacity: 0.7, transform: [{ scale: 0.94 }] },
         ]}
         hitSlop={8}
       >
@@ -134,7 +149,11 @@ function Stepper({
         {value}
       </Text>
       <Pressable
-        onPress={onPlus}
+        onPress={() => {
+          if (plusDisabled) return;
+          void Haptics.selectionAsync().catch(() => {});
+          onPlus();
+        }}
         disabled={plusDisabled}
         accessibilityRole="button"
         accessibilityLabel={s.settings.increase(label)}
@@ -142,7 +161,7 @@ function Stepper({
         style={({ pressed }) => [
           styles.stepBtn,
           plusDisabled && styles.stepBtnDisabled,
-          pressed && !plusDisabled && { opacity: 0.7 },
+          pressed && !plusDisabled && { opacity: 0.7, transform: [{ scale: 0.94 }] },
         ]}
         hitSlop={8}
       >
@@ -229,6 +248,19 @@ export default function SettingsScreen() {
   const { setting: langSetting, setSetting: setLang } = useLocaleSetting();
   const walkMps = useWalkSpeedMps();
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const chevronProgress = useSharedValue(advancedOpen ? 1 : 0);
+
+  useEffect(() => {
+    chevronProgress.value = withTiming(advancedOpen ? 1 : 0, {
+      duration: 200,
+      easing: Easing.bezier(0.05, 0.7, 0.1, 1),
+    });
+  }, [advancedOpen, chevronProgress]);
+
+  const chevronAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevronProgress.value * 180}deg` }],
+  }));
   const sectionTitles: Record<SettingsSection, string> = {
     routing: s.settings.planningTitle,
     offline: s.settings.offlineTitle,
@@ -399,6 +431,14 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         overScrollMode="never"
       >
+        <Animated.View
+          entering={
+            reduceMotion
+              ? undefined
+              : FadeIn.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+          }
+          style={styles.sectionAnimatedWrap}
+        >
         {!activeSection && (
           <>
             <View style={styles.cityPanel}>
@@ -584,11 +624,16 @@ export default function SettingsScreen() {
                   return (
                     <Pressable
                       key={opt.value}
-                      onPress={() => setLang(opt.value)}
+                      onPress={() => {
+                        if (langSetting !== opt.value) {
+                          void Haptics.selectionAsync().catch(() => {});
+                          setLang(opt.value);
+                        }
+                      }}
                       style={({ pressed }) => [
                         styles.languageOption,
                         active && styles.langChipActive,
-                        pressed && !active && { opacity: 0.7 },
+                        pressed && { opacity: 0.85, transform: [{ scale: 0.985 }] },
                       ]}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: active }}
@@ -617,11 +662,16 @@ export default function SettingsScreen() {
                   return (
                     <Pressable
                       key={opt.value}
-                      onPress={() => update({ routeStyle: opt.value })}
+                      onPress={() => {
+                        if (settings.routeStyle !== opt.value) {
+                          void Haptics.selectionAsync().catch(() => {});
+                          update({ routeStyle: opt.value });
+                        }
+                      }}
                       style={({ pressed }) => [
                         styles.styleOpt,
                         active && styles.optActive,
-                        pressed && !active && { opacity: 0.7 },
+                        pressed && { opacity: 0.85, transform: [{ scale: 0.985 }] },
                       ]}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: active }}
@@ -680,11 +730,16 @@ export default function SettingsScreen() {
                   return (
                     <Pressable
                       key={opt.value}
-                      onPress={() => update({ walkPace: opt.value })}
+                      onPress={() => {
+                        if (settings.walkPace !== opt.value) {
+                          void Haptics.selectionAsync().catch(() => {});
+                          update({ walkPace: opt.value });
+                        }
+                      }}
                       style={({ pressed }) => [
                         styles.paceOpt,
                         active && styles.optActive,
-                        pressed && !active && { opacity: 0.7 },
+                        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
                       ]}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: active }}
@@ -718,18 +773,19 @@ export default function SettingsScreen() {
                   return (
                     <Pressable
                       key={pill.value}
-                      onPress={() =>
+                      onPress={() => {
+                        void Haptics.selectionAsync().catch(() => {});
                         update({
                           allowedModes: { ...settings.allowedModes, [pill.value]: !active },
-                        })
-                      }
+                        });
+                      }}
                       disabled={lastEnabled}
                       style={({ pressed }) => [
                         styles.transportOption,
                         compact && styles.transportOptionCompact,
                         active && styles.langChipActive,
                         lastEnabled && styles.langChipDisabled,
-                        pressed && !active && { opacity: 0.7 },
+                        pressed && !lastEnabled && { opacity: 0.85, transform: [{ scale: 0.96 }] },
                       ]}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: active, disabled: lastEnabled }}
@@ -775,7 +831,10 @@ export default function SettingsScreen() {
             </View>
 
             <Pressable
-              onPress={() => setAdvancedOpen((v) => !v)}
+              onPress={() => {
+                void Haptics.selectionAsync().catch(() => {});
+                setAdvancedOpen((v) => !v);
+              }}
               style={({ pressed }) => [styles.advancedToggle, pressed && { opacity: 0.75 }]}
               accessibilityRole="button"
               accessibilityState={{ expanded: advancedOpen }}
@@ -784,15 +843,30 @@ export default function SettingsScreen() {
               <Text style={styles.advancedToggleText}>
                 {advancedOpen ? s.settings.advancedHide : s.settings.advancedShow}
               </Text>
-              {advancedOpen ? (
-                <ChevronUp size={18} color={scheme.onSurfaceVariant} />
-              ) : (
+              <Animated.View style={chevronAnimatedStyle}>
                 <ChevronDown size={18} color={scheme.onSurfaceVariant} />
-              )}
+              </Animated.View>
             </Pressable>
 
             {advancedOpen ? (
-              <View style={styles.card}>
+              <Animated.View
+                entering={
+                  reduceMotion
+                    ? undefined
+                    : FadeInDown.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                }
+                exiting={
+                  reduceMotion
+                    ? undefined
+                    : FadeOutUp.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
+                }
+                layout={
+                  reduceMotion
+                    ? undefined
+                    : LinearTransition.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                }
+                style={styles.card}
+              >
                 <SettingRow
                   title={s.settings.transferTimeTitle}
                   hint={s.settings.transferTimeHintShort}
@@ -817,7 +891,7 @@ export default function SettingsScreen() {
                     plusDisabled={settings.anchorRadiusM >= anchor.max}
                   />
                 </SettingRow>
-              </View>
+              </Animated.View>
             ) : null}
 
             <Text style={styles.foot}>{s.settings.foot}</Text>
@@ -839,6 +913,7 @@ export default function SettingsScreen() {
 
         {activeSection === 'notifications' && <NotificationPrefsCard />}
         {activeSection === 'backup' && <BackupCard />}
+        </Animated.View>
       </ScrollView>
 
       {citySheetOpen && (
@@ -873,7 +948,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: { flex: 1, ...type.titleLarge, fontWeight: '500', color: scheme.onSurface },
-  body: { paddingHorizontal: 16, paddingTop: 12, gap: 18 },
+  body: { paddingHorizontal: 16, paddingTop: 12 },
+  sectionAnimatedWrap: { width: '100%', gap: 18 },
   sectionLabel: {
     ...type.labelLarge,
     color: scheme.onSurfaceVariant,

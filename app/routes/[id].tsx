@@ -1,3 +1,9 @@
+import Animated, {
+  Easing,
+  FadeInDown,
+  FadeInUp,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -59,8 +65,14 @@ export default function RouteDetailsScreen() {
   const router = useRouter();
   const openTransferProtection = useTransferProtection();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
-  const { id: routeId } = useLocalSearchParams<{ id: string }>();
+  const { id: routeId, fromY: rawFromY, } = useLocalSearchParams<{
+    id: string;
+    fromY?: string;
+      }>();
   const id = normalizeConnectionId(routeId ?? '');
+  const fromY = rawFromY ? parseFloat(rawFromY) : undefined;
+  const reduceMotion = useReducedMotion();
+  const hasTransform = fromY != null && !reduceMotion;
   const { trip: trackedTrip } = useTrackedTrip();
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
@@ -305,7 +317,14 @@ export default function RouteDetailsScreen() {
         importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'}
         accessibilityElementsHidden={sharing || alarmOpen}
       >
-        <View style={styles.header}>
+        <Animated.View
+          style={styles.header}
+          entering={
+            reduceMotion || !hasTransform
+              ? undefined
+              : FadeInUp.duration(260).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+          }
+        >
           <Pressable
             onPress={goBack}
             style={styles.iconBtn}
@@ -372,19 +391,26 @@ export default function RouteDetailsScreen() {
               color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
             />
           </Pressable>
-        </View>
+        </Animated.View>
 
         <ScrollView
           contentContainerStyle={styles.body}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
         >
-          <ConnectionSummary item={item} offline={offline} />
+          <ConnectionSummary item={item} offline={offline} fromY={fromY} />
           {dataNote && (
-            <View style={styles.offlineBanner}>
+            <Animated.View
+              entering={
+                reduceMotion || !hasTransform
+                  ? undefined
+                  : FadeInDown.duration(260).delay(40).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+              }
+              style={styles.offlineBanner}
+            >
               <CloudOff size={16} color={scheme.onSurfaceVariant} />
               <Text style={styles.offlineBannerText}>{dataNote}</Text>
-            </View>
+            </Animated.View>
           )}
 
           {noLegs ? (
@@ -400,7 +426,14 @@ export default function RouteDetailsScreen() {
               </Pressable>
             </View>
           ) : (
-            <>
+            <Animated.View
+              entering={
+                reduceMotion || !hasTransform
+                  ? undefined
+                  : FadeInDown.duration(320).delay(60).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+              }
+              style={styles.detailsContent}
+            >
               {hasTransfers && (
                 <TransferProtectionCard
                   state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
@@ -421,7 +454,7 @@ export default function RouteDetailsScreen() {
                 onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
               />
               <ConnectionLineAlerts connection={item} />
-            </>
+            </Animated.View>
           )}
 
           <View style={{ height: 24 }} />
@@ -493,4 +526,5 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
   emptyText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  detailsContent: { gap: 18 },
 });

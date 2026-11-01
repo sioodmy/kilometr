@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Activity, BellRing, Navigation } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
@@ -30,7 +31,10 @@ function PrefsToggle({
   return (
     <Switch
       value={value}
-      onValueChange={onChange}
+      onValueChange={(next) => {
+        void Haptics.selectionAsync().catch(() => {});
+        onChange(next);
+      }}
       disabled={disabled}
       accessibilityRole="switch"
       accessibilityLabel={label}
