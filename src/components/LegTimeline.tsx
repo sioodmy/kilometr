@@ -42,6 +42,7 @@ import { scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
 import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
+import { isFallbackOrigin } from '../config';
 
 const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
@@ -757,6 +758,10 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                 isSameStop ? (
                   <Text style={s.walkSub} numberOfLines={1}>
                     {leg.fromStop}
+                  </Text>
+                ) : isFallbackOrigin(leg.fromStop) ? (
+                  <Text style={s.walkSub} numberOfLines={1}>
+                    {t.connection.walkTo(leg.toStop)}
                   </Text>
                 ) : (
                   <View style={s.walkSubRow}>

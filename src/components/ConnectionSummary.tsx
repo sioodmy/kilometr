@@ -6,6 +6,7 @@ import type { Connection } from '../types/models';
 import { RollingTime } from './RollingTime';
 import { boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { secondsToTimeString } from '../gtfs/geo';
+import { isFallbackOrigin } from '../config';
 
 export function ConnectionSummary({
   item,
@@ -69,7 +70,9 @@ export function ConnectionSummary({
       </View>
       {hasApproach && (
         <Text style={styles.label}>
-          {s.routeDetails.walkDeparture(item.departAt, item.fromTitle)}
+          {isFallbackOrigin(item.fromTitle) && firstVehicle?.fromStop
+            ? s.routeDetails.walkDepartureTo(item.departAt, firstVehicle.fromStop)
+            : s.routeDetails.walkDeparture(item.departAt, item.fromTitle)}
         </Text>
       )}
       <View style={styles.facts}>
