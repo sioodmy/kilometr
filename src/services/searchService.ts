@@ -121,6 +121,15 @@ export const SearchService: ISearchService = {
         );
         publish();
       };
+      let publishScheduled = false;
+      const schedulePublish = () => {
+        if (publishScheduled) return;
+        publishScheduled = true;
+        queueMicrotask(() => {
+          publishScheduled = false;
+          if (!ctrl.signal.aborted) publish();
+        });
+      };
       await Promise.all([
         stopsPromise.then((hits) => {
           stops = hits.map((hit) => ({
@@ -132,28 +141,29 @@ export const SearchService: ISearchService = {
             lon: hit.lon,
             weight: hit.weight,
           }));
-          publish();
+          schedulePublish();
         }),
         poisPromise.then((hits) => {
           pois = hits;
-          publish();
+          schedulePublish();
         }),
         addressesPromise.then((hits) => {
           addresses = hits;
-          publish();
+          schedulePublish();
           if (!hits.length && q.length >= 4 && hasOfflineAddressIndex()) {
             fuzzyPromise = searchFuzzyAddresses();
           }
         }),
       ]);
       if (fuzzyPromise) await fuzzyPromise;
-
       let remote: Suggestion[] = [];
+      const isAddressWithNumber = /\d/.test(q);
+      const allowRemote = !hasOfflineAddressIndex() || !isAddressWithNumber;
       if (
         q.length >= 2 &&
         !addresses.length &&
-        !hasOfflineAddressIndex() &&
-        (/\d/.test(q) || local.length < 5)
+        allowRemote &&
+        (isAddressWithNumber || local.length < 5)
       ) {
         await waitForIdle(ctrl.signal, NETWORK_DELAY_MS);
         assertCurrent();

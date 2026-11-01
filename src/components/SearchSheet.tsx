@@ -5,6 +5,13 @@ import BottomSheet, {
   BottomSheetTextInput,
   TouchableOpacity,
 } from '@gorhom/bottom-sheet';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronRight, LocateFixed, MapPinOff, Search, X } from './icons';
 import type { TextInput } from 'react-native-gesture-handler';
@@ -208,6 +215,27 @@ export function SearchSheet({
     return out;
   }, [trimmed, recent, ranked, s, lines]);
 
+  const reducedMotion = useReducedMotion();
+  const lineEntering = reducedMotion
+    ? undefined
+    : FadeIn.duration(110).easing(Easing.out(Easing.quad));
+  const lineExiting = reducedMotion ? undefined : FadeOut.duration(70);
+  const lineLayout = reducedMotion
+    ? undefined
+    : LinearTransition.duration(120).easing(Easing.bezier(0.2, 0, 0, 1));
+
+  // Opóźnienie wskaźnika ładowania o 200 ms: zapobiega mignięciu
+  // spinnera na dole listy przy błyskawicznych (<2 ms) wyszukiwaniach offline.
+  const [showLoading, setShowLoading] = useState(false);
+  useEffect(() => {
+    if (!loading) {
+      setShowLoading(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowLoading(true), 200);
+    return () => clearTimeout(timer);
+  }, [loading]);
+
   const first = trimmed ? ranked[0] : undefined;
 
   const handleSelect = (item: Suggestion) => {
@@ -308,7 +336,11 @@ export function SearchSheet({
         data={rows}
         keyExtractor={(r: Row) =>
           r.type === 'header'
-            ? `h-${r.label}`
+            ? r.label === s.lineTimetable.title
+              ? 'h-lines'
+              : r.label === s.search.suggestedPlaces
+                ? 'h-suggested'
+                : 'h-results'
             : r.type === 'line'
               ? `line-${r.line.routeId}`
               : r.item.id
@@ -354,22 +386,28 @@ export function SearchSheet({
               {row.label}
             </Text>
           ) : row.type === 'line' ? (
-            <TouchableOpacity
-              onPress={() => handleLineSelect(row.line)}
-              accessibilityRole="button"
-              accessibilityLabel={s.lineTimetable.open(row.line.shortName)}
-              activeOpacity={0.7}
-              style={styles.lineResult}
+            <Animated.View
+              entering={lineEntering}
+              exiting={lineExiting}
+              layout={lineLayout}
             >
-              <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
-              <View style={styles.lineText}>
-                <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
-                <Text style={styles.lineSubtitle}>
-                  {row.line.longName || s.lineTimetable.searchHint}
-                </Text>
-              </View>
-              <ChevronRight size={22} color={scheme.onPrimaryContainer} />
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleLineSelect(row.line)}
+                accessibilityRole="button"
+                accessibilityLabel={s.lineTimetable.open(row.line.shortName)}
+                activeOpacity={0.7}
+                style={styles.lineResult}
+              >
+                <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
+                <View style={styles.lineText}>
+                  <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
+                  <Text style={styles.lineSubtitle}>
+                    {row.line.longName || s.lineTimetable.searchHint}
+                  </Text>
+                </View>
+                <ChevronRight size={22} color={scheme.onPrimaryContainer} />
+              </TouchableOpacity>
+            </Animated.View>
           ) : (
             <SuggestionRow
               item={row.item}
@@ -381,7 +419,7 @@ export function SearchSheet({
           )
         }
         ListFooterComponent={
-          loading && rows.length > 0 ? (
+          showLoading && rows.length > 0 ? (
             <View style={styles.status} accessibilityLiveRegion="polite">
               <ActivityIndicator size="small" color={scheme.primary} />
               <Text style={styles.emptySub}>{s.search.searching(cityLoc)}</Text>
@@ -395,14 +433,14 @@ export function SearchSheet({
         ListEmptyComponent={
           <View style={styles.empty} accessibilityLiveRegion="polite">
             <View style={styles.emptyIcon}>
-              {loading ? (
+              {showLoading ? (
                 <ActivityIndicator color={scheme.primary} />
               ) : (
                 <Search size={28} color={scheme.primary} />
               )}
             </View>
             <Text style={styles.emptyTitle}>
-              {loading
+              {showLoading
                 ? s.search.searching(cityLoc)
                 : error
                   ? s.search.errorTitle
@@ -410,7 +448,7 @@ export function SearchSheet({
                     ? s.search.noResultsFor(trimmed)
                     : s.search.emptyTitle}
             </Text>
-            {!loading && (
+            {!showLoading && (
               <Text style={styles.emptySub}>
                 {error
                   ? s.search.errorHint
