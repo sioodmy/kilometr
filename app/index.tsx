@@ -987,6 +987,9 @@ export default function HomeScreen() {
       loadTripHistory().then((h) => {
         if (!cancelled && h.length > 0) setLastTrip(h[0]);
       });
+      // Po powrocie na ekran główny upewnij się, że arkusz jest zwinięty
+      setSheetMode(null);
+      setQuery('');
       return () => {
         cancelled = true;
       };
@@ -1201,7 +1204,7 @@ export default function HomeScreen() {
             savedQuick={quick}
             placeholder={sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
             originTitle={sheetMode === 'destination' ? locTitle : undefined}
-            closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
+            closeOnSelect={sheetMode === 'start' && !returnToDestinationAfterStart}
             notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
             onChangeOrigin={
               sheetMode === 'destination'
@@ -1223,9 +1226,13 @@ export default function HomeScreen() {
               if (sheetMode === 'start') {
                 handleStartSelect(s);
               } else {
-                setSheetMode(null);
-                setQuery('');
                 goToRoutes(s);
+                // Nie odmontowujemy arkusza natychmiast w tej samej milisekundzie,
+                // by uniknąć mignięcia ekranu domowego w trakcie tranzycji do ekranu tras.
+                setTimeout(() => {
+                  setSheetMode(null);
+                  setQuery('');
+                }, 350);
               }
             }}
             onClose={() => {

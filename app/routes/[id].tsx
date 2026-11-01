@@ -65,14 +65,12 @@ export default function RouteDetailsScreen() {
   const router = useRouter();
   const openTransferProtection = useTransferProtection();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
-  const { id: routeId, fromY: rawFromY, fromH: rawFromH } = useLocalSearchParams<{
+  const { id: routeId, fromY: rawFromY, } = useLocalSearchParams<{
     id: string;
     fromY?: string;
-    fromH?: string;
-  }>();
+      }>();
   const id = normalizeConnectionId(routeId ?? '');
   const fromY = rawFromY ? parseFloat(rawFromY) : undefined;
-  const fromH = rawFromH ? parseFloat(rawFromH) : undefined;
   const reduceMotion = useReducedMotion();
   const hasTransform = fromY != null && !reduceMotion;
   const { trip: trackedTrip } = useTrackedTrip();
@@ -400,7 +398,7 @@ export default function RouteDetailsScreen() {
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
         >
-          <ConnectionSummary item={item} offline={offline} fromY={fromY} fromH={fromH} />
+          <ConnectionSummary item={item} offline={offline} fromY={fromY} />
           {dataNote && (
             <Animated.View
               entering={

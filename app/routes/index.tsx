@@ -9,9 +9,12 @@ import {
   CloudOff,
   X,
 } from '../../src/components/icons';
-import {
+import Animated, {
+  Easing,
+  FadeInDown,
   interpolate,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -89,6 +92,7 @@ export default function RoutesScreen() {
     lon: 0,
   };
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
   const params = useLocalSearchParams<{
     fromTitle?: string;
     fromLat?: string;
@@ -935,26 +939,43 @@ export default function RoutesScreen() {
   }), [closePreview, openConnection]);
 
   const renderConnection = useCallback(
-    ({ item }: { item: Connection }) => {
+    ({ item, index }: { item: Connection; index: number }) => {
       // Granica "przeszłość" liczona przy każdym rysunku: ref zaczepiony przy
       // zamontowaniu ekranu zmroził nam style dłużej niż minute, bo nowy
       // "tick" dziecka odświeżał napis, a karta zostawała jasna.
       const past = item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
       return (
-        <ConnectionCard
-          item={item}
-          dimmed={past}
-          onPress={openConnection}
-          peek={peek}
-          tick={nowTick}
-        />
+        <Animated.View
+          entering={
+            reduceMotion || index >= 5
+              ? undefined
+              : FadeInDown.delay(index * 35)
+                  .duration(220)
+                  .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+          }
+        >
+          <ConnectionCard
+            item={item}
+            dimmed={past}
+            onPress={openConnection}
+            peek={peek}
+            tick={nowTick}
+          />
+        </Animated.View>
       );
     },
-    [openConnection, nowTick, peek],
+    [openConnection, nowTick, peek, reduceMotion],
   );
 
   const routeHeader = (
-    <View style={styles.routeHeader}>
+    <Animated.View
+      style={styles.routeHeader}
+      entering={
+        reduceMotion
+          ? undefined
+          : FadeInDown.duration(240).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+      }
+    >
       <RouteEndpoints
         from={fromTitle}
         to={toTitle}
@@ -982,7 +1003,7 @@ export default function RoutesScreen() {
           </View>
         )}
       />
-    </View>
+    </Animated.View>
   );
 
   return (

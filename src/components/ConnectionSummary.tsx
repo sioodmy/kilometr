@@ -23,13 +23,11 @@ export function ConnectionSummary({
   offline = false,
   availableWidth,
   fromY,
-  _fromH,
 }: {
   item: Connection;
   offline?: boolean;
   availableWidth?: number;
   fromY?: number;
-  fromH?: number;
 }) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
