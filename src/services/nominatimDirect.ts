@@ -108,12 +108,26 @@ export function toSuggestion(row: NominatimRow): Suggestion | null {
     address = parts.slice(1, 3).join(', ') || fallback;
   }
   address = cityFirstAddress(address, city, fallback);
-  const kind = row.class === 'place' || row.type === 'bus_stop' ? 'stop' : 'address';
+  const isPlaceClass = Boolean(row.class && ['tourism', 'leisure', 'amenity', 'shop', 'commercial', 'landuse', 'historic', 'office'].includes(row.class));
+  const kind: Suggestion['kind'] =
+    row.class === 'place' || row.type === 'bus_stop'
+      ? 'stop'
+      : isPlaceClass || (!houseNo && !!row.name)
+        ? 'place'
+        : 'address';
+  const category = isPlaceClass
+    ? row.class === 'tourism'
+      ? 'tourism'
+      : row.class === 'shop'
+        ? 'shop'
+        : 'place'
+    : undefined;
   return {
     id: `nominatim-${row.place_id}`,
     title,
     address,
-    kind: kind as Suggestion['kind'],
+    kind,
+    category,
     lat,
     lon,
   };

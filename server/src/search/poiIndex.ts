@@ -23,7 +23,7 @@ interface PoiRow {
 
 // Wersja formatu adresu - bump wymusza pełny refresh (stare wiersze miały
 // samo "• Wrocław" i brak kolumn street/district).
-const ADDR_VERSION = '2';
+const ADDR_VERSION = '3';
 
 /** Migracja istniejących baz: kolumny street/district + wymuszenie refresha. */
 function ensureAddrColumns() {
@@ -72,17 +72,15 @@ let refreshInFlight = false;
 
 // Kuratoryjny zestaw tagów istotnych dla dojazdów (jakdojade-like)
 const OVERPASS_FILTERS = [
-  'node["shop"~"^(supermarket|mall|department_store)$"]',
-  'way["shop"~"^(supermarket|mall|department_store)$"]',
-  'node["amenity"~"^(pharmacy|hospital|clinic|university|college|school|cinema|theatre|library)$"]',
-  'way["amenity"~"^(university|college|school|hospital|cinema|theatre)$"]',
-  'node["tourism"~"^(hotel|museum|attraction|zoo|viewpoint)$"]',
-  'node["leisure"~"^(park|garden|stadium|swimming_pool|sports_centre|fitness_centre)$"]',
-  'node["railway"="station"]',
-  'node["amenity"="fuel"]',
+  'nwr["shop"~"^(supermarket|mall|department_store)$"]',
+  'nwr["amenity"~"^(pharmacy|hospital|clinic|university|college|school|cinema|theatre|library|fuel)$"]',
+  'nwr["tourism"~"^(hotel|museum|attraction|zoo|viewpoint)$"]',
+  'nwr["leisure"~"^(park|garden|stadium|swimming_pool|sports_centre|fitness_centre)$"]',
+  'nwr["railway"~"^(station|halt)$"]',
+  'nwr["landuse"="commercial"]["name"]',
 ].map((f) => `${f}(${config.overpass.bbox});`).join('\n  ');
 
-const POI_QUERY = `[out:json][timeout:30];\n(\n  ${OVERPASS_FILTERS}\n);\nout center;`;
+const POI_QUERY = `[out:json][timeout:35];\n(\n  ${OVERPASS_FILTERS}\n);\nout center tags;`;
 
 const CATEGORY_LABEL: Record<string, { category: string; label: string }> = {
   'shop:supermarket': { category: 'shop', label: 'Supermarket' },
@@ -110,10 +108,12 @@ const CATEGORY_LABEL: Record<string, { category: string; label: string }> = {
   'leisure:sports_centre': { category: 'sport', label: 'Obiekt sportowy' },
   'leisure:fitness_centre': { category: 'sport', label: 'Siłownia' },
   'railway:station': { category: 'train', label: 'Stacja kolejowa' },
+  'railway:halt': { category: 'train', label: 'Przystanek kolejowy' },
+  'landuse:commercial': { category: 'place', label: 'Centrum komercyjne' },
 };
 
 function classify(tags: Record<string, string>): { category: string; label: string } | null {
-  const keys = ['shop', 'amenity', 'tourism', 'leisure', 'railway'];
+  const keys = ['shop', 'amenity', 'tourism', 'leisure', 'railway', 'landuse'];
   for (const k of keys) {
     const v = tags[k];
     if (!v) continue;
