@@ -66,14 +66,17 @@ export default function HomeScreen() {
   const router = useRouter();
   const { cityId, setCity } = useActiveCity();
   const cityGen = s.city.gen(cityId);
-  const GPS_ITEM: Suggestion = {
-    id: '__gps',
-    title: s.home.gpsTitle,
-    address: s.home.gpsAddressHome,
-    kind: 'history',
-    lat: 0,
-    lon: 0,
-  };
+  const GPS_ITEM: Suggestion = useMemo(
+    () => ({
+      id: '__gps',
+      title: s.home.gpsTitle,
+      address: s.home.gpsAddressHome,
+      kind: 'history',
+      lat: 0,
+      lon: 0,
+    }),
+    [s],
+  );
   const [saved, setSaved] = useState<SavedPlace[]>([]);
   const [smart, setSmart] = useState<SmartDestination[]>([]);
   // Prawdziwa pustka vs ładowanie: pusty stan pokazujemy dopiero, gdy świeży

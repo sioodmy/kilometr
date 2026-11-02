@@ -32,9 +32,16 @@ export default function LineScreen() {
   const [patternId, setPatternId] = useState('');
 
   const pattern = data?.patterns.find((item) => item.id === patternId) ?? data?.patterns[0];
+  const headsignCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of data?.patterns ?? []) {
+      counts.set(item.headsign, (counts.get(item.headsign) ?? 0) + 1);
+    }
+    return counts;
+  }, [data?.patterns]);
   const dateLabel = useMemo(
     () => formatTimetableDate(date, getLocaleSync()),
-    [date, getLocaleSync()],
+    [date, s],
   );
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
@@ -114,8 +121,7 @@ export default function LineScreen() {
                 >
                   {data.patterns.map((item, index) => {
                     const selected = item.id === pattern?.id;
-                    const duplicate =
-                      data.patterns.filter((other) => other.headsign === item.headsign).length > 1;
+                    const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
                     return (
                       <Pressable
                         key={item.id}
