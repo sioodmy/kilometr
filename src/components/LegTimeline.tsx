@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowRight,
   BusFront,
@@ -365,6 +365,34 @@ function LegStopsList({
   );
 }
 
+const LiveDataAge = memo(function LiveDataAge({ timestamp }: { timestamp: number }) {
+  const t = useStrings();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setNow(Date.now());
+      }
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, []);
+
+  const ageSec = Math.max(0, Math.floor((now - timestamp) / 1000));
+
+  return (
+    <Text style={s.liveAgeLabel} numberOfLines={1}>
+      {t.routeDetails.liveDataAge(ageSec)}
+    </Text>
+  );
+});
+
 // ─── Karta jednego przejazdu (klik = rozwiń) ──────────────────────────────────
 // Rozwijanie animowaną wysokością (a nie montowaniem): lista montuje się raz
 // przy pierwszym otwarciu i zostaje, a kontener płynnie rośnie/maleje.
@@ -544,6 +572,7 @@ function TransitLegCard({
   }, [nearestStop, t, leg.mode]);
 
   const pingKey = vehicle?.updatedAt ?? (leg.live ? lastOk : undefined);
+  const liveTimestamp = vehicle?.updatedAt ?? (leg.live && lastOk > 0 ? lastOk : undefined);
 
   useEffect(() => {
     if (expanded) setHasOpened(true);
@@ -660,6 +689,10 @@ function TransitLegCard({
                   </Text>
                 ) : notice ? (
                   <Text style={s.meta}>{notice}</Text>
+                ) : null}
+
+                {leg.live && liveTimestamp ? (
+                  <LiveDataAge timestamp={liveTimestamp} />
                 ) : null}
               </View>
             </View>
@@ -947,6 +980,14 @@ const s = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
     lineHeight: 18,
+  },
+  liveAgeLabel: {
+    ...type.bodySmall,
+    color: scheme.success,
+    fontWeight: '500',
+    fontSize: 12.5,
+    lineHeight: 17,
+    fontVariant: ['tabular-nums'],
   },
   stopsSummaryWrap: {
     marginTop: 10,

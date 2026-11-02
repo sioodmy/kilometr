@@ -1049,6 +1049,7 @@ export const de: Strings = {
     offlineNote: 'Offline gespeichert. Fahrplanzeiten ohne Live-Daten.',
     noLiveNote: 'Fahrplanzeiten. Keine Live-Daten.',
     onTime: 'Pünktlich',
+    liveDataAge: (s: number) => `Daten von vor ${s}s`,
     scheduleCache: 'Fahrplan aus Cache',
     schedule: 'Fahrplan',
     noTrip: 'Kein Routenverlauf',

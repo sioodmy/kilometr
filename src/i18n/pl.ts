@@ -1073,6 +1073,7 @@ export const pl = {
     offlineNote: 'Z pamięci offline. Czasy według rozkładu, bez danych live.',
     noLiveNote: 'Czasy według rozkładu. Brak danych live.',
     onTime: 'Na czas',
+    liveDataAge: (s: number) => `Dane sprzed ${s}s`,
     scheduleCache: 'Rozkład z cache',
     schedule: 'Rozkład',
     noTrip: 'Brak przebiegu trasy',
