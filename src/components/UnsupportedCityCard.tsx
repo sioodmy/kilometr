@@ -1,5 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MapPinOff, Navigation } from './icons';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MapPin, MapPinOff, Navigation } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { resolveSupportedCityId, suggestCityForCoords, type CityId } from '../cities';
@@ -9,6 +9,8 @@ export function UnsupportedCityCard({
   activeCity,
   activeCityId,
   onPickStart,
+  onSwitchCity,
+  switchingCityId,
   coords,
 }: {
   /** Miejscowość z reverse-geocode; null = nie udało się ustalić. */
@@ -18,6 +20,10 @@ export function UnsupportedCityCard({
   /** Id aktywnego miasta (zapobiega fałszywym ostrzeżeniom, gdy użytkownik jest w aktywnym mieście). */
   activeCityId?: CityId;
   onPickStart: () => void;
+  /** Szybka zmiana miasta na proponowane przez GPS. */
+  onSwitchCity?: (cityId: CityId) => void;
+  /** Id miasta, na które aktualnie trwa przełączanie (do pokazania spinnera). */
+  switchingCityId?: CityId | null;
   /** Współrzędne GPS (opcjonalne, do precyzyjnego dopasowania strefy). */
   coords?: { lat: number; lon: number } | null;
 }) {
@@ -27,8 +33,7 @@ export function UnsupportedCityCard({
   // Najpierw sprawdzamy precyzyjne współrzędne GPS (bounding box + promień).
   // Dopiero przy ich braku wspomagamy się nazwą miejscowości z reverse geocodingu.
   const matchedCityId =
-    (coords && suggestCityForCoords(coords.lat, coords.lon)?.id) ??
-    resolveSupportedCityId(city);
+    (coords && suggestCityForCoords(coords.lat, coords.lon)?.id) ?? resolveSupportedCityId(city);
 
   // Bezpieczeństwo: jeśli wykryte miasto to dokładnie to, które użytkownik ma wybrane,
   // nie wyświetlamy ostrzeżenia (użytkownik znajduje się w obszarze obsługiwanym).
@@ -38,14 +43,17 @@ export function UnsupportedCityCard({
 
   const insideSupported = matchedCityId != null;
 
-  const body = !city && !insideSupported
-    ? s.home.unsupportedBodyUnknown(supported)
-    : insideSupported
-      ? s.home.unsupportedBodyOther(s.city.loc(matchedCityId), activeCity)
-      : s.home.unsupportedBody(city!, supported);
+  const body =
+    !city && !insideSupported
+      ? s.home.unsupportedBodyUnknown(supported)
+      : insideSupported
+        ? s.home.unsupportedBodyOther(s.city.loc(matchedCityId), activeCity)
+        : s.home.unsupportedBody(city!, supported);
   // Miasto obsługiwane, ale w apce ustawione inne: tytuł „Nieobsługiwane miasto”
   // kłóciłby się z treścią, która mówi „jesteś w obsługiwanym mieście”.
   const title = insideSupported ? s.home.unsupportedTitleOther : s.home.unsupportedTitle;
+
+  const canSwitchCity = insideSupported && onSwitchCity != null;
 
   return (
     <View style={styles.card} accessibilityRole="alert" accessibilityLabel={`${title}. ${body}`}>
@@ -56,15 +64,57 @@ export function UnsupportedCityCard({
 
       <Text style={styles.body}>{body}</Text>
 
-      <Pressable
-        onPress={onPickStart}
-        style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
-        accessibilityRole="button"
-        accessibilityLabel={s.home.unsupportedAction}
-      >
-        <Navigation size={16} color={scheme.onPrimary} />
-        <Text style={styles.ctaText}>{s.home.unsupportedAction}</Text>
-      </Pressable>
+      {canSwitchCity ? (
+        <View style={styles.actions}>
+          <Pressable
+            onPress={() => onSwitchCity(matchedCityId)}
+            disabled={switchingCityId != null}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              styles.primaryBtn,
+              pressed && { opacity: 0.85 },
+              switchingCityId != null && { opacity: 0.6 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={s.home.unsupportedSwitchCityA11y(s.city.name(matchedCityId))}
+          >
+            {switchingCityId === matchedCityId ? (
+              <ActivityIndicator size="small" color={scheme.onPrimary} />
+            ) : (
+              <MapPin size={16} color={scheme.onPrimary} />
+            )}
+            <Text style={styles.primaryBtnText} numberOfLines={1} ellipsizeMode="tail">
+              {s.home.unsupportedSwitchCity(s.city.acc(matchedCityId))}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onPickStart}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              styles.secondaryBtn,
+              pressed && { opacity: 0.85 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={s.home.unsupportedAction}
+          >
+            <Navigation size={16} color={scheme.onSecondaryContainer} />
+            <Text style={styles.secondaryBtnText} numberOfLines={1} ellipsizeMode="tail">
+              {s.home.unsupportedActionShort}
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable
+          onPress={onPickStart}
+          style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
+          accessibilityLabel={s.home.unsupportedAction}
+        >
+          <Navigation size={16} color={scheme.onPrimary} />
+          <Text style={styles.ctaText}>{s.home.unsupportedAction}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -92,6 +142,39 @@ const styles = StyleSheet.create({
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
     lineHeight: 20,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+  },
+  actionBtn: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderRadius: shape.full,
+  },
+  primaryBtn: {
+    backgroundColor: scheme.primary,
+  },
+  primaryBtnText: {
+    ...type.labelLarge,
+    color: scheme.onPrimary,
+    fontWeight: '600',
+  },
+  secondaryBtn: {
+    backgroundColor: scheme.secondaryContainer,
+  },
+  secondaryBtnText: {
+    ...type.labelLarge,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '600',
   },
   cta: {
     alignSelf: 'flex-start',

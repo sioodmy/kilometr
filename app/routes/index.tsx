@@ -12,6 +12,7 @@ import {
   InteractionManager,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Anchor,
@@ -501,6 +502,7 @@ export default function RoutesScreen() {
   );
 
   const handleSuggestionSelect = async (sug: Suggestion) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setQuery('');
     setSheetFor(null);
     if (sug.id === gpsItem.id) {
@@ -830,6 +832,7 @@ export default function RoutesScreen() {
 
   const handleReverse = useCallback(() => {
     if (samePlace || (fromLat === toLat && fromLon === toLon && fromTitle === toTitle)) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setItems([]);
     setLoading(true);
     // Wyniki po swapie to zupełnie nowa lista: wracamy na górę.
