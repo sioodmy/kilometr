@@ -467,7 +467,7 @@ export default function RouteMapScreen() {
                   <Text style={styles.headerTitle} numberOfLines={1}>
                     {item.fromTitle}
                   </Text>
-                  <ArrowRight size={16} color={scheme.onSurfaceVariant} />
+                  <ArrowRight size={16} color={scheme.primary} />
                   <Text style={styles.headerTitle} numberOfLines={1}>
                     {item.toTitle}
                   </Text>
