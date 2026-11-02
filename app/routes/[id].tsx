@@ -413,7 +413,8 @@ export default function RouteDetailsScreen() {
               <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
               <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
               <Pressable
-                onPress={() => router.back()}
+                onPress={goBack}
+                accessibilityRole="button"
                 style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
               >
                 <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
