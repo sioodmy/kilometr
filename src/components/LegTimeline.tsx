@@ -11,8 +11,6 @@ import {
   TramFront,
 } from './icons';
 import Animated, {
-  Easing,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -40,10 +38,10 @@ import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
+import { railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
-
-const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
+import { isFallbackOrigin } from '../config';
 
 // Środek transportu w dopełniaczu („tramwajem między A a B”). Osobna gałąź na
 // pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem”.
@@ -66,7 +64,13 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
-function formatPlatformLabel(code?: string | null, mode?: Leg['mode'], stopName?: string | null): string | null {
+// ─── Etykieta odjazdu: peron / słupek / stanowisko w języku użytkownika ────
+function formatPlatformLabel(
+  t: Strings,
+  code?: string | null,
+  mode?: Leg['mode'],
+  stopName?: string | null,
+): string | null {
   let trimmed = (code || '').trim();
   if (!trimmed && stopName) {
     const m = stopName.trim().match(/\s(\d{2})$/);
@@ -83,7 +87,7 @@ function formatPlatformLabel(code?: string | null, mode?: Leg['mode'], stopName?
   // Węzły GZM: np. 2469011-00103 -> Stanowisko 3
   const gzmMatch = trimmed.match(/-(\d{3})(\d{2})([a-z]?)$/i);
   if (gzmMatch) {
-    return `Stanowisko ${parseInt(gzmMatch[2], 10)}`;
+    return t.leg.platformBay(`${parseInt(gzmMatch[2], 10)}`);
   }
 
   // Zespoły / Kraków: np. 103-05 -> Słupek 05 (lub Peron 1/2 dla tramwaju)
@@ -92,40 +96,40 @@ function formatPlatformLabel(code?: string | null, mode?: Leg['mode'], stopName?
     const poleNum = krkMatch[1];
     const n = parseInt(poleNum, 10);
     if (mode === 'tram' && (n === 1 || n === 2)) {
-      return `Peron ${n}`;
+      return t.leg.platformPeron(poleNum);
     }
-    return `Słupek ${poleNum}`;
+    return t.leg.platformPole(poleNum);
   }
 
   // Pociąg / metro
   if (mode === 'train' || mode === 'subway') {
-    return `Peron ${trimmed}`;
+    return t.leg.platformPeron(trimmed);
   }
 
   // 1-2 cyfry (np. Warszawa '01', Poznań '71', '42')
   if (/^\d{1,2}$/.test(trimmed)) {
     const n = parseInt(trimmed, 10);
     if (n >= 41 && n <= 49) {
-      return `PST Słupek ${trimmed}`;
+      return t.leg.platformPst(trimmed);
     }
     if (trimmed.startsWith('0') || n >= 10) {
-      return `Słupek ${trimmed}`;
+      return t.leg.platformPole(trimmed);
     }
-    return `Peron ${trimmed}`;
+    return t.leg.platformPeron(trimmed);
   }
 
   // 5-cyfrowy kod słupka (np. Wrocław 20820)
   if (/^\d{5}$/.test(trimmed)) {
-    return `Słupek ${trimmed}`;
+    return t.leg.platformPole(trimmed);
   }
 
-  return `Peron ${trimmed}`;
+  return t.leg.platformPeron(trimmed);
 }
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ───────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
 // pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
-// najstarszy wpis - bez dodatkowej kolejki.
+// najstarszy wpis, bez dodatkowej kolejki.
 const STOPS_CACHE_MAX = 80;
 const stopsCache = new Map<string, LegStop[]>();
 const stopsPromise = new Map<string, Promise<LegStop[]>>();
@@ -167,7 +171,7 @@ const StopRow = memo(function StopRow({
   isFirst: boolean;
   isLast: boolean;
   vehicleMode: Leg['mode'];
-  /** Przystanek startowy albo końcowy odcinka - wyróżniony wagą. */
+  /** Przystanek startowy albo końcowy odcinka: wyróżniony wagą. */
   emphasis: boolean;
   accent: string;
   connectorAccent: boolean;
@@ -226,10 +230,7 @@ const StopRow = memo(function StopRow({
             accessible
             accessibilityRole="image"
             accessibilityLabel={vehicleLabel}
-            style={[
-              s.vehicleMarker,
-              markerPlacement === 'at_stop' && { top: lineCenter - 12 },
-            ]}
+            style={[s.vehicleMarker, markerPlacement === 'at_stop' && { top: lineCenter - 12 }]}
           >
             <VehicleGlyph mode={vehicleMode} />
           </View>
@@ -403,8 +404,6 @@ function TransitLegCard({
   // Mierzymy szerokość badge linii, by wyśrodkować ikonę sensors pod nim
   // i wyrównać kółko rozwijanej listy z początkiem tekstu statusu live.
   const [badgeWidth, setBadgeWidth] = useState(56);
-  const [stopsListHeight, setStopsListHeight] = useState(0);
-  const stopsHeightAnim = useSharedValue(0);
   const sensorSize = 19;
   const sensorCenterOffset = Math.max(0, badgeWidth / 2 - sensorSize / 2);
   const stopsIndent = sensorCenterOffset + sensorSize + 8 - 11;
@@ -413,14 +412,17 @@ function TransitLegCard({
   const resolvedHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
   const stopHint = leg.stopHint ?? resolvedHint;
   const departurePlatform = useMemo(
-    () => formatPlatformLabel(leg.platformCode, leg.mode, leg.fromStop),
-    [leg.platformCode, leg.mode, leg.fromStop],
+    () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop),
+    [t, leg.platformCode, leg.mode, leg.fromStop],
   );
 
   const cacheKey = leg.tripId || leg.id;
   const [stops, setStops] = useState<LegStop[]>(
     () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
   );
+  const estimatedInitialHeight = Math.max(1, (leg.stopsCount ?? stops.length) || 2) * 36;
+  const measuredHeight = useSharedValue(estimatedInitialHeight);
+  const stopsHeightAnim = useSharedValue(expanded ? estimatedInitialHeight : 0);
   const [loading, setLoading] = useState(
     () =>
       !stopsCache.has(cacheKey) &&
@@ -494,7 +496,7 @@ function TransitLegCard({
         setVehicle(null);
         return;
       }
-      const match = liveTracker
+      let match = liveTracker
         .snapshot(leg.line)
         .find(
           (candidate) =>
@@ -502,6 +504,16 @@ function TransitLegCard({
             now - candidate.updatedAt >= 0 &&
             now - candidate.updatedAt <= 120_000,
         );
+      if (!match && leg.tripId) {
+        match = liveTracker
+          .snapshot()
+          .find(
+            (candidate) =>
+              candidate.matchedTripId === leg.tripId &&
+              now - candidate.updatedAt >= 0 &&
+              now - candidate.updatedAt <= 120_000,
+          );
+      }
       setVehicle((prev) => {
         if (match) return match;
         if (prev && now - prev.updatedAt >= 0 && now - prev.updatedAt <= 120_000) {
@@ -542,23 +554,23 @@ function TransitLegCard({
     transform: [{ rotate: `${chevron.value * 180}deg` }],
   }));
 
-  // Pionowa animacja wysokości listy przystanków (bez ukosnego rozwijania).
+  // Płynna animacja wysokości i zanikania listy przystanków spójna z czasem obrotu chevronu.
   useEffect(() => {
-    if (stopsListHeight > 0) {
-      stopsHeightAnim.value = withTiming(expanded ? stopsListHeight : 0, {
-        duration: 220,
-        easing: Easing.out(Easing.quad),
-      });
-    }
-  }, [expanded, stopsListHeight, stopsHeightAnim]);
+    stopsHeightAnim.value = withTiming(expanded ? measuredHeight.value : 0, motion.state);
+  }, [expanded, stopsHeightAnim, measuredHeight]);
 
-  const stopsAnimStyle = useAnimatedStyle(() => ({
-    height: stopsHeightAnim.value,
-    opacity: stopsHeightAnim.value > 0 ? 1 : 0,
-  }));
+  const stopsAnimStyle = useAnimatedStyle(() => {
+    const height = stopsHeightAnim.value;
+    const maxH = Math.max(1, measuredHeight.value);
+    const opacity = Math.min(1, Math.max(0, height / Math.min(48, maxH)));
+    return {
+      height,
+      opacity,
+    };
+  });
 
   return (
-    <Animated.View layout={legTransition}>
+    <View>
       <Pressable
         onPress={onToggle}
         accessibilityRole="button"
@@ -603,14 +615,11 @@ function TransitLegCard({
         {/* 4. Środek: linia, kierunek, sensors live + na czas, rozwijana lista, podsumowanie */}
         <View style={s.cardMiddleSection}>
           <View style={s.cardTop}>
-            <View
-              style={s.badgeWrap}
-              onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}
-            >
-              <LineBadge mode={leg.mode} line={leg.line} />
+            <View style={s.badgeWrap} onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}>
+              <LineBadge leg={leg} />
             </View>
             <Text style={s.dir} numberOfLines={1}>
-              {leg.direction}
+              {leg.mode === 'train' ? railDirectionLabel(leg) || leg.direction : leg.direction}
             </Text>
             <Animated.View style={chevronStyle}>
               <ChevronDown size={18} color={scheme.onSurfaceVariant} />
@@ -637,10 +646,7 @@ function TransitLegCard({
 
                 {delayMin !== 0 && scheduledDeparture != null ? (
                   <Text
-                    style={[
-                      s.delayLabel,
-                      { color: delayMin > 0 ? scheme.error : scheme.warning },
-                    ]}
+                    style={[s.delayLabel, { color: delayMin > 0 ? scheme.error : scheme.warning }]}
                     numberOfLines={1}
                   >
                     {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
@@ -663,43 +669,37 @@ function TransitLegCard({
           ) : null}
 
           {/* Pionowa animacja rozwijania listy przystanków */}
-          <View
-            style={s.stopsMeasure}
-            pointerEvents="none"
-            onLayout={(e) => setStopsListHeight(e.nativeEvent.layout.height)}
-          >
-            <LegStopsList
-              leg={leg}
-              accent={accent}
-              userLocation={userLocation}
-              allowLive={allowLive}
-              stops={stops}
-              vehicle={vehicle}
-              loading={loading}
-            />
-          </View>
           {(expanded || hasOpened) && (
             <Animated.View
-              style={[
-                stopsAnimStyle,
-                { marginLeft: stopsIndent, overflow: 'hidden' },
-              ]}
+              style={[stopsAnimStyle, { marginLeft: stopsIndent, overflow: 'hidden' }]}
               accessibilityElementsHidden={!expanded}
               importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
             >
-              <LegStopsList
-                leg={leg}
-                accent={accent}
-                userLocation={userLocation}
-                allowLive={allowLive}
-                stops={stops}
-                vehicle={vehicle}
-                loading={loading}
-              />
+              <View
+                onLayout={(e) => {
+                  const h = Math.round(e.nativeEvent.layout.height);
+                  if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
+                    measuredHeight.value = h;
+                    if (expanded) {
+                      stopsHeightAnim.value = withTiming(h, motion.state);
+                    }
+                  }
+                }}
+              >
+                <LegStopsList
+                  leg={leg}
+                  accent={accent}
+                  userLocation={userLocation}
+                  allowLive={allowLive}
+                  stops={stops}
+                  vehicle={vehicle}
+                  loading={loading}
+                />
+              </View>
             </Animated.View>
           )}
 
-          {/* Etykieta podsumowania przystanków - bliżej separatora, dalej od sekcji live/na czas */}
+          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas */}
           <View style={s.stopsSummaryWrap}>
             <Text style={s.stopsSummaryLabel}>
               {t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
@@ -716,7 +716,7 @@ function TransitLegCard({
           <Text style={s.cardTime}>{leg.arriveAt}</Text>
         </View>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -744,7 +744,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
             nextLeg.mode !== 'walk';
 
           return (
-            <Animated.View key={leg.id} layout={legTransition} style={s.walkCentered}>
+            <View key={leg.id} style={s.walkCentered}>
               <View style={s.walkConnectorLine} />
               <View style={s.walkPill}>
                 <Footprints size={15} color={scheme.primary} />
@@ -757,6 +757,10 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                 isSameStop ? (
                   <Text style={s.walkSub} numberOfLines={1}>
                     {leg.fromStop}
+                  </Text>
+                ) : isFallbackOrigin(leg.fromStop) ? (
+                  <Text style={s.walkSub} numberOfLines={1}>
+                    {t.connection.walkTo(leg.toStop)}
                   </Text>
                 ) : (
                   <View style={s.walkSubRow}>
@@ -771,7 +775,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                 )
               ) : null}
               <View style={s.walkConnectorLine} />
-            </Animated.View>
+            </View>
           );
         }
         const nextVehicle = legs.slice(i + 1).find((next) => next.mode !== 'walk');
@@ -785,7 +789,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
         const hasNextLeg = i < legs.length - 1;
         const nextLegIsTransit = hasNextLeg && legs[i + 1].mode !== 'walk';
         return (
-          <Animated.View key={leg.id} layout={legTransition} style={s.cardContainer}>
+          <View key={leg.id} style={s.cardContainer}>
             <TransitLegCard
               leg={leg}
               expanded={expandedId === leg.id}
@@ -793,7 +797,9 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
               allowLive={!observeOnly || leg.live}
               onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
             />
-            {uncertainTransfer && <Text style={s.uncertainText}>{t.routeDetails.uncertainTransfer}</Text>}
+            {uncertainTransfer && (
+              <Text style={s.uncertainText}>{t.routeDetails.uncertainTransfer}</Text>
+            )}
             {nextLegIsTransit && (
               <View style={s.walkCentered}>
                 <View style={s.walkConnectorLine} />
@@ -808,7 +814,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                 <View style={s.walkConnectorLine} />
               </View>
             )}
-          </Animated.View>
+          </View>
         );
       })}
     </View>
@@ -1032,13 +1038,6 @@ const s = StyleSheet.create({
   stopsWrap: {
     marginTop: 8,
     gap: 0,
-  },
-  stopsMeasure: {
-    position: 'absolute',
-    opacity: 0,
-    left: -9999,
-    top: 0,
-    width: '100%',
   },
   stopRow: {
     flexDirection: 'row',

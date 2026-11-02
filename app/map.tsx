@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,7 +11,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ScanLine, WifiOff } from '../src/components/icons';
+import { ArrowRight, ChevronLeft, ScanLine, WifiOff } from '../src/components/icons';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
@@ -29,13 +30,13 @@ import {
   mapLineColor,
 } from '../src/components/LineBadge';
 import { acquireMapServer } from '../src/services/mapServerLease';
-import { useCurrentLocation } from '../src/services/currentLocation';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
 import { useStrings } from '../src/i18n';
 import { useTrackedTrip } from '../src/services/notifications';
 import { normalizeConnectionId } from '../src/services/routing/connectionIdentity';
+import { isFallbackOrigin } from '../src/config';
 
 type Coord = [number, number];
 
@@ -59,17 +60,14 @@ export default function RouteMapScreen() {
 
   const [loadedItem, setItem] = useState<Connection | null>(null);
   const { trip: trackedTrip } = useTrackedTrip();
-  const trackedConnection = trackedTrip?.connection.id === String(id) ? trackedTrip.connection : null;
+  const trackedConnection =
+    trackedTrip?.connection.id === String(id) ? trackedTrip.connection : null;
   const item = trackedConnection ?? (loadedItem?.id === String(id) ? loadedItem : null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [panelHeight, setPanelHeight] = useState(120);
   const [headerHeight, setHeaderHeight] = useState(96);
   const [selectedLegId, setSelectedLegId] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<MapVehicle | null>(null);
-  const { location: gpsLocation } = useCurrentLocation();
-  const userLoc = gpsLocation
-    ? { lat: gpsLocation.lat, lon: gpsLocation.lon, heading: gpsLocation.heading }
-    : null;
   const [tilesDown, setTilesDown] = useState(false);
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -297,15 +295,16 @@ export default function RouteMapScreen() {
       }
       const leg = matchLeg;
       shownVehicleRef.current = match.vehicle.vehicleId;
-      const { bg } = getLineColors(match.vehicle.line, leg.mode);
+      const displayLine = leg.line || match.vehicle.line;
+      const { bg } = getLineColors(displayLine, leg.mode);
       // Tryb bierze się z leg.mode (planner ustawia go z route_type feedu),
       // więc metro i SKA niosą własne tryby. 'walk' tu nie trafia, ale
       // unia MapVehicle go nie zna, stąd mapowanie na autobus.
-      const vehMode = inferTransitMode(leg.mode, match.vehicle.line);
+      const vehMode = inferTransitMode(leg.mode, displayLine);
       setVehicle({
         vehicleId: match.vehicle.vehicleId,
         legId: leg.id,
-        line: match.vehicle.line,
+        line: displayLine,
         mode: vehMode === 'walk' ? 'bus' : vehMode,
         color: mapLineColor(bg),
         lat: match.vehicle.lat,
@@ -327,20 +326,47 @@ export default function RouteMapScreen() {
   }, [item, route]);
 
   // ─── Akcje ──────────────────────────────────────────────────
-  const handleSelectLeg = (legId: string) => {
-    if (legId === selectedLegId) mapRef.current?.fit();
-    else setSelectedLegId(legId);
-  };
+  const handleSelectLeg = useCallback(
+    (legId: string) => {
+      if (legId === selectedLegId) mapRef.current?.fit();
+      else setSelectedLegId(legId);
+    },
+    [selectedLegId],
+  );
 
-  const handleShowRoute = () => {
+  const handleShowRoute = useCallback(() => {
     if (selectedLegId === null) mapRef.current?.fit();
     else setSelectedLegId(null);
-  };
+  }, [selectedLegId]);
 
-  const goBack = () => {
+  const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/');
-  };
+  }, [router]);
+
+  const handleTilesStatus = useCallback(
+    (ok: boolean) => {
+      if (ok) markTilesOk();
+      else markTilesDown();
+    },
+    [markTilesOk, markTilesDown],
+  );
+
+  const handleMapError = useCallback(() => {
+    markTilesDown(s.map.mapLoadFail);
+  }, [markTilesDown, s.map.mapLoadFail]);
+
+  const handleHeaderLayout = useCallback((e: LayoutChangeEvent) => {
+    setHeaderHeight(e.nativeEvent.layout.height);
+  }, []);
+
+  const handlePanelLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const h = e.nativeEvent.layout.height;
+      if (Math.abs(h - panelHeight) > 2) setPanelHeight(h);
+    },
+    [panelHeight],
+  );
 
   // ─── Render ─────────────────────────────────────────────────
   if (loadFailed && !item) {
@@ -364,6 +390,7 @@ export default function RouteMapScreen() {
             onPress={goBack}
             style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
+            accessibilityLabel={s.map.backToDetails}
           >
             <Text style={styles.primaryBtnText}>{s.map.backToDetails}</Text>
           </Pressable>
@@ -403,28 +430,22 @@ export default function RouteMapScreen() {
           ref={mapRef}
           route={route}
           vehicle={vehicle}
-          user={userLoc}
           selectedLegId={selectedLegId}
           offlineBase={offlineBase}
+          showPoi
           paddingTop={insets.top + 8 + headerHeight + 16}
           paddingBottom={panelHeight + insets.bottom + 16}
           onReady={handleMapReady}
           onLegTap={handleSelectLeg}
-          onTilesStatus={(ok) => {
-            if (ok) markTilesOk();
-            else markTilesDown();
-          }}
-          onError={() => markTilesDown(s.map.mapLoadFail)}
+          onTilesStatus={handleTilesStatus}
+          onError={handleMapError}
         />
       ) : (
         <View style={styles.mapPlaceholder} />
       )}
 
       <View style={[styles.header, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
-        <View
-          style={styles.headerSurface}
-          onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
-        >
+        <View style={styles.headerSurface} onLayout={handleHeaderLayout}>
           <View style={styles.headerRow}>
             <Pressable
               onPress={goBack}
@@ -435,9 +456,21 @@ export default function RouteMapScreen() {
               <ChevronLeft size={22} color={scheme.onSurface} />
             </Pressable>
             <View style={styles.headerContent}>
-              <Text style={styles.headerTitle} numberOfLines={fontScale > 1.3 ? undefined : 2}>
-                {item.fromTitle} → {item.toTitle}
-              </Text>
+              {item.fromTitle === item.toTitle ? (
+                <Text style={styles.headerTitle} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                  {item.toTitle}
+                </Text>
+              ) : (
+                <View style={styles.headerTitleRow}>
+                  <Text style={styles.headerTitle} numberOfLines={1}>
+                    {item.fromTitle}
+                  </Text>
+                  <ArrowRight size={16} color={scheme.primary} />
+                  <Text style={styles.headerTitle} numberOfLines={1}>
+                    {item.toTitle}
+                  </Text>
+                </View>
+              )}
               <Text style={styles.headerSub}>
                 {item.departAt}–{item.arriveAt} • {s.common.durMin(item.durationMin)}
                 {item.transfers > 0 ? s.map.transfersSuffix(item.transfers) : ''}
@@ -458,10 +491,7 @@ export default function RouteMapScreen() {
 
       <View
         style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}
-        onLayout={(e) => {
-          const h = e.nativeEvent.layout.height;
-          if (Math.abs(h - panelHeight) > 2) setPanelHeight(h);
-        }}
+        onLayout={handlePanelLayout}
       >
         <View style={[styles.panelHead, compact && styles.panelHeadCompact]}>
           <Text style={styles.panelTitle}>{s.map.stagesTitle}</Text>
@@ -502,14 +532,42 @@ export default function RouteMapScreen() {
                     : s.map.lineStageA11y(leg.line ?? '', leg.direction ?? '')
                 }
               >
-                <LineBadge line={leg.line} mode={leg.mode} compact active={active} />
+                <LineBadge leg={leg} compact active={active} />
                 <View style={styles.legInfo}>
-                  <Text
-                    style={[styles.legTitle, active && styles.legTitleActive]}
-                    numberOfLines={fontScale > 1.3 ? undefined : 2}
-                  >
-                    {leg.fromStop} → {leg.toStop}
-                  </Text>
+                  {leg.fromStop === leg.toStop ? (
+                    <Text
+                      style={[styles.legTitle, active && styles.legTitleActive]}
+                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                    >
+                      {leg.toStop}
+                    </Text>
+                  ) : leg.mode === 'walk' && isFallbackOrigin(leg.fromStop) ? (
+                    <Text
+                      style={[styles.legTitle, active && styles.legTitleActive]}
+                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                    >
+                      {s.connection.walkTo(leg.toStop)}
+                    </Text>
+                  ) : (
+                    <View style={styles.legTitleRow}>
+                      <Text
+                        style={[styles.legTitle, active && styles.legTitleActive]}
+                        numberOfLines={1}
+                      >
+                        {leg.fromStop}
+                      </Text>
+                      <ArrowRight
+                        size={14}
+                        color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                      />
+                      <Text
+                        style={[styles.legTitle, active && styles.legTitleActive]}
+                        numberOfLines={1}
+                      >
+                        {leg.toStop}
+                      </Text>
+                    </View>
+                  )}
                   <Text style={[styles.legSub, active && styles.legTitleActive]}>
                     {leg.departAt}–{leg.arriveAt}
                     {leg.mode === 'walk'
@@ -566,6 +624,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerContent: { flex: 1, minWidth: 0, gap: 4 },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   headerTitle: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface, flexShrink: 1 },
   headerSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
 
@@ -633,10 +696,16 @@ const styles = StyleSheet.create({
     borderColor: scheme.primary,
   },
   legInfo: { flex: 1, minWidth: 0, gap: 6 },
+  legTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   legTitle: {
     ...type.bodyMedium,
     fontWeight: '500',
     color: scheme.onSurface,
+    flexShrink: 1,
   },
   legTitleActive: { color: scheme.onPrimaryContainer },
   legSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },

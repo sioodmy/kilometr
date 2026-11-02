@@ -48,6 +48,9 @@ const motif = () => ({
   placeSmall: colors.faint,
   walk: scheme.onSurfaceVariant,
   stopMid: scheme.onSurface,
+  // POI celowo ciszej niż nazwy ulic: to podpowiedź otoczenia, nie główny
+  // składnik mapy.
+  poi: colors.faint,
 });
 
 const C = MAP_COLORS;
@@ -304,6 +307,59 @@ function baseLayers() {
   ];
 }
 
+/**
+ * Etykiety POI (miejsca punktowe z OSM): bez ikon (glify są w paczce offline,
+ * sprite ikon nie), konsekwentnie ciche i drobne. Filtr rangi (1 = najważniejszy)
+ * plus dwa progi zoomu (istotne od z15, reszta dopiero od z17) trzymają gęstość
+ * niską, a domyślne kolizje etykiet sprawiają, że POI ustępuje miejsca nazwom
+ * ulic i miejscowości. Warstwy wchodzą do stylu PRZED warstwami trasy, więc
+ * trasa i przystanki zawsze rysują się na nich.
+ */
+function buildPoiLayers() {
+  const layout = {
+    'text-font': ['Noto Sans Regular'],
+    'text-max-width': 7,
+    'text-padding': 4,
+  };
+  const paint = labelPaint(motif().poi, 1.1);
+  const size = ['interpolate', ['linear'], ['zoom'], 15, 9.5, 19, 11.5];
+  // Klasy transportowe pomijamy: przystanki trasy opisuje sama aplikacja,
+  // ich dublowanie tylko gęści mapę.
+  const notTransit = [
+    '!',
+    ['match', ['get', 'class'], ['airport', 'bus', 'rail', 'subway', 'station'], true, false],
+  ] as never;
+  const isPoint = ['==', ['geometry-type'], 'Point'] as never;
+  return [
+    {
+      id: 'poi-istotne',
+      type: 'symbol' as const,
+      source: 'openmaptiles',
+      'source-layer': 'poi',
+      minzoom: 15,
+      filter: ['all', isPoint, ['<=', ['get', 'rank'], 3], notTransit] as never,
+      paint,
+      layout: { 'text-field': nameField, 'text-size': size, ...layout },
+    },
+    {
+      id: 'poi-drobiazgi',
+      type: 'symbol' as const,
+      source: 'openmaptiles',
+      'source-layer': 'poi',
+      minzoom: 17,
+      filter: [
+        'all',
+        isPoint,
+        ['<=', ['get', 'rank'], 9],
+        ['>', ['get', 'rank'], 3],
+        notTransit,
+      ] as never,
+      paint,
+      layout: { 'text-field': nameField, 'text-size': size, ...layout },
+    },
+  ];
+}
+
 export const ROUTE_SOURCE_ID = 'kilometr-trasa';
 
 // `sel` na obiekcie linii: 2 = wybrana noga, 1 = przygaszona reszta,
@@ -397,8 +453,10 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
  * `base` (opcjonalnie) przestawia kafle i glify na lokalny serwer mapy:
  * `base` to np. `http://127.0.0.1:45999`. Schemat kafli jest ten sam co
  * online (OpenMapTiles), więc warstwy poniżej nie wymagają żadnych zmian.
+ * `opts.poi` dokłada etykiety POI między podkład a trasę (używa jej dopiero
+ * pełnoekranowa mapa szczegółów połączenia).
  */
-export function buildMapStyle(base?: string | null) {
+export function buildMapStyle(base?: string | null, opts: { poi?: boolean } = {}) {
   const tiles = base
     ? { type: 'vector' as const, tiles: [`${base}/tiles/{z}/{x}/{y}.pbf`], minzoom: 0, maxzoom: 14 }
     : { type: 'vector' as const, url: MAP_SOURCE_URL };
@@ -412,6 +470,7 @@ export function buildMapStyle(base?: string | null) {
     glyphs: base ? `${base}/assets/fonts/{fontstack}/{range}.pbf` : MAP_GLYPHS_URL,
     layers: [
       ...baseLayers(),
+      ...(opts.poi ? buildPoiLayers() : []),
       ...buildRouteLayers(),
     ],
   };

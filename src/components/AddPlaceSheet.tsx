@@ -312,10 +312,13 @@ export function AddPlaceSheet({
 
   // Gdy zmienia się lokalizacja miejsca, pobierz najbliższe przystanki
   useEffect(() => {
+    let live = true;
     if (selectedLoc) {
-      fetchNearestStops(selectedLoc.lat, selectedLoc.lon, 6).then((stops) => {
-        setNearestStops(stops);
-      });
+      fetchNearestStops(selectedLoc.lat, selectedLoc.lon, 6)
+        .then((stops) => {
+          if (live) setNearestStops(stops);
+        })
+        .catch(() => {});
       if (selectedLoc.kind === 'stop' && !anchorStop) {
         setAnchorStop({
           id: selectedLoc.id,
@@ -325,6 +328,9 @@ export function AddPlaceSheet({
         });
       }
     }
+    return () => {
+      live = false;
+    };
   }, [selectedLoc?.id]);
 
   const handleClose = () => {

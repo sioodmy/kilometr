@@ -129,7 +129,7 @@ function connectionInProgress(conns: Connection[], nowSec: number): Connection |
  *     w karcie nie zgadzała się z odliczanym licznikiem;
  *  3. po odjeździe (z grzecznością na wsiadanie): kurs, którym właśnie jedziemy na tej
  *     samej trasie / linii;
- *  4. w przeciwnym razie ZAWSZE zachowujemy śledzony kurs (committed) — nigdy
+ *  4. w przeciwnym razie ZAWSZE zachowujemy śledzony kurs (committed): nigdy
  *     nie przeskakujemy na kolejny odjazd w przyszłości!
  */
 export function resolveTrackedConnection(

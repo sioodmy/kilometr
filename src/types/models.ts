@@ -185,6 +185,12 @@ export interface Leg {
   platformCode?: string;
   stopHint?: string;
   liveNextStop?: string;
+  /** Dane handlowe kursu z zbiorkom.live, bez nadpisywania identyfikatorów GTFS. */
+  railAgency?: string;
+  railLine?: string;
+  railColor?: string;
+  trainNumber?: string;
+  trainName?: string;
   /** GTFS trip_id kursu - klucz do /trips/:id/stops i matchowania pojazdu */
   tripId?: string;
   routeId?: string;

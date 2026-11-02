@@ -85,6 +85,5 @@ export type MapInMessage =
   /** `pad` to marginesy dopasowania widoku (w px), liczone po stronie aplikacji. */
   | { t: 'select'; legId: string | null; pad?: [number, number, number, number] }
   | { t: 'fit'; pad?: [number, number, number, number] }
-  | { t: 'vehicle'; vehicle: MapVehicle | null }
-  | { t: 'user'; lat: number; lon: number; heading: number | null };
+  | { t: 'vehicle'; vehicle: MapVehicle | null };
 

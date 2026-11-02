@@ -35,6 +35,21 @@ const locationStub = {
 };
 
 const appStateListeners = new Set();
+const reanimatedStub = {
+  default: { View: "View" },
+  FadeIn: { duration: () => ({ easing: () => ({}) }) },
+  FadeOut: { duration: () => ({ easing: () => ({}) }) },
+  FadeInDown: { duration: () => ({ distance: () => ({ springify: () => ({ damping: () => ({}) }) }), easing: () => ({}) }) },
+  LinearTransition: { duration: () => ({ easing: () => ({}) }) },
+  useReducedMotion: () => false,
+  useAnimatedStyle: () => ({}),
+  useSharedValue: (v) => ({ value: v }),
+  withTiming: (v) => v,
+  withSpring: (v) => v,
+  Easing: { bezier: () => ({}), out: () => ({}), in: () => ({}), inOut: () => ({}), quad: {}, cubic: {} },
+  ReduceMotion: { System: "system" },
+};
+
 const rnStub = {
   Platform: { OS: 'android', select: (o) => (o.android !== undefined ? o.android : o.default) },
   AppState: {
@@ -74,6 +89,7 @@ const stubs = {
   // bez tych atrap testy logują złapany błąd transformu react-native,
   // a logika „stop kursu po zmianie miasta” nie ma jak dojść do końca.
   'react-native': rnStub,
+  'react-native-reanimated': reanimatedStub,
   expo: {
     requireOptionalNativeModule: () => null,
     requireNativeModule: () => ({}),
