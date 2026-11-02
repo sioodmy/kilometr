@@ -1307,6 +1307,10 @@ export const uk: Strings = {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
       return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
     },
+    platformPeron: (code: string) => `Платформа ${code}`,
+    platformPole: (code: string) => `Стовп ${code}`,
+    platformBay: (code: string) => `Місце ${code}`,
+    platformPst: (code: string) => `PST-стовп ${code}`,
   },
   compass: {
     fullscreen: 'Навігація на весь екран',
@@ -1439,6 +1443,7 @@ export const uk: Strings = {
     alightAt: (name: string) => `Виходь на: ${name}`,
     directionTo: (dir: string) => `У напрямку ${dir}`,
     platform: (num: string) => `колія ${num}`,
+    platformPeron: (num: string) => `платформа ${num}`,
     walkApproach: (min: number) => `~${min} хв пішки`,
     rideLength: (min: number) => `їзда ${min} хв`,
     departAt: (at: string) => `відправлення о ${at}`,

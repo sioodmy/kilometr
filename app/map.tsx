@@ -445,10 +445,7 @@ export default function RouteMapScreen() {
       )}
 
       <View style={[styles.header, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
-        <View
-          style={styles.headerSurface}
-          onLayout={handleHeaderLayout}
-        >
+        <View style={styles.headerSurface} onLayout={handleHeaderLayout}>
           <View style={styles.headerRow}>
             <Pressable
               onPress={goBack}
@@ -535,7 +532,7 @@ export default function RouteMapScreen() {
                     : s.map.lineStageA11y(leg.line ?? '', leg.direction ?? '')
                 }
               >
-                <LineBadge line={leg.line} mode={leg.mode} compact active={active} />
+                <LineBadge leg={leg} compact active={active} />
                 <View style={styles.legInfo}>
                   {leg.fromStop === leg.toStop ? (
                     <Text

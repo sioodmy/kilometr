@@ -167,7 +167,7 @@ function JourneyStrip({ data, muted }: { data: JourneyStripData; muted: boolean 
           <View key={step.key} style={styles.stripCell}>
             {i > 0 && <ChevronRight size={12} color={scheme.onSurfaceVariant} />}
             {leg ? (
-              <LineBadge mode={leg.mode} line={leg.line} maxWidth={width - 96} muted={muted} />
+              <LineBadge leg={leg} maxWidth={width - 96} muted={muted} />
             ) : (
               <View style={styles.walkStep}>
                 <DirectionsWalk size={15} color={scheme.onSurfaceVariant} />

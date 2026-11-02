@@ -1259,6 +1259,10 @@ export const de: Strings = {
     nearStop: (mode: string, stop: string) => `${mode} nahe Haltestelle: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+    platformPeron: (code: string) => `Bahnsteig ${code}`,
+    platformPole: (code: string) => `Mast ${code}`,
+    platformBay: (code: string) => `Stand ${code}`,
+    platformPst: (code: string) => `PST-Mast ${code}`,
   },
   compass: {
     fullscreen: 'Navigation im Vollbild',
@@ -1392,6 +1396,7 @@ export const de: Strings = {
     alightAt: (name: string) => `Ausstieg: ${name}`,
     directionTo: (dir: string) => `Richtung ${dir}`,
     platform: (num: string) => `Gleis ${num}`,
+    platformPeron: (num: string) => `Bahnsteig ${num}`,
     walkApproach: (min: number) => `~${min} Min. zu Fuß`,
     rideLength: (min: number) => `${min} Min. Fahrt`,
     departAt: (at: string) => `ab ${at}`,

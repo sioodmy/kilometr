@@ -38,7 +38,9 @@ const peekSpring = { damping: 26, stiffness: 420, mass: 0.8, reduceMotion: Reduc
 
 function subtleHaptic() {
   if (Platform.OS === 'android') {
-    void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Segment_Frequent_Tick).catch(() => {});
+    void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Segment_Frequent_Tick).catch(
+      () => {},
+    );
   } else if (Platform.OS === 'ios') {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {});
   }
@@ -228,7 +230,7 @@ export function ConnectionPeek({
                   {leg.mode === 'walk' ? (
                     <Footprints size={18} color={scheme.onSurfaceVariant} />
                   ) : (
-                    <LineBadge line={leg.line} mode={leg.mode} compact />
+                    <LineBadge leg={leg} compact />
                   )}
                   <Text style={styles.legMeta}>
                     {leg.mode === 'walk'
@@ -249,7 +251,11 @@ export function ConnectionPeek({
                   <Text style={[styles.stopName, styles.secondary]}>{leg.toStop}</Text>
                 </View>
                 {leg.platformCode && leg.mode !== 'walk' && (
-                  <Text style={styles.platform}>{s.notification.platform(leg.platformCode)}</Text>
+                  <Text style={styles.platform}>
+                    {leg.mode === 'train'
+                      ? s.notification.platformPeron(leg.platformCode)
+                      : s.notification.platform(leg.platformCode)}
+                  </Text>
                 )}
               </View>
             ))}
