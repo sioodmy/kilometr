@@ -432,6 +432,7 @@ export default function RouteMapScreen() {
           vehicle={vehicle}
           selectedLegId={selectedLegId}
           offlineBase={offlineBase}
+          showPoi
           paddingTop={insets.top + 8 + headerHeight + 16}
           paddingBottom={panelHeight + insets.bottom + 16}
           onReady={handleMapReady}

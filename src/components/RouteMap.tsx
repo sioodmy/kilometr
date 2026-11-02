@@ -55,6 +55,8 @@ interface RouteMapProps {
   paddingBottom?: number;
   /** Pasek u góry zasłania trasę, więc dopasowanie musi go zostawić. */
   paddingTop?: number;
+  /** Etykiety POI pod trasą. Włącza je fullscreen szczegółów połączenia. */
+  showPoi?: boolean;
   onReady?: () => void;
   onStopTap?: (stop: MapStopTap) => void;
   onLegTap?: (legId: string) => void;
@@ -79,6 +81,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     offlineBase = null,
     paddingBottom = 190,
     paddingTop = 42,
+    showPoi = false,
     onReady,
     onStopTap,
     onLegTap,
@@ -103,10 +106,10 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     } catch {
       center = null;
     }
-    return buildRouteMapDocument({ route, vehicle, selectedLegId, offlineBase, center });
+    return buildRouteMapDocument({ route, vehicle, selectedLegId, offlineBase, center, showPoi });
     // cityId w zaleznosciach: ekran nie jest odmontowywany przy zmianie miasta
     // (stos natywny), a bez tego WebView dostalby centrum poprzedniego miasta.
-  }, [route?.id, attempt, offlineBase, cityId]);
+  }, [route?.id, attempt, offlineBase, cityId, showPoi]);
 
   const send = useCallback((msg: MapInMessage) => {
     webRef.current?.injectJavaScript(

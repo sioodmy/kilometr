@@ -24,6 +24,8 @@ export interface RouteMapDocumentOptions {
    * podany, kafle i glify idą z telefonu. Silnik jest w paczce aplikacji.
    */
   offlineBase?: string | null;
+  /** Etykiety POI w tle trasy. Włącza je tylko pełnoekranowa mapa szczegółów połączenia. */
+  showPoi?: boolean;
 }
 
 /**
@@ -507,7 +509,7 @@ const runtime = [
 function bootstrapPayload(opts: RouteMapDocumentOptions): string {
   const base = opts.offlineBase ?? null;
   const payload = {
-    style: buildMapStyle(base),
+    style: buildMapStyle(base, { poi: opts.showPoi === true }),
     routeSourceId: ROUTE_SOURCE_ID,
     hitLayerId: 'trasa-chwyt',
     stopLayerId: 'przystanki-posrednie',
