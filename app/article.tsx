@@ -23,6 +23,7 @@ export default function ArticleScreen() {
   const s = useStrings();
   const { cityId } = useActiveCity();
   const router = useRouter();
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/news'));
   const params = useLocalSearchParams<{
     url?: string;
     title?: string;
@@ -83,13 +84,14 @@ export default function ArticleScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={goBack}
           style={({ pressed }) => [
             styles.back,
             pressed && { opacity: 0.75, transform: [{ scale: 0.94 }] },
           ]}
           hitSlop={10}
           accessibilityLabel={s.map.backA11y}
+          accessibilityRole="button"
         >
           <ChevronLeft size={23} color={scheme.onSurface} />
         </Pressable>
