@@ -80,7 +80,7 @@ export default function HomeScreen() {
   const [saved, setSaved] = useState<SavedPlace[]>([]);
   const [smart, setSmart] = useState<SmartDestination[]>([]);
   // Prawdziwa pustka vs ładowanie: pusty stan pokazujemy dopiero, gdy świeży
-  // ranking (albo błąd GPS) potwierdzi brak danych - inaczej migałby przed GPS.
+  // ranking (albo błąd GPS) potwierdzi brak danych: inaczej migałby przed GPS.
   const [smartReady, setSmartReady] = useState(false);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
@@ -131,10 +131,10 @@ export default function HomeScreen() {
     }
     return out;
   }, [firstConns, homeTick]);
-  // Generacja wyszukiwania tras w tle - przerwanie (np. użytkownik zaczął
+  // Generacja wyszukiwania tras w tle: przerwanie (np. użytkownik zaczął
   // własną trasę) to po prostu podbicie licznika, pętla sama się zatrzyma.
   const routeSearchGen = useRef(0);
-  // Ostatni origin dogrzewania - reset prawych stron tylko przy jego zmianie.
+  // Ostatni origin dogrzewania: reset prawych stron tylko przy jego zmianie.
   const lastOriginRef = useRef<string | null>(null);
   // Po zamknięciu arkusza wznawiamy dogrzewanie odjazdów: przerwanie podbiło
   // routeSearchGen, ale sam efekt ma inne zależności, więc bez tego licznika
@@ -192,7 +192,7 @@ export default function HomeScreen() {
   );
 
   // Badge na dzwonku: dzisiejsze pilne utrudnienie (feed miasta).
-  // Sprawdzamy przy starcie i powrocie na foreground - bez interwału, żeby nie spamować feedu.
+  // Sprawdzamy przy starcie i powrocie na foreground, bez interwału, żeby nie spamować feedu.
   // Zmiana miasta to nowy feed: badge trzeba przeliczyć od zera, inaczej wisiałby
   // z poprzedniego miasta do najbliższego foregroundu.
   useEffect(() => {
@@ -205,7 +205,7 @@ export default function HomeScreen() {
         const alert = await shouldShowNewsAlert(news);
         if (!cancelled) setNewsAlert(alert);
       } catch {
-        // brak internetu / błąd RSS - badge po prostu znika, bez krzykliwego błędu
+        // brak internetu / błąd RSS: badge po prostu znika, bez krzykliwego błędu
       }
     };
     void checkNews();
@@ -240,7 +240,7 @@ export default function HomeScreen() {
   );
 
   // Status danych: przy starcie, powrocie na foreground i co 30 s.
-  // refreshDataStatus ładuje status lokalnego GTFS - jeśli pusty, automatycznie
+  // refreshDataStatus ładuje status lokalnego GTFS: jeśli pusty, automatycznie
   // uruchamiamy pobieranie rozkładu, aby aplikacja działała bez serwera dev.
   useEffect(() => {
     const check = async () => {
@@ -310,7 +310,7 @@ export default function HomeScreen() {
     loadCachedSmartDestinations().then((cached) => {
       if (!cancelled && cacheGen === smartGen.current && cached.length > 0) setSmart(cached);
     }).catch(() => {});
-    // Live GPS od startu (ticker w tle) - opóźnienia gotowe zanim user wyszuka trasę.
+    // Live GPS od startu (ticker w tle): opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
 
     // Jeden sposób aplikowania fixu: pierwszy szybki odczyt i każdy późniejszy
@@ -403,7 +403,7 @@ export default function HomeScreen() {
 
   // Po jednej trasie do każdego ostatniego miejsca, sekwencyjnie od góry do dołu
   // (kolejność = kolejność wyświetlania, najlepszy na górze). Każdy wynik
-  // doklejamy od razu - prawa strona wiersza pojawia się z animacją.
+  // doklejamy od razu: prawa strona wiersza pojawia się z animacją.
   // Przerwanie własnym szukaniem: podbicie routeSearchGen unieważnia pętlę.
   useEffect(() => {
     if (smart.length === 0) {
@@ -414,7 +414,7 @@ export default function HomeScreen() {
     const gen = ++routeSearchGen.current;
     let cancelled = false;
     // Prawe strony czyścimy TYLKO przy zmianie originu (inne współrzędne /
-    // tytuł startu) - żeby stare odjazdy nie wisiały przy nowej lokalizacji.
+    // tytuł startu), żeby stare odjazdy nie wisiały przy nowej lokalizacji.
     // Przy samej zamianie listy (cache → świeży ranking, reorder) przycinamy
     // jedynie wpisy znikniętych celów, a reszta dokleja się po kolei bez
     // mrugnięcia całością naraz.
@@ -478,7 +478,7 @@ export default function HomeScreen() {
             [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
           }));
         } catch {
-          // Brak trasy do tego celu - wiersz zostaje bez prawej strony.
+          // Brak trasy do tego celu: wiersz zostaje bez prawej strony.
         }
       }
     })();
@@ -487,7 +487,7 @@ export default function HomeScreen() {
     };
   }, [smart, currentCoords, locTitle, warmupNonce]);
 
-  // Prawe strony wierszy liczymy raz - po odjeździe kursu trzeba je przeliczyć,
+  // Prawe strony wierszy liczymy raz: po odjeździe kursu trzeba je przeliczyć,
   // żeby pokazywały następny pojazd, a nie „X min temu". Ticker (homeTick) co
   // 30 s wyłapuje cele, którym właśnie uciekł pierwszy kurs z linią, i dociąga
   // im świeżą trasę per cel (bez mielenia spacerów i całej listy naraz).
@@ -539,14 +539,14 @@ export default function HomeScreen() {
             [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
           }));
         } catch {
-          // Brak trasy do celu - wiersz zostaje bez prawej strony.
+          // Brak trasy do celu: wiersz zostaje bez prawej strony.
         }
       }
     })();
     // Świeży `firstConns` łapiemy z bieżącego renderu (homeTick go wymusza).
   }, [homeTick]);
 
-  // Użytkownik zaczął szukać własnej trasy - tniemy dogrzewanie ostatnich
+  // Użytkownik zaczął szukać własnej trasy: tniemy dogrzewanie ostatnich
   // miejsc i skupiamy silnik tylko na trasie wybranej przez użytkownika.
   // Po zamknięciu arkusza dogrzewanie rusza od nowa (warmupNonce).
   useEffect(() => {
@@ -630,7 +630,7 @@ export default function HomeScreen() {
   );
 
   // Kolejność wyświetlania: najlepszy wynik na górze, najsłabszy na dole.
-  // `smart` z rankera jest już posortowane malejąco po wyniku - nie odwracamy.
+  // `smart` z rankera jest już posortowane malejąco po wyniku: nie odwracamy.
   const smartOrdered = smart;
 
   // Ikonki jak w wyszukiwarce: zapisane miejsce → jego ikona,
@@ -1006,7 +1006,7 @@ export default function HomeScreen() {
   );
 
   // Wczytanie kopii zapasowej podmienia miejsca i historię w KV, ale `saved`
-  // i `smart` to useState - bez tego powiadomienia ekran pokazywałby stan
+  // i `smart` to useState: bez tego powiadomienia ekran pokazywałby stan
   // sprzed importu aż do restartu aplikacji.
   useEffect(() => subscribeBackupApplied(() => {
     refreshPlaces();

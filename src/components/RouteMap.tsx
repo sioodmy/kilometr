@@ -36,7 +36,7 @@ interface MapStopTap {
 export interface RouteMapHandle {
   /** Podmienia pojedynczą nogę na prawdziwą geometrię ulic. */
   setGeometry: (legId: string, coords: [number, number][]) => void;
-  /** Dopasuj widok do trasy (całej albo wybranej nogi - patrz selectedLegId). */
+  /** Dopasuj widok do trasy (całej albo wybranej nogi, patrz selectedLegId). */
   fit: () => void;
   /** Wymuś ponowne wczytanie silnika mapy (np. po ubiciu procesu WebView). */
   reload: () => void;
@@ -52,7 +52,7 @@ interface RouteMapProps {
    * mapy idą z telefonu, więc mapa działa bez internetu.
    */
   offlineBase?: string | null;
-  /** Wysokość panelu pod mapą - tyle marginesu zostawiamy przy dopasowaniu. */
+  /** Wysokość panelu pod mapą: tyle marginesu zostawiamy przy dopasowaniu. */
   paddingBottom?: number;
   /** Pasek u góry zasłania trasę, więc dopasowanie musi go zostawić. */
   paddingTop?: number;

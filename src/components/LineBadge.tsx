@@ -6,7 +6,7 @@ import type { LegMode } from '../types/models';
 import { getLineColors, inferTransitMode, normalizeLineName } from '../services/lineIdentity';
 import { getActiveCityIdSync } from '../services/cityStore';
 
-// Kolor i typ linii żyją w serwisie - korzysta z nich również silnik
+// Kolor i typ linii żyją w serwisie: korzysta z nich również silnik
 // powiadomień, a serwis nie może importować komponentu.
 export { getLineColors, inferTransitMode, mapLineColor } from '../services/lineIdentity';
 

@@ -23,7 +23,7 @@ export function RouteMapCard({ connection, onOpenMap }: {
   const [readyToMountMap, setReadyToMountMap] = useState(false);
 
   // Odłóż start procesu WebView (MapLibre GL) na moment po zakończeniu
-  // animacji wejścia ekranu - likwiduje to zacięcia klatek (frame drops) na Androidzie.
+  // animacji wejścia ekranu: likwiduje to zacięcia klatek (frame drops) na Androidzie.
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
       setReadyToMountMap(true);

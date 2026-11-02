@@ -130,7 +130,7 @@ function formatPlatformLabel(
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ───────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
 // pamięci. Map w JS zachowuje kolejność wstawień, więc evictFirst() usuwa
-// najstarszy wpis - bez dodatkowej kolejki.
+// najstarszy wpis, bez dodatkowej kolejki.
 const STOPS_CACHE_MAX = 80;
 const stopsCache = new Map<string, LegStop[]>();
 const stopsPromise = new Map<string, Promise<LegStop[]>>();
@@ -172,7 +172,7 @@ const StopRow = memo(function StopRow({
   isFirst: boolean;
   isLast: boolean;
   vehicleMode: Leg['mode'];
-  /** Przystanek startowy albo końcowy odcinka - wyróżniony wagą. */
+  /** Przystanek startowy albo końcowy odcinka: wyróżniony wagą. */
   emphasis: boolean;
   accent: string;
   connectorAccent: boolean;
@@ -702,7 +702,7 @@ function TransitLegCard({
             </Animated.View>
           )}
 
-          {/* Etykieta podsumowania przystanków - bliżej separatora, dalej od sekcji live/na czas */}
+          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas */}
           <View style={s.stopsSummaryWrap}>
             <Text style={s.stopsSummaryLabel}>
               {t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
