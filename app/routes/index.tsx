@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, InteractionManager, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  InteractionManager,
+} from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Anchor,
   ChevronUp,
   ChevronLeft,
+  Clock3,
   CloudOff,
+  Flag,
+  SlidersHorizontal,
   X,
 } from '../../src/components/icons';
-import Animated, {
-  Easing,
-  FadeInDown,
-  interpolate,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { Easing, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
-import { motion } from '../../src/theme/motion';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../../src/services/cityStore';
 import {
@@ -38,9 +43,7 @@ import {
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
 import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
-import {
-  stopTracking,
-} from '../../src/services/notifications';
+import { stopTracking } from '../../src/services/notifications';
 import {
   loadCachedConnections,
   hasLocalTimetable,
@@ -53,23 +56,29 @@ import {
   type DataStatus,
 } from '../../src/services/dataManager';
 import { liveTracker } from '../../src/services/liveTracker';
-import { deduplicateConnections, mergeConnections } from '../../src/services/routing/connectionIdentity';
+import {
+  deduplicateConnections,
+  mergeConnections,
+} from '../../src/services/routing/connectionIdentity';
 import { loadEarlierConnections } from '../../src/services/routing/earlierConnections';
 import { applyLiveDelays, sortConnectionsByCost } from '../../src/services/routing/engine';
 import { boardingDepartureMs } from '../../src/services/routing/connectionTimes';
 import { costParamsFor } from '../../src/services/routing/raptor';
-import type { JourneyTimeMode } from '../../src/services/routing/types';
+import type { JourneyTimeMode, RouteStyle } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
-import type { Connection, SavedPlace, Suggestion } from '../../src/types/models';
+import type { Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
-import { DepartureTimeSheet, type JourneyTimeSelection } from '../../src/components/DepartureTimeSheet';
 import {
-  RoutesThumbBar,
-  type ModePreference,
-} from '../../src/components/RoutesThumbBar';
-import { useThumbBarInset } from '../../src/components/ThumbBar';
+  DepartureTimeSheet,
+  type JourneyTimeSelection,
+} from '../../src/components/DepartureTimeSheet';
+import {
+  RouteFilterSheet,
+  type RouteModeFilter,
+  type RouteTransfersFilter,
+} from '../../src/components/RouteFilterSheet';
 import { SearchSheet } from '../../src/components/SearchSheet';
 import { useStrings } from '../../src/i18n';
 
@@ -79,6 +88,7 @@ const connectionKey = (item: Connection) => item.id;
 
 export default function RoutesScreen() {
   const s = useStrings();
+  const insets = useSafeAreaInsets();
   const { cityId } = useActiveCity();
   const cityDef = defaultLocationForCity(cityId);
   const cityGen = s.city.gen(cityId);
@@ -181,13 +191,14 @@ export default function RoutesScreen() {
   const [targetTimeSec, setTargetTimeSec] = useState<number | undefined>(undefined);
   const [timeMode, setTimeMode] = useState<JourneyTimeMode>('departure');
   const arrivalMode = timeMode === 'arrival';
-  const timeLabel = targetTimeSec === undefined
-    ? s.routes.now
-    : (arrivalMode ? s.timeSheet.selectedArrival : s.timeSheet.selectedDeparture)(
-        targetTimeSec >= 86400 ? s.common.tomorrow : s.common.today,
-        String(Math.floor(targetTimeSec / 3600) % 24).padStart(2, '0'),
-        String(Math.floor(targetTimeSec % 3600 / 60)).padStart(2, '0'),
-      );
+  const timeLabel =
+    targetTimeSec === undefined
+      ? s.routes.now
+      : (arrivalMode ? s.timeSheet.selectedArrival : s.timeSheet.selectedDeparture)(
+          targetTimeSec >= 86400 ? s.common.tomorrow : s.common.today,
+          String(Math.floor(targetTimeSec / 3600) % 24).padStart(2, '0'),
+          String(Math.floor((targetTimeSec % 3600) / 60)).padStart(2, '0'),
+        );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -204,8 +215,7 @@ export default function RoutesScreen() {
   // pusty wynik to nie „brak serwera", tylko brak danych offline.
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   useEffect(() => subscribeDataStatus(setDataStatus), []);
-  const timetableBusy =
-    dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+  const timetableBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
   const timetableReady = dataStatus.state === 'ready';
   // Brak sieci = brak opóźnień z MPK. Bez komunikatu użytkownik myśli,
   // że planer po prostu nie umie opóźnień.
@@ -252,62 +262,99 @@ export default function RoutesScreen() {
   // lista po cichu przestawała się dociągać. Bez tego użytkownik scrollował
   // do końca i nie dostawał żadnej odpowiedzi.
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
-  // Filtry mieszkają w dolnym menu (RoutesThumbBar) - na górze ekranu nie ma
-  // ich wcale, żeby nic nie powtarzać się w dwóch miejscach. To wciąż
-  // filtry jednorazowe, NIE ustawienia systemowe (maxTransfers w /settings
-  // zostaje nietknięte): toggle wymusza maxTransfers=0, a typ pojazdu
-  // ogranicza RAPTOR-a do kursów danego rodzaju.
-  const [directOnly, setDirectOnly] = useState(params.directOnly === '1');
-  const [modeFilter, setModeFilter] = useState<ModePreference>(
-    params.modes === 'tram' || params.modes === 'bus' ? params.modes : 'all',
+  // Filtry połączeń: jednorazowe filtry w pamięci (bezpośrednie, środek transportu)
+  // dla aktualnie wyszukanej trasy, otwierane z karty w nagłówku.
+  const [transfersFilter, setTransfersFilter] = useState<RouteTransfersFilter>(
+    params.directOnly === '1' ? 'direct' : 'all',
   );
+  const [sortMode, setSortMode] = useState<RouteStyle>(() => getSettingsSync().routeStyle);
+  const [liveOnly, setLiveOnly] = useState(false);
+  const [modeFilter, setModeFilter] = useState<RouteModeFilter>(
+    params.modes === 'tram' ||
+      params.modes === 'bus' ||
+      params.modes === 'train' ||
+      params.modes === 'cable'
+      ? (params.modes as RouteModeFilter)
+      : 'all',
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const availableModes = useMemo(() => {
+    const set = new Set<LegMode>();
+    for (const item of items) {
+      for (const leg of item.legs) {
+        if (leg.mode && leg.mode !== 'walk') {
+          set.add(leg.mode);
+        }
+      }
+    }
+    const ORDER: LegMode[] = ['tram', 'bus', 'train', 'cable', 'trolleybus', 'subway'];
+    return ORDER.filter((m) => set.has(m));
+  }, [items]);
+
+  useEffect(() => {
+    if (modeFilter !== 'all' && availableModes.length > 0 && !availableModes.includes(modeFilter)) {
+      setModeFilter('all');
+    }
+  }, [availableModes, modeFilter]);
 
   const displayed = useMemo(() => {
-    let list = applyLiveDelays(items, offline || liveStale ? new Map() : liveTracker.getTripDelays());
-    if (directOnly) {
+    let list = applyLiveDelays(
+      items,
+      offline || liveStale ? new Map() : liveTracker.getTripDelays(),
+    );
+    if (transfersFilter === 'direct') {
       list = list.filter((c) => c.transfers === 0);
+    } else if (transfersFilter === 'max1') {
+      list = list.filter((c) => c.transfers <= 1);
+    }
+    if (liveOnly) {
+      list = list.filter((c) => c.live);
     }
     if (modeFilter !== 'all') {
-      list = list.filter((c) => c.legs.every((leg) =>
-        leg.mode === 'walk' || leg.mode === modeFilter || (modeFilter === 'bus' && leg.mode === 'trolleybus'),
-      ));
+      if (modeFilter === 'tram') {
+        const hasPure = list.some((c) =>
+          c.legs.every((l) => l.mode === 'walk' || l.mode === 'tram'),
+        );
+        list = list.filter((c) =>
+          hasPure
+            ? c.legs.every((l) => l.mode === 'walk' || l.mode === 'tram')
+            : c.legs.some((l) => l.mode === 'tram'),
+        );
+      } else if (modeFilter === 'bus') {
+        const hasPure = list.some((c) =>
+          c.legs.every((l) => l.mode === 'walk' || l.mode === 'bus' || l.mode === 'trolleybus'),
+        );
+        list = list.filter((c) =>
+          hasPure
+            ? c.legs.every((l) => l.mode === 'walk' || l.mode === 'bus' || l.mode === 'trolleybus')
+            : c.legs.some((l) => l.mode === 'bus' || l.mode === 'trolleybus'),
+        );
+      } else {
+        list = list.filter((c) => c.legs.some((l) => l.mode === modeFilter));
+      }
     }
     const cfg = getSettingsSync();
     return sortConnectionsByCost(
-      [...list], costParamsFor(cfg.routeStyle), profileWalkSpeedMps(cfg.walkPace),
+      [...list],
+      costParamsFor(sortMode),
+      profileWalkSpeedMps(cfg.walkPace),
       arrivalMode ? targetTimeSec : undefined,
     );
-  }, [items, directOnly, modeFilter, arrivalMode, targetTimeSec, liveTick, offline, liveStale]);
-
-  // Dock przesuwa się nad listą bez zmiany wysokości jej viewportu.
-  const dockProgress = useSharedValue(1);
-  // Zapas pod listą liczony z zmierzonej wysokości docka - wpisane wcześniej
-  // 96 px nie wystarczało i ostatnia karta chowała się pod paskiem.
-  const thumbInset = useThumbBarInset();
-
-  const animatedDockStyle = useAnimatedStyle(() => {
-    const p = dockProgress.value;
-    return {
-      opacity: interpolate(p, [0, 1], [0, 1]),
-      transform: [
-        { translateY: interpolate(p, [0, 1], [thumbInset, 0]) },
-      ],
-    };
-  });
+  }, [
+    items,
+    transfersFilter,
+    liveOnly,
+    modeFilter,
+    sortMode,
+    arrivalMode,
+    targetTimeSec,
+    liveTick,
+    offline,
+    liveStale,
+  ]);
 
   const listRef = useRef<FlatList<Connection>>(null);
-  // Odliczane „uspokojenie listy” przed zmianą widoczności docka
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stan docka oczekujący na koniec pauzy po zmianie (patrz setDockVisible)
-  const pendingDockState = useRef<boolean | null>(null);
-  const dockCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (settleTimer.current) clearTimeout(settleTimer.current);
-      if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
-    };
-  }, []);
 
   const queryAt = (depSec: number | undefined) => {
     const cfg = getSettingsSync();
@@ -326,9 +373,8 @@ export default function RoutesScreen() {
       anchorStopLon: activeAnchor?.lon,
       departureTimeSec: arrivalMode ? undefined : depSec,
       arriveBySec: arrivalMode ? depSec : undefined,
-      // Jednorazowe filtry nadpisują systemowe maxTransfers / typ pojazdów.
-      maxTransfers: directOnly ? 0 : cfg.maxTransfers,
-      modes: modeFilter,
+      maxTransfers: cfg.maxTransfers,
+      modes: 'all' as const,
       minTransferSec: cfg.minTransferSec,
       trainsEnabled: cfg.trainsEnabled,
       cableEnabled: cfg.cableEnabled,
@@ -379,7 +425,7 @@ export default function RoutesScreen() {
           startTitle,
           places,
           currentSettings.anchorRadiusM,
-          dismissedAnchorsRef.current
+          dismissedAnchorsRef.current,
         );
         if (anchor) {
           // Kotwica NIE przepisuje pozycji na przystanek (to generowało
@@ -405,7 +451,8 @@ export default function RoutesScreen() {
       if (cancelled || refineAppliedRef.current || activeAnchorRef.current) return;
       if (isOutsideServiceArea(loc.lat, loc.lon)) return;
       const origin = originCoordsRef.current;
-      if (distanceMeters(loc.lat, loc.lon, origin.lat, origin.lon) < LOCATION_REFINE_DELTA_M) return;
+      if (distanceMeters(loc.lat, loc.lon, origin.lat, origin.lon) < LOCATION_REFINE_DELTA_M)
+        return;
       refineAppliedRef.current = true;
       setFromTitle(loc.title);
       setFromLat(loc.lat);
@@ -455,12 +502,7 @@ export default function RoutesScreen() {
   }, [query, sheetFor, fromLat, fromLon]);
 
   const recentWithGps = useMemo(
-    () =>
-      sheetFor === 'from'
-        ? gpsOutside
-          ? recent
-          : [gpsItem, ...recent]
-        : recent,
+    () => (sheetFor === 'from' ? (gpsOutside ? recent : [gpsItem, ...recent]) : recent),
     [sheetFor, recent, gpsItem, gpsOutside],
   );
 
@@ -500,7 +542,7 @@ export default function RoutesScreen() {
           l.title,
           savedPlaces,
           currentSettings.anchorRadiusM,
-          dismissedAnchorsRef.current
+          dismissedAnchorsRef.current,
         );
         if (anchor) {
           setActiveAnchor(anchor);
@@ -515,10 +557,7 @@ export default function RoutesScreen() {
         }
       } catch (err) {
         console.warn('[handleSuggestionSelect] GPS error:', err);
-        Alert.alert(
-          s.routes.gpsFailTitle,
-          s.routes.gpsFailBody
-        );
+        Alert.alert(s.routes.gpsFailTitle, s.routes.gpsFailBody);
       }
       return;
     }
@@ -599,12 +638,18 @@ export default function RoutesScreen() {
       // okna), żeby „Ostatnie miejsca" nie pokazywały w kartce zawsze
       // domyślnych 18 min. `mergeTripSearch` i tak potraktuje to jako to samo
       // sprawdzenie, które zapisał ekran główny.
-      void recordTripSearch(q.fromLat, q.fromLon, q.fromTitle, {
-        id: q.toId || q.toTitle,
-        title: q.toTitle,
-        lat: q.toLat,
-        lon: q.toLon,
-      }, typicalDurationMin(c));
+      void recordTripSearch(
+        q.fromLat,
+        q.fromLon,
+        q.fromTitle,
+        {
+          id: q.toId || q.toTitle,
+          title: q.toTitle,
+          lat: q.toLat,
+          lon: q.toLon,
+        },
+        typicalDurationMin(c),
+      );
     } catch {
       if (seq !== fetchSeq.current) return;
       // Offline: ostatnie prawdziwe dane z cache (z przeliczonymi czasami).
@@ -675,7 +720,8 @@ export default function RoutesScreen() {
   }, [offline]);
 
   const handleLoadMore = async () => {
-    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreLater || offline) return;
+    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreLater || offline)
+      return;
 
     setLoadingMore(true);
     setLoadMoreFailed(false);
@@ -707,7 +753,15 @@ export default function RoutesScreen() {
   // Starsze (historyczne, już odjechane) - dokładane Z GÓRY
   const handleLoadEarlier = async () => {
     if (arrivalMode) return;
-    if (loading || loadingMore || earlierRequest.current || items.length === 0 || noMoreEarlier || offline) return;
+    if (
+      loading ||
+      loadingMore ||
+      earlierRequest.current ||
+      items.length === 0 ||
+      noMoreEarlier ||
+      offline
+    )
+      return;
     const firstDeparture = items[0].departureSec;
     if (!firstDeparture || firstDeparture <= 0) return;
 
@@ -740,115 +794,6 @@ export default function RoutesScreen() {
   const loadEarlierRef = useRef(handleLoadEarlier);
   loadEarlierRef.current = handleLoadEarlier;
 
-  const lastScrollY = useRef(0);
-  const isDockVisible = useRef(true);
-  const accumulatedDelta = useRef(0);
-  const momentumActive = useRef(false);
-  const lastDockToggleAt = useRef(0);
-
-  // Próg jest wysoki, bo dock reaguje dopiero na ustabilizowanym
-  // scrollu (patrz handleScrollEndDrag / handleMomentumScrollEnd) - 80 px
-  // to jedno świadome przejście, a nie drgnięcie palcem.
-  const HIDE_THRESHOLD = 80;
-  const SHOW_THRESHOLD = 40;
-  // Pauza po zmianie stanu: dwa przeciwstawne gesty w krótkim czasie
-  // nie mogą się zbić w serię szarpnięć docka.
-  const DOCK_COOLDOWN_MS = 450;
-  // Ile czekamy po puszczeniu palca na sprawdzenie, czy zaczęło się
-  // „rzucanie” listy (momentum). Jeśli tak, decyzja zapada po nim.
-  const SCROLL_SETTLE_MS = 120;
-
-  // Jedno miejsce do zmiany stanu docka. Przeskok stanu jest możliwy tylko
-  // raz na DOCK_COOLDOWN_MS - szarpnięcia się nie zbiją w serię, a gest
-  // nie ginie: jeśli pauza trwa, oczekujący stan zostaje dopalony tuż po
-  // niej (pendingDockState). `force` omija pauzę - przy powrocie na samą
-  // górę listy dock musi być od razu.
-  const applyDockState = (visible: boolean) => {
-    if (isDockVisible.current === visible) return;
-    isDockVisible.current = visible;
-    lastDockToggleAt.current = Date.now();
-    pendingDockState.current = null;
-    if (dockCooldownTimer.current) {
-      clearTimeout(dockCooldownTimer.current);
-      dockCooldownTimer.current = null;
-    }
-    dockProgress.value = withTiming(visible ? 1 : 0, motion.state);
-  };
-
-  const setDockVisible = (visible: boolean, force = false) => {
-    if (isDockVisible.current === visible) return;
-    const wait = DOCK_COOLDOWN_MS - (Date.now() - lastDockToggleAt.current);
-    if (!force && wait > 0) {
-      pendingDockState.current = visible;
-      if (dockCooldownTimer.current) clearTimeout(dockCooldownTimer.current);
-      dockCooldownTimer.current = setTimeout(() => {
-        dockCooldownTimer.current = null;
-        const next = pendingDockState.current;
-        if (next != null) applyDockState(next);
-      }, wait);
-      return;
-    }
-    applyDockState(visible);
-  };
-
-  // Decyzja o docku zapada, gdy lista przestała się ruszać. W trakcie
-  // przeciągania dock tylko liczy deltę - animacja leci na wątku UI
-  // (Reanimated), więc nie blokuje gestu ani nie przelicza layoutu listy.
-  const evaluateDockOnSettle = () => {
-    if (accumulatedDelta.current >= HIDE_THRESHOLD) {
-      setDockVisible(false);
-    } else if (accumulatedDelta.current <= -SHOW_THRESHOLD) {
-      setDockVisible(true);
-    }
-  };
-
-  const handleScrollEndDrag = () => {
-    momentumActive.current = false;
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(() => {
-      settleTimer.current = null;
-      if (!momentumActive.current) evaluateDockOnSettle();
-    }, SCROLL_SETTLE_MS);
-  };
-
-  const handleMomentumScrollBegin = () => {
-    momentumActive.current = true;
-    if (settleTimer.current) {
-      clearTimeout(settleTimer.current);
-      settleTimer.current = null;
-    }
-  };
-
-  const handleMomentumScrollEnd = () => {
-    momentumActive.current = false;
-    evaluateDockOnSettle();
-  };
-
-  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    const dy = y - lastScrollY.current;
-    lastScrollY.current = y;
-
-    // 1. Na samej górze listy (y <= 12) - dock wraca od razu, bez
-    //    czekania na puszczenie palca: tam scroll i tak się kończy.
-    if (y <= 12) {
-      accumulatedDelta.current = 0;
-      setDockVisible(true, true);
-    } else if (dy > 0) {
-      // Scrollowanie W DÓŁ
-      if (accumulatedDelta.current < 0) {
-        accumulatedDelta.current = 0;
-      }
-      accumulatedDelta.current += dy;
-    } else if (dy < 0) {
-      // Scrollowanie W GÓRĘ
-      if (accumulatedDelta.current > 0) {
-        accumulatedDelta.current = 0;
-      }
-      accumulatedDelta.current += dy;
-    }
-  };
-
   useEffect(() => {
     if (samePlace) {
       setItems([]);
@@ -866,17 +811,23 @@ export default function RoutesScreen() {
     // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
     // importu dostawał pustą listę i nigdy sam się nie odpytywał, więc
     // połączenia zostawały niewidoczne mimo gotowego rozkładu.
-  }, [fromLat, fromLon, toLat, toLon, fromTitle, toTitle, samePlace, activeAnchor, directOnly, modeFilter, timetableReady, targetTimeSec, timeMode]);
+  }, [
+    fromLat,
+    fromLon,
+    toLat,
+    toLon,
+    fromTitle,
+    toTitle,
+    samePlace,
+    activeAnchor,
+    timetableReady,
+    targetTimeSec,
+    timeMode,
+  ]);
 
   // Gest i przycisk dokładają wcześniejsze odjazdy do tej samej listy.
   const handlePullEarlier = () => {
     void loadEarlierRef.current();
-  };
-
-  const handleCycleMode = () => {
-    if (modeFilter === 'all') setModeFilter('tram');
-    else if (modeFilter === 'tram') setModeFilter('bus');
-    else setModeFilter('all');
   };
 
   const handleSwap = () => {
@@ -912,7 +863,42 @@ export default function RoutesScreen() {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
-  const isCustomTime = targetTimeSec !== undefined;
+  const defaultSortMode = getSettingsSync().routeStyle;
+  const hasActiveFilters =
+    modeFilter !== 'all' || transfersFilter !== 'all' || sortMode !== defaultSortMode || liveOnly;
+  const isCustomTime = targetTimeSec !== undefined || arrivalMode;
+
+  const timeDisplayLabel = useMemo(() => {
+    if (targetTimeSec === undefined) {
+      return s.routes.now;
+    }
+    const day = targetTimeSec >= 86400 ? s.common.tomorrow : s.common.today;
+    const hh = String(Math.floor(targetTimeSec / 3600) % 24).padStart(2, '0');
+    const mm = String(Math.floor((targetTimeSec % 3600) / 60)).padStart(2, '0');
+    if (arrivalMode) {
+      return `${s.routesBar.arrivalShort(`${hh}:${mm}`)}`;
+    }
+    return `${day} ${hh}:${mm}`;
+  }, [targetTimeSec, arrivalMode, s]);
+
+  const modeGenitive = (mode: RouteModeFilter) => {
+    switch (mode) {
+      case 'tram':
+        return s.routes.vehicleTramGen;
+      case 'bus':
+        return s.routes.vehicleBusGen;
+      case 'train':
+        return s.routes.vehicleTrainGen;
+      case 'cable':
+        return s.routes.vehicleCableGen;
+      case 'trolleybus':
+        return s.routes.vehicleTrolleyGen;
+      case 'subway':
+        return s.routes.vehicleSubwayGen;
+      default:
+        return '';
+    }
+  };
   const earlierDisabled = loading || loadingMore || loadingEarlier || noMoreEarlier;
 
   const openConnection = useCallback(
@@ -923,19 +909,22 @@ export default function RoutesScreen() {
     [closePreview, router],
   );
 
-  const peek = useMemo<ConnectionPeekHandlers>(() => ({
-    show: (item, sticky = false) => {
-      previewId.current = item.id;
-      setPreviewReady(false);
-      setPreview({ item, sticky });
-    },
-    ready: setPreviewReady,
-    release: (item, open) => {
-      if (previewId.current !== item.id) return;
-      if (open) openConnection(item);
-      else closePreview();
-    },
-  }), [closePreview, openConnection]);
+  const peek = useMemo<ConnectionPeekHandlers>(
+    () => ({
+      show: (item, sticky = false) => {
+        previewId.current = item.id;
+        setPreviewReady(false);
+        setPreview({ item, sticky });
+      },
+      ready: setPreviewReady,
+      release: (item, open) => {
+        if (previewId.current !== item.id) return;
+        if (open) openConnection(item);
+        else closePreview();
+      },
+    }),
+    [closePreview, openConnection],
+  );
 
   const renderConnection = useCallback(
     ({ item, index }: { item: Connection; index: number }) => {
@@ -970,9 +959,7 @@ export default function RoutesScreen() {
     <Animated.View
       style={styles.routeHeader}
       entering={
-        reduceMotion
-          ? undefined
-          : FadeInDown.duration(240).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+        reduceMotion ? undefined : FadeInDown.duration(240).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
       }
     >
       <RouteEndpoints
@@ -981,27 +968,84 @@ export default function RoutesScreen() {
         onFrom={() => setSheetFor('from')}
         onTo={() => setSheetFor('to')}
         onSwap={handleSwap}
-        fromLabel={activeAnchor
-          ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
-          : s.routes.changeFromA11y(fromTitle)}
-        accessory={activeAnchor && (
-          <View style={styles.anchorSub}>
-            <Anchor size={12} color={scheme.primary} />
-            <Text style={styles.anchorSubText} numberOfLines={1}>
-              {activeAnchor.stopName}
-              <Text style={styles.anchorSubPlace}> · {activeAnchor.placeName}</Text>
-            </Text>
-            <Pressable
-              onPress={handleDismissAnchor}
-              style={({ pressed }) => [styles.anchorX, pressed && { opacity: 0.6 }]}
-              accessibilityRole="button"
-              accessibilityLabel={s.routes.dismissAnchorA11y}
-            >
-              <X size={12} color={scheme.onSurfaceVariant} />
-            </Pressable>
-          </View>
-        )}
+        fromLabel={
+          activeAnchor
+            ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
+            : s.routes.changeFromA11y(fromTitle)
+        }
+        accessory={
+          activeAnchor && (
+            <View style={styles.anchorSub}>
+              <Anchor size={12} color={scheme.primary} />
+              <Text style={styles.anchorSubText} numberOfLines={1}>
+                {activeAnchor.stopName}
+                <Text style={styles.anchorSubPlace}> · {activeAnchor.placeName}</Text>
+              </Text>
+              <Pressable
+                onPress={handleDismissAnchor}
+                style={({ pressed }) => [styles.anchorX, pressed && { opacity: 0.6 }]}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.dismissAnchorA11y}
+              >
+                <X size={12} color={scheme.onSurfaceVariant} />
+              </Pressable>
+            </View>
+          )
+        }
       />
+
+      <View style={styles.filterCardsRow}>
+        <Pressable
+          onPress={() => setFiltersOpen(true)}
+          style={({ pressed }) => [
+            styles.actionCard,
+            hasActiveFilters && styles.actionCardActive,
+            pressed && styles.actionCardPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={s.routesFilters.filterA11y}
+        >
+          <SlidersHorizontal
+            size={18}
+            color={hasActiveFilters ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+          />
+          <Text
+            style={[styles.actionCardText, hasActiveFilters && styles.actionCardTextActive]}
+            numberOfLines={1}
+          >
+            {s.routesFilters.filterButton}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => setTimeSheetOpen(true)}
+          style={({ pressed }) => [
+            styles.actionCard,
+            isCustomTime && styles.actionCardActive,
+            pressed && styles.actionCardPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={s.routesBar.timeA11y(timeDisplayLabel)}
+        >
+          {arrivalMode ? (
+            <Flag
+              size={18}
+              color={isCustomTime ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+            />
+          ) : (
+            <Clock3
+              size={18}
+              color={isCustomTime ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+            />
+          )}
+          <Text
+            style={[styles.actionCardText, isCustomTime && styles.actionCardTextActive]}
+            numberOfLines={1}
+          >
+            {timeDisplayLabel}
+          </Text>
+        </Pressable>
+      </View>
     </Animated.View>
   );
 
@@ -1027,7 +1071,13 @@ export default function RoutesScreen() {
       {/* Ten sam punkt startu i celu: zamiast przejazdów w kółko mówimy
           wprost, że cel jest na miejscu. */}
       {samePlace ? (
-        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingBottom: thumbInset }}>
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: 16,
+            paddingBottom: insets.bottom + 24,
+          }}
+        >
           {routeHeader}
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyTitle}>{s.routes.samePlaceTitle}</Text>
@@ -1035,256 +1085,325 @@ export default function RoutesScreen() {
           </View>
         </ScrollView>
       ) : loading && items.length === 0 ? (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: thumbInset }}>
-        {routeHeader}
-        <View style={styles.skeletonList}>
-          <Text style={styles.loadingText}>{s.routes.searching}</Text>
-          <View style={styles.skelCard}>
-            <View style={styles.skelRow}>
-              <View style={[styles.skel, { width: 96, height: 22 }]} />
-              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
+        >
+          {routeHeader}
+          <View style={styles.skeletonList}>
+            <Text style={styles.loadingText}>{s.routes.searching}</Text>
+            <View style={styles.skelCard}>
+              <View style={styles.skelRow}>
+                <View style={[styles.skel, { width: 96, height: 22 }]} />
+                <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+              </View>
+              <View style={[styles.skel, { width: '70%', height: 12, marginTop: 10 }]} />
+              <View
+                style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]}
+              />
+              <View
+                style={[
+                  styles.skel,
+                  { width: '55%', height: 28, marginTop: 12, borderRadius: shape.small },
+                ]}
+              />
             </View>
-            <View style={[styles.skel, { width: '70%', height: 12, marginTop: 10 }]} />
-            <View style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]} />
-            <View style={[styles.skel, { width: '55%', height: 28, marginTop: 12, borderRadius: shape.small }]} />
-          </View>
-          <View style={styles.skelCard}>
-            <View style={styles.skelRow}>
-              <View style={[styles.skel, { width: 84, height: 22 }]} />
-              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+            <View style={styles.skelCard}>
+              <View style={styles.skelRow}>
+                <View style={[styles.skel, { width: 84, height: 22 }]} />
+                <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+              </View>
+              <View style={[styles.skel, { width: '62%', height: 12, marginTop: 10 }]} />
+              <View
+                style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]}
+              />
+              <View
+                style={[
+                  styles.skel,
+                  { width: '72%', height: 28, marginTop: 12, borderRadius: shape.small },
+                ]}
+              />
             </View>
-            <View style={[styles.skel, { width: '62%', height: 12, marginTop: 10 }]} />
-            <View style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]} />
-            <View style={[styles.skel, { width: '72%', height: 28, marginTop: 12, borderRadius: shape.small }]} />
-          </View>
-          <View style={[styles.skelCard, { opacity: 0.55 }]}>
-            <View style={styles.skelRow}>
-              <View style={[styles.skel, { width: 72, height: 22 }]} />
-              <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+            <View style={[styles.skelCard, { opacity: 0.55 }]}>
+              <View style={styles.skelRow}>
+                <View style={[styles.skel, { width: 72, height: 22 }]} />
+                <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
+              </View>
+              <View style={[styles.skel, { width: '50%', height: 12, marginTop: 10 }]} />
             </View>
-            <View style={[styles.skel, { width: '50%', height: 12, marginTop: 10 }]} />
           </View>
-        </View>
         </ScrollView>
       ) : loadError ? (
-        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingBottom: thumbInset }}>
-        {routeHeader}
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>
-            {timetableReady ? s.routes.calcFail : s.routes.noTimetable}
-          </Text>
-          <Text style={styles.emptySub}>
-            {timetableReady
-              ? s.routes.calcFailBody
-              : s.routes.noTimetableBody}
-          </Text>
-          {!timetableReady && (
-            <Pressable
-              onPress={() => void importGtfsFromNetwork()}
-              disabled={timetableBusy}
-              style={({ pressed }) => [
-                styles.retryBtn,
-                timetableBusy && styles.retryBtnBusy,
-                pressed && !timetableBusy && { opacity: 0.8 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={s.routes.downloadA11y}
-            >
-              {timetableBusy ? (
-                <Text style={styles.retryText}>
-                  {dataStatus.state === 'downloading'
-                    ? s.routes.downloading(Math.round(dataStatus.progress * 100))
-                    : dataStatus.state === 'importing'
-                      ? s.routes.downloadingStep(dataStatus.step, Math.round(dataStatus.progress * 100))
-                      : s.routes.downloadingPlain}
-                </Text>
-              ) : (
-                <Text style={styles.retryText}>{s.routes.downloadAction}</Text>
-              )}
-            </Pressable>
-          )}
-          {timetableReady && (
-            <Pressable
-              onPress={() => fetchRoutes(targetTimeSec)}
-              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-            >
-              <Text style={styles.retryText}>{s.common.retry}</Text>
-            </Pressable>
-          )}
-        </View>
-        </ScrollView>
-      ) : (
-        <FlatList
-          ref={listRef}
-          accessibilityState={{ busy: loading }}
-          pointerEvents={loading ? 'none' : 'auto'}
-          refreshControl={
-            arrivalMode || noMoreEarlier || offline ? undefined :
-            <RefreshControl
-              refreshing={loadingEarlier}
-              onRefresh={handlePullEarlier}
-              enabled={!loading && !loadingMore && !noMoreEarlier && !offline}
-              title={s.routes.earlierAction}
-              titleColor={scheme.onSurfaceVariant}
-              tintColor={scheme.primary}
-              colors={[scheme.primary]}
-              progressBackgroundColor={scheme.surfaceContainerHigh}
-            />
-          }
-          data={displayed}
-          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 80 }}
-          alwaysBounceVertical={!arrivalMode}
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          // wymusza przeliczenie etykiet „za X min” bez refetchu
-          extraData={nowTick}
-          keyExtractor={connectionKey}
-          contentContainerStyle={[styles.list, { paddingBottom: thumbInset }]}
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-          // Na Androidzie RN domyślnie odpija widoki spoza kadru
-          // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
-          // nagłówkiem powoduje to miganie pustych miejsc w trakcie
-          // przeciągania palcem, więc trzymamy komórki podpięte.
-          removeClippedSubviews={false}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          onScrollEndDrag={handleScrollEndDrag}
-          onMomentumScrollBegin={handleMomentumScrollBegin}
-          onMomentumScrollEnd={handleMomentumScrollEnd}
-          renderItem={renderConnection}
-          ListHeaderComponent={
-            <>
-            {routeHeader}
-            <View style={styles.countRow}>
-              {loading && <ActivityIndicator size="small" color={scheme.primary} accessibilityLabel={s.routes.searching} />}
-              <Text style={styles.count} numberOfLines={1}>
-                {connectionsLabel(displayed.length)} • {isCustomTime ? (arrivalMode ? timeLabel : s.routes.countDepart(timeLabel)) : s.routes.countNearest}
-                {directOnly ? s.routes.countDirect : ''}
-                {modeFilter === 'tram' ? s.routes.countTram : modeFilter === 'bus' ? s.routes.countBus : ''}
-              </Text>
-              {offline && (
-                <Pressable
-                  onPress={() => quietRefresh()}
-                  style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.offlineTapA11y}
-                >
-                  <CloudOff size={14} color={scheme.onSurfaceVariant} />
-                  <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
-                </Pressable>
-              )}
-              {liveStale && !offline && (
-                <View style={styles.offlineChip}>
-                  <CloudOff size={14} color={scheme.onSurfaceVariant} />
-                  <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
-                </View>
-              )}
-            </View>
-            {!arrivalMode && !offline && (
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: 16,
+            paddingBottom: insets.bottom + 24,
+          }}
+        >
+          {routeHeader}
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>
+              {timetableReady ? s.routes.calcFail : s.routes.noTimetable}
+            </Text>
+            <Text style={styles.emptySub}>
+              {timetableReady ? s.routes.calcFailBody : s.routes.noTimetableBody}
+            </Text>
+            {!timetableReady && (
               <Pressable
-                onPress={handlePullEarlier}
-                onFocus={() => setEarlierFocused(true)}
-                onBlur={() => setEarlierFocused(false)}
-                disabled={earlierDisabled}
-                accessibilityRole="button"
-                accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
+                onPress={() => void importGtfsFromNetwork()}
+                disabled={timetableBusy}
                 style={({ pressed }) => [
-                  styles.earlierButton,
-                  earlierFocused && styles.earlierFocused,
-                  pressed && { opacity: 0.75 },
+                  styles.retryBtn,
+                  timetableBusy && styles.retryBtnBusy,
+                  pressed && !timetableBusy && { opacity: 0.8 },
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.downloadA11y}
               >
-                {loadingEarlier ? (
-                  <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
-                ) : !noMoreEarlier ? (
-                  <ChevronUp size={18} color={scheme.onSurfaceVariant} />
-                ) : null}
-                <Text style={styles.earlierText} accessibilityLiveRegion="polite">
-                  {loadingEarlier
-                    ? s.routes.earlierLoading
-                    : noMoreEarlier
-                      ? s.routes.earlierEmpty
-                      : earlierFailed
-                        ? s.routes.earlierRetry
-                        : s.routes.earlierAction}
-                </Text>
+                {timetableBusy ? (
+                  <Text style={styles.retryText}>
+                    {dataStatus.state === 'downloading'
+                      ? s.routes.downloading(Math.round(dataStatus.progress * 100))
+                      : dataStatus.state === 'importing'
+                        ? s.routes.downloadingStep(
+                            dataStatus.step,
+                            Math.round(dataStatus.progress * 100),
+                          )
+                        : s.routes.downloadingPlain}
+                  </Text>
+                ) : (
+                  <Text style={styles.retryText}>{s.routes.downloadAction}</Text>
+                )}
               </Pressable>
             )}
-            </>
-          }
-          // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
-          // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
-          // widać, to spinner, a po błędzie - nic, czyli lista po cichu
-          // przestawała się dociągać.
-          // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć-
-          // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
-          ListFooterComponent={
-            loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
-              <View style={styles.footer}>
-                {loadingMore ? (
-                  <ActivityIndicator size="small" color={scheme.primary} />
-                ) : loadMoreFailed ? (
-                  <>
-                    <Text style={styles.footerText}>
-                      {s.routes.moreFail}
-                    </Text>
+            {timetableReady && (
+              <Pressable
+                onPress={() => fetchRoutes(targetTimeSec)}
+                style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={styles.retryText}>{s.common.retry}</Text>
+              </Pressable>
+            )}
+          </View>
+        </ScrollView>
+      ) : (
+        <>
+          <View style={styles.stickyHeader}>{routeHeader}</View>
+          <FlatList
+            ref={listRef}
+            accessibilityState={{ busy: loading }}
+            pointerEvents={loading ? 'none' : 'auto'}
+            refreshControl={
+              arrivalMode || noMoreEarlier || offline ? undefined : (
+                <RefreshControl
+                  refreshing={loadingEarlier}
+                  onRefresh={handlePullEarlier}
+                  enabled={!loading && !loadingMore && !noMoreEarlier && !offline}
+                  title={s.routes.earlierAction}
+                  titleColor={scheme.onSurfaceVariant}
+                  tintColor={scheme.primary}
+                  colors={[scheme.primary]}
+                  progressBackgroundColor={scheme.surfaceContainerHigh}
+                />
+              )
+            }
+            data={displayed}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 80 }}
+            alwaysBounceVertical={!arrivalMode}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            // wymusza przeliczenie etykiet „za X min” bez refetchu
+            extraData={nowTick}
+            keyExtractor={connectionKey}
+            contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
+            // Na Androidzie RN domyślnie odpija widoki spoza kadru
+            // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
+            // nagłówkiem powoduje to miganie pustych miejsc w trakcie
+            // przeciągania palcem, więc trzymamy komórki podpięte.
+            removeClippedSubviews={false}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.5}
+
+            renderItem={renderConnection}
+            ListHeaderComponent={
+              <>
+                <View style={styles.countRow}>
+                  {loading && (
+                    <ActivityIndicator
+                      size="small"
+                      color={scheme.primary}
+                      accessibilityLabel={s.routes.searching}
+                    />
+                  )}
+                  <Text style={styles.count} numberOfLines={1}>
+                    {connectionsLabel(displayed.length)} •{' '}
+                    {isCustomTime
+                      ? arrivalMode
+                        ? timeLabel
+                        : s.routes.countDepart(timeLabel)
+                      : s.routes.countNearest}
+                    {transfersFilter === 'direct' ? s.routes.countDirect : ''}
+                    {modeFilter === 'tram'
+                      ? s.routes.countTram
+                      : modeFilter === 'bus'
+                        ? s.routes.countBus
+                        : ''}
+                  </Text>
+                  {offline && (
                     <Pressable
-                      onPress={() => void handleLoadMore()}
-                      style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                      onPress={() => quietRefresh()}
+                      style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
+                      hitSlop={6}
                       accessibilityRole="button"
-                      accessibilityLabel={s.routes.moreRetryA11y}
+                      accessibilityLabel={s.routes.offlineTapA11y}
                     >
-                      <Text style={styles.retryText}>{s.common.retry}</Text>
+                      <CloudOff size={14} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
                     </Pressable>
-                  </>
-                ) : (
-                  <Text style={styles.footerText}>{arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}</Text>
+                  )}
+                  {liveStale && !offline && (
+                    <View style={styles.offlineChip}>
+                      <CloudOff size={14} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
+                    </View>
+                  )}
+                </View>
+                {!arrivalMode && !offline && (
+                  <Pressable
+                    onPress={handlePullEarlier}
+                    onFocus={() => setEarlierFocused(true)}
+                    onBlur={() => setEarlierFocused(false)}
+                    disabled={earlierDisabled}
+                    accessibilityRole="button"
+                    accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
+                    style={({ pressed }) => [
+                      styles.earlierButton,
+                      earlierFocused && styles.earlierFocused,
+                      pressed && { opacity: 0.75 },
+                    ]}
+                  >
+                    {loadingEarlier ? (
+                      <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
+                    ) : !noMoreEarlier ? (
+                      <ChevronUp size={18} color={scheme.onSurfaceVariant} />
+                    ) : null}
+                    <Text style={styles.earlierText} accessibilityLiveRegion="polite">
+                      {loadingEarlier
+                        ? s.routes.earlierLoading
+                        : noMoreEarlier
+                          ? s.routes.earlierEmpty
+                          : earlierFailed
+                            ? s.routes.earlierRetry
+                            : s.routes.earlierAction}
+                    </Text>
+                  </Pressable>
+                )}
+              </>
+            }
+            // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
+            // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
+            // widać, to spinner, a po błędzie - nic, czyli lista po cichu
+            // przestawała się dociągać.
+            // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć-
+            // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
+            ListFooterComponent={
+              loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
+                <View style={styles.footer}>
+                  {loadingMore ? (
+                    <ActivityIndicator size="small" color={scheme.primary} />
+                  ) : loadMoreFailed ? (
+                    <>
+                      <Text style={styles.footerText}>{s.routes.moreFail}</Text>
+                      <Pressable
+                        onPress={() => void handleLoadMore()}
+                        style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={s.routes.moreRetryA11y}
+                      >
+                        <Text style={styles.retryText}>{s.common.retry}</Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Text style={styles.footerText}>
+                      {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
+                    </Text>
+                  )}
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyTitle}>
+                  {hasActiveFilters ? s.routes.emptyFiltered : s.routes.emptyNone}
+                </Text>
+                <Text style={styles.emptySub}>
+                  {transfersFilter !== 'all' && modeFilter !== 'all'
+                    ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
+                    : transfersFilter !== 'all'
+                      ? s.routes.emptyDirect
+                      : modeFilter !== 'all'
+                        ? s.routes.emptyMode(modeGenitive(modeFilter))
+                        : arrivalMode
+                          ? s.routes.emptyArrival
+                          : s.routes.emptyPlain}
+                </Text>
+                {transfersFilter !== 'all' && (
+                  <Pressable
+                    onPress={() => setTransfersFilter('all')}
+                    style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.routes.showWithChangesA11y}
+                  >
+                    <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
+                  </Pressable>
+                )}
+                {modeFilter !== 'all' && (
+                  <Pressable
+                    onPress={() => setModeFilter('all')}
+                    style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.routes.showAllVehiclesA11y}
+                  >
+                    <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
+                  </Pressable>
+                )}
+                {liveOnly && (
+                  <Pressable
+                    onPress={() => setLiveOnly(false)}
+                    style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.retryText}>{s.routesFilters.allVehicles}</Text>
+                  </Pressable>
                 )}
               </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>
-                {directOnly || modeFilter !== 'all'
-                  ? s.routes.emptyFiltered
-                  : s.routes.emptyNone}
-              </Text>
-              <Text style={styles.emptySub}>
-                {directOnly && modeFilter !== 'all'
-                  ? s.routes.emptyModeDirect(modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen)
-                  : directOnly
-                    ? s.routes.emptyDirect
-                    : modeFilter !== 'all'
-                      ? s.routes.emptyMode(modeFilter === 'tram' ? s.routes.vehicleTramGen : s.routes.vehicleBusGen)
-                      : arrivalMode ? s.routes.emptyArrival : s.routes.emptyPlain}
-              </Text>
-              {directOnly && (
-                <Pressable
-                  onPress={() => setDirectOnly(false)}
-                  style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.showWithChangesA11y}
-                >
-                  <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
-                </Pressable>
-              )}
-              {modeFilter !== 'all' && (
-                <Pressable
-                  onPress={() => setModeFilter('all')}
-                  style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.showAllVehiclesA11y}
-                >
-                  <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
-                </Pressable>
-              )}
-            </View>
-          }
+            }
+          />
+        </>
+      )}
+
+      {/* Bottom sheet filtrów połączeń */}
+      {filtersOpen && (
+        <RouteFilterSheet
+          availableModes={availableModes}
+          selectedMode={modeFilter}
+          sortMode={sortMode}
+          defaultSortMode={defaultSortMode}
+          transfersFilter={transfersFilter}
+          liveOnly={liveOnly}
+          onSelectMode={setModeFilter}
+          onSelectSort={setSortMode}
+          onSelectTransfers={setTransfersFilter}
+          onToggleLiveOnly={() => setLiveOnly((prev) => !prev)}
+          onReset={() => {
+            setModeFilter('all');
+            setTransfersFilter('all');
+            setSortMode(getSettingsSync().routeStyle);
+            setLiveOnly(false);
+          }}
+          onClose={() => setFiltersOpen(false)}
         />
       )}
 
@@ -1301,7 +1420,9 @@ export default function RoutesScreen() {
       {/* 5. Wyszukiwarka startu / celu - ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
-          placeholder={sheetFor === 'from' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
+          placeholder={
+            sheetFor === 'from' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo
+          }
           query={query}
           loading={searchLoading}
           error={searchError}
@@ -1318,31 +1439,16 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 6. Dolne menu - filtry i akcje pod kciukiem (swap, bezpośr.,
-          pojazd, czas), ze springowym chowaniem się przy przewijaniu listy.
-          Sortowanie wróciło do toggla w górnym pasku. */}
-      {!sheetFor && !timeSheetOpen && (
-        <RoutesThumbBar
-          animatedStyle={animatedDockStyle}
-          onSwap={handleSwap}
-          directOnly={directOnly}
-          onToggleDirect={() => setDirectOnly(!directOnly)}
-          timeLabel={timeLabel}
-          isCustomTime={isCustomTime}
-          arrivalMode={arrivalMode}
-          onOpenTimeSheet={() => setTimeSheetOpen(true)}
-          modeFilter={modeFilter}
-          onCycleMode={handleCycleMode}
+      {preview && (
+        <ConnectionPeek
+          item={preview.item}
+          sticky={preview.sticky}
+          ready={previewReady}
+          offline={offline || liveStale}
+          onClose={closePreview}
+          onOpen={() => openConnection(preview.item)}
         />
       )}
-      {preview && <ConnectionPeek
-        item={preview.item}
-        sticky={preview.sticky}
-        ready={previewReady}
-        offline={offline || liveStale}
-        onClose={closePreview}
-        onOpen={() => openConnection(preview.item)}
-      />}
     </SafeAreaView>
   );
 }
@@ -1417,9 +1523,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  filterCardsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  actionCard: {
+    flex: 1,
+    minHeight: 48,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.large,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  actionCardActive: {
+    backgroundColor: scheme.secondaryContainer,
+  },
+  actionCardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
+  actionCardText: {
+    ...type.labelLarge,
+    color: scheme.onSurface,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  actionCardTextActive: {
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+  },
   routeHeader: {
     marginTop: 4,
     marginBottom: 16,
+  },
+  stickyHeader: {
+    paddingHorizontal: 16,
+    backgroundColor: scheme.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: scheme.outlineVariant,
   },
 
   countRow: {

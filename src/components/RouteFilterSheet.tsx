@@ -14,7 +14,6 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 import {
   Activity,
@@ -31,7 +30,6 @@ import {
   Zap,
 } from './icons';
 import { scheme, shape, spacing, type } from '../theme/tokens';
-import { motion } from '../theme/motion';
 import { useStrings } from '../i18n';
 import type { LegMode } from '../types/models';
 import type { RouteStyle } from '../services/routing/types';
@@ -57,8 +55,9 @@ export interface RouteFilterSheetProps {
 // Spring używany do przesuwania wskaźników i przełączników.
 // M3 expressive: szybki, ale z wyrazistym wygaszeniem.
 const springConfig = {
-  damping: 22,
-  stiffness: 280,
+  damping: 20,
+  stiffness: 420,
+  mass: 0.8,
   reduceMotion: ReduceMotion.System,
 } as const;
 
@@ -372,22 +371,6 @@ function SortRow({
   active: boolean;
   onPress: () => void;
 }) {
-  const reduceMotion = useReducedMotion();
-  const activeSV = useSharedValue(active ? 1 : 0);
-
-  useEffect(() => {
-    activeSV.value = reduceMotion ? (active ? 1 : 0) : withTiming(active ? 1 : 0, motion.state);
-  }, [active, activeSV, reduceMotion]);
-
-  const containerStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(
-      activeSV.value,
-      [0, 1],
-      [scheme.surfaceContainerLow, scheme.primaryContainer],
-    ),
-    borderColor: interpolateColor(activeSV.value, [0, 1], [scheme.outlineVariant, scheme.primary]),
-  }));
-
   return (
     <Pressable
       onPress={onPress}
@@ -396,7 +379,7 @@ function SortRow({
       accessibilityState={{ selected: active }}
       accessibilityLabel={`${label}, ${desc}`}
     >
-      <Animated.View style={[styles.sortCard, containerStyle]}>
+      <View style={[styles.sortCard, active && styles.sortCardActive]}>
         <View style={styles.sortCardTop}>
           <View style={[styles.sortIconCircle, active && styles.sortIconCircleActive]}>
             {renderIcon(active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant)}
@@ -412,7 +395,7 @@ function SortRow({
         <Text style={[styles.sortCardDesc, active && styles.sortCardDescActive]} numberOfLines={2}>
           {desc}
         </Text>
-      </Animated.View>
+      </View>
     </Pressable>
   );
 }
@@ -462,7 +445,8 @@ function TransfersSegment({
     progress.value = reduceMotion ? activeIndex : withSpring(activeIndex, springConfig);
   }, [activeIndex, progress, reduceMotion]);
 
-  const segmentWidth = containerWidth > 0 ? (containerWidth - 6) / 3 : 0;
+  // Szerokość zewnętrzna minus 2px border i 6px padding wewnętrznego.
+  const segmentWidth = containerWidth > 0 ? (containerWidth - 8) / 3 : 0;
   const indicatorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: progress.value * segmentWidth }],
   }));
@@ -661,8 +645,14 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: shape.large,
     borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    backgroundColor: scheme.surfaceContainerLow,
     minHeight: 104,
     gap: spacing.xs,
+  },
+  sortCardActive: {
+    borderColor: scheme.primary,
+    backgroundColor: scheme.primaryContainer,
   },
   sortCardTop: {
     flexDirection: 'row',
@@ -735,6 +725,7 @@ const styles = StyleSheet.create({
     padding: 3,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
+    overflow: 'hidden',
   },
   segmentIndicator: {
     position: 'absolute',
@@ -812,6 +803,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerHighest,
     padding: 2,
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   switchTrackActive: {
     backgroundColor: scheme.primary,
