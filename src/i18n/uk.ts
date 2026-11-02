@@ -1088,6 +1088,7 @@ export const uk: Strings = {
     offlineNote: 'Збережено офлайн. Час за розкладом, без даних у реальному часі.',
     noLiveNote: 'Час за розкладом. Немає даних у реальному часі.',
     onTime: 'Вчасно',
+    liveDataAge: (s: number) => `Дані ${s}с тому`,
     scheduleCache: 'Розклад з кешу',
     schedule: 'Розклад',
     noTrip: 'Немає геометрії маршруту',

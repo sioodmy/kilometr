@@ -1038,6 +1038,7 @@ export const en: Strings = {
     offlineNote: 'Saved offline. Timetable times, no live data.',
     noLiveNote: 'Timetable times. No live data.',
     onTime: 'On time',
+    liveDataAge: (s: number) => `Data from ${s}s ago`,
     scheduleCache: 'Cached timetable',
     schedule: 'Timetable',
     noTrip: 'No route geometry',
