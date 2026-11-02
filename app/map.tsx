@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -330,20 +331,47 @@ export default function RouteMapScreen() {
   }, [item, route]);
 
   // ─── Akcje ──────────────────────────────────────────────────
-  const handleSelectLeg = (legId: string) => {
-    if (legId === selectedLegId) mapRef.current?.fit();
-    else setSelectedLegId(legId);
-  };
+  const handleSelectLeg = useCallback(
+    (legId: string) => {
+      if (legId === selectedLegId) mapRef.current?.fit();
+      else setSelectedLegId(legId);
+    },
+    [selectedLegId],
+  );
 
-  const handleShowRoute = () => {
+  const handleShowRoute = useCallback(() => {
     if (selectedLegId === null) mapRef.current?.fit();
     else setSelectedLegId(null);
-  };
+  }, [selectedLegId]);
 
-  const goBack = () => {
+  const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/');
-  };
+  }, [router]);
+
+  const handleTilesStatus = useCallback(
+    (ok: boolean) => {
+      if (ok) markTilesOk();
+      else markTilesDown();
+    },
+    [markTilesOk, markTilesDown],
+  );
+
+  const handleMapError = useCallback(() => {
+    markTilesDown(s.map.mapLoadFail);
+  }, [markTilesDown, s.map.mapLoadFail]);
+
+  const handleHeaderLayout = useCallback((e: LayoutChangeEvent) => {
+    setHeaderHeight(e.nativeEvent.layout.height);
+  }, []);
+
+  const handlePanelLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const h = e.nativeEvent.layout.height;
+      if (Math.abs(h - panelHeight) > 2) setPanelHeight(h);
+    },
+    [panelHeight],
+  );
 
   // ─── Render ─────────────────────────────────────────────────
   if (loadFailed && !item) {
@@ -367,6 +395,7 @@ export default function RouteMapScreen() {
             onPress={goBack}
             style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
+            accessibilityLabel={s.map.backToDetails}
           >
             <Text style={styles.primaryBtnText}>{s.map.backToDetails}</Text>
           </Pressable>
@@ -413,11 +442,8 @@ export default function RouteMapScreen() {
           paddingBottom={panelHeight + insets.bottom + 16}
           onReady={handleMapReady}
           onLegTap={handleSelectLeg}
-          onTilesStatus={(ok) => {
-            if (ok) markTilesOk();
-            else markTilesDown();
-          }}
-          onError={() => markTilesDown(s.map.mapLoadFail)}
+          onTilesStatus={handleTilesStatus}
+          onError={handleMapError}
         />
       ) : (
         <View style={styles.mapPlaceholder} />
@@ -426,7 +452,7 @@ export default function RouteMapScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
         <View
           style={styles.headerSurface}
-          onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+          onLayout={handleHeaderLayout}
         >
           <View style={styles.headerRow}>
             <Pressable
@@ -473,10 +499,7 @@ export default function RouteMapScreen() {
 
       <View
         style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}
-        onLayout={(e) => {
-          const h = e.nativeEvent.layout.height;
-          if (Math.abs(h - panelHeight) > 2) setPanelHeight(h);
-        }}
+        onLayout={handlePanelLayout}
       >
         <View style={[styles.panelHead, compact && styles.panelHeadCompact]}>
           <Text style={styles.panelTitle}>{s.map.stagesTitle}</Text>
