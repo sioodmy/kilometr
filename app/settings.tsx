@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -282,39 +282,51 @@ export default function SettingsScreen() {
     icon: typeof Turtle;
     label: string;
     desc: string;
-  }[] = [
-    { value: 'slow', icon: Turtle, label: s.settings.paceSlow, desc: s.settings.paceSlowDesc },
-    {
-      value: 'normal',
-      icon: Footprints,
-      label: s.settings.paceNormal,
-      desc: s.settings.paceNormalDesc,
-    },
-    { value: 'fast', icon: Rabbit, label: s.settings.paceFast, desc: s.settings.paceFastDesc },
-  ];
-  const styleOptions: { value: RouteStyle; label: string; desc: string }[] = [
-    { value: 'fastest', label: s.settings.styleFastest, desc: s.settings.styleFastestDesc },
-    { value: 'balanced', label: s.settings.styleBalanced, desc: s.settings.styleBalancedDesc },
-    {
-      value: 'lessWalking',
-      label: s.settings.styleLessWalking,
-      desc: s.settings.styleLessWalkingDesc,
-    },
-    {
-      value: 'fewerTransfers',
-      label: s.settings.styleFewerTransfers,
-      desc: s.settings.styleFewerTransfersDesc,
-    },
-  ];
-  const modePills: { value: TransitVehicleMode; icon: typeof TramFront; label: string }[] = [
-    { value: 'tram', icon: TramFront, label: s.settings.modeTram },
-    { value: 'bus', icon: BusFront, label: s.settings.modeBus },
-    { value: 'trolleybus', icon: BusFront, label: s.settings.modeTrolleybus },
-    { value: 'subway', icon: TrainFront, label: s.settings.modeSubway },
-    { value: 'train', icon: TrainFront, label: s.settings.modeTrain },
-    { value: 'cable', icon: CableCar, label: s.settings.modeCable },
-  ];
-  const enabledModes = TRANSIT_MODES.filter((m) => settings.allowedModes[m]);
+  }[] = useMemo(
+    () => [
+      { value: 'slow', icon: Turtle, label: s.settings.paceSlow, desc: s.settings.paceSlowDesc },
+      {
+        value: 'normal',
+        icon: Footprints,
+        label: s.settings.paceNormal,
+        desc: s.settings.paceNormalDesc,
+      },
+      { value: 'fast', icon: Rabbit, label: s.settings.paceFast, desc: s.settings.paceFastDesc },
+    ],
+    [s],
+  );
+  const styleOptions: { value: RouteStyle; label: string; desc: string }[] = useMemo(
+    () => [
+      { value: 'fastest', label: s.settings.styleFastest, desc: s.settings.styleFastestDesc },
+      { value: 'balanced', label: s.settings.styleBalanced, desc: s.settings.styleBalancedDesc },
+      {
+        value: 'lessWalking',
+        label: s.settings.styleLessWalking,
+        desc: s.settings.styleLessWalkingDesc,
+      },
+      {
+        value: 'fewerTransfers',
+        label: s.settings.styleFewerTransfers,
+        desc: s.settings.styleFewerTransfersDesc,
+      },
+    ],
+    [s],
+  );
+  const modePills: { value: TransitVehicleMode; icon: typeof TramFront; label: string }[] = useMemo(
+    () => [
+      { value: 'tram', icon: TramFront, label: s.settings.modeTram },
+      { value: 'bus', icon: BusFront, label: s.settings.modeBus },
+      { value: 'trolleybus', icon: BusFront, label: s.settings.modeTrolleybus },
+      { value: 'subway', icon: TrainFront, label: s.settings.modeSubway },
+      { value: 'train', icon: TrainFront, label: s.settings.modeTrain },
+      { value: 'cable', icon: CableCar, label: s.settings.modeCable },
+    ],
+    [s],
+  );
+  const enabledModes = useMemo(
+    () => TRANSIT_MODES.filter((m) => settings.allowedModes[m]),
+    [settings.allowedModes],
+  );
 
   const maxT = SETTINGS_LIMITS.maxTransfers;
   const minT = SETTINGS_LIMITS.minTransferSec;
@@ -565,6 +577,7 @@ export default function SettingsScreen() {
               <Pressable
                 onPress={handleDownload}
                 disabled={busy}
+                accessibilityRole="button"
                 style={({ pressed }) => [
                   hasTimetable ? styles.checkBtn : styles.downloadBtn,
                   busy && styles.stepBtnDisabled,
