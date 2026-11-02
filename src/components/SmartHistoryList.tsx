@@ -4,7 +4,7 @@ import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode, SmartDestination } from '../types/models';
 import type { SuggestionIconMeta } from './SuggestionRow';
 import { LineBadge } from './LineBadge';
-import { useStrings, tr } from '../i18n';
+import { useStrings, type Strings } from '../i18n';
 
 export interface SmartLineBadge {
   mode?: LegMode;
@@ -26,7 +26,7 @@ export function SmartHistoryList({
   /** pierwsza linia tranzytowa (tramwaj/autobus) do celu; brak wpisu = sam tekst „za x min” */
   lineBadges?: Record<string, SmartLineBadge | undefined>;
   onSelect: (d: SmartDestination) => void;
-  /** Tap w prawą część (badge + „za x min”) - od razu do ekranu tego połączenia. */
+  /** Tap w prawą część (badge + „za x min”): od razu do ekranu tego połączenia. */
   onOpenConnection?: (d: SmartDestination) => void;
   /** Czysty widok bez nagłówka „Ostatnie miejsca” (nagłówek żyje gdzie indziej). */
   hideHeader?: boolean;
@@ -49,7 +49,7 @@ export function SmartHistoryList({
       <View style={styles.list}>
         {items.map((d, index) => {
           const departInMin = departures?.[d.id];
-          const departLabel = formatDepartIn(departInMin);
+          const departLabel = formatDepartIn(departInMin, s);
           const meta = icons?.[d.id];
           const Icon = meta?.Icon ?? History;
           const badge = lineBadges?.[d.id];
@@ -122,23 +122,23 @@ export function SmartHistoryList({
 
 /**
  * „za X min” do najszybszego połączenia; powyżej 59 min pokazuje pełną godzinę
- * odjazdu (np. „13:20”), a wartości ujemne - ile minut temu coś odjechało.
+ * odjazdu (np. „13:20”), a wartości ujemne określają, ile minut temu coś odjechało.
  * Ujemne bez tej gałęzi obcinały się do zera i raportowały „za chwilę”.
  */
-function formatDepartIn(departInMin: number | undefined): string | null {
+function formatDepartIn(departInMin: number | undefined, s: Strings): string | null {
   if (departInMin === undefined || !Number.isFinite(departInMin)) return null;
   const m = Math.round(departInMin);
   if (m > 180) return null;
   if (m < -180) return null;
-  if (m < 0) return m >= -1 ? tr().common.departJustAgo : tr().common.departAgo(-m);
+  if (m < 0) return m >= -1 ? s.common.departJustAgo : s.common.departAgo(-m);
   if (m > 59) {
     const target = new Date(Date.now() + m * 60 * 1000);
     const hh = String(target.getHours()).padStart(2, '0');
     const mm = String(target.getMinutes()).padStart(2, '0');
     return `${hh}:${mm}`;
   }
-  if (m <= 0) return tr().common.departNow;
-  return tr().common.departIn(m);
+  if (m <= 0) return s.common.departNow;
+  return s.common.departIn(m);
 }
 
 const styles = StyleSheet.create({
