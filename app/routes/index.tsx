@@ -61,7 +61,8 @@ import {
   mergeConnections,
 } from '../../src/services/routing/connectionIdentity';
 import { loadEarlierConnections } from '../../src/services/routing/earlierConnections';
-import { applyLiveDelays, sortConnectionsByCost } from '../../src/services/routing/engine';
+import { sortConnectionsByCost } from '../../src/services/routing/engine';
+import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
 import { boardingDepartureMs } from '../../src/services/routing/connectionTimes';
 import { costParamsFor } from '../../src/services/routing/raptor';
 import type { JourneyTimeMode, RouteStyle } from '../../src/services/routing/types';
@@ -293,11 +294,14 @@ export default function RoutesScreen() {
     }
   }, [availableModes, modeFilter]);
 
+  const tripDelays = useMemo(
+    () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
+    [offline, liveStale, liveTick],
+  );
+  const liveItems = useRailLiveConnections(items, tripDelays, !offline);
+
   const displayed = useMemo(() => {
-    let list = applyLiveDelays(
-      items,
-      offline || liveStale ? new Map() : liveTracker.getTripDelays(),
-    );
+    let list = liveItems;
     if (transfersFilter === 'direct') {
       list = list.filter((c) => c.transfers === 0);
     } else if (transfersFilter === 'max1') {
@@ -336,18 +340,7 @@ export default function RoutesScreen() {
       profileWalkSpeedMps(cfg.walkPace),
       arrivalMode ? targetTimeSec : undefined,
     );
-  }, [
-    items,
-    transfersFilter,
-    liveOnly,
-    modeFilter,
-    sortMode,
-    arrivalMode,
-    targetTimeSec,
-    liveTick,
-    offline,
-    liveStale,
-  ]);
+  }, [liveItems, transfersFilter, liveOnly, modeFilter, sortMode, arrivalMode, targetTimeSec]);
 
   const listRef = useRef<FlatList<Connection>>(null);
 
@@ -394,45 +387,49 @@ export default function RoutesScreen() {
   const [gpsOutside, setGpsOutside] = useState(false);
 
   useEffect(() => {
-    SearchService.recent().then(setRecent).catch(() => {});
-    Promise.all([FavoritesService.list(), loadSettings()]).then(([places, currentSettings]) => {
-      setSavedPlaces(places);
-      setSavedQuick(
-        places.map((p) => ({
-          id: p.placeId,
-          title: p.name,
-          address: p.address,
-          kind: 'history' as const,
-          lat: p.lat,
-          lon: p.lon,
-        })),
-      );
-
-      if (!initialAnchorCheckedRef.current) {
-        initialAnchorCheckedRef.current = true;
-        const cityD = defaultLocationForCity(getActiveCityIdSync());
-        const startLat = Number(params.fromLat || cityD.lat);
-        const startLon = Number(params.fromLon || cityD.lon);
-        const startTitle = params.fromTitle || cityD.title;
-        const anchor = findAnchorForLocation(
-          startLat,
-          startLon,
-          startTitle,
-          places,
-          currentSettings.anchorRadiusM,
-          dismissedAnchorsRef.current,
+    SearchService.recent()
+      .then(setRecent)
+      .catch(() => {});
+    Promise.all([FavoritesService.list(), loadSettings()])
+      .then(([places, currentSettings]) => {
+        setSavedPlaces(places);
+        setSavedQuick(
+          places.map((p) => ({
+            id: p.placeId,
+            title: p.name,
+            address: p.address,
+            kind: 'history' as const,
+            lat: p.lat,
+            lon: p.lon,
+          })),
         );
-        if (anchor) {
-          // Kotwica NIE przepisuje pozycji na przystanek (to generowało
-          // absurdalne "wsiądź i od razu wysiądź" z zerowym dojściem).
-          // from* zostaje prawdziwym GPS, kotwica idzie jako preferencja.
-          setActiveAnchor(anchor);
-          setFromTitle(startTitle);
-          setFromLat(startLat);
-          setFromLon(startLon);
+
+        if (!initialAnchorCheckedRef.current) {
+          initialAnchorCheckedRef.current = true;
+          const cityD = defaultLocationForCity(getActiveCityIdSync());
+          const startLat = Number(params.fromLat || cityD.lat);
+          const startLon = Number(params.fromLon || cityD.lon);
+          const startTitle = params.fromTitle || cityD.title;
+          const anchor = findAnchorForLocation(
+            startLat,
+            startLon,
+            startTitle,
+            places,
+            currentSettings.anchorRadiusM,
+            dismissedAnchorsRef.current,
+          );
+          if (anchor) {
+            // Kotwica NIE przepisuje pozycji na przystanek (to generowało
+            // absurdalne "wsiądź i od razu wysiądź" z zerowym dojściem).
+            // from* zostaje prawdziwym GPS, kotwica idzie jako preferencja.
+            setActiveAnchor(anchor);
+            setFromTitle(startTitle);
+            setFromLat(startLat);
+            setFromLon(startLon);
+          }
         }
-      }
-    }).catch(() => {});
+      })
+      .catch(() => {});
   }, []);
 
   // Start z GPS bez kotwicy liczy się z fixu, który mógł być słaby (Balanced
@@ -561,7 +558,9 @@ export default function RoutesScreen() {
 
     void SearchService.recordRecent(sug)
       .then(() => {
-        SearchService.recent().then(setRecent).catch(() => {});
+        SearchService.recent()
+          .then(setRecent)
+          .catch(() => {});
       })
       .catch(() => {});
 
@@ -963,7 +962,9 @@ export default function RoutesScreen() {
       <Animated.View
         style={headerStyle}
         entering={
-          reduceMotion ? undefined : FadeInDown.duration(240).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+          reduceMotion
+            ? undefined
+            : FadeInDown.duration(240).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
         }
       >
         <RouteEndpoints

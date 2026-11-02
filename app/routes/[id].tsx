@@ -32,7 +32,7 @@ import {
   normalizeConnectionId,
   stableConnectionId,
 } from '../../src/services/routing/connectionIdentity';
-import { applyLiveDelays } from '../../src/services/routing/engine';
+import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
@@ -136,17 +136,13 @@ export default function RouteDetailsScreen() {
       sub.remove();
     };
   }, []);
-  const item = useMemo(
-    () =>
-      rawItem
-        ? (applyLiveDelays(
-            [rawItem],
-            offline || liveStale ? new Map() : liveTracker.getTripDelays(),
-          )[0] ?? null)
-        : null,
-    // liveTick wymusza przemapowanie po każdym nowym polli trackera.
-    [rawItem, liveTick, offline, liveStale],
+  const rawItems = useMemo(() => (rawItem ? [rawItem] : []), [rawItem]);
+  const tripDelays = useMemo(
+    () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
+    [offline, liveStale, liveTick],
   );
+  const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline);
+  const item = liveItems[0] ?? null;
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [sharing, setSharing] = useState(false);
