@@ -1123,6 +1123,7 @@ export default function HomeScreen() {
                 city={gpsCity}
                 coords={gpsLocation}
                 activeCity={s.city.name(cityId)}
+                activeCityId={cityId}
                 onPickStart={() => {
                   setReturnToDestinationAfterStart(false);
                   setQuery('');

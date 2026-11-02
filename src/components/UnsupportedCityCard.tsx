@@ -2,46 +2,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MapPinOff, Navigation } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
-import { CITIES, suggestCityForCoords, type CityId } from '../cities';
+import { resolveSupportedCityId, suggestCityForCoords, type CityId } from '../cities';
 
-function resolveSupportedCityId(name?: string | null): CityId | undefined {
-  if (!name) return undefined;
-  const n = name.trim().toLocaleLowerCase();
-  const direct = CITIES.find((c) => c.name.toLocaleLowerCase() === n || c.id === n);
-  if (direct) return direct.id;
-  if (
-    [
-      'katowice',
-      'gliwice',
-      'sosnowiec',
-      'zabrze',
-      'bytom',
-      'ruda śląska',
-      'tychy',
-      'dąbrowa górnicza',
-      'chorzów',
-      'jaworzno',
-      'mysłowice',
-      'siemianowice śląskie',
-      'tarnowskie góry',
-      'piekary śląskie',
-      'będzin',
-      'świętochłowice',
-      'mikołów',
-      'czeladź',
-    ].includes(n)
-  ) {
-    return 'gzm';
-  }
-  if (['gdańsk', 'gdynia', 'sopot'].includes(n)) {
-    return 'trojmiasto';
-  }
-  return undefined;
-}
+export { resolveSupportedCityId };
 
 export function UnsupportedCityCard({
   city,
   activeCity,
+  activeCityId,
   onPickStart,
   coords,
 }: {
@@ -49,18 +17,27 @@ export function UnsupportedCityCard({
   city: string | null;
   /** Nazwa aktywnego miasta (tego, dla którego mamy rozkład). */
   activeCity: string;
+  /** Id aktywnego miasta (zapobiega fałszywym ostrzeżeniom, gdy użytkownik jest w aktywnym mieście). */
+  activeCityId?: CityId;
   onPickStart: () => void;
   /** Współrzędne GPS (opcjonalne, do precyzyjnego dopasowania strefy). */
   coords?: { lat: number; lon: number } | null;
 }) {
   const s = useStrings();
   const supported = s.city.supportedList;
-  // Karta pokazuje się też wtedy, gdy użytkownik stoi w mieście, które
-  // obsługujemy, ale w apce ma ustawione inne. Bez tego wariantu tekst
-  // głosiłby „obsługujemy tylko: Wrocław, Kraków” osobie stojącej w Krakowie.
+
+  // Najpierw sprawdzamy precyzyjne współrzędne GPS (bounding box + promień).
+  // Dopiero przy ich braku wspomagamy się nazwą miejscowości z reverse geocodingu.
   const matchedCityId =
     (coords && suggestCityForCoords(coords.lat, coords.lon)?.id) ??
     resolveSupportedCityId(city);
+
+  // Bezpieczeństwo: jeśli wykryte miasto to dokładnie to, które użytkownik ma wybrane,
+  // nie wyświetlamy ostrzeżenia (użytkownik znajduje się w obszarze obsługiwanym).
+  if (activeCityId && matchedCityId === activeCityId) {
+    return null;
+  }
+
   const insideSupported = matchedCityId != null;
 
   const body = !city && !insideSupported
