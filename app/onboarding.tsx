@@ -15,6 +15,7 @@ import {
   TextInput,
   View,
   useWindowDimensions,
+  type ListRenderItem,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -367,6 +368,8 @@ function useOnboardingPlaces() {
   };
 }
 
+const cityKeyExtractor = (c: (typeof CITIES)[number]) => c.id;
+
 export default function OnboardingScreen() {
   const s = useStrings();
   const router = useRouter();
@@ -386,6 +389,63 @@ export default function OnboardingScreen() {
   } = useCitySuggestion(perms.loc === 'granted');
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   const [downloading, setDownloading] = useState(false);
+
+  const handleOpenPrivacy = useCallback(() => {
+    router.push('/privacy');
+  }, [router]);
+
+  const cityListHeader = useMemo(
+    () => (
+      <View style={st.cityHead}>
+        <Text style={st.title}>{s.onboarding.cityTitle}</Text>
+        <Text style={st.leadSmall}>{s.onboarding.cityBody}</Text>
+
+        {suggested ? (
+          <Text style={st.suggestNote}>{s.onboarding.citySuggested(s.city.loc(suggested))}</Text>
+        ) : perms.loc !== 'granted' ? (
+          <Text style={st.suggestNote}>{s.onboarding.cityNoGps}</Text>
+        ) : citySuggestionStatus === 'locating' ? (
+          <Text style={st.suggestNote}>{s.onboarding.cityLocating}</Text>
+        ) : citySuggestionStatus === 'nomatch' ? (
+          <Text style={st.suggestNote}>{s.onboarding.cityNoMatch}</Text>
+        ) : null}
+      </View>
+    ),
+    [citySuggestionStatus, perms.loc, s, st, suggested],
+  );
+
+  const renderCityItem = useCallback<ListRenderItem<(typeof CITIES)[number]>>(
+    ({ item: c }) => {
+      const active = cityId === c.id;
+      const isSuggested = suggested === c.id;
+      return (
+        <Pressable
+          onPress={() => void pick(c.id)}
+          disabled={switchingCity}
+          style={({ pressed }) => [
+            st.cityChip,
+            active && st.cityChipActive,
+            pressed && !active && { opacity: 0.75 },
+          ]}
+          accessibilityRole="radio"
+          accessibilityState={{ checked: active, disabled: switchingCity }}
+          accessibilityLabel={s.onboarding.cityPickA11y(s.city.name(c.id))}
+          accessibilityHint={
+            isSuggested ? s.onboarding.citySuggestedA11y(s.city.name(c.id)) : undefined
+          }
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[st.cityName, active && st.cityNameActive]}>{s.city.name(c.id)}</Text>
+            <Text style={[st.citySub, active && st.citySubActive]}>{s.city.feeds(c.id)}</Text>
+          </View>
+          <View style={[st.radio, active && st.radioActive]}>
+            {active && <Check size={16} color={scheme.onPrimary} />}
+          </View>
+        </Pressable>
+      );
+    },
+    [cityId, pick, s, suggested, switchingCity],
+  );
   const slots = useOnboardingPlaces();
   const steps = s.onboarding.steps;
   const cityGen = s.city.gen(cityId);
@@ -634,7 +694,7 @@ export default function OnboardingScreen() {
               )}
             </View>
             <Pressable
-              onPress={() => router.push('/privacy')}
+              onPress={handleOpenPrivacy}
               accessibilityRole="link"
               style={({ pressed }) => [st.privacyLink, pressed && { opacity: 0.7 }]}
             >
@@ -647,66 +707,14 @@ export default function OnboardingScreen() {
           <View style={st.cityStep}>
             <FlatList
               data={CITIES}
-              keyExtractor={(c) => c.id}
+              keyExtractor={cityKeyExtractor}
               style={st.cityList}
               contentContainerStyle={st.cityListContent}
-              ListHeaderComponent={
-                <View style={st.cityHead}>
-                  <Text style={st.title}>{s.onboarding.cityTitle}</Text>
-                  <Text style={st.leadSmall}>{s.onboarding.cityBody}</Text>
-
-                  {suggested ? (
-                    <Text style={st.suggestNote}>
-                      {s.onboarding.citySuggested(s.city.loc(suggested))}
-                    </Text>
-                  ) : perms.loc !== 'granted' ? (
-                    <Text style={st.suggestNote}>{s.onboarding.cityNoGps}</Text>
-                  ) : citySuggestionStatus === 'locating' ? (
-                    <Text style={st.suggestNote}>{s.onboarding.cityLocating}</Text>
-                  ) : citySuggestionStatus === 'nomatch' ? (
-                    <Text style={st.suggestNote}>{s.onboarding.cityNoMatch}</Text>
-                  ) : null}
-                </View>
-              }
+              ListHeaderComponent={cityListHeader}
               showsVerticalScrollIndicator
               overScrollMode="never"
               accessibilityRole="radiogroup"
-              renderItem={({ item: c }) => {
-                const active = cityId === c.id;
-                const isSuggested = suggested === c.id;
-                return (
-                  <Pressable
-                    onPress={() => void pick(c.id)}
-                    disabled={switchingCity}
-                    style={({ pressed }) => [
-                      st.cityChip,
-                      active && st.cityChipActive,
-                      pressed && !active && { opacity: 0.75 },
-                    ]}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: active, disabled: switchingCity }}
-                    // Etykieta opisuje wybór, nie podpowiedź GPS: TalkBack czyta „Proponowane
-                    // miasto według GPS" jako nazwę przycisku, a stan i tak
-                    // ogłasza przez accessibilityState.
-                    accessibilityLabel={s.onboarding.cityPickA11y(s.city.name(c.id))}
-                    accessibilityHint={
-                      isSuggested ? s.onboarding.citySuggestedA11y(s.city.name(c.id)) : undefined
-                    }
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[st.cityName, active && st.cityNameActive]}>
-                        {s.city.name(c.id)}
-                      </Text>
-                      <Text style={[st.citySub, active && st.citySubActive]}>
-                        {s.city.feeds(c.id)}
-                      </Text>
-                    </View>
-                    <View style={[st.radio, active && st.radioActive]}>
-                      {active && <Check size={16} color={scheme.onPrimary} />}
-                    </View>
-                  </Pressable>
-                );
-              }}
+              renderItem={renderCityItem}
             />
           </View>
         )}
@@ -944,7 +952,7 @@ export default function OnboardingScreen() {
           <>
             <PrimaryBtn label={s.onboarding.start} onPress={next} />
             <Pressable
-              onPress={() => router.push('/privacy')}
+              onPress={handleOpenPrivacy}
               accessibilityRole="link"
               style={({ pressed }) => [st.privacyLink, pressed && { opacity: 0.7 }]}
             >
