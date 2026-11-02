@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type ListRenderItem,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -51,6 +52,8 @@ type NewsFilter = 'all' | 'myLines';
 
 type Row =
   { kind: 'head'; id: string; label: string } | { kind: 'item'; id: string; item: MpkNewsItem };
+
+const keyExtractor = (row: Row) => row.id;
 
 type Tone = 'urgent' | 'resolved' | 'quiet';
 
@@ -238,6 +241,10 @@ export default function NewsScreen() {
     [s, refreshMyLines],
   );
 
+  const handleListRefresh = useCallback(() => {
+    void load(true);
+  }, [load]);
+
   useEffect(() => {
     let live = true;
     void markNewsSeen();
@@ -296,8 +303,51 @@ export default function NewsScreen() {
     return out;
   }, [visibleItems, s]);
 
-  const urgentCount = visibleItems.filter((i) => i.urgent).length;
+  const urgentCount = useMemo(() => {
+    let count = 0;
+    for (const item of visibleItems) {
+      if (item.urgent) count++;
+    }
+    return count;
+  }, [visibleItems]);
   const filterEmpty = filter === 'myLines' && items.length > 0 && visibleItems.length === 0;
+
+  const renderItem = useCallback<ListRenderItem<Row>>(
+    ({ item: row, index }) =>
+      row.kind === 'head' ? (
+        <Animated.View
+          layout={reduceMotion ? undefined : LinearTransition.duration(200)}
+          entering={reduceMotion ? undefined : FadeIn.duration(200)}
+        >
+          <Text style={styles.section} accessibilityRole="header">
+            {row.label}
+          </Text>
+        </Animated.View>
+      ) : (
+        <Animated.View
+          layout={
+            reduceMotion
+              ? undefined
+              : LinearTransition.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+          }
+          entering={
+            reduceMotion || index >= 6
+              ? undefined
+              : FadeInDown.delay(index * 35)
+                  .duration(220)
+                  .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+          }
+          exiting={
+            reduceMotion
+              ? undefined
+              : FadeOutUp.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
+          }
+        >
+          <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
+        </Animated.View>
+      ),
+    [reduceMotion, operator, portal, openItem],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -421,7 +471,7 @@ export default function NewsScreen() {
       ) : (
         <FlatList
           data={rows}
-          keyExtractor={(row) => row.id}
+          keyExtractor={keyExtractor}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
@@ -429,45 +479,12 @@ export default function NewsScreen() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => void load(true)}
+              onRefresh={handleListRefresh}
               tintColor={scheme.primary}
               colors={[scheme.primary]}
             />
           }
-          renderItem={({ item: row, index }) =>
-            row.kind === 'head' ? (
-              <Animated.View
-                layout={reduceMotion ? undefined : LinearTransition.duration(200)}
-                entering={reduceMotion ? undefined : FadeIn.duration(200)}
-              >
-                <Text style={styles.section} accessibilityRole="header">
-                  {row.label}
-                </Text>
-              </Animated.View>
-            ) : (
-              <Animated.View
-                layout={
-                  reduceMotion
-                    ? undefined
-                    : LinearTransition.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-                }
-                entering={
-                  reduceMotion || index >= 6
-                    ? undefined
-                    : FadeInDown.delay(index * 35)
-                        .duration(220)
-                        .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-                }
-                exiting={
-                  reduceMotion
-                    ? undefined
-                    : FadeOutUp.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
-                }
-              >
-                <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
-              </Animated.View>
-            )
-          }
+          renderItem={renderItem}
           ListEmptyComponent={
             <Animated.View
               entering={reduceMotion ? undefined : FadeInDown.duration(240)}
