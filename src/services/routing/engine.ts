@@ -306,7 +306,26 @@ export function sortConnectionsByCost(connections: Connection[], cost: CostParam
  * Bez opcji "na piechotę" - tę dokłada wywołujący na samym końcu.
  * Używane i dla emisji progresywnych (po każdym oknie), i dla wyniku finalnego.
  */
-function mapJourneysToConnections(
+/** Łączy bezpośrednio sąsiadujące odcinki piesze w jeden. */
+export function mergeConsecutiveWalkLegs(legs: Leg[]): Leg[] {
+  const out: Leg[] = [];
+  for (const leg of legs) {
+    const prev = out[out.length - 1];
+    if (prev && prev.mode === "walk" && leg.mode === "walk") {
+      prev.toStop = leg.toStop;
+      prev.toStopId = leg.toStopId;
+      prev.toLat = leg.toLat;
+      prev.toLon = leg.toLon;
+      prev.arriveAt = leg.arriveAt;
+      prev.walkM = (prev.walkM ?? 0) + (leg.walkM ?? 0);
+    } else {
+      out.push({ ...leg });
+    }
+  }
+  return out;
+}
+
+export function mapJourneysToConnections(
   journeys: RawJourney[],
   options: PlanOptions,
   ctx: MapCtx,
@@ -399,7 +418,8 @@ function mapJourneysToConnections(
       legs.push(leg);
     }
 
-    const transitLegs = legs.filter((l) => l.mode !== 'walk');
+    const mergedLegs = mergeConsecutiveWalkLegs(legs);
+    const transitLegs = mergedLegs.filter((l) => l.mode !== 'walk');
     if (transitLegs.length === 0) continue;
 
     // Czasy z RAPTOR-a są już efektywne (z opóźnieniami GPS) - dokładamy
@@ -431,7 +451,7 @@ function mapJourneysToConnections(
       transfers: rj.transfers,
       delayMin: maxDelayMin,
       live: overallLive,
-      legs,
+      legs: mergedLegs,
       interchange,
     });
   }

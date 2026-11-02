@@ -299,6 +299,23 @@ function packRaptorQuery(
   return new Uint8Array(buf);
 }
 
+/** Łączy pod rząd idące odcinki piesze w jeden (np. spacer ze stacji na węzeł + dojście do celu). */
+export function mergeConsecutiveWalks(segments: JourneySegment[]): JourneySegment[] {
+  const out: JourneySegment[] = [];
+  for (const seg of segments) {
+    const prev = out[out.length - 1];
+    if (prev && prev.type === "walk" && seg.type === "walk") {
+      prev.toStopId = seg.toStopId;
+      prev.toStopName = seg.toStopName;
+      prev.arriveSec = seg.arriveSec;
+      prev.walkMeters = (prev.walkMeters ?? 0) + (seg.walkMeters ?? 0);
+    } else {
+      out.push({ ...seg });
+    }
+  }
+  return out;
+}
+
 function unpackJourneys(
   store: GtfsStore,
   net: RaptorNet,
@@ -443,13 +460,14 @@ function unpackJourneys(
       });
     }
 
-    const firstTransit = segments.find((s) => s.type === 'transit');
+    const mergedSegments = mergeConsecutiveWalks(segments);
+    const firstTransit = mergedSegments.find((s) => s.type === 'transit');
     if (!firstTransit) continue;
     const rj: RawJourney = {
       departureSec: firstTransit.departSec - accessSec,
       arrivalSec: prevArr + egressSec,
       transfers: nLegs - 1,
-      segments,
+      segments: mergedSegments,
     };
     if ((!arriveBy || rj.arrivalSec <= t0) && !isPointlessShortRide(rj)) {
       out.push(rj);
