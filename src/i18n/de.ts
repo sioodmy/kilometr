@@ -21,9 +21,12 @@ export const de: Strings = {
     selectStop: (name: string) => `Abfahrten anzeigen: ${name}`,
     loading: 'Fahrplan wird geladen…',
     error: 'Der Fahrplan konnte nicht geladen werden. Versuche es erneut.',
-    empty: 'Keine Fahrten im gespeicherten Fahrplan für diesen Tag. Wähle einen anderen Tag oder aktualisiere den Fahrplan in den Einstellungen.',
-    missing: 'Diese Linie fehlt im gespeicherten Fahrplan. Kehre zur Suche zurück oder aktualisiere die Daten in den Einstellungen.',
-    missingStop: 'Diese Haltestelle oder Linienvariante ist nicht mehr im Fahrplan. Kehre zur Haltestellenliste zurück.',
+    empty:
+      'Keine Fahrten im gespeicherten Fahrplan für diesen Tag. Wähle einen anderen Tag oder aktualisiere den Fahrplan in den Einstellungen.',
+    missing:
+      'Diese Linie fehlt im gespeicherten Fahrplan. Kehre zur Suche zurück oder aktualisiere die Daten in den Einstellungen.',
+    missingStop:
+      'Diese Haltestelle oder Linienvariante ist nicht mehr im Fahrplan. Kehre zur Haltestellenliste zurück.',
     terminal: 'Endhaltestelle',
     terminalHint: 'Wähle eine frühere Haltestelle, um Abfahrten zu sehen.',
     scheduled: 'Zeiten aus dem gespeicherten Fahrplan',
@@ -31,7 +34,8 @@ export const de: Strings = {
     previousDay: 'Vorheriger Tag',
     back: 'Zurück',
     dayOffset: (days: number) => `+${days} ${days === 1 ? 'Tag' : 'Tage'}`,
-    nextDayTime: (time: string, days: number) => `${time} (+${days} ${days === 1 ? 'Tag' : 'Tage'})`,
+    nextDayTime: (time: string, days: number) =>
+      `${time} (+${days} ${days === 1 ? 'Tag' : 'Tage'})`,
   },
   transferGuard: {
     enabled: 'Aktiviert',
@@ -43,15 +47,18 @@ export const de: Strings = {
     riskBody: 'Wir suchen einen anderen Umstieg.',
     stayOn: (line: string) => `Bleib in ${line}`,
     changedBody: (line: string, stop: string) => `Steige an der Haltestelle ${stop} in ${line} um.`,
-    noAlternative: 'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
+    noAlternative:
+      'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
     unavailable: 'Umstieg kann nicht bewertet werden',
-    unavailableBody: 'Wir warten auf eine genaue Position entlang der Route. Der aktuelle Plan bleibt sichtbar.',
+    unavailableBody:
+      'Wir warten auf eine genaue Position entlang der Route. Der aktuelle Plan bleibt sichtbar.',
     routingError: 'Die Umstiegsbegleitung konnte nicht vorbereitet werden. Versuche es erneut.',
     rerouting: 'Ein neuer Umstieg wird gesucht',
     next: (line: string, stop: string) => `${line} · ${stop}`,
     channel: 'Geänderte Umstiege',
     start: 'Mit Umstiegsbegleitung fahren',
-    startBody: 'Wir warnen dich, wenn dein Umstieg gefährdet ist. Du entscheidest über eine andere Route.',
+    startBody:
+      'Wir warnen dich, wenn dein Umstieg gefährdet ist. Du entscheidest über eine andere Route.',
     locationRequired: 'Die Umstiegsbegleitung braucht während der Fahrt deinen genauen Standort.',
     active: 'Begleitung aktiv',
     preparing: 'Umstiegsbegleitung wird vorbereitet…',
@@ -150,6 +157,9 @@ export const de: Strings = {
       `Dein GPS-Standort liegt außerhalb des unterstützten Gebiets. Aktuell bedienen wir nur: ${supported}.`,
     unsupportedHint: 'Wähle den Start manuell, um Verbindungen zu suchen.',
     unsupportedAction: 'Startpunkt wählen',
+    unsupportedActionShort: 'Start wählen',
+    unsupportedSwitchCity: (city: string) => `Zu ${city} wechseln`,
+    unsupportedSwitchCityA11y: (city: string) => `Stadt auf ${city} ändern`,
     pickStart: 'Startpunkt wählen',
     gpsBlockedTitle: 'GPS-Start nicht verfügbar',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -189,9 +199,9 @@ export const de: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : id === 'radom'
-                                ? 'Radom'
-                              : 'Wrocław',
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -219,7 +229,39 @@ export const de: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : 'Wrocław',
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
+    acc: (id: string): string =>
+      id === 'krakow'
+        ? 'Kraków'
+        : id === 'gzm'
+          ? 'GZM'
+          : id === 'warszawa'
+            ? 'Warszawa'
+            : id === 'poznan'
+              ? 'Poznań'
+              : id === 'trojmiasto'
+                ? 'Trójmiasto'
+                : id === 'lodz'
+                  ? 'Łódź'
+                  : id === 'szczecin'
+                    ? 'Szczecin'
+                    : id === 'kielce'
+                      ? 'Kielce'
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : id === 'bialystok'
+                          ? 'Białystok'
+                          : id === 'opole'
+                            ? 'Opole'
+                            : id === 'rzeszow'
+                              ? 'Rzeszów'
+                              : id === 'lublin'
+                                ? 'Lublin'
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -247,7 +289,7 @@ export const de: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : 'Wrocław',
+                                : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP und Koleje Małopolskie'
@@ -259,7 +301,7 @@ export const de: Strings = {
               ? 'ZTM und Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia und SKM'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK und Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -275,9 +317,9 @@ export const de: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK und Koleje Dolnośląskie',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK und Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -289,7 +331,7 @@ export const de: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -305,9 +347,9 @@ export const de: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław • wroclaw.pl',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -319,7 +361,7 @@ export const de: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -335,9 +377,9 @@ export const de: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -361,11 +403,11 @@ export const de: Strings = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
-                              : id === 'lublin'
-                                ? 'ZDiTM'
+                            : id === 'lublin'
+                              ? 'ZDiTM'
                               : id === 'radom'
                                 ? 'MZDiK'
-                            : 'MPK',
+                                : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -377,7 +419,7 @@ export const de: Strings = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
@@ -393,10 +435,11 @@ export const de: Strings = {
                               ? 'ztm.erzeszow.pl'
                               : id === 'lublin'
                                 ? 'zdtm.lublin.eu'
-                              : id === 'radom'
-                                ? 'mzdik.pl'
-                                : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
+                                : id === 'radom'
+                                  ? 'mzdik.pl'
+                                  : 'wroclaw.pl',
+    supportedList:
+      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
@@ -649,9 +692,11 @@ export const de: Strings = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro: 'Wähle deine Stadt und lade den Fahrplan herunter. Verbindungen findest du auch offline.',
+    intro:
+      'Wähle deine Stadt und lade den Fahrplan herunter. Verbindungen findest du auch offline.',
     openSettings: 'Einstellungen öffnen',
-    permissionDenied: 'Du kannst ohne diese Berechtigung fortfahren und sie später in den Telefoneinstellungen ändern.',
+    permissionDenied:
+      'Du kannst ohne diese Berechtigung fortfahren und sie später in den Telefoneinstellungen ändern.',
     steps: ['Willkommen', 'Berechtigungen', 'Stadt', 'Fahrplan', 'Orte'],
     granted: 'An',
     denied: 'Aus',
@@ -666,7 +711,7 @@ export const de: Strings = {
             ? 'z. B. Głogowska 12'
             : id === 'trojmiasto'
               ? 'z. B. Długa 12'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'z. B. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'z. B. Wojska Polskiego 12'
@@ -680,11 +725,11 @@ export const de: Strings = {
                           ? 'z. B. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'z. B. 3 Maja 12'
-                              : id === 'lublin'
-                                ? 'z. B. Krakowskie Przedmieście 12'
+                            : id === 'lublin'
+                              ? 'z. B. Krakowskie Przedmieście 12'
                               : id === 'radom'
                                 ? 'z. B. Żeromskiego 12'
-                            : 'z. B. Swojczycka 41',
+                                : 'z. B. Swojczycka 41',
     slotWork: 'Arbeit',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -695,7 +740,7 @@ export const de: Strings = {
             ? 'z. B. Stary Browar'
             : id === 'trojmiasto'
               ? 'z. B. Galeria Bałtycka'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'z. B. Manufaktura'
                 : id === 'szczecin'
                   ? 'z. B. Galeria Kaskada'
@@ -709,11 +754,11 @@ export const de: Strings = {
                           ? 'z. B. Solaris Center'
                           : id === 'rzeszow'
                             ? 'z. B. Galeria Rzeszów'
-                              : id === 'lublin'
-                                ? 'z. B. Felicity'
+                            : id === 'lublin'
+                              ? 'z. B. Felicity'
                               : id === 'radom'
                                 ? 'z. B. Galeria Słoneczna'
-                            : 'z. B. Sky Tower',
+                                : 'z. B. Sky Tower',
     slotUni: 'Uni',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -724,7 +769,7 @@ export const de: Strings = {
             ? 'z. B. UAM'
             : id === 'trojmiasto'
               ? 'z. B. UG'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'z. B. UŁ'
                 : id === 'szczecin'
                   ? 'z. B. US'
@@ -738,11 +783,11 @@ export const de: Strings = {
                           ? 'z. B. UO'
                           : id === 'rzeszow'
                             ? 'z. B. PRz'
-                              : id === 'lublin'
-                                ? 'z. B. UMCS'
+                            : id === 'lublin'
+                              ? 'z. B. UMCS'
                               : id === 'radom'
                                 ? 'z. B. UTH'
-                            : 'z. B. Politechnika',
+                                : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',
@@ -758,7 +803,8 @@ export const de: Strings = {
     locOn: 'Standort aktiviert.',
     locAllow: 'Standort erlauben',
     notifTitle: 'Mitteilungen',
-    notifBody: 'Zeigen deine angeheftete Fahrt und erinnern an eine gewählte Abfahrt oder Haltestelle.',
+    notifBody:
+      'Zeigen deine angeheftete Fahrt und erinnern an eine gewählte Abfahrt oder Haltestelle.',
     notifOn: 'Mitteilungen aktiviert.',
     notifExpoGo:
       'Expo-Go-Vorschau: Mitteilungen (angeheftete Verbindung) funktionieren im Entwicklungs-Build.',
@@ -958,8 +1004,10 @@ export const de: Strings = {
     moreFail: 'Weitere Verbindungen konnten nicht geladen werden.',
     moreRetryA11y: 'Versuchen, weitere Verbindungen zu laden',
     noMore: 'Das sind alle Abfahrten dieser Route.',
-    noMoreArrival: 'Keine früheren Verbindungen in diesem Zeitfenster. Wähle eine frühere Ankunftszeit.',
-    emptyArrival: 'Keine Verbindungen vor der gewählten Uhrzeit. Wähle eine spätere Ankunftszeit oder ein anderes Ziel.',
+    noMoreArrival:
+      'Keine früheren Verbindungen in diesem Zeitfenster. Wähle eine frühere Ankunftszeit.',
+    emptyArrival:
+      'Keine Verbindungen vor der gewählten Uhrzeit. Wähle eine spätere Ankunftszeit oder ein anderes Ziel.',
     emptyFiltered: 'Keine Verbindungen für die gewählten Filter',
     emptyNone: 'Keine Verbindungen gefunden',
     emptyModeDirect: (veh: string) =>
@@ -970,7 +1018,8 @@ export const de: Strings = {
       `Auf dieser Route gibt es gerade keinen ${veh}-Kurs. Wechsle auf „Alle“, um den Rest zu sehen.`,
     emptyPlain: 'Versuch ein anderes Ziel oder prüfe eine andere Abfahrtszeit.',
     samePlaceTitle: 'Start und Ziel sind derselbe Ort',
-    samePlaceBody: 'Du bist schon da, also gibt es nichts zu planen. Wähle ein anderes Ziel, um Verbindungen zu sehen.',
+    samePlaceBody:
+      'Du bist schon da, also gibt es nichts zu planen. Wähle ein anderes Ziel, um Verbindungen zu sehen.',
     vehicleTramGen: 'mit der Tram',
     vehicleBusGen: 'mit dem Bus',
     vehicleTrolleyGen: 'mit dem Obus',
@@ -1241,7 +1290,7 @@ export const de: Strings = {
   },
   leg: {
     fareBoundary: 'Tarifzonengrenze',
-    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
+    fareBoundaryDetail: (areas: string, point: string) => (point ? `${areas} · ${point}` : areas),
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
@@ -1274,7 +1323,8 @@ export const de: Strings = {
     routeOverview: 'Diesen Abschnitt anzeigen',
     compassAccuracyLow: 'Geringe Kompassgenauigkeit',
     calibrationHelp: 'So verbesserst du die Genauigkeit',
-    calibrateCompass: 'Halte das Telefon von Metall und Magneten fern, etwa einer Halterung. Bewege es langsam mehrmals in einer Acht. Der Hinweis verschwindet, sobald die Genauigkeit besser wird.',
+    calibrateCompass:
+      'Halte das Telefon von Metall und Magneten fern, etwa einer Halterung. Bewege es langsam mehrmals in einer Acht. Der Hinweis verschwindet, sobald die Genauigkeit besser wird.',
     gpsWeak: 'Schwaches GPS-Signal. Die Position kann ungenau sein.',
     deviceGps: 'Deine GPS-Position',
     prepareToAlight: 'Zum Aussteigen bereitmachen',
@@ -1295,9 +1345,11 @@ export const de: Strings = {
     vehicleGpsMissing: 'Keine aktuelle GPS-Position des Fahrzeugs. Die Route bleibt sichtbar.',
     alightAt: (name: string) => `Aussteigen: ${name}`,
     boardAt: (name: string) => `Einsteigen: ${name}`,
-    stopsRemaining: (n: number) => `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} bis zum Ausstieg`,
+    stopsRemaining: (n: number) =>
+      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} bis zum Ausstieg`,
     mapLoading: 'Karte wird geladen…',
-    mapFailed: 'Karte konnte nicht geladen werden. Versuche es erneut oder lade in den Einstellungen eine Offline-Karte herunter.',
+    mapFailed:
+      'Karte konnte nicht geladen werden. Versuche es erneut oder lade in den Einstellungen eine Offline-Karte herunter.',
     mapRetry: 'Karte erneut laden',
     openMap: 'Vollständige Routenkarte öffnen',
     ahead: 'Geradeaus',
@@ -1418,14 +1470,18 @@ export const de: Strings = {
     transfer: 'Umstieg',
     nextStop: 'Nächste Haltestelle',
     startupTitle: 'App-Fehler',
-    startupHint: 'Kilometr kann nicht fortfahren. Teile den Bericht, um bei der Fehlersuche zu helfen.',
+    startupHint:
+      'Kilometr kann nicht fortfahren. Teile den Bericht, um bei der Fehlersuche zu helfen.',
     startupShare: 'Teilen',
-    locationPermission: 'Erlaube den Standortzugriff, um Verbindungen ab deinem Standort zu finden.',
+    locationPermission:
+      'Erlaube den Standortzugriff, um Verbindungen ab deinem Standort zu finden.',
     liveTitle: 'Live-Aktivität',
-    liveHint: 'Fahrzeit auf dem Sperrbildschirm und in der Dynamic Island. Daten werden aktualisiert, solange die App aktiv ist.',
+    liveHint:
+      'Fahrzeit auf dem Sperrbildschirm und in der Dynamic Island. Daten werden aktualisiert, solange die App aktiv ist.',
     liveDisabled: 'Aktiviere Live-Aktivitäten in den Systemeinstellungen für Kilometr.',
     stale: 'Laut Fahrplan. Öffne Kilometr zum Aktualisieren.',
-    alarmHint: 'Eine Erinnerung mit Benachrichtigungston. Stummmodus und Fokus können sie stummschalten. Es öffnet sich kein Vollbildwecker.',
+    alarmHint:
+      'Eine Erinnerung mit Benachrichtigungston. Stummmodus und Fokus können sie stummschalten. Es öffnet sich kein Vollbildwecker.',
   },
   alarm: {
     title: 'Fahrtwecker',
@@ -1434,7 +1490,7 @@ export const de: Strings = {
     hint: 'Ton, Vibration und Vollbild vor dem Losgehen.',
     question: 'Wie viel Zeit brauchst du vor dem Losgehen?',
     before: 'vor dem Losgehen',
-    minutes: (n: number) => n === 1 ? 'Minute' : 'Minuten',
+    minutes: (n: number) => (n === 1 ? 'Minute' : 'Minuten'),
     lead: (n: number) => `${n} ${n === 1 ? 'Minute' : 'Minuten'} vor dem Losgehen`,
     less: 'Eine Minute später',
     more: 'Eine Minute früher',
@@ -1456,9 +1512,11 @@ export const de: Strings = {
     replace: 'Dieser Wecker ersetzt den für die andere Fahrt.',
     exactHint: 'Erlaube Wecker und Erinnerungen, damit der Wecker zur gewählten Zeit klingelt.',
     exactAction: 'Wecker erlauben',
-    fullScreenHint: 'Erlaube Vollbildwecker, damit der Wecker auf dem gesperrten Telefon erscheint.',
+    fullScreenHint:
+      'Erlaube Vollbildwecker, damit der Wecker auf dem gesperrten Telefon erscheint.',
     fullScreenAction: 'Vollbild erlauben',
-    notificationHint: 'Aktiviere Weckerbenachrichtigungen, damit dein Telefon den Wecker anzeigen kann.',
+    notificationHint:
+      'Aktiviere Weckerbenachrichtigungen, damit dein Telefon den Wecker anzeigen kann.',
     notificationAction: 'Benachrichtigungen aktivieren',
     soundHint: 'Verwendet den Weckton und die Weckerlautstärke deines Telefons.',
   },

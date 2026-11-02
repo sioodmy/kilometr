@@ -14,7 +14,8 @@ function prepInCity(cityLoc: string): string {
   // W języku polskim przyimek „w” wymienia się na „we” przed wyrazami
   // zaczynającymi się od spółgłoski „w” lub „f” po której następuje inna spółgłoska (np. Wrocław, Wrzeszcz, Włocławek).
   const lower = cityLoc.toLowerCase();
-  const startsWithWConsonant = /^w[bcćdfghjklłmnńprstvwzżź]/i.test(lower) || /^f[bcćdfghjklłmnńprstvwzżź]/i.test(lower);
+  const startsWithWConsonant =
+    /^w[bcćdfghjklłmnńprstvwzżź]/i.test(lower) || /^f[bcćdfghjklłmnńprstvwzżź]/i.test(lower);
   return startsWithWConsonant ? `we ${cityLoc}` : `w ${cityLoc}`;
 }
 
@@ -35,8 +36,10 @@ export const pl = {
     selectStop: (name: string) => `Pokaż odjazdy: ${name}`,
     loading: 'Wczytywanie rozkładu…',
     error: 'Nie udało się wczytać rozkładu. Spróbuj ponownie.',
-    empty: 'Brak kursów w zapisanym rozkładzie na ten dzień. Wybierz inny dzień lub zaktualizuj rozkład w Ustawieniach.',
-    missing: 'Tej linii nie ma w zapisanym rozkładzie. Wróć do wyszukiwarki lub zaktualizuj dane w Ustawieniach.',
+    empty:
+      'Brak kursów w zapisanym rozkładzie na ten dzień. Wybierz inny dzień lub zaktualizuj rozkład w Ustawieniach.',
+    missing:
+      'Tej linii nie ma w zapisanym rozkładzie. Wróć do wyszukiwarki lub zaktualizuj dane w Ustawieniach.',
     missingStop: 'Tego przystanku lub wariantu nie ma już w rozkładzie. Wróć do listy przystanków.',
     terminal: 'Przystanek końcowy',
     terminalHint: 'Wybierz wcześniejszy przystanek, aby sprawdzić odjazdy.',
@@ -45,7 +48,8 @@ export const pl = {
     previousDay: 'Poprzedni dzień',
     back: 'Wróć',
     dayOffset: (days: number) => `+${days} ${days === 1 ? 'dzień' : 'dni'}`,
-    nextDayTime: (time: string, days: number) => `${time} (+${days} ${days === 1 ? 'dzień' : 'dni'})`,
+    nextDayTime: (time: string, days: number) =>
+      `${time} (+${days} ${days === 1 ? 'dzień' : 'dni'})`,
   },
   transferGuard: {
     enabled: 'Włączona',
@@ -164,6 +168,9 @@ export const pl = {
       `Twoja lokalizacja GPS jest poza obsługiwanym obszarem. Aktualnie obsługujemy tylko: ${supported}.`,
     unsupportedHint: 'Wybierz punkt startowy manualnie, aby wyszukać połączenie.',
     unsupportedAction: 'Wybierz punkt startowy',
+    unsupportedActionShort: 'Wybierz start',
+    unsupportedSwitchCity: (city: string) => `Zmień na ${city}`,
+    unsupportedSwitchCityA11y: (city: string) => `Zmień miasto na ${city}`,
     pickStart: 'Wybierz punkt startowy',
     gpsBlockedTitle: 'Start z GPS niedostępny',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -203,9 +210,9 @@ export const pl = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : id === 'radom'
-                                ? 'Radom'
-                              : 'Wrocław',
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Krakowa'
@@ -233,9 +240,9 @@ export const pl = {
                               ? 'Rzeszowa'
                               : id === 'lublin'
                                 ? 'Lublina'
-                              : id === 'radom'
-                                ? 'Radomia'
-                              : 'Wrocławia',
+                                : id === 'radom'
+                                  ? 'Radomia'
+                                  : 'Wrocławia',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Krakowie'
@@ -263,9 +270,39 @@ export const pl = {
                               ? 'Rzeszowie'
                               : id === 'lublin'
                                 ? 'Lublinie'
-                              : id === 'radom'
-                                ? 'Radomiu'
-                              : 'Wrocławiu',
+                                : id === 'radom'
+                                  ? 'Radomiu'
+                                  : 'Wrocławiu',
+    acc: (id: string): string =>
+      id === 'warszawa'
+        ? 'Warszawę'
+        : id === 'krakow'
+          ? 'Kraków'
+          : id === 'gzm'
+            ? 'GZM'
+            : id === 'poznan'
+              ? 'Poznań'
+              : id === 'trojmiasto'
+                ? 'Trójmiasto'
+                : id === 'lodz'
+                  ? 'Łódź'
+                  : id === 'szczecin'
+                    ? 'Szczecin'
+                    : id === 'kielce'
+                      ? 'Kielce'
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : id === 'bialystok'
+                          ? 'Białystok'
+                          : id === 'opole'
+                            ? 'Opole'
+                            : id === 'rzeszow'
+                              ? 'Rzeszów'
+                              : id === 'lublin'
+                                ? 'Lublin'
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP i Koleje Małopolskie'
@@ -277,7 +314,7 @@ export const pl = {
               ? 'ZTM i Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia i SKM'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK i Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -293,9 +330,9 @@ export const pl = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK i Koleje Dolnośląskie',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK i Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -307,7 +344,7 @@ export const pl = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -323,9 +360,9 @@ export const pl = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław • wroclaw.pl',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -337,7 +374,7 @@ export const pl = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -353,9 +390,9 @@ export const pl = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -379,11 +416,11 @@ export const pl = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
-                              : id === 'lublin'
-                                ? 'ZDiTM'
+                            : id === 'lublin'
+                              ? 'ZDiTM'
                               : id === 'radom'
                                 ? 'MZDiK'
-                            : 'MPK',
+                                : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -395,7 +432,7 @@ export const pl = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
@@ -411,10 +448,11 @@ export const pl = {
                               ? 'ztm.erzeszow.pl'
                               : id === 'lublin'
                                 ? 'zdtm.lublin.eu'
-                              : id === 'radom'
-                                ? 'mzdik.pl'
-                                : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
+                                : id === 'radom'
+                                  ? 'mzdik.pl'
+                                  : 'wroclaw.pl',
+    supportedList:
+      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
     changed: (name: string) => `Przełączono na: ${name}.`,
     switching: 'Przełączam miasto…',
     blockedByDownload: 'Pobieranie rozkładu w toku. Miasto zmienisz po zakończeniu.',
@@ -670,7 +708,8 @@ export const pl = {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
     intro: 'Wybierz miasto i pobierz rozkład. Połączenia wyszukasz też bez internetu.',
     openSettings: 'Otwórz ustawienia',
-    permissionDenied: 'Możesz kontynuować bez tej zgody i zmienić ją później w ustawieniach telefonu.',
+    permissionDenied:
+      'Możesz kontynuować bez tej zgody i zmienić ją później w ustawieniach telefonu.',
     steps: ['Witaj', 'Uprawnienia', 'Miasto', 'Rozkład', 'Miejsca'] as string[],
     granted: 'Włączone',
     denied: 'Wyłączone',
@@ -685,7 +724,7 @@ export const pl = {
             ? 'np. Głogowska 12'
             : id === 'trojmiasto'
               ? 'np. Długa 12'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'np. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'np. Wojska Polskiego 12'
@@ -699,11 +738,11 @@ export const pl = {
                           ? 'np. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'np. 3 Maja 12'
-                              : id === 'lublin'
-                                ? 'np. Krakowskie Przedmieście 12'
+                            : id === 'lublin'
+                              ? 'np. Krakowskie Przedmieście 12'
                               : id === 'radom'
                                 ? 'np. Żeromskiego 12'
-                            : 'np. Swojczycka 41',
+                                : 'np. Swojczycka 41',
     slotWork: 'Praca',
     slotWorkHint: (id: string): string =>
       id === 'krakow'
@@ -714,7 +753,7 @@ export const pl = {
             ? 'np. Stary Browar'
             : id === 'trojmiasto'
               ? 'np. Galeria Bałtycka'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'np. Manufaktura'
                 : id === 'szczecin'
                   ? 'np. Galeria Kaskada'
@@ -728,11 +767,11 @@ export const pl = {
                           ? 'np. Solaris Center'
                           : id === 'rzeszow'
                             ? 'np. Galeria Rzeszów'
-                              : id === 'lublin'
-                                ? 'np. Felicity'
+                            : id === 'lublin'
+                              ? 'np. Felicity'
                               : id === 'radom'
                                 ? 'np. Galeria Słoneczna'
-                            : 'np. Sky Tower',
+                                : 'np. Sky Tower',
     slotUni: 'Uczelnia',
     slotUniHint: (id: string): string =>
       id === 'krakow'
@@ -743,7 +782,7 @@ export const pl = {
             ? 'np. UAM'
             : id === 'trojmiasto'
               ? 'np. UG'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'np. UŁ'
                 : id === 'szczecin'
                   ? 'np. US'
@@ -757,11 +796,11 @@ export const pl = {
                           ? 'np. UO'
                           : id === 'rzeszow'
                             ? 'np. PRz'
-                              : id === 'lublin'
-                                ? 'np. UMCS'
+                            : id === 'lublin'
+                              ? 'np. UMCS'
                               : id === 'radom'
                                 ? 'np. UTH'
-                            : 'np. Politechnika',
+                                : 'np. Politechnika',
     backA11y: 'Wstecz',
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
     brand: 'Kilometr',
@@ -835,7 +874,9 @@ export const pl = {
     count: (n: number, urgent: number) => {
       const items = `${n} ${n === 1 ? 'wiadomość' : 'wiadomości'}`;
       const few = urgent % 10 >= 2 && urgent % 10 <= 4 && (urgent % 100 < 12 || urgent % 100 > 14);
-      return urgent > 0 ? `${items} • ${urgent} ${urgent === 1 ? 'pilna' : few ? 'pilne' : 'pilnych'}` : items;
+      return urgent > 0
+        ? `${items} • ${urgent} ${urgent === 1 ? 'pilna' : few ? 'pilne' : 'pilnych'}`
+        : items;
     },
     refreshA11y: 'Odśwież aktualności',
     loading: 'Pobieranie komunikatów…',
@@ -989,7 +1030,8 @@ export const pl = {
     moreRetryA11y: 'Spróbuj dociągnąć dalsze połączenia',
     noMore: 'To wszystkie odjazdy z tej trasy.',
     noMoreArrival: 'Brak wcześniejszych połączeń w tym oknie. Wybierz wcześniejszy czas przyjazdu.',
-    emptyArrival: 'Brak połączeń przed wybraną godziną. Sprawdź późniejszy czas przyjazdu lub inny cel.',
+    emptyArrival:
+      'Brak połączeń przed wybraną godziną. Sprawdź późniejszy czas przyjazdu lub inny cel.',
     emptyFiltered: 'Brak połączeń dla wybranych filtrów',
     emptyNone: 'Nie znaleziono połączeń',
     emptyModeDirect: (veh: string) =>
@@ -1000,7 +1042,8 @@ export const pl = {
       `Na tej trasie nie ma teraz kursu ${veh}. Przełącz na „Wszystkie”, aby zobaczyć resztę połączeń.`,
     emptyPlain: 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.',
     samePlaceTitle: 'Start i cel to ten sam punkt',
-    samePlaceBody: 'Jesteś na miejscu, więc nie ma czego planować. Wybierz inny cel, żeby zobaczyć połączenia.',
+    samePlaceBody:
+      'Jesteś na miejscu, więc nie ma czego planować. Wybierz inny cel, żeby zobaczyć połączenia.',
     vehicleTramGen: 'tramwajem',
     vehicleBusGen: 'autobusem',
     vehicleTrolleyGen: 'trolejbusem',
@@ -1279,7 +1322,7 @@ export const pl = {
   },
   leg: {
     fareBoundary: 'Granica stref biletowych',
-    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
+    fareBoundaryDetail: (areas: string, point: string) => (point ? `${areas} · ${point}` : areas),
     noData: 'Brak danych o trasie',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
@@ -1311,7 +1354,8 @@ export const pl = {
     routeOverview: 'Pokaż cały etap',
     compassAccuracyLow: 'Niska dokładność kompasu',
     calibrationHelp: 'Jak poprawić dokładność',
-    calibrateCompass: 'Odsuń telefon od metalu i magnesów, np. uchwytu. Kilka razy powoli zatocz nim ósemkę. Komunikat zniknie, gdy dokładność się poprawi.',
+    calibrateCompass:
+      'Odsuń telefon od metalu i magnesów, np. uchwytu. Kilka razy powoli zatocz nim ósemkę. Komunikat zniknie, gdy dokładność się poprawi.',
     gpsWeak: 'Słaby sygnał GPS. Pozycja może być niedokładna.',
     deviceGps: 'Twoja pozycja GPS',
     prepareToAlight: 'Przygotuj się do wysiadki',
@@ -1332,9 +1376,11 @@ export const pl = {
     vehicleGpsMissing: 'Brak świeżej pozycji GPS pojazdu. Trasa pozostaje widoczna.',
     alightAt: (name: string) => `Wysiądź: ${name}`,
     boardAt: (name: string) => `Wsiądź: ${name}`,
-    stopsRemaining: (n: number) => `${n} ${n === 1 ? 'przystanek' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'przystanki' : 'przystanków'} do wysiadki`,
+    stopsRemaining: (n: number) =>
+      `${n} ${n === 1 ? 'przystanek' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'przystanki' : 'przystanków'} do wysiadki`,
     mapLoading: 'Wczytuję mapę…',
-    mapFailed: 'Nie udało się wczytać mapy. Spróbuj ponownie lub pobierz mapę offline w ustawieniach.',
+    mapFailed:
+      'Nie udało się wczytać mapy. Spróbuj ponownie lub pobierz mapę offline w ustawieniach.',
     mapRetry: 'Wczytaj mapę ponownie',
     openMap: 'Otwórz pełną mapę trasy',
     ahead: 'Prosto przed Tobą',
@@ -1465,14 +1511,18 @@ export const pl = {
     transfer: 'Przesiadka',
     nextStop: 'Następny przystanek',
     startupTitle: 'Błąd aplikacji',
-    startupHint: 'Kilometr nie może kontynuować. Udostępnij raport, aby pomóc znaleźć przyczynę błędu.',
+    startupHint:
+      'Kilometr nie może kontynuować. Udostępnij raport, aby pomóc znaleźć przyczynę błędu.',
     startupShare: 'Udostępnij',
-    locationPermission: 'Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.',
+    locationPermission:
+      'Zezwól na dostęp do lokalizacji, aby wyszukiwać połączenia z Twojej pozycji.',
     liveTitle: 'Aktywność na żywo',
-    liveHint: 'Czas podróży na ekranie blokady i Dynamic Island. Dane odświeżają się, gdy aplikacja jest aktywna.',
+    liveHint:
+      'Czas podróży na ekranie blokady i Dynamic Island. Dane odświeżają się, gdy aplikacja jest aktywna.',
     liveDisabled: 'Włącz Aktywności na żywo w ustawieniach systemowych aplikacji Kilometr.',
     stale: 'Według rozkładu. Otwórz Kilometr, aby odświeżyć.',
-    alarmHint: 'Przypomnienie z dźwiękiem powiadomienia. Tryb cichy i Skupienie mogą je wyciszyć. Nie uruchamia pełnoekranowego budzika.',
+    alarmHint:
+      'Przypomnienie z dźwiękiem powiadomienia. Tryb cichy i Skupienie mogą je wyciszyć. Nie uruchamia pełnoekranowego budzika.',
   },
   alarm: {
     title: 'Budzik na podróż',
@@ -1481,8 +1531,9 @@ export const pl = {
     hint: 'Dźwięk, wibracje i pełny ekran przed wyjściem.',
     question: 'Ile czasu potrzebujesz przed wyjściem?',
     before: 'przed wyjściem',
-    minutes: (n: number): string => n === 1 ? 'minuta' : isFew(n) ? 'minuty' : 'minut',
-    lead: (n: number) => `${n} ${n === 1 ? 'minutę' : isFew(n) ? 'minuty' : 'minut'} przed wyjściem`,
+    minutes: (n: number): string => (n === 1 ? 'minuta' : isFew(n) ? 'minuty' : 'minut'),
+    lead: (n: number) =>
+      `${n} ${n === 1 ? 'minutę' : isFew(n) ? 'minuty' : 'minut'} przed wyjściem`,
     less: 'Minutę później',
     more: 'Minutę wcześniej',
     ringsAt: (time: string) => `Zadzwoni o ${time}`,
@@ -1503,7 +1554,8 @@ export const pl = {
     replace: 'Ten budzik zastąpi poprzedni, ustawiony dla innej podróży.',
     exactHint: 'Zezwól na alarmy i przypomnienia, aby budzik zadzwonił o wybranej godzinie.',
     exactAction: 'Zezwól na alarmy',
-    fullScreenHint: 'Zezwól na alarmy pełnoekranowe, aby budzik pojawił się na zablokowanym telefonie.',
+    fullScreenHint:
+      'Zezwól na alarmy pełnoekranowe, aby budzik pojawił się na zablokowanym telefonie.',
     fullScreenAction: 'Zezwól na pełny ekran',
     notificationHint: 'Włącz powiadomienia budzika, aby telefon mógł pokazać alarm.',
     notificationAction: 'Włącz powiadomienia',
