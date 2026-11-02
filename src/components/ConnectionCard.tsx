@@ -10,7 +10,11 @@ import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionP
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { tr, useStrings } from '../i18n';
-import { boardingDepartureMs, boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
+import {
+  boardingDepartureMs,
+  boardingDepartureSec,
+  scheduledLegTimes,
+} from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
 import { secondsToTimeString } from '../gtfs/geo';
 
@@ -22,11 +26,6 @@ export interface CardLayoutInfo {
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
 export function transfersLabel(n: number): string {
   return tr().connection.transfers(n);
-}
-
-/** Poprawna odmiana liczby połączeń (słownik i18n: 1 / 2-4 / 5+). */
-export function connectionsLabel(n: number): string {
-  return tr().connection.connections(n);
 }
 
 function parseHMtoSec(hm: string): number | null {
@@ -215,13 +214,17 @@ export const ConnectionCard = memo(function ConnectionCard({
   const departAt = walkOnly ? item.departAt : secondsToTimeString(boardingDepartureSec(item));
   const firstVehicle = boarding[0];
   const notice = reliabilityNotice(boarding, s);
-  const scheduledDeparture = firstVehicle?.live && Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
-    ? scheduledLegTimes(firstVehicle, boardingDepartureSec(item)).departure : undefined;
+  const scheduledDeparture =
+    firstVehicle?.live && Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
+      ? scheduledLegTimes(firstVehicle, boardingDepartureSec(item)).departure
+      : undefined;
   const minsAgo = item.departureSec > 0 ? Math.floor((now.getTime() - departureMs) / 60000) : -1;
   const historical = minsAgo >= 1;
 
   const effectiveMin =
-    item.departureSec > 0 ? Math.max(0, Math.ceil((departureMs - now.getTime()) / 60000)) : item.departInMin;
+    item.departureSec > 0
+      ? Math.max(0, Math.ceil((departureMs - now.getTime()) / 60000))
+      : item.departInMin;
 
   const walkM = walkOnly ? item.legs[0]?.walkM : undefined;
   const walkMin = item.durationMin || (walkM != null ? walkMinutesFor(walkM, walkMps) : 1);
@@ -332,10 +335,17 @@ export const ConnectionCard = memo(function ConnectionCard({
           <Text
             style={[
               styles.delay,
-              { color: dimmed ? scheme.onSurfaceVariant : item.delayMin > 0 ? scheme.error : scheme.warning },
+              {
+                color: dimmed
+                  ? scheme.onSurfaceVariant
+                  : item.delayMin > 0
+                    ? scheme.error
+                    : scheme.warning,
+              },
             ]}
           >
-            {scheduledDeparture != null && `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} • `}
+            {scheduledDeparture != null &&
+              `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} • `}
             {item.delayMin > 0
               ? s.routeDetails.late(item.delayMin)
               : s.routeDetails.early(-item.delayMin)}
