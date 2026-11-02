@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -78,7 +78,14 @@ export function RouteFilterSheet({
 }: RouteFilterSheetProps) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
+  // Wysokość pikselowa zamiast procentów, bo content musi mieć jawną
+  // wysokość, żeby sticky footer nie wypadł poza sheet.
+  const sheetHeight = Math.min(
+    windowHeight - insets.top - insets.bottom - 16,
+    Math.round(windowHeight * 0.82),
+  );
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -214,7 +221,7 @@ export function RouteFilterSheet({
     <BottomSheet
       ref={sheetRef}
       index={0}
-      snapPoints={['80%']}
+      snapPoints={[sheetHeight]}
       bottomInset={insets.bottom}
       enablePanDownToClose
       onClose={onClose}
@@ -222,7 +229,7 @@ export function RouteFilterSheet({
       handleIndicatorStyle={styles.handle}
       backdropComponent={renderBackdrop}
     >
-      <View style={styles.sheetContainer}>
+      <View style={[styles.sheetContainer, { height: sheetHeight - 24 }]}>
         <View style={styles.header}>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.title} accessibilityRole="header">
@@ -269,7 +276,7 @@ export function RouteFilterSheet({
         >
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{s.routesFilters.sortSection}</Text>
-            <View style={styles.sortList}>
+            <View style={styles.sortGrid}>
               {sortOptions.map((opt) => (
                 <SortRow
                   key={opt.key}
@@ -384,26 +391,27 @@ function SortRow({
   return (
     <Pressable
       onPress={onPress}
+      style={styles.sortCardWrap}
       accessibilityRole="radio"
       accessibilityState={{ selected: active }}
       accessibilityLabel={`${label}, ${desc}`}
     >
-      <Animated.View style={[styles.sortRow, containerStyle]}>
-        <View style={[styles.sortIconCircle, active && styles.sortIconCircleActive]}>
-          {renderIcon(active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant)}
+      <Animated.View style={[styles.sortCard, containerStyle]}>
+        <View style={styles.sortCardTop}>
+          <View style={[styles.sortIconCircle, active && styles.sortIconCircleActive]}>
+            {renderIcon(active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant)}
+          </View>
+          {active && <Check size={18} color={scheme.primary} />}
         </View>
-        <View style={styles.sortTexts}>
-          <Text
-            style={[styles.sortRowTitle, active && styles.sortRowTitleActive]}
-            numberOfLines={1}
-          >
-            {label}
-          </Text>
-          <Text style={[styles.sortRowDesc, active && styles.sortRowDescActive]} numberOfLines={2}>
-            {desc}
-          </Text>
-        </View>
-        <View style={styles.sortCheck}>{active && <Check size={20} color={scheme.primary} />}</View>
+        <Text
+          style={[styles.sortCardTitle, active && styles.sortCardTitleActive]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+        <Text style={[styles.sortCardDesc, active && styles.sortCardDescActive]} numberOfLines={2}>
+          {desc}
+        </Text>
       </Animated.View>
     </Pressable>
   );
@@ -555,7 +563,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: shape.extraLarge,
   },
   sheetContainer: {
-    flex: 1,
+    overflow: 'hidden',
   },
   handle: {
     backgroundColor: scheme.outlineVariant,
@@ -640,21 +648,31 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     fontWeight: '700',
   },
-  sortList: {
+  sortGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  sortRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+  sortCardWrap: {
+    width: '48%',
+  },
+  sortCard: {
+    flex: 1,
     padding: spacing.md,
     borderRadius: shape.large,
     borderWidth: 1,
-    minHeight: 64,
+    minHeight: 104,
+    gap: spacing.xs,
+  },
+  sortCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
   },
   sortIconCircle: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
@@ -663,31 +681,22 @@ const styles = StyleSheet.create({
   sortIconCircleActive: {
     backgroundColor: scheme.primaryContainer,
   },
-  sortTexts: {
-    flex: 1,
-    gap: 2,
-  },
-  sortRowTitle: {
+  sortCardTitle: {
     ...type.labelLarge,
     color: scheme.onSurface,
     fontWeight: '600',
   },
-  sortRowTitleActive: {
+  sortCardTitleActive: {
     color: scheme.onPrimaryContainer,
     fontWeight: '700',
   },
-  sortRowDesc: {
+  sortCardDesc: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
-  sortRowDescActive: {
+  sortCardDescActive: {
     color: scheme.onPrimaryContainer,
     opacity: 0.85,
-  },
-  sortCheck: {
-    width: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   pillsWrap: {
     flexDirection: 'row',
