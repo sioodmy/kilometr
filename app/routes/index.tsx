@@ -67,7 +67,7 @@ import { costParamsFor } from '../../src/services/routing/raptor';
 import type { JourneyTimeMode, RouteStyle } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionCard, connectionsLabel } from '../../src/components/ConnectionCard';
+import { ConnectionCard } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
 import {
@@ -191,14 +191,6 @@ export default function RoutesScreen() {
   const [targetTimeSec, setTargetTimeSec] = useState<number | undefined>(undefined);
   const [timeMode, setTimeMode] = useState<JourneyTimeMode>('departure');
   const arrivalMode = timeMode === 'arrival';
-  const timeLabel =
-    targetTimeSec === undefined
-      ? s.routes.now
-      : (arrivalMode ? s.timeSheet.selectedArrival : s.timeSheet.selectedDeparture)(
-          targetTimeSec >= 86400 ? s.common.tomorrow : s.common.today,
-          String(Math.floor(targetTimeSec / 3600) % 24).padStart(2, '0'),
-          String(Math.floor((targetTimeSec % 3600) / 60)).padStart(2, '0'),
-        );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -1229,47 +1221,28 @@ export default function RoutesScreen() {
             renderItem={renderConnection}
             ListHeaderComponent={
               <>
-                <View style={styles.countRow}>
-                  {loading && (
-                    <ActivityIndicator
-                      size="small"
-                      color={scheme.primary}
-                      accessibilityLabel={s.routes.searching}
-                    />
-                  )}
-                  <Text style={styles.count} numberOfLines={1}>
-                    {connectionsLabel(displayed.length)} •{' '}
-                    {isCustomTime
-                      ? arrivalMode
-                        ? timeLabel
-                        : s.routes.countDepart(timeLabel)
-                      : s.routes.countNearest}
-                    {transfersFilter === 'direct' ? s.routes.countDirect : ''}
-                    {modeFilter === 'tram'
-                      ? s.routes.countTram
-                      : modeFilter === 'bus'
-                        ? s.routes.countBus
-                        : ''}
-                  </Text>
-                  {offline && (
-                    <Pressable
-                      onPress={() => quietRefresh()}
-                      style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
-                      hitSlop={6}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.offlineTapA11y}
-                    >
-                      <CloudOff size={14} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
-                    </Pressable>
-                  )}
-                  {liveStale && !offline && (
-                    <View style={styles.offlineChip}>
-                      <CloudOff size={14} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
-                    </View>
-                  )}
-                </View>
+                {(offline || liveStale) && (
+                  <View style={styles.countRow}>
+                    {offline && (
+                      <Pressable
+                        onPress={() => quietRefresh()}
+                        style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
+                        hitSlop={6}
+                        accessibilityRole="button"
+                        accessibilityLabel={s.routes.offlineTapA11y}
+                      >
+                        <CloudOff size={14} color={scheme.onSurfaceVariant} />
+                        <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
+                      </Pressable>
+                    )}
+                    {liveStale && !offline && (
+                      <View style={styles.offlineChip}>
+                        <CloudOff size={14} color={scheme.onSurfaceVariant} />
+                        <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
                 {!arrivalMode && !offline && (
                   <Pressable
                     onPress={handlePullEarlier}
