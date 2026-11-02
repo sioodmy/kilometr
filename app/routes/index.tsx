@@ -226,8 +226,12 @@ export default function RoutesScreen() {
       }
     };
     check();
-    const t = setInterval(check, 5000);
-    return () => clearInterval(t);
+    const unsub = liveTracker.subscribe(check);
+    const t = setInterval(check, 30000);
+    return () => {
+      unsub();
+      clearInterval(t);
+    };
   }, []);
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
   // (departInMin liczone przy pobraniu). Przerysowujemy wiersze, nie listę.
