@@ -11,8 +11,6 @@ import {
   TramFront,
 } from './icons';
 import Animated, {
-  Easing,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -44,8 +42,6 @@ import { railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
 import { isFallbackOrigin } from '../config';
-
-const legTransition = LinearTransition.duration(motion.enter.duration).easing(motion.enter.easing);
 
 // Środek transportu w dopełniaczu („tramwajem między A a B”). Osobna gałąź na
 // pociągi, metro, trolejbusy i koleje linowe: bez nich czytnik ekranu czytałby „autobusem”.
@@ -408,8 +404,6 @@ function TransitLegCard({
   // Mierzymy szerokość badge linii, by wyśrodkować ikonę sensors pod nim
   // i wyrównać kółko rozwijanej listy z początkiem tekstu statusu live.
   const [badgeWidth, setBadgeWidth] = useState(56);
-  const [stopsListHeight, setStopsListHeight] = useState(0);
-  const stopsHeightAnim = useSharedValue(0);
   const sensorSize = 19;
   const sensorCenterOffset = Math.max(0, badgeWidth / 2 - sensorSize / 2);
   const stopsIndent = sensorCenterOffset + sensorSize + 8 - 11;
@@ -426,6 +420,9 @@ function TransitLegCard({
   const [stops, setStops] = useState<LegStop[]>(
     () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
   );
+  const estimatedInitialHeight = Math.max(1, (leg.stopsCount ?? stops.length) || 2) * 36;
+  const [stopsListHeight, setStopsListHeight] = useState(estimatedInitialHeight);
+  const stopsHeightAnim = useSharedValue(0);
   const [loading, setLoading] = useState(
     () =>
       !stopsCache.has(cacheKey) &&
@@ -557,23 +554,25 @@ function TransitLegCard({
     transform: [{ rotate: `${chevron.value * 180}deg` }],
   }));
 
-  // Pionowa animacja wysokości listy przystanków (bez ukosnego rozwijania).
+  // Płynna animacja wysokości i zanikania listy przystanków spójna z czasem obrotu chevronu.
   useEffect(() => {
     if (stopsListHeight > 0) {
-      stopsHeightAnim.value = withTiming(expanded ? stopsListHeight : 0, {
-        duration: 220,
-        easing: Easing.out(Easing.quad),
-      });
+      stopsHeightAnim.value = withTiming(expanded ? stopsListHeight : 0, motion.state);
     }
   }, [expanded, stopsListHeight, stopsHeightAnim]);
 
-  const stopsAnimStyle = useAnimatedStyle(() => ({
-    height: stopsHeightAnim.value,
-    opacity: stopsHeightAnim.value > 0 ? 1 : 0,
-  }));
+  const stopsAnimStyle = useAnimatedStyle(() => {
+    const height = stopsHeightAnim.value;
+    const maxH = Math.max(1, stopsListHeight);
+    const opacity = Math.min(1, Math.max(0, height / Math.min(48, maxH)));
+    return {
+      height,
+      opacity,
+    };
+  });
 
   return (
-    <Animated.View layout={legTransition}>
+    <View>
       <Pressable
         onPress={onToggle}
         accessibilityRole="button"
@@ -672,36 +671,30 @@ function TransitLegCard({
           ) : null}
 
           {/* Pionowa animacja rozwijania listy przystanków */}
-          <View
-            style={s.stopsMeasure}
-            pointerEvents="none"
-            onLayout={(e) => setStopsListHeight(e.nativeEvent.layout.height)}
-          >
-            <LegStopsList
-              leg={leg}
-              accent={accent}
-              userLocation={userLocation}
-              allowLive={allowLive}
-              stops={stops}
-              vehicle={vehicle}
-              loading={loading}
-            />
-          </View>
           {(expanded || hasOpened) && (
             <Animated.View
               style={[stopsAnimStyle, { marginLeft: stopsIndent, overflow: 'hidden' }]}
               accessibilityElementsHidden={!expanded}
               importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
             >
-              <LegStopsList
-                leg={leg}
-                accent={accent}
-                userLocation={userLocation}
-                allowLive={allowLive}
-                stops={stops}
-                vehicle={vehicle}
-                loading={loading}
-              />
+              <View
+                onLayout={(e) => {
+                  const h = Math.round(e.nativeEvent.layout.height);
+                  if (h > 0 && Math.abs(h - stopsListHeight) > 1) {
+                    setStopsListHeight(h);
+                  }
+                }}
+              >
+                <LegStopsList
+                  leg={leg}
+                  accent={accent}
+                  userLocation={userLocation}
+                  allowLive={allowLive}
+                  stops={stops}
+                  vehicle={vehicle}
+                  loading={loading}
+                />
+              </View>
             </Animated.View>
           )}
 
@@ -722,7 +715,7 @@ function TransitLegCard({
           <Text style={s.cardTime}>{leg.arriveAt}</Text>
         </View>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -750,7 +743,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
             nextLeg.mode !== 'walk';
 
           return (
-            <Animated.View key={leg.id} layout={legTransition} style={s.walkCentered}>
+            <View key={leg.id} style={s.walkCentered}>
               <View style={s.walkConnectorLine} />
               <View style={s.walkPill}>
                 <Footprints size={15} color={scheme.primary} />
@@ -781,7 +774,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                 )
               ) : null}
               <View style={s.walkConnectorLine} />
-            </Animated.View>
+            </View>
           );
         }
         const nextVehicle = legs.slice(i + 1).find((next) => next.mode !== 'walk');
@@ -795,7 +788,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
         const hasNextLeg = i < legs.length - 1;
         const nextLegIsTransit = hasNextLeg && legs[i + 1].mode !== 'walk';
         return (
-          <Animated.View key={leg.id} layout={legTransition} style={s.cardContainer}>
+          <View key={leg.id} style={s.cardContainer}>
             <TransitLegCard
               leg={leg}
               expanded={expandedId === leg.id}
@@ -820,7 +813,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                 <View style={s.walkConnectorLine} />
               </View>
             )}
-          </Animated.View>
+          </View>
         );
       })}
     </View>
@@ -1044,13 +1037,6 @@ const s = StyleSheet.create({
   stopsWrap: {
     marginTop: 8,
     gap: 0,
-  },
-  stopsMeasure: {
-    position: 'absolute',
-    opacity: 0,
-    left: -9999,
-    top: 0,
-    width: '100%',
   },
   stopRow: {
     flexDirection: 'row',
