@@ -1,9 +1,42 @@
 import { getLineColors, normalizeLineName, inferTransitMode } from '../src/services/lineIdentity';
+import {
+  inferRailAgency,
+  isIntercityTrain,
+  railBadgeLine,
+  railDirectionLabel,
+} from '../src/services/railIdentity';
 
 let failures = 0;
 function check(label: string, cond: boolean, detail = '') {
   console.log(`  ${cond ? 'PASS' : 'FAIL'} ${label}${detail ? `: ${detail}` : ''}`);
   if (!cond) failures++;
+}
+
+console.log('=== Test tożsamości kolejowej (railIdentity) ===');
+
+// 0. Tożsamość przewoźnika i treść badge'a
+{
+  const leg = (over: object) => ({ line: '', direction: '', ...over });
+  check('railAgency z metadanych', inferRailAgency(leg({ railAgency: 'KS' })) === 'KS');
+  check('railAgency z routeId', inferRailAgency(leg({ line: '', routeId: 'KD:69312' })) === 'KD');
+  check('railAgency z POLREGIO', inferRailAgency(leg({ line: 'POLREGIO 66201' })) === 'PR');
+  check('IC na linii z numerem', isIntercityTrain(leg({ line: 'IC 1620 HETMAN' })));
+  check('IC po metadanych', isIntercityTrain(leg({ railAgency: 'IC', line: '17100' })));
+  check('S1 to nie IC', !(isIntercityTrain(leg({ line: 'S1' })) as boolean));
+  check(
+    'IC: badge z numerem, kierunek z nazwą kursu',
+    railBadgeLine(leg({ railAgency: 'IC', line: 'TLK 38100', trainNumber: '38100' })) === '38100' &&
+      railDirectionLabel(
+        leg({
+          railAgency: 'IC',
+          line: 'TLK 38100 GWAREK',
+          trainName: 'Gwarek',
+          direction: 'Kołobrzeg',
+        }),
+      ) === 'Gwarek · Kołobrzeg',
+  );
+  check('regional: badge z linią handlową', railBadgeLine(leg({ railLine: 'S1' })) === 'S1');
+  check('regional bez zbiorkom: badge z GTFS', railBadgeLine(leg({ line: 'KD D10' })) === 'KD D10');
 }
 
 console.log('=== Test normalizacji i rozpoznawania linii ===');
