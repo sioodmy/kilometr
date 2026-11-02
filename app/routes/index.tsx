@@ -155,7 +155,7 @@ export default function RoutesScreen() {
   }, [params.action]);
 
   // Przycisk „Trasa” pod powiadomieniem prowadzi prosto do szczegółów
-  // śledzonego kursu. Listę połączeń użytkownik już widział - teraz chce
+  // śledzonego kursu. Listę połączeń użytkownik już widział: teraz chce
   // sprawdzić ten jeden kurs, więc oszczędzamy mu jedno przeskakiwanie ekranu.
   const handledOpenRef = useRef<string | null>(null);
   useEffect(() => {
@@ -361,7 +361,7 @@ export default function RoutesScreen() {
       toTitle,
       toLat,
       toLon,
-      // Kotwica to preferencja startowa - pozycja zostaje prawdziwym GPS,
+      // Kotwica to preferencja startowa: pozycja zostaje prawdziwym GPS,
       // silnik liczy realny spacer do kotwicy (ułatwienie, nie sztywna zasada).
       anchorStopId: activeAnchor?.stopId,
       anchorStopLat: activeAnchor?.lat,
@@ -382,7 +382,7 @@ export default function RoutesScreen() {
     };
   };
 
-  // Wyszukiwarka startu / celu - ta sama co na ekranie głównym
+  // Wyszukiwarka startu / celu: ta sama co na ekranie głównym
   const [sheetFor, setSheetFor] = useState<'from' | 'to' | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Suggestion[]>([]);
@@ -588,7 +588,7 @@ export default function RoutesScreen() {
   };
 
   const applyLiveList = (c: Connection[], depSec: number | undefined) => {
-    // Default: tylko aktualne i przyszłe - bez historycznych.
+    // Default: tylko aktualne i przyszłe, bez historycznych.
     // Wcześniejsze odjazdy użytkownik wczytuje gestem lub przyciskiem.
     // Przy jawnie wybranej godzinie (np. z przeszłości) pokazuj wszystko jak jest.
     let list = deduplicateConnections(c).sort((a, b) => a.departureSec - b.departureSec);
@@ -673,7 +673,7 @@ export default function RoutesScreen() {
   };
 
   /**
-   * Cichy refresh BEZ spinnera i BEZ czyszczenia listy - podmiana jest
+   * Cichy refresh BEZ spinnera i BEZ czyszczenia listy: podmiana jest
    * niewidoczna, gdy dane te same (stabilne klucze FlatList = brak flickeru).
    * Używany przy powrocie sieci i zmianie czasu w trybie offline.
    */
@@ -749,7 +749,7 @@ export default function RoutesScreen() {
     }
   };
 
-  // Starsze (historyczne, już odjechane) - dokładane Z GÓRY
+  // Starsze (historyczne, już odjechane), dokładane Z GÓRY
   const handleLoadEarlier = async () => {
     if (arrivalMode) return;
     if (
@@ -1307,9 +1307,9 @@ export default function RoutesScreen() {
             }
             // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
             // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
-            // widać, to spinner, a po błędzie - nic, czyli lista po cichu
+            // widać, to spinner, a po błędzie: nic, czyli lista po cichu
             // przestawała się dociągać.
-            // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć-
+            // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć:
             // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
             ListFooterComponent={
               loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
@@ -1420,7 +1420,7 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 5. Wyszukiwarka startu / celu - ta sama co na ekranie głównym */}
+      {/* 5. Wyszukiwarka startu / celu: ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
           placeholder={
@@ -1500,7 +1500,7 @@ const styles = StyleSheet.create({
   // Karta aktywnej podróży nad listą połączeń
   activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
   // Dopiska kotwicy pod tytułem startu: ta sama typografia co nagłówek,
-  // tylko mniejsza i w kolorze primary - zero pigułek, zero tła.
+  // tylko mniejsza i w kolorze primary: zero pigułek, zero tła.
   anchorSub: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1518,7 +1518,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: scheme.onSurfaceVariant,
   },
-  // Cichy X bez kółka - dopiska ma wyglądać jak tekst, nie jak chip.
+  // Cichy X bez kółka: dopiska ma wyglądać jak tekst, nie jak chip.
   anchorX: {
     width: 44,
     height: 44,

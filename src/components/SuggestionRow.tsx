@@ -46,7 +46,7 @@ const KIND_TONES: Record<string, { Icon: IconComponent; bg: SchemeKey; fg: Schem
   place: { Icon: ShoppingBag, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
 };
 
-/** Kategorie Nominatim - kolory stałe, bo są poza skalą motywu. */
+/** Kategorie Nominatim, kolory stałe, bo są poza skalą motywu. */
 const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: string }> = {
   restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
   medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
@@ -71,7 +71,7 @@ export interface SuggestionIconMeta {
   fg: string;
 }
 
-/** Ta sama ikonka co w wierszu wyszukiwarki - po kategorii, inaczej po rodzaju. */
+/** Ta sama ikonka co w wierszu wyszukiwarki: po kategorii, inaczej po rodzaju. */
 export function getSuggestionIconMeta(
   item: Pick<Suggestion, 'id' | 'kind'> & { category?: string },
 ): SuggestionIconMeta {

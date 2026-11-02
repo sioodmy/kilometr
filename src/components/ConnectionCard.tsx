@@ -192,7 +192,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 }: {
   item: Connection;
   onPress: (item: Connection, sourceLayout?: CardLayoutInfo) => void;
-  /** historyczne (przyszłe) połączenie - przygaszony wygląd */
+  /** historyczne (przyszłe) połączenie: przygaszony wygląd */
   dimmed?: boolean;
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;

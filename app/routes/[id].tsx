@@ -224,7 +224,7 @@ export default function RouteDetailsScreen() {
   };
 
   useEffect(() => {
-    // Brak id to nie „wczytujemy” - inaczej ekran zostawał ze spinnerem w nieskończoność.
+    // Brak id to nie „wczytujemy”: inaczej ekran zostawał ze spinnerem w nieskończoność.
     if (!id) {
       setLoadFailed(true);
       return;
