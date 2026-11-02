@@ -141,6 +141,9 @@ export function SearchSheet({
   const handleLineSelect = (line: TransitLine) => {
     inputRef.current?.blur();
     onSelectLine?.(line);
+    if (closeOnSelect) {
+      ref.current?.close();
+    }
   };
 
   // Zapisane nazwy pasują od pierwszej litery, zanim odpowie lokalny indeks.
