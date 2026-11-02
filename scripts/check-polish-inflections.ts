@@ -34,7 +34,7 @@ function expect<T>(label: string, got: T, want: T): void {
   console.log(`   FAIL  ${label} = ${JSON.stringify(got)} (oczekiwano ${JSON.stringify(want)})`);
 }
 
-describe('Miejscownik i dopełniacz 15 miast (język polski)');
+describe('Miejscownik, dopełniacz i biernik 15 miast (język polski)');
 {
   const expectedLoc: Record<CityId, string> = {
     wroclaw: 'Wrocławiu',
@@ -72,9 +72,28 @@ describe('Miejscownik i dopełniacz 15 miast (język polski)');
     radom: 'Radomia',
   };
 
+  const expectedAcc: Record<CityId, string> = {
+    wroclaw: 'Wrocław',
+    krakow: 'Kraków',
+    gzm: 'GZM',
+    warszawa: 'Warszawę',
+    poznan: 'Poznań',
+    trojmiasto: 'Trójmiasto',
+    lodz: 'Łódź',
+    szczecin: 'Szczecin',
+    kielce: 'Kielce',
+    olsztyn: 'Olsztyn',
+    bialystok: 'Białystok',
+    opole: 'Opole',
+    rzeszow: 'Rzeszów',
+    lublin: 'Lublin',
+    radom: 'Radom',
+  };
+
   for (const c of CITIES) {
     expect(`locative ${c.id}`, pl.city.loc(c.id), expectedLoc[c.id]);
     expect(`genitive ${c.id}`, pl.city.gen(c.id), expectedGen[c.id]);
+    expect(`accusative ${c.id}`, pl.city.acc(c.id), expectedAcc[c.id]);
   }
 }
 
@@ -138,6 +157,21 @@ describe('UnsupportedCityCard komunikat o innym mieście (odmiana)');
     'unsupportedBodyOther: w Trójmieście',
     pl.home.unsupportedBodyOther(pl.city.loc('trojmiasto'), pl.city.name('wroclaw')),
     'Jesteś w Trójmieście, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
+  );
+  expect(
+    'unsupportedSwitchCity: Zmień na Warszawę',
+    pl.home.unsupportedSwitchCity(pl.city.acc('warszawa')),
+    'Zmień na Warszawę',
+  );
+  expect(
+    'unsupportedSwitchCity: Zmień na Wrocław',
+    pl.home.unsupportedSwitchCity(pl.city.acc('wroclaw')),
+    'Zmień na Wrocław',
+  );
+  expect(
+    'unsupportedSwitchCity: Zmień na GZM',
+    pl.home.unsupportedSwitchCity(pl.city.acc('gzm')),
+    'Zmień na GZM',
   );
 }
 
