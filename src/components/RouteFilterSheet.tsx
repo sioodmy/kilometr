@@ -80,15 +80,14 @@ export function RouteFilterSheet({
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
 
-  // Dynamiczne snapPoints zapobiegające wyjściu poza safe area.
-  // enableDynamicSizing={false} oraz flex: 1 w sheetContainer gwarantują,
-  // że dolny pasek z przyciskiem "Gotowe" jest zawsze w całości widoczny
-  // i zadokowany na dole arkusza bez ucinania ani konieczności scrollowania.
-  const snapPoints = useMemo(() => {
-    const target = fontScale > 1.2 ? 0.94 : 0.86;
-    const maxH = windowHeight - insets.top - insets.bottom - 16;
-    return [Math.min(maxH, Math.round(windowHeight * target))];
-  }, [fontScale, insets.bottom, insets.top, windowHeight]);
+  // Kompaktowa, precyzyjnie wyliczona wysokość gwarantuje, że cały arkusz
+  // (wraz z przyciskiem "Gotowe") mieści się w widoku ekranu bez ucinania
+  // na żadnym urządzeniu i nie wypycha footera poza dolną krawędź.
+  const HANDLE_HEIGHT = 24;
+  const maxAvailable = windowHeight - insets.top - insets.bottom - 16;
+  const baseContentHeight = 520 + Math.max(0, fontScale - 1) * 220;
+  const sheetHeight = Math.min(maxAvailable, Math.max(460, baseContentHeight));
+  const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -170,17 +169,17 @@ export function RouteFilterSheet({
   const renderModeIcon = (mode: LegMode, color: string) => {
     switch (mode) {
       case 'tram':
-        return <TramFront size={18} color={color} />;
+        return <TramFront size={16} color={color} />;
       case 'bus':
       case 'trolleybus':
-        return <BusFront size={18} color={color} />;
+        return <BusFront size={16} color={color} />;
       case 'train':
       case 'subway':
-        return <TrainFront size={18} color={color} />;
+        return <TrainFront size={16} color={color} />;
       case 'cable':
-        return <CableCar size={18} color={color} />;
+        return <CableCar size={16} color={color} />;
       default:
-        return <Layers size={18} color={color} />;
+        return <Layers size={16} color={color} />;
     }
   };
 
@@ -194,25 +193,25 @@ export function RouteFilterSheet({
       key: 'balanced',
       label: s.routesFilters.sortOptimal,
       desc: s.routesFilters.sortOptimalDesc,
-      renderIcon: (color) => <Compass size={20} color={color} />,
+      renderIcon: (color) => <Compass size={16} color={color} />,
     },
     {
       key: 'fastest',
       label: s.routesFilters.sortFastest,
       desc: s.routesFilters.sortFastestDesc,
-      renderIcon: (color) => <Zap size={20} color={color} />,
+      renderIcon: (color) => <Zap size={16} color={color} />,
     },
     {
       key: 'fewerTransfers',
       label: s.routesFilters.sortFewerTransfers,
       desc: s.routesFilters.sortFewerTransfersDesc,
-      renderIcon: (color) => <ArrowUpDown size={20} color={color} />,
+      renderIcon: (color) => <ArrowUpDown size={16} color={color} />,
     },
     {
       key: 'lessWalking',
       label: s.routesFilters.sortLessWalking,
       desc: s.routesFilters.sortLessWalkingDesc,
-      renderIcon: (color) => <Footprints size={20} color={color} />,
+      renderIcon: (color) => <Footprints size={16} color={color} />,
     },
   ];
 
@@ -239,7 +238,10 @@ export function RouteFilterSheet({
       handleIndicatorStyle={styles.handle}
       backdropComponent={renderBackdrop}
     >
-      <View style={styles.sheetContainer}>
+      <View
+        style={[styles.sheetContainer, { height: sheetHeight - HANDLE_HEIGHT }]}
+        accessibilityViewIsModal
+      >
         <View style={styles.header}>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.title} accessibilityRole="header">
@@ -288,7 +290,7 @@ export function RouteFilterSheet({
             <Text style={styles.sectionTitle}>{s.routesFilters.sortSection}</Text>
             <View style={styles.sortGrid}>
               {sortOptions.map((opt) => (
-                <SortRow
+                <SortCard
                   key={opt.key}
                   label={opt.label}
                   desc={opt.desc}
@@ -307,7 +309,7 @@ export function RouteFilterSheet({
                 label={s.routesFilters.allVehicles}
                 icon={
                   <Layers
-                    size={18}
+                    size={16}
                     color={
                       selectedMode === 'all' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
                     }
@@ -369,7 +371,7 @@ export function RouteFilterSheet({
   );
 }
 
-function SortRow({
+function SortCard({
   label,
   desc,
   renderIcon,
@@ -385,17 +387,18 @@ function SortRow({
   return (
     <Pressable
       onPress={onPress}
-      style={styles.sortCardWrap}
+      style={({ pressed }) => [
+        styles.sortCard,
+        active && styles.sortCardActive,
+        pressed && styles.pressed,
+      ]}
       accessibilityRole="radio"
       accessibilityState={{ selected: active }}
       accessibilityLabel={`${label}, ${desc}`}
     >
-      <View style={[styles.sortCard, active && styles.sortCardActive]}>
-        <View style={styles.sortCardTop}>
-          <View style={[styles.sortIconCircle, active && styles.sortIconCircleActive]}>
-            {renderIcon(active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant)}
-          </View>
-          {active && <Check size={18} color={scheme.primary} />}
+      <View style={styles.sortCardLeft}>
+        <View style={[styles.sortIconCircle, active && styles.sortIconCircleActive]}>
+          {renderIcon(active ? scheme.primary : scheme.onSurfaceVariant)}
         </View>
         <Text
           style={[styles.sortCardTitle, active && styles.sortCardTitleActive]}
@@ -403,10 +406,8 @@ function SortRow({
         >
           {label}
         </Text>
-        <Text style={[styles.sortCardDesc, active && styles.sortCardDescActive]} numberOfLines={2}>
-          {desc}
-        </Text>
       </View>
+      {active && <Check size={16} color={scheme.primary} />}
     </Pressable>
   );
 }
@@ -456,9 +457,10 @@ function TransfersSegment({
     progress.value = reduceMotion ? activeIndex : withSpring(activeIndex, springConfig);
   }, [activeIndex, progress, reduceMotion]);
 
-  // Szerokość zewnętrzna minus 2px border i 6px padding wewnętrznego.
+  // Szerokość zewnętrzna minus 2px border i 4px padding wewnętrznego.
   const indicatorStyle = useAnimatedStyle(() => {
-    const w = containerWidth.value > 0 ? (containerWidth.value - 8) / Math.max(1, options.length) : 0;
+    const w =
+      containerWidth.value > 0 ? (containerWidth.value - 6) / Math.max(1, options.length) : 0;
     return {
       width: w,
       transform: [{ translateX: progress.value * w }],
@@ -523,7 +525,7 @@ function LiveToggle({
   }));
 
   const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: activeSV.value * 20 }],
+    transform: [{ translateX: activeSV.value * 16 }],
     backgroundColor: interpolateColor(activeSV.value, [0, 1], [scheme.outline, scheme.onPrimary]),
   }));
 
@@ -532,21 +534,23 @@ function LiveToggle({
       onPress={onPress}
       accessibilityRole="switch"
       accessibilityState={{ checked: active }}
-      accessibilityLabel={title}
+      accessibilityLabel={`${title}, ${subtitle}`}
     >
       <Animated.View style={[styles.liveCard, containerStyle]}>
         <View style={styles.liveCardLeft}>
           <View style={[styles.liveIconCircle, active && styles.liveIconCircleActive]}>
-            <Activity
-              size={18}
-              color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-            />
+            <Activity size={16} color={active ? scheme.primary : scheme.onSurfaceVariant} />
           </View>
           <View style={styles.liveCardTexts}>
-            <Text style={[styles.liveCardTitle, active && styles.liveCardTitleActive]}>
+            <Text
+              style={[styles.liveCardTitle, active && styles.liveCardTitleActive]}
+              numberOfLines={1}
+            >
               {title}
             </Text>
-            <Text style={styles.liveCardSub}>{subtitle}</Text>
+            <Text style={styles.liveCardSub} numberOfLines={1}>
+              {subtitle}
+            </Text>
           </View>
         </View>
         <View style={[styles.switchTrack, active && styles.switchTrackActive]}>
@@ -564,7 +568,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: shape.extraLarge,
   },
   sheetContainer: {
-    flex: 1,
+    overflow: 'hidden',
   },
   handle: {
     backgroundColor: scheme.outlineVariant,
@@ -578,8 +582,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: scheme.outlineVariant,
   },
@@ -589,13 +593,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   title: {
-    ...type.titleLarge,
+    ...type.titleMedium,
+    fontSize: 18,
     color: scheme.onSurface,
     fontWeight: '600',
   },
   countBadge: {
-    minWidth: 22,
-    height: 22,
+    minWidth: 20,
+    height: 20,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
@@ -604,6 +609,7 @@ const styles = StyleSheet.create({
   },
   countBadgeText: {
     ...type.labelSmall,
+    fontSize: 11,
     color: scheme.onSecondaryContainer,
     fontWeight: '700',
   },
@@ -618,13 +624,13 @@ const styles = StyleSheet.create({
     borderRadius: shape.small,
   },
   resetText: {
-    ...type.labelLarge,
+    ...type.labelMedium,
     color: scheme.primary,
     fontWeight: '600',
   },
   closeBtn: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
@@ -635,99 +641,95 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
   section: {
-    marginBottom: spacing.xl,
+    marginBottom: 12,
   },
   sectionTitle: {
-    ...type.labelMedium,
-    letterSpacing: 0.6,
+    ...type.labelSmall,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     color: scheme.onSurfaceVariant,
-    marginBottom: spacing.md,
+    marginBottom: 6,
     fontWeight: '700',
   },
   sortGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  sortCardWrap: {
-    width: '48%',
+    gap: 8,
   },
   sortCard: {
-    flex: 1,
-    padding: spacing.md,
-    borderRadius: shape.large,
+    width: '48.8%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: shape.medium,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainerLow,
-    minHeight: 104,
-    gap: spacing.xs,
+    minHeight: 44,
   },
   sortCardActive: {
     borderColor: scheme.primary,
     backgroundColor: scheme.primaryContainer,
   },
-  sortCardTop: {
+  sortCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
   sortIconCircle: {
-    width: 36,
-    height: 36,
+    width: 26,
+    height: 26,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sortIconCircleActive: {
-    backgroundColor: scheme.primaryContainer,
+    backgroundColor: 'rgba(92, 219, 190, 0.16)',
   },
   sortCardTitle: {
     ...type.labelLarge,
+    fontSize: 13,
     color: scheme.onSurface,
-    fontWeight: '600',
+    fontWeight: '500',
+    flex: 1,
   },
   sortCardTitleActive: {
     color: scheme.onPrimaryContainer,
     fontWeight: '700',
   },
-  sortCardDesc: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-  },
-  sortCardDescActive: {
-    color: scheme.onPrimaryContainer,
-    opacity: 0.85,
-  },
   pillsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
+    gap: 8,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
-    minHeight: 44,
+    minHeight: 38,
   },
   chipActive: {
     backgroundColor: scheme.secondaryContainer,
     borderColor: scheme.secondaryContainer,
   },
   chipText: {
-    ...type.labelLarge,
+    ...type.labelMedium,
+    fontSize: 13,
     color: scheme.onSurface,
     fontWeight: '600',
   },
@@ -739,31 +741,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.full,
-    padding: 3,
+    padding: 2,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
   segmentIndicator: {
     position: 'absolute',
-    top: 3,
-    left: 3,
-    bottom: 3,
+    top: 2,
+    left: 2,
+    bottom: 2,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     zIndex: 0,
   },
   segmentBtn: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: shape.full,
-    minHeight: 44,
+    minHeight: 38,
     zIndex: 1,
   },
   segmentText: {
-    ...type.labelMedium,
+    ...type.labelSmall,
+    fontSize: 12,
     color: scheme.onSurfaceVariant,
     fontWeight: '600',
   },
@@ -775,48 +778,52 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.md,
-    borderRadius: shape.large,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: shape.medium,
     borderWidth: 1,
+    minHeight: 48,
   },
   liveCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: 10,
     flex: 1,
-    paddingRight: spacing.md,
+    paddingRight: 10,
   },
   liveIconCircle: {
-    width: 40,
-    height: 40,
+    width: 28,
+    height: 28,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
   liveIconCircleActive: {
-    backgroundColor: scheme.primaryContainer,
+    backgroundColor: 'rgba(92, 219, 190, 0.16)',
   },
   liveCardTexts: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   liveCardTitle: {
-    ...type.titleSmall,
+    ...type.labelLarge,
+    fontSize: 13,
     color: scheme.onSurface,
     fontWeight: '600',
   },
   liveCardTitleActive: {
-    color: scheme.primary,
+    color: scheme.onSurface,
   },
   liveCardSub: {
     ...type.bodySmall,
+    fontSize: 11,
     color: scheme.onSurfaceVariant,
   },
   switchTrack: {
-    width: 44,
-    height: 24,
-    borderRadius: 12,
+    width: 38,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: scheme.surfaceContainerHighest,
     padding: 2,
     justifyContent: 'center',
@@ -826,23 +833,23 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primary,
   },
   switchThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
   pressed: {
     opacity: 0.8,
   },
   footer: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingTop: 10,
+    paddingBottom: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainer,
   },
   doneBtn: {
-    minHeight: 48,
+    minHeight: 46,
     borderRadius: shape.full,
     backgroundColor: scheme.primary,
     alignItems: 'center',
