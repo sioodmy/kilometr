@@ -4,8 +4,6 @@ import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { resolveSupportedCityId, suggestCityForCoords, type CityId } from '../cities';
 
-export { resolveSupportedCityId };
-
 export function UnsupportedCityCard({
   city,
   activeCity,
