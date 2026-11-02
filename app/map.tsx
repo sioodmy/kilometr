@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ScanLine, WifiOff } from '../src/components/icons';
+import { ArrowRight, ChevronLeft, ScanLine, WifiOff } from '../src/components/icons';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
@@ -36,6 +36,7 @@ import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
 import { useStrings } from '../src/i18n';
 import { useTrackedTrip } from '../src/services/notifications';
 import { normalizeConnectionId } from '../src/services/routing/connectionIdentity';
+import { isFallbackOrigin } from '../src/config';
 
 type Coord = [number, number];
 
@@ -437,9 +438,21 @@ export default function RouteMapScreen() {
               <ChevronLeft size={22} color={scheme.onSurface} />
             </Pressable>
             <View style={styles.headerContent}>
-              <Text style={styles.headerTitle} numberOfLines={fontScale > 1.3 ? undefined : 2}>
-                {item.fromTitle} → {item.toTitle}
-              </Text>
+              {item.fromTitle === item.toTitle ? (
+                <Text style={styles.headerTitle} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                  {item.toTitle}
+                </Text>
+              ) : (
+                <View style={styles.headerTitleRow}>
+                  <Text style={styles.headerTitle} numberOfLines={1}>
+                    {item.fromTitle}
+                  </Text>
+                  <ArrowRight size={16} color={scheme.onSurfaceVariant} />
+                  <Text style={styles.headerTitle} numberOfLines={1}>
+                    {item.toTitle}
+                  </Text>
+                </View>
+              )}
               <Text style={styles.headerSub}>
                 {item.departAt}–{item.arriveAt} • {s.common.durMin(item.durationMin)}
                 {item.transfers > 0 ? s.map.transfersSuffix(item.transfers) : ''}
@@ -506,12 +519,40 @@ export default function RouteMapScreen() {
               >
                 <LineBadge line={leg.line} mode={leg.mode} compact active={active} />
                 <View style={styles.legInfo}>
-                  <Text
-                    style={[styles.legTitle, active && styles.legTitleActive]}
-                    numberOfLines={fontScale > 1.3 ? undefined : 2}
-                  >
-                    {leg.fromStop} → {leg.toStop}
-                  </Text>
+                  {leg.fromStop === leg.toStop ? (
+                    <Text
+                      style={[styles.legTitle, active && styles.legTitleActive]}
+                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                    >
+                      {leg.toStop}
+                    </Text>
+                  ) : leg.mode === 'walk' && isFallbackOrigin(leg.fromStop) ? (
+                    <Text
+                      style={[styles.legTitle, active && styles.legTitleActive]}
+                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                    >
+                      {s.connection.walkTo(leg.toStop)}
+                    </Text>
+                  ) : (
+                    <View style={styles.legTitleRow}>
+                      <Text
+                        style={[styles.legTitle, active && styles.legTitleActive]}
+                        numberOfLines={1}
+                      >
+                        {leg.fromStop}
+                      </Text>
+                      <ArrowRight
+                        size={14}
+                        color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                      />
+                      <Text
+                        style={[styles.legTitle, active && styles.legTitleActive]}
+                        numberOfLines={1}
+                      >
+                        {leg.toStop}
+                      </Text>
+                    </View>
+                  )}
                   <Text style={[styles.legSub, active && styles.legTitleActive]}>
                     {leg.departAt}–{leg.arriveAt}
                     {leg.mode === 'walk'
@@ -568,6 +609,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerContent: { flex: 1, minWidth: 0, gap: 4 },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   headerTitle: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface, flexShrink: 1 },
   headerSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
 
@@ -635,10 +681,16 @@ const styles = StyleSheet.create({
     borderColor: scheme.primary,
   },
   legInfo: { flex: 1, minWidth: 0, gap: 6 },
+  legTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   legTitle: {
     ...type.bodyMedium,
     fontWeight: '500',
     color: scheme.onSurface,
+    flexShrink: 1,
   },
   legTitleActive: { color: scheme.onPrimaryContainer },
   legSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
