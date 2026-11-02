@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -77,14 +77,18 @@ export function RouteFilterSheet({
 }: RouteFilterSheetProps) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
-  // Wysokość pikselowa zamiast procentów, bo content musi mieć jawną
-  // wysokość, żeby sticky footer nie wypadł poza sheet.
-  const sheetHeight = Math.min(
-    windowHeight - insets.top - insets.bottom - 16,
-    Math.round(windowHeight * 0.82),
-  );
+
+  // Dynamiczne snapPoints zapobiegające wyjściu poza safe area.
+  // enableDynamicSizing={false} oraz flex: 1 w sheetContainer gwarantują,
+  // że dolny pasek z przyciskiem "Gotowe" jest zawsze w całości widoczny
+  // i zadokowany na dole arkusza bez ucinania ani konieczności scrollowania.
+  const snapPoints = useMemo(() => {
+    const target = fontScale > 1.2 ? 0.94 : 0.86;
+    const maxH = windowHeight - insets.top - insets.bottom - 16;
+    return [Math.min(maxH, Math.round(windowHeight * target))];
+  }, [fontScale, insets.bottom, insets.top, windowHeight]);
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -137,6 +141,11 @@ export function RouteFilterSheet({
   const handleResetPress = () => {
     void Haptics.selectionAsync().catch(() => {});
     onReset();
+  };
+
+  const handleDonePress = () => {
+    void Haptics.selectionAsync().catch(() => {});
+    onClose();
   };
 
   const getModeLabel = (mode: LegMode) => {
@@ -220,15 +229,17 @@ export function RouteFilterSheet({
     <BottomSheet
       ref={sheetRef}
       index={0}
-      snapPoints={[sheetHeight]}
+      snapPoints={snapPoints}
+      topInset={insets.top}
       bottomInset={insets.bottom}
+      enableDynamicSizing={false}
       enablePanDownToClose
       onClose={onClose}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
       backdropComponent={renderBackdrop}
     >
-      <View style={[styles.sheetContainer, { height: sheetHeight - 24 }]}>
+      <View style={styles.sheetContainer}>
         <View style={styles.header}>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.title} accessibilityRole="header">
@@ -345,7 +356,7 @@ export function RouteFilterSheet({
 
         <View style={styles.footer}>
           <Pressable
-            onPress={onClose}
+            onPress={handleDonePress}
             style={({ pressed }) => [styles.doneBtn, pressed && styles.doneBtnPressed]}
             accessibilityRole="button"
             accessibilityLabel={s.routesFilters.done}
@@ -547,7 +558,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: shape.extraLarge,
   },
   sheetContainer: {
-    overflow: 'hidden',
+    flex: 1,
   },
   handle: {
     backgroundColor: scheme.outlineVariant,
