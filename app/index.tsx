@@ -261,7 +261,7 @@ export default function HomeScreen() {
     const requestedCity = getActiveCityIdSync();
     FavoritesService.list().then((places) => {
       if (requestedCity === getActiveCityIdSync()) setSaved(places);
-    });
+    }).catch(() => {});
   };
 
   // Świeży ranking zapisujemy do cache, żeby następny start namalował
@@ -299,14 +299,14 @@ export default function HomeScreen() {
     refreshPlaces();
     SearchService.recent().then((list) => {
       if (!cancelled) setRecent(list);
-    });
+    }).catch(() => {});
     loadTripHistory().then((h) => {
       if (!cancelled && h.length > 0) setLastTrip(h[0]);
-    });
+    }).catch(() => {});
     // Spóźniony cache nie może nadpisać rankingu wyliczonego z nowej pozycji.
     loadCachedSmartDestinations().then((cached) => {
       if (!cancelled && cacheGen === smartGen.current && cached.length > 0) setSmart(cached);
-    });
+    }).catch(() => {});
     // Live GPS od startu (ticker w tle) - opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
 
@@ -391,7 +391,7 @@ export default function HomeScreen() {
           if (isOutsideServiceArea(l.lat, l.lon)) return;
           const coords = { lat: l.lat, lon: l.lon };
           requestSmart(l.stopId || l.title, coords);
-        });
+        }).catch(() => {});
       } else {
         requestSmart(originStopRef.current, currentCoords);
       }
@@ -734,8 +734,8 @@ export default function HomeScreen() {
     setCurrentCoords(coords);
     requestSmart(sel.id || sel.title, coords);
     void SearchService.recordRecent(sel).then(() => {
-      SearchService.recent().then(setRecent);
-    });
+      SearchService.recent().then(setRecent).catch(() => {});
+    }).catch(() => {});
 
     if (returnToDestinationAfterStart) {
       setReturnToDestinationAfterStart(false);
@@ -815,8 +815,8 @@ export default function HomeScreen() {
     routeSearchGen.current++;
     void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
     void SearchService.recordRecent({ ...to, address: to.address ?? '', kind: to.kind ?? 'history' }).then(() => {
-      SearchService.recent().then(setRecent);
-    });
+      SearchService.recent().then(setRecent).catch(() => {});
+    }).catch(() => {});
     router.push({
       pathname: '/routes',
       params: {
@@ -986,7 +986,7 @@ export default function HomeScreen() {
       let cancelled = false;
       loadTripHistory().then((h) => {
         if (!cancelled && h.length > 0) setLastTrip(h[0]);
-      });
+      }).catch(() => {});
       // Po powrocie na ekran główny upewnij się, że arkusz jest zwinięty
       setSheetMode(null);
       setQuery('');

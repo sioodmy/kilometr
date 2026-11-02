@@ -118,9 +118,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!ready || !needsOnboarding || pathname === '/onboarding') return;
-    void hasSeenOnboarding().then((seen) => {
-      if (seen) setNeedsOnboarding(false);
-    });
+    void hasSeenOnboarding()
+      .then((seen) => {
+        if (seen) setNeedsOnboarding(false);
+      })
+      .catch(() => {});
   }, [ready, needsOnboarding, pathname]);
 
   useEffect(() => {

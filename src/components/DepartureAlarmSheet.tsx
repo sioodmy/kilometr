@@ -58,13 +58,13 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
     let mounted = true;
     const refresh = () => {
       void getAlarmPermissions().then((value) => { if (mounted) setPermissions(value); })
-        .catch(() => { if (mounted) setError(a.error); });
+        .catch(() => {});
     };
     refresh();
     const sub = AppState.addEventListener('change', (state) => { if (state === 'active') refresh(); });
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => { mounted = false; sub.remove(); clearInterval(timer); };
-  }, [a.error]);
+  }, []);
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
