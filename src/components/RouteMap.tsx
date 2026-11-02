@@ -199,7 +199,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         overScrollMode="never"
         showsVerticalScrollIndicator={false}
         setBuiltInZoomControls={false}
-        androidLayerType="hardware"
+        androidLayerType="none"
         onContentProcessDidTerminate={restart}
         onRenderProcessGone={restart}
         onError={() => onError?.('map-load-failed')}
