@@ -93,14 +93,17 @@ export default function RoutesScreen() {
   const cityDef = defaultLocationForCity(cityId);
   const cityGen = s.city.gen(cityId);
   const operator = s.city.operator(cityId);
-  const gpsItem: Suggestion = {
-    id: '__gps',
-    title: s.home.gpsTitle,
-    address: s.routes.gpsAddress,
-    kind: 'history',
-    lat: 0,
-    lon: 0,
-  };
+  const gpsItem: Suggestion = useMemo(
+    () => ({
+      id: '__gps',
+      title: s.home.gpsTitle,
+      address: s.routes.gpsAddress,
+      kind: 'history',
+      lat: 0,
+      lon: 0,
+    }),
+    [s],
+  );
   const router = useRouter();
   const reduceMotion = useReducedMotion();
   const params = useLocalSearchParams<{

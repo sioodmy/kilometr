@@ -40,7 +40,7 @@ export default function LineDeparturesScreen() {
   }, [stop]);
   const dateLabel = useMemo(
     () => formatTimetableDate(date, getLocaleSync()),
-    [date, getLocaleSync()],
+    [date, s],
   );
 
   return (

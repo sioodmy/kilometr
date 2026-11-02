@@ -390,26 +390,29 @@ export default function OnboardingScreen() {
   const steps = s.onboarding.steps;
   const cityGen = s.city.gen(cityId);
   const cityFeeds = s.city.feeds(cityId);
-  const placeSlots = [
-    {
-      key: 'home' as SlotKey,
-      name: s.onboarding.slotHome,
-      icon: Home,
-      hint: s.onboarding.slotHomeHint(cityId),
-    },
-    {
-      key: 'work' as SlotKey,
-      name: s.onboarding.slotWork,
-      icon: Briefcase,
-      hint: s.onboarding.slotWorkHint(cityId),
-    },
-    {
-      key: 'school' as SlotKey,
-      name: s.onboarding.slotUni,
-      icon: GraduationCap,
-      hint: s.onboarding.slotUniHint(cityId),
-    },
-  ];
+  const placeSlots = useMemo(
+    () => [
+      {
+        key: 'home' as SlotKey,
+        name: s.onboarding.slotHome,
+        icon: Home,
+        hint: s.onboarding.slotHomeHint(cityId),
+      },
+      {
+        key: 'work' as SlotKey,
+        name: s.onboarding.slotWork,
+        icon: Briefcase,
+        hint: s.onboarding.slotWorkHint(cityId),
+      },
+      {
+        key: 'school' as SlotKey,
+        name: s.onboarding.slotUni,
+        icon: GraduationCap,
+        hint: s.onboarding.slotUniHint(cityId),
+      },
+    ],
+    [cityId, s],
+  );
   // Krok 3: przewijanie otwartego slotu nad klawiaturę.
   const step3Scroll = useRef<ScrollView>(null);
   const slotY = useRef<Record<string, number>>({});
