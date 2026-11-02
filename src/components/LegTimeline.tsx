@@ -548,16 +548,13 @@ function TransitLegCard({
   useEffect(() => {
     if (expanded) setHasOpened(true);
     chevron.value = withTiming(expanded ? 1 : 0, motion.state);
-  }, [chevron, expanded]);
+    const targetHeight = Math.max(estimatedInitialHeight, measuredHeight.value);
+    stopsHeightAnim.value = withTiming(expanded ? targetHeight : 0, motion.state);
+  }, [expanded, chevron, stopsHeightAnim, measuredHeight, estimatedInitialHeight]);
 
   const chevronStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${chevron.value * 180}deg` }],
   }));
-
-  // Płynna animacja wysokości i zanikania listy przystanków spójna z czasem obrotu chevronu.
-  useEffect(() => {
-    stopsHeightAnim.value = withTiming(expanded ? measuredHeight.value : 0, motion.state);
-  }, [expanded, stopsHeightAnim, measuredHeight]);
 
   const stopsAnimStyle = useAnimatedStyle(() => {
     const height = stopsHeightAnim.value;
@@ -671,11 +668,13 @@ function TransitLegCard({
           {/* Pionowa animacja rozwijania listy przystanków */}
           {(expanded || hasOpened) && (
             <Animated.View
+              pointerEvents={expanded ? 'auto' : 'none'}
               style={[stopsAnimStyle, { marginLeft: stopsIndent, overflow: 'hidden' }]}
               accessibilityElementsHidden={!expanded}
               importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
             >
               <View
+                style={s.stopsContent}
                 onLayout={(e) => {
                   const h = Math.round(e.nativeEvent.layout.height);
                   if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
@@ -1034,6 +1033,12 @@ const s = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     marginTop: 4,
     textAlign: 'center',
+  },
+  stopsContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   stopsWrap: {
     marginTop: 8,
