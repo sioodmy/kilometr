@@ -38,9 +38,12 @@ export const uk: Strings = {
     selectStop: (name: string) => `Показати відправлення: ${name}`,
     loading: 'Завантаження розкладу…',
     error: 'Не вдалося завантажити розклад. Спробуйте ще раз.',
-    empty: 'У збереженому розкладі немає рейсів на цей день. Виберіть інший день або оновіть розклад у Налаштуваннях.',
-    missing: 'Цього маршруту немає у збереженому розкладі. Поверніться до пошуку або оновіть дані в Налаштуваннях.',
-    missingStop: 'Цієї зупинки або варіанта маршруту вже немає в розкладі. Поверніться до списку зупинок.',
+    empty:
+      'У збереженому розкладі немає рейсів на цей день. Виберіть інший день або оновіть розклад у Налаштуваннях.',
+    missing:
+      'Цього маршруту немає у збереженому розкладі. Поверніться до пошуку або оновіть дані в Налаштуваннях.',
+    missingStop:
+      'Цієї зупинки або варіанта маршруту вже немає в розкладі. Поверніться до списку зупинок.',
     terminal: 'Кінцева зупинка',
     terminalHint: 'Виберіть попередню зупинку, щоб переглянути відправлення.',
     scheduled: 'Час зі збереженого розкладу',
@@ -48,7 +51,8 @@ export const uk: Strings = {
     previousDay: 'Попередній день',
     back: 'Назад',
     dayOffset: (days: number) => `+${days} ${isOne(days) ? 'день' : isFew(days) ? 'дні' : 'днів'}`,
-    nextDayTime: (time: string, days: number) => `${time} (+${days} ${isOne(days) ? 'день' : isFew(days) ? 'дні' : 'днів'})`,
+    nextDayTime: (time: string, days: number) =>
+      `${time} (+${days} ${isOne(days) ? 'день' : isFew(days) ? 'дні' : 'днів'})`,
   },
   transferGuard: {
     enabled: 'Увімкнено',
@@ -60,9 +64,11 @@ export const uk: Strings = {
     riskBody: 'Шукаємо іншу пересадку.',
     stayOn: (line: string) => `Залишайтеся в ${line}`,
     changedBody: (line: string, stop: string) => `Пересядьте на ${line} на зупинці ${stop}.`,
-    noAlternative: 'Доступної альтернативи не знайдено. Поточна пересадка може не вдатися. Перевіримо ще раз.',
+    noAlternative:
+      'Доступної альтернативи не знайдено. Поточна пересадка може не вдатися. Перевіримо ще раз.',
     unavailable: 'Не можемо оцінити пересадку',
-    unavailableBody: 'Очікуємо точне місцеположення на маршруті. Поточний план залишається видимим.',
+    unavailableBody:
+      'Очікуємо точне місцеположення на маршруті. Поточний план залишається видимим.',
     routingError: 'Не вдалося підготувати контроль пересадок. Спробуйте ще раз.',
     rerouting: 'Шукаємо нову пересадку',
     next: (line: string, stop: string) => `${line} · ${stop}`,
@@ -168,6 +174,9 @@ export const uk: Strings = {
       `Твоя GPS-локація поза зоною обслуговування. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedHint: 'Вибери початок вручну, щоб знайти сполучення.',
     unsupportedAction: 'Вибрати початок',
+    unsupportedActionShort: 'Вибрати старт',
+    unsupportedSwitchCity: (city: string) => `Перейти на ${city}`,
+    unsupportedSwitchCityA11y: (city: string) => `Змінити місто на ${city}`,
     pickStart: 'Вибери початок',
     gpsBlockedTitle: 'Старт із GPS недоступний',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -207,9 +216,9 @@ export const uk: Strings = {
                               ? 'Ряшів'
                               : id === 'lublin'
                                 ? 'Люблін'
-                              : id === 'radom'
-                                ? 'Радом'
-                              : 'Вроцлав',
+                                : id === 'radom'
+                                  ? 'Радом'
+                                  : 'Вроцлав',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Кракова'
@@ -237,9 +246,9 @@ export const uk: Strings = {
                               ? 'Ряшева'
                               : id === 'lublin'
                                 ? 'Любліна'
-                              : id === 'radom'
-                                ? 'Радома'
-                              : 'Вроцлава',
+                                : id === 'radom'
+                                  ? 'Радома'
+                                  : 'Вроцлава',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Кракові'
@@ -267,9 +276,39 @@ export const uk: Strings = {
                               ? 'Ряшеві'
                               : id === 'lublin'
                                 ? 'Любліні'
-                              : id === 'radom'
-                                ? 'Радомі'
-                              : 'Вроцлаві',
+                                : id === 'radom'
+                                  ? 'Радомі'
+                                  : 'Вроцлаві',
+    acc: (id: string): string =>
+      id === 'warszawa'
+        ? 'Варшаву'
+        : id === 'krakow'
+          ? 'Краків'
+          : id === 'gzm'
+            ? 'GZM'
+            : id === 'poznan'
+              ? 'Познань'
+              : id === 'trojmiasto'
+                ? 'Труймясто'
+                : id === 'lodz'
+                  ? 'Лодзь'
+                  : id === 'szczecin'
+                    ? 'Щецин'
+                    : id === 'kielce'
+                      ? 'Кельце'
+                      : id === 'olsztyn'
+                        ? 'Ольштин'
+                        : id === 'bialystok'
+                          ? 'Білосток'
+                          : id === 'opole'
+                            ? 'Ополе'
+                            : id === 'rzeszow'
+                              ? 'Ряшів'
+                              : id === 'lublin'
+                                ? 'Люблін'
+                                : id === 'radom'
+                                  ? 'Радом'
+                                  : 'Вроцлав',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP і Koleje Małopolskie'
@@ -281,7 +320,7 @@ export const uk: Strings = {
               ? 'ZTM і Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia і SKM'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK і Лодзька агломераційна залізниця'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -297,9 +336,9 @@ export const uk: Strings = {
                               ? 'ZTM Ряшів'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK і Koleje Dolnośląskie',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK і Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Краків'
@@ -311,7 +350,7 @@ export const uk: Strings = {
               ? 'ZTM Познань'
               : id === 'trojmiasto'
                 ? 'ZTM Ґданськ'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Лодзь'
                   : id === 'szczecin'
                     ? 'ZDiTM Щецин'
@@ -327,9 +366,9 @@ export const uk: Strings = {
                               ? 'ZTM Ряшів'
                               : id === 'lublin'
                                 ? 'ZDiTM Люблін'
-                              : id === 'radom'
-                                ? 'MZDiK Радом'
-                              : 'MPK Вроцлав • wroclaw.pl',
+                                : id === 'radom'
+                                  ? 'MZDiK Радом'
+                                  : 'MPK Вроцлав • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Краків'
@@ -341,7 +380,7 @@ export const uk: Strings = {
               ? 'ZTM Познань'
               : id === 'trojmiasto'
                 ? 'ZTM Ґданськ'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Лодзь'
                   : id === 'szczecin'
                     ? 'ZDiTM Щецин'
@@ -357,9 +396,9 @@ export const uk: Strings = {
                               ? 'ZTM Ряшів'
                               : id === 'lublin'
                                 ? 'ZDiTM Люблін'
-                              : id === 'radom'
-                                ? 'MZDiK Радом'
-                              : 'MPK Вроцлав',
+                                : id === 'radom'
+                                  ? 'MZDiK Радом'
+                                  : 'MPK Вроцлав',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -383,11 +422,11 @@ export const uk: Strings = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
-                              : id === 'lublin'
-                                ? 'ZDiTM'
+                            : id === 'lublin'
+                              ? 'ZDiTM'
                               : id === 'radom'
                                 ? 'MZDiK'
-                            : 'MPK',
+                                : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -399,7 +438,7 @@ export const uk: Strings = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
@@ -415,10 +454,11 @@ export const uk: Strings = {
                               ? 'ztm.erzeszow.pl'
                               : id === 'lublin'
                                 ? 'zdtm.lublin.eu'
-                              : id === 'radom'
-                                ? 'mzdik.pl'
-                                : 'wroclaw.pl',
-    supportedList: 'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів, Lublin',
+                                : id === 'radom'
+                                  ? 'mzdik.pl'
+                                  : 'wroclaw.pl',
+    supportedList:
+      'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів, Lublin',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
@@ -585,7 +625,8 @@ export const uk: Strings = {
           ? `${n} залізничні маршрути`
           : `${n} залізничних маршрутів`,
     diagTrainsNone: 'Немає залізничних маршрутів. Завантаж новіший розклад.',
-    diagTrainsNotSupported: 'Не застосовується для цього міста (громадський транспорт без залізниці)',
+    diagTrainsNotSupported:
+      'Не застосовується для цього міста (громадський транспорт без залізниці)',
     diagCalendar: 'Календар GTFS',
     diagCalendarLine: (from: string, to: string) => `Розклад дійсний ${from} – ${to}`,
     diagCalendarEmpty: 'Немає календаря в базі',
@@ -681,7 +722,8 @@ export const uk: Strings = {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
     intro: 'Обери місто й завантаж розклад. Планувати поїздки можна й без інтернету.',
     openSettings: 'Відкрити налаштування',
-    permissionDenied: 'Можна продовжити без цього дозволу та змінити його пізніше в налаштуваннях телефона.',
+    permissionDenied:
+      'Можна продовжити без цього дозволу та змінити його пізніше в налаштуваннях телефона.',
     steps: ['Вітаємо', 'Доступи', 'Місто', 'Розклад', 'Місця'],
     granted: 'Увімкнено',
     denied: 'Вимкнено',
@@ -696,7 +738,7 @@ export const uk: Strings = {
             ? 'напр. Głogowska 12'
             : id === 'trojmiasto'
               ? 'напр. Długa 12'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'напр. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'напр. Wojska Polskiego 12'
@@ -710,11 +752,11 @@ export const uk: Strings = {
                           ? 'напр. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'напр. 3 Maja 12'
-                              : id === 'lublin'
-                                ? 'напр. Krakowskie Przedmieście 12'
+                            : id === 'lublin'
+                              ? 'напр. Krakowskie Przedmieście 12'
                               : id === 'radom'
                                 ? 'напр. Żeromskiego 12'
-                            : 'напр. Swojczycka 41',
+                                : 'напр. Swojczycka 41',
     slotWork: 'Робота',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -725,7 +767,7 @@ export const uk: Strings = {
             ? 'напр. Stary Browar'
             : id === 'trojmiasto'
               ? 'напр. Galeria Bałtycka'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'напр. Manufaktura'
                 : id === 'szczecin'
                   ? 'напр. Galeria Kaskada'
@@ -739,11 +781,11 @@ export const uk: Strings = {
                           ? 'напр. Solaris Center'
                           : id === 'rzeszow'
                             ? 'напр. Galeria Rzeszów'
-                              : id === 'lublin'
-                                ? 'напр. Felicity'
+                            : id === 'lublin'
+                              ? 'напр. Felicity'
                               : id === 'radom'
                                 ? 'напр. Galeria Słoneczna'
-                            : 'напр. Sky Tower',
+                                : 'напр. Sky Tower',
     slotUni: 'Універ',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -754,7 +796,7 @@ export const uk: Strings = {
             ? 'напр. UAM'
             : id === 'trojmiasto'
               ? 'напр. UG'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'напр. UŁ'
                 : id === 'szczecin'
                   ? 'напр. US'
@@ -768,11 +810,11 @@ export const uk: Strings = {
                           ? 'напр. UO'
                           : id === 'rzeszow'
                             ? 'напр. PRz'
-                              : id === 'lublin'
-                                ? 'напр. UMCS'
+                            : id === 'lublin'
+                              ? 'напр. UMCS'
                               : id === 'radom'
                                 ? 'напр. UTH'
-                            : 'напр. Politechnika',
+                                : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',
@@ -845,12 +887,11 @@ export const uk: Strings = {
     count: (n: number, urgent: number) => {
       const items = isOne(n) ? `${n} новина` : isFew(n) ? `${n} новини` : `${n} новин`;
       if (urgent <= 0) return items;
-      const u =
-        isOne(urgent)
-          ? `${urgent} термінова`
-          : isFew(urgent)
-            ? `${urgent} термінові`
-            : `${urgent} термінових`;
+      const u = isOne(urgent)
+        ? `${urgent} термінова`
+        : isFew(urgent)
+          ? `${urgent} термінові`
+          : `${urgent} термінових`;
       return `${items} • ${u}`;
     },
     refreshA11y: 'Оновити новини',
@@ -885,9 +926,9 @@ export const uk: Strings = {
     filterNoHistoryBody:
       'Знайди сполучення в застосунку, тоді тут з’являться повідомлення про ці лінії.',
     resolved: 'Рух відновлено',
-    solutionLabel: 'Траса об\'їзду',
-    detourLabel: 'Траса об\'їзду',
-    detourAndReplacement: 'Об\'їзд та компенсаційний автобус',
+    solutionLabel: "Траса об'їзду",
+    detourLabel: "Траса об'їзду",
+    detourAndReplacement: "Об'їзд та компенсаційний автобус",
     replacementBus: 'Компенсаційний автобус',
     urgentChip: 'Ускладнення',
     plannedChip: 'Зміна маршруту',
@@ -1016,7 +1057,8 @@ export const uk: Strings = {
       `На цьому маршруті зараз немає рейсу ${veh}. Перемкни на „Всі“, щоб бачити решту.`,
     emptyPlain: 'Спробуй іншу ціль або перевір інший час відправлення.',
     samePlaceTitle: 'Початок і ціль це те саме місце',
-    samePlaceBody: 'Ти вже на місці, тож планувати нічого. Обери іншу ціль, щоб побачити сполучення.',
+    samePlaceBody:
+      'Ти вже на місці, тож планувати нічого. Обери іншу ціль, щоб побачити сполучення.',
     vehicleTramGen: 'трамваєм',
     vehicleBusGen: 'автобусом',
     vehicleTrolleyGen: 'тролейбусом',
@@ -1288,7 +1330,7 @@ export const uk: Strings = {
   },
   leg: {
     fareBoundary: 'Межа тарифних зон',
-    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
+    fareBoundaryDetail: (areas: string, point: string) => (point ? `${areas} · ${point}` : areas),
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
@@ -1322,7 +1364,8 @@ export const uk: Strings = {
     routeOverview: 'Показати цей етап',
     compassAccuracyLow: 'Низька точність компаса',
     calibrationHelp: 'Як покращити точність',
-    calibrateCompass: 'Відсуньте телефон від металу та магнітів, наприклад тримача. Кілька разів повільно рухайте ним у формі вісімки. Повідомлення зникне, коли точність покращиться.',
+    calibrateCompass:
+      'Відсуньте телефон від металу та магнітів, наприклад тримача. Кілька разів повільно рухайте ним у формі вісімки. Повідомлення зникне, коли точність покращиться.',
     gpsWeak: 'Слабкий сигнал GPS. Позиція може бути неточною.',
     deviceGps: 'Ваша GPS-позиція',
     prepareToAlight: 'Готуйтеся до виходу',
@@ -1343,9 +1386,11 @@ export const uk: Strings = {
     vehicleGpsMissing: 'Немає свіжої GPS-позиції транспорту. Маршрут залишається видимим.',
     alightAt: (name: string) => `Виходьте: ${name}`,
     boardAt: (name: string) => `Сідайте: ${name}`,
-    stopsRemaining: (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'зупинка' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'зупинки' : 'зупинок'} до виходу`,
+    stopsRemaining: (n: number) =>
+      `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'зупинка' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'зупинки' : 'зупинок'} до виходу`,
     mapLoading: 'Завантаження мапи…',
-    mapFailed: 'Не вдалося завантажити мапу. Спробуйте ще раз або завантажте офлайн-мапу в налаштуваннях.',
+    mapFailed:
+      'Не вдалося завантажити мапу. Спробуйте ще раз або завантажте офлайн-мапу в налаштуваннях.',
     mapRetry: 'Завантажити мапу знову',
     openMap: 'Відкрити повну мапу маршруту',
     ahead: 'Просто перед тобою',
@@ -1466,14 +1511,17 @@ export const uk: Strings = {
     transfer: 'Пересадка',
     nextStop: 'Наступна зупинка',
     startupTitle: 'Помилка застосунку',
-    startupHint: 'Kilometr не може продовжити роботу. Поділіться звітом, щоб допомогти знайти причину помилки.',
+    startupHint:
+      'Kilometr не може продовжити роботу. Поділіться звітом, щоб допомогти знайти причину помилки.',
     startupShare: 'Поділитися',
     locationPermission: 'Дозвольте доступ до геолокації, щоб шукати маршрути від вашого місця.',
     liveTitle: 'Жива активність',
-    liveHint: 'Час поїздки на екрані блокування та в Dynamic Island. Дані оновлюються, коли застосунок активний.',
+    liveHint:
+      'Час поїздки на екрані блокування та в Dynamic Island. Дані оновлюються, коли застосунок активний.',
     liveDisabled: 'Увімкніть Живі активності в системних налаштуваннях Kilometr.',
     stale: 'За розкладом. Відкрийте Kilometr для оновлення.',
-    alarmHint: 'Нагадування зі звуком сповіщення. Беззвучний режим і Зосередження можуть його заглушити. Повноекранний будильник не запускається.',
+    alarmHint:
+      'Нагадування зі звуком сповіщення. Беззвучний режим і Зосередження можуть його заглушити. Повноекранний будильник не запускається.',
   },
   alarm: {
     title: 'Будильник на поїздку',
@@ -1482,8 +1530,9 @@ export const uk: Strings = {
     hint: 'Звук, вібрація та повний екран перед виходом.',
     question: 'Скільки часу потрібно перед виходом?',
     before: 'перед виходом',
-    minutes: (n: number) => isOne(n) ? 'хвилина' : isFew(n) ? 'хвилини' : 'хвилин',
-    lead: (n: number) => `За ${n} ${isOne(n) ? 'хвилину' : isFew(n) ? 'хвилини' : 'хвилин'} до виходу`,
+    minutes: (n: number) => (isOne(n) ? 'хвилина' : isFew(n) ? 'хвилини' : 'хвилин'),
+    lead: (n: number) =>
+      `За ${n} ${isOne(n) ? 'хвилину' : isFew(n) ? 'хвилини' : 'хвилин'} до виходу`,
     less: 'На хвилину пізніше',
     more: 'На хвилину раніше',
     ringsAt: (time: string) => `Задзвонить о ${time}`,
@@ -1504,7 +1553,8 @@ export const uk: Strings = {
     replace: 'Цей будильник замінить попередній, налаштований для іншої поїздки.',
     exactHint: 'Дозволь будильники й нагадування, щоб будильник задзвонив у вибраний час.',
     exactAction: 'Дозволити будильники',
-    fullScreenHint: 'Дозволь повноекранні будильники, щоб будильник з’явився на заблокованому телефоні.',
+    fullScreenHint:
+      'Дозволь повноекранні будильники, щоб будильник з’явився на заблокованому телефоні.',
     fullScreenAction: 'Дозволити повний екран',
     notificationHint: 'Увімкни сповіщення будильника, щоб телефон міг показати сигнал.',
     notificationAction: 'Увімкнути сповіщення',
