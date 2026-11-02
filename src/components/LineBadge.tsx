@@ -10,7 +10,12 @@ import {
   normalizeLineName,
 } from '../services/lineIdentity';
 import { getActiveCityIdSync } from '../services/cityStore';
-import { inferRailAgency, railBadgeLine } from '../services/railIdentity';
+import {
+  getRailAgencyColor,
+  inferRailAgency,
+  inferRailAgencyFromLine,
+  railBadgeLine,
+} from '../services/railIdentity';
 import { RailIcon, isRailAgency } from './RailIcon';
 
 // Kolor i typ linii żyją w serwisie: korzysta z nich również silnik
@@ -60,15 +65,24 @@ export function LineBadge({
     );
   }
 
-  // Przewoźnik kolejowy jedzie własną ikoną zamiast glifu pociągu; barwa z
-  // tablicy przewoźnika (zbiorkom.live), gdy rozkład jej nie podaje.
-  const railAgency = resolved === 'train' && leg ? inferRailAgency(leg) : undefined;
+  // Przewoźnik kolejowy jedzie własną ikoną zamiast glifu pociągu; barwa
+  // dopasowana do brandingu przewoźnika lub z tablicy zbiorkom.live.
+  const railAgency =
+    resolved === 'train'
+      ? leg
+        ? inferRailAgency(leg, cityId)
+        : inferRailAgencyFromLine(line, cityId) ??
+          inferRailAgencyFromLine(normalizedLine || displayLine, cityId)
+      : undefined;
+  const agencyBg = railAgency ? getRailAgencyColor(railAgency) : undefined;
   const railHex = leg?.railColor?.replace('#', '') ?? '';
   const { bg, fg } = muted
     ? { bg: scheme.surfaceContainerHighest, fg: scheme.onSurfaceVariant }
-    : /^[0-9a-f]{6}$/i.test(railHex)
-      ? { bg: `#${railHex}`, fg: getContrastForeground(`#${railHex}`) }
-      : getLineColors(normalizedLine || line, resolved === 'train' ? 'train' : mode, cityId);
+    : agencyBg
+      ? { bg: agencyBg, fg: getContrastForeground(agencyBg) }
+      : /^[0-9a-f]{6}$/i.test(railHex)
+        ? { bg: `#${railHex}`, fg: getContrastForeground(`#${railHex}`) }
+        : getLineColors(normalizedLine || line, resolved === 'train' ? 'train' : mode, cityId);
   // Zestaw ikon nie ma osobnego glifu trolejbusu ani metra, więc trolejbus
   // jedzie ikoną autobusu na własnym zielonym tle, a metro ikoną pociągu
   // na barwie linii ze schematu (M1/M2): kolor niesie tożsamość.

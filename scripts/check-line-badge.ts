@@ -1,6 +1,9 @@
 import { getLineColors, normalizeLineName, inferTransitMode } from '../src/services/lineIdentity';
 import {
+  RAIL_AGENCY_COLORS,
+  getRailAgencyColor,
   inferRailAgency,
+  inferRailAgencyFromLine,
   isIntercityTrain,
   railBadgeLine,
   railDirectionLabel,
@@ -37,6 +40,42 @@ console.log('=== Test tożsamości kolejowej (railIdentity) ===');
   );
   check('regional: badge z linią handlową', railBadgeLine(leg({ railLine: 'S1' })) === 'S1');
   check('regional bez zbiorkom: badge z GTFS', railBadgeLine(leg({ line: 'KD D10' })) === 'KD D10');
+}
+
+// 0.1. Kolorystyka brandingu przewoźników kolejowych
+console.log('=== Test kolorystyki brandingu przewoźników ===');
+{
+  check(
+    'RAIL_AGENCY_COLORS zawiera zestaw przewoźników',
+    Object.keys(RAIL_AGENCY_COLORS).length >= 10,
+  );
+  check('KŚ ma błękit śląski', getRailAgencyColor('KŚ') === '#1976D2');
+  check('KS alias KŚ ma błękit', getRailAgencyColor('KS') === '#1976D2');
+  check('PR ma czerwień Polregio', getRailAgencyColor('PR') === '#D32F2F');
+  check('IC ma kobalt PKP Intercity', getRailAgencyColor('IC') === '#0D47A1');
+  check('KM ma mazowiecką zieleń', getRailAgencyColor('KM') === '#2E7D32');
+  check('KD ma dolnośląskie złoto', getRailAgencyColor('KD') === '#FFB957');
+  check('ŁKA ma fiolet', getRailAgencyColor('ŁKA') === '#7B1FA2');
+  check('KW ma czerwień wielkopolską', getRailAgencyColor('KW') === '#C2185B');
+  check('KMŁ ma błękit małopolski', getRailAgencyColor('KMŁ') === '#0288D1');
+  check('WKD ma granat', getRailAgencyColor('WKD') === '#1A237E');
+
+  check('inferRailAgencyFromLine KD D10 -> KD', inferRailAgencyFromLine('KD D10') === 'KD');
+  check('inferRailAgencyFromLine KŚ S1 -> KŚ', inferRailAgencyFromLine('KŚ S1') === 'KŚ');
+  check('inferRailAgencyFromLine PR 66201 -> PR', inferRailAgencyFromLine('PR 66201') === 'PR');
+  check('inferRailAgencyFromLine IC 1620 -> IC', inferRailAgencyFromLine('IC 1620') === 'IC');
+  check('inferRailAgencyFromLine S1 w GZM -> KŚ', inferRailAgencyFromLine('S1', 'gzm') === 'KŚ');
+  check('inferRailAgencyFromLine D1 we Wrocławiu -> KD', inferRailAgencyFromLine('D1', 'wroclaw') === 'KD');
+  check('inferRailAgencyFromLine S1 w Warszawie -> SKM', inferRailAgencyFromLine('S1', 'warszawa') === 'SKM');
+
+  check('getLineColors KŚ S1 ma błękit', getLineColors('KŚ S1', 'train').bg === '#1976D2');
+  check('getLineColors PR 66201 ma czerwień', getLineColors('PR 66201', 'train').bg === '#D32F2F');
+  check('getLineColors IC 1620 ma granat', getLineColors('IC 1620', 'train').bg === '#0D47A1');
+  check('getLineColors KM R1 ma zieleń', getLineColors('KM R1', 'train').bg === '#2E7D32');
+  check('getLineColors KD D10 ma złoto', getLineColors('KD D10', 'train').bg === '#FFB957');
+  check('getLineColors ŁKA ma fiolet', getLineColors('ŁKA 1120', 'train').bg === '#7B1FA2');
+  check('getLineColors KW ma czerwień', getLineColors('KW 77201', 'train').bg === '#C2185B');
+  check('getLineColors WKD ma granat', getLineColors('WKD', 'train').bg === '#1A237E');
 }
 
 console.log('=== Test normalizacji i rozpoznawania linii ===');
@@ -82,6 +121,13 @@ console.log('=== Test normalizacji i rozpoznawania linii ===');
     [undefined, 'tram'],
     [undefined, 'bus'],
     ['IC 1620', 'train'],
+    ['KD D10', 'train'],
+    ['KŚ S1', 'train'],
+    ['PR 66201', 'train'],
+    ['KM R1', 'train'],
+    ['ŁKA 1120', 'train'],
+    ['KW 77201', 'train'],
+    ['WKD', 'train'],
     ['M1', 'subway'],
     ['M2', 'subway'],
     ['M3', 'subway'],
@@ -97,7 +143,7 @@ console.log('=== Test normalizacji i rozpoznawania linii ===');
     return (values[1] + 0.05) / (values[0] + 0.05) < 4.5;
   });
   check(
-    'Małe oznaczenia linii mają kontrast AA (4,5:1)',
+    'Oznaczenia linii (w tym kolejowych) mają kontrast AA (4,5:1)',
     lowContrast.length === 0,
     JSON.stringify(lowContrast),
   );
