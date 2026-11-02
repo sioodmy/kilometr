@@ -16,7 +16,6 @@ import type { Connection } from '../types/models';
 import { RollingTime } from './RollingTime';
 import { boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { secondsToTimeString } from '../gtfs/geo';
-import { isFallbackOrigin } from '../config';
 
 export function ConnectionSummary({
   item,
@@ -43,7 +42,6 @@ export function ConnectionSummary({
     : undefined;
   const departureDelay =
     firstVehicle?.live && !offline ? Math.round((firstVehicle.delaySec ?? 0) / 60) : 0;
-  const hasApproach = item.legs[0]?.mode === 'walk' && firstVehicle != null;
   const Direction = stacked ? ArrowDown : ArrowRight;
 
   const targetY = insets.top + 64;
@@ -115,13 +113,6 @@ export function ConnectionSummary({
           <Text style={styles.place}>{item.toTitle}</Text>
         </View>
       </View>
-      {hasApproach && (
-        <Text style={styles.label}>
-          {isFallbackOrigin(item.fromTitle) && firstVehicle?.fromStop
-            ? s.routeDetails.walkDepartureTo(item.departAt, firstVehicle.fromStop)
-            : s.routeDetails.walkDeparture(item.departAt, item.fromTitle)}
-        </Text>
-      )}
       <View style={styles.facts}>
         <View style={styles.fact}>
           <Clock3 size={17} color={scheme.primary} />
