@@ -325,7 +325,7 @@ export function mergeConsecutiveWalkLegs(legs: Leg[]): Leg[] {
   return out;
 }
 
-export function mapJourneysToConnections(
+function mapJourneysToConnections(
   journeys: RawJourney[],
   options: PlanOptions,
   ctx: MapCtx,
