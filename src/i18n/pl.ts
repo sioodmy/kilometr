@@ -1298,6 +1298,10 @@ export const pl = {
     nearStop: (mode: string, stop: string) => `${mode} w pobliżu przystanku: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
+    platformPeron: (code: string) => `Peron ${code}`,
+    platformPole: (code: string) => `Słupek ${code}`,
+    platformBay: (code: string) => `Stanowisko ${code}`,
+    platformPst: (code: string) => `PST Słupek ${code}`,
   },
   compass: {
     fullscreen: 'Nawigacja na pełnym ekranie',
@@ -1439,6 +1443,7 @@ export const pl = {
     alightAt: (name: string) => `Wysiądź na: ${name}`,
     directionTo: (dir: string) => `Do ${dir}`,
     platform: (num: string) => `słup ${num}`,
+    platformPeron: (num: string) => `peron ${num}`,
     walkApproach: (min: number) => `dojście ~${min} min`,
     rideLength: (min: number) => `przejazd ${min} min`,
     departAt: (at: string) => `odjazd ${at}`,

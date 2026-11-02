@@ -1251,6 +1251,10 @@ export const en: Strings = {
     nearStop: (mode: string, stop: string) => `${mode} near stop: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
+    platformPeron: (code: string) => `Platform ${code}`,
+    platformPole: (code: string) => `Pole ${code}`,
+    platformBay: (code: string) => `Bay ${code}`,
+    platformPst: (code: string) => `PST pole ${code}`,
   },
   compass: {
     fullscreen: 'Full screen navigation',
@@ -1382,6 +1386,7 @@ export const en: Strings = {
     alightAt: (name: string) => `Get off at ${name}`,
     directionTo: (dir: string) => `Towards ${dir}`,
     platform: (num: string) => `platform ${num}`,
+    platformPeron: (num: string) => `platform ${num}`,
     walkApproach: (min: number) => `~${min} min walk`,
     rideLength: (min: number) => `${min} min ride`,
     departAt: (at: string) => `departs ${at}`,

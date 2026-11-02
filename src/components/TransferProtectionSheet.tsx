@@ -212,7 +212,7 @@ export function TransferProtectionSheet({
                     {leg.mode === 'walk' ? (
                       <DirectionsWalk size={22} color={scheme.onSurfaceVariant} />
                     ) : (
-                      <LineBadge line={leg.line} mode={leg.mode} size="large" />
+                      <LineBadge leg={leg} size="large" />
                     )}
                     <View style={styles.flex}>
                       <Text style={styles.legStop}>{leg.fromStop}</Text>

@@ -40,6 +40,7 @@ import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
+import { railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
 import { isFallbackOrigin } from '../config';
@@ -67,7 +68,9 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
+// ─── Etykieta odjazdu: peron / słupek / stanowisko w języku użytkownika ────
 function formatPlatformLabel(
+  t: Strings,
   code?: string | null,
   mode?: Leg['mode'],
   stopName?: string | null,
@@ -88,7 +91,7 @@ function formatPlatformLabel(
   // Węzły GZM: np. 2469011-00103 -> Stanowisko 3
   const gzmMatch = trimmed.match(/-(\d{3})(\d{2})([a-z]?)$/i);
   if (gzmMatch) {
-    return `Stanowisko ${parseInt(gzmMatch[2], 10)}`;
+    return t.leg.platformBay(`${parseInt(gzmMatch[2], 10)}`);
   }
 
   // Zespoły / Kraków: np. 103-05 -> Słupek 05 (lub Peron 1/2 dla tramwaju)
@@ -97,34 +100,34 @@ function formatPlatformLabel(
     const poleNum = krkMatch[1];
     const n = parseInt(poleNum, 10);
     if (mode === 'tram' && (n === 1 || n === 2)) {
-      return `Peron ${n}`;
+      return t.leg.platformPeron(poleNum);
     }
-    return `Słupek ${poleNum}`;
+    return t.leg.platformPole(poleNum);
   }
 
   // Pociąg / metro
   if (mode === 'train' || mode === 'subway') {
-    return `Peron ${trimmed}`;
+    return t.leg.platformPeron(trimmed);
   }
 
   // 1-2 cyfry (np. Warszawa '01', Poznań '71', '42')
   if (/^\d{1,2}$/.test(trimmed)) {
     const n = parseInt(trimmed, 10);
     if (n >= 41 && n <= 49) {
-      return `PST Słupek ${trimmed}`;
+      return t.leg.platformPst(trimmed);
     }
     if (trimmed.startsWith('0') || n >= 10) {
-      return `Słupek ${trimmed}`;
+      return t.leg.platformPole(trimmed);
     }
-    return `Peron ${trimmed}`;
+    return t.leg.platformPeron(trimmed);
   }
 
   // 5-cyfrowy kod słupka (np. Wrocław 20820)
   if (/^\d{5}$/.test(trimmed)) {
-    return `Słupek ${trimmed}`;
+    return t.leg.platformPole(trimmed);
   }
 
-  return `Peron ${trimmed}`;
+  return t.leg.platformPeron(trimmed);
 }
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ───────────────────
@@ -415,8 +418,8 @@ function TransitLegCard({
   const resolvedHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
   const stopHint = leg.stopHint ?? resolvedHint;
   const departurePlatform = useMemo(
-    () => formatPlatformLabel(leg.platformCode, leg.mode, leg.fromStop),
-    [leg.platformCode, leg.mode, leg.fromStop],
+    () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop),
+    [t, leg.platformCode, leg.mode, leg.fromStop],
   );
 
   const cacheKey = leg.tripId || leg.id;
@@ -616,10 +619,10 @@ function TransitLegCard({
         <View style={s.cardMiddleSection}>
           <View style={s.cardTop}>
             <View style={s.badgeWrap} onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}>
-              <LineBadge mode={leg.mode} line={leg.line} />
+              <LineBadge leg={leg} />
             </View>
             <Text style={s.dir} numberOfLines={1}>
-              {leg.direction}
+              {leg.mode === 'train' ? railDirectionLabel(leg) || leg.direction : leg.direction}
             </Text>
             <Animated.View style={chevronStyle}>
               <ChevronDown size={18} color={scheme.onSurfaceVariant} />
