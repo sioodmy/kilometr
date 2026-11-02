@@ -91,19 +91,6 @@ export function nominatimViewbox(): string {
   return activeCity().nominatimViewbox;
 }
 
-export const OVERPASS = {
-  baseUrl: 'https://overpass-api.de/api/interpreter',
-  userAgent: 'KilometrTransitApp/1.0 (contact: dev@kilometr.local)',
-  // Wrocław: south,west,north,east (legacy; per-miasto w cities.ts)
-  bbox: '50.95,16.70,51.25,17.25',
-  timeoutMs: 45000,
-  refreshDays: 7,
-} as const;
-
-/** Bbox Overpass dla miasta (domyślnie aktywnego). */
-export function overpassBbox(cityId?: string): string {
-  return getCity(cityId ?? getActiveCityIdSync()).overpassBbox;
-}
 
 export const BOUNDS = {
   minLat: 50.95,

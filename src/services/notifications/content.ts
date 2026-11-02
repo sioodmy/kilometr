@@ -29,6 +29,14 @@ import type {
 /** Neutralny kolor dojść i przesiadek - wspólny dla wszystkich linii. */
 const WALK_SEGMENT_COLOR = '#8A8F98';
 
+// Pociąg wsiada na peron, nie na słupek; reszta pojazdów zostaje przy "słup".
+function platformText(p: TripProgress, n: Strings['notification']): string {
+  if (!p.leg?.platformCode) return '';
+  return p.leg.mode === 'train'
+    ? n.platformPeron(p.leg.platformCode)
+    : n.platform(p.leg.platformCode);
+}
+
 export interface TripCopy {
   title: string;
   subtitle: string;
@@ -67,7 +75,7 @@ export function buildPhaseCopy(
   const boarding = join(
     boardStop ? n.stopHere(boardStop) : '',
     p.direction ? n.directionTo(p.direction) : '',
-    p.leg?.platformCode ? n.platform(p.leg.platformCode) : '',
+    platformText(p, n),
   );
 
   const walkMeters = upcomingWalkMeters(p, conn);
@@ -193,7 +201,7 @@ export function buildTripCopy(p: TripProgress, conn: Connection, s: Strings): Tr
     // Tylko fakty, których nie ma ani w tytule, ani w podtitle - powtórzenie
     // „na miejscu 14:25" w trzech miejscach wygląda jak błąd.
     body: join(
-      p.leg?.platformCode ? n.platform(p.leg.platformCode) : '',
+      platformText(p, n),
       p.delayMin >= 2 ? n.delayLate(p.delayMin) : '',
       p.vehicleLabel ?? '',
     ),

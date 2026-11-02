@@ -97,11 +97,11 @@ const GZM: CityDef = {
   // wyznaczają promienia.
   center: { lat: 50.2649, lon: 19.0238 },
   radiusM: 48_000,
-  bounds: { minLat: 49.95, maxLat: 50.6, minLon: 18.3, maxLon: 19.8 },
-  nominatimViewbox: '18.3,50.6,19.8,49.95',
-  overpassBbox: '49.95,18.30,50.60,19.80',
+  bounds: { minLat: 49.95, maxLat: 50.6, minLon: 18.35, maxLon: 19.8 },
+  nominatimViewbox: '18.35,50.6,19.8,49.95',
+  overpassBbox: '49.95,18.35,50.60,19.80',
   zbiorkomSlug: 'gzm',
-  zbiorkomBbox: '18.3,49.95,19.8,50.6',
+  zbiorkomBbox: '18.35,49.95,19.8,50.6',
   dbFile: 'kilometr-gtfs-gzm.db',
   tilePack: 'gzm-tiles.ktp',
   tileBbox: { minLat: 49.9, maxLat: 50.65, minLon: 18.25, maxLon: 19.85 },
@@ -484,14 +484,16 @@ function cityDistanceM(aLat: number, aLon: number, bLat: number, bLon: number): 
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-/** Miasto dla współrzędnych: najbliższy środek w swoim promieniu, inaczej null. */
+/** Miasto dla współrzędnych: miasto obejmujące punkt (w granicach bboxa lub promienia), wybierane wg najmniejszej odległości do centrum. */
 export function suggestCityForCoords(lat: number, lon: number): CityDef | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   let best: CityDef | null = null;
   let bestDist = Infinity;
   for (const c of CITIES) {
     const d = cityDistanceM(lat, lon, c.center.lat, c.center.lon);
-    if (d <= c.radiusM && d < bestDist) {
+    const inBounds = inCityBounds(c, lat, lon);
+    const inRadius = d <= c.radiusM;
+    if ((inBounds || inRadius) && d < bestDist) {
       best = c;
       bestDist = d;
     }
@@ -509,4 +511,245 @@ export function inCityBounds(city: CityDef, lat: number, lon: number): boolean {
     lon >= city.bounds.minLon &&
     lon <= city.bounds.maxLon
   );
+}
+
+/** True, gdy pozycja jest poza strefą danego miasta (zarówno poza bboxem, jak i poza promieniem od centrum). */
+export function isOutsideCity(city: CityDef, lat: number, lon: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (inCityBounds(city, lat, lon)) return false;
+  return cityDistanceM(lat, lon, city.center.lat, city.center.lon) > city.radiusM;
+}
+
+/** Rozpoznaje id obsługiwanego miasta na podstawie nazwy miejscowości (np. z geocodera). */
+export function resolveSupportedCityId(name?: string | null): CityId | undefined {
+  if (!name) return undefined;
+  const n = name
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/^(gmina|miasto|powiat|wieś)\s+/i, '');
+  const direct = CITIES.find((c) => c.name.toLocaleLowerCase() === n || c.id === n);
+  if (direct) return direct.id;
+
+  // GZM (Metropolia Górnośląsko-Zagłębiowska) – 41 gmin członkowskich i kluczowe miejscowości
+  if (
+    [
+      'katowice',
+      'gliwice',
+      'sosnowiec',
+      'zabrze',
+      'bytom',
+      'ruda śląska',
+      'tychy',
+      'dąbrowa górnicza',
+      'chorzów',
+      'jaworzno',
+      'mysłowice',
+      'siemianowice śląskie',
+      'tarnowskie góry',
+      'piekary śląskie',
+      'będzin',
+      'świętochłowice',
+      'mikołów',
+      'czeladź',
+      'knurów',
+      'pyskowice',
+      'radzionków',
+      'łaziska górne',
+      'bieruń',
+      'lędziny',
+      'siewierz',
+      'sławków',
+      'wojkowice',
+      'imielin',
+      'chełm śląski',
+      'bojszowy',
+      'kobiór',
+      'wyry',
+      'ornontowice',
+      'gierałtowice',
+      'pilchowice',
+      'sośnicowice',
+      'rudziniec',
+      'zbrosławice',
+      'świerklaniec',
+      'ożarowice',
+      'bobrowniki',
+      'psary',
+      'mierzęcice',
+      'pyrzowice',
+      'miasteczko śląskie',
+      'kalety',
+      'tworóg',
+      'toszek',
+      'wielowieś',
+      'krupski młyn',
+      'nakło śląskie',
+      'orzech',
+      'kozłowa góra',
+      'gostyń',
+      'kotulin',
+      'pławniowice',
+      'przyszowice',
+      'paniówki',
+      'chudów',
+      'wieszowa',
+      'czekanów',
+      'przezchlebie',
+      'miedary',
+      'zendek',
+      'sączów',
+      'tąpkowice',
+      'celiny',
+      'sarnów',
+      'preczów',
+      'gródków',
+      'strzyżowice',
+      'ruda',
+    ].includes(n)
+  ) {
+    return 'gzm';
+  }
+
+  // Trójmiasto (Gdańsk-Gdynia-Sopot i powiązane gminy)
+  if (
+    [
+      'gdańsk',
+      'gdynia',
+      'sopot',
+      'wejherowo',
+      'rumia',
+      'reda',
+      'pruszcz gdański',
+      'puck',
+      'kosakowo',
+      'kolbudy',
+      'żukowo',
+      'banino',
+      'chwaszczyno',
+      'kowale',
+      'bolszewo',
+      'luzino',
+    ].includes(n)
+  ) {
+    return 'trojmiasto';
+  }
+
+  // Warszawa (aglomeracja / strefa ZTM)
+  if (
+    [
+      'warszawa',
+      'pruszków',
+      'legionowo',
+      'piaseczno',
+      'otwock',
+      'wołomin',
+      'ząbki',
+      'marki',
+      'łomianki',
+      'józefów',
+      'sulejówek',
+      'kobyłka',
+      'zielonka',
+      'ożarów mazowiecki',
+      'grodzisk mazowiecki',
+      'milanówek',
+      'piastów',
+      'raszyn',
+      'konstancin-jeziorna',
+      'nowy dwór mazowiecki',
+      'jabłonna',
+      'nieporęt',
+      'radzymin',
+      'halinów',
+      'błonie',
+      'lesznowola',
+      'michałowice',
+      'brwinów',
+      'podkowa leśna',
+      'izabelin',
+      'stare babice',
+    ].includes(n)
+  ) {
+    return 'warszawa';
+  }
+
+  // Łódź i aglomeracja
+  if (
+    [
+      'łódź',
+      'zgierz',
+      'pabianice',
+      'aleksandrów łódzki',
+      'konstantynów łódzki',
+      'stryków',
+      'rzgów',
+      'brzeziny',
+      'andrespol',
+    ].includes(n)
+  ) {
+    return 'lodz';
+  }
+
+  // Poznań i aglomeracja
+  if (
+    [
+      'poznań',
+      'swarzędz',
+      'luboń',
+      'tarnowo podgórne',
+      'komorniki',
+      'suchy las',
+      'czerwonak',
+      'kórnik',
+      'mosina',
+      'środa wielkopolska',
+      'puszczykowo',
+      'pobiedziska',
+    ].includes(n)
+  ) {
+    return 'poznan';
+  }
+
+  // Wrocław i aglomeracja
+  if (
+    [
+      'wrocław',
+      'długołęka',
+      'siechnice',
+      'czernica',
+      'kobierzyce',
+      'kąty wrocławskie',
+      'miękinia',
+      'wisznia mała',
+      'trzebnica',
+      'sobótka',
+      'żórawina',
+      'jelcz-laskowice',
+    ].includes(n)
+  ) {
+    return 'wroclaw';
+  }
+
+  // Kraków i aglomeracja
+  if (
+    [
+      'kraków',
+      'wieliczka',
+      'skawina',
+      'niepołomice',
+      'zabierzów',
+      'zielonki',
+      'michałowice',
+      'kocmyrzów-luborzyca',
+      'mogilany',
+      'liszki',
+      'czernichów',
+      'krzeszowice',
+      'wielka wieś',
+    ].includes(n)
+  ) {
+    return 'krakow';
+  }
+
+  return undefined;
 }

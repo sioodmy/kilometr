@@ -10,10 +10,10 @@
  */
 
 import { LocalGtfsStore, gtfsStore } from '../src/services/routing/store';
-import { resolveCandidateOrigins, buildLegStops, buildSearchSlices } from '../src/services/routing/engine';
-import { runRaptor, costParamsFor } from '../src/services/routing/raptor';
+import { resolveCandidateOrigins, buildLegStops, buildSearchSlices, mergeConsecutiveWalkLegs } from '../src/services/routing/engine';
+import { runRaptor, costParamsFor, mergeConsecutiveWalks } from '../src/services/routing/raptor';
 import { predictDelaySec } from '../src/services/routing/delays';
-import type { RawJourney, RouteStyle } from '../src/services/routing/types';
+import type { JourneySegment, Leg, RawJourney, RouteStyle } from '../src/services/routing/types';
 
 let passed = 0;
 const failures: string[] = [];
@@ -319,6 +319,92 @@ head('Granice stref GZM nie są przystankami');
     { maxTransfers: 1, minTransferSec: 120, dayIndex: transfer.index },
   );
   check('dwie linie nie pozwalają przesiadać się na granicy', invalid.length === 0);
+}
+
+
+head("Scalanie kolejnych odcinków pieszych");
+{
+  const segTransit: JourneySegment = {
+    type: "transit",
+    tripId: "T1",
+    line: "5400",
+    mode: "train",
+    fromStopId: "SOSNOWIEC",
+    fromStopName: "Sosnowiec Główny",
+    toStopId: "GLIWICE_PKP",
+    toStopName: "Gliwice",
+    departSec: 46620,
+    arriveSec: 48960,
+    stopsCount: 5,
+  };
+  const segWalkOut: JourneySegment = {
+    type: "walk",
+    fromStopId: "GLIWICE_PKP",
+    fromStopName: "Gliwice",
+    toStopId: "GLIWICE_CP",
+    toStopName: "Gliwice Centrum Przesiadkowe",
+    departSec: 48960,
+    arriveSec: 49140,
+    stopsCount: 0,
+    walkMeters: 207,
+  };
+  const segEgress: JourneySegment = {
+    type: "walk",
+    fromStopId: "GLIWICE_CP",
+    fromStopName: "Gliwice Centrum Przesiadkowe",
+    toStopId: "destination",
+    toStopName: "Cel podróży",
+    departSec: 49140,
+    arriveSec: 49260,
+    stopsCount: 0,
+    walkMeters: 160,
+  };
+
+  const merged = mergeConsecutiveWalks([segTransit, segWalkOut, segEgress]);
+  check("mergeConsecutiveWalks: łączy 2 spacery na końcu w jeden", merged.length === 2);
+  check("połączony spacer startuje z peronu PKP", merged[1]?.fromStopId === "GLIWICE_PKP");
+  check("połączony spacer kończy się w destination", merged[1]?.toStopId === "destination");
+  check("zsumowany dystans (207 + 160 = 367 m)", merged[1]?.walkMeters === 367);
+  check("czas końcowy odpowiada drugiemu spacerowi", merged[1]?.arriveSec === 49260);
+
+  // Sprawdzenie na poziomie Leg[]
+  const legTransit: Leg = {
+    id: "c1l1",
+    mode: "train",
+    line: "5400",
+    fromStop: "Sosnowiec Główny",
+    toStop: "Gliwice",
+    departAt: "12:57",
+    arriveAt: "13:36",
+    stopsCount: 5,
+    live: false,
+  };
+  const legWalk1: Leg = {
+    id: "c1l2",
+    mode: "walk",
+    fromStop: "Gliwice",
+    toStop: "Gliwice Centrum Przesiadkowe",
+    departAt: "13:36",
+    arriveAt: "13:39",
+    stopsCount: 0,
+    walkM: 207,
+    live: false,
+  };
+  const legWalk2: Leg = {
+    id: "c1l3",
+    mode: "walk",
+    fromStop: "Gliwice Centrum Przesiadkowe",
+    toStop: "GLIWICE CENTRUM PRZESIADKOWE [TECH]",
+    departAt: "13:39",
+    arriveAt: "13:41",
+    stopsCount: 0,
+    walkM: 160,
+    live: false,
+  };
+  const mergedLegs = mergeConsecutiveWalkLegs([legTransit, legWalk1, legWalk2]);
+  check("mergeConsecutiveWalkLegs: z 2 nóg pieszych robi 1", mergedLegs.length === 2);
+  check("cel nogi to ostateczny punkt", mergedLegs[1]?.toStop === "GLIWICE CENTRUM PRZESIADKOWE [TECH]");
+  check("zsumowany walkM (367 m)", mergedLegs[1]?.walkM === 367);
 }
 
 async function runAsyncTests() {

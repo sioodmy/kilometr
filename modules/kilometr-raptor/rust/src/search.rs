@@ -283,6 +283,20 @@ pub fn fuzzy_match_pretokenized(
         return (true, score);
     }
 
+    let q_no_space: String = norm_q.chars().filter(|c| !c.is_whitespace() && *c != '-' && *c != '.').collect();
+    let t_no_space: String = norm_t.chars().filter(|c| !c.is_whitespace() && *c != '-' && *c != '.').collect();
+    if !q_no_space.is_empty() && !t_no_space.is_empty() {
+        if q_no_space == t_no_space {
+            return (true, 98);
+        }
+        if t_no_space.starts_with(&q_no_space) {
+            return (true, 90);
+        }
+        if q_no_space.len() >= 4 && t_no_space.contains(&q_no_space) {
+            return (true, 75);
+        }
+    }
+
     let q_tokens: Vec<&str> = split_words(norm_q);
     if q_tokens.is_empty() {
         return (false, 0);

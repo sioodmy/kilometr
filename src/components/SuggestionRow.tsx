@@ -1,5 +1,11 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import {
   Church,
   Clock3,
@@ -39,7 +45,7 @@ const KIND_TONES: Record<string, { Icon: IconComponent; bg: SchemeKey; fg: Schem
   place: { Icon: ShoppingBag, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
 };
 
-/** Kategorie Nominatim - kolory stałe, bo są poza skalą motywu. */
+/** Kategorie Nominatim, kolory stałe, bo są poza skalą motywu. */
 const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: string }> = {
   restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
   medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
@@ -64,7 +70,7 @@ export interface SuggestionIconMeta {
   fg: string;
 }
 
-/** Ta sama ikonka co w wierszu wyszukiwarki - po kategorii, inaczej po rodzaju. */
+/** Ta sama ikonka co w wierszu wyszukiwarki: po kategorii, inaczej po rodzaju. */
 export function getSuggestionIconMeta(
   item: Pick<Suggestion, 'id' | 'kind'> & { category?: string },
 ): SuggestionIconMeta {
@@ -152,6 +158,14 @@ export function SuggestionRow({
   const iconBg = meta.bg;
   const iconFg = meta.fg;
 
+  const reducedMotion = useReducedMotion();
+  // Płynne wejście i przesunięcie pozycji (120Hz): 110-120ms to ~14 klatek
+  // animacji bez żadnego widocznego stroboskopu / flickera.
+  const rowEntering = reducedMotion
+    ? undefined
+    : FadeIn.duration(110).easing(Easing.out(Easing.quad));
+  const rowExiting = reducedMotion ? undefined : FadeOut.duration(70);
+
   // Oczyszczenie adresu z ewentualnych pozostałości numeru słupka (np. z pamięci podręcznej)
   let cleanAddress = (item.address || '')
     .replace(/\s*•\s*słup[a-ząćęłńóśźż.]*\s*\d+/gi, '')
@@ -167,39 +181,48 @@ export function SuggestionRow({
   const displayTitle = suggestionDisplayTitle(item);
 
   return (
-    <Pressable
-      onPress={onPress}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      accessibilityRole="button"
-      accessibilityLabel={`${displayTitle}${subtitle ? `, ${subtitle}` : ''}`}
-      style={({ pressed }) => [
-        styles.row,
-        segment && styles.segment,
-        (segment === 'first' || segment === 'single') && styles.segmentTop,
-        (segment === 'last' || segment === 'single') && styles.segmentBottom,
-        prominent && styles.prominent,
-        pressed && { backgroundColor: scheme.surfaceContainerHighest, opacity: 0.9 },
-        focused && styles.focused,
-      ]}
+    <Animated.View
+      entering={rowEntering}
+      exiting={rowExiting}
+      style={styles.animatedContainer}
     >
-      <View style={[styles.icon, { backgroundColor: iconBg }, segment && styles.segmentIcon]}>
-        <Icon size={19} color={iconFg} />
-      </View>
-      <View style={styles.mid}>
-        <HighlightedTitle text={displayTitle} query={query} />
-        {(segment ? cleanAddress : subtitle) ? (
-          <Text style={styles.sub} numberOfLines={segment ? undefined : 1}>
-            {segment ? cleanAddress : subtitle}
-          </Text>
-        ) : null}
-      </View>
-      {segment && distanceText ? <Text style={styles.distance}>{distanceText}</Text> : null}
-    </Pressable>
+      <Pressable
+        onPress={onPress}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        accessibilityRole="button"
+        accessibilityLabel={`${displayTitle}${subtitle ? `, ${subtitle}` : ''}`}
+        style={({ pressed }) => [
+          styles.row,
+          segment && styles.segment,
+          (segment === 'first' || segment === 'single') && styles.segmentTop,
+          (segment === 'last' || segment === 'single') && styles.segmentBottom,
+          prominent && styles.prominent,
+          pressed && { backgroundColor: scheme.surfaceContainerHighest, opacity: 0.9 },
+          focused && styles.focused,
+        ]}
+      >
+        <View style={[styles.icon, { backgroundColor: iconBg }, segment && styles.segmentIcon]}>
+          <Icon size={19} color={iconFg} />
+        </View>
+        <View style={styles.mid}>
+          <HighlightedTitle text={displayTitle} query={query} />
+          {(segment ? cleanAddress : subtitle) ? (
+            <Text style={styles.sub} numberOfLines={segment ? undefined : 1}>
+              {segment ? cleanAddress : subtitle}
+            </Text>
+          ) : null}
+        </View>
+        {segment && distanceText ? <Text style={styles.distance}>{distanceText}</Text> : null}
+      </Pressable>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
+  animatedContainer: {
+    width: '100%',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

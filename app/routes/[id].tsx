@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Linking,
   Pressable,
   ScrollView,
@@ -30,7 +31,7 @@ import {
   normalizeConnectionId,
   stableConnectionId,
 } from '../../src/services/routing/connectionIdentity';
-import { applyLiveDelays } from '../../src/services/routing/engine';
+import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
@@ -95,31 +96,51 @@ export default function RouteDetailsScreen() {
       : loadedItem?.id === id
         ? loadedItem
         : (immediateItem ?? null);
-  // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia: bez
-  // tickera karta pokazywałaby wartości z chwili wyszukiwania.
+  // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
+  // Subskrypcja zdarzeń live aktualizuje opóźnienia i stan feedu od razu po
+  // nowej paczce danych. Rzadszy timer co 30s wykrywa brak świeżości, gdy feed milczy.
   const [liveTick, setLiveTick] = useState(0);
   const lastLiveOk = useRef(0);
   useEffect(() => {
-    const t = setInterval(() => {
+    const check = () => {
+      setLiveStale(liveTracker.getLiveState() !== 'fresh');
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;
         setLiveTick(ok);
       }
-    }, 5000);
-    return () => clearInterval(t);
+    };
+    check();
+    const unsub = liveTracker.subscribe(check);
+    const t = setInterval(check, 30000);
+    return () => {
+      unsub();
+      clearInterval(t);
+    };
   }, []);
-  const item = useMemo(
-    () =>
-      rawItem
-        ? (applyLiveDelays(
-            [rawItem],
-            offline || liveStale ? new Map() : liveTracker.getTripDelays(),
-          )[0] ?? null)
-        : null,
-    // liveTick wymusza przemapowanie po każdym nowym polli trackera.
-    [rawItem, liveTick, offline, liveStale],
+
+  // Po wejściu na ekran szczegółów połączenia lub powrocie z uśpienia (Android
+  // często usypia timery JS) natychmiast wymuszamy świeży poll pozycji live,
+  // bez czekania na interwał polling rate.
+  useEffect(() => {
+    liveTracker.start();
+    void liveTracker.refresh();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void liveTracker.refresh();
+      }
+    });
+    return () => {
+      sub.remove();
+    };
+  }, []);
+  const rawItems = useMemo(() => (rawItem ? [rawItem] : []), [rawItem]);
+  const tripDelays = useMemo(
+    () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
+    [offline, liveStale, liveTick],
   );
+  const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline);
+  const item = liveItems[0] ?? null;
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -127,15 +148,6 @@ export default function RouteDetailsScreen() {
   const [alarmFocused, setAlarmFocused] = useState(false);
   const alarm = useDepartureAlarm();
   const currentAlarm = alarm?.connectionId === id ? alarm : null;
-  // Stan feedu live zmienia się w tle, a ten ekran nie odświeża się sam z
-  // powodu danych. Bez tickera baner „brak danych” był zamrożony w stanie z
-  // chwili renderu i pojawiał się dopiero przy jakiejś przypadkowej
-  // przerysowie całego ekranu.
-  useEffect(() => {
-    const check = () => setLiveStale(liveTracker.getLiveState() !== 'fresh');
-    const t = setInterval(check, 15000);
-    return () => clearInterval(t);
-  }, []);
 
   useEffect(() => {
     if (isTrackedThis && trackedTrip?.connection) {
@@ -206,7 +218,7 @@ export default function RouteDetailsScreen() {
   };
 
   useEffect(() => {
-    // Brak id to nie „wczytujemy” - inaczej ekran zostawał ze spinnerem w nieskończoność.
+    // Brak id to nie „wczytujemy”: inaczej ekran zostawał ze spinnerem w nieskończoność.
     if (!id) {
       setLoadFailed(true);
       return;
@@ -393,14 +405,15 @@ export default function RouteDetailsScreen() {
               <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
               <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
               <Pressable
-                onPress={() => router.back()}
+                onPress={goBack}
+                accessibilityRole="button"
                 style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
               >
                 <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
               </Pressable>
             </View>
           ) : (
-            <>
+            <View style={styles.detailsContent}>
               {hasTransfers && (
                 <TransferProtectionCard
                   state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
@@ -421,7 +434,7 @@ export default function RouteDetailsScreen() {
                 onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
               />
               <ConnectionLineAlerts connection={item} />
-            </>
+            </View>
           )}
 
           <View style={{ height: 24 }} />
@@ -493,4 +506,5 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
   emptyText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  detailsContent: { gap: 18 },
 });

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from '../src/components/icons';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
-import { timetableClock, timetableToday } from '../src/services/lineTimetable';
+import { formatTimetableDate, timetableClock, timetableToday } from '../src/services/lineTimetable';
 import { useLineTimetable } from '../src/services/useLineTimetable';
 import { scheme, shape, type } from '../src/theme/tokens';
 
@@ -38,15 +38,10 @@ export default function LineDeparturesScreen() {
     }
     return [...groups];
   }, [stop]);
-  const dateLabel = stop
-    ? new Intl.DateTimeFormat(getLocaleSync(), {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'Europe/Warsaw',
-      }).format(new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00Z`))
-    : '';
+  const dateLabel = useMemo(
+    () => formatTimetableDate(date, getLocaleSync()),
+    [date, s],
+  );
 
   return (
     <SafeAreaView style={styles.screen}>

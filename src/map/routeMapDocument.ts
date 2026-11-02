@@ -13,7 +13,6 @@ import { bundledMapLibreHead } from './bundledMapLibre';
 export interface RouteMapDocumentOptions {
   route: MapRoute | null;
   vehicle?: MapVehicle | null;
-  user?: { lat: number; lon: number; heading: number | null } | null;
   selectedLegId?: string | null;
   /**
    * Startowa kamera mapy [lon, lat] (pierwszy kadr, zanim dane ją przesuną).
@@ -25,6 +24,8 @@ export interface RouteMapDocumentOptions {
    * podany, kafle i glify idą z telefonu. Silnik jest w paczce aplikacji.
    */
   offlineBase?: string | null;
+  /** Etykiety POI w tle trasy. Włącza je tylko pełnoekranowa mapa szczegółów połączenia. */
+  showPoi?: boolean;
 }
 
 /**
@@ -112,17 +113,6 @@ const css = () => [
   '.k-veh-body{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;',
   'border-radius:7px;background:currentColor;border:2.5px solid var(--k-land);',
   'box-shadow:0 0 0 1.5px rgba(255,255,255,.85),0 2px 8px rgba(0,0,0,.6);}',
-  // ── pozycja użytkownika
-  '.k-user{position:relative;width:0;height:0;}',
-  '.k-user-halo{position:absolute;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;',
-  'border-radius:14px;background:var(--k-tertiary);opacity:.16;}',
-  '.k-user-cone{position:absolute;left:50%;top:50%;width:0;height:0;margin:-46px 0 0 -13px;',
-  'border-left:13px solid transparent;border-right:13px solid transparent;',
-  'border-bottom:20px solid var(--k-tertiary);opacity:.3;transform-origin:50% 46px;',
-  'transition:transform .4s cubic-bezier(.4,0,.2,1);}',
-  '.k-user-dot{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;',
-  'border-radius:7px;background:var(--k-tertiary);border:2.5px solid var(--k-land);',
-  'box-shadow:0 0 0 1.5px rgba(255,255,255,.7),0 2px 8px rgba(0,0,0,.5);}',
 ].join('\n');
 
 // Runtime MapLibre + komunikacja - uproszczone: bez kursora, bez follow,
@@ -147,7 +137,6 @@ const runtime = [
   'var selectedLeg = null;',
   'var markers = [];',
   'var vehicleMarker = null;',
-  'var userMarker = null;',
   'var loadFailures = 0;',
   'var tilesDown = false;',
   'var styleReady = false;',
@@ -355,33 +344,6 @@ const runtime = [
   '  if (arrow) arrow.style.transform = "rotate(" + v.heading + "deg)";',
   '}',
   '',
-  'function setUser(u) {',
-  '  if (!u) {',
-  '    if (userMarker) { userMarker.remove(); userMarker = null; }',
-  '    return;',
-  '  }',
-  '  if (!userMarker) {',
-  '    var el = document.createElement("div");',
-  '    el.className = "k-user";',
-  '    el.innerHTML = \'<div class="k-user-halo"></div>\' +',
-  '      \'<div class="k-user-cone"></div>\' +',
-  '      \'<div class="k-user-dot"></div>\';',
-  '    userMarker = new maplibregl.Marker({ element: el });',
-  '    userMarker.setLngLat([u.lon, u.lat]).addTo(map);',
-  '  } else {',
-  '    userMarker.setLngLat([u.lon, u.lat]);',
-  '  }',
-  '  var cone = userMarker.getElement().querySelector(".k-user-cone");',
-  '  if (cone) {',
-  '    if (typeof u.heading === "number" && isFinite(u.heading)) {',
-  '      cone.style.display = "block";',
-  '      cone.style.transform = "rotate(" + u.heading + "deg)";',
-  '    } else {',
-  '      cone.style.display = "none";',
-  '    }',
-  '  }',
-  '}',
-  '',
   'function applyRoute(next) {',
   '  route = next;',
   '  legGeom = {};',
@@ -426,7 +388,6 @@ const runtime = [
   '    return;',
   '  }',
   '  if (msg.t === "vehicle") { setVehicle(msg.vehicle); return; }',
-  '  if (msg.t === "user") { setUser(msg); return; }',
   '}',
   '',
   '  var fitTries = 0;',
@@ -521,7 +482,6 @@ const runtime = [
   '    selectedLeg = P.selectedLegId || null;',
   '    if (BOOTSTRAP) applyRoute(BOOTSTRAP);',
   '    if (P.vehicle) setVehicle(P.vehicle);',
-  '    if (P.user) setUser(P.user);',
   '    setControlOffset(null);',
   '    post({ t: "ready" });',
   '  });',
@@ -549,7 +509,7 @@ const runtime = [
 function bootstrapPayload(opts: RouteMapDocumentOptions): string {
   const base = opts.offlineBase ?? null;
   const payload = {
-    style: buildMapStyle(base),
+    style: buildMapStyle(base, { poi: opts.showPoi === true }),
     routeSourceId: ROUTE_SOURCE_ID,
     hitLayerId: 'trasa-chwyt',
     stopLayerId: 'przystanki-posrednie',
@@ -557,7 +517,6 @@ function bootstrapPayload(opts: RouteMapDocumentOptions): string {
     padding: [42, 42, 190, 42],
     route: opts.route,
     vehicle: opts.vehicle ?? null,
-    user: opts.user ?? null,
     selectedLegId: opts.selectedLegId ?? null,
     center: opts.center ?? null,
   };

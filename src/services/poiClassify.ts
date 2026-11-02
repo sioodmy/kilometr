@@ -26,10 +26,12 @@ const CATEGORY_LABEL: Record<string, { category: string; label: string }> = {
   'leisure:sports_centre': { category: 'sport', label: 'Obiekt sportowy' },
   'leisure:fitness_centre': { category: 'sport', label: 'Siłownia' },
   'railway:station': { category: 'train', label: 'Stacja kolejowa' },
+  'railway:halt': { category: 'train', label: 'Przystanek kolejowy' },
+  'landuse:commercial': { category: 'place', label: 'Centrum komercyjne' },
 };
 
 export function classifyPoi(tags: Record<string, string>): { category: string; label: string } | null {
-  const keys = ['shop', 'amenity', 'tourism', 'leisure', 'railway'];
+  const keys = ['shop', 'amenity', 'tourism', 'leisure', 'railway', 'landuse'];
   for (const k of keys) {
     const v = tags[k];
     if (!v) continue;

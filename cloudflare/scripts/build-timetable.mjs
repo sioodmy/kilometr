@@ -126,6 +126,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { addressSnapshotIsFresh, importAddresses, loadAddressSnapshot } from './build-addresses.mjs';
+import { importPois, loadPoiSnapshot } from './build-pois.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -2496,6 +2497,18 @@ async function main() {
   });
   if (addressSnapshot) log(`Adresy OSM: ${addressSnapshot.count}, snapshot ${addressSnapshot.builtAt}`);
 
+  const poiSnapshot = await loadPoiSnapshot(
+    CITY,
+    join(ROOT, 'dist', 'poi-cache'),
+    fetch,
+    PUBLIC_URL,
+  ).catch((error) => {
+    if (remote?.pois?.count) throw error;
+    warn(`POI OSM niedostępne: ${error.message}. Publikuję rozkład bez indeksu POI.`);
+    return null;
+  });
+  if (poiSnapshot) log(`POI OSM: ${poiSnapshot.count}, snapshot ${poiSnapshot.builtAt}`);
+
   // 3. Pobieranie ZIP-ów + rozpakowanie (unzip z systemu, Node nie ma wbudowanego).
   // frequencies.txt występuje tylko w Warszawie (metro M1/M2 na headwayach);
   // w reszcie feedów go nie ma, a brak pliku na liście to tylko warning unzip.
@@ -4061,6 +4074,7 @@ async function main() {
   log('analyze…');
   db.exec('ANALYZE');
   const addressMetadata = importAddresses(db, addressSnapshot);
+  const poiMetadata = importPois(db, poiSnapshot);
   const transitVersion = CITY === 'krakow'
     ? `${todayCompact()}-krk${createHash('sha256').update(`${ztpFingerprint}|${kmlVersion}`).digest('hex').slice(0, 8)}`
     : CITY === 'gzm'
@@ -4090,12 +4104,13 @@ async function main() {
             : CITY === 'radom'
               ? `${todayCompact()}-radom${createHash('sha256').update(`${radomFingerprint}`).digest('hex').slice(0, 8)}`
             : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
-  const version = `${transitVersion}-addr${addressMetadata?.fingerprint.slice(0, 8) ?? 'none'}`;
+  const version = `${transitVersion}-addr${addressMetadata?.fingerprint.slice(0, 8) ?? 'none'}-poi${poiMetadata?.fingerprint.slice(0, 8) ?? 'none'}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
   meta.run('gtfs_imported_at', new Date().toISOString());
   meta.run('gtfs_source', 'network');
   meta.run('address_snapshot', JSON.stringify(addressMetadata));
+  meta.run('poi_snapshot', JSON.stringify(poiMetadata));
   meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
@@ -4136,6 +4151,7 @@ async function main() {
   const manifest = {
     version,
     addresses: addressMetadata,
+    pois: poiMetadata,
     builtAt: new Date().toISOString(),
     city: CITY,
     db: {

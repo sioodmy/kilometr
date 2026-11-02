@@ -622,7 +622,7 @@ function extractWtpLines(title: string, description: string): string[] {
     .replace(/\d{1,2}\.\d{1,2}(?!\d)/g, ' ')
     .replace(/\d{1,2}:\d{2}/g, ' ')
     // Daty z nazwą miesiąca w każdej formie z feedu: „19 października”,
-    // „17-25 października” (też – i —), „od 17 do 25 października”,
+    // „17-25 października” (też –), „od 17 do 25 października”,
     // „1 i 2 listopada”, „do 19 października”.
     .replace(new RegExp(`\\b(?:(?:od|do)\\s+)?\\d{1,2}(?:\\s*(?:,|i|do|[-–—])\\s*\\d{1,2})*\\s+(?:${WTP_MONTHS})\\b`, 'gi'), ' ')
     // Sam zakres dni bez miesiąca („w dniach 17-25”): też data, nie linie.

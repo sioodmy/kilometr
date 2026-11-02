@@ -19,7 +19,13 @@ export default function RoutesLayout() {
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="[id]" />
+      <Stack.Screen
+        name="[id]"
+        options={{
+          animation: reduceMotion ? 'none' : 'fade',
+          animationDuration: 240,
+        }}
+      />
     </Stack>
   );
 }

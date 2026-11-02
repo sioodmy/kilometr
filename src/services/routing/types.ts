@@ -49,6 +49,11 @@ export interface Leg {
   toLat?: number;
   toLon?: number;
   platformCode?: string;
+  railAgency?: string;
+  railLine?: string;
+  railColor?: string;
+  trainNumber?: string;
+  trainName?: string;
   tripId?: string;
   routeId?: string;
   intermediateStops?: LegStop[];

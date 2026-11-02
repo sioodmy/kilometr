@@ -118,9 +118,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!ready || !needsOnboarding || pathname === '/onboarding') return;
-    void hasSeenOnboarding().then((seen) => {
-      if (seen) setNeedsOnboarding(false);
-    });
+    void hasSeenOnboarding()
+      .then((seen) => {
+        if (seen) setNeedsOnboarding(false);
+      })
+      .catch(() => {});
   }, [ready, needsOnboarding, pathname]);
 
   useEffect(() => {
@@ -170,10 +172,18 @@ export default function RootLayout() {
             >
               <Stack.Screen name="index" />
               <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-              <Stack.Screen name="routes" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="routes"
+                options={{
+                  headerShown: false,
+                  animation: reduceMotion ? "none" : "fade",
+                  animationDuration: 240,
+                }}
+              />
+
               <Stack.Screen name="line" />
               <Stack.Screen name="line-departures" />
-              {/* Mapa ma własny gest przesuwania - natywny swipe-back zjadałby
+              {/* Mapa ma własny gest przesuwania: natywny swipe-back zjadałby
                 przeciąganie widoku i mapa skakałaby przy powrocie. */}
               <Stack.Screen name="map" options={{ gestureEnabled: false }} />
               <Stack.Screen
