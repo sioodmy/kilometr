@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, AppState, BackHandler, Platform, Pressable, StyleSheet, Text,
-  useWindowDimensions, View,
+  ActivityIndicator,
+  AppState,
+  BackHandler,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,16 +17,49 @@ import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { Connection } from '../types/models';
 import {
-  cancelDepartureAlarm, getAlarmPermissions, isDepartureAlarmSupported, openAlarmPermission,
-  setDepartureAlarm, type AlarmPermissions, type DepartureAlarm,
+  cancelDepartureAlarm,
+  getAlarmPermissions,
+  isDepartureAlarmSupported,
+  openAlarmPermission,
+  setDepartureAlarm,
+  type AlarmPermissions,
+  type DepartureAlarm,
 } from '../services/departureAlarm';
 import { departureAlarmTiming } from '../services/departureAlarmPlan';
 import { clockFromMs } from '../services/notifications/format';
 import { ensureNotificationPermission } from '../services/notifications';
 
+const alarmDateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function getAlarmDateFormatter(locale: string): Intl.DateTimeFormat {
+  const key = locale || 'pl';
+  let formatter = alarmDateFormatters.get(key);
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat(key, {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      });
+    } catch {
+      formatter = new Intl.DateTimeFormat('pl', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      });
+    }
+    alarmDateFormatters.set(key, formatter);
+  }
+  return formatter;
+}
+
 // Budzik na podróż, montowany warunkowo na trasie. Konwencja jak ShareConnectionSheet:
 // zamknięcie swipe/backdrop/back wywołuje onClose, przy busy zamykanie jest blokowane.
-export function DepartureAlarmSheet({ connection, alarm, onClose }: {
+export function DepartureAlarmSheet({
+  connection,
+  alarm,
+  onClose,
+}: {
   connection: Connection;
   alarm: DepartureAlarm | null;
   onClose: () => void;
@@ -37,7 +77,9 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
   const [reference] = useState(() => new Date(current?.referenceAt ?? Date.now()));
   const initialTiming = departureAlarmTiming(connection, 1, reference);
   const availableMinutes = Math.floor(((initialTiming?.journeyAt ?? 0) - Date.now()) / 60_000);
-  const [minutes, setMinutes] = useState(current?.leadMin ?? Math.max(1, Math.min(10, availableMinutes)));
+  const [minutes, setMinutes] = useState(
+    current?.leadMin ?? Math.max(1, Math.min(10, availableMinutes)),
+  );
   const [permissions, setPermissions] = useState<AlarmPermissions | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,24 +88,54 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
   const expired = !timing || timing.at <= now;
   const compact = width / fontScale < 340;
   const confirmationDisabled = busy || !supported || !permissions || expired;
-  const missing = permissions ? !permissions.notifications ? 'notifications'
-    : !permissions.channel ? 'channel' : !permissions.exact ? 'exact'
-      : !permissions.fullScreen ? 'fullScreen' : null : null;
-  const permissionHint = missing === 'exact' ? a.exactHint : missing === 'fullScreen'
-    ? a.fullScreenHint : missing ? a.notificationHint : null;
-  const actionLabel = busy ? a.saving : missing === 'exact' ? a.exactAction
-    : missing === 'fullScreen' ? a.fullScreenAction : missing ? a.notificationAction : a.save;
+  const missing = permissions
+    ? !permissions.notifications
+      ? 'notifications'
+      : !permissions.channel
+        ? 'channel'
+        : !permissions.exact
+          ? 'exact'
+          : !permissions.fullScreen
+            ? 'fullScreen'
+            : null
+    : null;
+  const permissionHint =
+    missing === 'exact'
+      ? a.exactHint
+      : missing === 'fullScreen'
+        ? a.fullScreenHint
+        : missing
+          ? a.notificationHint
+          : null;
+  const actionLabel = busy
+    ? a.saving
+    : missing === 'exact'
+      ? a.exactAction
+      : missing === 'fullScreen'
+        ? a.fullScreenAction
+        : missing
+          ? a.notificationAction
+          : a.save;
 
   useEffect(() => {
     let mounted = true;
     const refresh = () => {
-      void getAlarmPermissions().then((value) => { if (mounted) setPermissions(value); })
+      void getAlarmPermissions()
+        .then((value) => {
+          if (mounted) setPermissions(value);
+        })
         .catch(() => {});
     };
     refresh();
-    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') refresh(); });
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
     const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => { mounted = false; sub.remove(); clearInterval(timer); };
+    return () => {
+      mounted = false;
+      sub.remove();
+      clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -86,25 +158,35 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
     setError(null);
     try {
       if (missing) {
-        if (missing !== 'notifications' || !await ensureNotificationPermission()) {
-          if (!await openAlarmPermission(missing)) setError(a.error);
+        if (missing !== 'notifications' || !(await ensureNotificationPermission())) {
+          if (!(await openAlarmPermission(missing))) setError(a.error);
         }
         setPermissions(await getAlarmPermissions());
         return;
       }
       if (await setDepartureAlarm(connection, minutes, reference)) sheet.current?.close();
       else setError(timing && timing.at <= Date.now() ? a.tooLate : a.error);
-    } catch { setError(a.error); }
-    finally { busyRef.current = false; setBusy(false); }
+    } catch {
+      setError(a.error);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   const remove = async () => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
-    try { await cancelDepartureAlarm(); sheet.current?.close(); }
-    catch { setError(a.error); }
-    finally { busyRef.current = false; setBusy(false); }
+    try {
+      await cancelDepartureAlarm();
+      sheet.current?.close();
+    } catch {
+      setError(a.error);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   return (
@@ -133,7 +215,9 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
         </Text>
         <Pressable
           style={styles.close}
-          onPress={() => { if (!busyRef.current) sheet.current?.close(); }}
+          onPress={() => {
+            if (!busyRef.current) sheet.current?.close();
+          }}
           accessibilityRole="button"
           accessibilityLabel={s.common.close}
         >
@@ -146,28 +230,40 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
         <Text style={styles.question}>{a.question}</Text>
         <View style={[styles.stepper, compact && styles.stepperCompact]}>
           <Pressable
-            accessibilityRole="button" accessibilityLabel={a.less}
+            accessibilityRole="button"
+            accessibilityLabel={a.less}
             accessibilityState={{ disabled: busy || minutes <= 1 }}
             disabled={busy || minutes <= 1}
             onPress={() => changeMinutes(minutes - 1)}
-            style={({ pressed }) => [styles.stepButton, pressed && styles.pressed,
-              (busy || minutes <= 1) && styles.disabled]}
+            style={({ pressed }) => [
+              styles.stepButton,
+              pressed && styles.pressed,
+              (busy || minutes <= 1) && styles.disabled,
+            ]}
           >
             <Minus size={26} color={scheme.onSurface} />
           </Pressable>
-          <View style={styles.amount} accessible
-            accessibilityLabel={a.lead(minutes)} accessibilityLiveRegion="polite">
+          <View
+            style={styles.amount}
+            accessible
+            accessibilityLabel={a.lead(minutes)}
+            accessibilityLiveRegion="polite"
+          >
             <Text style={[styles.number, compact && styles.numberCompact]}>{minutes}</Text>
             <Text style={styles.unit}>{a.minutes(minutes)}</Text>
             <Text style={styles.before}>{a.before}</Text>
           </View>
           <Pressable
-            accessibilityRole="button" accessibilityLabel={a.more}
+            accessibilityRole="button"
+            accessibilityLabel={a.more}
             accessibilityState={{ disabled: busy || minutes >= 60 }}
             disabled={busy || minutes >= 60}
             onPress={() => changeMinutes(minutes + 1)}
-            style={({ pressed }) => [styles.stepButton, pressed && styles.pressed,
-              (busy || minutes >= 60) && styles.disabled]}
+            style={({ pressed }) => [
+              styles.stepButton,
+              pressed && styles.pressed,
+              (busy || minutes >= 60) && styles.disabled,
+            ]}
           >
             <Plus size={26} color={scheme.onSurface} />
           </Pressable>
@@ -176,12 +272,17 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
           {[5, 10, 15, 30].map((value) => (
             <Pressable
               key={value}
-              accessibilityRole="button" accessibilityLabel={a.lead(value)}
+              accessibilityRole="button"
+              accessibilityLabel={a.lead(value)}
               accessibilityState={{ disabled: busy, selected: minutes === value }}
               disabled={busy}
               onPress={() => changeMinutes(value)}
-              style={({ pressed }) => [styles.preset, compact && styles.presetCompact,
-                minutes === value && styles.presetSelected, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.preset,
+                compact && styles.presetCompact,
+                minutes === value && styles.presetSelected,
+                pressed && styles.pressed,
+              ]}
             >
               <Text style={[styles.presetText, minutes === value && styles.presetTextSelected]}>
                 {s.common.durMin(value)}
@@ -194,9 +295,10 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
             <AlarmClock size={25} color={scheme.primary} />
             <View style={styles.scheduleText}>
               <Text style={styles.scheduleTitle}>{a.ringsAt(clockFromMs(timing.at))}</Text>
-              <Text style={styles.scheduleDate}>{new Intl.DateTimeFormat(getLocaleSync(), {
-                weekday: 'short', day: 'numeric', month: 'short',
-              }).format(new Date(timing.at))} · {a.journeyAt(clockFromMs(timing.journeyAt))}</Text>
+              <Text style={styles.scheduleDate}>
+                {getAlarmDateFormatter(getLocaleSync()).format(new Date(timing.at))} ·{' '}
+                {a.journeyAt(clockFromMs(timing.journeyAt))}
+              </Text>
             </View>
           </View>
         )}
@@ -220,12 +322,17 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
           accessibilityRole="button"
           accessibilityLabel={actionLabel}
           accessibilityState={{ busy, disabled: confirmationDisabled }}
-          style={({ pressed }) => [styles.confirm, pressed && styles.pressed,
-            confirmationDisabled && styles.disabled]}
+          style={({ pressed }) => [
+            styles.confirm,
+            pressed && styles.pressed,
+            confirmationDisabled && styles.disabled,
+          ]}
         >
-          {busy
-            ? <ActivityIndicator color={scheme.onPrimary} />
-            : <AlarmClock size={21} color={scheme.onPrimary} />}
+          {busy ? (
+            <ActivityIndicator color={scheme.onPrimary} />
+          ) : (
+            <AlarmClock size={21} color={scheme.onPrimary} />
+          )}
           <Text style={styles.confirmText}>{actionLabel}</Text>
         </Pressable>
         {current && (
@@ -235,7 +342,11 @@ export function DepartureAlarmSheet({ connection, alarm, onClose }: {
             accessibilityRole="button"
             accessibilityLabel={a.remove}
             accessibilityState={{ disabled: busy }}
-            style={({ pressed }) => [styles.remove, pressed && styles.pressed, busy && styles.disabled]}
+            style={({ pressed }) => [
+              styles.remove,
+              pressed && styles.pressed,
+              busy && styles.disabled,
+            ]}
           >
             <Text style={styles.removeText}>{a.remove}</Text>
           </Pressable>
@@ -318,10 +429,21 @@ const styles = StyleSheet.create({
     borderRadius: shape.extraLarge,
   },
   scheduleText: { flex: 1, gap: 5 },
-  scheduleTitle: { ...type.titleMedium, color: scheme.onSurface, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  scheduleTitle: {
+    ...type.titleMedium,
+    color: scheme.onSurface,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
   scheduleDate: { ...type.bodySmall, lineHeight: 18, color: scheme.onSurfaceVariant },
   sound: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  noteText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21, flexShrink: 1, flex: 1 },
+  noteText: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    lineHeight: 21,
+    flexShrink: 1,
+    flex: 1,
+  },
   error: { ...type.bodyMedium, color: scheme.error, lineHeight: 21 },
   confirm: {
     flexDirection: 'row',
@@ -333,7 +455,13 @@ const styles = StyleSheet.create({
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.primary,
   },
-  confirmText: { ...type.titleMedium, color: scheme.onPrimary, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  confirmText: {
+    ...type.titleMedium,
+    color: scheme.onPrimary,
+    fontWeight: '700',
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   remove: {
     alignItems: 'center',
     justifyContent: 'center',

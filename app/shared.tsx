@@ -10,7 +10,14 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, BellOff, ChevronLeft, LocateFixed, MapPin, RefreshCw } from '../src/components/icons';
+import {
+  Bell,
+  BellOff,
+  ChevronLeft,
+  LocateFixed,
+  MapPin,
+  RefreshCw,
+} from '../src/components/icons';
 import { useStrings, getLocaleSync } from '../src/i18n';
 import { getCity } from '../src/cities';
 import { scheme, shape, type } from '../src/theme/tokens';
@@ -70,6 +77,34 @@ function Action({
   );
 }
 
+const sharedDateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function getSharedDateFormatter(locale: string): Intl.DateTimeFormat {
+  const key = locale || 'pl';
+  let formatter = sharedDateFormatters.get(key);
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat(key, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
+    } catch {
+      formatter = new Intl.DateTimeFormat('pl', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
+    }
+    sharedDateFormatters.set(key, formatter);
+  }
+  return formatter;
+}
+
 export default function SharedJourneyScreen() {
   const s = useStrings();
   const router = useRouter();
@@ -78,6 +113,10 @@ export default function SharedJourneyScreen() {
   const encoded = typeof param === 'string' ? param : '';
   const { base, journey, connection, match, sameCity, now, loading, failed, retry } =
     useSharedJourney(encoded);
+  const formattedDate = useMemo(() => {
+    if (!journey?.date) return '';
+    return getSharedDateFormatter(getLocaleSync()).format(new Date(journey.date + 'T12:00:00Z'));
+  }, [journey?.date, s]);
   const { setCity } = useActiveCity();
   const { trip: tracked } = useTrackedTrip();
   const [busy, setBusy] = useState(false);
@@ -230,15 +269,7 @@ export default function SharedJourneyScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}>
-          <Text style={styles.date}>
-            {new Intl.DateTimeFormat(getLocaleSync(), {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-              timeZone: 'UTC',
-            }).format(new Date(`${journey.date}T12:00:00Z`))}
-          </Text>
+          <Text style={styles.date}>{formattedDate}</Text>
           <ConnectionSummary item={connection} />
           {!sameCity ? (
             <View style={styles.section}>
