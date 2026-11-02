@@ -874,6 +874,7 @@ export default function HomeScreen() {
         blockGpsStart();
         return;
       }
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
       routeSearchGen.current++;
       void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
@@ -921,6 +922,7 @@ export default function HomeScreen() {
       const conn = firstConns[d.id];
       routeSearchGen.current++;
       if (conn) {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, d);
         router.push({ pathname: '/routes/[id]', params: { id: conn.id } });
         return;
