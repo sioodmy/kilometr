@@ -41,7 +41,7 @@ export async function loadNotificationPreferences(): Promise<NotificationPrefere
     const raw = await kvGet(STORAGE_KEY);
     if (raw) cached = clampPrefs(JSON.parse(raw) as Partial<NotificationPreferences>);
   } catch {
-    // storage niedostępny - zostają domyślne
+    // storage niedostępny: zostają domyślne
   }
   loaded = true;
   notify();
@@ -69,9 +69,15 @@ export function useNotificationPreferences() {
   const [prefs, setPrefs] = useState<NotificationPreferences>({ ...cached });
 
   useEffect(() => {
+    let mounted = true;
     listeners.add(setPrefs);
-    loadNotificationPreferences().then(setPrefs);
+    void loadNotificationPreferences()
+      .then((p) => {
+        if (mounted) setPrefs(p);
+      })
+      .catch(() => {});
     return () => {
+      mounted = false;
       listeners.delete(setPrefs);
     };
   }, []);

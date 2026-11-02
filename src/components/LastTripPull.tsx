@@ -1,11 +1,10 @@
-import { useEffect } from 'react';
 import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
-  FadeInUp,
-  FadeOutUp,
   interpolate,
+  useAnimatedReaction,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
   type SharedValue,
@@ -16,7 +15,7 @@ import type { TripHistoryItem } from '../services/smartRanker';
 import { useStrings } from '../i18n';
 
 // Progi pulla (px): lupka od 70, a szybki powrót (reverse) dopiero od ~36%
-// wysokości ekranu - celowo głęboko, żeby nie dało się go zahaczyć
+// wysokości ekranu, celowo głęboko, żeby nie dało się go zahaczyć
 // przypadkowym pociągnięciem. MAX zostawia zapas nad progiem.
 const SCREEN_H = Dimensions.get('window').height;
 const ARM_2_PX = Math.round(SCREEN_H * 0.36);
@@ -37,7 +36,7 @@ const PILL_TRAVEL = THUMB + SLOT_GAP;
  * Szybki skrót do ostatniego połączenia, odsłaniany pociągnięciem ekranu
  * w dół (pull-to-refresh bez spinnera): wiersz od→do ze strzałką i pod nim
  * pionowy toggle jak wczorajszy (lupka = szukaj, rotate = powrót).
- * Zero klikalnych elementów - wszystko obsługuje gest rodzica.
+ * Zero klikalnych elementów: wszystko obsługuje gest rodzica.
  */
 export function LastTripPull({
   trip,
@@ -45,22 +44,30 @@ export function LastTripPull({
   height,
 }: {
   trip: TripHistoryItem;
-  option: LastTripOption;
+  option: SharedValue<LastTripOption> | LastTripOption;
   height: SharedValue<number>;
 }) {
   const s = useStrings();
-  const reversed = option === 2;
+
+  const isReversed = useDerivedValue(() => {
+    const opt = typeof option === 'number' ? option : option.value;
+    return opt === 2 ? 1 : 0;
+  });
 
   // Strzałka: pełny obrót jak przy swapie na ekranie połączeń.
   const spin = useSharedValue(0);
-  useEffect(() => {
-    if (reversed) {
-      spin.value = withTiming(Math.round(spin.value) + 1, {
-        duration: 450,
-        easing: Easing.inOut(Easing.ease),
-      });
-    }
-  }, [reversed, spin]);
+  useAnimatedReaction(
+    () => isReversed.value,
+    (rev, prev) => {
+      if (rev !== prev && rev === 1) {
+        spin.value = withTiming(Math.round(spin.value) + 1, {
+          duration: 450,
+          easing: Easing.inOut(Easing.ease),
+        });
+      }
+    },
+  );
+
   const arrowStyle = useAnimatedStyle(() => {
     const p = spin.value % 1;
     return {
@@ -72,15 +79,23 @@ export function LastTripPull({
   });
 
   // Kciuk pionowego toggla: góra = lupka, dół = powrót.
-  const thumbY = useSharedValue(0);
-  useEffect(() => {
-    thumbY.value = withTiming(reversed ? PILL_TRAVEL : 0, {
-      duration: 190,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [reversed, thumbY]);
   const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: thumbY.value }],
+    transform: [
+      {
+        translateY: withTiming(isReversed.value ? PILL_TRAVEL : 0, {
+          duration: 190,
+          easing: Easing.out(Easing.cubic),
+        }),
+      },
+    ],
+  }));
+
+  const searchSlotStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(isReversed.value ? 0.45 : 1, { duration: 180 }),
+  }));
+
+  const rotateSlotStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(isReversed.value ? 1 : 0.45, { duration: 180 }),
   }));
 
   const containerStyle = useAnimatedStyle(() => ({
@@ -88,65 +103,76 @@ export function LastTripPull({
     opacity: interpolate(height.value, [0, 40], [0, 1]),
   }));
 
-  const from = reversed ? trip.dest_title : trip.origin_title;
-  const to = reversed ? trip.origin_title : trip.dest_title;
+  const normalTextStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(isReversed.value ? 0 : 1, { duration: 180 }),
+    transform: [{ translateY: withTiming(isReversed.value ? -5 : 0, { duration: 180 }) }],
+  }));
+
+  const reversedTextStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(isReversed.value ? 1 : 0, { duration: 180 }),
+    transform: [{ translateY: withTiming(isReversed.value ? 0 : 5, { duration: 180 }) }],
+  }));
 
   return (
     <Animated.View style={[styles.reveal, containerStyle]}>
       <View
         style={styles.content}
         accessibilityRole="text"
-        accessibilityLabel={
-          reversed
-            ? s.lastTrip.backA11y(from, to)
-            : s.lastTrip.lastA11y(from, to)
-        }
+        accessibilityLabel={s.lastTrip.lastA11y(trip.origin_title, trip.dest_title)}
       >
         <View style={styles.pill}>
           <Animated.View style={[styles.thumb, thumbStyle]} />
-          <View style={styles.slot} pointerEvents="none">
-            <Search
-              size={17}
-              color={!reversed ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-            />
-          </View>
-          <View style={styles.slot} pointerEvents="none">
-            <RotateCcw
-              size={17}
-              color={reversed ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-            />
-          </View>
+          <Animated.View style={[styles.slot, searchSlotStyle]} pointerEvents="none">
+            <Search size={17} color={scheme.onSecondaryContainer} />
+          </Animated.View>
+          <Animated.View style={[styles.slot, rotateSlotStyle]} pointerEvents="none">
+            <RotateCcw size={17} color={scheme.onSecondaryContainer} />
+          </Animated.View>
         </View>
 
-        {/* Tekst zamienia się miejscami z rolką jak przy swapie (klucz = treść). */}
+        {/* Tekst płynnie zamienia się miejscami na UI threadzie bez przeładowania flexboxa. */}
         <View style={styles.tripRow}>
-          <Animated.View
-            key={`from-${from}`}
-            entering={new FadeInUp().duration(240)}
-            exiting={new FadeOutUp().duration(200)}
-            style={styles.tripSide}
-          >
-            <Text style={styles.fromText} numberOfLines={1}>
-              {from}
-            </Text>
-          </Animated.View>
+          <View style={styles.tripSide}>
+            <Animated.View style={normalTextStyle}>
+              <Text style={styles.fromText} numberOfLines={1}>
+                {trip.origin_title}
+              </Text>
+            </Animated.View>
+            <Animated.View style={[StyleSheet.absoluteFill, styles.centerSlot, reversedTextStyle]}>
+              <Text style={styles.fromText} numberOfLines={1}>
+                {trip.dest_title}
+              </Text>
+            </Animated.View>
+          </View>
           <Animated.View style={arrowStyle}>
             <ArrowRight size={20} color={scheme.primary} />
           </Animated.View>
-          <Animated.View
-            key={`to-${to}`}
-            entering={new FadeInUp().duration(240)}
-            exiting={new FadeOutUp().duration(200)}
-            style={styles.tripSide}
-          >
-            <Text style={styles.toText} numberOfLines={1}>
-              {to}
+          <View style={styles.tripSide}>
+            <Animated.View style={normalTextStyle}>
+              <Text style={styles.toText} numberOfLines={1}>
+                {trip.dest_title}
+              </Text>
+            </Animated.View>
+            <Animated.View style={[StyleSheet.absoluteFill, styles.centerSlot, reversedTextStyle]}>
+              <Text style={styles.toText} numberOfLines={1}>
+                {trip.origin_title}
+              </Text>
+            </Animated.View>
+          </View>
+        </View>
+
+        <View style={styles.hintWrap}>
+          <Animated.View style={normalTextStyle}>
+            <Text style={styles.hint} numberOfLines={2}>
+              {s.lastTrip.pullHint}
+            </Text>
+          </Animated.View>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.centerSlot, reversedTextStyle]}>
+            <Text style={styles.hint} numberOfLines={2}>
+              {s.lastTrip.pullHintBack}
             </Text>
           </Animated.View>
         </View>
-        <Text style={styles.hint} numberOfLines={2}>
-          {reversed ? s.lastTrip.pullHintBack : s.lastTrip.pullHint}
-        </Text>
       </View>
     </Animated.View>
   );
@@ -176,6 +202,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     maxWidth: '40%',
     justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  centerSlot: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   fromText: {
     ...type.bodyLarge,
@@ -189,11 +221,16 @@ const styles = StyleSheet.create({
     color: scheme.onSurface,
     textAlign: 'center',
   },
+  hintWrap: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
   hint: {
     ...type.labelMedium,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
-    paddingHorizontal: 16,
   },
   // Pionowy toggle w vibe docka: pigułka, tor, kciuk jak wczoraj.
   pill: {

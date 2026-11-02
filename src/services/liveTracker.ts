@@ -22,9 +22,41 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
-import { fetchZbBialystokRows, fetchZbGzmRails, fetchZbGzmRows, fetchZbKd, fetchZbKielceRows, fetchZbKml, fetchZbKrakowRows, fetchZbLodzRails, fetchZbLodzRows, fetchZbLublinRows, fetchZbOlsztynRows, fetchZbOpoleRows, fetchZbPoznanRails, fetchZbPoznanRows, fetchZbRadomRows, fetchZbRzeszowRows, fetchZbSkmtRails, fetchZbSzczecinRows, fetchZbTricityRows, fetchZbWarsawRails, fetchZbWarsawRows, fetchZbWroclawRows, matchZbKd, type ZbKdVehicle } from './zbiorkom';
+import {
+  fetchZbBialystokRows,
+  fetchZbGzmRails,
+  fetchZbGzmRows,
+  fetchZbKd,
+  fetchZbKielceRows,
+  fetchZbKml,
+  fetchZbKrakowRows,
+  fetchZbLodzRails,
+  fetchZbLodzRows,
+  fetchZbLublinRows,
+  fetchZbOlsztynRows,
+  fetchZbOpoleRows,
+  fetchZbPoznanRails,
+  fetchZbPoznanRows,
+  fetchZbRadomRows,
+  fetchZbRzeszowRows,
+  fetchZbSkmtRails,
+  fetchZbSzczecinRows,
+  fetchZbTricityRows,
+  fetchZbWarsawRails,
+  fetchZbWarsawRows,
+  fetchZbWroclawRows,
+  matchZbKd,
+  type ZbKdVehicle,
+} from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
-import { MAX_DELAY_SEC, MAX_SAMPLE_AGE_MS, sampleTime, matchHints, matchScore, fusedDelay } from './liveQuality';
+import {
+  MAX_DELAY_SEC,
+  MAX_SAMPLE_AGE_MS,
+  sampleTime,
+  matchHints,
+  matchScore,
+  fusedDelay,
+} from './liveQuality';
 import { buildRoutingSnapshot, type RoutingSnapshot } from './routing/reliability';
 import { normalizeName } from './vehiclePosition';
 
@@ -120,6 +152,8 @@ interface SourceHealth {
 
 export interface TrackedVehicle extends VehiclePosition {
   type: 'bus' | 'tram' | 'train' | 'trolleybus' | 'subway';
+  /** Oznaczenia alternatywne linii (np. relacja handlowa "D1", nr rozkładowy "69559") */
+  aliases?: string[];
 }
 
 interface PatternPolylineNode {
@@ -144,6 +178,7 @@ class LiveTracker {
   /** Kiedy ostatni raz przyszły dane (albo odtwarzamy je z dysku). 0 = jeszcze nigdy. */
   private lastOk = 0;
   private inFlight = false;
+  private pollStartedAt = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private restored = false;
   private health = new Map<string, SourceHealth>();
@@ -220,6 +255,17 @@ class LiveTracker {
     this.armTimer();
   }
 
+  /**
+   * Natychmiastowe odświeżenie pozycji (np. po wejściu na ekran szczegółów połączenia
+   * lub wybudzeniu z tła bez czekania na interwał).
+   */
+  async refresh(): Promise<void> {
+    this.start();
+    if (this.pinned > 0 || AppState.currentState === 'active') {
+      this.armTimer(true);
+    }
+  }
+
   /** Zatrzymuje ticker: apka ma iść bez polla, dopóki czegoś nie potrzebuje. */
   stop(): void {
     this.wantPoll = false;
@@ -248,7 +294,10 @@ class LiveTracker {
     if (this.appStateSub) return;
     this.appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
-        if (this.wantPoll || this.pinned > 0) this.armTimer();
+        if (this.wantPoll || this.pinned > 0) {
+          // Natychmiast po powrocie z tła odpytaj o świeże pozycje, bez czekania na tick interwału
+          this.armTimer(true);
+        }
       } else if (this.pinned > 0) {
         // Pin w tle zostaje, ale przechodzi na rzadsze tempo (bateria).
         this.armTimer();
@@ -263,11 +312,11 @@ class LiveTracker {
   /**
    * Tempo polla zależy od stanu aplikacji (na ekranie co 5 s, w tle co 20 s),
    * więc przy każdej zmianie stanu przestawiamy interval. Wywołanie z tym
-   * samym tempem jest no-op (nie Restartujemy polla co re-render).
+   * samym tempem jest no-op (chyba że wymuszono od razu przez forceImmediate).
    */
-  private armTimer(): void {
+  private armTimer(forceImmediate = false): void {
     const ms = AppState.currentState === 'active' ? POLL_MS : BACKGROUND_POLL_MS;
-    if (this.timer && this.timerMs === ms) return;
+    if (this.timer && this.timerMs === ms && !forceImmediate) return;
     this.disarmTimer();
     void this.poll();
     this.timerMs = ms;
@@ -303,22 +352,40 @@ class LiveTracker {
    */
   getTripDelays(): Map<string, number> {
     const now = Date.now();
-    return new Map(this.snapshot().filter(v => v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS).map(v => [v.matchedTripId!, v.delaySec!]));
+    return new Map(
+      this.snapshot()
+        .filter(
+          (v) => v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS,
+        )
+        .map((v) => [v.matchedTripId!, v.delaySec!]),
+    );
   }
 
   private latestDayIndex: DayIndex | null = null;
   private sampleHistory = new Map<string, { lat: number; lon: number; since: number }>();
 
   getRoutingSnapshot(index = this.latestDayIndex, offsets?: Map<string, number>): RoutingSnapshot {
-    return buildRoutingSnapshot(index, gtfsStore, this.snapshot(), this.getLiveState() === 'fresh', Date.now(), offsets);
+    return buildRoutingSnapshot(
+      index,
+      gtfsStore,
+      this.snapshot(),
+      this.getLiveState() === 'fresh',
+      Date.now(),
+      offsets,
+    );
   }
 
   private previousFor(row: RawVehicleRow): TrackedVehicle | undefined {
     const v = this.byId.get(`${row.name.trim().toUpperCase()}-${row.k}`);
     const at = sampleTime(row, Date.now());
-    const headsign: string | undefined = v?.matchedTripId ? gtfsStore.trips.get(v.matchedTripId)?.trip_headsign : undefined;
-    if (row.headsign && headsign && normalizeName(row.headsign) !== normalizeName(headsign)) return undefined;
-    return v && at != null && at - v.updatedAt >= 0 && at - v.updatedAt <= MAX_SAMPLE_AGE_MS ? v : undefined;
+    const headsign: string | undefined = v?.matchedTripId
+      ? gtfsStore.trips.get(v.matchedTripId)?.trip_headsign
+      : undefined;
+    if (row.headsign && headsign && normalizeName(row.headsign) !== normalizeName(headsign))
+      return undefined;
+    return v && at != null && at - v.updatedAt >= 0 && at - v.updatedAt <= MAX_SAMPLE_AGE_MS
+      ? v
+      : undefined;
   }
 
   /** Zdrowie źródeł live w tej sesji (do diagnostyki i canary). */
@@ -329,9 +396,12 @@ class LiveTracker {
   }
 
   private recordSource(name: string, ok: boolean, error?: unknown): void {
-    const h =
-      this.health.get(name) ??
-      { attempts: 0, failures: 0, lastSuccessAt: null, lastError: null };
+    const h = this.health.get(name) ?? {
+      attempts: 0,
+      failures: 0,
+      lastSuccessAt: null,
+      lastError: null,
+    };
     h.attempts += 1;
     if (ok) {
       h.lastSuccessAt = Date.now();
@@ -347,13 +417,17 @@ class LiveTracker {
   lookup(vehicleId: string): TrackedVehicle | undefined {
     const vehicle = this.byId.get(vehicleId);
     const now = Date.now();
-    return vehicle && vehicle.updatedAt <= now && now - vehicle.updatedAt <= MAX_SAMPLE_AGE_MS ? vehicle : undefined;
+    return vehicle && vehicle.updatedAt <= now && now - vehicle.updatedAt <= MAX_SAMPLE_AGE_MS
+      ? vehicle
+      : undefined;
   }
 
   snapshot(line?: string): TrackedVehicle[] {
-    const vehicles = line ? (this.byLine.get(line.trim().toUpperCase()) ?? []) : Array.from(this.byId.values());
+    const vehicles = line
+      ? (this.byLine.get(line.trim().toUpperCase()) ?? [])
+      : Array.from(this.byId.values());
     const now = Date.now();
-    return vehicles.filter(v => v.updatedAt <= now && now - v.updatedAt <= MAX_SAMPLE_AGE_MS);
+    return vehicles.filter((v) => v.updatedAt <= now && now - v.updatedAt <= MAX_SAMPLE_AGE_MS);
   }
 
   /** Bezstanowe odpytanie źródła MPK (canary/diagnostyka), bez zapisu snapshotu. */
@@ -362,8 +436,18 @@ class LiveTracker {
   }
 
   async poll(): Promise<void> {
-    if (this.inFlight) return;
+    const now = Date.now();
+    if (this.inFlight) {
+      // Jeśli poprzedni poll zawisł w tle podczas uśpienia aplikacji przez Androida,
+      // odzyskajmy stan po 10 sekundach.
+      if (now - this.pollStartedAt > 10000) {
+        this.inFlight = false;
+      } else {
+        return;
+      }
+    }
     this.inFlight = true;
+    this.pollStartedAt = now;
     const cityAtStart = safeCityId();
     try {
       const [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
@@ -443,7 +527,10 @@ class LiveTracker {
       const feeds = await fetchZbGzmRails();
       if (feeds === null) return null;
       const prefixes: Record<string, string> = { KS: 'KŚ:', IC: 'IC:', PR: 'PR:' };
-      return feeds.map((f) => ({ vehicles: f.vehicles, prefix: prefixes[f.agency] ?? `${f.agency}:` }));
+      return feeds.map((f) => ({
+        vehicles: f.vehicles,
+        prefix: prefixes[f.agency] ?? `${f.agency}:`,
+      }));
     }
     if (id === 'warszawa') {
       const feeds = await fetchZbWarsawRails();
@@ -637,7 +724,10 @@ class LiveTracker {
     const now = Date.now();
     if (now - this.lastPersistAt < LiveTracker.PERSIST_MIN_MS) return;
     this.lastPersistAt = now;
-    void kvSet(snapshotKey(cityId), JSON.stringify({ at: now, rows, rails: rails ?? [] } satisfies StoredSnapshot));
+    void kvSet(
+      snapshotKey(cityId),
+      JSON.stringify({ at: now, rows, rails: rails ?? [] } satisfies StoredSnapshot),
+    );
   }
 
   /**
@@ -652,12 +742,18 @@ class LiveTracker {
       const raw = await kvGet(snapshotKey());
       if (!raw) return;
       const parsed = JSON.parse(raw) as StoredSnapshot;
-      if (!parsed || (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd) && !Array.isArray(parsed.rails))) return;
+      if (
+        !parsed ||
+        (!Array.isArray(parsed.rows) && !Array.isArray(parsed.kd) && !Array.isArray(parsed.rails))
+      )
+        return;
       // Stary snapshot to nie „live”: bez tego apka po dłuższej przerwie
       // pokazywałaby nieaktualne pojazdy, dopóki nie wróci pierwszy poll.
       if (!snapshotIsUsable(parsed.at, Date.now())) return;
       if (Array.isArray(parsed.rows) && parsed.rows.length > 0) {
-        await this.matchAll(parsed.rows.map(row => ({ ...row, timestamp: row.timestamp ?? parsed.at })));
+        await this.matchAll(
+          parsed.rows.map((row) => ({ ...row, timestamp: row.timestamp ?? parsed.at })),
+        );
       }
       const rails: RailFeed[] = Array.isArray(parsed.rails)
         ? parsed.rails
@@ -713,11 +809,17 @@ class LiveTracker {
           `[LiveTracker] KD ${veh.trainNumber}: odrzucone opóźnienie ${Math.round(veh.delaySec / 60)} min (> ${DELAY_CAP_SEC / 60})`,
         );
       }
+
+      const aliases = new Set<string>();
+      if (veh.line) aliases.add(veh.line.trim().toUpperCase());
+      if (match?.routeShortName) aliases.add(match.routeShortName.trim().toUpperCase());
+
       // Ta sama zasada uczciwości co w matchRow: podejrzane opóźnienie to
       // delaySec = null (pozycja znana, pomiar nie), nie fałszywe „na czas”.
       const tracked: TrackedVehicle = {
         vehicleId,
         line: veh.trainNumber,
+        aliases: Array.from(aliases),
         lat: veh.lat,
         lon: veh.lon,
         type: 'train',
@@ -734,14 +836,22 @@ class LiveTracker {
         this.tripDelays.delete(prev.matchedTripId);
       }
       this.byId.set(vehicleId, tracked);
-      let list = this.byLine.get(tracked.line);
-      if (!list) {
-        list = [];
-        this.byLine.set(tracked.line, list);
+
+      // Rejestrujemy pojazd w this.byLine pod wszystkimi dopuszczalnymi identyfikatorami linii
+      // (numer brygady, relacja handlowa D1, numer rozkładowy w GTFS).
+      const allLines = [tracked.line, ...aliases];
+      for (const l of allLines) {
+        const key = l.trim().toUpperCase();
+        let list = this.byLine.get(key);
+        if (!list) {
+          list = [];
+          this.byLine.set(key, list);
+        }
+        const idx = list.findIndex((v) => v.vehicleId === vehicleId);
+        if (idx >= 0) list[idx] = tracked;
+        else list.push(tracked);
       }
-      const idx = list.findIndex((v) => v.vehicleId === vehicleId);
-      if (idx >= 0) list[idx] = this.byId.get(vehicleId)!;
-      else list.push(this.byId.get(vehicleId)!);
+
       if (tracked.matchedTripId && tracked.delaySec !== null) {
         this.tripDelays.set(tracked.matchedTripId, tracked.delaySec);
       }
@@ -817,8 +927,19 @@ class LiveTracker {
         const arr2 = times[p2.schedulePos].arrival_sec;
         const expectedSec = Math.round(dep1 + t * (arr2 - dep1));
         const delay = sampleSec - expectedSec;
-        const score = matchScore(hints, trip.trip_id, trip.trip_headsign ?? '', delay,
-          proj.distanceMeters, lat, lon, p2.lat, p2.lon, p2.name, arr2);
+        const score = matchScore(
+          hints,
+          trip.trip_id,
+          trip.trip_headsign ?? '',
+          delay,
+          proj.distanceMeters,
+          lat,
+          lon,
+          p2.lat,
+          p2.lon,
+          p2.name,
+          arr2,
+        );
         if (score < bestScore) {
           bestScore = score;
           bestTripId = trip.trip_id;
@@ -850,15 +971,27 @@ class LiveTracker {
             const expectedSec = times[i].departure_sec ?? times[i].arrival_sec ?? nowSec;
             const delay = sampleSec - expectedSec;
             const next = gtfsStore.stops.get(times[i + 1]?.stop_id);
-            const score = matchScore(hints, trip.trip_id, trip.trip_headsign ?? '', delay,
-              d, lat, lon, next?.stop_lat ?? stop.stop_lat, next?.stop_lon ?? stop.stop_lon,
-              next?.stop_name ?? stop.stop_name, times[i + 1]?.departure_sec ?? expectedSec);
+            const score = matchScore(
+              hints,
+              trip.trip_id,
+              trip.trip_headsign ?? '',
+              delay,
+              d,
+              lat,
+              lon,
+              next?.stop_lat ?? stop.stop_lat,
+              next?.stop_lon ?? stop.stop_lon,
+              next?.stop_name ?? stop.stop_name,
+              times[i + 1]?.departure_sec ?? expectedSec,
+            );
             if (score < bestScore) {
               bestScore = score;
               bestTripId = trip.trip_id;
               bestDelay = delay;
               bestCurrentStop = stop.stop_name;
-              bestNextStop = times[i + 1] ? gtfsStore.stops.get(times[i + 1].stop_id)?.stop_name : undefined;
+              bestNextStop = times[i + 1]
+                ? gtfsStore.stops.get(times[i + 1].stop_id)?.stop_name
+                : undefined;
             }
           }
         }
@@ -890,7 +1023,14 @@ class LiveTracker {
         lat,
         lon,
         type,
-        delaySec: bestTripId && !delayOutOfRange ? fusedDelay(row, bestDelay, previous?.matchedTripId === bestTripId ? previous : undefined) : null,
+        delaySec:
+          bestTripId && !delayOutOfRange
+            ? fusedDelay(
+                row,
+                bestDelay,
+                previous?.matchedTripId === bestTripId ? previous : undefined,
+              )
+            : null,
         matchedTripId: bestTripId && !delayOutOfRange ? bestTripId : undefined,
         currentStopName: bestCurrentStop,
         nextStopName: bestNextStop,
@@ -910,9 +1050,10 @@ class LiveTracker {
    * ma dokładnie jeden kurs. Przy remisie wygrywa ten, którego pozycja
    * pokrywa się z rozkładem najlepiej.
    */
-  private resolveConflicts(
-    matched: Map<string, { tracked: TrackedVehicle; score: number }>,
-  ): { byId: Map<string, TrackedVehicle>; delays: Map<string, number> } {
+  private resolveConflicts(matched: Map<string, { tracked: TrackedVehicle; score: number }>): {
+    byId: Map<string, TrackedVehicle>;
+    delays: Map<string, number>;
+  } {
     // Który pojazd wygrywa każdy kurs.
     const byTrip = new Map<string, { vehicleId: string; score: number }>();
     for (const [vehicleId, entry] of matched) {
@@ -948,10 +1089,19 @@ class LiveTracker {
 
   private ensureLiveSchedule(dayIndex: DayIndex): boolean {
     if (this.liveScheduleKey === dayIndex && this.liveTripIds.length > 0) return true;
-    const byLine = new Map<string, { routeId: string; stopSequence: string[]; trips: { trip_id: string; trip_headsign?: string }[] }[]>();
+    const byLine = new Map<
+      string,
+      {
+        routeId: string;
+        stopSequence: string[];
+        trips: { trip_id: string; trip_headsign?: string }[];
+      }[]
+    >();
     for (const pattern of dayIndex.patterns.values()) {
       const route = gtfsStore.routes.get(pattern.routeId);
-      const line = String(route?.route_short_name ?? pattern.routeId ?? '').trim().toUpperCase();
+      const line = String(route?.route_short_name ?? pattern.routeId ?? '')
+        .trim()
+        .toUpperCase();
       if (!line) continue;
       let list = byLine.get(line);
       if (!list) {
@@ -976,13 +1126,16 @@ class LiveTracker {
           seq.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, pos });
         }
         w.u16(seq.length);
-        for (const node of seq) w.u32(node.nameIdx).f64(node.lat).f64(node.lon).str(normalizeName(stopNames[node.nameIdx]));
+        for (const node of seq)
+          w.u32(node.nameIdx)
+            .f64(node.lat)
+            .f64(node.lon)
+            .str(normalizeName(stopNames[node.nameIdx]));
         const trips = pattern.trips;
         w.u32(trips.length);
         for (const trip of trips) {
           const times = gtfsStore.stopTimes.get(trip.trip_id) as
-            | { stop_id: string; departure_sec: number; arrival_sec: number }[]
-            | undefined;
+            { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
           const tripIdx = tripIds.length;
           tripIds.push(trip.trip_id);
           w.u32(tripIdx).str(normalizeName(trip.trip_headsign ?? ''));
@@ -1003,7 +1156,12 @@ class LiveTracker {
             }
           }
           w.u16(fallback.length);
-          for (const fb of fallback) w.u32(fb.nameIdx).f64(fb.lat).f64(fb.lon).i32(fb.dep | 0).str(normalizeName(stopNames[fb.nameIdx]));
+          for (const fb of fallback)
+            w.u32(fb.nameIdx)
+              .f64(fb.lat)
+              .f64(fb.lon)
+              .i32(fb.dep | 0)
+              .str(normalizeName(stopNames[fb.nameIdx]));
         }
       }
     }
@@ -1029,12 +1187,20 @@ class LiveTracker {
     for (const row of usable) {
       const hints = matchHints(row, this.previousFor(row));
       const previous = hints.previous;
-      const prevIdx = previous?.matchedTripId ? this.liveTripIds.indexOf(previous.matchedTripId) : -1;
-      w.str(row.name.trim().toUpperCase()).f64(row.x).f64(row.y)
+      const prevIdx = previous?.matchedTripId
+        ? this.liveTripIds.indexOf(previous.matchedTripId)
+        : -1;
+      w.str(row.name.trim().toUpperCase())
+        .f64(row.x)
+        .f64(row.y)
         .i32(nowSec - Math.round((now - (sampleTime(row, now) ?? now)) / 1000))
-        .i32(hints.api ?? -2147483648).str(hints.headsign).i32(prevIdx)
-        .f64(previous?.lat ?? row.x).f64(previous?.lon ?? row.y)
-        .str(hints.nextStop).i32(hints.nextSec ?? -2147483648);
+        .i32(hints.api ?? -2147483648)
+        .str(hints.headsign)
+        .i32(prevIdx)
+        .f64(previous?.lat ?? row.x)
+        .f64(previous?.lon ?? row.y)
+        .str(hints.nextStop)
+        .i32(hints.nextSec ?? -2147483648);
     }
     const res = invokeRustSync(CMD_LIVE_MATCH_BATCH, w.finish());
     if (!res || res.byteLength < 4) return null;
@@ -1073,7 +1239,10 @@ class LiveTracker {
           lat: row.x,
           lon: row.y,
           type: vtype,
-          delaySec: tripId && !delayOutOfRange ? fusedDelay(row, delay, previous?.matchedTripId === tripId ? previous : undefined) : null,
+          delaySec:
+            tripId && !delayOutOfRange
+              ? fusedDelay(row, delay, previous?.matchedTripId === tripId ? previous : undefined)
+              : null,
           matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
           currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
           nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
@@ -1089,12 +1258,10 @@ class LiveTracker {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
     } catch (err) {
-      // Rzucamy dalej: poll() ustawi wtedy failed i NIE oznaczy danych jako świeże.
       throw new Error(`gtfs load failed: ${String(err)}`);
     }
     const now = new Date();
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-
     let dayIndex: DayIndex;
     try {
       dayIndex = await gtfsStore.getDayIndexSlice(
@@ -1110,7 +1277,7 @@ class LiveTracker {
     const patternPolylines = new Map<string, PatternPolylineNode[]>();
     this.latestDayIndex = dayIndex;
     const seen = new Set<string>();
-    rows = rows.filter(row => {
+    rows = rows.filter((row) => {
       const id = `${row.name.trim().toUpperCase()}-${row.k}`;
       if (seen.has(id) || sampleTime(row, now.getTime()) == null) return false;
       seen.add(id);
@@ -1133,7 +1300,10 @@ class LiveTracker {
         // (zdarza się np. dla linii 153). Taki wiersz nie ma pozycji, więc
         // dopasowanie do kursu byłoby zmyślone.
         if (!row.x || !row.y || !row.name) continue;
-        matched.set(row.name.trim().toUpperCase() + '-' + row.k, this.matchRow(row, dayIndex, nowSec, patternPolylines));
+        matched.set(
+          row.name.trim().toUpperCase() + '-' + row.k,
+          this.matchRow(row, dayIndex, nowSec, patternPolylines),
+        );
       }
     }
 
@@ -1145,19 +1315,29 @@ class LiveTracker {
     // Wpisy kolei noszą prefiks z dwukropkiem (`KD:123:veh`, `KŚ:…`, `KM:…`),
     // miejskie to `linia-id` bez dwukropka, więc rozróżnienie nie wymaga
     // listy agencji per-miasto.
+    const nowMs = Date.now();
     for (const [id, kept] of this.byId) {
       if (!id.includes(':')) continue;
+      // Przeterminowane pociągi (> 5 min) usuwamy, żeby nie wisiały w nieskończoność
+      if (nowMs - kept.updatedAt > 300000) continue;
       byId.set(id, kept);
-      if (kept.matchedTripId && kept.delaySec !== null) delays.set(kept.matchedTripId, kept.delaySec);
+      if (kept.matchedTripId && kept.delaySec !== null)
+        delays.set(kept.matchedTripId, kept.delaySec);
     }
     const newByLine = new Map<string, TrackedVehicle[]>();
     for (const tracked of byId.values()) {
-      let list = newByLine.get(tracked.line);
-      if (!list) {
-        list = [];
-        newByLine.set(tracked.line, list);
+      const keys = [tracked.line, ...(tracked.aliases ?? [])];
+      for (const k of keys) {
+        const key = k.trim().toUpperCase();
+        let list = newByLine.get(key);
+        if (!list) {
+          list = [];
+          newByLine.set(key, list);
+        }
+        if (!list.some((v) => v.vehicleId === tracked.vehicleId)) {
+          list.push(tracked);
+        }
       }
-      list.push(tracked);
     }
 
     this.byId = byId;

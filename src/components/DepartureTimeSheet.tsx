@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   type NativeScrollEvent,
@@ -40,6 +40,22 @@ function pad(n: number): string {
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const HANDLE_HEIGHT = 24;
+
+const timeSheetDateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function getTimeSheetDateFormatter(locale: string): Intl.DateTimeFormat {
+  const key = locale || 'pl';
+  let formatter = timeSheetDateFormatters.get(key);
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat(key, { day: 'numeric', month: 'short' });
+    } catch {
+      formatter = new Intl.DateTimeFormat('pl', { day: 'numeric', month: 'short' });
+    }
+    timeSheetDateFormatters.set(key, formatter);
+  }
+  return formatter;
+}
 
 function SheetHandle() {
   return (
@@ -252,17 +268,19 @@ export function DepartureTimeSheet({
     [s.common.close],
   );
 
-  const dateFormat = new Intl.DateTimeFormat(getLocaleSync(), { day: 'numeric', month: 'short' });
-  const tomorrow = new Date(openedAt);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const days = [
-    { value: 'today' as const, label: s.timeSheet.dayToday, date: dateFormat.format(openedAt) },
-    {
-      value: 'tomorrow' as const,
-      label: s.timeSheet.dayTomorrow,
-      date: dateFormat.format(tomorrow),
-    },
-  ];
+  const days = useMemo(() => {
+    const dateFormat = getTimeSheetDateFormatter(getLocaleSync());
+    const tomorrow = new Date(openedAt);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return [
+      { value: 'today' as const, label: s.timeSheet.dayToday, date: dateFormat.format(openedAt) },
+      {
+        value: 'tomorrow' as const,
+        label: s.timeSheet.dayTomorrow,
+        date: dateFormat.format(tomorrow),
+      },
+    ];
+  }, [openedAt, s]);
 
   return (
     <BottomSheet
@@ -344,20 +362,19 @@ export function DepartureTimeSheet({
             })}
           </View>
           <View style={[styles.presetsRow, compact && styles.presetsCompact]}>
-            {(
-              mode === 'departure'
-                ? [
-                    { label: s.common.now, action: handleSetNow, active: isNow },
-                    { label: s.common.add15, action: () => handleQuickAdd(15), active: false },
-                    { label: s.common.add30, action: () => handleQuickAdd(30), active: false },
-                    { label: s.common.add60, action: () => handleQuickAdd(60), active: false },
-                  ]
-                : [
-                    { label: s.common.add15, action: () => handleQuickAdd(15), active: false },
-                    { label: s.common.add30, action: () => handleQuickAdd(30), active: false },
-                    { label: s.common.add45, action: () => handleQuickAdd(45), active: false },
-                    { label: s.common.add60, action: () => handleQuickAdd(60), active: false },
-                  ]
+            {(mode === 'departure'
+              ? [
+                  { label: s.common.now, action: handleSetNow, active: isNow },
+                  { label: s.common.add15, action: () => handleQuickAdd(15), active: false },
+                  { label: s.common.add30, action: () => handleQuickAdd(30), active: false },
+                  { label: s.common.add60, action: () => handleQuickAdd(60), active: false },
+                ]
+              : [
+                  { label: s.common.add15, action: () => handleQuickAdd(15), active: false },
+                  { label: s.common.add30, action: () => handleQuickAdd(30), active: false },
+                  { label: s.common.add45, action: () => handleQuickAdd(45), active: false },
+                  { label: s.common.add60, action: () => handleQuickAdd(60), active: false },
+                ]
             ).map((preset) => (
               <Pressable
                 key={preset.label}

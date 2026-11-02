@@ -54,7 +54,11 @@ interface ZbPositionJson {
   upcomingStops?: { name?: string; scheduledArrival?: number; scheduledDeparture?: number }[];
 }
 
-async function fetchPositions(city: string, agencies?: string, bbox?: string): Promise<ZbPositionJson[] | null> {
+async function fetchPositions(
+  city: string,
+  agencies?: string,
+  bbox?: string,
+): Promise<ZbPositionJson[] | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ZBIORKOM.timeoutMs);
   try {
@@ -273,8 +277,8 @@ export async function fetchZbLublinRows(): Promise<RawVehicleRow[] | null> {
  * (same autobusy 1-27 i nocne N1-N3, route_type 3 w GTFS).
  */
 export async function fetchZbRadomRows(): Promise<RawVehicleRow[] | null> {
-  const { getCity } = await import("../cities");
-  const rad = getCity("radom");
+  const { getCity } = await import('../cities');
+  const rad = getCity('radom');
   const positions = await fetchPositions(rad.zbiorkomSlug, undefined, rad.zbiorkomBbox);
   if (positions === null) return null;
   return toRawRows(positions);
@@ -291,13 +295,24 @@ function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
     const lon = loc[0];
     if (!lat || !lon) continue;
     const delaySec =
-      typeof p.delay === 'number' && Number.isFinite(p.delay) ? Math.round(p.delay / 1000) : undefined;
+      typeof p.delay === 'number' && Number.isFinite(p.delay)
+        ? Math.round(p.delay / 1000)
+        : undefined;
     rows.push({
-      name: line, type: p.vehicle?.type === '0' ? 'tram' : 'bus', x: lat, y: lon, k: id, delaySec,
-      timestamp: p.timestamp, headsign: p.headsign, brigade: p.brigade,
-      upcomingStops: p.upcomingStops?.flatMap(s => {
+      name: line,
+      type: p.vehicle?.type === '0' ? 'tram' : 'bus',
+      x: lat,
+      y: lon,
+      k: id,
+      delaySec,
+      timestamp: p.timestamp,
+      headsign: p.headsign,
+      brigade: p.brigade,
+      upcomingStops: p.upcomingStops?.flatMap((s) => {
         const at = s.scheduledDeparture ?? s.scheduledArrival;
-        return s.name && at != null && Number.isFinite(at) ? [{ name: s.name, schedSec: toSecOfDay(at) }] : [];
+        return s.name && at != null && Number.isFinite(at)
+          ? [{ name: s.name, schedSec: toSecOfDay(at) }]
+          : [];
       }),
     });
   }
@@ -323,7 +338,9 @@ export async function fetchZbKml(): Promise<ZbKdVehicle[] | null> {
 /** Pociągi Kolei Śląskich, IC i POLREGIO z jednego zapytania (bbox GZM).
  *  Trzy osobne zapytania na poll to zbędny ruch: API przyjmuje listę
  *  agencji, a pojazdy rozdzielamy po `vehicle.agency`. */
-export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbGzmRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'KS,IC,PR', getCity('gzm').zbiorkomBbox);
   if (positions === null) return null;
@@ -340,7 +357,9 @@ export async function fetchZbGzmRails(): Promise<{ agency: string; vehicles: ZbK
  * live (sprawdzone: nie ma jej ani w mieście `warsaw`, ani pod agencją
  * SKM w `pkp`), więc zostaje na rozkładzie jak kolej w innych miastach.
  */
-export async function fetchZbWarsawRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbWarsawRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'KM,WKD', getCity('warszawa').zbiorkomBbox);
   if (positions === null) return null;
@@ -358,7 +377,9 @@ export async function fetchZbWarsawRails(): Promise<{ agency: string; vehicles: 
  * PR bez dopasowania w bazie matcher odrzuca po numerze, więc feed jest
  * przyszłościowy bez zmiany kodu.
  */
-export async function fetchZbPoznanRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbPoznanRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'KW,PR', getCity('poznan').zbiorkomBbox);
   if (positions === null) return null;
@@ -375,7 +396,9 @@ export async function fetchZbPoznanRails(): Promise<{ agency: string; vehicles: 
  * SKMT). Statyczny GTFS mamy z mirroru feedu SKM, numer pociągu siedzi
  * w trip_short_name, więc matcher spina po numerze jak KW/KM.
  */
-export async function fetchZbSkmtRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbSkmtRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'SKMT', getCity('trojmiasto').zbiorkomBbox);
   if (positions === null) return null;
@@ -393,7 +416,9 @@ export async function fetchZbSkmtRails(): Promise<{ agency: string; vehicles: Zb
  * więc matcher dopina kursy po numerze jak przy KW. Pojazd spoza lokalnego
  * rozkładu (świeższy eksport) matcher odrzuca po numerze bez błędu.
  */
-export async function fetchZbLodzRails(): Promise<{ agency: string; vehicles: ZbKdVehicle[] }[] | null> {
+export async function fetchZbLodzRails(): Promise<
+  { agency: string; vehicles: ZbKdVehicle[] }[] | null
+> {
   const { getCity } = await import('../cities');
   const positions = await fetchPositions('pkp', 'LKA', getCity('lodz').zbiorkomBbox);
   if (positions === null) return null;
@@ -441,6 +466,58 @@ function toRailVehicles(positions: ZbPositionJson[]): ZbKdVehicle[] {
 
 export interface ZbKdMatch {
   tripId: string;
+  routeShortName?: string;
+}
+
+/**
+ * Zwraca numery pociągu do przeszukania w rozkładzie:
+ * 1. Numer bazowy z feedu (np. "69558")
+ * 2. Jeśli numer zawiera ukośnik (np. "69558/9" lub "69558/69559") - rozbicie na warianty
+ * 3. Warianty parzysty/nieparzysty (±1), powszechne w numeracji relacji PKP/PLK
+ */
+export function getCandidateTrainNumbers(trainNumber: string): string[] {
+  const clean = trainNumber.trim().toUpperCase();
+  const set = new Set<string>();
+  set.add(clean);
+
+  if (clean.includes('/')) {
+    const parts = clean.split('/');
+    const p0 = parts[0]?.trim();
+    if (p0) set.add(p0);
+    const p1 = parts[1]?.trim();
+    if (p1 && p0 && p1.length < p0.length) {
+      set.add(p0.slice(0, p0.length - p1.length) + p1);
+    } else if (p1 && p1.length >= 3) {
+      set.add(p1);
+    }
+  }
+
+  for (const c of Array.from(set)) {
+    if (c.length >= 3) {
+      const intNum = parseInt(c, 10);
+      if (!isNaN(intNum)) {
+        set.add(String(intNum - 1));
+        set.add(String(intNum + 1));
+      }
+    }
+  }
+  return Array.from(set);
+}
+
+function findRouteShortNameForTrip(tripId: string, dayIndex: DayIndex): string | undefined {
+  const trip = gtfsStore.trips.get(tripId);
+  if (trip?.route_id) {
+    const route = gtfsStore.routes.get(trip.route_id);
+    if (route?.route_short_name) return route.route_short_name;
+  }
+  for (const pattern of dayIndex.patterns.values()) {
+    const trips = pattern.trips as { trip_id: string }[] | undefined;
+    if (trips && trips.some((t) => t.trip_id === tripId)) {
+      const route = gtfsStore.routes.get(pattern.routeId);
+      if (route?.route_short_name) return route.route_short_name;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -450,7 +527,11 @@ export interface ZbKdMatch {
  * postojów. Bez weryfikacji czasowej sam numer to za mało: ten sam skład
  * potrafi jechać rano i wieczorem.
  */
-function matchZbKdRust(veh: ZbKdVehicle, dayIndex: DayIndex, routeIds: string[]): ZbKdMatch | null | undefined {
+function matchZbKdRust(
+  veh: ZbKdVehicle,
+  dayIndex: DayIndex,
+  routeIds: string[],
+): ZbKdMatch | null | undefined {
   const tripIds: string[] = [];
   let candCount = 0;
   const body = new BinaryWriter(256);
@@ -460,8 +541,7 @@ function matchZbKdRust(veh: ZbKdVehicle, dayIndex: DayIndex, routeIds: string[])
     if (!trips) continue;
     for (const trip of trips) {
       const times = gtfsStore.stopTimes.get(trip.trip_id) as
-        | { stop_id: string; departure_sec: number; arrival_sec: number }[]
-        | undefined;
+        { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
       if (!times || times.length === 0) continue;
       const packed: { name: string; sec: number }[] = [];
       for (const t of times) {
@@ -497,16 +577,30 @@ function matchZbKdRust(veh: ZbKdVehicle, dayIndex: DayIndex, routeIds: string[])
 
 export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | null {
   if (veh.stops.length === 0) return null;
-  let routeIds: string[] = [];
+  const candidateNums = getCandidateTrainNumbers(veh.trainNumber);
+  const routeIds: string[] = [];
   try {
-    routeIds = gtfsStore.getRouteIdsByShortName(veh.trainNumber);
+    const seen = new Set<string>();
+    for (const c of candidateNums) {
+      for (const id of gtfsStore.getRouteIdsByShortName(c)) {
+        if (!seen.has(id)) {
+          seen.add(id);
+          routeIds.push(id);
+        }
+      }
+    }
   } catch {
     return null;
   }
   if (routeIds.length === 0) return null;
 
   const rust = matchZbKdRust(veh, dayIndex, routeIds);
-  if (rust !== undefined) return rust;
+  if (rust !== undefined) {
+    if (rust) {
+      rust.routeShortName = findRouteShortNameForTrip(rust.tripId, dayIndex);
+    }
+    return rust;
+  }
 
   let bestTripId: string | null = null;
   let bestScore = -Infinity;
@@ -517,8 +611,7 @@ export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | nul
     if (!trips || trips.length === 0) continue;
     for (const trip of trips) {
       const times = gtfsStore.stopTimes.get(trip.trip_id) as
-        | { stop_id: string; departure_sec: number; arrival_sec: number }[]
-        | undefined;
+        { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
       if (!times || times.length === 0) continue;
       let matched = 0;
       let totalDiff = 0;
@@ -546,5 +639,10 @@ export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | nul
       }
     }
   }
-  return bestTripId ? { tripId: bestTripId } : null;
+  return bestTripId
+    ? {
+        tripId: bestTripId,
+        routeShortName: findRouteShortNameForTrip(bestTripId, dayIndex),
+      }
+    : null;
 }

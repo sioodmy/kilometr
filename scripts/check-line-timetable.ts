@@ -17,8 +17,14 @@ Object.assign(sqlite, {
 });
 
 async function main() {
-  const { searchTransitLines, loadLineTimetable, shiftTimetableDate, timetableClock } =
-    await import('../src/services/lineTimetable');
+  const {
+    searchTransitLines,
+    loadLineTimetable,
+    shiftTimetableDate,
+    timetableClock,
+    formatTimetableDate,
+    timetableToday,
+  } = await import('../src/services/lineTimetable');
   await searchTransitLines('4');
   db.exec(`
     INSERT INTO routes VALUES ('tram4', '4', 'A → C', 0), ('bus4', '4', 'D → E', 3), ('tram14', '14', '', 0), ('n1', 'N1', '', 3);
@@ -91,8 +97,16 @@ async function main() {
   assert.equal(shiftTimetableDate('20261025', 1), '20261026');
   assert.equal(shiftTimetableDate('20261231', 1), '20270101');
   assert.equal(shiftTimetableDate('20260301', -1), '20260228');
+  assert.equal(shiftTimetableDate('niepoprawna', 0), timetableToday());
+  assert.ok(formatTimetableDate('20261023', 'pl').includes('23'));
+  assert.equal(
+    formatTimetableDate('niepoprawna', 'pl'),
+    formatTimetableDate(timetableToday(), 'pl'),
+  );
   assert.equal(timetableClock(90000), '01:00');
-  console.log('PASS: wyszukiwanie, kierunki, objazdy, dni, wyjątki, zakres dat, kursy po północy.');
+  console.log(
+    'PASS: wyszukiwanie, kierunki, objazdy, dni, wyjątki, zakres dat, kursy po północy, formatowanie dat.',
+  );
   db.close();
 }
 

@@ -131,9 +131,15 @@ export function useActiveCity(): {
   const [cityId, setCityId] = useState<CityId>(cachedId);
 
   useEffect(() => {
+    let mounted = true;
     listeners.add(setCityId);
-    void loadActiveCity().then(setCityId);
+    void loadActiveCity()
+      .then((id) => {
+        if (mounted) setCityId(id);
+      })
+      .catch(() => {});
     return () => {
+      mounted = false;
       listeners.delete(setCityId);
     };
   }, []);

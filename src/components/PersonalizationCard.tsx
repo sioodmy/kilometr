@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Check, Wallpaper } from './icons';
 import { useStrings } from '../i18n';
@@ -23,6 +24,7 @@ export function PersonalizationCard() {
 
   async function select(next: ThemeSetting) {
     if (saving || next === selected) return;
+    void Haptics.selectionAsync().catch(() => {});
     setSaving(true);
     setError(false);
     try {

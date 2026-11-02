@@ -3,7 +3,8 @@ import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, 
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSharedValue, withTiming } from 'react-native-reanimated';
+import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { Bell, History, MapPin, Settings2 } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
@@ -66,18 +67,21 @@ export default function HomeScreen() {
   const router = useRouter();
   const { cityId, setCity } = useActiveCity();
   const cityGen = s.city.gen(cityId);
-  const GPS_ITEM: Suggestion = {
-    id: '__gps',
-    title: s.home.gpsTitle,
-    address: s.home.gpsAddressHome,
-    kind: 'history',
-    lat: 0,
-    lon: 0,
-  };
+  const GPS_ITEM: Suggestion = useMemo(
+    () => ({
+      id: '__gps',
+      title: s.home.gpsTitle,
+      address: s.home.gpsAddressHome,
+      kind: 'history',
+      lat: 0,
+      lon: 0,
+    }),
+    [s],
+  );
   const [saved, setSaved] = useState<SavedPlace[]>([]);
   const [smart, setSmart] = useState<SmartDestination[]>([]);
   // Prawdziwa pustka vs ładowanie: pusty stan pokazujemy dopiero, gdy świeży
-  // ranking (albo błąd GPS) potwierdzi brak danych - inaczej migałby przed GPS.
+  // ranking (albo błąd GPS) potwierdzi brak danych: inaczej migałby przed GPS.
   const [smartReady, setSmartReady] = useState(false);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
@@ -128,10 +132,10 @@ export default function HomeScreen() {
     }
     return out;
   }, [firstConns, homeTick]);
-  // Generacja wyszukiwania tras w tle - przerwanie (np. użytkownik zaczął
+  // Generacja wyszukiwania tras w tle: przerwanie (np. użytkownik zaczął
   // własną trasę) to po prostu podbicie licznika, pętla sama się zatrzyma.
   const routeSearchGen = useRef(0);
-  // Ostatni origin dogrzewania - reset prawych stron tylko przy jego zmianie.
+  // Ostatni origin dogrzewania: reset prawych stron tylko przy jego zmianie.
   const lastOriginRef = useRef<string | null>(null);
   // Po zamknięciu arkusza wznawiamy dogrzewanie odjazdów: przerwanie podbiło
   // routeSearchGen, ale sam efekt ma inne zależności, więc bez tego licznika
@@ -142,17 +146,15 @@ export default function HomeScreen() {
   const [newsAlert, setNewsAlert] = useState(false);
 
   // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
-  // gestem, zero klikalnych elementów. pullOption żyje w stanie (odświeża
-  // tekst/strzałkę), wysokość reveal w shared value (płynnie, bez rerenderów).
+  // gestem, zero klikalnych elementów. pullOption żyje w shared value (UI thread),
+  // wysokość reveal w shared value (płynnie, bez rerenderów).
   const [lastTrip, setLastTrip] = useState<TripHistoryItem | null>(null);
-  const [pullOption, setPullOption] = useState<LastTripOption>(0);
-  const [scrollLocked, setScrollLocked] = useState(false);
+  const pullOption = useSharedValue<LastTripOption>(0);
   // „Na górze” jako stan też: `enabled` gestu pochodzi z renderu, bo przy
   // przewiniętej liście pull nie może zabierać zwykłego scrollowania.
   const [atTop, setAtTop] = useState(true);
   const atTopRef = useRef(true);
   const pullHeight = useSharedValue(0);
-  const optionRef = useRef<LastTripOption>(0);
   const lastTripRef = useRef<TripHistoryItem | null>(null);
   lastTripRef.current = lastTrip;
   const sheetsOpen = sheetMode !== null || manageSheetOpen || addPlaceOpen || citySheetOpen;
@@ -189,7 +191,7 @@ export default function HomeScreen() {
   );
 
   // Badge na dzwonku: dzisiejsze pilne utrudnienie (feed miasta).
-  // Sprawdzamy przy starcie i powrocie na foreground - bez interwału, żeby nie spamować feedu.
+  // Sprawdzamy przy starcie i powrocie na foreground, bez interwału, żeby nie spamować feedu.
   // Zmiana miasta to nowy feed: badge trzeba przeliczyć od zera, inaczej wisiałby
   // z poprzedniego miasta do najbliższego foregroundu.
   useEffect(() => {
@@ -202,7 +204,7 @@ export default function HomeScreen() {
         const alert = await shouldShowNewsAlert(news);
         if (!cancelled) setNewsAlert(alert);
       } catch {
-        // brak internetu / błąd RSS - badge po prostu znika, bez krzykliwego błędu
+        // brak internetu / błąd RSS: badge po prostu znika, bez krzykliwego błędu
       }
     };
     void checkNews();
@@ -237,7 +239,7 @@ export default function HomeScreen() {
   );
 
   // Status danych: przy starcie, powrocie na foreground i co 30 s.
-  // refreshDataStatus ładuje status lokalnego GTFS - jeśli pusty, automatycznie
+  // refreshDataStatus ładuje status lokalnego GTFS: jeśli pusty, automatycznie
   // uruchamiamy pobieranie rozkładu, aby aplikacja działała bez serwera dev.
   useEffect(() => {
     const check = async () => {
@@ -261,7 +263,7 @@ export default function HomeScreen() {
     const requestedCity = getActiveCityIdSync();
     FavoritesService.list().then((places) => {
       if (requestedCity === getActiveCityIdSync()) setSaved(places);
-    });
+    }).catch(() => {});
   };
 
   // Świeży ranking zapisujemy do cache, żeby następny start namalował
@@ -299,15 +301,15 @@ export default function HomeScreen() {
     refreshPlaces();
     SearchService.recent().then((list) => {
       if (!cancelled) setRecent(list);
-    });
+    }).catch(() => {});
     loadTripHistory().then((h) => {
       if (!cancelled && h.length > 0) setLastTrip(h[0]);
-    });
+    }).catch(() => {});
     // Spóźniony cache nie może nadpisać rankingu wyliczonego z nowej pozycji.
     loadCachedSmartDestinations().then((cached) => {
       if (!cancelled && cacheGen === smartGen.current && cached.length > 0) setSmart(cached);
-    });
-    // Live GPS od startu (ticker w tle) - opóźnienia gotowe zanim user wyszuka trasę.
+    }).catch(() => {});
+    // Live GPS od startu (ticker w tle): opóźnienia gotowe zanim user wyszuka trasę.
     liveTracker.start();
 
     // Jeden sposób aplikowania fixu: pierwszy szybki odczyt i każdy późniejszy
@@ -391,7 +393,7 @@ export default function HomeScreen() {
           if (isOutsideServiceArea(l.lat, l.lon)) return;
           const coords = { lat: l.lat, lon: l.lon };
           requestSmart(l.stopId || l.title, coords);
-        });
+        }).catch(() => {});
       } else {
         requestSmart(originStopRef.current, currentCoords);
       }
@@ -400,7 +402,7 @@ export default function HomeScreen() {
 
   // Po jednej trasie do każdego ostatniego miejsca, sekwencyjnie od góry do dołu
   // (kolejność = kolejność wyświetlania, najlepszy na górze). Każdy wynik
-  // doklejamy od razu - prawa strona wiersza pojawia się z animacją.
+  // doklejamy od razu: prawa strona wiersza pojawia się z animacją.
   // Przerwanie własnym szukaniem: podbicie routeSearchGen unieważnia pętlę.
   useEffect(() => {
     if (smart.length === 0) {
@@ -411,7 +413,7 @@ export default function HomeScreen() {
     const gen = ++routeSearchGen.current;
     let cancelled = false;
     // Prawe strony czyścimy TYLKO przy zmianie originu (inne współrzędne /
-    // tytuł startu) - żeby stare odjazdy nie wisiały przy nowej lokalizacji.
+    // tytuł startu), żeby stare odjazdy nie wisiały przy nowej lokalizacji.
     // Przy samej zamianie listy (cache → świeży ranking, reorder) przycinamy
     // jedynie wpisy znikniętych celów, a reszta dokleja się po kolei bez
     // mrugnięcia całością naraz.
@@ -475,7 +477,7 @@ export default function HomeScreen() {
             [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
           }));
         } catch {
-          // Brak trasy do tego celu - wiersz zostaje bez prawej strony.
+          // Brak trasy do tego celu: wiersz zostaje bez prawej strony.
         }
       }
     })();
@@ -484,7 +486,7 @@ export default function HomeScreen() {
     };
   }, [smart, currentCoords, locTitle, warmupNonce]);
 
-  // Prawe strony wierszy liczymy raz - po odjeździe kursu trzeba je przeliczyć,
+  // Prawe strony wierszy liczymy raz: po odjeździe kursu trzeba je przeliczyć,
   // żeby pokazywały następny pojazd, a nie „X min temu". Ticker (homeTick) co
   // 30 s wyłapuje cele, którym właśnie uciekł pierwszy kurs z linią, i dociąga
   // im świeżą trasę per cel (bez mielenia spacerów i całej listy naraz).
@@ -536,14 +538,14 @@ export default function HomeScreen() {
             [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
           }));
         } catch {
-          // Brak trasy do celu - wiersz zostaje bez prawej strony.
+          // Brak trasy do celu: wiersz zostaje bez prawej strony.
         }
       }
     })();
     // Świeży `firstConns` łapiemy z bieżącego renderu (homeTick go wymusza).
   }, [homeTick]);
 
-  // Użytkownik zaczął szukać własnej trasy - tniemy dogrzewanie ostatnich
+  // Użytkownik zaczął szukać własnej trasy: tniemy dogrzewanie ostatnich
   // miejsc i skupiamy silnik tylko na trasie wybranej przez użytkownika.
   // Po zamknięciu arkusza dogrzewanie rusza od nowa (warmupNonce).
   useEffect(() => {
@@ -627,7 +629,7 @@ export default function HomeScreen() {
   );
 
   // Kolejność wyświetlania: najlepszy wynik na górze, najsłabszy na dole.
-  // `smart` z rankera jest już posortowane malejąco po wyniku - nie odwracamy.
+  // `smart` z rankera jest już posortowane malejąco po wyniku: nie odwracamy.
   const smartOrdered = smart;
 
   // Ikonki jak w wyszukiwarce: zapisane miejsce → jego ikona,
@@ -651,9 +653,9 @@ export default function HomeScreen() {
     return map;
   }, [smart, saved, recent]);
 
-  // GPS spoza strefy nie może być startem trasy - zamiast nawigacji
+  // GPS spoza strefy nie może być startem trasy: zamiast nawigacji
   // pokazujemy wyjaśnienie i otwieramy ręczny wybór punktu startowego.
-  const blockGpsStart = () => {
+  const blockGpsStart = useCallback(() => {
     Alert.alert(
       s.home.gpsBlockedTitle,
       gpsCity ? s.home.gpsBlockedBody(gpsCity, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
@@ -669,7 +671,7 @@ export default function HomeScreen() {
         },
       ],
     );
-  };
+  }, [gpsCity, cityGen, s]);
 
   const resetToGps = async () => {
     if (gpsUnsupported) {
@@ -734,8 +736,8 @@ export default function HomeScreen() {
     setCurrentCoords(coords);
     requestSmart(sel.id || sel.title, coords);
     void SearchService.recordRecent(sel).then(() => {
-      SearchService.recent().then(setRecent);
-    });
+      SearchService.recent().then(setRecent).catch(() => {});
+    }).catch(() => {});
 
     if (returnToDestinationAfterStart) {
       setReturnToDestinationAfterStart(false);
@@ -791,47 +793,53 @@ export default function HomeScreen() {
     [saved],
   );
 
-  // Tap w prawą część wiersza: od razu do ekranu tego konkretnego połączenia
-  // (detail czyta je z podręcznego cache RoutingService - ten sam proces).
-  const goToConnection = (d: SmartDestination) => {
-    const conn = firstConns[d.id];
-    routeSearchGen.current++;
-    if (conn) {
-      void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, d);
-      router.push({ pathname: '/routes/[id]', params: { id: conn.id } });
-      return;
-    }
-    goToRoutes(d);
-  };
+  const goToRoutes = useCallback(
+    (to: { id: string; title: string; address?: string; lat: number; lon: number; kind?: Suggestion['kind'] }) => {
+      // GPS spoza strefy nie może być startem: zamiast puszczać trasę
+      // z pozycji spoza strefy prosimy o ręczny wybór startu.
+      if (gpsUnsupported && !isCustomStart) {
+        blockGpsStart();
+        return;
+      }
+      // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
+      routeSearchGen.current++;
+      void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
+      void SearchService.recordRecent({ ...to, address: to.address ?? '', kind: to.kind ?? 'history' }).then(() => {
+        SearchService.recent().then(setRecent).catch(() => {});
+      }).catch(() => {});
+      router.push({
+        pathname: '/routes',
+        params: {
+          fromTitle: locTitle,
+          fromLat: String(currentCoords.lat),
+          fromLon: String(currentCoords.lon),
+          // Start z GPS: ekran tras może go po cichu podmienić na dokładniejszy fix.
+          fromGps: isCustomStart ? '0' : '1',
+          toId: to.id,
+          toTitle: to.title,
+          toLat: String(to.lat),
+          toLon: String(to.lon),
+        },
+      });
+    },
+    [gpsUnsupported, isCustomStart, blockGpsStart, currentCoords.lat, currentCoords.lon, locTitle, router],
+  );
 
-  const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number; kind?: Suggestion['kind'] }) => {
-    // GPS spoza strefy nie może być startem: zamiast puszczać trasę
-    // z pozycji spoza strefy prosimy o ręczny wybór startu.
-    if (gpsUnsupported && !isCustomStart) {
-      blockGpsStart();
-      return;
-    }
-    // Własna trasa użytkownika ma priorytet - stopujemy dogrzewanie reszty.
-    routeSearchGen.current++;
-    void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
-    void SearchService.recordRecent({ ...to, address: to.address ?? '', kind: to.kind ?? 'history' }).then(() => {
-      SearchService.recent().then(setRecent);
-    });
-    router.push({
-      pathname: '/routes',
-      params: {
-        fromTitle: locTitle,
-        fromLat: String(currentCoords.lat),
-        fromLon: String(currentCoords.lon),
-        // Start z GPS: ekran tras może go po cichu podmienić na dokładniejszy fix.
-        fromGps: isCustomStart ? '0' : '1',
-        toId: to.id,
-        toTitle: to.title,
-        toLat: String(to.lat),
-        toLon: String(to.lon),
-      },
-    });
-  };
+  // Tap w prawą część wiersza: od razu do ekranu tego konkretnego połączenia
+  // (detail czyta je z podręcznego cache RoutingService: ten sam proces).
+  const goToConnection = useCallback(
+    (d: SmartDestination) => {
+      const conn = firstConns[d.id];
+      routeSearchGen.current++;
+      if (conn) {
+        void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, d);
+        router.push({ pathname: '/routes/[id]', params: { id: conn.id } });
+        return;
+      }
+      goToRoutes(d);
+    },
+    [firstConns, currentCoords.lat, currentCoords.lon, locTitle, router, goToRoutes],
+  );
 
   // Otwarcie ostatniego połączenia z pulla: start bierzemy z zapisanej
   // trasy (nie z bieżącego GPS), żeby skrót odtwarzał dokładnie to połączenie.
@@ -863,49 +871,49 @@ export default function HomeScreen() {
     [router],
   );
 
+  const triggerHaptic = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, []);
+
   // Pull jak na Twitterze, ale zamiast spinnera: ostatnie połączenie + toggle.
-  // Gest na RNGH zamiast PanRespondera: aktywacja dopiero przy wyraźnym
-  // pociągnięciu w dół, przy odchyleniu w bok gest pada. `enabled` z renderu,
-  // bo bez ostatniej trasy, przy otwartych arkuszach i przewiniętej liście
-  // pull nie powinien łapać ani zabierać zwykłego scrollowania.
+  // Całość na UI threadzie (worklet). Aktywacja przy pociągnięciu w dół,
+  // przy odchyleniu w bok gest pada. Brak bridge crossings w trakcie przeciągania.
   const pullGesture = useMemo(
     () =>
       Gesture.Pan()
-        .runOnJS(true)
         .activeOffsetY(12)
         .failOffsetX([-14, 14])
-        .onStart(() => {
-          setScrollLocked(true);
-        })
         .onUpdate((e) => {
+          'worklet';
           const h = Math.max(0, Math.min(LAST_TRIP_MAX, e.translationY));
           pullHeight.value = h;
-          const cur = optionRef.current;
+          const cur = pullOption.value;
           const next = nextPullOption(cur, h, LAST_TRIP_ARM_1, LAST_TRIP_ARM_2, LAST_TRIP_DISARM_2);
           if (next !== cur) {
-            optionRef.current = next;
-            setPullOption(next);
+            pullOption.value = next;
+            if (next > 0) {
+              runOnJS(triggerHaptic)();
+            }
           }
         })
         .onEnd(() => {
-          const opt = optionRef.current;
-          optionRef.current = 0;
-          setPullOption(0);
+          'worklet';
+          const opt = pullOption.value;
+          pullOption.value = 0;
           pullHeight.value = withTiming(0, { duration: 220 });
-          setScrollLocked(false);
-          if (opt === 1) openLastTrip(false);
-          else if (opt === 2) openLastTrip(true);
+          if (opt === 1) {
+            runOnJS(openLastTrip)(false);
+          } else if (opt === 2) {
+            runOnJS(openLastTrip)(true);
+          }
         })
         .onFinalize(() => {
-          // Po naturalnym końcu onFinalize leci zaraz po onEnd, więc porządki
-          // muszą być idempotentne.
-          optionRef.current = 0;
-          setPullOption(0);
+          'worklet';
+          pullOption.value = 0;
           pullHeight.value = withTiming(0, { duration: 220 });
-          setScrollLocked(false);
         })
         .enabled(atTop && lastTrip != null && !sheetsOpen),
-    [atTop, lastTrip, sheetsOpen, openLastTrip],
+    [atTop, lastTrip, sheetsOpen, openLastTrip, triggerHaptic, pullOption, pullHeight],
   );
 
   const handleCityChange = async (id: CityId) => {
@@ -986,7 +994,10 @@ export default function HomeScreen() {
       let cancelled = false;
       loadTripHistory().then((h) => {
         if (!cancelled && h.length > 0) setLastTrip(h[0]);
-      });
+      }).catch(() => {});
+      // Po powrocie na ekran główny upewnij się, że arkusz jest zwinięty
+      setSheetMode(null);
+      setQuery('');
       return () => {
         cancelled = true;
       };
@@ -994,7 +1005,7 @@ export default function HomeScreen() {
   );
 
   // Wczytanie kopii zapasowej podmienia miejsca i historię w KV, ale `saved`
-  // i `smart` to useState - bez tego powiadomienia ekran pokazywałby stan
+  // i `smart` to useState: bez tego powiadomienia ekran pokazywałby stan
   // sprzed importu aż do restartu aplikacji.
   useEffect(() => subscribeBackupApplied(() => {
     refreshPlaces();
@@ -1015,7 +1026,7 @@ export default function HomeScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
-            scrollEnabled={!scrollLocked}
+            scrollEnabled={true}
             scrollEventThrottle={16}
             onScroll={(e) => {
               // Stan zmienia się dopiero przy przekroczeniu górki: bez tego
@@ -1111,6 +1122,7 @@ export default function HomeScreen() {
                 city={gpsCity}
                 coords={gpsLocation}
                 activeCity={s.city.name(cityId)}
+                activeCityId={cityId}
                 onPickStart={() => {
                   setReturnToDestinationAfterStart(false);
                   setQuery('');
@@ -1167,7 +1179,7 @@ export default function HomeScreen() {
                 </View>
               </View>
             ) : (
-              <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
+              <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={goToRoutes} onOpenConnection={goToConnection} icons={smartIcons} />
             )}
           </ScrollView>
         </SafeAreaView>
@@ -1201,7 +1213,7 @@ export default function HomeScreen() {
             savedQuick={quick}
             placeholder={sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo}
             originTitle={sheetMode === 'destination' ? locTitle : undefined}
-            closeOnSelect={!(sheetMode === 'start' && returnToDestinationAfterStart)}
+            closeOnSelect={sheetMode === 'start' && !returnToDestinationAfterStart}
             notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
             onChangeOrigin={
               sheetMode === 'destination'
@@ -1223,9 +1235,13 @@ export default function HomeScreen() {
               if (sheetMode === 'start') {
                 handleStartSelect(s);
               } else {
-                setSheetMode(null);
-                setQuery('');
                 goToRoutes(s);
+                // Nie odmontowujemy arkusza natychmiast w tej samej milisekundzie,
+                // by uniknąć mignięcia ekranu domowego w trakcie tranzycji do ekranu tras.
+                setTimeout(() => {
+                  setSheetMode(null);
+                  setQuery('');
+                }, 350);
               }
             }}
             onClose={() => {

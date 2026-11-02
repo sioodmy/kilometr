@@ -73,11 +73,13 @@ function useStopHints(cityId: string) {
     }
 
     const abortController = new AbortController();
-    fetchStopHints(cityId, abortController.signal).then((loaded) => {
-      if (!cancelled && loaded) {
-        setData(loaded);
-      }
-    });
+    fetchStopHints(cityId, abortController.signal)
+      .then((loaded) => {
+        if (!cancelled && loaded) {
+          setData(loaded);
+        }
+      })
+      .catch(() => {});
 
     return () => {
       cancelled = true;

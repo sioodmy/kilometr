@@ -39,7 +39,7 @@ export interface FuzzyResult {
   score: number;
 }
 
-/** Ocenia dopasowanie `query` do `target` w Rust. Zwraca score 0..100. */
+/** Ocenia dopasowanie `query` do `target` w Rust/JS. Zwraca score 0..100. */
 export function fuzzyMatch(query: string, target: string): FuzzyResult {
   if (!query || !target) return { matches: false, score: 0 };
   const w = new BinaryWriter(16 + (query.length + target.length) * 3);
@@ -49,7 +49,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyResult {
     const r = new BinaryReader(res);
     const matches = r.u8Val() !== 0;
     const score = r.i32();
-    return { matches, score };
+    if (matches) return { matches, score };
   }
   const q = normalizePolish(query).toLowerCase().trim();
   const t = normalizePolish(target).toLowerCase().trim();
@@ -57,10 +57,17 @@ export function fuzzyMatch(query: string, target: string): FuzzyResult {
   if (t === q) return { matches: true, score: 100 };
   if (t.startsWith(q)) return { matches: true, score: 90 };
   if (t.includes(q)) return { matches: true, score: 75 };
+  const qNoSpace = q.replace(/[\s\-./()]/g, '');
+  const tNoSpace = t.replace(/[\s\-./()]/g, '');
+  if (qNoSpace && tNoSpace) {
+    if (tNoSpace === qNoSpace) return { matches: true, score: 98 };
+    if (tNoSpace.startsWith(qNoSpace)) return { matches: true, score: 90 };
+    if (qNoSpace.length >= 4 && tNoSpace.includes(qNoSpace)) return { matches: true, score: 75 };
+  }
   return { matches: false, score: 0 };
 }
 
-/** Wsadowe dopasowanie `query` do listy `targets` w jednym wywołaniu Rust. */
+/** Wsadowe dopasowanie `query` do listy `targets` w jednym wywołaniu Rust/JS. */
 export function fuzzyMatchBatch(query: string, targets: readonly string[]): FuzzyResult[] {
   if (!query || targets.length === 0) {
     return targets.map(() => ({ matches: false, score: 0 }));
@@ -78,7 +85,11 @@ export function fuzzyMatchBatch(query: string, targets: readonly string[]): Fuzz
     for (let i = 0; i < count; i++) {
       const matches = r.u8Val() !== 0;
       const score = r.i32();
-      out[i] = { matches, score };
+      if (matches) {
+        out[i] = { matches, score };
+      } else {
+        out[i] = fuzzyMatch(query, targets[i]);
+      }
     }
     return out;
   }

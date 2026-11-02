@@ -36,7 +36,7 @@ interface MapStopTap {
 export interface RouteMapHandle {
   /** Podmienia pojedynczą nogę na prawdziwą geometrię ulic. */
   setGeometry: (legId: string, coords: [number, number][]) => void;
-  /** Dopasuj widok do trasy (całej albo wybranej nogi - patrz selectedLegId). */
+  /** Dopasuj widok do trasy (całej albo wybranej nogi, patrz selectedLegId). */
   fit: () => void;
   /** Wymuś ponowne wczytanie silnika mapy (np. po ubiciu procesu WebView). */
   reload: () => void;
@@ -45,17 +45,18 @@ export interface RouteMapHandle {
 interface RouteMapProps {
   route: MapRoute | null;
   vehicle?: MapVehicle | null;
-  user?: { lat: number; lon: number; heading: number | null } | null;
   selectedLegId?: string | null;
   /**
    * Bazowy URL lokalnego serwera mapy. Gdy podany, kafle, glify i silnik
    * mapy idą z telefonu, więc mapa działa bez internetu.
    */
   offlineBase?: string | null;
-  /** Wysokość panelu pod mapą - tyle marginesu zostawiamy przy dopasowaniu. */
+  /** Wysokość panelu pod mapą: tyle marginesu zostawiamy przy dopasowaniu. */
   paddingBottom?: number;
   /** Pasek u góry zasłania trasę, więc dopasowanie musi go zostawić. */
   paddingTop?: number;
+  /** Etykiety POI pod trasą. Włącza je fullscreen szczegółów połączenia. */
+  showPoi?: boolean;
   onReady?: () => void;
   onStopTap?: (stop: MapStopTap) => void;
   onLegTap?: (legId: string) => void;
@@ -76,11 +77,11 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   {
     route,
     vehicle = null,
-    user = null,
     selectedLegId = null,
     offlineBase = null,
     paddingBottom = 190,
     paddingTop = 42,
+    showPoi = false,
     onReady,
     onStopTap,
     onLegTap,
@@ -105,10 +106,10 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     } catch {
       center = null;
     }
-    return buildRouteMapDocument({ route, vehicle, user, selectedLegId, offlineBase, center });
+    return buildRouteMapDocument({ route, vehicle, selectedLegId, offlineBase, center, showPoi });
     // cityId w zaleznosciach: ekran nie jest odmontowywany przy zmianie miasta
     // (stos natywny), a bez tego WebView dostalby centrum poprzedniego miasta.
-  }, [route?.id, attempt, offlineBase, cityId]);
+  }, [route?.id, attempt, offlineBase, cityId, showPoi]);
 
   const send = useCallback((msg: MapInMessage) => {
     webRef.current?.injectJavaScript(
@@ -135,10 +136,6 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   useEffect(() => {
     send({ t: 'vehicle', vehicle });
   }, [send, vehicle]);
-
-  useEffect(() => {
-    if (user) send({ t: 'user', ...user });
-  }, [send, user]);
 
   useEffect(() => {
     send({ t: 'select', legId: selectedLegId, pad: padRef.current });
@@ -202,7 +199,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         overScrollMode="never"
         showsVerticalScrollIndicator={false}
         setBuiltInZoomControls={false}
-        androidLayerType="hardware"
+        androidLayerType="none"
         onContentProcessDidTerminate={restart}
         onRenderProcessGone={restart}
         onError={() => onError?.('map-load-failed')}

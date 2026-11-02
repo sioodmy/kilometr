@@ -4,6 +4,7 @@ import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withSequence,
@@ -26,13 +27,13 @@ export function LiveSensors({
   pulse?: boolean;
   pingKey?: number | string;
 }) {
-  // Dwa opóźnione pierścienie + skok ikony przy każdym odświeżeniu danych.
+  const reduceMotion = useReducedMotion();
   const ring1 = useSharedValue(1);
   const ring2 = useSharedValue(1);
   const iconScale = useSharedValue(1);
 
   useEffect(() => {
-    if (!pulse) {
+    if (!pulse || reduceMotion) {
       cancelAnimation(ring1);
       cancelAnimation(ring2);
       cancelAnimation(iconScale);
@@ -59,19 +60,23 @@ export function LiveSensors({
       cancelAnimation(ring2);
       cancelAnimation(iconScale);
     };
-  }, [ring1, ring2, iconScale, pulse, pingKey]);
+  }, [ring1, ring2, iconScale, pulse, pingKey, reduceMotion]);
 
-  const ringStyle = (ring: typeof ring1, maxScale: number, maxOpacity: number) =>
-    useAnimatedStyle(() => {
-      const p = Math.min(1, Math.max(0, ring.value));
-      return {
-        opacity: p >= 1 ? 0 : maxOpacity * (1 - p),
-        transform: [{ scale: 1 + p * maxScale }],
-      };
-    });
+  const r1Style = useAnimatedStyle(() => {
+    const p = Math.min(1, Math.max(0, ring1.value));
+    return {
+      opacity: p >= 1 ? 0 : 0.45 * (1 - p),
+      transform: [{ scale: 1 + p * 0.9 }],
+    };
+  });
 
-  const r1Style = ringStyle(ring1, 0.9, 0.45);
-  const r2Style = ringStyle(ring2, 0.55, 0.3);
+  const r2Style = useAnimatedStyle(() => {
+    const p = Math.min(1, Math.max(0, ring2.value));
+    return {
+      opacity: p >= 1 ? 0 : 0.3 * (1 - p),
+      transform: [{ scale: 1 + p * 0.55 }],
+    };
+  });
 
   const iconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: iconScale.value }],

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,7 +14,12 @@ import { ArrowLeft, Check, ChevronLeft, ChevronRight } from '../src/components/i
 import { getLocaleSync, useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
 import { useLineTimetable } from '../src/services/useLineTimetable';
-import { shiftTimetableDate, timetableToday, type LineStop } from '../src/services/lineTimetable';
+import {
+  formatTimetableDate,
+  shiftTimetableDate,
+  timetableToday,
+  type LineStop,
+} from '../src/services/lineTimetable';
 import { scheme, shape, type } from '../src/theme/tokens';
 
 export default function LineScreen() {
@@ -27,13 +32,17 @@ export default function LineScreen() {
   const [patternId, setPatternId] = useState('');
 
   const pattern = data?.patterns.find((item) => item.id === patternId) ?? data?.patterns[0];
-  const dateLabel = new Intl.DateTimeFormat(getLocaleSync(), {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Europe/Warsaw',
-  }).format(new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00Z`));
+  const headsignCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of data?.patterns ?? []) {
+      counts.set(item.headsign, (counts.get(item.headsign) ?? 0) + 1);
+    }
+    return counts;
+  }, [data?.patterns]);
+  const dateLabel = useMemo(
+    () => formatTimetableDate(date, getLocaleSync()),
+    [date, s],
+  );
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
@@ -112,8 +121,7 @@ export default function LineScreen() {
                 >
                   {data.patterns.map((item, index) => {
                     const selected = item.id === pattern?.id;
-                    const duplicate =
-                      data.patterns.filter((other) => other.headsign === item.headsign).length > 1;
+                    const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
                     return (
                       <Pressable
                         key={item.id}
