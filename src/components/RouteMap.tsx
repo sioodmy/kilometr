@@ -45,7 +45,6 @@ export interface RouteMapHandle {
 interface RouteMapProps {
   route: MapRoute | null;
   vehicle?: MapVehicle | null;
-  user?: { lat: number; lon: number; heading: number | null } | null;
   selectedLegId?: string | null;
   /**
    * Bazowy URL lokalnego serwera mapy. Gdy podany, kafle, glify i silnik
@@ -76,7 +75,6 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   {
     route,
     vehicle = null,
-    user = null,
     selectedLegId = null,
     offlineBase = null,
     paddingBottom = 190,
@@ -105,7 +103,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     } catch {
       center = null;
     }
-    return buildRouteMapDocument({ route, vehicle, user, selectedLegId, offlineBase, center });
+    return buildRouteMapDocument({ route, vehicle, selectedLegId, offlineBase, center });
     // cityId w zaleznosciach: ekran nie jest odmontowywany przy zmianie miasta
     // (stos natywny), a bez tego WebView dostalby centrum poprzedniego miasta.
   }, [route?.id, attempt, offlineBase, cityId]);
@@ -135,10 +133,6 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   useEffect(() => {
     send({ t: 'vehicle', vehicle });
   }, [send, vehicle]);
-
-  useEffect(() => {
-    if (user) send({ t: 'user', ...user });
-  }, [send, user]);
 
   useEffect(() => {
     send({ t: 'select', legId: selectedLegId, pad: padRef.current });

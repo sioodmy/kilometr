@@ -30,7 +30,6 @@ import {
   mapLineColor,
 } from '../src/components/LineBadge';
 import { acquireMapServer } from '../src/services/mapServerLease';
-import { useCurrentLocation } from '../src/services/currentLocation';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
@@ -69,10 +68,6 @@ export default function RouteMapScreen() {
   const [headerHeight, setHeaderHeight] = useState(96);
   const [selectedLegId, setSelectedLegId] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<MapVehicle | null>(null);
-  const { location: gpsLocation } = useCurrentLocation();
-  const userLoc = gpsLocation
-    ? { lat: gpsLocation.lat, lon: gpsLocation.lon, heading: gpsLocation.heading }
-    : null;
   const [tilesDown, setTilesDown] = useState(false);
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -435,7 +430,6 @@ export default function RouteMapScreen() {
           ref={mapRef}
           route={route}
           vehicle={vehicle}
-          user={userLoc}
           selectedLegId={selectedLegId}
           offlineBase={offlineBase}
           paddingTop={insets.top + 8 + headerHeight + 16}
