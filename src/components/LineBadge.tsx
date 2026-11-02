@@ -2,9 +2,16 @@ import { StyleSheet, Text, View } from 'react-native';
 import { BusFront, CableCar, TrainFront, TramFront } from './icons';
 import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
-import type { LegMode } from '../types/models';
-import { getLineColors, inferTransitMode, normalizeLineName } from '../services/lineIdentity';
+import type { Leg, LegMode } from '../types/models';
+import {
+  getContrastForeground,
+  getLineColors,
+  inferTransitMode,
+  normalizeLineName,
+} from '../services/lineIdentity';
 import { getActiveCityIdSync } from '../services/cityStore';
+import { inferRailAgency, railBadgeLine } from '../services/railIdentity';
+import { RailIcon, isRailAgency } from './RailIcon';
 
 // Kolor i typ linii żyją w serwisie: korzysta z nich również silnik
 // powiadomień, a serwis nie może importować komponentu.
@@ -13,6 +20,7 @@ export { getLineColors, inferTransitMode, mapLineColor } from '../services/lineI
 export function LineBadge({
   mode,
   line,
+  leg,
   compact,
   active,
   maxWidth,
@@ -21,6 +29,7 @@ export function LineBadge({
 }: {
   mode?: LegMode;
   line?: string;
+  leg?: Leg;
   compact?: boolean;
   active?: boolean;
   maxWidth?: number;
@@ -29,8 +38,10 @@ export function LineBadge({
 }) {
   // Miasto tylko dla heurystyki numerów, gdy brak trybu (np. badge newsów).
   const cityId = getActiveCityIdSync();
-  const normalizedLine = normalizeLineName(line, mode, compact);
-  const resolved = inferTransitMode(mode, normalizedLine || line, cityId);
+  const resolvedMode = leg?.mode ?? mode;
+  const displayLine = leg ? railBadgeLine(leg) : line;
+  const normalizedLine = normalizeLineName(displayLine, resolvedMode, compact);
+  const resolved = inferTransitMode(resolvedMode, normalizedLine || displayLine, cityId);
   if (resolved === 'walk') {
     return (
       <View
@@ -49,9 +60,15 @@ export function LineBadge({
     );
   }
 
+  // Przewoźnik kolejowy jedzie własną ikoną zamiast glifu pociągu; barwa z
+  // tablicy przewoźnika (zbiorkom.live), gdy rozkład jej nie podaje.
+  const railAgency = resolved === 'train' && leg ? inferRailAgency(leg) : undefined;
+  const railHex = leg?.railColor?.replace('#', '') ?? '';
   const { bg, fg } = muted
     ? { bg: scheme.surfaceContainerHighest, fg: scheme.onSurfaceVariant }
-    : getLineColors(normalizedLine || line, mode, cityId);
+    : /^[0-9a-f]{6}$/i.test(railHex)
+      ? { bg: `#${railHex}`, fg: getContrastForeground(`#${railHex}`) }
+      : getLineColors(normalizedLine || line, resolved === 'train' ? 'train' : mode, cityId);
   // Zestaw ikon nie ma osobnego glifu trolejbusu ani metra, więc trolejbus
   // jedzie ikoną autobusu na własnym zielonym tle, a metro ikoną pociągu
   // na barwie linii ze schematu (M1/M2): kolor niesie tożsamość.
@@ -69,6 +86,8 @@ export function LineBadge({
   const isTinyText = compact && charCount >= 6;
   const large = size === 'large' && !compact;
 
+  const iconSize = compact ? 11 : large ? 18 : 13;
+
   return (
     <View
       style={[
@@ -79,7 +98,11 @@ export function LineBadge({
         { backgroundColor: bg },
       ]}
     >
-      <Icon size={compact ? 11 : large ? 18 : 13} color={fg} />
+      {railAgency && isRailAgency(railAgency) ? (
+        <RailIcon agency={railAgency} size={iconSize} color={fg} />
+      ) : (
+        <Icon size={iconSize} color={fg} />
+      )}
       <Text
         style={[
           styles.text,

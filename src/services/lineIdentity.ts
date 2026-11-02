@@ -267,7 +267,7 @@ export function mapLineColor(bg: string): string {
 }
 
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
-function contrastFg(bg: string): string {
+export function getContrastForeground(bg: string): string {
   const lum = relativeLuminance(bg) ?? 0;
   const whiteContrast = 1.05 / (lum + 0.05);
   const blackContrast = (lum + 0.05) / 0.05;
@@ -284,7 +284,7 @@ export function getLineColors(
   if (resolved === 'train') {
     return {
       bg: TRAIN_BADGE_BG,
-      fg: contrastFg(TRAIN_BADGE_BG),
+      fg: getContrastForeground(TRAIN_BADGE_BG),
       isTram: false,
       isTrain: true,
       isCable: false,
@@ -292,12 +292,12 @@ export function getLineColors(
   }
   if (resolved === 'subway') {
     const bg = SUBWAY_BADGE_BG[(line || '').trim().toUpperCase()] ?? SUBWAY_BADGE_FALLBACK_BG;
-    return { bg, fg: contrastFg(bg), isTram: false, isTrain: false, isCable: false };
+    return { bg, fg: getContrastForeground(bg), isTram: false, isTrain: false, isCable: false };
   }
   if (resolved === 'cable') {
     return {
       bg: CABLE_BADGE_BG,
-      fg: contrastFg(CABLE_BADGE_BG),
+      fg: getContrastForeground(CABLE_BADGE_BG),
       isTram: false,
       isTrain: false,
       isCable: true,
@@ -306,7 +306,7 @@ export function getLineColors(
   if (resolved === 'trolleybus') {
     return {
       bg: TROLLEY_BADGE_BG,
-      fg: contrastFg(TROLLEY_BADGE_BG),
+      fg: getContrastForeground(TROLLEY_BADGE_BG),
       isTram: false,
       isTrain: false,
       isCable: false,
@@ -317,7 +317,7 @@ export function getLineColors(
 
   if (!clean) {
     const bg = isTram ? '#00897B' : '#1976D2';
-    return { bg, fg: contrastFg(bg), isTram, isTrain: false, isCable: false };
+    return { bg, fg: getContrastForeground(bg), isTram, isTrain: false, isCable: false };
   }
 
   let hash = 0;
@@ -327,7 +327,7 @@ export function getLineColors(
   }
   const idx = Math.abs(hash * 7) % TRANSIT_PALETTE.length;
   const bg = TRANSIT_PALETTE[idx];
-  const fg = contrastFg(bg);
+  const fg = getContrastForeground(bg);
 
   return { bg, fg, isTram, isTrain: false, isCable: false };
 }
