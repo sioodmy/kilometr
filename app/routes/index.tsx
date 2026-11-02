@@ -391,7 +391,7 @@ export default function RoutesScreen() {
   const [gpsOutside, setGpsOutside] = useState(false);
 
   useEffect(() => {
-    SearchService.recent().then(setRecent);
+    SearchService.recent().then(setRecent).catch(() => {});
     Promise.all([FavoritesService.list(), loadSettings()]).then(([places, currentSettings]) => {
       setSavedPlaces(places);
       setSavedQuick(
@@ -429,7 +429,7 @@ export default function RoutesScreen() {
           setFromLon(startLon);
         }
       }
-    });
+    }).catch(() => {});
   }, []);
 
   // Start z GPS bez kotwicy liczy się z fixu, który mógł być słaby (Balanced
@@ -451,9 +451,11 @@ export default function RoutesScreen() {
       setFromLon(loc.lon);
     };
     const unsubscribe = LocationService.subscribe(apply);
-    void LocationService.refineLocation().then((loc) => {
-      if (loc) apply(loc);
-    });
+    void LocationService.refineLocation()
+      .then((loc) => {
+        if (loc) apply(loc);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
       unsubscribe();
@@ -554,9 +556,11 @@ export default function RoutesScreen() {
       return;
     }
 
-    void SearchService.recordRecent(sug).then(() => {
-      SearchService.recent().then(setRecent);
-    });
+    void SearchService.recordRecent(sug)
+      .then(() => {
+        SearchService.recent().then(setRecent).catch(() => {});
+      })
+      .catch(() => {});
 
     if (sheetFor === 'from') {
       if (sug.lat !== fromLat || sug.lon !== fromLon || sug.title !== fromTitle) {
