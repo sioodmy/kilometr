@@ -15,12 +15,7 @@
 // pokazywaliśmy już wcześniej - dzięki temu strzałka nie migocze między
 // dwoma autobusami stojącymi na tym samym przystanku.
 
-import {
-  distanceM,
-  projectRoutePoint,
-  type Coord,
-  type Projection,
-} from './routeGeometry';
+import { distanceM, projectRoutePoint, type Coord, type Projection } from './routeGeometry';
 import { timeStringToSeconds } from '../gtfs/geo';
 import type { TrackedVehicle } from './liveTracker';
 import type { MapLeg } from '../map/types';
@@ -76,7 +71,10 @@ function legSchedule(leg: MapLeg, coords: Coord[]): SchedulePoint[] {
   // Końce nogi są rozstrzygające: plan mówi, o której godzinie wsiadamy
   // i wysiadamy, a czasy przystanków pośrednich bywają tylko wejściowe.
   pts.unshift({ alongM: 0, timeSec: fromSec });
-  pts.push({ alongM: Math.max(0, distanceM(coords[0], coords[coords.length - 1])), timeSec: toSec });
+  pts.push({
+    alongM: Math.max(0, distanceM(coords[0], coords[coords.length - 1])),
+    timeSec: toSec,
+  });
   pts.sort((a, b) => a.alongM - b.alongM);
   return pts;
 }
@@ -108,6 +106,16 @@ export function isLegRunning(leg: MapLeg, nowSec: number): boolean {
   return nowSec >= from - 300 && nowSec <= to + 600;
 }
 
+function isSameRailLine(a: string, b: string): boolean {
+  if (a === b) return true;
+  const numA = parseInt(a, 10);
+  const numB = parseInt(b, 10);
+  if (!isNaN(numA) && !isNaN(numB) && Math.abs(numA - numB) <= 1) {
+    return true;
+  }
+  return false;
+}
+
 export interface MatchOptions {
   /** vehicleId, którego pokazywaliśmy ostatnio - wolimy je, jeśli wciąż pasuje. */
   preferVehicleId?: string | null;
@@ -132,7 +140,15 @@ export function matchVehicleToLeg(
    * `null` = ten pojazd w ogóle nie obsługuje tej nogi.
    */
   const scoreVehicle = (v: TrackedVehicle): LegVehicleMatch | null => {
-    if (v.line.trim().toUpperCase() !== line) return null;
+    const vLine = v.line.trim().toUpperCase();
+    const isExactTrip = Boolean(leg.tripId && v.matchedTripId === leg.tripId);
+    const isLineMatch =
+      vLine === line ||
+      Boolean(v.aliases && v.aliases.some((al) => al.trim().toUpperCase() === line)) ||
+      (v.type === 'train' && (isExactTrip || isSameRailLine(vLine, line)));
+
+    if (!isLineMatch && !isExactTrip) return null;
+
     const p = projectRoutePoint(coords, v.lat, v.lon);
     if (!p || p.offsetM > MAX_CORRIDOR_M) return null;
 

@@ -59,7 +59,8 @@ export default function RouteMapScreen() {
 
   const [loadedItem, setItem] = useState<Connection | null>(null);
   const { trip: trackedTrip } = useTrackedTrip();
-  const trackedConnection = trackedTrip?.connection.id === String(id) ? trackedTrip.connection : null;
+  const trackedConnection =
+    trackedTrip?.connection.id === String(id) ? trackedTrip.connection : null;
   const item = trackedConnection ?? (loadedItem?.id === String(id) ? loadedItem : null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [panelHeight, setPanelHeight] = useState(120);
@@ -297,15 +298,16 @@ export default function RouteMapScreen() {
       }
       const leg = matchLeg;
       shownVehicleRef.current = match.vehicle.vehicleId;
-      const { bg } = getLineColors(match.vehicle.line, leg.mode);
+      const displayLine = leg.line || match.vehicle.line;
+      const { bg } = getLineColors(displayLine, leg.mode);
       // Tryb bierze się z leg.mode (planner ustawia go z route_type feedu),
       // więc metro i SKA niosą własne tryby. 'walk' tu nie trafia, ale
       // unia MapVehicle go nie zna, stąd mapowanie na autobus.
-      const vehMode = inferTransitMode(leg.mode, match.vehicle.line);
+      const vehMode = inferTransitMode(leg.mode, displayLine);
       setVehicle({
         vehicleId: match.vehicle.vehicleId,
         legId: leg.id,
-        line: match.vehicle.line,
+        line: displayLine,
         mode: vehMode === 'walk' ? 'bus' : vehMode,
         color: mapLineColor(bg),
         lat: match.vehicle.lat,
