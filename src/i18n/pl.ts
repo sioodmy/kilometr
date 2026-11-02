@@ -1019,8 +1019,6 @@ export const pl = {
     estimatedDelay: (n: number) => `Około +${n} min, szacunek z innych autobusów`,
     untrackedVehicle: 'Brak aktualnej pozycji. Możliwe opóźnienie.',
     uncertainTransfer: 'Mało czasu na przesiadkę. Opóźnienie tego autobusu jest niepewne.',
-    walkDeparture: (time: string, place: string) => `Wyjście pieszo o ${time}: ${place}`,
-    walkDepartureTo: (time: string, stop: string) => `Wyjście pieszo o ${time}: dojście do: ${stop}`,
     arrival: 'Na miejscu',
     origin: 'Skąd',
     destination: 'Dokąd',

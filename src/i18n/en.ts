@@ -982,8 +982,6 @@ export const en: Strings = {
     estimatedDelay: (n: number) => `About +${n} min, estimated from other buses`,
     untrackedVehicle: 'No current position. Delays are possible.',
     uncertainTransfer: 'Short transfer. This bus has no confirmed delay.',
-    walkDeparture: (time: string, place: string) => `Start walking at ${time}: ${place}`,
-    walkDepartureTo: (time: string, stop: string) => `Start walking at ${time}: walk to: ${stop}`,
     arrival: 'Arrival',
     origin: 'From',
     destination: 'To',

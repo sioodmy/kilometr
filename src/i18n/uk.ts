@@ -1035,8 +1035,6 @@ export const uk: Strings = {
     estimatedDelay: (n: number) => `Близько +${n} хв, оцінка за іншими автобусами`,
     untrackedVehicle: 'Немає актуальної позиції. Можливе запізнення.',
     uncertainTransfer: 'Мало часу на пересадку. Запізнення цього автобуса не підтверджено.',
-    walkDeparture: (time: string, place: string) => `Вийти пішки о ${time}: ${place}`,
-    walkDepartureTo: (time: string, stop: string) => `Вийти пішки о ${time}: пішки до: ${stop}`,
     arrival: 'Прибуття',
     origin: 'Звідки',
     destination: 'Куди',
