@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowRight,
   BusFront,
@@ -365,6 +365,34 @@ function LegStopsList({
   );
 }
 
+const LiveDataAge = memo(function LiveDataAge({ timestamp }: { timestamp: number }) {
+  const t = useStrings();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setNow(Date.now());
+      }
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, []);
+
+  const ageSec = Math.max(0, Math.floor((now - timestamp) / 1000));
+
+  return (
+    <Text style={s.liveAgeLabel} numberOfLines={1}>
+      {t.routeDetails.liveDataAge(ageSec)}
+    </Text>
+  );
+});
+
 // ─── Karta jednego przejazdu (klik = rozwiń) ──────────────────────────────────
 // Rozwijanie animowaną wysokością (a nie montowaniem): lista montuje się raz
 // przy pierwszym otwarciu i zostaje, a kontener płynnie rośnie/maleje.
@@ -544,20 +572,18 @@ function TransitLegCard({
   }, [nearestStop, t, leg.mode]);
 
   const pingKey = vehicle?.updatedAt ?? (leg.live ? lastOk : undefined);
+  const liveTimestamp = vehicle?.updatedAt ?? (leg.live && lastOk > 0 ? lastOk : undefined);
 
   useEffect(() => {
     if (expanded) setHasOpened(true);
     chevron.value = withTiming(expanded ? 1 : 0, motion.state);
-  }, [chevron, expanded]);
+    const targetHeight = Math.max(estimatedInitialHeight, measuredHeight.value);
+    stopsHeightAnim.value = withTiming(expanded ? targetHeight : 0, motion.state);
+  }, [expanded, chevron, stopsHeightAnim, measuredHeight, estimatedInitialHeight]);
 
   const chevronStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${chevron.value * 180}deg` }],
   }));
-
-  // Płynna animacja wysokości i zanikania listy przystanków spójna z czasem obrotu chevronu.
-  useEffect(() => {
-    stopsHeightAnim.value = withTiming(expanded ? measuredHeight.value : 0, motion.state);
-  }, [expanded, stopsHeightAnim, measuredHeight]);
 
   const stopsAnimStyle = useAnimatedStyle(() => {
     const height = stopsHeightAnim.value;
@@ -664,6 +690,10 @@ function TransitLegCard({
                 ) : notice ? (
                   <Text style={s.meta}>{notice}</Text>
                 ) : null}
+
+                {leg.live && liveTimestamp ? (
+                  <LiveDataAge timestamp={liveTimestamp} />
+                ) : null}
               </View>
             </View>
           ) : null}
@@ -671,11 +701,13 @@ function TransitLegCard({
           {/* Pionowa animacja rozwijania listy przystanków */}
           {(expanded || hasOpened) && (
             <Animated.View
+              pointerEvents={expanded ? 'auto' : 'none'}
               style={[stopsAnimStyle, { marginLeft: stopsIndent, overflow: 'hidden' }]}
               accessibilityElementsHidden={!expanded}
               importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
             >
               <View
+                style={s.stopsContent}
                 onLayout={(e) => {
                   const h = Math.round(e.nativeEvent.layout.height);
                   if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
@@ -949,6 +981,14 @@ const s = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  liveAgeLabel: {
+    ...type.bodySmall,
+    color: scheme.success,
+    fontWeight: '500',
+    fontSize: 12.5,
+    lineHeight: 17,
+    fontVariant: ['tabular-nums'],
+  },
   stopsSummaryWrap: {
     marginTop: 10,
     marginBottom: 2,
@@ -1034,6 +1074,12 @@ const s = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     marginTop: 4,
     textAlign: 'center',
+  },
+  stopsContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   stopsWrap: {
     marginTop: 8,

@@ -21,9 +21,12 @@ export const en: Strings = {
     selectStop: (name: string) => `Show departures: ${name}`,
     loading: 'Loading timetable…',
     error: 'Could not load the timetable. Try again.',
-    empty: 'No trips in the saved timetable for this date. Choose another day or update the timetable in Settings.',
-    missing: 'This line is missing from the saved timetable. Return to search or update the data in Settings.',
-    missingStop: 'This stop or route variant is no longer in the timetable. Return to the stop list.',
+    empty:
+      'No trips in the saved timetable for this date. Choose another day or update the timetable in Settings.',
+    missing:
+      'This line is missing from the saved timetable. Return to search or update the data in Settings.',
+    missingStop:
+      'This stop or route variant is no longer in the timetable. Return to the stop list.',
     terminal: 'Last stop',
     terminalHint: 'Choose an earlier stop to see departures.',
     scheduled: 'Times from the saved timetable',
@@ -31,7 +34,8 @@ export const en: Strings = {
     previousDay: 'Previous day',
     back: 'Back',
     dayOffset: (days: number) => `+${days} ${days === 1 ? 'day' : 'days'}`,
-    nextDayTime: (time: string, days: number) => `${time} (+${days} ${days === 1 ? 'day' : 'days'})`,
+    nextDayTime: (time: string, days: number) =>
+      `${time} (+${days} ${days === 1 ? 'day' : 'days'})`,
   },
   transferGuard: {
     enabled: 'On',
@@ -45,7 +49,8 @@ export const en: Strings = {
     changedBody: (line: string, stop: string) => `Transfer to ${line} at ${stop}.`,
     noAlternative: 'No other route is available right now. We will check again shortly.',
     unavailable: 'Cannot assess your transfer',
-    unavailableBody: 'Waiting for an accurate position on your route. Your current plan is still shown.',
+    unavailableBody:
+      'Waiting for an accurate position on your route. Your current plan is still shown.',
     routingError: 'Could not prepare transfer protection. Please try again.',
     rerouting: 'Finding a new transfer',
     next: (line: string, stop: string) => `${line} · ${stop}`,
@@ -150,6 +155,9 @@ export const en: Strings = {
       `Your GPS location is outside the supported area. We currently serve only: ${supported}.`,
     unsupportedHint: 'Pick a start point manually to search connections.',
     unsupportedAction: 'Pick a start point',
+    unsupportedActionShort: 'Pick start',
+    unsupportedSwitchCity: (city: string) => `Switch to ${city}`,
+    unsupportedSwitchCityA11y: (city: string) => `Switch city to ${city}`,
     pickStart: 'Pick a start point',
     gpsBlockedTitle: 'GPS start unavailable',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -189,9 +197,9 @@ export const en: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : id === 'radom'
-                                ? 'Radom'
-                              : 'Wrocław',
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     gen: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -219,7 +227,39 @@ export const en: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : 'Wrocław',
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
+    acc: (id: string): string =>
+      id === 'krakow'
+        ? 'Kraków'
+        : id === 'gzm'
+          ? 'GZM'
+          : id === 'warszawa'
+            ? 'Warszawa'
+            : id === 'poznan'
+              ? 'Poznań'
+              : id === 'trojmiasto'
+                ? 'Trójmiasto'
+                : id === 'lodz'
+                  ? 'Łódź'
+                  : id === 'szczecin'
+                    ? 'Szczecin'
+                    : id === 'kielce'
+                      ? 'Kielce'
+                      : id === 'olsztyn'
+                        ? 'Olsztyn'
+                        : id === 'bialystok'
+                          ? 'Białystok'
+                          : id === 'opole'
+                            ? 'Opole'
+                            : id === 'rzeszow'
+                              ? 'Rzeszów'
+                              : id === 'lublin'
+                                ? 'Lublin'
+                                : id === 'radom'
+                                  ? 'Radom'
+                                  : 'Wrocław',
     loc: (id: string): string =>
       id === 'krakow'
         ? 'Kraków'
@@ -247,7 +287,7 @@ export const en: Strings = {
                               ? 'Rzeszów'
                               : id === 'lublin'
                                 ? 'Lublin'
-                              : 'Wrocław',
+                                : 'Wrocław',
     feeds: (id: string): string =>
       id === 'krakow'
         ? 'ZTP and Koleje Małopolskie'
@@ -259,7 +299,7 @@ export const en: Strings = {
               ? 'ZTM and Koleje Wielkopolskie'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk, ZKM Gdynia and SKM'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK and Łódzka Kolej Aglomeracyjna'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -275,11 +315,11 @@ export const en: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK and Koleje Dolnośląskie',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : id === 'radom'
+                                    ? 'MZDiK Radom'
+                                    : 'MPK and Koleje Dolnośląskie',
     newsSources: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -291,7 +331,7 @@ export const en: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -307,9 +347,9 @@ export const en: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław • wroclaw.pl',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław • wroclaw.pl',
     operator: (id: string): string =>
       id === 'krakow'
         ? 'ZTP Kraków'
@@ -321,7 +361,7 @@ export const en: Strings = {
               ? 'ZTM Poznań'
               : id === 'trojmiasto'
                 ? 'ZTM Gdańsk'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'MPK Łódź'
                   : id === 'szczecin'
                     ? 'ZDiTM Szczecin'
@@ -337,9 +377,9 @@ export const en: Strings = {
                               ? 'ZTM Rzeszów'
                               : id === 'lublin'
                                 ? 'ZDiTM Lublin'
-                              : id === 'radom'
-                                ? 'MZDiK Radom'
-                              : 'MPK Wrocław',
+                                : id === 'radom'
+                                  ? 'MZDiK Radom'
+                                  : 'MPK Wrocław',
     operatorShort: (id: string): string =>
       id === 'krakow'
         ? 'ZTP'
@@ -363,11 +403,11 @@ export const en: Strings = {
                           ? 'MZK'
                           : id === 'rzeszow'
                             ? 'ZTM'
-                              : id === 'lublin'
-                                ? 'ZDiTM'
+                            : id === 'lublin'
+                              ? 'ZDiTM'
                               : id === 'radom'
                                 ? 'MZDiK'
-                            : 'MPK',
+                                : 'MPK',
     portal: (id: string): string =>
       id === 'krakow'
         ? 'ztp.krakow.pl'
@@ -379,7 +419,7 @@ export const en: Strings = {
               ? 'ztm.poznan.pl'
               : id === 'trojmiasto'
                 ? 'ztm.gda.pl'
-: id === 'lodz'
+                : id === 'lodz'
                   ? 'mpk.lodz.pl'
                   : id === 'szczecin'
                     ? 'zditm.szczecin.pl'
@@ -395,10 +435,11 @@ export const en: Strings = {
                               ? 'ztm.erzeszow.pl'
                               : id === 'lublin'
                                 ? 'zdtm.lublin.eu'
-                              : id === 'radom'
-                                ? 'mzdik.pl'
-                                : 'wroclaw.pl',
-    supportedList: 'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
+                                : id === 'radom'
+                                  ? 'mzdik.pl'
+                                  : 'wroclaw.pl',
+    supportedList:
+      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
     changed: (name: string) => `Switched to: ${name}.`,
     switching: 'Switching city…',
     blockedByDownload: 'Timetable download in progress. You can switch city once it finishes.',
@@ -647,7 +688,8 @@ export const en: Strings = {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
     intro: 'Choose your city and download a timetable. You can plan journeys offline too.',
     openSettings: 'Open settings',
-    permissionDenied: 'You can continue without this permission and change it later in your phone settings.',
+    permissionDenied:
+      'You can continue without this permission and change it later in your phone settings.',
     steps: ['Welcome', 'Permissions', 'City', 'Timetable', 'Places'],
     granted: 'On',
     denied: 'Off',
@@ -662,7 +704,7 @@ export const en: Strings = {
             ? 'e.g. Głogowska 12'
             : id === 'trojmiasto'
               ? 'e.g. Długa 12'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'e.g. Piotrkowska 12'
                 : id === 'szczecin'
                   ? 'e.g. Wojska Polskiego 12'
@@ -676,11 +718,11 @@ export const en: Strings = {
                           ? 'e.g. Ozimska 12'
                           : id === 'rzeszow'
                             ? 'e.g. 3 Maja 12'
-                              : id === 'lublin'
-                                ? 'e.g. Krakowskie Przedmieście 12'
+                            : id === 'lublin'
+                              ? 'e.g. Krakowskie Przedmieście 12'
                               : id === 'radom'
                                 ? 'e.g. Żeromskiego 12'
-                            : 'e.g. Swojczycka 41',
+                                : 'e.g. Swojczycka 41',
     slotWork: 'Work',
     slotWorkHint: (id: string) =>
       id === 'krakow'
@@ -691,7 +733,7 @@ export const en: Strings = {
             ? 'e.g. Stary Browar'
             : id === 'trojmiasto'
               ? 'e.g. Galeria Bałtycka'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'e.g. Manufaktura'
                 : id === 'szczecin'
                   ? 'e.g. Galeria Kaskada'
@@ -705,11 +747,11 @@ export const en: Strings = {
                           ? 'e.g. Solaris Center'
                           : id === 'rzeszow'
                             ? 'e.g. Galeria Rzeszów'
-                              : id === 'lublin'
-                                ? 'e.g. Felicity'
+                            : id === 'lublin'
+                              ? 'e.g. Felicity'
                               : id === 'radom'
                                 ? 'e.g. Galeria Słoneczna'
-                            : 'e.g. Sky Tower',
+                                : 'e.g. Sky Tower',
     slotUni: 'University',
     slotUniHint: (id: string) =>
       id === 'krakow'
@@ -720,7 +762,7 @@ export const en: Strings = {
             ? 'e.g. UAM'
             : id === 'trojmiasto'
               ? 'e.g. UG'
-: id === 'lodz'
+              : id === 'lodz'
                 ? 'e.g. UŁ'
                 : id === 'szczecin'
                   ? 'e.g. US'
@@ -734,11 +776,11 @@ export const en: Strings = {
                           ? 'e.g. UO'
                           : id === 'rzeszow'
                             ? 'e.g. PRz'
-                              : id === 'lublin'
-                                ? 'e.g. UMCS'
+                            : id === 'lublin'
+                              ? 'e.g. UMCS'
                               : id === 'radom'
                                 ? 'e.g. UTH'
-                            : 'e.g. Politechnika',
+                                : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
     brand: 'Kilometr',
@@ -809,7 +851,8 @@ export const en: Strings = {
     title: 'News',
     sourceLoading: (feeds: string) => feeds,
     sourceEmpty: (combined: string) => combined,
-    count: (n: number, urgent: number) => `${n} ${n === 1 ? 'item' : 'items'}${urgent > 0 ? ` • ${urgent} urgent` : ''}`,
+    count: (n: number, urgent: number) =>
+      `${n} ${n === 1 ? 'item' : 'items'}${urgent > 0 ? ` • ${urgent} urgent` : ''}`,
     refreshA11y: 'Refresh news',
     loading: 'Fetching announcements…',
     noConnection: 'No connection',
@@ -952,7 +995,8 @@ export const en: Strings = {
     moreRetryA11y: 'Try loading more connections',
     noMore: 'These are all departures for this route.',
     noMoreArrival: 'No earlier connections in this window. Choose an earlier arrival time.',
-    emptyArrival: 'No connections before the selected time. Try a later arrival time or another destination.',
+    emptyArrival:
+      'No connections before the selected time. Try a later arrival time or another destination.',
     emptyFiltered: 'No connections for the selected filters',
     emptyNone: 'No connections found',
     emptyModeDirect: (veh: string) =>
@@ -963,7 +1007,8 @@ export const en: Strings = {
       `There is no ${veh} service on this route right now. Switch to “All” to see the rest.`,
     emptyPlain: 'Try a different destination or check another departure time.',
     samePlaceTitle: 'Start and destination are the same place',
-    samePlaceBody: 'You are already there, so there is nothing to plan. Pick another destination to see connections.',
+    samePlaceBody:
+      'You are already there, so there is nothing to plan. Pick another destination to see connections.',
     vehicleTramGen: 'by tram',
     vehicleBusGen: 'by bus',
     vehicleTrolleyGen: 'by trolleybus',
@@ -993,6 +1038,7 @@ export const en: Strings = {
     offlineNote: 'Saved offline. Timetable times, no live data.',
     noLiveNote: 'Timetable times. No live data.',
     onTime: 'On time',
+    liveDataAge: (s: number) => `Data from ${s}s ago`,
     scheduleCache: 'Cached timetable',
     schedule: 'Timetable',
     noTrip: 'No route geometry',
@@ -1232,7 +1278,7 @@ export const en: Strings = {
   },
   leg: {
     fareBoundary: 'Fare zone boundary',
-    fareBoundaryDetail: (areas: string, point: string) => point ? `${areas} · ${point}` : areas,
+    fareBoundaryDetail: (areas: string, point: string) => (point ? `${areas} · ${point}` : areas),
     noData: 'No route data',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
@@ -1264,7 +1310,8 @@ export const en: Strings = {
     routeOverview: 'Show this leg',
     compassAccuracyLow: 'Low compass accuracy',
     calibrationHelp: 'How to improve accuracy',
-    calibrateCompass: 'Move your phone away from metal and magnets, such as a phone mount. Slowly move it in a figure eight a few times. This message will disappear when accuracy improves.',
+    calibrateCompass:
+      'Move your phone away from metal and magnets, such as a phone mount. Slowly move it in a figure eight a few times. This message will disappear when accuracy improves.',
     gpsWeak: 'Weak GPS signal. Your position may be inaccurate.',
     deviceGps: 'Your GPS position',
     prepareToAlight: 'Get ready to get off',
@@ -1410,10 +1457,12 @@ export const en: Strings = {
     startupShare: 'Share',
     locationPermission: 'Allow location access to find journeys from your position.',
     liveTitle: 'Live Activity',
-    liveHint: 'Journey time on the Lock Screen and Dynamic Island. Data updates while the app is active.',
+    liveHint:
+      'Journey time on the Lock Screen and Dynamic Island. Data updates while the app is active.',
     liveDisabled: 'Enable Live Activities in the system settings for Kilometr.',
     stale: 'Scheduled time. Open Kilometr to update.',
-    alarmHint: 'A reminder with a notification sound. Silent mode and Focus may silence it. It does not open a full-screen alarm.',
+    alarmHint:
+      'A reminder with a notification sound. Silent mode and Focus may silence it. It does not open a full-screen alarm.',
   },
   alarm: {
     title: 'Trip alarm',
@@ -1422,7 +1471,7 @@ export const en: Strings = {
     hint: 'Sound, vibration and a full screen before you leave.',
     question: 'How much time do you need before leaving?',
     before: 'before leaving',
-    minutes: (n: number) => n === 1 ? 'minute' : 'minutes',
+    minutes: (n: number) => (n === 1 ? 'minute' : 'minutes'),
     lead: (n: number) => `${n} ${n === 1 ? 'minute' : 'minutes'} before leaving`,
     less: 'One minute later',
     more: 'One minute earlier',
