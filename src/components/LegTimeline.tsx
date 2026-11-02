@@ -67,7 +67,11 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
-function formatPlatformLabel(code?: string | null, mode?: Leg['mode'], stopName?: string | null): string | null {
+function formatPlatformLabel(
+  code?: string | null,
+  mode?: Leg['mode'],
+  stopName?: string | null,
+): string | null {
   let trimmed = (code || '').trim();
   if (!trimmed && stopName) {
     const m = stopName.trim().match(/\s(\d{2})$/);
@@ -227,10 +231,7 @@ const StopRow = memo(function StopRow({
             accessible
             accessibilityRole="image"
             accessibilityLabel={vehicleLabel}
-            style={[
-              s.vehicleMarker,
-              markerPlacement === 'at_stop' && { top: lineCenter - 12 },
-            ]}
+            style={[s.vehicleMarker, markerPlacement === 'at_stop' && { top: lineCenter - 12 }]}
           >
             <VehicleGlyph mode={vehicleMode} />
           </View>
@@ -495,7 +496,7 @@ function TransitLegCard({
         setVehicle(null);
         return;
       }
-      const match = liveTracker
+      let match = liveTracker
         .snapshot(leg.line)
         .find(
           (candidate) =>
@@ -503,6 +504,16 @@ function TransitLegCard({
             now - candidate.updatedAt >= 0 &&
             now - candidate.updatedAt <= 120_000,
         );
+      if (!match && leg.tripId) {
+        match = liveTracker
+          .snapshot()
+          .find(
+            (candidate) =>
+              candidate.matchedTripId === leg.tripId &&
+              now - candidate.updatedAt >= 0 &&
+              now - candidate.updatedAt <= 120_000,
+          );
+      }
       setVehicle((prev) => {
         if (match) return match;
         if (prev && now - prev.updatedAt >= 0 && now - prev.updatedAt <= 120_000) {
@@ -604,10 +615,7 @@ function TransitLegCard({
         {/* 4. Środek: linia, kierunek, sensors live + na czas, rozwijana lista, podsumowanie */}
         <View style={s.cardMiddleSection}>
           <View style={s.cardTop}>
-            <View
-              style={s.badgeWrap}
-              onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}
-            >
+            <View style={s.badgeWrap} onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}>
               <LineBadge mode={leg.mode} line={leg.line} />
             </View>
             <Text style={s.dir} numberOfLines={1}>
@@ -638,10 +646,7 @@ function TransitLegCard({
 
                 {delayMin !== 0 && scheduledDeparture != null ? (
                   <Text
-                    style={[
-                      s.delayLabel,
-                      { color: delayMin > 0 ? scheme.error : scheme.warning },
-                    ]}
+                    style={[s.delayLabel, { color: delayMin > 0 ? scheme.error : scheme.warning }]}
                     numberOfLines={1}
                   >
                     {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
@@ -681,10 +686,7 @@ function TransitLegCard({
           </View>
           {(expanded || hasOpened) && (
             <Animated.View
-              style={[
-                stopsAnimStyle,
-                { marginLeft: stopsIndent, overflow: 'hidden' },
-              ]}
+              style={[stopsAnimStyle, { marginLeft: stopsIndent, overflow: 'hidden' }]}
               accessibilityElementsHidden={!expanded}
               importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
             >
@@ -798,7 +800,9 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
               allowLive={!observeOnly || leg.live}
               onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
             />
-            {uncertainTransfer && <Text style={s.uncertainText}>{t.routeDetails.uncertainTransfer}</Text>}
+            {uncertainTransfer && (
+              <Text style={s.uncertainText}>{t.routeDetails.uncertainTransfer}</Text>
+            )}
             {nextLegIsTransit && (
               <View style={s.walkCentered}>
                 <View style={s.walkConnectorLine} />

@@ -1,13 +1,9 @@
-import Animated, {
-  Easing,
-  FadeInDown,
-  FadeInUp,
-  useReducedMotion,
-} from 'react-native-reanimated';
+import Animated, { Easing, FadeInDown, FadeInUp, useReducedMotion } from 'react-native-reanimated';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Linking,
   Pressable,
   ScrollView,
@@ -66,7 +62,7 @@ export default function RouteDetailsScreen() {
   const openTransferProtection = useTransferProtection();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
-  const id = normalizeConnectionId(routeId ?? "");
+  const id = normalizeConnectionId(routeId ?? '');
   const reduceMotion = useReducedMotion();
   const { trip: trackedTrip } = useTrackedTrip();
   const cachedItem = getTrackedTripSync()?.connection;
@@ -122,6 +118,22 @@ export default function RouteDetailsScreen() {
     return () => {
       unsub();
       clearInterval(t);
+    };
+  }, []);
+
+  // Po wejściu na ekran szczegółów połączenia lub powrocie z uśpienia (Android
+  // często usypia timery JS) natychmiast wymuszamy świeży poll pozycji live,
+  // bez czekania na interwał polling rate.
+  useEffect(() => {
+    liveTracker.start();
+    void liveTracker.refresh();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void liveTracker.refresh();
+      }
+    });
+    return () => {
+      sub.remove();
     };
   }, []);
   const item = useMemo(
@@ -398,7 +410,9 @@ export default function RouteDetailsScreen() {
               entering={
                 reduceMotion
                   ? undefined
-                  : FadeInDown.duration(200).delay(30).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                  : FadeInDown.duration(200)
+                      .delay(30)
+                      .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
               }
               style={styles.offlineBanner}
             >
@@ -424,7 +438,9 @@ export default function RouteDetailsScreen() {
               entering={
                 reduceMotion
                   ? undefined
-                  : FadeInDown.duration(220).delay(40).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                  : FadeInDown.duration(220)
+                      .delay(40)
+                      .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
               }
               style={styles.detailsContent}
             >
