@@ -421,8 +421,8 @@ function TransitLegCard({
     () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
   );
   const estimatedInitialHeight = Math.max(1, (leg.stopsCount ?? stops.length) || 2) * 36;
-  const [stopsListHeight, setStopsListHeight] = useState(estimatedInitialHeight);
-  const stopsHeightAnim = useSharedValue(0);
+  const measuredHeight = useSharedValue(estimatedInitialHeight);
+  const stopsHeightAnim = useSharedValue(expanded ? estimatedInitialHeight : 0);
   const [loading, setLoading] = useState(
     () =>
       !stopsCache.has(cacheKey) &&
@@ -556,14 +556,12 @@ function TransitLegCard({
 
   // Płynna animacja wysokości i zanikania listy przystanków spójna z czasem obrotu chevronu.
   useEffect(() => {
-    if (stopsListHeight > 0) {
-      stopsHeightAnim.value = withTiming(expanded ? stopsListHeight : 0, motion.state);
-    }
-  }, [expanded, stopsListHeight, stopsHeightAnim]);
+    stopsHeightAnim.value = withTiming(expanded ? measuredHeight.value : 0, motion.state);
+  }, [expanded, stopsHeightAnim, measuredHeight]);
 
   const stopsAnimStyle = useAnimatedStyle(() => {
     const height = stopsHeightAnim.value;
-    const maxH = Math.max(1, stopsListHeight);
+    const maxH = Math.max(1, measuredHeight.value);
     const opacity = Math.min(1, Math.max(0, height / Math.min(48, maxH)));
     return {
       height,
@@ -680,8 +678,11 @@ function TransitLegCard({
               <View
                 onLayout={(e) => {
                   const h = Math.round(e.nativeEvent.layout.height);
-                  if (h > 0 && Math.abs(h - stopsListHeight) > 1) {
-                    setStopsListHeight(h);
+                  if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
+                    measuredHeight.value = h;
+                    if (expanded) {
+                      stopsHeightAnim.value = withTiming(h, motion.state);
+                    }
                   }
                 }}
               >

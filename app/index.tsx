@@ -3,7 +3,8 @@ import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, 
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSharedValue, withTiming } from 'react-native-reanimated';
+import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { Bell, History, MapPin, Settings2 } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
@@ -145,17 +146,15 @@ export default function HomeScreen() {
   const [newsAlert, setNewsAlert] = useState(false);
 
   // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
-  // gestem, zero klikalnych elementów. pullOption żyje w stanie (odświeża
-  // tekst/strzałkę), wysokość reveal w shared value (płynnie, bez rerenderów).
+  // gestem, zero klikalnych elementów. pullOption żyje w shared value (UI thread),
+  // wysokość reveal w shared value (płynnie, bez rerenderów).
   const [lastTrip, setLastTrip] = useState<TripHistoryItem | null>(null);
-  const [pullOption, setPullOption] = useState<LastTripOption>(0);
-  const [scrollLocked, setScrollLocked] = useState(false);
+  const pullOption = useSharedValue<LastTripOption>(0);
   // „Na górze” jako stan też: `enabled` gestu pochodzi z renderu, bo przy
   // przewiniętej liście pull nie może zabierać zwykłego scrollowania.
   const [atTop, setAtTop] = useState(true);
   const atTopRef = useRef(true);
   const pullHeight = useSharedValue(0);
-  const optionRef = useRef<LastTripOption>(0);
   const lastTripRef = useRef<TripHistoryItem | null>(null);
   lastTripRef.current = lastTrip;
   const sheetsOpen = sheetMode !== null || manageSheetOpen || addPlaceOpen || citySheetOpen;
@@ -872,49 +871,49 @@ export default function HomeScreen() {
     [router],
   );
 
+  const triggerHaptic = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, []);
+
   // Pull jak na Twitterze, ale zamiast spinnera: ostatnie połączenie + toggle.
-  // Gest na RNGH zamiast PanRespondera: aktywacja dopiero przy wyraźnym
-  // pociągnięciu w dół, przy odchyleniu w bok gest pada. `enabled` z renderu,
-  // bo bez ostatniej trasy, przy otwartych arkuszach i przewiniętej liście
-  // pull nie powinien łapać ani zabierać zwykłego scrollowania.
+  // Całość na UI threadzie (worklet). Aktywacja przy pociągnięciu w dół,
+  // przy odchyleniu w bok gest pada. Brak bridge crossings w trakcie przeciągania.
   const pullGesture = useMemo(
     () =>
       Gesture.Pan()
-        .runOnJS(true)
         .activeOffsetY(12)
         .failOffsetX([-14, 14])
-        .onStart(() => {
-          setScrollLocked(true);
-        })
         .onUpdate((e) => {
+          'worklet';
           const h = Math.max(0, Math.min(LAST_TRIP_MAX, e.translationY));
           pullHeight.value = h;
-          const cur = optionRef.current;
+          const cur = pullOption.value;
           const next = nextPullOption(cur, h, LAST_TRIP_ARM_1, LAST_TRIP_ARM_2, LAST_TRIP_DISARM_2);
           if (next !== cur) {
-            optionRef.current = next;
-            setPullOption(next);
+            pullOption.value = next;
+            if (next > 0) {
+              runOnJS(triggerHaptic)();
+            }
           }
         })
         .onEnd(() => {
-          const opt = optionRef.current;
-          optionRef.current = 0;
-          setPullOption(0);
+          'worklet';
+          const opt = pullOption.value;
+          pullOption.value = 0;
           pullHeight.value = withTiming(0, { duration: 220 });
-          setScrollLocked(false);
-          if (opt === 1) openLastTrip(false);
-          else if (opt === 2) openLastTrip(true);
+          if (opt === 1) {
+            runOnJS(openLastTrip)(false);
+          } else if (opt === 2) {
+            runOnJS(openLastTrip)(true);
+          }
         })
         .onFinalize(() => {
-          // Po naturalnym końcu onFinalize leci zaraz po onEnd, więc porządki
-          // muszą być idempotentne.
-          optionRef.current = 0;
-          setPullOption(0);
+          'worklet';
+          pullOption.value = 0;
           pullHeight.value = withTiming(0, { duration: 220 });
-          setScrollLocked(false);
         })
         .enabled(atTop && lastTrip != null && !sheetsOpen),
-    [atTop, lastTrip, sheetsOpen, openLastTrip],
+    [atTop, lastTrip, sheetsOpen, openLastTrip, triggerHaptic, pullOption, pullHeight],
   );
 
   const handleCityChange = async (id: CityId) => {
@@ -1027,7 +1026,7 @@ export default function HomeScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
-            scrollEnabled={!scrollLocked}
+            scrollEnabled={true}
             scrollEventThrottle={16}
             onScroll={(e) => {
               // Stan zmienia się dopiero przy przekroczeniu górki: bez tego
