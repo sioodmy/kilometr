@@ -9,7 +9,7 @@
  * (decyduje o przenosinach z legacy kubełka przy migracji).
  */
 
-import { CITIES, cityKey, getCity, isCityId, suggestCityForCoords } from '../src/cities';
+import { CITIES, cityKey, getCity, isCityId, isOutsideCity, resolveSupportedCityId, suggestCityForCoords } from '../src/cities';
 
 let passed = 0;
 const failures: string[] = [];
@@ -362,6 +362,51 @@ describe('Wpis Lublina');
   expect('kafle w z14 jak reszta (limit R2)', lub.tileMaxZoom, 14);
   expect('bez kolei regionalnej (brak GTFS w zakresie budowy)', lub.features.regionalRail, false);
   expect('bez bezpośredniego bus_position', lub.features.directBusPosition, false);
+}
+
+
+describe("Strefy obsługi i mniejsze miejscowości (GZM i aglomeracje)");
+{
+  // Mniejsze miejscowości i wsie GZM w suggestCityForCoords (bounding box + promień)
+  expect("Toszek w GZM", suggestCityForCoords(50.4556, 18.5175)?.id, "gzm");
+  expect("Wielowieś w GZM", suggestCityForCoords(50.51, 18.6144)?.id, "gzm");
+  expect("Tworóg w GZM", suggestCityForCoords(50.5333, 18.7167)?.id, "gzm");
+  expect("Krupski Młyn w GZM", suggestCityForCoords(50.575, 18.625)?.id, "gzm");
+  expect("Siewierz w GZM", suggestCityForCoords(50.47, 19.23)?.id, "gzm");
+  expect("Pyrzowice (lotnisko) w GZM", suggestCityForCoords(50.4683, 19.0792)?.id, "gzm");
+  expect("Knurów w GZM", suggestCityForCoords(50.2197, 18.6811)?.id, "gzm");
+  expect("Psary w GZM", suggestCityForCoords(50.3833, 19.1167)?.id, "gzm");
+  expect("Bojszowy w GZM", suggestCityForCoords(50.0667, 19.1)?.id, "gzm");
+  expect("Kobiór w GZM", suggestCityForCoords(50.0667, 18.9333)?.id, "gzm");
+  expect("Chełm Śląski w GZM", suggestCityForCoords(50.1167, 19.2)?.id, "gzm");
+  expect("Pyskowice w GZM", suggestCityForCoords(50.3986, 18.6272)?.id, "gzm");
+  expect("Radzionków w GZM", suggestCityForCoords(50.4025, 18.9056)?.id, "gzm");
+
+  // isOutsideServiceArea dla aktywnego GZM
+  expect("isOutsideServiceArea Toszek (GZM)", isOutsideCity(getCity("gzm"), 50.4556, 18.5175), false);
+  expect("isOutsideServiceArea Tworóg (GZM)", isOutsideCity(getCity("gzm"), 50.5333, 18.7167), false);
+  expect("isOutsideServiceArea Siewierz (GZM)", isOutsideCity(getCity("gzm"), 50.47, 19.23), false);
+  expect("isOutsideServiceArea Knurów (GZM)", isOutsideCity(getCity("gzm"), 50.2197, 18.6811), false);
+  expect("isOutsideServiceArea Bojszowy (GZM)", isOutsideCity(getCity("gzm"), 50.0667, 19.1), false);
+  expect("isOutsideServiceArea Bielsko-Biała (poza GZM)", isOutsideCity(getCity("gzm"), 49.8224, 19.0444), true);
+  expect("isOutsideServiceArea Strzelce Opolskie (poza GZM)", isOutsideCity(getCity("gzm"), 50.5105, 18.3006), true);
+  expect("isOutsideServiceArea Częstochowa (poza GZM)", isOutsideCity(getCity("gzm"), 50.8118, 19.1203), true);
+
+  // resolveSupportedCityId (tekst z reverse geocodingu)
+  expect("resolve Knurów", resolveSupportedCityId("Knurów"), "gzm");
+  expect("resolve Psary", resolveSupportedCityId("Psary"), "gzm");
+  expect("resolve gmina Tworóg", resolveSupportedCityId("gmina Tworóg"), "gzm");
+  expect("resolve Pyrzowice", resolveSupportedCityId("Pyrzowice"), "gzm");
+  expect("resolve Bojszowy", resolveSupportedCityId("Bojszowy"), "gzm");
+  expect("resolve Wejherowo", resolveSupportedCityId("Wejherowo"), "trojmiasto");
+  expect("resolve Pruszków", resolveSupportedCityId("Pruszków"), "warszawa");
+  expect("resolve Zgierz", resolveSupportedCityId("Zgierz"), "lodz");
+  expect("resolve Swarzędz", resolveSupportedCityId("Swarzędz"), "poznan");
+  expect("resolve Wieliczka", resolveSupportedCityId("Wieliczka"), "krakow");
+  expect("resolve Długołęka", resolveSupportedCityId("Długołęka"), "wroclaw");
+  expect("resolve Bielsko-Biała (nieobsługiwane)", resolveSupportedCityId("Bielsko-Biała"), undefined);
+  expect("resolve Strzelce Opolskie (nieobsługiwane)", resolveSupportedCityId("Strzelce Opolskie"), undefined);
+  expect("resolve null", resolveSupportedCityId(null), undefined);
 }
 
 console.log(`\n${'='.repeat(52)}`);
