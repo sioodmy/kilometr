@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -448,7 +448,7 @@ function TransfersSegment({
   onSelect: (key: RouteTransfersFilter) => void;
 }) {
   const reduceMotion = useReducedMotion();
-  const [containerWidth, setContainerWidth] = useState(0);
+  const containerWidth = useSharedValue(0);
   const activeIndex = options.findIndex((o) => o.key === activeKey);
   const progress = useSharedValue(activeIndex);
 
@@ -457,17 +457,23 @@ function TransfersSegment({
   }, [activeIndex, progress, reduceMotion]);
 
   // Szerokość zewnętrzna minus 2px border i 6px padding wewnętrznego.
-  const segmentWidth = containerWidth > 0 ? (containerWidth - 8) / 3 : 0;
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * segmentWidth }],
-  }));
+  const indicatorStyle = useAnimatedStyle(() => {
+    const w = containerWidth.value > 0 ? (containerWidth.value - 8) / Math.max(1, options.length) : 0;
+    return {
+      width: w,
+      transform: [{ translateX: progress.value * w }],
+      opacity: w > 0 ? 1 : 0,
+    };
+  });
 
   return (
     <View
       style={styles.segmentContainer}
-      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+      onLayout={(e) => {
+        containerWidth.value = e.nativeEvent.layout.width;
+      }}
     >
-      <Animated.View style={[styles.segmentIndicator, { width: segmentWidth }, indicatorStyle]} />
+      <Animated.View style={[styles.segmentIndicator, indicatorStyle]} />
       {options.map((opt) => {
         const active = activeKey === opt.key;
         return (

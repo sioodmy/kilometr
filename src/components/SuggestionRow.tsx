@@ -4,7 +4,6 @@ import Animated, {
   Easing,
   FadeIn,
   FadeOut,
-  LinearTransition,
   useReducedMotion,
 } from 'react-native-reanimated';
 import {
@@ -166,9 +165,6 @@ export function SuggestionRow({
     ? undefined
     : FadeIn.duration(110).easing(Easing.out(Easing.quad));
   const rowExiting = reducedMotion ? undefined : FadeOut.duration(70);
-  const rowLayout = reducedMotion
-    ? undefined
-    : LinearTransition.duration(120).easing(Easing.bezier(0.2, 0, 0, 1));
 
   // Oczyszczenie adresu z ewentualnych pozostałości numeru słupka (np. z pamięci podręcznej)
   let cleanAddress = (item.address || '')
@@ -188,7 +184,6 @@ export function SuggestionRow({
     <Animated.View
       entering={rowEntering}
       exiting={rowExiting}
-      layout={rowLayout}
       style={styles.animatedContainer}
     >
       <Pressable

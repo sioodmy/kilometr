@@ -38,7 +38,7 @@ import {
   WifiOff,
   X,
 } from '../src/components/icons';
-import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
+import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { CITIES, type CityId } from '../src/cities';
@@ -556,8 +556,7 @@ export default function OnboardingScreen() {
 
       <Animated.View
         key={step}
-        entering={reduceMotion ? undefined : FadeIn.duration(200)}
-        exiting={reduceMotion ? undefined : FadeOut.duration(120)}
+        entering={reduceMotion ? undefined : FadeIn.duration(180)}
         style={{ flex: 1 }}
       >
         {step === 0 && (
