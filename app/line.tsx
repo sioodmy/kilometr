@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,7 +14,12 @@ import { ArrowLeft, Check, ChevronLeft, ChevronRight } from '../src/components/i
 import { getLocaleSync, useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
 import { useLineTimetable } from '../src/services/useLineTimetable';
-import { shiftTimetableDate, timetableToday, type LineStop } from '../src/services/lineTimetable';
+import {
+  formatTimetableDate,
+  shiftTimetableDate,
+  timetableToday,
+  type LineStop,
+} from '../src/services/lineTimetable';
 import { scheme, shape, type } from '../src/theme/tokens';
 
 export default function LineScreen() {
@@ -27,13 +32,10 @@ export default function LineScreen() {
   const [patternId, setPatternId] = useState('');
 
   const pattern = data?.patterns.find((item) => item.id === patternId) ?? data?.patterns[0];
-  const dateLabel = new Intl.DateTimeFormat(getLocaleSync(), {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Europe/Warsaw',
-  }).format(new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00Z`));
+  const dateLabel = useMemo(
+    () => formatTimetableDate(date, getLocaleSync()),
+    [date, getLocaleSync()],
+  );
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
 

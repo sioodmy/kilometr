@@ -67,9 +67,63 @@ export function timetableToday(): string {
     .join('');
 }
 
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function getTimetableDateFormatter(locale: string): Intl.DateTimeFormat {
+  const key = locale || 'pl';
+  let formatter = dateFormatters.get(key);
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat(key, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Europe/Warsaw',
+      });
+    } catch {
+      formatter = new Intl.DateTimeFormat('pl', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Europe/Warsaw',
+      });
+    }
+    dateFormatters.set(key, formatter);
+  }
+  return formatter;
+}
+
+function parseTimetableDate(date: string): Date {
+  const raw = typeof date === 'string' && /^\d{8}$/.test(date) ? date : timetableToday();
+  const parsed = new Date(`${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    const today = timetableToday();
+    return new Date(`${today.slice(0, 4)}-${today.slice(4, 6)}-${today.slice(6, 8)}T12:00:00Z`);
+  }
+  return parsed;
+}
+
+/** Formatuje datę rozkładu (YYYYMMDD) z nazwą dnia tygodnia, z bezpiecznym fallbackiem do dzisiaj. */
+export function formatTimetableDate(date: string, locale: string): string {
+  try {
+    const value = parseTimetableDate(date);
+    return getTimetableDateFormatter(locale).format(value);
+  } catch {
+    const today = timetableToday();
+    const fallbackDate = new Date(
+      `${today.slice(0, 4)}-${today.slice(4, 6)}-${today.slice(6, 8)}T12:00:00Z`,
+    );
+    return getTimetableDateFormatter('pl').format(fallbackDate);
+  }
+}
+
+/** Przesuwa datę rozkładu (YYYYMMDD) o wskazaną liczbę dni, z bezpiecznym fallbackiem do dzisiaj. */
 export function shiftTimetableDate(date: string, days: number): string {
-  const value = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + days);
+  const value = parseTimetableDate(date);
+  const shift = Number.isFinite(days) ? days : 0;
+  value.setUTCDate(value.getUTCDate() + shift);
   return value.toISOString().slice(0, 10).replaceAll('-', '');
 }
 
