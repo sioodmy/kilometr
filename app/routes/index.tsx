@@ -959,14 +959,7 @@ export default function RoutesScreen() {
 
   const routeHeader = useMemo(
     () => (
-      <Animated.View
-        style={headerStyle}
-        entering={
-          reduceMotion
-            ? undefined
-            : FadeInDown.duration(240).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-        }
-      >
+      <View style={headerStyle}>
         <RouteEndpoints
           from={fromTitle}
           to={toTitle}
@@ -1051,7 +1044,7 @@ export default function RoutesScreen() {
             </Text>
           </Pressable>
         </View>
-      </Animated.View>
+      </View>
     ),
     [
       fromTitle,
@@ -1088,6 +1081,8 @@ export default function RoutesScreen() {
         </Text>
       </View>
 
+      <View style={styles.stickyHeader}>{routeHeader}</View>
+
       {/* 3. Lista połączeń */}
       {/* Ten sam punkt startu i celu: zamiast przejazdów w kółko mówimy
           wprost, że cel jest na miejscu. */}
@@ -1099,7 +1094,6 @@ export default function RoutesScreen() {
             paddingBottom: insets.bottom + 24,
           }}
         >
-          {routeHeader}
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyTitle}>{s.routes.samePlaceTitle}</Text>
             <Text style={styles.emptySub}>{s.routes.samePlaceBody}</Text>
@@ -1109,7 +1103,6 @@ export default function RoutesScreen() {
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
         >
-          {routeHeader}
           <View style={styles.skeletonList}>
             <Text style={styles.loadingText}>{s.routes.searching}</Text>
             <View style={styles.skelCard}>
@@ -1161,7 +1154,6 @@ export default function RoutesScreen() {
             paddingBottom: insets.bottom + 24,
           }}
         >
-          {routeHeader}
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyTitle}>
               {timetableReady ? s.routes.calcFail : s.routes.noTimetable}
@@ -1210,9 +1202,7 @@ export default function RoutesScreen() {
           </View>
         </ScrollView>
       ) : (
-        <>
-          <View style={styles.stickyHeader}>{routeHeader}</View>
-          <FlatList
+        <FlatList
             ref={listRef}
             accessibilityState={{ busy: loading }}
             pointerEvents={loading ? 'none' : 'auto'}
@@ -1385,7 +1375,6 @@ export default function RoutesScreen() {
               </View>
             }
           />
-        </>
       )}
 
       {/* Bottom sheet filtrów połączeń */}
@@ -1593,9 +1582,8 @@ const styles = StyleSheet.create({
   footerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
   skeletonList: {
     flex: 1,
-    paddingHorizontal: 14,
-    paddingTop: 8,
-    gap: 10,
+    paddingTop: 12,
+    gap: 12,
   },
   skelCard: {
     backgroundColor: scheme.surfaceContainer,
