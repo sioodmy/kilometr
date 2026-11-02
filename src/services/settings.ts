@@ -230,9 +230,15 @@ export function useRoutingSettings() {
   const [settings, setSettings] = useState<RoutingSettings>({ ...cached });
 
   useEffect(() => {
+    let mounted = true;
     listeners.add(setSettings);
-    loadSettings().then(setSettings);
+    void loadSettings()
+      .then((s) => {
+        if (mounted) setSettings(s);
+      })
+      .catch(() => {});
     return () => {
+      mounted = false;
       listeners.delete(setSettings);
     };
   }, []);

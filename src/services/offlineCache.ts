@@ -121,9 +121,11 @@ export async function saveConnections(query: RouteQuery, list: Connection[]): Pr
     }
     await kvSet(KEYS.connections, JSON.stringify(all));
     // Linie z wyników idą do filtra aktualności (ostatnie 2 tygodnie).
-    void import('./recentRouteLines').then(({ rememberLinesFromConnections }) =>
-      rememberLinesFromConnections(list, savedAt),
-    );
+    void import('./recentRouteLines')
+      .then(({ rememberLinesFromConnections }) =>
+        rememberLinesFromConnections(list, savedAt),
+      )
+      .catch(() => {});
   } catch {
     // cache best-effort
   }
