@@ -181,13 +181,13 @@ export default function RoutesScreen() {
   const activeAnchorRef = useRef<ActiveAnchor | null>(activeAnchor);
   activeAnchorRef.current = activeAnchor;
 
-  const handleDismissAnchor = () => {
+  const handleDismissAnchor = useCallback(() => {
     if (!activeAnchor) return;
     dismissedAnchorsRef.current.add(activeAnchor.placeId);
     // Pozycja już jest prawdziwym GPS (kotwica to tylko preferencja
-    // w zapytaniu) - dismiss czyści samą preferencję i odświeża listę.
+    // w zapytaniu): dismiss czyści samą preferencję i odświeża listę.
     setActiveAnchor(null);
-  };
+  }, [activeAnchor]);
 
   const [items, setItems] = useState<Connection[]>([]);
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
@@ -829,11 +829,11 @@ export default function RoutesScreen() {
     void loadEarlierRef.current();
   };
 
-  const handleSwap = () => {
+  const handleReverse = useCallback(() => {
     if (samePlace || (fromLat === toLat && fromLon === toLon && fromTitle === toTitle)) return;
     setItems([]);
     setLoading(true);
-    // Wyniki po swapie to zupełnie nowa lista - wracamy na górę.
+    // Wyniki po swapie to zupełnie nowa lista: wracamy na górę.
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
     // Start = stary cel (ręczny punkt), więc doprecyzowanie GPS już nie dotyczy.
     setGpsOrigin(false);
@@ -850,7 +850,7 @@ export default function RoutesScreen() {
     setToTitle(tempTitle);
     setToLat(tempLat);
     setToLon(tempLon);
-  };
+  }, [samePlace, fromLat, toLat, fromLon, toLon, fromTitle, toTitle]);
 
   const handleTimeSelect = (result: JourneyTimeSelection) => {
     if (targetTimeSec === result.timeSec && timeMode === result.mode) return;
@@ -954,98 +954,119 @@ export default function RoutesScreen() {
     [openConnection, nowTick, peek, reduceMotion],
   );
 
-  const routeHeader = (
-    <Animated.View
-      style={styles.routeHeader}
-      entering={
-        reduceMotion ? undefined : FadeInDown.duration(240).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-      }
-    >
-      <RouteEndpoints
-        from={fromTitle}
-        to={toTitle}
-        onFrom={() => setSheetFor('from')}
-        onTo={() => setSheetFor('to')}
-        onSwap={handleSwap}
-        fromLabel={
-          activeAnchor
-            ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
-            : s.routes.changeFromA11y(fromTitle)
-        }
-        accessory={
-          activeAnchor && (
-            <View style={styles.anchorSub}>
-              <Anchor size={12} color={scheme.primary} />
-              <Text style={styles.anchorSubText} numberOfLines={1}>
-                {activeAnchor.stopName}
-                <Text style={styles.anchorSubPlace}> · {activeAnchor.placeName}</Text>
-              </Text>
-              <Pressable
-                onPress={handleDismissAnchor}
-                style={({ pressed }) => [styles.anchorX, pressed && { opacity: 0.6 }]}
-                accessibilityRole="button"
-                accessibilityLabel={s.routes.dismissAnchorA11y}
-              >
-                <X size={12} color={scheme.onSurfaceVariant} />
-              </Pressable>
-            </View>
-          )
-        }
-      />
+  const headerStyle = styles.routeHeader;
+  const handleOpenFrom = useCallback(() => setSheetFor('from'), []);
+  const handleOpenTo = useCallback(() => setSheetFor('to'), []);
 
-      <View style={styles.filterCardsRow}>
-        <Pressable
-          onPress={() => setFiltersOpen(true)}
-          style={({ pressed }) => [
-            styles.actionCard,
-            hasActiveFilters && styles.actionCardActive,
-            pressed && styles.actionCardPressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={s.routesFilters.filterA11y}
-        >
-          <SlidersHorizontal
-            size={18}
-            color={hasActiveFilters ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-          />
-          <Text
-            style={[styles.actionCardText, hasActiveFilters && styles.actionCardTextActive]}
-            numberOfLines={1}
-          >
-            {s.routesFilters.filterButton}
-          </Text>
-        </Pressable>
+  const routeHeader = useMemo(
+    () => (
+      <Animated.View
+        style={headerStyle}
+        entering={
+          reduceMotion ? undefined : FadeInDown.duration(240).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+        }
+      >
+        <RouteEndpoints
+          from={fromTitle}
+          to={toTitle}
+          onFrom={handleOpenFrom}
+          onTo={handleOpenTo}
+          onSwap={handleReverse}
+          fromLabel={
+            activeAnchor
+              ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
+              : s.routes.changeFromA11y(fromTitle)
+          }
+          accessory={
+            activeAnchor && (
+              <View style={styles.anchorSub}>
+                <Anchor size={12} color={scheme.primary} />
+                <Text style={styles.anchorSubText} numberOfLines={1}>
+                  {activeAnchor.stopName}
+                  <Text style={styles.anchorSubPlace}> · {activeAnchor.placeName}</Text>
+                </Text>
+                <Pressable
+                  onPress={handleDismissAnchor}
+                  style={({ pressed }) => [styles.anchorX, pressed && { opacity: 0.6 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.routes.dismissAnchorA11y}
+                >
+                  <X size={12} color={scheme.onSurfaceVariant} />
+                </Pressable>
+              </View>
+            )
+          }
+        />
 
-        <Pressable
-          onPress={() => setTimeSheetOpen(true)}
-          style={({ pressed }) => [
-            styles.actionCard,
-            isCustomTime && styles.actionCardActive,
-            pressed && styles.actionCardPressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={s.routesBar.timeA11y(timeDisplayLabel)}
-        >
-          {arrivalMode ? (
-            <Flag
-              size={18}
-              color={isCustomTime ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-            />
-          ) : (
-            <Clock3
-              size={18}
-              color={isCustomTime ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-            />
-          )}
-          <Text
-            style={[styles.actionCardText, isCustomTime && styles.actionCardTextActive]}
-            numberOfLines={1}
+        <View style={styles.filterCardsRow}>
+          <Pressable
+            onPress={() => setFiltersOpen(true)}
+            style={({ pressed }) => [
+              styles.actionCard,
+              hasActiveFilters && styles.actionCardActive,
+              pressed && styles.actionCardPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={s.routesFilters.filterA11y}
           >
-            {timeDisplayLabel}
-          </Text>
-        </Pressable>
-      </View>
-    </Animated.View>
+            <SlidersHorizontal
+              size={18}
+              color={hasActiveFilters ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+            />
+            <Text
+              style={[styles.actionCardText, hasActiveFilters && styles.actionCardTextActive]}
+              numberOfLines={1}
+            >
+              {s.routesFilters.filterButton}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setTimeSheetOpen(true)}
+            style={({ pressed }) => [
+              styles.actionCard,
+              isCustomTime && styles.actionCardActive,
+              pressed && styles.actionCardPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={s.routesBar.timeA11y(timeDisplayLabel)}
+          >
+            {arrivalMode ? (
+              <Flag
+                size={18}
+                color={isCustomTime ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+              />
+            ) : (
+              <Clock3
+                size={18}
+                color={isCustomTime ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+              />
+            )}
+            <Text
+              style={[styles.actionCardText, isCustomTime && styles.actionCardTextActive]}
+              numberOfLines={1}
+            >
+              {timeDisplayLabel}
+            </Text>
+          </Pressable>
+        </View>
+      </Animated.View>
+    ),
+    [
+      fromTitle,
+      toTitle,
+      activeAnchor,
+      s,
+      handleReverse,
+      handleOpenFrom,
+      handleOpenTo,
+      handleDismissAnchor,
+      hasActiveFilters,
+      isCustomTime,
+      timeDisplayLabel,
+      arrivalMode,
+      headerStyle,
+    ],
   );
 
   return (
@@ -1179,6 +1200,8 @@ export default function RoutesScreen() {
               <Pressable
                 onPress={() => fetchRoutes(targetTimeSec)}
                 style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                accessibilityRole="button"
+                accessibilityLabel={s.common.retry}
               >
                 <Text style={styles.retryText}>{s.common.retry}</Text>
               </Pressable>

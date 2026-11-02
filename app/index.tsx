@@ -654,9 +654,9 @@ export default function HomeScreen() {
     return map;
   }, [smart, saved, recent]);
 
-  // GPS spoza strefy nie może być startem trasy - zamiast nawigacji
+  // GPS spoza strefy nie może być startem trasy: zamiast nawigacji
   // pokazujemy wyjaśnienie i otwieramy ręczny wybór punktu startowego.
-  const blockGpsStart = () => {
+  const blockGpsStart = useCallback(() => {
     Alert.alert(
       s.home.gpsBlockedTitle,
       gpsCity ? s.home.gpsBlockedBody(gpsCity, cityGen) : s.home.gpsBlockedBodyUnknown(cityGen),
@@ -672,7 +672,7 @@ export default function HomeScreen() {
         },
       ],
     );
-  };
+  }, [gpsCity, cityGen, s]);
 
   const resetToGps = async () => {
     if (gpsUnsupported) {
@@ -794,47 +794,53 @@ export default function HomeScreen() {
     [saved],
   );
 
-  // Tap w prawą część wiersza: od razu do ekranu tego konkretnego połączenia
-  // (detail czyta je z podręcznego cache RoutingService - ten sam proces).
-  const goToConnection = (d: SmartDestination) => {
-    const conn = firstConns[d.id];
-    routeSearchGen.current++;
-    if (conn) {
-      void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, d);
-      router.push({ pathname: '/routes/[id]', params: { id: conn.id } });
-      return;
-    }
-    goToRoutes(d);
-  };
+  const goToRoutes = useCallback(
+    (to: { id: string; title: string; address?: string; lat: number; lon: number; kind?: Suggestion['kind'] }) => {
+      // GPS spoza strefy nie może być startem: zamiast puszczać trasę
+      // z pozycji spoza strefy prosimy o ręczny wybór startu.
+      if (gpsUnsupported && !isCustomStart) {
+        blockGpsStart();
+        return;
+      }
+      // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
+      routeSearchGen.current++;
+      void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
+      void SearchService.recordRecent({ ...to, address: to.address ?? '', kind: to.kind ?? 'history' }).then(() => {
+        SearchService.recent().then(setRecent).catch(() => {});
+      }).catch(() => {});
+      router.push({
+        pathname: '/routes',
+        params: {
+          fromTitle: locTitle,
+          fromLat: String(currentCoords.lat),
+          fromLon: String(currentCoords.lon),
+          // Start z GPS: ekran tras może go po cichu podmienić na dokładniejszy fix.
+          fromGps: isCustomStart ? '0' : '1',
+          toId: to.id,
+          toTitle: to.title,
+          toLat: String(to.lat),
+          toLon: String(to.lon),
+        },
+      });
+    },
+    [gpsUnsupported, isCustomStart, blockGpsStart, currentCoords.lat, currentCoords.lon, locTitle, router],
+  );
 
-  const goToRoutes = (to: { id: string; title: string; address?: string; lat: number; lon: number; kind?: Suggestion['kind'] }) => {
-    // GPS spoza strefy nie może być startem: zamiast puszczać trasę
-    // z pozycji spoza strefy prosimy o ręczny wybór startu.
-    if (gpsUnsupported && !isCustomStart) {
-      blockGpsStart();
-      return;
-    }
-    // Własna trasa użytkownika ma priorytet - stopujemy dogrzewanie reszty.
-    routeSearchGen.current++;
-    void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
-    void SearchService.recordRecent({ ...to, address: to.address ?? '', kind: to.kind ?? 'history' }).then(() => {
-      SearchService.recent().then(setRecent).catch(() => {});
-    }).catch(() => {});
-    router.push({
-      pathname: '/routes',
-      params: {
-        fromTitle: locTitle,
-        fromLat: String(currentCoords.lat),
-        fromLon: String(currentCoords.lon),
-        // Start z GPS: ekran tras może go po cichu podmienić na dokładniejszy fix.
-        fromGps: isCustomStart ? '0' : '1',
-        toId: to.id,
-        toTitle: to.title,
-        toLat: String(to.lat),
-        toLon: String(to.lon),
-      },
-    });
-  };
+  // Tap w prawą część wiersza: od razu do ekranu tego konkretnego połączenia
+  // (detail czyta je z podręcznego cache RoutingService: ten sam proces).
+  const goToConnection = useCallback(
+    (d: SmartDestination) => {
+      const conn = firstConns[d.id];
+      routeSearchGen.current++;
+      if (conn) {
+        void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, d);
+        router.push({ pathname: '/routes/[id]', params: { id: conn.id } });
+        return;
+      }
+      goToRoutes(d);
+    },
+    [firstConns, currentCoords.lat, currentCoords.lon, locTitle, router, goToRoutes],
+  );
 
   // Otwarcie ostatniego połączenia z pulla: start bierzemy z zapisanej
   // trasy (nie z bieżącego GPS), żeby skrót odtwarzał dokładnie to połączenie.
@@ -1173,7 +1179,7 @@ export default function HomeScreen() {
                 </View>
               </View>
             ) : (
-              <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={(d) => goToRoutes(d)} onOpenConnection={goToConnection} icons={smartIcons} />
+              <SmartHistoryList items={smartOrdered} departures={liveDepartures} lineBadges={firstLegs} onSelect={goToRoutes} onOpenConnection={goToConnection} icons={smartIcons} />
             )}
           </ScrollView>
         </SafeAreaView>
