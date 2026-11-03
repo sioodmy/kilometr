@@ -322,9 +322,11 @@ export default function HomeScreen() {
   // inaczej ranking po zapisie miejsca liczyłby się z innego klucza.
   const smartGen = useRef(0);
   const originStopRef = useRef<string>(defaultLocationForCity(getActiveCityIdSync()).title);
+  const smartCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
   const requestSmart = useCallback(
     (originStop: string, coords: { lat: number; lon: number }) => {
       originStopRef.current = originStop;
+      smartCoordsRef.current = coords;
       const gen = ++smartGen.current;
       const requestedCity = getActiveCityIdSync();
       FavoritesService.smartFromOrigin(originStop, coords)
@@ -420,6 +422,7 @@ export default function HomeScreen() {
       return;
     }
     isCustomStartRef.current = false;
+    smartCoordsRef.current = null;
     setIsCustomStart(false);
     setQuery('');
     setResults([]);
@@ -1081,12 +1084,23 @@ export default function HomeScreen() {
   };
 
   // Ostatnie połączenie świeże po powrocie (pull może odpalić nową trasę).
+  // Wyszukanie trasy (tu albo na ekranie tras) dopisuje historię: wtedy
+  // przeliczamy też „Ostatnie miejsca", inaczej nowy cel pojawiłby się
+  // dopiero po restarcie aplikacji.
+  const historyKeyRef = useRef<string | null>(null);
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       loadTripHistory()
         .then((h) => {
-          if (!cancelled && h.length > 0) setLastTrip(h[0]);
+          if (cancelled) return;
+          if (h.length > 0) setLastTrip(h[0]);
+          const key = h.length > 0 ? `${h.length}|${h[0].id}|${h[0].timestamp}` : '';
+          const prevKey = historyKeyRef.current;
+          historyKeyRef.current = key;
+          if (prevKey !== null && prevKey !== key && smartCoordsRef.current) {
+            requestSmart(originStopRef.current, smartCoordsRef.current);
+          }
         })
         .catch(() => {});
       // Po powrocie na ekran główny upewnij się, że arkusz jest zwinięty
@@ -1095,7 +1109,7 @@ export default function HomeScreen() {
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [requestSmart]),
   );
 
   // Wczytanie kopii zapasowej podmienia miejsca i historię w KV, ale `saved`
