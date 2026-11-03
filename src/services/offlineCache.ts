@@ -76,7 +76,7 @@ function dayStartMs(ms: number): number {
   return d.getTime();
 }
 
-// ─── Połączenia ──────────────────────────────────────────────────────────────
+// ─── Połączenia ─────────────────────────────────────────────────────────────
 
 export function connectionCacheKey(q: RouteQuery): string {
   const r = (n: number) => Math.round(n * 1000) / 1000;
@@ -90,7 +90,6 @@ export function connectionCacheKey(q: RouteQuery): string {
     q.modes ?? '',
     q.maxWalkM ?? '',
     q.anchorStopId ?? '',
-    q.routeStyle ?? '',
     q.departureTimeSec ?? '',
     q.arriveBySec ?? '',
     q.minTransferSec ?? '',
@@ -177,7 +176,7 @@ export function rehydrateConnections(list: Connection[], savedAtMs = Date.now())
   }));
 }
 
-// ─── Podpowiedzi ─────────────────────────────────────────────────────────────
+// ─── Podpowiedzi ────────────────────────────────────────────────────────────
 
 function normQuery(q: string): string {
   return q.trim().toLowerCase().slice(0, 60);

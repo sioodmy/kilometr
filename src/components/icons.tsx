@@ -151,4 +151,3 @@ export const Waves = icon('waves');
 export const WifiOff = icon('wifi-off');
 export const Wine = icon('wine-bar');
 export const X = icon('close');
-export const Zap = icon('bolt');

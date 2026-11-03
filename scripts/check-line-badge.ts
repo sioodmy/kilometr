@@ -65,8 +65,14 @@ console.log('=== Test kolorystyki brandingu przewoźników ===');
   check('inferRailAgencyFromLine PR 66201 -> PR', inferRailAgencyFromLine('PR 66201') === 'PR');
   check('inferRailAgencyFromLine IC 1620 -> IC', inferRailAgencyFromLine('IC 1620') === 'IC');
   check('inferRailAgencyFromLine S1 w GZM -> KŚ', inferRailAgencyFromLine('S1', 'gzm') === 'KŚ');
-  check('inferRailAgencyFromLine D1 we Wrocławiu -> KD', inferRailAgencyFromLine('D1', 'wroclaw') === 'KD');
-  check('inferRailAgencyFromLine S1 w Warszawie -> SKM', inferRailAgencyFromLine('S1', 'warszawa') === 'SKM');
+  check(
+    'inferRailAgencyFromLine D1 we Wrocławiu -> KD',
+    inferRailAgencyFromLine('D1', 'wroclaw') === 'KD',
+  );
+  check(
+    'inferRailAgencyFromLine S1 w Warszawie -> SKM',
+    inferRailAgencyFromLine('S1', 'warszawa') === 'SKM',
+  );
 
   check('getLineColors KŚ S1 ma błękit', getLineColors('KŚ S1', 'train').bg === '#1976D2');
   check('getLineColors PR 66201 ma czerwień', getLineColors('PR 66201', 'train').bg === '#D32F2F');
@@ -146,6 +152,31 @@ console.log('=== Test normalizacji i rozpoznawania linii ===');
     'Oznaczenia linii (w tym kolejowych) mają kontrast AA (4,5:1)',
     lowContrast.length === 0,
     JSON.stringify(lowContrast),
+  );
+
+  // 3. Test kontrastu badge'y na ciemnym tle (M3 Expressive: kontrast >= 4.5:1 względem card/surface)
+  const nonRailCases: Parameters<typeof getLineColors>[] = [
+    [undefined, 'tram'],
+    [undefined, 'bus'],
+    ['M1', 'subway'],
+    ['M2', 'subway'],
+    ['M3', 'subway'],
+    ['Polinka', 'cable'],
+    ['150', 'trolleybus'],
+  ];
+  for (const mode of ['tram', 'bus'] as const) {
+    for (let line = 1; line <= 500; line++) nonRailCases.push([String(line), mode]);
+  }
+  const DARK_CARD = '#1B2120';
+  const lowSurfaceContrast = nonRailCases.filter((args) => {
+    const { bg } = getLineColors(...args);
+    const values = [luminance(bg), luminance(DARK_CARD)].sort((a, b) => a - b);
+    return (values[1] + 0.05) / (values[0] + 0.05) < 4.5;
+  });
+  check(
+    'Badge linii (poza kolejowymi) mają wysoki kontrast M3 na ciemnym tle (>= 4.5:1)',
+    lowSurfaceContrast.length === 0,
+    lowSurfaceContrast.length > 0 ? JSON.stringify(lowSurfaceContrast) : 'wszystkie >= 9:1',
   );
 }
 

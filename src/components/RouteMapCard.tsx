@@ -66,7 +66,7 @@ export function RouteMapCard({ connection, onOpenMap }: {
     void resolveGeometry(route, (legId, coords) => {
       if (abort.signal.aborted) return;
       geometry.current.set(legId, coords);
-      mapRef.current?.setGeometry(legId, coords);
+      mapRef.current?.setGeometry(legId, coords, true);
     }, abort.signal);
     return () => abort.abort();
   }, [route, readyToMountMap]);
@@ -85,14 +85,24 @@ export function RouteMapCard({ connection, onOpenMap }: {
       <View style={styles.map}>
         {readyToMountMap && offlineBase !== undefined && (
           <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <RouteMap key={attempt} ref={mapRef} route={route} offlineBase={offlineBase}
-              paddingTop={24} paddingBottom={24}
+            <RouteMap
+              key={attempt}
+              ref={mapRef}
+              route={route}
+              offlineBase={offlineBase}
+              paddingTop={20}
+              paddingBottom={20}
+              paddingLeft={20}
+              paddingRight={20}
+              fitOnGeometry
+              maxZoom={16}
               onReady={() => {
                 geometry.current.forEach((coords, legId) => mapRef.current?.setGeometry(legId, coords));
                 mapRef.current?.fit();
               }}
               onTilesStatus={(ok) => setStatus(ok ? 'ready' : 'error')}
-              onError={() => setStatus('error')} />
+              onError={() => setStatus('error')}
+            />
           </View>
         )}
         {(!readyToMountMap || status !== 'ready') && (

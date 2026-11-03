@@ -134,34 +134,34 @@ internal fun placeIcon(icon: String?): Int = when (icon) {
  * Słownik musi pokrywać się z src/services/lineIdentity.ts (sprawdza check:widget-badge).
  */
 internal fun badgeBgResource(bg: String?): Int = when (bg?.trim()?.removePrefix("#")?.uppercase(Locale.ROOT)) {
-  "00897B" -> R.drawable.kw_badge_00897b
-  "1976D2" -> R.drawable.kw_badge_1976d2
-  "D32F2F" -> R.drawable.kw_badge_d32f2f
-  "7B1FA2" -> R.drawable.kw_badge_7b1fa2
-  "F57C00" -> R.drawable.kw_badge_f57c00
-  "303F9F" -> R.drawable.kw_badge_303f9f
-  "2E7D32" -> R.drawable.kw_badge_2e7d32
-  "C2185B" -> R.drawable.kw_badge_c2185b
-  "0097A7" -> R.drawable.kw_badge_0097a7
-  "E64A19" -> R.drawable.kw_badge_e64a19
-  "512DA8" -> R.drawable.kw_badge_512da8
-  "0288D1" -> R.drawable.kw_badge_0288d1
-  "558B2F" -> R.drawable.kw_badge_558b2f
-  "AD1457" -> R.drawable.kw_badge_ad1457
-  "00838F" -> R.drawable.kw_badge_00838f
-  "455A64" -> R.drawable.kw_badge_455a64
-  "5D4037" -> R.drawable.kw_badge_5d4037
-  "388E3C" -> R.drawable.kw_badge_388e3c
-  "0D47A1" -> R.drawable.kw_badge_0d47a1
-  "880E4F" -> R.drawable.kw_badge_880e4f
-  "00695C" -> R.drawable.kw_badge_00695c
-  "BF360C" -> R.drawable.kw_badge_bf360c
-  "311B92" -> R.drawable.kw_badge_311b92
-  "1A237E" -> R.drawable.kw_badge_1a237e
+  "71D8C2" -> R.drawable.kw_badge_71d8c2
+  "96CCFF" -> R.drawable.kw_badge_96ccff
+  "FFB3B6" -> R.drawable.kw_badge_ffb3b6
+  "EBB2FF" -> R.drawable.kw_badge_ebb2ff
+  "FFB95A" -> R.drawable.kw_badge_ffb95a
+  "BAC3FF" -> R.drawable.kw_badge_bac3ff
+  "97D77D" -> R.drawable.kw_badge_97d77d
+  "FFAEDE" -> R.drawable.kw_badge_ffaede
+  "6DD5E6" -> R.drawable.kw_badge_6dd5e6
+  "FFB596" -> R.drawable.kw_badge_ffb596
+  "CBBEFF" -> R.drawable.kw_badge_cbbeff
+  "87CFFA" -> R.drawable.kw_badge_87cffa
+  "CECC50" -> R.drawable.kw_badge_cecc50
+  "FCABF7" -> R.drawable.kw_badge_fcabf7
+  "79D6D3" -> R.drawable.kw_badge_79d6d3
+  "AFCBD5" -> R.drawable.kw_badge_afcbd5
+  "F6BA8C" -> R.drawable.kw_badge_f6ba8c
+  "7ADA9E" -> R.drawable.kw_badge_7ada9e
+  "ACC7FF" -> R.drawable.kw_badge_acc7ff
+  "FFB1C5" -> R.drawable.kw_badge_ffb1c5
+  "98D3B9" -> R.drawable.kw_badge_98d3b9
+  "FFB4A7" -> R.drawable.kw_badge_ffb4a7
+  "DAB9FF" -> R.drawable.kw_badge_dab9ff
+  "ABCAE5" -> R.drawable.kw_badge_abcae5
   "FFB957" -> R.drawable.kw_badge_train
   "A5CCE8" -> R.drawable.kw_badge_cable
-  "0000BB" -> R.drawable.kw_badge_m1
-  "BB0000" -> R.drawable.kw_badge_m2
+  "A8C7FA" -> R.drawable.kw_badge_m1
+  "FFB4AB" -> R.drawable.kw_badge_m2
   else -> R.drawable.kw_badge_container
 }
 

@@ -146,9 +146,9 @@ describe('Metro M1/M2: tryb i kolory');
   expect('138 to dalej autobus', inferTransitMode(undefined, '138', 'warszawa'), 'bus');
   expect('M1 poza Warszawą bez zgadywania', inferTransitMode(undefined, 'M1', 'wroclaw'), 'bus');
   const m1 = getLineColors('M1', 'subway', 'warszawa');
-  expect('M1 niebieskie jak w feedzie', m1.bg, '#0000BB');
-  expect('M1 biały tekst (kontrast)', m1.fg, '#FFFFFF');
-  expect('M2 czerwone jak w feedzie', getLineColors('M2', 'subway', 'warszawa').bg, '#BB0000');
+  expect('M1 błękit z palety M3 Tone 80', m1.bg, '#A8C7FA');
+  expect('M1 ciemny tekst (kontrast)', m1.fg, '#000000');
+  expect('M2 koral z palety M3 Tone 80', getLineColors('M2', 'subway', 'warszawa').bg, '#FFB4AB');
 }
 
 console.log(`\n${'='.repeat(52)}`);
