@@ -502,6 +502,9 @@ function rankToLivePosition(
  * Gdy przekazany, wymusza ścisłą monotoniczność wzdłuż trasy (nigdy nie cofa
  * postępu, nie odznacza zaliczonych przystanków, ani nie powoduje znikania markera
  * przy chwilowym szumie GPS lub opuszczeniu pojedynczego zapytania API).
+ * `prevSource` mówi, skąd wziął się poprzedni ranking: świeży pomiar live
+ * zawsze prostuje szacunek zegarowy. Po pauzie w tle estymata potrafi
+ * wystrzelić na koniec trasy i zablokować powrót markera na zawsze.
  */
 export function locateLiveStopPosition(
   stops: LegStop[],
@@ -510,6 +513,7 @@ export function locateLiveStopPosition(
   location: CurrentLocation | null,
   now = Date.now(),
   prevRank?: number,
+  prevSource?: LiveStopPosition['source'],
 ): LiveStopPosition | null {
   if (
     stops.length < 2 ||
@@ -526,10 +530,17 @@ export function locateLiveStopPosition(
     rawRank = 2 * raw.stopIndex + (raw.phase === 'departed' ? 1 : 0);
   }
 
-  // Wymuszenie monotoniczności, jeśli podano poprzedni ranking
+  // Wymuszenie monotoniczności, jeśli podano poprzedni ranking.
+  // Świeży pomiar live prostuje szacunek zegarowy: po wznowieniu z tła
+  // estymata leci na koniec trasy, a pojazd stoi w połowie. Bez tego
+  // wyjątku marker już nigdy nie wracał na właściwe miejsce.
   if (prevRank != null && prevRank >= 0) {
     if (raw == null || rawRank < prevRank) {
-      return rankToLivePosition(prevRank, stops, leg, raw?.source ?? 'vehicle');
+      const liveFixesEstimate =
+        raw != null && raw.source !== 'estimate' && prevSource === 'estimate';
+      if (!liveFixesEstimate) {
+        return rankToLivePosition(prevRank, stops, leg, raw?.source ?? prevSource ?? 'vehicle');
+      }
     }
   }
 
