@@ -1286,6 +1286,10 @@ export const de: Strings = {
     modeTrolley: 'Oberleitungsbus',
     modeCable: 'Seilbahn',
     modeVehicle: 'Fahrzeug',
+    currentLocation: (stop: string) => `Aktueller Standort: ${stop}`,
+    liveTracking: 'Live-Verfolgung',
+    transfer: 'Umstieg',
+    transferMinutes: (min: number) => `Umstieg · ~${min} Min.`,
     nearStop: (mode: string, stop: string) => `${mode} nahe Haltestelle: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
