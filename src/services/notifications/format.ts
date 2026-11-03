@@ -48,16 +48,26 @@ const DAY_MS = DAY_SEC * 1000;
  * ma być "3 minuty temu", a nie ETA za 24 godziny.
  */
 export function toAbsoluteMs(sec: number, now: Date = new Date()): number {
-  const midnight = new Date(now);
-  midnight.setHours(0, 0, 0, 0);
-  const base = midnight.getTime() + Math.round(sec) * 1000;
+  const s = Math.round(sec);
+  const dayShift = Math.floor(s / DAY_SEC);
+  const offsetMs = (s - dayShift * DAY_SEC) * 1000;
+  const base = serviceDayStartMs(now, dayShift) + offsetMs;
   // Bez tego jutrzejszy kurs (sec >= 86400) po południu wracał jako dzisiejszy:
   // diff > 12h cofał go o dobę i tripMonitor widział "już dotarłeś".
   if (Math.abs(sec) >= DAY_SEC) return base;
   const diff = base - now.getTime();
-  if (diff < -DAY_MS / 2) return base + DAY_MS;
-  if (diff > DAY_MS / 2) return base - DAY_MS;
+  if (diff < -DAY_MS / 2) return serviceDayStartMs(now, dayShift + 1) + offsetMs;
+  if (diff > DAY_MS / 2) return serviceDayStartMs(now, dayShift - 1) + offsetMs;
   return base;
+}
+
+/**
+ * Początek doby GTFS: południe minus 12 h, nie północ. W dniu zmiany czasu
+ * doba ma 23 albo 25 h i od północy wszystkie godziny wychodziły o 1 h obok.
+ */
+function serviceDayStartMs(now: Date, dayShift: number): number {
+  const noon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayShift, 12, 0, 0, 0);
+  return noon.getTime() - DAY_MS / 2;
 }
 
 export function clamp01(v: number): number {
