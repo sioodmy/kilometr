@@ -3,7 +3,7 @@
  * WidgetParts.kt mapuje hex -> shape res/, więc każda zmiana palety
  * w lineIdentity.ts wymaga dedykowanego drawabla. Skrypt pilnuje obu stron.
  */
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import {
   TRANSIT_PALETTE,
   TRAIN_BADGE_BG,
@@ -122,6 +122,27 @@ const semantic: Record<string, string> = {
     src.includes('context.getColor(R.color.kw_on_primary_container)') &&
     src.includes('ColorUtils.calculateContrast');
   check('lineBadge chroni kontrast (kw_on_primary_container + ColorUtils)', containerContrastSafe);
+}
+
+// 7. Referencje @drawable/kw_* w layoutach widgetu wskazują istniejące drawables.
+{
+  const LAYOUT_DIR = 'modules/kilometr-widgets/android/src/main/res/layout';
+  const layoutFiles = readdirSync(LAYOUT_DIR).filter((f) => f.endsWith('.xml'));
+  const missingDrawables: string[] = [];
+  for (const lf of layoutFiles) {
+    const content = readFileSync(`${LAYOUT_DIR}/${lf}`, 'utf8');
+    for (const m of content.matchAll(/@drawable\/(kw_\w+)/g)) {
+      const drawableName = m[1];
+      if (!existsSync(`${DRAWABLE_DIR}/${drawableName}.xml`)) {
+        missingDrawables.push(`${lf}: @drawable/${drawableName}`);
+      }
+    }
+  }
+  check(
+    'Wszystkie @drawable/kw_* w layoutach widgetu istnieją',
+    missingDrawables.length === 0,
+    missingDrawables.join(', '),
+  );
 }
 
 console.log('────────────────────────────────────────────────────────────');
