@@ -43,6 +43,25 @@ function formatStreet(street) {
   return `na ul. ${s}`;
 }
 
+const FAMOUS_CHAINS_REGEX =
+  /^(?:żabka|biedronka|lidl|kaufland|netto|dino|carrefour|auchan|rossmann|kfc|mcdonald'?s|subway|burger king|orlen|bp|shell|circle k|moya|mol|amic|castorama|leroy merlin|ikea|obi|decathlon|media markt|empik|hebe|pepco|action|dealz|duży ben|aldi|bricomarché|intermarché|e\.leclerc|leclerc|jysk|ccc|deichmann|media expert|rtv euro agd|ch posnania|posnania|avenida|stary browar|galeria kazimierz|galeria krakowska|sukiennice|wawel|arkadia|westfield arkadia|złote tarasy|wroclavia|renoma|magnolia park|silesia city center|spodek|pałac kultury|teatr capitol|dworzec centralny|dworzec zachodni|dworzec główny)\b/i;
+
+const HAS_EXPLICIT_DESCRIPTOR_REGEX =
+  /^(?:apteka|aptek[aię]|pizzeria|pizzeri[aię]|kebab|burger|restauracja|restauracj[aię]|kawiarnia|kawiarn[aię]|cukiernia|cukiern[aię]|piekarnia|piekarn[aię]|bar|baru|pub|pubu|bistro|salon|kwiaciarnia|kwiaciarn[aię]|sklep|delikatesy|hotel|hostel|pensjonat|kościół|kościoł[au]|cerkiew|cerkwi|teatr|teatru|opera|opery|filharmonia|filharmonii|kino|kina|szpital|szpitala|przychodnia|przychodni|klinika|kliniki|gabinet|dworzec|dworca|stacja|stacji|uczelnia|uczelni|uniwersytet|politechnika|wydział|liceum|szkoła|szkoły|przedszkole|galeria|galerii|centrum|park|parku|ogród|ogrodu|most|mostu|wiadukt|wiaduktu|estakada|estakady|rondo|ronda|biurowiec|biurowca|wieżowiec|wieżowca|warsztat|serwis|muzeum|biblioteka|biblioteki|stadion|hala|hali|poczta|poczty|bank|banku|targowisko|bazar|myjnia|dom studencki|akademik|cmentarz|cmentarza)\b/i;
+
+function quoteName(n) {
+  if (!n) return '';
+  const trimmed = n.trim();
+  if (
+    (trimmed.startsWith('„') && trimmed.endsWith('”')) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed;
+  }
+  return `„${trimmed}”`;
+}
+
 function categorizeLandmark(el) {
   const t = el.tags || {};
   if (t.public_transport || t.highway || t.railway) return null;
@@ -51,9 +70,7 @@ function categorizeLandmark(el) {
   if (!name && !t.leisure && !t.cuisine && !t.bridge) return null;
   if (
     name &&
-    /^(Wrocław|Warszawa|Katowice|Gliwice|Sosnowiec|Zabrze|Bytom|Kraków)\s+\d+$/i.test(
-      name,
-    )
+    /^(Wrocław|Warszawa|Katowice|Gliwice|Sosnowiec|Zabrze|Bytom|Kraków)\s+\d+$/i.test(name)
   )
     return null;
 
@@ -64,14 +81,13 @@ function categorizeLandmark(el) {
     );
 
   let phrase = '';
+
   if (t.leisure === 'park' || (name && /park\b/i.test(name))) {
-    phrase = name ? `po stronie ${name}` : 'przy parku';
-  } else if (t.cuisine === 'kebab' || (name && /kebab/i.test(name))) {
-    phrase = name ? `obok ${name}` : 'obok lokalu z kebabem';
-  } else if (t.cuisine === 'burger' || (name && /burger/i.test(name))) {
-    phrase = name ? `obok ${name}` : 'obok lokalu z burgerami';
-  } else if (t.cuisine === 'pizza' || (name && /pizza|pizzeria/i.test(name))) {
-    phrase = name ? `obok ${name}` : 'obok pizzerii';
+    phrase = name
+      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
+        ? `po stronie ${name}`
+        : `po stronie parku ${quoteName(name)}`
+      : 'przy parku';
   } else if (
     t.amenity === 'fuel' ||
     t.brand === 'Orlen' ||
@@ -93,23 +109,244 @@ function categorizeLandmark(el) {
     phrase = 'przy fosie miejskiej';
   } else if (name && /szpital/i.test(name)) {
     phrase = `przed wejściem do szpitala (${name})`;
-  } else if (name && /kościół|katedra|bazylika/i.test(name)) {
+  } else if (name && /kościół|katedra|bazylika|cerkiew/i.test(name)) {
     phrase = `obok ${name}`;
-  } else if (
-    t.amenity === 'theatre' ||
-    (name && /teatr|opera|filharmonia/i.test(name))
-  ) {
-    phrase = `obok ${name}`;
+  } else if (t.amenity === 'theatre' || (name && /teatr|opera|filharmonia/i.test(name))) {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok teatru ${quoteName(name)}`;
+  } else if (t.amenity === 'cinema' || (name && /kino\b/i.test(name))) {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok kina ${quoteName(name)}`;
   } else if (t.amenity === 'pharmacy' || (name && /apteka/i.test(name))) {
-    phrase = `obok apteki ${name ? name.replace(/^apteka\s+/i, '') : ''}`.trim();
-  } else if (
-    name &&
-    /żabka|biedronka|lidl|kaufland|netto|dino|carrefour|auchan|rossmann|delikatesy/i.test(
-      name,
-    )
-  ) {
-    phrase = `obok ${name}`;
-  } else if (name) {
+    phrase = name
+      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
+        ? `obok ${name}`
+        : `obok apteki ${quoteName(name)}`
+      : 'obok apteki';
+  } else if (t.amenity === 'restaurant') {
+    phrase =
+      FAMOUS_CHAINS_REGEX.test(name || '') || HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok restauracji ${quoteName(name)}`;
+  } else if (t.amenity === 'cafe') {
+    phrase =
+      FAMOUS_CHAINS_REGEX.test(name || '') || HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok kawiarni ${quoteName(name)}`;
+  } else if (t.cuisine === 'kebab' || (name && /kebab/i.test(name))) {
+    phrase = name
+      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
+        ? `obok ${name}`
+        : `obok lokalu z kebabem ${quoteName(name)}`
+      : 'obok lokalu z kebabem';
+  } else if (t.cuisine === 'burger' || (name && /burger/i.test(name))) {
+    phrase = name
+      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
+        ? `obok ${name}`
+        : `obok burgerowni ${quoteName(name)}`
+      : 'obok lokalu z burgerami';
+  } else if (t.cuisine === 'pizza' || (name && /pizza|pizzeria/i.test(name))) {
+    phrase = name
+      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
+        ? `obok ${name}`
+        : `obok pizzerii ${quoteName(name)}`
+      : 'obok pizzerii';
+  } else if (t.amenity === 'fast_food') {
+    if (FAMOUS_CHAINS_REGEX.test(name || '') || HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')) {
+      phrase = `obok ${name}`;
+    } else if (/asian|vietnamese|chinese|thai|sushi/i.test(t.cuisine || '')) {
+      phrase = `obok baru azjatyckiego ${quoteName(name)}`;
+    } else {
+      phrase = `obok lokalu gastronomicznego ${quoteName(name)}`;
+    }
+  } else if (t.amenity === 'bar' || t.amenity === 'pub') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok baru ${quoteName(name)}`;
+  } else if (t.amenity === 'ice_cream') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok lodziarni ${quoteName(name)}`;
+  } else if (t.amenity === 'bakery') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok piekarni ${quoteName(name)}`;
+  } else if (t.amenity === 'dentist') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok gabinetu stomatologicznego ${quoteName(name)}`;
+  } else if (t.amenity === 'doctors' || t.amenity === 'clinic') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok przychodni ${quoteName(name)}`;
+  } else if (t.amenity === 'veterinary') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok lecznicy weterynaryjnej ${quoteName(name)}`;
+  } else if (t.amenity === 'bank') {
+    phrase = `obok oddziału banku ${name.replace(/^bank\s+/i, '')}`;
+  } else if (t.amenity === 'post_office') {
+    phrase = `obok placówki pocztowej (${name})`;
+  } else if (t.amenity === 'place_of_worship') {
+    phrase = `obok kościoła (${name})`;
+  } else if (t.amenity === 'library') {
+    phrase = `obok biblioteki (${name})`;
+  } else if (t.shop) {
+    if (t.shop === 'convenience' || t.shop === 'grocery' || t.shop === 'general') {
+      phrase =
+        HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '') || FAMOUS_CHAINS_REGEX.test(name || '')
+          ? `obok ${name}`
+          : `obok sklepu spożywczego ${quoteName(name)}`;
+    } else if (t.shop === 'supermarket') {
+      phrase =
+        HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '') || FAMOUS_CHAINS_REGEX.test(name || '')
+          ? `obok ${name}`
+          : `obok supermarketu ${quoteName(name)}`;
+    } else if (t.shop === 'bakery') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok piekarni ${quoteName(name)}`;
+    } else if (t.shop === 'confectionery' || t.shop === 'pastry') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok cukierni ${quoteName(name)}`;
+    } else if (t.shop === 'hairdresser') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok salonu fryzjerskiego ${quoteName(name)}`;
+    } else if (t.shop === 'beauty') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok salonu urody ${quoteName(name)}`;
+    } else if (t.shop === 'florist') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok kwiaciarni ${quoteName(name)}`;
+    } else if (t.shop === 'butcher') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu mięsnego ${quoteName(name)}`;
+    } else if (t.shop === 'greengrocer') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok warzywniaka ${quoteName(name)}`;
+    } else if (t.shop === 'clothes' || t.shop === 'fashion' || t.shop === 'boutique') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu odzieżowego ${quoteName(name)}`;
+    } else if (t.shop === 'shoes') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu obuwniczego ${quoteName(name)}`;
+    } else if (t.shop === 'car_repair' || t.shop === 'tyres' || t.shop === 'car_parts') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok warsztatu samochodowego ${quoteName(name)}`;
+    } else if (t.shop === 'books') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok księgarni ${quoteName(name)}`;
+    } else if (t.shop === 'stationery') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu papierniczego ${quoteName(name)}`;
+    } else if (t.shop === 'jewelry') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok salonu jubilerskiego ${quoteName(name)}`;
+    } else if (t.shop === 'kiosk' || t.shop === 'newsagent') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok kiosku ${quoteName(name)}`;
+    } else if (t.shop === 'optician') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok salonu optycznego ${quoteName(name)}`;
+    } else if (t.shop === 'furniture') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok salonu meblowego ${quoteName(name)}`;
+    } else if (t.shop === 'hardware' || t.shop === 'doityourself') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu budowlanego ${quoteName(name)}`;
+    } else if (t.shop === 'chemist') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok drogerii ${quoteName(name)}`;
+    } else if (t.shop === 'alcohol' || t.shop === 'beverages') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu z alkoholami ${quoteName(name)}`;
+    } else if (t.shop === 'electronics') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu z elektroniką ${quoteName(name)}`;
+    } else if (t.shop === 'bicycle') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu rowerowego ${quoteName(name)}`;
+    } else if (t.shop === 'sports') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu sportowego ${quoteName(name)}`;
+    } else if (t.shop === 'toys') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu z zabawkami ${quoteName(name)}`;
+    } else if (t.shop === 'pet') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu zoologicznego ${quoteName(name)}`;
+    } else if (t.shop === 'funeral_directors') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok zakładu pogrzebowego ${quoteName(name)}`;
+    } else if (t.shop === 'antiques') {
+      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+        ? `obok ${name}`
+        : `obok sklepu ze starociami ${quoteName(name)}`;
+    } else {
+      phrase =
+        HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '') || FAMOUS_CHAINS_REGEX.test(name || '')
+          ? `obok ${name}`
+          : `obok sklepu ${quoteName(name)}`;
+    }
+  } else if (t.craft) {
+    if (t.craft === 'photographer') {
+      phrase = `obok studia fotograficznego ${quoteName(name)}`;
+    } else if (t.craft === 'tailor') {
+      phrase = `obok pracowni krawieckiej ${quoteName(name)}`;
+    } else if (t.craft === 'shoemaker') {
+      phrase = `obok zakładu szewskiego ${quoteName(name)}`;
+    } else {
+      phrase = `obok punktu usługowego ${quoteName(name)}`;
+    }
+  } else if (t.tourism === 'hotel') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok hotelu ${quoteName(name)}`;
+  } else if (t.tourism === 'hostel') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok hostelu ${quoteName(name)}`;
+  } else if (t.tourism === 'museum') {
+    phrase = `obok muzeum (${name})`;
+  } else if (t.office) {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok biura ${quoteName(name)}`;
+  } else if (t.building === 'commercial' || t.building === 'retail') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok budynku usługowego ${quoteName(name)}`;
+  } else if (t.building === 'office') {
+    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
+      ? `obok ${name}`
+      : `obok biurowca ${quoteName(name)}`;
+  } else if (name && (FAMOUS_CHAINS_REGEX.test(name) || HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name))) {
     phrase = `obok ${name}`;
   }
 
@@ -134,14 +371,8 @@ async function processCity(city) {
   console.log(`[i] Generowanie grounded stop hints dla: ${city.toUpperCase()}`);
   console.log(`======================================================`);
 
-  const OSM_CACHE = path.join(
-    ROOT_DIR,
-    `cloudflare/.cache/${city}-osm-elements.json`,
-  );
-  const OUTPUT_FILE = path.join(
-    ROOT_DIR,
-    `cloudflare/data/stop-hints-${city}.json`,
-  );
+  const OSM_CACHE = path.join(ROOT_DIR, `cloudflare/.cache/${city}-osm-elements.json`);
+  const OUTPUT_FILE = path.join(ROOT_DIR, `cloudflare/data/stop-hints-${city}.json`);
 
   let zipFiles = [];
   if (city === 'krakow') {
@@ -304,9 +535,7 @@ async function processCity(city) {
     return best ? { ...best, dist: bestDist } : null;
   }
 
-  console.log(
-    `[✓] Zaindeksowano ${landmarks.length} fizycznych punktów orientacyjnych OSM.`,
-  );
+  console.log(`[✓] Zaindeksowano ${landmarks.length} fizycznych punktów orientacyjnych OSM.`);
 
   console.log('[3/4] Generowanie zakotwiczonych wskazówek dla słupków...');
   const stopsOutput = {};
@@ -314,137 +543,81 @@ async function processCity(city) {
   let SPECIFIC_POLE_HINTS = {};
   if (city === 'wroclaw') {
     SPECIFIC_POLE_HINTS = {
-      20820:
-        'Peron 1 • Wyspa centralna Ronda Reagana od strony Pasażu Grunwaldzkiego.',
-      20823:
-        'Peron 2 • Wyspa centralna Ronda Reagana od strony Pasażu Grunwaldzkiego.',
-      20824:
-        'Peron 3 • Wyspa centralna Ronda Reagana od strony Politechniki.',
-      20815:
-        'Peron 4 • Wyspa centralna Ronda Reagana od strony Politechniki.',
-      20855:
-        'Słupek na ul. Curie-Skłodowskiej przed wjazdem na rondo obok Pasażu Grunwaldzkiego.',
-      20816:
-        'Słupek na ul. Curie-Skłodowskiej za zjazdem z ronda obok Uniwersytetu Medycznego.',
+      20820: 'Peron 1 • Wyspa centralna Ronda Reagana od strony Pasażu Grunwaldzkiego.',
+      20823: 'Peron 2 • Wyspa centralna Ronda Reagana od strony Pasażu Grunwaldzkiego.',
+      20824: 'Peron 3 • Wyspa centralna Ronda Reagana od strony Politechniki.',
+      20815: 'Peron 4 • Wyspa centralna Ronda Reagana od strony Politechniki.',
+      20855: 'Słupek na ul. Curie-Skłodowskiej przed wjazdem na rondo obok Pasażu Grunwaldzkiego.',
+      20816: 'Słupek na ul. Curie-Skłodowskiej za zjazdem z ronda obok Uniwersytetu Medycznego.',
       20916:
         'Zatoka autobusowa na pl. Grunwaldzkim przed głównym wejściem do Pasażu Grunwaldzkiego.',
-      20915:
-        'Zatoka autobusowa na pl. Grunwaldzkim naprzeciwko Pasażu Grunwaldzkiego.',
-      10101:
-        'Peron 1 • Wyspa tramwajowa przed frontem dworca PKP w stronę Arkad.',
-      10102:
-        'Peron 2 • Wyspa tramwajowa na ul. Piłsudskiego naprzeciwko frontu dworca PKP.',
-      10103:
-        'Słupek autobusowy na ul. Peronowej bezpośrednio przed wejściem na dworzec PKP.',
-      10201:
-        'Przystanek na ul. Suchej przy wejściu do galerii Wroclavia.',
-      10202:
-        'Przystanek na ul. Suchej naprzeciwko wejścia do dworca PKP.',
-      10501:
-        'Dolny peron 1 w wykopie pod pl. Dominikańskim w stronę mostu Grunwaldzkiego.',
-      10502:
-        'Dolny peron 2 w wykopie pod pl. Dominikańskim w stronę Rynku i Dworca Głównego.',
+      20915: 'Zatoka autobusowa na pl. Grunwaldzkim naprzeciwko Pasażu Grunwaldzkiego.',
+      10101: 'Peron 1 • Wyspa tramwajowa przed frontem dworca PKP w stronę Arkad.',
+      10102: 'Peron 2 • Wyspa tramwajowa na ul. Piłsudskiego naprzeciwko frontu dworca PKP.',
+      10103: 'Słupek autobusowy na ul. Peronowej bezpośrednio przed wejściem na dworzec PKP.',
+      10201: 'Przystanek na ul. Suchej przy wejściu do galerii Wroclavia.',
+      10202: 'Przystanek na ul. Suchej naprzeciwko wejścia do dworca PKP.',
+      10501: 'Dolny peron 1 w wykopie pod pl. Dominikańskim w stronę mostu Grunwaldzkiego.',
+      10502: 'Dolny peron 2 w wykopie pod pl. Dominikańskim w stronę Rynku i Dworca Głównego.',
       10531: 'Górny peron na poziomie ulicy przy pl. Dominikańskim.',
-      10532:
-        'Górny peron na poziomie ulicy przy wejściu do Galerii Dominikańskiej.',
-      10511:
-        'Zatoka autobusowa przy fosie miejskiej przed Galerią Dominikańską.',
-      10521:
-        'Zatoka autobusowa na ul. Kazimierza Wielkiego przy wyjściu z Galerii Dominikańskiej.',
+      10532: 'Górny peron na poziomie ulicy przy wejściu do Galerii Dominikańskiej.',
+      10511: 'Zatoka autobusowa przy fosie miejskiej przed Galerią Dominikańską.',
+      10521: 'Zatoka autobusowa na ul. Kazimierza Wielkiego przy wyjściu z Galerii Dominikańskiej.',
     };
   } else if (city === 'warszawa') {
     SPECIFIC_POLE_HINTS = {
-      700201:
-        'Słupek 01 • Al. Jerozolimskie, wyspa tramwajowa naprzeciwko CH Złote Tarasy.',
+      700201: 'Słupek 01 • Al. Jerozolimskie, wyspa tramwajowa naprzeciwko CH Złote Tarasy.',
       700202:
         'Słupek 02 • Al. Jerozolimskie, wyspa tramwajowa naprzeciwko wejścia do Dworca Centralnego.',
-      700203:
-        'Słupek 03 • al. Jana Pawła II przed wejściem do Dworca Centralnego.',
-      700204:
-        'Słupek 04 • al. Jana Pawła II naprzeciwko wejścia do Dworca Centralnego.',
-      700205:
-        'Słupek 05 • Al. Jerozolimskie pod halą główną dworca kolejowego.',
+      700203: 'Słupek 03 • al. Jana Pawła II przed wejściem do Dworca Centralnego.',
+      700204: 'Słupek 04 • al. Jana Pawła II naprzeciwko wejścia do Dworca Centralnego.',
+      700205: 'Słupek 05 • Al. Jerozolimskie pod halą główną dworca kolejowego.',
       700206: 'Słupek 06 • Al. Jerozolimskie pod halą główną dworca.',
-      700207:
-        'Słupek 07 • Al. Jerozolimskie w stronę Centrum naprzeciwko CH Złote Tarasy.',
-      700208:
-        'Słupek 08 • Al. Jerozolimskie w stronę pl. Zawiszy przed Dworcem Centralnym.',
+      700207: 'Słupek 07 • Al. Jerozolimskie w stronę Centrum naprzeciwko CH Złote Tarasy.',
+      700208: 'Słupek 08 • Al. Jerozolimskie w stronę pl. Zawiszy przed Dworcem Centralnym.',
       700209: 'Słupek 09 • al. Jana Pawła II obok CH Złote Tarasy.',
       700210: 'Słupek 10 • al. Jana Pawła II obok Dworca Centralnego.',
-      700211:
-        'Słupek 11 • ul. Emilii Plater naprzeciwko Pałacu Kultury i Nauki.',
-      700212:
-        'Słupek 12 • ul. Emilii Plater przy wejściu do CH Złote Tarasy.',
-      700216:
-        'Słupek 16 • ul. Emilii Plater przy Pałacu Kultury i Nauki.',
-      700221:
-        'Słupek 21 • Pętla autobusowa Dworzec Centralny, peron 1 przy CH Złote Tarasy.',
-      700223:
-        'Słupek 23 • Pętla autobusowa Dworzec Centralny, peron 2 obok CH Złote Tarasy.',
-      700225:
-        'Słupek 25 • Pętla autobusowa Dworzec Centralny, peron 3 obok CH Złote Tarasy.',
-      700227:
-        'Słupek 27 • Pętla autobusowa Dworzec Centralny, peron 4 pod zadaszeniem.',
-      700229:
-        'Słupek 29 • Pętla autobusowa Dworzec Centralny, peron 5 pod zadaszeniem.',
-      700272:
-        'Słupek 72 • ul. Emilii Plater naprzeciwko wejścia do Pałacu Kultury.',
+      700211: 'Słupek 11 • ul. Emilii Plater naprzeciwko Pałacu Kultury i Nauki.',
+      700212: 'Słupek 12 • ul. Emilii Plater przy wejściu do CH Złote Tarasy.',
+      700216: 'Słupek 16 • ul. Emilii Plater przy Pałacu Kultury i Nauki.',
+      700221: 'Słupek 21 • Pętla autobusowa Dworzec Centralny, peron 1 przy CH Złote Tarasy.',
+      700223: 'Słupek 23 • Pętla autobusowa Dworzec Centralny, peron 2 obok CH Złote Tarasy.',
+      700225: 'Słupek 25 • Pętla autobusowa Dworzec Centralny, peron 3 obok CH Złote Tarasy.',
+      700227: 'Słupek 27 • Pętla autobusowa Dworzec Centralny, peron 4 pod zadaszeniem.',
+      700229: 'Słupek 29 • Pętla autobusowa Dworzec Centralny, peron 5 pod zadaszeniem.',
+      700272: 'Słupek 72 • ul. Emilii Plater naprzeciwko wejścia do Pałacu Kultury.',
       605901:
         'Słupek 01 • Pętla tramwajowa Metro Młociny, peron wysiadkowy przed wejściem do metra.',
-      605902:
-        'Słupek 02 • Pętla tramwajowa Metro Młociny, peron odjazdowy przed stacją metra.',
+      605902: 'Słupek 02 • Pętla tramwajowa Metro Młociny, peron odjazdowy przed stacją metra.',
       605903:
         'Słupek 03 • Pętla tramwajowa Metro Młociny przy stacji metra w stronę mostu Skłodowskiej-Curie.',
-      605904:
-        'Słupek 04 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
-      605905:
-        'Słupek 05 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
-      605906:
-        'Słupek 06 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
-      605907:
-        'Słupek 07 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
-      605917:
-        'Słupek 17 • Zatoka autobusowa na ul. Kasprowicza obok wejścia do metra.',
-      605921:
-        'Słupek 21 • Dworzec autobusowy P+R Metro Młociny, peron 1 przy wyjściu z metra.',
-      605922:
-        'Słupek 22 • Dworzec autobusowy P+R Metro Młociny, peron 2 przy wyjściu z metra.',
-      605923:
-        'Słupek 23 • Dworzec autobusowy P+R Metro Młociny, peron 3 przy wyjściu z metra.',
-      605924:
-        'Słupek 24 • Dworzec autobusowy P+R Metro Młociny, peron 4 przy wyjściu z metra.',
-      605925:
-        'Słupek 25 • Dworzec autobusowy P+R Metro Młociny, peron 5 przy wyjściu z metra.',
-      605928:
-        'Słupek 28 • Dworzec autobusowy P+R Metro Młociny, peron wysiadkowy.',
-      700101:
-        'Słupek 01 • Peron tramwajowy na ul. Marszałkowskiej przed Błękitnym Wieżowcem.',
+      605904: 'Słupek 04 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
+      605905: 'Słupek 05 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
+      605906: 'Słupek 06 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
+      605907: 'Słupek 07 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
+      605917: 'Słupek 17 • Zatoka autobusowa na ul. Kasprowicza obok wejścia do metra.',
+      605921: 'Słupek 21 • Dworzec autobusowy P+R Metro Młociny, peron 1 przy wyjściu z metra.',
+      605922: 'Słupek 22 • Dworzec autobusowy P+R Metro Młociny, peron 2 przy wyjściu z metra.',
+      605923: 'Słupek 23 • Dworzec autobusowy P+R Metro Młociny, peron 3 przy wyjściu z metra.',
+      605924: 'Słupek 24 • Dworzec autobusowy P+R Metro Młociny, peron 4 przy wyjściu z metra.',
+      605925: 'Słupek 25 • Dworzec autobusowy P+R Metro Młociny, peron 5 przy wyjściu z metra.',
+      605928: 'Słupek 28 • Dworzec autobusowy P+R Metro Młociny, peron wysiadkowy.',
+      700101: 'Słupek 01 • Peron tramwajowy na ul. Marszałkowskiej przed Błękitnym Wieżowcem.',
       700102:
         'Słupek 02 • Peron tramwajowy na ul. Marszałkowskiej naprzeciwko Błękitnego Wieżowca.',
-      700103:
-        'Słupek 03 • Zatoka autobusowa na al. Solidarności przed Urzędem Miasta.',
-      700104:
-        'Słupek 04 • Zatoka autobusowa na al. Solidarności naprzeciwko Urzędu Miasta.',
-      700105:
-        'Słupek 05 • Zatoka autobusowa na ul. Marszałkowskiej przed Błękitnym Wieżowcem.',
+      700103: 'Słupek 03 • Zatoka autobusowa na al. Solidarności przed Urzędem Miasta.',
+      700104: 'Słupek 04 • Zatoka autobusowa na al. Solidarności naprzeciwko Urzędu Miasta.',
+      700105: 'Słupek 05 • Zatoka autobusowa na ul. Marszałkowskiej przed Błękitnym Wieżowcem.',
       700106:
         'Słupek 06 • Zatoka autobusowa na ul. Marszałkowskiej naprzeciwko Błękitnego Wieżowca.',
-      702601:
-        'Słupek 01 • Wyspa tramwajowa na ul. Prostej naprzeciwko wieżowca Warsaw Spire.',
-      702602:
-        'Słupek 02 • Wyspa tramwajowa na ul. Towarowej obok kompleksu The Warsaw Hub.',
-      702603:
-        'Słupek 03 • Wyspa tramwajowa na ul. Prostej obok wieżowca Skyliner.',
-      702604:
-        'Słupek 04 • Wyspa tramwajowa na ul. Towarowej obok kompleksu The Warsaw Hub.',
-      702605:
-        'Słupek 05 • Zatoka autobusowa na ul. Prostej przed Warsaw Spire.',
-      702606:
-        'Słupek 06 • Zatoka autobusowa na ul. Towarowej przed The Warsaw Hub.',
-      701701:
-        'Słupek 01 • Wyspa tramwajowa na al. Jana Pawła II obok wieżowca Rondo 1.',
-      701702:
-        'Słupek 02 • Wyspa tramwajowa na ul. Świętokrzyskiej obok wieżowca Rondo 1.',
+      702601: 'Słupek 01 • Wyspa tramwajowa na ul. Prostej naprzeciwko wieżowca Warsaw Spire.',
+      702602: 'Słupek 02 • Wyspa tramwajowa na ul. Towarowej obok kompleksu The Warsaw Hub.',
+      702603: 'Słupek 03 • Wyspa tramwajowa na ul. Prostej obok wieżowca Skyliner.',
+      702604: 'Słupek 04 • Wyspa tramwajowa na ul. Towarowej obok kompleksu The Warsaw Hub.',
+      702605: 'Słupek 05 • Zatoka autobusowa na ul. Prostej przed Warsaw Spire.',
+      702606: 'Słupek 06 • Zatoka autobusowa na ul. Towarowej przed The Warsaw Hub.',
+      701701: 'Słupek 01 • Wyspa tramwajowa na al. Jana Pawła II obok wieżowca Rondo 1.',
+      701702: 'Słupek 02 • Wyspa tramwajowa na ul. Świętokrzyskiej obok wieżowca Rondo 1.',
     };
   } else if (city === 'gzm') {
     SPECIFIC_POLE_HINTS = {
@@ -480,22 +653,17 @@ async function processCity(city) {
         'Stanowisko 09 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 9).',
       '2469011-00110':
         'Stanowisko 10 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 10).',
-      '2469011-00201t':
-        'Peron tramwajowy • ul. 3 Maja naprzeciwko Galerii Katowickiej.',
-      '2469011-00202t':
-        'Peron tramwajowy • ul. 3 Maja przed wejściem do Galerii Katowickiej.',
+      '2469011-00201t': 'Peron tramwajowy • ul. 3 Maja naprzeciwko Galerii Katowickiej.',
+      '2469011-00202t': 'Peron tramwajowy • ul. 3 Maja przed wejściem do Galerii Katowickiej.',
     };
   } else if (city === 'poznan') {
     SPECIFIC_POLE_HINTS = {
       // Poznań Główny / Dworzec Zachodni
-      'poznan-glowny73-wqjhw':
-        'Peron tramwajowy na Moście Dworcowym w stronę Ronda Kaponiera.',
-      'poznan-glowny73':
-        'Peron tramwajowy na Moście Dworcowym w stronę Ronda Kaponiera.',
+      'poznan-glowny73-wqjhw': 'Peron tramwajowy na Moście Dworcowym w stronę Ronda Kaponiera.',
+      'poznan-glowny73': 'Peron tramwajowy na Moście Dworcowym w stronę Ronda Kaponiera.',
       'poznan-glowny74-wqo4m':
         'Peron tramwajowy na Moście Dworcowym w stronę ul. Głogowskiej i Dębca.',
-      'poznan-glowny74':
-        'Peron tramwajowy na Moście Dworcowym w stronę ul. Głogowskiej i Dębca.',
+      'poznan-glowny74': 'Peron tramwajowy na Moście Dworcowym w stronę ul. Głogowskiej i Dębca.',
       'poznan-glowny41-wozxq':
         'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Os. Sobieskiego.',
       'poznan-glowny41':
@@ -514,12 +682,10 @@ async function processCity(city) {
         'Słupek 02 • Przystanek autobusowy na placu Dworcowym przed wejściem do galerii Avenida.',
       'poznan-glowny05-wpn2o':
         'Stanowisko 05 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
-      'poznan-glowny05':
-        'Stanowisko 05 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
+      'poznan-glowny05': 'Stanowisko 05 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
       'poznan-glowny06-wq0yg':
         'Stanowisko 06 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
-      'poznan-glowny06':
-        'Stanowisko 06 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
+      'poznan-glowny06': 'Stanowisko 06 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
       'dworzec-zachodni71-wgrmp':
         'Peron tramwajowy na ul. Głogowskiej przed wejściem do Dworca Zachodniego PKP w stronę centrum.',
       'dworzec-zachodni71':
@@ -532,10 +698,8 @@ async function processCity(city) {
         'Peron PST w wykopie przy Dworcu Zachodnim w stronę Dworca Głównego i Mostu Teatralnego.',
       'dworzec-zachodni41':
         'Peron PST w wykopie przy Dworcu Zachodnim w stronę Dworca Głównego i Mostu Teatralnego.',
-      'dworzec-zachodni42-wift7':
-        'Pętla PST przy Dworcu Zachodnim, peron dla wysiadających.',
-      'dworzec-zachodni42':
-        'Pętla PST przy Dworcu Zachodnim, peron dla wysiadających.',
+      'dworzec-zachodni42-wift7': 'Pętla PST przy Dworcu Zachodnim, peron dla wysiadających.',
+      'dworzec-zachodni42': 'Pętla PST przy Dworcu Zachodnim, peron dla wysiadających.',
       'dworzec-zachodni02-wi1x6':
         'Zatoka autobusowa na ul. Zachodniej przed wejściem do tunelu Dworca Zachodniego.',
       'dworzec-zachodni02':
@@ -546,10 +710,8 @@ async function processCity(city) {
         'Poziom -2 w wykopie PST, peron w stronę Mostu Teatralnego i Os. Sobieskiego.',
       'rondo-kaponiera45':
         'Poziom -2 w wykopie PST, peron w stronę Mostu Teatralnego i Os. Sobieskiego.',
-      'rondo-kaponiera46-wmfdq':
-        'Poziom -2 w wykopie PST, peron w stronę Dworca Zachodniego.',
-      'rondo-kaponiera46':
-        'Poziom -2 w wykopie PST, peron w stronę Dworca Zachodniego.',
+      'rondo-kaponiera46-wmfdq': 'Poziom -2 w wykopie PST, peron w stronę Dworca Zachodniego.',
+      'rondo-kaponiera46': 'Poziom -2 w wykopie PST, peron w stronę Dworca Zachodniego.',
       'rondo-kaponiera71-wliz8':
         'Poziom 0, peron tramwajowy na ul. Roosevelta obok hotelu Mercure w stronę Mostu Teatralnego.',
       'rondo-kaponiera71':
@@ -580,22 +742,17 @@ async function processCity(city) {
         'Słupek 05 • Zatoka autobusowa na ul. Roosevelta obok wejścia do Kaponiery.',
       'rondo-kaponiera06-wmomr':
         'Słupek 06 • Zatoka autobusowa na ul. Roosevelta obok wieżowca Bałtyk.',
-      'rondo-kaponiera06':
-        'Słupek 06 • Zatoka autobusowa na ul. Roosevelta obok wieżowca Bałtyk.',
+      'rondo-kaponiera06': 'Słupek 06 • Zatoka autobusowa na ul. Roosevelta obok wieżowca Bałtyk.',
 
       // Most Teatralny
       'most-teatralny44-wn2jy':
         'Dolny peron PST w wykopie pod wiaduktem w stronę Dworca Zachodniego.',
-      'most-teatralny44':
-        'Dolny peron PST w wykopie pod wiaduktem w stronę Dworca Zachodniego.',
-      'most-teatralny45-wocut':
-        'Dolny peron PST w wykopie pod wiaduktem w stronę Os. Sobieskiego.',
-      'most-teatralny45':
-        'Dolny peron PST w wykopie pod wiaduktem w stronę Os. Sobieskiego.',
+      'most-teatralny44': 'Dolny peron PST w wykopie pod wiaduktem w stronę Dworca Zachodniego.',
+      'most-teatralny45-wocut': 'Dolny peron PST w wykopie pod wiaduktem w stronę Os. Sobieskiego.',
+      'most-teatralny45': 'Dolny peron PST w wykopie pod wiaduktem w stronę Os. Sobieskiego.',
       'most-teatralny46-wnyyt':
         'Rampa wyjazdowa PST przy parku Wieniawskiego w stronę ul. Roosevelta.',
-      'most-teatralny46':
-        'Rampa wyjazdowa PST przy parku Wieniawskiego w stronę ul. Roosevelta.',
+      'most-teatralny46': 'Rampa wyjazdowa PST przy parku Wieniawskiego w stronę ul. Roosevelta.',
       'most-teatralny71-wmfec':
         'Peron tramwajowy na ul. Roosevelta przed Teatrem Nowym w stronę Ronda Kaponiera.',
       'most-teatralny71':
@@ -606,46 +763,34 @@ async function processCity(city) {
         'Peron tramwajowy na Moście Teatralnym w stronę Jeżyc i ul. Dąbrowskiego.',
       'most-teatralny73-wnubr':
         'Peron tramwajowy na ul. Fredry przed Teatrem Wielkim w stronę centrum.',
-      'most-teatralny73':
-        'Peron tramwajowy na ul. Fredry przed Teatrem Wielkim w stronę centrum.',
+      'most-teatralny73': 'Peron tramwajowy na ul. Fredry przed Teatrem Wielkim w stronę centrum.',
       'most-teatralny01-wnbt9':
         'Słupek 01 • Zatoka autobusowa na Moście Teatralnym w stronę centrum.',
-      'most-teatralny01':
-        'Słupek 01 • Zatoka autobusowa na Moście Teatralnym w stronę centrum.',
+      'most-teatralny01': 'Słupek 01 • Zatoka autobusowa na Moście Teatralnym w stronę centrum.',
       'most-teatralny02-wm1ic':
         'Słupek 02 • Zatoka autobusowa na Moście Teatralnym w stronę Jeżyc.',
-      'most-teatralny02':
-        'Słupek 02 • Zatoka autobusowa na Moście Teatralnym w stronę Jeżyc.',
+      'most-teatralny02': 'Słupek 02 • Zatoka autobusowa na Moście Teatralnym w stronę Jeżyc.',
 
       // Rondo Rataje
       'rondo-rataje71-xxd3e':
         'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Starołęki.',
-      'rondo-rataje71':
-        'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Starołęki.',
+      'rondo-rataje71': 'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Starołęki.',
       'rondo-rataje72-xxmcs':
         'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Ronda Śródka.',
-      'rondo-rataje72':
-        'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Ronda Śródka.',
-      'rondo-rataje73-xys1a':
-        'Peron tramwajowy na ul. Krzywoustego przed mostem Królowej Jadwigi.',
-      'rondo-rataje73':
-        'Peron tramwajowy na ul. Krzywoustego przed mostem Królowej Jadwigi.',
+      'rondo-rataje72': 'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Ronda Śródka.',
+      'rondo-rataje73-xys1a': 'Peron tramwajowy na ul. Krzywoustego przed mostem Królowej Jadwigi.',
+      'rondo-rataje73': 'Peron tramwajowy na ul. Krzywoustego przed mostem Królowej Jadwigi.',
       'rondo-rataje74-xz1an':
         'Peron tramwajowy na ul. Krzywoustego obok dworca Rondo Rataje w stronę Franowa.',
       'rondo-rataje74':
         'Peron tramwajowy na ul. Krzywoustego obok dworca Rondo Rataje w stronę Franowa.',
-      'rondo-rataje75-xwlbs':
-        'Peron tramwajowy przed wejściem do galerii Posnania.',
-      'rondo-rataje75':
-        'Peron tramwajowy przed wejściem do galerii Posnania.',
-      'rondo-rataje76-xw7fu':
-        'Peron tramwajowy obok dworca autobusowego Rondo Rataje.',
-      'rondo-rataje76':
-        'Peron tramwajowy obok dworca autobusowego Rondo Rataje.',
+      'rondo-rataje75-xwlbs': 'Peron tramwajowy przed wejściem do galerii Posnania.',
+      'rondo-rataje75': 'Peron tramwajowy przed wejściem do galerii Posnania.',
+      'rondo-rataje76-xw7fu': 'Peron tramwajowy obok dworca autobusowego Rondo Rataje.',
+      'rondo-rataje76': 'Peron tramwajowy obok dworca autobusowego Rondo Rataje.',
       'rondo-rataje06-xwul7':
         'Stanowisko 06 • Dworzec autobusowy Rondo Rataje obok galerii Posnania.',
-      'rondo-rataje06':
-        'Stanowisko 06 • Dworzec autobusowy Rondo Rataje obok galerii Posnania.',
+      'rondo-rataje06': 'Stanowisko 06 • Dworzec autobusowy Rondo Rataje obok galerii Posnania.',
 
       // Rondo Śródka
       'rondo-srodka43-y5q4v':
@@ -654,8 +799,7 @@ async function processCity(city) {
         'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Ronda Rataje.',
       'rondo-srodka44-y5ze7':
         'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Zawad.',
-      'rondo-srodka44':
-        'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Zawad.',
+      'rondo-srodka44': 'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Zawad.',
       'rondo-srodka45-y7s7n':
         'Peron tramwajowy na ul. Wyszyńskiego przed mostem Mieszka I w stronę Katedry.',
       'rondo-srodka45':
@@ -664,32 +808,21 @@ async function processCity(city) {
         'Peron tramwajowy na ul. Warszawskiej obok dworca Śródka w stronę Miłostowa.',
       'rondo-srodka46':
         'Peron tramwajowy na ul. Warszawskiej obok dworca Śródka w stronę Miłostowa.',
-      'rondo-srodka01-y7nkx':
-        'Stanowisko 01 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka01':
-        'Stanowisko 01 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka03-y7wul':
-        'Stanowisko 03 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka03':
-        'Stanowisko 03 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka04-y52zi':
-        'Stanowisko 04 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka04':
-        'Stanowisko 04 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka01-y7nkx': 'Stanowisko 01 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka01': 'Stanowisko 01 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka03-y7wul': 'Stanowisko 03 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka03': 'Stanowisko 03 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka04-y52zi': 'Stanowisko 04 • Dworzec autobusowy Rondo Śródka.',
+      'rondo-srodka04': 'Stanowisko 04 • Dworzec autobusowy Rondo Śródka.',
 
       // Os. Sobieskiego
-      'os-sobieskiego41-wscs0':
-        'Peron 1 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
-      'os-sobieskiego41':
-        'Peron 1 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
-      'os-sobieskiego42-wqxum':
-        'Peron 2 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
-      'os-sobieskiego42':
-        'Peron 2 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
+      'os-sobieskiego41-wscs0': 'Peron 1 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
+      'os-sobieskiego41': 'Peron 1 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
+      'os-sobieskiego42-wqxum': 'Peron 2 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
+      'os-sobieskiego42': 'Peron 2 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
       'os-sobieskiego01-wqjyl':
         'Stanowisko 01 • Dworzec autobusowy Os. Sobieskiego obok pętli PST.',
-      'os-sobieskiego01':
-        'Stanowisko 01 • Dworzec autobusowy Os. Sobieskiego obok pętli PST.',
+      'os-sobieskiego01': 'Stanowisko 01 • Dworzec autobusowy Os. Sobieskiego obok pętli PST.',
 
       // Rynek Jeżycki
       'rynek-jezycki71-walhm':
@@ -750,19 +883,16 @@ async function processCity(city) {
       // Pętle PKM
       'gorczyn-pkm41-vh0fq':
         'Peron odjazdowy tramwajów na pętli Górczyn PKM przed dworcem kolejowym.',
-      'gorczyn-pkm41':
-        'Peron odjazdowy tramwajów na pętli Górczyn PKM przed dworcem kolejowym.',
-      'debiec-pkm41-w9k5d':
-        'Peron odjazdowy tramwajów na pętli Dębiec PKM przed pętlą autobusową.',
-      'debiec-pkm41':
-        'Peron odjazdowy tramwajów na pętli Dębiec PKM przed pętlą autobusową.',
+      'gorczyn-pkm41': 'Peron odjazdowy tramwajów na pętli Górczyn PKM przed dworcem kolejowym.',
+      'debiec-pkm41-w9k5d': 'Peron odjazdowy tramwajów na pętli Dębiec PKM przed pętlą autobusową.',
+      'debiec-pkm41': 'Peron odjazdowy tramwajów na pętli Dębiec PKM przed pętlą autobusową.',
       'staroleka-pkm41-xa7k4':
         'Peron odjazdowy tramwajów na pętli Starołęka PKM przed dworcem kolejowym.',
       'staroleka-pkm41':
         'Peron odjazdowy tramwajów na pętli Starołęka PKM przed dworcem kolejowym.',
       'ogrody41-viy5n':
         'Peron odjazdowy tramwajów na pętli Ogrody przy pętli autobusowej na ul. Dąbrowskiego.',
-      'ogrody41':
+      ogrody41:
         'Peron odjazdowy tramwajów na pętli Ogrody przy pętli autobusowej na ul. Dąbrowskiego.',
     };
   } else if (city === 'krakow') {
@@ -793,29 +923,19 @@ async function processCity(city) {
         'Peron 1 • Peron tramwajowy na ul. Pawiej przed Galerią Krakowską w stronę Dworca Towarowego.',
       'KRK:T:stop_335_260829':
         'Peron 2 • Peron tramwajowy na ul. Pawiej przed Galerią Krakowską w stronę Teatru Słowackiego.',
-      '760-03':
-        'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
-      11977:
-        'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
-      'KRK:A:11977':
-        'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
-      '760-07':
-        'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      13714:
-        'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      'KRK:A:13714':
-        'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      '760-09':
-        'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      13718:
-        'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      'KRK:A:13718':
-        'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
+      '760-03': 'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
+      11977: 'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
+      'KRK:A:11977': 'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
+      '760-07': 'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
+      13714: 'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
+      'KRK:A:13714': 'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
+      '760-09': 'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
+      13718: 'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
+      'KRK:A:13718': 'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
       // Dworzec Główny Wschód (MDA)
       '461-01':
         'Stanowisko 01 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
-      8906:
-        'Stanowisko 01 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
+      8906: 'Stanowisko 01 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
       'KRK:A:8906':
         'Stanowisko 01 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
       '461-02':
@@ -878,32 +998,25 @@ async function processCity(city) {
         'Słupek 06 • Górny poziom ronda, zatoka autobusowa na al. Beliny-Prażmowskiego obok wieżowca Unity Centre.',
       '802-08':
         'Słupek 08 • Górny poziom ronda, zatoka autobusowa przy Uniwersytecie Ekonomicznym.',
-      11432:
-        'Słupek 08 • Górny poziom ronda, zatoka autobusowa przy Uniwersytecie Ekonomicznym.',
+      11432: 'Słupek 08 • Górny poziom ronda, zatoka autobusowa przy Uniwersytecie Ekonomicznym.',
       '802-09':
         'Słupek 09 • Górny poziom ronda, zatoka autobusowa na ul. Lubicz przed wejściem do Opery Krakowskiej.',
       11433:
         'Słupek 09 • Górny poziom ronda, zatoka autobusowa na ul. Lubicz przed wejściem do Opery Krakowskiej.',
       // Rondo Grzegórzeckie
-      '809-01':
-        'Peron 1 • Peron tramwajowy na al. Pokoju w stronę Dąbia i Nowej Huty.',
-      stop_230_36519:
-        'Peron 1 • Peron tramwajowy na al. Pokoju w stronę Dąbia i Nowej Huty.',
+      '809-01': 'Peron 1 • Peron tramwajowy na al. Pokoju w stronę Dąbia i Nowej Huty.',
+      stop_230_36519: 'Peron 1 • Peron tramwajowy na al. Pokoju w stronę Dąbia i Nowej Huty.',
       7905: 'Peron 1 • Peron tramwajowy na al. Pokoju w stronę Dąbia i Nowej Huty.',
-      '809-02':
-        'Peron 2 • Peron tramwajowy na ul. Grzegórzeckiej w stronę Hali Targowej.',
-      stop_230_36529:
-        'Peron 2 • Peron tramwajowy na ul. Grzegórzeckiej w stronę Hali Targowej.',
+      '809-02': 'Peron 2 • Peron tramwajowy na ul. Grzegórzeckiej w stronę Hali Targowej.',
+      stop_230_36529: 'Peron 2 • Peron tramwajowy na ul. Grzegórzeckiej w stronę Hali Targowej.',
       7907: 'Peron 2 • Peron tramwajowy na ul. Grzegórzeckiej w stronę Hali Targowej.',
       '809-03':
         'Peron 3 • Peron tramwajowy na al. Powstania Warszawskiego w stronę Ronda Mogilskiego.',
       stop_230_36539:
         'Peron 3 • Peron tramwajowy na al. Powstania Warszawskiego w stronę Ronda Mogilskiego.',
       7908: 'Peron 3 • Peron tramwajowy na al. Powstania Warszawskiego w stronę Ronda Mogilskiego.',
-      '809-04':
-        'Peron 4 • Peron tramwajowy na ul. Kotlarskiej w stronę mostu Kotlarskiego.',
-      stop_230_36549:
-        'Peron 4 • Peron tramwajowy na ul. Kotlarskiej w stronę mostu Kotlarskiego.',
+      '809-04': 'Peron 4 • Peron tramwajowy na ul. Kotlarskiej w stronę mostu Kotlarskiego.',
+      stop_230_36549: 'Peron 4 • Peron tramwajowy na ul. Kotlarskiej w stronę mostu Kotlarskiego.',
       8604: 'Peron 4 • Peron tramwajowy na ul. Kotlarskiej w stronę mostu Kotlarskiego.',
       // Rondo Grunwaldzkie (ICE Kraków)
       '501-01':
@@ -912,12 +1025,10 @@ async function processCity(city) {
         'Peron 1 • Peron tramwajowy na ul. Monte Cassino przed Centrum Kongresowym ICE Kraków.',
       13180:
         'Peron 1 • Peron tramwajowy na ul. Monte Cassino przed Centrum Kongresowym ICE Kraków.',
-      '501-02':
-        'Peron 2 • Peron tramwajowy na ul. Dietla w stronę mostu Grunwaldzkiego i Wawelu.',
+      '501-02': 'Peron 2 • Peron tramwajowy na ul. Dietla w stronę mostu Grunwaldzkiego i Wawelu.',
       stop_957_333829:
         'Peron 2 • Peron tramwajowy na ul. Dietla w stronę mostu Grunwaldzkiego i Wawelu.',
-      13179:
-        'Peron 2 • Peron tramwajowy na ul. Dietla w stronę mostu Grunwaldzkiego i Wawelu.',
+      13179: 'Peron 2 • Peron tramwajowy na ul. Dietla w stronę mostu Grunwaldzkiego i Wawelu.',
       '501-03':
         'Słupek 03 • Zatoka autobusowa na ul. Konopnickiej obok hotelu Park Inn w stronę mostu Dębnickiego.',
       13177:
@@ -935,24 +1046,16 @@ async function processCity(city) {
       13186:
         'Słupek 06 • Zatoka autobusowa na ul. Dietla przed mostem Grunwaldzkim w stronę Kazimierza.',
       // Plac Centralny im. R. Reagana
-      '105-01':
-        'Peron 1 • Peron tramwajowy na al. Jana Pawła II w stronę Ronda Czyżyńskiego.',
-      stop_12_19:
-        'Peron 1 • Peron tramwajowy na al. Jana Pawła II w stronę Ronda Czyżyńskiego.',
-      '105-02':
-        'Peron 2 • Peron tramwajowy na al. Solidarności w stronę Kombinatu.',
-      stop_12_20:
-        'Peron 2 • Peron tramwajowy na al. Solidarności w stronę Kombinatu.',
-      '105-03':
-        'Peron 3 • Peron tramwajowy na al. Andersa w stronę Ronda Kocmyrzowskiego.',
-      stop_12_21:
-        'Peron 3 • Peron tramwajowy na al. Andersa w stronę Ronda Kocmyrzowskiego.',
+      '105-01': 'Peron 1 • Peron tramwajowy na al. Jana Pawła II w stronę Ronda Czyżyńskiego.',
+      stop_12_19: 'Peron 1 • Peron tramwajowy na al. Jana Pawła II w stronę Ronda Czyżyńskiego.',
+      '105-02': 'Peron 2 • Peron tramwajowy na al. Solidarności w stronę Kombinatu.',
+      stop_12_20: 'Peron 2 • Peron tramwajowy na al. Solidarności w stronę Kombinatu.',
+      '105-03': 'Peron 3 • Peron tramwajowy na al. Andersa w stronę Ronda Kocmyrzowskiego.',
+      stop_12_21: 'Peron 3 • Peron tramwajowy na al. Andersa w stronę Ronda Kocmyrzowskiego.',
       '105-04': 'Peron 4 • Peron tramwajowy na Placu Centralnym w stronę Kopca Wandy.',
       stop_12_24: 'Peron 4 • Peron tramwajowy na Placu Centralnym w stronę Kopca Wandy.',
-      '105-05':
-        'Słupek 05 • Zatoka autobusowa na al. Solidarności obok Placu Centralnego.',
-      18296:
-        'Słupek 05 • Zatoka autobusowa na al. Solidarności obok Placu Centralnego.',
+      '105-05': 'Słupek 05 • Zatoka autobusowa na al. Solidarności obok Placu Centralnego.',
+      18296: 'Słupek 05 • Zatoka autobusowa na al. Solidarności obok Placu Centralnego.',
       '105-06':
         'Słupek 06 • Zatoka autobusowa na al. Jana Pawła II przed Placem Centralnym w stronę Czyżyn.',
       18314:
@@ -961,10 +1064,8 @@ async function processCity(city) {
         'Słupek 07 • Zatoka autobusowa na al. Jana Pawła II przy Placu Centralnym w stronę Nowego Kleparza.',
       18291:
         'Słupek 07 • Zatoka autobusowa na al. Jana Pawła II przy Placu Centralnym w stronę Nowego Kleparza.',
-      '105-09':
-        'Słupek 09 • Zatoka autobusowa na al. Andersa przy Nowohuckim Centrum Kultury.',
-      18297:
-        'Słupek 09 • Zatoka autobusowa na al. Andersa przy Nowohuckim Centrum Kultury.',
+      '105-09': 'Słupek 09 • Zatoka autobusowa na al. Andersa przy Nowohuckim Centrum Kultury.',
+      18297: 'Słupek 09 • Zatoka autobusowa na al. Andersa przy Nowohuckim Centrum Kultury.',
       // Nowy Kleparz
       '835-01':
         'Peron 1 • Peron tramwajowy na ul. Długiej obok Nowego Kleparza w stronę Starego Miasta.',
@@ -974,24 +1075,16 @@ async function processCity(city) {
         'Peron 2 • Peron tramwajowy na ul. Kamiennej przy pętli Nowy Kleparz w stronę Dworca Towarowego.',
       stop_187_7129:
         'Peron 2 • Peron tramwajowy na ul. Kamiennej przy pętli Nowy Kleparz w stronę Dworca Towarowego.',
-      '835-03':
-        'Stanowisko 03 • Pętla autobusowa Nowy Kleparz obok placu targowego.',
-      7432:
-        'Stanowisko 03 • Pętla autobusowa Nowy Kleparz obok placu targowego.',
-      '835-04':
-        'Stanowisko 04 • Pętla autobusowa Nowy Kleparz przy al. Słowackiego.',
-      7430:
-        'Stanowisko 04 • Pętla autobusowa Nowy Kleparz przy al. Słowackiego.',
-      '835-05':
-        'Stanowisko 05 • Pętla autobusowa Nowy Kleparz, peron 5.',
+      '835-03': 'Stanowisko 03 • Pętla autobusowa Nowy Kleparz obok placu targowego.',
+      7432: 'Stanowisko 03 • Pętla autobusowa Nowy Kleparz obok placu targowego.',
+      '835-04': 'Stanowisko 04 • Pętla autobusowa Nowy Kleparz przy al. Słowackiego.',
+      7430: 'Stanowisko 04 • Pętla autobusowa Nowy Kleparz przy al. Słowackiego.',
+      '835-05': 'Stanowisko 05 • Pętla autobusowa Nowy Kleparz, peron 5.',
       7407: 'Stanowisko 05 • Pętla autobusowa Nowy Kleparz, peron 5.',
-      '835-06':
-        'Stanowisko 06 • Pętla autobusowa Nowy Kleparz, peron 6.',
+      '835-06': 'Stanowisko 06 • Pętla autobusowa Nowy Kleparz, peron 6.',
       8389: 'Stanowisko 06 • Pętla autobusowa Nowy Kleparz, peron 6.',
-      '835-07':
-        'Stanowisko 07 • Pętla autobusowa Nowy Kleparz, peron 7.',
-      12457:
-        'Stanowisko 07 • Pętla autobusowa Nowy Kleparz, peron 7.',
+      '835-07': 'Stanowisko 07 • Pętla autobusowa Nowy Kleparz, peron 7.',
+      12457: 'Stanowisko 07 • Pętla autobusowa Nowy Kleparz, peron 7.',
     };
   }
 
@@ -1002,7 +1095,7 @@ async function processCity(city) {
   let skippedCount = 0;
 
   for (const stop of allStops) {
-    const key = (city === 'warszawa' || city === 'poznan') ? stop.id : stop.code || stop.id;
+    const key = city === 'warszawa' || city === 'poznan' ? stop.id : stop.code || stop.id;
     if (stopsOutput[key]) continue;
 
     const landmark = findNearbyLandmark(stop.lat, stop.lon);
@@ -1069,6 +1162,9 @@ async function processCity(city) {
     if (stop.id && stop.id !== key) {
       stopsOutput[stop.id] = sentence;
     }
+    if (stop.code && stop.code !== key) {
+      stopsOutput[stop.code] = sentence;
+    }
     if (stop.prefix && stop.id) {
       stopsOutput[`${stop.prefix}:${stop.id}`] = sentence;
     }
@@ -1086,9 +1182,7 @@ async function processCity(city) {
   console.log(
     `[✓] Zapisano ${Object.keys(stopsOutput).length} słupków z autentycznym punktem odniesienia.`,
   );
-  console.log(
-    `[i] Pominięto ${skippedCount} słupków bez fizycznego punktu odniesienia.`,
-  );
+  console.log(`[i] Pominięto ${skippedCount} słupków bez fizycznego punktu odniesienia.`);
 
   const clustersOutput = {};
 
@@ -1100,11 +1194,7 @@ async function processCity(city) {
     clusters: clustersOutput,
   };
 
-  fs.writeFileSync(
-    OUTPUT_FILE,
-    JSON.stringify(finalDataset, null, 2) + '\n',
-    'utf8',
-  );
+  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalDataset, null, 2) + '\n', 'utf8');
   console.log(`[✓] Zapisano dataset do: ${OUTPUT_FILE}`);
 }
 

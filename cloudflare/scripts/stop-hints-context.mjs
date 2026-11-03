@@ -8,6 +8,8 @@
  * 3. Wyliczanie dokładnej odległości w metrach (Haversine) od słupka do każdego POI.
  * 4. Twardy filtr odległości: punkty POI > 35 m są oznaczane jako nieprzylegające, by model
  *    nie zmyślał obecności sklepów czy stacji benzynowych bezpośrednio przy peronie.
+ * 5. Twarda zasada jednoznaczności POI: model MUSI używać kategorii obiektów (np. 'obok restauracji „... ”',
+ *    'obok sklepu spożywczego „... ”'), zakazane są gołe nieoczywiste nazwy ('obok u Kingi').
  *
  * Użycie:
  *   node cloudflare/scripts/stop-hints-context.mjs --pole=20820
@@ -62,10 +64,7 @@ async function downloadOrGetGtfs() {
     return cachePath;
   }
   console.error(`[i] Pobieranie świeżego GTFS dla: ${CITY}...`);
-  const url =
-    CITY === 'wroclaw'
-      ? 'https://open-data.cui.wroclaw.pl/hdb/download/136/'
-      : null;
+  const url = CITY === 'wroclaw' ? 'https://open-data.cui.wroclaw.pl/hdb/download/136/' : null;
   if (!url) {
     throw new Error(`Brak zdefiniowanego źródła GTFS dla miasta: ${CITY}`);
   }
@@ -114,8 +113,8 @@ async function getOsmContextForCoords(lat, lon, radius = 90) {
   nwr(around:${radius},${lat},${lon})["highway"="bus_stop"];
   nwr(around:${radius},${lat},${lon})["railway"="tram_stop"];
   nwr(around:${radius},${lat},${lon})["shop"];
-  nwr(around:${radius},${lat},${lon})["amenity"~"fuel|fast_food|pharmacy|post_office|hospital|bank|cinema|theatre|place_of_worship"];
-  nwr(around:${radius},${lat},${lon})["building"~"train_station|commercial|retail|hospital|public"];
+  nwr(around:${radius},${lat},${lon})["amenity"~"fuel|restaurant|cafe|fast_food|bar|pub|ice_cream|pharmacy|dentist|doctors|clinic|post_office|hospital|bank|cinema|theatre|place_of_worship|veterinary|library"];
+  nwr(around:${radius},${lat},${lon})["building"~"train_station|commercial|retail|hospital|public|office"];
   nwr(around:${radius},${lat},${lon})["highway"~"primary|secondary|tertiary|residential"];
 );
 out center tags;
@@ -141,13 +140,16 @@ out center tags;
 
     const dist = haversineDistanceMeters(lat, lon, eLat, eLon);
 
-    if (t.highway && !t.bus_stop && t.name) {
-      const key = t.name.toLowerCase();
-      if (!streetNames.has(key)) streetNames.set(key, t.name);
-      continue; // ulice nie są landmarkami
+    if (t.highway && t.name) {
+      const cleanName = t.name.trim();
+      streetNames.set(cleanName.toLowerCase(), cleanName);
     }
 
-    if (t.public_transport === 'platform' || t.highway === 'bus_stop' || t.railway === 'tram_stop') {
+    if (
+      t.public_transport === 'platform' ||
+      t.highway === 'bus_stop' ||
+      t.railway === 'tram_stop'
+    ) {
       platforms.push({
         id: `${e.type}/${e.id}`,
         distMeters: dist,
@@ -163,33 +165,101 @@ out center tags;
 
     const name = t.name || t.brand || t.operator;
     if (name) {
-      const category = t.shop
-        ? `sklep (${t.shop})`
-        : t.amenity === 'fuel'
-          ? 'stacja paliw'
-          : t.amenity === 'place_of_worship'
-            ? 'kościół/świątynia'
-            : t.amenity === 'fast_food'
-              ? 'gastronomia'
-              : t.amenity === 'pharmacy'
-                ? 'apteka'
-                : t.amenity === 'post_office'
-                  ? 'poczta'
-                  : t.amenity === 'hospital'
-                    ? 'szpital'
-                    : t.place === 'square'
-                      ? 'plac'
-                      : t.leisure === 'park'
-                        ? 'park'
-                        : t.tourism || t.historic
-                          ? 'atrakcja'
-                          : t.building === 'train_station'
-                            ? 'dworzec kolejowy'
-                            : t.building || t.amenity;
+      let category = '';
+      if (t.shop) {
+        const shopMap = {
+          convenience: 'sklep spożywczy',
+          grocery: 'sklep spożywczy',
+          general: 'sklep spożywczy',
+          supermarket: 'supermarket',
+          bakery: 'piekarnia',
+          confectionery: 'cukiernia',
+          pastry: 'cukiernia',
+          hairdresser: 'salon fryzjerski',
+          beauty: 'salon urody',
+          florist: 'kwiaciarnia',
+          butcher: 'sklep mięsny',
+          greengrocer: 'warzywniak',
+          clothes: 'sklep odzieżowy',
+          boutique: 'butik',
+          shoes: 'sklep obuwniczy',
+          car_repair: 'warsztat samochodowy',
+          books: 'księgarnia',
+          stationery: 'sklep papierniczy',
+          jewelry: 'salon jubilerski',
+          kiosk: 'kiosk',
+          newsagent: 'kiosk',
+          optician: 'salon optyczny',
+          furniture: 'salon meblowy',
+          hardware: 'sklep budowlany',
+          chemist: 'drogeria',
+          alcohol: 'sklep z alkoholami',
+          beverages: 'sklep z napojami',
+          electronics: 'sklep z elektroniką',
+          bicycle: 'sklep rowerowy',
+          sports: 'sklep sportowy',
+          toys: 'sklep z zabawkami',
+          pet: 'sklep zoologiczny',
+          funeral_directors: 'zakład pogrzebowy',
+          antiques: 'sklep ze starociami',
+        };
+        category = shopMap[t.shop] || `sklep (${t.shop})`;
+      } else if (t.amenity === 'fuel') {
+        category = 'stacja paliw';
+      } else if (t.amenity === 'restaurant') {
+        category = 'restauracja';
+      } else if (t.amenity === 'cafe') {
+        category = 'kawiarnia';
+      } else if (t.amenity === 'fast_food') {
+        if (/kebab/i.test(t.cuisine || '') || /kebab/i.test(name)) category = 'lokal z kebabem';
+        else if (/burger/i.test(t.cuisine || '') || /burger/i.test(name)) category = 'burgerownia';
+        else if (/pizza/i.test(t.cuisine || '') || /pizza/i.test(name)) category = 'pizzeria';
+        else if (/asian|vietnamese|chinese|sushi/i.test(t.cuisine || ''))
+          category = 'bar azjatycki';
+        else category = 'lokal gastronomiczny';
+      } else if (t.amenity === 'bar' || t.amenity === 'pub') {
+        category = 'bar / pub';
+      } else if (t.amenity === 'ice_cream') {
+        category = 'lodziarnia';
+      } else if (t.amenity === 'pharmacy') {
+        category = 'apteka';
+      } else if (t.amenity === 'dentist') {
+        category = 'gabinet stomatologiczny';
+      } else if (t.amenity === 'doctors' || t.amenity === 'clinic') {
+        category = 'przychodnia';
+      } else if (t.amenity === 'veterinary') {
+        category = 'lecznica weterynaryjna';
+      } else if (t.amenity === 'bank') {
+        category = 'oddział banku';
+      } else if (t.amenity === 'post_office') {
+        category = 'poczta';
+      } else if (t.amenity === 'hospital') {
+        category = 'szpital';
+      } else if (t.amenity === 'theatre') {
+        category = 'teatr';
+      } else if (t.amenity === 'cinema') {
+        category = 'kino';
+      } else if (t.amenity === 'place_of_worship') {
+        category = 'kościół / świątynia';
+      } else if (t.amenity === 'library') {
+        category = 'biblioteka';
+      } else if (t.place === 'square') {
+        category = 'plac';
+      } else if (t.leisure === 'park') {
+        category = 'park';
+      } else if (t.tourism || t.historic) {
+        category = 'atrakcja turystyczna';
+      } else if (t.building === 'office' || t.office) {
+        category = 'biurowiec';
+      } else if (t.building === 'train_station') {
+        category = 'dworzec kolejowy';
+      } else {
+        category = t.building || t.amenity || 'punkt orientacyjny';
+      }
 
       const isMajor =
         /train_station|hospital|commercial|retail|mall/i.test(category) ||
-        /galeria|dworzec|szpital|kościół|plac/i.test(name);
+        /galeria|dworzec|szpital|kościół|plac|park/i.test(name);
 
       landmarks.push({
         name,
@@ -347,7 +417,8 @@ function formatPoleContext(pole, osm) {
     destinations: pole.headsigns.join(', ') || 'brak danych',
     surroundingStreets: osm.streets.slice(0, 4).join(', ') || 'nieokreślona',
     verifiedNearbyLandmarks: primaryLandmarks.map(
-      (l) => `${l.name} (${l.category}, ${l.distMeters}m od słupka)`,
+      (l) =>
+        `„${l.name}” (kategoria: ${l.category}, ${l.distMeters}m od słupka) -> zalecana fraza: obok ${l.category} „${l.name}”`,
     ),
     osmPlatformsNearby: osm.platforms.slice(0, 3).map((p) => {
       const tags = [];
@@ -367,9 +438,7 @@ async function main() {
   // Filtrowanie według słupka lub klastra
   let targetStops = allStops;
   if (POLE_ARG) {
-    targetStops = allStops.filter(
-      (s) => s.stopCode === POLE_ARG || s.stopId === POLE_ARG,
-    );
+    targetStops = allStops.filter((s) => s.stopCode === POLE_ARG || s.stopId === POLE_ARG);
     if (!targetStops.length) {
       console.error(`[!] Nie znaleziono słupka o kodzie/ID: ${POLE_ARG}`);
       process.exit(1);
@@ -402,7 +471,9 @@ async function main() {
   const results = [];
 
   for (const [clusterName, poles] of selectedClusters) {
-    console.error(`\n[+] Pobieranie kontekstu OSM dla zespołu: ${clusterName} (${poles.length} słupków)...`);
+    console.error(
+      `\n[+] Pobieranie kontekstu OSM dla zespołu: ${clusterName} (${poles.length} słupków)...`,
+    );
     const polesData = [];
 
     for (const pole of poles) {
@@ -431,6 +502,10 @@ async function main() {
   // Human / LLM-friendly Text Output
   console.log(`\n======================================================`);
   console.log(` RAPORT KONTEKSTU PRZESTRZENNEGO DLA MODELU AI`);
+  console.log(
+    ` ZASADA POI: ZAWSZE podawaj kategorię lokalu przed nazwą własną (np. obok restauracji „...”, obok sklepu „...”).`,
+  );
+  console.log(` Zakaz gołych, enigmatycznych nazw własnych (np. ZAKAZ 'obok u Kingi').`);
   console.log(`======================================================\n`);
 
   for (const cluster of results) {
@@ -450,7 +525,9 @@ async function main() {
           console.log(`      * ${lm}`);
         }
       } else {
-        console.log(`    - Punkty orientacyjne: BRAK bezpośrednio przylegających (ZAKAZ wymyślania sklepów/sieciówek!)`);
+        console.log(
+          `    - Punkty orientacyjne: BRAK bezpośrednio przylegających (ZAKAZ wymyślania sklepów/sieciówek!)`,
+        );
       }
     }
     console.log(`\n------------------------------------------------------`);
