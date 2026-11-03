@@ -865,12 +865,12 @@ export default function HomeScreen() {
       lat: number;
       lon: number;
       kind?: Suggestion['kind'];
-    }) => {
+    }): boolean => {
       // GPS spoza strefy nie może być startem: zamiast puszczać trasę
       // z pozycji spoza strefy prosimy o ręczny wybór startu.
       if (gpsUnsupported && !isCustomStart) {
         blockGpsStart();
-        return;
+        return false;
       }
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
@@ -901,6 +901,7 @@ export default function HomeScreen() {
           toLon: String(to.lon),
         },
       });
+      return true;
     },
     [
       gpsUnsupported,
@@ -1348,7 +1349,8 @@ export default function HomeScreen() {
               if (sheetMode === 'start') {
                 handleStartSelect(s);
               } else {
-                goToRoutes(s);
+                // Zablokowany start (GPS poza strefą) zostawia arkusz i wpisany cel pod alertem.
+                if (!goToRoutes(s)) return;
                 // Nie odmontowujemy arkusza natychmiast w tej samej milisekundzie,
                 // by uniknąć mignięcia ekranu domowego w trakcie tranzycji do ekranu tras.
                 setTimeout(() => {
