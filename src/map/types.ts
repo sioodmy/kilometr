@@ -69,7 +69,7 @@ export interface MapVehicle extends LatLon {
   updatedAt: number;
 }
 
-/** Komunikat mapa → aplikacja (RouteMap -> rodzic). */
+/** Komunikat mapa -> aplikacja (RouteMap -> rodzic). */
 export type MapOutMessage =
   | { t: 'ready' }
   | { t: 'error'; message: string }
@@ -78,12 +78,11 @@ export type MapOutMessage =
   | { t: 'tiles'; ok: boolean }
   | { t: 'open'; url: string };
 
-/** Komunikat aplikacja → mapa (RouteMap -> WebView). */
+/** Komunikat aplikacja -> mapa (RouteMap -> WebView). */
 export type MapInMessage =
-  | { t: 'route'; route: MapRoute }
-  | { t: 'geometry'; legId: string; coords: [number, number][]; approx: boolean }
+  | { t: 'route'; route: MapRoute; pad?: [number, number, number, number] }
+  | { t: 'geometry'; legId: string; coords: [number, number][]; approx: boolean; fit?: boolean; pad?: [number, number, number, number] }
   /** `pad` to marginesy dopasowania widoku (w px), liczone po stronie aplikacji. */
   | { t: 'select'; legId: string | null; pad?: [number, number, number, number] }
   | { t: 'fit'; pad?: [number, number, number, number] }
   | { t: 'vehicle'; vehicle: MapVehicle | null };
-
