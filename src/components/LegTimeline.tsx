@@ -663,10 +663,10 @@ function TransitLegCard({
                 {leg.live ? (
                   <Text style={s.liveLocationLabel} numberOfLines={1}>
                     {nearestStop
-                      ? `Obecna lokacja: ${nearestStop.name}`
+                      ? t.leg.currentLocation(nearestStop.name)
                       : leg.liveNextStop
-                        ? `Obecna lokacja: ${leg.liveNextStop}`
-                        : liveNearLabel || 'Śledzenie na żywo'}
+                        ? t.leg.currentLocation(leg.liveNextStop)
+                        : liveNearLabel || t.leg.liveTracking}
                   </Text>
                 ) : null}
 
@@ -839,8 +839,8 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
                   <Footprints size={15} color={scheme.primary} />
                   <Text style={s.walkPillTitle}>
                     {transferGap > 0 && transferGap < 3600
-                      ? `Przesiadka · ~${Math.round(transferGap / 60)} min`
-                      : 'Przesiadka'}
+                      ? t.leg.transferMinutes(Math.round(transferGap / 60))
+                      : t.leg.transfer}
                   </Text>
                 </View>
                 <View style={s.walkConnectorLine} />

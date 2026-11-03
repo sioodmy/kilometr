@@ -39,6 +39,7 @@ import {
   getDataStatus,
   importGtfsFromNetwork,
   refreshDataStatus,
+  refreshTimetableIfExpiring,
   subscribeDataStatus,
 } from '../src/services/dataManager';
 import { getSettingsSync, profileWalkSpeedMps } from '../src/services/settings';
@@ -286,6 +287,8 @@ export default function HomeScreen() {
       const st = await refreshDataStatus().catch(() => ({ state: 'empty' }) as const);
       if (st.state === 'empty') {
         void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
+      } else if (st.state === 'ready') {
+        void refreshTimetableIfExpiring().catch((e) => console.warn('Timetable refresh failed:', e));
       }
     };
     void check();
@@ -322,9 +325,11 @@ export default function HomeScreen() {
   // inaczej ranking po zapisie miejsca liczyłby się z innego klucza.
   const smartGen = useRef(0);
   const originStopRef = useRef<string>(defaultLocationForCity(getActiveCityIdSync()).title);
+  const smartCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
   const requestSmart = useCallback(
     (originStop: string, coords: { lat: number; lon: number }) => {
       originStopRef.current = originStop;
+      smartCoordsRef.current = coords;
       const gen = ++smartGen.current;
       const requestedCity = getActiveCityIdSync();
       FavoritesService.smartFromOrigin(originStop, coords)
@@ -420,6 +425,7 @@ export default function HomeScreen() {
       return;
     }
     isCustomStartRef.current = false;
+    smartCoordsRef.current = null;
     setIsCustomStart(false);
     setQuery('');
     setResults([]);
@@ -865,12 +871,12 @@ export default function HomeScreen() {
       lat: number;
       lon: number;
       kind?: Suggestion['kind'];
-    }) => {
+    }): boolean => {
       // GPS spoza strefy nie może być startem: zamiast puszczać trasę
       // z pozycji spoza strefy prosimy o ręczny wybór startu.
       if (gpsUnsupported && !isCustomStart) {
         blockGpsStart();
-        return;
+        return false;
       }
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
@@ -901,6 +907,7 @@ export default function HomeScreen() {
           toLon: String(to.lon),
         },
       });
+      return true;
     },
     [
       gpsUnsupported,
@@ -1081,12 +1088,23 @@ export default function HomeScreen() {
   };
 
   // Ostatnie połączenie świeże po powrocie (pull może odpalić nową trasę).
+  // Wyszukanie trasy (tu albo na ekranie tras) dopisuje historię: wtedy
+  // przeliczamy też „Ostatnie miejsca", inaczej nowy cel pojawiłby się
+  // dopiero po restarcie aplikacji.
+  const historyKeyRef = useRef<string | null>(null);
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       loadTripHistory()
         .then((h) => {
-          if (!cancelled && h.length > 0) setLastTrip(h[0]);
+          if (cancelled) return;
+          if (h.length > 0) setLastTrip(h[0]);
+          const key = h.length > 0 ? `${h.length}|${h[0].id}|${h[0].timestamp}` : '';
+          const prevKey = historyKeyRef.current;
+          historyKeyRef.current = key;
+          if (prevKey !== null && prevKey !== key && smartCoordsRef.current) {
+            requestSmart(originStopRef.current, smartCoordsRef.current);
+          }
         })
         .catch(() => {});
       // Po powrocie na ekran główny upewnij się, że arkusz jest zwinięty
@@ -1095,7 +1113,7 @@ export default function HomeScreen() {
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [requestSmart]),
   );
 
   // Wczytanie kopii zapasowej podmienia miejsca i historię w KV, ale `saved`
@@ -1348,7 +1366,8 @@ export default function HomeScreen() {
               if (sheetMode === 'start') {
                 handleStartSelect(s);
               } else {
-                goToRoutes(s);
+                // Zablokowany start (GPS poza strefą) zostawia arkusz i wpisany cel pod alertem.
+                if (!goToRoutes(s)) return;
                 // Nie odmontowujemy arkusza natychmiast w tej samej milisekundzie,
                 // by uniknąć mignięcia ekranu domowego w trakcie tranzycji do ekranu tras.
                 setTimeout(() => {

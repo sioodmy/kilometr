@@ -596,7 +596,15 @@ export async function getActiveServices(weekday: number, dateStr?: string): Prom
   const db = await getGtfsDb();
   const day = ((weekday % 7) + 7) % 7;
   const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
-  const rows = await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
+  // Zakres dat jak w lineTimetable: bez niego stary i nowy rozkład z jednego
+  // feedu jeżdżą naraz, a wygasły serwis nadal wygląda na aktywny.
+  const rows = dateStr
+    ? await db.getAllAsync<{ service_id: string }>(
+        `SELECT service_id FROM calendar WHERE ${col} > 0 AND (start_date = '' OR start_date <= ?) AND (end_date = '' OR end_date >= ?)`,
+        dateStr,
+        dateStr,
+      )
+    : await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
   const weekdayServices = rows.map((r) => r.service_id);
   const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
   const calendarRowCount = total?.n ?? 0;
@@ -615,12 +623,40 @@ export async function getActiveServices(weekday: number, dateStr?: string): Prom
   return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
 }
 
+/**
+ * Ostatni dzień, w którym jeszcze kursuje każde źródło rozkładu (YYYYMMDD).
+ * Bierzemy wcześniejszy koniec z calendar i calendar_dates: kolej z samych
+ * calendar_dates kończy się zwykle przed MPK. Null, gdy baza nie ma dat.
+ */
+export async function getTimetableEndDate(): Promise<string | null> {
+  const db = await getGtfsDb();
+  const cal = await db.getFirstAsync<{ d: string | null }>(
+    "SELECT MAX(end_date) AS d FROM calendar WHERE end_date <> ''",
+  );
+  const cd = await db.getFirstAsync<{ d: string | null }>(
+    'SELECT MAX(date) AS d FROM calendar_dates WHERE exc = 1',
+  );
+  return [cal?.d, cd?.d].filter((v): v is string => !!v).sort()[0] ?? null;
+}
+
 /** Czasy kursu posortowane po stop_sequence (do list rozwijanych + RAPTOR-a). */
 export async function getTripStopTimes(tripId: string): Promise<
   { stop_id: string; arr_sec: number; dep_sec: number; seq: number }[]
 > {
   const db = await getGtfsDb();
   return db.getAllAsync('SELECT stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id = ? ORDER BY seq ASC', tripId);
+}
+
+/**
+ * Stan bazy do statusu danych (ekran główny pyta co 30 s). COUNT(*) na
+ * stop_times to skan ponad miliona wierszy, więc tu wystarcza EXISTS.
+ */
+export async function getGtfsPresence(): Promise<{ stops: number; trips: number; hasStopTimes: boolean }> {
+  const db = await getGtfsDb();
+  const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
+  const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
+  const st = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stop_times) AS n');
+  return { stops: s?.n ?? 0, trips: t?.n ?? 0, hasStopTimes: (st?.n ?? 0) > 0 };
 }
 
 export async function getGtfsStats(): Promise<{ stops: number; routes: number; trips: number; stopTimes: number }> {
