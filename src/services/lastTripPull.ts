@@ -19,6 +19,7 @@ export function nextPullOption(
   arm2: number,
   disarm2: number,
 ): LastTripOption {
+  'worklet';
   if (h >= arm2) return 2;
   if (cur === 2) return h >= disarm2 ? 2 : h >= arm1 ? 1 : 0;
   return h >= arm1 ? 1 : 0;
