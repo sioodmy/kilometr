@@ -175,7 +175,7 @@ function repaintStyles(next: Record<SchemeKey, string>): void {
   }
 }
 
-// ─── Back-compat aliases ─────────────────────────────────────────────────────
+// ─── Back-compat aliases ─────────────────────────────────────────────
 type ColorKey =
   | 'bg'
   | 'card'
@@ -218,9 +218,9 @@ export const colors: Record<ColorKey, string> = {
   warning: scheme.warning,
   warningSoft: scheme.warningContainer,
   // Functional transit line coding (high legibility on dark surfaces)
-  lineTram: '#00A896',
-  lineBus: '#2979FF',
-  lineNight: '#B39DDB',
+  lineTram: '#71D8C2',
+  lineBus: '#96CCFF',
+  lineNight: '#DAB9FF',
   walk: scheme.onSurfaceVariant,
 };
 
@@ -251,7 +251,7 @@ export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
   repaintStyles(scheme);
 }
 
-// ─── M3 shape scale ──────────────────────────────────────────────────────────
+// ─── M3 shape scale ──────────────────────────────────────────────────
 export const shape = {
   extraSmall: 4,
   small: 8,
