@@ -1325,6 +1325,10 @@ export const uk: Strings = {
     modeTrolley: 'Тролейбус',
     modeCable: 'Канатна дорога',
     modeVehicle: 'Транспорт',
+    currentLocation: (stop: string) => `Поточне місце: ${stop}`,
+    liveTracking: 'Відстеження наживо',
+    transfer: 'Пересадка',
+    transferMinutes: (min: number) => `Пересадка · ~${min} хв`,
     nearStop: (mode: string, stop: string) => `${mode} поблизу зупинки: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;

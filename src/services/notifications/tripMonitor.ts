@@ -249,7 +249,12 @@ async function refresh(): Promise<void> {
     if (prefs.disruptionAlertsEnabled && shouldAlertDelay(lastDelayMin, p.delayMin)) {
       void sendDisruptionAlert(p, trip, prefs);
     }
-    lastDelayMin = p.delayMin;
+    // Zanik danych live zeruje opóźnienie, ale to nie poprawa: bez tego to samo
+    // opóźnienie po powrocie danych alarmowało drugi raz.
+    const measured = conn.legs.some(
+      (l) => l.mode !== 'walk' && (l.delayConfidence === 'live' || l.delayConfidence === 'estimated'),
+    );
+    if (measured || p.delayMin > lastDelayMin) lastDelayMin = p.delayMin;
 
     await presentTrip(trip, p, prefs);
     // Jak wyżej: stop w trakcie publikacji nie może pozwolić na dalsze alerty.
@@ -590,6 +595,10 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
       tracked.protectionEnabled === true ||
       tracked.transfer?.status === 'changed';
     generation++;
+    // Jak w startTracking: bez pinu opóźnienia gasną po zablokowaniu ekranu,
+    // a bez ostatniego opóźnienia ten sam alert o spóźnieniu dzwoni drugi raz.
+    lastDelayMin = parsed.connection.delayMin;
+    liveTracker.pin(true);
     await loadNotificationPreferences();
     progress = computeTripProgress(parsed.connection, {
       walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
