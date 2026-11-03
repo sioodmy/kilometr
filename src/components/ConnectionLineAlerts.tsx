@@ -318,9 +318,12 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   const lineSet = useMemo(() => {
     return new Set(routeLines.map((l) => l.trim().toUpperCase()));
   }, [routeLines]);
+  // Połączenie dostaje nowy obiekt przy każdej paczce live: pobieramy tylko,
+  // gdy zmienią się same linie.
+  const lineKey = [...lineSet].sort().join(',');
 
   useEffect(() => {
-    if (lineSet.size === 0) {
+    if (lineKey === '') {
       setStatus('ready');
       return;
     }
@@ -356,7 +359,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return () => {
       cancelled = true;
     };
-  }, [lineSet, attempt]);
+  }, [lineKey, attempt]);
 
   const matched = useMemo(() => {
     if (lineSet.size === 0) return [];
