@@ -94,7 +94,7 @@ export function getTripProgressSync(): TripProgress | null {
   return progress ? { ...progress } : null;
 }
 
-// ─── Pojazd ────────────────────────────────────────────────────────────────
+// ─── Pojazd ─────────────────────────────────────────────────────────────────
 
 /**
  * Pojazd dopasowany do odcinka, na którym właśnie jesteśmy.
@@ -114,7 +114,7 @@ function vehicleForTrip(p: TripProgress): VehiclePosition | null {
   return rows.find((v) => v.matchedTripId === tripId) ?? null;
 }
 
-// ─── Odświeżenie ───────────────────────────────────────────────────────────
+// ─── Odświeżenie ─────────────────────────────────────────────────────────────
 
 async function planTracked(): Promise<Connection | null> {
   if (!tracked) return null;
@@ -140,7 +140,6 @@ async function planTracked(): Promise<Connection | null> {
     trainMinTransferSec: s.trainMinTransferSec,
     maxWalkM: s.maxWalkM,
     walkSpeedMps,
-    routeStyle: s.routeStyle,
   });
   if (conns.length === 0 || !tracked) return null;
 
@@ -327,7 +326,7 @@ function rescheduleTicker(): void {
   }, tickIntervalMs(progress));
 }
 
-// ─── Cykl życia ────────────────────────────────────────────────────────────
+// ─── Cykl życia ─────────────────────────────────────────────────────────────
 
 /** Uruchamia śledzenie podróży: Live Update, alerty odjazdu, widgety. */
 export async function startTracking(trip: TrackedTrip): Promise<void> {

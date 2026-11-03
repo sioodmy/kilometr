@@ -1,6 +1,6 @@
 import { DayIndex, gtfsStore } from './store';
-import { costParamsFor, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
-import { AllowedTransferModes, Connection, Leg, LegStop, RawJourney, RouteStyle, TransitModePreference } from './types';
+import { DEFAULT_COST, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
+import { AllowedTransferModes, Connection, Leg, LegStop, RawJourney, TransitModePreference } from './types';
 import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 import { MAX_DELAY_SEC } from '../liveQuality';
@@ -244,8 +244,6 @@ export interface PlanOptions {
   maxWalkM?: number;
   /** m/s, default 1.34. Tempo chodzenia użytkownika (dojścia i przesiadki). */
   walkSpeedMps?: number;
-  /** Styl trasy: wagi spaceru i przesiadek. Default 'balanced'. */
-  routeStyle?: RouteStyle;
   /**
    * Preferowany przystanek startowy (kotwica). fromLat/fromLon to PRAWDZIWA
    * pozycja (GPS) - silnik liczy realny spacer do kotwicy i daje jej tylko
@@ -279,7 +277,12 @@ interface MapCtx {
 
 /** Stosuje wagi RAPTOR-a także na liście: czas, marsz i przesiadki.
  * Dla przyjazdu premiuje późniejsze wyjście przed terminem. */
-export function sortConnectionsByCost(connections: Connection[], cost: CostParams, walkSpeedMps: number, arriveBySec?: number): Connection[] {
+export function sortConnectionsByCost(
+  connections: Connection[],
+  walkSpeedMps: number,
+  arriveBySec?: number,
+  cost: CostParams = DEFAULT_COST,
+): Connection[] {
   const extraWalk = Math.max(0, cost.walkReluctance - 1);
   const costOf = (c: Connection) => {
     let walkM = 0;
@@ -626,7 +629,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const trainMinTransferSec = Math.max(0, Math.min(1200, Math.round(options.trainMinTransferSec ?? 300)));
   const maxWalkM = Math.max(100, Math.min(2000, Math.round(options.maxWalkM ?? 800)));
   const userWalkSpeed = Math.max(0.8, Math.min(2.0, options.walkSpeedMps ?? WALK_SPEED_MPS));
-  const cost = costParamsFor(options.routeStyle);
+  const cost = DEFAULT_COST;
 
   // Start i cel w tym samym miejscu: RAPTOR umie tu wymyślić przejazd w jedną
   // stronę i z powrotem, a to zwykły spacer. Jedna noga piesza i koniec.
@@ -707,7 +710,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     });
   const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays, confidence: snapshot.confidence };
   const sortPartial = (list: Connection[]) =>
-    sortConnectionsByCost(list, cost, userWalkSpeed, arrivalMode ? rawTarget : undefined);
+    sortConnectionsByCost(list, userWalkSpeed, arrivalMode ? rawTarget : undefined, cost);
   const select = (list: RawJourney[]) =>
     selectJourneys(applyModeFilter(list), searchStartSec, {
       cost,
