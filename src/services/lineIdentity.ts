@@ -115,7 +115,7 @@ export function inferTransitMode(
   if (clean === 'POLINKA' || clean === 'KOLEJ LINOWA') return 'cable';
 
   // Metro warszawskie (linie M1, M2, przyszłościowo M3/M4)
-  if (/^M[1-4]$/i.test(clean)) return 'subway';
+  if (cityId === 'warszawa' && /^M[1-4]$/i.test(clean)) return 'subway';
 
   // Rozpoznawanie pociągów po oficjalnych oznaczeniach przewoźników
   if (
