@@ -191,7 +191,7 @@ describe('Tryb linii: tramwaje, trolejbusy, nocne i zastępcze');
   expect('M32 to autobus', inferTransitMode(undefined, 'M32', 'trojmiasto'), 'bus');
   expect('138 to autobus', inferTransitMode(undefined, '138', 'trojmiasto'), 'bus');
   expect('25 we Wrocławiu to tramwaj (heurystyka 1–33)', inferTransitMode(undefined, '25', 'wroclaw'), 'tram');
-  expect('trolejbus ma stałą zieleń', getLineColors('25', undefined, 'trojmiasto').bg, '#2E7D32');
+  expect('trolejbus ma stałą zieleń', getLineColors('25', undefined, 'trojmiasto').bg, '#97D77D');
   expect('tramwaj 8 nie jest busem', getLineColors('8', undefined, 'trojmiasto').isTram, true);
 }
 

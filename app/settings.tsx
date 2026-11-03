@@ -49,7 +49,7 @@ import {
   TramFront,
   Turtle,
 } from '../src/components/icons';
-import type { RouteStyle, TransitVehicleMode } from '../src/services/routing/types';
+import type { TransitVehicleMode } from '../src/services/routing/types';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
 import { type CityId } from '../src/cities';
@@ -295,23 +295,6 @@ export default function SettingsScreen() {
     ],
     [s],
   );
-  const styleOptions: { value: RouteStyle; label: string; desc: string }[] = useMemo(
-    () => [
-      { value: 'fastest', label: s.settings.styleFastest, desc: s.settings.styleFastestDesc },
-      { value: 'balanced', label: s.settings.styleBalanced, desc: s.settings.styleBalancedDesc },
-      {
-        value: 'lessWalking',
-        label: s.settings.styleLessWalking,
-        desc: s.settings.styleLessWalkingDesc,
-      },
-      {
-        value: 'fewerTransfers',
-        label: s.settings.styleFewerTransfers,
-        desc: s.settings.styleFewerTransfersDesc,
-      },
-    ],
-    [s],
-  );
   const modePills: { value: TransitVehicleMode; icon: typeof TramFront; label: string }[] = useMemo(
     () => [
       { value: 'tram', icon: TramFront, label: s.settings.modeTram },
@@ -503,7 +486,6 @@ export default function SettingsScreen() {
                 icon={Navigation}
                 title={s.settings.planningTitle}
                 detail={s.settings.planningSummary(
-                  styleOptions.find((option) => option.value === settings.routeStyle)?.label ?? '',
                   paceOptions.find((option) => option.value === settings.walkPace)?.label ?? '',
                 )}
                 onPress={() => openSection('routing')}
@@ -668,43 +650,6 @@ export default function SettingsScreen() {
           <>
             <SectionLabel>{s.settings.sectionRoute}</SectionLabel>
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>{s.settings.routeStyleTitle}</Text>
-              <View style={styles.styleGrid}>
-                {styleOptions.map((opt) => {
-                  const active = settings.routeStyle === opt.value;
-                  return (
-                    <Pressable
-                      key={opt.value}
-                      onPress={() => {
-                        if (settings.routeStyle !== opt.value) {
-                          void Haptics.selectionAsync().catch(() => {});
-                          update({ routeStyle: opt.value });
-                        }
-                      }}
-                      style={({ pressed }) => [
-                        styles.styleOpt,
-                        active && styles.optActive,
-                        pressed && { opacity: 0.85, transform: [{ scale: 0.985 }] },
-                      ]}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: active }}
-                      accessibilityLabel={`${opt.label}, ${opt.desc}`}
-                    >
-                      <View style={styles.optionText}>
-                        <Text style={[styles.styleLabel, active && styles.optLabelActive]}>
-                          {opt.label}
-                        </Text>
-                        <Text style={[styles.styleDesc, active && styles.optDescActive]}>
-                          {opt.desc}
-                        </Text>
-                      </View>
-                      {active && <Check size={20} color={scheme.onPrimaryContainer} />}
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <View style={styles.divider} />
 
               <SettingRow title={s.settings.transfersTitle} hint={s.settings.transfersHintShort}>
                 <Stepper
@@ -1087,19 +1032,6 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     lineHeight: 16,
   },
-  styleGrid: { gap: 10 },
-  styleOpt: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainer,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    minHeight: 64,
-  },
-  styleLabel: { ...type.bodyLarge, color: scheme.onSurface, fontWeight: '500' },
-  styleDesc: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 20 },
   paceRow: { flexDirection: 'row', gap: 8 },
   paceOpt: {
     flex: 1,

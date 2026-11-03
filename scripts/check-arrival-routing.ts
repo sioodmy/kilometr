@@ -7,7 +7,6 @@ import {
 } from '../src/services/routing/engine';
 import { liveTracker } from '../src/services/liveTracker';
 import {
-  costParamsFor,
   mergeDayIndexes,
   runRaptor,
   selectJourneys,
@@ -223,10 +222,6 @@ async function checkArrivalRouting() {
     { dayIndex: rankNet.index },
   );
   assert.equal(selectJourneys(ranked, at(8, 0))[0].transfers, 1);
-  assert.equal(
-    selectJourneys(ranked, at(8, 0), { cost: costParamsFor('fewerTransfers') })[0].transfers,
-    0,
-  );
   const connections: Connection[] = ranked.map((j, i) => ({
     id: String(i),
     fromTitle: 'A',
@@ -243,15 +238,11 @@ async function checkArrivalRouting() {
     legs: [],
   }));
   assert.equal(
-    sortConnectionsByCost([...connections], costParamsFor('balanced'), 1.34)[0].transfers,
+    sortConnectionsByCost([...connections], 1.34)[0].transfers,
     1,
   );
-  assert.equal(
-    sortConnectionsByCost([...connections], costParamsFor('fewerTransfers'), 1.34)[0].transfers,
-    0,
-  );
   console.log(
-    'PASS: 8 minut zysku uzasadnia przesiadkę; preferencja mniejszej liczby przesiadek nadal działa',
+    'PASS: 8 minut zysku uzasadnia przesiadkę',
   );
 
   const getSlice = gtfsStore.getDayIndexSlice;

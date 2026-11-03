@@ -59,12 +59,17 @@ console.log('=== Kolory trasy na ciemnej mapie ===');
   check('stałe kolory trybów czytelne', bad.length === 0, bad.join(', ') || 'wszystkie >= 4.5:1');
 }
 
-// 3. Regression test zgłoszenia: tramwaj 19 miał brąz #5D4037.
+// 3. Regression test zgłoszenia: ciemny kolor (np. dawny brąz #5D4037 z feedu zewnętrznego)
+// jest automatycznie rozjaśniany pod ciemną mapę, a nowa paleta M3 dla linii 19
+// jest czytelna od razu.
 {
+  const oldDark = '#5D4037';
+  const fixed = mapLineColor(oldDark);
+  check('ciemny kolor trasy rozjaśniony', fixed !== oldDark, `${oldDark} -> ${fixed}`);
+  check('ciemny kolor trasy po rozjaśnieniu czytelny', contrastOnMap(fixed) >= MIN_RATIO, `${contrastOnMap(fixed).toFixed(2)}:1`);
+
   const { bg } = getLineColors('19', 'tram');
-  const fixed = mapLineColor(bg);
-  check('tramwaj 19 rozjaśniony', fixed !== bg, `${bg} -> ${fixed}`);
-  check('tramwaj 19 czytelny', contrastOnMap(fixed) >= MIN_RATIO, `${contrastOnMap(fixed).toFixed(2)}:1`);
+  check('tramwaj 19 z palety M3 czytelny', contrastOnMap(bg) >= MIN_RATIO, `${contrastOnMap(bg).toFixed(2)}:1`);
 }
 
 // 4. Jasne kolory zostają bez zmian, więc tożsamość linii się nie rozjeżdża.
