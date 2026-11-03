@@ -33,8 +33,10 @@ function dataTr(): Strings['data'] {
 }
 
 import {
+  getGtfsPresence,
   getGtfsStats,
   getMeta,
+  getTimetableEndDate,
   importCalendar,
   importCalendarDates,
   importRoutes,
@@ -126,8 +128,8 @@ export async function refreshDataStatus(): Promise<DataStatus> {
   // jeszcze nie) pokazywałoby "gotowe", a UI wracałoby potem do pobierania.
   if (importInProgress) return status;
   try {
-    const stats = await getGtfsStats();
-    if (stats.stops > 0 && stats.trips > 0 && stats.stopTimes > 0) {
+    const stats = await getGtfsPresence();
+    if (stats.stops > 0 && stats.trips > 0 && stats.hasStopTimes) {
       const updatedAt = await getMeta('gtfs_imported_at');
       emit({ state: 'ready', stops: stats.stops, trips: stats.trips, updatedAt, source: await getGtfsSource() });
       // Dokończenie przerwanego importu: wagi + warmup w tle.
@@ -135,7 +137,7 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
       // To nie jest działający rozkład - czyścimy, żeby UI wymusił pobieranie.
-      if (stats.stops > 0 || stats.trips > 0 || stats.stopTimes > 0) {
+      if (stats.stops > 0 || stats.trips > 0 || stats.hasStopTimes) {
         await clearGtfsTables().catch(() => {});
       }
       emit({ state: 'empty' });
@@ -144,6 +146,29 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     emit({ state: 'error', message: err instanceof Error ? err.message : String(err) });
   }
   return status;
+}
+
+const EXPIRY_MARGIN_DAYS = 3;
+const EXPIRY_RETRY_MS = 60 * 60 * 1000;
+let lastExpiryAttempt = 0;
+
+/**
+ * Rozkład kończy się za kilka dni: sami sprawdzamy nowszy. Po końcu kalendarza
+ * planer nie ma już kursów, a ręczne „Sprawdź aktualizacje" to za mało.
+ * Manifest sprawdzamy co najwyżej raz na `refreshHours`, próby bez sieci raz na godzinę.
+ */
+export async function refreshTimetableIfExpiring(): Promise<void> {
+  if (importInProgress || Date.now() - lastExpiryAttempt < EXPIRY_RETRY_MS) return;
+  const end = await getTimetableEndDate().catch(() => null);
+  if (!end) return;
+  const soon = new Date();
+  soon.setDate(soon.getDate() + EXPIRY_MARGIN_DAYS);
+  const soonKey = `${soon.getFullYear()}${String(soon.getMonth() + 1).padStart(2, '0')}${String(soon.getDate()).padStart(2, '0')}`;
+  if (end > soonKey) return;
+  const lastCheck = await getMeta('gtfs_last_check').catch(() => null);
+  if (lastCheck && Date.now() - new Date(lastCheck).getTime() < TIMETABLE.refreshHours * 3600 * 1000) return;
+  lastExpiryAttempt = Date.now();
+  await importGtfsFromNetwork();
 }
 
 /** Po starcie rozgrzewa równolegle routing, adresy i wagi przystanków. */

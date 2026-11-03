@@ -26,18 +26,18 @@ const WALK_BEATS_TRANSIT_MAX_SEC = 15 * 60;
  */
 const MAX_ACCESS_STOPS = 80;
 
-/** Nocny indeks zunifikowany per para wycinków (dziś, wczoraj): kompilacja raz. */
+/** Nocny indeks zunifikowany per para wycinków (dziś, wczoraj/jutro): kompilacja raz. */
 const mergedCache = new WeakMap<DayIndex, WeakMap<DayIndex, { index: DayIndex; offsets: Map<string, number> }>>();
-function mergedOvernight(today: DayIndex, yesterday: DayIndex) {
+function mergedOvernight(today: DayIndex, other: DayIndex, prefix = 'y_', offsetSec = -86400) {
   let inner = mergedCache.get(today);
   if (!inner) {
     inner = new WeakMap();
     mergedCache.set(today, inner);
   }
-  let hit = inner.get(yesterday);
+  let hit = inner.get(other);
   if (!hit) {
-    hit = mergeDayIndexes(today, yesterday, 'y_', -86400);
-    inner.set(yesterday, hit);
+    hit = mergeDayIndexes(today, other, prefix, offsetSec);
+    inner.set(other, hit);
   }
   return hit;
 }
@@ -132,6 +132,20 @@ export async function buildSearchSlices(rawTargetSec: number, arrivalMode = fals
       86400 + (arrivalMode ? departureSec + 600 : departureSec + 10800),
     );
     const merged = mergedOvernight(dayIndex, overnightIdx);
+    searchIndex = merged.index;
+    patternOffsets = merged.offsets;
+  } else if (!arrivalMode && departureSec + 10800 > 86400) {
+    // Lustro nocnego merge'a: wieczorem horyzont sięga po północy, a część
+    // feedów (np. GZM) zapisuje kursy 00:xx w jutrzejszym dniu serwisowym.
+    const tDate = new Date(targetDate);
+    tDate.setDate(tDate.getDate() + 1);
+    const tomorrowIdx = await gtfsStore.getDayIndexSlice(
+      tDate.getDay(),
+      toDateStr(tDate),
+      0,
+      departureSec + 10800 - 86400,
+    );
+    const merged = mergedOvernight(dayIndex, tomorrowIdx, 't_', 86400);
     searchIndex = merged.index;
     patternOffsets = merged.offsets;
   }

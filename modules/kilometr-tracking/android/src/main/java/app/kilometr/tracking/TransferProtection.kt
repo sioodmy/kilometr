@@ -74,12 +74,17 @@ internal class TransferProtection(
       publish("unavailable", nowMs, "expired")
       return@submit
     }
+    // "complete" zostaje: po wyjściu z pojazdu GPS gubi trasę, a JS kończy
+    // śledzenie dopiero, gdy po przyjeździe nadal widzi "complete".
+    if (isComplete()) return@submit
     if (lastEstimate == null || nowMs - (lastFix?.atMs ?: 0) > 30_000) {
       state.remove("alternative")
       val first = net.root.getJSONArray("timeline").getJSONObject(0).getLong("departMs")
       publish(if (nowMs < first) "waiting" else "unavailable", nowMs, "location")
     }
   }
+
+  private fun isComplete() = state.optString("status") == "complete"
 
   private fun submit(action: () -> Unit) {
     if (closed) return
@@ -118,6 +123,7 @@ internal class TransferProtection(
       }
     }
     if (estimate == null) {
+      if (isComplete()) return
       if (lastEstimate == null && now < ride.stops[ride.board].departMs + 300_000) publish("waiting", now)
       else if (lastEstimate == null || now - lastEstimate!!.atMs > 30_000) publish("unavailable", now, "offRoute")
       return
