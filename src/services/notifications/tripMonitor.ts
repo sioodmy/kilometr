@@ -590,6 +590,10 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
       tracked.protectionEnabled === true ||
       tracked.transfer?.status === 'changed';
     generation++;
+    // Jak w startTracking: bez pinu opóźnienia gasną po zablokowaniu ekranu,
+    // a bez ostatniego opóźnienia ten sam alert o spóźnieniu dzwoni drugi raz.
+    lastDelayMin = parsed.connection.delayMin;
+    liveTracker.pin(true);
     await loadNotificationPreferences();
     progress = computeTripProgress(parsed.connection, {
       walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
