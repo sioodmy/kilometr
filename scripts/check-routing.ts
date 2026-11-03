@@ -11,9 +11,9 @@
 
 import { LocalGtfsStore, gtfsStore } from '../src/services/routing/store';
 import { resolveCandidateOrigins, buildLegStops, buildSearchSlices, mergeConsecutiveWalkLegs } from '../src/services/routing/engine';
-import { runRaptor, costParamsFor, mergeConsecutiveWalks } from '../src/services/routing/raptor';
+import { runRaptor, mergeConsecutiveWalks } from '../src/services/routing/raptor';
 import { predictDelaySec } from '../src/services/routing/delays';
-import type { JourneySegment, Leg, RawJourney, RouteStyle } from '../src/services/routing/types';
+import type { JourneySegment, Leg, RawJourney } from '../src/services/routing/types';
 
 let passed = 0;
 const failures: string[] = [];
@@ -122,16 +122,13 @@ head('Wysiadanie przy celu');
   const { store, index } = makeNet(stops, [{ id: '1', type: 0, trips }]);
   const origins = near(store, lat0, lon);
   const dests = near(store, lat0 + 4 * STEP_LAT, lon);
-  for (const style of ['balanced', 'lessWalking', 'fewerTransfers'] as RouteStyle[]) {
-    const js = runRaptor(store as any, origins, dests, hms(7, 59), {
-      maxTransfers: 2,
-      minTransferSec: 120,
-      dayIndex: index,
-      cost: costParamsFor(style),
-    });
-    const j = best(js.filter((x) => transit(x)[0]?.tripId === `t_${hms(8, 0)}`));
-    check(`${style}: jedzie do S4`, transit(j!)?.[0]?.toStopId === 'S4', describe(j));
-  }
+  const js = runRaptor(store as any, origins, dests, hms(7, 59), {
+    maxTransfers: 2,
+    minTransferSec: 120,
+    dayIndex: index,
+  });
+  const j = best(js.filter((x) => transit(x)[0]?.tripId === `t_${hms(8, 0)}`));
+  check('jedzie do S4', transit(j!)?.[0]?.toStopId === 'S4', describe(j));
 }
 
 // ─── Przesiadka bez zbędnego spaceru ───────────────────────────────────────

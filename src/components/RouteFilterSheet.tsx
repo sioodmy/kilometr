@@ -17,22 +17,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   Activity,
-  ArrowUpDown,
   BusFront,
   CableCar,
-  Check,
-  Compass,
-  Footprints,
   Layers,
   TrainFront,
   TramFront,
   X,
-  Zap,
 } from './icons';
 import { scheme, shape, spacing, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { LegMode } from '../types/models';
-import type { RouteStyle } from '../services/routing/types';
 
 export type RouteModeFilter = 'all' | LegMode;
 export type RouteTransfersFilter = 'all' | 'max1' | 'direct';
@@ -40,12 +34,9 @@ export type RouteTransfersFilter = 'all' | 'max1' | 'direct';
 export interface RouteFilterSheetProps {
   availableModes: LegMode[];
   selectedMode: RouteModeFilter;
-  sortMode: RouteStyle;
-  defaultSortMode: RouteStyle;
   transfersFilter: RouteTransfersFilter;
   liveOnly: boolean;
   onSelectMode: (mode: RouteModeFilter) => void;
-  onSelectSort: (sort: RouteStyle) => void;
   onSelectTransfers: (transfers: RouteTransfersFilter) => void;
   onToggleLiveOnly: () => void;
   onReset: () => void;
@@ -64,12 +55,9 @@ const springConfig = {
 export function RouteFilterSheet({
   availableModes,
   selectedMode,
-  sortMode,
-  defaultSortMode,
   transfersFilter,
   liveOnly,
   onSelectMode,
-  onSelectSort,
   onSelectTransfers,
   onToggleLiveOnly,
   onReset,
@@ -85,8 +73,8 @@ export function RouteFilterSheet({
   // na żadnym urządzeniu i nie wypycha footera poza dolną krawędź.
   const HANDLE_HEIGHT = 24;
   const maxAvailable = windowHeight - insets.top - insets.bottom - 16;
-  const baseContentHeight = 520 + Math.max(0, fontScale - 1) * 220;
-  const sheetHeight = Math.min(maxAvailable, Math.max(460, baseContentHeight));
+  const baseContentHeight = 390 + Math.max(0, fontScale - 1) * 180;
+  const sheetHeight = Math.min(maxAvailable, Math.max(340, baseContentHeight));
   const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
 
   useEffect(() => {
@@ -113,18 +101,12 @@ export function RouteFilterSheet({
   const activeCount =
     (selectedMode !== 'all' ? 1 : 0) +
     (transfersFilter !== 'all' ? 1 : 0) +
-    (sortMode !== defaultSortMode ? 1 : 0) +
     (liveOnly ? 1 : 0);
   const hasActiveFilters = activeCount > 0;
 
   const handleModePress = (mode: RouteModeFilter) => {
     void Haptics.selectionAsync().catch(() => {});
     onSelectMode(selectedMode === mode ? 'all' : mode);
-  };
-
-  const handleSortPress = (mode: RouteStyle) => {
-    void Haptics.selectionAsync().catch(() => {});
-    onSelectSort(mode);
   };
 
   const handleTransfersPress = (transfers: RouteTransfersFilter) => {
@@ -182,38 +164,6 @@ export function RouteFilterSheet({
         return <Layers size={16} color={color} />;
     }
   };
-
-  const sortOptions: {
-    key: RouteStyle;
-    label: string;
-    desc: string;
-    renderIcon: (color: string) => React.ReactNode;
-  }[] = [
-    {
-      key: 'balanced',
-      label: s.routesFilters.sortOptimal,
-      desc: s.routesFilters.sortOptimalDesc,
-      renderIcon: (color) => <Compass size={16} color={color} />,
-    },
-    {
-      key: 'fastest',
-      label: s.routesFilters.sortFastest,
-      desc: s.routesFilters.sortFastestDesc,
-      renderIcon: (color) => <Zap size={16} color={color} />,
-    },
-    {
-      key: 'fewerTransfers',
-      label: s.routesFilters.sortFewerTransfers,
-      desc: s.routesFilters.sortFewerTransfersDesc,
-      renderIcon: (color) => <ArrowUpDown size={16} color={color} />,
-    },
-    {
-      key: 'lessWalking',
-      label: s.routesFilters.sortLessWalking,
-      desc: s.routesFilters.sortLessWalkingDesc,
-      renderIcon: (color) => <Footprints size={16} color={color} />,
-    },
-  ];
 
   const transferOptions: {
     key: RouteTransfersFilter;
@@ -287,22 +237,6 @@ export function RouteFilterSheet({
           overScrollMode="never"
         >
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{s.routesFilters.sortSection}</Text>
-            <View style={styles.sortGrid}>
-              {sortOptions.map((opt) => (
-                <SortCard
-                  key={opt.key}
-                  label={opt.label}
-                  desc={opt.desc}
-                  renderIcon={opt.renderIcon}
-                  active={sortMode === opt.key}
-                  onPress={() => handleSortPress(opt.key)}
-                />
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.section}>
             <Text style={styles.sectionTitle}>{s.routesFilters.vehiclesSection}</Text>
             <View style={styles.pillsWrap}>
               <ModeChip
@@ -368,47 +302,6 @@ export function RouteFilterSheet({
         </View>
       </View>
     </BottomSheet>
-  );
-}
-
-function SortCard({
-  label,
-  desc,
-  renderIcon,
-  active,
-  onPress,
-}: {
-  label: string;
-  desc: string;
-  renderIcon: (color: string) => React.ReactNode;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.sortCard,
-        active && styles.sortCardActive,
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="radio"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={`${label}, ${desc}`}
-    >
-      <View style={styles.sortCardLeft}>
-        <View style={[styles.sortIconCircle, active && styles.sortIconCircleActive]}>
-          {renderIcon(active ? scheme.primary : scheme.onSurfaceVariant)}
-        </View>
-        <Text
-          style={[styles.sortCardTitle, active && styles.sortCardTitleActive]}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-      </View>
-      {active && <Check size={16} color={scheme.primary} />}
-    </Pressable>
   );
 }
 
@@ -653,57 +546,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: scheme.onSurfaceVariant,
     marginBottom: 6,
-    fontWeight: '700',
-  },
-  sortGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  sortCard: {
-    width: '48.8%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: shape.medium,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    backgroundColor: scheme.surfaceContainerLow,
-    minHeight: 44,
-  },
-  sortCardActive: {
-    borderColor: scheme.primary,
-    backgroundColor: scheme.primaryContainer,
-  },
-  sortCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    minWidth: 0,
-  },
-  sortIconCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sortIconCircleActive: {
-    backgroundColor: 'rgba(92, 219, 190, 0.16)',
-  },
-  sortCardTitle: {
-    ...type.labelLarge,
-    fontSize: 13,
-    color: scheme.onSurface,
-    fontWeight: '500',
-    flex: 1,
-  },
-  sortCardTitleActive: {
-    color: scheme.onPrimaryContainer,
     fontWeight: '700',
   },
   pillsWrap: {

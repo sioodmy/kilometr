@@ -4,7 +4,7 @@ import {
   warmupRaptorNetworkAsync,
 } from '../../../modules/kilometr-raptor';
 import { DayIndex, LocalGtfsStore as GtfsStore } from './store';
-import { JourneySegment, RawJourney, RouteStyle, TransitModePreference } from './types';
+import { JourneySegment, RawJourney, TransitModePreference } from './types';
 import { classifyTransitMode, getRaptorNet, packRaptorNet, type RaptorNet } from './network';
 
 export { classifyTransitMode };
@@ -37,17 +37,11 @@ export interface CostParams {
   transferPenaltySec: number;
 }
 
-/** Styl trasy z ustawień. Spacer zawsze ważony mocniej niż jazda, żeby 30 s zysku nie wyrzucało z tramwaju. */
-const ROUTE_STYLE_COSTS: Record<RouteStyle, CostParams> = {
-  fastest: { walkReluctance: 1.25, transferPenaltySec: 120 },
-  balanced: { walkReluctance: 1.8, transferPenaltySec: 300 },
-  lessWalking: { walkReluctance: 3, transferPenaltySec: 300 },
-  fewerTransfers: { walkReluctance: 1.8, transferPenaltySec: 900 },
+/** Domyślny koszt uogólniony: zrównoważony spacer i przesiadki. */
+export const DEFAULT_COST: CostParams = {
+  walkReluctance: 1.8,
+  transferPenaltySec: 300,
 };
-
-export function costParamsFor(style: RouteStyle | undefined): CostParams {
-  return ROUTE_STYLE_COSTS[style ?? 'balanced'] ?? ROUTE_STYLE_COSTS.balanced;
-}
 
 export interface RaptorOptions {
   /** maksymalna liczba przesiadek (0 = tylko bezpośrednie). Default 2. */
@@ -87,7 +81,7 @@ export interface RaptorOptions {
   walkSpeedMps?: number;
   /** Najdłuższa piesza przesiadka (m). Default 800. */
   maxTransferWalkM?: number;
-  /** Wagi kosztu uogólnionego. Default styl 'balanced'. */
+  /** Wagi kosztu uogólnionego. Default DEFAULT_COST. */
   cost?: CostParams;
   /** Tryb „bądź na”: podróże z przyjazdem po tej godzinie są bezużyteczne. */
   latestArrivalSec?: number;
@@ -227,7 +221,7 @@ function packRaptorQuery(
     0,
     Math.min(MAX_TRANSFER_WALK_M, Math.round(options.maxTransferWalkM ?? MAX_TRANSFER_WALK_M)),
   );
-  const cost = options.cost ?? ROUTE_STYLE_COSTS.balanced;
+  const cost = options.cost ?? DEFAULT_COST;
   const wr = Math.max(1, cost.walkReluctance);
   const transferPenaltySec = Math.round(cost.transferPenaltySec);
   const latestArr =
@@ -552,7 +546,7 @@ export interface SelectOptions {
  * za przesiadki.
  */
 function journeyCost(j: RawJourney, refSec: number, opts: SelectOptions = {}): number {
-  const cost = opts.cost ?? ROUTE_STYLE_COSTS.balanced;
+  const cost = opts.cost ?? DEFAULT_COST;
   const base =
     opts.arriveBySec !== undefined ? opts.arriveBySec - j.departureSec : j.arrivalSec - refSec;
   return (
