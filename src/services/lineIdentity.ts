@@ -4,31 +4,33 @@ import { getRailAgencyColor, inferRailAgencyFromLine } from './railIdentity';
 // Tożsamość linii komunikacyjnej: typ pojazdu, stabilny kolor i kontrast.
 // Wydzielone z komponentu LineBadge, bo zależy od nich silnik powiadomień
 // (kolor linii jako akcent powiadomienia i segmentu na pasku postępu).
+// Paleta M3 Expressive (Dark Theme Tone 80): wysoki kontrast na ciemnym tle
+// (#111414 / #1B2120) oraz gwarantowany kontrast tekstu WCAG AAA (>= 7:1).
 export const TRANSIT_PALETTE = [
-  '#00897B', // Teal
-  '#1976D2', // Blue
-  '#D32F2F', // Red
-  '#7B1FA2', // Purple
-  '#F57C00', // Amber/Orange
-  '#303F9F', // Indigo
-  '#2E7D32', // Green
-  '#C2185B', // Pink
-  '#0097A7', // Cyan
-  '#E64A19', // Deep Orange
-  '#512DA8', // Deep Purple
-  '#0288D1', // Light Blue
-  '#558B2F', // Olive/Lime
-  '#AD1457', // Berry
-  '#00838F', // Dark Cyan
-  '#455A64', // Blue Grey
-  '#5D4037', // Brown
-  '#388E3C', // Emerald
-  '#0D47A1', // Cobalt
-  '#880E4F', // Wine
-  '#00695C', // Pine
-  '#BF360C', // Rust
-  '#311B92', // Violet
-  '#1A237E', // Midnight Blue
+  '#71D8C2', // Teal
+  '#96CCFF', // Blue
+  '#FFB3B6', // Red
+  '#EBB2FF', // Purple
+  '#FFB95A', // Amber/Orange
+  '#BAC3FF', // Indigo
+  '#97D77D', // Green
+  '#FFAEDE', // Pink
+  '#6DD5E6', // Cyan
+  '#FFB596', // Deep Orange
+  '#CBBEFF', // Deep Purple
+  '#87CFFA', // Light Blue
+  '#CECC50', // Olive/Lime
+  '#FCABF7', // Berry
+  '#79D6D3', // Dark Cyan
+  '#AFCBD5', // Blue Grey
+  '#F6BA8C', // Brown
+  '#7ADA9E', // Emerald
+  '#ACC7FF', // Cobalt
+  '#FFB1C5', // Wine
+  '#98D3B9', // Pine
+  '#FFB4A7', // Rust
+  '#DAB9FF', // Violet
+  '#ABCAE5', // Midnight Blue
 ];
 
 /**
@@ -48,97 +50,97 @@ export function normalizeLineName(line?: string, _mode?: LegMode, compact?: bool
     .replace(/^KOLEJE\s+ŚLĄSKIE\b/i, 'KŚ')
     .replace(/^KOLEJE\s+WIELKOPOLSKIE\b/i, 'KW')
     .replace(/^WARSZAWSKA\s+KOLEJ\s+DOJAZDOWA\b/i, 'WKD')
+    .replace(/^PKP\s+SKM\s+W\s+TRÓJMIEŚCIE\b/i, 'SKMT')
+    .replace(/^SKM\s+TRÓJMIASTO\b/i, 'SKMT')
+    .replace(/^SKM\s+W\s+WARSZAWIE\b/i, 'SKM')
     .replace(/^SZYBKA\s+KOLEJ\s+MIEJSKA\b/i, 'SKM');
 
-  // Warianty kursu z ukośnikiem (np. "11572/3" -> "11572")
-  if (/^\d+\/\d+$/.test(clean)) {
-    clean = clean.split('/')[0];
-  }
+  // Skasuj ewentualny ukośnik i wariant po nim (np. "11572/3" -> "11572")
+  clean = clean.replace(/\/.*$/, '').trim();
 
-  // Pociągi dalekobieżne: obcięcie przydomka pociągu (np. "IC 1620 HETMAN" -> "IC 1620")
-  const icMatch = /^(IC|TLK|EIP|EIC)\s*(\d+)(?:\s+[A-ZĄĆĘŁŃÓŚŹŻa-ząćęłńóśźż\s-]+)?$/i.exec(clean);
+  // IC/TLK/EIP: "IC 1620 HETMAN" -> "IC 1620"
+  const icMatch = clean.match(/^(IC|TLK|EIP|EIC)\s+(\d{3,5})\b/i);
   if (icMatch) {
     return `${icMatch[1].toUpperCase()} ${icMatch[2]}`;
   }
 
-  // Pociągi z oznaczeniem linii handlowej po prefiksie przewoźnika:
-  // np. "KD D10" -> "D10", "KM R1" -> "R1", "KŚ S1" -> "S1", "KD D1" -> "D1"
-  const lineCodeMatch =
-    /^(?:KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|PR)[\s:_-]+([A-Z]{1,2}\d{1,3}[A-Z]?)$/i.exec(clean);
-  if (lineCodeMatch) {
-    return lineCodeMatch[1].toUpperCase();
+  // Odmiany regionalne z literą relacji:
+  //   KD D10, KD D1 -> D10, D1
+  //   KM R1, KM RE1 -> R1, RE1
+  //   KŚ S1, KŚ SPR1 -> S1, SPR1
+  //   SKMT S1 -> S1
+  const regionalMatch = clean.match(
+    /^(?:KD|KM|KŚ|KS|SKM|SKMT)\s+([A-Z]{1,3}\d{1,4}[A-Z]?|[A-Z]\d{1,3})\b/i,
+  );
+  if (regionalMatch) {
+    return regionalMatch[1].toUpperCase();
   }
 
-  // W widoku kompaktowym (np. JourneyStrip):
-  // jeśli mamy długi numer pociągu z prefiksem przewoźnika (np. "KD 69123", "KM 19302"),
-  // skracamy do samego przewoźnika ("KD", "KM"), bo konkretny 5-cyfrowy numer relacji
-  // i tak widać w szczegółach połączenia.
-  if (compact) {
-    const carrierNumMatch = /^(KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|PR|WKD|SKM)[\s:_-]+(?:\d{4,6})$/i.exec(
-      clean,
-    );
-    if (carrierNumMatch) {
-      return carrierNumMatch[1].toUpperCase();
+  // W widoku compact (np. pigułka trasy na liście połączeń): pociągi oznaczamy
+  // samym skrótem przewoźnika, bo numer pociągu (np. 69123) nie mieści się
+  // w ciasnym rzędzie z przesiadkami, a pasażer szuka peronu po przewoźniku.
+  if (compact && _mode === 'train') {
+    const carrierPrefix = clean.match(/^(PR|POLREGIO|KD|KM|KMŁ|KŚ|KS|KW|WKD|SKMT|SKM|IC|TLK|EIC|EIP)\b/i);
+    if (carrierPrefix) {
+      const code = carrierPrefix[1].toUpperCase();
+      if (code === 'POLREGIO') return 'PR';
+      if (code === 'KS') return 'KŚ';
+      return code;
     }
   }
+
+  // Pozostałe pociągi: zdejmij zbędne prefiksy, zostaw sam numer/symbol
+  clean = clean
+    .replace(/^(?:POCIĄG|REGIO|OS|OSOBOWY)\s+/i, '')
+    .trim();
 
   return clean;
 }
 
 /**
- * Rozpoznaje typ pojazdu po nazwie linii. Moduł musi się dać importować
- * w Node (skrypty check:*), więc `cityId` jest opcjonalnym parametrem, a nie
- * odczytem aktywnego miasta. Badge newsów nie zna trybu z planera, więc linie
- * rozpoznaje po nazwie; RAPTOR ma osobny `classifyTransitMode` (route_type).
- *
- * Reguła bazowa: niski numer (1-33) to tramwaj, o ile miasto nie ma własnej
- * gałęzi (patrz niżej) albo niskich numerów autobusów (GZM). Miasta bez
- * własnej gałęzi opierają się na tej regule, bo ich rozkład numerów jest z nią
- * zgodny: Szczecin i Olsztyn (tramwaje w niskim zakresie, autobusy od 51 / 101).
- *
- * Własne gałęzie (numeracja odbiega od reguły bazowej, gałąź zwraca wprost):
- * - Warszawa: M1/M2 to metro, S1...S40 to pociąg.
- * - Trójmiasto: trolejbusy 21-33, 710 i 723; tramwaje 1-12; reszta to autobus.
- * - Poznań: T6/T7 to autobus, 97/201/203 to tramwaj (reszta wg reguły bazowej).
- * - Łódź: "6." z kropką to autobus, 41/43/45 oraz P1/R8/Z1 to tramwaj.
- * - Lublin: trolejbusy 150-162 i 950, N1-N3 to autobus, reszta to autobus.
- * - Kielce, Białystok, Opole, Rzeszów, Radom: wyłącznie autobusy, więc każda
- *   linia jest autobusem i niski numer nigdy nie udaje tramwaju.
+ * Odgaduje tryb transportu (tramwaj, autobus, pociąg, metro, kolejka),
+ * gdy feed GTFS zwraca generyczny typ lub brakuje go w rozkładzie.
  */
 export function inferTransitMode(
   mode?: LegMode,
   line?: string,
   cityId?: string,
-): 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway' | 'walk' {
-  if (mode === 'walk') return 'walk';
-  if (mode === 'tram') return 'tram';
-  if (mode === 'train') return 'train';
-  if (mode === 'cable') return 'cable';
-  if (mode === 'trolleybus') return 'trolleybus';
-  if (mode === 'subway') return 'subway';
-  if (mode === 'bus') return 'bus';
-  if (!line) return 'bus';
-  const clean = line.trim();
-  if (cityId === 'warszawa') {
-    if (/^M[12]$/i.test(clean)) return 'subway';
-    if (/^S\d{1,2}$/i.test(clean)) return 'train';
-  }
+): LegMode {
+  if (mode && mode !== 'bus') return mode;
+  if (!line) return mode ?? 'bus';
+
+  const clean = line.trim().toUpperCase();
+
+  // Kolej linowa (Polinka we Wrocławiu)
+  if (clean === 'POLINKA' || clean === 'KOLEJ LINOWA') return 'cable';
+
+  // Metro warszawskie (linie M1, M2, przyszłościowo M3/M4)
+  if (cityId === 'warszawa' && /^M[1-4]$/i.test(clean)) return 'subway';
+
+  // Rozpoznawanie pociągów po oficjalnych oznaczeniach przewoźników
   if (
-    /^(?:KD|KM|KW|KS|KŚ|KML|KMŁ|ŁKA|WKD|SKM|PR|POLREGIO|IC|TLK|EIP|EIC)(?:[\s:_-]|$)/i.test(clean)
+    /^(?:KD|KM|KMŁ|KŚ|KS|KW|PR|POLREGIO|WKD|SKM|SKMT|IC|TLK|EIP|EIC)\b/i.test(clean) ||
+    /^(?:IC|TLK|EIP|EIC)\s*\d+/i.test(clean) ||
+    /^(?:R|RE|RP|OsP|Os)\s*\d{3,6}$/i.test(clean) ||
+    /^\d{4,6}$/.test(clean)
   ) {
     return 'train';
   }
-  if (/^D\d{1,2}$/i.test(clean) && (cityId === 'wroclaw' || !cityId)) {
-    return 'train';
-  }
+
+  // Regionalne linie kolejowe z literą (D1, D10 na Dolnym Śląsku, S1 na Śląsku, R1 na Mazowszu)
+  // Wykluczamy jednak linie autobusowe w miastach bez tramwajów/kolei miejskiej w tych zakresach.
+  if (cityId === 'wroclaw' && /^D\d{1,2}$/i.test(clean)) return 'train';
+  if (cityId === 'warszawa' && /^(?:R\d{1,2}|S\d{1,2}|WKD)$/i.test(clean)) return 'train';
+  if (cityId === 'krakow' && /^SKA\d$/i.test(clean)) return 'train';
+  if (cityId === 'trojmiasto' && /^SKM\b/i.test(clean)) return 'train';
+  if (cityId === 'poznan' && /^PKM\d$/i.test(clean)) return 'train';
+
+  // Tramwaje w polskich miastach mają zazwyczaj numery 1-33 (GZM 0-49, Kraków do 79)
   const num = parseInt(clean, 10);
-  // Poznań: tramwaje to 1-19 plus 97, 201 i 203 (wszystkie z route_type 0
-  // w feedzie ZTM), a T6/T7 to autobusy turystyczne. Numery > 33 poza
-  // wymienionymi to autobusy (nocne 2xx też, oprócz 201/203).
+
   // Trójmiasto: gdańskie tramwaje to 1-12 (route_type 900 w feedzie),
   // gdyńskie trolejbusy to 21-33, 710 i 723 (route_type 800). Nocne N1-N89
-  // i zastępcze T8/T9 to autobusy. Zakresy się nie przecinają, więc gałąź
-  // zwraca wprost i nie spada do zgadywania 1-33.
+  // i zastępcze T8/T9 to autobusy.
   if (cityId === 'trojmiasto') {
     if (/^(710|723)$/.test(clean)) return 'trolleybus';
     if (!isNaN(num)) {
@@ -148,16 +150,85 @@ export function inferTransitMode(
     }
     return 'bus';
   }
-  if (cityId === 'poznan') {
-    if (/^T\d{1,2}$/i.test(clean)) return 'bus';
-    if (num === 97 || num === 201 || num === 203) return 'tram';
-  }
+
   // Łódź: tramwaje to 1-19 plus podmiejskie 41/43/45 i jednoliterowe P1, R8,
   // Z1 (wszystkie z route_type 0 w feedzie ZDiT). "6." z kropką to autobus.
   if (cityId === 'lodz') {
     if (/^6\.$/.test(clean)) return 'bus';
     if (num === 41 || num === 43 || num === 45) return 'tram';
     if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
+    if (!isNaN(num) && num >= 1 && num <= 19) return 'tram';
+    return 'bus';
+  }
+
+  // GZM (Katowice): autobusy mają numery od 0 wzwyż (np. 0, 11, 12, 27 to autobusy!),
+  // a tramwaje mają zakres 0-49. Niska cyfra nie wystarcza do odgadnięcia tramwaju,
+  // więc w GZM ufamy wyłącznie jawnemu typowi z feedu.
+  if (cityId === 'gzm') return mode ?? 'bus';
+
+  // Szczecin: tramwaje 1-12, autobusy 51+ i pospieszne A-H (feed ZDiTM ma
+  // poprawne route_type, ale fallback po numerze chroni widoki bez leg.mode).
+  if (cityId === 'szczecin') {
+    if (!isNaN(num) && num >= 1 && num <= 12) return 'tram';
+    return 'bus';
+  }
+
+  // Toruń: tramwaje 1-8 (feed MZK Toruń ma route_type 0, fallback po numerze).
+  if (cityId === 'torun') {
+    if (!isNaN(num) && num >= 1 && num <= 8) return 'tram';
+    return 'bus';
+  }
+
+  // Olsztyn: tramwaje 1-5 (linie 1, 2, 3, 4, 5). Reszta to autobusy (100+,
+  // nocne N01-N02). Odcięcie 1-5 eliminuje fałszywe tramwaje z domyślnego 1-33.
+  if (cityId === 'olsztyn') {
+    if (!isNaN(num) && num >= 1 && num <= 5) return 'tram';
+    return 'bus';
+  }
+
+  // Grudziądz: jedyna linia tramwajowa to 2 (w porywach 1/T w remontach).
+  // Autobusy to 3-26, więc domyślne 1-33 uznawałoby autobusy za tramwaje.
+  if (cityId === 'grudziadz') {
+    if (!isNaN(num) && (num === 1 || num === 2)) return 'tram';
+    if (/^[12]T$/i.test(clean)) return 'tram';
+    return 'bus';
+  }
+
+  // Gorzów Wielkopolski: tramwaje to 1-4 (w tym 1P/1W w remontach). Reszta to
+  // autobusy 100+ i nocne 500+, z wyjątkiem linii zastępczych T1-T4.
+  if (cityId === 'gorzow') {
+    if (!isNaN(num) && num >= 1 && num <= 4) return 'tram';
+    if (/^T[1-4]$/i.test(clean)) return 'bus'; // Zastępcza „za tramwaj” jedzie autobusem
+    return 'bus';
+  }
+
+  // Elbląg: tramwaje to linie 1-5 (feed ZKM Elbląg). Autobusy to 6-31, więc
+  // domyślne 1-33 uznawałoby elbląskie autobusy 6-31 za tramwaje.
+  if (cityId === 'elblag') {
+    if (!isNaN(num) && num >= 1 && num <= 5) return 'tram';
+    if (/^T[1-5]$/i.test(clean)) return 'tram';
+    return 'bus';
+  }
+
+  // Bydgoszcz: tramwaje to 1-11 (oraz okazjonalne warianty).
+  if (cityId === 'bydgoszcz') {
+    if (!isNaN(num) && num >= 1 && num <= 11) return 'tram';
+    return 'bus';
+  }
+
+  // Częstochowa: tramwaje to wyłącznie 1, 2, 3. Autobusy miejskie mają
+  // numery 10-39, więc domyślne 1-33 fałszywie klasyfikowało linie 10-33.
+  if (cityId === 'czestochowa') {
+    if (!isNaN(num) && num >= 1 && num <= 3) return 'tram';
+    return 'bus';
+  }
+
+  // Poznań: tramwaje to 1-18, 97-99 (turystyczne/zastępcze) oraz nocne 201-203.
+  // Autobusy to 144+, za tramwaj Txx.
+  if (cityId === 'poznan') {
+    if (!isNaN(num) && ((num >= 1 && num <= 18) || (num >= 97 && num <= 99) || (num >= 201 && num <= 203))) return 'tram';
+    if (/^T\d{1,2}$/i.test(clean)) return 'bus';
+    return 'bus';
   }
   // Kielce: same autobusy, więc niski numer nie udaje tramwaju.
   if (cityId === 'kielce') return 'bus';
@@ -211,19 +282,20 @@ export const TRAIN_BADGE_BG = '#FFB957';
 export const CABLE_BADGE_BG = '#A5CCE8';
 
 /**
- * Trolejbus (GZM/Tychy) dostaje stałą zieleń: sygnalizuje napęd elektryczny,
- * a odcień jest odrębny od bursztynu pociągów i błękitu kolejki. Ciemne
- * tło -> biały tekst, kontrast ~5:1.
+ * Trolejbus (GZM/Tychy, Lublin) dostaje stałą zieleń M3 Expressive Tone 80 (#97D77D):
+ * sygnalizuje napęd elektryczny, a odcień jest odrębny od bursztynu pociągów
+ * i błękitu kolejki. Jasne tło -> ciemny tekst, kontrast > 12:1.
  */
-export const TROLLEY_BADGE_BG = '#2E7D32';
+export const TROLLEY_BADGE_BG = '#97D77D';
 
 /**
- * Metro Warszawy jedzie kolorami z feedu WTP (M1 niebieskie #0000BB,
- * M2 czerwone #BB0000, zweryfikowane w routes.txt): pasażer poznaje linię
- * po barwie ze schematu, nie po losie z palety. Oba ciemne -> biały tekst.
+ * Metro Warszawy jedzie oficjalnymi kolorami z feedu WTP w wersji M3 Expressive Tone 80
+ * (M1 błękit #A8C7FA, M2 koral/czerwień #FFB4AB, fallback indygo #BAC3FF):
+ * pasażer natychmiast rozpoznaje linię po barwie ze schematu metra,
+ * a badge zachowuje perfekcyjny kontrast (>9.5:1) na ciemnym tle aplikacji.
  */
-export const SUBWAY_BADGE_BG: Record<string, string> = { M1: '#0000BB', M2: '#BB0000' };
-export const SUBWAY_BADGE_FALLBACK_BG = '#1A237E';
+export const SUBWAY_BADGE_BG: Record<string, string> = { M1: '#A8C7FA', M2: '#FFB4AB' };
+export const SUBWAY_BADGE_FALLBACK_BG = '#BAC3FF';
 
 /**
  * Luminancja względna koloru (WCAG). Null dla wejścia, które nie jest
@@ -249,10 +321,10 @@ const MAP_BG = '#101413';
 const MAP_LINE_MIN_LUM = (relativeLuminance(MAP_BG)! + 0.05) * 4.5 - 0.05;
 
 /**
- * Kolor linii pod rysowanie trasy na ciemnej mapie. Część palety ginie na
- * niej całkowicie (brąz #5D4037 tramwaju 19 ma kontrast 2:1, granat metra
- * 1.4:1), więc za ciemny kolor mieszamy z bielą aż osiągnie próg. Jasne
- * kolory wracają bez zmian i tożsamość linii zostaje ta sama co w badge'u.
+ * Kolor linii pod rysowanie trasy na ciemnej mapie. Część kolorów zewnętrznych
+ * (np. surowe hex-y z feedów GTFS) może ginąć na ciemnym tle, więc za ciemny
+ * kolor mieszamy z bielą aż osiągnie próg. Jasne kolory z palety M3 wracają
+ * bez zmian i tożsamość linii zostaje ta sama co w badge'u.
  */
 export function mapLineColor(bg: string): string {
   const lum = relativeLuminance(bg);
@@ -319,7 +391,7 @@ export function getLineColors(
   const clean = (line || '').trim().toUpperCase();
 
   if (!clean) {
-    const bg = isTram ? '#00897B' : '#1976D2';
+    const bg = isTram ? '#71D8C2' : '#96CCFF';
     return { bg, fg: getContrastForeground(bg), isTram, isTrain: false, isCable: false };
   }
 

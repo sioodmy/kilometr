@@ -1,6 +1,7 @@
 package app.kilometr.widgets;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import android.app.Application;
 import android.appwidget.AppWidgetManager;
@@ -49,10 +50,10 @@ public class WidgetRenderTest {
       .put("search", "Dokąd jedziesz?").put("stale", "Sprawdź kolejne połączenie")
       .put("addPlace", "Dodaj miejsce");
     JSONObject item = new JSONObject().put("title", "Dom").put("dest", "Dom").put("icon", "home")
-      .put("line", "17").put("mode", "tram").put("lineBg", "#00695C").put("lineFg", "#FFFFFF")
+      .put("line", "17").put("mode", "tram").put("lineBg", "#79D6D3").put("lineFg", "#000000")
       .put("departTs", now + 300_000).put("departAt", "14:35").put("deepLink", "kilometr://routes?toTitle=Dom");
     JSONObject second = new JSONObject(item.toString()).put("title", "Politechnika").put("dest", "Politechnika")
-      .put("icon", "school").put("line", "146").put("mode", "bus").put("lineBg", "#1976D2")
+      .put("icon", "school").put("line", "146").put("mode", "bus").put("lineBg", "#87CFFA").put("lineFg", "#000000")
       .put("departTs", now + 720_000).put("departAt", "14:42").put("deepLink", "kilometr://routes?toTitle=Politechnika");
     JSONArray places = new JSONArray()
       .put(new JSONObject().put("name", "Dom").put("icon", "home").put("deepLink", "kilometr://routes?toTitle=Dom"))
@@ -62,7 +63,7 @@ public class WidgetRenderTest {
       .put("places", places).put("pinned", new JSONObject().put("fromTitle", "Inżynierska").put("toTitle", "Politechnika")
         .put("departTs", now - 600_000).put("arriveTs", now + 720_000).put("departAt", "14:20").put("arriveAt", "14:42")
         .put("deepLink", "kilometr://routes?toTitle=Politechnika")
-        .put("legs", new JSONArray().put(new JSONObject().put("mode", "tram").put("line", "17").put("bg", "#00695C").put("fg", "#FFFFFF"))));
+        .put("legs", new JSONArray().put(new JSONObject().put("mode", "tram").put("line", "17").put("bg", "#79D6D3").put("fg", "#000000"))));
   }
 
   private Bundle size(int width, int height) {
@@ -201,7 +202,7 @@ public class WidgetRenderTest {
   }
 
   @Test public void lineBadgesKeepContrast() {
-    for (String hex : new String[] {"#F57C00", "#1976D2", "#00897B", "#BB0000"}) {
+    for (String hex : new String[] {"#FFB95A", "#96CCFF", "#71D8C2", "#FFB4AB"}) {
       View badge = apply(context, WidgetPartsKt.lineBadge(context, "tram", "4", hex, "#FFFFFF"), 120, 32);
       int color = ((TextView) badge.findViewById(R.id.kw_badge_text)).getCurrentTextColor();
       assertTrue(ColorUtils.calculateContrast(color, android.graphics.Color.parseColor(hex)) >= 4.5);

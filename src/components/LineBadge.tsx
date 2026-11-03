@@ -29,7 +29,6 @@ export function LineBadge({
   compact,
   active,
   maxWidth,
-  muted = false,
   size = 'medium',
 }: {
   mode?: LegMode;
@@ -38,7 +37,6 @@ export function LineBadge({
   compact?: boolean;
   active?: boolean;
   maxWidth?: number;
-  muted?: boolean;
   size?: 'medium' | 'large';
 }) {
   // Miasto tylko dla heurystyki numerów, gdy brak trybu (np. badge newsów).
@@ -76,13 +74,11 @@ export function LineBadge({
       : undefined;
   const agencyBg = railAgency ? getRailAgencyColor(railAgency) : undefined;
   const railHex = leg?.railColor?.replace('#', '') ?? '';
-  const { bg, fg } = muted
-    ? { bg: scheme.surfaceContainerHighest, fg: scheme.onSurfaceVariant }
-    : agencyBg
-      ? { bg: agencyBg, fg: getContrastForeground(agencyBg) }
-      : /^[0-9a-f]{6}$/i.test(railHex)
-        ? { bg: `#${railHex}`, fg: getContrastForeground(`#${railHex}`) }
-        : getLineColors(normalizedLine || line, resolved === 'train' ? 'train' : mode, cityId);
+  const { bg, fg } = agencyBg
+    ? { bg: agencyBg, fg: getContrastForeground(agencyBg) }
+    : /^[0-9a-f]{6}$/i.test(railHex)
+      ? { bg: `#${railHex}`, fg: getContrastForeground(`#${railHex}`) }
+      : getLineColors(normalizedLine || line, resolved === 'train' ? 'train' : mode, cityId);
   // Zestaw ikon nie ma osobnego glifu trolejbusu ani metra, więc trolejbus
   // jedzie ikoną autobusu na własnym zielonym tle, a metro ikoną pociągu
   // na barwie linii ze schematu (M1/M2): kolor niesie tożsamość.

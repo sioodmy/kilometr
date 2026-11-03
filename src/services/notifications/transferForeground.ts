@@ -223,7 +223,6 @@ export class ForegroundTransferProtection {
         allowedTransferModes: settings.allowedModes,
         maxWalkM: Math.min(800, settings.maxWalkM),
         walkSpeedMps: profileWalkSpeedMps(settings.walkPace),
-        routeStyle: settings.routeStyle,
       });
       for (const tail of connections) {
         const timeline = computeLegTimeline(tail, new Date(now));

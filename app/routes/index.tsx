@@ -65,8 +65,7 @@ import { loadEarlierConnections } from '../../src/services/routing/earlierConnec
 import { sortConnectionsByCost } from '../../src/services/routing/engine';
 import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
 import { boardingDepartureMs } from '../../src/services/routing/connectionTimes';
-import { costParamsFor } from '../../src/services/routing/raptor';
-import type { JourneyTimeMode, RouteStyle } from '../../src/services/routing/types';
+import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard } from '../../src/components/ConnectionCard';
@@ -264,7 +263,6 @@ export default function RoutesScreen() {
   const [transfersFilter, setTransfersFilter] = useState<RouteTransfersFilter>(
     params.directOnly === '1' ? 'direct' : 'all',
   );
-  const [sortMode, setSortMode] = useState<RouteStyle>(() => getSettingsSync().routeStyle);
   const [liveOnly, setLiveOnly] = useState(false);
   const [modeFilter, setModeFilter] = useState<RouteModeFilter>(
     params.modes === 'tram' ||
@@ -337,11 +335,10 @@ export default function RoutesScreen() {
     const cfg = getSettingsSync();
     return sortConnectionsByCost(
       [...list],
-      costParamsFor(sortMode),
       profileWalkSpeedMps(cfg.walkPace),
       arrivalMode ? targetTimeSec : undefined,
     );
-  }, [liveItems, transfersFilter, liveOnly, modeFilter, sortMode, arrivalMode, targetTimeSec]);
+  }, [liveItems, transfersFilter, liveOnly, modeFilter, arrivalMode, targetTimeSec]);
 
   const listRef = useRef<FlatList<Connection>>(null);
 
@@ -372,7 +369,6 @@ export default function RoutesScreen() {
       maxWalkM: cfg.maxWalkM,
       // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).
       walkSpeedMps: profileWalkSpeedMps(cfg.walkPace),
-      routeStyle: cfg.routeStyle,
     };
   };
 
@@ -864,9 +860,8 @@ export default function RoutesScreen() {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
-  const defaultSortMode = getSettingsSync().routeStyle;
   const hasActiveFilters =
-    modeFilter !== 'all' || transfersFilter !== 'all' || sortMode !== defaultSortMode || liveOnly;
+    modeFilter !== 'all' || transfersFilter !== 'all' || liveOnly;
   const isCustomTime = targetTimeSec !== undefined || arrivalMode;
 
   const timeDisplayLabel = useMemo(() => {
@@ -1385,18 +1380,14 @@ export default function RoutesScreen() {
         <RouteFilterSheet
           availableModes={availableModes}
           selectedMode={modeFilter}
-          sortMode={sortMode}
-          defaultSortMode={defaultSortMode}
           transfersFilter={transfersFilter}
           liveOnly={liveOnly}
           onSelectMode={setModeFilter}
-          onSelectSort={setSortMode}
           onSelectTransfers={setTransfersFilter}
           onToggleLiveOnly={() => setLiveOnly((prev) => !prev)}
           onReset={() => {
             setModeFilter('all');
             setTransfersFilter('all');
-            setSortMode(getSettingsSync().routeStyle);
             setLiveOnly(false);
           }}
           onClose={() => setFiltersOpen(false)}

@@ -4,7 +4,7 @@ import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
 import { buildSearchSlices } from '../routing/engine';
 import { getRaptorNet, packRaptorNet } from '../routing/network';
-import { costParamsFor, mergeDayIndexes } from '../routing/raptor';
+import { DEFAULT_COST, mergeDayIndexes } from '../routing/raptor';
 import { gtfsStore } from '../routing/store';
 import { computeLegTimeline } from './tripProgress';
 import { getTransferNativeCopy } from './transferCopy';
@@ -100,7 +100,7 @@ export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string
         walkSpeedMps,
         maxWalkM: settings.maxWalkM,
         allowedModes: settings.allowedModes,
-        cost: costParamsFor(settings.routeStyle),
+        cost: DEFAULT_COST,
       },
       destination: { name: trip.toTitle, lat: trip.toLat, lon: trip.toLon },
       liveUrl: `https://zbiorkom.live/api6-open/${city.zbiorkomSlug}/positions/${city.zbiorkomBbox}`,
