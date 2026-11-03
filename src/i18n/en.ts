@@ -1272,6 +1272,10 @@ export const en: Strings = {
     modeTrolley: 'Trolleybus',
     modeCable: 'Cable car',
     modeVehicle: 'Vehicle',
+    currentLocation: (stop: string) => `Current location: ${stop}`,
+    liveTracking: 'Live tracking',
+    transfer: 'Transfer',
+    transferMinutes: (min: number) => `Transfer · ~${min} min`,
     nearStop: (mode: string, stop: string) => `${mode} near stop: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,

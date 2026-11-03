@@ -2391,10 +2391,13 @@ export async function fetchDisruptionsFromWorker(
   cityId: string,
   signal?: AbortSignal,
 ): Promise<MpkNewsItem[] | null> {
+  // Bez limitu zawieszone połączenie trzyma kartę w ładowaniu i nie puszcza
+  // do zapasowych feedów miasta.
+  const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const url = `${TIMETABLE.baseUrl}/${cityId}/disruptions.json`;
     const res = await fetch(url, {
-      signal,
+      signal: scope.signal,
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return null;
@@ -2421,6 +2424,8 @@ export async function fetchDisruptionsFromWorker(
     });
   } catch {
     return null;
+  } finally {
+    scope.dispose();
   }
 }
 
