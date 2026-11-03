@@ -132,7 +132,7 @@ function interchangeStops(raw?: string): string[] {
     .filter(Boolean);
 }
 
-function JourneyStrip({ data, muted }: { data: JourneyStripData; muted: boolean }) {
+function JourneyStrip({ data }: { data: JourneyStripData }) {
   const s = useStrings();
   const { width } = useWindowDimensions();
   if (data.transitLegs.length === 0) return null;
@@ -167,7 +167,7 @@ function JourneyStrip({ data, muted }: { data: JourneyStripData; muted: boolean 
           <View key={step.key} style={styles.stripCell}>
             {i > 0 && <ChevronRight size={12} color={scheme.onSurfaceVariant} />}
             {leg ? (
-              <LineBadge leg={leg} maxWidth={width - 96} muted={muted} />
+              <LineBadge leg={leg} maxWidth={width - 96} />
             ) : (
               <View style={styles.walkStep}>
                 <DirectionsWalk size={15} color={scheme.onSurfaceVariant} />
@@ -192,7 +192,7 @@ export const ConnectionCard = memo(function ConnectionCard({
 }: {
   item: Connection;
   onPress: (item: Connection, sourceLayout?: CardLayoutInfo) => void;
-  /** historyczne (przyszłe) połączenie: przygaszony wygląd */
+  /** historyczne (przeszłe) połączenie: przygaszony wygląd tła karty */
   dimmed?: boolean;
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;
@@ -300,12 +300,9 @@ export const ConnectionCard = memo(function ConnectionCard({
           <Text style={[styles.departure, { color: departureColor }]}>
             {walkOnly ? s.connection.walkRoute : departureText}
           </Text>
-          <View style={[styles.duration, dimmed && styles.mutedDuration]}>
-            <Clock3
-              size={14}
-              color={dimmed ? scheme.onSurfaceVariant : scheme.onSecondaryContainer}
-            />
-            <Text style={[styles.durationText, dimmed && styles.mutedText]}>
+          <View style={styles.duration}>
+            <Clock3 size={14} color={scheme.onSecondaryContainer} />
+            <Text style={styles.durationText}>
               {s.common.durMin(item.durationMin)}
             </Text>
           </View>
@@ -328,7 +325,7 @@ export const ConnectionCard = memo(function ConnectionCard({
             <Text style={styles.walkLabel}>{s.connection.walkAll}</Text>
           </View>
         ) : stripData.transitLegs.length > 0 ? (
-          <JourneyStrip data={stripData} muted={dimmed} />
+          <JourneyStrip data={stripData} />
         ) : null}
 
         {!notice && item.live && item.delayMin !== 0 && (
@@ -336,11 +333,7 @@ export const ConnectionCard = memo(function ConnectionCard({
             style={[
               styles.delay,
               {
-                color: dimmed
-                  ? scheme.onSurfaceVariant
-                  : item.delayMin > 0
-                    ? scheme.error
-                    : scheme.warning,
+                color: item.delayMin > 0 ? scheme.error : scheme.warning,
               },
             ]}
           >
@@ -367,8 +360,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   pastCard: { backgroundColor: scheme.surfaceContainerLow },
-  mutedDuration: { backgroundColor: scheme.surfaceContainerHighest },
-  mutedText: { color: scheme.onSurfaceVariant },
   schedule: {
     flexDirection: 'row',
     flexWrap: 'wrap',
