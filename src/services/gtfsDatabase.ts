@@ -623,6 +623,18 @@ export async function getTripStopTimes(tripId: string): Promise<
   return db.getAllAsync('SELECT stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id = ? ORDER BY seq ASC', tripId);
 }
 
+/**
+ * Stan bazy do statusu danych (ekran główny pyta co 30 s). COUNT(*) na
+ * stop_times to skan ponad miliona wierszy, więc tu wystarcza EXISTS.
+ */
+export async function getGtfsPresence(): Promise<{ stops: number; trips: number; hasStopTimes: boolean }> {
+  const db = await getGtfsDb();
+  const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
+  const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
+  const st = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stop_times) AS n');
+  return { stops: s?.n ?? 0, trips: t?.n ?? 0, hasStopTimes: (st?.n ?? 0) > 0 };
+}
+
 export async function getGtfsStats(): Promise<{ stops: number; routes: number; trips: number; stopTimes: number }> {
   const db = await getGtfsDb();
   const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');

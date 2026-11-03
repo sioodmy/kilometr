@@ -33,6 +33,7 @@ function dataTr(): Strings['data'] {
 }
 
 import {
+  getGtfsPresence,
   getGtfsStats,
   getMeta,
   importCalendar,
@@ -126,8 +127,8 @@ export async function refreshDataStatus(): Promise<DataStatus> {
   // jeszcze nie) pokazywałoby "gotowe", a UI wracałoby potem do pobierania.
   if (importInProgress) return status;
   try {
-    const stats = await getGtfsStats();
-    if (stats.stops > 0 && stats.trips > 0 && stats.stopTimes > 0) {
+    const stats = await getGtfsPresence();
+    if (stats.stops > 0 && stats.trips > 0 && stats.hasStopTimes) {
       const updatedAt = await getMeta('gtfs_imported_at');
       emit({ state: 'ready', stops: stats.stops, trips: stats.trips, updatedAt, source: await getGtfsSource() });
       // Dokończenie przerwanego importu: wagi + warmup w tle.
@@ -135,7 +136,7 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
       // To nie jest działający rozkład - czyścimy, żeby UI wymusił pobieranie.
-      if (stats.stops > 0 || stats.trips > 0 || stats.stopTimes > 0) {
+      if (stats.stops > 0 || stats.trips > 0 || stats.hasStopTimes) {
         await clearGtfsTables().catch(() => {});
       }
       emit({ state: 'empty' });
