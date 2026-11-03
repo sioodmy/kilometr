@@ -39,6 +39,7 @@ import {
   getDataStatus,
   importGtfsFromNetwork,
   refreshDataStatus,
+  refreshTimetableIfExpiring,
   subscribeDataStatus,
 } from '../src/services/dataManager';
 import { getSettingsSync, profileWalkSpeedMps } from '../src/services/settings';
@@ -286,6 +287,8 @@ export default function HomeScreen() {
       const st = await refreshDataStatus().catch(() => ({ state: 'empty' }) as const);
       if (st.state === 'empty') {
         void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
+      } else if (st.state === 'ready') {
+        void refreshTimetableIfExpiring().catch((e) => console.warn('Timetable refresh failed:', e));
       }
     };
     void check();

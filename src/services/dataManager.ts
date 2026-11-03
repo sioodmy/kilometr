@@ -35,6 +35,7 @@ function dataTr(): Strings['data'] {
 import {
   getGtfsStats,
   getMeta,
+  getTimetableEndDate,
   importCalendar,
   importCalendarDates,
   importRoutes,
@@ -144,6 +145,29 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     emit({ state: 'error', message: err instanceof Error ? err.message : String(err) });
   }
   return status;
+}
+
+const EXPIRY_MARGIN_DAYS = 3;
+const EXPIRY_RETRY_MS = 60 * 60 * 1000;
+let lastExpiryAttempt = 0;
+
+/**
+ * Rozkład kończy się za kilka dni: sami sprawdzamy nowszy. Po końcu kalendarza
+ * planer nie ma już kursów, a ręczne „Sprawdź aktualizacje" to za mało.
+ * Manifest sprawdzamy co najwyżej raz na `refreshHours`, próby bez sieci raz na godzinę.
+ */
+export async function refreshTimetableIfExpiring(): Promise<void> {
+  if (importInProgress || Date.now() - lastExpiryAttempt < EXPIRY_RETRY_MS) return;
+  const end = await getTimetableEndDate().catch(() => null);
+  if (!end) return;
+  const soon = new Date();
+  soon.setDate(soon.getDate() + EXPIRY_MARGIN_DAYS);
+  const soonKey = `${soon.getFullYear()}${String(soon.getMonth() + 1).padStart(2, '0')}${String(soon.getDate()).padStart(2, '0')}`;
+  if (end > soonKey) return;
+  const lastCheck = await getMeta('gtfs_last_check').catch(() => null);
+  if (lastCheck && Date.now() - new Date(lastCheck).getTime() < TIMETABLE.refreshHours * 3600 * 1000) return;
+  lastExpiryAttempt = Date.now();
+  await importGtfsFromNetwork();
 }
 
 /** Po starcie rozgrzewa równolegle routing, adresy i wagi przystanków. */
