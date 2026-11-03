@@ -175,7 +175,11 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       maxZoom,
       fitOnGeometry,
     });
-  }, [route, attempt, offlineBase, cityId, showPoi, resolvedPadding, maxZoom, fitOnGeometry, selectedLegId, vehicle]);
+    // Tylko to, co wymaga nowego dokumentu. Trasa, pojazd, wybór nogi i marginesy
+    // idą potem wiadomościami (efekty niżej); nowe `html` przeładowuje cały
+    // MapLibre w WebView, czyli kafle i kadr przy każdym ticku pojazdu.
+    // cityId: ekran nie jest odmontowywany przy zmianie miasta (stos natywny).
+  }, [route?.id, attempt, offlineBase, cityId, showPoi, maxZoom, fitOnGeometry]);
 
   const send = useCallback((msg: MapInMessage) => {
     webRef.current?.injectJavaScript(
