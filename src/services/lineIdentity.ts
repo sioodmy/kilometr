@@ -138,6 +138,29 @@ export function inferTransitMode(
   // Tramwaje w polskich miastach mają zazwyczaj numery 1-33 (GZM 0-49, Kraków do 79)
   const num = parseInt(clean, 10);
 
+  // Trójmiasto: gdańskie tramwaje to 1-12 (route_type 900 w feedzie),
+  // gdyńskie trolejbusy to 21-33, 710 i 723 (route_type 800). Nocne N1-N89
+  // i zastępcze T8/T9 to autobusy.
+  if (cityId === 'trojmiasto') {
+    if (/^(710|723)$/.test(clean)) return 'trolleybus';
+    if (!isNaN(num)) {
+      if (num >= 21 && num <= 33) return 'trolleybus';
+      if (num >= 1 && num <= 12) return 'tram';
+      return 'bus';
+    }
+    return 'bus';
+  }
+
+  // Łódź: tramwaje to 1-19 plus podmiejskie 41/43/45 i jednoliterowe P1, R8,
+  // Z1 (wszystkie z route_type 0 w feedzie ZDiT). "6." z kropką to autobus.
+  if (cityId === 'lodz') {
+    if (/^6\.$/.test(clean)) return 'bus';
+    if (num === 41 || num === 43 || num === 45) return 'tram';
+    if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
+    if (!isNaN(num) && num >= 1 && num <= 19) return 'tram';
+    return 'bus';
+  }
+
   // GZM (Katowice): autobusy mają numery od 0 wzwyż (np. 0, 11, 12, 27 to autobusy!),
   // a tramwaje mają zakres 0-49. Niska cyfra nie wystarcza do odgadnięcia tramwaju,
   // więc w GZM ufamy wyłącznie jawnemu typowi z feedu.
@@ -203,8 +226,9 @@ export function inferTransitMode(
   // Poznań: tramwaje to 1-18, 97-99 (turystyczne/zastępcze) oraz nocne 201-203.
   // Autobusy to 144+, za tramwaj Txx.
   if (cityId === 'poznan') {
-    if (!isNaN(num) && ((num >= 1 && num <= 18) || (num >= 97 && num <= 99))) return 'tram';
-    if (/^(P1|R8|Z1)$/i.test(clean)) return 'tram';
+    if (!isNaN(num) && ((num >= 1 && num <= 18) || (num >= 97 && num <= 99) || (num >= 201 && num <= 203))) return 'tram';
+    if (/^T\d{1,2}$/i.test(clean)) return 'bus';
+    return 'bus';
   }
   // Kielce: same autobusy, więc niski numer nie udaje tramwaju.
   if (cityId === 'kielce') return 'bus';
