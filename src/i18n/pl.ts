@@ -1317,6 +1317,10 @@ export const pl = {
     modeTrolley: 'Trolejbus',
     modeCable: 'Kolejka linowa',
     modeVehicle: 'Pojazd',
+    currentLocation: (stop: string) => `Obecna lokacja: ${stop}`,
+    liveTracking: 'Śledzenie na żywo',
+    transfer: 'Przesiadka',
+    transferMinutes: (min: number) => `Przesiadka · ~${min} min`,
     nearStop: (mode: string, stop: string) => `${mode} w pobliżu przystanku: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
