@@ -35,7 +35,7 @@ interface MapStopTap {
 
 export interface RouteMapHandle {
   /** Podmienia pojedynczą nogę na prawdziwą geometrię ulic. */
-  setGeometry: (legId: string, coords: [number, number][]) => void;
+  setGeometry: (legId: string, coords: [number, number][], fit?: boolean) => void;
   /** Dopasuj widok do trasy (całej albo wybranej nogi, patrz selectedLegId). */
   fit: () => void;
   /** Wymuś ponowne wczytanie silnika mapy (np. po ubiciu procesu WebView). */
@@ -51,18 +51,63 @@ interface RouteMapProps {
    * mapy idą z telefonu, więc mapa działa bez internetu.
    */
   offlineBase?: string | null;
+  /** Marginesy widoku [top, right, bottom, left] w px. */
+  padding?: [number, number, number, number];
   /** Wysokość panelu pod mapą: tyle marginesu zostawiamy przy dopasowaniu. */
   paddingBottom?: number;
   /** Pasek u góry zasłania trasę, więc dopasowanie musi go zostawić. */
   paddingTop?: number;
+  paddingLeft?: number;
+  paddingRight?: number;
   /** Etykiety POI pod trasą. Włącza je fullscreen szczegółów połączenia. */
   showPoi?: boolean;
+  /** Automatyczny re-fit po dociągnięciu geometrii każdego odcinka trasy. */
+  fitOnGeometry?: boolean;
+  /** Maksymalny zoom dopasowania trasy (np. 16 dla widgetu, 17 dla mapy pełnoekranowej). */
+  maxZoom?: number;
   onReady?: () => void;
   onStopTap?: (stop: MapStopTap) => void;
   onLegTap?: (legId: string) => void;
   /** false = kafelki się nie ładują, true = mapa wróciła do normy. */
   onTilesStatus?: (ok: boolean) => void;
   onError?: (message: string) => void;
+}
+
+/** Oblicza geograficzny środek trasy dla początkowego kadru kamery. */
+function routeCenter(route: MapRoute | null): [number, number] | null {
+  if (!route?.legs?.length) return null;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+  let count = 0;
+  for (const leg of route.legs) {
+    if (leg.stops) {
+      for (const s of leg.stops) {
+        if (Number.isFinite(s.lat) && Number.isFinite(s.lon) && (s.lat !== 0 || s.lon !== 0)) {
+          if (s.lat < minLat) minLat = s.lat;
+          if (s.lat > maxLat) maxLat = s.lat;
+          if (s.lon < minLon) minLon = s.lon;
+          if (s.lon > maxLon) maxLon = s.lon;
+          count++;
+        }
+      }
+    }
+    if (leg.geometry) {
+      for (const p of leg.geometry) {
+        const [lat, lon] = p;
+        if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) {
+          if (lat < minLat) minLat = lat;
+          if (lat > maxLat) maxLat = lat;
+          if (lon < minLon) minLon = lon;
+          if (lon > maxLon) maxLon = lon;
+          count++;
+        }
+      }
+    }
+  }
+  if (count === 0) return null;
+  return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
 }
 
 /**
@@ -79,9 +124,14 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     vehicle = null,
     selectedLegId = null,
     offlineBase = null,
+    padding,
     paddingBottom = 190,
     paddingTop = 42,
+    paddingLeft = 42,
+    paddingRight = 42,
     showPoi = false,
+    fitOnGeometry = false,
+    maxZoom,
     onReady,
     onStopTap,
     onLegTap,
@@ -92,24 +142,40 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
 ) {
   const webRef = useRef<WebView>(null);
   const firstLoad = useRef(true);
-  const padRef = useRef<[number, number, number, number]>([42, 42, paddingBottom, 42]);
-  padRef.current = [paddingTop, 42, paddingBottom, 42];
+
+  const resolvedPadding = useMemo<[number, number, number, number]>(() => {
+    if (padding && padding.length === 4) return padding;
+    return [paddingTop, paddingRight, paddingBottom, paddingLeft];
+  }, [padding, paddingTop, paddingRight, paddingBottom, paddingLeft]);
+
+  const padRef = useRef<[number, number, number, number]>(resolvedPadding);
+  padRef.current = resolvedPadding;
 
   const { cityId } = useActiveCity();
   const [attempt, setAttempt] = useState(0);
 
   const html = useMemo(() => {
-    let center: [number, number] | null = null;
-    try {
-      const c = getActiveCitySync().center;
-      center = [c.lon, c.lat];
-    } catch {
-      center = null;
+    let center = routeCenter(route);
+    if (!center) {
+      try {
+        const c = getActiveCitySync().center;
+        center = [c.lon, c.lat];
+      } catch {
+        center = null;
+      }
     }
-    return buildRouteMapDocument({ route, vehicle, selectedLegId, offlineBase, center, showPoi });
-    // cityId w zaleznosciach: ekran nie jest odmontowywany przy zmianie miasta
-    // (stos natywny), a bez tego WebView dostalby centrum poprzedniego miasta.
-  }, [route?.id, attempt, offlineBase, cityId, showPoi]);
+    return buildRouteMapDocument({
+      route,
+      vehicle,
+      selectedLegId,
+      offlineBase,
+      center,
+      showPoi,
+      padding: resolvedPadding,
+      maxZoom,
+      fitOnGeometry,
+    });
+  }, [route, attempt, offlineBase, cityId, showPoi, resolvedPadding, maxZoom, fitOnGeometry, selectedLegId, vehicle]);
 
   const send = useCallback((msg: MapInMessage) => {
     webRef.current?.injectJavaScript(
@@ -125,8 +191,8 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   useImperativeHandle(
     ref,
     () => ({
-      setGeometry: (legId, coords) =>
-        send({ t: 'geometry', legId, coords: toGeoJson(coords), approx: false }),
+      setGeometry: (legId, coords, fit = false) =>
+        send({ t: 'geometry', legId, coords: toGeoJson(coords), approx: false, fit, pad: padRef.current }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
       reload: restart,
     }),
@@ -134,12 +200,18 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   );
 
   useEffect(() => {
+    if (route) {
+      send({ t: 'route', route, pad: padRef.current });
+    }
+  }, [route, send]);
+
+  useEffect(() => {
     send({ t: 'vehicle', vehicle });
   }, [send, vehicle]);
 
   useEffect(() => {
     send({ t: 'select', legId: selectedLegId, pad: padRef.current });
-  }, [send, selectedLegId, paddingTop, paddingBottom]);
+  }, [send, selectedLegId, resolvedPadding]);
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
