@@ -1038,6 +1038,52 @@ async function main(): Promise<void> {
   );
   expect('szacunek z czasów przystanków przez północ', fromStopTimes?.gap, 1);
 
+  // Noga w całości po północy: GTFS trzyma czasy jako 24:05/24:25, a plan
+  // pokazuje 00:05/00:25. Marker musi działać jak przy przejściu północy.
+  const afterMidnightStops: LegStop[] = [
+    { stopId: 'NIGHT_A', name: 'Noc A', lat: 51.1, lon: 17, seq: 1, departSec: H(24, 5) },
+    { stopId: 'NIGHT_B', name: 'Noc B', lat: 51.104, lon: 17, seq: 2, arriveSec: H(24, 25) },
+  ];
+  const afterMidnightLeg: MapLeg = {
+    ...nightMapLeg,
+    id: 'night-after-midnight',
+    departAt: '00:05',
+    arriveAt: '00:25',
+    stops: [
+      { ...nightMapLeg.stops[0], id: 'night-a2', legId: 'night-after-midnight', arriveSec: H(24, 5) },
+      { ...nightMapLeg.stops[1], id: 'night-b2', legId: 'night-after-midnight', arriveSec: H(24, 25) },
+    ],
+  };
+  expect('noga 24:xx po północy działa', isLegRunning(afterMidnightLeg, H(0, 15)), true);
+  const afterMidnightMatch = matchVehicleToLeg(
+    [{ ...nightVehicle, lat: 51.102 }],
+    afterMidnightLeg,
+    [
+      [51.1, 17],
+      [51.104, 17],
+    ],
+    { nowSec: H(0, 15) },
+  );
+  expect(
+    'pojazd przypięty do nogi 24:xx po północy',
+    afterMidnightMatch?.vehicle.vehicleId,
+    'N-1',
+  );
+  const afterMidnightPosition = locateLiveStopPosition(
+    afterMidnightStops,
+    {
+      ...nightLeg,
+      id: 'night-after-midnight-leg',
+      departAt: '00:05',
+      arriveAt: '00:25',
+      intermediateStops: afterMidnightStops,
+    },
+    null,
+    null,
+    new Date(2026, 9, 10, 0, 15).getTime(),
+  );
+  expect('szacunek nogi 24:xx po północy', afterMidnightPosition?.gap, 0);
+
   // ─── LiveTracker.subscribe ──────────────────────────────────────────────
   describe('LiveTracker: subskrypcje zdarzeń');
   let notified = 0;

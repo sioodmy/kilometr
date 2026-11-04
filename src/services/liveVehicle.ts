@@ -73,6 +73,28 @@ function windowNow(window: LegWindow, nowSec: number): number {
 }
 
 /**
+ * Czas przystanku w zegarze okna nogi. GTFS trzyma kursy nocne jako 24:xx,
+ * a noga po północy ma już 00:xx, więc bierzemy wystąpienie najbliższe okna.
+ */
+function windowTime(window: LegWindow, timeSec: number): number {
+  let best = timeSec;
+  let bestDist = Infinity;
+  for (const candidate of [timeSec - 86400, timeSec, timeSec + 86400]) {
+    const dist =
+      candidate < window.from
+        ? window.from - candidate
+        : candidate > window.to
+          ? candidate - window.to
+          : 0;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/**
  * Oś czasu wzdłuż nogi: czas rozkładowy dla każdego przystanku + końców.
  * Dzięki temu wiemy, czego oczekiwać w dowolnym miejscu trasy.
  */
@@ -80,14 +102,13 @@ function legSchedule(leg: MapLeg, coords: Coord[]): SchedulePoint[] {
   const window = legWindow(leg);
   if (!window) return [];
   const pts: SchedulePoint[] = [];
-  const shift = (t: number) => (window.crossesMidnight && t < window.from ? t + 86400 : t);
 
   for (const stop of leg.stops) {
     const p = projectRoutePoint(coords, stop.lat, stop.lon);
     if (!p) continue;
     const t = stop.departSec ?? stop.arriveSec;
     if (t == null || !isFinite(t)) continue;
-    pts.push({ alongM: p.alongM, timeSec: shift(t) });
+    pts.push({ alongM: p.alongM, timeSec: windowTime(window, t) });
   }
   // Końce nogi są rozstrzygające: plan mówi, o której godzinie wsiadamy
   // i wysiadamy, a czasy przystanków pośrednich bywają tylko wejściowe.
