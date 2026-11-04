@@ -2,8 +2,8 @@ Linki podróży mają postać `https://kilometr.app/trip/#trip=…`. Dane pozost
 
 Konfiguracja publikacji:
 
-- `landing/public/.well-known/assetlinks.json` zawiera odcisk certyfikatu APK zainstalowanego na telefonie testowym (`dev-20261026-2122-a102a25`).
-- Zmienna repozytorium `ANDROID_APP_LINK_FINGERPRINTS` dodaje certyfikaty innych kanałów. Podaj odciski SHA-256 oddzielone przecinkami, także certyfikat App Signing z Google Play, jeśli jest inny.
+- `landing/public/.well-known/assetlinks.json` nie zawiera żadnego odcisku. Debug keystore jest publiczny, więc nie może tu wracać.
+- Zmienna repozytorium `ANDROID_APP_LINK_FINGERPRINTS` publikuje certyfikaty release (APK i App Signing z Google Play, jeśli jest inny). Podaj odciski SHA-256 oddzielone przecinkami. Bez tej zmiennej App Links nie ufają żadnemu podpisowi.
 - `APPLE_TEAM_ID` generuje plik `apple-app-site-association` dla podpisanego `app.kilometr`. Bez Team ID działa przycisk otwarcia przez `kilometr://`.
 - Workflow Pages publikuje pliki powiązań oraz geometrię GTFS. Aplikacja wymaga nowego wydania z filtrami linków. Sama publikacja strony nie aktualizuje APK.
 
