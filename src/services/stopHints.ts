@@ -1,9 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { STOP_HINTS_WROCLAW } from '../data/stopHintsWroclaw';
-import { STOP_HINTS_WARSZAWA } from '../data/stopHintsWarszawa';
-import { STOP_HINTS_GZM } from '../data/stopHintsGzm';
-import { STOP_HINTS_KRAKOW } from '../data/stopHintsKrakow';
-import { STOP_HINTS_POZNAN } from '../data/stopHintsPoznan';
 import type { StopHintsDataset, StopHintValue } from '../types/stopHints';
 
 const cache = new Map<string, StopHintsDataset>();
@@ -14,24 +9,25 @@ function extractHintText(val: StopHintValue | undefined): string | null {
   return val.hint || null;
 }
 
-function getBundledStopHints(cityId: string): StopHintsDataset | null {
+/** Dynamiczny import per miasto: 684 KB hints nie trafia do startowego bundla. */
+function loadBundledStopHints(cityId: string): Promise<StopHintsDataset | null> {
   const c = cityId.toLowerCase();
   if (c === 'wroclaw' || c === 'wrocław') {
-    return STOP_HINTS_WROCLAW;
+    return import('../data/stopHintsWroclaw').then((m) => m.STOP_HINTS_WROCLAW);
   }
   if (c === 'warszawa' || c === 'warsaw') {
-    return STOP_HINTS_WARSZAWA;
+    return import('../data/stopHintsWarszawa').then((m) => m.STOP_HINTS_WARSZAWA);
   }
   if (c === 'gzm' || c === 'katowice' || c === 'metropolia') {
-    return STOP_HINTS_GZM;
+    return import('../data/stopHintsGzm').then((m) => m.STOP_HINTS_GZM);
   }
   if (c === 'krakow' || c === 'kraków') {
-    return STOP_HINTS_KRAKOW;
+    return import('../data/stopHintsKrakow').then((m) => m.STOP_HINTS_KRAKOW);
   }
   if (c === 'poznan' || c === 'poznań') {
-    return STOP_HINTS_POZNAN;
+    return import('../data/stopHintsPoznan').then((m) => m.STOP_HINTS_POZNAN);
   }
-  return null;
+  return Promise.resolve(null);
 }
 
 async function fetchStopHints(
@@ -41,7 +37,8 @@ async function fetchStopHints(
   const cached = cache.get(cityId);
   if (cached) return cached;
 
-  const bundled = getBundledStopHints(cityId);
+  const bundled = await loadBundledStopHints(cityId);
+  if (signal?.aborted) return null;
   if (bundled) {
     cache.set(cityId, bundled);
   }
@@ -63,14 +60,12 @@ async function fetchStopHints(
 }
 
 function useStopHints(cityId: string) {
-  const [data, setData] = useState<StopHintsDataset | null>(() => getBundledStopHints(cityId));
+  const [data, setData] = useState<StopHintsDataset | null>(() => cache.get(cityId) ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    const bundled = getBundledStopHints(cityId);
-    if (bundled) {
-      setData(bundled);
-    }
+    const cached = cache.get(cityId);
+    setData(cached ?? null);
 
     const abortController = new AbortController();
     fetchStopHints(cityId, abortController.signal)
