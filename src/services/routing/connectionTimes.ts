@@ -40,9 +40,9 @@ export function boardingDepartureMs(connection: Connection, now = new Date()): n
 }
 
 /**
- * Przesuwa odjazd i przyjazd o całe doby, żeby plan trzymał się zapisanego
- * absolutnego odjazdu. Po północy `departureSec` 24:xx wskazuje jutro, więc
- * bez tego śledzony kurs skakał o dobę.
+ * Przesuwa odjazd, przyjazd i rozkład odcinków o całe doby, żeby plan trzymał
+ * się zapisanego absolutnego odjazdu. Po północy `departureSec` 24:xx wskazuje
+ * jutro, więc bez tego śledzony kurs skakał o dobę.
  */
 export function anchorConnectionToPlan(
   connection: Connection,
@@ -57,6 +57,17 @@ export function anchorConnectionToPlan(
     ...connection,
     departureSec: connection.departureSec + shift,
     arrivalSec: connection.arrivalSec == null ? undefined : connection.arrivalSec + shift,
+    legs: connection.legs.map((leg) =>
+      leg.scheduledDepartureSec == null && leg.scheduledArrivalSec == null
+        ? leg
+        : {
+            ...leg,
+            scheduledDepartureSec:
+              leg.scheduledDepartureSec == null ? undefined : leg.scheduledDepartureSec + shift,
+            scheduledArrivalSec:
+              leg.scheduledArrivalSec == null ? undefined : leg.scheduledArrivalSec + shift,
+          },
+    ),
   };
 }
 

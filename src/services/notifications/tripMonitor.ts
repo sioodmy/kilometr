@@ -13,7 +13,7 @@ import {
   mergeWidgetSnapshot,
   type WidgetPinned,
 } from '../widgetSnapshot';
-import { clockFromMs, nearestDepartureMs } from './format';
+import { clockFromMs, nearestDepartureMs, toAbsoluteMs } from './format';
 import { nowSecOfDay } from '../vehiclePosition';
 import {
   getNotificationPreferencesSync,
@@ -118,11 +118,18 @@ function vehicleForTrip(p: TripProgress): VehiclePosition | null {
 
 // ─── Odświeżenie ─────────────────────────────────────────────────────────────
 
-/** Absolutny odjazd planu: data serwisowa przy udostępnionej podróży, inaczej najbliższe wystąpienie. */
+/**
+ * Absolutny odjazd planu: data serwisowa przy udostępnionej podróży, inaczej
+ * wystąpienie wskazane przez `departInMin`. Sam `departureSec` nie rozróżnia
+ * kursu 24:xx od kursu z jutra, bo oba mają tę samą wartość.
+ */
 function departureMsOf(connection: Connection, at: Date): number {
-  return connection.serviceDate
-    ? sharedTimeMs(connection.serviceDate, connection.departureSec)
-    : nearestDepartureMs(connection.departureSec, at);
+  if (connection.serviceDate)
+    return sharedTimeMs(connection.serviceDate, connection.departureSec);
+  const aligned = toAbsoluteMs(connection.departureSec, at);
+  const nearest = nearestDepartureMs(connection.departureSec, at);
+  const hinted = at.getTime() + Math.max(0, connection.departInMin ?? 0) * 60_000;
+  return Math.abs(nearest - hinted) <= Math.abs(aligned - hinted) ? nearest : aligned;
 }
 
 async function planTracked(): Promise<Connection | null> {
