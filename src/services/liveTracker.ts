@@ -184,6 +184,8 @@ class LiveTracker {
   private health = new Map<string, SourceHealth>();
   /** Czy ticker ma aktywnie chodzić (false po stop(), true po start()). */
   private wantPoll = false;
+  /** Widoczne ekrany, które potrzebują świeżych danych live. */
+  private consumers = 0;
   /** Kto sam tego wymaga, bo działa w tle (śledzenie podróży). Pin > 0 = poll i na tle. */
   private pinned = 0;
   private appStateSub: { remove(): void } | null = null;
@@ -247,12 +249,27 @@ class LiveTracker {
     this.notify();
   }
 
-  /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
+  /** Idempotentny start tickera; ekrany wołają acquire(), nie start(). */
   start(): void {
     this.wantPoll = true;
     this.ensureAppStateListener();
     if (this.pinned === 0 && AppState.currentState !== 'active') return;
     this.armTimer();
+  }
+
+  /**
+   * Ekran zgłasza zapotrzebowanie na świeże dane, dopóki jest widoczny.
+   * Licznik, bo podczas przejścia przez chwilę działa stary i nowy ekran.
+   */
+  acquire(): void {
+    this.consumers += 1;
+    this.start();
+  }
+
+  /** Zwolnienie ekranu; ostatni gasi poll, chyba że śledzenie podróży pinuje. */
+  release(): void {
+    this.consumers = Math.max(0, this.consumers - 1);
+    if (this.consumers === 0) this.stop();
   }
 
   /**
@@ -269,7 +286,8 @@ class LiveTracker {
   /** Zatrzymuje ticker: apka ma iść bez polla, dopóki czegoś nie potrzebuje. */
   stop(): void {
     this.wantPoll = false;
-    this.disarmTimer();
+    // Pin ma własne tempo (także w tle), więc nie gasimy mu timera.
+    if (this.pinned === 0) this.disarmTimer();
   }
 
   /** Śledzenie podróży potrzebuje polla nawet w tle: pin zamiast twardego start(). */
@@ -334,11 +352,11 @@ class LiveTracker {
 
   /**
    * Szybka ścieżka przed planowaniem: gdy snapshot świeży - nic nie robi,
-   * w przeciwnym razie odpala poll W TLE i wraca od razu (planowanie nigdy
-   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤5 s).
+   * w przeciwnym razie odpala jednorazowy poll W TLE i wraca od razu
+   * (planowanie nigdy nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤5 s).
+   * Ciągły poll zostaje po stronie widocznych ekranów (acquire/release).
    */
   async ensureFresh(): Promise<void> {
-    this.start();
     void this.restoreSnapshot();
     if (this.lastOk > 0 || this.inFlight) return;
     void this.poll();

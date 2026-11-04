@@ -207,6 +207,13 @@ export default function RoutesScreen() {
     setPreviewReady(false);
   }, []);
   useFocusEffect(useCallback(() => closePreview, [closePreview]));
+  // Lista pokazuje opóźnienia live, więc trzyma poll, dopóki jest widoczna.
+  useFocusEffect(
+    useCallback(() => {
+      liveTracker.acquire();
+      return () => liveTracker.release();
+    }, []),
+  );
   // Rozkład trzymany na telefonie: bez niego RAPTOR nie ma czym liczyć, więc
   // pusty wynik to nie „brak serwera", tylko brak danych offline.
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());

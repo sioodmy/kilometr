@@ -231,6 +231,14 @@ export default function HomeScreen() {
     }, []),
   );
 
+  // Poll live chodzi tylko wtedy, gdy na wierzchu jest ekran, który go używa.
+  useFocusEffect(
+    useCallback(() => {
+      liveTracker.acquire();
+      return () => liveTracker.release();
+    }, []),
+  );
+
   // Badge na dzwonku: dzisiejsze pilne utrudnienie (feed miasta).
   // Sprawdzamy przy starcie i powrocie na foreground, bez interwału, żeby nie spamować feedu.
   // Zmiana miasta to nowy feed: badge trzeba przeliczyć od zera, inaczej wisiałby
@@ -365,8 +373,6 @@ export default function HomeScreen() {
         if (!cancelled && cacheGen === smartGen.current && cached.length > 0) setSmart(cached);
       })
       .catch(() => {});
-    // Live GPS od startu (ticker w tle): opóźnienia gotowe zanim user wyszuka trasę.
-    liveTracker.start();
 
     // Jeden sposób aplikowania fixu: pierwszy szybki odczyt i każdy późniejszy
     // (dokładniejszy w tle) przechodzą tędy, żeby ranking i start tras zawsze
