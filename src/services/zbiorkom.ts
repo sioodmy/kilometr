@@ -531,12 +531,14 @@ function matchZbKdRust(
   veh: ZbKdVehicle,
   dayIndex: DayIndex,
   routeIds: string[],
+  offsets?: Map<string, number>,
 ): ZbKdMatch | null | undefined {
   const tripIds: string[] = [];
   let candCount = 0;
   const body = new BinaryWriter(256);
-  for (const pattern of dayIndex.patterns.values()) {
+  for (const [patternId, pattern] of dayIndex.patterns.entries()) {
     if (!routeIds.includes(pattern.routeId)) continue;
+    const offset = offsets?.get(patternId) ?? 0;
     const trips = pattern.trips as { trip_id: string }[] | undefined;
     if (!trips) continue;
     for (const trip of trips) {
@@ -549,7 +551,7 @@ function matchZbKdRust(
         const name = stop?.stop_name || '';
         const sec = t.departure_sec ?? t.arrival_sec;
         if (!name || sec == null) continue;
-        packed.push({ name, sec });
+        packed.push({ name, sec: sec + offset });
       }
       tripIds.push(trip.trip_id);
       body.u32(candCount).u16(packed.length);
@@ -575,7 +577,11 @@ function matchZbKdRust(
   return tripId ? { tripId } : null;
 }
 
-export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | null {
+export function matchZbKd(
+  veh: ZbKdVehicle,
+  dayIndex: DayIndex,
+  offsets?: Map<string, number>,
+): ZbKdMatch | null {
   if (veh.stops.length === 0) return null;
   const candidateNums = getCandidateTrainNumbers(veh.trainNumber);
   const routeIds: string[] = [];
@@ -594,7 +600,7 @@ export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | nul
   }
   if (routeIds.length === 0) return null;
 
-  const rust = matchZbKdRust(veh, dayIndex, routeIds);
+  const rust = matchZbKdRust(veh, dayIndex, routeIds, offsets);
   if (rust !== undefined) {
     if (rust) {
       rust.routeShortName = findRouteShortNameForTrip(rust.tripId, dayIndex);
@@ -605,8 +611,9 @@ export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | nul
   let bestTripId: string | null = null;
   let bestScore = -Infinity;
 
-  for (const [, pattern] of dayIndex.patterns.entries()) {
+  for (const [patternId, pattern] of dayIndex.patterns.entries()) {
     if (!routeIds.includes(pattern.routeId)) continue;
+    const offset = offsets?.get(patternId) ?? 0;
     const trips = pattern.trips as { trip_id: string }[];
     if (!trips || trips.length === 0) continue;
     for (const trip of trips) {
@@ -624,7 +631,7 @@ export function matchZbKd(veh: ZbKdVehicle, dayIndex: DayIndex): ZbKdMatch | nul
           if (!local || (!local.includes(want) && !want.includes(local))) continue;
           const localSec = t.departure_sec ?? t.arrival_sec;
           if (localSec == null) continue;
-          const diff = Math.abs(localSec - zb.schedSec);
+          const diff = Math.abs(localSec + offset - zb.schedSec);
           if (diff > 600) continue;
           matched++;
           totalDiff += diff;

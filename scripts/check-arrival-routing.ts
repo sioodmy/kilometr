@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mock } from 'node:test';
 import type { GtfsTrip } from '../src/gtfs/types';
 import {
   buildSearchSlices,
@@ -325,6 +326,117 @@ async function checkArrivalRouting() {
   console.log(
     'PASS: planer i progres zachowują termin oraz offset jutra; przyszły termin nie zwraca odjechanego kursu',
   );
+
+  // Przyjazd jutro 08:30: kurs z dziś 23:00 wciąż jest w oknie, bo jedzie
+  // przez północ i dojeżdża tuż przed terminem.
+  mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 20, 14, 0).getTime() });
+  const nightStore = new LocalGtfsStore();
+  const nightStops: Array<[string, number]> = [
+    ['A', 51],
+    ['D', 51.02],
+  ];
+  for (const [id, lat] of nightStops) {
+    nightStore.stops.set(id, {
+      stop_id: id,
+      stop_name: id,
+      stop_code: '',
+      normalized_name: id,
+      stop_lat: lat,
+      stop_lon: 17,
+    });
+  }
+  nightStore.routes.set('NIGHT_R', {
+    route_id: 'NIGHT_R',
+    route_short_name: 'NIGHT',
+    route_long_name: '',
+    route_type: 3,
+  });
+  nightStore.trips.set('NIGHT_0', {
+    trip_id: 'NIGHT_0',
+    route_id: 'NIGHT_R',
+    service_id: 'night',
+    trip_headsign: '',
+    direction_id: 0,
+    shape_id: '',
+  });
+  nightStore.stopTimes.set('NIGHT_0', [
+    {
+      stop_id: 'A',
+      stop_sequence: 0,
+      arrival_sec: at(23, 0),
+      departure_sec: at(23, 0),
+    },
+    {
+      stop_id: 'D',
+      stop_sequence: 1,
+      arrival_sec: 86400 + at(8, 20),
+      departure_sec: 86400 + at(8, 20),
+    },
+  ]);
+  const nightIndex: DayIndex = {
+    stopRoutes: new Map(),
+    routeStops: new Map(),
+    routeTrips: new Map(),
+    patterns: new Map([
+      [
+        'night-p',
+        {
+          routeId: 'NIGHT_R',
+          stopSequence: ['A', 'D'],
+          trips: [{ trip_id: 'NIGHT_0', trip_headsign: '' }],
+        },
+      ],
+    ]),
+  };
+  const savedNight = {
+    stops: gtfsStore.stops,
+    routes: gtfsStore.routes,
+    trips: gtfsStore.trips,
+    stopTimes: gtfsStore.stopTimes,
+    footpaths: gtfsStore.footpaths,
+    isLoaded: gtfsStore.isLoaded,
+    getDayIndexSlice: gtfsStore.getDayIndexSlice,
+  };
+  const nightEnsureFresh = liveTracker.ensureFresh;
+  liveTracker.ensureFresh = async () => {};
+  try {
+    Object.assign(gtfsStore, {
+      stops: nightStore.stops,
+      routes: nightStore.routes,
+      trips: nightStore.trips,
+      stopTimes: nightStore.stopTimes,
+      footpaths: nightStore.footpaths,
+      isLoaded: true,
+      getDayIndexSlice: async (
+        _weekday: number,
+        _date: string | undefined,
+        _from: number,
+        to: number,
+      ) => (to >= 86400 ? nightIndex : emptyIndex()),
+    });
+    const planned = await planConnections({
+      fromTitle: 'A',
+      fromLat: 51,
+      fromLon: 17,
+      toTitle: 'D',
+      toLat: 51.02,
+      toLon: 17,
+      maxWalkM: 200,
+      arriveBySec: 86400 + at(8, 30),
+    });
+    const night = planned.find((c) => c.legs.some((l) => l.tripId === 'NIGHT_0'));
+    assert(night, 'nocny kurs z dziś 23:00 powinien być w wynikach');
+    const nightLeg = night.legs.find((l) => l.tripId === 'NIGHT_0');
+    assert(nightLeg, 'kurs nocny powinien mieć własną nogę');
+    assert.equal(nightLeg.departAt, '23:00');
+    assert.equal(nightLeg.arriveAt, '08:20');
+    assert.equal(night.arrivalSec, 86400 + at(8, 20) + 30);
+  } finally {
+    Object.assign(gtfsStore, savedNight);
+    liveTracker.ensureFresh = nightEnsureFresh;
+    mock.timers.reset();
+  }
+  console.log('PASS: przyjazd jutro 08:30 korzysta z nocnego kursu z dziś 23:00');
 }
 
 void checkArrivalRouting();
