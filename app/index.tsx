@@ -1019,7 +1019,8 @@ export default function HomeScreen() {
   );
 
   const handleCityChange = async (id: CityId) => {
-    if (id === cityId || switchingCity) return;
+    const dataBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+    if (id === cityId || switchingCity || dataBusy) return;
     setSwitchingCity(true);
     setSwitchingCityId(id);
     try {
@@ -1431,7 +1432,11 @@ export default function HomeScreen() {
               void handleCityChange(id);
             }}
             onClose={() => setCitySheetOpen(false)}
-            switchingCity={switchingCity}
+            switchingCity={
+              switchingCity ||
+              dataStatus.state === 'downloading' ||
+              dataStatus.state === 'importing'
+            }
             switchingCityId={switchingCityId}
           />
         )}

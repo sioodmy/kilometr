@@ -6,7 +6,13 @@
 // stops → routes → calendar → calendar_dates → trips → stop_times.
 // stop_times jest ~46 MB - importujemy batched po 5000 rekordów w transakcjach.
 
-import { parseCalendarContent, parseCalendarDatesContent, parseRoutesContent, parseStopsContent, parseTripsContent, parseStopTimesBatched } from '../gtfs/csv';
+import {
+  parseCalendarContent,
+  parseCalendarDatesContent,
+  parseRequiredGtfsFiles,
+  parseRoutesContent,
+  parseStopTimesBatched,
+} from '../gtfs/csv';
 import { TIMETABLE } from './gtfsConfig';
 import {
   cleanupRawGtfs,
@@ -19,6 +25,7 @@ import {
 import { downloadPrebuiltDb, fetchManifest, getLocalTimetableVersion } from './timetableSync';
 import { getTimetableDownloadGate, markTimetableDownloaded } from './downloadLimits';
 import { getActiveCityIdSync } from './cityStore';
+import { kvGet, kvRemove, kvSet } from './storage';
 import { warmupAddressIndex } from './addressIndex';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -47,6 +54,7 @@ import {
   computeStopWeights,
   prepareForBulkImport,
   finishBulkImport,
+  GTFS_IMPORT_COMPLETE_META,
   needsStopWeights,
   setMeta,
 } from './gtfsDatabase';
@@ -121,31 +129,79 @@ async function resetRoutingStore(): Promise<void> {
   }
 }
 
+/** Miasto, którego baza jest w trakcie importu (do sprzątania po przerwaniu). */
+const IMPORT_CITY_KEY = 'kilometr.gtfsImportCity.v1';
+
+/**
+ * Czyści bazę miasta, którego import przerwano. Gdy użytkownik zdążył zmienić
+ * miasto, czyścimy TYLKO starą bazę; aktywna zostaje nietknięta nawet gdy
+ * nie ma jeszcze znacznika kompletności.
+ */
+async function cleanupAbortedImport(activeCityId: string): Promise<boolean> {
+  const importCityId = await kvGet(IMPORT_CITY_KEY);
+  if (!importCityId || getActiveCityIdSync() !== activeCityId) return false;
+  const otherCity = importCityId !== activeCityId;
+  if (otherCity) {
+    const complete = await getMeta(GTFS_IMPORT_COMPLETE_META, importCityId);
+    const importedAt = complete === '1' ? null : await getMeta('gtfs_imported_at', importCityId);
+    if (getActiveCityIdSync() !== activeCityId) return false;
+    if (complete !== '1' && !importedAt) {
+      await clearGtfsTables(importCityId).catch(() => {});
+    }
+  }
+  await kvRemove(IMPORT_CITY_KEY);
+  return otherCity;
+}
+
 /** Szybki start: pełny rozkład w SQLite uznajemy za gotowy. */
 export async function refreshDataStatus(): Promise<DataStatus> {
   // Trwający import sam emituje postęp - nie nadpisuj go fałszywym statusem.
   // Bez tego każde odświeżenie w połowie importu (przystanki już są, kursów
   // jeszcze nie) pokazywałoby "gotowe", a UI wracałoby potem do pobierania.
   if (importInProgress) return status;
+  const refreshCityId = getActiveCityIdSync();
+  const cityChanged = () => getActiveCityIdSync() !== refreshCityId;
   try {
     const stats = await getGtfsPresence();
-    if (stats.stops > 0 && stats.trips > 0 && stats.hasStopTimes) {
+    if (cityChanged()) return status;
+    const marker = await getMeta(GTFS_IMPORT_COMPLETE_META);
+    if (cityChanged()) return status;
+    const hasData = stats.stops > 0 && stats.trips > 0 && stats.hasStopTimes;
+    if (hasData && marker === '1') {
+      await cleanupAbortedImport(refreshCityId);
+      if (cityChanged()) return status;
       const updatedAt = await getMeta('gtfs_imported_at');
-      emit({ state: 'ready', stops: stats.stops, trips: stats.trips, updatedAt, source: await getGtfsSource() });
+      const source = await getGtfsSource();
+      emitForCity(refreshCityId, {
+        state: 'ready',
+        stops: stats.stops,
+        trips: stats.trips,
+        updatedAt,
+        source,
+      });
       // Dokończenie przerwanego importu: wagi + warmup w tle.
       void ensureSearchReady();
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
       // To nie jest działający rozkład - czyścimy, żeby UI wymusił pobieranie.
-      if (stats.stops > 0 || stats.trips > 0 || stats.hasStopTimes) {
+      // Gdy import szedł w innym mieście, aktywnej bazy nie ruszamy.
+      const otherCityCleaned = await cleanupAbortedImport(refreshCityId);
+      if (cityChanged()) return status;
+      if (!otherCityCleaned && (stats.stops > 0 || stats.trips > 0 || stats.hasStopTimes)) {
         await clearGtfsTables().catch(() => {});
       }
-      emit({ state: 'empty' });
+      await kvRemove(IMPORT_CITY_KEY);
+      emitForCity(refreshCityId, { state: 'empty' });
     }
   } catch (err) {
-    emit({ state: 'error', message: err instanceof Error ? err.message : String(err) });
+    emitForCity(refreshCityId, { state: 'error', message: err instanceof Error ? err.message : String(err) });
   }
   return status;
+}
+
+/** Emituje status tylko wtedy, gdy aktywne miasto nadal jest tym, dla którego go policzono. */
+function emitForCity(cityId: string, next: DataStatus): void {
+  if (getActiveCityIdSync() === cityId) emit(next);
 }
 
 const EXPIRY_MARGIN_DAYS = 3;
@@ -306,14 +362,14 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
     const message =
       err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
     console.warn('[DataManager] import failed:', detail);
-    emit({
+    emitForCity(importCityId, {
       state: 'error',
       message,
       hint: err instanceof GtfsDownloadError ? err.hint : Terr.retryHint,
       detail,
     });
     try {
-      await finishBulkImport();
+      await finishBulkImport(importCityId);
     } catch {}
     throw err;
   } finally {
@@ -339,15 +395,17 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
   const manifest = await fetchManifest(cityId);
   if (getActiveCityIdSync() !== cityId) return 'upToDate';
   const local = await getLocalTimetableVersion();
+  if (getActiveCityIdSync() !== cityId) return 'upToDate';
   if (local && local === manifest.version) {
-    await setMeta('gtfs_last_check', new Date().toISOString());
+    await setMeta('gtfs_last_check', new Date().toISOString(), cityId);
     return 'upToDate';
   }
 
   // Nowa wersja na serwerze, ale lokalna baza jest: szanujemy limit R2.
   const gate = await getTimetableDownloadGate();
+  if (getActiveCityIdSync() !== cityId) return 'upToDate';
   if (!gate.allowed && local) {
-    await setMeta('gtfs_last_check', new Date().toISOString());
+    await setMeta('gtfs_last_check', new Date().toISOString(), cityId);
     return 'cooldown';
   }
 
@@ -359,24 +417,20 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
     },
     cityId,
   );
+  if (getActiveCityIdSync() !== cityId) return 'upToDate';
   const T = dataTr();
   emit({ state: 'importing', step: T.stepVerify, progress: 0.97 });
-  await setMeta('gtfs_last_check', new Date().toISOString());
+  await setMeta('gtfs_last_check', new Date().toISOString(), cityId);
   await markTimetableDownloaded();
   await resetRoutingStore();
   return 'updated';
 }
 
 /**
- * Stara ścieżka: katalog Open Data → zip → unzip → SQLite w transakcjach.
- * Fallback, gdy serwer nieskonfigurowany albo sync padł przy pustej bazie.
- * (To ona potrafiła powodować OOM przy unzip na słabszych telefonach.)
- */
-/**
- * Stara ścieżka ZIP. Pisze do bazy AKTYWNEGO miasta, więc każdy krok sprawdza
- * `cityChanged`: zmiana miasta w trakcie (onboarding, przełącznik) inaczej
- * wpisałaby wrocławski rozkład do bazy Krakowa. Zwraca false, gdy import
- * przerwano z powodu zmiany miasta.
+ * Stara ścieżka ZIP. Najpierw waliduje wymagane pliki, dopiero potem czyści
+ * bazę. Wszystkie zapisy idą do bazy miasta z początku importu, a każdy krok
+ * sprawdza `cityChanged`: zmiana miasta w trakcie nie może wyczyścić ani
+ * zabrudzić bazy nowego miasta. Zwraca false, gdy import przerwano.
  */
 async function importGtfsLegacy(importCityId: string): Promise<boolean> {
   const cityChanged = () => getActiveCityIdSync() !== importCityId;
@@ -385,67 +439,93 @@ async function importGtfsLegacy(importCityId: string): Promise<boolean> {
     const progress = p.totalBytes > 0 ? p.bytesWritten / p.totalBytes : 0;
     emit({ state: 'downloading', progress });
   });
+  if (cityChanged()) return false;
 
   const T = dataTr();
   emit({ state: 'importing', step: T.stepUnpack, progress: 0 });
-    await unzipGtfs(zipUri);
-    if (cityChanged()) return false;
+  await unzipGtfs(zipUri);
+  if (cityChanged()) return false;
 
-    await clearGtfsTables();
-    await prepareForBulkImport();
+  // Walidacja przed clearGtfsTables: uszkodzony albo niekompletny ZIP nie
+  // może skasować działającego rozkładu.
+  const stopsTxt = await readGtfsText('stops.txt');
+  const tripsTxt = await readGtfsText('trips.txt');
+  const stopTimesTxt = await readGtfsText('stop_times.txt');
+  if (cityChanged()) return false;
+  const validated = await parseRequiredGtfsFiles({ stops: stopsTxt, trips: tripsTxt, stopTimes: stopTimesTxt });
+  if (cityChanged()) return false;
+  if (validated.stops.length === 0) throw new Error(T.errStops);
+  if (validated.trips.length === 0) throw new Error(T.errTrips);
+  if (validated.stopTimesRows === 0) throw new Error(T.errTimes);
 
-    emit({ state: 'importing', step: T.stepStops, progress: 0.05 });
-    const stopsTxt = await readGtfsText('stops.txt');
-    if (!stopsTxt) throw new Error(T.errStops);
-    await importStops(parseStopsContent(stopsTxt));
+  // Od tego miejsca stara baza jest nieaktualna, więc zapamiętujemy miasto
+  // do sprzątania, gdy import padnie przed znacznikiem kompletności.
+  await kvSet(IMPORT_CITY_KEY, importCityId);
+  if (cityChanged()) {
+    await kvRemove(IMPORT_CITY_KEY);
+    return false;
+  }
+  await clearGtfsTables(importCityId);
+  if (cityChanged()) return false;
+  await prepareForBulkImport(importCityId);
+  if (cityChanged()) return false;
 
-    emit({ state: 'importing', step: T.stepLines, progress: 0.15 });
-    const routesTxt = await readGtfsText('routes.txt');
-    if (routesTxt) await importRoutes(parseRoutesContent(routesTxt));
+  emit({ state: 'importing', step: T.stepStops, progress: 0.05 });
+  await importStops(validated.stops, importCityId);
+  if (cityChanged()) return false;
 
-    emit({ state: 'importing', step: T.stepCalendar, progress: 0.25 });
-    const calTxt = await readGtfsText('calendar.txt');
-    if (calTxt) await importCalendar(parseCalendarContent(calTxt));
-    const calDatesTxt = await readGtfsText('calendar_dates.txt');
-    await importCalendarDates(calDatesTxt ? parseCalendarDatesContent(calDatesTxt) : []);
+  emit({ state: 'importing', step: T.stepLines, progress: 0.15 });
+  const routesTxt = await readGtfsText('routes.txt');
+  if (routesTxt) await importRoutes(parseRoutesContent(routesTxt), importCityId);
+  if (cityChanged()) return false;
 
-    emit({ state: 'importing', step: T.stepTrips, progress: 0.35 });
-    const tripsTxt = await readGtfsText('trips.txt');
-    if (!tripsTxt) throw new Error(T.errTrips);
-    // Tripsy całego miasta na raz to ~2.2 MB tekstu - wchodzi bez chunkowania.
-    await importTrips(parseTripsContent(tripsTxt));
+  emit({ state: 'importing', step: T.stepCalendar, progress: 0.25 });
+  const calTxt = await readGtfsText('calendar.txt');
+  if (calTxt) await importCalendar(parseCalendarContent(calTxt), importCityId);
+  const calDatesTxt = await readGtfsText('calendar_dates.txt');
+  await importCalendarDates(calDatesTxt ? parseCalendarDatesContent(calDatesTxt) : [], importCityId);
+  if (cityChanged()) return false;
 
-    emit({ state: 'importing', step: T.stepTimes, progress: 0.5 });
-    const stopTimesTxt = await readGtfsText('stop_times.txt');
-    if (!stopTimesTxt) throw new Error(T.errTimes);
-    let done = 0;
-    let stopped = false;
-    await parseStopTimesBatched(
-      stopTimesTxt,
-      async (batch) => {
-        if (cityChanged()) {
-          stopped = true;
-          return;
-        }
-        await importStopTimesBatch(batch);
-        done += batch.length;
-        // Progres orientacyjny: ~1.5M wierszy w stop_times dużego miasta.
-        emit({ state: 'importing', step: T.stepTimesK(Math.round(done / 1000)), progress: Math.min(0.95, 0.5 + done / 1500000 / 2) });
-      },
-      { batchSize: 5000 },
-    );
-    if (stopped || cityChanged()) return false;
+  emit({ state: 'importing', step: T.stepTrips, progress: 0.35 });
+  // Tripsy całego miasta na raz to ~2.2 MB tekstu - wchodzi bez chunkowania.
+  await importTrips(validated.trips, importCityId);
+  if (cityChanged()) return false;
 
-    emit({ state: 'importing', step: T.stepIndex, progress: 0.97 });
-    await finishBulkImport();
+  emit({ state: 'importing', step: T.stepTimes, progress: 0.5 });
+  let done = 0;
+  let stopped = false;
+  await parseStopTimesBatched(
+    stopTimesTxt ?? '',
+    async (batch) => {
+      if (cityChanged()) {
+        stopped = true;
+        return;
+      }
+      await importStopTimesBatch(batch, importCityId);
+      done += batch.length;
+      // Progres orientacyjny: ~1.5M wierszy w stop_times dużego miasta.
+      emit({ state: 'importing', step: T.stepTimesK(Math.round(done / 1000)), progress: Math.min(0.95, 0.5 + done / 1500000 / 2) });
+    },
+    { batchSize: 5000 },
+  );
+  if (stopped || cityChanged()) return false;
 
-    emit({ state: 'importing', step: T.stepWeights, progress: 0.98 });
-    await computeStopWeights();
+  emit({ state: 'importing', step: T.stepIndex, progress: 0.97 });
+  await finishBulkImport(importCityId);
+  if (cityChanged()) return false;
 
-    await setMeta('gtfs_imported_at', new Date().toISOString());
-    await setMeta('gtfs_dir', gtfsDir());
-    await setMeta('gtfs_source', 'network');
-    await cleanupRawGtfs();
-    await resetRoutingStore();
-    return true;
+  emit({ state: 'importing', step: T.stepWeights, progress: 0.98 });
+  await computeStopWeights(importCityId);
+  if (cityChanged()) return false;
+
+  const importedAt = new Date().toISOString();
+  await setMeta('gtfs_imported_at', importedAt, importCityId);
+  await setMeta('gtfs_dir', gtfsDir(), importCityId);
+  await setMeta('gtfs_source', 'network', importCityId);
+  // Znacznik dopiero po finishBulkImport i końcowych metach.
+  await setMeta(GTFS_IMPORT_COMPLETE_META, '1', importCityId);
+  await kvRemove(IMPORT_CITY_KEY);
+  await cleanupRawGtfs();
+  await resetRoutingStore();
+  return true;
 }
