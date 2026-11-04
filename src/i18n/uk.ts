@@ -1045,6 +1045,7 @@ export const uk: Strings = {
     emptyMode: (veh: string) =>
       `На цьому маршруті зараз немає рейсу ${veh}. Перемкни на „Всі“, щоб бачити решту.`,
     emptyPlain: 'Спробуй іншу ціль або перевір інший час відправлення.',
+    emptyLive: 'Немає з’єднань з даними live',
     samePlaceTitle: 'Початок і ціль це те саме місце',
     samePlaceBody:
       'Ти вже на місці, тож планувати нічого. Обери іншу ціль, щоб побачити сполучення.',
@@ -1058,6 +1059,7 @@ export const uk: Strings = {
     showWithChanges: 'Показати з пересадками',
     showAllVehiclesA11y: 'Показати весь транспорт',
     showAllVehicles: 'Показати весь транспорт',
+    showWithoutLive: 'Показати без live',
   },
   routeDetails: {
     departure: 'Вихід',
@@ -1219,6 +1221,7 @@ export const uk: Strings = {
     assignAnchor: '+ Прив’язати зупинку відправлення',
     saveChanges: 'Зберегти зміни',
     savePlace: 'Зберегти місце',
+    saveFail: 'Не вдалося зберегти місце',
   },
   timeSheet: {
     title: 'Час подорожі',

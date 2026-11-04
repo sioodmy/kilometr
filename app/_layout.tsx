@@ -44,10 +44,10 @@ function navigateFromNotification(res: TripResponse) {
   }
   if (!res.link) return;
   if (res.link.sharedTrip) {
-    router.push({ pathname: '/shared', params: { trip: res.link.sharedTrip } });
+    router.navigate({ pathname: '/shared', params: { trip: res.link.sharedTrip } });
     return;
   }
-  router.push({ pathname: '/routes', params: res.link });
+  router.dismissTo({ pathname: '/routes', params: res.link });
 }
 
 export default function RootLayout() {

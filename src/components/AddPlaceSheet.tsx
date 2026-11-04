@@ -67,6 +67,7 @@ import {
   Train,
   TramFront,
   Trash2,
+  TriangleAlert,
   Trees,
   Trophy,
   University,
@@ -207,7 +208,7 @@ export function AddPlaceSheet({
     anchorStopName?: string | null;
     anchorStopLat?: number | null;
     anchorStopLon?: number | null;
-  }) => void;
+  }) => Promise<boolean>;
   onDelete?: (id: string) => void;
 }) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -245,6 +246,9 @@ export function AddPlaceSheet({
   );
   const [isChangingLoc, setIsChangingLoc] = useState(!initialPlace);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const savingRef = useRef(false);
   // Lokalny indeks odpowiada od razu; numery zapytań odrzucają stare odpowiedzi.
   const locSearchSeq = useRef(0);
   const anchorSearchSeq = useRef(0);
@@ -392,21 +396,38 @@ export function AddPlaceSheet({
       });
   };
 
-  const handleSave = () => {
-    if (!name.trim() || !selectedLoc) return;
-    onSave({
-      id: initialPlace?.id,
-      name: name.trim(),
-      icon: selectedIcon,
-      address: selectedLoc.address,
-      lat: selectedLoc.lat,
-      lon: selectedLoc.lon,
-      anchorStopId: anchorStop ? (anchorStop.id ?? null) : null,
-      anchorStopName: anchorStop ? (anchorStop.name ?? null) : null,
-      anchorStopLat: anchorStop ? (anchorStop.lat ?? null) : null,
-      anchorStopLon: anchorStop ? (anchorStop.lon ?? null) : null,
-    });
-    handleClose();
+  const handleSave = async () => {
+    if (savingRef.current || !name.trim() || !selectedLoc) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError(null);
+    let saved = false;
+    try {
+      saved = await onSave({
+        id: initialPlace?.id,
+        name: name.trim(),
+        icon: selectedIcon,
+        address: selectedLoc.address,
+        lat: selectedLoc.lat,
+        lon: selectedLoc.lon,
+        anchorStopId: anchorStop ? (anchorStop.id ?? null) : null,
+        anchorStopName: anchorStop ? (anchorStop.name ?? null) : null,
+        anchorStopLat: anchorStop ? (anchorStop.lat ?? null) : null,
+        anchorStopLon: anchorStop ? (anchorStop.lon ?? null) : null,
+      });
+      if (saved) {
+        handleClose();
+      } else {
+        setSaveError(s.places.saveFail);
+      }
+    } catch {
+      setSaveError(s.places.saveFail);
+    } finally {
+      if (!saved) {
+        savingRef.current = false;
+        setSaving(false);
+      }
+    }
   };
 
   const handleDelete = () => {
@@ -1019,6 +1040,12 @@ export function AddPlaceSheet({
             )}
 
             <View style={styles.bottomActions}>
+                {saveError ? (
+                  <View style={styles.saveError} accessibilityRole="alert">
+                    <TriangleAlert size={16} color={scheme.error} />
+                    <Text style={styles.saveErrorText}>{saveError}</Text>
+                  </View>
+                ) : null}
                 {isEditing && confirmDelete ? (
                   <View style={styles.confirmDeleteBox}>
                     <View style={styles.confirmDeleteTextGroup}>
@@ -1055,20 +1082,31 @@ export function AddPlaceSheet({
                       </Pressable>
                     )}
                     <Pressable
-                      onPress={handleSave}
-                      disabled={!name.trim() || !selectedLoc}
+                      onPress={() => void handleSave()}
+                      disabled={saving || !name.trim() || !selectedLoc}
                       accessibilityRole="button"
-                      accessibilityState={{ disabled: !name.trim() || !selectedLoc }}
+                      accessibilityState={{
+                        disabled: saving || !name.trim() || !selectedLoc,
+                        busy: saving,
+                      }}
                       style={({ pressed }) => [
                         styles.saveActionBtn,
                         (!name.trim() || !selectedLoc) && styles.saveActionDisabled,
                         pressed && { opacity: 0.85 },
                       ]}
                     >
-                      <Check
-                        size={19}
-                        color={!name.trim() || !selectedLoc ? scheme.onSurfaceVariant : scheme.onPrimary}
-                      />
+                      {saving ? (
+                        <ActivityIndicator size="small" color={scheme.onPrimary} />
+                      ) : (
+                        <Check
+                          size={19}
+                          color={
+                            !name.trim() || !selectedLoc
+                              ? scheme.onSurfaceVariant
+                              : scheme.onPrimary
+                          }
+                        />
+                      )}
                       <Text
                         style={[
                           styles.saveActionText,
@@ -1286,6 +1324,17 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 16,
   },
+  saveError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.errorContainer,
+  },
+  saveErrorText: { ...type.bodySmall, color: scheme.onErrorContainer, flex: 1 },
   mainActionRow: {
     width: '100%',
     flexDirection: 'row',

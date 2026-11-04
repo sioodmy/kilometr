@@ -1006,6 +1006,7 @@ export const de: Strings = {
     emptyMode: (veh: string) =>
       `Auf dieser Route gibt es gerade keinen ${veh}-Kurs. Wechsle auf „Alle“, um den Rest zu sehen.`,
     emptyPlain: 'Versuch ein anderes Ziel oder prüfe eine andere Abfahrtszeit.',
+    emptyLive: 'Keine Verbindungen mit Live-Daten',
     samePlaceTitle: 'Start und Ziel sind derselbe Ort',
     samePlaceBody:
       'Du bist schon da, also gibt es nichts zu planen. Wähle ein anderes Ziel, um Verbindungen zu sehen.',
@@ -1019,6 +1020,7 @@ export const de: Strings = {
     showWithChanges: 'Mit Umstieg zeigen',
     showAllVehiclesA11y: 'Alle Fahrzeuge zeigen',
     showAllVehicles: 'Alle Fahrzeuge zeigen',
+    showWithoutLive: 'Ohne Live anzeigen',
   },
   routeDetails: {
     departure: 'Abfahrt',
@@ -1181,6 +1183,7 @@ export const de: Strings = {
     assignAnchor: '+ Abfahrtshaltestelle zuweisen',
     saveChanges: 'Änderungen speichern',
     savePlace: 'Ort speichern',
+    saveFail: 'Ort konnte nicht gespeichert werden',
   },
   timeSheet: {
     title: 'Reisezeit',

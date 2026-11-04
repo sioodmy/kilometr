@@ -1030,6 +1030,7 @@ export const pl = {
     emptyMode: (veh: string) =>
       `Na tej trasie nie ma teraz kursu ${veh}. Przełącz na „Wszystkie”, aby zobaczyć resztę połączeń.`,
     emptyPlain: 'Spróbuj wybrać inny cel lub sprawdź inną godzinę odjazdu.',
+    emptyLive: 'Brak połączeń z danymi live',
     samePlaceTitle: 'Start i cel to ten sam punkt',
     samePlaceBody:
       'Jesteś na miejscu, więc nie ma czego planować. Wybierz inny cel, żeby zobaczyć połączenia.',
@@ -1043,6 +1044,7 @@ export const pl = {
     showWithChanges: 'Pokaż z przesiadkami',
     showAllVehiclesA11y: 'Pokaż wszystkie pojazdy',
     showAllVehicles: 'Pokaż wszystkie pojazdy',
+    showWithoutLive: 'Pokaż bez live',
   },
   routeDetails: {
     departure: 'Wyjście',
@@ -1204,6 +1206,7 @@ export const pl = {
     assignAnchor: '+ Przypisz przystanek odjazdu',
     saveChanges: 'Zapisz zmiany',
     savePlace: 'Zapisz miejsce',
+    saveFail: 'Nie udało się zapisać miejsca',
   },
   timeSheet: {
     title: 'Czas podróży',

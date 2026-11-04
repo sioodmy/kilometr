@@ -140,6 +140,55 @@ export default function RoutesScreen() {
   // potrafi tu wygenerować przejazd w kółko.
   const samePlace = distanceMeters(fromLat, fromLon, toLat, toLon) <= 40;
 
+  // Expo-router podmienia parametry bez remountu, gdy ekran jest już otwarty.
+  // Każdy nowy deep link musi przestawić start i cel, inaczej zostaje stara trasa.
+  useEffect(() => {
+    if (
+      params.fromTitle !== undefined &&
+      params.fromLat !== undefined &&
+      params.fromLon !== undefined
+    ) {
+      const nextLat = Number(params.fromLat);
+      const nextLon = Number(params.fromLon);
+      if (params.fromTitle !== fromTitle || nextLat !== fromLat || nextLon !== fromLon) {
+        setItems([]);
+        setLoading(true);
+      }
+      setFromTitle(params.fromTitle);
+      setFromLat(nextLat);
+      setFromLon(nextLon);
+      setGpsOrigin(params.fromGps === '1');
+      setActiveAnchor(null);
+    }
+    if (
+      params.toTitle === undefined ||
+      params.toLat === undefined ||
+      params.toLon === undefined
+    ) {
+      return;
+    }
+    const nextId = String(params.toId ?? '');
+    const nextLat = Number(params.toLat);
+    const nextLon = Number(params.toLon);
+    if (nextId !== toId || params.toTitle !== toTitle || nextLat !== toLat || nextLon !== toLon) {
+      setItems([]);
+      setLoading(true);
+    }
+    setToId(nextId);
+    setToTitle(params.toTitle);
+    setToLat(nextLat);
+    setToLon(nextLon);
+  }, [
+    params.fromTitle,
+    params.fromLat,
+    params.fromLon,
+    params.fromGps,
+    params.toId,
+    params.toTitle,
+    params.toLat,
+    params.toLon,
+  ]);
+
   // Przycisk „Zakończ” w powiadomieniu to deep link z parametrem action=stop.
   // Ref zamiast stanu, żeby reakcja na deep link nie wchodziła w cykl
   // renderów; zależność od params.action, bo ekspo-router podmienia
@@ -167,7 +216,7 @@ export default function RoutesScreen() {
     }
     if (handledOpenRef.current === String(id)) return;
     handledOpenRef.current = String(id);
-    router.push({ pathname: '/routes/[id]', params: { id: String(id) } });
+    router.navigate({ pathname: '/routes/[id]', params: { id: String(id) } });
   }, [params.open, router]);
 
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
@@ -814,6 +863,7 @@ export default function RoutesScreen() {
     toLon,
     fromTitle,
     toTitle,
+    toId,
     samePlace,
     activeAnchor,
     timetableReady,
@@ -1328,7 +1378,11 @@ export default function RoutesScreen() {
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyTitle}>
-                  {hasActiveFilters ? s.routes.emptyFiltered : s.routes.emptyNone}
+                  {liveOnly
+                    ? s.routes.emptyLive
+                    : hasActiveFilters
+                      ? s.routes.emptyFiltered
+                      : s.routes.emptyNone}
                 </Text>
                 <Text style={styles.emptySub}>
                   {transfersFilter !== 'all' && modeFilter !== 'all'
@@ -1366,8 +1420,9 @@ export default function RoutesScreen() {
                     onPress={() => setLiveOnly(false)}
                     style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
                     accessibilityRole="button"
+                    accessibilityLabel={s.routes.showWithoutLive}
                   >
-                    <Text style={styles.retryText}>{s.routesFilters.allVehicles}</Text>
+                    <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
                   </Pressable>
                 )}
               </View>
