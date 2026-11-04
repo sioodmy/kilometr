@@ -682,7 +682,6 @@ function tripSignature(trip: TrackedTrip): string {
     c.id,
     c.departureSec,
     c.arrivalSec,
-    c.departInMin,
     c.durationMin,
     c.transfers,
     c.delayMin,

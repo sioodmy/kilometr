@@ -324,7 +324,7 @@ function LegStopsList({
       rankSourceRef.current = pos.source;
     }
     return pos;
-  }, [stops, leg, vehicle, userLocation, now, allowLive]);
+  }, [active, stops, leg, vehicle, userLocation, now, allowLive]);
 
   if (loading) {
     return (

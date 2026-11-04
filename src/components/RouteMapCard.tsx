@@ -45,6 +45,8 @@ export function RouteMapCard({ connection, onOpenMap }: {
       measuredRef.current = true;
       if (y < windowHeight + 160 && y + h > -160) {
         InteractionManager.runAfterInteractions(mountMap);
+        // Fallback: zadania InteractionManagera potrafią nie domknąć się przy animacjach.
+        setTimeout(mountMap, 600);
       }
     });
   }, [mountMap, windowHeight]);
