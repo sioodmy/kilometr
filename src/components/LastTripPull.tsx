@@ -120,6 +120,7 @@ export function LastTripPull({
     <Animated.View style={[styles.reveal, containerStyle]}>
       <View
         style={styles.content}
+        accessible
         accessibilityRole="button"
         accessibilityLabel={s.lastTrip.lastA11y(trip.origin_title, trip.dest_title)}
         accessibilityHint={s.lastTrip.activateHint}
