@@ -30,33 +30,19 @@ function loadBundledStopHints(cityId: string): Promise<StopHintsDataset | null> 
   return Promise.resolve(null);
 }
 
-async function fetchStopHints(
+async function fetchRemoteStopHints(
   cityId: string,
   signal?: AbortSignal,
 ): Promise<StopHintsDataset | null> {
-  const cached = cache.get(cityId);
-  if (cached) return cached;
-
-  const bundled = await loadBundledStopHints(cityId);
-  if (signal?.aborted) return null;
-  if (bundled) {
-    cache.set(cityId, bundled);
-  }
-
   try {
     const res = await fetch(`https://data.kilometr.app/${cityId}/stop-hints.json`, { signal });
-    if (res.ok) {
-      const remote: StopHintsDataset = await res.json();
-      if (remote && remote.stops) {
-        cache.set(cityId, remote);
-        return remote;
-      }
-    }
+    if (!res.ok) return null;
+    const remote: StopHintsDataset = await res.json();
+    return remote && remote.stops ? remote : null;
   } catch {
     // Offline / fallback do bazy bundled
+    return null;
   }
-
-  return bundled;
 }
 
 function useStopHints(cityId: string) {
@@ -64,17 +50,38 @@ function useStopHints(cityId: string) {
 
   useEffect(() => {
     let cancelled = false;
-    const cached = cache.get(cityId);
-    setData(cached ?? null);
-
     const abortController = new AbortController();
-    fetchStopHints(cityId, abortController.signal)
-      .then((loaded) => {
-        if (!cancelled && loaded) {
-          setData(loaded);
-        }
-      })
-      .catch(() => {});
+    const apply = (next: StopHintsDataset) => {
+      cache.set(cityId, next);
+      if (!cancelled) setData(next);
+    };
+
+    // Bundled hints pokazujemy od razu; remote dociąga się w tle i podmienia cache.
+    const load = async () => {
+      const cached = cache.get(cityId);
+      if (cached) {
+        apply(cached);
+        return;
+      }
+      const bundled = await loadBundledStopHints(cityId).catch(() => null);
+      if (cancelled) return;
+      // Równoległe karty mogły już zdążyć wpisać bundled do cache.
+      const raced = cache.get(cityId);
+      if (raced) {
+        apply(raced);
+        return;
+      }
+      if (bundled) {
+        apply(bundled);
+      } else {
+        setData(null);
+      }
+      const remote = await fetchRemoteStopHints(cityId, abortController.signal);
+      if (remote) apply(remote);
+    };
+
+    setData(cache.get(cityId) ?? null);
+    void load();
 
     return () => {
       cancelled = true;
