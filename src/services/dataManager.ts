@@ -167,7 +167,20 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     const marker = await getMeta(GTFS_IMPORT_COMPLETE_META);
     if (cityChanged()) return status;
     const hasData = stats.stops > 0 && stats.trips > 0 && stats.hasStopTimes;
-    if (hasData && marker === '1') {
+    // Bazy sprzed znacznika (aktualizacja z wersji bez `gtfs_import_complete`):
+    // kompletny import zawsze zostawiał `gtfs_imported_at`, a nowy clear kasuje
+    // oba klucze razem. Bez migracji każda aktualizacja usuwałaby offline
+    // rozkład i wymuszała ponowne pobieranie.
+    let complete = marker === '1';
+    if (hasData && !complete) {
+      const legacyImportedAt = await getMeta('gtfs_imported_at', refreshCityId);
+      if (cityChanged()) return status;
+      if (legacyImportedAt) {
+        await setMeta(GTFS_IMPORT_COMPLETE_META, '1', refreshCityId);
+        complete = true;
+      }
+    }
+    if (hasData && complete) {
       await cleanupAbortedImport(refreshCityId);
       if (cityChanged()) return status;
       const updatedAt = await getMeta('gtfs_imported_at');
@@ -188,8 +201,10 @@ export async function refreshDataStatus(): Promise<DataStatus> {
       const otherCityCleaned = await cleanupAbortedImport(refreshCityId);
       if (cityChanged()) return status;
       if (!otherCityCleaned && (stats.stops > 0 || stats.trips > 0 || stats.hasStopTimes)) {
-        await clearGtfsTables().catch(() => {});
+        // Pin miasta: zmiana w trakcie nie może wyczyścić bazy nowego miasta.
+        await clearGtfsTables(refreshCityId).catch(() => {});
       }
+      if (cityChanged()) return status;
       await kvRemove(IMPORT_CITY_KEY);
       emitForCity(refreshCityId, { state: 'empty' });
     }
