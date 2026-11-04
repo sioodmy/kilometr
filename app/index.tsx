@@ -1154,7 +1154,14 @@ export default function HomeScreen() {
               }
             }}
           >
-            {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
+            {lastTrip && (
+              <LastTripPull
+                trip={lastTrip}
+                option={pullOption}
+                height={pullHeight}
+                onActivate={() => openLastTrip(false)}
+              />
+            )}
             <View style={styles.topBar}>
               <Pressable
                 style={({ pressed }) => [styles.cityContext, pressed && { opacity: 0.7 }]}
@@ -1445,7 +1452,14 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   body: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, flexGrow: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, marginBottom: 16 },
-  cityContext: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  cityContext: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
   cityName: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   iconBtn: {

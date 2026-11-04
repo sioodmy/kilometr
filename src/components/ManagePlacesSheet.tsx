@@ -60,133 +60,136 @@ export function ManagePlacesSheet({
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.title} accessibilityRole="header">
-            {s.places.manageTitle}
-          </Text>
-          <Text style={styles.subtitle}>{s.places.manageSub}</Text>
-        </View>
-        <Pressable
-          onPress={() => sheetRef.current?.close()}
-          accessibilityRole="button"
-          accessibilityLabel={s.common.close}
-          style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
-        >
-          <X size={22} color={scheme.onSurfaceVariant} />
-        </Pressable>
-      </View>
-      <View style={styles.addSection}>
-        <Pressable
-          onPress={onAddNew}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
-        >
-          <Plus size={22} color={scheme.onPrimary} />
-          <Text style={styles.addText}>{s.places.addNew}</Text>
-        </Pressable>
-      </View>
-      <BottomSheetFlatList
-        data={places}
-        keyExtractor={(place: SavedPlace) => place.id}
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-        overScrollMode="never"
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <MapPin size={32} color={scheme.primary} />
-            <Text style={styles.emptyTitle}>{s.places.emptyTitle}</Text>
-            <Text style={styles.emptyBody}>{s.places.emptyBody}</Text>
+      <View style={styles.container} accessibilityViewIsModal>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title} accessibilityRole="header">
+              {s.places.manageTitle}
+            </Text>
+            <Text style={styles.subtitle}>{s.places.manageSub}</Text>
           </View>
-        }
-        renderItem={({ item }: { item: SavedPlace }) => {
-          const Icon = SAVED_PLACE_ICONS[item.icon] ?? MapPin;
-          return (
-            <View style={styles.card}>
-              <Pressable
-                onPress={() => (onSelectPlace ? onSelectPlace(item) : onEditPlace(item))}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  onSelectPlace ? s.home.searchToA11y(item.name) : s.places.editA11y(item.name)
-                }
-                style={({ pressed }) => [styles.place, pressed && styles.pressed]}
-              >
-                <View style={styles.placeIcon}>
-                  <Icon size={22} color={scheme.onSecondaryContainer} />
-                </View>
-                <View style={styles.placeText}>
-                  <Text style={styles.name} numberOfLines={fontScale > 1.3 ? undefined : 2}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.address} numberOfLines={fontScale > 1.3 ? undefined : 2}>
-                    {item.address}
-                  </Text>
-                </View>
-              </Pressable>
-              {deletingId === item.id ? (
-                <View style={styles.confirm}>
-                  <Text style={styles.confirmText}>{s.places.removeTitle(item.name)}</Text>
-                  <View style={styles.actions}>
+          <Pressable
+            onPress={() => sheetRef.current?.close()}
+            accessibilityRole="button"
+            accessibilityLabel={s.common.close}
+            style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
+          >
+            <X size={22} color={scheme.onSurfaceVariant} />
+          </Pressable>
+        </View>
+        <View style={styles.addSection}>
+          <Pressable
+            onPress={onAddNew}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
+          >
+            <Plus size={22} color={scheme.onPrimary} />
+            <Text style={styles.addText}>{s.places.addNew}</Text>
+          </Pressable>
+        </View>
+        <BottomSheetFlatList
+          data={places}
+          keyExtractor={(place: SavedPlace) => place.id}
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          overScrollMode="never"
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <MapPin size={32} color={scheme.primary} />
+              <Text style={styles.emptyTitle}>{s.places.emptyTitle}</Text>
+              <Text style={styles.emptyBody}>{s.places.emptyBody}</Text>
+            </View>
+          }
+          renderItem={({ item }: { item: SavedPlace }) => {
+            const Icon = SAVED_PLACE_ICONS[item.icon] ?? MapPin;
+            return (
+              <View style={styles.card}>
+                <Pressable
+                  onPress={() => (onSelectPlace ? onSelectPlace(item) : onEditPlace(item))}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    onSelectPlace ? s.home.searchToA11y(item.name) : s.places.editA11y(item.name)
+                  }
+                  style={({ pressed }) => [styles.place, pressed && styles.pressed]}
+                >
+                  <View style={styles.placeIcon}>
+                    <Icon size={22} color={scheme.onSecondaryContainer} />
+                  </View>
+                  <View style={styles.placeText}>
+                    <Text style={styles.name} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.address} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+                      {item.address}
+                    </Text>
+                  </View>
+                </Pressable>
+                {deletingId === item.id ? (
+                  <View style={styles.confirm}>
+                    <Text style={styles.confirmText}>{s.places.removeTitle(item.name)}</Text>
+                    <View style={styles.actions}>
+                      <Pressable
+                        onPress={() => setDeletingId(null)}
+                        accessibilityRole="button"
+                        style={({ pressed }) => [
+                          styles.action,
+                          styles.cancelBtn,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={styles.actionText}>{s.common.cancel}</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => {
+                          setDeletingId(null);
+                          onDeletePlace(item.id);
+                        }}
+                        accessibilityRole="button"
+                        style={({ pressed }) => [
+                          styles.action,
+                          styles.deleteBtn,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={styles.deleteText}>{s.places.removeConfirm}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={[styles.actions, styles.cardActions]}>
                     <Pressable
-                      onPress={() => setDeletingId(null)}
+                      onPress={() => onEditPlace(item)}
                       accessibilityRole="button"
-                      style={({ pressed }) => [
-                        styles.action,
-                        styles.cancelBtn,
-                        pressed && styles.pressed,
-                      ]}
+                      accessibilityLabel={s.places.editA11y(item.name)}
+                      style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                     >
-                      <Text style={styles.actionText}>{s.common.cancel}</Text>
+                      <Pencil size={18} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.actionText}>{s.places.editAction}</Text>
                     </Pressable>
                     <Pressable
-                      onPress={() => {
-                        setDeletingId(null);
-                        onDeletePlace(item.id);
-                      }}
+                      onPress={() => setDeletingId(item.id)}
                       accessibilityRole="button"
-                      style={({ pressed }) => [
-                        styles.action,
-                        styles.deleteBtn,
-                        pressed && styles.pressed,
-                      ]}
+                      accessibilityLabel={s.places.removeA11y(item.name)}
+                      style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                     >
-                      <Text style={styles.deleteText}>{s.places.removeConfirm}</Text>
+                      <Trash2 size={18} color={scheme.error} />
+                      <Text style={[styles.actionText, styles.errorText]}>
+                        {s.places.removeConfirm}
+                      </Text>
                     </Pressable>
                   </View>
-                </View>
-              ) : (
-                <View style={[styles.actions, styles.cardActions]}>
-                  <Pressable
-                    onPress={() => onEditPlace(item)}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.places.editA11y(item.name)}
-                    style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                  >
-                    <Pencil size={18} color={scheme.onSurfaceVariant} />
-                    <Text style={styles.actionText}>{s.places.editAction}</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setDeletingId(item.id)}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.places.removeA11y(item.name)}
-                    style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                  >
-                    <Trash2 size={18} color={scheme.error} />
-                    <Text style={[styles.actionText, styles.errorText]}>
-                      {s.places.removeConfirm}
-                    </Text>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-          );
-        }}
-      />
+                )}
+              </View>
+            );
+          }}
+        />
+      </View>
     </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
   sheet: {
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: shape.extraLarge,

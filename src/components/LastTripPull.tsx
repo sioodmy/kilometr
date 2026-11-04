@@ -36,16 +36,19 @@ const PILL_TRAVEL = THUMB + SLOT_GAP;
  * Szybki skrót do ostatniego połączenia, odsłaniany pociągnięciem ekranu
  * w dół (pull-to-refresh bez spinnera): wiersz od→do ze strzałką i pod nim
  * pionowy toggle jak wczorajszy (lupka = szukaj, rotate = powrót).
- * Zero klikalnych elementów: wszystko obsługuje gest rodzica.
+ * Zero klikalnych elementów: gest obsługuje rodzic, a czytnik ekranu
+ * dostaje akcję "activate", która otwiera to samo połączenie.
  */
 export function LastTripPull({
   trip,
   option,
   height,
+  onActivate,
 }: {
   trip: TripHistoryItem;
   option: SharedValue<LastTripOption> | LastTripOption;
   height: SharedValue<number>;
+  onActivate: () => void;
 }) {
   const s = useStrings();
 
@@ -117,8 +120,13 @@ export function LastTripPull({
     <Animated.View style={[styles.reveal, containerStyle]}>
       <View
         style={styles.content}
-        accessibilityRole="text"
+        accessibilityRole="button"
         accessibilityLabel={s.lastTrip.lastA11y(trip.origin_title, trip.dest_title)}
+        accessibilityHint={s.lastTrip.activateHint}
+        accessibilityActions={[{ name: 'activate' }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'activate') onActivate();
+        }}
       >
         <View style={styles.pill}>
           <Animated.View style={[styles.thumb, thumbStyle]} />
