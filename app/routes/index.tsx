@@ -841,6 +841,8 @@ export default function RoutesScreen() {
   const handleReverse = useCallback(() => {
     if (samePlace || (fromLat === toLat && fromLon === toLon && fromTitle === toTitle)) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    // Swap ustawia ręczny start: unieważnia GPS wybrany wcześniej w arkuszu.
+    startSelGen.current++;
     setItems([]);
     setLoading(true);
     // Wyniki po swapie to zupełnie nowa lista: wracamy na górę.
