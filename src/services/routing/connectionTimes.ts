@@ -5,6 +5,7 @@ import { toAbsoluteMs } from '../notifications/format';
 import { predictDelaySec } from './delays';
 
 const DAY = 86400;
+const DAY_MS = DAY * 1000;
 
 function alignClock(seconds: number, anchor: number): number {
   return seconds + Math.round((anchor - seconds) / DAY) * DAY;
@@ -36,6 +37,27 @@ export function boardingDepartureMs(connection: Connection, now = new Date()): n
   return connection.serviceDate
     ? sharedTimeMs(connection.serviceDate, seconds)
     : toAbsoluteMs(anchor, now) + (seconds - anchor) * 1000;
+}
+
+/**
+ * Przesuwa odjazd i przyjazd o całe doby, żeby plan trzymał się zapisanego
+ * absolutnego odjazdu. Po północy `departureSec` 24:xx wskazuje jutro, więc
+ * bez tego śledzony kurs skakał o dobę.
+ */
+export function anchorConnectionToPlan(
+  connection: Connection,
+  plannedDepartureMs: number,
+  now = new Date(),
+): Connection {
+  if (connection.serviceDate) return connection;
+  const shift =
+    Math.round((plannedDepartureMs - toAbsoluteMs(connection.departureSec, now)) / DAY_MS) * DAY;
+  if (shift === 0) return connection;
+  return {
+    ...connection,
+    departureSec: connection.departureSec + shift,
+    arrivalSec: connection.arrivalSec == null ? undefined : connection.arrivalSec + shift,
+  };
 }
 
 /** Starsze plany odzyskują rozkład wyłącznie z zapisanych przystanków GTFS. */

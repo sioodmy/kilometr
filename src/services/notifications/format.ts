@@ -64,6 +64,17 @@ export function toAbsoluteMs(sec: number, now: Date = new Date()): number {
 }
 
 /**
+ * Absolutny odjazd kursu najbliższy `now`, bez offsetu dnia serwisowego.
+ *
+ * `toAbsoluteMs` zostawia 24:xx w dzisiejszej dobie, więc po północy kurs
+ * 24:xx wypadał jutro. Plan śledzenia zapisujemy jako samo `HH:MM` i bierzemy
+ * wystąpienie najbliższe zegarowi.
+ */
+export function nearestDepartureMs(sec: number, now: Date = new Date()): number {
+  return toAbsoluteMs(Math.round(sec) % DAY_SEC, now);
+}
+
+/**
  * Początek doby GTFS: południe minus 12 h, nie północ. W dniu zmiany czasu
  * doba ma 23 albo 25 h i od północy wszystkie godziny wychodziły o 1 h obok.
  */
