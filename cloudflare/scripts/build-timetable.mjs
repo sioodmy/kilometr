@@ -2315,6 +2315,9 @@ async function main() {
         Number(remote.sources.pr?.trips || 0) > 0;
       if (!gtmVersionsReliable || !ksVersionReliable) {
         warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else if (icprVersion === 'unknown') {
+        // PDP nie podało wersji: brak zmian jest niepewny, więc budujemy.
+        warn('PDP /data-version zwróciło "unknown" dla IC/PR, przebudowuję zamiast skipować.');
       } else if (remoteKsReal && remoteIcPrReal) {
         log('brak zmian (ZTM + KŚ + IC/PR), skip buildu.');
         rmSync(work, { recursive: true, force: true });
@@ -2476,12 +2479,18 @@ async function main() {
         && !remote.sources.kd?.skippedReason
         && Number(remote.sources.kd?.stations || 0) > 0
         && Number(remote.sources.kd?.trips || 0) > 0;
-      if (ALLOW_MPK_ONLY || remoteKdReal) {
+      // "unknown" z MPK albo PDP oznacza, że daty/wersji nie znamy i nie
+      // wolno uznać rozkładu za niezmieniony.
+      const wroclawVersionsKnown = mpk.effectiveDate !== 'unknown' && kdVersion !== 'unknown';
+      if (!wroclawVersionsKnown) {
+        warn('MPK/KD bez znanej daty lub wersji (unknown), przebudowuję zamiast skipować.');
+      } else if (ALLOW_MPK_ONLY || remoteKdReal) {
         log('brak zmian (MPK + KD), skip buildu.');
         rmSync(work, { recursive: true, force: true });
         process.exit(2);
+      } else {
+        warn('zdalny manifest bez realnego KD, przebudowuję zamiast skipować.');
       }
-      warn('zdalny manifest bez realnego KD, przebudowuję zamiast skipować.');
     }
   }
 

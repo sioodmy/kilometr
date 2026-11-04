@@ -64,6 +64,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Publikacja tylko z main
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Publikacja do R2 tylko z main (jest: $GITHUB_REF_NAME)."
+            exit 1
+          fi
+
       - name: Setup Node.js 22 (node:sqlite)
         uses: actions/setup-node@v4
         with:
