@@ -515,8 +515,19 @@ export const de: Strings = {
     offlineMapDelete: 'Löschen',
     offlineMapDeleteA11y: 'Offline-Karte löschen',
     offlineMapDeleteTitle: 'Offline-Karte löschen?',
-    offlineMapDeleteBody: (mb: number) =>
-      `Das gibt etwa ${mb} MB frei. Die Karte funktioniert weiterhin online. Erneut laden geht erst nach einem Monat.`,
+    offlineMapDeleteBody: (mb: number, invalid: boolean) =>
+      invalid
+        ? `Das gibt etwa ${mb} MB frei. Die beschädigte Datei wird gelöscht, danach kannst du die Karte sofort erneut laden.`
+        : `Das gibt etwa ${mb} MB frei. Die Karte funktioniert weiterhin online. Erneut laden geht erst nach einem Monat.`,
+    offlineMapInvalid: (name: string) =>
+      `Die Kartendatei für ${name} ist beschädigt. Lösche sie und lade die Karte erneut.`,
+    offlineMapInvalidDownload:
+      'Die geladene Kartendatei war beschädigt und wurde gelöscht. Versuche es erneut.',
+    offlineMapInvalidShort: 'beschädigt',
+    offlineMapOthersTitle: 'Karten anderer Städte',
+    offlineMapOthersHint: 'Früher geladen. Du kannst sie einzeln löschen, um Platz freizugeben.',
+    offlineMapSize: (mb: number) => `${mb} MB`,
+    offlineMapDeleteCityA11y: (name: string) => `${name}-Karte löschen`,
     offlineMapFailTitle: 'Karte konnte nicht geladen werden',
     offlineMapFailBody:
       'Prüfe die Verbindung und versuche es erneut. Der Rest der App funktioniert normal.',

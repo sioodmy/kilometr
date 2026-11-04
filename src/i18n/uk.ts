@@ -532,8 +532,19 @@ export const uk: Strings = {
     offlineMapDelete: 'Видалити',
     offlineMapDeleteA11y: 'Видалити мапу офлайн',
     offlineMapDeleteTitle: 'Видалити мапу офлайн?',
-    offlineMapDeleteBody: (mb: number) =>
-      `Звільниться близько ${mb} МБ. Мапа далі працюватиме онлайн. Повторне завантаження буде доступне лише за місяць.`,
+    offlineMapDeleteBody: (mb: number, invalid: boolean) =>
+      invalid
+        ? `Звільниться близько ${mb} МБ. Пошкоджений файл зникне, і мапу можна буде завантажити одразу.`
+        : `Звільниться близько ${mb} МБ. Мапа далі працюватиме онлайн. Повторне завантаження буде доступне лише за місяць.`,
+    offlineMapInvalid: (name: string) =>
+      `Файл мапи ${name} пошкоджений. Видали його і завантаж мапу ще раз.`,
+    offlineMapInvalidDownload:
+      'Завантажений файл мапи був пошкоджений і його видалено. Спробуй ще раз.',
+    offlineMapInvalidShort: 'пошкоджена',
+    offlineMapOthersTitle: 'Мапи інших міст',
+    offlineMapOthersHint: 'Завантажені раніше. Можеш видалити їх окремо, щоб звільнити місце.',
+    offlineMapSize: (mb: number) => `${mb} МБ`,
+    offlineMapDeleteCityA11y: (name: string) => `Видалити мапу ${name}`,
     offlineMapFailTitle: 'Не вдалося завантажити мапу',
     offlineMapFailBody: "Перевір з'єднання і спробуй ще раз. Решта застосунку працює як звичайно.",
     offlineMapCooldownTitle: 'Мапу вже завантажували',

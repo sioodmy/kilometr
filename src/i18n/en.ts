@@ -513,8 +513,19 @@ export const en: Strings = {
     offlineMapDelete: 'Delete',
     offlineMapDeleteA11y: 'Delete the offline map',
     offlineMapDeleteTitle: 'Delete the offline map?',
-    offlineMapDeleteBody: (mb: number) =>
-      `This frees about ${mb} MB. The map will still work online. You can download it again only after a month.`,
+    offlineMapDeleteBody: (mb: number, invalid: boolean) =>
+      invalid
+        ? `This frees about ${mb} MB. The broken file will be removed and you can download the map again right away.`
+        : `This frees about ${mb} MB. The map will still work online. You can download it again only after a month.`,
+    offlineMapInvalid: (name: string) =>
+      `The ${name} map file is broken. Delete it and download the map again.`,
+    offlineMapInvalidDownload:
+      'The downloaded map file was broken and has been removed. Try again.',
+    offlineMapInvalidShort: 'broken',
+    offlineMapOthersTitle: 'Maps for other cities',
+    offlineMapOthersHint: 'Downloaded earlier. You can delete each one to free up space.',
+    offlineMapSize: (mb: number) => `${mb} MB`,
+    offlineMapDeleteCityA11y: (name: string) => `Delete the ${name} map`,
     offlineMapFailTitle: 'Could not download the map',
     offlineMapFailBody: 'Check your connection and try again. The rest of the app works normally.',
     offlineMapCooldownTitle: 'Map already downloaded',
