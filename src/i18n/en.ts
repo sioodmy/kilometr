@@ -1318,6 +1318,7 @@ export const en: Strings = {
     boardAt: (name: string) => `Board at: ${name}`,
     stopsRemaining: (n: number) => `${n} ${n === 1 ? 'stop' : 'stops'} until you get off`,
     mapLoading: 'Loading map…',
+    mapTapToLoad: 'Tap to load the map',
     mapFailed: 'Could not load the map. Try again or download an offline map in settings.',
     mapRetry: 'Reload map',
     openMap: 'Open the full route map',

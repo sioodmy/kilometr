@@ -1333,6 +1333,7 @@ export const de: Strings = {
     stopsRemaining: (n: number) =>
       `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} bis zum Ausstieg`,
     mapLoading: 'Karte wird geladen…',
+    mapTapToLoad: 'Tippen, um die Karte zu laden',
     mapFailed:
       'Karte konnte nicht geladen werden. Versuche es erneut oder lade in den Einstellungen eine Offline-Karte herunter.',
     mapRetry: 'Karte erneut laden',

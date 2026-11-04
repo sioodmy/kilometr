@@ -1,6 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Maximize2 } from './icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  InteractionManager,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { MapPin, Maximize2 } from './icons';
 import { useStrings } from '../i18n';
 import type { Connection } from '../types/models';
 import { acquireMapServer } from '../services/mapServerLease';
@@ -21,21 +29,25 @@ export function RouteMapCard({ connection, onOpenMap }: {
   const [attempt, setAttempt] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
   const [readyToMountMap, setReadyToMountMap] = useState(false);
+  const cardRef = useRef<View>(null);
+  const measuredRef = useRef(false);
+  const { height: windowHeight } = useWindowDimensions();
 
-  // Odłóż start procesu WebView (MapLibre GL) na moment po zakończeniu
-  // animacji wejścia ekranu: likwiduje to zacięcia klatek (frame drops) na Androidzie.
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setReadyToMountMap(true);
+  const mountMap = useCallback(() => setReadyToMountMap(true), []);
+
+  // WebView (MapLibre GL) to ciężki proces. Montuj go, gdy karta jest blisko
+  // viewportu, albo dopiero po tapnięciu placeholdera.
+  const measureCard = useCallback(() => {
+    if (measuredRef.current) return;
+    const node = cardRef.current;
+    if (!node) return;
+    node.measureInWindow((_x, y, _w, h) => {
+      measuredRef.current = true;
+      if (y < windowHeight + 160 && y + h > -160) {
+        InteractionManager.runAfterInteractions(mountMap);
+      }
     });
-    const fallback = setTimeout(() => {
-      setReadyToMountMap(true);
-    }, 280);
-    return () => {
-      handle.cancel();
-      clearTimeout(fallback);
-    };
-  }, []);
+  }, [mountMap, windowHeight]);
 
   useEffect(() => {
     if (!readyToMountMap) return;
@@ -72,7 +84,7 @@ export function RouteMapCard({ connection, onOpenMap }: {
   }, [route, readyToMountMap]);
 
   return (
-    <View style={styles.card}>
+    <View ref={cardRef} collapsable={false} onLayout={measureCard} style={styles.card}>
       <View style={styles.header}>
         <Text style={styles.title}>{s.map.title}</Text>
         <Pressable onPress={onOpenMap} accessibilityRole="button"
@@ -83,40 +95,61 @@ export function RouteMapCard({ connection, onOpenMap }: {
         </Pressable>
       </View>
       <View style={styles.map}>
-        {readyToMountMap && offlineBase !== undefined && (
-          <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <RouteMap
-              key={attempt}
-              ref={mapRef}
-              route={route}
-              offlineBase={offlineBase}
-              paddingTop={20}
-              paddingBottom={20}
-              paddingLeft={20}
-              paddingRight={20}
-              fitOnGeometry
-              maxZoom={16}
-              onReady={() => {
-                geometry.current.forEach((coords, legId) => mapRef.current?.setGeometry(legId, coords));
-                mapRef.current?.fit();
-              }}
-              onTilesStatus={(ok) => setStatus(ok ? 'ready' : 'error')}
-              onError={() => setStatus('error')}
-            />
-          </View>
-        )}
-        {(!readyToMountMap || status !== 'ready') && (
-          <View style={styles.status} accessibilityLiveRegion="polite">
-            {(!readyToMountMap || status === 'loading') && <ActivityIndicator color={scheme.primary} />}
-            <Text style={styles.statusText}>{(!readyToMountMap || status === 'loading') ? s.compass.mapLoading : s.compass.mapFailed}</Text>
-            {readyToMountMap && status === 'error' && (
-              <Pressable onPress={() => setAttempt((value) => value + 1)} accessibilityRole="button"
-                onFocus={() => setFocused('retry')} onBlur={() => setFocused(null)}
-                style={({ pressed }) => [styles.button, styles.retry, pressed && styles.pressed, focused === 'retry' && styles.focused]}>
-                <Text style={styles.statusText}>{s.compass.mapRetry}</Text>
-              </Pressable>
+        {!readyToMountMap ? (
+          <Pressable
+            onPress={mountMap}
+            accessibilityRole="button"
+            accessibilityLabel={s.compass.mapTapToLoad}
+            onFocus={() => setFocused('map')}
+            onBlur={() => setFocused(null)}
+            style={({ pressed }) => [
+              styles.status,
+              styles.placeholder,
+              pressed && styles.pressed,
+              focused === 'map' && styles.focused,
+            ]}
+          >
+            <MapPin size={22} color={scheme.onSurfaceVariant} />
+            <Text style={styles.statusText}>{s.compass.mapTapToLoad}</Text>
+          </Pressable>
+        ) : (
+          <>
+            {offlineBase !== undefined && (
+              <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <RouteMap
+                  key={attempt}
+                  ref={mapRef}
+                  route={route}
+                  offlineBase={offlineBase}
+                  paddingTop={20}
+                  paddingBottom={20}
+                  paddingLeft={20}
+                  paddingRight={20}
+                  fitOnGeometry
+                  maxZoom={16}
+                  onReady={() => {
+                    geometry.current.forEach((coords, legId) => mapRef.current?.setGeometry(legId, coords));
+                    mapRef.current?.fit();
+                  }}
+                  onTilesStatus={(ok) => setStatus(ok ? 'ready' : 'error')}
+                  onError={() => setStatus('error')}
+                />
+              </View>
             )}
-          </View>
+            {status !== 'ready' && (
+              <View style={styles.status} accessibilityLiveRegion="polite">
+                {status === 'loading' && <ActivityIndicator color={scheme.primary} />}
+                <Text style={styles.statusText}>{status === 'loading' ? s.compass.mapLoading : s.compass.mapFailed}</Text>
+                {status === 'error' && (
+                  <Pressable onPress={() => setAttempt((value) => value + 1)} accessibilityRole="button"
+                    onFocus={() => setFocused('retry')} onBlur={() => setFocused(null)}
+                    style={({ pressed }) => [styles.button, styles.retry, pressed && styles.pressed, focused === 'retry' && styles.focused]}>
+                    <Text style={styles.statusText}>{s.compass.mapRetry}</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+          </>
         )}
       </View>
     </View>
@@ -132,6 +165,7 @@ const styles = StyleSheet.create({
   focused: { borderColor: scheme.primary },
   map: { height: 240, justifyContent: 'center', alignItems: 'center' },
   status: { padding: 16, gap: 10, alignItems: 'center', backgroundColor: scheme.surfaceContainerHigh, borderRadius: shape.medium, maxWidth: '100%' },
+  placeholder: { minWidth: 220, borderWidth: 2, borderColor: 'transparent' },
   statusText: { ...type.bodyMedium, color: scheme.onSurface, textAlign: 'center' },
   retry: { paddingHorizontal: 16 },
 });

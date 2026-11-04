@@ -1364,6 +1364,7 @@ export const pl = {
     stopsRemaining: (n: number) =>
       `${n} ${n === 1 ? 'przystanek' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'przystanki' : 'przystanków'} do wysiadki`,
     mapLoading: 'Wczytuję mapę…',
+    mapTapToLoad: 'Dotknij, aby wczytać mapę',
     mapFailed:
       'Nie udało się wczytać mapy. Spróbuj ponownie lub pobierz mapę offline w ustawieniach.',
     mapRetry: 'Wczytaj mapę ponownie',
