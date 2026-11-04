@@ -342,15 +342,18 @@ jobs:
           fi
           EXPECTED="$(keytool -exportcert -alias "$KEY_ALIAS" -keystore "$KEYSTORE_PATH" -storepass "$STORE_PASSWORD" | openssl dgst -sha256 | sed 's/^.*= //')"
           ACTUAL="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          # apksigner podaje digest bez dwukropków, a ANDROID_APP_LINK_FINGERPRINTS
+          # wymaga formatu AA:BB:...:FF (uppercase).
+          FORMATTED="$(printf '%s' "$ACTUAL" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
           echo "Odcisk SHA-256 w APK:      $ACTUAL"
           echo "Odcisk SHA-256 w keystore: $EXPECTED"
-          if [ "$(printf '%s' "$ACTUAL" | tr 'A-F' 'a-f')" != "$(printf '%s' "$EXPECTED" | tr 'A-F' 'a-f')" ]; then
+          if [ "$(printf '%s' "$ACTUAL" | tr -d ':' | tr 'A-F' 'a-f')" != "$(printf '%s' "$EXPECTED" | tr -d ':' | tr 'A-F' 'a-f')" ]; then
             echo "::error::APK nie jest podpisany kluczem upload z sekretów ANDROID_KEYSTORE_*."
             exit 1
           fi
           echo "Podpis APK zgodny z kluczem upload." >> "$GITHUB_STEP_SUMMARY"
           echo "Odcisk certyfikatu do ANDROID_APP_LINK_FINGERPRINTS:" >> "$GITHUB_STEP_SUMMARY"
-          echo '`'"$ACTUAL"'`' >> "$GITHUB_STEP_SUMMARY"
+          echo '`'"$FORMATTED"'`' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify APK version matches release tag
         env:
