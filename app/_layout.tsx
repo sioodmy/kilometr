@@ -47,7 +47,12 @@ function navigateFromNotification(res: TripResponse) {
     router.navigate({ pathname: '/shared', params: { trip: res.link.sharedTrip } });
     return;
   }
-  router.dismissTo({ pathname: '/routes', params: res.link });
+  const target = { pathname: '/routes' as const, params: res.link };
+  // Zimny start i ekran główny nie mają /routes w stosie: dismissTo zastąpiłby
+  // wtedy bieżący ekran i back zamykałby aplikację. W takim przypadku dokładamy
+  // ekran, żeby powrót prowadził do domu.
+  if (router.canGoBack()) router.dismissTo(target);
+  else router.push(target);
 }
 
 export default function RootLayout() {
