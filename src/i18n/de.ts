@@ -115,6 +115,8 @@ export const de: Strings = {
     add30: '+30 Min.',
     add45: '+45 Min.',
     add60: '+1 Std.',
+    storageFailTitle: 'Änderungen konnten nicht gespeichert werden',
+    storageFailBody: 'Prüfe den freien Speicher auf dem Telefon und versuche es erneut.',
   },
   home: {
     searchToA11y: (title: string) => `Verbindungen suchen nach: ${title}`,

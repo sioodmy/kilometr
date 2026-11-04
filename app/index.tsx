@@ -1082,7 +1082,16 @@ export default function HomeScreen() {
   };
 
   const handleDeletePlace = async (id: string) => {
-    await FavoritesService.deletePlace(id);
+    let removed = false;
+    try {
+      removed = await FavoritesService.deletePlace(id);
+    } catch (err) {
+      console.warn('[handleDeletePlace error]', err);
+    }
+    if (!removed) {
+      Alert.alert(s.common.storageFailTitle, s.common.storageFailBody);
+      return;
+    }
     refreshPlaces();
     requestSmart(originStopRef.current, currentCoords);
   };

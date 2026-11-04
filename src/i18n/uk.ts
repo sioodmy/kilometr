@@ -132,6 +132,8 @@ export const uk: Strings = {
     add30: '+30 хв',
     add45: '+45 хв',
     add60: '+1 год.',
+    storageFailTitle: 'Не вдалося зберегти зміни',
+    storageFailBody: 'Перевірте вільне місце в пам’яті телефона та спробуйте ще раз.',
   },
   home: {
     searchToA11y: (title: string) => `Знайти сполучення до: ${title}`,
