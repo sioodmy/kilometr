@@ -14,7 +14,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Bell, History, MapPin, Settings2 } from '../src/components/icons';
+import { Bell, Download, History, MapPin, Settings2 } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { defaultLocationForCity } from '../src/config';
@@ -36,12 +36,16 @@ import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
   type DataStatus,
+  type TimetableUpdate,
+  checkTimetableForUpdates,
   getDataStatus,
+  getTimetableUpdate,
   importGtfsFromNetwork,
   refreshDataStatus,
-  refreshTimetableIfExpiring,
   subscribeDataStatus,
+  subscribeTimetableUpdate,
 } from '../src/services/dataManager';
+import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { getSettingsSync, profileWalkSpeedMps } from '../src/services/settings';
 import { subscribeBackupApplied } from '../src/services/backup';
 import {
@@ -185,6 +189,11 @@ export default function HomeScreen() {
   const sheetWasOpenRef = useRef(false);
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
+  const [timetableUpdate, setTimetableUpdate] = useState<TimetableUpdate | null>(() =>
+    getTimetableUpdate(),
+  );
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateNote, setUpdateNote] = useState<string | null>(null);
 
   // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
   // gestem, zero klikalnych elementów. pullOption żyje w shared value (UI thread),
@@ -288,7 +297,7 @@ export default function HomeScreen() {
       if (st.state === 'empty') {
         void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
       } else if (st.state === 'ready') {
-        void refreshTimetableIfExpiring().catch((e) => console.warn('Timetable refresh failed:', e));
+        void checkTimetableForUpdates().catch((e) => console.warn('Timetable refresh failed:', e));
       }
     };
     void check();
@@ -301,6 +310,37 @@ export default function HomeScreen() {
       clearInterval(timer);
     };
   }, []);
+
+  useEffect(
+    () =>
+      subscribeTimetableUpdate((update) => {
+        setTimetableUpdate(update);
+        if (!update) setUpdateNote(null);
+      }),
+    [],
+  );
+
+  /** Baner aktualizacji: pełne pobranie tylko po kliknięciu, nie w tle. */
+  const handleTimetableUpdate = async () => {
+    if (updateBusy) return;
+    setUpdateBusy(true);
+    setUpdateNote(null);
+    try {
+      const result = await importGtfsFromNetwork();
+      if (result === 'cooldown') {
+        const gate = await getTimetableDownloadGate();
+        const hours = gate.allowed ? 1 : remainingHours(gate.retryAfterMs);
+        setUpdateNote(s.settings.downloadCooldown(hours));
+      } else if (result === 'keptLocal') {
+        setUpdateNote(s.settings.downloadKeptLocal);
+      }
+    } catch (e) {
+      // Status błędu trafia do dataStatus, a ekran pokazuje kartę błędu.
+      console.warn('Timetable update failed:', e);
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
 
   const refreshPlaces = () => {
     const requestedCity = getActiveCityIdSync();
@@ -1202,6 +1242,29 @@ export default function HomeScreen() {
               {s.home.title}
             </Text>
 
+            {timetableUpdate && dataStatus.state === 'ready' && (
+              <Pressable
+                style={({ pressed }) => [styles.updateCard, pressed && styles.updateCardPressed]}
+                onPress={() => void handleTimetableUpdate()}
+                disabled={updateBusy}
+                accessibilityRole="button"
+                accessibilityLabel={s.home.timetableUpdateA11y}
+                accessibilityState={{ busy: updateBusy, disabled: updateBusy }}
+              >
+                <View style={styles.updateText}>
+                  <Text style={styles.updateTitle}>{s.home.timetableUpdateTitle}</Text>
+                  <Text style={styles.updateBody} accessibilityLiveRegion="polite">
+                    {updateNote ?? s.home.timetableUpdateBody}
+                  </Text>
+                </View>
+                {updateBusy ? (
+                  <ActivityIndicator size="small" color={scheme.primary} />
+                ) : updateNote ? null : (
+                  <Download size={20} color={scheme.primary} />
+                )}
+              </Pressable>
+            )}
+
             {dataStatus.state === 'downloading' && (
               <View style={styles.importCard}>
                 <ActivityIndicator size="small" color={scheme.primary} />
@@ -1471,6 +1534,20 @@ const styles = StyleSheet.create({
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
   headerTitle: { fontSize: 32, fontWeight: '500', color: scheme.onSurface, letterSpacing: -0.8 },
+  updateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    padding: 14,
+    minHeight: 64,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.medium,
+  },
+  updateCardPressed: { backgroundColor: scheme.surfaceContainerHighest },
+  updateText: { flex: 1, gap: 2, minWidth: 0 },
+  updateTitle: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '600' },
+  updateBody: { ...type.labelSmall, color: scheme.onSurfaceVariant },
   savedSection: { marginTop: 20 },
   sectionHeader: {
     flexDirection: 'row',
