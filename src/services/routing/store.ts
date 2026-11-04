@@ -12,6 +12,7 @@ import { clearRaptorNetCache } from './network';
 import { getCity } from '../../cities';
 import { getActiveCityIdSync } from '../cityStore';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
+import type { GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../../gtfs/types';
 import {
   POLINKA_ROUTE_ID,
   polinkaRoute,
@@ -33,11 +34,33 @@ const WALK_DETOUR_FACTOR = 1.15;
 const MAX_TRANSFER_METERS = 800;
 const MIN_FOOTPATH_SEC = 45;
 
+/** Stop w sklepie; `weight` to opcjonalna waga z indeksu wyszukiwania. */
+type StoreStop = GtfsStop & { weight?: number };
+
+/** Przejście piesze w jednostkach GTFS; `fixed` = czas z bazy (przesiadki MPK-KD). */
+export interface Footpath {
+  from_stop_id: string;
+  to_stop_id: string;
+  distance_m: number;
+  duration_sec: number;
+  fixed?: boolean;
+}
+
+/** Wzorzec kursu: wspólna sekwencja przystanków i rozkład odjazdów dla RAPTOR-a. */
+export interface Pattern {
+  patternId: string;
+  routeId: string;
+  stopSequence: string[];
+  trips: GtfsTrip[];
+  departures: number[][];
+  tripIndices: number[][];
+}
+
 export interface DayIndex {
   stopRoutes: Map<string, Set<string>>;
   routeStops: Map<string, string[]>;
-  routeTrips: Map<string, any[]>;
-  patterns: Map<string, any>;
+  routeTrips: Map<string, GtfsTrip[]>;
+  patterns: Map<string, Pattern>;
 }
 
 /** Odczytuje Int32 little-endian z SQLite hex(), bez natywnych buforów JNI. */
@@ -55,9 +78,9 @@ function int32FromHex(hex: string): Int32Array {
 
 /** Dokłada kursy Polinki do mapy kursów wycinka (własna linia, brak konfliktu id). */
 function mergePolinkaTrips(
-  tripsByRouteId: Map<string, any[]>,
-  extra: Map<string, any[]>,
-): Map<string, any[]> {
+  tripsByRouteId: Map<string, GtfsTrip[]>,
+  extra: Map<string, GtfsTrip[]>,
+): Map<string, GtfsTrip[]> {
   for (const [routeId, group] of extra) {
     const existing = tripsByRouteId.get(routeId);
     if (existing) existing.push(...group);
@@ -67,11 +90,11 @@ function mergePolinkaTrips(
 }
 
 export class LocalGtfsStore {
-  stops = new Map<string, any>();
-  routes = new Map<string, any>();
-  trips = new Map<string, any>();
-  stopTimes = new Map<string, any[]>();
-  footpaths = new Map<string, any[]>();
+  stops = new Map<string, StoreStop>();
+  routes = new Map<string, GtfsRoute>();
+  trips = new Map<string, GtfsTrip>();
+  stopTimes = new Map<string, GtfsStopTime[]>();
+  footpaths = new Map<string, Footpath[]>();
 
   private dayIndexes = new Map<string, DayIndex>();
   /** Wycinki horyzontu (szybkie): klucz dzien+kubelki godzin, max 4 w pamięci. */
@@ -219,15 +242,15 @@ export class LocalGtfsStore {
     day: number,
     fromSec: number,
     toSec: number,
-  ): { tripIds: string[]; byRouteId: Map<string, any[]> } {
-    const empty = { tripIds: [] as string[], byRouteId: new Map<string, any[]>() };
+  ): { tripIds: string[]; byRouteId: Map<string, GtfsTrip[]> } {
+    const empty = { tripIds: [] as string[], byRouteId: new Map<string, GtfsTrip[]>() };
     if (!cableInCity()) return empty;
     if (day < 1 || day > 5) return empty;
 
     const bundles = polinkaTripsOverlapping(fromSec, toSec);
     if (bundles.length === 0) return empty;
 
-    const group: any[] = [];
+    const group: GtfsTrip[] = [];
     const tripIds: string[] = [];
     for (const b of bundles) {
       this.trips.set(b.trip.trip_id, b.trip);
@@ -242,7 +265,7 @@ export class LocalGtfsStore {
     const GRID_DEG_LAT = 0.001;
     const GRID_DEG_LON = 0.0015;
 
-    const grid = new Map<string, any[]>();
+    const grid = new Map<string, StoreStop[]>();
     const stopArray = Array.from(this.stops.values()).filter((stop) => !isFareBoundary(stop.stop_name ?? ''));
 
     for (const s of stopArray) {
@@ -260,7 +283,7 @@ export class LocalGtfsStore {
     const SEARCH_RADIUS = 8;
 
     for (const s1 of stopArray) {
-      const paths: any[] = [];
+      const paths: Footpath[] = [];
       const gx = Math.floor(s1.stop_lon / GRID_DEG_LON);
       const gy = Math.floor(s1.stop_lat / GRID_DEG_LAT);
 
@@ -316,7 +339,7 @@ export class LocalGtfsStore {
         [r.to_stop_id, r.from_stop_id],
       ] as const) {
         const list = this.footpaths.get(from) ?? [];
-        const filtered = list.filter((fp: any) => fp.to_stop_id !== to);
+        const filtered = list.filter((fp) => fp.to_stop_id !== to);
         filtered.push({ from_stop_id: from, to_stop_id: to, distance_m: distM, duration_sec: dur, fixed: true });
         this.footpaths.set(from, filtered);
       }
@@ -419,7 +442,7 @@ export class LocalGtfsStore {
 
     // Polinkę dokładamy obok: ten sam warunek przecięcia horyzontu, bez SQL-a.
     const polinka = this.injectPolinkaTrips(day, bFrom, bTo);
-    const tripsByRouteId = new Map<string, any[]>();
+    const tripsByRouteId = new Map<string, GtfsTrip[]>();
     const tripIds: string[] = [];
 
     if (await this.hasTripBlobs(db)) {
@@ -472,7 +495,7 @@ export class LocalGtfsStore {
           const arr = int32FromHex(r.arr_blob);
           const dep = int32FromHex(r.dep_blob);
           const n = Math.min(seq.length, arr.length, dep.length);
-          const times = new Array(n);
+          const times = new Array<GtfsStopTime>(n);
           for (let i = 0; i < n; i++) {
             times[i] = {
               trip_id: r.trip_id,
@@ -621,7 +644,7 @@ export class LocalGtfsStore {
         this.footpaths.clear();
         return false;
       }
-      const list = new Array(n);
+      const list = new Array<Footpath>(n);
       for (let i = 0; i < n; i++) {
         const toRef = view.getInt32(w, true);
         const distance_m = view.getInt32(w + 4, true);
@@ -664,7 +687,7 @@ export class LocalGtfsStore {
   private ingestStopTimeRows(
     rows: { trip_id: string; stop_id: string; arr_sec: number; dep_sec: number; seq: number }[],
   ): void {
-    const timesByTrip = new Map<string, any[]>();
+    const timesByTrip = new Map<string, GtfsStopTime[]>();
     for (const r of rows) {
       let group = timesByTrip.get(r.trip_id);
       if (!group) {
@@ -731,14 +754,14 @@ export class LocalGtfsStore {
   }
 
   /** Buduje patterns/stopRoutes z mapy kursów (wspólne dla indeksu i wycinków). */
-  private buildPatterns(tripsByRouteId: Map<string, any[]>): DayIndex {
+  private buildPatterns(tripsByRouteId: Map<string, GtfsTrip[]>): DayIndex {
     const stopRoutes = new Map<string, Set<string>>();
     const routeStops = new Map<string, string[]>();
-    const routeTrips = new Map<string, any[]>();
-    const patterns = new Map<string, any>();
+    const routeTrips = new Map<string, GtfsTrip[]>();
+    const patterns = new Map<string, Pattern>();
 
     for (const [routeId, trips] of tripsByRouteId.entries()) {
-      const patternGroups = new Map<string, any[]>();
+      const patternGroups = new Map<string, GtfsTrip[]>();
       for (const trip of trips) {
         const times = this.stopTimes.get(trip.trip_id);
         if (!times || times.length === 0) continue;
@@ -832,7 +855,7 @@ export class LocalGtfsStore {
       if (res && res.byteLength >= 4) {
         const r = new BinaryReader(res);
         const count = r.u32();
-        const results: { stop: any; distanceM: number }[] = [];
+        const results: { stop: StoreStop; distanceM: number }[] = [];
         for (let i = 0; i < count; i++) {
           const idx = r.u32();
           const distanceM = r.i32();
@@ -843,7 +866,7 @@ export class LocalGtfsStore {
       }
     }
 
-    const results: any[] = [];
+    const results: { stop: StoreStop; distanceM: number }[] = [];
     const latRange = maxDistanceMeters / 111000;
     const lonRange = maxDistanceMeters / (111000 * Math.cos((lat * Math.PI) / 180));
 

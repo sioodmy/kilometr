@@ -739,19 +739,19 @@ async function main(): Promise<void> {
   // ─── zbiorkom.live: spinanie KD z lokalnym rozkładem ────────────────────────
 
   describe('zbiorkom.live: matchowanie KD');
-  gtfsStore.routes.set('KD:R:1:2', { route_short_name: '67604' });
-  gtfsStore.stops.set('KD:S:1', { stop_name: 'Wrocław Główny' });
-  gtfsStore.stops.set('KD:S:2', { stop_name: 'Wrocław Mikołajów' });
+  gtfsStore.routes.set('KD:R:1:2', { route_id: 'KD:R:1:2', route_short_name: '67604', route_long_name: '', route_type: 2 });
+  gtfsStore.stops.set('KD:S:1', { stop_id: 'KD:S:1', stop_code: '', stop_name: 'Wrocław Główny', normalized_name: 'wroclaw glowny', stop_lat: 51.098, stop_lon: 17.036 });
+  gtfsStore.stops.set('KD:S:2', { stop_id: 'KD:S:2', stop_code: '', stop_name: 'Wrocław Mikołajów', normalized_name: 'wroclaw mikolajow', stop_lat: 51.11, stop_lon: 17.02 });
   gtfsStore.stopTimes.set('KD:T:1:2:20261010', [
-    { stop_id: 'KD:S:1', departure_sec: 36000, arrival_sec: 36000 },
-    { stop_id: 'KD:S:2', departure_sec: 36300, arrival_sec: 36300 },
+    { trip_id: 'KD:T:1:2:20261010', stop_id: 'KD:S:1', stop_sequence: 0, departure_sec: 36000, arrival_sec: 36000 },
+    { trip_id: 'KD:T:1:2:20261010', stop_id: 'KD:S:2', stop_sequence: 1, departure_sec: 36300, arrival_sec: 36300 },
   ]);
   const kdIndex = {
     stopRoutes: new Map(),
     routeStops: new Map(),
     routeTrips: new Map(),
     patterns: new Map([
-      ['KD:P:1', { routeId: 'KD:R:1:2', trips: [{ trip_id: 'KD:T:1:2:20261010' }] }],
+      ['KD:P:1', { patternId: 'KD:P:1', routeId: 'KD:R:1:2', stopSequence: ['KD:S:1', 'KD:S:2'], trips: [{ trip_id: 'KD:T:1:2:20261010', route_id: 'KD:R:1:2', service_id: 'test', trip_headsign: '', direction_id: 0, shape_id: '' }], departures: [], tripIndices: [] }],
     ]),
   };
   const mkVeh = (over: Partial<ZbKdVehicle>): ZbKdVehicle => ({

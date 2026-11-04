@@ -24,7 +24,7 @@ import { OSRM_BASE_URL } from '../config';
 import { routeFootLocal, routeRailLocal } from './footRouter';
 import { kvGet, kvSet } from './storage';
 import { getLineColors, mapLineColor } from './lineIdentity';
-import { timeStringToSeconds } from '../gtfs/geo';
+import { shortDistanceMeters, timeStringToSeconds } from '../gtfs/geo';
 import { selectEvictions } from './geometryEviction';
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
@@ -373,12 +373,12 @@ export function removeSpurs(pts: Coord[]): Coord[] {
   return res;
 }
 
-/** Odległość w metrach między dwoma punktami geograficznymi. */
+/**
+ * Odległość w metrach między dwoma punktami geograficznymi.
+ * Krótkie odcinki: jedno equirect w `src/gtfs/geo.ts` (`shortDistanceMeters`).
+ */
 export function distanceM(p1: Coord, p2: Coord): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = (p2[0] - p1[0]) * 111320;
-  const dLon = (p2[1] - p1[1]) * 111320 * Math.cos(toRad((p1[0] + p2[0]) / 2));
-  return Math.sqrt(dLat * dLat + dLon * dLon);
+  return shortDistanceMeters(p1[0], p1[1], p2[0], p2[1]);
 }
 
 /**

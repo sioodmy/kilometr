@@ -8,6 +8,7 @@
 // Świadomie bez React Native i bez sieci, żeby dało się to policzyć na hoście
 // (`npm run check:nav`) i przetestować na prawdziwej geometrii.
 
+import { shortDistanceMeters } from '../gtfs/geo';
 import type { Coord } from './routeGeometry';
 import type { MapLeg } from '../map/types';
 
@@ -46,11 +47,9 @@ interface Maneuver {
   path: Coord[];
 }
 
+/** Odległość między punktami trasy; manewry liczą krótkie odcinki. */
 function distanceM(p: Coord, q: Coord): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = (q[0] - p[0]) * 111320;
-  const dLon = (q[1] - p[1]) * 111320 * Math.cos(toRad((p[0] + q[0]) / 2));
-  return Math.hypot(dLat, dLon);
+  return shortDistanceMeters(p[0], p[1], q[0], q[1]);
 }
 
 function bearing(p: Coord, q: Coord): number {

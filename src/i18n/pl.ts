@@ -1175,7 +1175,7 @@ export const pl = {
       laptop: 'Coworking',
       mapPin: 'Inne',
       plus: 'Inne',
-    } as Record<string, string>,
+    },
     chooseIcon: 'Wybierz ikonę',
     iconFor: (name: string) => `Symbol dla: ${name}`,
     iconForFallback: 'tego miejsca',

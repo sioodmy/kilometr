@@ -19,7 +19,6 @@ import {
   loadNotificationPreferences,
   saveNotificationPreferences,
 } from './notifications/preferences';
-import type { NotificationPreferences } from './notifications/types';
 import type { SavedPlace, SavedRoute } from '../types/models';
 import type { TripHistoryItem } from './smartRanking';
 import { CITIES, cityKey, type CityId } from '../cities';
@@ -305,7 +304,7 @@ export async function applyBackup(data: BackupData): Promise<BackupCounts> {
   // restartu aplikacji.
   if (data.routingSettings) await saveSettings(data.routingSettings as Partial<RoutingSettings>);
   if (data.notificationPrefs) {
-    await saveNotificationPreferences(data.notificationPrefs as Partial<NotificationPreferences>);
+    await saveNotificationPreferences(data.notificationPrefs);
   }
   if (data.locale) await setLocaleSetting(data.locale);
 

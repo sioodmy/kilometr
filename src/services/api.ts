@@ -22,6 +22,7 @@ import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
 import { normalizeConnectionId } from './routing/connectionIdentity';
+import { distanceMeters } from '../gtfs/geo';
 
 export { SearchService } from './searchService';
 
@@ -60,16 +61,6 @@ function getPositionWithTimeout(
       },
     );
   });
-}
-
-function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
-  const R = 6371000;
-  const dLa = ((bLat - aLat) * Math.PI) / 180;
-  const dLo = ((bLon - aLon) * Math.PI) / 180;
-  const s =
-    Math.sin(dLa / 2) ** 2 +
-    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLo / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 /**
@@ -138,7 +129,7 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
 
   if (!foundStop && !hadReverse) {
     const last = await loadLastLocation();
-    if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
+    if (last && distanceMeters(lat, lon, last.lat, last.lon) < 1000) {
       result = { title: last.title, address: last.address, lat, lon, stopId: last.stopId, city: last.city ?? city, accuracyM };
     }
   }
@@ -181,7 +172,7 @@ async function refineLocation(force?: boolean): Promise<LocationResult | null> {
       );
       const prev = cachedLocation;
       const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-      const movedM = prev ? distanceM(prev.lat, prev.lon, loc.lat, loc.lon) : Infinity;
+      const movedM = prev ? distanceMeters(prev.lat, prev.lon, loc.lat, loc.lon) : Infinity;
       if (movedM >= LOCATION_REFINE_DELTA_M || prev?.stopId !== loc.stopId) {
         for (const listener of locationListeners) {
           try {
