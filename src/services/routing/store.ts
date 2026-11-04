@@ -47,7 +47,7 @@ export interface Footpath {
 }
 
 /** Wzorzec kursu: wspólna sekwencja przystanków i rozkład odjazdów dla RAPTOR-a. */
-export interface Pattern {
+interface Pattern {
   patternId: string;
   routeId: string;
   stopSequence: string[];
