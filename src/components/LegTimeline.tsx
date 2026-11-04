@@ -31,6 +31,7 @@ import {
   locateLiveStopPosition,
   normalizeName,
   positionToRank,
+  type LiveStopPosition,
 } from '../services/vehiclePosition';
 import { useStrings, type Strings } from '../i18n';
 import { motion } from '../theme/motion';
@@ -289,16 +290,33 @@ function LegStopsList({
 
   const lastLegIdRef = useRef(leg.id);
   const rankRef = useRef<number>(-1);
+  // Skąd wziął się ranking: estymata zegarowa nie blokuje świeżego live.
+  // Bez tego po wznowieniu z tła marker utykał na końcu trasy.
+  const rankSourceRef = useRef<LiveStopPosition['source']>('vehicle');
   if (lastLegIdRef.current !== leg.id) {
     lastLegIdRef.current = leg.id;
     rankRef.current = -1;
+    rankSourceRef.current = 'vehicle';
   }
 
   const livePosition = useMemo(() => {
     if (!allowLive) return null;
-    const pos = locateLiveStopPosition(stops, leg, vehicle, userLocation, now, rankRef.current);
+    const pos = locateLiveStopPosition(
+      stops,
+      leg,
+      vehicle,
+      userLocation,
+      now,
+      rankRef.current,
+      rankSourceRef.current,
+    );
     if (pos) {
-      rankRef.current = Math.max(rankRef.current, positionToRank(pos));
+      // Pomiar live zastępuje ranking, estymata tylko go przesuwa do przodu.
+      rankRef.current =
+        pos.source === 'estimate'
+          ? Math.max(rankRef.current, positionToRank(pos))
+          : positionToRank(pos);
+      rankSourceRef.current = pos.source;
     }
     return pos;
   }, [stops, leg, vehicle, userLocation, now, allowLive]);

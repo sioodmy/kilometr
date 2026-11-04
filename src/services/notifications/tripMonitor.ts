@@ -252,7 +252,7 @@ async function refresh(): Promise<void> {
     // Zanik danych live zeruje opóźnienie, ale to nie poprawa: bez tego to samo
     // opóźnienie po powrocie danych alarmowało drugi raz.
     const measured = conn.legs.some(
-      (l) => l.mode !== 'walk' && (l.delayConfidence === 'live' || l.delayConfidence === 'estimated'),
+      (l) => l.mode !== 'walk' && (l.live || l.delayConfidence === 'estimated'),
     );
     if (measured || p.delayMin > lastDelayMin) lastDelayMin = p.delayMin;
 
