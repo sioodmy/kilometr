@@ -30,7 +30,7 @@ function splitLines(content: string): string[] {
   return content.replace(/^\uFEFF/, '').split(/\r?\n/);
 }
 
-export function parseStopsContent(content: string): GtfsStop[] {
+function parseStopsContent(content: string): GtfsStop[] {
   const lines = splitLines(content);
   if (lines.length === 0) return [];
   const header = parseCsvLine(lines[0]);
