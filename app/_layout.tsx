@@ -53,6 +53,11 @@ function navigateFromNotification(res: TripResponse) {
   // ekran, żeby powrót prowadził do domu.
   if (router.canGoBack()) router.dismissTo(target);
   else router.push(target);
+  // Kolejne tapnięcie w powiadomienie ma te same parametry, więc ekran tras
+  // nie otworzy kursu ponownie sam z siebie. Otwieramy go tutaj.
+  if (res.link.open) {
+    router.navigate({ pathname: '/routes/[id]', params: { id: res.link.open } });
+  }
 }
 
 export default function RootLayout() {
