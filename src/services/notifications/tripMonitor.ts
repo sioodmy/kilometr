@@ -71,6 +71,22 @@ let ticker: ReturnType<typeof setInterval> | null = null;
 let refreshing: Promise<void> | null = null;
 let generation = 0;
 let foregroundProtection: ForegroundTransferProtection | null = null;
+/**
+ * Start i stop z UI przechodzą jeden po drugim. Dzięki temu nowy start czeka
+ * na pełne sprzątanie po poprzednim stopie i nie walczy z jego spóźnionymi
+ * awaitami. Wewnętrzne stop-y z refresh() omijają kolejkę (stopTrackingNow),
+ * bo start sam je wywołuje.
+ */
+let transition: Promise<unknown> = Promise.resolve();
+
+function enqueueTransition<T>(work: () => Promise<T>): Promise<T> {
+  const next = transition.then(work, work);
+  transition = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
 
 type Listener = (trip: TrackedTrip | null, p: TripProgress | null) => void;
 const listeners = new Set<Listener>();
@@ -163,7 +179,7 @@ async function refresh(): Promise<void> {
     const stopped = await consumeNativeStop();
     if (run !== generation) return;
     if (stopped) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
 
@@ -176,7 +192,7 @@ async function refresh(): Promise<void> {
       now: new Date(before.startedAt),
     });
     if (!before.protectionEnabled && Date.now() >= savedProgress.arriveAtMs + ARRIVED_LINGER_MS) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
 
@@ -188,7 +204,7 @@ async function refresh(): Promise<void> {
     if (current.sharedJourney) {
       const journey = decodeSharedConnection(current.sharedJourney);
       if (!journey) {
-        await stopTracking();
+        await stopTrackingNow();
         return;
       }
       tracked = {
@@ -226,7 +242,7 @@ async function refresh(): Promise<void> {
       (!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) ||
       ((trip.protectionEnabled || trip.sharedJourney) && !prefs.trackingEnabled)
     ) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
 
@@ -265,7 +281,7 @@ async function refresh(): Promise<void> {
     const stoppedDuringPublish = await consumeNativeStop();
     if (run !== generation) return;
     if (stoppedDuringPublish) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
     const arrivalAt = Math.max(p.arriveAtMs, trip.transfer?.arrivalAtMs ?? p.arriveAtMs);
@@ -281,7 +297,7 @@ async function refresh(): Promise<void> {
       }
       // Komunikat zostaje chwilę na ekranie blokady, potem sprzątamy.
       if (Date.now() - arrivedAt >= ARRIVED_LINGER_MS) {
-        await stopTracking();
+        await stopTrackingNow();
         return;
       }
     }
@@ -334,12 +350,16 @@ function rescheduleTicker(): void {
 // ─── Cykl życia ─────────────────────────────────────────────────────────────
 
 /** Uruchamia śledzenie podróży: Live Update, alerty odjazdu, widgety. */
-export async function startTracking(trip: TrackedTrip): Promise<void> {
+export function startTracking(trip: TrackedTrip): Promise<void> {
+  return enqueueTransition(() => startTrackingNow(trip));
+}
+
+async function startTrackingNow(trip: TrackedTrip): Promise<void> {
   if (!areNotificationsSupported()) {
     warnUnsupportedOnce('Śledzenie podróży');
   }
   await loadNotificationPreferences();
-  await stopTracking();
+  await stopTrackingNow();
   refreshing = null;
   await consumeNativeStop();
   generation++;
@@ -435,7 +455,7 @@ async function syncTransferProtection(): Promise<void> {
   const run = generation;
   try {
     if (Date.now() - trip.startedAt > 8 * 60 * 60_000) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
     if (!usesNativeTransferProtection()) {
@@ -459,7 +479,7 @@ async function syncTransferProtection(): Promise<void> {
     )
       return;
     if (Date.now() - trip.startedAt > 8 * 60 * 60_000 || state.reason === 'expired') {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
     const { connection: _connection, ...transfer } = state;
@@ -520,10 +540,17 @@ export async function acceptTransferAlternative(alternativeId: string): Promise<
 
 /**
  * Kończy śledzenie: serwis, alerty, widgety i zapisany stan.
+ *
+ * Sprzątanie sprawdza generation: spóźniony stop nie może zdjąć powiadomienia
+ * ani widgetu podróży, którą w międzyczasie uruchomił startTracking.
  */
-export async function stopTracking(): Promise<void> {
+export function stopTracking(): Promise<void> {
+  return enqueueTransition(() => stopTrackingNow());
+}
+
+async function stopTrackingNow(): Promise<void> {
   const contextPath = tracked?.transferContextPath;
-  generation++;
+  const run = ++generation;
   foregroundProtection = null;
   tracked = null;
   progress = null;
@@ -536,8 +563,10 @@ export async function stopTracking(): Promise<void> {
   }
   liveTracker.pin(false);
   notify();
-  await cancelScheduledAlerts();
-  await dismissTracking();
+  // Zapis KV kasujemy od razu, przed długim sprzątaniem: restart w jego
+  // trakcie nie może wskrzesić podróży, którą użytkownik zakończył. Nowy
+  // start zapisze swoją podróż dopiero po tym usunięciu.
+  const removal = kvRemove(STORAGE_KEY);
   if (contextPath) {
     const { removeTransferSnapshot } = await import('./transferSnapshot');
     try {
@@ -546,7 +575,12 @@ export async function stopTracking(): Promise<void> {
       /* The service has already stopped. */
     }
   }
-  await kvRemove(STORAGE_KEY);
+  await cancelScheduledAlerts();
+  if (run !== generation || tracked) return;
+  await dismissTracking();
+  if (run !== generation || tracked) return;
+  await removal;
+  if (run !== generation || tracked) return;
   await mergeWidgetSnapshot({ pinned: null });
   notify();
 }
@@ -573,7 +607,7 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
       now: new Date(parsed.startedAt),
     });
     if (!parsed.protectionEnabled && Date.now() >= savedProgress.arriveAtMs + ARRIVED_LINGER_MS) {
-      await stopTracking();
+      await stopTrackingNow();
       return null;
     }
     // Kurs z innego miasta: jego przystanki i opóźnienia istnieją tylko w tamtej

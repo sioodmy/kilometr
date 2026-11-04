@@ -211,7 +211,7 @@ export default function RouteDetailsScreen() {
         protectionEnabled,
       });
     } catch {
-      Alert.alert(s.transferGuard.title, s.transferGuard.routingError);
+      Alert.alert(s.routes.trackFailTitle, s.routes.trackFailBody);
     } finally {
       setTrackingBusy(false);
     }

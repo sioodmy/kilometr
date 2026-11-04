@@ -24,6 +24,8 @@ const dismissed: string[] = [];
 const plans: LivePlan[] = [];
 let nativeOk = true;
 let pendingStop = false;
+let pauseStop: (() => Promise<void>) | undefined;
+const nativeEvents: Array<'start' | 'stop'> = [];
 let response: NotificationResponse | null = null;
 let respond: ((value: NotificationResponse) => void) | undefined;
 let handler: NotificationHandler | undefined;
@@ -70,10 +72,16 @@ const notifications = {
 };
 const native = {
   startTrip: async (json: string) => {
+    nativeEvents.push('start');
     plans.push(JSON.parse(json));
     return nativeOk;
   },
-  stopTrip: async () => { transferState = null; return true; },
+  stopTrip: async () => {
+    await pauseStop?.();
+    nativeEvents.push('stop');
+    transferState = null;
+    return true;
+  },
   consumeStopRequest: async () => {
     const value = pendingStop;
     pendingStop = false;
@@ -291,6 +299,33 @@ async function main() {
   assert.equal(monitor.getTrackedTripSync(), null);
   assert.equal(storage.has('kilometr.trackedTrip.v2'), false);
   assert.equal(pinned, null);
+
+  // Szybkie stop -> start: nowy start czeka na pełne sprzątanie starego stopu,
+  // więc spóźnione awaity nie mogą skasować nowej podróży ani jej powiadomienia.
+  route = async () => [{ ...connection }];
+  await monitor.startTracking(trip);
+  const stopEntered = deferred();
+  const stopReleased = deferred();
+  pauseStop = async () => {
+    pauseStop = undefined;
+    stopEntered.resolve();
+    await stopReleased.promise;
+  };
+  const staleStop = monitor.stopTracking();
+  await stopEntered.promise;
+  const restarted = { ...trip, id: 'restarted', fromTitle: 'Nowy start' };
+  const restart = monitor.startTracking(restarted);
+  // Daj startowi dojść do końca, jeśli nie czeka na kolejkę przejść: stary
+  // stop nie może po tym skasować nowej podróży ani jej powiadomienia.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  stopReleased.resolve();
+  await Promise.all([staleStop, restart]);
+  assert.equal(monitor.getTrackedTripSync()?.id, 'restarted');
+  assert.equal(JSON.parse(storage.get('kilometr.trackedTrip.v2') ?? 'null')?.id, 'restarted');
+  assert.equal((pinned as { fromTitle?: string } | null)?.fromTitle, 'Nowy start');
+  assert.equal(plans.at(-1)?.tripId, 'restarted');
+  assert.equal(nativeEvents.at(-1), 'start', 'stary stop nie zdejmuje nowego powiadomienia');
+  await monitor.stopTracking();
 
   nativeOk = false;
   await presenter.presentTrip(trip, progress(), prefs);

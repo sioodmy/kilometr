@@ -980,6 +980,8 @@ export const uk: Strings = {
     destFallback: 'Ціль',
     trackUnsupportedTitle: 'Відстеження недоступне',
     trackUnsupportedBody: 'Сповіщення потребують dev-збірки. Expo Go їх не підтримує.',
+    trackFailTitle: 'Не вдалося почати відстеження',
+    trackFailBody: 'Спробуйте ще раз за мить.',
     noConnectionsTitle: 'Немає сполучень',
     noConnectionsBody: 'Зачекайте, поки на цьому маршруті з’явиться рейс.',
     stopTrackingTripA11y: 'Зупинити відстеження подорожі',
