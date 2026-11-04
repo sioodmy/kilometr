@@ -93,6 +93,19 @@ function withoutKey<T>(prev: Record<string, T>, key: string): Record<string, T> 
   return next;
 }
 
+/** Cel trasy czekający na ręczny start po blokadzie GPS. */
+type RouteTarget = {
+  id: string;
+  title: string;
+  address?: string;
+  lat: number;
+  lon: number;
+  kind?: Suggestion['kind'];
+};
+
+/** Start przekazany jawnie: świeży wybór z arkusza wygrywa ze stanem ekranu. */
+type RouteOrigin = { title: string; lat: number; lon: number; custom: boolean };
+
 export default function HomeScreen() {
   const s = useStrings();
   const router = useRouter();
@@ -116,6 +129,9 @@ export default function HomeScreen() {
   const [smartReady, setSmartReady] = useState(false);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
+  // Cel zapamiętany przy blokadzie startu z GPS: po ręcznym starcie wracamy
+  // do niego, zamiast kazać użytkownikowi wpisywać go od nowa.
+  const pendingDestinationRef = useRef<RouteTarget | null>(null);
   const [savedEditFocused, setSavedEditFocused] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<{
     lat: number;
@@ -127,6 +143,9 @@ export default function HomeScreen() {
   // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
   const isCustomStartRef = useRef(isCustomStart);
   isCustomStartRef.current = isCustomStart;
+  // Generacja wyboru startu: spóźniony GPS jest odrzucany, gdy w międzyczasie
+  // użytkownik wybrał inny start.
+  const startSelGen = useRef(0);
   // GPS poza strefą aktywnego miasta: tras z GPS nie liczymy,
   // start trzeba wybrać ręcznie. Miasto z reverse-geocode do komunikatu.
   const [gpsUnsupported, setGpsUnsupported] = useState(false);
@@ -425,6 +444,8 @@ export default function HomeScreen() {
       return;
     }
     isCustomStartRef.current = false;
+    startSelGen.current++;
+    pendingDestinationRef.current = null;
     smartCoordsRef.current = null;
     setIsCustomStart(false);
     setQuery('');
@@ -739,13 +760,18 @@ export default function HomeScreen() {
     );
   }, [gpsCity, cityGen, s]);
 
+  // Reset startu na GPS: nieudany odczyt zostawia poprzedni start bez zmian,
+  // a fix nie nadpisuje ręcznego wyboru zrobionego w trakcie odczytu.
   const resetToGps = async () => {
     if (gpsUnsupported) {
       blockGpsStart();
       return;
     }
-    setIsCustomStart(false);
-    if (gpsLocation) {
+    const gen = ++startSelGen.current;
+    const customAtStart = isCustomStartRef.current;
+    // Cache tylko gdy start już był GPS: przy ręcznym starcie nie ruszamy
+    // współrzędnych przed potwierdzonym fixem.
+    if (!isCustomStartRef.current && gpsLocation) {
       setLocTitle(gpsLocation.title);
       const coords = { lat: gpsLocation.lat, lon: gpsLocation.lon };
       setCurrentCoords(coords);
@@ -753,6 +779,8 @@ export default function HomeScreen() {
     }
     try {
       const l = await LocationService.getCurrentLocation({ force: true });
+      // Ręczny start wybrany w trakcie odczytu unieważnia ten fix.
+      if (gen !== startSelGen.current || isCustomStartRef.current !== customAtStart) return;
       const outside = isOutsideServiceArea(l.lat, l.lon);
       const city = (l as { city?: string | null }).city ?? null;
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
@@ -764,11 +792,15 @@ export default function HomeScreen() {
       }
       setGpsUnsupported(false);
       setGpsCity(null);
+      pendingDestinationRef.current = null;
+      isCustomStartRef.current = false;
+      setIsCustomStart(false);
       setLocTitle(l.title);
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
       requestSmart(l.stopId || l.title, coords);
     } catch (err) {
+      // Błąd zostawia poprzedni start: ikona i współrzędne dalej się zgadzają.
       console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
     }
   };
@@ -796,6 +828,9 @@ export default function HomeScreen() {
       return;
     }
 
+    // Ręczny start unieważnia GPS w locie i wygrywa z każdym późniejszym fixem.
+    startSelGen.current++;
+    isCustomStartRef.current = true;
     setIsCustomStart(true);
     setLocTitle(sel.title);
     const coords = { lat: sel.lat, lon: sel.lon };
@@ -812,8 +847,15 @@ export default function HomeScreen() {
     if (returnToDestinationAfterStart) {
       setReturnToDestinationAfterStart(false);
       setSheetMode('destination');
-    } else {
-      setSheetMode(null);
+      return;
+    }
+    const pending = pendingDestinationRef.current;
+    pendingDestinationRef.current = null;
+    setSheetMode(null);
+    // Cel zablokowany wcześniej przez GPS: start już jest ręczny, więc trasa
+    // rusza od razu, bez ponownego wpisywania celu.
+    if (pending) {
+      goToRoutes(pending, { title: sel.title, lat: sel.lat, lon: sel.lon, custom: true });
     }
   };
 
@@ -864,24 +906,24 @@ export default function HomeScreen() {
   );
 
   const goToRoutes = useCallback(
-    (to: {
-      id: string;
-      title: string;
-      address?: string;
-      lat: number;
-      lon: number;
-      kind?: Suggestion['kind'];
-    }): boolean => {
+    (to: RouteTarget, origin?: RouteOrigin): boolean => {
+      const fromCustom = origin?.custom ?? isCustomStartRef.current;
       // GPS spoza strefy nie może być startem: zamiast puszczać trasę
-      // z pozycji spoza strefy prosimy o ręczny wybór startu.
-      if (gpsUnsupported && !isCustomStart) {
+      // z pozycji spoza strefy prosimy o ręczny wybór startu, a cel zostaje
+      // zapamiętany i wraca po wybraniu startu.
+      if (gpsUnsupported && !fromCustom) {
+        pendingDestinationRef.current = to;
         blockGpsStart();
         return false;
       }
+      pendingDestinationRef.current = null;
+      const fromTitle = origin?.title ?? locTitle;
+      const fromLat = origin?.lat ?? currentCoords.lat;
+      const fromLon = origin?.lon ?? currentCoords.lon;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
       routeSearchGen.current++;
-      void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
+      void recordTripSearch(fromLat, fromLon, fromTitle, to);
       void SearchService.recordRecent({
         ...to,
         address: to.address ?? '',
@@ -896,11 +938,11 @@ export default function HomeScreen() {
       router.push({
         pathname: '/routes',
         params: {
-          fromTitle: locTitle,
-          fromLat: String(currentCoords.lat),
-          fromLon: String(currentCoords.lon),
+          fromTitle,
+          fromLat: String(fromLat),
+          fromLon: String(fromLon),
           // Start z GPS: ekran tras może go po cichu podmienić na dokładniejszy fix.
-          fromGps: isCustomStart ? '0' : '1',
+          fromGps: fromCustom ? '0' : '1',
           toId: to.id,
           toTitle: to.title,
           toLat: String(to.lat),
@@ -911,7 +953,6 @@ export default function HomeScreen() {
     },
     [
       gpsUnsupported,
-      isCustomStart,
       blockGpsStart,
       currentCoords.lat,
       currentCoords.lon,
@@ -1316,6 +1357,7 @@ export default function HomeScreen() {
         {!sheetMode && !manageSheetOpen && !addPlaceOpen && !citySheetOpen && (
           <HomeThumbBar
             onOpenSearch={() => {
+              pendingDestinationRef.current = null;
               setReturnToDestinationAfterStart(false);
               setQuery('');
               setSheetMode('destination');
@@ -1323,6 +1365,7 @@ export default function HomeScreen() {
             startTitle={locTitle}
             isCustomStart={isCustomStart}
             onOpenStart={() => {
+              pendingDestinationRef.current = null;
               setReturnToDestinationAfterStart(false);
               setQuery('');
               setSheetMode('start');
@@ -1377,6 +1420,7 @@ export default function HomeScreen() {
               }
             }}
             onClose={() => {
+              pendingDestinationRef.current = null;
               setSheetMode(null);
               setReturnToDestinationAfterStart(false);
               setQuery('');

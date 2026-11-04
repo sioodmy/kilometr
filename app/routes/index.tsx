@@ -177,6 +177,8 @@ export default function RoutesScreen() {
   const initialAnchorCheckedRef = useRef(false);
   // Podmiana originu na dokładniejszy fix odpala się raz na wybór startu.
   const refineAppliedRef = useRef(false);
+  // Generacja wyboru startu: spóźniony GPS nie nadpisze nowszego wyboru.
+  const startSelGen = useRef(0);
   const originCoordsRef = useRef({ lat: fromLat, lon: fromLon });
   originCoordsRef.current = { lat: fromLat, lon: fromLon };
   const activeAnchorRef = useRef<ActiveAnchor | null>(activeAnchor);
@@ -436,8 +438,11 @@ export default function RoutesScreen() {
   useEffect(() => {
     if (!gpsOrigin || activeAnchor) return;
     let cancelled = false;
+    const gen = startSelGen.current;
     const apply = (loc: LocationResult) => {
       if (cancelled || refineAppliedRef.current || activeAnchorRef.current) return;
+      // Ręczny start wybrany po starcie tego efektu unieważnia doprecyzowanie.
+      if (gen !== startSelGen.current) return;
       if (isOutsideServiceArea(loc.lat, loc.lon)) return;
       const origin = originCoordsRef.current;
       if (distanceMeters(loc.lat, loc.lon, origin.lat, origin.lon) < LOCATION_REFINE_DELTA_M)
@@ -499,12 +504,17 @@ export default function RoutesScreen() {
 
   const handleSuggestionSelect = async (sug: Suggestion) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    // Wybór startu unieważnia GPS w locie: spóźniony fix nie nadpisze
+    // startu wybranego później.
+    const forStart = sheetFor === 'from';
+    const gen = forStart ? ++startSelGen.current : startSelGen.current;
     setQuery('');
     setSheetFor(null);
     if (sug.id === gpsItem.id) {
       // Start = aktualna pozycja GPS (nie zapisana wcześniej)
       try {
         const l = await LocationService.getCurrentLocation();
+        if (gen !== startSelGen.current) return;
         if (isOutsideServiceArea(l.lat, l.lon)) {
           const city = (l as { city?: string | null }).city ?? null;
           setGpsOutside(true);
@@ -548,6 +558,8 @@ export default function RoutesScreen() {
           setFromLon(l.lon);
         }
       } catch (err) {
+        // Spóźniony błąd po nowszym wyborze startu nie pokazuje alertu.
+        if (gen !== startSelGen.current) return;
         console.warn('[handleSuggestionSelect] GPS error:', err);
         Alert.alert(s.routes.gpsFailTitle, s.routes.gpsFailBody);
       }
