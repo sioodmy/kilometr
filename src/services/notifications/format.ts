@@ -49,7 +49,9 @@ const DAY_MS = DAY_SEC * 1000;
  */
 export function toAbsoluteMs(sec: number, now: Date = new Date()): number {
   const s = Math.round(sec);
-  const dayShift = Math.floor(s / DAY_SEC);
+  // GTFS 24:xx liczy się od początku TEJ doby serwisowej, nie od jutrzejszej:
+  // w przeddzień zmiany czasu jutrzejszy start jest o 1 h obok.
+  const dayShift = s < 0 ? Math.floor(s / DAY_SEC) : 0;
   const offsetMs = (s - dayShift * DAY_SEC) * 1000;
   const base = serviceDayStartMs(now, dayShift) + offsetMs;
   // Bez tego jutrzejszy kurs (sec >= 86400) po południu wracał jako dzisiejszy:

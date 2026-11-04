@@ -595,6 +595,56 @@ expect('chwilowy drop z feedu nie powoduje znikania markera', droppedPos?.marker
   placement: 'between',
 });
 
+// 5. Wznowienie z tła: estymata wystrzeliła na koniec, świeży live prostuje
+const resumeNow = new Date(2026, 9, 10, 10, 20).getTime();
+const endEstimatePos = locateLiveStopPosition(routeStops, routeLeg, null, null, resumeNow);
+const endEstimateRank = positionToRank(endEstimatePos);
+expect('estymata po długiej pauzie stoi na końcu trasy', endEstimateRank, 4);
+const resumedPos = locateLiveStopPosition(
+  routeStops,
+  routeLeg,
+  {
+    vehicleId: '4-1',
+    line: '4',
+    lat: 51.108, // 300 m za przystankiem Środek w stronę Końca
+    lon: 17,
+    delaySec: 0,
+    currentStopName: 'Środek',
+    nextStopName: 'Koniec',
+    matchedTripId: 'trip-4',
+    updatedAt: resumeNow,
+  },
+  null,
+  resumeNow,
+  endEstimateRank,
+  'estimate',
+);
+expect('wznowienie: świeży live cofa ranking z końca', positionToRank(resumedPos), 3);
+expect('wznowienie: marker wraca między przystanki', resumedPos?.marker, {
+  index: 1,
+  placement: 'between',
+});
+const stuckPos = locateLiveStopPosition(
+  routeStops,
+  routeLeg,
+  {
+    vehicleId: '4-1',
+    line: '4',
+    lat: 51.108,
+    lon: 17,
+    delaySec: 0,
+    currentStopName: 'Środek',
+    nextStopName: 'Koniec',
+    matchedTripId: 'trip-4',
+    updatedAt: resumeNow,
+  },
+  null,
+  resumeNow,
+  endEstimateRank,
+  'vehicle',
+);
+expect('stary latch live dalej blokuje szum (bez regresji)', positionToRank(stuckPos), 4);
+
 // ─── zbiorkom.live: mapowanie odpowiedzi ─────────────────────────────────
 
 async function main(): Promise<void> {
