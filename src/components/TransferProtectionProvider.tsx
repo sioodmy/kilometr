@@ -16,7 +16,8 @@ const OpenTransfer = createContext<() => void>(() => {});
 export const useTransferProtection = () => useContext(OpenTransfer);
 
 function ForegroundLocation() {
-  useCurrentLocation();
+  // Przesiadka wymaga dokładnego GPS, bo liczy się dojście do słupka.
+  useCurrentLocation(true, true);
   return null;
 }
 

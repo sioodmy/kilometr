@@ -30,6 +30,7 @@ const listeners = new Set<() => void>();
 let snapshot: LocationSnapshot = { location: null, state: 'seeking' };
 const filterState: LocationFilterState = createLocationFilterState();
 let subscriberCount = 0;
+let highAccuracyCount = 0;
 let generation = 0;
 let startPromise: Promise<void> | null = null;
 let locationSub: Location.LocationSubscription | null = null;
@@ -69,6 +70,13 @@ function removeWatch() {
   locationSub = null;
   if (firstFixTimer) clearTimeout(firstFixTimer);
   firstFixTimer = null;
+}
+
+/** High/1 Hz tylko w fazie chodzenia; poza nią Balanced co 10 s oszczędza baterię. */
+function watchOptions(): Parameters<typeof Location.watchPositionAsync>[0] {
+  return highAccuracyCount > 0
+    ? { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 2 }
+    : { accuracy: Location.Accuracy.Balanced, timeInterval: 10000, distanceInterval: 10 };
 }
 
 function handleLocationUpdate(loc: Location.LocationObject) {
@@ -132,11 +140,7 @@ function startWatch(requestPermission: boolean): Promise<void> {
       }
 
       const nextSub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 1000,
-          distanceInterval: 2,
-        },
+        watchOptions(),
         (loc) => {
           if (token !== generation) return;
           handleLocationUpdate(loc);
@@ -168,8 +172,9 @@ function startWatch(requestPermission: boolean): Promise<void> {
   return startPromise;
 }
 
-function acquire(): () => void {
+function acquire(highAccuracy: boolean): () => void {
   subscriberCount += 1;
+  if (highAccuracy) highAccuracyCount += 1;
   if (subscriberCount === 1) {
     publish({
       location: snapshot.location,
@@ -178,8 +183,8 @@ function acquire(): () => void {
     void startWatch(true);
     appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'background' || state === 'inactive') {
-        // W tle nikt nie czyta pozycji, a watch z Accuracy.High chodzi dalej
-        // i pali baterię. Na powrocie startWatch go odtworzy.
+        // W tle nikt nie czyta pozycji, a watch chodzi dalej i pali baterię.
+        // Na powrocie startWatch go odtworzy.
         removeWatch();
         return;
       }
@@ -192,6 +197,10 @@ function acquire(): () => void {
       });
       void startWatch(false);
     });
+  } else if (highAccuracy && highAccuracyCount === 1) {
+    // Ktoś zaczął chodzić: przełącz watch na High/1 Hz.
+    removeWatch();
+    void startWatch(false);
   }
 
   let released = false;
@@ -199,18 +208,24 @@ function acquire(): () => void {
     if (released) return;
     released = true;
     subscriberCount = Math.max(0, subscriberCount - 1);
+    if (highAccuracy) highAccuracyCount = Math.max(0, highAccuracyCount - 1);
     if (subscriberCount === 0) {
       removeWatch();
       if (firstFixTimer) clearTimeout(firstFixTimer);
       firstFixTimer = null;
       appStateSub?.remove();
       appStateSub = null;
+    } else if (highAccuracy && highAccuracyCount === 0) {
+      // Faza chodzenia się skończyła: wracamy do Balanced.
+      removeWatch();
+      void startWatch(false);
     }
   };
 }
 
-export function useCurrentLocation(enabled = true): LocationSnapshot {
+/** `highAccuracy` włączaj tylko na czas dojścia pieszo; domyślnie Balanced co 10 s. */
+export function useCurrentLocation(enabled = true, highAccuracy = false): LocationSnapshot {
   const value = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  useEffect(() => enabled ? acquire() : undefined, [enabled]);
+  useEffect(() => enabled ? acquire(highAccuracy) : undefined, [enabled, highAccuracy]);
   return value;
 }
