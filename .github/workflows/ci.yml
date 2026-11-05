@@ -174,11 +174,17 @@ jobs:
       - name: Run logic tests (Storage)
         run: nix develop .#ci -c npm run check:storage
 
+      - name: Run logic tests (GTFS import)
+        run: nix develop .#ci -c npm run check:gtfs-import
+
       - name: Run logic tests (KV migration)
         run: nix develop .#ci -c npm run check:kv-migration
 
       - name: Run logic tests (Offline cache)
         run: nix develop .#ci -c npm run check:offline-cache
+
+      - name: Run logic tests (Tile pack validation)
+        run: nix develop .#ci -c npm run check:tile-pack
 
       - name: Run logic tests (Places per city)
         run: nix develop .#ci -c npm run check:places
@@ -267,6 +273,24 @@ jobs:
       - name: Run logic tests (Personalization)
         run: nix develop .#ci -c npm run check:personalization
 
+      - name: Run logic tests (Transfer protection)
+        run: nix develop .#ci -c npm run check:transfers
+
+      - name: Run logic tests (Connection times)
+        run: nix develop .#ci -c npm run check:connection-times
+
+      - name: Run logic tests (RT reliability)
+        run: nix develop .#ci -c npm run check:rt-reliability
+
+      - name: Run logic tests (POIs)
+        run: nix develop .#ci -c npm run check:pois
+
+      - name: Run logic tests (Line timetable)
+        run: nix develop .#ci -c npm run check:line-timetable
+
+      - name: Run logic tests (News parser)
+        run: nix develop .#ci -c npm run check:news
+
   verify-subprojects:
     name: Lint & Typecheck Subprojects
     runs-on: ubuntu-latest
@@ -297,6 +321,7 @@ jobs:
             set -euo pipefail
             npm --prefix server ci
             npm --prefix server run build
+            npm --prefix server run typecheck:scripts
           '
 
       - name: Build & typecheck landing

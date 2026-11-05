@@ -1,8 +1,26 @@
-// Czysta logika eksmisji cache geometrii.
+// Czysta logika cache geometrii: eksmisja LRU i zachowanie TTL przy zapisie.
 //
 // Wydzielone z routeGeometry.ts, żeby dało się to przetestować na hoście:
 // routeGeometry ciągnie react-native (przez LineBadge), a ten plik nie ma
 // żadnych zależności uruchomieniowych.
+
+export interface GeometryCacheRecord {
+  c: [number, number][];
+  ts: number;
+}
+
+/**
+ * Zapisuje wpis cache. Nowy klucz dostaje `now`, istniejący zachowuje swój
+ * `ts`, więc zapis innej trasy nie przedłuża TTL starym geometriom.
+ */
+export function putCacheRecord(
+  cache: Map<string, GeometryCacheRecord>,
+  key: string,
+  coords: [number, number][],
+  now: number,
+): void {
+  cache.set(key, { c: coords, ts: cache.get(key)?.ts ?? now });
+}
 
 /**
  * Które klucze wypadają, gdy cache przekroczył limit.

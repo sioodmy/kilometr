@@ -64,6 +64,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Publikacja tylko z main
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Publikacja do R2 tylko z main (jest: $GITHUB_REF_NAME)."
+            exit 1
+          fi
+
       - name: Setup Node.js 22 (node:sqlite)
         uses: actions/setup-node@v4
         with:
@@ -172,6 +179,31 @@ jobs:
             exit 0
           fi
           npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/addresses.json.gz" \
+            --file="$FILE" --content-type application/gzip
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Snapshot POI → R2: jak adresy, świeży zasila kolejny build bez
+      # Overpassa, stary jest odgrzewem awaryjnym. Pusty plik nigdy nie leci
+      # do R2, żeby nie nadpisać dobrego indeksu pustką.
+      - name: Snapshot POI → R2
+        if: steps.build.outputs.exit == '0' || steps.build.outputs.exit == '2'
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload snapshotu POI do R2."
+            exit 0
+          fi
+          FILE="cloudflare/dist/poi-cache/${{ matrix.city }}.json.gz"
+          if [ ! -s "$FILE" ]; then
+            echo "Brak snapshotu POI na dysku, zostawiam poprzedni w R2."
+            exit 0
+          fi
+          node -e 'const fs=require("node:fs"),z=require("node:zlib");const s=JSON.parse(z.gunzipSync(fs.readFileSync(process.argv[1])));if(!(s.count>0&&Array.isArray(s.rows)&&s.rows.length===s.count))process.exit(1)' "$FILE" || {
+            echo "Pusty snapshot POI, nie nadpisuję R2."
+            exit 0
+          }
+          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/pois.json.gz" \
             --file="$FILE" --content-type application/gzip
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

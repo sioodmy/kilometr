@@ -171,6 +171,39 @@ test('Świeży snapshot z R2 zasila build bez Overpassa i ląduje w cache', asyn
   }
 });
 
+test('Stary snapshot z R2 ratuje build, gdy Overpass padnie', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kilometr-pois-'));
+  try {
+    const builtAt = new Date(Date.now() - 30 * 86400000).toISOString();
+    const rows = poisFromElements([skyTowerElement], bounds);
+    const remoteSnapshot = {
+      schemaVersion: POI_SCHEMA_VERSION,
+      city: 'wroclaw',
+      bounds,
+      builtAt,
+      count: rows.length,
+      fingerprint: createHash('sha256').update(JSON.stringify(rows)).digest('hex'),
+      attribution: '© OpenStreetMap contributors',
+      license: 'ODbL-1.0',
+      licenseUrl: 'https://www.openstreetmap.org/copyright',
+      rows,
+    };
+    const fetcher = async (url) => {
+      if (String(url).includes('pois.json.gz')) {
+        return new Response(gzipSync(JSON.stringify(remoteSnapshot)), {
+          headers: { 'Content-Type': 'application/gzip' },
+        });
+      }
+      throw new Error('Overpass offline');
+    };
+    const snapshot = await loadPoiSnapshot('wroclaw', dir, fetcher, 'https://data.kilometr.app');
+    assert.equal(snapshot.count, 1);
+    assert.equal(snapshot.builtAt, builtAt);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('importPois z null zwraca null', () => {
   const db = new DatabaseSync(':memory:');
   try {

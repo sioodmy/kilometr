@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { kvGetStrict, kvSet } from './storage';
+import { kvGetStrict, kvSetStrict } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getCity, cityKey, suggestCityForCoords } from '../cities';
 import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
@@ -399,9 +399,11 @@ export const RoutingService: IRoutingService = {
         } else {
           all.push(entry);
         }
-        await kvSet(savedRoutesKey(), JSON.stringify(all));
+        // Zapis musi się udać, inaczej UI nie może pokazać trasy jako zapisanej.
+        await kvSetStrict(savedRoutesKey(), JSON.stringify(all));
       } catch (err) {
         console.warn('[RoutingService] Failed to save route:', err);
+        throw err;
       }
     });
   },
@@ -411,9 +413,10 @@ export const RoutingService: IRoutingService = {
       try {
         const all = await readSavedRoutes();
         const filtered = all.filter(r => r.id !== id);
-        await kvSet(savedRoutesKey(), JSON.stringify(filtered));
+        await kvSetStrict(savedRoutesKey(), JSON.stringify(filtered));
       } catch (err) {
         console.warn('[RoutingService] Failed to delete saved route:', err);
+        throw err;
       }
     });
   },
@@ -531,14 +534,14 @@ async function migratePlacesToCityBuckets(): Promise<void> {
       const key = cityKey(PLACES_BASE_KEY, getCity(cityId).id);
       const existing = await readPlaces(key);
       const have = new Set(existing.map((p) => p.id));
-      await kvSet(key, JSON.stringify([...existing, ...moved.filter((p) => !have.has(p.id))]));
+      await kvSetStrict(key, JSON.stringify([...existing, ...moved.filter((p) => !have.has(p.id))]));
     } catch (err) {
       console.warn('[FavoritesService] migration write failed:', err);
       return;
     }
   }
   try {
-    await kvSet(cityKey(PLACES_BASE_KEY, 'wroclaw'), JSON.stringify(staying));
+    await kvSetStrict(cityKey(PLACES_BASE_KEY, 'wroclaw'), JSON.stringify(staying));
   } catch (err) {
     console.warn('[FavoritesService] migration cleanup failed:', err);
   }
@@ -615,7 +618,14 @@ export const FavoritesService: IFavoritesService = {
         anchorStopLon: place.anchorStopLon || undefined,
       };
       places.push(newPlace);
-      await kvSet(placesKey(), JSON.stringify(places));
+      // Błąd dysku nie może udawać sukcesu: UI dostaje wyjątek i nie odświeża
+      // listy, a pamięć podręczna storage zostaje na starym stanie.
+      try {
+        await kvSetStrict(placesKey(), JSON.stringify(places));
+      } catch (err) {
+        console.warn('[FavoritesService] addPlace write failed:', err);
+        throw err;
+      }
       return newPlace;
     });
   },
@@ -627,7 +637,12 @@ export const FavoritesService: IFavoritesService = {
       const idx = places.findIndex(p => p.id === id);
       if (idx === -1) return null;
       places[idx] = { ...places[idx], ...updates };
-      await kvSet(placesKey(), JSON.stringify(places));
+      try {
+        await kvSetStrict(placesKey(), JSON.stringify(places));
+      } catch (err) {
+        console.warn('[FavoritesService] updatePlace write failed:', err);
+        throw err;
+      }
       return places[idx];
     });
   },
@@ -645,7 +660,12 @@ export const FavoritesService: IFavoritesService = {
       }
       const filtered = places.filter(p => p.id !== id);
       if (filtered.length === places.length) return false;
-      await kvSet(placesKey(), JSON.stringify(filtered));
+      try {
+        await kvSetStrict(placesKey(), JSON.stringify(filtered));
+      } catch (err) {
+        console.warn('[FavoritesService] deletePlace write failed:', err);
+        throw err;
+      }
       return true;
     });
   },

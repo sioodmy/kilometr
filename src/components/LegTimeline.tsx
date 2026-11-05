@@ -35,6 +35,7 @@ import {
   type LiveStopPosition,
 } from '../services/vehiclePosition';
 import { useStrings, type Strings } from '../i18n';
+import { pl } from '../i18n/pl';
 import { motion } from '../theme/motion';
 import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
@@ -466,6 +467,12 @@ const TransitLegCard = memo(function TransitLegCard({
     () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop),
     [t, leg.platformCode, leg.mode, leg.fromStop],
   );
+  // Wskazówki w bazie są tylko po polsku, więc prefiks słupka też musi być polski.
+  // Inaczej angielski UI dokleja "Pole 10001" do polskiego zdania.
+  const hintPlatform = useMemo(
+    () => formatPlatformLabel(pl, leg.platformCode, leg.mode, leg.fromStop),
+    [leg.platformCode, leg.mode, leg.fromStop],
+  );
 
   const cacheKey = leg.tripId || leg.id;
   const [stops, setStops] = useState<LegStop[]>(
@@ -650,8 +657,8 @@ const TransitLegCard = memo(function TransitLegCard({
           <View style={s.stopHintContainer}>
             <MapPin size={13} color={scheme.primary} style={s.stopHintIcon} />
             <Text style={s.cardStopHint}>
-              {!/^(słupek|peron|stanowisko)\b/i.test(stopHint) && departurePlatform ? (
-                <Text style={s.hintPlatformBold}>{departurePlatform} • </Text>
+              {!/^(słupek|peron|stanowisko)\b/i.test(stopHint) && hintPlatform ? (
+                <Text style={s.hintPlatformBold}>{hintPlatform} • </Text>
               ) : null}
               {stopHint}
             </Text>

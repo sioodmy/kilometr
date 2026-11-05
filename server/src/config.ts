@@ -1,8 +1,26 @@
 import path from 'node:path';
 
+const DEFAULT_CORS_ORIGINS = [
+  'http://localhost:8081',
+  'http://127.0.0.1:8081',
+  'http://localhost:19006',
+  'http://127.0.0.1:19006',
+];
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+
+const requestedHost = process.env.HOST?.trim() || '127.0.0.1';
+const apiToken = process.env.API_TOKEN?.trim() ?? '';
+
 export const config = {
   port: Number(process.env.PORT || 3000),
-  host: process.env.HOST || '0.0.0.0',
+  // Bez tokenu serwer nie wychodzi do LAN: HOST=0.0.0.0 spada do loopbacku.
+  host: apiToken === '' && !LOOPBACK_HOSTS.has(requestedHost) ? '127.0.0.1' : requestedHost,
+  apiToken,
+  corsOrigins: (process.env.CORS_ORIGINS ?? DEFAULT_CORS_ORIGINS.join(','))
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   dataDir: path.resolve(__dirname, '../data'),
   gtfs: {
     catalogueUrl: 'https://api.open-data.cui.wroclaw.pl/od2/6/',

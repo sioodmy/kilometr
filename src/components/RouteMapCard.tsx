@@ -11,17 +11,48 @@ import {
 import { MapPin, Maximize2 } from './icons';
 import { useStrings } from '../i18n';
 import type { Connection } from '../types/models';
+import type { MapRoute } from '../map/types';
 import { acquireMapServer } from '../services/mapServerLease';
 import { buildMapRoute, resolveGeometry, type Coord } from '../services/routeGeometry';
 import { scheme, shape, type } from '../theme/tokens';
 import { RouteMap, type RouteMapHandle } from './RouteMap';
+
+/**
+ * Sygnatura bryły trasy. Tick live zmienia godziny i opóźnienia, ale nie
+ * przystanki ani przebieg, więc mapa dostaje ten sam route i nie resetuje kadru.
+ */
+function routeShapeKey(connection: Connection): string {
+  return JSON.stringify([
+    connection.id,
+    connection.legs.map((leg) => [
+      leg.id,
+      leg.mode,
+      leg.line ?? '',
+      leg.fromStopId ?? leg.fromStop,
+      leg.toStopId ?? leg.toStop,
+      leg.fromLat,
+      leg.fromLon,
+      leg.toLat,
+      leg.toLon,
+      leg.geometry?.length ?? 0,
+      (leg.intermediateStops ?? []).map((stop) => [stop.stopId, stop.lat, stop.lon]),
+    ]),
+  ]);
+}
 
 export function RouteMapCard({ connection, onOpenMap }: {
   connection: Connection;
   onOpenMap: () => void;
 }) {
   const s = useStrings();
-  const route = useMemo(() => buildMapRoute(connection), [connection]);
+  const shapeKey = useMemo(() => routeShapeKey(connection), [connection]);
+  const builtRoute = useRef<{ key: string; route: MapRoute } | null>(null);
+  const route = useMemo(() => {
+    if (builtRoute.current?.key === shapeKey) return builtRoute.current.route;
+    const next = buildMapRoute(connection);
+    builtRoute.current = { key: shapeKey, route: next };
+    return next;
+  }, [connection, shapeKey]);
   const mapRef = useRef<RouteMapHandle>(null);
   const geometry = useRef(new Map<string, Coord[]>());
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>();
