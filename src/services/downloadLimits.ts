@@ -2,7 +2,7 @@
 // Chronią free tier przed wielokrotnym ściąganiem tego samego pakietu.
 // Limit liczy się od udanego pobrania; nieudana próba nie blokuje retry.
 
-import { kvGet, kvSet } from './storage';
+import { kvGet, kvRemove, kvSet } from './storage';
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { getMeta, setMeta } from './gtfsDatabase';
@@ -44,6 +44,11 @@ export async function getMapDownloadGate(cityId?: string): Promise<DownloadGate>
 
 export async function markMapDownloaded(cityId?: string): Promise<void> {
   await kvSet(mapKey(cityId), new Date().toISOString());
+}
+
+/** Jawne usunięcie uszkodzonego pakietu: kolejne pobranie ma działać od razu. */
+export async function clearMapDownloadLimit(cityId?: string): Promise<void> {
+  await kvRemove(mapKey(cityId));
 }
 
 export async function getTimetableDownloadGate(): Promise<DownloadGate> {

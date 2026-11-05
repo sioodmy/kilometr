@@ -58,6 +58,7 @@ import {
   fusedDelay,
 } from './liveQuality';
 import { buildRoutingSnapshot, type RoutingSnapshot } from './routing/reliability';
+import { mergeDayIndexes } from './routing/raptor';
 import { normalizeName } from './vehiclePosition';
 
 /**
@@ -184,6 +185,8 @@ class LiveTracker {
   private health = new Map<string, SourceHealth>();
   /** Czy ticker ma aktywnie chodzić (false po stop(), true po start()). */
   private wantPoll = false;
+  /** Widoczne ekrany, które potrzebują świeżych danych live. */
+  private consumers = 0;
   /** Kto sam tego wymaga, bo działa w tle (śledzenie podróży). Pin > 0 = poll i na tle. */
   private pinned = 0;
   private appStateSub: { remove(): void } | null = null;
@@ -247,12 +250,27 @@ class LiveTracker {
     this.notify();
   }
 
-  /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
+  /** Idempotentny start tickera; ekrany wołają acquire(), nie start(). */
   start(): void {
     this.wantPoll = true;
     this.ensureAppStateListener();
     if (this.pinned === 0 && AppState.currentState !== 'active') return;
     this.armTimer();
+  }
+
+  /**
+   * Ekran zgłasza zapotrzebowanie na świeże dane, dopóki jest widoczny.
+   * Licznik, bo podczas przejścia przez chwilę działa stary i nowy ekran.
+   */
+  acquire(): void {
+    this.consumers += 1;
+    this.start();
+  }
+
+  /** Zwolnienie ekranu; ostatni gasi poll, chyba że śledzenie podróży pinuje. */
+  release(): void {
+    this.consumers = Math.max(0, this.consumers - 1);
+    if (this.consumers === 0) this.stop();
   }
 
   /**
@@ -269,7 +287,8 @@ class LiveTracker {
   /** Zatrzymuje ticker: apka ma iść bez polla, dopóki czegoś nie potrzebuje. */
   stop(): void {
     this.wantPoll = false;
-    this.disarmTimer();
+    // Pin ma własne tempo (także w tle), więc nie gasimy mu timera.
+    if (this.pinned === 0) this.disarmTimer();
   }
 
   /** Śledzenie podróży potrzebuje polla nawet w tle: pin zamiast twardego start(). */
@@ -334,11 +353,11 @@ class LiveTracker {
 
   /**
    * Szybka ścieżka przed planowaniem: gdy snapshot świeży - nic nie robi,
-   * w przeciwnym razie odpala poll W TLE i wraca od razu (planowanie nigdy
-   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤5 s).
+   * w przeciwnym razie odpala jednorazowy poll W TLE i wraca od razu
+   * (planowanie nigdy nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤5 s).
+   * Ciągły poll zostaje po stronie widocznych ekranów (acquire/release).
    */
   async ensureFresh(): Promise<void> {
-    this.start();
     void this.restoreSnapshot();
     if (this.lastOk > 0 || this.inFlight) return;
     void this.poll();
@@ -363,6 +382,47 @@ class LiveTracker {
 
   private latestDayIndex: DayIndex | null = null;
   private sampleHistory = new Map<string, { lat: number; lon: number; since: number }>();
+  /** Merge wczorajszego wycinka nocnego, cache per para indeksów (jak w planerze). */
+  private mergedLiveIndexes = new WeakMap<
+    DayIndex,
+    WeakMap<DayIndex, { index: DayIndex; offsets: Map<string, number> }>
+  >();
+
+  /**
+   * Wycinek dopasowania na teraz. Przed 07:00 dokłada wczorajsze kursy 24:xx
+   * z zegarem przesuniętym o dobę, żeby nocne pojazdy miały swój rozkład.
+   */
+  private async liveDayIndex(
+    now: Date,
+    nowSec: number,
+  ): Promise<{ dayIndex: DayIndex; offsets?: Map<string, number> }> {
+    const dayIndex = await gtfsStore.getDayIndexSlice(
+      now.getDay(),
+      toDateStr(now),
+      nowSec - WINDOW_SEC,
+      nowSec + 3600,
+    );
+    if (nowSec >= 7 * 3600) return { dayIndex };
+    const prev = new Date(now);
+    prev.setDate(prev.getDate() - 1);
+    const overnight = await gtfsStore.getDayIndexSlice(
+      prev.getDay(),
+      toDateStr(prev),
+      86400 + nowSec - WINDOW_SEC,
+      86400 + nowSec + 3600,
+    );
+    let inner = this.mergedLiveIndexes.get(dayIndex);
+    if (!inner) {
+      inner = new WeakMap();
+      this.mergedLiveIndexes.set(dayIndex, inner);
+    }
+    let merged = inner.get(overnight);
+    if (!merged) {
+      merged = mergeDayIndexes(dayIndex, overnight, 'y_', -86400);
+      inner.set(overnight, merged);
+    }
+    return { dayIndex: merged.index, offsets: merged.offsets };
+  }
 
   getRoutingSnapshot(index = this.latestDayIndex, offsets?: Map<string, number>): RoutingSnapshot {
     return buildRoutingSnapshot(
@@ -571,15 +631,10 @@ class LiveTracker {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
       const now = new Date();
       const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-      const dayIndex = await gtfsStore.getDayIndexSlice(
-        now.getDay(),
-        toDateStr(now),
-        nowSec - WINDOW_SEC,
-        nowSec + 3600,
-      );
+      const { dayIndex, offsets } = await this.liveDayIndex(now, nowSec);
 
       const patternPolylines = new Map<string, PatternPolylineNode[]>();
-      const { tracked } = this.matchRow(row, dayIndex, nowSec, patternPolylines);
+      const { tracked } = this.matchRow(row, dayIndex, nowSec, patternPolylines, offsets);
 
       this.byId.set(vehicleId, tracked);
       if (tracked.matchedTripId && tracked.delaySec !== null) {
@@ -788,13 +843,9 @@ class LiveTracker {
     const now = new Date();
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
     let dayIndex: DayIndex;
+    let offsets: Map<string, number> | undefined;
     try {
-      dayIndex = await gtfsStore.getDayIndexSlice(
-        now.getDay(),
-        toDateStr(now),
-        nowSec - WINDOW_SEC,
-        nowSec + 3600,
-      );
+      ({ dayIndex, offsets } = await this.liveDayIndex(now, nowSec));
     } catch (err) {
       throw new Error(`day index failed: ${String(err)}`);
     }
@@ -802,7 +853,7 @@ class LiveTracker {
     for (const veh of vehicles) {
       if (!veh.lat || !veh.lon || !veh.trainNumber) continue;
       const vehicleId = `${prefix}${veh.trainNumber}:${veh.id}`;
-      const match = matchZbKd(veh, dayIndex);
+      const match = matchZbKd(veh, dayIndex, offsets);
       const outOfRange = match != null && Math.abs(veh.delaySec) > DELAY_CAP_SEC;
       if (outOfRange) {
         console.warn(
@@ -863,6 +914,7 @@ class LiveTracker {
     dayIndex: DayIndex,
     nowSec: number,
     patternPolylines: Map<string, PatternPolylineNode[]>,
+    offsets?: Map<string, number>,
   ): { tracked: TrackedVehicle; score: number } {
     const line = row.name.trim().toUpperCase();
     const vehicleId = `${line}-${row.k}`;
@@ -886,13 +938,15 @@ class LiveTracker {
 
     for (const [patternId, pattern] of dayIndex.patterns.entries()) {
       if (!routeIds.includes(pattern.routeId)) continue;
-      const trips = pattern.trips as any[];
+      const trips = pattern.trips;
       if (!trips || trips.length === 0) continue;
+      // Wzorce wczorajsze mają zegar przesunięty o dobę względem „teraz”.
+      const offset = offsets?.get(patternId) ?? 0;
 
       let polyline = patternPolylines.get(patternId);
       if (!polyline) {
         polyline = [];
-        for (const [schedulePos, stopId] of (pattern.stopSequence as string[]).entries()) {
+        for (const [schedulePos, stopId] of pattern.stopSequence.entries()) {
           const s = gtfsStore.stops.get(stopId);
           if (s && s.stop_lat != null && s.stop_lon != null) {
             polyline.push({
@@ -925,7 +979,7 @@ class LiveTracker {
 
         const dep1 = times[p1.schedulePos].departure_sec;
         const arr2 = times[p2.schedulePos].arrival_sec;
-        const expectedSec = Math.round(dep1 + t * (arr2 - dep1));
+        const expectedSec = Math.round(dep1 + t * (arr2 - dep1)) + offset;
         const delay = sampleSec - expectedSec;
         const score = matchScore(
           hints,
@@ -938,7 +992,7 @@ class LiveTracker {
           p2.lat,
           p2.lon,
           p2.name,
-          arr2,
+          arr2 + offset,
         );
         if (score < bestScore) {
           bestScore = score;
@@ -952,10 +1006,11 @@ class LiveTracker {
 
     // Fallback: dopasowanie do pojedynczych przystanków (np. pętla końcowa lub ostre zakręty)
     if (!bestTripId) {
-      for (const pattern of dayIndex.patterns.values()) {
+      for (const [patternId, pattern] of dayIndex.patterns.entries()) {
         if (!routeIds.includes(pattern.routeId)) continue;
-        const trips = pattern.trips as any[];
+        const trips = pattern.trips;
         if (!trips) continue;
+        const offset = offsets?.get(patternId) ?? 0;
 
         for (const trip of trips) {
           const times = gtfsStore.stopTimes.get(trip.trip_id);
@@ -968,9 +1023,11 @@ class LiveTracker {
             const d = distanceMeters(lat, lon, stop.stop_lat, stop.stop_lon);
             if (d > 200) continue;
 
-            const expectedSec = times[i].departure_sec ?? times[i].arrival_sec ?? nowSec;
+            const rawSec = times[i].departure_sec ?? times[i].arrival_sec;
+            const expectedSec = rawSec != null ? rawSec + offset : nowSec;
             const delay = sampleSec - expectedSec;
             const next = gtfsStore.stops.get(times[i + 1]?.stop_id);
+            const nextRaw = times[i + 1]?.departure_sec ?? times[i + 1]?.arrival_sec;
             const score = matchScore(
               hints,
               trip.trip_id,
@@ -982,7 +1039,7 @@ class LiveTracker {
               next?.stop_lat ?? stop.stop_lat,
               next?.stop_lon ?? stop.stop_lon,
               next?.stop_name ?? stop.stop_name,
-              times[i + 1]?.departure_sec ?? expectedSec,
+              nextRaw != null ? nextRaw + offset : expectedSec,
             );
             if (score < bestScore) {
               bestScore = score;
@@ -1008,7 +1065,7 @@ class LiveTracker {
     // route_type 0 to tramwaj, 1 to metro, 2 to pociąg (SKA), 11 to trolejbus.
     // Bez meczu zostaje typ z wiersza. Ta sama kolejność co w ścieżce Rusta.
     if (bestTripId) {
-      const trip = gtfsStore.trips.get(bestTripId) as { route_id?: string } | undefined;
+      const trip = gtfsStore.trips.get(bestTripId);
       const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
       if (routeType === 0) type = 'tram';
       else if (routeType === 1) type = 'subway';
@@ -1084,20 +1141,28 @@ class LiveTracker {
   }
 
   private liveScheduleKey: DayIndex | null = null;
+  private liveScheduleOffsets: Map<string, number> | undefined;
   private liveTripIds: string[] = [];
   private liveStopNames: string[] = [];
 
-  private ensureLiveSchedule(dayIndex: DayIndex): boolean {
-    if (this.liveScheduleKey === dayIndex && this.liveTripIds.length > 0) return true;
+  private ensureLiveSchedule(dayIndex: DayIndex, offsets?: Map<string, number>): boolean {
+    if (
+      this.liveScheduleKey === dayIndex &&
+      this.liveScheduleOffsets === offsets &&
+      this.liveTripIds.length > 0
+    ) {
+      return true;
+    }
     const byLine = new Map<
       string,
       {
         routeId: string;
         stopSequence: string[];
         trips: { trip_id: string; trip_headsign?: string }[];
+        offset: number;
       }[]
     >();
-    for (const pattern of dayIndex.patterns.values()) {
+    for (const [patternId, pattern] of dayIndex.patterns.entries()) {
       const route = gtfsStore.routes.get(pattern.routeId);
       const line = String(route?.route_short_name ?? pattern.routeId ?? '')
         .trim()
@@ -1108,7 +1173,7 @@ class LiveTracker {
         list = [];
         byLine.set(line, list);
       }
-      list.push(pattern);
+      list.push({ ...pattern, offset: offsets?.get(patternId) ?? 0 });
     }
     const tripIds: string[] = [];
     const stopNames: string[] = [];
@@ -1116,7 +1181,7 @@ class LiveTracker {
     w.u32(byLine.size);
     for (const [line, patterns] of byLine) {
       w.str(line).u32(patterns.length);
-      for (const pattern of patterns) {
+      for (const { offset, ...pattern } of patterns) {
         const seq: { nameIdx: number; lat: number; lon: number; pos: number }[] = [];
         for (const [pos, stopId] of pattern.stopSequence.entries()) {
           const stop = gtfsStore.stops.get(stopId);
@@ -1134,14 +1199,15 @@ class LiveTracker {
         const trips = pattern.trips;
         w.u32(trips.length);
         for (const trip of trips) {
-          const times = gtfsStore.stopTimes.get(trip.trip_id) as
-            { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
+          const times = gtfsStore.stopTimes.get(trip.trip_id);
           const tripIdx = tripIds.length;
           tripIds.push(trip.trip_id);
           w.u32(tripIdx).str(normalizeName(trip.trip_headsign ?? ''));
           for (let i = 0; i < seq.length; i++) {
             const t = times?.[seq[i].pos];
-            w.i32(t ? t.departure_sec | 0 : -2147483648).i32(t ? t.arrival_sec | 0 : -2147483648);
+            w.i32(t ? (t.departure_sec + offset) | 0 : -2147483648).i32(
+              t ? (t.arrival_sec + offset) | 0 : -2147483648,
+            );
           }
           const fallback: { nameIdx: number; lat: number; lon: number; dep: number }[] = [];
           if (times) {
@@ -1152,7 +1218,7 @@ class LiveTracker {
               if (dep == null) continue;
               const nameIdx = stopNames.length;
               stopNames.push(stop.stop_name || t.stop_id);
-              fallback.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, dep });
+              fallback.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, dep: dep + offset });
             }
           }
           w.u16(fallback.length);
@@ -1168,6 +1234,7 @@ class LiveTracker {
     const res = invokeRustSync(CMD_LIVE_LOAD_SCHEDULE, w.finish());
     if (!res || res.byteLength < 4) return false;
     this.liveScheduleKey = dayIndex;
+    this.liveScheduleOffsets = offsets;
     this.liveTripIds = tripIds;
     this.liveStopNames = stopNames;
     return true;
@@ -1177,8 +1244,9 @@ class LiveTracker {
     rows: RawVehicleRow[],
     dayIndex: DayIndex,
     nowSec: number,
+    offsets?: Map<string, number>,
   ): Map<string, { tracked: TrackedVehicle; score: number }> | null {
-    if (!this.ensureLiveSchedule(dayIndex)) return null;
+    if (!this.ensureLiveSchedule(dayIndex, offsets)) return null;
     const usable = rows.filter((row) => row.x && row.y && row.name);
     if (usable.length === 0) return null;
     const w = new BinaryWriter(16 + usable.length * 48);
@@ -1225,7 +1293,7 @@ class LiveTracker {
       // dostaje route_type 1 i kropkę metra).
       let vtype: TrackedVehicle['type'] = row.type === 'tram' ? 'tram' : 'bus';
       if (tripId) {
-        const trip = gtfsStore.trips.get(tripId) as { route_id?: string } | undefined;
+        const trip = gtfsStore.trips.get(tripId);
         const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
         if (routeType === 0) vtype = 'tram';
         else if (routeType === 1) vtype = 'subway';
@@ -1263,13 +1331,9 @@ class LiveTracker {
     const now = new Date();
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
     let dayIndex: DayIndex;
+    let offsets: Map<string, number> | undefined;
     try {
-      dayIndex = await gtfsStore.getDayIndexSlice(
-        now.getDay(),
-        toDateStr(now),
-        nowSec - WINDOW_SEC,
-        nowSec + 3600,
-      );
+      ({ dayIndex, offsets } = await this.liveDayIndex(now, nowSec));
     } catch (err) {
       throw new Error(`day index failed: ${String(err)}`);
     }
@@ -1291,7 +1355,7 @@ class LiveTracker {
     });
     for (const id of this.sampleHistory.keys()) if (!seen.has(id)) this.sampleHistory.delete(id);
     const matched =
-      this.matchRowsRust(rows, dayIndex, nowSec) ??
+      this.matchRowsRust(rows, dayIndex, nowSec, offsets) ??
       new Map<string, { tracked: TrackedVehicle; score: number }>();
 
     if (matched.size === 0) {
@@ -1302,7 +1366,7 @@ class LiveTracker {
         if (!row.x || !row.y || !row.name) continue;
         matched.set(
           row.name.trim().toUpperCase() + '-' + row.k,
-          this.matchRow(row, dayIndex, nowSec, patternPolylines),
+          this.matchRow(row, dayIndex, nowSec, patternPolylines, offsets),
         );
       }
     }

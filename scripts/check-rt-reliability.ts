@@ -31,6 +31,7 @@ function network(lines: { id: string; stops: string[]; times: number[][]; kind?:
     store.routes.set(line.id, {
       route_id: line.id,
       route_short_name: line.id,
+      route_long_name: '',
       route_type: line.kind ?? 3,
     });
     const trips = line.times.map((times, i) => {
@@ -46,6 +47,7 @@ function network(lines: { id: string; stops: string[]; times: number[][]; kind?:
       store.stopTimes.set(
         trip.trip_id,
         times.map((sec, j) => ({
+          trip_id: trip.trip_id,
           stop_id: line.stops[j],
           stop_sequence: j,
           arrival_sec: sec,
@@ -54,7 +56,7 @@ function network(lines: { id: string; stops: string[]; times: number[][]; kind?:
       );
       return trip;
     });
-    index.patterns.set(line.id, { routeId: line.id, stopSequence: line.stops, trips });
+    index.patterns.set(line.id, { patternId: line.id, routeId: line.id, stopSequence: line.stops, trips, departures: [], tripIndices: [] });
   }
   return { store, index };
 }
@@ -385,7 +387,7 @@ for (const train of [false, true]) {
     { id: '146', stops: ['Y', 'D'], times: [[train ? 29700 : 29760, 30300]], kind: train ? 2 : 3 },
   ]);
   walking.store.footpaths.set('X', [
-    { to_stop_id: 'Y', duration_sec: 180, distance_m: 100, fixed: true },
+    { from_stop_id: 'X', to_stop_id: 'Y', duration_sec: 180, distance_m: 100, fixed: true },
   ]);
   const walkOptions = {
     dayIndex: walking.index,

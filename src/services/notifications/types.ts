@@ -198,6 +198,12 @@ export interface TrackedTrip {
   /** Połączenie, na które użytkownik się zgodził (to samo, które widzi na liście). */
   connection: Connection;
   startedAt: number;
+  /**
+   * Absolutny plan z chwili startu. Bez tego kurs 24:xx po północy przesuwał
+   * się o dobę, bo `departureSec` liczy się względem bieżącej doby serwisowej.
+   */
+  plannedDepartureMs?: number;
+  plannedArrivalMs?: number;
   protectionEnabled?: boolean;
   transferContextPath?: string;
   transferRevision?: number;

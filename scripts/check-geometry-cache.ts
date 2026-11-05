@@ -1,8 +1,8 @@
-// Test logiki cache geometrii: przypięte trasy nie mogą wypadać z LRU.
+// Test logiki cache geometrii: TTL przy zapisie i eksmisja LRU z przypiętymi.
 //
 //   npm run check:geometry-cache
 
-import { selectEvictions } from '../src/services/geometryEviction';
+import { putCacheRecord, selectEvictions } from '../src/services/geometryEviction';
 
 let failures = 0;
 function check(label: string, cond: boolean, detail = '') {
@@ -64,6 +64,19 @@ console.log('=== Cache geometrii: eksmisja LRU z przypiętymi ===');
 {
   check('pusta lista', selectEvictions([], new Set(), 10).length === 0);
   check('limit 0 wypuszcza wszystko', selectEvictions(['a', 'b'], new Set(), 0).length === 2);
+}
+
+// 7. Zapis nowego klucza nie resetuje TTL starym wpisom.
+{
+  const cache = new Map<string, { c: [number, number][]; ts: number }>();
+  putCacheRecord(cache, 'a', [[51, 17]], 1000);
+  putCacheRecord(cache, 'b', [[52, 18]], 2000);
+  check('stary wpis zachowuje ts', cache.get('a')?.ts === 1000, `${cache.get('a')?.ts}`);
+  check('nowy wpis dostaje bieżący ts', cache.get('b')?.ts === 2000, `${cache.get('b')?.ts}`);
+  putCacheRecord(cache, 'a', [[51.1, 17.1]], 3000);
+  check('nadpisanie klucza nie przedłuża TTL', cache.get('a')?.ts === 1000, `${cache.get('a')?.ts}`);
+  putCacheRecord(cache, 'c', [[53, 19]], 4000);
+  check('kolejny nowy klucz dostaje własny ts', cache.get('c')?.ts === 4000, `${cache.get('c')?.ts}`);
 }
 
 console.log(`\n${failures === 0 ? 'OK: logika cache poprawna' : `BLEDY: ${failures}`}`);

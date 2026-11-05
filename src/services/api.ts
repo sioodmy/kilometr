@@ -1,8 +1,8 @@
 import * as Location from 'expo-location';
-import { kvGetStrict, kvSet } from './storage';
+import { kvGetStrict, kvSetStrict } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getCity, cityKey, suggestCityForCoords } from '../cities';
-import { getActiveCityIdSync } from './cityStore';
+import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
 import {
   Connection,
   LegStop,
@@ -22,6 +22,7 @@ import { hasSeenOnboarding } from './onboarding';
 import { planConnections, buildTripStops } from './routing/engine';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
 import { normalizeConnectionId } from './routing/connectionIdentity';
+import { distanceMeters } from '../gtfs/geo';
 
 export { SearchService } from './searchService';
 
@@ -60,16 +61,6 @@ function getPositionWithTimeout(
       },
     );
   });
-}
-
-function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
-  const R = 6371000;
-  const dLa = ((bLat - aLat) * Math.PI) / 180;
-  const dLo = ((bLon - aLon) * Math.PI) / 180;
-  const s =
-    Math.sin(dLa / 2) ** 2 +
-    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLo / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 /**
@@ -138,7 +129,7 @@ async function resolveLocation(lat: number, lon: number, accuracyM?: number | nu
 
   if (!foundStop && !hadReverse) {
     const last = await loadLastLocation();
-    if (last && distanceM(lat, lon, last.lat, last.lon) < 1000) {
+    if (last && distanceMeters(lat, lon, last.lat, last.lon) < 1000) {
       result = { title: last.title, address: last.address, lat, lon, stopId: last.stopId, city: last.city ?? city, accuracyM };
     }
   }
@@ -181,7 +172,7 @@ async function refineLocation(force?: boolean): Promise<LocationResult | null> {
       );
       const prev = cachedLocation;
       const loc = await resolveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-      const movedM = prev ? distanceM(prev.lat, prev.lon, loc.lat, loc.lon) : Infinity;
+      const movedM = prev ? distanceMeters(prev.lat, prev.lon, loc.lat, loc.lon) : Infinity;
       if (movedM >= LOCATION_REFINE_DELTA_M || prev?.stopId !== loc.stopId) {
         for (const listener of locationListeners) {
           try {
@@ -270,15 +261,41 @@ export const LocationService: ILocationService = {
   subscribe,
 };
 
-// In-memory recent connections for getConnectionById
+// In-memory recent connections for getConnectionById. Twardy limit chroni
+// pamięć przy przeglądaniu setek kursów; klucz znormalizowany jak w odczycie.
+const RECENT_PLANNED_MAX = 50;
 const recentPlannedConnections = new Map<string, Connection>();
+let recentCityId = getActiveCityIdSync();
+
+subscribeActiveCity((id) => {
+  if (id === recentCityId) return;
+  recentCityId = id;
+  recentPlannedConnections.clear();
+});
+
+function rememberRecent(connection: Connection): void {
+  const key = normalizeConnectionId(connection.id);
+  recentPlannedConnections.delete(key);
+  recentPlannedConnections.set(key, connection);
+  while (recentPlannedConnections.size > RECENT_PLANNED_MAX) {
+    const oldest = recentPlannedConnections.keys().next().value;
+    if (oldest === undefined) break;
+    recentPlannedConnections.delete(oldest);
+  }
+}
 
 export function getPlannedConnection(id: string): Connection | undefined {
-  return recentPlannedConnections.get(normalizeConnectionId(id));
+  const key = normalizeConnectionId(id);
+  const found = recentPlannedConnections.get(key);
+  if (found) {
+    recentPlannedConnections.delete(key);
+    recentPlannedConnections.set(key, found);
+  }
+  return found;
 }
 
 export function rememberPlannedConnection(connection: Connection): void {
-  recentPlannedConnections.set(connection.id, connection);
+  rememberRecent(connection);
 }
 
 // Serializuje read-modify-write zapisanych tras: dwa równoległe zapisy nie mogą
@@ -319,17 +336,13 @@ export const RoutingService: IRoutingService = {
         // działał nawet jeśli użytkownik tapnie wiersz w trakcie liczenia.
         onProgress: onProgress
           ? (partial) => {
-              for (const c of partial) {
-                recentPlannedConnections.set(c.id, c);
-              }
+              for (const c of partial) rememberRecent(c);
               onProgress(partial);
             }
           : undefined,
       });
 
-      for (const c of connections) {
-        recentPlannedConnections.set(c.id, c);
-      }
+      for (const c of connections) rememberRecent(c);
 
       if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
         void saveConnections(query, connections);
@@ -377,9 +390,11 @@ export const RoutingService: IRoutingService = {
         } else {
           all.push(entry);
         }
-        await kvSet(savedRoutesKey(), JSON.stringify(all));
+        // Zapis musi się udać, inaczej UI nie może pokazać trasy jako zapisanej.
+        await kvSetStrict(savedRoutesKey(), JSON.stringify(all));
       } catch (err) {
         console.warn('[RoutingService] Failed to save route:', err);
+        throw err;
       }
     });
   },
@@ -389,9 +404,10 @@ export const RoutingService: IRoutingService = {
       try {
         const all = await readSavedRoutes();
         const filtered = all.filter(r => r.id !== id);
-        await kvSet(savedRoutesKey(), JSON.stringify(filtered));
+        await kvSetStrict(savedRoutesKey(), JSON.stringify(filtered));
       } catch (err) {
         console.warn('[RoutingService] Failed to delete saved route:', err);
+        throw err;
       }
     });
   },
@@ -509,14 +525,14 @@ async function migratePlacesToCityBuckets(): Promise<void> {
       const key = cityKey(PLACES_BASE_KEY, getCity(cityId).id);
       const existing = await readPlaces(key);
       const have = new Set(existing.map((p) => p.id));
-      await kvSet(key, JSON.stringify([...existing, ...moved.filter((p) => !have.has(p.id))]));
+      await kvSetStrict(key, JSON.stringify([...existing, ...moved.filter((p) => !have.has(p.id))]));
     } catch (err) {
       console.warn('[FavoritesService] migration write failed:', err);
       return;
     }
   }
   try {
-    await kvSet(cityKey(PLACES_BASE_KEY, 'wroclaw'), JSON.stringify(staying));
+    await kvSetStrict(cityKey(PLACES_BASE_KEY, 'wroclaw'), JSON.stringify(staying));
   } catch (err) {
     console.warn('[FavoritesService] migration cleanup failed:', err);
   }
@@ -593,7 +609,14 @@ export const FavoritesService: IFavoritesService = {
         anchorStopLon: place.anchorStopLon || undefined,
       };
       places.push(newPlace);
-      await kvSet(placesKey(), JSON.stringify(places));
+      // Błąd dysku nie może udawać sukcesu: UI dostaje wyjątek i nie odświeża
+      // listy, a pamięć podręczna storage zostaje na starym stanie.
+      try {
+        await kvSetStrict(placesKey(), JSON.stringify(places));
+      } catch (err) {
+        console.warn('[FavoritesService] addPlace write failed:', err);
+        throw err;
+      }
       return newPlace;
     });
   },
@@ -605,7 +628,12 @@ export const FavoritesService: IFavoritesService = {
       const idx = places.findIndex(p => p.id === id);
       if (idx === -1) return null;
       places[idx] = { ...places[idx], ...updates };
-      await kvSet(placesKey(), JSON.stringify(places));
+      try {
+        await kvSetStrict(placesKey(), JSON.stringify(places));
+      } catch (err) {
+        console.warn('[FavoritesService] updatePlace write failed:', err);
+        throw err;
+      }
       return places[idx];
     });
   },
@@ -623,7 +651,12 @@ export const FavoritesService: IFavoritesService = {
       }
       const filtered = places.filter(p => p.id !== id);
       if (filtered.length === places.length) return false;
-      await kvSet(placesKey(), JSON.stringify(filtered));
+      try {
+        await kvSetStrict(placesKey(), JSON.stringify(filtered));
+      } catch (err) {
+        console.warn('[FavoritesService] deletePlace write failed:', err);
+        throw err;
+      }
       return true;
     });
   },

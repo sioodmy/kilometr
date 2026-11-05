@@ -44,10 +44,20 @@ function navigateFromNotification(res: TripResponse) {
   }
   if (!res.link) return;
   if (res.link.sharedTrip) {
-    router.push({ pathname: '/shared', params: { trip: res.link.sharedTrip } });
+    router.navigate({ pathname: '/shared', params: { trip: res.link.sharedTrip } });
     return;
   }
-  router.push({ pathname: '/routes', params: res.link });
+  const target = { pathname: '/routes' as const, params: res.link };
+  // Zimny start i ekran główny nie mają /routes w stosie: dismissTo zastąpiłby
+  // wtedy bieżący ekran i back zamykałby aplikację. W takim przypadku dokładamy
+  // ekran, żeby powrót prowadził do domu.
+  if (router.canGoBack()) router.dismissTo(target);
+  else router.push(target);
+  // Kolejne tapnięcie w powiadomienie ma te same parametry, więc ekran tras
+  // nie otworzy kursu ponownie sam z siebie. Otwieramy go tutaj.
+  if (res.link.open) {
+    router.navigate({ pathname: '/routes/[id]', params: { id: res.link.open } });
+  }
 }
 
 export default function RootLayout() {

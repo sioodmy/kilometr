@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { config } from '../config';
 import { searchSuggestions } from '../search/service';
 import { buildTripStops, planConnections } from '../routing/engine';
@@ -11,6 +11,27 @@ import { gtfsStore } from '../gtfs/store';
 import { apiLimiter } from './rateLimit';
 
 export const apiRouter = Router();
+
+/**
+ * Gdy API_TOKEN jest ustawiony, każde żądanie musi go podać w
+ * `Authorization: Bearer <token>` albo `X-Api-Token`. Bez tokenu serwer
+ * słucha tylko na loopbacku (patrz config.ts).
+ */
+const requireApiToken: RequestHandler = (req, res, next) => {
+  if (!config.apiToken) {
+    next();
+    return;
+  }
+  const bearer = req.header('authorization')?.replace(/^Bearer\s+/i, '').trim();
+  const provided = bearer || req.header('x-api-token')?.trim();
+  if (provided === config.apiToken) {
+    next();
+    return;
+  }
+  res.status(401).json({ error: 'Unauthorized' });
+};
+
+apiRouter.use(requireApiToken);
 
 // Każda trasa API przechodzi przez limit ruchu (patrz rateLimit.ts).
 apiRouter.use(apiLimiter);

@@ -18,7 +18,7 @@ import java.io.File
 class MapRequestHandler(
     private val packs: List<TilePack>,
     private val assetsRoot: File? = null,
-) : NanoHTTPD(ANY_PORT) {
+) : NanoHTTPD(LOOPBACK_HOST, ANY_PORT) {
 
     override fun serve(session: IHTTPSession): Response {
         // Preflight z WebView/Chromium (rzadki przy prostym GET, ale tani).
@@ -102,6 +102,8 @@ class MapRequestHandler(
     }
 
     private companion object {
+        // WebView i JS są na tym samym urządzeniu: serwer nie może trafić do LAN.
+        const val LOOPBACK_HOST = "127.0.0.1"
         const val ANY_PORT = 0
         const val MIME_PBF = "application/x-protobuf"
     }

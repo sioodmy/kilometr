@@ -8,6 +8,7 @@ name: Stop hints → R2
 
 on:
   push:
+    branches: [main]
     paths:
       - 'cloudflare/data/stop-hints-*.json'
       - 'cloudflare/scripts/*stop-hints*.mjs'
@@ -40,8 +41,15 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Publikacja tylko z main
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Publikacja do R2 tylko z main (jest: $GITHUB_REF_NAME)."
+            exit 1
+          fi
+
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 

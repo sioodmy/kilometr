@@ -2,7 +2,7 @@ name: Canary źródeł live
 
 # Codzienny smoke test żywych źródeł (MPK bus_position, zbiorkom.live). Łapie
 # zmianę schematu albo padnięte źródło, zanim zauważą to użytkownicy. Przy
-# awarii otwiera issue: jeden na dzień, bez spamu.
+# awarii aktualizuje jeden stały issue zamiast tworzyć nowy każdego dnia.
 on:
   schedule:
     # Codziennie nad ranem, poza innymi harmonogramami.
@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: 'npm'
@@ -37,16 +37,17 @@ jobs:
           set -o pipefail
           npx tsx --require ./scripts/stub-expo.cjs scripts/check-live-canary.ts 2>&1 | tee canary.log
 
-      - name: Otwórz issue przy awarii
+      - name: Otwórz albo zaktualizuj issue przy awarii
         if: steps.probe.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TITLE="Canary live: źródło nie odpowiada ($(date -u +%Y-%m-%d))"
-          EXISTING=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq 'length')
-          if [ "$EXISTING" -gt 0 ]; then
-            echo "Issue już istnieje, pomijam."
+          TITLE="Canary live: źródło nie odpowiada"
+          NUMBER=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$NUMBER" ]; then
+            echo "Issue #$NUMBER już istnieje, dopisuję log."
+            gh issue comment "$NUMBER" --body-file canary.log
           else
             gh issue create --title "$TITLE" --body-file canary.log
           fi
