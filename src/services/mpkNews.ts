@@ -2354,6 +2354,110 @@ export function getCachedNews(): MpkNewsItem[] | null {
   return cachedNewsItems;
 }
 
+/**
+ * Domeny, z których aplikacja pokazuje komunikaty. Link z feedu jest danymi
+ * z zewnątrz, więc przed pobraniem i otwarciem sprawdzamy go przeciw tej
+ * liście; subdomeny są dozwolone.
+ */
+const ARTICLE_HOST_ALLOWLIST = [
+  'wroclaw.pl',
+  'mpk.wroc.pl',
+  'ztp.krakow.pl',
+  'transportgzm.pl',
+  'wtp.waw.pl',
+  'ztm.poznan.pl',
+  'cloudgdansk.pl',
+  'ztm.gda.pl',
+  'mpk.lodz.pl',
+  'ztm.kielce.pl',
+  'zditm.szczecin.pl',
+  'mzdik.pl',
+  'zdtm.lublin.eu',
+  'zdzit.olsztyn.eu',
+  'bialystok.pl',
+  'mzkopole.pl',
+  'ztm.erzeszow.pl',
+];
+
+const IPV4_LITERAL_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const BLOCKED_HOST_SUFFIXES = ['.localhost', '.local', '.internal', '.lan', '.home', '.arpa'];
+
+function isBlockedArticleHost(host: string): boolean {
+  if (host.startsWith('[') || host.includes(':')) return true;
+  if (IPV4_LITERAL_RE.test(host)) return true;
+  // Bez kropki to localhost albo inna nazwa lokalna.
+  if (!host.includes('.')) return true;
+  return BLOCKED_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix));
+}
+
+/**
+ * Zwraca bezpieczny, https-owy URL artykułu albo null. Feed może podać
+ * dowolny link, więc przepuszczamy tylko znane domeny, bez adresów IP,
+ * danych logowania i obcych schematów.
+ */
+export function normalizeArticleUrl(raw: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (!parsed.hostname || parsed.username || parsed.password) return null;
+  if (parsed.protocol === 'http:') {
+    // Część feedów linkuje po http; reszta aplikacji chodzi po https.
+    parsed.protocol = 'https:';
+  } else if (parsed.protocol !== 'https:') {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  if (isBlockedArticleHost(host)) return null;
+  if (!ARTICLE_HOST_ALLOWLIST.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
+    return null;
+  }
+  return parsed.toString();
+}
+
+const ARTICLE_MAX_REDIRECTS = 3;
+
+function articleRedirectTarget(location: string | null, base: string): string | null {
+  if (!location) return null;
+  try {
+    return normalizeArticleUrl(new URL(location, base).toString());
+  } catch {
+    return null;
+  }
+}
+
+/** Pobiera HTML artykułu i sprawdza każdy krok przekierowania. */
+async function fetchArticleHtml(
+  initialUrl: string,
+  signal: AbortSignal,
+): Promise<{ html: string; url: string }> {
+  let current = initialUrl;
+  for (let hop = 0; hop <= ARTICLE_MAX_REDIRECTS; hop += 1) {
+    const res = await fetch(current, {
+      headers: { Accept: 'text/html, */*' },
+      redirect: 'manual',
+      signal,
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const next = articleRedirectTarget(res.headers.get('location'), current);
+      if (!next) throw new Error('article redirect blocked');
+      current = next;
+      continue;
+    }
+    if (!res.ok) throw new Error(`${res.status}`);
+    // RN sam podąża za przekierowaniem, więc finalny URL też musi przejść test.
+    const finalUrl = res.url ? normalizeArticleUrl(res.url) : current;
+    if (!finalUrl) throw new Error('article redirect blocked');
+    const html = /mpk\.lodz\.pl/i.test(finalUrl)
+      ? decodeLatin2(await res.arrayBuffer())
+      : await res.text();
+    return { html, url: finalUrl };
+  }
+  throw new Error('too many article redirects');
+}
+
 async function fetchText(url: string, signal: AbortSignal, accept: string): Promise<string> {
   const res = await fetch(url, { headers: { Accept: accept }, signal });
   if (!res.ok) throw new Error(`${res.status}`);
@@ -2721,13 +2825,12 @@ async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
 }
 
 export async function fetchArticle(url: string, signal?: AbortSignal): Promise<ArticleBlock[]> {
+  const safeUrl = normalizeArticleUrl(url);
+  if (!safeUrl) throw new Error('article url blocked');
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
-    // mpk.lodz.pl serwuje ISO-8859-2: zwykły fetch.text() dałby krzaki.
-    const html = /mpk\.lodz\.pl/i.test(url)
-      ? await fetchLodzText(url, scope.signal)
-      : await fetchText(url, scope.signal, 'text/html, */*');
-    return extractArticleBlocks(html, url);
+    const { html, url: finalUrl } = await fetchArticleHtml(safeUrl, scope.signal);
+    return extractArticleBlocks(html, finalUrl);
   } finally {
     scope.dispose();
   }

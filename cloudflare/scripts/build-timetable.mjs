@@ -954,32 +954,48 @@ function importGzmMerged(db, txtDirs, readers, counts, cityStops, cityStopIds) {
   log(`GZM: stopTimes po scaleniu=${counts.stopTimes}`);
 }
 
+/** Indeksy kolumn stop_times z walidacją; brak wymaganego pola przerywa build. */
+function stopTimeColumns(idx, source) {
+  for (const name of ['trip_id', 'stop_id', 'arrival_time', 'departure_time', 'stop_sequence']) {
+    if (idx[name] === undefined) {
+      throw new Error(`${source} bez wymaganej kolumny ${name}: ${Object.keys(idx).join(',')}`);
+    }
+  }
+  return idx;
+}
+
+/**
+ * Iteruje stop_times.txt z cytowanymi polami i dedupe (trip_id, stop_sequence).
+ * Szczecin ma cytowany trip_id z przecinkiem, więc split po przecinku rozjeżdżał
+ * kolumny i wywalał UNIQUE constraint failed.
+ */
+export function eachStopTime(stTxt, source, fn) {
+  const { header } = splitHeader(stTxt);
+  stopTimeColumns(Object.fromEntries(header.map((h, i) => [h.trim(), i])), source);
+  const seen = new Set();
+  eachRow(stTxt, (c, idx) => {
+    const tid = (c[idx.trip_id] || '').trim();
+    if (!tid) return;
+    const arr = (c[idx.arrival_time] || '').trim() || '00:00:00';
+    const seq = Number(c[idx.stop_sequence]) || 0;
+    const key = `${tid}\0${seq}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    fn([tid, (c[idx.stop_id] || '').trim(), hmsToSec(arr), hmsToSec((c[idx.departure_time] || '').trim() || arr), seq]);
+  });
+}
+
 /**
  * Wiersze stop_times pogrupowane po kursie: tid -> [[stop_id, arrSec, depSec, seq]],
  * posortowane po seq. Jeden odczyt na eksport; używa go faza wariantów i faza
  * wstawiania czasów, więc obie liczą sygnaturę z tych samych danych.
  */
-function parseStopTimesByTrip(stTxt) {
-  const { header } = splitHeader(stTxt);
-  const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
-    di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
+export function parseStopTimesByTrip(stTxt, source = 'stop_times.txt') {
   const byTrip = new Map();
-  let pos = stTxt.indexOf('\n') + 1;
-  const len = stTxt.length;
-  while (pos < len) {
-    let nl = stTxt.indexOf('\n', pos);
-    if (nl === -1) nl = len;
-    let line = stTxt.slice(pos, nl);
-    pos = nl + 1;
-    if (line.endsWith('\r')) line = line.slice(0, -1);
-    if (!line.trim()) continue;
-    const c = line.split(',');
-    const tid = (c[ti] || '').trim();
-    if (!tid) continue;
-    const arr = (c[ai] || '').trim() || '00:00:00';
+  eachStopTime(stTxt, source, ([tid, stopId, arr, dep, seq]) => {
     if (!byTrip.has(tid)) byTrip.set(tid, []);
-    byTrip.get(tid).push([(c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0]);
-  }
+    byTrip.get(tid).push([stopId, arr, dep, seq]);
+  });
   for (const rows of byTrip.values()) rows.sort((a, b) => a[3] - b[3]);
   return byTrip;
 }
@@ -2315,6 +2331,9 @@ async function main() {
         Number(remote.sources.pr?.trips || 0) > 0;
       if (!gtmVersionsReliable || !ksVersionReliable) {
         warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else if (icprVersion === 'unknown') {
+        // PDP nie podało wersji: brak zmian jest niepewny, więc budujemy.
+        warn('PDP /data-version zwróciło "unknown" dla IC/PR, przebudowuję zamiast skipować.');
       } else if (remoteKsReal && remoteIcPrReal) {
         log('brak zmian (ZTM + KŚ + IC/PR), skip buildu.');
         rmSync(work, { recursive: true, force: true });
@@ -2476,12 +2495,18 @@ async function main() {
         && !remote.sources.kd?.skippedReason
         && Number(remote.sources.kd?.stations || 0) > 0
         && Number(remote.sources.kd?.trips || 0) > 0;
-      if (ALLOW_MPK_ONLY || remoteKdReal) {
+      // "unknown" z MPK albo PDP oznacza, że daty/wersji nie znamy i nie
+      // wolno uznać rozkładu za niezmieniony.
+      const wroclawVersionsKnown = mpk.effectiveDate !== 'unknown' && kdVersion !== 'unknown';
+      if (!wroclawVersionsKnown) {
+        warn('MPK/KD bez znanej daty lub wersji (unknown), przebudowuję zamiast skipować.');
+      } else if (ALLOW_MPK_ONLY || remoteKdReal) {
         log('brak zmian (MPK + KD), skip buildu.');
         rmSync(work, { recursive: true, force: true });
         process.exit(2);
+      } else {
+        warn('zdalny manifest bez realnego KD, przebudowuję zamiast skipować.');
       }
-      warn('zdalny manifest bez realnego KD, przebudowuję zamiast skipować.');
     }
   }
 
@@ -2497,6 +2522,9 @@ async function main() {
   });
   if (addressSnapshot) log(`Adresy OSM: ${addressSnapshot.count}, snapshot ${addressSnapshot.builtAt}`);
 
+  // loadPoiSnapshot sam odgrzewa snapshot z R2, gdy Overpass padnie.
+  // Wyjątek oznacza brak jakiegokolwiek indeksu: wtedy nie publikujemy
+  // pustych POI, jeśli poprzedni manifest je miał.
   const poiSnapshot = await loadPoiSnapshot(
     CITY,
     join(ROOT, 'dist', 'poi-cache'),
@@ -2690,29 +2718,13 @@ async function main() {
     if (!stTxt) throw new Error(`ZIP ${label} bez stop_times.txt, przerywam.`);
     {
       const ins = db.prepare('INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES (?, ?, ?, ?, ?)');
-      const { header } = splitHeader(stTxt);
-      const ti = header.indexOf('trip_id'), ai = header.indexOf('arrival_time'),
-        di = header.indexOf('departure_time'), si = header.indexOf('stop_id'), qi = header.indexOf('stop_sequence');
       let batch = 0;
       db.exec('BEGIN');
-      let pos = stTxt.indexOf('\n') + 1;
-      const len = stTxt.length;
-      while (pos < len) {
-        let nl = stTxt.indexOf('\n', pos);
-        if (nl === -1) nl = len;
-        let line = stTxt.slice(pos, nl);
-        pos = nl + 1;
-        if (line.endsWith('\r')) line = line.slice(0, -1);
-        if (!line.trim()) continue;
-        // stop_times nie ma cudzysłowów, więc szybki split jak w aplikacji
-        const c = line.split(',');
-        const tid = (c[ti] || '').trim();
-        if (!tid) continue;
-        const arr = (c[ai] || '').trim() || '00:00:00';
-        ins.run(P(tid), (c[si] || '').trim(), hmsToSec(arr), hmsToSec((c[di] || '').trim() || arr), Number(c[qi]) || 0);
+      eachStopTime(stTxt, `ZIP ${label} stop_times.txt`, ([tid, stopId, arr, dep, seq]) => {
+        ins.run(P(tid), stopId, arr, dep, seq);
         counts.stopTimes++;
         if (++batch >= 50000) { db.exec('COMMIT'); db.exec('BEGIN'); batch = 0; }
-      }
+      });
       db.exec('COMMIT');
     }
     log(`${label}: routes=${counts.routes} trips=${counts.trips} stopTimes=${counts.stopTimes}`);
@@ -4323,7 +4335,9 @@ async function main() {
   log(`artefakty: ${DB_GZ_FILE}, ${DB_FILE}, ${MANIFEST_FILE}`);
 }
 
-main().catch((e) => {
-  console.error('[build] FATAL:', e?.stack || e);
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((e) => {
+    console.error('[build] FATAL:', e?.stack || e);
+    process.exit(1);
+  });
+}

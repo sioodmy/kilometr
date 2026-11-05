@@ -6,7 +6,7 @@
 // Kolejność jest bezpieczna dla działającej aplikacji:
 // 1. download do pliku tymczasowego (wznawialny, nie ruszamy bazy),
 // 2. weryfikacja: rozmiar + PRAGMA integrity_check + liczniki > 0,
-// 3. dopiero wtedy: close() → podmiana pliku → reopen → meta.
+// 3. dopiero wtedy: close() → stara baza do .bak → nowa na jej miejsce → reopen → meta.
 // Uszkodzony plik tymczasowy nigdy nie dotyka działającej bazy.
 
 import * as FileSystem from 'expo-file-system/legacy';
@@ -15,7 +15,7 @@ import { TIMETABLE } from './gtfsConfig';
 import { decompressGzipFile } from '../../modules/kilometr-raptor';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
+import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, GTFS_IMPORT_COMPLETE_META, setMeta } from './gtfsDatabase';
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -110,6 +110,7 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
 }
 
 const TEMP_DB_SUFFIX = '.new.db';
+const BAK_DB_SUFFIX = '.bak';
 
 function tempDbName(mainName: string): string {
   return `${mainName}${TEMP_DB_SUFFIX}`;
@@ -246,6 +247,13 @@ export async function downloadPrebuiltDb(
     if (chk?.integrity_check !== 'ok' || !s?.n || !t?.n || !st?.n) {
       throw new Error(`weryfikacja bazy: integrity=${chk?.integrity_check} stops=${s?.n} trips=${t?.n} times=${st?.n}`);
     }
+    // Znacznik kompletności już w pliku tymczasowym: po podmianie baza jest
+    // gotowa nawet gdy aplikacja padnie przed zapisem met wersji.
+    await probe.runAsync(
+      'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)',
+      GTFS_IMPORT_COMPLETE_META,
+      '1',
+    );
   } catch (err) {
     try {
       await probe.closeAsync();
@@ -261,7 +269,7 @@ export async function downloadPrebuiltDb(
     // best-effort
   }
 
-  // Podmiana: zamknij działającą bazę, podmień plik atomowo (w ramach katalogu).
+  // Podmiana: zamknij działającą bazę, odsuń starą do .bak i wstaw nową.
   // Bramka blokuje równoległe getGtfsDb() z UI, żeby nie otworzyły usuwanego pliku.
   // Miasto mogło się zmienić w trakcie pobierania: wtedy baza właśnie ściągnięta
   // należy do innego miasta niż aktywne i nie wolno jej podmienić.
@@ -271,33 +279,52 @@ export async function downloadPrebuiltDb(
   }
   beginGtfsSwap();
   const mainUri = await sqliteUri(mainName);
+  const bakUri = `${mainUri}${BAK_DB_SUFFIX}`;
+  let swapFailed = false;
   try {
     await closeGtfsDb();
+    await FileSystem.deleteAsync(bakUri, { idempotent: true }).catch(() => {});
+    const old = await FileSystem.getInfoAsync(mainUri);
+    if (old.exists) await FileSystem.moveAsync({ from: mainUri, to: bakUri });
+    await deleteSidecars(mainUri);
     try {
-      await FileSystem.deleteAsync(mainUri, { idempotent: true });
-    } catch {
-      // best-effort
+      await FileSystem.moveAsync({ from: destDb, to: mainUri });
+    } catch (err) {
+      // Nowa baza nie weszła: przywróć poprzednią, żeby planer działał offline.
+      await FileSystem.deleteAsync(mainUri, { idempotent: true }).catch(() => {});
+      if (old.exists) {
+        await FileSystem.moveAsync({ from: bakUri, to: mainUri }).catch((restoreErr) => {
+          console.warn('[Timetable] przywrócenie bazy z .bak nie udało się:', restoreErr);
+        });
+      }
+      throw err;
     }
     await deleteSidecars(mainUri);
-    await FileSystem.moveAsync({ from: destDb, to: mainUri });
-    await deleteSidecars(mainUri);
+    await FileSystem.deleteAsync(bakUri, { idempotent: true }).catch(() => {});
+  } catch (err) {
+    swapFailed = true;
+    throw err;
   } finally {
     endGtfsSwap();
+    // Po nieudanej podmianie otwórz z powrotem poprzednią bazę.
+    if (swapFailed) await getGtfsDb().catch(() => {});
   }
 
   // Reopen (initDb robi CREATE IF NOT EXISTS - na gotowej bazie to no-op)
   // i zapisz mety wersji, żeby manifest nie ściągał w kółko tego samego.
+  // Mety idą do bazy miasta z manifestu, nie do aktualnie aktywnej: miasto
+  // mogło się zmienić w trakcie podmiany pliku.
   await getGtfsDb();
-  await setMeta('timetable_version', manifest.version);
-  await setMeta('gtfs_imported_at', new Date().toISOString());
-  await setMeta('gtfs_source', 'network');
+  await setMeta('timetable_version', manifest.version, city.id);
+  await setMeta('gtfs_imported_at', new Date().toISOString(), city.id);
+  await setMeta('gtfs_source', 'network', city.id);
   try {
     await setMeta('feeds', JSON.stringify({
       mpk: manifest.sources.mpk?.effectiveDate ?? null,
       kd: manifest.sources.kd?.schedulesVersion ?? null,
       ztp: manifest.sources.ztp?.fingerprint ?? null,
       kml: manifest.sources.kml?.version ?? null,
-    }));
+    }), city.id);
   } catch {
     // meta opisowa - nie blokuje gotowości
   }

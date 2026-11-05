@@ -448,12 +448,41 @@ async function runAsyncTests() {
   const stopsSecondS1 = buildLegStops(tripDoubleB, "S1", "SD", 40900, 41200);
   check("wsiadanie na drugim S1 dopasowane czasem do [S1, SD]", stopsSecondS1.map((s) => s.stopId).join(",") === "S1,SD", stopsSecondS1.map((s) => s.stopId).join(","));
 
+  // Przypadek 4: pętla z opóźnieniem. RAPTOR oddaje czasy już przesunięte,
+  // więc bez cofnięcia prognozy boardIdx łapie pierwsze S1 i noga pokazuje
+  // cały kurs zamiast odcinka od wsiadania.
+  const tripLoopDelay = "TRIP_LOOP_DELAY";
+  gtfsStore.stopTimes.set(tripLoopDelay, [
+    { trip_id: tripLoopDelay, stop_id: "P0", stop_sequence: 1, arrival_sec: 36000, departure_sec: 36000 },
+    { trip_id: tripLoopDelay, stop_id: "S1", stop_sequence: 2, arrival_sec: 36300, departure_sec: 36300 },
+    { trip_id: tripLoopDelay, stop_id: "S2", stop_sequence: 3, arrival_sec: 36600, departure_sec: 36600 },
+    { trip_id: tripLoopDelay, stop_id: "P0", stop_sequence: 4, arrival_sec: 36900, departure_sec: 36900 },
+    { trip_id: tripLoopDelay, stop_id: "S1", stop_sequence: 5, arrival_sec: 37200, departure_sec: 37200 },
+    { trip_id: tripLoopDelay, stop_id: "SD", stop_sequence: 6, arrival_sec: 37500, departure_sec: 37500 },
+  ]);
+  const stopsDelayedLoop = buildLegStops(
+    tripLoopDelay,
+    "S1",
+    "SD",
+    37200 + 900,
+    37500 + 900,
+    900,
+    hms(8, 0),
+    "bus",
+  );
+  check(
+    "pętla z opóźnieniem: tylko [S1, SD]",
+    stopsDelayedLoop.map((s) => s.stopId).join(",") === "S1,SD",
+    stopsDelayedLoop.map((s) => s.stopId).join(","),
+  );
+
   gtfsStore.stops.delete("P0");
   gtfsStore.stops.delete("S1");
   gtfsStore.stops.delete("S2");
   gtfsStore.stops.delete("SD");
   gtfsStore.stopTimes.delete(tripLoop);
   gtfsStore.stopTimes.delete(tripDoubleB);
+  gtfsStore.stopTimes.delete(tripLoopDelay);
 
   console.log(`\n${"─".repeat(60)}`);
   if (failures.length) {

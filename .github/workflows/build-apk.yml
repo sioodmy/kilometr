@@ -16,6 +16,10 @@ name: Build & Release APK
 # - `artifact-only`: buduje APK z DOWOLNEJ gałęzi i tylko dołącza go jako
 #   artefakt Actions. Nic nie publikuje, żadnego release ani tagu. Do tego
 #   służy, żeby pobrać APK do testów na urządzeniu bez zaśmiecania wydań.
+#
+# Podpis: APK używa tego samego klucza upload co AAB (sekrety
+# ANDROID_KEYSTORE_*). Kanał prod bez kompletu sekretów kończy się błędem,
+# bo publiczny debug keystore pozwala podrobić aktualizację aplikacji.
 on:
   push:
     branches:
@@ -201,7 +205,39 @@ jobs:
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          SIGNING_REQUIRED=""
+          if [ "$CHANNEL" = "prod" ]; then SIGNING_REQUIRED="1"; fi
+          echo "signing_required=$SIGNING_REQUIRED" >> "$GITHUB_OUTPUT"
           echo "Resolved: channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE publish=$PUBLISH build=$BUILD_NUMBER"
+
+      # Ten sam klucz upload co AAB. Prod bez kompletu sekretów nie rusza
+      # dalej, bo debug keystore jest publiczny. Brak sekretów poza prod
+      # zostawia build na debug keystore i tylko ostrzega. Krok jest przed
+      # instalacją zależności, żeby prod padł od razu.
+      - name: Decode upload keystore from secrets
+        id: keystore
+        env:
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+        run: |
+          set -euo pipefail
+          MISSING=""
+          for V in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS; do
+            [ -n "${!V:-}" ] || MISSING="$MISSING $V"
+          done
+          if [ -n "$MISSING" ]; then
+            if [ "$CHANNEL" = "prod" ]; then
+              echo "::error::Kanał prod wymaga sekretów podpisu (brak:$MISSING). Ustaw ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD i ANDROID_KEYSTORE_ALIAS."
+              exit 1
+            fi
+            echo "::warning::Brak sekretów podpisu (brak:$MISSING). APK dostanie debug keystore."
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload-key.jks"
+          echo "path=$RUNNER_TEMP/upload-key.jks" >> "$GITHUB_OUTPUT"
+          echo "Klucz upload zdekodowany: $RUNNER_TEMP/upload-key.jks"
 
       - name: Install Node dependencies
         run: npm ci
@@ -230,6 +266,10 @@ jobs:
           # dwie ostatnie cyfry versionCode (numer podejścia runu).
           APP_VERSION: ${{ steps.release.outputs.version }}
           BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+          ANDROID_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          ANDROID_SIGNING_REQUIRED: ${{ steps.release.outputs.signing_required }}
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Tune Gradle for CI
@@ -260,6 +300,11 @@ jobs:
           # musi zgadzać się z tagiem, bo runtime czyta z niego wersję.
           APP_VERSION: ${{ steps.release.outputs.version }}
           BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+          # Gradle czyta hasła dopiero w chwili builda; keyPassword może być
+          # puste, wtedy klucz użyje hasła keystore.
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           ARCH_FLAG=""
@@ -273,6 +318,42 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace $ARCH_FLAG
+
+      # Debug keystore jest publiczny, więc sam podpis nic nie znaczy.
+      # apksigner liczy odcisk z certyfikatu w APK, keytool z keystore:
+      # zgodność obu dowodzi, że build nie wrócił po cichu do debug.
+      - name: Verify APK signing certificate
+        env:
+          KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+        run: |
+          set -euo pipefail
+          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
+          if [ -z "$APK" ]; then
+            echo "::error::Nie znaleziono APK do weryfikacji podpisu"
+            exit 1
+          fi
+          APKSIGNER="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
+          "$APKSIGNER" verify --print-certs "$APK"
+          if [ -z "${KEYSTORE_PATH:-}" ]; then
+            echo "::warning::Brak keystore release; APK podpisany debug keystore (kanał inny niż prod)."
+            exit 0
+          fi
+          EXPECTED="$(keytool -exportcert -alias "$KEY_ALIAS" -keystore "$KEYSTORE_PATH" -storepass "$STORE_PASSWORD" | openssl dgst -sha256 | sed 's/^.*= //')"
+          ACTUAL="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          # apksigner podaje digest bez dwukropków, a ANDROID_APP_LINK_FINGERPRINTS
+          # wymaga formatu AA:BB:...:FF (uppercase).
+          FORMATTED="$(printf '%s' "$ACTUAL" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
+          echo "Odcisk SHA-256 w APK:      $ACTUAL"
+          echo "Odcisk SHA-256 w keystore: $EXPECTED"
+          if [ "$(printf '%s' "$ACTUAL" | tr -d ':' | tr 'A-F' 'a-f')" != "$(printf '%s' "$EXPECTED" | tr -d ':' | tr 'A-F' 'a-f')" ]; then
+            echo "::error::APK nie jest podpisany kluczem upload z sekretów ANDROID_KEYSTORE_*."
+            exit 1
+          fi
+          echo "Podpis APK zgodny z kluczem upload." >> "$GITHUB_STEP_SUMMARY"
+          echo "Odcisk certyfikatu do ANDROID_APP_LINK_FINGERPRINTS:" >> "$GITHUB_STEP_SUMMARY"
+          echo '`'"$FORMATTED"'`' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify APK version matches release tag
         env:

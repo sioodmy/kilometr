@@ -138,15 +138,7 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
       return db;
 }
 
-export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
-  // W trakcie podmiany pliku (delete+move) nie wolno otwierać bazy: uchwyt
-  // trafiłby w usunięty plik. Czekamy na bramkę, potem otwieramy świeży plik.
-  if (swapGate) {
-    return swapGate.then(() => getGtfsDb());
-  }
-  // Baza jest per-miasto: każde miasto ma własny plik, więc zmiana miasta
-  // nigdy nie nadpisuje danych drugiego (mieszkasz w jednym, studiujesz w drugim).
-  const name = currentGtfsDbName();
+function getGtfsDbByName(name: string): Promise<SQLite.SQLiteDatabase> {
   const existing = dbPromises.get(name);
   if (existing) return existing;
   const p = initDb(name);
@@ -158,6 +150,22 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
     if (dbPromises.get(name) === p) dbPromises.delete(name);
   });
   return p;
+}
+
+export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
+  // W trakcie podmiany pliku (delete+move) nie wolno otwierać bazy: uchwyt
+  // trafiłby w usunięty plik. Czekamy na bramkę, potem otwieramy świeży plik.
+  if (swapGate) {
+    return swapGate.then(() => getGtfsDb());
+  }
+  // Baza jest per-miasto: każde miasto ma własny plik, więc zmiana miasta
+  // nigdy nie nadpisuje danych drugiego (mieszkasz w jednym, studiujesz w drugim).
+  return getGtfsDbByName(currentGtfsDbName());
+}
+
+/** Uchwyt bazy wskazanego miasta; bez `cityId` aktywna baza (jak getGtfsDb). */
+function getDbForCity(cityId?: string): Promise<SQLite.SQLiteDatabase> {
+  return cityId ? getGtfsDbByName(gtfsDbName(cityId)) : getGtfsDb();
 }
 
 // Bramka podmiany pliku bazy. Ustawiana na czas close→delete→move, żeby żaden
@@ -198,27 +206,31 @@ export async function closeGtfsDb(): Promise<void> {
   }
 }
 
-export async function setMeta(key: string, value: string): Promise<void> {
-  const db = await getGtfsDb();
+/** Znacznik kompletnego importu; bez niego dane w bazie są częściowe. */
+export const GTFS_IMPORT_COMPLETE_META = 'gtfs_import_complete';
+
+/** Zapis mety w bazie wskazanego miasta; bez `cityId` w aktywnej. */
+export async function setMeta(key: string, value: string, cityId?: string): Promise<void> {
+  const db = await getDbForCity(cityId);
   await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', key, value);
 }
 
-export async function getMeta(key: string): Promise<string | null> {
-  const db = await getGtfsDb();
+export async function getMeta(key: string, cityId?: string): Promise<string | null> {
+  const db = await getDbForCity(cityId);
   const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM meta WHERE key = ?', key);
   return row?.value ?? null;
 }
 
-export async function prepareForBulkImport(): Promise<void> {
-  const db = await getGtfsDb();
+export async function prepareForBulkImport(cityId?: string): Promise<void> {
+  const db = await getDbForCity(cityId);
   await db.execAsync(`
     PRAGMA synchronous = OFF;
     DROP INDEX IF EXISTS idx_stoptimes_trip;
   `);
 }
 
-export async function finishBulkImport(): Promise<void> {
-  const db = await getGtfsDb();
+export async function finishBulkImport(cityId?: string): Promise<void> {
+  const db = await getDbForCity(cityId);
   // Klucz (trip_id, seq) nowych tabel WITHOUT ROWID pokrywa zapytania
   // po kursach. Legacy (rowid) odtwarzamy idx_trip po re-imporcie.
   const t = await db.getFirstAsync<{ sql: string | null }>(
@@ -231,9 +243,9 @@ export async function finishBulkImport(): Promise<void> {
   `);
 }
 
-export async function importStops(stops: GtfsStop[]): Promise<void> {
+export async function importStops(stops: GtfsStop[], cityId?: string): Promise<void> {
   if (stops.length === 0) return;
-  const db = await getGtfsDb();
+  const db = await getDbForCity(cityId);
   const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
     for (let i = 0; i < stops.length; i += CHUNK_SIZE) {
@@ -251,9 +263,9 @@ export async function importStops(stops: GtfsStop[]): Promise<void> {
   });
 }
 
-export async function importRoutes(routes: GtfsRoute[]): Promise<void> {
+export async function importRoutes(routes: GtfsRoute[], cityId?: string): Promise<void> {
   if (routes.length === 0) return;
-  const db = await getGtfsDb();
+  const db = await getDbForCity(cityId);
   const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
     for (let i = 0; i < routes.length; i += CHUNK_SIZE) {
@@ -271,9 +283,9 @@ export async function importRoutes(routes: GtfsRoute[]): Promise<void> {
   });
 }
 
-export async function importTrips(trips: GtfsTrip[]): Promise<void> {
+export async function importTrips(trips: GtfsTrip[], cityId?: string): Promise<void> {
   if (trips.length === 0) return;
-  const db = await getGtfsDb();
+  const db = await getDbForCity(cityId);
   const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
     for (let i = 0; i < trips.length; i += CHUNK_SIZE) {
@@ -291,9 +303,9 @@ export async function importTrips(trips: GtfsTrip[]): Promise<void> {
   });
 }
 
-export async function importCalendar(cals: GtfsCalendar[]): Promise<void> {
+export async function importCalendar(cals: GtfsCalendar[], cityId?: string): Promise<void> {
   if (cals.length === 0) return;
-  const db = await getGtfsDb();
+  const db = await getDbForCity(cityId);
   const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
     for (let i = 0; i < cals.length; i += CHUNK_SIZE) {
@@ -322,9 +334,9 @@ export async function importCalendar(cals: GtfsCalendar[]): Promise<void> {
   });
 }
 
-export async function importCalendarDates(rows: { service_id: string; date: string; exception_type: number }[]): Promise<void> {
+export async function importCalendarDates(rows: { service_id: string; date: string; exception_type: number }[], cityId?: string): Promise<void> {
   if (rows.length === 0) return;
-  const db = await getGtfsDb();
+  const db = await getDbForCity(cityId);
   const CHUNK_SIZE = 50;
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM calendar_dates');
@@ -344,9 +356,9 @@ export async function importCalendarDates(rows: { service_id: string; date: stri
 }
 
 /** Wrzuca porcję stop_times (z parseStopTimesBatched) w wielowierszowych INSERT-ach. */
-export async function importStopTimesBatch(batch: GtfsStopTime[]): Promise<void> {
+export async function importStopTimesBatch(batch: GtfsStopTime[], cityId?: string): Promise<void> {
   if (batch.length === 0) return;
-  const db = await getGtfsDb();
+  const db = await getDbForCity(cityId);
   const CHUNK_SIZE = 100;
   await db.withTransactionAsync(async () => {
     for (let i = 0; i < batch.length; i += CHUNK_SIZE) {
@@ -364,10 +376,15 @@ export async function importStopTimesBatch(batch: GtfsStopTime[]): Promise<void>
   });
 }
 
-export async function clearGtfsTables(): Promise<void> {
-  const db = await getGtfsDb();
+/**
+ * Czyści rozkład w bazie wskazanego miasta (domyślnie aktywnego) razem
+ * ze znacznikiem kompletności. Partial import nie może udawać gotowej bazy.
+ */
+export async function clearGtfsTables(cityId?: string): Promise<void> {
+  const db = await getDbForCity(cityId);
   await db.execAsync(
-    'DELETE FROM stop_times; DELETE FROM trips; DELETE FROM stops; DELETE FROM routes; DELETE FROM calendar; DELETE FROM calendar_dates;',
+    `DELETE FROM stop_times; DELETE FROM trips; DELETE FROM stops; DELETE FROM routes; DELETE FROM calendar; DELETE FROM calendar_dates;
+     DELETE FROM meta WHERE key IN ('${GTFS_IMPORT_COMPLETE_META}', 'gtfs_imported_at', 'timetable_version', 'gtfs_source');`,
   );
 }
 
@@ -477,9 +494,9 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
  * Waga przystanku = liczba obsłużonych odjazdów (stop_times).
  * Jednorazowo po imporcie; GROUP BY jednym skanem, bez indeksu po stop_id.
  */
-export async function computeStopWeights(): Promise<number> {
+export async function computeStopWeights(cityId?: string): Promise<number> {
   try {
-    const db = await getGtfsDb();
+    const db = await getDbForCity(cityId);
     await db.execAsync(`
       UPDATE stops SET weight = 0;
       UPDATE stops SET weight = agg.c

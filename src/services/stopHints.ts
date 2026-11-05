@@ -1,9 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { STOP_HINTS_WROCLAW } from '../data/stopHintsWroclaw';
-import { STOP_HINTS_WARSZAWA } from '../data/stopHintsWarszawa';
-import { STOP_HINTS_GZM } from '../data/stopHintsGzm';
-import { STOP_HINTS_KRAKOW } from '../data/stopHintsKrakow';
-import { STOP_HINTS_POZNAN } from '../data/stopHintsPoznan';
 import type { StopHintsDataset, StopHintValue } from '../types/stopHints';
 
 const cache = new Map<string, StopHintsDataset>();
@@ -14,72 +9,79 @@ function extractHintText(val: StopHintValue | undefined): string | null {
   return val.hint || null;
 }
 
-function getBundledStopHints(cityId: string): StopHintsDataset | null {
+/** Dynamiczny import per miasto: 684 KB hints nie trafia do startowego bundla. */
+function loadBundledStopHints(cityId: string): Promise<StopHintsDataset | null> {
   const c = cityId.toLowerCase();
   if (c === 'wroclaw' || c === 'wrocław') {
-    return STOP_HINTS_WROCLAW;
+    return import('../data/stopHintsWroclaw').then((m) => m.STOP_HINTS_WROCLAW);
   }
   if (c === 'warszawa' || c === 'warsaw') {
-    return STOP_HINTS_WARSZAWA;
+    return import('../data/stopHintsWarszawa').then((m) => m.STOP_HINTS_WARSZAWA);
   }
   if (c === 'gzm' || c === 'katowice' || c === 'metropolia') {
-    return STOP_HINTS_GZM;
+    return import('../data/stopHintsGzm').then((m) => m.STOP_HINTS_GZM);
   }
   if (c === 'krakow' || c === 'kraków') {
-    return STOP_HINTS_KRAKOW;
+    return import('../data/stopHintsKrakow').then((m) => m.STOP_HINTS_KRAKOW);
   }
   if (c === 'poznan' || c === 'poznań') {
-    return STOP_HINTS_POZNAN;
+    return import('../data/stopHintsPoznan').then((m) => m.STOP_HINTS_POZNAN);
   }
-  return null;
+  return Promise.resolve(null);
 }
 
-async function fetchStopHints(
+async function fetchRemoteStopHints(
   cityId: string,
   signal?: AbortSignal,
 ): Promise<StopHintsDataset | null> {
-  const cached = cache.get(cityId);
-  if (cached) return cached;
-
-  const bundled = getBundledStopHints(cityId);
-  if (bundled) {
-    cache.set(cityId, bundled);
-  }
-
   try {
     const res = await fetch(`https://data.kilometr.app/${cityId}/stop-hints.json`, { signal });
-    if (res.ok) {
-      const remote: StopHintsDataset = await res.json();
-      if (remote && remote.stops) {
-        cache.set(cityId, remote);
-        return remote;
-      }
-    }
+    if (!res.ok) return null;
+    const remote: StopHintsDataset = await res.json();
+    return remote && remote.stops ? remote : null;
   } catch {
     // Offline / fallback do bazy bundled
+    return null;
   }
-
-  return bundled;
 }
 
 function useStopHints(cityId: string) {
-  const [data, setData] = useState<StopHintsDataset | null>(() => getBundledStopHints(cityId));
+  const [data, setData] = useState<StopHintsDataset | null>(() => cache.get(cityId) ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    const bundled = getBundledStopHints(cityId);
-    if (bundled) {
-      setData(bundled);
-    }
-
     const abortController = new AbortController();
-    fetchStopHints(cityId, abortController.signal)
-      .then((loaded) => {
-        if (!cancelled && loaded) {
-          setData(loaded);
-        }
-      })
-      .catch(() => {});
+    const apply = (next: StopHintsDataset) => {
+      cache.set(cityId, next);
+      if (!cancelled) setData(next);
+    };
+
+    // Bundled hints pokazujemy od razu; remote dociąga się w tle i podmienia cache.
+    const load = async () => {
+      const cached = cache.get(cityId);
+      if (cached) {
+        apply(cached);
+        return;
+      }
+      const bundled = await loadBundledStopHints(cityId).catch(() => null);
+      if (cancelled) return;
+      // Równoległe karty mogły już zdążyć wpisać bundled do cache.
+      const raced = cache.get(cityId);
+      if (raced) {
+        apply(raced);
+        return;
+      }
+      if (bundled) {
+        apply(bundled);
+      } else {
+        setData(null);
+      }
+      const remote = await fetchRemoteStopHints(cityId, abortController.signal);
+      if (remote) apply(remote);
+    };
+
+    setData(cache.get(cityId) ?? null);
+    void load();
 
     return () => {
       cancelled = true;

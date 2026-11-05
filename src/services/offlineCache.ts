@@ -11,11 +11,21 @@ import type { Connection, RouteQuery, Suggestion } from '../types/models';
  * wprowadzała w błąd (a komunikat „Offline” na ekranie głównym był
  * mylący: brak rozkładu to nie brak internetu).
  */
+let localTimetableCache: { value: boolean; at: number } | null = null;
+const LOCAL_TIMETABLE_TTL_MS = 30_000;
+
+/** Presence zamiast COUNT(*): heartbeat co 60 s nie może skanować stop_times. */
 export async function hasLocalTimetable(): Promise<boolean> {
+  const now = Date.now();
+  if (localTimetableCache && now - localTimetableCache.at < LOCAL_TIMETABLE_TTL_MS) {
+    return localTimetableCache.value;
+  }
   try {
-    const { getGtfsStats } = await import('./gtfsDatabase');
-    const stats = await getGtfsStats();
-    return stats.stops > 0;
+    const { getGtfsPresence } = await import('./gtfsDatabase');
+    const presence = await getGtfsPresence();
+    const value = presence.stops > 0 && presence.hasStopTimes;
+    localTimetableCache = { value, at: now };
+    return value;
   } catch {
     return false;
   }

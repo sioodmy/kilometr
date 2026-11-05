@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { zipSync } from 'fflate';
 import { zipEntryNames } from '../src/services/gtfsDownloader';
-import { kvGet, kvGetStrict, kvRemove, kvSet } from '../src/services/storage';
-import { readSavedRoutes, getSavedRoutes, RoutingService, savedRoutesKey } from '../src/services/api';
+import { kvGet, kvGetStrict, kvRemove, kvSet, kvSetStrict } from '../src/services/storage';
+import { FavoritesService, readSavedRoutes, getSavedRoutes, RoutingService, savedRoutesKey } from '../src/services/api';
+import { loadCachedSmartDestinations, saveCachedSmartDestinations } from '../src/services/smartRanker';
+import { applyBackup } from '../src/services/backup';
 
 const fs = createRequire(import.meta.url)('expo-file-system/legacy');
 const files = new Map<string, string>();
@@ -150,16 +152,86 @@ async function main() {
   assert.equal(saved.length, 1);
   assert.equal(saved[0].id, 'conn-2');
 
-  // 4. Uszkodzony JSON rzuca w readSavedRoutes (nie nadpisuje bazy)
+  // 4. Blad zapisu trasy rzuca i nie zmienia pliku
+  const routeFileBeforeFail = files.get(path(routeKey));
+  failWrite = true;
+  await assert.rejects(() => RoutingService.saveRoute({ ...dummyConnection, id: 'conn-3' }), /write failed/);
+  await assert.rejects(() => RoutingService.deleteSavedRoute('conn-2'), /write failed/);
+  failWrite = false;
+  assert.equal(files.get(path(routeKey)), routeFileBeforeFail);
+  saved = await readSavedRoutes(routeKey);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].id, 'conn-2');
+
+  // 5. Blad zapisu miejsca, edycji i usuniecia rzuca, a lista zostaje bez zmian
+  const placesKey = 'kilometr.places';
+  await kvSetStrict(placesKey, '[]');
+  const homePlace = {
+    name: 'Dom',
+    icon: 'home' as const,
+    address: 'Dom 1, Wrocław',
+    lat: 51.1,
+    lon: 17.03,
+  };
+  const addedPlace = await FavoritesService.addPlace(homePlace);
+  assert.equal((await FavoritesService.list()).length, 1);
+  failWrite = true;
+  await assert.rejects(() => FavoritesService.addPlace({ ...homePlace, name: 'Praca' }), /write failed/);
+  await assert.rejects(() => FavoritesService.updatePlace(addedPlace.id, { name: 'Nowy dom' }), /write failed/);
+  await assert.rejects(() => FavoritesService.deletePlace(addedPlace.id), /write failed/);
+  failWrite = false;
+  const placesAfterFail = await FavoritesService.list();
+  assert.equal(placesAfterFail.length, 1);
+  assert.equal(placesAfterFail[0].name, 'Dom');
+
+  // 6. Import kopii nie raportuje sukcesu, gdy zapis sekcji sie nie udal
+  const backupPlace = { ...homePlace, id: 'backup-1', placeId: 'backup-1', name: 'Praca' };
+  failWrite = true;
+  await assert.rejects(
+    () =>
+      applyBackup({
+        places: [{ city: 'wroclaw', items: [backupPlace] }],
+        savedRoutes: [],
+        tripHistory: [],
+        routingSettings: null,
+        notificationPrefs: null,
+        locale: null,
+      }),
+    /write failed/,
+  );
+  failWrite = false;
+  const placesAfterBackupFail = await FavoritesService.list();
+  assert.equal(placesAfterBackupFail.length, 1);
+  assert.equal(placesAfterBackupFail[0].name, 'Dom');
+
+  // 7. Pusty cache smart destinations nadpisuje stary wpis
+  const cachedDest = {
+    id: 'dest-1',
+    title: 'Rynek',
+    address: 'Rynek, Wrocław',
+    lat: 51.11,
+    lon: 17.03,
+    frequency: 1,
+    avgDurationMin: 10,
+    originId: 'current-gps',
+  };
+  await saveCachedSmartDestinations([cachedDest]);
+  assert.equal((await loadCachedSmartDestinations()).length, 1);
+  await saveCachedSmartDestinations([]);
+  assert.deepEqual(await loadCachedSmartDestinations(), []);
+
+  // 8. Uszkodzony JSON rzuca w readSavedRoutes (nie nadpisuje bazy)
   await kvSet(routeKey, 'corrupted json{');
   await assert.rejects(async () => readSavedRoutes(routeKey));
   assert.deepEqual(await getSavedRoutes(routeKey), []);
 
   // Proba zapisu przy uszkodzonym JSON nie nadpisuje bazy pusta lista
-  await RoutingService.saveRoute(dummyConnection);
+  await assert.rejects(() => RoutingService.saveRoute(dummyConnection));
   assert.equal(files.get(path(routeKey)), 'corrupted json{');
 
-  console.log('PASS: concurrent writes, removal, stale reads, retry, read after write, zip entry names, saved routes');
+  console.log(
+    'PASS: concurrent writes, removal, stale reads, retry, read after write, zip entry names, saved routes, strict write failures, backup import failure, empty smart cache',
+  );
 }
 
 void main().catch((error) => {

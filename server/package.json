@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "build": "tsc",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "setup": "tsx scripts/setup-data.ts",
     "predev": "npm run setup --silent",
     "prestart": "npm run setup --silent",

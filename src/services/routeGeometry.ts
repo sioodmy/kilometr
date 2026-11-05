@@ -25,7 +25,7 @@ import { routeFootLocal, routeRailLocal } from './footRouter';
 import { kvGet, kvSet } from './storage';
 import { getLineColors, mapLineColor } from './lineIdentity';
 import { shortDistanceMeters, timeStringToSeconds } from '../gtfs/geo';
-import { selectEvictions } from './geometryEviction';
+import { putCacheRecord, selectEvictions, type GeometryCacheRecord } from './geometryEviction';
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
 import { isFareBoundary } from '../gtfs/fareBoundary';
@@ -177,7 +177,7 @@ function waypointKey(coords: Coord[]): string {
   return coords.map(([lat, lon]) => `${lat.toFixed(4)},${lon.toFixed(4)}`).join(';');
 }
 
-let cacheLoaded: Promise<Map<string, Coord[]>> | null = null;
+let cacheLoaded: Promise<Map<string, GeometryCacheRecord>> | null = null;
 let pinnedKeys: Set<string> | null = null;
 
 /**
@@ -218,10 +218,10 @@ async function pinKey(key: string): Promise<void> {
   }
 }
 
-async function readCache(): Promise<Map<string, Coord[]>> {
+async function readCache(): Promise<Map<string, GeometryCacheRecord>> {
   if (!cacheLoaded) {
     cacheLoaded = (async () => {
-      const out = new Map<string, Coord[]>();
+      const out = new Map<string, GeometryCacheRecord>();
       try {
         const raw = await kvGet(CACHE_KEY);
         if (raw) {
@@ -229,7 +229,7 @@ async function readCache(): Promise<Map<string, Coord[]>> {
           const now = Date.now();
           for (const e of Array.isArray(parsed) ? parsed : []) {
             if (e && typeof e.k === 'string' && Array.isArray(e.c) && now - e.ts < CACHE_TTL_MS) {
-              out.set(e.k, e.c as Coord[]);
+              out.set(e.k, { c: e.c as Coord[], ts: e.ts });
             }
           }
         }
@@ -248,17 +248,17 @@ async function readCache(): Promise<Map<string, Coord[]>> {
  */
 async function writeCache(key: string, coords: Coord[]): Promise<void> {
   const cache = await readCache();
-  cache.set(key, coords);
+  putCacheRecord(cache, key, coords, Date.now());
   if (cache.size > CACHE_MAX_ENTRIES) {
     const pins = await readPins();
     for (const k of selectEvictions(Array.from(cache.keys()), pins, CACHE_MAX_ENTRIES)) {
       cache.delete(k);
     }
   }
-  const entries: CacheEntry[] = Array.from(cache.entries()).map(([k, c]) => ({
+  const entries: CacheEntry[] = Array.from(cache, ([k, v]) => ({
     k,
-    c,
-    ts: Date.now(),
+    c: v.c,
+    ts: v.ts,
   }));
   await kvSet(CACHE_KEY, JSON.stringify(entries));
 }
@@ -289,8 +289,8 @@ export async function warmRouteGeometry(
   for (const leg of route.legs) {
     if (signal?.aborted) break;
     if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
-    const coords = await fetchLegGeometry(leg, signal).catch(() => null);
-    if (!coords || coords.length < 2) continue;
+    const result = await fetchLegGeometry(leg, signal).catch(() => null);
+    if (!result || result.coords.length < 2) continue;
     const profile = legProfile(leg);
     const key = `${profile}:${waypointKey(legWaypoints(leg))}`;
     // fetchLegGeometry już zapisała, ale LRU mógł ją w międzyczasie wywalić;
@@ -298,8 +298,8 @@ export async function warmRouteGeometry(
     await pinKey(key);
     warmed++;
     // Ta sama pauza co przy normalnym dociąganiu: publiczny serwer ma limit.
-    const wasCached = (await readCache()).has(key);
-    if (!wasCached) await new Promise((r) => setTimeout(r, 250));
+    // Cache trafiony z dysku nie rusza sieci, więc nie ma czego ograniczać.
+    if (!result.fromCache) await new Promise((r) => setTimeout(r, 250));
   }
   return warmed;
 }
@@ -541,7 +541,10 @@ async function fetchChunk(
  * Dobiera router do trybu transportu. Brak pełnego przebiegu zostawia
  * geometrię przybliżoną, bez zapisywania niekompletnego wyniku w cache.
  */
-async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
+async function fetchLegGeometry(
+  leg: MapLeg,
+  signal?: AbortSignal,
+): Promise<{ coords: Coord[]; fromCache: boolean } | null> {
   if (isApproxOnlyLeg(leg)) return null;
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
@@ -554,7 +557,7 @@ async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coor
   const key = `${profile}:${waypointKey(points)}`;
   const cache = await readCache();
   const hit = cache.get(key);
-  if (hit) return hit;
+  if (hit) return { coords: hit.c, fromCache: true };
 
   const chunks: Coord[] = [];
   const chunkSize = profile === 'rail' ? points.length : WAYPOINTS_PER_REQUEST;
@@ -569,7 +572,7 @@ async function fetchLegGeometry(leg: MapLeg, signal?: AbortSignal): Promise<Coor
   if (chunks.length < 2) return null;
   if (signal?.aborted) return null;
   void writeCache(key, chunks);
-  return chunks;
+  return { coords: chunks, fromCache: false };
 }
 
 /** Prosty odcinek przez przystanki, natychmiastowa wersja trasy. */
@@ -591,9 +594,9 @@ export async function resolveGeometry(
     if (signal?.aborted) return;
     if (leg.geometry) { onLeg(leg.id, leg.geometry); continue; }
     if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
-    const coords = await fetchLegGeometry(leg, signal).catch(() => null);
+    const result = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
-    if (coords && coords.length > 1) onLeg(leg.id, coords);
+    if (result && result.coords.length > 1) onLeg(leg.id, result.coords);
     if (leg.mode !== 'walk') {
       await new Promise((r) => setTimeout(r, 350));
     }

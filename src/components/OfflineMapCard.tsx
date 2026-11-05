@@ -1,6 +1,7 @@
 // Karta „Mapa offline” w Ustawieniach: pobierz albo usuń zestaw kafelków
 // aktywnego miasta. Bez pobrania mapa działa tylko online. Po udanym pobraniu
 // nie ma przycisku „pobierz ponownie” (limit R2: raz na miesiąc, per miasto).
+// Pakiety innych miast są niżej, z osobnym usuwaniem.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -12,8 +13,11 @@ import { getMapDownloadGate, remainingDays } from '../services/downloadLimits';
 import {
   deleteOfflineMap,
   downloadOfflineMap,
-  hasOfflineMap,
+  getOfflineMapState,
+  listDownloadedMaps,
+  type DownloadedMap,
   type OfflineMapProgress,
+  type OfflineMapState,
 } from '../services/offlineMap';
 
 export function OfflineMapCard() {
@@ -23,19 +27,25 @@ export function OfflineMapCard() {
   // Dopełniacz ("mapy Krakowa", "na telefonie"), nie mianownik: te teksty
   // wchodzą w dopełnienie albo są rzeczownikiem w locacji.
   const cityGen = s.city.gen(cityId);
-  const [ready, setReady] = useState<boolean | null>(null);
+  const [state, setState] = useState<OfflineMapState | null>(null);
+  const [otherMaps, setOtherMaps] = useState<DownloadedMap[]>([]);
   const [cooldownMs, setCooldownMs] = useState(0);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const refresh = useCallback(async () => {
-    setReady(await hasOfflineMap(cityId));
-    const gate = await getMapDownloadGate(cityId);
+    const [mapState, others, gate] = await Promise.all([
+      getOfflineMapState(cityId),
+      listDownloadedMaps(cityId),
+      getMapDownloadGate(cityId),
+    ]);
+    setState(mapState);
+    setOtherMaps(others);
     setCooldownMs(gate.allowed ? 0 : gate.retryAfterMs);
   }, [cityId]);
 
   useEffect(() => {
-    setReady(null);
+    setState(null);
     setBusy(false);
     setProgress(0);
     void refresh();
@@ -59,6 +69,8 @@ export function OfflineMapCard() {
           s.settings.offlineMapCooldownTitle,
           s.settings.offlineMapCooldownBody(remainingDays(result.retryAfterMs)),
         );
+      } else if (result.reason === 'invalid') {
+        Alert.alert(s.settings.offlineMapFailTitle, s.settings.offlineMapInvalidDownload);
       } else {
         Alert.alert(s.settings.offlineMapFailTitle, s.settings.offlineMapFailBody);
       }
@@ -71,9 +83,10 @@ export function OfflineMapCard() {
   }, [busy, refresh, s, cityId]);
 
   const handleDelete = useCallback(() => {
+    const invalid = state === 'invalid';
     Alert.alert(
       s.settings.offlineMapDeleteTitle,
-      s.settings.offlineMapDeleteBody(city.tilePackMB),
+      s.settings.offlineMapDeleteBody(city.tilePackMB, invalid),
       [
         { text: s.common.cancel, style: 'cancel' },
         {
@@ -88,10 +101,35 @@ export function OfflineMapCard() {
         },
       ],
     );
-  }, [refresh, s, city, cityId]);
+  }, [city.tilePackMB, cityId, refresh, s, state]);
+
+  const handleDeleteOther = useCallback(
+    (entry: DownloadedMap) => {
+      Alert.alert(
+        s.settings.offlineMapDeleteTitle,
+        s.settings.offlineMapDeleteBody(entry.sizeMB, entry.invalid),
+        [
+          { text: s.common.cancel, style: 'cancel' },
+          {
+            text: s.settings.offlineMapDelete,
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                await deleteOfflineMap(entry.cityId);
+                await refresh();
+              })();
+            },
+          },
+        ],
+      );
+    },
+    [refresh, s],
+  );
 
   const pct = Math.round(progress * 100);
-  const blocked = !ready && cooldownMs > 0;
+  const ready = state === 'ready';
+  const invalid = state === 'invalid';
+  const blocked = !ready && !invalid && cooldownMs > 0;
 
   return (
     <View style={styles.card}>
@@ -104,9 +142,11 @@ export function OfflineMapCard() {
           <Text style={styles.hint}>
             {ready
               ? s.settings.offlineMapReady(cityGen)
-              : blocked
-                ? s.settings.offlineMapCooldownBody(remainingDays(cooldownMs))
-                : s.settings.offlineMapHint(cityGen, city.tilePackMB)}
+              : invalid
+                ? s.settings.offlineMapInvalid(cityGen)
+                : blocked
+                  ? s.settings.offlineMapCooldownBody(remainingDays(cooldownMs))
+                  : s.settings.offlineMapHint(cityGen, city.tilePackMB)}
           </Text>
         </View>
       </View>
@@ -116,7 +156,7 @@ export function OfflineMapCard() {
           <ActivityIndicator size="small" color={scheme.primary} />
           <Text style={styles.progressText}>{s.settings.offlineMapDownloading(pct)}</Text>
         </View>
-      ) : ready ? (
+      ) : ready || invalid ? (
         <View style={styles.actions}>
           <Pressable
             onPress={handleDelete}
@@ -141,6 +181,38 @@ export function OfflineMapCard() {
           </Pressable>
         </View>
       )}
+
+      {otherMaps.length > 0 ? (
+        <View style={styles.others}>
+          <Text style={styles.othersTitle}>{s.settings.offlineMapOthersTitle}</Text>
+          <Text style={styles.othersHint}>{s.settings.offlineMapOthersHint}</Text>
+          {otherMaps.map((entry) => {
+            const name = s.city.name(entry.cityId);
+            return (
+              <View key={entry.cityId} style={styles.otherRow}>
+                <View style={styles.otherInfo}>
+                  <Text style={styles.otherName} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <Text style={[styles.otherMeta, entry.invalid && styles.otherInvalid]}>
+                    {entry.invalid
+                      ? s.settings.offlineMapInvalidShort
+                      : s.settings.offlineMapSize(entry.sizeMB)}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => handleDeleteOther(entry)}
+                  style={({ pressed }) => [styles.otherDelete, pressed && { opacity: 0.85 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.settings.offlineMapDeleteCityA11y(name)}
+                >
+                  <Trash2 size={16} color={scheme.error} />
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -202,5 +274,26 @@ const styles = StyleSheet.create({
     color: scheme.error,
     flexShrink: 1,
     textAlign: 'center',
+  },
+  others: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+    paddingTop: 14,
+    gap: 4,
+  },
+  othersTitle: { ...type.labelLarge, color: scheme.onSurface },
+  othersHint: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
+  otherRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52 },
+  otherInfo: { flex: 1, minWidth: 0 },
+  otherName: { ...type.bodyMedium, color: scheme.onSurface },
+  otherMeta: { ...type.labelSmall, color: scheme.onSurfaceVariant },
+  otherInvalid: { color: scheme.error },
+  otherDelete: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: scheme.surfaceContainerHighest,
   },
 });
