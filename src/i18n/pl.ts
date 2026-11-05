@@ -930,6 +930,8 @@ export const pl = {
     destFallback: 'Cel',
     trackUnsupportedTitle: 'Śledzenie niedostępne',
     trackUnsupportedBody: 'Powiadomienia wymagają builda deweloperskiego. Expo Go ich nie wspiera.',
+    trackFailTitle: 'Nie udało się śledzić',
+    trackFailBody: 'Spróbuj ponownie za chwilę.',
     stopTrackingTripA11y: 'Zatrzymaj śledzenie podróży',
     trackTripA11y: 'Śledź ten kurs',
     notifOffTitle: 'Powiadomienia wyłączone',

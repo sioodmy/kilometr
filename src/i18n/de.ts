@@ -905,6 +905,8 @@ export const de: Strings = {
     trackUnsupportedTitle: 'Verfolgung nicht verfügbar',
     trackUnsupportedBody:
       'Mitteilungen brauchen einen Entwicklungs-Build. Expo Go unterstützt sie nicht.',
+    trackFailTitle: 'Verfolgung fehlgeschlagen',
+    trackFailBody: 'Versuche es gleich noch einmal.',
     stopTrackingTripA11y: 'Reiseverfolgung beenden',
     trackTripA11y: 'Diese Fahrt verfolgen',
     notifOffTitle: 'Mitteilungen aus',

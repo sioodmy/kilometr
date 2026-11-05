@@ -896,6 +896,8 @@ export const en: Strings = {
     trackUnsupportedTitle: 'Tracking unavailable',
     trackUnsupportedBody:
       'Notifications require a development build. Expo Go does not support them.',
+    trackFailTitle: 'Could not start tracking',
+    trackFailBody: 'Try again in a moment.',
     stopTrackingTripA11y: 'Stop tracking the trip',
     trackTripA11y: 'Track this trip',
     notifOffTitle: 'Notifications off',
