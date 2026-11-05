@@ -54,12 +54,26 @@ export function useRailLiveConnections(
     };
   }, [connections, enabled, signature]);
 
-  return useMemo(() => {
-    const withMetadata = connections.map((connection) => ({
-      ...connection,
-      legs: connection.legs.map((leg) => {
+  // Poza kolejami nie ruszamy obiektów: tick live nie może tworzyć nowej listy.
+  const enriched = useMemo(() => {
+    if (!enabled || railData.size === 0) return connections;
+    let touched = false;
+    const next = connections.map((connection) => {
+      let legsChanged = false;
+      const legs = connection.legs.map((leg) => {
         const rail = railData.get(railLegKey(leg));
         if (!rail) return leg;
+        const platformCode = rail.platform ?? leg.platformCode;
+        if (
+          leg.railAgency === rail.agency &&
+          leg.railLine === rail.line &&
+          leg.railColor === rail.color &&
+          leg.trainNumber === rail.trainNumber &&
+          leg.trainName === rail.trainName &&
+          leg.platformCode === platformCode
+        )
+          return leg;
+        legsChanged = true;
         return {
           ...leg,
           railAgency: rail.agency,
@@ -67,14 +81,21 @@ export function useRailLiveConnections(
           railColor: rail.color,
           trainNumber: rail.trainNumber,
           trainName: rail.trainName,
-          platformCode: rail.platform ?? leg.platformCode,
+          platformCode,
         };
-      }),
-    }));
-    if (!enabled || railData.size === 0) return applyLiveDelays(withMetadata, tripDelays);
+      });
+      if (!legsChanged) return connection;
+      touched = true;
+      return { ...connection, legs };
+    });
+    return touched ? next : connections;
+  }, [connections, enabled, railData]);
+
+  return useMemo(() => {
+    if (!enabled || railData.size === 0) return applyLiveDelays(enriched, tripDelays);
     const delays = new Map(tripDelays);
     const now = Date.now();
-    for (const connection of withMetadata) {
+    for (const connection of enriched) {
       for (const leg of connection.legs) {
         if (!leg.tripId) continue;
         const rail = railData.get(railLegKey(leg));
@@ -83,6 +104,6 @@ export function useRailLiveConnections(
         }
       }
     }
-    return applyLiveDelays(withMetadata, delays);
-  }, [connections, enabled, railData, tripDelays]);
+    return applyLiveDelays(enriched, delays);
+  }, [enabled, enriched, railData, tripDelays]);
 }

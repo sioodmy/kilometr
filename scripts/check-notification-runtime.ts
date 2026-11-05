@@ -470,6 +470,151 @@ async function main() {
   assert.equal(monitor.getTrackedTripSync()?.sharedJourney, sharedJourney, 'powrót po restarcie zachowuje link obserwowanej podróży');
   assert.equal(replans, 0);
   await monitor.stopTracking();
+
+  // Kurs 24:10 (w rozkładzie 00:10) rozpoczęty przed północą: po północy
+  // odjazd ma zostać przy tej samej dacie, a nie przeskoczyć o dobę.
+  const midnightConnection: Connection = {
+    id: 'midnight',
+    fromTitle: 'Dom',
+    toTitle: 'Cel',
+    departureSec: 24 * 3600 + 10 * 60,
+    departAt: '00:10',
+    arriveAt: '00:30',
+    departInMin: 15,
+    durationMin: 20,
+    transfers: 0,
+    delayMin: 0,
+    live: false,
+    legs: [
+      {
+        id: 'midnight-t1',
+        tripId: 't1',
+        mode: 'tram',
+        line: '4',
+        fromStop: 'A',
+        toStop: 'Cel',
+        departAt: '00:10',
+        arriveAt: '00:30',
+        stopsCount: 3,
+        live: false,
+        scheduledDepartureSec: 24 * 3600 + 10 * 60,
+        scheduledArrivalSec: 24 * 3600 + 30 * 60,
+        delaySec: 0,
+        arrivalDelaySec: 0,
+      },
+    ],
+  };
+  route = async () => [{ ...midnightConnection }];
+  mock.timers.setTime(new Date(2026, 9, 19, 23, 55).getTime());
+  await monitor.startTracking({ ...trip, id: 'midnight', connection: midnightConnection });
+  const beforeMidnight = monitor.getTripProgressSync()!;
+  assert.ok(
+    beforeMidnight.departInSec > 13 * 60 && beforeMidnight.departInSec < 16 * 60,
+    'kurs 00:10 śledzony od 23:55 jest za kwadrans, nie za dobę',
+  );
+  const savedMidnight = storage.get('kilometr.trackedTrip.v2');
+  assert.ok(savedMidnight);
+  await monitor.stopTracking();
+
+  mock.timers.setTime(new Date(2026, 9, 20, 0, 5).getTime());
+  storage.set('kilometr.trackedTrip.v2', savedMidnight);
+  await monitor.restoreTrackedTrip();
+  const afterMidnight = monitor.getTripProgressSync()!;
+  assert.ok(
+    afterMidnight.departInSec > 0 && afterMidnight.departInSec < 12 * 60,
+    'po północy ten sam kurs nadal odjeżdża dziś',
+  );
+  assert.ok(afterMidnight.delayMin > 0, 'opóźnienie live wchodzi po północy');
+  assert.equal(new Date(afterMidnight.departAtMs).getDate(), 20);
+  mock.timers.setTime(new Date(2026, 9, 20, 0, 6).getTime());
+  await monitor.refreshTrackedTrip();
+  assert.ok(
+    (monitor.getTripProgressSync()?.delayMin ?? 0) > 0,
+    'kolejne odświeżenie nie gubi opóźnienia przez rozkład z poprzedniej doby',
+  );
+  await monitor.stopTracking();
+
+  // Kurs z feedu zapisany jako 24:xx, uruchomiony już po północy.
+  const lateNightConnection: Connection = {
+    ...midnightConnection,
+    id: 'late-night',
+    departureSec: 24 * 3600 + 40 * 60,
+    departAt: '00:40',
+    arriveAt: '00:55',
+    durationMin: 15,
+    legs: [
+      {
+        ...midnightConnection.legs[0],
+        id: 'late-night-t1',
+        tripId: 'late-night-t1',
+        line: '9',
+        departAt: '00:40',
+        arriveAt: '00:55',
+        scheduledDepartureSec: 24 * 3600 + 40 * 60,
+        scheduledArrivalSec: 24 * 3600 + 55 * 60,
+      },
+    ],
+  };
+  route = async () => [{ ...lateNightConnection }];
+  mock.timers.setTime(new Date(2026, 9, 20, 0, 30).getTime());
+  await monitor.startTracking({ ...trip, id: 'late-night', connection: lateNightConnection });
+  const lateNight = monitor.getTripProgressSync()!;
+  assert.ok(
+    lateNight.departInSec > 9 * 60 && lateNight.departInSec < 11 * 60,
+    'kurs 24:40 po północy odjeżdża za 10 minut, nie za dobę',
+  );
+  assert.equal(new Date(lateNight.departAtMs).getDate(), 20);
+  assert.equal(monitor.getTrackedTripSync()?.connection.departureSec, 40 * 60);
+  assert.equal(
+    monitor.getTrackedTripSync()?.connection.legs[0].scheduledDepartureSec,
+    40 * 60,
+    'rozkład odcinka przesuwa się razem z odjazdem',
+  );
+  mock.timers.setTime(new Date(2026, 9, 20, 0, 42).getTime());
+  await monitor.refreshTrackedTrip();
+  assert.equal(monitor.getTripProgressSync()?.phase, 'riding', 'kurs 24:xx po północy w końcu jedzie');
+  await monitor.stopTracking();
+
+  // Kursor na jutro ma ten sam `departureSec` co nocny 24:xx, więc plan
+  // odjazdu musi wybrać dobę z `departInMin`, a nie zawsze najbliższy zegar.
+  const tomorrowConnection: Connection = {
+    ...midnightConnection,
+    id: 'tomorrow',
+    departureSec: 24 * 3600 + 8 * 3600,
+    arrivalSec: 24 * 3600 + 8 * 3600 + 20 * 60,
+    departAt: '08:00',
+    arriveAt: '08:20',
+    departInMin: 18 * 60,
+    legs: [
+      {
+        ...midnightConnection.legs[0],
+        id: 'tomorrow-t1',
+        tripId: 'tomorrow-t1',
+        line: '17',
+        departAt: '08:00',
+        arriveAt: '08:20',
+        scheduledDepartureSec: 24 * 3600 + 8 * 3600,
+        scheduledArrivalSec: 24 * 3600 + 8 * 3600 + 20 * 60,
+      },
+    ],
+  };
+  route = async () => [{ ...tomorrowConnection }];
+  mock.timers.setTime(new Date(2026, 9, 19, 14, 0).getTime());
+  await monitor.startTracking({ ...trip, id: 'tomorrow', connection: tomorrowConnection });
+  const tomorrow = monitor.getTripProgressSync()!;
+  assert.ok(
+    tomorrow.departInSec > 17 * 3600 && tomorrow.departInSec < 19 * 3600,
+    'kurs z jutra zostaje jutro, nie cofa się do dzisiejszego poranka',
+  );
+  assert.equal(new Date(tomorrow.departAtMs).getDate(), 20);
+  assert.equal(
+    monitor.getTrackedTripSync()?.connection.departureSec,
+    24 * 3600 + 8 * 3600,
+  );
+  await monitor.refreshTrackedTrip();
+  assert.ok(monitor.getTrackedTripSync(), 'kurs z jutra nie kończy śledzenia po odświeżeniu');
+  await monitor.stopTracking();
+
   unsubscribe();
   console.log(
     'PASS: cykl śledzenia, przesiadki w tle, dojście, anulowanie, wyścigi, fallback, akcje i dźwięk',

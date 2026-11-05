@@ -267,6 +267,24 @@ jobs:
       - name: Run logic tests (Personalization)
         run: nix develop .#ci -c npm run check:personalization
 
+      - name: Run logic tests (Transfer protection)
+        run: nix develop .#ci -c npm run check:transfers
+
+      - name: Run logic tests (Connection times)
+        run: nix develop .#ci -c npm run check:connection-times
+
+      - name: Run logic tests (RT reliability)
+        run: nix develop .#ci -c npm run check:rt-reliability
+
+      - name: Run logic tests (POIs)
+        run: nix develop .#ci -c npm run check:pois
+
+      - name: Run logic tests (Line timetable)
+        run: nix develop .#ci -c npm run check:line-timetable
+
+      - name: Run logic tests (News parser)
+        run: nix develop .#ci -c npm run check:news
+
   verify-subprojects:
     name: Lint & Typecheck Subprojects
     runs-on: ubuntu-latest
@@ -297,6 +315,7 @@ jobs:
             set -euo pipefail
             npm --prefix server ci
             npm --prefix server run build
+            npm --prefix server run typecheck:scripts
           '
 
       - name: Build & typecheck landing

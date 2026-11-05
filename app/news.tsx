@@ -97,6 +97,11 @@ const NewsCard = memo(function NewsCard({
   const tone: Tone = resolved ? 'resolved' : item.urgent ? 'urgent' : 'quiet';
   const c = toneColors(tone);
   const solution = item.disruption?.glance?.solution;
+  const sourceLabel =
+    item.source === 'mpk' ? s.news.sourceMpk(operator) : s.news.sourceCity(portal);
+  const dateLabel = item.pubDate ? formatNewsDate(item.pubDate) : item.dateLabel;
+  const statusLabel = resolved ? s.news.resolved : item.urgent ? s.news.urgentChip : null;
+  const a11yLabel = [item.title, sourceLabel, dateLabel, statusLabel].filter(Boolean).join(', ');
   const press = useSharedValue(0);
   const animated = useAnimatedStyle(() => ({
     borderRadius: 28 - press.value * 8,
@@ -118,18 +123,14 @@ const NewsCard = memo(function NewsCard({
       onPressIn={() => setPress(1)}
       onPressOut={() => setPress(0)}
       accessibilityRole="button"
-      accessibilityLabel={item.title}
+      accessibilityLabel={a11yLabel}
       android_ripple={{ color: scheme.outlineVariant }}
       style={[styles.card, { backgroundColor: c.card }, animated]}
     >
       <View style={styles.metaRow}>
-        <Text style={[styles.sourceTag, { color: c.muted }]}>
-          {item.source === 'mpk' ? s.news.sourceMpk(operator) : s.news.sourceCity(portal)}
-        </Text>
-        {item.pubDate ? (
-          <Text style={[styles.metaText, { color: c.muted }]}>{formatNewsDate(item.pubDate)}</Text>
-        ) : item.dateLabel ? (
-          <Text style={[styles.metaText, { color: c.muted }]}>{item.dateLabel}</Text>
+        <Text style={[styles.sourceTag, { color: c.muted }]}>{sourceLabel}</Text>
+        {dateLabel ? (
+          <Text style={[styles.metaText, { color: c.muted }]}>{dateLabel}</Text>
         ) : null}
       </View>
       {resolved ? (

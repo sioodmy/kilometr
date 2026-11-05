@@ -347,10 +347,16 @@ function useOnboardingPlaces() {
 
   const remove = useCallback(
     async (id: string) => {
-      await FavoritesService.deletePlace(id);
+      try {
+        await FavoritesService.deletePlace(id);
+      } catch (err) {
+        console.warn('[onboarding remove error]', err);
+        Alert.alert(s.common.storageFailTitle, s.common.storageFailBody);
+        return;
+      }
       await reload();
     },
-    [reload],
+    [reload, s],
   );
 
   return {
