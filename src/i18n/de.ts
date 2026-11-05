@@ -1259,6 +1259,7 @@ export const de: Strings = {
     alightAt: (name: string) => `Aussteigen: ${name}`,
     boardAt: (name: string) => `Einsteigen: ${name}`,
     mapLoading: 'Karte wird geladen…',
+    mapTapToLoad: 'Tippen, um die Karte zu laden',
     mapFailed:
       'Karte konnte nicht geladen werden. Versuche es erneut oder lade in den Einstellungen eine Offline-Karte herunter.',
     mapRetry: 'Karte erneut laden',

@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import { kvGetStrict, kvSetStrict } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getCity, cityKey, suggestCityForCoords } from '../cities';
-import { getActiveCityIdSync } from './cityStore';
+import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
 import {
   Connection,
   LegStop,
@@ -270,15 +270,41 @@ export const LocationService: ILocationService = {
   subscribe,
 };
 
-// In-memory recent connections for getConnectionById
+// In-memory recent connections for getConnectionById. Twardy limit chroni
+// pamięć przy przeglądaniu setek kursów; klucz znormalizowany jak w odczycie.
+const RECENT_PLANNED_MAX = 50;
 const recentPlannedConnections = new Map<string, Connection>();
+let recentCityId = getActiveCityIdSync();
+
+subscribeActiveCity((id) => {
+  if (id === recentCityId) return;
+  recentCityId = id;
+  recentPlannedConnections.clear();
+});
+
+function rememberRecent(connection: Connection): void {
+  const key = normalizeConnectionId(connection.id);
+  recentPlannedConnections.delete(key);
+  recentPlannedConnections.set(key, connection);
+  while (recentPlannedConnections.size > RECENT_PLANNED_MAX) {
+    const oldest = recentPlannedConnections.keys().next().value;
+    if (oldest === undefined) break;
+    recentPlannedConnections.delete(oldest);
+  }
+}
 
 export function getPlannedConnection(id: string): Connection | undefined {
-  return recentPlannedConnections.get(normalizeConnectionId(id));
+  const key = normalizeConnectionId(id);
+  const found = recentPlannedConnections.get(key);
+  if (found) {
+    recentPlannedConnections.delete(key);
+    recentPlannedConnections.set(key, found);
+  }
+  return found;
 }
 
 export function rememberPlannedConnection(connection: Connection): void {
-  recentPlannedConnections.set(connection.id, connection);
+  rememberRecent(connection);
 }
 
 // Serializuje read-modify-write zapisanych tras: dwa równoległe zapisy nie mogą
@@ -319,17 +345,13 @@ export const RoutingService: IRoutingService = {
         // działał nawet jeśli użytkownik tapnie wiersz w trakcie liczenia.
         onProgress: onProgress
           ? (partial) => {
-              for (const c of partial) {
-                recentPlannedConnections.set(c.id, c);
-              }
+              for (const c of partial) rememberRecent(c);
               onProgress(partial);
             }
           : undefined,
       });
 
-      for (const c of connections) {
-        recentPlannedConnections.set(c.id, c);
-      }
+      for (const c of connections) rememberRecent(c);
 
       if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
         void saveConnections(query, connections);

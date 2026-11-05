@@ -1246,6 +1246,7 @@ export const en: Strings = {
     alightAt: (name: string) => `Get off at: ${name}`,
     boardAt: (name: string) => `Board at: ${name}`,
     mapLoading: 'Loading map…',
+    mapTapToLoad: 'Tap to load the map',
     mapFailed: 'Could not load the map. Try again or download an offline map in settings.',
     mapRetry: 'Reload map',
     openMap: 'Open the full route map',

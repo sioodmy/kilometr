@@ -54,6 +54,12 @@ export function getActiveCityIdSync(): CityId {
   return cachedId;
 }
 
+/** Nasłuch zmiany miasta dla cache trzymanych w pamięci (np. planów). */
+export function subscribeActiveCity(listener: (id: CityId) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export function getActiveCitySync(): CityDef {
   return getCity(cachedId);
 }

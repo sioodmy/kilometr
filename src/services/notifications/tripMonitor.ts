@@ -58,6 +58,8 @@ import { sharedLiveConnection, sharedVehicle } from '../../sharing/native';
 const STORAGE_KEY = 'kilometr.trackedTrip.v2';
 /** Ile po odjeździe kurs wciąż uznajemy za „swoje” połączenie. */
 const BOARDING_GRACE_SEC = 240;
+/** Zapis stanu i widgetu najwyżej raz na 30 s, i tylko gdy plan się zmienił. */
+const WRITE_THROTTLE_MS = 30_000;
 
 let tracked: TrackedTrip | null = null;
 let progress: TripProgress | null = null;
@@ -73,6 +75,11 @@ let ticker: ReturnType<typeof setInterval> | null = null;
 let refreshing: Promise<void> | null = null;
 let generation = 0;
 let foregroundProtection: ForegroundTransferProtection | null = null;
+let lastPersistAt = 0;
+let lastPersistSig = '';
+let lastWidgetAt = 0;
+let lastWidgetSig = '';
+
 /**
  * Start i stop z UI przechodzą jeden po drugim. Dzięki temu nowy start czeka
  * na pełne sprzątanie po poprzednim stopie i nie walczy z jego spóźnionymi
@@ -409,7 +416,7 @@ async function startTrackingNow(trip: TrackedTrip): Promise<void> {
   progress = initial;
   notify();
   rescheduleTicker();
-  await persist();
+  await persist(true);
   // Live Tracker musi odpytywać także w tle, bo powiadomienia o przesunięciach
   // (Live Update) potrzebują świeżych pozycji pojazdów.
   liveTracker.pin(true);
@@ -459,7 +466,7 @@ async function configureTransferProtection(run: number): Promise<void> {
       return;
     }
     tracked = { ...tracked, transferContextPath: path };
-    await persist();
+    await persist(true);
     if (progress) await presentTrip(tracked, progress, getNotificationPreferencesSync());
   } catch (error) {
     console.warn('[TransferProtection] setup:', error);
@@ -591,6 +598,10 @@ async function stopTrackingNow(): Promise<void> {
   arrivedAt = 0;
   planLocked = false;
   lastDelayMin = 0;
+  lastPersistAt = 0;
+  lastPersistSig = '';
+  lastWidgetAt = 0;
+  lastWidgetSig = '';
   if (ticker) {
     clearInterval(ticker);
     ticker = null;
@@ -732,10 +743,43 @@ export function startTrackedTripListener(): void {
   });
 }
 
-async function persist(): Promise<void> {
+/** To, co realnie warto zapisać: plan, opóźnienia i status przesiadki. */
+function tripSignature(trip: TrackedTrip): string {
+  const c = trip.connection;
+  const legs = c.legs
+    .map((l) =>
+      [l.id, l.departAt, l.arriveAt, l.delaySec ?? '', l.live ? 1 : 0, l.liveNextStop ?? ''].join(
+        ':',
+      ),
+    )
+    .join(',');
+  const t = trip.transfer;
+  return [
+    c.id,
+    c.departureSec,
+    c.arrivalSec,
+    c.durationMin,
+    c.transfers,
+    c.delayMin,
+    c.live ? 1 : 0,
+    legs,
+    trip.protectionEnabled ? 1 : 0,
+    t?.status ?? '',
+    t?.activeLegIndex ?? '',
+    t?.nextLine ?? '',
+    t?.alternative?.id ?? '',
+  ].join('|');
+}
+
+async function persist(force = false): Promise<void> {
   if (!tracked) return;
+  const sig = tripSignature(tracked);
+  const now = Date.now();
+  if (!force && (sig === lastPersistSig || now - lastPersistAt < WRITE_THROTTLE_MS)) return;
+  lastPersistAt = now;
   try {
     await kvSet(STORAGE_KEY, JSON.stringify(tracked));
+    lastPersistSig = sig;
   } catch {
     // persist opcjonalny - bez niego śledzenie nie przeżywa restartu
   }
@@ -770,5 +814,10 @@ function pushWidgetPinned(trip: TrackedTrip | null): Promise<void> {
       open: conn.id,
     }),
   };
+  const sig = JSON.stringify(section);
+  const now = Date.now();
+  if (sig === lastWidgetSig || now - lastWidgetAt < WRITE_THROTTLE_MS) return Promise.resolve();
+  lastWidgetSig = sig;
+  lastWidgetAt = now;
   return mergeWidgetSnapshot({ pinned: section });
 }

@@ -1301,6 +1301,7 @@ export const uk: Strings = {
     alightAt: (name: string) => `Виходьте: ${name}`,
     boardAt: (name: string) => `Сідайте: ${name}`,
     mapLoading: 'Завантаження мапи…',
+    mapTapToLoad: 'Торкніться, щоб завантажити мапу',
     mapFailed:
       'Не вдалося завантажити мапу. Спробуйте ще раз або завантажте офлайн-мапу в налаштуваннях.',
     mapRetry: 'Завантажити мапу знову',

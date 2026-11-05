@@ -1289,6 +1289,7 @@ export const pl = {
     alightAt: (name: string) => `Wysiądź: ${name}`,
     boardAt: (name: string) => `Wsiądź: ${name}`,
     mapLoading: 'Wczytuję mapę…',
+    mapTapToLoad: 'Dotknij, aby wczytać mapę',
     mapFailed:
       'Nie udało się wczytać mapy. Spróbuj ponownie lub pobierz mapę offline w ustawieniach.',
     mapRetry: 'Wczytaj mapę ponownie',

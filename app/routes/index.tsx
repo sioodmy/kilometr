@@ -757,7 +757,7 @@ export default function RoutesScreen() {
     }
   };
 
-  // Heartbeat offline: co 15 s sprawdzamy powrót sieci i cicho podmieniamy
+  // Heartbeat offline: co 60 s sprawdzamy powrót sieci i cicho podmieniamy
   // cache na świeże dane. Bez spinnerów i skoków scrolla.
   const offlineRef = useRef(offline);
   offlineRef.current = offline;
@@ -776,7 +776,7 @@ export default function RoutesScreen() {
         await quietRefreshRef.current();
       }
     };
-    const timer = setInterval(beat, 15000);
+    const timer = setInterval(beat, 60000);
     return () => {
       cancelled = true;
       clearInterval(timer);

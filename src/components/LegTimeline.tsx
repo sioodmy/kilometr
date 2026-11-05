@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowRight,
@@ -30,6 +30,7 @@ import {
   findUserSegment,
   locateLiveStopPosition,
   normalizeName,
+  nowSecOfDay,
   positionToRank,
   type LiveStopPosition,
 } from '../services/vehiclePosition';
@@ -271,6 +272,7 @@ function LegStopsList({
   stops,
   vehicle,
   loading,
+  active,
 }: {
   leg: Leg;
   accent: string;
@@ -279,15 +281,18 @@ function LegStopsList({
   stops: LegStop[];
   vehicle: TrackedVehicle | null;
   loading: boolean;
+  active: boolean;
 }) {
   const t = useStrings();
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [active]);
 
   const lastLegIdRef = useRef(leg.id);
   const rankRef = useRef<number>(-1);
@@ -301,7 +306,7 @@ function LegStopsList({
   }
 
   const livePosition = useMemo(() => {
-    if (!allowLive) return null;
+    if (!active || !allowLive) return null;
     const pos = locateLiveStopPosition(
       stops,
       leg,
@@ -320,7 +325,7 @@ function LegStopsList({
       rankSourceRef.current = pos.source;
     }
     return pos;
-  }, [stops, leg, vehicle, userLocation, now, allowLive]);
+  }, [active, stops, leg, vehicle, userLocation, now, allowLive]);
 
   if (loading) {
     return (
@@ -416,7 +421,7 @@ const LiveDataAge = memo(function LiveDataAge({ timestamp }: { timestamp: number
 // Rozwijanie animowaną wysokością (a nie montowaniem): lista montuje się raz
 // przy pierwszym otwarciu i zostaje, a kontener płynnie rośnie/maleje.
 // Dzięki temu zero skoku layoutu i zero flickeru.
-function TransitLegCard({
+const TransitLegCard = memo(function TransitLegCard({
   leg,
   expanded,
   onToggle,
@@ -425,7 +430,7 @@ function TransitLegCard({
 }: {
   leg: Leg;
   expanded: boolean;
-  onToggle: () => void;
+  onToggle: (id: string) => void;
   userLocation: CurrentLocation | null;
   allowLive: boolean;
 }) {
@@ -623,7 +628,7 @@ function TransitLegCard({
   return (
     <View>
       <Pressable
-        onPress={onToggle}
+        onPress={() => onToggle(leg.id)}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         accessibilityLabel={[
@@ -751,6 +756,7 @@ function TransitLegCard({
                   stops={stops}
                   vehicle={vehicle}
                   loading={loading}
+                  active={expanded}
                 />
               </View>
             </Animated.View>
@@ -775,14 +781,48 @@ function TransitLegCard({
       </Pressable>
     </View>
   );
+});
+
+const DAY = 86400;
+
+/** Czy teraz wypada odcinek pieszy: tylko wtedy GPS ma chodzić na High/1 Hz. */
+function isWalkingNow(legs: Leg[], nowSec: number): boolean {
+  for (const leg of legs) {
+    if (leg.mode !== 'walk') continue;
+    const depart = leg.scheduledDepartureSec ?? timeStringToSeconds(leg.departAt);
+    let arrive = leg.scheduledArrivalSec ?? timeStringToSeconds(leg.arriveAt);
+    if (arrive < depart) arrive += DAY;
+    const current = depart >= DAY && nowSec < 43200 ? nowSec + DAY : nowSec;
+    if (current >= depart - 120 && current <= arrive + 120) return true;
+  }
+  return false;
 }
 
 /** Vertical timeline bez railu po lewej stronie, wyśrodkowane dojścia pieszo. */
 export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observeOnly?: boolean }) {
   const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [walking, setWalking] = useState(() => isWalkingNow(legs, nowSecOfDay()));
   const walkMps = useWalkSpeedMps();
-  const { location } = useCurrentLocation(!observeOnly);
+  const { location } = useCurrentLocation(!observeOnly, !observeOnly && walking);
+
+  useEffect(() => {
+    const update = () => setWalking(isWalkingNow(legs, nowSecOfDay()));
+    update();
+    const timer = setInterval(update, 15000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') update();
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [legs]);
+
+  const toggleLeg = useCallback(
+    (id: string) => setExpandedId((prev) => (prev === id ? null : id)),
+    [],
+  );
 
   return (
     <View style={s.list}>
@@ -850,9 +890,9 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
             <TransitLegCard
               leg={leg}
               expanded={expandedId === leg.id}
-              userLocation={observeOnly ? null : location}
+              userLocation={observeOnly || expandedId !== leg.id ? null : location}
               allowLive={!observeOnly || leg.live}
-              onToggle={() => setExpandedId((prev) => (prev === leg.id ? null : leg.id))}
+              onToggle={toggleLeg}
             />
             {uncertainTransfer && (
               <Text style={s.uncertainText}>{t.routeDetails.uncertainTransfer}</Text>
