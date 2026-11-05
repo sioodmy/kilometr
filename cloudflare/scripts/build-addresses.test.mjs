@@ -160,7 +160,7 @@ function snapshotGzip(builtAt) {
 test('Świeży snapshot z R2 zasila build bez Overpassa i ląduje w cache', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kilometr-addresses-r2-'));
   try {
-    const builtAt = '2026-10-29T05:00:00.000Z';
+    const builtAt = new Date(Date.now() - 60_000).toISOString();
     const calls = [];
     const fetcher = async (url) => {
       calls.push(String(url));
