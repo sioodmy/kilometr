@@ -5,6 +5,7 @@
  * - GET /{miasto}/manifest.json           → manifest buildu z R2
  * - GET /{miasto}/disruptions.json        → ustrukturyzowane alerty i utrudnienia z R2 (cache 120s)
  * - GET /{miasto}/stop-hints.json         → mikrowskazówki lokalizacyjne przystanków z R2
+ * - GET /{miasto}/pois.json.gz            → snapshot POI OSM z R2 (cache buildu i fallback)
  * - GET /{miasto}/db/kilometr-gtfs.db.gz  → skompresowany prebuilt SQLite z R2 (Range, ETag)
  * - GET /maps/{miasto}-tiles.ktp          → pakiet kafli offline z R2
  * Miasta: wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz,
@@ -42,6 +43,12 @@ const stopHintsKeyFor = (city: string): string => `${city}/stop-hints.json`;
  * Overpassa, stary jest awaryjnym zapasem. Nigdy nie trafia do telefonu.
  */
 const addressesKeyFor = (city: string): string => `${city}/addresses.json.gz`;
+/**
+ * Snapshot POI OSM (cache buildu timetable.yml): świeży zasila build bez
+ * Overpassa, stary jest awaryjnym zapasem, gdy Overpass padnie. Nigdy nie
+ * trafia do telefonu, POI siedzą w bazie.
+ */
+const poisKeyFor = (city: string): string => `${city}/pois.json.gz`;
 /**
  * Pakiet kafelków mapy offline. Buduje go workflow map-tiles.yml (--city),
  * a telefon pobiera raz i trzyma lokalnie (osobny plik na miasto).
@@ -95,7 +102,7 @@ export default {
       return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString(), cities: [...CITIES] });
     }
 
-    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/stop-hints.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
+    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/stop-hints.json, /{miasto}/pois.json.gz, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
     const cityMatch = CITY_PATH_RE.exec(url.pathname);
     if (cityMatch) {
       const [, city, rest] = cityMatch;
@@ -113,6 +120,9 @@ export default {
       }
       if (rest === '/addresses.json.gz') {
         return serveObject(env, addressesKeyFor(city), 'application/gzip', 'timetable.yml');
+      }
+      if (rest === '/pois.json.gz') {
+        return serveObject(env, poisKeyFor(city), 'application/gzip', 'timetable.yml');
       }
     }
     const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
