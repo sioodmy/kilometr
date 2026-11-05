@@ -1,4 +1,4 @@
-import { kvGet, kvSet } from './storage';
+import { kvGet, kvSetStrict } from './storage';
 import { defaultLocationForCity } from '../config';
 import { getActiveCityIdSync, getActiveCitySync } from './cityStore';
 import { cityKey, getCity, suggestCityForCoords, type CityId } from '../cities';
@@ -87,23 +87,22 @@ async function migrateTripHistoryToCityBuckets(): Promise<void> {
       const merged = [...existing, ...moved.filter((t) => !have.has(t.id))]
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, MAX_HISTORY_ITEMS);
-      await kvSet(key, JSON.stringify(merged));
+      await kvSetStrict(key, JSON.stringify(merged));
     } catch (err) {
       console.warn('[SmartRanker] history migration write failed:', err);
       return;
     }
   }
   try {
-    await kvSet(cityKey('kilometr.trip_history', 'wroclaw'), JSON.stringify(staying));
+    await kvSetStrict(cityKey('kilometr.trip_history', 'wroclaw'), JSON.stringify(staying));
   } catch (err) {
     console.warn('[SmartRanker] history migration cleanup failed:', err);
   }
 }
 
 async function saveTripHistory(items: TripHistoryItem[]): Promise<void> {
-  try {
-    await kvSet(STORAGE_KEYS.tripHistory(), JSON.stringify(items.slice(0, MAX_HISTORY_ITEMS)));
-  } catch {}
+  // Historia to dane użytkownika: błąd dysku nie może zniknąć bez śladu.
+  await kvSetStrict(STORAGE_KEYS.tripHistory(), JSON.stringify(items.slice(0, MAX_HISTORY_ITEMS)));
 }
 
 /**
@@ -222,7 +221,11 @@ export async function loadCachedSmartDestinations(): Promise<SmartDestination[]>
 
 export async function saveCachedSmartDestinations(items: SmartDestination[]): Promise<void> {
   try {
-    if (!Array.isArray(items) || items.length === 0) return;
-    await kvSet(smartCacheKey(), JSON.stringify({ savedAt: Date.now(), items: items.slice(0, SMART_CACHE_MAX) }));
-  } catch {}
+    if (!Array.isArray(items)) return;
+    // Pusta lista też idzie na dysk: inaczej po usunięciu ostatniego miejsca
+    // stary cache wracał przy następnym starcie.
+    await kvSetStrict(smartCacheKey(), JSON.stringify({ savedAt: Date.now(), items: items.slice(0, SMART_CACHE_MAX) }));
+  } catch (err) {
+    console.warn('[SmartRanker] smart cache write failed:', err);
+  }
 }

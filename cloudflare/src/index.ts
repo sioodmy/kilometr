@@ -5,13 +5,15 @@
  * - GET /{miasto}/manifest.json           → manifest buildu z R2
  * - GET /{miasto}/disruptions.json        → ustrukturyzowane alerty i utrudnienia z R2 (cache 120s)
  * - GET /{miasto}/stop-hints.json         → mikrowskazówki lokalizacyjne przystanków z R2
+ * - GET /{miasto}/pois.json.gz            → snapshot POI OSM z R2 (cache buildu i fallback)
  * - GET /{miasto}/db/kilometr-gtfs.db.gz  → skompresowany prebuilt SQLite z R2 (Range, ETag)
  * - GET /maps/{miasto}-tiles.ktp          → pakiet kafli offline z R2
  * Miasta: wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz,
  * szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom (allowlista CITIES niżej).
  *
  * - GET /api/kd/departures     → PDP /operations (sekret po stronie serwera,
- *                                 cache 120 s - aplikacja tego NA RAZIE nie woła)
+ *                                 wymaga nagłówka X-Proxy-Token, cache 120 s -
+ *                                 aplikacja tego NA RAZIE nie woła)
  * - GET /api/kd/schedule       → PDP /schedules (cache 1 h, jw.)
  * - GET /health
  *
@@ -23,6 +25,8 @@ export interface Env {
   TIMETABLE_BUCKET: R2Bucket;
   /** Sekret Workera. Lokalnie: `wrangler dev --var PDP_API_KEY:...` albo .dev.vars (gitignore). */
   PDP_API_KEY?: string;
+  /** Token wymagany przez /api/kd/*. Bez niego proxy PDP jest wyłączone. */
+  PDP_PROXY_TOKEN?: string;
 }
 
 /** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
@@ -42,6 +46,12 @@ const stopHintsKeyFor = (city: string): string => `${city}/stop-hints.json`;
  * Overpassa, stary jest awaryjnym zapasem. Nigdy nie trafia do telefonu.
  */
 const addressesKeyFor = (city: string): string => `${city}/addresses.json.gz`;
+/**
+ * Snapshot POI OSM (cache buildu timetable.yml): świeży zasila build bez
+ * Overpassa, stary jest awaryjnym zapasem, gdy Overpass padnie. Nigdy nie
+ * trafia do telefonu, POI siedzą w bazie.
+ */
+const poisKeyFor = (city: string): string => `${city}/pois.json.gz`;
 /**
  * Pakiet kafelków mapy offline. Buduje go workflow map-tiles.yml (--city),
  * a telefon pobiera raz i trzyma lokalnie (osobny plik na miasto).
@@ -95,7 +105,7 @@ export default {
       return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString(), cities: [...CITIES] });
     }
 
-    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/stop-hints.json, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
+    // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/stop-hints.json, /{miasto}/pois.json.gz, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
     const cityMatch = CITY_PATH_RE.exec(url.pathname);
     if (cityMatch) {
       const [, city, rest] = cityMatch;
@@ -113,6 +123,9 @@ export default {
       }
       if (rest === '/addresses.json.gz') {
         return serveObject(env, addressesKeyFor(city), 'application/gzip', 'timetable.yml');
+      }
+      if (rest === '/pois.json.gz') {
+        return serveObject(env, poisKeyFor(city), 'application/gzip', 'timetable.yml');
       }
     }
     const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
@@ -161,11 +174,28 @@ async function serveDisruptions(env: Env, key: string): Promise<Response> {
 }
 
 async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
-  // Range requesty (pobieranie we fragmentach): telefon może wznawiać.
-  const rangeHeader = req.headers.get('Range');
-  const range = parseRange(rangeHeader);
+  // HEAD daje pełny rozmiar obiektu, zanim poprosimy R2 o fragment.
+  const head = await env.TIMETABLE_BUCKET.head(key);
+  if (!head) {
+    return json(
+      { error: 'not-built-yet', hint: 'Baza SQLite jeszcze nie istnieje w R2. Odpal timetable.yml.' },
+      404,
+    );
+  }
 
-  const obj = await env.TIMETABLE_BUCKET.get(key, { range: range ?? undefined });
+  const size = head.size;
+  const range = parseRange(req.headers.get('Range'), size);
+
+  if (range === 'unsatisfiable') {
+    const headers = new Headers();
+    headers.set('Accept-Ranges', 'bytes');
+    headers.set('Content-Range', `bytes */${size}`);
+    return new Response(null, { status: 416, headers });
+  }
+
+  const obj = range
+    ? await env.TIMETABLE_BUCKET.get(key, { range: { offset: range.offset, length: range.length } })
+    : await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
     return json(
       { error: 'not-built-yet', hint: 'Baza SQLite jeszcze nie istnieje w R2. Odpal timetable.yml.' },
@@ -183,28 +213,45 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
   if (obj.etag) headers.set('ETag', obj.etag);
   headers.set('Cache-Control', 'public, max-age=3600');
 
-  if (range && 'offset' in range) {
-    const end = range.length !== undefined ? range.offset + range.length - 1 : obj.size - 1;
-    headers.set('Content-Range', `bytes ${range.offset}-${end}/${obj.size}`);
-    headers.set('Content-Length', String(end - range.offset + 1));
+  if (range) {
+    const end = range.offset + range.length - 1;
+    headers.set('Content-Range', `bytes ${range.offset}-${end}/${size}`);
+    headers.set('Content-Length', String(range.length));
     return new Response(obj.body, { status: 206, headers });
   }
 
-  headers.set('Content-Length', String(obj.size));
+  headers.set('Content-Length', String(size));
   return new Response(obj.body, { status: 200, headers });
 }
 
-function parseRange(h: string | null): { offset: number; length?: number } | null {
+/**
+ * Parsuje pojedynczy zakres bajtów i przycina go do rozmiaru obiektu.
+ * Zwraca null (całość), "unsatisfiable" (416) albo offset i długość.
+ */
+function parseRange(
+  h: string | null,
+  size: number,
+): { offset: number; length: number } | 'unsatisfiable' | null {
   if (!h) return null;
-  const m = /^bytes=(\d+)-(\d+)?$/.exec(h.trim());
+  const m = /^bytes=(\d*)-(\d*)$/.exec(h.trim());
   if (!m) return null;
-  const start = parseInt(m[1], 10);
-  if (Number.isNaN(start)) return null;
-  if (m[2] !== undefined) {
-    const end = parseInt(m[2], 10);
-    if (!Number.isNaN(end) && end >= start) return { offset: start, length: end - start + 1 };
+  const [, rawStart, rawEnd] = m;
+  if (rawStart === '' && rawEnd === '') return null;
+  if (size <= 0) return 'unsatisfiable';
+
+  // Suffix range: bytes=-500 to ostatnie 500 bajtów.
+  if (rawStart === '') {
+    const suffix = parseInt(rawEnd, 10);
+    if (Number.isNaN(suffix) || suffix <= 0) return 'unsatisfiable';
+    const offset = Math.max(size - suffix, 0);
+    return { offset, length: size - offset };
   }
-  return { offset: start };
+
+  const offset = parseInt(rawStart, 10);
+  if (Number.isNaN(offset) || offset >= size) return 'unsatisfiable';
+  const end = rawEnd === '' ? size - 1 : Math.min(parseInt(rawEnd, 10), size - 1);
+  if (Number.isNaN(end) || end < offset) return 'unsatisfiable';
+  return { offset, length: end - offset + 1 };
 }
 
 async function proxyPdp(
@@ -213,6 +260,18 @@ async function proxyPdp(
   ctx: ExecutionContext,
   endpoint: 'operations' | 'schedules',
 ): Promise<Response> {
+  // Publiczne proxy bez tokenu zużywałoby limit PDP i sekret Workera.
+  const proxyToken = env.PDP_PROXY_TOKEN;
+  if (!proxyToken) {
+    return json(
+      { error: 'pdp-proxy-disabled', hint: 'Ustaw PDP_PROXY_TOKEN w Workerze, żeby włączyć proxy.' },
+      503,
+    );
+  }
+  if (!tokensEqual(req.headers.get('X-Proxy-Token') ?? '', proxyToken)) {
+    return json({ error: 'unauthorized' }, 401);
+  }
+
   const key = env.PDP_API_KEY;
   if (!key) {
     return json({ error: 'pdp-not-configured', hint: 'Klucz PDP_API_KEY nie jest ustawiony w Workerze.' }, 503);
@@ -244,4 +303,12 @@ async function proxyPdp(
   const out = new Response(body, { status: res.status, headers });
   if (res.ok) ctx.waitUntil(cache.put(cacheKey, out.clone()));
   return out;
+}
+
+/** Porównuje tokeny bez zwracania uwagi na pozycję pierwszej różnicy. */
+function tokensEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }

@@ -504,6 +504,7 @@ export function DepartureTimeSheet({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={s.timeSheet.switchTomorrow}
+                hitSlop={8}
                 style={({ pressed }) => [styles.warningAction, pressed && { opacity: 0.8 }]}
               >
                 <Text style={styles.warningActionText}>{s.timeSheet.switchTomorrow}</Text>
@@ -713,6 +714,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   warningAction: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: shape.small,

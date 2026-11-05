@@ -29,8 +29,9 @@ export interface GtfsTrip {
 
 export interface GtfsStopTime {
   trip_id: string;
-  arrival_time: string; // "14:02:00"
-  departure_time: string; // "14:02:00"
+  /** Opcjonalne: sklep RAPTOR trzyma tylko sekundy. */
+  arrival_time?: string; // "14:02:00"
+  departure_time?: string; // "14:02:00"
   arrival_sec: number; // sekundy od północy
   departure_sec: number; // sekundy od północy
   stop_id: string;

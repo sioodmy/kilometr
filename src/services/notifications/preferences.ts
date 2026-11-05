@@ -12,13 +12,23 @@ let cached: NotificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
 let loaded = false;
 const listeners = new Set<(p: NotificationPreferences) => void>();
 
-function clampPrefs(p: Partial<NotificationPreferences>): NotificationPreferences {
+/** Wartości z KV i backupu bywają stringami, więc bierzemy tylko prawdziwe booleany. */
+type PrefsInput = Partial<Record<keyof NotificationPreferences, unknown>>;
+
+/** Brak wartości dziedziczy bazę, ale błędny typ (np. `"false"`) nigdy nie włącza powiadomień. */
+function boolOr(value: unknown, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  return value === true;
+}
+
+function clampPrefs(
+  input: PrefsInput,
+  base: NotificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES,
+): NotificationPreferences {
   return {
-    trackingEnabled: p.trackingEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.trackingEnabled,
-    disruptionAlertsEnabled:
-      p.disruptionAlertsEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.disruptionAlertsEnabled,
-    liveProgressEnabled:
-      p.liveProgressEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.liveProgressEnabled,
+    trackingEnabled: boolOr(input.trackingEnabled, base.trackingEnabled),
+    disruptionAlertsEnabled: boolOr(input.disruptionAlertsEnabled, base.disruptionAlertsEnabled),
+    liveProgressEnabled: boolOr(input.liveProgressEnabled, base.liveProgressEnabled),
   };
 }
 
@@ -39,7 +49,10 @@ export async function loadNotificationPreferences(): Promise<NotificationPrefere
   if (loaded) return { ...cached };
   try {
     const raw = await kvGet(STORAGE_KEY);
-    if (raw) cached = clampPrefs(JSON.parse(raw) as Partial<NotificationPreferences>);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed === 'object' && parsed !== null) cached = clampPrefs(parsed as PrefsInput);
+    }
   } catch {
     // storage niedostępny: zostają domyślne
   }
@@ -49,9 +62,9 @@ export async function loadNotificationPreferences(): Promise<NotificationPrefere
 }
 
 export async function saveNotificationPreferences(
-  next: Partial<NotificationPreferences>,
+  next: PrefsInput,
 ): Promise<NotificationPreferences> {
-  cached = clampPrefs({ ...cached, ...next });
+  cached = clampPrefs({ ...cached, ...next }, cached);
   notify();
   try {
     await kvSet(STORAGE_KEY, JSON.stringify(cached));

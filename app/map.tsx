@@ -9,7 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowRight, ChevronLeft, ScanLine, WifiOff } from '../src/components/icons';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
@@ -75,6 +75,14 @@ export default function RouteMapScreen() {
 
   const mapRef = useRef<RouteMapHandle>(null);
   const geometryRef = useRef(new Map<string, Coord[]>());
+
+  // Mapa pokazuje pojazd na żywo, więc poll chodzi tylko, gdy ekran widać.
+  useFocusEffect(
+    useCallback(() => {
+      liveTracker.acquire();
+      return () => liveTracker.release();
+    }, []),
+  );
   const shownVehicleRef = useRef<string | null>(null);
 
   const clearOfflinePillTimer = useCallback(() => {

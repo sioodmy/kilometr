@@ -9,12 +9,21 @@ import { ensurePoiIndex } from './search/poiIndex';
 
 const app = express();
 
-app.use(cors());
+// Tylko znane originy (Expo web, własne narzędzia); aplikacja natywna nie
+// wysyła Origin, więc jej to nie dotyczy.
+app.use(
+  cors({
+    origin(origin, callback) {
+      callback(null, !origin || config.corsOrigins.includes(origin));
+    },
+  })
+);
 app.use(express.json());
 
 // Log incoming API requests
 app.use((req, res, next) => {
-  console.log(`[API] ${req.method} ${req.url}`);
+  // Sam path, bez query: tam siedzą współrzędne i frazy wyszukiwania.
+  console.log(`[API] ${req.method} ${req.path}`);
   next();
 });
 
@@ -24,6 +33,10 @@ app.use('/api', apiRouter);
 // Initialize DB and background workers
 async function bootstrap() {
   console.log('[Server] Initializing Kilometr backend server...');
+
+  if (!config.apiToken) {
+    console.warn(`[Server] API_TOKEN unset, API has no auth and listens only on ${config.host}.`);
+  }
 
   // Initialize SQLite database & seed
   getDb();

@@ -319,10 +319,13 @@ export function zipEntryNames(binary: Uint8Array): string[] {
  */
 export async function unzipGtfs(zipUri: string): Promise<string[]> {
   const dir = gtfsDir();
+  // Stare pliki z poprzedniego feedu nie mogą się zmieszać z nowym, gdy ZIP
+  // nie zawiera któregoś pliku. Katalog czyścimy przed rozpakowaniem.
   const dirInfo = await FileSystem.getInfoAsync(dir);
-  if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  if (dirInfo.exists) {
+    await FileSystem.deleteAsync(dir, { idempotent: true });
   }
+  await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
   // base64 z legacy FileSystem-a żyje raz: po konwersji na binary zwalniamy
   // obie kopie tekstowe, żeby nie wisiały obok rozpakowywania.
   let base64 = await FileSystem.readAsStringAsync(zipUri, {
@@ -353,6 +356,11 @@ export async function unzipGtfs(zipUri: string): Promise<string[]> {
     const text = strFromU8(data);
     await FileSystem.writeAsStringAsync(`${dir}${short}`, text);
     unpacked.push(short);
+  }
+  const missing = [...NEEDED_GTFS_FILES].filter((name) => !unpacked.includes(name));
+  if (missing.length > 0) {
+    await cleanupRawGtfs();
+    throw new Error(`Brak plików GTFS: ${missing.join(', ')}`);
   }
   return unpacked;
 }

@@ -25,9 +25,10 @@ for (const [i, id] of ids.entries())
     stop_name: names[i],
     stop_lat: 51,
     stop_lon: 17 + (i < 4 ? i * 0.005 : 0.04),
+    normalized_name: names[i].toLowerCase(),
   });
-store.footpaths.set('C', [{ to_stop_id: 'D', distance_m: 350, duration_sec: 300 }]);
-store.footpaths.set('D', [{ to_stop_id: 'C', distance_m: 350, duration_sec: 300 }]);
+store.footpaths.set('C', [{ from_stop_id: 'C', to_stop_id: 'D', distance_m: 350, duration_sec: 300 }]);
+store.footpaths.set('D', [{ from_stop_id: 'D', to_stop_id: 'C', distance_m: 350, duration_sec: 300 }]);
 const index: DayIndex = {
   stopRoutes: new Map(),
   routeStops: new Map(),
@@ -63,7 +64,7 @@ function add(line: string, stops: string[], departures: number[][]) {
     );
     return trip;
   });
-  index.patterns.set(line, { routeId: line, stopSequence: stops, trips });
+  index.patterns.set(line, { patternId: line, routeId: line, stopSequence: stops, trips, departures: [], tripIndices: [] });
 }
 add('4', ['A', 'B', 'C', 'D'], [[0, 4, 8, 12]]);
 add(

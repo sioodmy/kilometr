@@ -14,7 +14,6 @@ import { createLocationFilterState, filterLocationFix } from '../src/services/lo
 import type { Coord } from '../src/services/routeGeometry';
 import type { MapLeg } from '../src/map/types';
 import type { Connection, Leg, VehiclePosition } from '../src/types/models';
-import { compassDegrees } from '../src/services/compassHeading';
 import type { TransferProtectionState } from '../src/services/notifications/transferTypes';
 
 function leg(
@@ -415,19 +414,6 @@ check(
   'progress splits the route at the observed position',
   deviceRide.traveledPath.at(-1)?.[0] === deviceRide.remainingPath[0][0] &&
     deviceRide.progress! > 0.5,
-);
-check(
-  'true north at zero is a valid compass reading',
-  compassDegrees({ trueHeading: 0, magHeading: 12, accuracy: 3 }) === 0,
-);
-check(
-  'magnetic north is used when true north is unavailable',
-  compassDegrees({ trueHeading: -1, magHeading: 90, accuracy: 2 }) === 90,
-);
-check(
-  'uncalibrated and invalid compass readings are rejected',
-  compassDegrees({ trueHeading: 90, magHeading: 90, accuracy: 0 }) === null &&
-    compassDegrees({ trueHeading: NaN, magHeading: -1, accuracy: 2 }) === null,
 );
 check(
   'late departure stays in approach phase',

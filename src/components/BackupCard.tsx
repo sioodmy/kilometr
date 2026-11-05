@@ -101,7 +101,7 @@ export function BackupCard() {
             })
             .catch((err) => {
               console.warn('[Backup] import failed:', err);
-              Alert.alert(b.backupImportConfirmTitle, failMessage('unreadable'));
+              Alert.alert(s.common.storageFailTitle, s.common.storageFailBody);
             })
             .finally(setIdle);
         },

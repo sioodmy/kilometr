@@ -13,7 +13,7 @@ import {
   mergeWidgetSnapshot,
   type WidgetPinned,
 } from '../widgetSnapshot';
-import { clockFromMs } from './format';
+import { clockFromMs, nearestDepartureMs, toAbsoluteMs } from './format';
 import { nowSecOfDay } from '../vehiclePosition';
 import {
   getNotificationPreferencesSync,
@@ -39,6 +39,8 @@ import type { NotificationPreferences, TripProgress, TrackedTrip } from './types
 import type { TransferProtectionState } from './transferTypes';
 import { hasTransfer } from './transferTypes';
 import { applyLiveDelays } from '../routing/engine';
+import { anchorConnectionToPlan } from '../routing/connectionTimes';
+import { sharedTimeMs } from '../../sharing/progress';
 import type { ForegroundTransferProtection } from './transferForeground';
 import { decodeSharedConnection } from '../../sharing/connection';
 import { sharedLiveConnection, sharedVehicle } from '../../sharing/native';
@@ -56,6 +58,8 @@ import { sharedLiveConnection, sharedVehicle } from '../../sharing/native';
 const STORAGE_KEY = 'kilometr.trackedTrip.v2';
 /** Ile po odjeździe kurs wciąż uznajemy za „swoje” połączenie. */
 const BOARDING_GRACE_SEC = 240;
+/** Zapis stanu i widgetu najwyżej raz na 30 s, i tylko gdy plan się zmienił. */
+const WRITE_THROTTLE_MS = 30_000;
 
 let tracked: TrackedTrip | null = null;
 let progress: TripProgress | null = null;
@@ -71,6 +75,27 @@ let ticker: ReturnType<typeof setInterval> | null = null;
 let refreshing: Promise<void> | null = null;
 let generation = 0;
 let foregroundProtection: ForegroundTransferProtection | null = null;
+let lastPersistAt = 0;
+let lastPersistSig = '';
+let lastWidgetAt = 0;
+let lastWidgetSig = '';
+
+/**
+ * Start i stop z UI przechodzą jeden po drugim. Dzięki temu nowy start czeka
+ * na pełne sprzątanie po poprzednim stopie i nie walczy z jego spóźnionymi
+ * awaitami. Wewnętrzne stop-y z refresh() omijają kolejkę (stopTrackingNow),
+ * bo start sam je wywołuje.
+ */
+let transition: Promise<unknown> = Promise.resolve();
+
+function enqueueTransition<T>(work: () => Promise<T>): Promise<T> {
+  const next = transition.then(work, work);
+  transition = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
 
 type Listener = (trip: TrackedTrip | null, p: TripProgress | null) => void;
 const listeners = new Set<Listener>();
@@ -116,6 +141,20 @@ function vehicleForTrip(p: TripProgress): VehiclePosition | null {
 
 // ─── Odświeżenie ─────────────────────────────────────────────────────────────
 
+/**
+ * Absolutny odjazd planu: data serwisowa przy udostępnionej podróży, inaczej
+ * wystąpienie wskazane przez `departInMin`. Sam `departureSec` nie rozróżnia
+ * kursu 24:xx od kursu z jutra, bo oba mają tę samą wartość.
+ */
+function departureMsOf(connection: Connection, at: Date): number {
+  if (connection.serviceDate)
+    return sharedTimeMs(connection.serviceDate, connection.departureSec);
+  const aligned = toAbsoluteMs(connection.departureSec, at);
+  const nearest = nearestDepartureMs(connection.departureSec, at);
+  const hinted = at.getTime() + Math.max(0, connection.departInMin ?? 0) * 60_000;
+  return Math.abs(nearest - hinted) <= Math.abs(aligned - hinted) ? nearest : aligned;
+}
+
 async function planTracked(): Promise<Connection | null> {
   if (!tracked) return null;
   const s = getSettingsSync();
@@ -157,13 +196,20 @@ async function refresh(): Promise<void> {
     const before = tracked;
     if (!before) return;
 
+    // Kurs 24:xx po północy należy jeszcze do wczorajszej doby serwisowej.
+    // Bez przesunięcia o całe doby odjazd wypadał jutro i śledzenie gasło.
+    if (before.plannedDepartureMs != null) {
+      const anchored = anchorConnectionToPlan(before.connection, before.plannedDepartureMs);
+      if (anchored !== before.connection) tracked = { ...before, connection: anchored };
+    }
+
     // Użytkownik wcisnął „Zakończ" pod powiadomieniem, a aplikacja dalej
     // żyje w tle. Bez tego sprawdzenia następny tick wskrzesiłby powiadomienie
     // i serwis, które właśnie zniknęły.
     const stopped = await consumeNativeStop();
     if (run !== generation) return;
     if (stopped) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
 
@@ -176,7 +222,7 @@ async function refresh(): Promise<void> {
       now: new Date(before.startedAt),
     });
     if (!before.protectionEnabled && Date.now() >= savedProgress.arriveAtMs + ARRIVED_LINGER_MS) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
 
@@ -188,7 +234,7 @@ async function refresh(): Promise<void> {
     if (current.sharedJourney) {
       const journey = decodeSharedConnection(current.sharedJourney);
       if (!journey) {
-        await stopTracking();
+        await stopTrackingNow();
         return;
       }
       tracked = {
@@ -226,7 +272,7 @@ async function refresh(): Promise<void> {
       (!prefs.trackingEnabled && !prefs.disruptionAlertsEnabled) ||
       ((trip.protectionEnabled || trip.sharedJourney) && !prefs.trackingEnabled)
     ) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
 
@@ -265,7 +311,7 @@ async function refresh(): Promise<void> {
     const stoppedDuringPublish = await consumeNativeStop();
     if (run !== generation) return;
     if (stoppedDuringPublish) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
     const arrivalAt = Math.max(p.arriveAtMs, trip.transfer?.arrivalAtMs ?? p.arriveAtMs);
@@ -281,7 +327,7 @@ async function refresh(): Promise<void> {
       }
       // Komunikat zostaje chwilę na ekranie blokady, potem sprzątamy.
       if (Date.now() - arrivedAt >= ARRIVED_LINGER_MS) {
-        await stopTracking();
+        await stopTrackingNow();
         return;
       }
     }
@@ -334,28 +380,43 @@ function rescheduleTicker(): void {
 // ─── Cykl życia ─────────────────────────────────────────────────────────────
 
 /** Uruchamia śledzenie podróży: Live Update, alerty odjazdu, widgety. */
-export async function startTracking(trip: TrackedTrip): Promise<void> {
+export function startTracking(trip: TrackedTrip): Promise<void> {
+  return enqueueTransition(() => startTrackingNow(trip));
+}
+
+async function startTrackingNow(trip: TrackedTrip): Promise<void> {
   if (!areNotificationsSupported()) {
     warnUnsupportedOnce('Śledzenie podróży');
   }
   await loadNotificationPreferences();
-  await stopTracking();
+  await stopTrackingNow();
   refreshing = null;
   await consumeNativeStop();
   generation++;
   const run = generation;
   const protectionEnabled =
     !trip.sharedJourney && trip.protectionEnabled === true && hasTransfer(trip.connection);
-  tracked = { ...trip, protectionEnabled, startedAt: Date.now() };
+  const startedAt = Date.now();
+  const startedDate = new Date(startedAt);
+  const plannedDepartureMs = departureMsOf(trip.connection, startedDate);
+  const connection = anchorConnectionToPlan(trip.connection, plannedDepartureMs, startedDate);
+  const walkSpeedMps = profileWalkSpeedMps(getSettingsSync().walkPace);
+  const initial = computeTripProgress(connection, { now: startedDate, walkSpeedMps });
+  tracked = {
+    ...trip,
+    connection,
+    protectionEnabled,
+    startedAt,
+    plannedDepartureMs,
+    plannedArrivalMs: initial.arriveAtMs,
+  };
   arrivedAt = 0;
   planLocked = !!trip.sharedJourney || protectionEnabled || trip.transfer?.status === 'changed';
   lastDelayMin = trip.connection.delayMin;
-  progress = computeTripProgress(trip.connection, {
-    walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
-  });
+  progress = initial;
   notify();
   rescheduleTicker();
-  await persist();
+  await persist(true);
   // Live Tracker musi odpytywać także w tle, bo powiadomienia o przesunięciach
   // (Live Update) potrzebują świeżych pozycji pojazdów.
   liveTracker.pin(true);
@@ -405,7 +466,7 @@ async function configureTransferProtection(run: number): Promise<void> {
       return;
     }
     tracked = { ...tracked, transferContextPath: path };
-    await persist();
+    await persist(true);
     if (progress) await presentTrip(tracked, progress, getNotificationPreferencesSync());
   } catch (error) {
     console.warn('[TransferProtection] setup:', error);
@@ -435,7 +496,7 @@ async function syncTransferProtection(): Promise<void> {
   const run = generation;
   try {
     if (Date.now() - trip.startedAt > 8 * 60 * 60_000) {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
     if (!usesNativeTransferProtection()) {
@@ -459,7 +520,7 @@ async function syncTransferProtection(): Promise<void> {
     )
       return;
     if (Date.now() - trip.startedAt > 8 * 60 * 60_000 || state.reason === 'expired') {
-      await stopTracking();
+      await stopTrackingNow();
       return;
     }
     const { connection: _connection, ...transfer } = state;
@@ -520,24 +581,37 @@ export async function acceptTransferAlternative(alternativeId: string): Promise<
 
 /**
  * Kończy śledzenie: serwis, alerty, widgety i zapisany stan.
+ *
+ * Sprzątanie sprawdza generation: spóźniony stop nie może zdjąć powiadomienia
+ * ani widgetu podróży, którą w międzyczasie uruchomił startTracking.
  */
-export async function stopTracking(): Promise<void> {
+export function stopTracking(): Promise<void> {
+  return enqueueTransition(() => stopTrackingNow());
+}
+
+async function stopTrackingNow(): Promise<void> {
   const contextPath = tracked?.transferContextPath;
-  generation++;
+  const run = ++generation;
   foregroundProtection = null;
   tracked = null;
   progress = null;
   arrivedAt = 0;
   planLocked = false;
   lastDelayMin = 0;
+  lastPersistAt = 0;
+  lastPersistSig = '';
+  lastWidgetAt = 0;
+  lastWidgetSig = '';
   if (ticker) {
     clearInterval(ticker);
     ticker = null;
   }
   liveTracker.pin(false);
   notify();
-  await cancelScheduledAlerts();
-  await dismissTracking();
+  // Zapis KV kasujemy od razu, przed długim sprzątaniem: restart w jego
+  // trakcie nie może wskrzesić podróży, którą użytkownik zakończył. Nowy
+  // start zapisze swoją podróż dopiero po tym usunięciu.
+  const removal = kvRemove(STORAGE_KEY);
   if (contextPath) {
     const { removeTransferSnapshot } = await import('./transferSnapshot');
     try {
@@ -546,7 +620,12 @@ export async function stopTracking(): Promise<void> {
       /* The service has already stopped. */
     }
   }
-  await kvRemove(STORAGE_KEY);
+  await cancelScheduledAlerts();
+  if (run !== generation || tracked) return;
+  await dismissTracking();
+  if (run !== generation || tracked) return;
+  await removal;
+  if (run !== generation || tracked) return;
   await mergeWidgetSnapshot({ pinned: null });
   notify();
 }
@@ -569,11 +648,15 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as TrackedTrip;
     if (!parsed?.connection) return null;
-    const savedProgress = computeTripProgress(parsed.connection, {
-      now: new Date(parsed.startedAt),
+    const startedDate = new Date(parsed.startedAt);
+    const plannedDepartureMs =
+      parsed.plannedDepartureMs ?? departureMsOf(parsed.connection, startedDate);
+    const connection = anchorConnectionToPlan(parsed.connection, plannedDepartureMs);
+    const savedProgress = computeTripProgress(connection, {
+      now: startedDate,
     });
     if (!parsed.protectionEnabled && Date.now() >= savedProgress.arriveAtMs + ARRIVED_LINGER_MS) {
-      await stopTracking();
+      await stopTrackingNow();
       return null;
     }
     // Kurs z innego miasta: jego przystanki i opóźnienia istnieją tylko w tamtej
@@ -585,6 +668,9 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     }
     tracked = {
       ...parsed,
+      connection,
+      plannedDepartureMs,
+      plannedArrivalMs: parsed.plannedArrivalMs ?? savedProgress.arriveAtMs,
       protectionEnabled:
         !parsed.sharedJourney &&
         parsed.protectionEnabled === true &&
@@ -600,7 +686,7 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     lastDelayMin = parsed.connection.delayMin;
     liveTracker.pin(true);
     await loadNotificationPreferences();
-    progress = computeTripProgress(parsed.connection, {
+    progress = computeTripProgress(connection, {
       walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
     });
     notify();
@@ -657,10 +743,43 @@ export function startTrackedTripListener(): void {
   });
 }
 
-async function persist(): Promise<void> {
+/** To, co realnie warto zapisać: plan, opóźnienia i status przesiadki. */
+function tripSignature(trip: TrackedTrip): string {
+  const c = trip.connection;
+  const legs = c.legs
+    .map((l) =>
+      [l.id, l.departAt, l.arriveAt, l.delaySec ?? '', l.live ? 1 : 0, l.liveNextStop ?? ''].join(
+        ':',
+      ),
+    )
+    .join(',');
+  const t = trip.transfer;
+  return [
+    c.id,
+    c.departureSec,
+    c.arrivalSec,
+    c.durationMin,
+    c.transfers,
+    c.delayMin,
+    c.live ? 1 : 0,
+    legs,
+    trip.protectionEnabled ? 1 : 0,
+    t?.status ?? '',
+    t?.activeLegIndex ?? '',
+    t?.nextLine ?? '',
+    t?.alternative?.id ?? '',
+  ].join('|');
+}
+
+async function persist(force = false): Promise<void> {
   if (!tracked) return;
+  const sig = tripSignature(tracked);
+  const now = Date.now();
+  if (!force && (sig === lastPersistSig || now - lastPersistAt < WRITE_THROTTLE_MS)) return;
+  lastPersistAt = now;
   try {
     await kvSet(STORAGE_KEY, JSON.stringify(tracked));
+    lastPersistSig = sig;
   } catch {
     // persist opcjonalny - bez niego śledzenie nie przeżywa restartu
   }
@@ -695,5 +814,10 @@ function pushWidgetPinned(trip: TrackedTrip | null): Promise<void> {
       open: conn.id,
     }),
   };
+  const sig = JSON.stringify(section);
+  const now = Date.now();
+  if (sig === lastWidgetSig || now - lastWidgetAt < WRITE_THROTTLE_MS) return Promise.resolve();
+  lastWidgetSig = sig;
+  lastWidgetAt = now;
   return mergeWidgetSnapshot({ pinned: section });
 }

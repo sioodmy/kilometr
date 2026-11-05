@@ -209,154 +209,157 @@ export function DepartureAlarmSheet({
         />
       )}
     >
-      <View style={styles.header}>
-        <Text style={styles.title} accessibilityRole="header">
-          {a.title}
-        </Text>
-        <Pressable
-          style={styles.close}
-          onPress={() => {
-            if (!busyRef.current) sheet.current?.close();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={s.common.close}
-        >
-          <X size={22} color={scheme.onSurface} />
-        </Pressable>
-      </View>
-      <BottomSheetScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
-      >
-        <Text style={styles.question}>{a.question}</Text>
-        <View style={[styles.stepper, compact && styles.stepperCompact]}>
+      <View style={styles.container} accessibilityViewIsModal>
+        <View style={styles.header}>
+          <Text style={styles.title} accessibilityRole="header">
+            {a.title}
+          </Text>
           <Pressable
+            style={styles.close}
+            onPress={() => {
+              if (!busyRef.current) sheet.current?.close();
+            }}
             accessibilityRole="button"
-            accessibilityLabel={a.less}
-            accessibilityState={{ disabled: busy || minutes <= 1 }}
-            disabled={busy || minutes <= 1}
-            onPress={() => changeMinutes(minutes - 1)}
-            style={({ pressed }) => [
-              styles.stepButton,
-              pressed && styles.pressed,
-              (busy || minutes <= 1) && styles.disabled,
-            ]}
+            accessibilityLabel={s.common.close}
           >
-            <Minus size={26} color={scheme.onSurface} />
-          </Pressable>
-          <View
-            style={styles.amount}
-            accessible
-            accessibilityLabel={a.lead(minutes)}
-            accessibilityLiveRegion="polite"
-          >
-            <Text style={[styles.number, compact && styles.numberCompact]}>{minutes}</Text>
-            <Text style={styles.unit}>{a.minutes(minutes)}</Text>
-            <Text style={styles.before}>{a.before}</Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={a.more}
-            accessibilityState={{ disabled: busy || minutes >= 60 }}
-            disabled={busy || minutes >= 60}
-            onPress={() => changeMinutes(minutes + 1)}
-            style={({ pressed }) => [
-              styles.stepButton,
-              pressed && styles.pressed,
-              (busy || minutes >= 60) && styles.disabled,
-            ]}
-          >
-            <Plus size={26} color={scheme.onSurface} />
+            <X size={22} color={scheme.onSurface} />
           </Pressable>
         </View>
-        <View style={[styles.presets, compact && styles.presetsCompact]}>
-          {[5, 10, 15, 30].map((value) => (
+        <BottomSheetScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+        >
+          <Text style={styles.question}>{a.question}</Text>
+          <View style={[styles.stepper, compact && styles.stepperCompact]}>
             <Pressable
-              key={value}
               accessibilityRole="button"
-              accessibilityLabel={a.lead(value)}
-              accessibilityState={{ disabled: busy, selected: minutes === value }}
-              disabled={busy}
-              onPress={() => changeMinutes(value)}
+              accessibilityLabel={a.less}
+              accessibilityState={{ disabled: busy || minutes <= 1 }}
+              disabled={busy || minutes <= 1}
+              onPress={() => changeMinutes(minutes - 1)}
               style={({ pressed }) => [
-                styles.preset,
-                compact && styles.presetCompact,
-                minutes === value && styles.presetSelected,
+                styles.stepButton,
                 pressed && styles.pressed,
+                (busy || minutes <= 1) && styles.disabled,
               ]}
             >
-              <Text style={[styles.presetText, minutes === value && styles.presetTextSelected]}>
-                {s.common.durMin(value)}
-              </Text>
+              <Minus size={26} color={scheme.onSurface} />
             </Pressable>
-          ))}
-        </View>
-        {timing && (
-          <View style={styles.schedule}>
-            <AlarmClock size={25} color={scheme.primary} />
-            <View style={styles.scheduleText}>
-              <Text style={styles.scheduleTitle}>{a.ringsAt(clockFromMs(timing.at))}</Text>
-              <Text style={styles.scheduleDate}>
-                {getAlarmDateFormatter(getLocaleSync()).format(new Date(timing.at))} ·{' '}
-                {a.journeyAt(clockFromMs(timing.journeyAt))}
-              </Text>
+            <View
+              style={styles.amount}
+              accessible
+              accessibilityLabel={a.lead(minutes)}
+              accessibilityLiveRegion="polite"
+            >
+              <Text style={[styles.number, compact && styles.numberCompact]}>{minutes}</Text>
+              <Text style={styles.unit}>{a.minutes(minutes)}</Text>
+              <Text style={styles.before}>{a.before}</Text>
             </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={a.more}
+              accessibilityState={{ disabled: busy || minutes >= 60 }}
+              disabled={busy || minutes >= 60}
+              onPress={() => changeMinutes(minutes + 1)}
+              style={({ pressed }) => [
+                styles.stepButton,
+                pressed && styles.pressed,
+                (busy || minutes >= 60) && styles.disabled,
+              ]}
+            >
+              <Plus size={26} color={scheme.onSurface} />
+            </Pressable>
           </View>
-        )}
-        <View style={styles.sound}>
-          <Volume2 size={17} color={scheme.onSurfaceVariant} />
-          <Text style={styles.noteText}>
-            {Platform.OS === 'ios' ? s.ios.alarmHint : a.soundHint}
-          </Text>
-        </View>
-        {alarm && !current && <Text style={styles.noteText}>{a.replace}</Text>}
-        {!supported && <Text style={styles.noteText}>{a.unavailable}</Text>}
-        {permissionHint && <Text style={styles.noteText}>{permissionHint}</Text>}
-        {(error || expired) && (
-          <Text style={styles.error} accessibilityRole="alert">
-            {error ?? (timing && timing.journeyAt > now ? a.tooLate : a.past)}
-          </Text>
-        )}
-        <Pressable
-          onPress={() => void submit()}
-          disabled={confirmationDisabled}
-          accessibilityRole="button"
-          accessibilityLabel={actionLabel}
-          accessibilityState={{ busy, disabled: confirmationDisabled }}
-          style={({ pressed }) => [
-            styles.confirm,
-            pressed && styles.pressed,
-            confirmationDisabled && styles.disabled,
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color={scheme.onPrimary} />
-          ) : (
-            <AlarmClock size={21} color={scheme.onPrimary} />
+          <View style={[styles.presets, compact && styles.presetsCompact]}>
+            {[5, 10, 15, 30].map((value) => (
+              <Pressable
+                key={value}
+                accessibilityRole="button"
+                accessibilityLabel={a.lead(value)}
+                accessibilityState={{ disabled: busy, selected: minutes === value }}
+                disabled={busy}
+                onPress={() => changeMinutes(value)}
+                style={({ pressed }) => [
+                  styles.preset,
+                  compact && styles.presetCompact,
+                  minutes === value && styles.presetSelected,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.presetText, minutes === value && styles.presetTextSelected]}>
+                  {s.common.durMin(value)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {timing && (
+            <View style={styles.schedule}>
+              <AlarmClock size={25} color={scheme.primary} />
+              <View style={styles.scheduleText}>
+                <Text style={styles.scheduleTitle}>{a.ringsAt(clockFromMs(timing.at))}</Text>
+                <Text style={styles.scheduleDate}>
+                  {getAlarmDateFormatter(getLocaleSync()).format(new Date(timing.at))} ·{' '}
+                  {a.journeyAt(clockFromMs(timing.journeyAt))}
+                </Text>
+              </View>
+            </View>
           )}
-          <Text style={styles.confirmText}>{actionLabel}</Text>
-        </Pressable>
-        {current && (
+          <View style={styles.sound}>
+            <Volume2 size={17} color={scheme.onSurfaceVariant} />
+            <Text style={styles.noteText}>
+              {Platform.OS === 'ios' ? s.ios.alarmHint : a.soundHint}
+            </Text>
+          </View>
+          {alarm && !current && <Text style={styles.noteText}>{a.replace}</Text>}
+          {!supported && <Text style={styles.noteText}>{a.unavailable}</Text>}
+          {permissionHint && <Text style={styles.noteText}>{permissionHint}</Text>}
+          {(error || expired) && (
+            <Text style={styles.error} accessibilityRole="alert">
+              {error ?? (timing && timing.journeyAt > now ? a.tooLate : a.past)}
+            </Text>
+          )}
           <Pressable
-            onPress={() => void remove()}
-            disabled={busy}
+            onPress={() => void submit()}
+            disabled={confirmationDisabled}
             accessibilityRole="button"
-            accessibilityLabel={a.remove}
-            accessibilityState={{ disabled: busy }}
+            accessibilityLabel={actionLabel}
+            accessibilityState={{ busy, disabled: confirmationDisabled }}
             style={({ pressed }) => [
-              styles.remove,
+              styles.confirm,
               pressed && styles.pressed,
-              busy && styles.disabled,
+              confirmationDisabled && styles.disabled,
             ]}
           >
-            <Text style={styles.removeText}>{a.remove}</Text>
+            {busy ? (
+              <ActivityIndicator color={scheme.onPrimary} />
+            ) : (
+              <AlarmClock size={21} color={scheme.onPrimary} />
+            )}
+            <Text style={styles.confirmText}>{actionLabel}</Text>
           </Pressable>
-        )}
-      </BottomSheetScrollView>
+          {current && (
+            <Pressable
+              onPress={() => void remove()}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={a.remove}
+              accessibilityState={{ disabled: busy }}
+              style={({ pressed }) => [
+                styles.remove,
+                pressed && styles.pressed,
+                busy && styles.disabled,
+              ]}
+            >
+              <Text style={styles.removeText}>{a.remove}</Text>
+            </Pressable>
+          )}
+        </BottomSheetScrollView>
+      </View>
     </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
   sheet: {
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: 32,

@@ -79,8 +79,9 @@ function versionCodeFromVersion(version) {
 // Podpis release kluczem upload z Play Console. CI przekazuje sekrety w env
 // (ANDROID_KEYSTORE_*), do wygenerowanego android/app/build.gradle trafia
 // wyłącznie ścieżka keystore, a hasła czyta gradle z env w chwili builda.
-// Bez env (pipeline APK i buildy lokalne) buildType release zostaje na
-// debug.keystore, więc inne buildy zostają bez zmian.
+// Bez env (buildy lokalne i podglądy) buildType release zostaje na debug.
+// ANDROID_SIGNING_REQUIRED=1 (kanał prod) zamienia brak sekretów w błąd,
+// zamiast po cichu podpisywać publicznym debug keystore.
 const withAndroidSigning = (config) =>
   withAppBuildGradle(config, (mod) => {
     if (process.env.FDROID_BUILD === '1') {
@@ -91,6 +92,14 @@ const withAndroidSigning = (config) =>
     const keystorePath = process.env.ANDROID_KEYSTORE_PATH;
     const storePassword = process.env.ANDROID_KEYSTORE_PASSWORD;
     const keyAlias = process.env.ANDROID_KEYSTORE_ALIAS;
+    if (
+      process.env.ANDROID_SIGNING_REQUIRED === '1' &&
+      (!keystorePath || !storePassword || !keyAlias)
+    ) {
+      throw new Error(
+        'Kanał prod wymaga podpisu kluczem upload: brak ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD lub ANDROID_KEYSTORE_ALIAS.',
+      );
+    }
     if (!keystorePath || !storePassword || !keyAlias) return mod;
 
     const gradle = mod.modResults.contents;

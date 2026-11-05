@@ -52,13 +52,55 @@ interface SchedulePoint {
   timeSec: number;
 }
 
+interface LegWindow {
+  from: number;
+  to: number;
+  crossesMidnight: boolean;
+}
+
+/** Okno nogi w sekundach; koniec po północy dostaje +86400. */
+function legWindow(leg: MapLeg): LegWindow | null {
+  const from = timeStringToSeconds(leg.departAt);
+  const rawTo = timeStringToSeconds(leg.arriveAt);
+  if (!isFinite(from) || !isFinite(rawTo)) return null;
+  const crossesMidnight = rawTo <= from;
+  return { from, to: crossesMidnight ? rawTo + 86400 : rawTo, crossesMidnight };
+}
+
+/** „Teraz” w tej samej dobie co okno nogi: po północy przesuwa zegar o dobę. */
+function windowNow(window: LegWindow, nowSec: number): number {
+  return window.crossesMidnight && nowSec < window.from - 300 ? nowSec + 86400 : nowSec;
+}
+
+/**
+ * Czas przystanku w zegarze okna nogi. GTFS trzyma kursy nocne jako 24:xx,
+ * a noga po północy ma już 00:xx, więc bierzemy wystąpienie najbliższe okna.
+ */
+function windowTime(window: LegWindow, timeSec: number): number {
+  let best = timeSec;
+  let bestDist = Infinity;
+  for (const candidate of [timeSec - 86400, timeSec, timeSec + 86400]) {
+    const dist =
+      candidate < window.from
+        ? window.from - candidate
+        : candidate > window.to
+          ? candidate - window.to
+          : 0;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 /**
  * Oś czasu wzdłuż nogi: czas rozkładowy dla każdego przystanku + końców.
  * Dzięki temu wiemy, czego oczekiwać w dowolnym miejscu trasy.
  */
 function legSchedule(leg: MapLeg, coords: Coord[]): SchedulePoint[] {
-  const fromSec = timeStringToSeconds(leg.departAt);
-  const toSec = timeStringToSeconds(leg.arriveAt);
+  const window = legWindow(leg);
+  if (!window) return [];
   const pts: SchedulePoint[] = [];
 
   for (const stop of leg.stops) {
@@ -66,14 +108,14 @@ function legSchedule(leg: MapLeg, coords: Coord[]): SchedulePoint[] {
     if (!p) continue;
     const t = stop.departSec ?? stop.arriveSec;
     if (t == null || !isFinite(t)) continue;
-    pts.push({ alongM: p.alongM, timeSec: t });
+    pts.push({ alongM: p.alongM, timeSec: windowTime(window, t) });
   }
   // Końce nogi są rozstrzygające: plan mówi, o której godzinie wsiadamy
   // i wysiadamy, a czasy przystanków pośrednich bywają tylko wejściowe.
-  pts.unshift({ alongM: 0, timeSec: fromSec });
+  pts.unshift({ alongM: 0, timeSec: window.from });
   pts.push({
     alongM: Math.max(0, distanceM(coords[0], coords[coords.length - 1])),
-    timeSec: toSec,
+    timeSec: window.to,
   });
   pts.sort((a, b) => a.alongM - b.alongM);
   return pts;
@@ -100,10 +142,10 @@ function expectedTimeAt(schedule: SchedulePoint[], alongM: number, projection: P
 
 /** Czy noga w ogóle jest teraz obsługiwana (połowa kursu bez sensu pokazywać). */
 export function isLegRunning(leg: MapLeg, nowSec: number): boolean {
-  const from = timeStringToSeconds(leg.departAt);
-  const to = timeStringToSeconds(leg.arriveAt);
-  if (!isFinite(from) || !isFinite(to) || to <= from) return false;
-  return nowSec >= from - 300 && nowSec <= to + 600;
+  const window = legWindow(leg);
+  if (!window) return false;
+  const now = windowNow(window, nowSec);
+  return now >= window.from - 300 && now <= window.to + 600;
 }
 
 function isSameRailLine(a: string, b: string): boolean {
@@ -132,6 +174,9 @@ export function matchVehicleToLeg(
   if (!coords || coords.length < 2) return null;
   if (!leg.line || !isLegRunning(leg, options.nowSec)) return null;
 
+  const window = legWindow(leg);
+  if (!window) return null;
+  const nowSec = windowNow(window, options.nowSec);
   const schedule = legSchedule(leg, coords);
   const line = leg.line.trim().toUpperCase();
 
@@ -158,7 +203,7 @@ export function matchVehicleToLeg(
 
     const expected = expectedTimeAt(schedule, p.alongM, p);
     if (!expected) return null;
-    const delay = options.nowSec - expected;
+    const delay = nowSec - expected;
     if (delay < MIN_DELAY_SEC || delay > MAX_DELAY_SEC) return null;
 
     let score = Math.abs(delay) / 60 + p.offsetM / 200;

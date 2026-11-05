@@ -4,6 +4,7 @@
 import { PWR_BUILDINGS } from '../data/pwrBuildings';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { fuzzyMatchBatch } from '../gtfs/fuzzy';
+import { tr } from '../i18n';
 import type { Suggestion } from '../types/models';
 
 const DIST_PENALTY_CAP = 40;
@@ -36,6 +37,7 @@ export function searchPwrBuildings(
   const batchResults = fuzzyMatchBatch(normQ, FULL_TARGETS);
   const scored: { item: Suggestion; score: number }[] = [];
 
+  const t = tr();
   for (let i = 0; i < PWR_BUILDINGS.length; i++) {
     const b = PWR_BUILDINGS[i];
     const compactCode = COMPACT_CODES[i];
@@ -57,7 +59,7 @@ export function searchPwrBuildings(
     scored.push({
       item: {
         id: `pwr-${compactCode}`,
-        title: `Budynek ${b.code} Politechniki Wrocławskiej`,
+        title: t.places.pwrBuildingTitle(b.code),
         address: b.address,
         kind: 'place',
         category: 'school',
