@@ -30,7 +30,7 @@ function splitLines(content: string): string[] {
   return content.replace(/^\uFEFF/, '').split(/\r?\n/);
 }
 
-export function parseStopsContent(content: string): GtfsStop[] {
+function parseStopsContent(content: string): GtfsStop[] {
   const lines = splitLines(content);
   if (lines.length === 0) return [];
   const header = parseCsvLine(lines[0]);
@@ -190,9 +190,28 @@ export function parseTripsContent(content: string, activeServiceIds?: Set<string
 }
 
 /**
+ * Parsuje wymagane pliki GTFS przed wyczyszczeniem bazy. Zero rekordów
+ * w którymkolwiek pliku oznacza niekompletne archiwum, nie pusty rozkład.
+ */
+export async function parseRequiredGtfsFiles(files: {
+  stops: string | null;
+  trips: string | null;
+  stopTimes: string | null;
+}): Promise<{ stops: GtfsStop[]; trips: GtfsTrip[]; stopTimesRows: number }> {
+  const stops = files.stops ? parseStopsContent(files.stops) : [];
+  const trips = files.trips ? parseTripsContent(files.trips) : [];
+  const stopTimesRows = files.stopTimes
+    ? await parseStopTimesBatched(files.stopTimes, () => {})
+    : 0;
+  return { stops, trips, stopTimesRows };
+}
+
+/**
  * Parsuje stop_times w chunkach - stop_times.txt ma ~46 MB, więc nie trzymamy
  * całego pliku w pamięci jako tablicy linii na telefonie. `onBatch` dostaje
  * porcje po `batchSize` rekordów; caller wrzuca je do SQLite w transakcji.
+ * Wiersze bez stop_id lub stop_sequence (np. ucięty ostatni wiersz) są
+ * pomijane, żeby przerwany plik nie udawał kompletnego.
  */
 export async function parseStopTimesBatched(
   content: string,
@@ -230,7 +249,10 @@ export async function parseStopTimesBatched(
     // stop_times.txt nie zawiera cudzysłowów ani przecinków w wartościach - szybki split
     const cols = trimmed.split(',');
     const trip_id = cols[tripIdx]?.trim();
-    if (!trip_id) continue;
+    const stop_id = cols[stopIdx]?.trim();
+    const rawSeq = cols[seqIdx]?.trim();
+    const stop_sequence = Number(rawSeq);
+    if (!trip_id || !stop_id || !rawSeq || !Number.isInteger(stop_sequence) || stop_sequence < 0) continue;
     if (activeTripIds && !activeTripIds.has(trip_id)) continue;
     const arrTime = cols[arrIdx]?.trim() || '00:00:00';
     const depTime = cols[depIdx]?.trim() || arrTime;
@@ -240,8 +262,8 @@ export async function parseStopTimesBatched(
       departure_time: depTime,
       arrival_sec: timeStringToSeconds(arrTime),
       departure_sec: timeStringToSeconds(depTime),
-      stop_id: cols[stopIdx]?.trim(),
-      stop_sequence: Number(cols[seqIdx]) || 0,
+      stop_id,
+      stop_sequence,
     });
     if (batch.length >= batchSize) {
       total += batch.length;

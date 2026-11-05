@@ -15,7 +15,7 @@ import { TIMETABLE } from './gtfsConfig';
 import { decompressGzipFile } from '../../modules/kilometr-raptor';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, setMeta } from './gtfsDatabase';
+import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, GTFS_IMPORT_COMPLETE_META, setMeta } from './gtfsDatabase';
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -247,6 +247,13 @@ export async function downloadPrebuiltDb(
     if (chk?.integrity_check !== 'ok' || !s?.n || !t?.n || !st?.n) {
       throw new Error(`weryfikacja bazy: integrity=${chk?.integrity_check} stops=${s?.n} trips=${t?.n} times=${st?.n}`);
     }
+    // Znacznik kompletności już w pliku tymczasowym: po podmianie baza jest
+    // gotowa nawet gdy aplikacja padnie przed zapisem met wersji.
+    await probe.runAsync(
+      'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)',
+      GTFS_IMPORT_COMPLETE_META,
+      '1',
+    );
   } catch (err) {
     try {
       await probe.closeAsync();
@@ -305,17 +312,19 @@ export async function downloadPrebuiltDb(
 
   // Reopen (initDb robi CREATE IF NOT EXISTS - na gotowej bazie to no-op)
   // i zapisz mety wersji, żeby manifest nie ściągał w kółko tego samego.
+  // Mety idą do bazy miasta z manifestu, nie do aktualnie aktywnej: miasto
+  // mogło się zmienić w trakcie podmiany pliku.
   await getGtfsDb();
-  await setMeta('timetable_version', manifest.version);
-  await setMeta('gtfs_imported_at', new Date().toISOString());
-  await setMeta('gtfs_source', 'network');
+  await setMeta('timetable_version', manifest.version, city.id);
+  await setMeta('gtfs_imported_at', new Date().toISOString(), city.id);
+  await setMeta('gtfs_source', 'network', city.id);
   try {
     await setMeta('feeds', JSON.stringify({
       mpk: manifest.sources.mpk?.effectiveDate ?? null,
       kd: manifest.sources.kd?.schedulesVersion ?? null,
       ztp: manifest.sources.ztp?.fingerprint ?? null,
       kml: manifest.sources.kml?.version ?? null,
-    }));
+    }), city.id);
   } catch {
     // meta opisowa - nie blokuje gotowości
   }
