@@ -517,8 +517,19 @@ export const pl = {
     offlineMapDelete: 'Usuń',
     offlineMapDeleteA11y: 'Usuń mapę offline',
     offlineMapDeleteTitle: 'Usunąć mapę offline?',
-    offlineMapDeleteBody: (mb: number) =>
-      `Zwolni się około ${mb} MB. Mapa nadal będzie działać online. Ponowne pobranie będzie możliwe dopiero za miesiąc.`,
+    offlineMapDeleteBody: (mb: number, invalid: boolean) =>
+      invalid
+        ? `Zwolni się około ${mb} MB. Uszkodzony plik zniknie, a pobieranie będzie od razu dostępne.`
+        : `Zwolni się około ${mb} MB. Mapa nadal będzie działać online. Ponowne pobranie będzie możliwe dopiero za miesiąc.`,
+    offlineMapInvalid: (name: string) =>
+      `Plik mapy ${name} jest uszkodzony. Usuń go i pobierz mapę ponownie.`,
+    offlineMapInvalidDownload:
+      'Pobrany plik mapy był uszkodzony i został usunięty. Spróbuj ponownie.',
+    offlineMapInvalidShort: 'uszkodzona',
+    offlineMapOthersTitle: 'Mapy innych miast',
+    offlineMapOthersHint: 'Pobrane wcześniej. Możesz je usunąć osobno, żeby zwolnić miejsce.',
+    offlineMapSize: (mb: number) => `${mb} MB`,
+    offlineMapDeleteCityA11y: (name: string) => `Usuń mapę ${name}`,
     offlineMapFailTitle: 'Nie udało się pobrać mapy',
     offlineMapFailBody: 'Sprawdź połączenie i spróbuj ponownie. Reszta aplikacji działa normalnie.',
     offlineMapCooldownTitle: 'Mapa już była pobierana',

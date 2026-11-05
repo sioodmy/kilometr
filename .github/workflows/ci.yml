@@ -183,6 +183,9 @@ jobs:
       - name: Run logic tests (Offline cache)
         run: nix develop .#ci -c npm run check:offline-cache
 
+      - name: Run logic tests (Tile pack validation)
+        run: nix develop .#ci -c npm run check:tile-pack
+
       - name: Run logic tests (Places per city)
         run: nix develop .#ci -c npm run check:places
 
