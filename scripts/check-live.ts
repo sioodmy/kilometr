@@ -18,6 +18,7 @@
  */
 
 import { liveTracker, snapshotIsUsable } from '../src/services/liveTracker';
+import type { RawVehicleRow, TrackedVehicle } from '../src/services/liveTracker';
 import { AppState } from 'react-native';
 import {
   fetchZbKd,
@@ -26,13 +27,15 @@ import {
   getCandidateTrainNumbers,
   type ZbKdVehicle,
 } from '../src/services/zbiorkom';
-import { gtfsStore } from '../src/services/routing/store';
+import { gtfsStore, type DayIndex } from '../src/services/routing/store';
 import {
   locateLiveStopPosition,
   findNearestStopOnRoute,
   positionToRank,
 } from '../src/services/vehiclePosition';
+import { isLegRunning, matchVehicleToLeg } from '../src/services/liveVehicle';
 import type { Leg, LegStop } from '../src/types/models';
+import type { MapLeg } from '../src/map/types';
 
 // ─── Framework asercji ─────────────────────────────────────────────────────
 
@@ -812,6 +815,300 @@ async function main(): Promise<void> {
   gtfsStore.stops.delete('KD:S:1');
   gtfsStore.stops.delete('KD:S:2');
   gtfsStore.stopTimes.delete('KD:T:1:2:20261010');
+
+  // ─── Noc: kursy 24:xx i noga przez północ ───────────────────────────────
+  describe('Noc: kurs 24:xx po północy ma dopasowanie live');
+  const nightStops: LegStop[] = [
+    { stopId: 'NIGHT_A', name: 'Noc A', lat: 51.1, lon: 17, seq: 1 },
+    { stopId: 'NIGHT_B', name: 'Noc B', lat: 51.104, lon: 17, seq: 2 },
+  ];
+  for (const stop of nightStops) {
+    gtfsStore.stops.set(stop.stopId, {
+      stop_id: stop.stopId,
+      stop_name: stop.name,
+      stop_lat: stop.lat ?? 0,
+      stop_lon: stop.lon ?? 0,
+      stop_code: '',
+      normalized_name: stop.name,
+    });
+  }
+  gtfsStore.routes.set('NIGHT_R', {
+    route_id: 'NIGHT_R',
+    route_short_name: 'N',
+    route_long_name: '',
+    route_type: 3,
+  });
+  gtfsStore.trips.set('NIGHT_24', {
+    trip_id: 'NIGHT_24',
+    route_id: 'NIGHT_R',
+    service_id: 'night',
+    trip_headsign: 'Nocny',
+    direction_id: 0,
+    shape_id: '',
+  });
+  gtfsStore.stopTimes.set('NIGHT_24', [
+    { trip_id: 'NIGHT_24', stop_id: 'NIGHT_A', stop_sequence: 0, arrival_sec: H(24, 5), departure_sec: H(24, 5) },
+    { trip_id: 'NIGHT_24', stop_id: 'NIGHT_B', stop_sequence: 1, arrival_sec: H(24, 15), departure_sec: H(24, 15) },
+  ]);
+  const emptyNightIndex: DayIndex = {
+    stopRoutes: new Map(),
+    routeStops: new Map(),
+    routeTrips: new Map(),
+    patterns: new Map(),
+  };
+  const overnightIndex: DayIndex = {
+    stopRoutes: new Map([
+      ['NIGHT_A', new Set(['night-p'])],
+      ['NIGHT_B', new Set(['night-p'])],
+    ]),
+    routeStops: new Map([['night-p', ['NIGHT_A', 'NIGHT_B']]]),
+    routeTrips: new Map([
+      [
+        'night-p',
+        [
+          {
+            trip_id: 'NIGHT_24',
+            route_id: 'NIGHT_R',
+            service_id: 'night',
+            trip_headsign: 'Nocny',
+            direction_id: 0,
+            shape_id: '',
+          },
+        ],
+      ],
+    ]),
+    patterns: new Map([
+      [
+        'night-p',
+        {
+          patternId: 'night-p',
+          routeId: 'NIGHT_R',
+          stopSequence: ['NIGHT_A', 'NIGHT_B'],
+          trips: [
+            {
+              trip_id: 'NIGHT_24',
+              route_id: 'NIGHT_R',
+              service_id: 'night',
+              trip_headsign: 'Nocny',
+              direction_id: 0,
+              shape_id: '',
+            },
+          ],
+          departures: [],
+          tripIndices: [],
+        },
+      ],
+    ]),
+  };
+  const nightSlice = gtfsStore.getDayIndexSlice;
+  gtfsStore.getDayIndexSlice = async (_weekday, _date, _fromSec, toSec) =>
+    toSec >= 86400 ? overnightIndex : emptyNightIndex;
+  const nightInternals = liveTracker as unknown as {
+    liveDayIndex(
+      now: Date,
+      nowSec: number,
+    ): Promise<{ dayIndex: DayIndex; offsets?: Map<string, number> }>;
+    matchRowsRust(
+      rows: RawVehicleRow[],
+      dayIndex: DayIndex,
+      nowSec: number,
+      offsets?: Map<string, number>,
+    ): Map<string, { tracked: TrackedVehicle; score: number }> | null;
+    matchRow(
+      row: RawVehicleRow,
+      dayIndex: DayIndex,
+      nowSec: number,
+      patternPolylines: Map<string, never[]>,
+      offsets?: Map<string, number>,
+    ): { tracked: TrackedVehicle; score: number };
+  };
+  try {
+    const slices = await nightInternals.liveDayIndex(new Date(2026, 9, 20, 0, 10), 600);
+    expect('wczorajszy wzorzec dołączony', slices.dayIndex.patterns.has('y_night-p'), true);
+    expect('offset wczorajszego wzorca', slices.offsets?.get('y_night-p'), -86400);
+    const nightRow: RawVehicleRow = {
+      name: 'N',
+      type: 'bus',
+      x: 51.102,
+      y: 17,
+      k: 1,
+      timestamp: Date.now(),
+    };
+    const rust = nightInternals.matchRowsRust(
+      [nightRow],
+      slices.dayIndex,
+      600,
+      slices.offsets,
+    );
+    expect('24:xx po północy ma tripId', rust?.get('N-1')?.tracked.matchedTripId, 'NIGHT_24');
+    expect(
+      '24:xx po północy ma opóźnienie',
+      Math.abs(rust?.get('N-1')?.tracked.delaySec ?? 9999) <= 60,
+      true,
+    );
+    const fallback = nightInternals.matchRow(
+      nightRow,
+      slices.dayIndex,
+      600,
+      new Map<string, never[]>(),
+      slices.offsets,
+    );
+    expect('fallback TS też trafia w 24:xx', fallback.tracked.matchedTripId, 'NIGHT_24');
+  } finally {
+    gtfsStore.getDayIndexSlice = nightSlice;
+  }
+  gtfsStore.routes.delete('NIGHT_R');
+  gtfsStore.trips.delete('NIGHT_24');
+  gtfsStore.stopTimes.delete('NIGHT_24');
+  for (const stop of nightStops) gtfsStore.stops.delete(stop.stopId);
+
+  describe('Noc: noga 23:50 -> 00:20 po północy');
+  const nightLeg: Leg = {
+    id: 'night-leg',
+    mode: 'bus',
+    line: 'N',
+    fromStop: 'Noc A',
+    toStop: 'Noc B',
+    fromStopId: 'NIGHT_A',
+    toStopId: 'NIGHT_B',
+    fromLat: 51.1,
+    fromLon: 17,
+    toLat: 51.104,
+    toLon: 17,
+    departAt: '23:50',
+    arriveAt: '00:20',
+    stopsCount: 1,
+    live: false,
+    tripId: 'NIGHT_24',
+    intermediateStops: nightStops,
+  };
+  const nightMapLeg: MapLeg = {
+    id: 'night-map',
+    mode: 'bus',
+    line: 'N',
+    color: '#000',
+    fromStop: 'Noc A',
+    toStop: 'Noc B',
+    departAt: '23:50',
+    arriveAt: '00:20',
+    stopsCount: 1,
+    live: false,
+    tripId: 'NIGHT_24',
+    approx: true,
+    stops: [
+      {
+        id: 'night-a',
+        legId: 'night-map',
+        name: 'Noc A',
+        lat: 51.1,
+        lon: 17,
+        seq: 0,
+        role: 'board',
+        arriveSec: H(23, 50),
+      },
+      {
+        id: 'night-b',
+        legId: 'night-map',
+        name: 'Noc B',
+        lat: 51.104,
+        lon: 17,
+        seq: 1,
+        role: 'alight',
+        arriveSec: H(0, 20),
+      },
+    ],
+  };
+  const midnightNow = new Date(2026, 9, 10, 0, 10).getTime();
+  const nightVehicle: TrackedVehicle = {
+    vehicleId: 'N-1',
+    line: 'N',
+    type: 'bus',
+    lat: 51.10267,
+    lon: 17,
+    delaySec: 0,
+    matchedTripId: 'NIGHT_24',
+    currentStopName: 'Noc A',
+    nextStopName: 'Noc B',
+    updatedAt: midnightNow,
+  };
+  expect('noga działa po północy', isLegRunning(nightMapLeg, 600), true);
+  const matchedLeg = matchVehicleToLeg(
+    [nightVehicle],
+    nightMapLeg,
+    [
+      [51.1, 17],
+      [51.104, 17],
+    ],
+    { nowSec: 600 },
+  );
+  expect('pojazd przypięty do nogi przez północ', matchedLeg?.vehicle.vehicleId, 'N-1');
+  expect('opóźnienie nogi przez północ', Math.abs(matchedLeg?.delaySec ?? 9999) <= 60, true);
+
+  const estimate = locateLiveStopPosition(nightStops, nightLeg, null, null, midnightNow);
+  expect('szacunek po północy nie gubi nogi', estimate?.gap, 0);
+  expect('szacunek po północy to estimate', estimate?.source, 'estimate');
+  const liveOnLeg = locateLiveStopPosition(nightStops, nightLeg, nightVehicle, null, midnightNow);
+  expect('live GPS po północy trzyma odcinek', liveOnLeg?.gap, 0);
+  expect('live GPS po północy to vehicle', liveOnLeg?.source, 'vehicle');
+  const threeStops: LegStop[] = [
+    { stopId: 'NIGHT_A', name: 'Noc A', lat: 51.1, lon: 17, seq: 1, departSec: H(23, 50) },
+    { stopId: 'NIGHT_M', name: 'Noc M', lat: 51.102, lon: 17, seq: 2, departSec: H(0, 5) },
+    { stopId: 'NIGHT_B', name: 'Noc B', lat: 51.104, lon: 17, seq: 3, arriveSec: H(0, 20) },
+  ];
+  const fromStopTimes = locateLiveStopPosition(
+    threeStops,
+    { ...nightLeg, intermediateStops: threeStops },
+    null,
+    null,
+    midnightNow,
+  );
+  expect('szacunek z czasów przystanków przez północ', fromStopTimes?.gap, 1);
+
+  // Noga w całości po północy: GTFS trzyma czasy jako 24:05/24:25, a plan
+  // pokazuje 00:05/00:25. Marker musi działać jak przy przejściu północy.
+  const afterMidnightStops: LegStop[] = [
+    { stopId: 'NIGHT_A', name: 'Noc A', lat: 51.1, lon: 17, seq: 1, departSec: H(24, 5) },
+    { stopId: 'NIGHT_B', name: 'Noc B', lat: 51.104, lon: 17, seq: 2, arriveSec: H(24, 25) },
+  ];
+  const afterMidnightLeg: MapLeg = {
+    ...nightMapLeg,
+    id: 'night-after-midnight',
+    departAt: '00:05',
+    arriveAt: '00:25',
+    stops: [
+      { ...nightMapLeg.stops[0], id: 'night-a2', legId: 'night-after-midnight', arriveSec: H(24, 5) },
+      { ...nightMapLeg.stops[1], id: 'night-b2', legId: 'night-after-midnight', arriveSec: H(24, 25) },
+    ],
+  };
+  expect('noga 24:xx po północy działa', isLegRunning(afterMidnightLeg, H(0, 15)), true);
+  const afterMidnightMatch = matchVehicleToLeg(
+    [{ ...nightVehicle, lat: 51.102 }],
+    afterMidnightLeg,
+    [
+      [51.1, 17],
+      [51.104, 17],
+    ],
+    { nowSec: H(0, 15) },
+  );
+  expect(
+    'pojazd przypięty do nogi 24:xx po północy',
+    afterMidnightMatch?.vehicle.vehicleId,
+    'N-1',
+  );
+  const afterMidnightPosition = locateLiveStopPosition(
+    afterMidnightStops,
+    {
+      ...nightLeg,
+      id: 'night-after-midnight-leg',
+      departAt: '00:05',
+      arriveAt: '00:25',
+      intermediateStops: afterMidnightStops,
+    },
+    null,
+    null,
+    new Date(2026, 9, 10, 0, 15).getTime(),
+  );
+  expect('szacunek nogi 24:xx po północy', afterMidnightPosition?.gap, 0);
 
   // ─── LiveTracker.subscribe ──────────────────────────────────────────────
   describe('LiveTracker: subskrypcje zdarzeń');

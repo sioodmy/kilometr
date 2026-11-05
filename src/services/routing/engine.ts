@@ -656,8 +656,10 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   );
   const slices = await buildSearchSlices(rawTarget, arrivalMode);
   const { departureSec, dayOffsetSec, searchStartSec, searchIndex, patternOffsets } = slices;
+  // Przyjazd na jutro: kurs może wyjechać jeszcze dziś wieczorem, więc dolna
+  // granica to „teraz” w zegarze dnia docelowego, a nie start okna przyjazdu.
   const earliestDepartureSec = arrivalMode && rawTarget >= currentSec
-    ? Math.max(searchStartSec, currentSec - dayOffsetSec)
+    ? currentSec - dayOffsetSec
     : searchStartSec;
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));
