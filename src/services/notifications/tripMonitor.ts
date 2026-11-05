@@ -13,7 +13,7 @@ import {
   mergeWidgetSnapshot,
   type WidgetPinned,
 } from '../widgetSnapshot';
-import { clockFromMs } from './format';
+import { clockFromMs, nearestDepartureMs, toAbsoluteMs } from './format';
 import { nowSecOfDay } from '../vehiclePosition';
 import {
   getNotificationPreferencesSync,
@@ -39,6 +39,8 @@ import type { NotificationPreferences, TripProgress, TrackedTrip } from './types
 import type { TransferProtectionState } from './transferTypes';
 import { hasTransfer } from './transferTypes';
 import { applyLiveDelays } from '../routing/engine';
+import { anchorConnectionToPlan } from '../routing/connectionTimes';
+import { sharedTimeMs } from '../../sharing/progress';
 import type { ForegroundTransferProtection } from './transferForeground';
 import { decodeSharedConnection } from '../../sharing/connection';
 import { sharedLiveConnection, sharedVehicle } from '../../sharing/native';
@@ -116,6 +118,20 @@ function vehicleForTrip(p: TripProgress): VehiclePosition | null {
 
 // ─── Odświeżenie ─────────────────────────────────────────────────────────────
 
+/**
+ * Absolutny odjazd planu: data serwisowa przy udostępnionej podróży, inaczej
+ * wystąpienie wskazane przez `departInMin`. Sam `departureSec` nie rozróżnia
+ * kursu 24:xx od kursu z jutra, bo oba mają tę samą wartość.
+ */
+function departureMsOf(connection: Connection, at: Date): number {
+  if (connection.serviceDate)
+    return sharedTimeMs(connection.serviceDate, connection.departureSec);
+  const aligned = toAbsoluteMs(connection.departureSec, at);
+  const nearest = nearestDepartureMs(connection.departureSec, at);
+  const hinted = at.getTime() + Math.max(0, connection.departInMin ?? 0) * 60_000;
+  return Math.abs(nearest - hinted) <= Math.abs(aligned - hinted) ? nearest : aligned;
+}
+
 async function planTracked(): Promise<Connection | null> {
   if (!tracked) return null;
   const s = getSettingsSync();
@@ -156,6 +172,13 @@ async function refresh(): Promise<void> {
     const run = generation;
     const before = tracked;
     if (!before) return;
+
+    // Kurs 24:xx po północy należy jeszcze do wczorajszej doby serwisowej.
+    // Bez przesunięcia o całe doby odjazd wypadał jutro i śledzenie gasło.
+    if (before.plannedDepartureMs != null) {
+      const anchored = anchorConnectionToPlan(before.connection, before.plannedDepartureMs);
+      if (anchored !== before.connection) tracked = { ...before, connection: anchored };
+    }
 
     // Użytkownik wcisnął „Zakończ" pod powiadomieniem, a aplikacja dalej
     // żyje w tle. Bez tego sprawdzenia następny tick wskrzesiłby powiadomienie
@@ -346,13 +369,24 @@ export async function startTracking(trip: TrackedTrip): Promise<void> {
   const run = generation;
   const protectionEnabled =
     !trip.sharedJourney && trip.protectionEnabled === true && hasTransfer(trip.connection);
-  tracked = { ...trip, protectionEnabled, startedAt: Date.now() };
+  const startedAt = Date.now();
+  const startedDate = new Date(startedAt);
+  const plannedDepartureMs = departureMsOf(trip.connection, startedDate);
+  const connection = anchorConnectionToPlan(trip.connection, plannedDepartureMs, startedDate);
+  const walkSpeedMps = profileWalkSpeedMps(getSettingsSync().walkPace);
+  const initial = computeTripProgress(connection, { now: startedDate, walkSpeedMps });
+  tracked = {
+    ...trip,
+    connection,
+    protectionEnabled,
+    startedAt,
+    plannedDepartureMs,
+    plannedArrivalMs: initial.arriveAtMs,
+  };
   arrivedAt = 0;
   planLocked = !!trip.sharedJourney || protectionEnabled || trip.transfer?.status === 'changed';
   lastDelayMin = trip.connection.delayMin;
-  progress = computeTripProgress(trip.connection, {
-    walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
-  });
+  progress = initial;
   notify();
   rescheduleTicker();
   await persist();
@@ -569,8 +603,12 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as TrackedTrip;
     if (!parsed?.connection) return null;
-    const savedProgress = computeTripProgress(parsed.connection, {
-      now: new Date(parsed.startedAt),
+    const startedDate = new Date(parsed.startedAt);
+    const plannedDepartureMs =
+      parsed.plannedDepartureMs ?? departureMsOf(parsed.connection, startedDate);
+    const connection = anchorConnectionToPlan(parsed.connection, plannedDepartureMs);
+    const savedProgress = computeTripProgress(connection, {
+      now: startedDate,
     });
     if (!parsed.protectionEnabled && Date.now() >= savedProgress.arriveAtMs + ARRIVED_LINGER_MS) {
       await stopTracking();
@@ -585,6 +623,9 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     }
     tracked = {
       ...parsed,
+      connection,
+      plannedDepartureMs,
+      plannedArrivalMs: parsed.plannedArrivalMs ?? savedProgress.arriveAtMs,
       protectionEnabled:
         !parsed.sharedJourney &&
         parsed.protectionEnabled === true &&
@@ -600,7 +641,7 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     lastDelayMin = parsed.connection.delayMin;
     liveTracker.pin(true);
     await loadNotificationPreferences();
-    progress = computeTripProgress(parsed.connection, {
+    progress = computeTripProgress(connection, {
       walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),
     });
     notify();
