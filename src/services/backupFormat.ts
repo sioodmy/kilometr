@@ -117,6 +117,11 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+/** Tylko prawdziwy boolean; `"false"` z JSON-a jest truthy i nie może go udawać. */
+function bool(v: unknown): boolean | null {
+  return typeof v === 'boolean' ? v : null;
+}
+
 const MAX_TEXT = 300;
 
 function text(v: unknown, max = MAX_TEXT): string | null {
@@ -260,9 +265,19 @@ function readRoutingSettings(v: unknown): RoutingSettings | null {
   return v as unknown as RoutingSettings;
 }
 
+/**
+ * Preferencje powiadomień z kopii: tylko prawdziwe booleany. Backup z
+ * `trackingEnabled: "false"` (string) nie może włączyć powiadomień.
+ */
 function readNotificationPrefs(v: unknown): NotificationPreferences | null {
   if (!isRecord(v)) return null;
-  return v as unknown as NotificationPreferences;
+  const trackingEnabled = bool(v.trackingEnabled);
+  const disruptionAlertsEnabled = bool(v.disruptionAlertsEnabled);
+  const liveProgressEnabled = bool(v.liveProgressEnabled);
+  if (trackingEnabled === null || disruptionAlertsEnabled === null || liveProgressEnabled === null) {
+    return null;
+  }
+  return { trackingEnabled, disruptionAlertsEnabled, liveProgressEnabled };
 }
 
 const LOCALES: readonly string[] = ['pl', 'en', 'de', 'uk', 'system'];

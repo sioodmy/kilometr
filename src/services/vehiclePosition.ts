@@ -30,6 +30,21 @@ function parseHMtoSec(hm: string): number | null {
   return Number(m[1]) * 3600 + Number(m[2]) * 60;
 }
 
+interface LegClock {
+  from: number;
+  to: number;
+  crossesMidnight: boolean;
+}
+
+/** Okno nogi w sekundach; koniec po północy dostaje +86400. */
+function legClock(leg: Leg): LegClock | null {
+  const from = parseHMtoSec(leg.departAt);
+  const to = parseHMtoSec(leg.arriveAt);
+  if (from == null || to == null) return null;
+  const crossesMidnight = to <= from;
+  return { from, to: crossesMidnight ? to + 86400 : to, crossesMidnight };
+}
+
 export function nowSecOfDay(d: Date = new Date()): number {
   return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
 }
@@ -201,8 +216,11 @@ function stopTimeSec(stop: LegStop): number | undefined {
  * nogi (z opóźnieniem) a rozkładowym odjazdem z przystanku wsiadania.
  */
 function estimateGapFromStopTimes(stops: LegStop[], leg: Leg, window: LegWindow, now: number): number | null {
-  const times = stops.map(stopTimeSec);
-  if (times.some((t) => t == null)) return null;
+  const raw = stops.map(stopTimeSec);
+  if (raw.some((t) => t == null)) return null;
+  const clock = legClock(leg);
+  const shiftFrom = clock?.crossesMidnight ? clock.from : null;
+  const times = raw.map((t) => (shiftFrom != null && t! < shiftFrom ? t! + 86400 : t!));
   const boardingDeparture = parseHMtoSec(leg.departAt);
   const scheduledBoarding = times[window.start]!;
   let offset = 0;
@@ -211,7 +229,9 @@ function estimateGapFromStopTimes(stops: LegStop[], leg: Leg, window: LegWindow,
     if (Math.abs(diff) <= 1800) offset = diff;
   }
   let current = nowSecOfDay(new Date(now));
-  if (times[0]! >= 86400 && current < 43200) current += 86400;
+  if (shiftFrom != null ? current < shiftFrom - 3600 : times[0]! >= 86400 && current < 43200) {
+    current += 86400;
+  }
   const first = times[0]! + offset;
   const boarding = scheduledBoarding + offset;
   const last = times[times.length - 1]! + offset;
@@ -239,14 +259,14 @@ interface LegWindow {
  * ikonę, która sugerowałaby, że tramwaj już jest w drodze.
  */
 function estimateGap(leg: Leg, window: LegWindow, now: number): number | null {
-  const departure = parseHMtoSec(leg.departAt);
-  const arrival = parseHMtoSec(leg.arriveAt);
-  if (departure == null || arrival == null || arrival <= departure) return null;
-  const current = nowSecOfDay(new Date(now));
-  if (current < departure - 3600 || current > arrival + 600) return null;
-  if (current < departure) return window.start - 1;
-  if (current > arrival) return window.end;
-  const progress = (current - departure) / (arrival - departure);
+  const clock = legClock(leg);
+  if (!clock) return null;
+  let current = nowSecOfDay(new Date(now));
+  if (clock.crossesMidnight && current < clock.from - 3600) current += 86400;
+  if (current < clock.from - 3600 || current > clock.to + 600) return null;
+  if (current < clock.from) return window.start - 1;
+  if (current > clock.to) return window.end;
+  const progress = (current - clock.from) / (clock.to - clock.from);
   const floatIdx = window.start + progress * (window.end - window.start);
   return Math.min(window.end, Math.max(window.start, Math.floor(floatIdx)));
 }

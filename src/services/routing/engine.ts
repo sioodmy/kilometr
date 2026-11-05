@@ -1,6 +1,6 @@
 import { DayIndex, gtfsStore } from './store';
 import { DEFAULT_COST, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
-import { AllowedTransferModes, Connection, Leg, LegStop, RawJourney, TransitModePreference } from './types';
+import { AllowedTransferModes, Connection, Leg, LegMode, LegStop, RawJourney, TransitModePreference } from './types';
 import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 import { MAX_DELAY_SEC } from '../liveQuality';
@@ -8,6 +8,7 @@ import { emptyRoutingSnapshot, type RoutingSnapshot } from './reliability';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
 import { refreshConnectionTimes, scheduledLegTimes } from './connectionTimes';
+import { predictDelaySec } from './delays';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z raptor.ts i store.ts)
@@ -169,13 +170,20 @@ export async function warmupRouting(): Promise<void> {
   }
 }
 
-/** Przystanki kursu TYLKO od boardStop do alightStop (to co użytkownik widzi). */
+/** Przystanki kursu TYLKO od boardStop do alightStop (to co użytkownik widzi).
+ * `delaySec` i `nowSec` to prognoza opóźnienia z RAPTOR-a: czasy segmentów są
+ * już efektywne, więc cofamy je tą samą prognozą przed dopasowaniem
+ * przystanku. Bez tego pętla z opóźnieniem łapie pierwsze wystąpienie
+ * przystanku i pokazuje cały kurs. */
 export function buildLegStops(
   tripId: string,
   boardStopId: string,
   alightStopId: string,
   departSec?: number,
   arriveSec?: number,
+  delaySec?: number,
+  nowSec?: number,
+  mode?: LegMode,
 ): LegStop[] {
   // Legi pochodzą z aktywnego wycinka, więc kurs jest w pamięci (sync, bez IO).
   const times = gtfsStore.stopTimes.get(tripId);
@@ -193,11 +201,19 @@ export function buildLegStops(
     };
   });
 
+  const expectedSec = (stop: LegStop, use: 'board' | 'arrive'): number | undefined => {
+    const scheduled = use === 'board' ? stop.departSec : stop.arriveSec;
+    if (scheduled === undefined) return undefined;
+    if (delaySec === undefined || nowSec === undefined) return scheduled;
+    return scheduled + predictDelaySec(delaySec, scheduled - (nowSec - delaySec), use, mode);
+  };
+
   let boardIdx = -1;
   if (departSec !== undefined) {
-    boardIdx = allStops.findIndex(
-      (s) => s.stopId === boardStopId && s.departSec !== undefined && Math.abs(s.departSec - departSec) <= 120,
-    );
+    boardIdx = allStops.findIndex((s) => {
+      const expected = expectedSec(s, 'board');
+      return s.stopId === boardStopId && expected !== undefined && Math.abs(expected - departSec) <= 120;
+    });
   }
   if (boardIdx < 0) {
     boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
@@ -205,13 +221,15 @@ export function buildLegStops(
 
   let alightIdx = -1;
   if (arriveSec !== undefined && boardIdx >= 0) {
-    alightIdx = allStops.findIndex(
-      (s, idx) =>
+    alightIdx = allStops.findIndex((s, idx) => {
+      const expected = expectedSec(s, 'arrive');
+      return (
         idx > boardIdx &&
         s.stopId === alightStopId &&
-        s.arriveSec !== undefined &&
-        Math.abs(s.arriveSec - arriveSec) <= 120,
-    );
+        expected !== undefined &&
+        Math.abs(expected - arriveSec) <= 120
+      );
+    });
   }
   if (alightIdx < 0 && boardIdx >= 0) {
     alightIdx = allStops.findIndex((s, idx) => idx > boardIdx && s.stopId === alightStopId);
@@ -394,9 +412,20 @@ function mapJourneysToConnections(
       const toLon = seg.toStopId === 'destination' ? options.toLon : toStopObj?.stop_lon;
 
       // Intermediate stops: TYLKO board→alight, nie cały kurs
+      const tripDelaySec =
+        seg.type === 'transit' && seg.tripId ? ctx.tripDelays.get(seg.tripId) : undefined;
       const intermediateStops =
         seg.type === 'transit' && seg.tripId && seg.fromStopId && seg.toStopId
-          ? buildLegStops(seg.tripId, seg.fromStopId, seg.toStopId, seg.departSec, seg.arriveSec)
+          ? buildLegStops(
+              seg.tripId,
+              seg.fromStopId,
+              seg.toStopId,
+              seg.departSec,
+              seg.arriveSec,
+              tripDelaySec,
+              ctx.currentSec,
+              seg.mode,
+            )
           : undefined;
 
       const leg: Leg = {
@@ -627,8 +656,10 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   );
   const slices = await buildSearchSlices(rawTarget, arrivalMode);
   const { departureSec, dayOffsetSec, searchStartSec, searchIndex, patternOffsets } = slices;
+  // Przyjazd na jutro: kurs może wyjechać jeszcze dziś wieczorem, więc dolna
+  // granica to „teraz” w zegarze dnia docelowego, a nie start okna przyjazdu.
   const earliestDepartureSec = arrivalMode && rawTarget >= currentSec
-    ? Math.max(searchStartSec, currentSec - dayOffsetSec)
+    ? currentSec - dayOffsetSec
     : searchStartSec;
 
   const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));

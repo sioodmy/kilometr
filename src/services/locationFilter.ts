@@ -1,3 +1,5 @@
+import { distanceMeters } from '../gtfs/geo';
+
 export interface RawLocationFix {
   lat: number;
   lon: number;
@@ -34,13 +36,6 @@ export function createLocationFilterState(): LocationFilterState {
     anchorLon: undefined,
     fixCount: 0,
   };
-}
-
-function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = (lat2 - lat1) * 111320;
-  const dLon = (lon2 - lon1) * 111320 * Math.cos(toRad((lat1 + lat2) * 0.5));
-  return Math.hypot(dLat, dLon);
 }
 
 function bearingDegrees(lat1: number, lon1: number, lat2: number, lon2: number): number {

@@ -73,6 +73,25 @@ interface RouteMapProps {
   onError?: (message: string) => void;
 }
 
+/**
+ * Klucz payloadu trasy: tick live nie może wysyłać jej ponownie ani resetować
+ * kadru, dopóki nie zmieni się identyfikator albo geometria.
+ */
+function routeBridgeKey(route: MapRoute): string {
+  return JSON.stringify([
+    route.id,
+    route.legs.map((leg) => [
+      leg.id,
+      leg.mode,
+      leg.line ?? '',
+      leg.fromStop,
+      leg.toStop,
+      leg.geometry?.length ?? 0,
+      leg.stops.map((stop) => [stop.id, stop.lat, stop.lon]),
+    ]),
+  ]);
+}
+
 /** Oblicza geograficzny środek trasy dla początkowego kadru kamery. */
 function routeCenter(route: MapRoute | null): [number, number] | null {
   if (!route?.legs?.length) return null;
@@ -153,6 +172,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
 
   const { cityId } = useActiveCity();
   const [attempt, setAttempt] = useState(0);
+  const routeKey = useMemo(() => (route ? routeBridgeKey(route) : null), [route]);
+  const sentRouteKey = useRef<string | null>(null);
+  const sentRouteId = useRef<string | null>(null);
 
   const html = useMemo(() => {
     let center = routeCenter(route);
@@ -204,10 +226,15 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   );
 
   useEffect(() => {
-    if (route) {
-      send({ t: 'route', route, pad: padRef.current });
-    }
-  }, [route, send]);
+    if (!route || routeKey == null) return;
+    if (sentRouteKey.current === routeKey) return;
+    // Nowy identyfikator = inna trasa, więc pierwszy kadr musi się dopasować.
+    // Tick live z tym samym id nie rusza kamery.
+    const refit = sentRouteId.current !== route.id;
+    sentRouteKey.current = routeKey;
+    sentRouteId.current = route.id;
+    send({ t: 'route', route, fit: refit, pad: padRef.current });
+  }, [route, routeKey, send]);
 
   useEffect(() => {
     send({ t: 'vehicle', vehicle });

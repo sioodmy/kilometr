@@ -226,6 +226,27 @@ function parseRssItems(xml, limit) {
   return items;
 }
 
+const FEED_TIMEOUT_MS = 15000;
+
+// Pobiera feed z limitem czasu. XML/JSON musi wrócić jako dane, nie jako strona
+// HTML, bo serwery potrafią oddać 200 z komunikatem błędu zamiast treści.
+async function fetchFeed(url, label, headers, expect) {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} from ${label}`);
+  const text = await res.text();
+  if (expect !== 'html' && /^\s*(?:<!doctype html|<html)/i.test(text)) {
+    throw new Error(`${label}: HTML zamiast ${expect}`);
+  }
+  if (expect === 'json') {
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`${label}: niepoprawny JSON`);
+    }
+  }
+  return text;
+}
+
 async function fetchCityFeed(city, limit) {
   const browserHeaders = {
     'User-Agent': 'Mozilla/5.0 (compatible; kilometr/1.0)',
@@ -234,20 +255,16 @@ async function fetchCityFeed(city, limit) {
 
   switch (city) {
     case 'warszawa': {
-      const res = await fetch('https://www.wtp.waw.pl/feed/', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from WTP`);
-      return parseRssItems(await res.text(), limit);
+      const text = await fetchFeed('https://www.wtp.waw.pl/feed/', 'WTP', browserHeaders, 'xml');
+      return parseRssItems(text, limit);
     }
     case 'poznan': {
-      const res = await fetch('https://www.ztm.poznan.pl/feed/', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from Poznan ZTM`);
-      return parseRssItems(await res.text(), limit);
+      const text = await fetchFeed('https://www.ztm.poznan.pl/feed/', 'Poznan ZTM', browserHeaders, 'xml');
+      return parseRssItems(text, limit);
     }
     case 'trojmiasto':
     case 'gdansk': {
-      const res = await fetch('https://files.cloudgdansk.pl/d/otwarte-dane/ztm/znt.json?v=1');
-      if (!res.ok) throw new Error(`HTTP ${res.status} from ZTM Gdansk`);
-      const data = await res.json();
+      const data = await fetchFeed('https://files.cloudgdansk.pl/d/otwarte-dane/ztm/znt.json?v=1', 'ZTM Gdansk', undefined, 'json');
       const results = (data.results || []).slice(0, limit);
       return results.map((r) => ({
         id: String(r.id || crypto.createHash('sha256').update(r.title || '').digest('hex').slice(0, 16)),
@@ -258,39 +275,32 @@ async function fetchCityFeed(city, limit) {
       }));
     }
     case 'wroclaw': {
-      const res = await fetch('https://www.wroclaw.pl/komunikacja/rss', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from Wroclaw RSS`);
-      return parseRssItems(await res.text(), limit);
+      const text = await fetchFeed('https://www.wroclaw.pl/komunikacja/rss', 'Wroclaw RSS', browserHeaders, 'xml');
+      return parseRssItems(text, limit);
     }
     case 'gzm': {
-      const res = await fetch('https://rj.transportgzm.pl/v2/news/', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from ZTM GZM`);
-      return parseGzmList(await res.text(), limit);
+      const html = await fetchFeed('https://rj.transportgzm.pl/v2/news/', 'ZTM GZM', browserHeaders, 'html');
+      return parseGzmList(html, limit);
     }
     case 'krakow': {
-      const res = await fetch('https://ztp.krakow.pl/feed?post_type=komunikat', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from Krakow ZTP`);
-      return parseRssItems(await res.text(), limit);
+      const text = await fetchFeed('https://ztp.krakow.pl/feed?post_type=komunikat', 'Krakow ZTP', browserHeaders, 'xml');
+      return parseRssItems(text, limit);
     }
     case 'lodz': {
-      const res = await fetch('https://mpk.lodz.pl/rozklady/rss/rozklady.jsp', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from Lodz MPK`);
-      return parseRssItems(await res.text(), limit);
+      const text = await fetchFeed('https://mpk.lodz.pl/rozklady/rss/rozklady.jsp', 'Lodz MPK', browserHeaders, 'xml');
+      return parseRssItems(text, limit);
     }
     case 'olsztyn': {
-      const res = await fetch('https://zdzit.olsztyn.eu/feed/', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from Olsztyn ZDZiT`);
-      return parseRssItems(await res.text(), limit);
+      const text = await fetchFeed('https://zdzit.olsztyn.eu/feed/', 'Olsztyn ZDZiT', browserHeaders, 'xml');
+      return parseRssItems(text, limit);
     }
     case 'opole': {
-      const res = await fetch('https://www.mzkopole.pl/category/aktualnosci/feed/', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from Opole MZK`);
-      return parseRssItems(await res.text(), limit);
+      const text = await fetchFeed('https://www.mzkopole.pl/category/aktualnosci/feed/', 'Opole MZK', browserHeaders, 'xml');
+      return parseRssItems(text, limit);
     }
     case 'rzeszow': {
-      const res = await fetch('https://ztm.erzeszow.pl/feed/', { headers: browserHeaders });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from Rzeszow ZTM`);
-      return parseRssItems(await res.text(), limit);
+      const text = await fetchFeed('https://ztm.erzeszow.pl/feed/', 'Rzeszow ZTM', browserHeaders, 'xml');
+      return parseRssItems(text, limit);
     }
     default:
       throw new Error(`Nieobsługiwane miasto: ${city}. Dostępne: ${SUPPORTED_CITIES.join(', ')}`);
@@ -539,7 +549,14 @@ async function processCity(city, limit, cache) {
     items = await fetchCityFeed(city, limit);
   } catch (err) {
     console.error(`[!] Błąd pobierania feedu dla ${city}:`, err.message);
-    return [];
+    console.error(`[!] Zostawiam poprzednie ${city}/disruptions.json w R2.`);
+    return null;
+  }
+
+  if (items.length === 0) {
+    console.error(`[!] Pusty feed dla ${city} (0 pozycji).`);
+    console.error(`[!] Zostawiam poprzednie ${city}/disruptions.json w R2.`);
+    return null;
   }
 
   console.log(`Pobrano ${items.length} pozycji.`);
@@ -696,9 +713,21 @@ async function main() {
   console.log(`Miasta: ${targetCities.join(', ')}`);
 
   let totalAccepted = 0;
+  let failedCities = 0;
   for (const city of targetCities) {
     const alerts = await processCity(city, LIMIT, cache);
+    if (alerts === null) {
+      failedCities++;
+      continue;
+    }
     totalAccepted += alerts.length;
+  }
+
+  if (failedCities > 0) {
+    console.warn(`[!] Bez świeżego feedu: ${failedCities}/${targetCities.length} miast, poprzednie pliki zostały w R2.`);
+    if (failedCities === targetCities.length) {
+      process.exitCode = 1;
+    }
   }
 
   if (!DRY_RUN) {
