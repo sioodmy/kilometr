@@ -512,6 +512,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   resetBtn: {
+    minHeight: 44,
+    justifyContent: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
     borderRadius: shape.small,
@@ -563,7 +565,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
-    minHeight: 38,
+    minHeight: 44,
   },
   chipActive: {
     backgroundColor: scheme.secondaryContainer,
@@ -603,7 +605,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: shape.full,
-    minHeight: 38,
+    minHeight: 44,
     zIndex: 1,
   },
   segmentText: {

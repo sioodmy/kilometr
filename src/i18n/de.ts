@@ -1260,6 +1260,7 @@ export const de: Strings = {
     openSettingsA11y: 'App-Einstellungen öffnen',
   },
   lastTrip: {
+    activateHint: 'Aktivieren, um diese Verbindung zu suchen.',
     backA11y: (from: string, to: string) =>
       `Schnelle Rückkehr: ${from} nach ${to}. Zum Suchen loslassen.`,
     lastA11y: (from: string, to: string) =>

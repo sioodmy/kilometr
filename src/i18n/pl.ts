@@ -1290,6 +1290,7 @@ export const pl = {
     openSettingsA11y: 'Otwórz ustawienia aplikacji',
   },
   lastTrip: {
+    activateHint: 'Aktywuj, aby wyszukać to połączenie.',
     backA11y: (from: string, to: string) => `Szybki powrót: ${from} do ${to}. Puść, aby wyszukać.`,
     lastA11y: (from: string, to: string) =>
       `Ostatnie połączenie: ${from} do ${to}. Ciągnij dalej, aby odwrócić.`,

@@ -487,7 +487,7 @@ export function AddPlaceSheet({
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
-      <View style={styles.container}>
+      <View style={styles.container} accessibilityViewIsModal>
         {isPickingIcon ? (
           <View style={{ flex: 1 }}>
             <View style={styles.header}>

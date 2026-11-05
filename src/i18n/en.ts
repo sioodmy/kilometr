@@ -1246,6 +1246,7 @@ export const en: Strings = {
     openSettingsA11y: 'Open app settings',
   },
   lastTrip: {
+    activateHint: 'Activate to search this connection.',
     backA11y: (from: string, to: string) => `Quick return: ${from} to ${to}. Release to search.`,
     lastA11y: (from: string, to: string) =>
       `Last connection: ${from} to ${to}. Pull further to reverse.`,

@@ -1302,6 +1302,7 @@ export const uk: Strings = {
     openSettingsA11y: 'Відкрити налаштування застосунку',
   },
   lastTrip: {
+    activateHint: 'Активуй, щоб знайти це сполучення.',
     backA11y: (from: string, to: string) =>
       `Швидке повернення: ${from} до ${to}. Відпусти, щоб шукати.`,
     lastA11y: (from: string, to: string) =>
