@@ -1140,7 +1140,7 @@ export default function HomeScreen() {
     anchorStopName?: string | null;
     anchorStopLat?: number | null;
     anchorStopLon?: number | null;
-  }) => {
+  }): Promise<boolean> => {
     try {
       if (placeData.id) {
         const updated = await FavoritesService.updatePlace(placeData.id, {
@@ -1162,11 +1162,11 @@ export default function HomeScreen() {
       }
     } catch (err) {
       console.error('[handleSavePlace error]', err);
-      Alert.alert(s.home.saveFailTitle, s.home.saveFailBody);
-      return;
+      return false;
     }
     refreshPlaces();
     requestSmart(originStopRef.current, currentCoords);
+    return true;
   };
 
   const handleDeletePlace = async (id: string) => {

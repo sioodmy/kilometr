@@ -957,6 +957,7 @@ export const en: Strings = {
     emptyMode: (veh: string) =>
       `There is no ${veh} service on this route right now. Switch to “All” to see the rest.`,
     emptyPlain: 'Try a different destination or check another departure time.',
+    emptyLive: 'No connections with live data',
     samePlaceTitle: 'Start and destination are the same place',
     samePlaceBody:
       'You are already there, so there is nothing to plan. Pick another destination to see connections.',
@@ -970,6 +971,7 @@ export const en: Strings = {
     showWithChanges: 'Show with transfers',
     showAllVehiclesA11y: 'Show all vehicles',
     showAllVehicles: 'Show all vehicles',
+    showWithoutLive: 'Show without live',
   },
   routeDetails: {
     departure: 'Departure',
@@ -1126,6 +1128,7 @@ export const en: Strings = {
     assignAnchor: '+ Assign a departure stop',
     saveChanges: 'Save changes',
     savePlace: 'Save place',
+    saveFail: 'Could not save the place',
   },
   timeSheet: {
     title: 'Journey time',

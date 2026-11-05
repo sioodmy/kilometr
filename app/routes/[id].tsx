@@ -367,26 +367,28 @@ export default function RouteDetailsScreen() {
               />
             </Pressable>
           )}
-          <Pressable
-            onPress={() => void toggleTracking()}
-            disabled={trackingBusy}
-            accessibilityRole="button"
-            accessibilityState={{ selected: isTrackedThis }}
-            accessibilityLabel={
-              isTrackedThis ? s.routes.stopTrackingTripA11y : s.routes.trackTripA11y
-            }
-            style={({ pressed }) => [
-              styles.trackBtn,
-              isTrackedThis && styles.trackBtnActive,
-              pressed && { opacity: 0.7 },
-            ]}
-            hitSlop={8}
-          >
-            <Pin
-              size={21}
-              color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-            />
-          </Pressable>
+          {!noLegs && (
+            <Pressable
+              onPress={() => void toggleTracking()}
+              disabled={trackingBusy}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isTrackedThis }}
+              accessibilityLabel={
+                isTrackedThis ? s.routes.stopTrackingTripA11y : s.routes.trackTripA11y
+              }
+              style={({ pressed }) => [
+                styles.trackBtn,
+                isTrackedThis && styles.trackBtnActive,
+                pressed && { opacity: 0.7 },
+              ]}
+              hitSlop={8}
+            >
+              <Pin
+                size={21}
+                color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+              />
+            </Pressable>
+          )}
         </View>
 
         <ScrollView

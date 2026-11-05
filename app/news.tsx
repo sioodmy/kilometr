@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -201,6 +201,8 @@ export default function NewsScreen() {
   const [myLines, setMyLines] = useState<string[]>([]);
   const reduceMotion = useReducedMotion();
   const spinValue = useSharedValue(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
 
   const spinStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${spinValue.value}deg` }],
@@ -218,25 +220,42 @@ export default function NewsScreen() {
     void load(true);
   };
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadAbortRef.current?.abort();
+    };
+  }, []);
+
   const refreshMyLines = useCallback(async () => {
     const lines = await loadRecentRouteLines();
-    setMyLines(lines);
+    if (mountedRef.current) setMyLines(lines);
   }, []);
 
   const load = useCallback(
     async (isRefresh = false) => {
+      if (!mountedRef.current) return;
+      loadAbortRef.current?.abort();
+      const controller = new AbortController();
+      loadAbortRef.current = controller;
       if (isRefresh) setRefreshing(true);
       setError(null);
       try {
-        const news = await fetchCityNews();
+        const news = await fetchCityNews(controller.signal);
+        if (!mountedRef.current || controller.signal.aborted) return;
         setItems(news);
         void markNewsSeen(news);
         await refreshMyLines();
       } catch {
+        if (!mountedRef.current || controller.signal.aborted) return;
         setError(s.news.fetchFail);
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (loadAbortRef.current === controller) loadAbortRef.current = null;
+        if (mountedRef.current && !controller.signal.aborted) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [s, refreshMyLines],
@@ -394,6 +413,13 @@ export default function NewsScreen() {
               : s.news.count(visibleItems.length, urgentCount)}
         </Text>
       </View>
+
+      {error && items.length > 0 ? (
+        <View style={styles.errorBanner} accessibilityRole="alert">
+          <TriangleAlert size={16} color={scheme.onWarningContainer} />
+          <Text style={styles.errorBannerText}>{error}</Text>
+        </View>
+      ) : null}
 
       {items.length > 0 || myLines.length > 0 ? (
         <View style={styles.segment}>
@@ -553,6 +579,18 @@ const styles = StyleSheet.create({
     color: scheme.onSurface,
   },
   headerSub: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.warningContainer,
+  },
+  errorBannerText: { ...type.bodySmall, color: scheme.onWarningContainer, flex: 1 },
   segment: {
     flexDirection: 'row',
     gap: 4,
