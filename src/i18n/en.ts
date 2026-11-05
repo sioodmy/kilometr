@@ -109,6 +109,8 @@ export const en: Strings = {
     add30: '+30 min',
     add45: '+45 min',
     add60: '+1 hr',
+    storageFailTitle: 'Could not save changes',
+    storageFailBody: 'Check free space on your phone and try again.',
   },
   home: {
     searchToA11y: (title: string) => `Find connections to: ${title}`,

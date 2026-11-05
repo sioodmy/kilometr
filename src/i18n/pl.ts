@@ -122,6 +122,8 @@ export const pl = {
     add30: '+30 min',
     add45: '+45 min',
     add60: '+1 godz.',
+    storageFailTitle: 'Nie udało się zapisać zmian',
+    storageFailBody: 'Sprawdź wolne miejsce w pamięci telefonu i spróbuj ponownie.',
   },
   home: {
     searchToA11y: (title: string) => `Wyszukaj połączenia do: ${title}`,
