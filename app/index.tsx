@@ -14,7 +14,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Bell, History, MapPin, Settings2 } from '../src/components/icons';
+import { Bell, Download, History, MapPin, Settings2 } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { defaultLocationForCity } from '../src/config';
@@ -36,12 +36,16 @@ import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
   type DataStatus,
+  type TimetableUpdate,
+  checkTimetableForUpdates,
   getDataStatus,
+  getTimetableUpdate,
   importGtfsFromNetwork,
   refreshDataStatus,
-  refreshTimetableIfExpiring,
   subscribeDataStatus,
+  subscribeTimetableUpdate,
 } from '../src/services/dataManager';
+import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { getSettingsSync, profileWalkSpeedMps } from '../src/services/settings';
 import { subscribeBackupApplied } from '../src/services/backup';
 import {
@@ -93,6 +97,19 @@ function withoutKey<T>(prev: Record<string, T>, key: string): Record<string, T> 
   return next;
 }
 
+/** Cel trasy czekający na ręczny start po blokadzie GPS. */
+type RouteTarget = {
+  id: string;
+  title: string;
+  address?: string;
+  lat: number;
+  lon: number;
+  kind?: Suggestion['kind'];
+};
+
+/** Start przekazany jawnie: świeży wybór z arkusza wygrywa ze stanem ekranu. */
+type RouteOrigin = { title: string; lat: number; lon: number; custom: boolean };
+
 export default function HomeScreen() {
   const s = useStrings();
   const router = useRouter();
@@ -116,6 +133,9 @@ export default function HomeScreen() {
   const [smartReady, setSmartReady] = useState(false);
   const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
+  // Cel zapamiętany przy blokadzie startu z GPS: po ręcznym starcie wracamy
+  // do niego, zamiast kazać użytkownikowi wpisywać go od nowa.
+  const pendingDestinationRef = useRef<RouteTarget | null>(null);
   const [savedEditFocused, setSavedEditFocused] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<{
     lat: number;
@@ -127,6 +147,9 @@ export default function HomeScreen() {
   // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
   const isCustomStartRef = useRef(isCustomStart);
   isCustomStartRef.current = isCustomStart;
+  // Generacja wyboru startu: spóźniony GPS jest odrzucany, gdy w międzyczasie
+  // użytkownik wybrał inny start.
+  const startSelGen = useRef(0);
   // GPS poza strefą aktywnego miasta: tras z GPS nie liczymy,
   // start trzeba wybrać ręcznie. Miasto z reverse-geocode do komunikatu.
   const [gpsUnsupported, setGpsUnsupported] = useState(false);
@@ -185,6 +208,11 @@ export default function HomeScreen() {
   const sheetWasOpenRef = useRef(false);
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
+  const [timetableUpdate, setTimetableUpdate] = useState<TimetableUpdate | null>(() =>
+    getTimetableUpdate(),
+  );
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateNote, setUpdateNote] = useState<string | null>(null);
 
   // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
   // gestem, zero klikalnych elementów. pullOption żyje w shared value (UI thread),
@@ -228,6 +256,14 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void LocationService.refineLocation();
+    }, []),
+  );
+
+  // Poll live chodzi tylko wtedy, gdy na wierzchu jest ekran, który go używa.
+  useFocusEffect(
+    useCallback(() => {
+      liveTracker.acquire();
+      return () => liveTracker.release();
     }, []),
   );
 
@@ -288,7 +324,7 @@ export default function HomeScreen() {
       if (st.state === 'empty') {
         void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
       } else if (st.state === 'ready') {
-        void refreshTimetableIfExpiring().catch((e) => console.warn('Timetable refresh failed:', e));
+        void checkTimetableForUpdates().catch((e) => console.warn('Timetable refresh failed:', e));
       }
     };
     void check();
@@ -301,6 +337,37 @@ export default function HomeScreen() {
       clearInterval(timer);
     };
   }, []);
+
+  useEffect(
+    () =>
+      subscribeTimetableUpdate((update) => {
+        setTimetableUpdate(update);
+        if (!update) setUpdateNote(null);
+      }),
+    [],
+  );
+
+  /** Baner aktualizacji: pełne pobranie tylko po kliknięciu, nie w tle. */
+  const handleTimetableUpdate = async () => {
+    if (updateBusy) return;
+    setUpdateBusy(true);
+    setUpdateNote(null);
+    try {
+      const result = await importGtfsFromNetwork();
+      if (result === 'cooldown') {
+        const gate = await getTimetableDownloadGate();
+        const hours = gate.allowed ? 1 : remainingHours(gate.retryAfterMs);
+        setUpdateNote(s.settings.downloadCooldown(hours));
+      } else if (result === 'keptLocal') {
+        setUpdateNote(s.settings.downloadKeptLocal);
+      }
+    } catch (e) {
+      // Status błędu trafia do dataStatus, a ekran pokazuje kartę błędu.
+      console.warn('Timetable update failed:', e);
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
 
   const refreshPlaces = () => {
     const requestedCity = getActiveCityIdSync();
@@ -365,8 +432,6 @@ export default function HomeScreen() {
         if (!cancelled && cacheGen === smartGen.current && cached.length > 0) setSmart(cached);
       })
       .catch(() => {});
-    // Live GPS od startu (ticker w tle): opóźnienia gotowe zanim user wyszuka trasę.
-    liveTracker.start();
 
     // Jeden sposób aplikowania fixu: pierwszy szybki odczyt i każdy późniejszy
     // (dokładniejszy w tle) przechodzą tędy, żeby ranking i start tras zawsze
@@ -425,6 +490,8 @@ export default function HomeScreen() {
       return;
     }
     isCustomStartRef.current = false;
+    startSelGen.current++;
+    pendingDestinationRef.current = null;
     smartCoordsRef.current = null;
     setIsCustomStart(false);
     setQuery('');
@@ -739,13 +806,18 @@ export default function HomeScreen() {
     );
   }, [gpsCity, cityGen, s]);
 
+  // Reset startu na GPS: nieudany odczyt zostawia poprzedni start bez zmian,
+  // a fix nie nadpisuje ręcznego wyboru zrobionego w trakcie odczytu.
   const resetToGps = async () => {
     if (gpsUnsupported) {
       blockGpsStart();
       return;
     }
-    setIsCustomStart(false);
-    if (gpsLocation) {
+    const gen = ++startSelGen.current;
+    const customAtStart = isCustomStartRef.current;
+    // Cache tylko gdy start już był GPS: przy ręcznym starcie nie ruszamy
+    // współrzędnych przed potwierdzonym fixem.
+    if (!isCustomStartRef.current && gpsLocation) {
       setLocTitle(gpsLocation.title);
       const coords = { lat: gpsLocation.lat, lon: gpsLocation.lon };
       setCurrentCoords(coords);
@@ -753,6 +825,8 @@ export default function HomeScreen() {
     }
     try {
       const l = await LocationService.getCurrentLocation({ force: true });
+      // Ręczny start wybrany w trakcie odczytu unieważnia ten fix.
+      if (gen !== startSelGen.current || isCustomStartRef.current !== customAtStart) return;
       const outside = isOutsideServiceArea(l.lat, l.lon);
       const city = (l as { city?: string | null }).city ?? null;
       setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
@@ -764,11 +838,15 @@ export default function HomeScreen() {
       }
       setGpsUnsupported(false);
       setGpsCity(null);
+      pendingDestinationRef.current = null;
+      isCustomStartRef.current = false;
+      setIsCustomStart(false);
       setLocTitle(l.title);
       const coords = { lat: l.lat, lon: l.lon };
       setCurrentCoords(coords);
       requestSmart(l.stopId || l.title, coords);
     } catch (err) {
+      // Błąd zostawia poprzedni start: ikona i współrzędne dalej się zgadzają.
       console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
     }
   };
@@ -796,6 +874,9 @@ export default function HomeScreen() {
       return;
     }
 
+    // Ręczny start unieważnia GPS w locie i wygrywa z każdym późniejszym fixem.
+    startSelGen.current++;
+    isCustomStartRef.current = true;
     setIsCustomStart(true);
     setLocTitle(sel.title);
     const coords = { lat: sel.lat, lon: sel.lon };
@@ -812,8 +893,15 @@ export default function HomeScreen() {
     if (returnToDestinationAfterStart) {
       setReturnToDestinationAfterStart(false);
       setSheetMode('destination');
-    } else {
-      setSheetMode(null);
+      return;
+    }
+    const pending = pendingDestinationRef.current;
+    pendingDestinationRef.current = null;
+    setSheetMode(null);
+    // Cel zablokowany wcześniej przez GPS: start już jest ręczny, więc trasa
+    // rusza od razu, bez ponownego wpisywania celu.
+    if (pending) {
+      goToRoutes(pending, { title: sel.title, lat: sel.lat, lon: sel.lon, custom: true });
     }
   };
 
@@ -864,24 +952,24 @@ export default function HomeScreen() {
   );
 
   const goToRoutes = useCallback(
-    (to: {
-      id: string;
-      title: string;
-      address?: string;
-      lat: number;
-      lon: number;
-      kind?: Suggestion['kind'];
-    }): boolean => {
+    (to: RouteTarget, origin?: RouteOrigin): boolean => {
+      const fromCustom = origin?.custom ?? isCustomStartRef.current;
       // GPS spoza strefy nie może być startem: zamiast puszczać trasę
-      // z pozycji spoza strefy prosimy o ręczny wybór startu.
-      if (gpsUnsupported && !isCustomStart) {
+      // z pozycji spoza strefy prosimy o ręczny wybór startu, a cel zostaje
+      // zapamiętany i wraca po wybraniu startu.
+      if (gpsUnsupported && !fromCustom) {
+        pendingDestinationRef.current = to;
         blockGpsStart();
         return false;
       }
+      pendingDestinationRef.current = null;
+      const fromTitle = origin?.title ?? locTitle;
+      const fromLat = origin?.lat ?? currentCoords.lat;
+      const fromLon = origin?.lon ?? currentCoords.lon;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
       routeSearchGen.current++;
-      void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, to);
+      void recordTripSearch(fromLat, fromLon, fromTitle, to);
       void SearchService.recordRecent({
         ...to,
         address: to.address ?? '',
@@ -896,11 +984,11 @@ export default function HomeScreen() {
       router.push({
         pathname: '/routes',
         params: {
-          fromTitle: locTitle,
-          fromLat: String(currentCoords.lat),
-          fromLon: String(currentCoords.lon),
+          fromTitle,
+          fromLat: String(fromLat),
+          fromLon: String(fromLon),
           // Start z GPS: ekran tras może go po cichu podmienić na dokładniejszy fix.
-          fromGps: isCustomStart ? '0' : '1',
+          fromGps: fromCustom ? '0' : '1',
           toId: to.id,
           toTitle: to.title,
           toLat: String(to.lat),
@@ -911,7 +999,6 @@ export default function HomeScreen() {
     },
     [
       gpsUnsupported,
-      isCustomStart,
       blockGpsStart,
       currentCoords.lat,
       currentCoords.lon,
@@ -1083,7 +1170,16 @@ export default function HomeScreen() {
   };
 
   const handleDeletePlace = async (id: string) => {
-    await FavoritesService.deletePlace(id);
+    let removed = false;
+    try {
+      removed = await FavoritesService.deletePlace(id);
+    } catch (err) {
+      console.warn('[handleDeletePlace error]', err);
+    }
+    if (!removed) {
+      Alert.alert(s.common.storageFailTitle, s.common.storageFailBody);
+      return;
+    }
     refreshPlaces();
     requestSmart(originStopRef.current, currentCoords);
   };
@@ -1155,7 +1251,14 @@ export default function HomeScreen() {
               }
             }}
           >
-            {lastTrip && <LastTripPull trip={lastTrip} option={pullOption} height={pullHeight} />}
+            {lastTrip && (
+              <LastTripPull
+                trip={lastTrip}
+                option={pullOption}
+                height={pullHeight}
+                onActivate={() => openLastTrip(false)}
+              />
+            )}
             <View style={styles.topBar}>
               <Pressable
                 style={({ pressed }) => [styles.cityContext, pressed && { opacity: 0.7 }]}
@@ -1202,6 +1305,29 @@ export default function HomeScreen() {
             <Text style={styles.headerTitle} accessibilityRole="header">
               {s.home.title}
             </Text>
+
+            {timetableUpdate && dataStatus.state === 'ready' && (
+              <Pressable
+                style={({ pressed }) => [styles.updateCard, pressed && styles.updateCardPressed]}
+                onPress={() => void handleTimetableUpdate()}
+                disabled={updateBusy}
+                accessibilityRole="button"
+                accessibilityLabel={s.home.timetableUpdateA11y}
+                accessibilityState={{ busy: updateBusy, disabled: updateBusy }}
+              >
+                <View style={styles.updateText}>
+                  <Text style={styles.updateTitle}>{s.home.timetableUpdateTitle}</Text>
+                  <Text style={styles.updateBody} accessibilityLiveRegion="polite">
+                    {updateNote ?? s.home.timetableUpdateBody}
+                  </Text>
+                </View>
+                {updateBusy ? (
+                  <ActivityIndicator size="small" color={scheme.primary} />
+                ) : updateNote ? null : (
+                  <Download size={20} color={scheme.primary} />
+                )}
+              </Pressable>
+            )}
 
             {dataStatus.state === 'downloading' && (
               <View style={styles.importCard}>
@@ -1317,6 +1443,7 @@ export default function HomeScreen() {
         {!sheetMode && !manageSheetOpen && !addPlaceOpen && !citySheetOpen && (
           <HomeThumbBar
             onOpenSearch={() => {
+              pendingDestinationRef.current = null;
               setReturnToDestinationAfterStart(false);
               setQuery('');
               setSheetMode('destination');
@@ -1324,6 +1451,7 @@ export default function HomeScreen() {
             startTitle={locTitle}
             isCustomStart={isCustomStart}
             onOpenStart={() => {
+              pendingDestinationRef.current = null;
               setReturnToDestinationAfterStart(false);
               setQuery('');
               setSheetMode('start');
@@ -1378,6 +1506,7 @@ export default function HomeScreen() {
               }
             }}
             onClose={() => {
+              pendingDestinationRef.current = null;
               setSheetMode(null);
               setReturnToDestinationAfterStart(false);
               setQuery('');
@@ -1450,7 +1579,14 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   body: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, flexGrow: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, marginBottom: 16 },
-  cityContext: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  cityContext: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
   cityName: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   iconBtn: {
@@ -1476,6 +1612,20 @@ const styles = StyleSheet.create({
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
   headerTitle: { fontSize: 32, fontWeight: '500', color: scheme.onSurface, letterSpacing: -0.8 },
+  updateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    padding: 14,
+    minHeight: 64,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.medium,
+  },
+  updateCardPressed: { backgroundColor: scheme.surfaceContainerHighest },
+  updateText: { flex: 1, gap: 2, minWidth: 0 },
+  updateTitle: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '600' },
+  updateBody: { ...type.labelSmall, color: scheme.onSurfaceVariant },
   savedSection: { marginTop: 20 },
   sectionHeader: {
     flexDirection: 'row',

@@ -16,13 +16,15 @@
  * Uruchamia się przez `tsx`, więc nie potrzebuje konfiguracji testowej.
  */
 
+process.env.TZ = 'Europe/Warsaw';
+
 import { computeTripProgress } from '../src/services/notifications/tripProgress';
 import { buildLivePlan, buildPhaseCopy } from '../src/services/notifications/content';
 import {
   matchTrackedConnection,
   resolveTrackedConnection,
 } from '../src/services/notifications/planMatch';
-import { clockFromMs, toAbsoluteMs } from '../src/services/notifications/format';
+import { clockFromMs, nearestDepartureMs, toAbsoluteMs } from '../src/services/notifications/format';
 import { pl } from '../src/i18n/pl';
 import type { Connection, Leg, LegStop } from '../src/types/models';
 import { stableConnectionId } from '../src/services/routing/connectionIdentity';
@@ -221,6 +223,26 @@ expect(
   new Date(toAbsoluteMs(25 * 3600, at(14, 0))).getDate(),
   16,
 );
+
+// `nearestDepartureMs` nie może zgubić poprawki #681: w noc zmiany czasu
+// 24:xx liczy się od doby serwisowej, z której przyszedł, a nie modulo zegara.
+const springEve = new Date(2026, 2, 28, 23, 55);
+const springNight = new Date(2026, 2, 29, 0, 5);
+expect('24:10 w przeddzień wiosny', hhmm(nearestDepartureMs(24 * 3600 + 600, springEve)), '00:10');
+expect(
+  '24:10 po północy wiosny',
+  hhmm(nearestDepartureMs(24 * 3600 + 600, springNight)),
+  '00:10',
+);
+expect(
+  'data 24:10 po północy wiosny',
+  new Date(nearestDepartureMs(24 * 3600 + 600, springNight)).getDate(),
+  29,
+);
+const fallEve = new Date(2026, 9, 24, 23, 55);
+const fallNight = new Date(2026, 9, 25, 0, 5);
+expect('24:10 w przeddzień jesieni', hhmm(nearestDepartureMs(24 * 3600 + 600, fallEve)), '00:10');
+expect('24:10 po północy jesieni', hhmm(nearestDepartureMs(24 * 3600 + 600, fallNight)), '00:10');
 
 // ─── Podróż: dojście → oczekiwanie → jazda → przyjazd ────────────────────
 

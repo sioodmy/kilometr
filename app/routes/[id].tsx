@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChevronLeft,
@@ -121,19 +121,22 @@ export default function RouteDetailsScreen() {
 
   // Po wejściu na ekran szczegółów połączenia lub powrocie z uśpienia (Android
   // często usypia timery JS) natychmiast wymuszamy świeży poll pozycji live,
-  // bez czekania na interwał polling rate.
-  useEffect(() => {
-    liveTracker.start();
-    void liveTracker.refresh();
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void liveTracker.refresh();
-      }
-    });
-    return () => {
-      sub.remove();
-    };
-  }, []);
+  // bez czekania na interwał polling rate. Poll chodzi tylko, gdy ekran widać.
+  useFocusEffect(
+    useCallback(() => {
+      liveTracker.acquire();
+      void liveTracker.refresh();
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          void liveTracker.refresh();
+        }
+      });
+      return () => {
+        sub.remove();
+        liveTracker.release();
+      };
+    }, []),
+  );
   const rawItems = useMemo(() => (rawItem ? [rawItem] : []), [rawItem]);
   const tripDelays = useMemo(
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
@@ -211,7 +214,7 @@ export default function RouteDetailsScreen() {
         protectionEnabled,
       });
     } catch {
-      Alert.alert(s.transferGuard.title, s.transferGuard.routingError);
+      Alert.alert(s.routes.trackFailTitle, s.routes.trackFailBody);
     } finally {
       setTrackingBusy(false);
     }

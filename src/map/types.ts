@@ -80,7 +80,7 @@ export type MapOutMessage =
 
 /** Komunikat aplikacja -> mapa (RouteMap -> WebView). */
 export type MapInMessage =
-  | { t: 'route'; route: MapRoute; pad?: [number, number, number, number] }
+  | { t: 'route'; route: MapRoute; fit?: boolean; pad?: [number, number, number, number] }
   | { t: 'geometry'; legId: string; coords: [number, number][]; approx: boolean; fit?: boolean; pad?: [number, number, number, number] }
   /** `pad` to marginesy dopasowania widoku (w px), liczone po stronie aplikacji. */
   | { t: 'select'; legId: string | null; pad?: [number, number, number, number] }

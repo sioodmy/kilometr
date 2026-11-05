@@ -17,7 +17,7 @@ import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { useActiveCity } from '../src/services/cityStore';
 import { LineBadge } from '../src/components/LineBadge';
-import { fetchArticle, type ArticleBlock, type NewsSource } from '../src/services/mpkNews';
+import { fetchArticle, normalizeArticleUrl, type ArticleBlock, type NewsSource } from '../src/services/mpkNews';
 
 export default function ArticleScreen() {
   const s = useStrings();
@@ -32,6 +32,8 @@ export default function ArticleScreen() {
     lines?: string;
   }>();
   const url = typeof params.url === 'string' ? params.url : '';
+  // Feed jest danymi z zewnątrz: pobieramy i otwieramy tylko sprawdzony link.
+  const safeUrl = useMemo(() => normalizeArticleUrl(url), [url]);
   const title = typeof params.title === 'string' ? params.title : '';
   const meta = typeof params.meta === 'string' ? params.meta : '';
   const source: NewsSource = params.source === 'mpk' ? 'mpk' : 'city';
@@ -49,7 +51,7 @@ export default function ArticleScreen() {
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    if (!url) {
+    if (!safeUrl) {
       setLoading(false);
       setEmpty(true);
       return;
@@ -57,7 +59,7 @@ export default function ArticleScreen() {
     let live = true;
     void (async () => {
       try {
-        const next = await fetchArticle(url);
+        const next = await fetchArticle(safeUrl);
         if (!live) return;
         setBlocks(next);
         setEmpty(next.length === 0);
@@ -70,12 +72,12 @@ export default function ArticleScreen() {
     return () => {
       live = false;
     };
-  }, [url]);
+  }, [safeUrl]);
 
   const openBrowser = useCallback(() => {
-    if (!url) return;
-    void Linking.openURL(url).catch(() => {});
-  }, [url]);
+    if (!safeUrl) return;
+    void Linking.openURL(safeUrl).catch(() => {});
+  }, [safeUrl]);
 
   const sourceLabel =
     source === 'mpk' ? s.news.sourceMpk(s.city.operator(cityId)) : s.news.sourceCity(s.city.portal(cityId));
@@ -147,7 +149,7 @@ export default function ArticleScreen() {
           </Animated.View>
         )}
 
-        {url ? (
+        {safeUrl ? (
           <Pressable
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});

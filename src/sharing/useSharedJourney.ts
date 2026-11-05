@@ -70,6 +70,9 @@ export function useSharedJourney(encoded: string) {
   useFocusEffect(
     useCallback(() => {
       if (!journey || !sameCity) return;
+      // Współdzielona podróż pokazuje pojazd na żywo, więc trzyma poll,
+      // dopóki ekran jest widoczny.
+      liveTracker.acquire();
       const update = () => {
         if (AppState.currentState !== 'active') return;
         const clock = new Date();
@@ -84,6 +87,7 @@ export function useSharedJourney(encoded: string) {
       return () => {
         clearInterval(timer);
         sub.remove();
+        liveTracker.release();
       };
     }, [journey, sameCity]),
   );

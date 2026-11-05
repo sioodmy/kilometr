@@ -93,9 +93,41 @@ function emit(next: DataStatus): void {
   }
 }
 
+/** Nowsza wersja rozkładu znana z manifestu. `null` = telefon ma najnowszą. */
+export type TimetableUpdate = { version: string; checkedAt: string };
+
+let timetableUpdate: TimetableUpdate | null = null;
+const updateListeners = new Set<(update: TimetableUpdate | null) => void>();
+
+export function getTimetableUpdate(): TimetableUpdate | null {
+  return timetableUpdate;
+}
+
+/** Ekran główny: baner "jest nowsza wersja rozkładu" i stan pobierania. */
+export function subscribeTimetableUpdate(
+  fn: (update: TimetableUpdate | null) => void,
+): () => void {
+  updateListeners.add(fn);
+  return () => {
+    updateListeners.delete(fn);
+  };
+}
+
+function emitTimetableUpdate(next: TimetableUpdate | null): void {
+  timetableUpdate = next;
+  for (const fn of updateListeners) {
+    try {
+      fn(next);
+    } catch {
+      // listener nie może wywalić checku
+    }
+  }
+}
+
 /**
  * Zmiana miasta zeruje status: liczby z poprzedniego rozkładu nie dotyczą nowego
  * miasta, a Ustawienia pokazywałyby wtedy "gotowe" z cudzymi liczbami.
+ * Baner aktualizacji też znika: dotyczy wersji z poprzedniego miasta.
  *
  * `importInProgress` zostaje nietknięty: to blokada (muteks) importu, nie status.
  * Zdejmowanie jej w trakcie trwającego importu pozwoliłoby drugiemu importowi
@@ -104,6 +136,8 @@ function emit(next: DataStatus): void {
  * przerywa, gdy użytkownik zmieni miasto w trakcie (patrz `importInProgress`).
  */
 export function resetDataStatusForCity(): void {
+  lastCheckAttempt = 0;
+  emitTimetableUpdate(null);
   emit({ state: 'empty' });
 }
 
@@ -220,26 +254,69 @@ function emitForCity(cityId: string, next: DataStatus): void {
 }
 
 const EXPIRY_MARGIN_DAYS = 3;
-const EXPIRY_RETRY_MS = 60 * 60 * 1000;
-let lastExpiryAttempt = 0;
+const CHECK_RETRY_MS = 60 * 60 * 1000;
+let lastCheckAttempt = 0;
 
 /**
- * Rozkład kończy się za kilka dni: sami sprawdzamy nowszy. Po końcu kalendarza
- * planer nie ma już kursów, a ręczne „Sprawdź aktualizacje" to za mało.
- * Manifest sprawdzamy co najwyżej raz na `refreshHours`, próby bez sieci raz na godzinę.
+ * Manifest rozkładu sprawdzamy co najwyżej raz na `refreshHours`, a nieudane
+ * próby ponawiamy po godzinie. Gdy rozkład kończy się w ciągu 3 dni, nowa baza
+ * pobiera się od razu, bo po końcu kalendarza planer nie ma kursów. Wcześniej
+ * tylko zapisujemy nowszą wersję: ekran główny pokazuje baner, żeby pobrać
+ * kilkadziesiąt MB na wyraźne kliknięcie, a nie w tle.
  */
-export async function refreshTimetableIfExpiring(): Promise<void> {
-  if (importInProgress || Date.now() - lastExpiryAttempt < EXPIRY_RETRY_MS) return;
+export async function checkTimetableForUpdates(): Promise<void> {
+  if (importInProgress || Date.now() - lastCheckAttempt < CHECK_RETRY_MS) return;
+  lastCheckAttempt = Date.now();
+
+  const cityId = getActiveCityIdSync();
+  const expiring = await isTimetableExpiring();
+  if (getActiveCityIdSync() !== cityId) return;
+
+  const lastCheck = await getMeta('gtfs_last_check').catch(() => null);
+  const checkedRecently =
+    !!lastCheck &&
+    Date.now() - new Date(lastCheck).getTime() < TIMETABLE.refreshHours * 3600 * 1000;
+
+  if (expiring && !checkedRecently) {
+    await importGtfsFromNetwork();
+    return;
+  }
+  if (checkedRecently) {
+    await refreshTimetableUpdateFromMeta();
+    return;
+  }
+
+  // Manifest to ~500 B, więc pytanie o wersję jest tanie. Pobranie bazy nie.
+  const manifest = await fetchManifest(cityId).catch((err: unknown) => {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn('[DataManager] manifest check failed:', detail);
+    return null;
+  });
+  if (!manifest || getActiveCityIdSync() !== cityId) return;
+  const checkedAt = new Date().toISOString();
+  await setMeta('gtfs_last_check', checkedAt);
+  await setMeta('gtfs_remote_version', manifest.version);
+  await refreshTimetableUpdateFromMeta();
+}
+
+async function isTimetableExpiring(): Promise<boolean> {
   const end = await getTimetableEndDate().catch(() => null);
-  if (!end) return;
+  if (!end) return false;
   const soon = new Date();
   soon.setDate(soon.getDate() + EXPIRY_MARGIN_DAYS);
   const soonKey = `${soon.getFullYear()}${String(soon.getMonth() + 1).padStart(2, '0')}${String(soon.getDate()).padStart(2, '0')}`;
-  if (end > soonKey) return;
-  const lastCheck = await getMeta('gtfs_last_check').catch(() => null);
-  if (lastCheck && Date.now() - new Date(lastCheck).getTime() < TIMETABLE.refreshHours * 3600 * 1000) return;
-  lastExpiryAttempt = Date.now();
-  await importGtfsFromNetwork();
+  return end <= soonKey;
+}
+
+async function refreshTimetableUpdateFromMeta(): Promise<void> {
+  const local = await getLocalTimetableVersion().catch(() => null);
+  const remote = await getMeta('gtfs_remote_version').catch(() => null);
+  if (!local || !remote || local === remote) {
+    emitTimetableUpdate(null);
+    return;
+  }
+  const checkedAt = (await getMeta('gtfs_last_check').catch(() => null)) ?? '';
+  emitTimetableUpdate({ version: remote, checkedAt });
 }
 
 /** Po starcie rozgrzewa równolegle routing, adresy i wagi przystanków. */
@@ -364,6 +441,7 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
       return 'upToDate';
     }
     await markTimetableDownloaded();
+    emitTimetableUpdate(null);
     // Flaga w dół przed końcowym odświeżeniem - inaczej refresh uzna, że
     // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
     importInProgress = false;
@@ -411,8 +489,11 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
   if (getActiveCityIdSync() !== cityId) return 'upToDate';
   const local = await getLocalTimetableVersion();
   if (getActiveCityIdSync() !== cityId) return 'upToDate';
+  const checkedAt = new Date().toISOString();
+  await setMeta('gtfs_remote_version', manifest.version, cityId);
   if (local && local === manifest.version) {
-    await setMeta('gtfs_last_check', new Date().toISOString(), cityId);
+    await setMeta('gtfs_last_check', checkedAt, cityId);
+    emitTimetableUpdate(null);
     return 'upToDate';
   }
 
@@ -420,7 +501,8 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
   const gate = await getTimetableDownloadGate();
   if (getActiveCityIdSync() !== cityId) return 'upToDate';
   if (!gate.allowed && local) {
-    await setMeta('gtfs_last_check', new Date().toISOString(), cityId);
+    await setMeta('gtfs_last_check', checkedAt, cityId);
+    emitTimetableUpdate({ version: manifest.version, checkedAt });
     return 'cooldown';
   }
 
@@ -436,8 +518,10 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
   const T = dataTr();
   emit({ state: 'importing', step: T.stepVerify, progress: 0.97 });
   await setMeta('gtfs_last_check', new Date().toISOString(), cityId);
+  await setMeta('gtfs_remote_version', manifest.version, cityId);
   await markTimetableDownloaded();
   await resetRoutingStore();
+  emitTimetableUpdate(null);
   return 'updated';
 }
 
