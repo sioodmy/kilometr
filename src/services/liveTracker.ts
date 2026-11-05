@@ -904,13 +904,13 @@ class LiveTracker {
 
     for (const [patternId, pattern] of dayIndex.patterns.entries()) {
       if (!routeIds.includes(pattern.routeId)) continue;
-      const trips = pattern.trips as any[];
+      const trips = pattern.trips;
       if (!trips || trips.length === 0) continue;
 
       let polyline = patternPolylines.get(patternId);
       if (!polyline) {
         polyline = [];
-        for (const [schedulePos, stopId] of (pattern.stopSequence as string[]).entries()) {
+        for (const [schedulePos, stopId] of pattern.stopSequence.entries()) {
           const s = gtfsStore.stops.get(stopId);
           if (s && s.stop_lat != null && s.stop_lon != null) {
             polyline.push({
@@ -972,7 +972,7 @@ class LiveTracker {
     if (!bestTripId) {
       for (const pattern of dayIndex.patterns.values()) {
         if (!routeIds.includes(pattern.routeId)) continue;
-        const trips = pattern.trips as any[];
+        const trips = pattern.trips;
         if (!trips) continue;
 
         for (const trip of trips) {
@@ -1026,7 +1026,7 @@ class LiveTracker {
     // route_type 0 to tramwaj, 1 to metro, 2 to pociąg (SKA), 11 to trolejbus.
     // Bez meczu zostaje typ z wiersza. Ta sama kolejność co w ścieżce Rusta.
     if (bestTripId) {
-      const trip = gtfsStore.trips.get(bestTripId) as { route_id?: string } | undefined;
+      const trip = gtfsStore.trips.get(bestTripId);
       const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
       if (routeType === 0) type = 'tram';
       else if (routeType === 1) type = 'subway';
@@ -1152,8 +1152,7 @@ class LiveTracker {
         const trips = pattern.trips;
         w.u32(trips.length);
         for (const trip of trips) {
-          const times = gtfsStore.stopTimes.get(trip.trip_id) as
-            { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
+          const times = gtfsStore.stopTimes.get(trip.trip_id);
           const tripIdx = tripIds.length;
           tripIds.push(trip.trip_id);
           w.u32(tripIdx).str(normalizeName(trip.trip_headsign ?? ''));
@@ -1243,7 +1242,7 @@ class LiveTracker {
       // dostaje route_type 1 i kropkę metra).
       let vtype: TrackedVehicle['type'] = row.type === 'tram' ? 'tram' : 'bus';
       if (tripId) {
-        const trip = gtfsStore.trips.get(tripId) as { route_id?: string } | undefined;
+        const trip = gtfsStore.trips.get(tripId);
         const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
         if (routeType === 0) vtype = 'tram';
         else if (routeType === 1) vtype = 'subway';

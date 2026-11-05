@@ -219,11 +219,11 @@ head('Kotwica przystanku w planowaniu: limit dystansu spaceru');
   const lat0 = 51.0;
   const lon = 17.0;
   // Przystanek bliski (200 m)
-  gtfsStore.stops.set('STOP_NEAR', { stop_id: 'STOP_NEAR', stop_lat: lat0 + STEP_LAT * 0.5, stop_lon: lon });
+  gtfsStore.stops.set('STOP_NEAR', { stop_id: 'STOP_NEAR', stop_code: '', stop_name: 'STOP_NEAR', normalized_name: 'stop_near', stop_lat: lat0 + STEP_LAT * 0.5, stop_lon: lon });
   // Przystanek w granicy +20% (np. ~540 m <= 600 m przy maxWalkM=500m)
-  gtfsStore.stops.set('STOP_BORDER', { stop_id: 'STOP_BORDER', stop_lat: lat0 + STEP_LAT * 1.35, stop_lon: lon });
+  gtfsStore.stops.set('STOP_BORDER', { stop_id: 'STOP_BORDER', stop_code: '', stop_name: 'STOP_BORDER', normalized_name: 'stop_border', stop_lat: lat0 + STEP_LAT * 1.35, stop_lon: lon });
   // Przystanek daleko poza limitem (np. ~2000 m > 600 m)
-  gtfsStore.stops.set('STOP_FAR', { stop_id: 'STOP_FAR', stop_lat: lat0 + STEP_LAT * 5.0, stop_lon: lon });
+  gtfsStore.stops.set('STOP_FAR', { stop_id: 'STOP_FAR', stop_code: '', stop_name: 'STOP_FAR', normalized_name: 'stop_far', stop_lat: lat0 + STEP_LAT * 5.0, stop_lon: lon });
 
   // 1. Kotwica w granicach 120% limitu (STOP_BORDER z maxWalkM=500m)
   const originsWithBorder = resolveCandidateOrigins(lat0, lon, 500, 1.34, { stopId: 'STOP_BORDER' });
@@ -414,14 +414,14 @@ async function runAsyncTests() {
 
   head("buildLegStops: linie okólne i pętle z powtarzającymi się przystankami");
   const tripLoop = "TRIP_LOOP";
-  gtfsStore.stops.set("P0", { stop_id: "P0", stop_name: "Pętla", stop_lat: 51.0, stop_lon: 17.0 });
-  gtfsStore.stops.set("S1", { stop_id: "S1", stop_name: "Ulica A", stop_lat: 51.01, stop_lon: 17.01 });
-  gtfsStore.stops.set("S2", { stop_id: "S2", stop_name: "Ulica B", stop_lat: 51.02, stop_lon: 17.02 });
+  gtfsStore.stops.set("P0", { stop_id: "P0", stop_code: '', stop_name: "Pętla", normalized_name: "petla", stop_lat: 51.0, stop_lon: 17.0 });
+  gtfsStore.stops.set("S1", { stop_id: "S1", stop_code: '', stop_name: "Ulica A", normalized_name: "ulica a", stop_lat: 51.01, stop_lon: 17.01 });
+  gtfsStore.stops.set("S2", { stop_id: "S2", stop_code: '', stop_name: "Ulica B", normalized_name: "ulica b", stop_lat: 51.02, stop_lon: 17.02 });
   gtfsStore.stopTimes.set(tripLoop, [
-    { stop_id: "P0", stop_sequence: 1, arrival_sec: 36000, departure_sec: 36000 },
-    { stop_id: "S1", stop_sequence: 2, arrival_sec: 36300, departure_sec: 36300 },
-    { stop_id: "S2", stop_sequence: 3, arrival_sec: 36600, departure_sec: 36600 },
-    { stop_id: "P0", stop_sequence: 4, arrival_sec: 36900, departure_sec: 36900 },
+    { trip_id: tripLoop, stop_id: "P0", stop_sequence: 1, arrival_sec: 36000, departure_sec: 36000 },
+    { trip_id: tripLoop, stop_id: "S1", stop_sequence: 2, arrival_sec: 36300, departure_sec: 36300 },
+    { trip_id: tripLoop, stop_id: "S2", stop_sequence: 3, arrival_sec: 36600, departure_sec: 36600 },
+    { trip_id: tripLoop, stop_id: "P0", stop_sequence: 4, arrival_sec: 36900, departure_sec: 36900 },
   ]);
 
   // Przypadek 1: wsiadanie w trakcie trasy (S2), wysiadanie na pętli końcowej (P0)
@@ -435,13 +435,13 @@ async function runAsyncTests() {
 
   // Przypadek 3: trasa z powtórzonym przystankkiem pośrednim A -> B -> C -> B -> D
   const tripDoubleB = "TRIP_DOUBLE_B";
-  gtfsStore.stops.set("SD", { stop_id: "SD", stop_name: "Ulica D", stop_lat: 51.03, stop_lon: 17.03 });
+  gtfsStore.stops.set("SD", { stop_id: "SD", stop_code: '', stop_name: "Ulica D", normalized_name: "ulica d", stop_lat: 51.03, stop_lon: 17.03 });
   gtfsStore.stopTimes.set(tripDoubleB, [
-    { stop_id: "P0", stop_sequence: 1, arrival_sec: 40000, departure_sec: 40000 },
-    { stop_id: "S1", stop_sequence: 2, arrival_sec: 40300, departure_sec: 40300 },
-    { stop_id: "S2", stop_sequence: 3, arrival_sec: 40600, departure_sec: 40600 },
-    { stop_id: "S1", stop_sequence: 4, arrival_sec: 40900, departure_sec: 40900 },
-    { stop_id: "SD", stop_sequence: 5, arrival_sec: 41200, departure_sec: 41200 },
+    { trip_id: tripDoubleB, stop_id: "P0", stop_sequence: 1, arrival_sec: 40000, departure_sec: 40000 },
+    { trip_id: tripDoubleB, stop_id: "S1", stop_sequence: 2, arrival_sec: 40300, departure_sec: 40300 },
+    { trip_id: tripDoubleB, stop_id: "S2", stop_sequence: 3, arrival_sec: 40600, departure_sec: 40600 },
+    { trip_id: tripDoubleB, stop_id: "S1", stop_sequence: 4, arrival_sec: 40900, departure_sec: 40900 },
+    { trip_id: tripDoubleB, stop_id: "SD", stop_sequence: 5, arrival_sec: 41200, departure_sec: 41200 },
   ]);
 
   // Pasażer wsiada na DRUGIM S1 (odjazd 40900) i jedzie do SD (41200)
@@ -453,12 +453,12 @@ async function runAsyncTests() {
   // cały kurs zamiast odcinka od wsiadania.
   const tripLoopDelay = "TRIP_LOOP_DELAY";
   gtfsStore.stopTimes.set(tripLoopDelay, [
-    { stop_id: "P0", stop_sequence: 1, arrival_sec: 36000, departure_sec: 36000 },
-    { stop_id: "S1", stop_sequence: 2, arrival_sec: 36300, departure_sec: 36300 },
-    { stop_id: "S2", stop_sequence: 3, arrival_sec: 36600, departure_sec: 36600 },
-    { stop_id: "P0", stop_sequence: 4, arrival_sec: 36900, departure_sec: 36900 },
-    { stop_id: "S1", stop_sequence: 5, arrival_sec: 37200, departure_sec: 37200 },
-    { stop_id: "SD", stop_sequence: 6, arrival_sec: 37500, departure_sec: 37500 },
+    { trip_id: tripLoopDelay, stop_id: "P0", stop_sequence: 1, arrival_sec: 36000, departure_sec: 36000 },
+    { trip_id: tripLoopDelay, stop_id: "S1", stop_sequence: 2, arrival_sec: 36300, departure_sec: 36300 },
+    { trip_id: tripLoopDelay, stop_id: "S2", stop_sequence: 3, arrival_sec: 36600, departure_sec: 36600 },
+    { trip_id: tripLoopDelay, stop_id: "P0", stop_sequence: 4, arrival_sec: 36900, departure_sec: 36900 },
+    { trip_id: tripLoopDelay, stop_id: "S1", stop_sequence: 5, arrival_sec: 37200, departure_sec: 37200 },
+    { trip_id: tripLoopDelay, stop_id: "SD", stop_sequence: 6, arrival_sec: 37500, departure_sec: 37500 },
   ]);
   const stopsDelayedLoop = buildLegStops(
     tripLoopDelay,

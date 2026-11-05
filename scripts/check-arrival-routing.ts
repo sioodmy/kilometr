@@ -49,6 +49,7 @@ function network(lines: Line[], paths: Array<[string, string, number]> = []) {
     store.routes.set(line.id, {
       route_id: line.id,
       route_short_name: line.id,
+      route_long_name: '',
       route_type: line.kind ?? 3,
     });
     const trips: GtfsTrip[] = line.times.map((times, i) => {
@@ -64,6 +65,7 @@ function network(lines: Line[], paths: Array<[string, string, number]> = []) {
       store.stopTimes.set(
         trip.trip_id,
         times.map((sec, j) => ({
+          trip_id: trip.trip_id,
           stop_id: line.stops[j],
           stop_sequence: j,
           arrival_sec: sec,
@@ -72,11 +74,11 @@ function network(lines: Line[], paths: Array<[string, string, number]> = []) {
       );
       return trip;
     });
-    index.patterns.set(line.id, { routeId: line.id, stopSequence: line.stops, trips });
+    index.patterns.set(line.id, { patternId: line.id, routeId: line.id, stopSequence: line.stops, trips, departures: [], tripIndices: [] });
   }
   for (const [from, to, duration] of paths) {
     const list = store.footpaths.get(from) ?? [];
-    list.push({ to_stop_id: to, duration_sec: duration, distance_m: 100, fixed: true });
+    list.push({ from_stop_id: from, to_stop_id: to, duration_sec: duration, distance_m: 100, fixed: true });
     store.footpaths.set(from, list);
   }
   return { store, index };
